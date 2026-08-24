@@ -7,18 +7,19 @@ import { Redis } from "@upstash/redis";
  * Redis when configured and a local file otherwise. Most production hosts
  * (Vercel included) don't give a Next.js app a writable, persistent
  * filesystem — a serverless function's disk is ephemeral and isn't shared
- * across instances — so a real deployment needs UPSTASH_REDIS_REST_URL and
- * UPSTASH_REDIS_REST_TOKEN set. Locally, neither is required: `npm run dev`
- * keeps working against `.data/` on disk exactly as before, so hacking on
- * the app never needs a cloud account.
+ * across instances — so a real deployment needs a Redis connection.
+ * Connecting Upstash through Vercel's own Storage/Marketplace tab names the
+ * variables `KV_REST_API_URL` / `KV_REST_API_TOKEN` (Vercel's legacy KV
+ * naming, still used for Upstash integrations); connecting an Upstash
+ * account directly names them `UPSTASH_REDIS_REST_URL` /
+ * `UPSTASH_REDIS_REST_TOKEN` — both are checked so either path works.
+ * Locally, neither is required: `npm run dev` keeps working against
+ * `.data/` on disk exactly as before, so hacking on the app never needs a
+ * cloud account.
  */
-const redis =
-  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-    ? new Redis({
-        url: process.env.UPSTASH_REDIS_REST_URL,
-        token: process.env.UPSTASH_REDIS_REST_TOKEN,
-      })
-    : null;
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
+const redis = redisUrl && redisToken ? new Redis({ url: redisUrl, token: redisToken }) : null;
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 
