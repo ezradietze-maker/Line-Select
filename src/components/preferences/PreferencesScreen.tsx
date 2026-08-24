@@ -1,0 +1,203 @@
+import { Button } from "@/components/ui/Button";
+import {
+  DEEP_SLIDERS,
+  QUICK_QUESTIONS,
+  TARGET_SLIDERS,
+  type SliderQuestionConfig,
+} from "@/lib/interview-config";
+import { hasMixedAsiaRegions } from "@/lib/scoring";
+import type { BidPack } from "@/types/bidpack";
+import type { PreferenceProfile } from "@/types/preferences";
+
+interface PreferencesScreenProps {
+  hasBidPack: boolean;
+  bidPack: BidPack | null;
+  profile: PreferenceProfile | null;
+  onGoToUpload: () => void;
+  onStartInterview: () => void;
+}
+
+export function PreferencesScreen({
+  hasBidPack,
+  bidPack,
+  profile,
+  onGoToUpload,
+  onStartInterview,
+}: PreferencesScreenProps) {
+  if (!hasBidPack) {
+    return (
+      <EmptyState
+        title="Upload a bid pack first"
+        description="Preferences are scored against a real bid pack, so upload one before setting them."
+        actionLabel="Upload bid pack"
+        onAction={onGoToUpload}
+      />
+    );
+  }
+
+  if (!profile) {
+    return (
+      <EmptyState
+        title="You haven't set your preferences yet"
+        description="Answer a few questions about what you care about, and Line Select will rank every line in your bid pack against it."
+        actionLabel="Start the interview"
+        onAction={onStartInterview}
+      />
+    );
+  }
+
+  const completedDate = new Date(profile.completedAt);
+  const showRegion = bidPack ? hasMixedAsiaRegions(bidPack) : true;
+  const deepSliders = DEEP_SLIDERS.filter((s) => s.key !== "region" || showRegion);
+  const lovedCities = Object.entries(profile.cityPreferences)
+    .filter(([, sentiment]) => sentiment === "love")
+    .map(([code]) => code);
+  const avoidedCities = Object.entries(profile.cityPreferences)
+    .filter(([, sentiment]) => sentiment === "avoid")
+    .map(([code]) => code);
+
+  return (
+    <div className="mx-auto w-full max-w-2xl animate-fade-in">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Your preferences</h1>
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+            <span>
+              Last answered {completedDate.toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </span>
+            {profile.deepRoundCompleted && (
+              <span className="inline-flex items-center rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
+                Deep interview
+              </span>
+            )}
+            {profile.isCommuter !== null && (
+              <span className="inline-flex items-center rounded-full bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand">
+                {profile.isCommuter ? "Commuter" : "Local"}
+              </span>
+            )}
+          </p>
+        </div>
+        <Button onClick={onStartInterview}>Retake the interview</Button>
+      </div>
+
+      <div className="mt-6 space-y-3 rounded-xl border border-border bg-surface p-5 sm:p-6">
+        {QUICK_QUESTIONS.map((config) => (
+          <WeightRow key={config.key} config={config} weight={profile.weights[config.key]} />
+        ))}
+        {deepSliders.map((config) => (
+          <WeightRow
+            key={config.key}
+            config={config}
+            weight={profile.weights[config.key as "deadheadTolerance" | "region"]}
+          />
+        ))}
+      </div>
+
+      {profile.deepRoundCompleted && Object.keys(profile.explicitTargets).length > 0 && (
+        <div className="mt-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            Exact targets you pinned
+          </h2>
+          <div className="mt-3 space-y-2">
+            {TARGET_SLIDERS.filter((t) => profile.explicitTargets[t.key] !== undefined).map(
+              (t) => (
+                <div key={t.key} className="flex items-center justify-between text-sm">
+                  <span className="text-ink-muted">{t.question}</span>
+                  <span className="font-mono font-semibold text-ink">
+                    {t.formatValue(profile.explicitTargets[t.key]!)} {t.unitPlural}
+                  </span>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      )}
+
+      {(lovedCities.length > 0 || avoidedCities.length > 0) && (
+        <div className="mt-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            Cities you flagged
+          </h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {lovedCities.map((code) => (
+              <span
+                key={code}
+                className="rounded-full border border-good/30 bg-good-soft px-3 py-1 text-xs font-medium text-good"
+              >
+                &hearts; {code}
+              </span>
+            ))}
+            {avoidedCities.map((code) => (
+              <span
+                key={code}
+                className="rounded-full border border-danger/30 bg-danger-soft px-3 py-1 text-xs font-medium text-danger"
+              >
+                &times; {code}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+function WeightRow({ config, weight }: { config: SliderQuestionConfig; weight: number }) {
+  const pct = (weight + 100) / 2;
+  const magnitude = Math.abs(weight);
+  const label =
+    magnitude < 10
+      ? config.centerLabel
+      : weight > 0
+        ? config.highLabel
+        : config.lowLabel;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium text-ink">{config.question}</span>
+        <span className="text-xs text-ink-muted">{label}</span>
+      </div>
+      <div className="relative mt-2 h-1.5 rounded-full bg-canvas">
+        <div
+          className="pointer-events-none absolute left-1/2 top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-border-strong"
+          aria-hidden
+        />
+        <div
+          className="h-1.5 rounded-full bg-brand transition-all"
+          style={{
+            marginLeft: `${Math.min(50, pct)}%`,
+            width: `${Math.abs(pct - 50)}%`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({
+  title,
+  description,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  description: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <div className="mx-auto w-full max-w-md animate-fade-in text-center">
+      <h1 className="text-xl font-semibold text-ink sm:text-2xl">{title}</h1>
+      <p className="mt-2 text-sm leading-relaxed text-ink-muted">{description}</p>
+      <Button onClick={onAction} className="mt-6">
+        {actionLabel}
+      </Button>
+    </div>
+  );
+}

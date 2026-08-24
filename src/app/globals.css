@@ -1,0 +1,283 @@
+@import "tailwindcss";
+
+:root {
+  /* Base surfaces */
+  --color-canvas: #f6f5f2;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-border: #e1ddd4;
+  --color-border-strong: #c9c3b6;
+
+  /* Text */
+  --color-ink: #171b20;
+  --color-ink-muted: #5a6270;
+  --color-ink-faint: #8b93a0;
+
+  /* Brand: deep aviation navy + warm instrument-panel amber */
+  --color-brand: #1c3d5c;
+  --color-brand-strong: #12283f;
+  --color-brand-soft: #e6edf3;
+  --color-accent: #b5792b;
+  --color-accent-soft: #f4e6d2;
+  --color-accent-wash: #ecd3a0;
+
+  /* Sidebar: a distinct recessed panel, not a copy of the content surface */
+  --color-sidebar: #eeeae1;
+  --color-sidebar-border: #cdc4b0;
+
+  /* Semantic */
+  --color-good: #2f7d5f;
+  --color-good-soft: #e1f0e7;
+  --color-warn: #a15b1f;
+  --color-warn-soft: #f6e8d7;
+  --color-danger: #b3432f;
+  --color-danger-soft: #f8e3de;
+
+  --color-focus-ring: #1c3d5c;
+
+  --shadow-color: 220 20% 20%;
+  --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.06);
+  --shadow-md: 0 2px 8px hsl(var(--shadow-color) / 0.08), 0 1px 2px hsl(var(--shadow-color) / 0.06);
+  --shadow-lg: 0 12px 32px hsl(var(--shadow-color) / 0.12), 0 2px 6px hsl(var(--shadow-color) / 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-canvas: #0a0d11;
+    --color-surface: #141a21;
+    --color-surface-raised: #1a222b;
+    --color-border: #262f3a;
+    --color-border-strong: #37424f;
+
+    --color-ink: #e9ebee;
+    --color-ink-muted: #99a2af;
+    --color-ink-faint: #6b7480;
+
+    --color-brand: #6f9dc4;
+    --color-brand-strong: #8db4d6;
+    --color-brand-soft: #1a2733;
+    --color-accent: #d6a44f;
+    --color-accent-soft: #2c2417;
+    --color-accent-wash: #3a2c14;
+
+    --color-sidebar: #05070a;
+    --color-sidebar-border: #1f2830;
+
+    --color-good: #5cb98d;
+    --color-good-soft: #16281f;
+    --color-warn: #d99a52;
+    --color-warn-soft: #2c2114;
+    --color-danger: #e28674;
+    --color-danger-soft: #2e1a16;
+
+    --color-focus-ring: #8db4d6;
+    --shadow-color: 220 40% 2%;
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-canvas: #0a0d11;
+  --color-surface: #141a21;
+  --color-surface-raised: #1a222b;
+  --color-border: #262f3a;
+  --color-border-strong: #37424f;
+
+  --color-ink: #e9ebee;
+  --color-ink-muted: #99a2af;
+  --color-ink-faint: #6b7480;
+
+  --color-brand: #6f9dc4;
+  --color-brand-strong: #8db4d6;
+  --color-brand-soft: #1a2733;
+  --color-accent: #d6a44f;
+  --color-accent-soft: #2c2417;
+  --color-accent-wash: #3a2c14;
+
+  --color-sidebar: #05070a;
+  --color-sidebar-border: #1f2830;
+
+  --color-good: #5cb98d;
+  --color-good-soft: #16281f;
+  --color-warn: #d99a52;
+  --color-warn-soft: #2c2114;
+  --color-danger: #e28674;
+  --color-danger-soft: #2e1a16;
+
+  --color-focus-ring: #8db4d6;
+  --shadow-color: 220 40% 2%;
+}
+
+@theme inline {
+  --color-canvas: var(--color-canvas);
+  --color-surface: var(--color-surface);
+  --color-surface-raised: var(--color-surface-raised);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+
+  --color-ink: var(--color-ink);
+  --color-ink-muted: var(--color-ink-muted);
+  --color-ink-faint: var(--color-ink-faint);
+
+  --color-brand: var(--color-brand);
+  --color-brand-strong: var(--color-brand-strong);
+  --color-brand-soft: var(--color-brand-soft);
+  --color-accent: var(--color-accent);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-accent-wash: var(--color-accent-wash);
+
+  --color-sidebar: var(--color-sidebar);
+  --color-sidebar-border: var(--color-sidebar-border);
+
+  --color-good: var(--color-good);
+  --color-good-soft: var(--color-good-soft);
+  --color-warn: var(--color-warn);
+  --color-warn-soft: var(--color-warn-soft);
+  --color-danger: var(--color-danger);
+  --color-danger-soft: var(--color-danger-soft);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+/*
+ * Tailwind v4 defaults `border-color` to currentColor (unlike v3's gray
+ * default). This restores a sensible default for bare `border` usage, but
+ * it must live in the `base` layer — left unlayered, it would sit above
+ * every Tailwind utility layer in the cascade and silently win over any
+ * `border-*` color utility everywhere in the app, regardless of specificity.
+ */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+}
+
+body {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--color-brand-soft);
+}
+
+.shadow-elevated {
+  box-shadow: var(--shadow-md);
+}
+
+.shadow-elevated-lg {
+  box-shadow: var(--shadow-lg);
+}
+
+.shadow-sidebar {
+  box-shadow: 3px 0 14px -6px hsl(var(--shadow-color) / 0.35);
+}
+
+/* ---- Slider ---- */
+
+.line-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+  touch-action: pan-y;
+  transition: box-shadow 0.15s ease;
+}
+
+.line-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 3px solid var(--color-brand);
+  box-shadow: var(--shadow-md);
+  cursor: grab;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  margin-top: 0;
+}
+
+.line-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.08);
+}
+
+.line-slider:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  transform: scale(1.15);
+  box-shadow: var(--shadow-lg);
+}
+
+.line-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 3px solid var(--color-brand);
+  box-shadow: var(--shadow-md);
+  cursor: grab;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.line-slider::-moz-range-thumb:hover {
+  transform: scale(1.08);
+}
+
+.line-slider:active::-moz-range-thumb {
+  cursor: grabbing;
+  transform: scale(1.15);
+  box-shadow: var(--shadow-lg);
+}
+
+.line-slider:focus-visible::-webkit-slider-thumb {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.line-slider:focus-visible::-moz-range-thumb {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ---- Motion ---- */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.25s ease both;
+}
+
+@keyframes expand-down {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
+  .line-slider::-webkit-slider-thumb,
+  .line-slider::-moz-range-thumb {
+    transition: none;
+  }
+}
