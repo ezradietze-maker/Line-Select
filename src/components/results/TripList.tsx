@@ -32,10 +32,13 @@ function formatDuration(hours: number): string {
   return m > 0 ? `${h}h${m}m` : `${h}h`;
 }
 
-function LegendSwatch({ className, label }: { className: string; label: string }) {
+const LAYOVER_TOOLTIP =
+  "Layover / hotel — real time from block-in to next report. Not exactly when you'll sleep, since that's down to you and the jet lag.";
+
+function LegendSwatch({ className, label, title }: { className: string; label: string; title?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={`h-2.5 w-4 shrink-0 rounded-sm ${className}`} />
+    <span className="inline-flex items-center gap-1" title={title}>
+      <span className={`h-2 w-3 shrink-0 rounded-sm ${className}`} />
       {label}
     </span>
   );
@@ -51,19 +54,19 @@ function segmentClass(kind: TimelineDay["segments"][number]["kind"]): string {
 
 function DayRow({ day }: { day: TimelineDay }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-11 shrink-0 text-right font-mono text-[10px] font-medium text-ink-faint">
-        Day {day.dayNumber}
+    <div className="flex items-center gap-1.5">
+      <div className="w-8 shrink-0 text-right font-mono text-[9px] font-medium text-ink-faint">
+        D{day.dayNumber}
       </div>
-      <div className="relative h-6 flex-1 overflow-hidden rounded bg-canvas">
+      <div className="relative h-3.5 flex-1 overflow-hidden rounded-sm bg-canvas">
         {[6, 12, 18].map((h) => (
-          <div key={h} className="absolute top-0 bottom-0 w-px bg-border" style={{ left: `${(h / 24) * 100}%` }} />
+          <div key={h} className="absolute top-0 bottom-0 w-px bg-border/70" style={{ left: `${(h / 24) * 100}%` }} />
         ))}
         {day.segments.map((seg, i) => (
           <div
             key={i}
-            title={`${seg.label} — ${seg.detail}`}
-            className={`absolute top-0.5 bottom-0.5 ${segmentClass(seg.kind)} ${
+            title={seg.kind === "layover" ? `${seg.label} — ${seg.detail}\n${LAYOVER_TOOLTIP}` : `${seg.label} — ${seg.detail}`}
+            className={`absolute top-0 bottom-0 ${segmentClass(seg.kind)} ${
               seg.continuesFromPreviousDay ? "" : "rounded-l-sm"
             } ${seg.continuesToNextDay ? "" : "rounded-r-sm"}`}
             style={{
@@ -77,35 +80,30 @@ function DayRow({ day }: { day: TimelineDay }) {
   );
 }
 
-/** The visual "at a glance" schedule — day-by-day rows so a long international trip doesn't compress into one unreadable sliver. Real, printed clock times drive every segment's position; nothing here is estimated. */
+/** The visual "at a glance" schedule — day-by-day rows so a long international trip doesn't compress into one unreadable sliver. Real, printed clock times drive every segment's position; nothing here is estimated. Deliberately dense: full explanations live in tooltips rather than always-on caption text, so several lines' schedules can stay on screen together. */
 function TripTimelineChart({ trip }: { trip: Trip }) {
   const days = buildTimelineDays(trip);
   if (days.length === 0) return null;
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-muted">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-ink-muted">
         <LegendSwatch className="bg-brand" label="Flying" />
-        <LegendSwatch className={segmentClass("deadhead")} label="Deadhead (riding along)" />
-        <LegendSwatch className="bg-good" label="Layover / hotel" />
+        <LegendSwatch className={segmentClass("deadhead")} label="Deadhead" title="Riding along, not operating" />
+        <LegendSwatch className="bg-good" label="Layover" title={LAYOVER_TOOLTIP} />
       </div>
-      <div className="mt-3 space-y-1.5">
+      <div className="mt-1.5 flex justify-between pl-[2.375rem] font-mono text-[8px] leading-none text-ink-faint">
+        <span>0</span>
+        <span>6</span>
+        <span>12</span>
+        <span>18</span>
+        <span>24h</span>
+      </div>
+      <div className="mt-0.5 space-y-1">
         {days.map((day) => (
           <DayRow key={day.dayNumber} day={day} />
         ))}
       </div>
-      <div className="mt-1 flex justify-between pl-[3.25rem] font-mono text-[9px] text-ink-faint">
-        <span>00:00</span>
-        <span>06:00</span>
-        <span>12:00</span>
-        <span>18:00</span>
-        <span>24:00</span>
-      </div>
-      <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
-        Green shows real time at the hotel, from block-in to next report — not exactly when
-        you&rsquo;ll sleep, since that&rsquo;s down to you and the jet lag. Times shown are local
-        to each station.
-      </p>
     </div>
   );
 }
@@ -120,32 +118,27 @@ interface ItineraryProps {
 /** The precise, textual counterpart to the chart above — exact times, flight numbers, and hotel names for every leg and layover. */
 function Itinerary({ trip, ratings, expandedKey, onToggleExpand }: ItineraryProps) {
   return (
-    <div className="mt-4 space-y-2.5">
+    <div className="mt-2 divide-y divide-border/60 border-t border-border/60 text-[11px]">
       {trip.schedule.map((duty, dutyIndex) => (
-        <div key={dutyIndex} className="rounded-lg border border-border bg-canvas px-3 py-2.5">
-          <div className="font-mono text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
-            {dutyIndex === 0 ? "Report" : "Duty begins"} {formatHHMM(duty.reportTimeLocal)} local
-          </div>
-          <ul className="mt-1.5 space-y-1">
-            {duty.legs.map((leg, legIndex) => (
-              <li key={legIndex} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-                <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${leg.isDeadhead ? "bg-brand/45" : "bg-brand"}`}
-                  aria-hidden
-                />
-                <span className="font-mono text-ink-muted">{formatHHMM(leg.depTimeLocal)}</span>
-                <span className="text-ink">
-                  {leg.depAirport} &rarr; {leg.arrAirport}
-                </span>
-                <span className="font-mono text-ink-muted">{formatHHMM(leg.arrTimeLocal)}</span>
-                <span className="text-ink-faint">
-                  &middot; {leg.flightNumber}
-                  {leg.isDeadhead ? " (deadhead)" : ""}
-                  {leg.blockHours !== null && ` · ${formatDuration(leg.blockHours)} block`}
-                </span>
-              </li>
-            ))}
-          </ul>
+        <div key={dutyIndex}>
+          {duty.legs.map((leg, legIndex) => (
+            <div key={legIndex} className="flex flex-wrap items-center gap-x-1.5 py-1">
+              <span
+                className={`h-1 w-1 shrink-0 rounded-full ${leg.isDeadhead ? "bg-brand/45" : "bg-brand"}`}
+                aria-hidden
+              />
+              <span className="font-mono text-ink-muted">{formatHHMM(leg.depTimeLocal)}</span>
+              <span className="text-ink">
+                {leg.depAirport}&rarr;{leg.arrAirport}
+              </span>
+              <span className="font-mono text-ink-muted">{formatHHMM(leg.arrTimeLocal)}</span>
+              <span className="text-ink-faint">
+                {leg.flightNumber}
+                {leg.isDeadhead ? " DH" : ""}
+                {leg.blockHours !== null && ` · ${formatDuration(leg.blockHours)}`}
+              </span>
+            </div>
+          ))}
 
           {duty.layover && (
             <LayoverRow
@@ -191,40 +184,40 @@ function LayoverRow({
 
   const content = (
     <>
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-good" aria-hidden />
+      <span className="h-1 w-1 shrink-0 rounded-full bg-good" aria-hidden />
       <span className="text-ink">
         {city}
         {hotelName ? ` · ${hotelName}` : ""}
       </span>
-      <span className="font-mono text-ink-faint">{formatDuration(hours)} at hotel</span>
+      <span className="font-mono text-ink-faint">{formatDuration(hours)}</span>
       {hotel?.rating != null && (
         <span className="inline-flex items-center gap-0.5 text-accent">
-          <StarIcon className="h-3 w-3 fill-current" />
+          <StarIcon className="h-2.5 w-2.5 fill-current" />
           {hotel.rating.toFixed(1)}
         </span>
       )}
       {canExpand && (
-        <ChevronDownIcon className={`h-3 w-3 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        <ChevronDownIcon className={`h-2.5 w-2.5 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
       )}
     </>
   );
 
   return (
-    <div className="mt-2 border-t border-border pt-2">
+    <div className="py-1">
       {canExpand ? (
         <button
           type="button"
           onClick={() => onToggleExpand(detailKey)}
-          className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs hover:text-ink"
+          className="flex flex-wrap items-center gap-x-1.5 hover:text-ink"
           aria-expanded={expanded}
         >
           {content}
         </button>
       ) : (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">{content}</div>
+        <div className="flex flex-wrap items-center gap-x-1.5">{content}</div>
       )}
       {expanded && hotel && (
-        <div className="mt-2 rounded-lg border border-border bg-surface p-3">
+        <div className="mt-1.5 rounded-lg border border-border bg-surface p-2.5">
           <HotelQualityDetails hotel={hotel} />
         </div>
       )}
@@ -239,6 +232,7 @@ interface TripListProps {
 export function TripList({ trips }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [openItineraries, setOpenItineraries] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const pairs = new Map<string, { code: string; hotelName: string }>();
@@ -268,10 +262,19 @@ export function TripList({ trips }: TripListProps) {
     setExpandedKey((k) => (k === key ? null : key));
   }
 
+  function toggleItinerary(tripId: string) {
+    setOpenItineraries((prev) => {
+      const next = new Set(prev);
+      if (next.has(tripId)) next.delete(tripId);
+      else next.add(tripId);
+      return next;
+    });
+  }
+
   return (
     <ul className="divide-y divide-border">
       {trips.map((trip) => (
-        <li key={trip.id} className="py-4 first:pt-0">
+        <li key={trip.id} className="py-2.5 first:pt-0">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <div className="flex min-w-[7rem] items-baseline gap-1.5">
               <span className="font-mono text-sm font-semibold text-ink">{trip.days}-day</span>
@@ -296,14 +299,29 @@ export function TripList({ trips }: TripListProps) {
           </div>
 
           {trip.schedule.length > 0 ? (
-            <div className="mt-3">
+            <div className="mt-2">
               <TripTimelineChart trip={trip} />
-              <Itinerary
-                trip={trip}
-                ratings={ratings}
-                expandedKey={expandedKey}
-                onToggleExpand={handleToggleExpand}
-              />
+              <button
+                type="button"
+                onClick={() => toggleItinerary(trip.id)}
+                className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-ink-faint hover:text-ink"
+                aria-expanded={openItineraries.has(trip.id)}
+              >
+                {openItineraries.has(trip.id) ? "Hide" : "Show"} flight-by-flight itinerary
+                <ChevronDownIcon
+                  className={`h-2.5 w-2.5 shrink-0 transition-transform ${
+                    openItineraries.has(trip.id) ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {openItineraries.has(trip.id) && (
+                <Itinerary
+                  trip={trip}
+                  ratings={ratings}
+                  expandedKey={expandedKey}
+                  onToggleExpand={handleToggleExpand}
+                />
+              )}
             </div>
           ) : (
             trip.layoverDetails.some((d) => d.hotelName) && (

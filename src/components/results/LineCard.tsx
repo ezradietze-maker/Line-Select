@@ -121,8 +121,8 @@ export function LineCard({ rank, lineScore }: LineCardProps) {
       </div>
 
       {expanded && (
-        <div className="animate-fade-in border-t border-border p-5 sm:p-6">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+        <div className="animate-fade-in border-t border-border p-4 sm:p-5">
+          <h3 className="text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
             Trip schedule
           </h3>
           {lineScore.estimated ? (
@@ -133,23 +133,23 @@ export function LineCard({ rank, lineScore }: LineCardProps) {
               bid pack&rsquo;s own line totals.
             </div>
           ) : (
-            <div className="mt-2">
+            <div className="mt-1.5">
               <TripList trips={line.trips} />
             </div>
           )}
 
-          <div className="mt-6 border-t border-border pt-3">
+          <div className="mt-3 border-t border-border pt-2">
             <button
               type="button"
               onClick={() => setShowMatch((v) => !v)}
-              className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-faint hover:text-ink"
+              className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-ink-faint hover:text-ink"
               aria-expanded={showMatch}
             >
               Why this score?
               <ChevronDownIcon className={`h-3 w-3 shrink-0 transition-transform ${showMatch ? "rotate-180" : ""}`} />
             </button>
             {showMatch && (
-              <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+              <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
                 {dimensions.map((d) => (
                   <MatchBar key={d.key} dimension={d} />
                 ))}
