@@ -13,34 +13,40 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
+import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
 import { Button } from "@/components/ui/Button";
 import { LineCard } from "@/components/results/LineCard";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
+import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { PHRASES } from "@/lib/preference-summary";
-import { learnFromReorder, type LearnedAdjustment } from "@/lib/rank-learning";
+import {
+  learnFromReorder,
+  type DimensionUpdate,
+  type PairwiseJudgment,
+} from "@/lib/rank-learning";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
-import type { PreferenceProfile } from "@/types/preferences";
+import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
-/**
- * Magnitude-only hotel weights have no negative direction, so their final
- * sign never tells you whether this correction just raised or lowered them —
- * only `direction` (which way this specific nudge went) does. Every other
- * dimension is bipolar, where the resulting sign itself is the more useful
- * thing to report (a pilot cares what they currently lean toward, not just
- * which way the last tweak happened to push).
- */
-function phraseFor(adjustment: LearnedAdjustment): string {
-  const magnitudeOnly = adjustment.key.startsWith("hotel");
-  const leansPositive = magnitudeOnly ? adjustment.direction > 0 : adjustment.weight >= 0;
-  return leansPositive ? PHRASES[adjustment.key].positive : PHRASES[adjustment.key].negative;
+/** 0-1: below this, the model already basically expected the outcome — update quietly. Above it, the drag contradicted what the model currently believes, which is worth surfacing. */
+const SURPRISE_THRESHOLD = 0.55;
+/** Never more than this many clarifying prompts in one sitting — the feature has to stay optional and rare or pilots learn to dismiss it on reflex. */
+const MAX_PROMPTS_PER_SESSION = 6;
+
+function phraseFor(update: DimensionUpdate): string {
+  if (update.isImplicit) return update.label;
+  const magnitudeOnly = update.id.startsWith("hotel");
+  const leansPositive = magnitudeOnly ? update.weightAfter >= update.weightBefore : update.weightAfter >= 0;
+  const key = update.id as keyof PreferenceWeights;
+  return leansPositive ? PHRASES[key].positive : PHRASES[key].negative;
 }
 
-function describeLearn(adjustments: LearnedAdjustment[]): string {
-  const phrases = adjustments.map(phraseFor);
+function describeLearn(updates: DimensionUpdate[]): string {
+  const phrases = updates.slice(0, 2).map(phraseFor);
   const joined = phrases.length > 1 ? `${phrases.slice(0, -1).join(", ")} and ${phrases.at(-1)}` : phrases[0];
-  return `Got it — weighting ${joined} more heavily from here on.`;
+  const extra = updates.length > 2 ? ` (and ${updates.length - 2} other small factor${updates.length - 2 > 1 ? "s" : ""})` : "";
+  return `Got it — weighting ${joined} more heavily from here on${extra}.`;
 }
 
 /**
@@ -66,6 +72,26 @@ function caresAboutLayoverQuality(profile: PreferenceProfile): boolean {
   return [hotelFood, hotelGym, hotelGrocery, hotelQuiet, hotelQuality].some((w) => Math.abs(w) > 0);
 }
 
+/**
+ * Every pairwise judgment implied by one drag gesture — dropping a line
+ * three spots up doesn't just teach the model "A beats whatever it landed
+ * on," it teaches "A now outranks everything it jumped over" (Section 5.1).
+ */
+function buildJudgments(ranked: LineScore[], fromIndex: number, toIndex: number): PairwiseJudgment[] {
+  const moved = ranked[fromIndex];
+  const start = Math.min(fromIndex, toIndex);
+  const end = Math.max(fromIndex, toIndex);
+  const draggedUp = toIndex < fromIndex;
+
+  const judgments: PairwiseJudgment[] = [];
+  for (let i = start; i <= end; i++) {
+    if (i === fromIndex) continue;
+    const other = ranked[i];
+    judgments.push(draggedUp ? { favored: moved, overtaken: other } : { favored: other, overtaken: moved });
+  }
+  return judgments;
+}
+
 interface ResultsViewProps {
   bidPack: BidPack;
   profile: PreferenceProfile;
@@ -84,6 +110,9 @@ export function ResultsView({
   const [hotelQualityData, setHotelQualityData] = useState<HotelQualityData>({});
   const [learnMessage, setLearnMessage] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [promptJudgment, setPromptJudgment] = useState<PairwiseJudgment | null>(null);
+  const [promptCount, setPromptCount] = useState(0);
+  const [askedPairIds, setAskedPairIds] = useState<Set<string>>(new Set());
   const caresAboutHotel = caresAboutLayoverQuality(profile);
 
   useEffect(() => {
@@ -105,6 +134,12 @@ export function ResultsView({
     () => rankLines(bidPack, profile, hotelQualityData),
     [bidPack, profile, hotelQualityData]
   );
+
+  // The implicit taxonomy's normalized per-line values only depend on the
+  // bid pack's own trip data, never on the pilot's weights — computed once
+  // per bid pack and reused across every drag rather than recomputed per
+  // judgment.
+  const implicitValuesByLine = useMemo(() => computeImplicitLineValues(bidPack), [bidPack]);
 
   useEffect(() => {
     if (!learnMessage) return;
@@ -134,24 +169,43 @@ export function ResultsView({
     const toIndex = ranked.findIndex((r) => r.line.id === over.id);
     if (fromIndex === -1 || toIndex === -1) return;
 
-    // A direct swap: dropping line A onto line B teaches the app exactly
-    // one thing — A belongs at least as high as B — and nothing else in the
-    // list is touched. Dragging up always promotes the dragged line;
-    // dragging down always demotes it in favor of whatever it landed on.
-    const moved = ranked[fromIndex];
-    const displaced = ranked[toIndex];
-    const [favored, overtaken] = toIndex < fromIndex ? [moved, displaced] : [displaced, moved];
+    const judgments = buildJudgments(ranked, fromIndex, toIndex);
+    const result = learnFromReorder(profile, implicitValuesByLine, judgments);
 
-    const result = learnFromReorder(profile.weights, favored, overtaken);
-    if (result.adjustments.length === 0) {
+    if (result.updates.length === 0) {
       setLearnMessage(
-        "Noted — but those two lines look too similar on what I'm tracking to tell what to adjust. Try a few more corrections."
+        "Noted — but those lines look too similar on what I'm tracking to tell what to adjust. Try a few more corrections."
       );
       return;
     }
 
-    onUpdateProfile({ ...profile, weights: result.weights });
-    setLearnMessage(describeLearn(result.adjustments));
+    // The gradient update always applies right away — even a high-surprise
+    // judgment already made the model a little smarter before anyone
+    // answers anything. The micro-prompt only ever adds a confidence bonus
+    // on top, never gates whether learning happened at all (Section 5.2).
+    onUpdateProfile({
+      ...profile,
+      weights: result.weights,
+      implicitWeights: result.implicitWeights,
+      implicitConfidence: result.implicitConfidence,
+    });
+    setLearnMessage(describeLearn(result.updates));
+
+    if (result.mostSurprising && result.maxSurprise >= SURPRISE_THRESHOLD && promptCount < MAX_PROMPTS_PER_SESSION) {
+      const pairId = [result.mostSurprising.favored.line.id, result.mostSurprising.overtaken.line.id]
+        .sort()
+        .join("|");
+      if (!askedPairIds.has(pairId)) {
+        setPromptJudgment(result.mostSurprising);
+        setPromptCount((c) => c + 1);
+        setAskedPairIds((prev) => new Set(prev).add(pairId));
+      }
+    }
+  }
+
+  function handlePromptResolved(reinforcedProfile: PreferenceProfile | null) {
+    if (reinforcedProfile) onUpdateProfile(reinforcedProfile);
+    setPromptJudgment(null);
   }
 
   return (
@@ -181,16 +235,25 @@ export function ResultsView({
         </div>
       </div>
 
-      {learnMessage && (
+      {learnMessage && !promptJudgment && (
         <div className="mt-4 flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent animate-fade-in">
           {learnMessage}
         </div>
       )}
 
+      {promptJudgment && (
+        <PreferenceMicroPrompt
+          judgment={promptJudgment}
+          profile={profile}
+          implicitValuesByLine={implicitValuesByLine}
+          onResolved={handlePromptResolved}
+        />
+      )}
+
       <p className="mt-6 text-xs text-ink-faint">
         Think a line is ranked too high or too low? Drag it by the grip on the left and drop it
-        directly onto another line to swap — each swap adjusts your weights a bit, so your
-        ranking keeps getting more accurate.
+        directly onto another line to swap — each swap teaches the model something about what
+        you actually care about, so your ranking keeps getting more accurate.
       </p>
 
       <DndContext
@@ -202,7 +265,13 @@ export function ResultsView({
       >
         <div className="mt-3 space-y-3">
           {ranked.map((lineScore, i) => (
-            <LineCard key={lineScore.line.id} rank={i + 1} lineScore={lineScore} />
+            <LineCard
+              key={lineScore.line.id}
+              rank={i + 1}
+              lineScore={lineScore}
+              profile={profile}
+              implicitValuesByLine={implicitValuesByLine}
+            />
           ))}
         </div>
         <DragOverlay>{activeLineScore && <DragPreview lineScore={activeLineScore} />}</DragOverlay>

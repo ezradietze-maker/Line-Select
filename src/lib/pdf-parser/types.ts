@@ -37,13 +37,18 @@ export interface LayoverDetail {
  */
 export interface ScheduledLeg {
   flightNumber: string;
+  /** "JET" for an interline/generic airframe, or the operator's own fleet code (e.g. "76") for a company-operated leg. */
+  equipment: string;
   /** True when the pilot is riding along rather than operating — either an interline flight number, or the pairing schedule's own "DH" flag on an otherwise company-operated leg (a repositioning ride on their own metal). */
   isDeadhead: boolean;
   depAirport: string;
   /** "HHMM", local time as printed — what a pilot would actually read on the schedule. */
   depTimeLocal: string;
+  /** "HHMM", GMT as printed alongside the local time — kept so a real UTC offset (and therefore timezone deltas, direction of travel, circadian positioning) can be derived without guessing, not just displayed. */
+  depTimeGmt: string;
   arrAirport: string;
   arrTimeLocal: string;
+  arrTimeGmt: string;
   /** Null on the rare row where the schedule didn't print a block time. */
   blockHours: number | null;
   startMinutes: number;

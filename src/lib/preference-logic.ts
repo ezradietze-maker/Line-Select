@@ -63,6 +63,8 @@ export function buildProfile(
     isCommuter,
     cityPreferences: deepRoundCompleted ? cityPreferences : {},
     completedAt: new Date().toISOString(),
+    implicitWeights: {},
+    implicitConfidence: {},
   };
 }
 

@@ -152,6 +152,8 @@ class RunningClock {
 
 interface RichLegMatch {
   flightNumber: string;
+  /** "JET" for an interline/generic airframe, or the operator's own fleet code (e.g. "76", "72") for a company-operated leg — printed directly in the EQP column, not inferred. */
+  equipment: string;
   depAirport: string;
   depGmt: string;
   depLocal: string;
@@ -205,6 +207,7 @@ function tryParseRichLeg(row: string): RichLegMatch | null {
 
   return {
     flightNumber,
+    equipment: tokens[2],
     depAirport,
     depGmt: depPair.gmt,
     depLocal: depPair.local,
@@ -343,11 +346,14 @@ export function parsePairingColumn(
           const endMinutes = clock.advance(richLeg.arrGmt);
           currentLegs.push({
             flightNumber: richLeg.flightNumber,
+            equipment: richLeg.equipment,
             isDeadhead: richLeg.isDeadhead,
             depAirport: richLeg.depAirport,
             depTimeLocal: richLeg.depLocal,
+            depTimeGmt: richLeg.depGmt,
             arrAirport: richLeg.arrAirport,
             arrTimeLocal: richLeg.arrLocal,
+            arrTimeGmt: richLeg.arrGmt,
             blockHours: richLeg.blockHours,
             startMinutes,
             endMinutes,

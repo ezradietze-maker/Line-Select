@@ -1,5 +1,6 @@
 import { getJson, setJson } from "@/lib/server/kv";
 import type { StoredCredential, UserAccount } from "@/types/auth";
+import type { CandidateVariable } from "@/types/candidate-variable";
 import type { TradeOffer } from "@/types/trade";
 
 /**
@@ -22,12 +23,13 @@ interface DbShape {
   credentials: StoredCredential[];
   sessions: ServerSession[];
   tradeOffers: TradeOffer[];
+  candidateVariables: CandidateVariable[];
 }
 
 const DB_KEY = "line-select:db";
 
 function emptyDb(): DbShape {
-  return { users: [], credentials: [], sessions: [], tradeOffers: [] };
+  return { users: [], credentials: [], sessions: [], tradeOffers: [], candidateVariables: [] };
 }
 
 async function readDb(): Promise<DbShape> {
@@ -113,6 +115,18 @@ export async function listTradeOffers(): Promise<TradeOffer[]> {
 export async function findTradeOffer(id: string): Promise<TradeOffer | null> {
   const offer = (await readDb()).tradeOffers.find((o) => o.id === id) ?? null;
   return offer && isCurrentShape(offer) ? offer : null;
+}
+
+// ---- Candidate variables ----
+
+export async function listCandidateVariables(): Promise<CandidateVariable[]> {
+  return [...(await readDb()).candidateVariables].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function createCandidateVariable(candidate: CandidateVariable): Promise<void> {
+  const db = await readDb();
+  db.candidateVariables.push(candidate);
+  await writeDb(db);
 }
 
 export async function createTradeOffer(offer: TradeOffer): Promise<void> {

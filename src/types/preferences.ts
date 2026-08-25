@@ -110,4 +110,24 @@ export interface PreferenceProfile {
    */
   cityPreferences: Record<string, CitySentiment>;
   completedAt: string;
+  /**
+   * The implicit layer: per-pilot learned weight for every variable in the
+   * implicit taxonomy (see `implicit-dimensions.ts`), keyed by variable id.
+   * Unlike `weights` above (seeded by the interview, -100..100, sign fixed
+   * by what each slider means), these start at 0 with no assumed direction
+   * — drag-and-drop is the only thing that ever moves them, and it can push
+   * either way, because nothing about "long turn times" or "hotel chain X"
+   * has an inherent good/bad direction the way "more days off" does.
+   */
+  implicitWeights: Record<string, number>;
+  /**
+   * 0-1 confidence per implicit variable, independent of its weight — a
+   * variable can have a weight of exactly 0 with high confidence (learned
+   * that it truly doesn't matter to this pilot) or a nonzero weight with
+   * low confidence (one or two data points, could still be noise). Confidence
+   * grows with each pairwise update and shrinks the effective learning rate,
+   * so the model stops overreacting to a variable once it's seen enough
+   * evidence about it.
+   */
+  implicitConfidence: Record<string, number>;
 }

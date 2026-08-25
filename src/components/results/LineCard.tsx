@@ -6,7 +6,9 @@ import { MatchBar } from "@/components/results/MatchBar";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { TripList } from "@/components/results/TripList";
 import { CalendarIcon, ChevronDownIcon, ClockIcon, CoinIcon, GripIcon, PlaneIcon } from "@/components/ui/icons";
+import { topImplicitContributions } from "@/lib/rank-learning";
 import type { LineScore } from "@/lib/scoring";
+import type { PreferenceProfile } from "@/types/preferences";
 
 function formatHours(hours: number): string {
   const h = Math.floor(hours);
@@ -17,12 +19,15 @@ function formatHours(hours: number): string {
 interface LineCardProps {
   rank: number;
   lineScore: LineScore;
+  profile: PreferenceProfile;
+  implicitValuesByLine: Record<string, Record<string, number>>;
 }
 
-export function LineCard({ rank, lineScore }: LineCardProps) {
+export function LineCard({ rank, lineScore, profile, implicitValuesByLine }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showMatch, setShowMatch] = useState(false);
   const { line, score, explanation, dimensions } = lineScore;
+  const implicitFactors = topImplicitContributions(line.id, implicitValuesByLine, profile, 4);
   const isTopPick = rank === 1;
 
   // Two separate dnd-kit roles on the same card: the grip is the drag
@@ -153,6 +158,26 @@ export function LineCard({ rank, lineScore }: LineCardProps) {
                 {dimensions.map((d) => (
                   <MatchBar key={d.key} dimension={d} />
                 ))}
+              </div>
+            )}
+            {showMatch && implicitFactors.length > 0 && (
+              <div className="mt-3">
+                <div
+                  className="text-[10px] font-medium uppercase tracking-wide text-ink-faint"
+                  title="Learned entirely from dragging lines up or down — not from anything you answered in the interview."
+                >
+                  Also learned from your drags
+                </div>
+                <ul className="mt-1.5 space-y-1">
+                  {implicitFactors.map((f) => (
+                    <li key={f.id} className="flex items-center justify-between gap-2 text-xs text-ink-muted">
+                      <span>{f.label}</span>
+                      <span className={f.contribution >= 0 ? "text-good" : "text-danger"}>
+                        {f.contribution >= 0 ? "helps" : "hurts"} this line
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>

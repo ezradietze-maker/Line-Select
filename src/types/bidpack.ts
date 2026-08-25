@@ -19,13 +19,18 @@ export interface TripLayover {
 /** One flight leg exactly as printed in the pairing schedule. `startMinutes`/`endMinutes` are elapsed minutes since the trip's own first report time (t=0) — real clock times, not estimated. */
 export interface TripLeg {
   flightNumber: string;
+  /** "JET" for an interline/generic airframe, or the operator's own fleet code (e.g. "76") for a company-operated leg. */
+  equipment: string;
   /** True when the pilot is riding along rather than operating. */
   isDeadhead: boolean;
   depAirport: string;
   /** "HHMM", local time as printed. */
   depTimeLocal: string;
+  /** "HHMM", GMT as printed alongside the local time — the raw material for a real per-airport UTC offset, not a displayed field on its own. */
+  depTimeGmt: string;
   arrAirport: string;
   arrTimeLocal: string;
+  arrTimeGmt: string;
   /** Null on the rare row where the schedule didn't print a block time. */
   blockHours: number | null;
   startMinutes: number;
