@@ -1,8 +1,8 @@
-import type { Trip, TripLeg } from "@/types/bidpack";
+import type { Trip, TripDutyPeriod, TripLeg } from "@/types/bidpack";
 
 const MINUTES_PER_DAY = 24 * 60;
 
-export type TimelineSegmentKind = "flying" | "deadhead" | "layover";
+export type TimelineSegmentKind = "flying" | "deadhead" | "layover" | "ground" | "connection";
 
 export interface TimelineSegment {
   kind: TimelineSegmentKind;
@@ -53,6 +53,50 @@ function legDetail(leg: TripLeg): string {
 }
 
 /**
+ * The gap before a duty period's first flight isn't printed as its own
+ * duration, but its two endpoints are both real: `duty.startMinutes` is
+ * either the pairing's printed report time (the trip's first duty) or the
+ * instant the previous layover's printed duration ends — which, checked
+ * against the bid pack's own "Trans From: ... pickup @" lines, lands on the
+ * hotel pickup time, not some later report time. So this whole span is
+ * report/check-in for duty one, or hotel-to-airport transport plus
+ * check-in for every duty after a layover — real time, just not split
+ * further since no separate drop-off time is printed.
+ */
+function groundSegment(duty: TripDutyPeriod, isFirstDuty: boolean): RawSegment | null {
+  const firstLeg = duty.legs[0];
+  if (!firstLeg || firstLeg.startMinutes <= duty.startMinutes) return null;
+  const durationLabel = formatDuration((firstLeg.startMinutes - duty.startMinutes) / 60);
+  return {
+    kind: "ground",
+    label: isFirstDuty ? "Report" : "Ground transport",
+    detail: isFirstDuty
+      ? `Report ${formatHHMM(duty.reportTimeLocal)} → block-off ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}`
+      : `Hotel pickup → block-off ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}`,
+    startMinutes: duty.startMinutes,
+    endMinutes: firstLeg.startMinutes,
+  };
+}
+
+/** Ground time between two flights in the same duty period — too short to be a layover, just deplane/walk/board for the next leg. */
+function connectionSegments(duty: TripDutyPeriod): RawSegment[] {
+  const segments: RawSegment[] = [];
+  for (let i = 0; i < duty.legs.length - 1; i++) {
+    const prev = duty.legs[i];
+    const next = duty.legs[i + 1];
+    if (next.startMinutes <= prev.endMinutes) continue;
+    segments.push({
+      kind: "connection",
+      label: "Connection",
+      detail: `${prev.arrAirport} ground time · ${formatDuration((next.startMinutes - prev.endMinutes) / 60)}`,
+      startMinutes: prev.endMinutes,
+      endMinutes: next.startMinutes,
+    });
+  }
+  return segments;
+}
+
+/**
  * Flattens a trip's duty periods into absolute-minute segments, then slices
  * each one across day boundaries into per-day, clipped copies — a segment
  * spanning midnight becomes two segments, one on each day, marked so the UI
@@ -62,7 +106,11 @@ export function buildTimelineDays(trip: Trip): TimelineDay[] {
   if (trip.schedule.length === 0) return [];
 
   const raw: RawSegment[] = [];
-  for (const duty of trip.schedule) {
+  trip.schedule.forEach((duty, dutyIndex) => {
+    const ground = groundSegment(duty, dutyIndex === 0);
+    if (ground) raw.push(ground);
+    raw.push(...connectionSegments(duty));
+
     for (const leg of duty.legs) {
       raw.push({
         kind: leg.isDeadhead ? "deadhead" : "flying",
@@ -84,7 +132,7 @@ export function buildTimelineDays(trip: Trip): TimelineDay[] {
         endMinutes: duty.layover.endMinutes,
       });
     }
-  }
+  });
 
   if (raw.length === 0) return [];
 

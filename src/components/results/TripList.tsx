@@ -33,7 +33,13 @@ function formatDuration(hours: number): string {
 }
 
 const LAYOVER_TOOLTIP =
-  "Layover / hotel — real time from block-in to next report. Not exactly when you'll sleep, since that's down to you and the jet lag.";
+  "Layover / hotel — real time from block-in to hotel pickup for the next departure. Not exactly when you'll sleep, since that's down to you and the jet lag.";
+
+const GROUND_TOOLTIP =
+  "On the ground before departure — report/check-in at trip start, or hotel-to-airport transport plus check-in after a layover. Not split further since the bid pack doesn't print a separate drop-off time.";
+
+const CONNECTION_TOOLTIP =
+  "Ground time between two flights in the same duty period — too short to be a layover, just deplane, walk, and board the next one.";
 
 function LegendSwatch({ className, label, title }: { className: string; label: string; title?: string }) {
   return (
@@ -46,11 +52,19 @@ function LegendSwatch({ className, label, title }: { className: string; label: s
 
 function segmentClass(kind: TimelineDay["segments"][number]["kind"]): string {
   if (kind === "layover") return "bg-good";
+  if (kind === "ground") return "bg-accent";
+  if (kind === "connection") return "bg-border-strong";
   if (kind === "deadhead") {
     return "bg-brand/40 [background-image:repeating-linear-gradient(135deg,transparent,transparent_3px,rgba(255,255,255,0.35)_3px,rgba(255,255,255,0.35)_6px)]";
   }
   return "bg-brand";
 }
+
+const SEGMENT_TOOLTIP_SUFFIX: Partial<Record<TimelineDay["segments"][number]["kind"], string>> = {
+  layover: LAYOVER_TOOLTIP,
+  ground: GROUND_TOOLTIP,
+  connection: CONNECTION_TOOLTIP,
+};
 
 function DayRow({ day }: { day: TimelineDay }) {
   return (
@@ -65,7 +79,11 @@ function DayRow({ day }: { day: TimelineDay }) {
         {day.segments.map((seg, i) => (
           <div
             key={i}
-            title={seg.kind === "layover" ? `${seg.label} — ${seg.detail}\n${LAYOVER_TOOLTIP}` : `${seg.label} — ${seg.detail}`}
+            title={
+              SEGMENT_TOOLTIP_SUFFIX[seg.kind]
+                ? `${seg.label} — ${seg.detail}\n${SEGMENT_TOOLTIP_SUFFIX[seg.kind]}`
+                : `${seg.label} — ${seg.detail}`
+            }
             className={`absolute top-0 bottom-0 ${segmentClass(seg.kind)} ${
               seg.continuesFromPreviousDay ? "" : "rounded-l-sm"
             } ${seg.continuesToNextDay ? "" : "rounded-r-sm"}`}
@@ -91,6 +109,8 @@ function TripTimelineChart({ trip }: { trip: Trip }) {
         <LegendSwatch className="bg-brand" label="Flying" />
         <LegendSwatch className={segmentClass("deadhead")} label="Deadhead" title="Riding along, not operating" />
         <LegendSwatch className="bg-good" label="Layover" title={LAYOVER_TOOLTIP} />
+        <LegendSwatch className="bg-accent" label="Ground" title={GROUND_TOOLTIP} />
+        <LegendSwatch className="bg-border-strong" label="Connection" title={CONNECTION_TOOLTIP} />
       </div>
       <div className="mt-1.5 flex justify-between pl-[2.375rem] font-mono text-[8px] leading-none text-brand/70">
         <span>0</span>
