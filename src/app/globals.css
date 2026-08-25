@@ -246,14 +246,26 @@ body {
 
 /* ---- Motion ---- */
 
+/*
+ * Opacity only — deliberately no transform/slide. A property present in one
+ * keyframe (e.g. `from`) but not the next (`to`) doesn't resolve to `none`
+ * once `animation-fill-mode: both` holds the end state; browsers keep
+ * rendering that property's last explicit value indefinitely instead. That
+ * makes a "from translateY(4px) to (unset)" animation get stuck at
+ * translateY(4px) forever — confirmed empirically, not just a theoretical
+ * gotcha — and any non-none transform, even a no-op one, turns the element
+ * into a new containing block for `position: fixed` descendants, which
+ * silently breaks anything positioned relative to the viewport inside it
+ * (a drag-and-drop overlay, in the case that surfaced this). Simplest safe
+ * fix: never animate `transform` on a container that might contain
+ * fixed-position descendants.
+ */
 @keyframes fade-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
