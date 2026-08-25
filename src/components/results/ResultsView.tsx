@@ -18,14 +18,29 @@ import { LineCard } from "@/components/results/LineCard";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
 import { PHRASES } from "@/lib/preference-summary";
-import { learnFromReorder } from "@/lib/rank-learning";
+import { learnFromReorder, type LearnedAdjustment } from "@/lib/rank-learning";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
-import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
+import type { PreferenceProfile } from "@/types/preferences";
 
-function describeLearn(dimension: keyof PreferenceWeights, newWeight: number): string {
-  const phrase = newWeight >= 0 ? PHRASES[dimension].positive : PHRASES[dimension].negative;
-  return `Got it — weighting ${phrase} more heavily from here on.`;
+/**
+ * Magnitude-only hotel weights have no negative direction, so their final
+ * sign never tells you whether this correction just raised or lowered them —
+ * only `direction` (which way this specific nudge went) does. Every other
+ * dimension is bipolar, where the resulting sign itself is the more useful
+ * thing to report (a pilot cares what they currently lean toward, not just
+ * which way the last tweak happened to push).
+ */
+function phraseFor(adjustment: LearnedAdjustment): string {
+  const magnitudeOnly = adjustment.key.startsWith("hotel");
+  const leansPositive = magnitudeOnly ? adjustment.direction > 0 : adjustment.weight >= 0;
+  return leansPositive ? PHRASES[adjustment.key].positive : PHRASES[adjustment.key].negative;
+}
+
+function describeLearn(adjustments: LearnedAdjustment[]): string {
+  const phrases = adjustments.map(phraseFor);
+  const joined = phrases.length > 1 ? `${phrases.slice(0, -1).join(", ")} and ${phrases.at(-1)}` : phrases[0];
+  return `Got it — weighting ${joined} more heavily from here on.`;
 }
 
 /**
@@ -128,7 +143,7 @@ export function ResultsView({
     const [favored, overtaken] = toIndex < fromIndex ? [moved, displaced] : [displaced, moved];
 
     const result = learnFromReorder(profile.weights, favored, overtaken);
-    if (!result.adjustedDimension) {
+    if (result.adjustments.length === 0) {
       setLearnMessage(
         "Noted — but those two lines look too similar on what I'm tracking to tell what to adjust. Try a few more corrections."
       );
@@ -136,7 +151,7 @@ export function ResultsView({
     }
 
     onUpdateProfile({ ...profile, weights: result.weights });
-    setLearnMessage(describeLearn(result.adjustedDimension, result.weights[result.adjustedDimension]));
+    setLearnMessage(describeLearn(result.adjustments));
   }
 
   return (

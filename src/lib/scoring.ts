@@ -64,6 +64,8 @@ export interface DimensionScore {
    * it rather than present it as a confirmed fact.
    */
   verified: boolean;
+  /** Only present on `layoverQuality` — this line's five hotel sub-aspects, unblended, for the drag-to-swap learner to drill into. */
+  hotelBreakdown?: HotelSubscores | null;
 }
 
 export interface LineScore {
@@ -182,7 +184,7 @@ function reviewQualityScore(hotel: HotelQualityEntry | undefined): number | null
 }
 
 /** A hotel's five layoverQuality sub-scores, each already 0-1: the three amenity counts normalized across every hotel in this bid pack (a raw count has no inherent scale), and the two review-derived scores, which are meaningful on their own. */
-interface HotelSubscores {
+export interface HotelSubscores {
   food: number;
   gym: number;
   grocery: number;
@@ -272,6 +274,37 @@ function computeLayoverQualityScore(
 
   if (scores.length === 0) return 0;
   return scores.reduce((sum, s) => sum + s, 0) / scores.length;
+}
+
+/**
+ * The same per-line averaging as `computeLayoverQualityScore`, but keeping
+ * each of the five sub-aspects separate instead of blending them by weight —
+ * lets a caller (the drag-to-swap learner) see which *specific* hotel aspect
+ * two lines actually differ on, rather than only the single blended number.
+ */
+function computeLayoverQualityBreakdown(
+  line: Line,
+  hotelSubscores: Record<string, HotelSubscores>
+): HotelSubscores | null {
+  const scores = line.trips
+    .flatMap((t) => t.layoverDetails)
+    .filter((l) => l.hotelName)
+    .map((l) => hotelSubscores[`${l.city}|${l.hotelName}`])
+    .filter((s): s is HotelSubscores => !!s);
+
+  if (scores.length === 0) return null;
+
+  const avg = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
+  const quietValues = scores.map((s) => s.quiet).filter((v): v is number => v !== null);
+  const qualityValues = scores.map((s) => s.quality).filter((v): v is number => v !== null);
+
+  return {
+    food: avg(scores.map((s) => s.food)),
+    gym: avg(scores.map((s) => s.gym)),
+    grocery: avg(scores.map((s) => s.grocery)),
+    quiet: quietValues.length > 0 ? avg(quietValues) : null,
+    quality: qualityValues.length > 0 ? avg(qualityValues) : null,
+  };
 }
 
 function normalize(value: number, min: number, max: number): number {
@@ -592,6 +625,7 @@ export function scoreBidPack(
           importance,
           match: matchFromDistance(values[key], 1),
           verified: !(line.estimated && UNVERIFIED_WHEN_ESTIMATED.includes(key)),
+          hotelBreakdown: computeLayoverQualityBreakdown(line, hotelSubscores),
         };
       }
 
