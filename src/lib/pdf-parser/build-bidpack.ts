@@ -8,6 +8,7 @@ function round2(n: number): number {
 export function pairingToTrip(pairing: ParsedPairing): Trip {
   return {
     id: pairing.id,
+    pairingNumber: pairing.sequenceNumber,
     days: pairing.days,
     layoverCities: pairing.layoverCities,
     layoverDetails: pairing.layoverDetails,
@@ -33,6 +34,7 @@ export function pairingToTrip(pairing: ParsedPairing): Trip {
 export function buildEstimatedTrip(summary: ParsedLineSummary): Trip {
   return {
     id: `estimated-${summary.lineNumber}`,
+    pairingNumber: null,
     days: Math.max(1, Math.round(summary.totalTafbHours / 24)),
     layoverCities: [],
     layoverDetails: [],

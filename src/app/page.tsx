@@ -22,7 +22,7 @@ import { generateFakeOffer } from "@/lib/fake-trade-offers";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { clearProfile, loadProfile, saveProfile } from "@/lib/storage";
-import { fetchTradeOffers, lineToSnapshot } from "@/lib/trade-client";
+import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
@@ -127,7 +127,7 @@ export default function Home() {
       const myOpen = user
         ? realOffersRef.current.find((o) => o.offeringUserId === user.id && o.status === "open")
         : undefined;
-      setDemoOffer(generateFakeOffer(bidPack, myOpen?.offeredLine.lineNumber ?? null));
+      setDemoOffer(generateFakeOffer(bidPack, myOpen?.offeredTrip.pairingNumber ?? null));
       timeoutId = setTimeout(rotate, 15000 + Math.random() * 5000);
     }
 
@@ -214,8 +214,10 @@ export default function Home() {
         title: "New trade request",
         body:
           offer.status === "pending"
-            ? `${offer.responderDisplayName} proposed a trade for your Line ${offer.offeredLine.lineNumber}`
-            : `${offer.offeringDisplayName} wants your Line ${offer.wantedLineNumber}`,
+            ? `${offer.responderDisplayName} proposed a trade for your ${
+                offer.offeredTrip.pairingNumber ? `Pairing ${offer.offeredTrip.pairingNumber}` : "trip"
+              }`
+            : `${offer.offeringDisplayName} wants your Pairing ${offer.wantedPairingNumber}`,
       })),
     ]);
   }, [notifiableOffers, screen]);
@@ -234,17 +236,19 @@ export default function Home() {
     if (!user || !bidPack) return;
     setDemoOffer((prev) => {
       if (!prev) return prev;
-      const responderLine =
-        bidPack.lines.find((l) => l.lineNumber !== prev.offeredLine.lineNumber) ??
-        bidPack.lines[0];
-      if (!responderLine) return prev;
+      const allTrips = bidPack.lines.flatMap((line) =>
+        line.trips.map((trip) => ({ lineNumber: line.lineNumber, trip }))
+      );
+      const responder =
+        allTrips.find((t) => t.trip.pairingNumber !== prev.offeredTrip.pairingNumber) ?? allTrips[0];
+      if (!responder) return prev;
       const now = new Date().toISOString();
       return {
         ...prev,
         status: "accepted",
         responderUserId: user.id,
         responderDisplayName: user.displayName,
-        responderLine: lineToSnapshot(responderLine),
+        responderTrip: tripToSnapshot(responder.trip, responder.lineNumber),
         respondedAt: now,
         resolvedAt: now,
       };

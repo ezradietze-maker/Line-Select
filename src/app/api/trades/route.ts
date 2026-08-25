@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createTradeOffer, listTradeOffers } from "@/lib/server/db";
-import type { BidPackMetaSnapshot, LineSnapshot, TradeOffer } from "@/types/trade";
+import type { BidPackMetaSnapshot, TripSnapshot, TradeOffer } from "@/types/trade";
 
 export const runtime = "nodejs";
 
@@ -18,8 +18,8 @@ export async function POST(request: Request) {
 
   let body: {
     bidPackMeta?: BidPackMetaSnapshot;
-    offeredLine?: LineSnapshot;
-    wantedLineNumber?: string | null;
+    offeredTrip?: TripSnapshot;
+    wantedPairingNumber?: string | null;
     note?: string | null;
   };
   try {
@@ -28,9 +28,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { bidPackMeta, offeredLine, wantedLineNumber, note } = body;
-  if (!bidPackMeta || !offeredLine) {
-    return NextResponse.json({ error: "Missing bid pack or offered line details." }, { status: 400 });
+  const { bidPackMeta, offeredTrip, wantedPairingNumber, note } = body;
+  if (!bidPackMeta || !offeredTrip) {
+    return NextResponse.json({ error: "Missing bid pack or offered trip details." }, { status: 400 });
   }
 
   const offer: TradeOffer = {
@@ -38,14 +38,14 @@ export async function POST(request: Request) {
     bidPackMeta,
     offeringUserId: user.id,
     offeringDisplayName: user.displayName,
-    offeredLine,
-    wantedLineNumber: wantedLineNumber?.trim() || null,
+    offeredTrip,
+    wantedPairingNumber: wantedPairingNumber?.trim() || null,
     note: note?.trim() || null,
     status: "open",
     createdAt: new Date().toISOString(),
     responderUserId: null,
     responderDisplayName: null,
-    responderLine: null,
+    responderTrip: null,
     respondedAt: null,
     resolvedAt: null,
   };

@@ -1,3 +1,5 @@
+import type { ReportTime } from "@/types/bidpack";
+
 /**
  * Trade board data model.
  *
@@ -6,18 +8,27 @@
  * trade; that still has to go through FedEx's actual trade process, which
  * checks rest rules, qualifications, and currency this app has no way to
  * verify.
+ *
+ * The unit of trade is a single trip (pairing), not a whole line — that's
+ * what pilots actually swap with each other once bidding closes.
  */
 
 export type TradeOfferStatus = "open" | "pending" | "accepted" | "declined" | "withdrawn";
 
-/** A snapshot of a line's key stats at the moment it was offered — not a live link to anyone's bid pack. */
-export interface LineSnapshot {
+/** A snapshot of one trip's key stats at the moment it was offered — not a live link to anyone's bid pack. */
+export interface TripSnapshot {
+  /** Which of the offering pilot's own lines this trip currently lives on — context for the other pilot, not something they can act on directly. */
   lineNumber: string;
-  daysOff: number;
-  totalCreditHours: number;
-  totalTafbHours: number;
-  totalLandings: number;
-  tripCount: number;
+  /** The trip's own pairing number as printed in the bid pack (e.g. "13") — how a pilot actually recognizes a specific trip, since the same pairing can recur across many lines. Null for an estimated trip with no confirmed pairing. */
+  pairingNumber: string | null;
+  days: number;
+  layoverCities: string[];
+  international: boolean;
+  reportTime: ReportTime;
+  creditHours: number;
+  tafbHours: number;
+  landings: number;
+  deadheadLegs: number;
 }
 
 export interface BidPackMetaSnapshot {
@@ -32,15 +43,15 @@ export interface TradeOffer {
   bidPackMeta: BidPackMetaSnapshot;
   offeringUserId: string;
   offeringDisplayName: string;
-  offeredLine: LineSnapshot;
-  /** A specific line number the offering pilot wants back, or null if open to any offer. */
-  wantedLineNumber: string | null;
+  offeredTrip: TripSnapshot;
+  /** A specific pairing number the offering pilot wants back, or null if open to any offer. */
+  wantedPairingNumber: string | null;
   note: string | null;
   status: TradeOfferStatus;
   createdAt: string;
   responderUserId: string | null;
   responderDisplayName: string | null;
-  responderLine: LineSnapshot | null;
+  responderTrip: TripSnapshot | null;
   respondedAt: string | null;
   resolvedAt: string | null;
   /**

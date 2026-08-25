@@ -1,14 +1,18 @@
-import type { BidPackMetaSnapshot, LineSnapshot, TradeOffer } from "@/types/trade";
-import type { Line } from "@/types/bidpack";
+import type { BidPackMetaSnapshot, TripSnapshot, TradeOffer } from "@/types/trade";
+import type { Trip } from "@/types/bidpack";
 
-export function lineToSnapshot(line: Line): LineSnapshot {
+export function tripToSnapshot(trip: Trip, lineNumber: string): TripSnapshot {
   return {
-    lineNumber: line.lineNumber,
-    daysOff: line.daysOff,
-    totalCreditHours: line.totalCreditHours,
-    totalTafbHours: line.totalTafbHours,
-    totalLandings: line.totalLandings,
-    tripCount: line.trips.length,
+    lineNumber,
+    pairingNumber: trip.pairingNumber,
+    days: trip.days,
+    layoverCities: trip.layoverCities,
+    international: trip.international,
+    reportTime: trip.reportTime,
+    creditHours: trip.creditHours,
+    tafbHours: trip.tafbHours,
+    landings: trip.landings,
+    deadheadLegs: trip.deadheadLegs,
   };
 }
 
@@ -47,15 +51,15 @@ export async function fetchTradeOffers(): Promise<TradeOffer[]> {
 
 export function postTradeOffer(input: {
   bidPackMeta: BidPackMetaSnapshot;
-  offeredLine: LineSnapshot;
-  wantedLineNumber: string | null;
+  offeredTrip: TripSnapshot;
+  wantedPairingNumber: string | null;
   note: string | null;
 }): Promise<ActionResult> {
   return postAction("/api/trades", input);
 }
 
-export function respondToOffer(id: string, responderLine: LineSnapshot): Promise<ActionResult> {
-  return postAction(`/api/trades/${id}/respond`, { responderLine });
+export function respondToOffer(id: string, responderTrip: TripSnapshot): Promise<ActionResult> {
+  return postAction(`/api/trades/${id}/respond`, { responderTrip });
 }
 
 export function acceptOffer(id: string): Promise<ActionResult> {

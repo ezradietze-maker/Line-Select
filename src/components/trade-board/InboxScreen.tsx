@@ -49,7 +49,7 @@ export function InboxScreen({ bidPack, user, demoOffer, onGoToTradeBoard }: Inbo
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
       <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Inbox</h1>
       <p className="mt-1.5 text-sm text-ink-muted">
-        Trades that need your response, pilots specifically after one of your posted lines, and
+        Trades that need your response, pilots specifically after one of your posted trips, and
         any of your trades that reached an agreement.
       </p>
 
@@ -57,7 +57,7 @@ export function InboxScreen({ bidPack, user, demoOffer, onGoToTradeBoard }: Inbo
 
       {!user && (
         <InfoBanner>
-          Sign in to see offers addressed to your posted lines and track your accepted trades.
+          Sign in to see offers addressed to your posted trips and track your accepted trades.
         </InfoBanner>
       )}
       {user && !bidPack && <InfoBanner>Upload your bid pack to use the Inbox.</InfoBanner>}
@@ -81,10 +81,10 @@ export function InboxScreen({ bidPack, user, demoOffer, onGoToTradeBoard }: Inbo
             )}
           </Section>
 
-          <Section title="Direct interest in your lines">
+          <Section title="Direct interest in your trips">
             {directInterest.length === 0 ? (
               <p className="text-sm text-ink-faint">
-                No one&rsquo;s specifically asked for one of your posted lines yet.
+                No one&rsquo;s specifically asked for one of your posted trips yet.
               </p>
             ) : (
               directInterest.map((offer) => (

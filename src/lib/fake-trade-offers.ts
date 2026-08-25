@@ -1,13 +1,13 @@
 /**
  * Client-only demo data for the Trade Board and Inbox: synthetic offers built
- * from a pilot's own real bid pack lines, so the numbers look legitimate.
+ * from a pilot's own real bid pack trips, so the numbers look legitimate.
  * Never sent to the server, never visible to other real pilots, and always
  * tagged `isDemo: true` so the UI can badge it clearly. This exists purely so
  * the trade flow has something to interact with before real pilots are using
  * the board — it should come out once there's real activity to show instead.
  */
-import { lineToSnapshot } from "@/lib/trade-client";
-import type { BidPack } from "@/types/bidpack";
+import { tripToSnapshot } from "@/lib/trade-client";
+import type { BidPack, Trip } from "@/types/bidpack";
 import type { TradeOffer } from "@/types/trade";
 
 const FAKE_PILOT_NAMES = [
@@ -30,28 +30,34 @@ function pickRandom<T>(items: T[]): T | null {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+/** Every trip in the bid pack, paired with which of the pilot's lines it lives on. */
+function allTrips(bidPack: BidPack): { lineNumber: string; trip: Trip }[] {
+  return bidPack.lines.flatMap((line) => line.trips.map((trip) => ({ lineNumber: line.lineNumber, trip })));
+}
+
 /**
- * Builds one synthetic open offer from the pilot's own bid pack. `biasWantedLineNumber`,
+ * Builds one synthetic open offer from the pilot's own bid pack. `biasWantedPairingNumber`,
  * when supplied, is used for the "wants back" field most of the time — this is how the
- * Inbox's "direct interest in your lines" section (and its notifications) reliably get
+ * Inbox's "direct interest in your trips" section (and its notifications) reliably get
  * demo data to show once the pilot has an open offer of their own, rather than only
  * occasionally lining up by chance.
  */
 export function generateFakeOffer(
   bidPack: BidPack,
-  biasWantedLineNumber?: string | null
+  biasWantedPairingNumber?: string | null
 ): TradeOffer | null {
-  if (bidPack.lines.length === 0) return null;
+  const trips = allTrips(bidPack);
+  if (trips.length === 0) return null;
 
-  const offeredLine = pickRandom(bidPack.lines);
-  if (!offeredLine) return null;
+  const offered = pickRandom(trips);
+  if (!offered) return null;
 
-  const otherLines = bidPack.lines.filter((l) => l.lineNumber !== offeredLine.lineNumber);
-  let wantedLineNumber: string | null = null;
-  if (biasWantedLineNumber && Math.random() < 0.85) {
-    wantedLineNumber = biasWantedLineNumber;
+  const otherTrips = trips.filter((t) => t.trip.id !== offered.trip.id);
+  let wantedPairingNumber: string | null = null;
+  if (biasWantedPairingNumber && Math.random() < 0.85) {
+    wantedPairingNumber = biasWantedPairingNumber;
   } else if (Math.random() < 0.4) {
-    wantedLineNumber = pickRandom(otherLines)?.lineNumber ?? null;
+    wantedPairingNumber = pickRandom(otherTrips)?.trip.pairingNumber ?? null;
   }
 
   const name = pickRandom(FAKE_PILOT_NAMES) ?? "A. Pilot";
@@ -67,14 +73,14 @@ export function generateFakeOffer(
     },
     offeringUserId: "demo-pilot",
     offeringDisplayName: name,
-    offeredLine: lineToSnapshot(offeredLine),
-    wantedLineNumber,
+    offeredTrip: tripToSnapshot(offered.trip, offered.lineNumber),
+    wantedPairingNumber,
     note: null,
     status: "open",
     createdAt: now,
     responderUserId: null,
     responderDisplayName: null,
-    responderLine: null,
+    responderTrip: null,
     respondedAt: null,
     resolvedAt: null,
     isDemo: true,

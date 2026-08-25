@@ -11,9 +11,9 @@ export function sameBidPack(offer: TradeOffer, bidPack: BidPack): boolean {
 }
 
 export interface InboxSections {
-  /** Someone proposed a counter-line on one of your own offers — needs your accept/decline. */
+  /** Someone proposed a counter-trip on one of your own offers — needs your accept/decline. */
   needsResponse: TradeOffer[];
-  /** Someone else's open offer specifically asks for a line you currently have posted. */
+  /** Someone else's open offer specifically asks for a pairing you currently have posted. */
   directInterest: TradeOffer[];
   /** One of your trades, as offeror or responder, that reached agreement. */
   accepted: TradeOffer[];
@@ -24,17 +24,18 @@ export function computeInboxSections(offers: TradeOffer[], userId: string | unde
     (o) => o.status === "pending" && o.offeringUserId === userId
   );
 
-  const myOpenLineNumbers = new Set(
+  const myOpenPairingNumbers = new Set(
     offers
       .filter((o) => o.offeringUserId === userId && (o.status === "open" || o.status === "pending"))
-      .map((o) => o.offeredLine.lineNumber)
+      .map((o) => o.offeredTrip.pairingNumber)
+      .filter((n): n is string => n !== null)
   );
   const directInterest = offers.filter(
     (o) =>
       o.offeringUserId !== userId &&
       o.status === "open" &&
-      o.wantedLineNumber &&
-      myOpenLineNumbers.has(o.wantedLineNumber)
+      o.wantedPairingNumber &&
+      myOpenPairingNumbers.has(o.wantedPairingNumber)
   );
 
   const accepted = offers.filter(

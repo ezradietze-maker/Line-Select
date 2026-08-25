@@ -20,6 +20,7 @@ function normalizeBidPack(parsed: BidPack): BidPack {
           ...trip,
           layoverDetails: trip.layoverDetails ?? [],
           schedule: trip.schedule ?? [],
+          pairingNumber: trip.pairingNumber ?? null,
         })
       ),
     })),

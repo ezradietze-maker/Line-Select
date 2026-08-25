@@ -51,6 +51,8 @@ export interface TripDutyPeriod {
 
 export interface Trip {
   id: string;
+  /** The pairing's own printed sequence number (e.g. "13") — how pilots actually refer to a specific trip on the trade board, since the same pairing recurs across many lines. Null for an estimated trip, which isn't tied to one real, identifiable pairing. */
+  pairingNumber: string | null;
   /** Number of calendar days the trip spans, report to release. */
   days: number;
   /** Layover cities in order, IATA-style codes (excludes home base). */

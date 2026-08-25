@@ -8,19 +8,42 @@ import {
   acceptOffer,
   declineOffer,
   fetchTradeOffers,
-  lineToSnapshot,
   postTradeOffer,
   respondToOffer,
+  tripToSnapshot,
   withdrawOffer,
 } from "@/lib/trade-client";
-import type { BidPack, Line } from "@/types/bidpack";
+import type { BidPack, Trip } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
-import type { LineSnapshot, TradeOffer } from "@/types/trade";
+import type { TripSnapshot, TradeOffer } from "@/types/trade";
 
 function formatHours(hours: number): string {
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return `${h}:${m.toString().padStart(2, "0")}`;
+}
+
+/** Every trip in a bid pack, paired with which of the pilot's own lines it currently lives on. */
+interface LineTripEntry {
+  /** Unique per (line, trip) — `trip.id` alone isn't enough, since the same real pairing can recur across several of a pilot's lines and would collide as a React key / form value. */
+  entryKey: string;
+  lineNumber: string;
+  trip: Trip;
+}
+
+function allTrips(bidPack: BidPack): LineTripEntry[] {
+  return bidPack.lines.flatMap((line) =>
+    line.trips.map((trip) => ({ entryKey: `${line.lineNumber}-${trip.id}`, lineNumber: line.lineNumber, trip }))
+  );
+}
+
+/** How a pilot identifies a trip: by its own pairing number when known, since that's the recognizable, recurring identifier — falling back to "Line X's trip" for an estimated trip with no confirmed pairing. */
+function tripLabel(entry: LineTripEntry): string {
+  const base = entry.trip.pairingNumber
+    ? `Pairing ${entry.trip.pairingNumber}`
+    : `Line ${entry.lineNumber}'s trip`;
+  const cities = entry.trip.layoverCities.length > 0 ? entry.trip.layoverCities.join(" → ") : "no layovers";
+  return `${base} — ${entry.trip.days}-day${entry.trip.international ? " intl" : ""}, ${cities} (Line ${entry.lineNumber})`;
 }
 
 interface TradeBoardScreenProps {
@@ -90,8 +113,8 @@ export function TradeBoardScreen({
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
       <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Trade Board</h1>
       <p className="mt-1.5 text-sm text-ink-muted">
-        Find other pilots interested in trading and coordinate directly &mdash; nothing here
-        finalizes a real trade.
+        Find other pilots interested in trading a trip &mdash; coordinate directly, since a real
+        trip trade only happens after bidding closes and nothing here finalizes one.
       </p>
 
       <NonBindingDisclaimer />
@@ -102,9 +125,7 @@ export function TradeBoardScreen({
           below.
         </InfoBanner>
       )}
-      {user && !bidPack && (
-        <InfoBanner>Upload your bid pack to post an offer or propose a trade.</InfoBanner>
-      )}
+      {user && !bidPack && <InfoBanner>Upload your bid pack to post an offer or propose a trade.</InfoBanner>}
 
       {user && bidPack && !showPostForm && (
         <Button onClick={() => setShowPostForm(true)} className="mt-6">
@@ -187,8 +208,10 @@ export function TradeBoardScreen({
                     bidPack={bidPack}
                     busy={busy}
                     onCancel={() => setRespondingTo(null)}
-                    onSubmit={(line) =>
-                      runAction(() => respondToOffer(offer.id, lineToSnapshot(line)))
+                    onSubmit={(entry) =>
+                      runAction(() =>
+                        respondToOffer(offer.id, tripToSnapshot(entry.trip, entry.lineNumber))
+                      )
                     }
                   />
                 ) : (
@@ -213,10 +236,10 @@ export function NonBindingDisclaimer() {
   return (
     <div className="mt-4 rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
       <strong className="font-semibold">This board is not official.</strong> Agreeing to a
-      trade here is not a real, legal schedule trade. Real trades have to go through FedEx&rsquo;s
-      official scheduling process &mdash; rest rules, qualifications, and currency all get
-      checked there, and this app has no way to verify any of that. Use this board to find and
-      coordinate with another pilot only.
+      trade here is not a real, legal schedule trade. Real trip trades have to go through
+      FedEx&rsquo;s official scheduling process, after bidding closes &mdash; rest rules,
+      qualifications, and currency all get checked there, and this app has no way to verify any
+      of that. Use this board to find and coordinate with another pilot only.
     </div>
   );
 }
@@ -238,15 +261,17 @@ export function Section({ title, children }: { title: string; children: React.Re
   );
 }
 
-export function LineSnapshotStats({ line }: { line: LineSnapshot }) {
+export function TripSnapshotStats({ trip }: { trip: TripSnapshot }) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-ink-muted">
-      <span>{line.daysOff} days off</span>
-      <span>{formatHours(line.totalCreditHours)} credit</span>
-      <span>{formatHours(line.totalTafbHours)} TAFB</span>
-      <span>{line.totalLandings} ldgs</span>
+      <span>{trip.days}-day</span>
+      {trip.international && <span className="text-accent">intl</span>}
+      <span>{trip.layoverCities.length > 0 ? trip.layoverCities.join(" → ") : "no layovers"}</span>
+      <span>{formatHours(trip.creditHours)} credit</span>
+      <span>{formatHours(trip.tafbHours)} TAFB</span>
+      <span>{trip.landings} ldgs</span>
       <span>
-        {line.tripCount} trip{line.tripCount !== 1 ? "s" : ""}
+        {trip.deadheadLegs > 0 ? `${trip.deadheadLegs} DH leg${trip.deadheadLegs > 1 ? "s" : ""}` : "no deadhead"}
       </span>
     </div>
   );
@@ -267,6 +292,11 @@ export const STATUS_LABELS: Record<TradeOffer["status"], string> = {
   declined: "Declined",
   withdrawn: "Withdrawn",
 };
+
+/** "Pairing 13" when known, else a plain fallback naming which line it's from. */
+function offerTripName(trip: TripSnapshot): string {
+  return trip.pairingNumber ? `Pairing ${trip.pairingNumber}` : `a trip from Line ${trip.lineNumber}`;
+}
 
 export function OfferCard({
   offer,
@@ -293,8 +323,7 @@ export function OfferCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-ink">
-            {isMine ? "You" : offer.offeringDisplayName} offering Line{" "}
-            {offer.offeredLine.lineNumber}
+            {isMine ? "You" : offer.offeringDisplayName} offering {offerTripName(offer.offeredTrip)}
             {offer.isDemo && (
               <span className="ml-2 rounded-full bg-ink-faint/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
                 Demo
@@ -302,7 +331,7 @@ export function OfferCard({
             )}
           </div>
           <div className="mt-1">
-            <LineSnapshotStats line={offer.offeredLine} />
+            <TripSnapshotStats trip={offer.offeredTrip} />
           </div>
         </div>
         <span
@@ -314,10 +343,10 @@ export function OfferCard({
 
       <div className="mt-3 text-sm text-ink-muted">
         Wants:{" "}
-        {offer.wantedLineNumber ? (
-          <span className="font-medium text-ink">Line {offer.wantedLineNumber} specifically</span>
+        {offer.wantedPairingNumber ? (
+          <span className="font-medium text-ink">Pairing {offer.wantedPairingNumber} specifically</span>
         ) : (
-          <span className="font-medium text-ink">open to any offer</span>
+          <span className="font-medium text-ink">open to any trip</span>
         )}
       </div>
 
@@ -325,21 +354,22 @@ export function OfferCard({
         <p className="mt-2 text-sm italic text-ink-muted">&ldquo;{offer.note}&rdquo;</p>
       )}
 
-      {offer.responderLine && (
+      {offer.responderTrip && (
         <div className="mt-3 rounded-lg border border-border bg-canvas p-3">
           <div className="text-sm font-medium text-ink">
-            {isMyResponse ? "You" : offer.responderDisplayName} proposed Line{" "}
-            {offer.responderLine.lineNumber}
+            {isMyResponse ? "You" : offer.responderDisplayName} proposed{" "}
+            {offerTripName(offer.responderTrip)}
           </div>
           <div className="mt-1">
-            <LineSnapshotStats line={offer.responderLine} />
+            <TripSnapshotStats trip={offer.responderTrip} />
           </div>
         </div>
       )}
 
       {offer.status === "accepted" && (
         <div className="mt-3 rounded-lg border border-good/30 bg-good-soft px-3.5 py-2.5 text-sm text-good">
-          Agreed &mdash; now file this through the official trade process to make it real.
+          Agreed &mdash; now file this through the official trade process, once bidding closes, to
+          make it real.
         </div>
       )}
 
@@ -374,10 +404,6 @@ export function OfferCard({
   );
 }
 
-function LineOptionLabel(line: Line): string {
-  return `Line ${line.lineNumber} — ${line.daysOff} days off, ${formatHours(line.totalCreditHours)} credit`;
-}
-
 function PostOfferForm({
   bidPack,
   busy,
@@ -389,19 +415,20 @@ function PostOfferForm({
   onCancel: () => void;
   onSubmit: (input: {
     bidPackMeta: { base: string; aircraft: string; seat: string; month: string };
-    offeredLine: LineSnapshot;
-    wantedLineNumber: string | null;
+    offeredTrip: TripSnapshot;
+    wantedPairingNumber: string | null;
     note: string | null;
   }) => void;
 }) {
-  const [lineNumber, setLineNumber] = useState(bidPack.lines[0]?.lineNumber ?? "");
-  const [wantedLineNumber, setWantedLineNumber] = useState("");
+  const trips = allTrips(bidPack);
+  const [entryKey, setEntryKey] = useState(trips[0]?.entryKey ?? "");
+  const [wantedPairingNumber, setWantedPairingNumber] = useState("");
   const [note, setNote] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const line = bidPack.lines.find((l) => l.lineNumber === lineNumber);
-    if (!line) return;
+    const entry = trips.find((t) => t.entryKey === entryKey);
+    if (!entry) return;
     onSubmit({
       bidPackMeta: {
         base: bidPack.base,
@@ -409,8 +436,8 @@ function PostOfferForm({
         seat: bidPack.seat,
         month: bidPack.month,
       },
-      offeredLine: lineToSnapshot(line),
-      wantedLineNumber: wantedLineNumber.trim() || null,
+      offeredTrip: tripToSnapshot(entry.trip, entry.lineNumber),
+      wantedPairingNumber: wantedPairingNumber.trim() || null,
       note: note.trim() || null,
     });
   }
@@ -421,28 +448,28 @@ function PostOfferForm({
       className="mt-4 space-y-4 rounded-xl border border-border bg-surface p-5"
     >
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="offer-line">
-          Which of your lines are you offering?
+        <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="offer-trip">
+          Which trip are you offering?
         </label>
         <select
-          id="offer-line"
-          value={lineNumber}
-          onChange={(e) => setLineNumber(e.target.value)}
+          id="offer-trip"
+          value={entryKey}
+          onChange={(e) => setEntryKey(e.target.value)}
           className="w-full rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
         >
-          {bidPack.lines.map((line) => (
-            <option key={line.lineNumber} value={line.lineNumber}>
-              {LineOptionLabel(line)}
+          {trips.map((entry) => (
+            <option key={entry.entryKey} value={entry.entryKey}>
+              {tripLabel(entry)}
             </option>
           ))}
         </select>
       </div>
 
       <TextField
-        label="Want a specific line back? (optional)"
-        placeholder="e.g. 1101 — leave blank if open to any offer"
-        value={wantedLineNumber}
-        onChange={(e) => setWantedLineNumber(e.target.value)}
+        label="Want a specific pairing back? (optional)"
+        placeholder="e.g. 27 — leave blank if open to any trip"
+        value={wantedPairingNumber}
+        onChange={(e) => setWantedPairingNumber(e.target.value)}
       />
 
       <div>
@@ -460,7 +487,7 @@ function PostOfferForm({
       </div>
 
       <div className="flex gap-2">
-        <Button type="submit" disabled={busy || !lineNumber}>
+        <Button type="submit" disabled={busy || !entryKey}>
           Post offer
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>
@@ -482,17 +509,17 @@ function RespondForm({
   bidPack: BidPack;
   busy: boolean;
   onCancel: () => void;
-  onSubmit: (line: Line) => void;
+  onSubmit: (entry: LineTripEntry) => void;
 }) {
-  const eligibleLines = offer.wantedLineNumber
-    ? bidPack.lines.filter((l) => l.lineNumber === offer.wantedLineNumber)
-    : bidPack.lines;
-  const [lineNumber, setLineNumber] = useState(eligibleLines[0]?.lineNumber ?? "");
+  const eligibleTrips = offer.wantedPairingNumber
+    ? allTrips(bidPack).filter((t) => t.trip.pairingNumber === offer.wantedPairingNumber)
+    : allTrips(bidPack);
+  const [entryKey, setEntryKey] = useState(eligibleTrips[0]?.entryKey ?? "");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const line = bidPack.lines.find((l) => l.lineNumber === lineNumber);
-    if (line) onSubmit(line);
+    const entry = eligibleTrips.find((t) => t.entryKey === entryKey);
+    if (entry) onSubmit(entry);
   }
 
   return (
@@ -504,28 +531,28 @@ function RespondForm({
         Propose a trade with {offer.offeringDisplayName}
       </div>
       <p className="mt-1 text-xs text-ink-muted">
-        Offering their Line {offer.offeredLine.lineNumber} in exchange for one of your lines.
+        Offering their {offerTripName(offer.offeredTrip)} in exchange for one of your trips.
       </p>
 
-      {eligibleLines.length === 0 ? (
+      {eligibleTrips.length === 0 ? (
         <p className="mt-3 text-sm text-danger">
-          You don&rsquo;t have Line {offer.wantedLineNumber} in your bid pack, so you can&rsquo;t
-          propose this trade.
+          You don&rsquo;t have Pairing {offer.wantedPairingNumber} in your bid pack, so you
+          can&rsquo;t propose this trade.
         </p>
       ) : (
         <div className="mt-3">
-          <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor={`respond-line-${offer.id}`}>
-            Which of your lines?
+          <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor={`respond-trip-${offer.id}`}>
+            Which of your trips?
           </label>
           <select
-            id={`respond-line-${offer.id}`}
-            value={lineNumber}
-            onChange={(e) => setLineNumber(e.target.value)}
+            id={`respond-trip-${offer.id}`}
+            value={entryKey}
+            onChange={(e) => setEntryKey(e.target.value)}
             className="w-full rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
           >
-            {eligibleLines.map((line) => (
-              <option key={line.lineNumber} value={line.lineNumber}>
-                {LineOptionLabel(line)}
+            {eligibleTrips.map((entry) => (
+              <option key={entry.entryKey} value={entry.entryKey}>
+                {tripLabel(entry)}
               </option>
             ))}
           </select>
@@ -533,7 +560,7 @@ function RespondForm({
       )}
 
       <div className="mt-4 flex gap-2">
-        <Button type="submit" disabled={busy || eligibleLines.length === 0}>
+        <Button type="submit" disabled={busy || eligibleTrips.length === 0}>
           Send proposal
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>

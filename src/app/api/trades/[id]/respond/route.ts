@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { findTradeOffer, updateTradeOffer } from "@/lib/server/db";
-import type { LineSnapshot } from "@/types/trade";
+import type { TripSnapshot } from "@/types/trade";
 
 export const runtime = "nodejs";
 
@@ -26,18 +26,18 @@ export async function POST(
     return NextResponse.json({ error: "You can't respond to your own offer." }, { status: 400 });
   }
 
-  let body: { responderLine?: LineSnapshot };
+  let body: { responderTrip?: TripSnapshot };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  if (!body.responderLine) {
-    return NextResponse.json({ error: "Missing your line details." }, { status: 400 });
+  if (!body.responderTrip) {
+    return NextResponse.json({ error: "Missing your trip details." }, { status: 400 });
   }
-  if (offer.wantedLineNumber && body.responderLine.lineNumber !== offer.wantedLineNumber) {
+  if (offer.wantedPairingNumber && body.responderTrip.pairingNumber !== offer.wantedPairingNumber) {
     return NextResponse.json(
-      { error: `This pilot wants Line ${offer.wantedLineNumber} specifically.` },
+      { error: `This pilot wants Pairing ${offer.wantedPairingNumber} specifically.` },
       { status: 400 }
     );
   }
@@ -46,7 +46,7 @@ export async function POST(
     status: "pending",
     responderUserId: user.id,
     responderDisplayName: user.displayName,
-    responderLine: body.responderLine,
+    responderTrip: body.responderTrip,
     respondedAt: new Date().toISOString(),
   });
 
