@@ -55,7 +55,7 @@ function segmentClass(kind: TimelineDay["segments"][number]["kind"]): string {
 function DayRow({ day }: { day: TimelineDay }) {
   return (
     <div className="flex items-center gap-1.5">
-      <div className="w-8 shrink-0 text-right font-mono text-[9px] font-medium text-ink-faint">
+      <div className="w-8 shrink-0 text-right font-mono text-[9px] font-medium text-brand">
         D{day.dayNumber}
       </div>
       <div className="relative h-3.5 flex-1 overflow-hidden rounded-sm bg-canvas">
@@ -87,12 +87,12 @@ function TripTimelineChart({ trip }: { trip: Trip }) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-ink-muted">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-medium text-brand">
         <LegendSwatch className="bg-brand" label="Flying" />
         <LegendSwatch className={segmentClass("deadhead")} label="Deadhead" title="Riding along, not operating" />
         <LegendSwatch className="bg-good" label="Layover" title={LAYOVER_TOOLTIP} />
       </div>
-      <div className="mt-1.5 flex justify-between pl-[2.375rem] font-mono text-[8px] leading-none text-ink-faint">
+      <div className="mt-1.5 flex justify-between pl-[2.375rem] font-mono text-[8px] leading-none text-brand/70">
         <span>0</span>
         <span>6</span>
         <span>12</span>
@@ -127,12 +127,12 @@ function Itinerary({ trip, ratings, expandedKey, onToggleExpand }: ItineraryProp
                 className={`h-1 w-1 shrink-0 rounded-full ${leg.isDeadhead ? "bg-brand/45" : "bg-brand"}`}
                 aria-hidden
               />
-              <span className="font-mono text-ink-muted">{formatHHMM(leg.depTimeLocal)}</span>
+              <span className="font-mono text-brand">{formatHHMM(leg.depTimeLocal)}</span>
               <span className="text-ink">
                 {leg.depAirport}&rarr;{leg.arrAirport}
               </span>
-              <span className="font-mono text-ink-muted">{formatHHMM(leg.arrTimeLocal)}</span>
-              <span className="text-ink-faint">
+              <span className="font-mono text-brand">{formatHHMM(leg.arrTimeLocal)}</span>
+              <span className="text-brand/70">
                 {leg.flightNumber}
                 {leg.isDeadhead ? " DH" : ""}
                 {leg.blockHours !== null && ` · ${formatDuration(leg.blockHours)}`}
@@ -189,7 +189,7 @@ function LayoverRow({
         {city}
         {hotelName ? ` · ${hotelName}` : ""}
       </span>
-      <span className="font-mono text-ink-faint">{formatDuration(hours)}</span>
+      <span className="font-mono text-brand/70">{formatDuration(hours)}</span>
       {hotel?.rating != null && (
         <span className="inline-flex items-center gap-0.5 text-accent">
           <StarIcon className="h-2.5 w-2.5 fill-current" />
@@ -287,11 +287,11 @@ export function TripList({ trips }: TripListProps) {
 
             <div className="flex-1 text-sm text-ink">{trip.layoverCities.join(" → ")}</div>
 
-            <div className="text-xs text-ink-muted">{REPORT_LABELS[trip.reportTime]}</div>
+            <div className="text-xs text-brand">{REPORT_LABELS[trip.reportTime]}</div>
 
-            <div className="font-mono text-xs text-ink-muted">{formatHours(trip.creditHours)} credit</div>
+            <div className="font-mono text-xs text-brand">{formatHours(trip.creditHours)} credit</div>
 
-            <div className="font-mono text-xs text-ink-faint">
+            <div className="font-mono text-xs text-brand/70">
               {trip.deadheadLegs > 0
                 ? `${trip.deadheadLegs} deadhead leg${trip.deadheadLegs > 1 ? "s" : ""}`
                 : "no deadhead"}
@@ -304,7 +304,7 @@ export function TripList({ trips }: TripListProps) {
               <button
                 type="button"
                 onClick={() => toggleItinerary(trip.id)}
-                className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-ink-faint hover:text-ink"
+                className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-brand hover:text-ink"
                 aria-expanded={openItineraries.has(trip.id)}
               >
                 {openItineraries.has(trip.id) ? "Hide" : "Show"} flight-by-flight itinerary
@@ -325,7 +325,7 @@ export function TripList({ trips }: TripListProps) {
             </div>
           ) : (
             trip.layoverDetails.some((d) => d.hotelName) && (
-              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 pl-[7.5rem] text-xs text-ink-muted">
+              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 pl-[7.5rem] text-xs text-brand">
                 {trip.layoverDetails
                   .filter((d) => d.hotelName)
                   .map((layover, i) => {
@@ -334,7 +334,7 @@ export function TripList({ trips }: TripListProps) {
                     const canExpand = !!hotel && hasHotelQualityDetails(hotel);
                     const content = (
                       <>
-                        <span className="font-medium text-ink-faint">{layover.city}:</span>
+                        <span className="font-medium text-brand">{layover.city}:</span>
                         {layover.hotelName}
                         {hotel?.rating != null && (
                           <span className="inline-flex items-center gap-0.5 text-accent">
