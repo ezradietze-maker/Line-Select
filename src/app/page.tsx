@@ -286,6 +286,11 @@ export default function Home() {
     }));
   }
 
+  function handleUpdateProfile(updated: PreferenceProfile) {
+    saveProfile(user?.id ?? null, updated);
+    setState((s) => ({ ...s, profile: updated }));
+  }
+
   function handleStartInterview() {
     setInterviewKey((k) => k + 1);
     setState((s) => ({ ...s, screen: "interview", pendingProfile: null }));
@@ -435,6 +440,7 @@ export default function Home() {
               profile={profile}
               onStartOver={handleStartOver}
               onRefine={handleStartInterview}
+              onUpdateProfile={handleUpdateProfile}
             />
           )}
 

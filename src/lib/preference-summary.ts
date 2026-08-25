@@ -1,7 +1,7 @@
 import { TARGET_SLIDERS } from "@/lib/interview-config";
 import type { ExplicitTargetKey, PreferenceWeights } from "@/types/preferences";
 
-const PHRASES: Record<keyof PreferenceWeights, { positive: string; negative: string }> = {
+export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negative: string }> = {
   daysOff: {
     positive: "having plenty of days off",
     negative: "keeping a lean, compact schedule",

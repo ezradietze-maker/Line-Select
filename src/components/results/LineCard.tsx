@@ -4,7 +4,7 @@ import { useState } from "react";
 import { MatchBar } from "@/components/results/MatchBar";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { TripList } from "@/components/results/TripList";
-import { CalendarIcon, ClockIcon, CoinIcon, PlaneIcon } from "@/components/ui/icons";
+import { CalendarIcon, ChevronDownIcon, ClockIcon, CoinIcon, PlaneIcon } from "@/components/ui/icons";
 import type { LineScore } from "@/lib/scoring";
 
 function formatHours(hours: number): string {
@@ -16,9 +16,13 @@ function formatHours(hours: number): string {
 interface LineCardProps {
   rank: number;
   lineScore: LineScore;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }
 
-export function LineCard({ rank, lineScore }: LineCardProps) {
+export function LineCard({ rank, lineScore, canMoveUp, canMoveDown, onMoveUp, onMoveDown }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const { line, score, explanation, dimensions } = lineScore;
   const isTopPick = rank === 1;
@@ -37,56 +41,81 @@ export function LineCard({ rank, lineScore }: LineCardProps) {
           Top pick
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className="flex w-full flex-col gap-4 p-5 text-left sm:flex-row sm:items-center sm:p-6"
-        aria-expanded={expanded}
-      >
-        <div className="flex items-center gap-4 sm:w-56 sm:shrink-0">
-          <ScoreRing score={score} />
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-ink-faint">
-              #{rank} &middot; Line {line.lineNumber}
-            </div>
-            {lineScore.estimated ? (
-              <div
-                className="mt-0.5 inline-flex items-center gap-1 text-sm font-medium text-warn"
-                title="This line's calendar entries couldn't be confidently matched to a specific pairing, so its trip shape is estimated from monthly totals rather than verified."
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 3h.01M10.3 3.9L2.7 17a2 2 0 001.7 3h15.2a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
-                </svg>
-                Estimated trip
-              </div>
-            ) : (
-              <div className="mt-0.5 text-sm text-ink-muted">
-                {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
-              </div>
-            )}
-          </div>
+      <div className="flex items-stretch">
+        <div className="flex shrink-0 flex-col items-center justify-center gap-1 border-r border-border px-2.5 py-4">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={!canMoveUp}
+            title="Rank this line higher"
+            aria-label="Move this line up in your rankings"
+            className="rounded-md p-1 text-ink-faint hover:bg-black/[0.05] hover:text-ink disabled:pointer-events-none disabled:opacity-25"
+          >
+            <ChevronDownIcon className="h-4 w-4 rotate-180" />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={!canMoveDown}
+            title="Rank this line lower"
+            aria-label="Move this line down in your rankings"
+            className="rounded-md p-1 text-ink-faint hover:bg-black/[0.05] hover:text-ink disabled:pointer-events-none disabled:opacity-25"
+          >
+            <ChevronDownIcon className="h-4 w-4" />
+          </button>
         </div>
 
-        <p className="flex-1 text-sm leading-relaxed text-ink">{explanation}</p>
-
-        <div className="hidden shrink-0 items-center gap-4 font-mono text-xs text-ink-muted sm:flex">
-          <Stat icon={<CalendarIcon />} label="Days off" value={String(line.daysOff)} />
-          <Stat icon={<CoinIcon />} label="Credit" value={formatHours(line.totalCreditHours)} />
-          <Stat icon={<ClockIcon />} label="TAFB" value={formatHours(line.totalTafbHours)} />
-          <Stat icon={<PlaneIcon />} label="Ldgs" value={String(line.totalLandings)} />
-        </div>
-
-        <svg
-          className={`h-5 w-5 shrink-0 text-ink-faint transition-transform ${expanded ? "rotate-180" : ""}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-          aria-hidden
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="flex flex-1 flex-col gap-4 p-5 text-left sm:flex-row sm:items-center sm:p-6"
+          aria-expanded={expanded}
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          <div className="flex items-center gap-4 sm:w-56 sm:shrink-0">
+            <ScoreRing score={score} />
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-ink-faint">
+                #{rank} &middot; Line {line.lineNumber}
+              </div>
+              {lineScore.estimated ? (
+                <div
+                  className="mt-0.5 inline-flex items-center gap-1 text-sm font-medium text-warn"
+                  title="This line's calendar entries couldn't be confidently matched to a specific pairing, so its trip shape is estimated from monthly totals rather than verified."
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 3h.01M10.3 3.9L2.7 17a2 2 0 001.7 3h15.2a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+                  </svg>
+                  Estimated trip
+                </div>
+              ) : (
+                <div className="mt-0.5 text-sm text-ink-muted">
+                  {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <p className="flex-1 text-sm leading-relaxed text-ink">{explanation}</p>
+
+          <div className="hidden shrink-0 items-center gap-4 font-mono text-xs text-ink-muted sm:flex">
+            <Stat icon={<CalendarIcon />} label="Days off" value={String(line.daysOff)} />
+            <Stat icon={<CoinIcon />} label="Credit" value={formatHours(line.totalCreditHours)} />
+            <Stat icon={<ClockIcon />} label="TAFB" value={formatHours(line.totalTafbHours)} />
+            <Stat icon={<PlaneIcon />} label="Ldgs" value={String(line.totalLandings)} />
+          </div>
+
+          <svg
+            className={`h-5 w-5 shrink-0 text-ink-faint transition-transform ${expanded ? "rotate-180" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+            aria-hidden
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
 
       <div className="flex gap-4 border-t border-border px-5 py-3 font-mono text-xs text-ink-muted sm:hidden">
         <Stat icon={<CalendarIcon />} label="Days off" value={String(line.daysOff)} />
