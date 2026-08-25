@@ -10,13 +10,17 @@ const CO_RE = /C\/O\.\s+(\d{1,3}):(\d{2})/g;
 const DUTY_PERIODS_RE = /NO\.\s+DP.?S\s+(\d+)/i;
 const SEPARATOR_RE = /^_{5,}$/;
 const TOLERANCE_HOURS = 0.1;
-/** Above this many candidate pairings, a 3-way combination search stops
- * being worth the (still small) cost — a pool this size usually means the
- * candidate numbers were mostly noise, and a coincidental 3-way sum match
- * becomes more likely precisely when it's least trustworthy. A triple
- * search over even a few hundred candidates is well under a second, so
- * this is a sanity cap, not a real performance constraint. */
-const MAX_POOL_FOR_TRIPLES = 200;
+/** Above this many candidate pairings, a combination search stops being
+ * worth the (still small) cost — a pool this size usually means the
+ * candidate numbers were mostly noise, and a coincidental sum match becomes
+ * more likely precisely when it's least trustworthy. This is a sanity cap,
+ * not a real performance constraint. */
+const MAX_POOL_FOR_SEARCH = 200;
+/** The busiest real lines (high duty-period counts, lots of short
+ * flight-number-only trips stitched together) can combine well past three
+ * separate pairings in a month — this is generous enough to cover them
+ * without letting the search run away on a noisy pool. */
+const MAX_COMBINATION_SIZE = 10;
 
 function timeToHours(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
@@ -57,25 +61,42 @@ interface SequenceMatch {
  * always agrees with the line's stated CR/TAFB/BLK/LANDINGS to within
  * rounding, so this self-verifies instead of guessing blindly.
  *
- * `sequenceMatches` are pairings found via their own sequence number — a
- * near-unique identifier, so all of them are trusted as a fixed base sum
- * (weighted by how many times each occurs) rather than searched over.
- * `flightPool` is the noisier remainder: pairings found only via a shared
- * flight number, which many unrelated pairings can carry, so those are
- * still searched in small combinations to close any gap the base sum
- * leaves. A flight pool above MAX_POOL_FOR_TRIPLES skips the 3-way search:
- * a pool that size usually means the candidate numbers were mostly noise,
- * and a coincidental 3-way sum match becomes more likely precisely when
- * it's least trustworthy.
+ * `sequenceMatches` (found via a pairing's own near-unique sequence number)
+ * and `flightPool` (the noisier remainder, found only via a shared flight
+ * number many unrelated pairings can carry) are both folded into one pool
+ * and searched together — see `searchSubsets` below — rather than trusting
+ * every sequence match as a mandatory fixed base. A sequence number can
+ * still occasionally collide with an unrelated stray digit run elsewhere in
+ * a dense calendar block, so forcing it into the sum unconditionally would
+ * make an otherwise-solvable line impossible to match; letting the search
+ * choose which candidates actually belong is what the self-verification
+ * against CR/TAFB/BLK/LANDINGS is really for. A combined pool above
+ * MAX_POOL_FOR_SEARCH skips the search entirely: a pool that size usually
+ * means the candidate numbers were mostly noise, and a coincidental sum
+ * match becomes more likely precisely when it's least trustworthy.
  */
-function findMatchingPairings(
-  sequenceMatches: SequenceMatch[],
-  flightPool: ParsedPairing[],
+interface Candidate {
+  pairing: ParsedPairing;
+  /** How many times this pairing's credit/block/landings count if chosen — >1 for a sequence-number match repeated across several weeks. */
+  weight: number;
+}
+
+/**
+ * Depth-first search over subsets of `pool`, smallest first, for one whose
+ * combined credit/block/landings hits the target. All three fields only
+ * accumulate upward as candidates are added, so once a running total
+ * overshoots the target past tolerance, no further addition can bring it
+ * back — that prunes the large majority of branches in practice, keeping
+ * this fast even though it's exponential in the worst case.
+ */
+function searchSubsets(
+  pool: Candidate[],
+  maxSize: number,
   targetCredit: number,
   targetBlock: number,
   targetLandings: number
-): ParsedPairing[] | null {
-  function isConfidentMatch(credit: number, block: number, landings: number): boolean {
+): Candidate[] | null {
+  function isMatch(credit: number, block: number, landings: number): boolean {
     return (
       Math.abs(credit - targetCredit) < TOLERANCE_HOURS &&
       Math.abs(block - targetBlock) < TOLERANCE_HOURS &&
@@ -83,62 +104,51 @@ function findMatchingPairings(
     );
   }
 
-  const baseTrips = sequenceMatches.flatMap((m) => Array(m.count).fill(m.pairing) as ParsedPairing[]);
-  const baseCredit = baseTrips.reduce((sum, p) => sum + p.creditHours, 0);
-  const baseBlock = baseTrips.reduce((sum, p) => sum + p.blockHours, 0);
-  const baseLandings = baseTrips.reduce((sum, p) => sum + p.landings, 0);
+  function search(
+    startIndex: number,
+    chosen: Candidate[],
+    accCredit: number,
+    accBlock: number,
+    accLandings: number
+  ): Candidate[] | null {
+    if (chosen.length > 0 && isMatch(accCredit, accBlock, accLandings)) return chosen;
+    if (chosen.length >= maxSize) return null;
 
-  if (isConfidentMatch(baseCredit, baseBlock, baseLandings)) {
-    return baseTrips;
-  }
+    for (let i = startIndex; i < pool.length; i++) {
+      const c = pool[i];
+      const nextCredit = accCredit + c.pairing.creditHours * c.weight;
+      const nextBlock = accBlock + c.pairing.blockHours * c.weight;
+      const nextLandings = accLandings + c.pairing.landings * c.weight;
+      if (nextCredit > targetCredit + TOLERANCE_HOURS) continue;
+      if (nextBlock > targetBlock + TOLERANCE_HOURS) continue;
+      if (nextLandings > targetLandings) continue;
 
-  for (const p of flightPool) {
-    if (isConfidentMatch(baseCredit + p.creditHours, baseBlock + p.blockHours, baseLandings + p.landings)) {
-      return [...baseTrips, p];
+      const result = search(i + 1, [...chosen, c], nextCredit, nextBlock, nextLandings);
+      if (result) return result;
     }
+    return null;
   }
 
-  for (let i = 0; i < flightPool.length; i++) {
-    for (let j = i + 1; j < flightPool.length; j++) {
-      const a = flightPool[i];
-      const b = flightPool[j];
-      if (
-        isConfidentMatch(
-          baseCredit + a.creditHours + b.creditHours,
-          baseBlock + a.blockHours + b.blockHours,
-          baseLandings + a.landings + b.landings
-        )
-      ) {
-        return [...baseTrips, a, b];
-      }
-    }
-  }
+  return search(0, [], 0, 0, 0);
+}
 
-  // A line flying three or more separate flight-number-only pairings in the
-  // month can never match as a single pairing or a pair, so without this
-  // the parser would give up on it every time.
-  if (flightPool.length <= MAX_POOL_FOR_TRIPLES) {
-    for (let i = 0; i < flightPool.length; i++) {
-      for (let j = i + 1; j < flightPool.length; j++) {
-        for (let k = j + 1; k < flightPool.length; k++) {
-          const a = flightPool[i];
-          const b = flightPool[j];
-          const c = flightPool[k];
-          if (
-            isConfidentMatch(
-              baseCredit + a.creditHours + b.creditHours + c.creditHours,
-              baseBlock + a.blockHours + b.blockHours + c.blockHours,
-              baseLandings + a.landings + b.landings + c.landings
-            )
-          ) {
-            return [...baseTrips, a, b, c];
-          }
-        }
-      }
-    }
-  }
+function findMatchingPairings(
+  sequenceMatches: SequenceMatch[],
+  flightPool: ParsedPairing[],
+  targetCredit: number,
+  targetBlock: number,
+  targetLandings: number
+): ParsedPairing[] | null {
+  const pool: Candidate[] = [
+    ...sequenceMatches.map((m) => ({ pairing: m.pairing, weight: m.count })),
+    ...flightPool.map((p) => ({ pairing: p, weight: 1 })),
+  ];
 
-  return null;
+  if (pool.length > MAX_POOL_FOR_SEARCH) return null;
+
+  const chosen = searchSubsets(pool, MAX_COMBINATION_SIZE, targetCredit, targetBlock, targetLandings);
+  if (!chosen) return null;
+  return chosen.flatMap((c) => Array(c.weight).fill(c.pairing) as ParsedPairing[]);
 }
 
 export function parseLineGridColumn(
@@ -186,16 +196,29 @@ export function parseLineGridColumn(
     // header, e.g. "19") or a deadhead leg's flight number (e.g. "9156") —
     // both get looked up below, since the grid uses both conventions.
     //
-    // Exclusion is by character position, not by value: a C/O time like
-    // "6:19" can appear more than once per block (checkouts reset per work
-    // stretch), and blacklisting its digits by value would also wipe out a
-    // genuine, unrelated candidate elsewhere in the block that happens to
-    // read "19" — which is exactly what was happening here.
+    // Exclusion is by character position, not by value: a C/O ("carry over")
+    // time can appear more than once per block, and blacklisting its digits
+    // by value would also wipe out a genuine, unrelated candidate elsewhere
+    // in the block that happens to read the same number.
+    //
+    // A line whose trip spans the bid period's edge has part of that trip's
+    // hours carried into (or out of) the adjacent period — printed CR./BLK.
+    // are net of that carry, but the pairing schedule lists the trip's full
+    // gross hours, so matching against the schedule needs those hours added
+    // back. Always exactly two C/O readings print per line (both 0:00 when
+    // nothing carries): the first sits by NO. DP'S (credit carried), the
+    // second by DAYS OFF (block carried) — verified against a real
+    // carry-over line, where CR.+C/O. and BLK.+C/O. landed on the exact
+    // combined credit/block of the pairings it should have matched.
+    const coMatches = Array.from(text.matchAll(CO_RE));
+    const creditCarryOver = coMatches[0] ? Number(coMatches[0][1]) + Number(coMatches[0][2]) / 60 : 0;
+    const blockCarryOver = coMatches[1] ? Number(coMatches[1][1]) + Number(coMatches[1][2]) / 60 : 0;
+
     const excludedRanges: [number, number][] = [];
     for (const m of [lineMatch, crMatch, tafbMatch, blkMatch, landingsMatch, daysOffMatch, dutyPeriodsMatch]) {
       if (m?.index !== undefined) excludedRanges.push([m.index, m.index + m[0].length]);
     }
-    for (const m of text.matchAll(CO_RE)) {
+    for (const m of coMatches) {
       excludedRanges.push([m.index!, m.index! + m[0].length]);
     }
 
@@ -208,11 +231,14 @@ export function parseLineGridColumn(
     }
     const candidates = Array.from(occurrenceCounts.keys());
 
-    // Sequence-number matches are near-unique (each pairing has its own),
-    // so they're trusted directly, weighted by how many times that number
-    // occurs. Flight-number matches are noisier — the same flight number
-    // shows up across many unrelated pairings — so anything already found
-    // via its sequence number is excluded here to avoid double-counting it.
+    // Sequence-number matches are near-unique (each pairing has its own) —
+    // stronger candidates than flight-number matches, but still only
+    // candidates, weighted by how many times that number occurs; see
+    // `findMatchingPairings` for why they're no longer trusted
+    // unconditionally. Flight-number matches are noisier — the same flight
+    // number shows up across many unrelated pairings — so anything already
+    // found via its sequence number is excluded here to avoid double-
+    // counting it.
     //
     // A handful of sequence numbers are reused across the pairing schedule
     // for what's operationally the same short trip pattern run in different
@@ -239,11 +265,16 @@ export function parseLineGridColumn(
       }
     }
 
+    // The pairing schedule's totals are gross (including any carried-over
+    // portion), so the matching target adds the carry-over back on top of
+    // the line's own net printed totals — see the C/O comment above. The
+    // line's own summary keeps the net, printed totalCreditHours/
+    // totalBlockHours values; only the matching target is adjusted.
     const pairings = findMatchingPairings(
       sequenceMatches,
       Array.from(flightPool.values()),
-      totalCreditHours,
-      totalBlockHours,
+      totalCreditHours + creditCarryOver,
+      totalBlockHours + blockCarryOver,
       totalLandings
     );
 
