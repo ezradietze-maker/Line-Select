@@ -66,13 +66,39 @@ const SEGMENT_TOOLTIP_SUFFIX: Partial<Record<TimelineDay["segments"][number]["ki
   connection: CONNECTION_TOOLTIP,
 };
 
+/**
+ * Below these clipped-duration thresholds, a segment's bar renders too
+ * narrow for its city/time labels to read cleanly (there's no pixel width
+ * to check at this layer — segments are positioned by percentage — so
+ * duration is the real-world proxy for "will this bar actually be wide
+ * enough"). Below the threshold the label is dropped entirely rather than
+ * left to overlap or spill; the full detail is still one hover away via
+ * the segment's `title`. Flight legs need room for two labels (departure
+ * and arrival) sharing one bar, so their threshold is higher than a
+ * layover's single, centered label.
+ */
+const MIN_MINUTES_FOR_FLIGHT_LABELS = 210;
+const MIN_MINUTES_FOR_LAYOVER_LABEL = 90;
+
+function showsInlineText(seg: TimelineDay["segments"][number]): boolean {
+  const duration = seg.endMinuteOfDay - seg.startMinuteOfDay;
+  if (seg.kind === "flying" || seg.kind === "deadhead") return duration >= MIN_MINUTES_FOR_FLIGHT_LABELS;
+  if (seg.kind === "layover") return duration >= MIN_MINUTES_FOR_LAYOVER_LABEL;
+  return false;
+}
+
+/** Deadhead's bar is a lighter, hatched tint of brand rather than a solid saturated color, so dark text reads better on it than the white used for the solid flying/layover bars. */
+function inlineTextClass(kind: TimelineDay["segments"][number]["kind"]): string {
+  return kind === "deadhead" ? "text-ink" : "text-white";
+}
+
 function DayRow({ day }: { day: TimelineDay }) {
   return (
     <div className="flex items-center gap-1.5">
       <div className="w-8 shrink-0 text-right font-mono text-[9px] font-medium text-brand">
         D{day.dayNumber}
       </div>
-      <div className="relative h-3.5 flex-1 overflow-hidden rounded-sm bg-canvas">
+      <div className="relative h-5 flex-1 overflow-hidden rounded-sm bg-canvas">
         {[6, 12, 18].map((h) => (
           <div key={h} className="absolute top-0 bottom-0 w-px bg-border/70" style={{ left: `${(h / 24) * 100}%` }} />
         ))}
@@ -91,7 +117,17 @@ function DayRow({ day }: { day: TimelineDay }) {
               left: `${(seg.startMinuteOfDay / MINUTES_PER_DAY) * 100}%`,
               width: `${Math.max(0.6, ((seg.endMinuteOfDay - seg.startMinuteOfDay) / MINUTES_PER_DAY) * 100)}%`,
             }}
-          />
+          >
+            {showsInlineText(seg) && (
+              <div
+                className={`flex h-full items-center gap-1 px-1 font-mono text-[8px] font-medium leading-none ${inlineTextClass(seg.kind)}`}
+              >
+                {/* `flex-1` gives each label a fixed half-width share of the bar (rather than its natural text width), so `truncate` has an actual boundary to ellipsize against — without it, two long labels in a narrow bar would overlap instead of cleanly cutting off. */}
+                <span className="min-w-0 flex-1 truncate text-left">{seg.inlineStart}</span>
+                {seg.inlineEnd && <span className="min-w-0 flex-1 truncate text-right">{seg.inlineEnd}</span>}
+              </div>
+            )}
+          </div>
         ))}
       </div>
     </div>

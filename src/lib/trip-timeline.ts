@@ -10,6 +10,10 @@ export interface TimelineSegment {
   label: string;
   /** One line of specifics, e.g. "21:15 → 01:19 local · 4h04m block" or "Guangzhou · 25h36m at hotel". */
   detail: string;
+  /** What to print directly on the bar itself at its leading edge, e.g. "13:00 SFO" — empty when this kind of segment (ground/connection) has no city+time pair worth printing inline. */
+  inlineStart: string;
+  /** The trailing-edge counterpart, e.g. "TPE 17:00". Empty for a layover/single-point label, which prints centered via `inlineStart` alone. */
+  inlineEnd: string;
   /** 0-1440, already clipped to this day's row. */
   startMinuteOfDay: number;
   endMinuteOfDay: number;
@@ -38,6 +42,8 @@ interface RawSegment {
   kind: TimelineSegmentKind;
   label: string;
   detail: string;
+  inlineStart: string;
+  inlineEnd: string;
   startMinutes: number;
   endMinutes: number;
 }
@@ -73,6 +79,8 @@ function groundSegment(duty: TripDutyPeriod, isFirstDuty: boolean): RawSegment |
     detail: isFirstDuty
       ? `Report ${formatHHMM(duty.reportTimeLocal)} → block-off ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}`
       : `Hotel pickup → block-off ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}`,
+    inlineStart: "",
+    inlineEnd: "",
     startMinutes: duty.startMinutes,
     endMinutes: firstLeg.startMinutes,
   };
@@ -89,6 +97,8 @@ function connectionSegments(duty: TripDutyPeriod): RawSegment[] {
       kind: "connection",
       label: "Connection",
       detail: `${prev.arrAirport} ground time · ${formatDuration((next.startMinutes - prev.endMinutes) / 60)}`,
+      inlineStart: "",
+      inlineEnd: "",
       startMinutes: prev.endMinutes,
       endMinutes: next.startMinutes,
     });
@@ -116,6 +126,8 @@ export function buildTimelineDays(trip: Trip): TimelineDay[] {
         kind: leg.isDeadhead ? "deadhead" : "flying",
         label: legLabel(leg),
         detail: legDetail(leg),
+        inlineStart: `${formatHHMM(leg.depTimeLocal)} ${leg.depAirport}`,
+        inlineEnd: `${leg.arrAirport} ${formatHHMM(leg.arrTimeLocal)}`,
         startMinutes: leg.startMinutes,
         endMinutes: leg.endMinutes,
       });
@@ -128,6 +140,8 @@ export function buildTimelineDays(trip: Trip): TimelineDay[] {
         kind: "layover",
         label: cityLabel,
         detail: `${duty.layover.city} · ${formatDuration(duty.layover.hours)} at hotel`,
+        inlineStart: `${duty.layover.city} · ${formatDuration(duty.layover.hours)}`,
+        inlineEnd: "",
         startMinutes: duty.layover.startMinutes,
         endMinutes: duty.layover.endMinutes,
       });
@@ -149,14 +163,22 @@ export function buildTimelineDays(trip: Trip): TimelineDay[] {
       if (seg.endMinutes <= dayStart || seg.startMinutes >= dayEnd) continue;
       const clippedStart = Math.max(seg.startMinutes, dayStart) - dayStart;
       const clippedEnd = Math.min(seg.endMinutes, dayEnd) - dayStart;
+      const continuesFromPreviousDay = seg.startMinutes < dayStart;
+      const continuesToNextDay = seg.endMinutes > dayEnd;
       segments.push({
         kind: seg.kind,
         label: seg.label,
         detail: seg.detail,
+        // A fragment split across midnight only shows the real edge label
+        // that actually falls on this calendar day — the clipped edge at
+        // midnight isn't a real departure/arrival, so it prints nothing
+        // rather than a misleading repeat of the other day's time.
+        inlineStart: continuesFromPreviousDay ? "" : seg.inlineStart,
+        inlineEnd: continuesToNextDay ? "" : seg.inlineEnd,
         startMinuteOfDay: clippedStart,
         endMinuteOfDay: clippedEnd,
-        continuesFromPreviousDay: seg.startMinutes < dayStart,
-        continuesToNextDay: seg.endMinutes > dayEnd,
+        continuesFromPreviousDay,
+        continuesToNextDay,
       });
     }
 
