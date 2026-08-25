@@ -3,30 +3,38 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
 import { Button } from "@/components/ui/Button";
 import { LineCard } from "@/components/results/LineCard";
+import { ScoreRing } from "@/components/results/ScoreRing";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
 import { PHRASES } from "@/lib/preference-summary";
 import { learnFromReorder } from "@/lib/rank-learning";
-import { rankLines, type HotelQualityData } from "@/lib/scoring";
+import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
 function describeLearn(dimension: keyof PreferenceWeights, newWeight: number): string {
   const phrase = newWeight >= 0 ? PHRASES[dimension].positive : PHRASES[dimension].negative;
   return `Got it — weighting ${phrase} more heavily from here on.`;
+}
+
+/** The floating preview shown under the pointer while dragging — deliberately lighter than the real card (no nested interactive buttons, cheap to redraw every frame). */
+function DragPreview({ lineScore }: { lineScore: LineScore }) {
+  return (
+    <div className="flex w-full max-w-3xl cursor-grabbing items-center gap-3 rounded-xl border border-accent bg-surface-raised px-4 py-3 shadow-elevated-lg">
+      <ScoreRing score={lineScore.score} />
+      <span className="text-sm font-semibold text-ink">Line {lineScore.line.lineNumber}</span>
+    </div>
+  );
 }
 
 /** Whether the pilot expressed any opinion at all about their layover hotel — gates fetching hotel quality data at all, so a pilot who left every hotel slider at 0 doesn't pay for network calls that can't affect their score. */
@@ -52,6 +60,7 @@ export function ResultsView({
 }: ResultsViewProps) {
   const [hotelQualityData, setHotelQualityData] = useState<HotelQualityData>({});
   const [learnMessage, setLearnMessage] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const caresAboutHotel = caresAboutLayoverQuality(profile);
 
   useEffect(() => {
@@ -84,10 +93,17 @@ export function ResultsView({
     // A small activation distance so a plain tap/click to expand a card
     // (no real movement) never gets mistaken for the start of a drag.
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(KeyboardSensor)
   );
 
+  const activeLineScore = activeId ? ranked.find((r) => r.line.id === activeId) ?? null : null;
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -95,11 +111,10 @@ export function ResultsView({
     const toIndex = ranked.findIndex((r) => r.line.id === over.id);
     if (fromIndex === -1 || toIndex === -1) return;
 
-    // Dropping a line teaches the app one thing: it belongs at least as
-    // high as whichever line it landed on. Whatever else it passed over
-    // along the way isn't factored in separately — one clear correction per
-    // drag, the same magnitude regardless of how far it traveled, so a big
-    // drag doesn't overcorrect the model in one motion.
+    // A direct swap: dropping line A onto line B teaches the app exactly
+    // one thing — A belongs at least as high as B — and nothing else in the
+    // list is touched. Dragging up always promotes the dragged line;
+    // dragging down always demotes it in favor of whatever it landed on.
     const moved = ranked[fromIndex];
     const displaced = ranked[toIndex];
     const [favored, overtaken] = toIndex < fromIndex ? [moved, displaced] : [displaced, moved];
@@ -150,21 +165,25 @@ export function ResultsView({
       )}
 
       <p className="mt-6 text-xs text-ink-faint">
-        Think a line is ranked too high or too low? Drag it by the grip on the left of any
-        card — each move adjusts your weights a bit, so your ranking keeps getting more accurate.
+        Think a line is ranked too high or too low? Drag it by the grip on the left and drop it
+        directly onto another line to swap — each swap adjusts your weights a bit, so your
+        ranking keeps getting more accurate.
       </p>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext
-          items={ranked.map((r) => r.line.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="mt-3 space-y-3">
-            {ranked.map((lineScore, i) => (
-              <LineCard key={lineScore.line.id} rank={i + 1} lineScore={lineScore} />
-            ))}
-          </div>
-        </SortableContext>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="mt-3 space-y-3">
+          {ranked.map((lineScore, i) => (
+            <LineCard key={lineScore.line.id} rank={i + 1} lineScore={lineScore} />
+          ))}
+        </div>
+        <DragOverlay dropAnimation={{ duration: 180, easing: "ease-out" }}>
+          {activeLineScore && <DragPreview lineScore={activeLineScore} />}
+        </DragOverlay>
       </DndContext>
     </div>
   );

@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { MatchBar } from "@/components/results/MatchBar";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { TripList } from "@/components/results/TripList";
@@ -25,17 +24,20 @@ export function LineCard({ rank, lineScore }: LineCardProps) {
   const { line, score, explanation, dimensions } = lineScore;
   const isTopPick = rank === 1;
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: line.id,
-  });
+  // Two separate dnd-kit roles on the same card: the grip is the drag
+  // SOURCE, the whole card is a drop TARGET — dropping one card directly
+  // onto another swaps just that pair, nothing else in the list shifts.
+  // The dragged card itself stays put and dims; DragOverlay in
+  // ResultsView renders the actual floating copy that follows the pointer.
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: line.id });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
 
   return (
     <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      ref={setDropRef}
       className={`overflow-hidden rounded-xl border bg-surface transition-shadow hover:shadow-elevated ${
         isTopPick ? "border-good/40 ring-1 ring-good/20" : "border-border"
-      } ${isDragging ? "relative z-10 opacity-60 shadow-elevated-lg" : ""}`}
+      } ${isDragging ? "opacity-40" : ""} ${isOver ? "ring-2 ring-accent" : ""}`}
     >
       {isTopPick && (
         <div className="flex items-center gap-1.5 bg-good-soft px-5 py-1.5 text-xs font-semibold uppercase tracking-wide text-good sm:px-6">
@@ -47,11 +49,12 @@ export function LineCard({ rank, lineScore }: LineCardProps) {
       )}
       <div className="flex items-stretch">
         <button
+          ref={setDragRef}
           type="button"
           {...attributes}
           {...listeners}
-          title="Drag to tell the app this line should rank differently"
-          aria-label="Drag to reorder — moving this line teaches the app your preferences"
+          title="Drag onto another line to swap ranks"
+          aria-label="Drag onto another line to swap ranks — teaches the app your preferences"
           className="flex shrink-0 touch-none cursor-grab items-center justify-center border-r border-border px-2.5 text-ink-faint hover:bg-black/[0.05] hover:text-ink active:cursor-grabbing"
         >
           <GripIcon className="h-4 w-4" />
