@@ -48,6 +48,24 @@ function extractHotelName(row: string): string | null {
   return cleaned || null;
 }
 
+// "Trans To: <company> (<city>), <phone>, pickup @<gmt> (<local>)" — the
+// airport->hotel ride right after landing. "Trans From:" is the same
+// company/hotel-pickup ride the other direction, before the next
+// departure. The phone number and pickup time can print on a second,
+// separate row when the company name is long (confirmed on a real page:
+// "Trans To: ASCENT LUXURY TRANSPORTATION (SLC)," then a lone
+// "+1-801-263-9606, pickup @0153 (*1953)" row) — the regex only needs the
+// company name, which is always complete on the row that starts with
+// "Trans To:"/"Trans From:" itself, so a wrapped second row is simply
+// never matched and never needed here.
+const TRANSPORT_RE = /^Trans\s+(To|From):\s*(.+?)\s*\([A-Z]{3}\)/i;
+
+function extractTransport(row: string): { direction: "To" | "From"; company: string } | null {
+  const match = row.match(TRANSPORT_RE);
+  if (!match) return null;
+  return { direction: match[1] as "To" | "From", company: match[2].trim() };
+}
+
 function timeToHours(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h + m / 60;
@@ -374,6 +392,8 @@ export function parsePairingColumn(
               layover: {
                 city: richLeg.layover.city,
                 hotelName: null,
+                transportToHotel: null,
+                transportFromHotel: null,
                 hours: richLeg.layover.hours,
                 startMinutes: endMinutes,
                 endMinutes: layoverEnd,
@@ -388,6 +408,12 @@ export function parsePairingColumn(
         const hotelName = extractHotelName(row);
         const lastDuty = schedule[schedule.length - 1];
         if (hotelName && lastDuty?.layover) lastDuty.layover.hotelName = hotelName;
+
+        const transport = extractTransport(row);
+        if (transport && lastDuty?.layover) {
+          if (transport.direction === "To") lastDuty.layover.transportToHotel = transport.company;
+          else lastDuty.layover.transportFromHotel = transport.company;
+        }
       }
 
       if (currentLegs.length > 0) {

@@ -69,16 +69,21 @@ function legDetail(leg: TripLeg): string {
  * check-in for every duty after a layover — real time, just not split
  * further since no separate drop-off time is printed.
  */
-function groundSegment(duty: TripDutyPeriod, isFirstDuty: boolean): RawSegment | null {
+function groundSegment(
+  duty: TripDutyPeriod,
+  isFirstDuty: boolean,
+  previousLayover: TripDutyPeriod["layover"] | null
+): RawSegment | null {
   const firstLeg = duty.legs[0];
   if (!firstLeg || firstLeg.startMinutes <= duty.startMinutes) return null;
   const durationLabel = formatDuration((firstLeg.startMinutes - duty.startMinutes) / 60);
+  const via = previousLayover?.transportFromHotel ? ` via ${previousLayover.transportFromHotel}` : "";
   return {
     kind: "ground",
     label: isFirstDuty ? "Report" : "Ground transport",
     detail: isFirstDuty
       ? `Report ${formatHHMM(duty.reportTimeLocal)} → block-off ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}`
-      : `Hotel pickup → block-off ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}`,
+      : `Hotel pickup → block-off ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}${via}`,
     inlineStart: "",
     inlineEnd: "",
     startMinutes: duty.startMinutes,
@@ -117,7 +122,8 @@ export function buildTimelineDays(trip: Trip): TimelineDay[] {
 
   const raw: RawSegment[] = [];
   trip.schedule.forEach((duty, dutyIndex) => {
-    const ground = groundSegment(duty, dutyIndex === 0);
+    const previousLayover = dutyIndex > 0 ? trip.schedule[dutyIndex - 1].layover : null;
+    const ground = groundSegment(duty, dutyIndex === 0, previousLayover);
     if (ground) raw.push(ground);
     raw.push(...connectionSegments(duty));
 
@@ -136,10 +142,11 @@ export function buildTimelineDays(trip: Trip): TimelineDay[] {
       const cityLabel = duty.layover.hotelName
         ? `${duty.layover.hotelName}`
         : duty.layover.city;
+      const pickedUpBy = duty.layover.transportToHotel ? ` · picked up by ${duty.layover.transportToHotel}` : "";
       raw.push({
         kind: "layover",
         label: cityLabel,
-        detail: `${duty.layover.city} · ${formatDuration(duty.layover.hours)} at hotel`,
+        detail: `${duty.layover.city} · ${formatDuration(duty.layover.hours)} at hotel${pickedUpBy}`,
         inlineStart: `${duty.layover.city} · ${formatDuration(duty.layover.hours)}`,
         inlineEnd: "",
         startMinutes: duty.layover.startMinutes,

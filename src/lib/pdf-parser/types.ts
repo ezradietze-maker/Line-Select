@@ -65,6 +65,10 @@ export interface ScheduledDutyPeriod {
   layover: {
     city: string;
     hotelName: string | null;
+    /** Ground-transport company for the airport->hotel ride right after landing, e.g. "BESPOKE TRANSPORTATION" — printed on the pairing's own "Trans To:" line. Null when that line wasn't found (e.g. an older parse, or the row didn't match). */
+    transportToHotel: string | null;
+    /** The same ride the other direction — hotel->airport, before the next departure — from the "Trans From:" line. */
+    transportFromHotel: string | null;
     /** Hours exactly as printed on the schedule (e.g. "LAX 28:43") — authoritative, not computed from the surrounding clock times. */
     hours: number;
     startMinutes: number;

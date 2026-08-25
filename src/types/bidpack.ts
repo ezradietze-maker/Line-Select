@@ -47,6 +47,10 @@ export interface TripDutyPeriod {
   layover: {
     city: string;
     hotelName: string | null;
+    /** Ground-transport company for the airport->hotel ride right after landing, from the pairing's own "Trans To:" line. Null when not printed or not found. */
+    transportToHotel: string | null;
+    /** The same ride back to the airport before the next departure, from "Trans From:". */
+    transportFromHotel: string | null;
     /** Hours exactly as printed on the schedule — authoritative, not computed. */
     hours: number;
     startMinutes: number;
