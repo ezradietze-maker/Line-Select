@@ -27,10 +27,17 @@ function describeLearn(dimension: keyof PreferenceWeights, newWeight: number): s
   return `Got it — weighting ${phrase} more heavily from here on.`;
 }
 
-/** The floating preview shown under the pointer while dragging — deliberately lighter than the real card (no nested interactive buttons, cheap to redraw every frame). */
+/**
+ * The floating preview shown under the pointer while dragging — deliberately
+ * a compact chip, not a clone of the full card. DragOverlay's wrapper has no
+ * defined width of its own, so a `w-full` child (the original approach)
+ * silently collapses to almost nothing instead of the full card width; a
+ * fixed width sidesteps that entirely and reads better as something meant
+ * to float freely, rather than a heavy card following the cursor around.
+ */
 function DragPreview({ lineScore }: { lineScore: LineScore }) {
   return (
-    <div className="flex w-full max-w-3xl cursor-grabbing items-center gap-3 rounded-xl border border-accent bg-surface-raised px-4 py-3 shadow-elevated-lg">
+    <div className="flex w-64 cursor-grabbing items-center gap-3 rounded-xl border border-accent bg-surface-raised px-4 py-3 shadow-elevated-lg">
       <ScoreRing score={lineScore.score} />
       <span className="text-sm font-semibold text-ink">Line {lineScore.line.lineNumber}</span>
     </div>
@@ -181,9 +188,7 @@ export function ResultsView({
             <LineCard key={lineScore.line.id} rank={i + 1} lineScore={lineScore} />
           ))}
         </div>
-        <DragOverlay dropAnimation={{ duration: 180, easing: "ease-out" }}>
-          {activeLineScore && <DragPreview lineScore={activeLineScore} />}
-        </DragOverlay>
+        <DragOverlay>{activeLineScore && <DragPreview lineScore={activeLineScore} />}</DragOverlay>
       </DndContext>
     </div>
   );

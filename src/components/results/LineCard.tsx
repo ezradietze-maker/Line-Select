@@ -35,7 +35,7 @@ export function LineCard({ rank, lineScore }: LineCardProps) {
   return (
     <div
       ref={setDropRef}
-      className={`overflow-hidden rounded-xl border bg-surface transition-shadow hover:shadow-elevated ${
+      className={`overflow-hidden rounded-xl border bg-surface transition-[box-shadow,opacity] duration-150 hover:shadow-elevated ${
         isTopPick ? "border-good/40 ring-1 ring-good/20" : "border-border"
       } ${isDragging ? "opacity-40" : ""} ${isOver ? "ring-2 ring-accent" : ""}`}
     >
