@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { MatchBar } from "@/components/results/MatchBar";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { TripList } from "@/components/results/TripList";
-import { CalendarIcon, ChevronDownIcon, ClockIcon, CoinIcon, PlaneIcon } from "@/components/ui/icons";
+import { CalendarIcon, ClockIcon, CoinIcon, GripIcon, PlaneIcon } from "@/components/ui/icons";
 import type { LineScore } from "@/lib/scoring";
 
 function formatHours(hours: number): string {
@@ -16,22 +18,24 @@ function formatHours(hours: number): string {
 interface LineCardProps {
   rank: number;
   lineScore: LineScore;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
 }
 
-export function LineCard({ rank, lineScore, canMoveUp, canMoveDown, onMoveUp, onMoveDown }: LineCardProps) {
+export function LineCard({ rank, lineScore }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const { line, score, explanation, dimensions } = lineScore;
   const isTopPick = rank === 1;
 
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: line.id,
+  });
+
   return (
     <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`overflow-hidden rounded-xl border bg-surface transition-shadow hover:shadow-elevated ${
         isTopPick ? "border-good/40 ring-1 ring-good/20" : "border-border"
-      }`}
+      } ${isDragging ? "relative z-10 opacity-60 shadow-elevated-lg" : ""}`}
     >
       {isTopPick && (
         <div className="flex items-center gap-1.5 bg-good-soft px-5 py-1.5 text-xs font-semibold uppercase tracking-wide text-good sm:px-6">
@@ -42,28 +46,16 @@ export function LineCard({ rank, lineScore, canMoveUp, canMoveDown, onMoveUp, on
         </div>
       )}
       <div className="flex items-stretch">
-        <div className="flex shrink-0 flex-col items-center justify-center gap-1 border-r border-border px-2.5 py-4">
-          <button
-            type="button"
-            onClick={onMoveUp}
-            disabled={!canMoveUp}
-            title="Rank this line higher"
-            aria-label="Move this line up in your rankings"
-            className="rounded-md p-1 text-ink-faint hover:bg-black/[0.05] hover:text-ink disabled:pointer-events-none disabled:opacity-25"
-          >
-            <ChevronDownIcon className="h-4 w-4 rotate-180" />
-          </button>
-          <button
-            type="button"
-            onClick={onMoveDown}
-            disabled={!canMoveDown}
-            title="Rank this line lower"
-            aria-label="Move this line down in your rankings"
-            className="rounded-md p-1 text-ink-faint hover:bg-black/[0.05] hover:text-ink disabled:pointer-events-none disabled:opacity-25"
-          >
-            <ChevronDownIcon className="h-4 w-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          title="Drag to tell the app this line should rank differently"
+          aria-label="Drag to reorder — moving this line teaches the app your preferences"
+          className="flex shrink-0 touch-none cursor-grab items-center justify-center border-r border-border px-2.5 text-ink-faint hover:bg-black/[0.05] hover:text-ink active:cursor-grabbing"
+        >
+          <GripIcon className="h-4 w-4" />
+        </button>
 
         <button
           type="button"
