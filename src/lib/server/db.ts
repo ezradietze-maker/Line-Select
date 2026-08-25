@@ -89,12 +89,30 @@ export async function deleteSession(token: string): Promise<void> {
 
 // ---- Trade offers ----
 
+/**
+ * Trade offers switched from whole-line snapshots (`offeredLine`) to
+ * per-trip snapshots (`offeredTrip`) — any offer already sitting in the
+ * store from before that change is shaped like the old schema and would
+ * crash every reader expecting `offeredTrip` to exist (this app has no
+ * migration step for a single JSON blob). There's no honest way to
+ * synthesize per-trip fields (days, cities, international mix) from a
+ * line-level snapshot, so rather than fabricate them, a stale offer is
+ * simply dropped from what's served — the same "don't show a client
+ * malformed or invented data" policy used everywhere else in this app.
+ */
+function isCurrentShape(offer: TradeOffer): boolean {
+  return !!offer.offeredTrip;
+}
+
 export async function listTradeOffers(): Promise<TradeOffer[]> {
-  return [...(await readDb()).tradeOffers].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return [...(await readDb()).tradeOffers]
+    .filter(isCurrentShape)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function findTradeOffer(id: string): Promise<TradeOffer | null> {
-  return (await readDb()).tradeOffers.find((o) => o.id === id) ?? null;
+  const offer = (await readDb()).tradeOffers.find((o) => o.id === id) ?? null;
+  return offer && isCurrentShape(offer) ? offer : null;
 }
 
 export async function createTradeOffer(offer: TradeOffer): Promise<void> {
