@@ -1,0 +1,119 @@
+import type { Trip, TripLeg } from "@/types/bidpack";
+
+const MINUTES_PER_DAY = 24 * 60;
+
+export type TimelineSegmentKind = "flying" | "deadhead" | "layover";
+
+export interface TimelineSegment {
+  kind: TimelineSegmentKind;
+  /** Short label for the segment, e.g. "6053 · PEN → CAN" or "White Swan". */
+  label: string;
+  /** One line of specifics, e.g. "21:15 → 01:19 local · 4h04m block" or "Guangzhou · 25h36m at hotel". */
+  detail: string;
+  /** 0-1440, already clipped to this day's row. */
+  startMinuteOfDay: number;
+  endMinuteOfDay: number;
+  /** True when this segment started on an earlier day — drawn with a flat (not rounded) leading edge, and vice versa for trailing. */
+  continuesFromPreviousDay: boolean;
+  continuesToNextDay: boolean;
+}
+
+export interface TimelineDay {
+  /** 1-indexed. */
+  dayNumber: number;
+  segments: TimelineSegment[];
+}
+
+function formatHHMM(hhmm: string): string {
+  return `${hhmm.slice(0, 2)}:${hhmm.slice(2, 4)}`;
+}
+
+function formatDuration(hours: number): string {
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
+
+interface RawSegment {
+  kind: TimelineSegmentKind;
+  label: string;
+  detail: string;
+  startMinutes: number;
+  endMinutes: number;
+}
+
+function legLabel(leg: TripLeg): string {
+  const prefix = leg.isDeadhead ? "DH " : "";
+  return `${prefix}${leg.flightNumber} · ${leg.depAirport} → ${leg.arrAirport}`;
+}
+
+function legDetail(leg: TripLeg): string {
+  const times = `${formatHHMM(leg.depTimeLocal)} → ${formatHHMM(leg.arrTimeLocal)} local`;
+  return leg.blockHours !== null ? `${times} · ${formatDuration(leg.blockHours)} block` : times;
+}
+
+/**
+ * Flattens a trip's duty periods into absolute-minute segments, then slices
+ * each one across day boundaries into per-day, clipped copies — a segment
+ * spanning midnight becomes two segments, one on each day, marked so the UI
+ * can draw them as one continuous bar rather than two separate ones.
+ */
+export function buildTimelineDays(trip: Trip): TimelineDay[] {
+  if (trip.schedule.length === 0) return [];
+
+  const raw: RawSegment[] = [];
+  for (const duty of trip.schedule) {
+    for (const leg of duty.legs) {
+      raw.push({
+        kind: leg.isDeadhead ? "deadhead" : "flying",
+        label: legLabel(leg),
+        detail: legDetail(leg),
+        startMinutes: leg.startMinutes,
+        endMinutes: leg.endMinutes,
+      });
+    }
+    if (duty.layover) {
+      const cityLabel = duty.layover.hotelName
+        ? `${duty.layover.hotelName}`
+        : duty.layover.city;
+      raw.push({
+        kind: "layover",
+        label: cityLabel,
+        detail: `${duty.layover.city} · ${formatDuration(duty.layover.hours)} at hotel`,
+        startMinutes: duty.layover.startMinutes,
+        endMinutes: duty.layover.endMinutes,
+      });
+    }
+  }
+
+  if (raw.length === 0) return [];
+
+  const lastEnd = Math.max(...raw.map((s) => s.endMinutes));
+  const totalDays = Math.max(1, Math.ceil(lastEnd / MINUTES_PER_DAY));
+
+  const days: TimelineDay[] = [];
+  for (let d = 0; d < totalDays; d++) {
+    const dayStart = d * MINUTES_PER_DAY;
+    const dayEnd = dayStart + MINUTES_PER_DAY;
+    const segments: TimelineSegment[] = [];
+
+    for (const seg of raw) {
+      if (seg.endMinutes <= dayStart || seg.startMinutes >= dayEnd) continue;
+      const clippedStart = Math.max(seg.startMinutes, dayStart) - dayStart;
+      const clippedEnd = Math.min(seg.endMinutes, dayEnd) - dayStart;
+      segments.push({
+        kind: seg.kind,
+        label: seg.label,
+        detail: seg.detail,
+        startMinuteOfDay: clippedStart,
+        endMinuteOfDay: clippedEnd,
+        continuesFromPreviousDay: seg.startMinutes < dayStart,
+        continuesToNextDay: seg.endMinutes > dayEnd,
+      });
+    }
+
+    days.push({ dayNumber: d + 1, segments });
+  }
+
+  return days;
+}

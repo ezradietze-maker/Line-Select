@@ -5,7 +5,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { MatchBar } from "@/components/results/MatchBar";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { TripList } from "@/components/results/TripList";
-import { CalendarIcon, ClockIcon, CoinIcon, GripIcon, PlaneIcon } from "@/components/ui/icons";
+import { CalendarIcon, ChevronDownIcon, ClockIcon, CoinIcon, GripIcon, PlaneIcon } from "@/components/ui/icons";
 import type { LineScore } from "@/lib/scoring";
 
 function formatHours(hours: number): string {
@@ -21,6 +21,7 @@ interface LineCardProps {
 
 export function LineCard({ rank, lineScore }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [showMatch, setShowMatch] = useState(false);
   const { line, score, explanation, dimensions } = lineScore;
   const isTopPick = rank === 1;
 
@@ -122,16 +123,7 @@ export function LineCard({ rank, lineScore }: LineCardProps) {
       {expanded && (
         <div className="animate-fade-in border-t border-border p-5 sm:p-6">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-            Per-dimension match
-          </h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {dimensions.map((d) => (
-              <MatchBar key={d.key} dimension={d} />
-            ))}
-          </div>
-
-          <h3 className="mt-6 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-            Trip by trip
+            Trip schedule
           </h3>
           {lineScore.estimated ? (
             <div className="mt-2 rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
@@ -145,6 +137,25 @@ export function LineCard({ rank, lineScore }: LineCardProps) {
               <TripList trips={line.trips} />
             </div>
           )}
+
+          <div className="mt-6 border-t border-border pt-3">
+            <button
+              type="button"
+              onClick={() => setShowMatch((v) => !v)}
+              className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-faint hover:text-ink"
+              aria-expanded={showMatch}
+            >
+              Why this score?
+              <ChevronDownIcon className={`h-3 w-3 shrink-0 transition-transform ${showMatch ? "rotate-180" : ""}`} />
+            </button>
+            {showMatch && (
+              <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+                {dimensions.map((d) => (
+                  <MatchBar key={d.key} dimension={d} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

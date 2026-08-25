@@ -19,6 +19,7 @@ function normalizeBidPack(parsed: BidPack): BidPack {
         (trip): Trip => ({
           ...trip,
           layoverDetails: trip.layoverDetails ?? [],
+          schedule: trip.schedule ?? [],
         })
       ),
     })),

@@ -16,6 +16,39 @@ export interface TripLayover {
   hotelName: string | null;
 }
 
+/** One flight leg exactly as printed in the pairing schedule. `startMinutes`/`endMinutes` are elapsed minutes since the trip's own first report time (t=0) — real clock times, not estimated. */
+export interface TripLeg {
+  flightNumber: string;
+  /** True when the pilot is riding along rather than operating. */
+  isDeadhead: boolean;
+  depAirport: string;
+  /** "HHMM", local time as printed. */
+  depTimeLocal: string;
+  arrAirport: string;
+  arrTimeLocal: string;
+  /** Null on the rare row where the schedule didn't print a block time. */
+  blockHours: number | null;
+  startMinutes: number;
+  endMinutes: number;
+}
+
+/** A report-to-layover stretch of a trip: one or more legs, then (unless it's the trip's last) a real, printed-duration rest period. */
+export interface TripDutyPeriod {
+  /** "HHMM", local time as printed. */
+  reportTimeLocal: string;
+  startMinutes: number;
+  legs: TripLeg[];
+  /** Null for the trip's final duty period, which ends the trip rather than laying over. */
+  layover: {
+    city: string;
+    hotelName: string | null;
+    /** Hours exactly as printed on the schedule — authoritative, not computed. */
+    hours: number;
+    startMinutes: number;
+    endMinutes: number;
+  } | null;
+}
+
 export interface Trip {
   id: string;
   /** Number of calendar days the trip spans, report to release. */
@@ -34,6 +67,13 @@ export interface Trip {
   landings: number;
   /** Time away from base for this trip, in hours. */
   tafbHours: number;
+  /**
+   * The full report/fly/layover schedule, minute-by-minute from real printed
+   * data — powers the per-trip visual timeline. Empty when the schedule
+   * couldn't be confidently broken into duty periods, or the trip is
+   * estimated — the same honesty policy as `Line.estimated`.
+   */
+  schedule: TripDutyPeriod[];
 }
 
 export interface Line {

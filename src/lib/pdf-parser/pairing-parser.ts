@@ -1,9 +1,21 @@
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
-import type { LayoverDetail, ParsedPairing, ParseWarning } from "@/lib/pdf-parser/types";
+import type {
+  LayoverDetail,
+  ParsedPairing,
+  ParseWarning,
+  ScheduledDutyPeriod,
+  ScheduledLeg,
+} from "@/lib/pdf-parser/types";
 import type { ReportTime } from "@/types/bidpack";
 
+// The pairing schedule prints every clock time as "GMT(LOCAL)" — confirmed
+// against real data (e.g. an Oakland departure "1940(1240)": 1940 UTC minus
+// PDT's 7-hour offset is exactly 1240 local), and matches the page's own
+// legend, "(hhmm) - Local Military Time" — the parenthesized value is local,
+// the bare one in front of it is GMT. The header's report time uses the same
+// convention, so group 3 (bare) is GMT and group 4 (parenthesized) is local.
 const HEADER_RE =
-  /^(\d+)\s+((?:[A-Z]{2}\s+)*[A-Z]{2})\s+REPORT\s+AT\s+(\d{3,4})\s*\(\s*[*#]?\d{3,4}\s*\)\s*(.*)$/i;
+  /^(\d+)\s+((?:[A-Z]{2}\s+)*[A-Z]{2})\s+REPORT\s+AT\s+(\d{3,4})\s*\(\s*[*#]?(\d{3,4})\s*\)\s*(.*)$/i;
 const EFFECTIVE_RE = /^EFFECTIVE\s+(.+)$/i;
 const COLUMN_HEADER_RE = /^DAY\s+FLIGHT\s+EQP\s+DEPARTS\s+ARRIVES/i;
 const FOOTER_RE =
@@ -88,6 +100,121 @@ function tryParseLeg(row: string): LegInfo | null {
   }
 
   return { dayLetters: dayMatch[1], flightNumber, depAirport, arrAirport, isDeadhead, layoverCity };
+}
+
+const TIME_PAIR_CAPTURE_RE = /^(\d{4})\([*#]?(\d{4})\)$/;
+
+/** Splits a "GMT(LOCAL)" token, e.g. "1940(1240)", into its two clock readings. */
+function parseTimePair(token: string): { gmt: string; local: string } | null {
+  const match = token.match(TIME_PAIR_CAPTURE_RE);
+  if (!match) return null;
+  return { gmt: match[1], local: match[2] };
+}
+
+function hhmmToMinutes(hhmm: string): number {
+  return Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(2, 4));
+}
+
+/**
+ * Reconstructs elapsed minutes from a sequence of daily-wrapping GMT clock
+ * readings, using only what's actually printed — no calendar dates are
+ * available for a pairing whose EFFECTIVE text is a date range rather than a
+ * single day, so this deliberately produces minutes-since-report-time
+ * (relative), not absolute timestamps.
+ */
+class RunningClock {
+  private absoluteMinutes = 0;
+  private lastMinuteOfDay = 0;
+
+  /** Seeds t=0 at the pairing's first report time. */
+  seed(hhmm: string): void {
+    this.lastMinuteOfDay = hhmmToMinutes(hhmm);
+    this.absoluteMinutes = 0;
+  }
+
+  /** Feeds the next chronological GMT reading, inferring a midnight rollover whenever it's earlier in the day than the previous one. */
+  advance(hhmm: string): number {
+    const minuteOfDay = hhmmToMinutes(hhmm);
+    let delta = minuteOfDay - this.lastMinuteOfDay;
+    if (delta < 0) delta += 24 * 60;
+    this.absoluteMinutes += delta;
+    this.lastMinuteOfDay = minuteOfDay;
+    return this.absoluteMinutes;
+  }
+
+  /** Jumps forward by an explicitly known duration (a printed layover length spans too many days for `advance`'s single-rollover assumption), re-syncing the day tracker so the next `advance` call stays correct. */
+  jumpBy(minutes: number): number {
+    this.absoluteMinutes += minutes;
+    this.lastMinuteOfDay = (((this.lastMinuteOfDay + minutes) % 1440) + 1440) % 1440;
+    return this.absoluteMinutes;
+  }
+}
+
+interface RichLegMatch {
+  flightNumber: string;
+  depAirport: string;
+  depGmt: string;
+  depLocal: string;
+  arrAirport: string;
+  arrGmt: string;
+  arrLocal: string;
+  blockHours: number | null;
+  isDeadhead: boolean;
+  layover: { city: string; hours: number } | null;
+}
+
+/**
+ * A richer re-read of the same leg row `tryParseLeg` already validates,
+ * additionally keeping the actual clock times and block hours (previously
+ * discarded once the row was confirmed well-formed) — powers the visual
+ * timeline. Deadhead detection is broader here than `LegInfo.isDeadhead`
+ * (which only catches the explicit "DH" flag): an interline flight number
+ * (e.g. "UA0869") is just as much a deadhead even with no flag, using the
+ * same bare-digit-vs-prefixed signal already relied on for landings.
+ */
+function tryParseRichLeg(row: string): RichLegMatch | null {
+  const tokens = row.split(" ").filter(Boolean);
+  if (tokens.length < 7) return null;
+
+  const dayMatch = tokens[0].match(DAY_TOKEN_RE);
+  if (!dayMatch) return null;
+  const flightNumber = tokens[1];
+  if (!/^[A-Z]{0,3}\d+$/.test(flightNumber)) return null;
+  if (!/^(\d+|JET)$/.test(tokens[2])) return null;
+  const depAirport = tokens[3];
+  if (!AIRPORT_RE.test(depAirport)) return null;
+  const depPair = parseTimePair(tokens[4]);
+  if (!depPair) return null;
+  const arrAirport = tokens[5];
+  if (!AIRPORT_RE.test(arrAirport)) return null;
+  const arrPair = parseTimePair(tokens[6]);
+  if (!arrPair) return null;
+  if (tokens.length > 7 && !HHMM_RE.test(tokens[7])) return null;
+
+  const blockHours = tokens.length > 7 ? timeToHours(tokens[7]) : null;
+  const rest = tokens.slice(8);
+  const isDeadhead = !/^\d+$/.test(flightNumber) || rest.some((t) => t.toUpperCase() === "DH");
+
+  let layover: { city: string; hours: number } | null = null;
+  for (let i = rest.length - 2; i >= 0; i--) {
+    if (AIRPORT_RE.test(rest[i]) && HHMM_RE.test(rest[i + 1])) {
+      layover = { city: rest[i], hours: timeToHours(rest[i + 1]) };
+      break;
+    }
+  }
+
+  return {
+    flightNumber,
+    depAirport,
+    depGmt: depPair.gmt,
+    depLocal: depPair.local,
+    arrAirport,
+    arrGmt: arrPair.gmt,
+    arrLocal: arrPair.local,
+    blockHours,
+    isDeadhead,
+    layover,
+  };
 }
 
 interface RawBlock {
@@ -193,8 +320,104 @@ export function parsePairingColumn(
     const deadheadLegs = legs.filter((l) => l.isDeadhead).length;
     const flightNumbers = legs.map((l) => l.flightNumber);
 
-    const reportLocal = headerMatch[3];
+    const reportTimeGmt = headerMatch[3];
+    const reportTimeLocal = headerMatch[4];
     const sequenceNumber = headerMatch[1];
+
+    // A second, richer pass over the same content rows building the actual
+    // minute-by-minute schedule for the visual timeline — kept separate from
+    // the `legs`/`layoverDetails` pass above so a bug here can never affect
+    // the already-verified summary fields (days, layovers, deadhead count,
+    // landings) those computed.
+    const schedule: ScheduledDutyPeriod[] = [];
+    {
+      const clock = new RunningClock();
+      clock.seed(reportTimeGmt);
+      let currentLegs: ScheduledLeg[] = [];
+      let dutyStartMinutes = 0;
+
+      for (const row of contentRows) {
+        const richLeg = tryParseRichLeg(row);
+        if (richLeg) {
+          const startMinutes = clock.advance(richLeg.depGmt);
+          const endMinutes = clock.advance(richLeg.arrGmt);
+          currentLegs.push({
+            flightNumber: richLeg.flightNumber,
+            isDeadhead: richLeg.isDeadhead,
+            depAirport: richLeg.depAirport,
+            depTimeLocal: richLeg.depLocal,
+            arrAirport: richLeg.arrAirport,
+            arrTimeLocal: richLeg.arrLocal,
+            blockHours: richLeg.blockHours,
+            startMinutes,
+            endMinutes,
+          });
+
+          if (richLeg.layover) {
+            const layoverMinutes = Math.round(richLeg.layover.hours * 60);
+            const layoverEnd = clock.jumpBy(layoverMinutes);
+            schedule.push({
+              // Only the pairing's very first duty period has a printed
+              // report time; later ones use their own first leg's real
+              // departure time as the best honest stand-in — an
+              // approximation of "duty begins around here," not a claimed
+              // report time, since no report-lead-time is printed for them.
+              reportTimeLocal: schedule.length === 0 ? reportTimeLocal : currentLegs[0].depTimeLocal,
+              startMinutes: dutyStartMinutes,
+              legs: currentLegs,
+              layover: {
+                city: richLeg.layover.city,
+                hotelName: null,
+                hours: richLeg.layover.hours,
+                startMinutes: endMinutes,
+                endMinutes: layoverEnd,
+              },
+            });
+            currentLegs = [];
+            dutyStartMinutes = layoverEnd;
+          }
+          continue;
+        }
+
+        const hotelName = extractHotelName(row);
+        const lastDuty = schedule[schedule.length - 1];
+        if (hotelName && lastDuty?.layover) lastDuty.layover.hotelName = hotelName;
+      }
+
+      if (currentLegs.length > 0) {
+        schedule.push({
+          reportTimeLocal: schedule.length === 0 ? reportTimeLocal : currentLegs[0].depTimeLocal,
+          startMinutes: dutyStartMinutes,
+          legs: currentLegs,
+          layover: null,
+        });
+      }
+    }
+
+    // Self-verifying, matching the house style: only trust the rich
+    // schedule when its own total block hours agrees with the pairing's
+    // printed BLOCK HRS footer — a mismatch means the row-shape assumptions
+    // above didn't hold for this pairing, and it's safer to fall back to no
+    // detailed schedule than to show a pilot a plausible-looking but wrong
+    // one. The footer's BLOCK HRS counts every company-metal (bare-digit
+    // flight number) leg, even ones flagged "DH" — confirmed against real
+    // data: a pairing with two such legs only reconciled once they were
+    // included, so the "DH" flag on a company flight affects the flying/
+    // deadhead label shown to a pilot, not this airline's own block-hour
+    // accounting. Only genuinely interline flight numbers (an actual
+    // different carrier) are excluded here.
+    const scheduledBlockHours = schedule
+      .flatMap((d) => d.legs)
+      .filter((l) => /^\d+$/.test(l.flightNumber))
+      .reduce((sum, l) => sum + (l.blockHours ?? 0), 0);
+    const footerBlockHours = timeToHours(footerMatch[2]);
+    const verifiedSchedule = Math.abs(scheduledBlockHours - footerBlockHours) < 0.05 ? schedule : [];
+    if (schedule.length > 0 && verifiedSchedule.length === 0) {
+      warnings.push({
+        pageNumber,
+        message: `Pairing ${headerMatch[1]}: detailed schedule didn't reconcile with the printed block hours, so no per-trip timeline is shown for it.`,
+      });
+    }
 
     // The printed LDGS field is unreliable — some pairings (seen on pages
     // documenting short/reserve-style duty) print 0 regardless of how many
@@ -215,8 +438,8 @@ export function parsePairingColumn(
       days: Math.max(1, distinctDays.size),
       layoverCities,
       layoverDetails,
-      reportTime: classifyReportTime(reportLocal),
-      reportTimeLocal: reportLocal,
+      reportTime: classifyReportTime(reportTimeLocal),
+      reportTimeLocal: reportTimeLocal,
       international,
       deadheadLegs,
       creditHours: timeToHours(footerMatch[3]),
@@ -226,6 +449,7 @@ export function parsePairingColumn(
       effectiveText,
       firstFlightNumber: flightNumbers[0],
       flightNumbers,
+      schedule: verifiedSchedule,
     });
   }
 

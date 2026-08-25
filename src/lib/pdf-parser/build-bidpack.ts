@@ -17,6 +17,7 @@ export function pairingToTrip(pairing: ParsedPairing): Trip {
     creditHours: round2(pairing.creditHours),
     landings: pairing.landings,
     tafbHours: round2(pairing.tafbHours),
+    schedule: pairing.schedule,
   };
 }
 
@@ -41,6 +42,7 @@ export function buildEstimatedTrip(summary: ParsedLineSummary): Trip {
     creditHours: round2(summary.totalCreditHours),
     landings: summary.totalLandings,
     tafbHours: round2(summary.totalTafbHours),
+    schedule: [],
   };
 }
 

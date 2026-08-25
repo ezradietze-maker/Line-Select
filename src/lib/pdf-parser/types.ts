@@ -27,6 +27,46 @@ export interface LayoverDetail {
   hotelName: string | null;
 }
 
+/**
+ * One flight leg exactly as printed in the pairing schedule — real departure
+ * and arrival clock times, not estimated. `startMinutes`/`endMinutes` are
+ * elapsed minutes since the pairing's own first report time (t=0), derived
+ * by walking every printed GMT clock reading in order and adding a day
+ * whenever a reading is earlier than the one before it — never guessed, and
+ * self-consistent with the leg's own printed block time.
+ */
+export interface ScheduledLeg {
+  flightNumber: string;
+  /** True when the pilot is riding along rather than operating — either an interline flight number, or the pairing schedule's own "DH" flag on an otherwise company-operated leg (a repositioning ride on their own metal). */
+  isDeadhead: boolean;
+  depAirport: string;
+  /** "HHMM", local time as printed — what a pilot would actually read on the schedule. */
+  depTimeLocal: string;
+  arrAirport: string;
+  arrTimeLocal: string;
+  /** Null on the rare row where the schedule didn't print a block time. */
+  blockHours: number | null;
+  startMinutes: number;
+  endMinutes: number;
+}
+
+/** A report-to-layover stretch of a pairing: one or more legs, then (unless it's the pairing's last) a real, printed-duration rest period. */
+export interface ScheduledDutyPeriod {
+  /** "HHMM", local time as printed. */
+  reportTimeLocal: string;
+  startMinutes: number;
+  legs: ScheduledLeg[];
+  /** Null for the pairing's final duty period, which ends the trip rather than laying over. */
+  layover: {
+    city: string;
+    hotelName: string | null;
+    /** Hours exactly as printed on the schedule (e.g. "LAX 28:43") — authoritative, not computed from the surrounding clock times. */
+    hours: number;
+    startMinutes: number;
+    endMinutes: number;
+  } | null;
+}
+
 export interface ParsedPairing {
   id: string;
   sequenceNumber: string;
@@ -49,6 +89,13 @@ export interface ParsedPairing {
   firstFlightNumber: string;
   /** All flight numbers appearing in this pairing, in order. */
   flightNumbers: string[];
+  /**
+   * The full report/fly/layover schedule, minute-by-minute from real printed
+   * data — powers the per-trip visual timeline. Empty when the schedule
+   * couldn't be confidently broken into duty periods (falls back to the
+   * summary-only fields above, same honesty policy as an estimated line).
+   */
+  schedule: ScheduledDutyPeriod[];
 }
 
 export interface ParsedLineSummary {
