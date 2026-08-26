@@ -90,14 +90,9 @@ export function LineCard({ rank, lineScore, profile, implicitValuesByLine }: Lin
                   Estimated trip
                 </div>
               ) : (
-                <>
-                  <div className="mt-0.5 text-sm text-ink-muted">
-                    {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
-                  </div>
-                  <div className="mt-1 w-20">
-                    <MiniLinePreview line={line} />
-                  </div>
-                </>
+                <div className="mt-0.5 text-sm text-ink-muted">
+                  {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
+                </div>
               )}
             </div>
           </div>
@@ -130,6 +125,12 @@ export function LineCard({ rank, lineScore, profile, implicitValuesByLine }: Lin
         <Stat icon={<ClockIcon />} label="TAFB" value={formatHours(line.totalTafbHours)} />
         <Stat icon={<PlaneIcon />} label="Ldgs" value={String(line.totalLandings)} />
       </div>
+
+      {!lineScore.estimated && (
+        <div className="border-t border-border px-5 py-3 sm:px-6">
+          <MiniLinePreview line={line} />
+        </div>
+      )}
 
       {expanded && (
         <div className="animate-fade-in border-t border-border p-4 sm:p-5">
