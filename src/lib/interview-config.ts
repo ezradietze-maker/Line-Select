@@ -146,7 +146,7 @@ export interface TargetSliderQuestionConfig {
   noTargetFallbackText?: string;
 }
 
-function formatHoursValue(hours: number): string {
+export function formatHoursValue(hours: number): string {
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return `${h}:${m.toString().padStart(2, "0")}`;

@@ -16,6 +16,7 @@ import {
   TARGET_SLIDERS,
   TRADEOFF_QUESTIONS,
   deadheadQuestionFor,
+  formatHoursValue,
 } from "@/lib/interview-config";
 import { buildProfile, cycleCitySentiment, emptyWeights } from "@/lib/preference-logic";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
@@ -43,6 +44,10 @@ interface InterviewProps {
 
 const MAX_CITY_CHOICES = 12;
 
+function formatHHMM(hhmm: string): string {
+  return `${hhmm.slice(0, 2)}:${hhmm.slice(2, 4)}`;
+}
+
 export function Interview({ bidPack, onComplete }: InterviewProps) {
   const ranges = useMemo(() => getBidPackRanges(bidPack), [bidPack]);
   const topCities = useMemo(
@@ -52,6 +57,111 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
         .map((c) => c.code),
     [bidPack]
   );
+
+  /**
+   * Real numbers pulled straight from this pilot's own bid pack, shown as
+   * stat callouts on the plain preference sliders so every question is
+   * grounded in this specific bid pack rather than an abstract dial —
+   * estimated lines are excluded since their trip shape is a guess, not a
+   * verified fact worth quoting back to the pilot.
+   */
+  const tripLengthStats = useMemo(() => {
+    const days = bidPack.lines
+      .filter((l) => !l.estimated)
+      .flatMap((l) => l.trips.map((t) => t.days));
+    return days.length > 0 ? { min: Math.min(...days), max: Math.max(...days) } : null;
+  }, [bidPack]);
+
+  const reportTimeStats = useMemo(() => {
+    const times = bidPack.lines
+      .filter((l) => !l.estimated)
+      .flatMap((l) => l.trips)
+      .flatMap((t) => (t.schedule[0] ? [t.schedule[0].reportTimeLocal] : []));
+    if (times.length === 0) return null;
+    const sorted = [...times].sort();
+    return { earliest: sorted[0], latest: sorted[sorted.length - 1] };
+  }, [bidPack]);
+
+  const deadheadStats = useMemo(() => {
+    const trips = bidPack.lines.filter((l) => !l.estimated).flatMap((l) => l.trips);
+    if (trips.length === 0) return null;
+    return Math.round((trips.filter((t) => t.deadheadLegs > 0).length / trips.length) * 100);
+  }, [bidPack]);
+
+  const hotelCountStats = useMemo(() => {
+    const hotels = new Set(
+      bidPack.lines
+        .flatMap((l) => l.trips)
+        .flatMap((t) => t.layoverDetails)
+        .map((d) => d.hotelName)
+        .filter((n): n is string => !!n)
+    );
+    return hotels.size;
+  }, [bidPack]);
+
+  const cityCountStats = useMemo(() => rankLayoverCitiesByFrequency(bidPack).length, [bidPack]);
+
+  function sliderExtraFor(key: string) {
+    if (key === "tripLength" && tripLengthStats) {
+      return (
+        <StatCallout
+          stats={[
+            { label: "Shortest trip in this bid pack", value: `${tripLengthStats.min}-day` },
+            { label: "Longest trip in this bid pack", value: `${tripLengthStats.max}-day` },
+          ]}
+        />
+      );
+    }
+    if (key === "reportTime" && reportTimeStats) {
+      return (
+        <StatCallout
+          stats={[
+            { label: "Earliest report in this bid pack", value: formatHHMM(reportTimeStats.earliest) },
+            { label: "Latest report in this bid pack", value: formatHHMM(reportTimeStats.latest) },
+          ]}
+        />
+      );
+    }
+    if (key === "creditHours") {
+      return (
+        <StatCallout
+          stats={[
+            { label: "Leanest line in this bid pack", value: `${formatHoursValue(ranges.creditHours[0])} credit` },
+            { label: "Max line in this bid pack", value: `${formatHoursValue(ranges.creditHours[1])} credit` },
+          ]}
+        />
+      );
+    }
+    if (key === "deadheadTolerance" && deadheadStats !== null) {
+      return (
+        <StatCallout
+          stats={[
+            {
+              label: "of trips in this bid pack include at least one deadhead leg",
+              value: `${deadheadStats}%`,
+            },
+          ]}
+        />
+      );
+    }
+    if (key === "hotelQuiet") {
+      return (
+        <StatCallout
+          stats={[
+            { label: "distinct layover hotels assigned across this bid pack", value: String(hotelCountStats) },
+          ]}
+        />
+      );
+    }
+    if (key === "hotelQuality") {
+      return (
+        <StatCallout
+          stats={[{ label: "distinct layover cities across this bid pack", value: String(cityCountStats) }]}
+        />
+      );
+    }
+    return undefined;
+  }
 
   const [phase, setPhase] = useState<Phase>("commuter");
   const [quickIndex, setQuickIndex] = useState(0);
@@ -214,6 +324,7 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
                 onChange={(v) =>
                   setWeights((w) => ({ ...w, [currentQuickStep.config.key]: v }))
                 }
+                extra={sliderExtraFor(currentQuickStep.config.key)}
               />
             )}
             {currentQuickStep.kind === "target" && (
@@ -268,6 +379,7 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
                 onChange={(v) =>
                   setWeights((w) => ({ ...w, [currentDeepStep.config.key]: v }))
                 }
+                extra={sliderExtraFor(currentDeepStep.config.key)}
               />
             )}
             {currentDeepStep.kind === "amenities" && (
@@ -354,6 +466,20 @@ function DeepOffer({
           Continue fine-tuning
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** A real, bid-pack-derived stat (or pair of them) shown between a slider question's help text and its dial — grounds the abstract slider in this specific pilot's actual bid pack instead of a generic dial. */
+function StatCallout({ stats }: { stats: { label: string; value: string }[] }) {
+  return (
+    <div className={`mt-6 grid gap-3 ${stats.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+      {stats.map((s, i) => (
+        <div key={i} className="rounded-lg border border-border bg-canvas px-4 py-3 text-center">
+          <div className="font-mono text-xl font-semibold text-brand">{s.value}</div>
+          <div className="mt-1 text-xs text-ink-faint">{s.label}</div>
+        </div>
+      ))}
     </div>
   );
 }
