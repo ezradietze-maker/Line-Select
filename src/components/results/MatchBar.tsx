@@ -3,9 +3,7 @@ import type { DimensionScore } from "@/lib/scoring";
 const DIMENSION_LABELS: Record<DimensionScore["key"], string> = {
   daysOff: "Days off",
   tripLength: "Trip length",
-  tripCount: "Trip count",
   international: "International",
-  region: "Asia region",
   cityPreference: "City preferences",
   reportTime: "Report time",
   creditHours: "Credit hours",

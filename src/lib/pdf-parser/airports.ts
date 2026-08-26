@@ -35,25 +35,3 @@ export function isInternationalCity(code: string): boolean {
   if (!/^[A-Z]{3,4}$/.test(normalized)) return false;
   return !US_DOMESTIC_CODES.has(normalized);
 }
-
-export type AsiaRegion = "northeast" | "southeast";
-
-/**
- * The Pacific-facing international network splits cleanly into two
- * clusters: Northeast Asia (Hong Kong, Korea, Japan, Taiwan, Shanghai) and
- * Southeast Asia (Singapore, Thailand, Indonesia, Malaysia, Philippines,
- * Vietnam). Pilots' feelings about the two legs are often genuinely
- * different (flight length, time zone recovery, layover culture), so this
- * is worth distinguishing from a flat "international" flag.
- */
-const NORTHEAST_ASIA_CODES = new Set(["HKG", "ICN", "KIX", "NRT", "HND", "PVG", "PEK", "TPE"]);
-const SOUTHEAST_ASIA_CODES = new Set([
-  "SIN", "BKK", "CGK", "PEN", "KUL", "CRK", "SGN", "HAN", "MNL", "DPS",
-]);
-
-export function getAsiaRegion(code: string): AsiaRegion | null {
-  const normalized = code.trim().toUpperCase();
-  if (NORTHEAST_ASIA_CODES.has(normalized)) return "northeast";
-  if (SOUTHEAST_ASIA_CODES.has(normalized)) return "southeast";
-  return null;
-}

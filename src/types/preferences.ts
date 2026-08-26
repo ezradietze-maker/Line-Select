@@ -9,12 +9,8 @@ export interface PreferenceWeights {
   daysOff: number;
   /** -100 = prefer short trips, +100 = prefer long trips. */
   tripLength: number;
-  /** -100 = doesn't mind lots of separate trips, +100 = wants as few, longer trips as possible (fewer commute round-trips). */
-  tripCount: number;
   /** -100 = prefer domestic only, +100 = prefer international. */
   international: number;
-  /** -100 = prefer Northeast Asia layovers (HKG/ICN/KIX/NRT/PVG/TPE), +100 = prefer Southeast Asia (SIN/BKK/CGK/KUL/etc). Only meaningful when a bid pack actually has both. */
-  region: number;
   /** -100 = prefer early reports, +100 = prefer late/evening reports. */
   reportTime: number;
   /** -100 = prefer a lean/minimum line, +100 = prefer max credit hours. */
@@ -48,9 +44,7 @@ export interface PreferenceWeights {
 export const DEFAULT_WEIGHTS: PreferenceWeights = {
   daysOff: 0,
   tripLength: 0,
-  tripCount: 0,
   international: 0,
-  region: 0,
   reportTime: 0,
   creditHours: 0,
   deadheadTolerance: 0,
@@ -65,14 +59,12 @@ export const DEFAULT_WEIGHTS: PreferenceWeights = {
 export type QuickQuestionKey =
   | "daysOff"
   | "tripLength"
-  | "tripCount"
   | "international"
   | "reportTime"
   | "creditHours";
 
 export type DeepSliderKey =
   | "deadheadTolerance"
-  | "region"
   | "hotelFood"
   | "hotelGym"
   | "hotelGrocery"
@@ -80,7 +72,7 @@ export type DeepSliderKey =
   | "hotelQuality";
 
 /** Dimensions a pilot can pin to an exact stated value. */
-export type ExplicitTargetKey = "daysOff" | "creditHours" | "tripCount" | "departures";
+export type ExplicitTargetKey = "daysOff" | "creditHours" | "departures";
 
 /** A single "would you rather" trade-off answer, -1..1. */
 export interface TradeoffAnswer {
@@ -104,17 +96,17 @@ export interface PreferenceProfile {
   explicitTargets: Partial<Record<ExplicitTargetKey, number>>;
   /**
    * Whether the pilot commutes to base. Not a scored dimension on its own —
-   * it raises the effective importance floor on reportTime and tripCount
-   * (an early/late report or an extra trip is a much bigger deal when it
-   * costs a commuter an extra hotel night or a missed flight home), even
-   * if they left those sliders near neutral. `null` means not asked/skipped.
+   * it raises the effective importance floor on reportTime and departures
+   * (an early/late report or an extra departure is a much bigger deal when
+   * it costs a commuter an extra hotel night or a missed flight home), even
+   * if they left those near neutral. `null` means not asked/skipped.
    */
   isCommuter: boolean | null;
   /**
    * Whether the pilot has a crash pad in domicile. Only meaningful (and only
    * asked) for a commuter — a locally based pilot doesn't need one. When a
-   * commuter has no crash pad, an extra separate trip is a bigger real cost
-   * (nowhere to stage between duty days), so this raises tripCount's
+   * commuter has no crash pad, an extra departure is a bigger real cost
+   * (nowhere to stage between duty days), so this raises departures'
    * effective importance floor further. `null` means not asked/skipped.
    */
   hasCrashPad: boolean | null;

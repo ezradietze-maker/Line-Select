@@ -10,17 +10,9 @@ export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negati
     positive: "flying longer trips",
     negative: "flying short, quick trips",
   },
-  tripCount: {
-    positive: "having as few separate trips as possible",
-    negative: "not minding lots of separate trips",
-  },
   international: {
     positive: "getting international trips",
     negative: "staying mostly domestic",
-  },
-  region: {
-    positive: "Southeast Asia layovers over Northeast Asia",
-    negative: "Northeast Asia layovers over Southeast Asia",
   },
   reportTime: {
     positive: "later report times",
@@ -84,7 +76,7 @@ export function rankPreferences(
     const weight = weights[key];
     const explicitKey = key as ExplicitTargetKey;
     const explicitValue =
-      key === "daysOff" || key === "creditHours" || key === "tripCount" || key === "departures"
+      key === "daysOff" || key === "creditHours" || key === "departures"
         ? explicitTargets[explicitKey]
         : undefined;
     const hasExplicit = explicitValue !== undefined;

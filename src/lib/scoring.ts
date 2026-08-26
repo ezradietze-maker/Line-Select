@@ -1,4 +1,3 @@
-import { getAsiaRegion, type AsiaRegion } from "@/lib/pdf-parser/airports";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { HotelAmenitySummary, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 import type { CitySentiment, PreferenceProfile, PreferenceWeights } from "@/types/preferences";
@@ -35,9 +34,7 @@ export type HotelQualityData = Record<string, HotelQualityEntry>;
 export type DimensionKey =
   | "daysOff"
   | "tripLength"
-  | "tripCount"
   | "international"
-  | "region"
   | "cityPreference"
   | "reportTime"
   | "creditHours"
@@ -87,9 +84,7 @@ export interface LineScore {
  */
 const UNVERIFIED_WHEN_ESTIMATED: DimensionKey[] = [
   "tripLength",
-  "tripCount",
   "international",
-  "region",
   "cityPreference",
   "reportTime",
   "deadheadTolerance",
@@ -100,10 +95,7 @@ const UNVERIFIED_WHEN_ESTIMATED: DimensionKey[] = [
 interface LineMetrics {
   daysOff: number;
   avgTripLength: number;
-  tripCount: number;
   internationalShare: number;
-  /** Share of Asia layovers that are Southeast (vs Northeast); 0.5 if the line has no classifiable Asia layovers. */
-  southeastShare: number;
   reportLean: number;
   creditHours: number;
   deadheadPerTrip: number;
@@ -125,21 +117,10 @@ function computeRawMetrics(line: Line): LineMetrics {
   const deadheadPerTrip =
     line.trips.reduce((s, t) => s + t.deadheadLegs, 0) / tripDivisor;
 
-  const asiaLayovers = line.trips
-    .flatMap((t) => t.layoverCities)
-    .map(getAsiaRegion)
-    .filter((r): r is AsiaRegion => r !== null);
-  const southeastShare =
-    asiaLayovers.length > 0
-      ? asiaLayovers.filter((r) => r === "southeast").length / asiaLayovers.length
-      : 0.5;
-
   return {
     daysOff: line.daysOff,
     avgTripLength,
-    tripCount: line.trips.length,
     internationalShare,
-    southeastShare,
     reportLean,
     creditHours: line.totalCreditHours,
     deadheadPerTrip,
@@ -326,13 +307,13 @@ function weightToTarget(weight: number): number {
  * A pilot who typed in an exact target (e.g. "16 days off") clearly cares
  * about that dimension even if they left the quick-round slider centered,
  * so an explicit target guarantees at least moderate importance. Commuting
- * does the same for reportTime, tripCount, and deadheadTolerance
- * specifically — an early/late report or an extra trip costs a commuter a
- * hotel night or a missed flight home, and a deadhead is a real, higher-
- * stakes call for them either way (it can save a commute or just be dead
- * time), whether or not they thought to weight it strongly themselves. A
- * commuter with no crash pad in domicile feels an extra trip even more, so
- * that combination raises tripCount's floor further still.
+ * does the same for reportTime, departures, and deadheadTolerance
+ * specifically — an early/late report or an extra departure costs a
+ * commuter a hotel night or a missed flight home, and a deadhead is a real,
+ * higher-stakes call for them either way (it can save a commute or just be
+ * dead time), whether or not they thought to weight it strongly themselves.
+ * A commuter with no crash pad in domicile feels an extra departure even
+ * more, so that combination raises departures' floor further still.
  */
 function weightToImportance(
   key: WeightedDimensionKey,
@@ -343,10 +324,10 @@ function weightToImportance(
 ): number {
   const base = Math.min(1, Math.abs(weight) / 100);
   let importance = hasExplicitTarget ? Math.max(base, 0.5) : base;
-  if (isCommuter && (key === "reportTime" || key === "tripCount" || key === "deadheadTolerance")) {
+  if (isCommuter && (key === "reportTime" || key === "departures" || key === "deadheadTolerance")) {
     importance = Math.max(importance, 0.35);
   }
-  if (isCommuter && hasCrashPad === false && key === "tripCount") {
+  if (isCommuter && hasCrashPad === false && key === "departures") {
     importance = Math.max(importance, 0.5);
   }
   return importance;
@@ -367,14 +348,8 @@ function hitPhrase(key: DimensionKey, weight: number): string {
       return weight > 0 ? "plenty of days off" : "a compact, duty-heavy schedule";
     case "tripLength":
       return weight > 0 ? "long trips" : "short, quick trips";
-    case "tripCount":
-      return weight > 0
-        ? "few, longer trips (fewer commutes)"
-        : "no problem splitting things into more trips";
     case "international":
       return weight > 0 ? "a strong international mix" : "mostly domestic flying";
-    case "region":
-      return weight > 0 ? "Southeast Asia layovers" : "Northeast Asia layovers";
     case "cityPreference":
       return "layovers in cities you flagged as favorites";
     case "reportTime":
@@ -412,17 +387,9 @@ function missPhrase(
       if (weight > 0 && below) return "shorter trips than you're after";
       if (weight < 0 && !below) return "longer trips than you'd probably like";
       return null;
-    case "tripCount":
-      if (weight > 0 && below) return "more separate trips than you'd like";
-      if (weight < 0 && !below) return "fewer, longer trips than you'd probably prefer";
-      return null;
     case "international":
       if (weight > 0 && below) return "less international flying than you're after";
       if (weight < 0 && !below) return "more international flying than you'd probably want";
-      return null;
-    case "region":
-      if (weight > 0 && below) return "less Southeast Asia flying than you're after";
-      if (weight < 0 && !below) return "more Southeast Asia flying than you'd probably want";
       return null;
     case "cityPreference":
       return value < 0.35 ? "a layover or two in a city you flagged to avoid" : null;
@@ -493,42 +460,23 @@ function explain(topDimensions: DimensionScore[], weights: PreferenceWeights): s
 export interface BidPackRanges {
   daysOff: readonly [number, number];
   creditHours: readonly [number, number];
-  tripCount: readonly [number, number];
   departures: readonly [number, number];
 }
 
 /**
- * Real min/max span of daysOff, creditHours, tripCount, and departures
- * across a bid pack's lines, used to bound "type in your ideal number"
- * inputs in actual units instead of an abstract -100..100 scale.
+ * Real min/max span of daysOff, creditHours, and departures across a bid
+ * pack's lines, used to bound "type in your ideal number" inputs in actual
+ * units instead of an abstract -100..100 scale.
  */
 export function getBidPackRanges(bidPack: BidPack): BidPackRanges {
   const daysOffValues = bidPack.lines.map((l) => l.daysOff);
   const creditValues = bidPack.lines.map((l) => l.totalCreditHours);
-  const tripCountValues = bidPack.lines.map((l) => l.trips.length);
   const departuresValues = bidPack.lines.map((l) => l.totalDepartures);
   return {
     daysOff: [Math.min(...daysOffValues), Math.max(...daysOffValues)],
     creditHours: [Math.min(...creditValues), Math.max(...creditValues)],
-    tripCount: [Math.min(...tripCountValues), Math.max(...tripCountValues)],
     departures: [Math.min(...departuresValues), Math.max(...departuresValues)],
   };
-}
-
-/**
- * Whether this bid pack's international network actually spans both
- * Northeast and Southeast Asia — the region question is meaningless (and
- * gets skipped) on a bid pack whose international flying is all one region.
- */
-export function hasMixedAsiaRegions(bidPack: BidPack): boolean {
-  const regions = new Set(
-    bidPack.lines
-      .flatMap((l) => l.trips)
-      .flatMap((t) => t.layoverCities)
-      .map(getAsiaRegion)
-      .filter((r): r is AsiaRegion => r !== null)
-  );
-  return regions.has("northeast") && regions.has("southeast");
 }
 
 /** Every distinct layover city in this bid pack, most-visited first — the pool the city-preference picker draws from. */
@@ -564,7 +512,6 @@ export function scoreBidPack(
       Math.min(...rawMetrics.map((m) => m.avgTripLength)),
       Math.max(...rawMetrics.map((m) => m.avgTripLength)),
     ] as const,
-    tripCount: bidPackRanges.tripCount,
     creditHours: bidPackRanges.creditHours,
     deadheadPerTrip: [
       Math.min(...rawMetrics.map((m) => m.deadheadPerTrip)),
@@ -585,11 +532,7 @@ export function scoreBidPack(
         ranges.avgTripLength[0],
         ranges.avgTripLength[1]
       ),
-      // Inverted: a HIGH value here means FEW trips, so it lines up with the
-      // dimension's positive/highLabel direction ("prefer fewer, longer trips").
-      tripCount: 1 - normalize(raw.tripCount, ranges.tripCount[0], ranges.tripCount[1]),
       international: raw.internationalShare,
-      region: raw.southeastShare,
       cityPreference: normalize(cityScores[i], ranges.cityScore[0], ranges.cityScore[1]),
       reportTime: raw.reportLean,
       creditHours: normalize(
@@ -663,9 +606,6 @@ export function scoreBidPack(
           ranges.creditHours[0],
           ranges.creditHours[1]
         );
-        hasExplicitTarget = true;
-      } else if (key === "tripCount" && explicitTargets.tripCount !== undefined) {
-        target = 1 - normalize(explicitTargets.tripCount, ranges.tripCount[0], ranges.tripCount[1]);
         hasExplicitTarget = true;
       } else if (key === "departures" && explicitTargets.departures !== undefined) {
         target = normalize(explicitTargets.departures, ranges.departures[0], ranges.departures[1]);

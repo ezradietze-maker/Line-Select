@@ -30,9 +30,7 @@ const CONFIDENCE_CONTRADICTION_PENALTY = 0.1;
 const EXPLICIT_LEARNABLE_KEYS: (keyof PreferenceWeights)[] = [
   "daysOff",
   "tripLength",
-  "tripCount",
   "international",
-  "region",
   "reportTime",
   "creditHours",
   "deadheadTolerance",
@@ -52,9 +50,7 @@ const MAGNITUDE_ONLY_KEYS = new Set<keyof PreferenceWeights>(Object.values(HOTEL
 const EXPLICIT_LABELS: Partial<Record<keyof PreferenceWeights, string>> = {
   daysOff: "Days off",
   tripLength: "Trip length",
-  tripCount: "Number of trips",
   international: "International mix",
-  region: "Asia region",
   reportTime: "Report time",
   creditHours: "Credit hours",
   deadheadTolerance: "Deadheading",

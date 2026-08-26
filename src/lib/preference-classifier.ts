@@ -4,9 +4,8 @@ import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
 const EXPLICIT_DESCRIPTORS = [
   { id: "daysOff", label: "Days off", description: "How many scheduled days off the line has." },
   { id: "tripLength", label: "Trip length", description: "Whether trips run long or short." },
-  { id: "tripCount", label: "Number of separate trips", description: "Few, longer trips versus many separate ones." },
+  { id: "departures", label: "Number of separate departures", description: "How many separate times a pilot leaves home for the month." },
   { id: "international", label: "International vs domestic", description: "How much of the flying is international." },
-  { id: "region", label: "Asia region", description: "Southeast Asia versus Northeast Asia layovers." },
   { id: "reportTime", label: "Report time", description: "Early versus late/evening report times." },
   { id: "creditHours", label: "Credit hours", description: "Total pay/credit hours for the line." },
   { id: "deadheadTolerance", label: "Deadheading", description: "How much riding along as a passenger (not flying) the line has." },

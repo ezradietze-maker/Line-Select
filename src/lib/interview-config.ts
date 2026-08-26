@@ -25,15 +25,6 @@ export const QUICK_QUESTIONS: SliderQuestionConfig[] = [
     centerLabel: "No strong preference",
   },
   {
-    key: "tripCount",
-    question: "How much does having a lot of separate trips wear on you?",
-    helpText:
-      "Different from the departures question — this is about how many times you commute in and out for the month, not report times inside a single trip. Same total credit and TAFB, but three separate 3-day trips means three commutes instead of one.",
-    lowLabel: "Don't mind lots of separate trips",
-    highLabel: "Prefer fewer, longer trips — fewer commutes",
-    centerLabel: "No strong preference",
-  },
-  {
     key: "reportTime",
     question: "Early report or late report?",
     helpText:
@@ -78,44 +69,46 @@ export function deadheadQuestionFor(isCommuter: boolean | null): SliderQuestionC
   return isCommuter ? DEADHEAD_COMMUTER : DEADHEAD_LOCAL;
 }
 
-export const DEEP_SLIDERS: SliderQuestionConfig[] = [
-  DEADHEAD_LOCAL,
-  {
-    key: "region",
-    question: "Northeast Asia or Southeast Asia layovers?",
-    helpText:
-      "Northeast Asia (HKG, ICN, KIX, NRT) means a shorter flight over and a faster recovery from the time change. Southeast Asia (SIN, BKK, CGK, KUL) means a longer haul out, but a warmer, more tropical layover once you land.",
-    lowLabel: "Prefer Northeast Asia (HKG, ICN, KIX, NRT)",
-    highLabel: "Prefer Southeast Asia (SIN, BKK, CGK, KUL)",
-    centerLabel: "No strong preference",
-  },
+/**
+ * Food, gym, and grocery are all "is a nearby amenity present" counts —
+ * genuinely similar enough in kind that asking a separate magnitude slider
+ * for each was padding. One multi-select replaces all three: pick whichever
+ * actually matter, each one flips its weight to `HOTEL_AMENITY_WEIGHT`
+ * rather than a graded slider position, trading nuance for speed. Room
+ * quietness and overall quality stay their own sliders below — those are
+ * review-derived sentiment, not amenity counts, so a magnitude genuinely
+ * means something different for them.
+ */
+export interface HotelAmenityOption {
+  key: "hotelFood" | "hotelGym" | "hotelGrocery";
+  label: string;
+  description: string;
+}
+
+export const HOTEL_AMENITIES: HotelAmenityOption[] = [
   {
     key: "hotelFood",
-    question: "How much does walkable food access matter at your layover hotel?",
-    helpText:
-      "Some layovers put you in walking distance of real food; others leave you with room service or a rental car. Worth knowing which kind of layover you're signing up for.",
-    lowLabel: "Doesn't matter — room service or a car is fine",
-    highLabel: "Matters a lot — I want to walk to a good meal or coffee",
-    centerLabel: "Somewhat matters",
+    label: "Walkable food or coffee",
+    description:
+      "Some layovers put you in walking distance of a real meal; others leave you with room service or a rental car.",
   },
   {
     key: "hotelGym",
-    question: "How much does gym/fitness access matter at your layover hotel?",
-    helpText:
-      "A layover hotel with a gym (or one nearby) makes it a lot easier to keep training on the road instead of losing the routine every trip.",
-    lowLabel: "Doesn't matter — I'll skip it or work around it",
-    highLabel: "Matters a lot — I want to keep training on the road",
-    centerLabel: "Somewhat matters",
+    label: "Gym or fitness access",
+    description: "Makes it a lot easier to keep training on the road instead of losing the routine every trip.",
   },
   {
     key: "hotelGrocery",
-    question: "How much does nearby grocery/pharmacy access matter?",
-    helpText:
-      "A grocery store or pharmacy within walking distance means you can restock snacks, meds, or anything you forgot — without needing a car or a long walk.",
-    lowLabel: "Doesn't matter",
-    highLabel: "Matters a lot — I like picking up snacks or essentials",
-    centerLabel: "Somewhat matters",
+    label: "Grocery or pharmacy nearby",
+    description: "Lets you restock snacks, meds, or anything you forgot without needing a car.",
   },
+];
+
+/** Flat "cares about this" weight applied when a pilot flags an amenity as mattering — see `HOTEL_AMENITIES`. */
+export const HOTEL_AMENITY_WEIGHT = 75;
+
+export const DEEP_SLIDERS: SliderQuestionConfig[] = [
+  DEADHEAD_LOCAL,
   {
     key: "hotelQuiet",
     question: "How much does a quiet, low-noise room matter for sleeping on the road?",
@@ -198,16 +191,6 @@ export const TARGET_SLIDERS: TargetSliderQuestionConfig[] = [
     formatValue: formatHoursValue,
     step: 0.25,
   },
-  {
-    key: "tripCount",
-    question: "What's the most separate trips you'd want this month?",
-    helpText:
-      "Useful if you commute and know your limit — pins a ceiling instead of just leaning toward fewer.",
-    unitSingular: "trip",
-    unitPlural: "trips",
-    formatValue: (v) => String(Math.round(v)),
-    step: 1,
-  },
 ];
 
 /** Every exact-target config, quick-round and deep-round alike — for screens that summarize whatever the pilot pinned, regardless of which round asked it. */
@@ -233,10 +216,27 @@ export const QUICK_STEPS: QuickStepConfig[] = [
   { kind: "target", config: NIGHTS_HOME_CONFIG, showCrashPad: true },
   { kind: "slider", config: findQuickQuestion("tripLength") },
   { kind: "target", config: DEPARTURES_CONFIG },
-  { kind: "slider", config: findQuickQuestion("tripCount") },
   { kind: "cities" },
   { kind: "slider", config: findQuickQuestion("reportTime") },
   { kind: "slider", config: findQuickQuestion("creditHours") },
+];
+
+function findDeepSlider(key: DeepSliderKey): SliderQuestionConfig {
+  const found = DEEP_SLIDERS.find((q) => q.key === key);
+  if (!found) throw new Error(`Missing deep slider config for "${key}"`);
+  return found;
+}
+
+/** One deep-round step can be a plain bipolar slider or the hotel-amenities multi-select — see `HOTEL_AMENITIES`. */
+export type DeepStepConfig =
+  | { kind: "slider"; config: SliderQuestionConfig }
+  | { kind: "amenities" };
+
+export const DEEP_STEPS: DeepStepConfig[] = [
+  { kind: "slider", config: DEADHEAD_LOCAL },
+  { kind: "amenities" },
+  { kind: "slider", config: findDeepSlider("hotelQuiet") },
+  { kind: "slider", config: findDeepSlider("hotelQuality") },
 ];
 
 export interface TradeoffOption {
@@ -281,22 +281,6 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
     positiveOption: "A",
   },
   {
-    id: "trip-count-vs-length",
-    dimension: "tripCount",
-    prompt: "One long trip, or several short ones?",
-    helpText:
-      "Same total time away either way — this is really about how much a separate commute in and out costs you, not trip length.",
-    optionA: {
-      label: "One long 9-day trip",
-      description: "A single commute round-trip covers the whole stretch.",
-    },
-    optionB: {
-      label: "Three separate 3-day trips",
-      description: "Same total time away, but three commutes instead of one.",
-    },
-    positiveOption: "A",
-  },
-  {
     id: "international-vs-domestic",
     dimension: "international",
     prompt: "Given a free choice for one layover, which would you actually pick?",
@@ -309,20 +293,6 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
       description: "Shorter hops, your own bed more nights.",
     },
     positiveOption: "A",
-  },
-  {
-    id: "region-preference",
-    dimension: "region",
-    prompt: "Given the choice, would you rather lay over in...",
-    optionA: {
-      label: "Hong Kong or Seoul",
-      description: "Northeast Asia — shorter flight, faster time-zone recovery.",
-    },
-    optionB: {
-      label: "Singapore or Bangkok",
-      description: "Southeast Asia — longer flight, warmer layovers.",
-    },
-    positiveOption: "B",
   },
   {
     id: "report-time-shape",

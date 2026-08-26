@@ -6,16 +6,14 @@ import { Slider } from "@/components/ui/Slider";
 import {
   ALL_TARGET_CONFIGS,
   DEEP_SLIDERS,
+  HOTEL_AMENITIES,
   QUICK_QUESTIONS,
   deadheadQuestionFor,
 } from "@/lib/interview-config";
 import { summarizePreferencesSentence } from "@/lib/preference-summary";
-import { hasMixedAsiaRegions } from "@/lib/scoring";
-import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
 interface ConfirmPreferencesScreenProps {
-  bidPack: BidPack;
   profile: PreferenceProfile;
   onConfirm: (weights: PreferenceWeights) => void;
   onRetakeInterview: () => void;
@@ -29,20 +27,19 @@ interface ConfirmPreferencesScreenProps {
  * final until "Show my rankings" is pressed.
  */
 export function ConfirmPreferencesScreen({
-  bidPack,
   profile,
   onConfirm,
   onRetakeInterview,
 }: ConfirmPreferencesScreenProps) {
   const [weights, setWeights] = useState<PreferenceWeights>(profile.weights);
 
-  const showRegion = hasMixedAsiaRegions(bidPack);
   const sliderConfigs = [
     ...QUICK_QUESTIONS,
-    ...DEEP_SLIDERS.filter((s) => s.key !== "region" || showRegion).map((s) =>
+    ...DEEP_SLIDERS.map((s) =>
       s.key === "deadheadTolerance" ? deadheadQuestionFor(profile.isCommuter) : s
     ),
   ];
+  const selectedAmenities = HOTEL_AMENITIES.filter((a) => weights[a.key] > 0);
 
   const sentence = summarizePreferencesSentence(weights, profile.explicitTargets);
   const pinnedTargets = ALL_TARGET_CONFIGS.filter(
@@ -114,6 +111,24 @@ export function ConfirmPreferencesScreen({
                   {t.formatValue(profile.explicitTargets[t.key]!)} {t.unitPlural}
                 </span>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selectedAmenities.length > 0 && (
+        <div className="mt-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            Hotel amenities that matter to you
+          </h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {selectedAmenities.map((a) => (
+              <span
+                key={a.key}
+                className="rounded-full border border-brand/30 bg-brand-soft px-3 py-1 text-xs font-medium text-brand"
+              >
+                {a.label}
+              </span>
             ))}
           </div>
         </div>

@@ -5,26 +5,23 @@ import { Button } from "@/components/ui/Button";
 import { ProgressDots } from "@/components/ui/ProgressDots";
 import { CityPreferenceStep } from "@/components/interview/CityPreferenceStep";
 import { CommuterStep } from "@/components/interview/CommuterStep";
+import { HotelAmenitiesStep } from "@/components/interview/HotelAmenitiesStep";
 import { SliderStep } from "@/components/interview/SliderStep";
 import { TargetSliderStep } from "@/components/interview/TargetSliderStep";
 import { TradeoffStep } from "@/components/interview/TradeoffStep";
 import {
-  DEEP_SLIDERS,
+  DEEP_STEPS,
+  HOTEL_AMENITY_WEIGHT,
   QUICK_STEPS,
   TARGET_SLIDERS,
   TRADEOFF_QUESTIONS,
   deadheadQuestionFor,
 } from "@/lib/interview-config";
 import { buildProfile, cycleCitySentiment, emptyWeights } from "@/lib/preference-logic";
-import {
-  getBidPackRanges,
-  hasMixedAsiaRegions,
-  rankLayoverCitiesByFrequency,
-} from "@/lib/scoring";
+import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
 import type {
   CitySentiment,
-  DeepSliderKey,
   ExplicitTargetKey,
   PreferenceProfile,
   QuickQuestionKey,
@@ -48,7 +45,6 @@ const MAX_CITY_CHOICES = 12;
 
 export function Interview({ bidPack, onComplete }: InterviewProps) {
   const ranges = useMemo(() => getBidPackRanges(bidPack), [bidPack]);
-  const showRegionQuestion = useMemo(() => hasMixedAsiaRegions(bidPack), [bidPack]);
   const topCities = useMemo(
     () =>
       rankLayoverCitiesByFrequency(bidPack)
@@ -76,20 +72,19 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
     Record<string, CitySentiment>
   >({});
 
-  const activeDeepSliders = useMemo(
+  const activeDeepSteps = useMemo(
     () =>
-      DEEP_SLIDERS.filter((s) => s.key !== "region" || showRegionQuestion).map((s) =>
-        s.key === "deadheadTolerance" ? deadheadQuestionFor(isCommuter) : s
+      DEEP_STEPS.map((s) =>
+        s.kind === "slider" && s.config.key === "deadheadTolerance"
+          ? { kind: "slider" as const, config: deadheadQuestionFor(isCommuter) }
+          : s
       ),
-    [showRegionQuestion, isCommuter]
+    [isCommuter]
   );
-  const activeTradeoffs = useMemo(
-    () => TRADEOFF_QUESTIONS.filter((t) => t.id !== "region-preference" || showRegionQuestion),
-    [showRegionQuestion]
-  );
+  const activeTradeoffs = TRADEOFF_QUESTIONS;
 
   const currentQuickStep = QUICK_STEPS[quickIndex];
-  const currentDeepSlider = activeDeepSliders[deepSliderIndex];
+  const currentDeepStep = activeDeepSteps[deepSliderIndex];
   const currentTarget = TARGET_SLIDERS[targetIndex];
   const currentTradeoff = activeTradeoffs[tradeoffIndex];
 
@@ -97,10 +92,10 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
     () =>
       1 + // commuter
       QUICK_STEPS.length +
-      activeDeepSliders.length +
+      activeDeepSteps.length +
       TARGET_SLIDERS.length +
       activeTradeoffs.length,
-    [activeDeepSliders.length, activeTradeoffs.length]
+    [activeDeepSteps.length, activeTradeoffs.length]
   );
   const stepsDone =
     phase === "commuter"
@@ -110,11 +105,11 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
         : phase === "deep-sliders"
           ? 1 + QUICK_STEPS.length + deepSliderIndex
           : phase === "deep-targets"
-            ? 1 + QUICK_STEPS.length + activeDeepSliders.length + targetIndex
+            ? 1 + QUICK_STEPS.length + activeDeepSteps.length + targetIndex
             : phase === "deep-tradeoffs"
               ? 1 +
                 QUICK_STEPS.length +
-                activeDeepSliders.length +
+                activeDeepSteps.length +
                 TARGET_SLIDERS.length +
                 tradeoffIndex
               : 1 + QUICK_STEPS.length;
@@ -150,7 +145,7 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
   }
 
   function goDeepSliderNext() {
-    if (deepSliderIndex < activeDeepSliders.length - 1) {
+    if (deepSliderIndex < activeDeepSteps.length - 1) {
       setDeepSliderIndex(deepSliderIndex + 1);
     } else {
       setTargetIndex(0);
@@ -171,7 +166,7 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
     if (targetIndex > 0) {
       setTargetIndex(targetIndex - 1);
     } else {
-      setDeepSliderIndex(activeDeepSliders.length - 1);
+      setDeepSliderIndex(activeDeepSteps.length - 1);
       setPhase("deep-sliders");
     }
   }
@@ -266,13 +261,26 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
 
         {phase === "deep-sliders" && (
           <div key={`deep-slider-${deepSliderIndex}`} className="animate-fade-in">
-            <SliderStep
-              config={currentDeepSlider}
-              value={weights[currentDeepSlider.key as DeepSliderKey]}
-              onChange={(v) =>
-                setWeights((w) => ({ ...w, [currentDeepSlider.key]: v }))
-              }
-            />
+            {currentDeepStep.kind === "slider" && (
+              <SliderStep
+                config={currentDeepStep.config}
+                value={weights[currentDeepStep.config.key]}
+                onChange={(v) =>
+                  setWeights((w) => ({ ...w, [currentDeepStep.config.key]: v }))
+                }
+              />
+            )}
+            {currentDeepStep.kind === "amenities" && (
+              <HotelAmenitiesStep
+                weights={weights}
+                onToggle={(key) =>
+                  setWeights((w) => ({
+                    ...w,
+                    [key]: w[key] > 0 ? 0 : HOTEL_AMENITY_WEIGHT,
+                  }))
+                }
+              />
+            )}
             <StepNav
               onBack={() => setPhase("deep-offer")}
               onNext={goDeepSliderNext}
@@ -333,8 +341,8 @@ function DeepOffer({
         Want to fine-tune further?
       </h2>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-        A few more questions &mdash; layover hotel amenities, exact credit and
-        trip-count targets you can pin down, and some quick &ldquo;would you
+        A few more questions &mdash; layover hotel amenities, an exact credit
+        target you can pin down, and some quick &ldquo;would you
         rather&rdquo; trade-offs &mdash; can sharpen your ranking well beyond
         what the quick round alone captures. Takes about two minutes.
       </p>

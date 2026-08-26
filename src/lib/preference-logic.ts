@@ -63,8 +63,8 @@ export function buildProfile(
     // Not gated on deepRoundCompleted: nights-home/departures targets and
     // city preferences are now collected in the quick round, so they must
     // survive a pilot skipping the optional deep round. Anything that's
-    // genuinely deep-only (creditHours/tripCount targets) simply stays
-    // unset in these params if the pilot never reached that phase.
+    // genuinely deep-only (the creditHours target) simply stays unset in
+    // these params if the pilot never reached that phase.
     explicitTargets,
     isCommuter,
     cityPreferences,

@@ -414,7 +414,6 @@ export default function Home() {
           {screen === "preferences" && (
             <PreferencesScreen
               hasBidPack={!!bidPack}
-              bidPack={bidPack}
               profile={profile}
               onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
               onStartInterview={handleStartInterview}
@@ -431,7 +430,6 @@ export default function Home() {
 
           {screen === "confirm-preferences" && pendingProfile && bidPack && (
             <ConfirmPreferencesScreen
-              bidPack={bidPack}
               profile={pendingProfile}
               onConfirm={handleConfirmPreferences}
               onRetakeInterview={handleStartInterview}
@@ -451,7 +449,6 @@ export default function Home() {
           {screen === "results" && (!profile || !bidPack) && (
             <PreferencesScreen
               hasBidPack={!!bidPack}
-              bidPack={bidPack}
               profile={profile}
               onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
               onStartInterview={handleStartInterview}

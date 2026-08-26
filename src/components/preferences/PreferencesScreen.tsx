@@ -2,17 +2,15 @@ import { Button } from "@/components/ui/Button";
 import {
   ALL_TARGET_CONFIGS,
   DEEP_SLIDERS,
+  HOTEL_AMENITIES,
   QUICK_QUESTIONS,
   deadheadQuestionFor,
   type SliderQuestionConfig,
 } from "@/lib/interview-config";
-import { hasMixedAsiaRegions } from "@/lib/scoring";
-import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
 interface PreferencesScreenProps {
   hasBidPack: boolean;
-  bidPack: BidPack | null;
   profile: PreferenceProfile | null;
   onGoToUpload: () => void;
   onStartInterview: () => void;
@@ -20,7 +18,6 @@ interface PreferencesScreenProps {
 
 export function PreferencesScreen({
   hasBidPack,
-  bidPack,
   profile,
   onGoToUpload,
   onStartInterview,
@@ -48,10 +45,10 @@ export function PreferencesScreen({
   }
 
   const completedDate = new Date(profile.completedAt);
-  const showRegion = bidPack ? hasMixedAsiaRegions(bidPack) : true;
-  const deepSliders = DEEP_SLIDERS.filter((s) => s.key !== "region" || showRegion).map((s) =>
+  const deepSliders = DEEP_SLIDERS.map((s) =>
     s.key === "deadheadTolerance" ? deadheadQuestionFor(profile.isCommuter) : s
   );
+  const selectedAmenities = HOTEL_AMENITIES.filter((a) => profile.weights[a.key] > 0);
   const lovedCities = Object.entries(profile.cityPreferences)
     .filter(([, sentiment]) => sentiment === "love")
     .map(([code]) => code);
@@ -97,13 +94,27 @@ export function PreferencesScreen({
           <WeightRow key={config.key} config={config} weight={profile.weights[config.key]} />
         ))}
         {deepSliders.map((config) => (
-          <WeightRow
-            key={config.key}
-            config={config}
-            weight={profile.weights[config.key as "deadheadTolerance" | "region"]}
-          />
+          <WeightRow key={config.key} config={config} weight={profile.weights[config.key]} />
         ))}
       </div>
+
+      {selectedAmenities.length > 0 && (
+        <div className="mt-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            Hotel amenities that matter to you
+          </h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {selectedAmenities.map((a) => (
+              <span
+                key={a.key}
+                className="rounded-full border border-brand/30 bg-brand-soft px-3 py-1 text-xs font-medium text-brand"
+              >
+                {a.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {Object.keys(profile.explicitTargets).length > 0 && (
         <div className="mt-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
