@@ -249,6 +249,8 @@ export interface TradeoffQuestionConfig {
   /** Dimension this trade-off nudges. */
   dimension: QuickQuestionKey | DeepSliderKey;
   prompt: string;
+  /** Optional pilot-voice context shown under the prompt — falls back to a generic line when omitted. */
+  helpText?: string;
   optionA: TradeoffOption;
   optionB: TradeoffOption;
   /**
@@ -265,7 +267,9 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
   {
     id: "trip-length-shape",
     dimension: "tripLength",
-    prompt: "Would you rather fly...",
+    prompt: "Same total credit, two different shapes — which trip would you rather fly?",
+    helpText:
+      "Same pay, same total time away from base, just packaged differently. This is the trip-length trade-off in its purest form.",
     optionA: {
       label: "One 5-day trip",
       description: "Fewer trips, longer stretches away from base.",
@@ -279,7 +283,9 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
   {
     id: "trip-count-vs-length",
     dimension: "tripCount",
-    prompt: "Would you rather fly...",
+    prompt: "One long trip, or several short ones?",
+    helpText:
+      "Same total time away either way — this is really about how much a separate commute in and out costs you, not trip length.",
     optionA: {
       label: "One long 9-day trip",
       description: "A single commute round-trip covers the whole stretch.",
@@ -293,7 +299,7 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
   {
     id: "international-vs-domestic",
     dimension: "international",
-    prompt: "Would you rather have...",
+    prompt: "Given a free choice for one layover, which would you actually pick?",
     optionA: {
       label: "An international layover",
       description: "A long overnight somewhere overseas.",
@@ -321,7 +327,7 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
   {
     id: "report-time-shape",
     dimension: "reportTime",
-    prompt: "Would you rather have...",
+    prompt: "Which report would you actually take?",
     optionA: {
       label: "An early-morning report",
       description: "Up before dawn, evenings free.",
@@ -335,14 +341,16 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
   {
     id: "credit-vs-downtime",
     dimension: "creditHours",
-    prompt: "Would you rather have...",
+    prompt: "On one specific duty day, would you rather have...",
+    helpText:
+      "The same trade-off as the pay-vs-lifestyle question earlier, just narrowed down to a single day instead of the whole month.",
     optionA: {
       label: "Extra credit hours",
-      description: "A busier duty day, more pay.",
+      description: "A busier day, more pay.",
     },
     optionB: {
       label: "Fewer duty hours",
-      description: "More downtime on the road.",
+      description: "A lighter day, more downtime on the road.",
     },
     positiveOption: "A",
   },
@@ -350,13 +358,15 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
     id: "days-off-vs-fuller-schedule",
     dimension: "daysOff",
     prompt: "Would you rather have...",
+    helpText:
+      "Same idea as the nights-home question earlier, posed as a direct trade-off against a fuller schedule.",
     optionA: {
-      label: "More days off",
-      description: "A lighter schedule, fewer total duty days this month.",
+      label: "More nights home",
+      description: "A lighter schedule — more nights actually home this month.",
     },
     optionB: {
       label: "A fuller schedule",
-      description: "Fewer days off, but more trips and more total pay.",
+      description: "Fewer nights home, but more trips and more total pay.",
     },
     positiveOption: "A",
   },
@@ -364,6 +374,8 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
     id: "deadhead-vs-longer-trip",
     dimension: "deadheadTolerance",
     prompt: "Would you rather have...",
+    helpText:
+      "A real scenario: a deadhead leg gets you home without flying it, but it's still time you're not being paid to fly. Which would you actually pick?",
     optionA: {
       label: "A deadhead leg home",
       description: "You ride along, no flying, gets you back sooner.",

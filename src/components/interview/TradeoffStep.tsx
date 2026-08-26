@@ -15,7 +15,8 @@ export function TradeoffStep({ config, value, onChange }: TradeoffStepProps) {
         {config.prompt}
       </h2>
       <p className="mt-1.5 text-sm text-ink-muted">
-        Pick whichever you&rsquo;d actually choose &mdash; there&rsquo;s no wrong answer.
+        {config.helpText ??
+          "Pick whichever you’d actually choose — there’s no wrong answer."}
       </p>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-2">
