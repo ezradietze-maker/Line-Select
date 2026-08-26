@@ -49,7 +49,8 @@ export function buildProfile(
   tradeoffAnswers: TradeoffAnswer[],
   explicitTargets: Partial<Record<ExplicitTargetKey, number>> = {},
   isCommuter: boolean | null = null,
-  cityPreferences: Record<string, CitySentiment> = {}
+  cityPreferences: Record<string, CitySentiment> = {},
+  hasCrashPad: boolean | null = null
 ): PreferenceProfile {
   const weights = deepRoundCompleted
     ? applyTradeoffs(sliderWeights, tradeoffAnswers)
@@ -59,9 +60,15 @@ export function buildProfile(
     weights,
     deepRoundCompleted,
     tradeoffAnswers,
-    explicitTargets: deepRoundCompleted ? explicitTargets : {},
+    // Not gated on deepRoundCompleted: nights-home/departures targets and
+    // city preferences are now collected in the quick round, so they must
+    // survive a pilot skipping the optional deep round. Anything that's
+    // genuinely deep-only (creditHours/tripCount targets) simply stays
+    // unset in these params if the pilot never reached that phase.
+    explicitTargets,
     isCommuter,
-    cityPreferences: deepRoundCompleted ? cityPreferences : {},
+    cityPreferences,
+    hasCrashPad,
     completedAt: new Date().toISOString(),
     implicitWeights: {},
     implicitConfidence: {},

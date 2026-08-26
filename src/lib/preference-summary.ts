@@ -1,4 +1,4 @@
-import { TARGET_SLIDERS } from "@/lib/interview-config";
+import { ALL_TARGET_CONFIGS } from "@/lib/interview-config";
 import type { ExplicitTargetKey, PreferenceWeights } from "@/types/preferences";
 
 export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negative: string }> = {
@@ -33,6 +33,10 @@ export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negati
   deadheadTolerance: {
     positive: "not worrying about deadhead legs",
     negative: "avoiding deadhead legs",
+  },
+  departures: {
+    positive: "keeping the number of separate departures close to what you pinned",
+    negative: "not worrying about the number of separate departures",
   },
   hotelFood: {
     positive: "having good food within walking distance of your layover hotel",
@@ -80,7 +84,7 @@ export function rankPreferences(
     const weight = weights[key];
     const explicitKey = key as ExplicitTargetKey;
     const explicitValue =
-      key === "daysOff" || key === "creditHours" || key === "tripCount"
+      key === "daysOff" || key === "creditHours" || key === "tripCount" || key === "departures"
         ? explicitTargets[explicitKey]
         : undefined;
     const hasExplicit = explicitValue !== undefined;
@@ -88,7 +92,7 @@ export function rankPreferences(
 
     let phrase: string;
     if (hasExplicit) {
-      const config = TARGET_SLIDERS.find((t) => t.key === explicitKey);
+      const config = ALL_TARGET_CONFIGS.find((t) => t.key === explicitKey);
       const unit = config
         ? explicitValue === 1
           ? config.unitSingular

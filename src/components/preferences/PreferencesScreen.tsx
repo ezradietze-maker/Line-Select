@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/Button";
 import {
+  ALL_TARGET_CONFIGS,
   DEEP_SLIDERS,
   QUICK_QUESTIONS,
-  TARGET_SLIDERS,
+  deadheadQuestionFor,
   type SliderQuestionConfig,
 } from "@/lib/interview-config";
 import { hasMixedAsiaRegions } from "@/lib/scoring";
@@ -48,7 +49,9 @@ export function PreferencesScreen({
 
   const completedDate = new Date(profile.completedAt);
   const showRegion = bidPack ? hasMixedAsiaRegions(bidPack) : true;
-  const deepSliders = DEEP_SLIDERS.filter((s) => s.key !== "region" || showRegion);
+  const deepSliders = DEEP_SLIDERS.filter((s) => s.key !== "region" || showRegion).map((s) =>
+    s.key === "deadheadTolerance" ? deadheadQuestionFor(profile.isCommuter) : s
+  );
   const lovedCities = Object.entries(profile.cityPreferences)
     .filter(([, sentiment]) => sentiment === "love")
     .map(([code]) => code);
@@ -79,6 +82,11 @@ export function PreferencesScreen({
                 {profile.isCommuter ? "Commuter" : "Local"}
               </span>
             )}
+            {profile.isCommuter === true && profile.hasCrashPad !== null && (
+              <span className="inline-flex items-center rounded-full border border-border-strong px-2 py-0.5 text-xs font-medium text-ink-faint">
+                {profile.hasCrashPad ? "Has a crash pad" : "No crash pad"}
+              </span>
+            )}
           </p>
         </div>
         <Button onClick={onStartInterview}>Retake the interview</Button>
@@ -97,13 +105,13 @@ export function PreferencesScreen({
         ))}
       </div>
 
-      {profile.deepRoundCompleted && Object.keys(profile.explicitTargets).length > 0 && (
+      {Object.keys(profile.explicitTargets).length > 0 && (
         <div className="mt-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
             Exact targets you pinned
           </h2>
           <div className="mt-3 space-y-2">
-            {TARGET_SLIDERS.filter((t) => profile.explicitTargets[t.key] !== undefined).map(
+            {ALL_TARGET_CONFIGS.filter((t) => profile.explicitTargets[t.key] !== undefined).map(
               (t) => (
                 <div key={t.key} className="flex items-center justify-between text-sm">
                   <span className="text-ink-muted">{t.question}</span>

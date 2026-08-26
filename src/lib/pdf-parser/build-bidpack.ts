@@ -18,6 +18,9 @@ export function pairingToTrip(pairing: ParsedPairing): Trip {
     creditHours: round2(pairing.creditHours),
     landings: pairing.landings,
     tafbHours: round2(pairing.tafbHours),
+    // Real from the first, always-successful parse pass — not gated by
+    // whether the rich minute-by-minute `schedule` self-verified.
+    departures: pairing.layoverDetails.length + 1,
     schedule: pairing.schedule,
   };
 }
@@ -44,6 +47,7 @@ export function buildEstimatedTrip(summary: ParsedLineSummary): Trip {
     creditHours: round2(summary.totalCreditHours),
     landings: summary.totalLandings,
     tafbHours: round2(summary.totalTafbHours),
+    departures: 1,
     schedule: [],
   };
 }
@@ -64,6 +68,7 @@ export function buildLine(
     totalCreditHours: round2(summary.totalCreditHours),
     totalTafbHours: round2(summary.totalTafbHours),
     totalLandings: summary.totalLandings,
+    totalDepartures: trips.reduce((s, t) => s + t.departures, 0),
     estimated: matchedPairings === null,
   };
 }

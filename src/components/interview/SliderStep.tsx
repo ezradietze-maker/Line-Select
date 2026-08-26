@@ -16,7 +16,7 @@ export function SliderStep({ config, value, onChange }: SliderStepProps) {
         {config.question}
       </h2>
       <p className="mt-1.5 text-sm text-ink-muted">
-        Slide toward either side, or leave it centered if it doesn&rsquo;t matter to you.
+        {config.helpText ?? "Slide toward either side, or leave it centered if it doesn’t matter to you."}
       </p>
       <div className="mt-10">
         <Slider

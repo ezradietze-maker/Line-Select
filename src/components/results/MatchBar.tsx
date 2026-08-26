@@ -10,6 +10,7 @@ const DIMENSION_LABELS: Record<DimensionScore["key"], string> = {
   reportTime: "Report time",
   creditHours: "Credit hours",
   deadheadTolerance: "Deadhead legs",
+  departures: "Departures",
   layoverQuality: "Layover quality",
 };
 

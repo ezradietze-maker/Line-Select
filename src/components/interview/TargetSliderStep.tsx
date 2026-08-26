@@ -44,7 +44,8 @@ export function TargetSliderStep({
           />
         ) : (
           <div className="py-2 text-center text-sm text-ink-faint">
-            No exact target set &mdash; your slider answer will be used instead.
+            {config.noTargetFallbackText ??
+              "No exact target set — your slider answer will be used instead."}
           </div>
         )}
       </div>

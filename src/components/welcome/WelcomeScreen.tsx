@@ -45,9 +45,10 @@ export function WelcomeScreen({ onStart }: { onStart: () => void }) {
       </h1>
       <p className="mt-4 max-w-lg text-base leading-relaxed text-ink-muted">
         Upload your bid pack PDF, answer a few quick questions about what you
-        care about &mdash; days off, trip length, international flying, report
-        times, credit &mdash; and Line Select ranks every line in it against
-        that, so you don&rsquo;t have to compare dozens of lines by hand.
+        care about &mdash; nights home, trip length and departures, layover
+        cities, report times, pay versus lifestyle &mdash; and Line Select
+        ranks every line in it against that, so you don&rsquo;t have to
+        compare dozens of lines by hand.
       </p>
       <div className="mt-8">
         <Button onClick={onStart} className="px-8 py-3 text-base shadow-elevated">

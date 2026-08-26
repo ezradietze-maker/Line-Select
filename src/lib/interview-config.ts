@@ -7,6 +7,8 @@ import type {
 export interface SliderQuestionConfig {
   key: QuickQuestionKey | DeepSliderKey;
   question: string;
+  /** Optional richer, pilot-voice explanation shown under the question — falls back to a generic line when omitted. */
+  helpText?: string;
   lowLabel: string;
   highLabel: string;
   centerLabel: string;
@@ -14,60 +16,75 @@ export interface SliderQuestionConfig {
 
 export const QUICK_QUESTIONS: SliderQuestionConfig[] = [
   {
-    key: "daysOff",
-    question: "How much do you value days off?",
-    lowLabel: "Don't mind fewer days off",
-    highLabel: "Maximize days off",
-    centerLabel: "No strong preference",
-  },
-  {
     key: "tripLength",
     question: "Short trips or long trips?",
+    helpText:
+      "This is about how many days a single trip runs, report to release. Right after this, there's a separate question about how many total departures you want in the month — those aren't the same thing.",
     lowLabel: "Prefer short trips",
     highLabel: "Prefer long trips",
     centerLabel: "No strong preference",
   },
   {
     key: "tripCount",
-    question: "How much do lots of separate trips bother you?",
-    lowLabel: "Don't mind lots of trips",
-    highLabel: "Prefer fewer, longer trips",
-    centerLabel: "No strong preference",
-  },
-  {
-    key: "international",
-    question: "Domestic or international flying?",
-    lowLabel: "Prefer domestic only",
-    highLabel: "Prefer international",
+    question: "How much does having a lot of separate trips wear on you?",
+    helpText:
+      "Different from the departures question — this is about how many times you commute in and out for the month, not report times inside a single trip. Same total credit and TAFB, but three separate 3-day trips means three commutes instead of one.",
+    lowLabel: "Don't mind lots of separate trips",
+    highLabel: "Prefer fewer, longer trips — fewer commutes",
     centerLabel: "No strong preference",
   },
   {
     key: "reportTime",
-    question: "Early or late report times?",
+    question: "Early report or late report?",
+    helpText:
+      "An early report gets you to the airport before sunrise, but the rest of the day is yours once you're done. A late report lets you sleep in and ease into it, but you're flying well into the night.",
     lowLabel: "Prefer early reports",
     highLabel: "Prefer late/evening reports",
     centerLabel: "No strong preference",
   },
   {
     key: "creditHours",
-    question: "Lean line or max credit?",
-    lowLabel: "Prefer a lean line",
-    highLabel: "Maximize credit hours",
-    centerLabel: "No strong preference",
+    question: "Way more concerned with pay, or way more concerned with lifestyle?",
+    helpText:
+      "Not about total hours flown — a maxed-out line is fine if it's still enjoyable to fly. This is about what you're actually optimizing for day to day.",
+    lowLabel: "Lifestyle — a schedule that's genuinely enjoyable to live with",
+    highLabel: "Pay — maximize credit hours, however busy that makes it",
+    centerLabel: "Both matter about equally",
   },
 ];
 
+const DEADHEAD_LOCAL: SliderQuestionConfig = {
+  key: "deadheadTolerance",
+  question: "How much does deadheading bother you?",
+  helpText:
+    "A deadhead leg is dead time — you're riding along, not flying it and not getting paid to fly it. Based locally, that's mostly just time you'd rather spend at home or actually at the controls.",
+  lowLabel: "Avoid deadhead legs",
+  highLabel: "Doesn't matter to me",
+  centerLabel: "No strong preference",
+};
+
+const DEADHEAD_COMMUTER: SliderQuestionConfig = {
+  key: "deadheadTolerance",
+  question: "Where do you land on deadheads, given you commute?",
+  helpText:
+    "A deadhead can actually work in your favor as a commuter — it can position you without having to fly (or pay for) getting there yourself, and plenty of commuters specifically like a deadhead on both ends of a trip. Others would still rather fly every leg themselves. Where do you land?",
+  lowLabel: "Avoid deadhead legs",
+  highLabel: "Like having them — makes commuting easier",
+  centerLabel: "Depends on the trip",
+};
+
+/** Same low=avoid/high=doesn't-mind-or-likes-it ordering in both variants, so the underlying weight sign stays consistent regardless of which wording was shown. */
+export function deadheadQuestionFor(isCommuter: boolean | null): SliderQuestionConfig {
+  return isCommuter ? DEADHEAD_COMMUTER : DEADHEAD_LOCAL;
+}
+
 export const DEEP_SLIDERS: SliderQuestionConfig[] = [
-  {
-    key: "deadheadTolerance",
-    question: "How much does deadheading bother you?",
-    lowLabel: "Avoid deadhead legs",
-    highLabel: "Doesn't matter to me",
-    centerLabel: "No strong preference",
-  },
+  DEADHEAD_LOCAL,
   {
     key: "region",
     question: "Northeast Asia or Southeast Asia layovers?",
+    helpText:
+      "Northeast Asia (HKG, ICN, KIX, NRT) means a shorter flight over and a faster recovery from the time change. Southeast Asia (SIN, BKK, CGK, KUL) means a longer haul out, but a warmer, more tropical layover once you land.",
     lowLabel: "Prefer Northeast Asia (HKG, ICN, KIX, NRT)",
     highLabel: "Prefer Southeast Asia (SIN, BKK, CGK, KUL)",
     centerLabel: "No strong preference",
@@ -75,6 +92,8 @@ export const DEEP_SLIDERS: SliderQuestionConfig[] = [
   {
     key: "hotelFood",
     question: "How much does walkable food access matter at your layover hotel?",
+    helpText:
+      "Some layovers put you in walking distance of real food; others leave you with room service or a rental car. Worth knowing which kind of layover you're signing up for.",
     lowLabel: "Doesn't matter — room service or a car is fine",
     highLabel: "Matters a lot — I want to walk to a good meal or coffee",
     centerLabel: "Somewhat matters",
@@ -82,6 +101,8 @@ export const DEEP_SLIDERS: SliderQuestionConfig[] = [
   {
     key: "hotelGym",
     question: "How much does gym/fitness access matter at your layover hotel?",
+    helpText:
+      "A layover hotel with a gym (or one nearby) makes it a lot easier to keep training on the road instead of losing the routine every trip.",
     lowLabel: "Doesn't matter — I'll skip it or work around it",
     highLabel: "Matters a lot — I want to keep training on the road",
     centerLabel: "Somewhat matters",
@@ -89,6 +110,8 @@ export const DEEP_SLIDERS: SliderQuestionConfig[] = [
   {
     key: "hotelGrocery",
     question: "How much does nearby grocery/pharmacy access matter?",
+    helpText:
+      "A grocery store or pharmacy within walking distance means you can restock snacks, meds, or anything you forgot — without needing a car or a long walk.",
     lowLabel: "Doesn't matter",
     highLabel: "Matters a lot — I like picking up snacks or essentials",
     centerLabel: "Somewhat matters",
@@ -96,6 +119,8 @@ export const DEEP_SLIDERS: SliderQuestionConfig[] = [
   {
     key: "hotelQuiet",
     question: "How much does a quiet, low-noise room matter for sleeping on the road?",
+    helpText:
+      "Room noise is one of the biggest things reviews call out about a layover hotel — thin walls, street noise, or a bar right below your room can wreck a rest period you were counting on.",
     lowLabel: "Doesn't matter much — I can sleep through anything",
     highLabel: "Matters a lot — noise wrecks my rest",
     centerLabel: "Somewhat matters",
@@ -103,6 +128,8 @@ export const DEEP_SLIDERS: SliderQuestionConfig[] = [
   {
     key: "hotelQuality",
     question: "How much does overall hotel quality — cleanliness, service, comfort — matter to you?",
+    helpText:
+      "This folds together cleanliness, service, and overall comfort — the stuff that turns a fine layover into a rough one, separate from food, gym, or noise specifically.",
     lowLabel: "Doesn't matter much either way",
     highLabel: "Matters a lot — a rough hotel ruins the trip",
     centerLabel: "Somewhat matters",
@@ -118,6 +145,12 @@ export interface TargetSliderQuestionConfig {
   /** Formats the raw value for display, e.g. "68:00" for credit hours. */
   formatValue: (value: number) => string;
   step: number;
+  /**
+   * Overrides the generic "your slider answer will be used instead" text
+   * shown when this target is skipped — needed for a dimension with no
+   * bipolar slider counterpart (nights home, departures).
+   */
+  noTargetFallbackText?: string;
 }
 
 function formatHoursValue(hours: number): string {
@@ -126,17 +159,36 @@ function formatHoursValue(hours: number): string {
   return `${h}:${m.toString().padStart(2, "0")}`;
 }
 
+const NO_SLIDER_FALLBACK_TEXT = "No exact target set — this won't be weighted specifically in your ranking.";
+
+/** Asked in the quick round, combined with a crash-pad toggle for commuters — see `QUICK_STEPS`. */
+export const NIGHTS_HOME_CONFIG: TargetSliderQuestionConfig = {
+  key: "daysOff",
+  question: "What does your ideal bid month look like?",
+  helpText:
+    "How many nights do you want to actually sleep in your own bed this bid period? Drag to the number that feels right — bounded to what's actually available in this bid pack.",
+  unitSingular: "night home",
+  unitPlural: "nights home",
+  formatValue: (v) => String(Math.round(v)),
+  step: 1,
+  noTargetFallbackText: NO_SLIDER_FALLBACK_TEXT,
+};
+
+/** Asked in the quick round, right after trip length — see `QUICK_STEPS`. */
+export const DEPARTURES_CONFIG: TargetSliderQuestionConfig = {
+  key: "departures",
+  question: "How many separate departures do you want in a month?",
+  helpText:
+    "A handful of short trips bunched together can still add up to a lot of separate report times, even if it only reads as \"a couple trips.\" This is about how many times you actually leave home, not how many trips it gets counted as.",
+  unitSingular: "departure",
+  unitPlural: "departures",
+  formatValue: (v) => String(Math.round(v)),
+  step: 1,
+  noTargetFallbackText: NO_SLIDER_FALLBACK_TEXT,
+};
+
+/** Deep-round-only exact targets — nights home and departures now live in the quick round instead (`NIGHTS_HOME_CONFIG`, `DEPARTURES_CONFIG`). */
 export const TARGET_SLIDERS: TargetSliderQuestionConfig[] = [
-  {
-    key: "daysOff",
-    question: "What's your ideal number of days off?",
-    helpText:
-      "Drag to the exact number you'd want this bid period, based on the lines actually available.",
-    unitSingular: "day off",
-    unitPlural: "days off",
-    formatValue: (v) => String(Math.round(v)),
-    step: 1,
-  },
   {
     key: "creditHours",
     question: "What's your ideal credit for the month?",
@@ -156,6 +208,35 @@ export const TARGET_SLIDERS: TargetSliderQuestionConfig[] = [
     formatValue: (v) => String(Math.round(v)),
     step: 1,
   },
+];
+
+/** Every exact-target config, quick-round and deep-round alike — for screens that summarize whatever the pilot pinned, regardless of which round asked it. */
+export const ALL_TARGET_CONFIGS: TargetSliderQuestionConfig[] = [
+  NIGHTS_HOME_CONFIG,
+  DEPARTURES_CONFIG,
+  ...TARGET_SLIDERS,
+];
+
+/** One quick-round step can be a plain bipolar slider, an exact-number target (optionally paired with the crash-pad toggle), or the city picker — heterogeneous by design, since these are the questions the user asked to make concrete rather than abstract dial positions. */
+export type QuickStepConfig =
+  | { kind: "slider"; config: SliderQuestionConfig }
+  | { kind: "target"; config: TargetSliderQuestionConfig; showCrashPad?: boolean }
+  | { kind: "cities" };
+
+function findQuickQuestion(key: QuickQuestionKey): SliderQuestionConfig {
+  const found = QUICK_QUESTIONS.find((q) => q.key === key);
+  if (!found) throw new Error(`Missing quick question config for "${key}"`);
+  return found;
+}
+
+export const QUICK_STEPS: QuickStepConfig[] = [
+  { kind: "target", config: NIGHTS_HOME_CONFIG, showCrashPad: true },
+  { kind: "slider", config: findQuickQuestion("tripLength") },
+  { kind: "target", config: DEPARTURES_CONFIG },
+  { kind: "slider", config: findQuickQuestion("tripCount") },
+  { kind: "cities" },
+  { kind: "slider", config: findQuickQuestion("reportTime") },
+  { kind: "slider", config: findQuickQuestion("creditHours") },
 ];
 
 export interface TradeoffOption {

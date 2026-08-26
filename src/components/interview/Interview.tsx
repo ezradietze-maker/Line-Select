@@ -10,9 +10,10 @@ import { TargetSliderStep } from "@/components/interview/TargetSliderStep";
 import { TradeoffStep } from "@/components/interview/TradeoffStep";
 import {
   DEEP_SLIDERS,
-  QUICK_QUESTIONS,
+  QUICK_STEPS,
   TARGET_SLIDERS,
   TRADEOFF_QUESTIONS,
+  deadheadQuestionFor,
 } from "@/lib/interview-config";
 import { buildProfile, cycleCitySentiment, emptyWeights } from "@/lib/preference-logic";
 import {
@@ -36,7 +37,6 @@ type Phase =
   | "deep-offer"
   | "deep-sliders"
   | "deep-targets"
-  | "deep-cities"
   | "deep-tradeoffs";
 
 interface InterviewProps {
@@ -57,15 +57,6 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
     [bidPack]
   );
 
-  const activeDeepSliders = useMemo(
-    () => DEEP_SLIDERS.filter((s) => s.key !== "region" || showRegionQuestion),
-    [showRegionQuestion]
-  );
-  const activeTradeoffs = useMemo(
-    () => TRADEOFF_QUESTIONS.filter((t) => t.id !== "region-preference" || showRegionQuestion),
-    [showRegionQuestion]
-  );
-
   const [phase, setPhase] = useState<Phase>("commuter");
   const [quickIndex, setQuickIndex] = useState(0);
   const [deepSliderIndex, setDeepSliderIndex] = useState(0);
@@ -73,6 +64,7 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
   const [tradeoffIndex, setTradeoffIndex] = useState(0);
 
   const [isCommuter, setIsCommuter] = useState<boolean | null>(null);
+  const [hasCrashPad, setHasCrashPad] = useState<boolean | null>(null);
   const [weights, setWeights] = useState(emptyWeights());
   const [tradeoffAnswers, setTradeoffAnswers] = useState<
     Record<string, number>
@@ -84,7 +76,19 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
     Record<string, CitySentiment>
   >({});
 
-  const currentQuick = QUICK_QUESTIONS[quickIndex];
+  const activeDeepSliders = useMemo(
+    () =>
+      DEEP_SLIDERS.filter((s) => s.key !== "region" || showRegionQuestion).map((s) =>
+        s.key === "deadheadTolerance" ? deadheadQuestionFor(isCommuter) : s
+      ),
+    [showRegionQuestion, isCommuter]
+  );
+  const activeTradeoffs = useMemo(
+    () => TRADEOFF_QUESTIONS.filter((t) => t.id !== "region-preference" || showRegionQuestion),
+    [showRegionQuestion]
+  );
+
+  const currentQuickStep = QUICK_STEPS[quickIndex];
   const currentDeepSlider = activeDeepSliders[deepSliderIndex];
   const currentTarget = TARGET_SLIDERS[targetIndex];
   const currentTradeoff = activeTradeoffs[tradeoffIndex];
@@ -92,10 +96,9 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
   const totalSteps = useMemo(
     () =>
       1 + // commuter
-      QUICK_QUESTIONS.length +
+      QUICK_STEPS.length +
       activeDeepSliders.length +
       TARGET_SLIDERS.length +
-      1 + // city preferences
       activeTradeoffs.length,
     [activeDeepSliders.length, activeTradeoffs.length]
   );
@@ -105,19 +108,16 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
       : phase === "quick"
         ? 1 + quickIndex
         : phase === "deep-sliders"
-          ? 1 + QUICK_QUESTIONS.length + deepSliderIndex
+          ? 1 + QUICK_STEPS.length + deepSliderIndex
           : phase === "deep-targets"
-            ? 1 + QUICK_QUESTIONS.length + activeDeepSliders.length + targetIndex
-            : phase === "deep-cities"
-              ? 1 + QUICK_QUESTIONS.length + activeDeepSliders.length + TARGET_SLIDERS.length
-              : phase === "deep-tradeoffs"
-                ? 1 +
-                  QUICK_QUESTIONS.length +
-                  activeDeepSliders.length +
-                  TARGET_SLIDERS.length +
-                  1 +
-                  tradeoffIndex
-                : 1 + QUICK_QUESTIONS.length;
+            ? 1 + QUICK_STEPS.length + activeDeepSliders.length + targetIndex
+            : phase === "deep-tradeoffs"
+              ? 1 +
+                QUICK_STEPS.length +
+                activeDeepSliders.length +
+                TARGET_SLIDERS.length +
+                tradeoffIndex
+              : 1 + QUICK_STEPS.length;
 
   function finish(deepRoundCompleted: boolean) {
     const answers: TradeoffAnswer[] = Object.entries(tradeoffAnswers).map(
@@ -130,13 +130,14 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
         answers,
         explicitTargets,
         isCommuter,
-        cityPreferences
+        cityPreferences,
+        hasCrashPad
       )
     );
   }
 
   function goQuickNext() {
-    if (quickIndex < QUICK_QUESTIONS.length - 1) {
+    if (quickIndex < QUICK_STEPS.length - 1) {
       setQuickIndex(quickIndex + 1);
     } else {
       setPhase("deep-offer");
@@ -161,7 +162,8 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
     if (targetIndex < TARGET_SLIDERS.length - 1) {
       setTargetIndex(targetIndex + 1);
     } else {
-      setPhase("deep-cities");
+      setTradeoffIndex(0);
+      setPhase("deep-tradeoffs");
     }
   }
 
@@ -186,7 +188,8 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
     if (tradeoffIndex > 0) {
       setTradeoffIndex(tradeoffIndex - 1);
     } else {
-      setPhase("deep-cities");
+      setTargetIndex(TARGET_SLIDERS.length - 1);
+      setPhase("deep-targets");
     }
   }
 
@@ -209,18 +212,44 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
 
         {phase === "quick" && (
           <div key={`quick-${quickIndex}`} className="animate-fade-in">
-            <SliderStep
-              config={currentQuick}
-              value={weights[currentQuick.key as QuickQuestionKey]}
-              onChange={(v) =>
-                setWeights((w) => ({ ...w, [currentQuick.key]: v }))
-              }
-            />
+            {currentQuickStep.kind === "slider" && (
+              <SliderStep
+                config={currentQuickStep.config}
+                value={weights[currentQuickStep.config.key as QuickQuestionKey]}
+                onChange={(v) =>
+                  setWeights((w) => ({ ...w, [currentQuickStep.config.key]: v }))
+                }
+              />
+            )}
+            {currentQuickStep.kind === "target" && (
+              <div>
+                <TargetSliderStep
+                  config={currentQuickStep.config}
+                  range={ranges[currentQuickStep.config.key]}
+                  value={explicitTargets[currentQuickStep.config.key]}
+                  onChange={(v) =>
+                    setExplicitTargets((t) => ({ ...t, [currentQuickStep.config.key]: v }))
+                  }
+                />
+                {currentQuickStep.showCrashPad && isCommuter === true && (
+                  <CrashPadToggle value={hasCrashPad} onChange={setHasCrashPad} />
+                )}
+              </div>
+            )}
+            {currentQuickStep.kind === "cities" && (
+              <CityPreferenceStep
+                cities={topCities}
+                preferences={cityPreferences}
+                onToggleCity={(code) =>
+                  setCityPreferences((prev) => cycleCitySentiment(prev, code))
+                }
+              />
+            )}
             <StepNav
               onBack={goQuickBack}
               onNext={goQuickNext}
               nextLabel={
-                quickIndex === QUICK_QUESTIONS.length - 1 ? "Continue" : "Next"
+                quickIndex === QUICK_STEPS.length - 1 ? "Continue" : "Next"
               }
             />
           </div>
@@ -266,29 +295,6 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
           </div>
         )}
 
-        {phase === "deep-cities" && (
-          <div className="animate-fade-in">
-            <CityPreferenceStep
-              cities={topCities}
-              preferences={cityPreferences}
-              onToggleCity={(code) =>
-                setCityPreferences((prev) => cycleCitySentiment(prev, code))
-              }
-            />
-            <StepNav
-              onBack={() => {
-                setTargetIndex(TARGET_SLIDERS.length - 1);
-                setPhase("deep-targets");
-              }}
-              onNext={() => {
-                setTradeoffIndex(0);
-                setPhase("deep-tradeoffs");
-              }}
-              nextLabel="Next"
-            />
-          </div>
-        )}
-
         {phase === "deep-tradeoffs" && (
           <div key={`tradeoff-${tradeoffIndex}`} className="animate-fade-in">
             <TradeoffStep
@@ -327,10 +333,10 @@ function DeepOffer({
         Want to fine-tune further?
       </h2>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-        A few more questions &mdash; extra sliders, exact targets you can pin
-        down, cities you love or want to avoid, and some quick &ldquo;would
-        you rather&rdquo; trade-offs &mdash; can sharpen your ranking well
-        beyond what the quick round alone captures. Takes about two minutes.
+        A few more questions &mdash; layover hotel amenities, exact credit and
+        trip-count targets you can pin down, and some quick &ldquo;would you
+        rather&rdquo; trade-offs &mdash; can sharpen your ranking well beyond
+        what the quick round alone captures. Takes about two minutes.
       </p>
       <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row">
         <Button variant="secondary" onClick={onSkip} className="sm:flex-1">
@@ -339,6 +345,50 @@ function DeepOffer({
         <Button onClick={onContinue} className="sm:flex-1">
           Continue fine-tuning
         </Button>
+      </div>
+    </div>
+  );
+}
+
+function CrashPadToggle({
+  value,
+  onChange,
+}: {
+  value: boolean | null;
+  onChange: (value: boolean | null) => void;
+}) {
+  return (
+    <div className="mt-6 rounded-lg border border-border bg-canvas p-4">
+      <div className="text-sm font-medium text-ink">Got a crash pad in domicile?</div>
+      <p className="mt-1 text-xs text-ink-muted">
+        Worth factoring in &mdash; without a place to stage between duty days, an
+        extra separate trip costs you more than it would otherwise.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          aria-pressed={value === true}
+          onClick={() => onChange(true)}
+          className={`rounded-full border-2 px-3.5 py-1.5 text-sm font-medium transition-all ${
+            value === true
+              ? "border-brand bg-brand-soft text-brand"
+              : "border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink"
+          }`}
+        >
+          Yes, I&rsquo;ve got a place
+        </button>
+        <button
+          type="button"
+          aria-pressed={value === false}
+          onClick={() => onChange(false)}
+          className={`rounded-full border-2 px-3.5 py-1.5 text-sm font-medium transition-all ${
+            value === false
+              ? "border-brand bg-brand-soft text-brand"
+              : "border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink"
+          }`}
+        >
+          No crash pad
+        </button>
       </div>
     </div>
   );

@@ -19,8 +19,14 @@ export interface PreferenceWeights {
   reportTime: number;
   /** -100 = prefer a lean/minimum line, +100 = prefer max credit hours. */
   creditHours: number;
-  /** -100 = avoid deadheading, +100 = deadheading doesn't matter. */
+  /** -100 = avoid deadheading, +100 = deadheading doesn't matter (for a commuter, the high end instead reads as "like having them"). */
   deadheadTolerance: number;
+  /**
+   * Vestigial — never moved by a bipolar slider (there's no "fewer vs. more
+   * departures" spectrum, just a number the pilot pins). Importance for this
+   * dimension comes entirely from `explicitTargets.departures` being set.
+   */
+  departures: number;
   /**
    * The five layover-hotel dimensions below are all one-directional despite
    * the shared -100..100 scale: only magnitude is used (0 = doesn't matter,
@@ -48,6 +54,7 @@ export const DEFAULT_WEIGHTS: PreferenceWeights = {
   reportTime: 0,
   creditHours: 0,
   deadheadTolerance: 0,
+  departures: 0,
   hotelFood: 0,
   hotelGym: 0,
   hotelGrocery: 0,
@@ -72,8 +79,8 @@ export type DeepSliderKey =
   | "hotelQuiet"
   | "hotelQuality";
 
-/** Dimensions a pilot can pin to an exact stated value in the deep round. */
-export type ExplicitTargetKey = "daysOff" | "creditHours" | "tripCount";
+/** Dimensions a pilot can pin to an exact stated value. */
+export type ExplicitTargetKey = "daysOff" | "creditHours" | "tripCount" | "departures";
 
 /** A single "would you rather" trade-off answer, -1..1. */
 export interface TradeoffAnswer {
@@ -103,6 +110,14 @@ export interface PreferenceProfile {
    * if they left those sliders near neutral. `null` means not asked/skipped.
    */
   isCommuter: boolean | null;
+  /**
+   * Whether the pilot has a crash pad in domicile. Only meaningful (and only
+   * asked) for a commuter — a locally based pilot doesn't need one. When a
+   * commuter has no crash pad, an extra separate trip is a bigger real cost
+   * (nowhere to stage between duty days), so this raises tripCount's
+   * effective importance floor further. `null` means not asked/skipped.
+   */
+  hasCrashPad: boolean | null;
   /**
    * Specific layover cities the pilot flagged, keyed by IATA-style code —
    * built from the actual cities present in their uploaded bid pack, not a

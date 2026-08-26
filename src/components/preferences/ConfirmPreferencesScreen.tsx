@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Slider } from "@/components/ui/Slider";
-import { DEEP_SLIDERS, QUICK_QUESTIONS, TARGET_SLIDERS } from "@/lib/interview-config";
+import {
+  ALL_TARGET_CONFIGS,
+  DEEP_SLIDERS,
+  QUICK_QUESTIONS,
+  deadheadQuestionFor,
+} from "@/lib/interview-config";
 import { summarizePreferencesSentence } from "@/lib/preference-summary";
 import { hasMixedAsiaRegions } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
@@ -34,11 +39,13 @@ export function ConfirmPreferencesScreen({
   const showRegion = hasMixedAsiaRegions(bidPack);
   const sliderConfigs = [
     ...QUICK_QUESTIONS,
-    ...DEEP_SLIDERS.filter((s) => s.key !== "region" || showRegion),
+    ...DEEP_SLIDERS.filter((s) => s.key !== "region" || showRegion).map((s) =>
+      s.key === "deadheadTolerance" ? deadheadQuestionFor(profile.isCommuter) : s
+    ),
   ];
 
   const sentence = summarizePreferencesSentence(weights, profile.explicitTargets);
-  const pinnedTargets = TARGET_SLIDERS.filter(
+  const pinnedTargets = ALL_TARGET_CONFIGS.filter(
     (t) => profile.explicitTargets[t.key] !== undefined
   );
   const lovedCities = Object.entries(profile.cityPreferences)
@@ -57,6 +64,11 @@ export function ConfirmPreferencesScreen({
         {profile.isCommuter !== null && (
           <span className="rounded-full bg-brand-soft px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-brand">
             {profile.isCommuter ? "Commuter" : "Local"}
+          </span>
+        )}
+        {profile.isCommuter === true && profile.hasCrashPad !== null && (
+          <span className="rounded-full border border-border-strong px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+            {profile.hasCrashPad ? "Has a crash pad" : "No crash pad"}
           </span>
         )}
       </div>
@@ -92,7 +104,7 @@ export function ConfirmPreferencesScreen({
             Exact targets you pinned
           </h2>
           <p className="mt-1 text-xs text-ink-faint">
-            Set during the deeper interview round &mdash; redo the interview to change these.
+            Exact numbers you pinned &mdash; redo the interview to change these.
           </p>
           <div className="mt-3 space-y-2">
             {pinnedTargets.map((t) => (

@@ -42,6 +42,7 @@ export type DimensionKey =
   | "reportTime"
   | "creditHours"
   | "deadheadTolerance"
+  | "departures"
   | "layoverQuality";
 
 /** Dimensions driven by a -100..100 slider weight (everything except cityPreference, which is driven by a set of flagged cities instead). */
@@ -92,6 +93,7 @@ const UNVERIFIED_WHEN_ESTIMATED: DimensionKey[] = [
   "cityPreference",
   "reportTime",
   "deadheadTolerance",
+  "departures",
   "layoverQuality",
 ];
 
@@ -105,6 +107,8 @@ interface LineMetrics {
   reportLean: number;
   creditHours: number;
   deadheadPerTrip: number;
+  /** Line-level total, not averaged — mirrors `creditHours` below. */
+  totalDepartures: number;
 }
 
 function computeRawMetrics(line: Line): LineMetrics {
@@ -139,6 +143,7 @@ function computeRawMetrics(line: Line): LineMetrics {
     reportLean,
     creditHours: line.totalCreditHours,
     deadheadPerTrip,
+    totalDepartures: line.totalDepartures,
   };
 }
 
@@ -321,20 +326,28 @@ function weightToTarget(weight: number): number {
  * A pilot who typed in an exact target (e.g. "16 days off") clearly cares
  * about that dimension even if they left the quick-round slider centered,
  * so an explicit target guarantees at least moderate importance. Commuting
- * does the same for reportTime and tripCount specifically — an early/late
- * report or an extra trip costs a commuter a hotel night or a missed flight
- * home, whether or not they thought to weight it strongly themselves.
+ * does the same for reportTime, tripCount, and deadheadTolerance
+ * specifically — an early/late report or an extra trip costs a commuter a
+ * hotel night or a missed flight home, and a deadhead is a real, higher-
+ * stakes call for them either way (it can save a commute or just be dead
+ * time), whether or not they thought to weight it strongly themselves. A
+ * commuter with no crash pad in domicile feels an extra trip even more, so
+ * that combination raises tripCount's floor further still.
  */
 function weightToImportance(
   key: WeightedDimensionKey,
   weight: number,
   hasExplicitTarget: boolean,
-  isCommuter: boolean | null
+  isCommuter: boolean | null,
+  hasCrashPad: boolean | null
 ): number {
   const base = Math.min(1, Math.abs(weight) / 100);
   let importance = hasExplicitTarget ? Math.max(base, 0.5) : base;
-  if (isCommuter && (key === "reportTime" || key === "tripCount")) {
+  if (isCommuter && (key === "reportTime" || key === "tripCount" || key === "deadheadTolerance")) {
     importance = Math.max(importance, 0.35);
+  }
+  if (isCommuter && hasCrashPad === false && key === "tripCount") {
+    importance = Math.max(importance, 0.5);
   }
   return importance;
 }
@@ -370,6 +383,8 @@ function hitPhrase(key: DimensionKey, weight: number): string {
       return weight > 0 ? "high credit hours" : "a lean line";
     case "deadheadTolerance":
       return weight > 0 ? "deadhead legs mixed in, as expected" : "minimal deadheading";
+    case "departures":
+      return "close to the number of separate departures you asked for";
     case "layoverQuality":
       return "well-reviewed layover hotels near the things you said matter to you";
   }
@@ -422,6 +437,8 @@ function missPhrase(
     case "deadheadTolerance":
       if (weight < 0 && !below) return "more deadheading than you'd prefer";
       return null;
+    case "departures":
+      return below ? "fewer departures than you pinned" : "more departures than you pinned";
     case "layoverQuality":
       return value < 0.35 ? "layover hotels that fall short on what you flagged as important" : null;
   }
@@ -477,21 +494,24 @@ export interface BidPackRanges {
   daysOff: readonly [number, number];
   creditHours: readonly [number, number];
   tripCount: readonly [number, number];
+  departures: readonly [number, number];
 }
 
 /**
- * Real min/max span of daysOff, creditHours, and tripCount across a bid
- * pack's lines, used to bound the deep round's "type in your ideal number"
- * sliders in actual units instead of an abstract -100..100 scale.
+ * Real min/max span of daysOff, creditHours, tripCount, and departures
+ * across a bid pack's lines, used to bound "type in your ideal number"
+ * inputs in actual units instead of an abstract -100..100 scale.
  */
 export function getBidPackRanges(bidPack: BidPack): BidPackRanges {
   const daysOffValues = bidPack.lines.map((l) => l.daysOff);
   const creditValues = bidPack.lines.map((l) => l.totalCreditHours);
   const tripCountValues = bidPack.lines.map((l) => l.trips.length);
+  const departuresValues = bidPack.lines.map((l) => l.totalDepartures);
   return {
     daysOff: [Math.min(...daysOffValues), Math.max(...daysOffValues)],
     creditHours: [Math.min(...creditValues), Math.max(...creditValues)],
     tripCount: [Math.min(...tripCountValues), Math.max(...tripCountValues)],
+    departures: [Math.min(...departuresValues), Math.max(...departuresValues)],
   };
 }
 
@@ -529,7 +549,7 @@ export function scoreBidPack(
   profile: PreferenceProfile,
   hotelQualityData: HotelQualityData = {}
 ): LineScore[] {
-  const { weights, explicitTargets, cityPreferences, isCommuter } = profile;
+  const { weights, explicitTargets, cityPreferences, isCommuter, hasCrashPad } = profile;
   const rawMetrics = bidPack.lines.map(computeRawMetrics);
   const cityScores = bidPack.lines.map((l) => computeCityScore(l, cityPreferences));
   const hotelSubscores = computeHotelSubscores(bidPack, hotelQualityData);
@@ -552,6 +572,7 @@ export function scoreBidPack(
     ] as const,
     cityScore: [Math.min(...cityScores), Math.max(...cityScores)] as const,
     layoverQuality: [Math.min(...layoverQualityScores), Math.max(...layoverQualityScores)] as const,
+    departures: bidPackRanges.departures,
   };
 
   return bidPack.lines.map((line, i) => {
@@ -584,6 +605,7 @@ export function scoreBidPack(
         ranges.deadheadPerTrip[1]
       ),
       layoverQuality: normalize(layoverQualityScores[i], ranges.layoverQuality[0], ranges.layoverQuality[1]),
+      departures: normalize(raw.totalDepartures, ranges.departures[0], ranges.departures[1]),
     };
 
     const dimensions: DimensionScore[] = (
@@ -645,11 +667,14 @@ export function scoreBidPack(
       } else if (key === "tripCount" && explicitTargets.tripCount !== undefined) {
         target = 1 - normalize(explicitTargets.tripCount, ranges.tripCount[0], ranges.tripCount[1]);
         hasExplicitTarget = true;
+      } else if (key === "departures" && explicitTargets.departures !== undefined) {
+        target = normalize(explicitTargets.departures, ranges.departures[0], ranges.departures[1]);
+        hasExplicitTarget = true;
       } else {
         target = weightToTarget(weights[key]);
       }
 
-      const importance = weightToImportance(key, weights[key], hasExplicitTarget, isCommuter);
+      const importance = weightToImportance(key, weights[key], hasExplicitTarget, isCommuter, hasCrashPad);
       return {
         key,
         value: values[key],

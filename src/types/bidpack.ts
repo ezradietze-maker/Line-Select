@@ -78,6 +78,8 @@ export interface Trip {
   landings: number;
   /** Time away from base for this trip, in hours. */
   tafbHours: number;
+  /** Number of separate duty periods (report-to-release stretches) in this trip — the real count of times a pilot leaves home for this trip, distinct from `days`, since several short duty periods can be bundled into one multi-day trip. */
+  departures: number;
   /**
    * The full report/fly/layover schedule, minute-by-minute from real printed
    * data — powers the per-trip visual timeline. Empty when the schedule
@@ -100,6 +102,8 @@ export interface Line {
   totalTafbHours: number;
   /** Sum of trip landings for the whole line. */
   totalLandings: number;
+  /** Sum of trip departures for the whole line. */
+  totalDepartures: number;
   /**
    * True when `trips` isn't a verified breakdown — e.g. a parsed bid pack
    * line whose calendar entries couldn't be confidently matched to a

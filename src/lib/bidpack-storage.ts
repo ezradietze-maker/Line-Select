@@ -13,17 +13,22 @@ function bidPackKey(userId: string | null): string {
 function normalizeBidPack(parsed: BidPack): BidPack {
   return {
     ...parsed,
-    lines: parsed.lines.map((line) => ({
-      ...line,
-      trips: line.trips.map(
+    lines: parsed.lines.map((line) => {
+      const trips = line.trips.map(
         (trip): Trip => ({
           ...trip,
           layoverDetails: trip.layoverDetails ?? [],
           schedule: trip.schedule ?? [],
           pairingNumber: trip.pairingNumber ?? null,
+          departures: trip.departures ?? (trip.layoverDetails?.length ?? 0) + 1,
         })
-      ),
-    })),
+      );
+      return {
+        ...line,
+        trips,
+        totalDepartures: line.totalDepartures ?? trips.reduce((s, t) => s + t.departures, 0),
+      };
+    }),
   };
 }
 
