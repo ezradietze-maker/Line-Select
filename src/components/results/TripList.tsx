@@ -329,8 +329,11 @@ export function TripList({ trips }: TripListProps) {
 
   return (
     <ul className="divide-y divide-border">
-      {trips.map((trip) => (
-        <li key={trip.id} className="py-2.5 first:pt-0">
+      {trips.map((trip, tripIndex) => (
+        // `trip.id` alone isn't unique — the same short pairing flown
+        // several times in one month legitimately appears more than once
+        // in this line's `trips` array.
+        <li key={`${trip.id}-${tripIndex}`} className="py-2.5 first:pt-0">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <div className="flex min-w-[7rem] items-baseline gap-1.5">
               <span className="font-mono text-sm font-semibold text-ink">{trip.days}-day</span>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { MatchBar } from "@/components/results/MatchBar";
+import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { TripList } from "@/components/results/TripList";
 import { CalendarIcon, ChevronDownIcon, ClockIcon, CoinIcon, GripIcon, PlaneIcon } from "@/components/ui/icons";
@@ -89,9 +90,14 @@ export function LineCard({ rank, lineScore, profile, implicitValuesByLine }: Lin
                   Estimated trip
                 </div>
               ) : (
-                <div className="mt-0.5 text-sm text-ink-muted">
-                  {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
-                </div>
+                <>
+                  <div className="mt-0.5 text-sm text-ink-muted">
+                    {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
+                  </div>
+                  <div className="mt-1 w-20">
+                    <MiniLinePreview line={line} />
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -118,7 +124,7 @@ export function LineCard({ rank, lineScore, profile, implicitValuesByLine }: Lin
         </button>
       </div>
 
-      <div className="flex gap-4 border-t border-border px-5 py-3 font-mono text-xs text-ink-muted sm:hidden">
+      <div className="flex items-center gap-4 border-t border-border px-5 py-3 font-mono text-xs text-ink-muted sm:hidden">
         <Stat icon={<CalendarIcon />} label="Days off" value={String(line.daysOff)} />
         <Stat icon={<CoinIcon />} label="Credit" value={formatHours(line.totalCreditHours)} />
         <Stat icon={<ClockIcon />} label="TAFB" value={formatHours(line.totalTafbHours)} />

@@ -38,7 +38,7 @@ function formatDuration(hours: number): string {
   return m > 0 ? `${h}h${m}m` : `${h}h`;
 }
 
-interface RawSegment {
+export interface RawSegment {
   kind: TimelineSegmentKind;
   label: string;
   detail: string;
@@ -112,12 +112,13 @@ function connectionSegments(duty: TripDutyPeriod): RawSegment[] {
 }
 
 /**
- * Flattens a trip's duty periods into absolute-minute segments, then slices
- * each one across day boundaries into per-day, clipped copies — a segment
- * spanning midnight becomes two segments, one on each day, marked so the UI
- * can draw them as one continuous bar rather than two separate ones.
+ * Flattens a trip's duty periods into one flat list of absolute-minute
+ * segments (elapsed minutes since the trip's own first report, t=0) — the
+ * same real data `buildTimelineDays` slices into day-rows for the full
+ * chart, exposed here undivided for anything that wants the trip's whole
+ * shape as one continuous span (e.g. a compact single-bar preview).
  */
-export function buildTimelineDays(trip: Trip): TimelineDay[] {
+export function buildRawSegments(trip: Trip): RawSegment[] {
   if (trip.schedule.length === 0) return [];
 
   const raw: RawSegment[] = [];
@@ -155,6 +156,17 @@ export function buildTimelineDays(trip: Trip): TimelineDay[] {
     }
   });
 
+  return raw;
+}
+
+/**
+ * Slices `buildRawSegments`'s flat, undivided list across day boundaries
+ * into per-day rows — a segment spanning midnight becomes two segments, one
+ * on each day, marked so the UI can draw them as one continuous bar rather
+ * than two separate ones.
+ */
+export function buildTimelineDays(trip: Trip): TimelineDay[] {
+  const raw = buildRawSegments(trip);
   if (raw.length === 0) return [];
 
   const lastEnd = Math.max(...raw.map((s) => s.endMinutes));
