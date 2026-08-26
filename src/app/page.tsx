@@ -497,8 +497,9 @@ function Footer() {
         pilots. It is not affiliated with, endorsed by, or connected to
         Federal Express Corporation in any way. Bid pack PDFs are parsed to
         extract pairing and line data only — pages listing other pilots&rsquo;
-        names, employee numbers, or seniority are never read. The account
-        system stores logins locally in your browser only.
+        names, employee numbers, or seniority are never read. Your bid pack
+        and preferences are parsed and stored only on this device; account
+        sign-in and Trade Board posts are the only things sent to a server.
       </div>
     </footer>
   );

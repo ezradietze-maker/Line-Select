@@ -2,16 +2,18 @@ export function HowItWorksContent() {
   return (
     <div className="space-y-3 text-sm leading-relaxed text-ink-muted">
       <p>
-        Line Select compares each line&rsquo;s real attributes &mdash; days
-        off, average trip length, international share, report-time lean,
-        deadhead legs, and credit hours &mdash; against the targets implied
-        by your answers, then blends them into a single 0-100 score weighted
-        by how strongly you felt about each one.
+        Line Select reads your own uploaded bid pack PDF and compares each
+        line&rsquo;s real attributes &mdash; days off, trip length,
+        departures, international mix, layover cities, report-time lean,
+        credit hours, deadhead legs, and layover hotel quality &mdash;
+        against the targets implied by your answers, then blends them into a
+        single 0-100 score weighted by how strongly you felt about each one.
       </p>
       <p>
-        In the deeper interview round, you can also type in an exact target
-        &mdash; like your ideal number of days off &mdash; which is used
-        directly instead of the rough midpoint a slider alone implies.
+        Several questions let you pin an exact number instead of just leaning
+        a slider &mdash; nights home, departures, and (in the deeper round)
+        credit hours &mdash; and that exact target is used directly instead
+        of the rough midpoint a slider alone implies.
       </p>
       <p>
         <strong className="text-ink">
@@ -22,10 +24,11 @@ export function HowItWorksContent() {
         which lines, on paper, look closest to what you said you want.
       </p>
       <p>
-        All schedule data shown here is sample data for this prototype
-        &mdash; not a live or real FedEx bid pack. Account sign-in is a local
-        demo only: your login and preferences live in this browser, not on a
-        server.
+        Your bid pack and preferences are parsed and scored entirely on this
+        device &mdash; they&rsquo;re never uploaded anywhere. Creating an
+        account and posting to the Trade Board are the only things that go to
+        a server, since a trade offer has to be visible to a different pilot
+        on a different device to be useful.
       </p>
     </div>
   );
