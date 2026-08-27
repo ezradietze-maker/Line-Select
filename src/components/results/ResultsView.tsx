@@ -18,6 +18,7 @@ import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPromp
 import { Button } from "@/components/ui/Button";
 import { LineCard } from "@/components/results/LineCard";
 import { ScoreRing } from "@/components/results/ScoreRing";
+import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { PHRASES } from "@/lib/preference-summary";
@@ -141,6 +142,9 @@ export function ResultsView({
   // per bid pack and reused across every drag rather than recomputed per
   // judgment.
   const implicitValuesByLine = useMemo(() => computeImplicitLineValues(bidPack), [bidPack]);
+
+  // Derived once from the bid pack's own printed times — see lib/circadian.ts.
+  const homeBaseOffsetMinutes = useMemo(() => computeHomeBaseOffsetMinutes(bidPack), [bidPack]);
 
   useEffect(() => {
     if (!learnMessage) return;
@@ -281,6 +285,7 @@ export function ResultsView({
               lineScore={lineScore}
               profile={profile}
               implicitValuesByLine={implicitValuesByLine}
+              homeBaseOffsetMinutes={homeBaseOffsetMinutes}
             />
           ))}
         </div>

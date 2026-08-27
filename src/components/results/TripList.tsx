@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
+import { CircadianStars } from "@/components/results/CircadianStars";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
+import { computeCircadianAssessment } from "@/lib/circadian";
 import { fetchHotel } from "@/lib/hotel-client";
 import { buildTimelineDays, type TimelineDay } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
@@ -283,9 +285,11 @@ function LayoverRow({
 
 interface TripListProps {
   trips: Trip[];
+  /** Real UTC offset derived from the bid pack's own printed times — see lib/circadian.ts. Null when it couldn't be derived. */
+  homeBaseOffsetMinutes: number | null;
 }
 
-export function TripList({ trips }: TripListProps) {
+export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [openItineraries, setOpenItineraries] = useState<Set<string>>(new Set());
@@ -329,7 +333,9 @@ export function TripList({ trips }: TripListProps) {
 
   return (
     <ul className="divide-y divide-border">
-      {trips.map((trip, tripIndex) => (
+      {trips.map((trip, tripIndex) => {
+        const circadian = computeCircadianAssessment(trip, homeBaseOffsetMinutes);
+        return (
         // `trip.id` alone isn't unique — the same short pairing flown
         // several times in one month legitimately appears more than once
         // in this line's `trips` array.
@@ -342,6 +348,7 @@ export function TripList({ trips }: TripListProps) {
                   Intl
                 </span>
               )}
+              <CircadianStars assessment={circadian} size="sm" />
             </div>
 
             <div className="flex-1 text-sm text-ink">{trip.layoverCities.join(" → ")}</div>
@@ -445,7 +452,8 @@ export function TripList({ trips }: TripListProps) {
                 );
               })}
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

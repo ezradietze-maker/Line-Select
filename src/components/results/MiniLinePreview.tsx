@@ -1,4 +1,6 @@
 import { memo } from "react";
+import { CircadianStars } from "@/components/results/CircadianStars";
+import { computeCircadianAssessment } from "@/lib/circadian";
 import { buildRawSegments, type RawSegment, type TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
 
@@ -48,16 +50,20 @@ function LegendSwatch({ className, label }: { className: string; label: string }
   );
 }
 
-function TripBar({ trip }: { trip: Line["trips"][number] }) {
+function TripBar({ trip, homeBaseOffsetMinutes }: { trip: Line["trips"][number]; homeBaseOffsetMinutes: number | null }) {
   const raw = buildRawSegments(trip);
   const span = raw.length > 0 ? Math.max(...raw.map((s) => s.endMinutes)) : MINUTES_PER_DAY * trip.days;
   const dayCount = Math.max(1, Math.round(span / MINUTES_PER_DAY));
   const cities = trip.layoverCities.length > 0 ? trip.layoverCities.join(" → ") : "no layovers";
+  const circadian = computeCircadianAssessment(trip, homeBaseOffsetMinutes);
 
   return (
     <div className="flex items-center gap-2">
-      <div className="w-16 shrink-0 font-mono text-[10px] font-medium text-brand" title={`${trip.days}-day trip — ${cities}`}>
-        {trip.days}-day
+      <div className="flex w-16 shrink-0 flex-col gap-0.5">
+        <div className="font-mono text-[10px] font-medium text-brand" title={`${trip.days}-day trip — ${cities}`}>
+          {trip.days}-day
+        </div>
+        <CircadianStars assessment={circadian} size="xs" />
       </div>
       <div className="relative h-5 flex-1 overflow-hidden rounded-sm bg-canvas">
         {Array.from({ length: dayCount - 1 }).map((_, d) => (
@@ -100,14 +106,21 @@ function TripBar({ trip }: { trip: Line["trips"][number] }) {
 }
 
 /**
- * Memoized on `line` alone: this renders unconditionally on every card in a
- * list that can run to 100 lines, and `line` itself is a referentially
- * stable object across re-scoring (`scoreBidPack` wraps the same `line`
- * reference in a new `LineScore` every time, it never clones it) — so this
- * safely skips recomputing the per-trip segment breakdown on every re-render
- * that isn't actually about this line's own data.
+ * Memoized: this renders unconditionally on every card in a list that can
+ * run to 100 lines. `line` is a referentially stable object across
+ * re-scoring (`scoreBidPack` wraps the same `line` reference in a new
+ * `LineScore` every time, it never clones it) and `homeBaseOffsetMinutes` is
+ * stable for the whole bid pack — so this safely skips recomputing the
+ * per-trip segment breakdown on every re-render that isn't actually about
+ * this line's own data.
  */
-export const MiniLinePreview = memo(function MiniLinePreview({ line }: { line: Line }) {
+export const MiniLinePreview = memo(function MiniLinePreview({
+  line,
+  homeBaseOffsetMinutes,
+}: {
+  line: Line;
+  homeBaseOffsetMinutes: number | null;
+}) {
   const trips = line.trips;
   if (trips.length === 0) return null;
 
@@ -124,7 +137,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({ line }: { line: L
         {trips.map((trip, tripIndex) => (
           // `trip.id` alone isn't unique — the same short pairing flown
           // more than once in a month legitimately repeats in this array.
-          <TripBar key={`${trip.id}-${tripIndex}`} trip={trip} />
+          <TripBar key={`${trip.id}-${tripIndex}`} trip={trip} homeBaseOffsetMinutes={homeBaseOffsetMinutes} />
         ))}
       </div>
     </div>

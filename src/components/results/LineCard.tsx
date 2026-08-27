@@ -22,9 +22,17 @@ interface LineCardProps {
   lineScore: LineScore;
   profile: PreferenceProfile;
   implicitValuesByLine: Record<string, Record<string, number>>;
+  /** Real UTC offset derived from the bid pack's own printed times — see lib/circadian.ts. Null when it couldn't be derived (no trip in the pack has a verified schedule departing home base). */
+  homeBaseOffsetMinutes: number | null;
 }
 
-export const LineCard = memo(function LineCard({ rank, lineScore, profile, implicitValuesByLine }: LineCardProps) {
+export const LineCard = memo(function LineCard({
+  rank,
+  lineScore,
+  profile,
+  implicitValuesByLine,
+  homeBaseOffsetMinutes,
+}: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showMatch, setShowMatch] = useState(false);
   const { line, score, explanation, dimensions } = lineScore;
@@ -131,7 +139,7 @@ export const LineCard = memo(function LineCard({ rank, lineScore, profile, impli
 
       {!lineScore.estimated && (
         <div className="border-t border-border px-5 py-3 sm:px-6">
-          <MiniLinePreview line={line} />
+          <MiniLinePreview line={line} homeBaseOffsetMinutes={homeBaseOffsetMinutes} />
         </div>
       )}
 
@@ -149,7 +157,7 @@ export const LineCard = memo(function LineCard({ rank, lineScore, profile, impli
             </div>
           ) : (
             <div className="mt-1.5">
-              <TripList trips={line.trips} />
+              <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} />
             </div>
           )}
 
