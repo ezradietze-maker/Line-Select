@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { buildRawSegments, type RawSegment, type TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
 
@@ -98,7 +99,15 @@ function TripBar({ trip }: { trip: Line["trips"][number] }) {
   );
 }
 
-export function MiniLinePreview({ line }: { line: Line }) {
+/**
+ * Memoized on `line` alone: this renders unconditionally on every card in a
+ * list that can run to 100 lines, and `line` itself is a referentially
+ * stable object across re-scoring (`scoreBidPack` wraps the same `line`
+ * reference in a new `LineScore` every time, it never clones it) — so this
+ * safely skips recomputing the per-trip segment breakdown on every re-render
+ * that isn't actually about this line's own data.
+ */
+export const MiniLinePreview = memo(function MiniLinePreview({ line }: { line: Line }) {
   const trips = line.trips;
   if (trips.length === 0) return null;
 
@@ -120,4 +129,4 @@ export function MiniLinePreview({ line }: { line: Line }) {
       </div>
     </div>
   );
-}
+});

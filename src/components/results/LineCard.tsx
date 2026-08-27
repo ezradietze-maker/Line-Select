@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { MatchBar } from "@/components/results/MatchBar";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
@@ -24,11 +24,14 @@ interface LineCardProps {
   implicitValuesByLine: Record<string, Record<string, number>>;
 }
 
-export function LineCard({ rank, lineScore, profile, implicitValuesByLine }: LineCardProps) {
+export const LineCard = memo(function LineCard({ rank, lineScore, profile, implicitValuesByLine }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showMatch, setShowMatch] = useState(false);
   const { line, score, explanation, dimensions } = lineScore;
-  const implicitFactors = topImplicitContributions(line.id, implicitValuesByLine, profile, 4);
+  const implicitFactors = useMemo(
+    () => topImplicitContributions(line.id, implicitValuesByLine, profile, 4),
+    [line.id, implicitValuesByLine, profile]
+  );
   const isTopPick = rank === 1;
 
   // Two separate dnd-kit roles on the same card: the grip is the drag
@@ -192,7 +195,7 @@ export function LineCard({ rank, lineScore, profile, implicitValuesByLine }: Lin
       )}
     </div>
   );
-}
+});
 
 function Stat({
   icon,

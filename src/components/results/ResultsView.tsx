@@ -5,6 +5,7 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
+  MeasuringStrategy,
   PointerSensor,
   closestCenter,
   useSensor,
@@ -262,6 +263,15 @@ export function ResultsView({
         modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        // This is a swap-on-drop interaction, not a live-reordering sortable
+        // list — no card moves or resizes until the drop actually happens,
+        // so every droppable's rect is still valid for the whole gesture.
+        // dnd-kit's default measures every droppable's rect on every pointer
+        // move to support layouts that DO reflow mid-drag; with up to ~100
+        // cards that's ~100 getBoundingClientRect layout reads per frame,
+        // which is the actual source of the drag feeling laggy. Measuring
+        // once at drag start is correct here and removes that cost entirely.
+        measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
       >
         <div className="mt-3 space-y-3">
           {ranked.map((lineScore, i) => (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import {
   classifyFreeText,
@@ -96,9 +97,8 @@ export function PreferenceMicroPrompt({
   }
 
   return (
-    <div className="mt-4 rounded-xl border border-accent/30 bg-accent-soft p-4 animate-fade-in">
-      <div className="text-sm font-semibold text-ink">What made this one better for you?</div>
-      <div className="mt-2 grid gap-1.5 text-xs text-ink-muted sm:grid-cols-2">
+    <Modal title="What made this one better for you?" onClose={() => onResolved(null)}>
+      <div className="grid gap-1.5 text-xs text-ink-muted sm:grid-cols-2">
         <div className="rounded-lg border border-border bg-surface px-3 py-2">
           <div className="font-medium text-ink">{lineSummary(judgment.favored)}</div>
           <div className="mt-0.5 text-ink-faint">You ranked this one higher</div>
@@ -149,17 +149,8 @@ export function PreferenceMicroPrompt({
               </Button>
             </div>
           )}
-
-          <button
-            type="button"
-            onClick={() => onResolved(null)}
-            disabled={busy}
-            className="mt-3 text-xs text-ink-faint underline decoration-dotted hover:text-ink disabled:opacity-50"
-          >
-            Skip
-          </button>
         </>
       )}
-    </div>
+    </Modal>
   );
 }
