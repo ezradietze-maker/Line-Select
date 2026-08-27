@@ -42,8 +42,8 @@ export function LineCard({ rank, lineScore, profile, implicitValuesByLine }: Lin
   return (
     <div
       ref={setDropRef}
-      className={`overflow-hidden rounded-xl border bg-surface transition-[box-shadow,opacity] duration-150 hover:shadow-elevated ${
-        isTopPick ? "border-good/40 ring-1 ring-good/20" : "border-border"
+      className={`overflow-hidden rounded-xl border bg-surface transition-[box-shadow,opacity,border-color] duration-150 hover:shadow-elevated ${
+        isTopPick ? "border-good/40 ring-1 ring-good/20 hover:border-good/60" : "border-border hover:border-border-strong"
       } ${isDragging ? "opacity-40" : ""} ${isOver ? "ring-2 ring-accent" : ""}`}
     >
       {isTopPick && (
