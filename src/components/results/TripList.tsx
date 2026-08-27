@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
+import { CircadianInfo } from "@/components/results/CircadianInfo";
 import { CircadianStars } from "@/components/results/CircadianStars";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { computeCircadianAssessment } from "@/lib/circadian";
@@ -332,7 +333,11 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
   }
 
   return (
-    <ul className="divide-y divide-border">
+    <div>
+      <div className="mb-1.5 flex justify-end">
+        <CircadianInfo />
+      </div>
+      <ul className="divide-y divide-border">
       {trips.map((trip, tripIndex) => {
         const circadian = computeCircadianAssessment(trip, homeBaseOffsetMinutes);
         return (
@@ -454,6 +459,7 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
         </li>
         );
       })}
-    </ul>
+      </ul>
+    </div>
   );
 }

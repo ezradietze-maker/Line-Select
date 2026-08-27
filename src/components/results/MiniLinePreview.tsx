@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { CircadianInfo } from "@/components/results/CircadianInfo";
 import { CircadianStars } from "@/components/results/CircadianStars";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { buildRawSegments, type RawSegment, type TimelineSegmentKind } from "@/lib/trip-timeline";
@@ -126,12 +127,15 @@ export const MiniLinePreview = memo(function MiniLinePreview({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-medium text-brand">
-        <LegendSwatch className="bg-brand" label="Flying" />
-        <LegendSwatch className={segmentClass("deadhead")} label="Deadhead" />
-        <LegendSwatch className="bg-good" label="Layover" />
-        <LegendSwatch className="bg-accent" label="Ground" />
-        <LegendSwatch className="bg-border-strong" label="Connection" />
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-medium text-brand">
+          <LegendSwatch className="bg-brand" label="Flying" />
+          <LegendSwatch className={segmentClass("deadhead")} label="Deadhead" />
+          <LegendSwatch className="bg-good" label="Layover" />
+          <LegendSwatch className="bg-accent" label="Ground" />
+          <LegendSwatch className="bg-border-strong" label="Connection" />
+        </div>
+        <CircadianInfo />
       </div>
       <div className="mt-1.5 space-y-1.5">
         {trips.map((trip, tripIndex) => (
