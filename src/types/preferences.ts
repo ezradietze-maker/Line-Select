@@ -111,6 +111,14 @@ export interface PreferenceProfile {
    */
   hasCrashPad: boolean | null;
   /**
+   * Opt-in, set from the results screen rather than the interview: whether
+   * the per-trip circadian disruption score (see lib/circadian.ts) should
+   * also nudge the 0-100 ranking, not just be shown as informational stars.
+   * Defaults to off — a health-facing rating this new shouldn't silently
+   * start moving anyone's ranking without them asking for it.
+   */
+  factorCircadianHealth: boolean;
+  /**
    * Specific layover cities the pilot flagged, keyed by IATA-style code —
    * built from the actual cities present in their uploaded bid pack, not a
    * generic list. Drives the cityPreference scoring dimension.

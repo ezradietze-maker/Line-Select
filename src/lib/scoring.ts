@@ -1,3 +1,4 @@
+import { computeCircadianAssessment, computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { HotelAmenitySummary, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 import type { CitySentiment, PreferenceProfile, PreferenceWeights } from "@/types/preferences";
@@ -40,7 +41,8 @@ export type DimensionKey =
   | "creditHours"
   | "deadheadTolerance"
   | "departures"
-  | "layoverQuality";
+  | "layoverQuality"
+  | "circadianHealth";
 
 /** Dimensions driven by a -100..100 slider weight (everything except cityPreference, which is driven by a set of flagged cities instead). */
 type WeightedDimensionKey = keyof PreferenceWeights;
@@ -90,6 +92,7 @@ const UNVERIFIED_WHEN_ESTIMATED: DimensionKey[] = [
   "deadheadTolerance",
   "departures",
   "layoverQuality",
+  "circadianHealth",
 ];
 
 interface LineMetrics {
@@ -136,6 +139,22 @@ function computeCityScore(line: Line, cityPreferences: Record<string, CitySentim
     const avoided = trip.layoverCities.some((c) => cityPreferences[c] === "avoid");
     return sum + (loved ? 1 : 0) - (avoided ? 1 : 0);
   }, 0);
+}
+
+/**
+ * A line-level circadian health value in 0-1 (1 = best), averaged across
+ * whichever of the line's trips have a real assessment (see
+ * lib/circadian.ts) — stars 1-5 map linearly to 0-1. Null when none of the
+ * line's trips have a verified schedule to score, so the caller can be
+ * honest about "no real data" rather than guessing a neutral value.
+ */
+function computeCircadianHealthScore(line: Line, homeBaseOffsetMinutes: number | null): number | null {
+  const values = line.trips
+    .map((t) => computeCircadianAssessment(t, homeBaseOffsetMinutes))
+    .filter((a): a is NonNullable<typeof a> => a !== null)
+    .map((a) => (a.stars - 1) / 4);
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
 const REVIEW_SENTIMENT_SCORE: Record<ReviewSentiment, number> = {
@@ -339,7 +358,7 @@ function matchFromDistance(value: number, target: number): number {
 }
 
 function weightFor(weights: PreferenceWeights, key: DimensionKey): number {
-  return key === "cityPreference" || key === "layoverQuality" ? 0 : weights[key];
+  return key === "cityPreference" || key === "layoverQuality" || key === "circadianHealth" ? 0 : weights[key];
 }
 
 function hitPhrase(key: DimensionKey, weight: number): string {
@@ -362,6 +381,8 @@ function hitPhrase(key: DimensionKey, weight: number): string {
       return "close to the number of separate departures you asked for";
     case "layoverQuality":
       return "well-reviewed layover hotels near the things you said matter to you";
+    case "circadianHealth":
+      return "trips that stay easy on your sleep and body clock";
   }
 }
 
@@ -408,6 +429,8 @@ function missPhrase(
       return below ? "fewer departures than you pinned" : "more departures than you pinned";
     case "layoverQuality":
       return value < 0.35 ? "layover hotels that fall short on what you flagged as important" : null;
+    case "circadianHealth":
+      return value < 0.35 ? "trips that are rough on your sleep and body clock" : null;
   }
 }
 
@@ -497,13 +520,15 @@ export function scoreBidPack(
   profile: PreferenceProfile,
   hotelQualityData: HotelQualityData = {}
 ): LineScore[] {
-  const { weights, explicitTargets, cityPreferences, isCommuter, hasCrashPad } = profile;
+  const { weights, explicitTargets, cityPreferences, isCommuter, hasCrashPad, factorCircadianHealth } = profile;
   const rawMetrics = bidPack.lines.map(computeRawMetrics);
   const cityScores = bidPack.lines.map((l) => computeCityScore(l, cityPreferences));
   const hotelSubscores = computeHotelSubscores(bidPack, hotelQualityData);
   const layoverQualityScores = bidPack.lines.map((l) =>
     computeLayoverQualityScore(l, weights, hotelSubscores)
   );
+  const homeBaseOffsetMinutes = computeHomeBaseOffsetMinutes(bidPack);
+  const circadianScores = bidPack.lines.map((l) => computeCircadianHealthScore(l, homeBaseOffsetMinutes));
   const bidPackRanges = getBidPackRanges(bidPack);
 
   const ranges = {
@@ -549,6 +574,10 @@ export function scoreBidPack(
       ),
       layoverQuality: normalize(layoverQualityScores[i], ranges.layoverQuality[0], ranges.layoverQuality[1]),
       departures: normalize(raw.totalDepartures, ranges.departures[0], ranges.departures[1]),
+      // Neutral fallback when no trip in the line has a real assessment —
+      // the `verified` flag below (via circadianScores[i] === null) is what
+      // actually tells the caller "no real data," not this placeholder.
+      circadianHealth: circadianScores[i] ?? 0.5,
     };
 
     const dimensions: DimensionScore[] = (
@@ -591,6 +620,25 @@ export function scoreBidPack(
           match: matchFromDistance(values[key], 1),
           verified: !(line.estimated && UNVERIFIED_WHEN_ESTIMATED.includes(key)),
           hotelBreakdown: computeLayoverQualityBreakdown(line, hotelSubscores),
+        };
+      }
+
+      if (key === "circadianHealth") {
+        // Opt-in and one-directional, like cityPreference/layoverQuality:
+        // "less circadian disruption" always matches, there's no bipolar
+        // slider to derive a target from. Zero importance unless the pilot
+        // has actually turned this on AND the line has real trip data to
+        // score it from — an unverified guess shouldn't silently move
+        // anyone's ranking.
+        const hasRealData = circadianScores[i] !== null;
+        const importance = factorCircadianHealth && hasRealData ? 0.5 : 0;
+        return {
+          key,
+          value: values[key],
+          target: 1,
+          importance,
+          match: matchFromDistance(values[key], 1),
+          verified: hasRealData,
         };
       }
 

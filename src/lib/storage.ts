@@ -20,6 +20,7 @@ function normalizeProfile(parsed: Partial<PreferenceProfile>): PreferenceProfile
     explicitTargets: parsed.explicitTargets ?? {},
     isCommuter: parsed.isCommuter ?? null,
     hasCrashPad: parsed.hasCrashPad ?? null,
+    factorCircadianHealth: parsed.factorCircadianHealth ?? false,
     cityPreferences: parsed.cityPreferences ?? {},
     completedAt: parsed.completedAt ?? new Date(0).toISOString(),
     implicitWeights: parsed.implicitWeights ?? {},

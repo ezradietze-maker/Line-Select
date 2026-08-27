@@ -21,6 +21,7 @@ import { clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
 import { generateFakeOffer } from "@/lib/fake-trade-offers";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
+import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { clearProfile, loadProfile, saveProfile } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import type { BidPack } from "@/types/bidpack";
@@ -95,13 +96,21 @@ export default function Home() {
       if (cancelled) return;
       const savedBidPack = loadBidPack(currentUser?.id ?? null);
       const savedProfile = savedBidPack ? loadProfile(currentUser?.id ?? null) : null;
-      setState({
-        screen: landingScreenFor(savedBidPack, savedProfile),
-        profile: savedProfile,
-        user: currentUser,
-        bidPack: savedBidPack,
-        parseResult: null,
-        pendingProfile: null,
+      setState((s) => {
+        // If the pilot already acted (e.g. loaded the sample bid pack)
+        // while this async session check was in flight, don't clobber that
+        // choice — but still record who's actually signed in, since
+        // whatever they just did may have assumed "guest" and should
+        // really be attributed to their real account.
+        if (s.screen !== "loading") return { ...s, user: currentUser };
+        return {
+          screen: landingScreenFor(savedBidPack, savedProfile),
+          profile: savedProfile,
+          user: currentUser,
+          bidPack: savedBidPack,
+          parseResult: null,
+          pendingProfile: null,
+        };
       });
     }
     bootstrap();
@@ -259,6 +268,10 @@ export default function Home() {
     setState((s) => ({ ...s, screen: "preview", parseResult: result }));
   }
 
+  function handleTrySample() {
+    handleBidPackConfirmed(SAMPLE_BID_PACK);
+  }
+
   function handleBidPackConfirmed(newBidPack: BidPack) {
     saveBidPack(user?.id ?? null, newBidPack);
     clearProfile(user?.id ?? null);
@@ -387,7 +400,10 @@ export default function Home() {
           {screen === "loading" && null}
 
           {screen === "welcome" && (
-            <WelcomeScreen onStart={() => setState((s) => ({ ...s, screen: "upload" }))} />
+            <WelcomeScreen
+              onStart={() => setState((s) => ({ ...s, screen: "upload" }))}
+              onTrySample={handleTrySample}
+            />
           )}
 
           {screen === "auth" && (
@@ -398,7 +414,7 @@ export default function Home() {
           )}
 
           {screen === "upload" && (
-            <UploadScreen onParsed={handleParsed} currentBidPack={bidPack} />
+            <UploadScreen onParsed={handleParsed} currentBidPack={bidPack} onTrySample={handleTrySample} />
           )}
 
           {screen === "preview" && parseResult && (

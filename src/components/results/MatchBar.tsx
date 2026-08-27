@@ -10,6 +10,7 @@ const DIMENSION_LABELS: Record<DimensionScore["key"], string> = {
   deadheadTolerance: "Deadhead legs",
   departures: "Departures",
   layoverQuality: "Layover quality",
+  circadianHealth: "Circadian health",
 };
 
 interface MatchBarProps {

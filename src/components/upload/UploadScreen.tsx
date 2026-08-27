@@ -13,11 +13,13 @@ interface UploadScreenProps {
    * summary instead of jumping straight back to the dropzone every time
    * this screen is revisited. */
   currentBidPack?: BidPack | null;
+  /** Loads a fabricated demo bid pack instead of parsing a real PDF — for anyone exploring without their own file handy. Omitted once a real bid pack is already loaded. */
+  onTrySample?: () => void;
 }
 
 const MAX_MB = Math.round(MAX_PDF_BYTES / 1024 / 1024);
 
-export function UploadScreen({ onParsed, onCancel, currentBidPack }: UploadScreenProps) {
+export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample }: UploadScreenProps) {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -164,6 +166,16 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack }: UploadScree
           className="mt-6 text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted"
         >
           Back
+        </button>
+      )}
+
+      {!uploading && !currentBidPack && onTrySample && (
+        <button
+          type="button"
+          onClick={onTrySample}
+          className="mt-6 block text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted"
+        >
+          Don&rsquo;t have a bid pack handy? Try it with sample data
         </button>
       )}
     </div>

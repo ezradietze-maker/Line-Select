@@ -54,7 +54,13 @@ function HeroMotif() {
   );
 }
 
-export function WelcomeScreen({ onStart }: { onStart: () => void }) {
+export function WelcomeScreen({
+  onStart,
+  onTrySample,
+}: {
+  onStart: () => void;
+  onTrySample: () => void;
+}) {
   return (
     <div className="relative mx-auto flex max-w-3xl flex-col items-center overflow-hidden px-2 pt-4 text-center">
       <HeroMotif />
@@ -83,6 +89,13 @@ export function WelcomeScreen({ onStart }: { onStart: () => void }) {
           PDF stays on this device for parsing. Takes about a minute after
           that, or two if you go deeper.
         </p>
+        <button
+          type="button"
+          onClick={onTrySample}
+          className="mt-3 text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted"
+        >
+          Don&rsquo;t have a bid pack handy? Try it with sample data
+        </button>
       </div>
 
       <div className="mt-16 grid w-full gap-4 text-left sm:grid-cols-3">

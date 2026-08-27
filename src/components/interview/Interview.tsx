@@ -310,7 +310,7 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
       <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
         {phase === "commuter" && (
           <div className="animate-fade-in">
-            <CommuterStep value={isCommuter} onChange={setIsCommuter} />
+            <CommuterStep value={isCommuter} onChange={setIsCommuter} base={bidPack.base} />
             <StepNav onNext={() => setPhase("quick")} nextLabel="Next" />
           </div>
         )}

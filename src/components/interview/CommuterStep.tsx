@@ -3,9 +3,10 @@
 interface CommuterStepProps {
   value: boolean | null;
   onChange: (value: boolean | null) => void;
+  base: string;
 }
 
-export function CommuterStep({ value, onChange }: CommuterStepProps) {
+export function CommuterStep({ value, onChange, base }: CommuterStepProps) {
   return (
     <div>
       <h2 className="text-xl font-semibold text-ink sm:text-2xl">
@@ -27,7 +28,7 @@ export function CommuterStep({ value, onChange }: CommuterStepProps) {
         />
         <OptionCard
           label="I live locally"
-          description="I'm based near OAK, no commute involved."
+          description={`I'm based near ${base}, no commute involved.`}
           selected={value === false}
           onClick={() => onChange(false)}
         />

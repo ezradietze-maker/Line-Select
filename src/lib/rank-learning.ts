@@ -97,12 +97,12 @@ export interface ReorderLearnResult {
   mostSurprising: PairwiseJudgment | null;
 }
 
-/** A dimension's current signed "feature weight" in the unified linear model — on roughly the same -1..1 scale regardless of whether it's an explicit slider (-100..100 -> /100) or an already-comparably-scaled implicit weight. `cityPreference` has no single scalar weight to read (it's a set of flagged cities, not a slider) and layoverQuality's own blended weight isn't gradient-updated directly (its five sub-aspects are, individually) — both are still included in the *prediction* via their real importance, just excluded from `EXPLICIT_LEARNABLE_KEYS` so nothing tries to write back a delta to a key that doesn't represent one weight. */
+/** A dimension's current signed "feature weight" in the unified linear model — on roughly the same -1..1 scale regardless of whether it's an explicit slider (-100..100 -> /100) or an already-comparably-scaled implicit weight. `cityPreference` has no single scalar weight to read (it's a set of flagged cities, not a slider), layoverQuality's own blended weight isn't gradient-updated directly (its five sub-aspects are, individually), and circadianHealth is opt-in with no slider of its own at all — all three are still included in the *prediction* via their real importance, just excluded from `EXPLICIT_LEARNABLE_KEYS` so nothing tries to write back a delta to a key that doesn't represent one weight. */
 function explicitFeatureWeight(key: keyof PreferenceWeights, weights: PreferenceWeights): number {
   return weights[key] / 100;
 }
 
-function nonLearnedFeatureWeight(dimKey: "cityPreference" | "layoverQuality", importance: number): number {
+function nonLearnedFeatureWeight(dimKey: "cityPreference" | "layoverQuality" | "circadianHealth", importance: number): number {
   // Both are one-directional (target is always "more of this is better"), so their contribution to the score is just how much the pilot has indicated this matters at all.
   return importance;
 }
@@ -117,7 +117,7 @@ function predictScore(
   let score = 0;
   for (const dim of line.dimensions) {
     if (!dim.verified) continue;
-    if (dim.key === "cityPreference" || dim.key === "layoverQuality") {
+    if (dim.key === "cityPreference" || dim.key === "layoverQuality" || dim.key === "circadianHealth") {
       score += nonLearnedFeatureWeight(dim.key, dim.importance) * dim.value;
       continue;
     }
