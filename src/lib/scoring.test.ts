@@ -27,8 +27,8 @@ describe("scoreBidPack / rankLines", () => {
     }
   });
 
-  it("ranks lines by circadian health once a pilot opts in, favoring the line built only from good trips", () => {
-    const profile = { ...neutralProfile(), factorCircadianHealth: true };
+  it("ranks lines by circadian health when the pilot weights it heavily, favoring the line built only from good trips", () => {
+    const profile = { ...neutralProfile(), weights: { ...emptyWeights(), circadianHealth: 100 } };
     const ranked = rankLines(SAMPLE_BID_PACK, profile);
     // Line 9001 is the single-trip LAX line — same timezone, long rest, no
     // red-eye report — so with circadian health as the only real signal in
@@ -36,7 +36,7 @@ describe("scoreBidPack / rankLines", () => {
     expect(ranked[0].line.lineNumber).toBe("9001");
   });
 
-  it("leaves the circadianHealth dimension at zero importance when the pilot hasn't opted in", () => {
+  it("leaves the circadianHealth dimension at zero importance when the pilot hasn't weighted it", () => {
     const ranked = rankLines(SAMPLE_BID_PACK, neutralProfile());
     for (const r of ranked) {
       const dim = r.dimensions.find((d) => d.key === "circadianHealth");

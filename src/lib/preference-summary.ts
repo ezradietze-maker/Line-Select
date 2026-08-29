@@ -50,6 +50,10 @@ export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negati
     positive: "an overall well-reviewed, comfortable hotel",
     negative: "not worrying much about overall hotel quality",
   },
+  circadianHealth: {
+    positive: "protecting your sleep and body clock, even at a cost elsewhere",
+    negative: "not worrying much about circadian disruption",
+  },
 };
 
 /** Below this, a preference reads as "no strong opinion" and isn't worth mentioning. */

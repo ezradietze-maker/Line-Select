@@ -15,10 +15,8 @@ import {
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { CircadianInfo } from "@/components/results/CircadianInfo";
 import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
 import { Button } from "@/components/ui/Button";
-import { Switch } from "@/components/ui/Switch";
 import { LineCard } from "@/components/results/LineCard";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
@@ -241,15 +239,6 @@ export function ResultsView({
             Start over
           </Button>
         </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-4 py-2.5">
-        <Switch
-          checked={profile.factorCircadianHealth}
-          onChange={(checked) => onUpdateProfile({ ...profile, factorCircadianHealth: checked })}
-          label="Factor circadian health into ranking"
-        />
-        <CircadianInfo />
       </div>
 
       {learnMessage && !promptJudgment && (

@@ -69,8 +69,6 @@ export function buildProfile(
     isCommuter,
     cityPreferences,
     hasCrashPad,
-    // Never set from the interview — see the field's own doc comment.
-    factorCircadianHealth: false,
     completedAt: new Date().toISOString(),
     implicitWeights: {},
     implicitConfidence: {},

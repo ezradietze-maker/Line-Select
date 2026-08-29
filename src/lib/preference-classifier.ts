@@ -14,6 +14,7 @@ const EXPLICIT_DESCRIPTORS = [
   { id: "hotelGrocery", label: "Grocery near the hotel", description: "Grocery or pharmacy access near the layover hotel." },
   { id: "hotelQuiet", label: "Room quietness", description: "How quiet the layover hotel room is." },
   { id: "hotelQuality", label: "Overall hotel quality", description: "General hotel comfort/cleanliness/service." },
+  { id: "circadianHealth", label: "Circadian health", description: "Time-zone shifts, red-eye/early reports, and rest length that disrupt sleep and body clock." },
 ];
 
 export function allKnownVariableDescriptors() {

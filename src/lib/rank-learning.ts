@@ -34,6 +34,7 @@ const EXPLICIT_LEARNABLE_KEYS: (keyof PreferenceWeights)[] = [
   "reportTime",
   "creditHours",
   "deadheadTolerance",
+  "circadianHealth",
 ];
 
 const HOTEL_WEIGHT_KEYS: Record<keyof HotelSubscores, keyof PreferenceWeights> = {
@@ -44,8 +45,8 @@ const HOTEL_WEIGHT_KEYS: Record<keyof HotelSubscores, keyof PreferenceWeights> =
   quality: "hotelQuality",
 };
 
-/** Magnitude-only weights (0 = doesn't matter, 100 = matters a lot) — there's no "opposite" of caring about a quiet room, so these clamp to [0, 100] rather than [-100, 100]. */
-const MAGNITUDE_ONLY_KEYS = new Set<keyof PreferenceWeights>(Object.values(HOTEL_WEIGHT_KEYS));
+/** Magnitude-only weights (0 = doesn't matter, 100 = matters a lot) — there's no "opposite" of caring about a quiet room (or, for circadianHealth, no "opposite" of caring about sleep and body-clock disruption), so these clamp to [0, 100] rather than [-100, 100]. */
+const MAGNITUDE_ONLY_KEYS = new Set<keyof PreferenceWeights>([...Object.values(HOTEL_WEIGHT_KEYS), "circadianHealth"]);
 
 const EXPLICIT_LABELS: Partial<Record<keyof PreferenceWeights, string>> = {
   daysOff: "Days off",
@@ -54,6 +55,7 @@ const EXPLICIT_LABELS: Partial<Record<keyof PreferenceWeights, string>> = {
   reportTime: "Report time",
   creditHours: "Credit hours",
   deadheadTolerance: "Deadheading",
+  circadianHealth: "Circadian health",
   hotelFood: "Food near the hotel",
   hotelGym: "Hotel gym",
   hotelGrocery: "Grocery near the hotel",
@@ -97,12 +99,12 @@ export interface ReorderLearnResult {
   mostSurprising: PairwiseJudgment | null;
 }
 
-/** A dimension's current signed "feature weight" in the unified linear model — on roughly the same -1..1 scale regardless of whether it's an explicit slider (-100..100 -> /100) or an already-comparably-scaled implicit weight. `cityPreference` has no single scalar weight to read (it's a set of flagged cities, not a slider), layoverQuality's own blended weight isn't gradient-updated directly (its five sub-aspects are, individually), and circadianHealth is opt-in with no slider of its own at all — all three are still included in the *prediction* via their real importance, just excluded from `EXPLICIT_LEARNABLE_KEYS` so nothing tries to write back a delta to a key that doesn't represent one weight. */
+/** A dimension's current signed "feature weight" in the unified linear model — on roughly the same -1..1 scale regardless of whether it's an explicit slider (-100..100 -> /100) or an already-comparably-scaled implicit weight. `cityPreference` has no single scalar weight to read (it's a set of flagged cities, not a slider) and layoverQuality's own blended weight isn't gradient-updated directly (its five sub-aspects are, individually) — both are still included in the *prediction* via their real importance, just excluded from `EXPLICIT_LEARNABLE_KEYS` so nothing tries to write back a delta to a key that doesn't represent one weight. circadianHealth, despite also being one-directional, DOES have its own real slider now, so it's a normal entry in `EXPLICIT_LEARNABLE_KEYS` rather than living here. */
 function explicitFeatureWeight(key: keyof PreferenceWeights, weights: PreferenceWeights): number {
   return weights[key] / 100;
 }
 
-function nonLearnedFeatureWeight(dimKey: "cityPreference" | "layoverQuality" | "circadianHealth", importance: number): number {
+function nonLearnedFeatureWeight(dimKey: "cityPreference" | "layoverQuality", importance: number): number {
   // Both are one-directional (target is always "more of this is better"), so their contribution to the score is just how much the pilot has indicated this matters at all.
   return importance;
 }
@@ -117,7 +119,7 @@ function predictScore(
   let score = 0;
   for (const dim of line.dimensions) {
     if (!dim.verified) continue;
-    if (dim.key === "cityPreference" || dim.key === "layoverQuality" || dim.key === "circadianHealth") {
+    if (dim.key === "cityPreference" || dim.key === "layoverQuality") {
       score += nonLearnedFeatureWeight(dim.key, dim.importance) * dim.value;
       continue;
     }

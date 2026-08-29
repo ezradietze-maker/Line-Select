@@ -42,6 +42,15 @@ export const QUICK_QUESTIONS: SliderQuestionConfig[] = [
     highLabel: "Pay — maximize credit hours, however busy that makes it",
     centerLabel: "Both matter about equally",
   },
+  {
+    key: "circadianHealth",
+    question: "How much should we protect your sleep and body clock?",
+    helpText:
+      "Every trip gets a real circadian score behind the scenes — how hard a time-zone shift is to adapt to, whether a report lands in the 2-6am window your body's alertness naturally bottoms out in, whether a layover gives you a real chance at 8 hours of sleep. This is how much that should actually move your ranking, versus just being something you can look up on a trip.",
+    lowLabel: "Doesn't need to be a factor",
+    highLabel: "Protect it, even if it costs me elsewhere",
+    centerLabel: "Somewhat matters",
+  },
 ];
 
 const DEADHEAD_LOCAL: SliderQuestionConfig = {
@@ -219,6 +228,7 @@ export const QUICK_STEPS: QuickStepConfig[] = [
   { kind: "cities" },
   { kind: "slider", config: findQuickQuestion("reportTime") },
   { kind: "slider", config: findQuickQuestion("creditHours") },
+  { kind: "slider", config: findQuickQuestion("circadianHealth") },
 ];
 
 function findDeepSlider(key: DeepSliderKey): SliderQuestionConfig {

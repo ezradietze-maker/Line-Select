@@ -358,7 +358,7 @@ function matchFromDistance(value: number, target: number): number {
 }
 
 function weightFor(weights: PreferenceWeights, key: DimensionKey): number {
-  return key === "cityPreference" || key === "layoverQuality" || key === "circadianHealth" ? 0 : weights[key];
+  return key === "cityPreference" || key === "layoverQuality" ? 0 : weights[key];
 }
 
 function hitPhrase(key: DimensionKey, weight: number): string {
@@ -520,7 +520,7 @@ export function scoreBidPack(
   profile: PreferenceProfile,
   hotelQualityData: HotelQualityData = {}
 ): LineScore[] {
-  const { weights, explicitTargets, cityPreferences, isCommuter, hasCrashPad, factorCircadianHealth } = profile;
+  const { weights, explicitTargets, cityPreferences, isCommuter, hasCrashPad } = profile;
   const rawMetrics = bidPack.lines.map(computeRawMetrics);
   const cityScores = bidPack.lines.map((l) => computeCityScore(l, cityPreferences));
   const hotelSubscores = computeHotelSubscores(bidPack, hotelQualityData);
@@ -624,14 +624,15 @@ export function scoreBidPack(
       }
 
       if (key === "circadianHealth") {
-        // Opt-in and one-directional, like cityPreference/layoverQuality:
-        // "less circadian disruption" always matches, there's no bipolar
-        // slider to derive a target from. Zero importance unless the pilot
-        // has actually turned this on AND the line has real trip data to
-        // score it from — an unverified guess shouldn't silently move
-        // anyone's ranking.
+        // One-directional, like cityPreference/layoverQuality: "less
+        // circadian disruption" always matches, there's no bipolar slider
+        // to derive a target from — only the *magnitude* of the pilot's
+        // circadianHealth weight drives importance, same as the hotel
+        // dimensions. Zero importance when the line has no real trip data
+        // to score it from, regardless of how strongly the pilot weighted
+        // it — an unverified guess shouldn't silently move anyone's ranking.
         const hasRealData = circadianScores[i] !== null;
-        const importance = factorCircadianHealth && hasRealData ? 0.5 : 0;
+        const importance = hasRealData ? Math.min(1, Math.abs(weights.circadianHealth) / 100) : 0;
         return {
           key,
           value: values[key],

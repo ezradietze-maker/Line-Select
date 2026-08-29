@@ -39,6 +39,13 @@ export interface PreferenceWeights {
   hotelGrocery: number;
   hotelQuiet: number;
   hotelQuality: number;
+  /**
+   * One-directional like the hotel dimensions above (0 = doesn't need to be
+   * a factor, 100 = protect it even at a cost elsewhere) — there's no
+   * meaningful "opposite" of caring about sleep and body-clock disruption.
+   * Drives the circadianHealth scoring dimension (lib/circadian.ts).
+   */
+  circadianHealth: number;
 }
 
 export const DEFAULT_WEIGHTS: PreferenceWeights = {
@@ -54,6 +61,7 @@ export const DEFAULT_WEIGHTS: PreferenceWeights = {
   hotelGrocery: 0,
   hotelQuiet: 0,
   hotelQuality: 0,
+  circadianHealth: 0,
 };
 
 export type QuickQuestionKey =
@@ -61,7 +69,8 @@ export type QuickQuestionKey =
   | "tripLength"
   | "international"
   | "reportTime"
-  | "creditHours";
+  | "creditHours"
+  | "circadianHealth";
 
 export type DeepSliderKey =
   | "deadheadTolerance"
@@ -110,14 +119,6 @@ export interface PreferenceProfile {
    * effective importance floor further. `null` means not asked/skipped.
    */
   hasCrashPad: boolean | null;
-  /**
-   * Opt-in, set from the results screen rather than the interview: whether
-   * the per-trip circadian disruption score (see lib/circadian.ts) should
-   * also nudge the 0-100 ranking, not just be shown as informational stars.
-   * Defaults to off — a health-facing rating this new shouldn't silently
-   * start moving anyone's ranking without them asking for it.
-   */
-  factorCircadianHealth: boolean;
   /**
    * Specific layover cities the pilot flagged, keyed by IATA-style code —
    * built from the actual cities present in their uploaded bid pack, not a
