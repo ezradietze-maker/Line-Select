@@ -10,6 +10,7 @@ import {
   findUserByEmail,
   findUserById,
 } from "@/lib/server/db";
+import { clearAttempts, isRateLimited, recordFailedAttempt } from "@/lib/server/rate-limit";
 import type { UserAccount } from "@/types/auth";
 
 const scrypt = promisify(scryptCallback);
@@ -80,15 +81,27 @@ export async function signUp(
   return { ok: true, user, sessionToken };
 }
 
+const LOGIN_RATE_LIMIT_SCOPE = "login";
+
 export async function login(email: string, password: string): Promise<AuthResult> {
   const normalized = normalizeEmail(email);
+
+  // Rate-limited per normalized email rather than per IP — the thing being
+  // protected is the *account*, and this also means a shared or rotating IP
+  // (common on mobile) can't accidentally lock someone else out.
+  if (await isRateLimited(LOGIN_RATE_LIMIT_SCOPE, normalized)) {
+    return { ok: false, error: "Too many failed attempts. Try again in a few minutes." };
+  }
+
   const credential = await findCredentialByEmail(normalized);
   if (!credential) {
+    await recordFailedAttempt(LOGIN_RATE_LIMIT_SCOPE, normalized);
     return { ok: false, error: "No account found with that email." };
   }
 
   const attemptHash = await hashPassword(password, credential.salt);
   if (!timingSafeStringEqual(attemptHash, credential.passwordHash)) {
+    await recordFailedAttempt(LOGIN_RATE_LIMIT_SCOPE, normalized);
     return { ok: false, error: "Incorrect password." };
   }
 
@@ -97,6 +110,7 @@ export async function login(email: string, password: string): Promise<AuthResult
     return { ok: false, error: "Account data is missing. Try creating a new account." };
   }
 
+  await clearAttempts(LOGIN_RATE_LIMIT_SCOPE, normalized);
   const sessionToken = await startSession(user.id);
   return { ok: true, user, sessionToken };
 }
@@ -123,6 +137,23 @@ export async function getUserForSessionToken(token: string | undefined): Promise
 }
 
 export const SESSION_MAX_AGE_SECONDS = SESSION_TTL_MS / 1000;
+
+/**
+ * Shared so login/signup can't drift out of sync on this. `secure` is tied
+ * to NODE_ENV rather than hardcoded true: Vercel sets it to "production" for
+ * every real deployment (including previews), while `next dev` runs
+ * "development" over plain http, where a `secure` cookie would silently
+ * never be sent at all.
+ */
+export function sessionCookieOptions() {
+  return {
+    httpOnly: true as const,
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+    secure: process.env.NODE_ENV === "production",
+  };
+}
 
 /** Convenience for other API routes that need to know who's making the request. */
 export async function getCurrentServerUser(): Promise<UserAccount | null> {

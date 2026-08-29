@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, signUp } from "@/lib/server/auth";
+import { SESSION_COOKIE, sessionCookieOptions, signUp } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
 
@@ -22,11 +22,6 @@ export async function POST(request: Request) {
   }
 
   const response = NextResponse.json({ user: result.user });
-  response.cookies.set(SESSION_COOKIE, result.sessionToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-  });
+  response.cookies.set(SESSION_COOKIE, result.sessionToken, sessionCookieOptions());
   return response;
 }

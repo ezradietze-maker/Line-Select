@@ -7,6 +7,7 @@ import { CircadianStars } from "@/components/results/CircadianStars";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { fetchHotel } from "@/lib/hotel-client";
+import { computeTripAnalytics } from "@/lib/trip-analytics";
 import { buildTimelineDays, type TimelineDay } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
@@ -284,6 +285,90 @@ function LayoverRow({
   );
 }
 
+interface InsightChip {
+  label: string;
+  value: string;
+  title: string;
+  tone?: "warn";
+}
+
+/**
+ * A compact read of `computeTripAnalytics` — real per-leg arithmetic
+ * already computed for scoring/strategies but never surfaced to a pilot
+ * directly until now. Each chip only appears when its underlying field is
+ * non-null (some trips predate GMT-pair data or lack a verified schedule)
+ * and clears a "worth mentioning" bar, so a plain, unremarkable trip shows
+ * nothing rather than a row of zeros.
+ */
+function TripInsights({ trip }: { trip: Trip }) {
+  const a = computeTripAnalytics(trip);
+  const chips: InsightChip[] = [];
+
+  if (a.creditPerTafbHour !== null) {
+    chips.push({
+      label: "Day-rig rate",
+      value: `${(a.creditPerTafbHour * 24).toFixed(1)} hrs/day`,
+      title:
+        "Credit hours earned per 24 hours away from base — this trip's own pay-per-day-away rate, independent of how long the trip runs.",
+    });
+  }
+
+  if (a.totalTimezoneCrossingMinutes !== null && a.totalTimezoneCrossingMinutes >= 60) {
+    const netHours = (a.netTimezoneMinutes ?? 0) / 60;
+    const direction = netHours > 0.5 ? "eastbound" : netHours < -0.5 ? "westbound" : "round-trip";
+    chips.push({
+      label: "Timezone crossing",
+      value: `${(a.totalTimezoneCrossingMinutes / 60).toFixed(1)}h total, ${direction}`,
+      title:
+        "Total time-zone distance crossed across every leg (both directions added together), and which way the trip nets out overall.",
+    });
+  }
+
+  if (a.avgSleepOpportunityHours !== null) {
+    chips.push({
+      label: "Avg sleep opportunity",
+      value: `${a.avgSleepOpportunityHours.toFixed(1)}h`,
+      title:
+        "Layover time minus the real hotel-pickup/ground gap around it — closer to actual usable rest than the printed layover duration.",
+    });
+  }
+
+  if (a.dutyToBlockRatio !== null && a.dutyToBlockRatio >= 1.1) {
+    chips.push({
+      label: "Duty-to-flying ratio",
+      value: `${a.dutyToBlockRatio.toFixed(1)}×`,
+      title:
+        "Total duty time divided by actual block time — higher means more of the day is ground time and connections than real flying.",
+    });
+  }
+
+  if (a.backToBackRedEyeDuties > 0) {
+    chips.push({
+      label: "Back-to-back red-eyes",
+      value: String(a.backToBackRedEyeDuties),
+      tone: "warn",
+      title:
+        "Consecutive duty periods that each include a red-eye (00:00-05:00 local) departure or arrival — compounding fatigue risk rather than one bad night followed by recovery.",
+    });
+  }
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 pl-[7.5rem] text-[11px]">
+      {chips.map((chip) => (
+        <span
+          key={chip.label}
+          title={chip.title}
+          className={`inline-flex items-center gap-1 ${chip.tone === "warn" ? "text-warn" : "text-ink-faint"}`}
+        >
+          <span className="font-medium">{chip.label}:</span> {chip.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 interface TripListProps {
   trips: Trip[];
   /** Real UTC offset derived from the bid pack's own printed times — see lib/circadian.ts. Null when it couldn't be derived. */
@@ -368,6 +453,8 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
                 : "no deadhead"}
             </div>
           </div>
+
+          <TripInsights trip={trip} />
 
           {trip.schedule.length > 0 ? (
             <div className="mt-2">
