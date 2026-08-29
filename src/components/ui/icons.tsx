@@ -153,6 +153,17 @@ export function LogoMark({ className = "h-7 w-7" }: IconProps) {
   );
 }
 
+/** A bullseye — the strategies you're best positioned to actually hit. */
+export function TargetIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="12" cy="12" r="9" fill="currentColor" fillOpacity="0.08" />
+      <circle cx="12" cy="12" r="5.5" fill="currentColor" fillOpacity="0.12" />
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function ChevronLeftIcon({ className = base }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>

@@ -9,6 +9,7 @@ import { ConfirmPreferencesScreen } from "@/components/preferences/ConfirmPrefer
 import { PreferencesScreen } from "@/components/preferences/PreferencesScreen";
 import { HowItWorksContent } from "@/components/results/HowItWorks";
 import { ResultsView } from "@/components/results/ResultsView";
+import { StrategiesScreen } from "@/components/strategies/StrategiesScreen";
 import { InboxScreen } from "@/components/trade-board/InboxScreen";
 import { TradeBoardScreen } from "@/components/trade-board/TradeBoardScreen";
 import { Modal } from "@/components/ui/Modal";
@@ -22,11 +23,13 @@ import { generateFakeOffer } from "@/lib/fake-trade-offers";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
+import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
 import { clearProfile, loadProfile, saveProfile } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
+import type { SeniorityInput } from "@/types/strategy";
 import type { TradeOffer } from "@/types/trade";
 
 type Screen =
@@ -39,6 +42,7 @@ type Screen =
   | "interview"
   | "confirm-preferences"
   | "results"
+  | "strategies"
   | "trade-board"
   | "inbox"
   | "hotel-ratings";
@@ -60,6 +64,7 @@ interface AppState {
   parseResult: ParseBidPackResult | null;
   /** The just-finished interview's profile, awaiting confirmation before it's saved. */
   pendingProfile: PreferenceProfile | null;
+  seniority: SeniorityInput | null;
 }
 
 function landingScreenFor(bidPack: BidPack | null, profile: PreferenceProfile | null): Screen {
@@ -68,7 +73,7 @@ function landingScreenFor(bidPack: BidPack | null, profile: PreferenceProfile | 
 }
 
 export default function Home() {
-  const [{ screen, profile, user, bidPack, parseResult, pendingProfile }, setState] =
+  const [{ screen, profile, user, bidPack, parseResult, pendingProfile, seniority }, setState] =
     useState<AppState>({
       screen: "loading",
       profile: null,
@@ -76,6 +81,7 @@ export default function Home() {
       bidPack: null,
       parseResult: null,
       pendingProfile: null,
+      seniority: null,
     });
   const [interviewKey, setInterviewKey] = useState(0);
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
@@ -96,6 +102,7 @@ export default function Home() {
       if (cancelled) return;
       const savedBidPack = loadBidPack(currentUser?.id ?? null);
       const savedProfile = savedBidPack ? loadProfile(currentUser?.id ?? null) : null;
+      const savedSeniority = loadSeniority(currentUser?.id ?? null);
       setState((s) => {
         // If the pilot already acted (e.g. loaded the sample bid pack)
         // while this async session check was in flight, don't clobber that
@@ -110,6 +117,7 @@ export default function Home() {
           bidPack: savedBidPack,
           parseResult: null,
           pendingProfile: null,
+          seniority: savedSeniority,
         };
       });
     }
@@ -308,6 +316,11 @@ export default function Home() {
     setState((s) => ({ ...s, profile: updated }));
   }
 
+  function handleSaveSeniority(input: SeniorityInput) {
+    saveSeniority(user?.id ?? null, input);
+    setState((s) => ({ ...s, seniority: input }));
+  }
+
   function handleStartInterview() {
     setInterviewKey((k) => k + 1);
     setState((s) => ({ ...s, screen: "interview", pendingProfile: null }));
@@ -349,6 +362,7 @@ export default function Home() {
       bidPack: theirBidPack,
       parseResult: null,
       pendingProfile: null,
+      seniority: loadSeniority(newUser.id),
     });
   }
 
@@ -360,6 +374,7 @@ export default function Home() {
       screen: landingScreenFor(guestBidPack, guestProfile),
       profile: guestProfile,
       bidPack: guestBidPack,
+      seniority: loadSeniority(null),
     }));
   }
 
@@ -370,6 +385,7 @@ export default function Home() {
     setState({
       screen: landingScreenFor(guestBidPack, guestProfile),
       profile: guestProfile,
+      seniority: loadSeniority(null),
       user: null,
       bidPack: guestBidPack,
       parseResult: null,
@@ -468,6 +484,15 @@ export default function Home() {
               profile={profile}
               onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
               onStartInterview={handleStartInterview}
+            />
+          )}
+
+          {screen === "strategies" && (
+            <StrategiesScreen
+              bidPack={bidPack}
+              seniority={seniority}
+              onSaveSeniority={handleSaveSeniority}
+              onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
             />
           )}
 

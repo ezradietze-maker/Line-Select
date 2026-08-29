@@ -9,6 +9,7 @@ import {
   MailIcon,
   SlidersIcon,
   SwapIcon,
+  TargetIcon,
   TrophyIcon,
   UploadIcon,
 } from "@/components/ui/icons";
@@ -18,6 +19,7 @@ export type NavTarget =
   | "upload"
   | "preferences"
   | "results"
+  | "strategies"
   | "trade-board"
   | "inbox"
   | "hotel-ratings";
@@ -42,6 +44,7 @@ const NAV_ITEMS: {
   { target: "upload", label: "Upload Bid Pack", icon: UploadIcon },
   { target: "preferences", label: "Preferences", icon: SlidersIcon },
   { target: "results", label: "My Rankings", icon: TrophyIcon },
+  { target: "strategies", label: "Strategies", icon: TargetIcon },
   { target: "trade-board", label: "Trade Board", icon: SwapIcon },
   { target: "inbox", label: "Inbox", icon: MailIcon },
   { target: "hotel-ratings", label: "Hotel Ratings", icon: BuildingIcon },
@@ -57,11 +60,13 @@ const NAV_ITEMS: {
 function NavList({
   active,
   hasProfile,
+  hasBidPack,
   inboxUnreadCount,
   onGo,
 }: {
   active: NavTarget;
   hasProfile: boolean;
+  hasBidPack: boolean;
   inboxUnreadCount: number;
   onGo: (target: NavTarget) => void;
 }) {
@@ -91,7 +96,9 @@ function NavList({
         />
       )}
       {NAV_ITEMS.map((item, i) => {
-        const disabled = item.target === "results" && !hasProfile;
+        const disabled =
+          (item.target === "results" && !hasProfile) ||
+          (item.target === "strategies" && !hasBidPack);
         const isActive = active === item.target;
         const badgeCount = item.target === "inbox" ? inboxUnreadCount : 0;
         return (
@@ -170,6 +177,7 @@ export function LeftNav({
         <NavList
           active={active}
           hasProfile={hasProfile}
+          hasBidPack={hasBidPack}
           inboxUnreadCount={inboxUnreadCount}
           onGo={go}
         />
