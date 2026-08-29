@@ -13,9 +13,13 @@ const SENIOR: SeniorityInput = { rank: 1, totalPilots: 200 };
 const JUNIOR: SeniorityInput = { rank: 199, totalPilots: 200 };
 
 describe("generateStrategies", () => {
-  it("returns all five strategies without throwing, each with real (non-empty) explanatory text", () => {
+  it("returns every non-reserve strategy without throwing, each with real (non-empty) explanatory text", () => {
+    // Reserve Ladder is the one archetype that only appears when the bid
+    // pack's own Reserve Lines grid was parsed — SAMPLE_BID_PACK has none,
+    // so it should be honestly absent rather than forced.
     const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    expect(strategies).toHaveLength(5);
+    expect(strategies.map((s) => s.id)).not.toContain("reserve-ladder");
+    expect(strategies).toHaveLength(6);
     for (const s of strategies) {
       expect(s.name.length).toBeGreaterThan(0);
       expect(s.mechanism.length).toBeGreaterThan(0);
@@ -76,6 +80,66 @@ describe("generateStrategies", () => {
     expect(reBid?.isProcessTip).toBe(true);
     expect(reBid?.lines).toHaveLength(0);
   });
+
+  it("always includes the Vacation Vault as a generic, line-free tip that never claims to read anyone's actual vacation slot", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const vault = strategies.find((s) => s.id === "vacation-vault");
+    expect(vault?.isProcessTip).toBe(true);
+    expect(vault?.lines).toHaveLength(0);
+  });
+
+  it("includes the Reserve Ladder with an accurate type breakdown once the bid pack's own Reserve Lines grid is present", () => {
+    const bidPackWithReserve = {
+      ...SAMPLE_BID_PACK,
+      reserveLines: [
+        { lineNumber: "7001", reserveType: "24hr" as const },
+        { lineNumber: "7002", reserveType: "24hr" as const },
+        { lineNumber: "7006", reserveType: "a" as const },
+        { lineNumber: "7022", reserveType: "b" as const },
+        { lineNumber: "7099", reserveType: null },
+      ],
+      info: {
+        rlgHours: 75.75,
+        rDayValueHours: 5.05,
+        lowLineCreditHours: 70.68,
+        highLineCreditHours: 83.35,
+        averageDaysOff: 14.2,
+        totalRegularLines: 98,
+        totalReserveLines: 5,
+        totalSecondaryLines: 54,
+      },
+    };
+    const strategies = generateStrategies(bidPackWithReserve, SENIOR);
+    const ladder = strategies.find((s) => s.id === "reserve-ladder");
+    expect(ladder).toBeDefined();
+    expect(ladder!.mechanism).toContain("2 run 24-Hour (R) reserve");
+    expect(ladder!.mechanism).toContain("1 run RA");
+    expect(ladder!.mechanism).toContain("1 run RB");
+    expect(ladder!.mechanism).toContain("1 whose type wasn't clear");
+    expect(ladder!.mechanism).toContain("75.8 hours");
+    // RLG (75.75) genuinely beats Low Line Credit (70.68) here, so the floor insight should surface.
+    expect(ladder!.benefits.some((b) => b.includes("isn't automatically the losing seat"))).toBe(true);
+  });
+
+  it("omits the Reserve Ladder's floor-guarantee claim when RLG doesn't actually beat Low Line Credit", () => {
+    const bidPackWithReserve = {
+      ...SAMPLE_BID_PACK,
+      reserveLines: [{ lineNumber: "7001", reserveType: "24hr" as const }],
+      info: {
+        rlgHours: 60,
+        rDayValueHours: 5,
+        lowLineCreditHours: 70,
+        highLineCreditHours: 83,
+        averageDaysOff: 14,
+        totalRegularLines: 98,
+        totalReserveLines: 1,
+        totalSecondaryLines: 54,
+      },
+    };
+    const strategies = generateStrategies(bidPackWithReserve, SENIOR);
+    const ladder = strategies.find((s) => s.id === "reserve-ladder");
+    expect(ladder!.benefits.some((b) => b.includes("isn't automatically the losing seat"))).toBe(false);
+  });
 });
 
 describe("estimateFeasibility", () => {
@@ -120,6 +184,15 @@ describe("rankStrategiesByPreference", () => {
     const ranked = rankStrategiesByPreference(strategies, weights);
     expect(ranked[ranked.length - 1].id).toBe("re-bid-chain");
     expect(ranked.find((s) => s.id === "re-bid-chain")?.preferenceMatch).toBeUndefined();
+  });
+
+  it("ranks the Vacation Vault ahead of strategies unrelated to days off for a pilot who weighted daysOff heavily", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const weights = { ...emptyWeights(), daysOff: 90 };
+    const ranked = rankStrategiesByPreference(strategies, weights);
+    const vaultIndex = ranked.findIndex((s) => s.id === "vacation-vault");
+    const ghostIndex = ranked.findIndex((s) => s.id === "ghost-line");
+    expect(vaultIndex).toBeLessThan(ghostIndex);
   });
 
   it("leaves a strategy with no meaningfully-weighted factors ranked but without invented reasons", () => {

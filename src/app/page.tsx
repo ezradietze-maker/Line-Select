@@ -539,10 +539,12 @@ function Footer() {
         Line Select is an independent, unofficial prototype built for FedEx
         pilots. It is not affiliated with, endorsed by, or connected to
         Federal Express Corporation in any way. Bid pack PDFs are parsed to
-        extract pairing and line data only — pages listing other pilots&rsquo;
-        names, employee numbers, or seniority are never read. Your bid pack
-        and preferences are parsed and stored only on this device; account
-        sign-in and Trade Board posts are the only things sent to a server.
+        extract pairing data, line data, reserve-line on-call types, and the
+        pack&rsquo;s own summary numbers (guarantees, credit ranges, line
+        counts) only — pages listing other pilots&rsquo; names, employee
+        numbers, or seniority are never read. Your bid pack and preferences
+        are parsed and stored only on this device; account sign-in and Trade
+        Board posts are the only things sent to a server.
       </div>
     </footer>
   );

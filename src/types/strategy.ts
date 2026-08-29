@@ -14,7 +14,14 @@ export interface SeniorityInput {
   totalPilots: number;
 }
 
-export type StrategyId = "ghost-line" | "mega-trip" | "recurring-turn" | "safety-net" | "re-bid-chain";
+export type StrategyId =
+  | "ghost-line"
+  | "mega-trip"
+  | "recurring-turn"
+  | "safety-net"
+  | "re-bid-chain"
+  | "reserve-ladder"
+  | "vacation-vault";
 
 export interface StrategyLineRecommendation {
   lineNumber: string;

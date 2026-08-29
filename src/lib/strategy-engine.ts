@@ -349,6 +349,72 @@ export function generateStrategies(bidPack: BidPack, seniority: SeniorityInput):
     });
   }
 
+  // ---- Reserve Ladder (only when this pack's own Reserve Lines grid parsed) ----
+  if (bidPack.reserveLines && bidPack.reserveLines.length > 0) {
+    const counts = { "24hr": 0, a: 0, b: 0, unknown: 0 };
+    for (const rl of bidPack.reserveLines) {
+      if (rl.reserveType === "24hr") counts["24hr"]++;
+      else if (rl.reserveType === "a") counts.a++;
+      else if (rl.reserveType === "b") counts.b++;
+      else counts.unknown++;
+    }
+
+    const typeBreakdown = [
+      counts["24hr"] > 0 ? `${counts["24hr"]} run 24-Hour (R) reserve` : null,
+      counts.a > 0 ? `${counts.a} run RA` : null,
+      counts.b > 0 ? `${counts.b} run RB` : null,
+    ].filter((s): s is string => s !== null);
+    const unknownNote =
+      counts.unknown > 0 ? `, and ${counts.unknown} whose type wasn't clear from the printed grid` : "";
+
+    const rlg = bidPack.info?.rlgHours ?? null;
+    const lowLineCredit = bidPack.info?.lowLineCreditHours ?? null;
+    const rlgSentence =
+      rlg !== null
+        ? ` All of them draw the same Reserve Line Guarantee — ${hours(rlg)} hours — no matter which type you hold.`
+        : "";
+
+    const benefits = [
+      "Identical guaranteed pay across every reserve type on this pack's own numbers",
+      "Your pack's own legend calls out R as the only explicitly 24-hour type — RA/RB are named separately, which usually means a narrower call window for the same floor pay (the exact hours aren't printed on the grid itself, so confirm locally)",
+    ];
+    if (rlg !== null && lowLineCredit !== null && rlg > lowLineCredit) {
+      benefits.push(
+        `This bid period, that guarantee (${hours(rlg)} hrs) is actually higher than the lowest-paying awarded regular line (${hours(
+          lowLineCredit
+        )} hrs) — reserve isn't automatically the losing seat this month.`
+      );
+    }
+
+    strategies.push({
+      id: "reserve-ladder",
+      name: "The Reserve Ladder",
+      tagline: "If you're going to hold reserve, hold the lightest version of it that pays the same.",
+      mechanism: `This pack has ${bidPack.reserveLines.length} reserve lines this bid period: ${typeBreakdown.join(
+        ", "
+      )}${unknownNote}.${rlgSentence} If you end up on reserve at all, there's real reason to prefer whichever of RA/RB is available over 24-Hour R — the guarantee doesn't change, only how much of your day is locked to the phone.`,
+      benefits,
+      lines: [],
+      isProcessTip: true,
+    });
+  }
+
+  // ---- Vacation Vault (process, not line-specific — deliberately generic; see mechanism) ----
+  strategies.push({
+    id: "vacation-vault",
+    name: "The Vacation Vault",
+    tagline: "Bank vacation into one long block and skip the bid fight for that stretch entirely.",
+    mechanism:
+      "Vacation entitlement usually isn't capped at one week per pick — a pilot with enough accrued balance can bid several consecutive weeks together as one continuous block, sometimes long enough to swallow an entire bid period. A block that overlaps a bid month's boundary means you're drawing vacation pay through it instead of competing for a line at all — no trip to fly, no reserve to sit, nothing to rank. Line Select can't point you at a specific slot here: doing that would mean reading other pilots' names and vacation weeks off your pack's own roster pages, which this app deliberately never parses. Check your own accrued vacation balance and bid the longest continuous stretch you can actually use.",
+    benefits: [
+      "A guaranteed, paid outcome that doesn't depend on winning anything in the bid",
+      "One long block beats several short ones for actually feeling like time off",
+      "Timed right, it removes an entire bid period from the competition altogether",
+    ],
+    lines: [],
+    isProcessTip: true,
+  });
+
   // ---- Re-Bid Chain (process, not line-specific) ----
   strategies.push({
     id: "re-bid-chain",
@@ -429,6 +495,10 @@ const FIT_FACTORS: Partial<Record<StrategyId, { key: keyof PreferenceWeights; fa
     { key: "creditHours", favorsHigh: true },
     { key: "daysOff", favorsHigh: true },
   ],
+  // Reserve Ladder isn't ranked here on purpose — whether it applies to you
+  // depends on circumstance (how close you sit to the reserve cutoff), not
+  // a stated preference.
+  "vacation-vault": [{ key: "daysOff", favorsHigh: true }],
 };
 
 /** Below this magnitude a slider reads as "no strong opinion" — same bar preference-summary.ts uses before it's worth naming in a sentence. */

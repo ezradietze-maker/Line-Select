@@ -116,6 +116,39 @@ export interface Line {
   estimated?: boolean;
 }
 
+/**
+ * One reserve line's on-call type, read straight from its own row on the
+ * bid pack's "Reserve Lines" grid — never from a page listing who's actually
+ * on it. `null` means the row's printed letters were mixed or absent on the
+ * visible portion of the grid, not that the line has no type; nothing here
+ * is ever inferred or guessed at when the printed grid doesn't say.
+ */
+export interface ReserveLine {
+  /** Reserve line number as published, e.g. "7014". */
+  lineNumber: string;
+  /** "24hr" = the pack's own "R (24-Hr)" type; "a"/"b" = its "RA"/"RB" types, whatever those specifically cover isn't printed on the grid itself. */
+  reserveType: "24hr" | "a" | "b" | null;
+}
+
+/**
+ * The per-seat summary numbers printed on a bid pack's own "Bid Information"
+ * page — real guarantees and averages, not computed from the parsed lines.
+ * Any field the page didn't print in a recognized format is `null` rather
+ * than estimated.
+ */
+export interface BidPackInfo {
+  /** Reserve Line Guarantee: hours a reserve pilot is paid regardless of whether they're called out. */
+  rlgHours: number | null;
+  /** Hours credited per scheduled reserve day toward that guarantee. */
+  rDayValueHours: number | null;
+  lowLineCreditHours: number | null;
+  highLineCreditHours: number | null;
+  averageDaysOff: number | null;
+  totalRegularLines: number | null;
+  totalReserveLines: number | null;
+  totalSecondaryLines: number | null;
+}
+
 export interface BidPack {
   id: string;
   /** e.g. "SEP26" */
@@ -126,4 +159,8 @@ export interface BidPack {
   /** Length of the bid period in days, e.g. 28 for a 4-week bidmonth. */
   bidPeriodDays: number;
   lines: Line[];
+  /** Absent when this bid pack's PDF had no recognizable Reserve Lines grid for this seat, or none was uploaded. */
+  reserveLines?: ReserveLine[];
+  /** Absent when this bid pack's PDF had no recognizable "Bid Information" page. */
+  info?: BidPackInfo;
 }

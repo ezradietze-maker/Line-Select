@@ -17,11 +17,23 @@ export function classifyPage(pageNumber: number, headerRows: string[]): PageClas
     return { pageNumber, kind: "line-grid", reason: "matched '<base> domicile - <seat> only' header" };
   }
 
+  // Reserve Lines pages only ever carry a line number and its R/A/B on-call
+  // type, never a name — the row parser itself (reserve-line-parser.ts)
+  // additionally refuses any row whose content isn't purely digits, R/A/B,
+  // pipes and whitespace, so a differently-formatted bid pack that DID print
+  // names here would still fail closed rather than leak them.
+  if (/Reserve\s+Lines\s*:/i.test(header)) {
+    return { pageNumber, kind: "reserve-line-grid", reason: "matched 'Reserve Lines:' header" };
+  }
+
+  if (/Bid\s+Information\s+for/i.test(header)) {
+    return { pageNumber, kind: "info-page", reason: "matched 'Bid Information for' header" };
+  }
+
   const personalDataPatterns: { pattern: RegExp; label: string }[] = [
     { pattern: /Vacation\s+Schedule\s+by\s+Week/i, label: "Vacation Schedule by Week" },
     { pattern: /Bid\s+Seniority\s+List/i, label: "Bid Seniority List" },
     { pattern: /Training\s+List/i, label: "Training List" },
-    { pattern: /Reserve\s+Lines\s*:/i, label: "Reserve Lines roster" },
   ];
   for (const { pattern, label } of personalDataPatterns) {
     if (pattern.test(header)) {
@@ -38,6 +50,8 @@ export function summarizeClassifications(
   const counts: Record<PageKind, number> = {
     "pairing-schedule": 0,
     "line-grid": 0,
+    "reserve-line-grid": 0,
+    "info-page": 0,
     "ignored-personal-data": 0,
     "ignored-other": 0,
   };

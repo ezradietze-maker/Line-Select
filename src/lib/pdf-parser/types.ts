@@ -1,11 +1,13 @@
 import type { BidPack } from "@/types/bidpack";
 
-/** Which of the two page types we actually parse, or why a page was skipped. */
+/** Which page types we actually parse, or why a page was skipped. */
 export type PageKind =
   | "pairing-schedule"
   | "line-grid"
+  | "reserve-line-grid"
+  | "info-page"
   | "ignored-personal-data" // vacation / seniority / training rosters — never parsed
-  | "ignored-other"; // cover, TOC, info, sweep flights, reserve lines, etc.
+  | "ignored-other"; // cover, TOC, sweep flights, etc.
 
 export interface PageClassification {
   pageNumber: number;

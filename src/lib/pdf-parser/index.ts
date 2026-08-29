@@ -1,4 +1,5 @@
 import { buildLine } from "@/lib/pdf-parser/build-bidpack";
+import { parseInfoPage } from "@/lib/pdf-parser/info-page-parser";
 import {
   indexPairingsByFlightNumber,
   indexPairingsBySequence,
@@ -7,6 +8,7 @@ import {
 import { extractMetaFromLineGridHeader, extractMetaFromPairingHeader } from "@/lib/pdf-parser/meta";
 import { parsePairingColumn } from "@/lib/pdf-parser/pairing-parser";
 import { classifyPage } from "@/lib/pdf-parser/page-classifier";
+import { extractReserveLineSeat, parseReserveLineGridRows } from "@/lib/pdf-parser/reserve-line-parser";
 import {
   extractPage,
   extractTwoColumnRows,
@@ -23,7 +25,7 @@ import type {
   ParsedPairing,
   ParseWarning,
 } from "@/lib/pdf-parser/types";
-import type { BidPack } from "@/types/bidpack";
+import type { BidPack, BidPackInfo, ReserveLine, Seat } from "@/types/bidpack";
 
 export { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 export type { ParseBidPackResult } from "@/lib/pdf-parser/types";
@@ -146,6 +148,29 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
     seat: lineGridMeta?.seat ?? "CAP",
   };
 
+  // Pass 3: reserve line grid + info page — both purely numeric/summary
+  // data (line numbers and R/A/B types; pack-wide guarantee and credit
+  // stats), never a page that names anyone.
+  const reserveLinesBySeat: Partial<Record<Seat, ReserveLine[]>> = {};
+  let infoBySeat: Partial<Record<Seat, BidPackInfo>> | null = null;
+
+  for (let i = 0; i < pages.length; i++) {
+    const kind = pageClassifications[i].kind;
+    if (kind !== "reserve-line-grid" && kind !== "info-page") continue;
+    const page = pages[i];
+    const rows = groupIntoRows(page.items);
+
+    if (kind === "reserve-line-grid") {
+      const seat = extractReserveLineSeat(rows.slice(0, 4)) ?? "CAP";
+      const parsed = parseReserveLineGridRows(rows, page.pageNumber, warnings);
+      if (parsed.length > 0) {
+        reserveLinesBySeat[seat] = [...(reserveLinesBySeat[seat] ?? []), ...parsed];
+      }
+    } else if (!infoBySeat) {
+      infoBySeat = parseInfoPage(rows, page.pageNumber, warnings);
+    }
+  }
+
   const linesWithIncompleteTrips: { lineNumber: string; seat: "CAP" | "FO" }[] = [];
   const bidPacksBySeat: Partial<Record<"CAP" | "FO", BidPack>> = {};
 
@@ -165,6 +190,8 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
       seat,
       bidPeriodDays: 28,
       lines: seatResults.map((r) => buildLine(r.summary, r.pairings)),
+      reserveLines: reserveLinesBySeat[seat],
+      info: infoBySeat?.[seat],
     };
   }
 
