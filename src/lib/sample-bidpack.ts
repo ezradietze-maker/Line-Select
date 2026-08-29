@@ -256,4 +256,28 @@ export const SAMPLE_BID_PACK: BidPack = {
     buildLine("9005", 19, [tripA, tripC]),
     buildLine("9006", 18, [tripB, tripC]),
   ],
+  // Fictional, same as everything else above — a distinct 8000-series
+  // numbering block from the 9000-series regular lines, matching how a real
+  // pack numbers reserve lines separately. Included so the Strategies tab's
+  // Reserve Ladder has something to show in the sample walkthrough too,
+  // instead of silently never appearing for anyone who hasn't uploaded a
+  // real bid pack yet.
+  reserveLines: [
+    { lineNumber: "8001", reserveType: "24hr" },
+    { lineNumber: "8002", reserveType: "24hr" },
+    { lineNumber: "8003", reserveType: "a" },
+    { lineNumber: "8004", reserveType: "a" },
+    { lineNumber: "8005", reserveType: "b" },
+    { lineNumber: "8006", reserveType: "b" },
+  ],
+  info: {
+    rlgHours: 20,
+    rDayValueHours: 1.33,
+    lowLineCreditHours: 7.5,
+    highLineCreditHours: 36,
+    averageDaysOff: 21.3,
+    totalRegularLines: 6,
+    totalReserveLines: 6,
+    totalSecondaryLines: 0,
+  },
 };

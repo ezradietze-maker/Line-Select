@@ -13,18 +13,24 @@ const SENIOR: SeniorityInput = { rank: 1, totalPilots: 200 };
 const JUNIOR: SeniorityInput = { rank: 199, totalPilots: 200 };
 
 describe("generateStrategies", () => {
-  it("returns every non-reserve strategy without throwing, each with real (non-empty) explanatory text", () => {
-    // Reserve Ladder is the one archetype that only appears when the bid
-    // pack's own Reserve Lines grid was parsed — SAMPLE_BID_PACK has none,
-    // so it should be honestly absent rather than forced.
+  it("returns every strategy without throwing, each with real (non-empty) explanatory text", () => {
+    // SAMPLE_BID_PACK carries its own (fictional) reserveLines/info, so
+    // Reserve Ladder is expected here too — the sample walkthrough should
+    // show the same seven strategies a real bid pack with reserve data does.
     const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    expect(strategies.map((s) => s.id)).not.toContain("reserve-ladder");
-    expect(strategies).toHaveLength(6);
+    expect(strategies.map((s) => s.id)).toContain("reserve-ladder");
+    expect(strategies).toHaveLength(7);
     for (const s of strategies) {
       expect(s.name.length).toBeGreaterThan(0);
       expect(s.mechanism.length).toBeGreaterThan(0);
       expect(s.benefits.length).toBeGreaterThan(0);
     }
+  });
+
+  it("honestly omits the Reserve Ladder when a bid pack has no reserve line data at all", () => {
+    const withoutReserveData = { ...SAMPLE_BID_PACK, reserveLines: undefined, info: undefined };
+    const strategies = generateStrategies(withoutReserveData, SENIOR);
+    expect(strategies.map((s) => s.id)).not.toContain("reserve-ladder");
   });
 
   it("always finds a Safety Net candidate, since every real bid pack has *some* line to fall back on", () => {
