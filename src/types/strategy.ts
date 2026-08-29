@@ -39,6 +39,15 @@ export interface Strategy {
   lines: StrategyLineRecommendation[];
   /** True for strategies (like the re-bid chain) that are general bidding-process advice rather than a read of this specific pack's lines. */
   isProcessTip?: boolean;
+  /**
+   * Real phrases from the pilot's own interview answers that this strategy's
+   * ranking was based on — present only when a profile exists and the
+   * strategy has at least one meaningfully-weighted preference behind it.
+   * Undefined (not just empty) means "not preference-ranked at all" (the
+   * process-tip strategies), vs. an empty array meaning "ranked, but nothing
+   * in the interview leaned hard enough either way to name."
+   */
+  preferenceMatch?: string[];
 }
 
 export interface AutoBidEntry {

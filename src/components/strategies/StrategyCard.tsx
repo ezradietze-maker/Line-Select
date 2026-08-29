@@ -41,18 +41,33 @@ function LineRecommendationRow({ rec }: { rec: StrategyLineRecommendation }) {
   );
 }
 
-export function StrategyCard({ strategy }: { strategy: Strategy }) {
+export function StrategyCard({ strategy, topPick }: { strategy: Strategy; topPick?: boolean }) {
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 sm:p-6">
+    <div
+      className={`rounded-xl border bg-surface p-5 sm:p-6 ${
+        topPick ? "border-brand/40 ring-1 ring-brand/20" : "border-border"
+      }`}
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-semibold text-ink">{strategy.name}</h2>
-        {strategy.isProcessTip && (
+        {topPick && (
+          <span className="inline-flex items-center rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-white">
+            Best match for you
+          </span>
+        )}
+        {!topPick && strategy.isProcessTip && (
           <span className="inline-flex items-center rounded-full border border-border-strong px-2 py-0.5 text-xs font-medium text-ink-faint">
             Bonus move
           </span>
         )}
       </div>
       <p className="mt-1 text-sm font-medium text-brand">{strategy.tagline}</p>
+      {strategy.preferenceMatch && strategy.preferenceMatch.length > 0 && (
+        <p className="mt-2 text-xs leading-relaxed text-ink-muted">
+          <span className="font-medium text-ink">From your interview:</span>{" "}
+          {strategy.preferenceMatch.join(" and ")}.
+        </p>
+      )}
       <p className="mt-3 text-sm leading-relaxed text-ink-muted">{strategy.mechanism}</p>
 
       <ul className="mt-3 space-y-1.5">

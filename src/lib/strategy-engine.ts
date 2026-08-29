@@ -1,10 +1,13 @@
+import { PHRASES } from "@/lib/preference-summary";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
+import type { PreferenceWeights } from "@/types/preferences";
 import type {
   AutoBidEntry,
   FeasibilityTier,
   SeniorityInput,
   Strategy,
+  StrategyId,
   StrategyLineRecommendation,
 } from "@/types/strategy";
 
@@ -370,7 +373,14 @@ export function generateStrategies(bidPack: BidPack, seniority: SeniorityInput):
  * strategy's best real pick. Order reflects true preference, not odds —
  * seniority bidding never punishes ranking a reach #1, since falling through
  * to the next choice is automatic. The Safety Net entries exist purely to
- * make sure the list doesn't run out before it reaches something realistic.
+ * make sure the list doesn't run out before it reaches something realistic,
+ * so it always contributes its picks last regardless of where it sorts.
+ *
+ * `strategies` should already be in the order the pilot would want them
+ * considered — pass the output of `rankStrategiesByPreference` when a
+ * profile exists, so the two strategies that best match the pilot's own
+ * interview are the ones that get a second reach pick, not always
+ * Ghost Line/One-And-Done by default.
  */
 export function buildAutoBid(strategies: Strategy[]): AutoBidEntry[] {
   const entries: { lineNumber: string; strategyName: string; reason: string; feasibility: FeasibilityTier }[] = [];
@@ -389,18 +399,80 @@ export function buildAutoBid(strategies: Strategy[]): AutoBidEntry[] {
     }
   }
 
-  // Each strategy's best pick first (interleaved, since that's the true
-  // preference order), then a second reach pick from the two strongest
-  // archetypes, then the Safety Net fills out the rest of the list. `addTop`
-  // re-slicing from 0 each call is safe: `seen` skips anything already
-  // added, so a later, larger count only ever contributes the new tail.
-  const byId = Object.fromEntries(strategies.map((s) => [s.id, s]));
-  if (byId["ghost-line"]) addTop(byId["ghost-line"], 1);
-  if (byId["mega-trip"]) addTop(byId["mega-trip"], 1);
-  if (byId["recurring-turn"]) addTop(byId["recurring-turn"], 1);
-  if (byId["ghost-line"]) addTop(byId["ghost-line"], 2);
-  if (byId["mega-trip"]) addTop(byId["mega-trip"], 2);
-  if (byId["safety-net"]) addTop(byId["safety-net"], 3);
+  const lineStrategies = strategies.filter((s) => !s.isProcessTip && s.id !== "safety-net");
+  const safetyNet = strategies.find((s) => s.id === "safety-net");
+
+  // Each strategy's best pick first, in whatever order they were given
+  // (the true preference order), then a second reach pick from whichever
+  // two strategies rank highest, then the Safety Net fills out the rest.
+  // `addTop` re-slicing from 0 each call is safe: `seen` skips anything
+  // already added, so a later, larger count only ever adds the new tail.
+  for (const s of lineStrategies) addTop(s, 1);
+  for (const s of lineStrategies.slice(0, 2)) addTop(s, 2);
+  if (safetyNet) addTop(safetyNet, 3);
 
   return entries.map((e, i) => ({ rank: i + 1, ...e }));
+}
+
+/** Which preference dimensions a strategy lives or dies on, and which direction favors it — high weight (wants more of it) or low/negative weight (wants less/the opposite). Strategies absent here (the process tips) aren't preference-ranked at all. */
+const FIT_FACTORS: Partial<Record<StrategyId, { key: keyof PreferenceWeights; favorsHigh: boolean }[]>> = {
+  "ghost-line": [
+    { key: "creditHours", favorsHigh: true },
+    { key: "deadheadTolerance", favorsHigh: true },
+  ],
+  "mega-trip": [
+    { key: "tripLength", favorsHigh: true },
+    { key: "daysOff", favorsHigh: true },
+  ],
+  "recurring-turn": [{ key: "tripLength", favorsHigh: false }],
+  "safety-net": [
+    { key: "creditHours", favorsHigh: true },
+    { key: "daysOff", favorsHigh: true },
+  ],
+};
+
+/** Below this magnitude a slider reads as "no strong opinion" — same bar preference-summary.ts uses before it's worth naming in a sentence. */
+const MEANINGFUL_WEIGHT = 12;
+
+function scorePreferenceFit(
+  id: StrategyId,
+  weights: PreferenceWeights
+): { score: number; reasons: string[] } | null {
+  const factors = FIT_FACTORS[id];
+  if (!factors) return null;
+
+  let total = 0;
+  const reasons: string[] = [];
+  for (const factor of factors) {
+    const raw = weights[factor.key];
+    total += factor.favorsHigh ? raw : -raw;
+    if (Math.abs(raw) >= MEANINGFUL_WEIGHT) {
+      reasons.push(raw >= 0 ? PHRASES[factor.key].positive : PHRASES[factor.key].negative);
+    }
+  }
+  return { score: total / factors.length, reasons };
+}
+
+/**
+ * Reorders strategies by how well each matches the pilot's own interview
+ * answers, using the exact same weights that already drive their line
+ * rankings — not a separate guess. Process-tip strategies (no line content
+ * to prefer or not) always sort to the end, in their original order. Without
+ * a profile yet, the input order is left alone — there's nothing to rank
+ * against.
+ */
+export function rankStrategiesByPreference(
+  strategies: Strategy[],
+  weights: PreferenceWeights | null
+): Strategy[] {
+  if (!weights) return strategies;
+
+  const scored = strategies.map((s) => ({ strategy: s, fit: scorePreferenceFit(s.id, weights) }));
+  const ranked = scored
+    .filter((x): x is { strategy: Strategy; fit: NonNullable<typeof x.fit> } => x.fit !== null)
+    .sort((a, b) => b.fit.score - a.fit.score)
+    .map((x) => ({ ...x.strategy, preferenceMatch: x.fit.reasons }));
+  const unranked = scored.filter((x) => x.fit === null).map((x) => x.strategy);
+
+  return [...ranked, ...unranked];
 }

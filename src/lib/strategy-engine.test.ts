@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildAutoBid, estimateFeasibility, generateStrategies } from "@/lib/strategy-engine";
+import { emptyWeights } from "@/lib/preference-logic";
+import {
+  buildAutoBid,
+  estimateFeasibility,
+  generateStrategies,
+  rankStrategiesByPreference,
+} from "@/lib/strategy-engine";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import type { SeniorityInput } from "@/types/strategy";
 
@@ -80,6 +86,48 @@ describe("estimateFeasibility", () => {
 
   it("calls it a longshot when seniority falls well short of how rare the pattern is", () => {
     expect(estimateFeasibility(0.95, 0.2).tier).toBe("longshot");
+  });
+});
+
+describe("rankStrategiesByPreference", () => {
+  it("leaves the order untouched when there's no profile to rank against", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const ranked = rankStrategiesByPreference(strategies, null);
+    expect(ranked.map((s) => s.id)).toEqual(strategies.map((s) => s.id));
+  });
+
+  it("puts the Ghost Line first for a pilot who weighted credit and deadhead tolerance heavily, and names those reasons", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const weights = { ...emptyWeights(), creditHours: 90, deadheadTolerance: 90 };
+    const ranked = rankStrategiesByPreference(strategies, weights);
+    const lineStrategies = ranked.filter((s) => !s.isProcessTip);
+    expect(lineStrategies[0].id).toBe("ghost-line");
+    expect(lineStrategies[0].preferenceMatch?.length).toBeGreaterThan(0);
+  });
+
+  it("puts the Metronome ahead of the One-And-Done for a pilot who leans hard toward short trips", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const weights = { ...emptyWeights(), tripLength: -90 };
+    const ranked = rankStrategiesByPreference(strategies, weights);
+    const recurringIndex = ranked.findIndex((s) => s.id === "recurring-turn");
+    const megaIndex = ranked.findIndex((s) => s.id === "mega-trip");
+    expect(recurringIndex).toBeLessThan(megaIndex);
+  });
+
+  it("always sorts the process-tip strategy to the end, and never gives it a preferenceMatch", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const weights = { ...emptyWeights(), creditHours: 90 };
+    const ranked = rankStrategiesByPreference(strategies, weights);
+    expect(ranked[ranked.length - 1].id).toBe("re-bid-chain");
+    expect(ranked.find((s) => s.id === "re-bid-chain")?.preferenceMatch).toBeUndefined();
+  });
+
+  it("leaves a strategy with no meaningfully-weighted factors ranked but without invented reasons", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const ranked = rankStrategiesByPreference(strategies, emptyWeights());
+    for (const s of ranked.filter((s) => !s.isProcessTip)) {
+      expect(s.preferenceMatch).toEqual([]);
+    }
   });
 });
 

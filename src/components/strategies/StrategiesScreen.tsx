@@ -5,22 +5,27 @@ import { AutoBidPanel } from "@/components/strategies/AutoBidPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
-import { buildAutoBid, generateStrategies } from "@/lib/strategy-engine";
+import { buildAutoBid, generateStrategies, rankStrategiesByPreference } from "@/lib/strategy-engine";
 import type { BidPack } from "@/types/bidpack";
+import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 
 interface StrategiesScreenProps {
   bidPack: BidPack | null;
   seniority: SeniorityInput | null;
+  profile: PreferenceProfile | null;
   onSaveSeniority: (input: SeniorityInput) => void;
   onGoToUpload: () => void;
+  onStartInterview: () => void;
 }
 
 export function StrategiesScreen({
   bidPack,
   seniority,
+  profile,
   onSaveSeniority,
   onGoToUpload,
+  onStartInterview,
 }: StrategiesScreenProps) {
   if (!bidPack) {
     return (
@@ -41,7 +46,9 @@ export function StrategiesScreen({
     <SeniorityGate
       bidPack={bidPack}
       seniority={seniority}
+      profile={profile}
       onSaveSeniority={onSaveSeniority}
+      onStartInterview={onStartInterview}
     />
   );
 }
@@ -49,11 +56,15 @@ export function StrategiesScreen({
 function SeniorityGate({
   bidPack,
   seniority,
+  profile,
   onSaveSeniority,
+  onStartInterview,
 }: {
   bidPack: BidPack;
   seniority: SeniorityInput | null;
+  profile: PreferenceProfile | null;
   onSaveSeniority: (input: SeniorityInput) => void;
+  onStartInterview: () => void;
 }) {
   const [editing, setEditing] = useState(!seniority);
 
@@ -71,7 +82,13 @@ function SeniorityGate({
   }
 
   return (
-    <StrategyResults bidPack={bidPack} seniority={seniority} onEditSeniority={() => setEditing(true)} />
+    <StrategyResults
+      bidPack={bidPack}
+      seniority={seniority}
+      profile={profile}
+      onEditSeniority={() => setEditing(true)}
+      onStartInterview={onStartInterview}
+    />
   );
 }
 
@@ -142,13 +159,20 @@ function SeniorityForm({
 function StrategyResults({
   bidPack,
   seniority,
+  profile,
   onEditSeniority,
+  onStartInterview,
 }: {
   bidPack: BidPack;
   seniority: SeniorityInput;
+  profile: PreferenceProfile | null;
   onEditSeniority: () => void;
+  onStartInterview: () => void;
 }) {
-  const strategies = useMemo(() => generateStrategies(bidPack, seniority), [bidPack, seniority]);
+  const strategies = useMemo(() => {
+    const generated = generateStrategies(bidPack, seniority);
+    return rankStrategiesByPreference(generated, profile?.weights ?? null);
+  }, [bidPack, seniority, profile]);
   const autoBid = useMemo(() => buildAutoBid(strategies), [strategies]);
   const strongCount = strategies.filter((s) =>
     s.lines.some((l) => l.feasibility === "strong")
@@ -178,13 +202,30 @@ function StrategyResults({
         </Button>
       </div>
 
+      {!profile && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/30 bg-brand-soft px-4 py-3.5">
+          <p className="text-sm leading-relaxed text-ink">
+            These are ranked by how rare each pattern is, not by what you&rsquo;d actually
+            enjoy. Answer the preferences interview and Line Select will reorder them by how
+            much you&rsquo;d personally prefer each one.
+          </p>
+          <Button onClick={onStartInterview} className="shrink-0">
+            Take the interview
+          </Button>
+        </div>
+      )}
+
       <div className="mt-6">
         <AutoBidPanel entries={autoBid} />
       </div>
 
       <div className="mt-6 space-y-4">
-        {strategies.map((strategy) => (
-          <StrategyCard key={strategy.id} strategy={strategy} />
+        {strategies.map((strategy, i) => (
+          <StrategyCard
+            key={strategy.id}
+            strategy={strategy}
+            topPick={!!profile && i === 0 && !strategy.isProcessTip}
+          />
         ))}
       </div>
     </div>
