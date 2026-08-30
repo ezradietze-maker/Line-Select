@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
 import { CircadianInfo } from "@/components/results/CircadianInfo";
 import { CircadianStars } from "@/components/results/CircadianStars";
+import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { fetchHotel } from "@/lib/hotel-client";
+import { loadTimeMode, saveTimeMode } from "@/lib/time-mode-storage";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
-import { buildTimelineDays, type TimelineDay } from "@/lib/trip-timeline";
+import { buildTimelineDays, type TimeMode, type TimelineDay } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
 
@@ -96,51 +98,75 @@ function inlineTextClass(kind: TimelineDay["segments"][number]["kind"]): string 
   return kind === "deadhead" ? "text-ink" : "text-white";
 }
 
+/** "+1"/"-1" chip flagging a date-line crossing on the fragment that actually lands — hover/tap reads the same one-line explanation the toggle's spec asked for, via the same native-`title` tooltip convention every other segment on this chart already uses. */
+function DateLineChip({ badge }: { badge: TimelineDay["segments"][number]["dateLineBadge"] }) {
+  if (!badge) return null;
+  return (
+    <span
+      title={badge.explanation}
+      className="absolute -top-1.5 -right-1.5 z-10 rounded-full border border-warn/40 bg-warn-soft px-1 font-mono text-[8px] font-semibold leading-tight text-warn"
+    >
+      {badge.delta > 0 ? `+${badge.delta}d` : `${badge.delta}d`}
+    </span>
+  );
+}
+
 function DayRow({ day }: { day: TimelineDay }) {
   return (
     <div className="flex items-center gap-1.5">
       <div className="w-8 shrink-0 text-right font-mono text-[9px] font-medium text-brand">
         D{day.dayNumber}
       </div>
-      <div className="relative h-5 flex-1 overflow-hidden rounded-sm bg-canvas">
-        {[6, 12, 18].map((h) => (
-          <div key={h} className="absolute top-0 bottom-0 w-px bg-border/70" style={{ left: `${(h / 24) * 100}%` }} />
-        ))}
-        {day.segments.map((seg, i) => (
+      <div className="flex-1">
+        <div className="relative h-5 overflow-visible rounded-sm bg-canvas">
+          {[6, 12, 18].map((h) => (
+            <div key={h} className="absolute top-0 bottom-0 w-px bg-border/70" style={{ left: `${(h / 24) * 100}%` }} />
+          ))}
+          {day.segments.map((seg, i) => (
+            <div
+              key={i}
+              title={
+                SEGMENT_TOOLTIP_SUFFIX[seg.kind]
+                  ? `${seg.label} — ${seg.detail}\n${SEGMENT_TOOLTIP_SUFFIX[seg.kind]}`
+                  : `${seg.label} — ${seg.detail}`
+              }
+              className={`absolute top-0 bottom-0 ${segmentClass(seg.kind)} ${
+                seg.continuesFromPreviousDay ? "" : "rounded-l-sm"
+              } ${seg.continuesToNextDay ? "" : "rounded-r-sm"}`}
+              style={{
+                left: `${(seg.startMinuteOfDay / MINUTES_PER_DAY) * 100}%`,
+                width: `${Math.max(0.6, ((seg.endMinuteOfDay - seg.startMinuteOfDay) / MINUTES_PER_DAY) * 100)}%`,
+              }}
+            >
+              <DateLineChip badge={seg.dateLineBadge} />
+              {showsInlineText(seg) && (
+                <div
+                  className={`flex h-full items-center gap-1 px-1 font-mono text-[8px] font-medium leading-none ${inlineTextClass(seg.kind)}`}
+                >
+                  {/* `flex-1` gives each label a fixed half-width share of the bar (rather than its natural text width), so `truncate` has an actual boundary to ellipsize against — without it, two long labels in a narrow bar would overlap instead of cleanly cutting off. */}
+                  <span className="min-w-0 flex-1 truncate text-left">{seg.inlineStart}</span>
+                  {seg.inlineEnd && <span className="min-w-0 flex-1 truncate text-right">{seg.inlineEnd}</span>}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {day.zuluRulerLabel && (
           <div
-            key={i}
-            title={
-              SEGMENT_TOOLTIP_SUFFIX[seg.kind]
-                ? `${seg.label} — ${seg.detail}\n${SEGMENT_TOOLTIP_SUFFIX[seg.kind]}`
-                : `${seg.label} — ${seg.detail}`
-            }
-            className={`absolute top-0 bottom-0 ${segmentClass(seg.kind)} ${
-              seg.continuesFromPreviousDay ? "" : "rounded-l-sm"
-            } ${seg.continuesToNextDay ? "" : "rounded-r-sm"}`}
-            style={{
-              left: `${(seg.startMinuteOfDay / MINUTES_PER_DAY) * 100}%`,
-              width: `${Math.max(0.6, ((seg.endMinuteOfDay - seg.startMinuteOfDay) / MINUTES_PER_DAY) * 100)}%`,
-            }}
+            className="mt-0.5 font-mono text-[8px] leading-none text-ink-faint"
+            title="This local day's own boundaries, read in Zulu — always visible so you can cross-check without switching the toggle."
           >
-            {showsInlineText(seg) && (
-              <div
-                className={`flex h-full items-center gap-1 px-1 font-mono text-[8px] font-medium leading-none ${inlineTextClass(seg.kind)}`}
-              >
-                {/* `flex-1` gives each label a fixed half-width share of the bar (rather than its natural text width), so `truncate` has an actual boundary to ellipsize against — without it, two long labels in a narrow bar would overlap instead of cleanly cutting off. */}
-                <span className="min-w-0 flex-1 truncate text-left">{seg.inlineStart}</span>
-                {seg.inlineEnd && <span className="min-w-0 flex-1 truncate text-right">{seg.inlineEnd}</span>}
-              </div>
-            )}
+            {day.zuluRulerLabel}
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
 }
 
-/** The visual "at a glance" schedule — day-by-day rows so a long international trip doesn't compress into one unreadable sliver. Real, printed clock times drive every segment's position; nothing here is estimated. Deliberately dense: full explanations live in tooltips rather than always-on caption text, so several lines' schedules can stay on screen together. */
-function TripTimelineChart({ trip }: { trip: Trip }) {
-  const days = buildTimelineDays(trip);
+/** The visual "at a glance" schedule — day-by-day rows so a long international trip doesn't compress into one unreadable sliver. Real, printed clock times drive every segment's position; nothing here is estimated. Deliberately dense: full explanations live in tooltips rather than always-on caption text, so several lines' schedules can stay on screen together. `mode` decides whether day columns (and which clock reads as primary on each segment) follow Zulu or local calendar days — see trip-timeline.ts for why those aren't the same grid. */
+function TripTimelineChart({ trip, mode }: { trip: Trip; mode: TimeMode }) {
+  const days = buildTimelineDays(trip, mode);
   if (days.length === 0) return null;
 
   return (
@@ -170,35 +196,56 @@ function TripTimelineChart({ trip }: { trip: Trip }) {
 
 interface ItineraryProps {
   trip: Trip;
+  mode: TimeMode;
   ratings: Record<string, HotelResult | null>;
   expandedKey: string | null;
   onToggleExpand: (key: string) => void;
 }
 
-/** The precise, textual counterpart to the chart above — exact times, flight numbers, and hotel names for every leg and layover. */
-function Itinerary({ trip, ratings, expandedKey, onToggleExpand }: ItineraryProps) {
+/**
+ * The precise, textual counterpart to the chart above — exact times, flight
+ * numbers, and hotel names for every leg and layover. Primary clock follows
+ * `mode`; the other system rides along in parentheses right next to it,
+ * same as the chart's own tooltips — translating between the two is the
+ * point, not picking a winner. Both always come from the bid pack's own
+ * printed HHMM pair (`depTimeLocal`/`depTimeGmt`), never `leg.depTimeZulu` —
+ * that field is anchored to an arbitrary reference instant purely for
+ * internally-consistent day-math (see `Trip.zuluAnchor`), so its own clock
+ * reading doesn't match the pack's real printed GMT time.
+ */
+function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: ItineraryProps) {
   return (
     <div className="mt-2 divide-y divide-border/60 border-t border-border/60 text-[11px]">
       {trip.schedule.map((duty, dutyIndex) => (
         <div key={dutyIndex}>
-          {duty.legs.map((leg, legIndex) => (
-            <div key={legIndex} className="flex flex-wrap items-center gap-x-1.5 py-1">
-              <span
-                className={`h-1 w-1 shrink-0 rounded-full ${leg.isDeadhead ? "bg-brand/45" : "bg-brand"}`}
-                aria-hidden
-              />
-              <span className="font-mono text-brand">{formatHHMM(leg.depTimeLocal)}</span>
-              <span className="text-ink">
-                {leg.depAirport}&rarr;{leg.arrAirport}
-              </span>
-              <span className="font-mono text-brand">{formatHHMM(leg.arrTimeLocal)}</span>
-              <span className="text-brand/70">
-                {leg.flightNumber}
-                {leg.isDeadhead ? " DH" : ""}
-                {leg.blockHours !== null && ` · ${formatDuration(leg.blockHours)}`}
-              </span>
-            </div>
-          ))}
+          {duty.legs.map((leg, legIndex) => {
+            const depPrimary = mode === "zulu" ? formatHHMM(leg.depTimeGmt) : formatHHMM(leg.depTimeLocal);
+            const depSecondary = mode === "zulu" ? formatHHMM(leg.depTimeLocal) : formatHHMM(leg.depTimeGmt);
+            const arrPrimary = mode === "zulu" ? formatHHMM(leg.arrTimeGmt) : formatHHMM(leg.arrTimeLocal);
+            const arrSecondary = mode === "zulu" ? formatHHMM(leg.arrTimeLocal) : formatHHMM(leg.arrTimeGmt);
+            return (
+              <div key={legIndex} className="flex flex-wrap items-center gap-x-1.5 py-1">
+                <span
+                  className={`h-1 w-1 shrink-0 rounded-full ${leg.isDeadhead ? "bg-brand/45" : "bg-brand"}`}
+                  aria-hidden
+                />
+                <span className="font-mono text-brand">
+                  {depPrimary} <span className="text-ink-faint">({depSecondary})</span>
+                </span>
+                <span className="text-ink">
+                  {leg.depAirport}&rarr;{leg.arrAirport}
+                </span>
+                <span className="font-mono text-brand">
+                  {arrPrimary} <span className="text-ink-faint">({arrSecondary})</span>
+                </span>
+                <span className="text-brand/70">
+                  {leg.flightNumber}
+                  {leg.isDeadhead ? " DH" : ""}
+                  {leg.blockHours !== null && ` · ${formatDuration(leg.blockHours)}`}
+                </span>
+              </div>
+            );
+          })}
 
           {duty.layover && (
             <LayoverRow
@@ -379,6 +426,22 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [openItineraries, setOpenItineraries] = useState<Set<string>>(new Set());
+  // Starts at the same fixed default the server renders (matching
+  // ThemeToggle's approach), then syncs to the pilot's real stored choice
+  // once mounted — a lazy initializer reading localStorage directly here
+  // would mismatch whatever the server rendered and trip a hydration
+  // warning the first time a pilot had actually chosen "zulu" before.
+  const [mode, setMode] = useState<TimeMode>("local");
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMode(loadTimeMode());
+  }, []);
+
+  function handleModeChange(next: TimeMode) {
+    setMode(next);
+    saveTimeMode(next);
+  }
 
   useEffect(() => {
     const pairs = new Map<string, { code: string; hotelName: string }>();
@@ -419,7 +482,8 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
 
   return (
     <div>
-      <div className="mb-1.5 flex justify-end">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <TimeModeToggle mode={mode} onChange={handleModeChange} />
         <CircadianInfo />
       </div>
       <ul className="divide-y divide-border">
@@ -458,7 +522,7 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
 
           {trip.schedule.length > 0 ? (
             <div className="mt-2">
-              <TripTimelineChart trip={trip} />
+              <TripTimelineChart trip={trip} mode={mode} />
               <button
                 type="button"
                 onClick={() => toggleItinerary(trip.id)}
@@ -475,6 +539,7 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
               {openItineraries.has(trip.id) && (
                 <Itinerary
                   trip={trip}
+                  mode={mode}
                   ratings={ratings}
                   expandedKey={expandedKey}
                   onToggleExpand={handleToggleExpand}

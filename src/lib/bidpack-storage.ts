@@ -1,7 +1,27 @@
-import type { BidPack, Trip } from "@/types/bidpack";
+import { monthAnchorZulu } from "@/lib/pdf-parser/build-bidpack";
+import type { BidPack, Trip, TripDutyPeriod } from "@/types/bidpack";
 
 function bidPackKey(userId: string | null): string {
   return userId ? `line-select:bidpack:${userId}:v1` : "line-select:bidpack:guest:v1";
+}
+
+function zuluAt(anchorISO: string, minutes: number): string {
+  return new Date(new Date(anchorISO).getTime() + minutes * 60_000).toISOString();
+}
+
+/** Backfills a trip saved before the Zulu/Local toggle existed — same anchor-plus-elapsed-minutes math `build-bidpack.ts` uses for a freshly-parsed trip, just applied after the fact using the bid pack's own saved month. */
+function backfillZuluFields(trip: Trip, bidPackMonth: string): Trip {
+  if (trip.zuluAnchor) return trip;
+  const anchor = monthAnchorZulu(bidPackMonth);
+  const schedule: TripDutyPeriod[] = trip.schedule.map((duty) => ({
+    ...duty,
+    legs: duty.legs.map((leg) => ({
+      ...leg,
+      depTimeZulu: leg.depTimeZulu ?? zuluAt(anchor, leg.startMinutes),
+      arrTimeZulu: leg.arrTimeZulu ?? zuluAt(anchor, leg.endMinutes),
+    })),
+  }));
+  return { ...trip, schedule, zuluAnchor: anchor };
 }
 
 /**
@@ -15,13 +35,17 @@ function normalizeBidPack(parsed: BidPack): BidPack {
     ...parsed,
     lines: parsed.lines.map((line) => {
       const trips = line.trips.map(
-        (trip): Trip => ({
-          ...trip,
-          layoverDetails: trip.layoverDetails ?? [],
-          schedule: trip.schedule ?? [],
-          pairingNumber: trip.pairingNumber ?? null,
-          departures: trip.departures ?? (trip.layoverDetails?.length ?? 0) + 1,
-        })
+        (trip): Trip =>
+          backfillZuluFields(
+            {
+              ...trip,
+              layoverDetails: trip.layoverDetails ?? [],
+              schedule: trip.schedule ?? [],
+              pairingNumber: trip.pairingNumber ?? null,
+              departures: trip.departures ?? (trip.layoverDetails?.length ?? 0) + 1,
+            },
+            parsed.month
+          )
       );
       return {
         ...line,

@@ -16,7 +16,15 @@ import type { BidPack, Trip } from "@/types/bidpack";
  * consistent (same real-world instant, correct airport UTC offset) so the
  * circadian scoring in lib/circadian.ts runs on this exactly the way it
  * would on real bid pack data, not a shortcut.
+ *
+ * The same is true of the Zulu/Local toggle's data: every leg's
+ * `depTimeZulu`/`arrTimeZulu` below is `SAMPLE_ZULU_ANCHOR` plus that leg's
+ * own `startMinutes`/`endMinutes`, hand-computed to match — real,
+ * internally-consistent instants, not just enough shape to satisfy the type.
  */
+
+/** An arbitrary but real UTC instant — see `Trip.zuluAnchor`'s own doc comment for why this isn't a claim about which real calendar date this fictional trip "actually" falls on. */
+const SAMPLE_ZULU_ANCHOR = "2026-09-01T00:00:00.000Z";
 
 const tripA: Trip = {
   id: "sample-A",
@@ -31,6 +39,7 @@ const tripA: Trip = {
   landings: 2,
   tafbHours: 28.75,
   departures: 2,
+  zuluAnchor: SAMPLE_ZULU_ANCHOR,
   schedule: [
     {
       reportTimeLocal: "1400",
@@ -49,6 +58,8 @@ const tripA: Trip = {
           blockHours: 3.5,
           startMinutes: 60,
           endMinutes: 270,
+          depTimeZulu: "2026-09-01T01:00:00.000Z",
+          arrTimeZulu: "2026-09-01T04:30:00.000Z",
         },
       ],
       layover: {
@@ -78,6 +89,8 @@ const tripA: Trip = {
           blockHours: 3.5,
           startMinutes: 1515,
           endMinutes: 1725,
+          depTimeZulu: "2026-09-02T01:15:00.000Z",
+          arrTimeZulu: "2026-09-02T04:45:00.000Z",
         },
       ],
       layover: null,
@@ -99,6 +112,7 @@ const tripB: Trip = {
   landings: 2,
   tafbHours: 26.75,
   departures: 2,
+  zuluAnchor: SAMPLE_ZULU_ANCHOR,
   schedule: [
     {
       reportTimeLocal: "0300",
@@ -117,6 +131,8 @@ const tripB: Trip = {
           blockHours: 9,
           startMinutes: 60,
           endMinutes: 600,
+          depTimeZulu: "2026-09-01T01:00:00.000Z",
+          arrTimeZulu: "2026-09-01T10:00:00.000Z",
         },
       ],
       layover: {
@@ -146,6 +162,8 @@ const tripB: Trip = {
           blockHours: 9,
           startMinutes: 1065,
           endMinutes: 1605,
+          depTimeZulu: "2026-09-01T17:45:00.000Z",
+          arrTimeZulu: "2026-09-02T02:45:00.000Z",
         },
       ],
       layover: null,
@@ -167,6 +185,7 @@ const tripC: Trip = {
   landings: 2,
   tafbHours: 44,
   departures: 2,
+  zuluAnchor: SAMPLE_ZULU_ANCHOR,
   schedule: [
     {
       reportTimeLocal: "1100",
@@ -185,6 +204,8 @@ const tripC: Trip = {
           blockHours: 9,
           startMinutes: 60,
           endMinutes: 600,
+          depTimeZulu: "2026-09-01T01:00:00.000Z",
+          arrTimeZulu: "2026-09-01T10:00:00.000Z",
         },
       ],
       layover: {
@@ -214,6 +235,8 @@ const tripC: Trip = {
           blockHours: 9,
           startMinutes: 2100,
           endMinutes: 2640,
+          depTimeZulu: "2026-09-02T11:00:00.000Z",
+          arrTimeZulu: "2026-09-02T20:00:00.000Z",
         },
       ],
       layover: null,

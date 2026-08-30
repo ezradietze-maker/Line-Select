@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { computeCircadianAssessment, computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import type { BidPack, Trip } from "@/types/bidpack";
 
+/**
+ * Placeholder Zulu instant for every leg fixture below — circadian.ts
+ * derives its own offsets from each leg's printed depTimeLocal/depTimeGmt
+ * pair, never from depTimeZulu/zuluAnchor, so these just need to satisfy
+ * the type, not be individually meaningful.
+ */
+const Z = "2024-01-01T00:00:00.000Z";
+
 /** A single-duty stub trip — enough shape for computeCircadianAssessment to run on, with everything not relevant to the assertion at hand set to a neutral value. */
 function stubTrip(overrides: Partial<Trip> & { schedule: Trip["schedule"] }): Trip {
   return {
@@ -17,6 +25,7 @@ function stubTrip(overrides: Partial<Trip> & { schedule: Trip["schedule"] }): Tr
     landings: 2,
     tafbHours: 24,
     departures: 2,
+    zuluAnchor: Z,
     ...overrides,
   };
 }
@@ -42,7 +51,7 @@ describe("computeHomeBaseOffsetMinutes", () => {
           reportTimeLocal: "1400",
           startMinutes: 0,
           legs: [
-            { flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "LAX", arrTimeLocal: "1630", arrTimeGmt: "2330", blockHours: 3.5, startMinutes: 60, endMinutes: 270 },
+            { flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "LAX", arrTimeLocal: "1630", arrTimeGmt: "2330", blockHours: 3.5, startMinutes: 60, endMinutes: 270, depTimeZulu: Z, arrTimeZulu: Z },
           ],
           layover: null,
         },
@@ -76,13 +85,13 @@ describe("computeCircadianAssessment", () => {
         {
           reportTimeLocal: "1400",
           startMinutes: 0,
-          legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "ATL", arrTimeLocal: "1630", arrTimeGmt: "2130", blockHours: 1.5, startMinutes: 60, endMinutes: 150 }],
+          legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "ATL", arrTimeLocal: "1630", arrTimeGmt: "2130", blockHours: 1.5, startMinutes: 60, endMinutes: 150, depTimeZulu: Z, arrTimeZulu: Z }],
           layover: { city: "ATL", hotelName: "Test Hotel", transportToHotel: null, transportFromHotel: null, hours: 20, startMinutes: 150, endMinutes: 1350 },
         },
         {
           reportTimeLocal: "1030",
           startMinutes: 1350,
-          legs: [{ flightNumber: "2", equipment: "77", isDeadhead: false, depAirport: "ATL", depTimeLocal: "1115", depTimeGmt: "1615", arrAirport: "MEM", arrTimeLocal: "1130", arrTimeGmt: "1630", blockHours: 1.25, startMinutes: 1425, endMinutes: 1500 }],
+          legs: [{ flightNumber: "2", equipment: "77", isDeadhead: false, depAirport: "ATL", depTimeLocal: "1115", depTimeGmt: "1615", arrAirport: "MEM", arrTimeLocal: "1130", arrTimeGmt: "1630", blockHours: 1.25, startMinutes: 1425, endMinutes: 1500, depTimeZulu: Z, arrTimeZulu: Z }],
           layover: null,
         },
       ],
@@ -97,10 +106,10 @@ describe("computeCircadianAssessment", () => {
 
   it("penalizes a report inside the 02:00-05:59 Window of Circadian Low", () => {
     const withoutWocl = stubTrip({
-      schedule: [{ reportTimeLocal: "0900", startMinutes: 0, legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1000", depTimeGmt: "1500", arrAirport: "MEM", arrTimeLocal: "1100", arrTimeGmt: "1600", blockHours: 1, startMinutes: 60, endMinutes: 120 }], layover: null }],
+      schedule: [{ reportTimeLocal: "0900", startMinutes: 0, legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1000", depTimeGmt: "1500", arrAirport: "MEM", arrTimeLocal: "1100", arrTimeGmt: "1600", blockHours: 1, startMinutes: 60, endMinutes: 120, depTimeZulu: Z, arrTimeZulu: Z }], layover: null }],
     });
     const withWocl = stubTrip({
-      schedule: [{ reportTimeLocal: "0300", startMinutes: 0, legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1000", depTimeGmt: "1500", arrAirport: "MEM", arrTimeLocal: "1100", arrTimeGmt: "1600", blockHours: 1, startMinutes: 60, endMinutes: 120 }], layover: null }],
+      schedule: [{ reportTimeLocal: "0300", startMinutes: 0, legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1000", depTimeGmt: "1500", arrAirport: "MEM", arrTimeLocal: "1100", arrTimeGmt: "1600", blockHours: 1, startMinutes: 60, endMinutes: 120, depTimeZulu: Z, arrTimeZulu: Z }], layover: null }],
     });
     const clean = computeCircadianAssessment(withoutWocl, -300)!;
     const dirty = computeCircadianAssessment(withWocl, -300)!;
@@ -115,13 +124,13 @@ describe("computeCircadianAssessment", () => {
         {
           reportTimeLocal: "1400",
           startMinutes: 0,
-          legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "ATL", arrTimeLocal: "1630", arrTimeGmt: "2130", blockHours: 1.5, startMinutes: 60, endMinutes: 150 }],
+          legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "ATL", arrTimeLocal: "1630", arrTimeGmt: "2130", blockHours: 1.5, startMinutes: 60, endMinutes: 150, depTimeZulu: Z, arrTimeZulu: Z }],
           layover: { city: "ATL", hotelName: "Test Hotel", transportToHotel: null, transportFromHotel: null, hours: 7, startMinutes: 150, endMinutes: 570 },
         },
         {
           reportTimeLocal: "1130",
           startMinutes: 570,
-          legs: [{ flightNumber: "2", equipment: "77", isDeadhead: false, depAirport: "ATL", depTimeLocal: "1215", depTimeGmt: "1715", arrAirport: "MEM", arrTimeLocal: "1230", arrTimeGmt: "1730", blockHours: 1.25, startMinutes: 630, endMinutes: 705 }],
+          legs: [{ flightNumber: "2", equipment: "77", isDeadhead: false, depAirport: "ATL", depTimeLocal: "1215", depTimeGmt: "1715", arrAirport: "MEM", arrTimeLocal: "1230", arrTimeGmt: "1730", blockHours: 1.25, startMinutes: 630, endMinutes: 705, depTimeZulu: Z, arrTimeZulu: Z }],
           layover: null,
         },
       ],
@@ -141,13 +150,13 @@ describe("computeCircadianAssessment", () => {
           {
             reportTimeLocal: "1400",
             startMinutes: 0,
-            legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "XXX", arrTimeLocal: toHHMM(localMinutes), arrTimeGmt: toHHMM(gmtMinutes), blockHours: 5, startMinutes: 60, endMinutes: 360 }],
+            legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "XXX", arrTimeLocal: toHHMM(localMinutes), arrTimeGmt: toHHMM(gmtMinutes), blockHours: 5, startMinutes: 60, endMinutes: 360, depTimeZulu: Z, arrTimeZulu: Z }],
             layover: { city: "XXX", hotelName: "Test Hotel", transportToHotel: null, transportFromHotel: null, hours: 20, startMinutes: 360, endMinutes: 1560 },
           },
           {
             reportTimeLocal: "1200",
             startMinutes: 1560,
-            legs: [{ flightNumber: "2", equipment: "77", isDeadhead: false, depAirport: "XXX", depTimeLocal: "1245", depTimeGmt: "1245", arrAirport: "MEM", arrTimeLocal: "1330", arrTimeGmt: "1330", blockHours: 5, startMinutes: 1620, endMinutes: 1920 }],
+            legs: [{ flightNumber: "2", equipment: "77", isDeadhead: false, depAirport: "XXX", depTimeLocal: "1245", depTimeGmt: "1245", arrAirport: "MEM", arrTimeLocal: "1330", arrTimeGmt: "1330", blockHours: 5, startMinutes: 1620, endMinutes: 1920, depTimeZulu: Z, arrTimeZulu: Z }],
             layover: null,
           },
         ],

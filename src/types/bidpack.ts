@@ -35,6 +35,16 @@ export interface TripLeg {
   blockHours: number | null;
   startMinutes: number;
   endMinutes: number;
+  /**
+   * Real UTC instant (ISO 8601) for this leg's departure/arrival, anchored
+   * to the trip's own `zuluAnchor` — this is what the Zulu/Local toggle
+   * actually converts (via each airport's IANA zone), since the printed
+   * `depTimeGmt`/`arrTimeGmt` HHMM strings above have no date attached and
+   * can't tell a westbound date-line day-gain from an ordinary midnight
+   * rollover on their own.
+   */
+  depTimeZulu: string;
+  arrTimeZulu: string;
 }
 
 /** A report-to-layover stretch of a trip: one or more legs, then (unless it's the trip's last) a real, printed-duration rest period. */
@@ -87,6 +97,18 @@ export interface Trip {
    * estimated — the same honesty policy as `Line.estimated`.
    */
   schedule: TripDutyPeriod[];
+  /**
+   * A synthetic-but-internally-consistent UTC instant this trip's Zulu
+   * clock is anchored to — real month/year (from the bid pack) so DST
+   * behaves correctly at every airport the trip touches, but the exact
+   * day-of-month isn't tracked per trip instance (the bid pack ties a
+   * pairing to a line, not to one specific calendar date within the bid
+   * month), so this and everything derived from it show relative "Day N"
+   * labels rather than a specific calendar date. Empty string when the
+   * trip has no verified schedule to anchor (same cases `schedule` is
+   * empty for).
+   */
+  zuluAnchor: string;
 }
 
 export interface Line {

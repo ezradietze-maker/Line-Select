@@ -189,7 +189,7 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
       aircraft: meta.aircraft,
       seat,
       bidPeriodDays: 28,
-      lines: seatResults.map((r) => buildLine(r.summary, r.pairings)),
+      lines: seatResults.map((r) => buildLine(r.summary, r.pairings, meta.month)),
       reserveLines: reserveLinesBySeat[seat],
       info: infoBySeat?.[seat],
     };
