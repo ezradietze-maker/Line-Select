@@ -31,11 +31,14 @@ export interface ClassifyResult {
   proposedDescription: string | null;
 }
 
-export async function classifyFreeText(input: {
-  freeText: string;
-  favoredSummary: string;
-  overtakenSummary: string;
-}): Promise<ClassifyResult | null> {
+/** Either a pairwise drag-correction comparison, or a standalone interview follow-up context — see the route's own doc comment. */
+export type ClassifyContext =
+  | { favoredSummary: string; overtakenSummary: string; context?: never }
+  | { context: string; favoredSummary?: never; overtakenSummary?: never };
+
+export async function classifyFreeText(
+  input: { freeText: string } & ClassifyContext
+): Promise<ClassifyResult | null> {
   try {
     const res = await fetch("/api/classify-preference", {
       method: "POST",

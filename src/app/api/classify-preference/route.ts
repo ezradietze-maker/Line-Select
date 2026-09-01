@@ -6,11 +6,17 @@ export const runtime = "nodejs";
 const MODEL = "claude-haiku-4-5-20251001";
 
 /**
- * Maps a pilot's free-text explanation for a drag-and-drop correction onto
- * the existing implicit taxonomy, or flags it as a genuinely new candidate
- * variable when it doesn't fit (Section 5.4). This is the one place in the
- * feature that calls an LLM — everywhere else in the learning loop is plain
- * arithmetic on real trip data.
+ * Maps a pilot's free-text explanation onto the existing implicit taxonomy,
+ * or flags it as a genuinely new candidate variable when it doesn't fit
+ * (Section 5.4). This is the one place in the feature that calls an LLM —
+ * everywhere else in the learning loop is plain arithmetic on real trip
+ * data. Two callers, two framings of the same free text:
+ *  - A drag-and-drop correction: the pilot preferred one specific trip over
+ *    another (`favoredSummary`/`overtakenSummary`).
+ *  - An interview follow-up: the pilot leaned hard on a slider with no
+ *    specific trip pair involved (`context` — the question and which way
+ *    they leaned).
+ * Exactly one framing is provided per request.
  *
  * Guardrail (Section 9): the model is instructed to never infer a sensitive
  * category (medical, family/custody, financial hardship) that the pilot
@@ -22,8 +28,9 @@ const MODEL = "claude-haiku-4-5-20251001";
 interface ClassifyRequest {
   freeText: string;
   variables: { id: string; label: string; description: string }[];
-  favoredSummary: string;
-  overtakenSummary: string;
+  favoredSummary?: string;
+  overtakenSummary?: string;
+  context?: string;
 }
 
 interface ClassifyResult {
@@ -35,18 +42,26 @@ interface ClassifyResult {
 
 function buildPrompt(req: ClassifyRequest): string {
   const variableList = req.variables.map((v) => `- ${v.id}: ${v.label} — ${v.description}`).join("\n");
-  return `A pilot was asked why they preferred one flight trip over another. Here is the comparison and their answer.
+  const situation =
+    req.favoredSummary && req.overtakenSummary
+      ? `A pilot was asked why they preferred one flight trip over another. Here is the comparison and their answer.
 
 Trip they preferred: ${req.favoredSummary}
 Trip they ranked lower: ${req.overtakenSummary}
-Their answer: "${req.freeText}"
+Their answer: "${req.freeText}"`
+      : `A pilot gave a strong answer to a preference question during an interview and was asked to explain why, in their own words.
+
+${req.context}
+Their answer: "${req.freeText}"`;
+
+  return `${situation}
 
 Here is the existing list of tracked preference variables:
 ${variableList}
 
-Decide whether their answer clearly describes one of the variables above (it does not need to use the same words — match on meaning), and if so, whether their answer means they want MORE of that variable's raw measured value or LESS of it, based on which trip they preferred.
+Decide whether their answer clearly describes one of the variables above (it does not need to use the same words — match on meaning), and if so, whether their answer means they want MORE of that variable's raw measured value or LESS of it.
 
-If their answer does not clearly match any variable in the list, propose a short new variable name and one-sentence description that would capture it, generic enough to apply to other trips (do not just restate the exact quote).
+If their answer does not clearly match any variable in the list, propose a short new variable name and one-sentence description that would capture it, generic enough to apply to other trips or schedules (do not just restate the exact quote).
 
 Never invent or infer a sensitive personal category (medical condition, family/custody situation, financial hardship, etc.) that was not literally stated — if the answer touches on something sensitive, treat it the same as any other unmatched answer: propose a plain, literal name for what they said, don't diagnose or categorize the underlying reason.
 
@@ -71,7 +86,9 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  if (!body.freeText?.trim() || !body.variables || !body.favoredSummary || !body.overtakenSummary) {
+  const hasPairwiseContext = !!body.favoredSummary && !!body.overtakenSummary;
+  const hasStandaloneContext = !!body.context;
+  if (!body.freeText?.trim() || !body.variables || (!hasPairwiseContext && !hasStandaloneContext)) {
     return NextResponse.json({ error: "Missing classification input." }, { status: 400 });
   }
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ProgressDots } from "@/components/ui/ProgressDots";
+import { AdaptiveFollowUp, type FollowUpMatch } from "@/components/interview/AdaptiveFollowUp";
 import { CityPreferenceStep } from "@/components/interview/CityPreferenceStep";
 import { CommuterStep } from "@/components/interview/CommuterStep";
 import { HotelAmenitiesStep } from "@/components/interview/HotelAmenitiesStep";
@@ -17,8 +18,11 @@ import {
   TRADEOFF_QUESTIONS,
   deadheadQuestionFor,
   formatHoursValue,
+  type SliderQuestionConfig,
 } from "@/lib/interview-config";
+import { followUpContextFor, shouldOfferFollowUp as isFollowUpEligible } from "@/lib/interview-follow-up";
 import { buildProfile, cycleCitySentiment, emptyWeights } from "@/lib/preference-logic";
+import { reinforceVariable } from "@/lib/rank-learning";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
 import type {
@@ -181,6 +185,23 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
   const [cityPreferences, setCityPreferences] = useState<
     Record<string, CitySentiment>
   >({});
+  const [followUpShownFor, setFollowUpShownFor] = useState<Set<string>>(new Set());
+  const [pendingReinforcements, setPendingReinforcements] = useState<FollowUpMatch[]>([]);
+
+  function shouldOfferFollowUp(key: string, value: number): boolean {
+    return isFollowUpEligible(key, value, followUpShownFor);
+  }
+
+  function handleFollowUpResolved(match: FollowUpMatch | null) {
+    if (match) setPendingReinforcements((prev) => [...prev, match]);
+  }
+
+  /** Called right as a slider step is left — the follow-up (if it was eligible and showing) only ever gets offered once per key, whether or not the pilot actually answered it. */
+  function closeOutFollowUp(config: SliderQuestionConfig, value: number) {
+    if (shouldOfferFollowUp(config.key, value)) {
+      setFollowUpShownFor((prev) => new Set(prev).add(config.key));
+    }
+  }
 
   const activeDeepSteps = useMemo(
     () =>
@@ -228,20 +249,30 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
     const answers: TradeoffAnswer[] = Object.entries(tradeoffAnswers).map(
       ([id, value]) => ({ id, value })
     );
-    onComplete(
-      buildProfile(
-        weights,
-        deepRoundCompleted,
-        answers,
-        explicitTargets,
-        isCommuter,
-        cityPreferences,
-        hasCrashPad
-      )
+    const profile = buildProfile(
+      weights,
+      deepRoundCompleted,
+      answers,
+      explicitTargets,
+      isCommuter,
+      cityPreferences,
+      hasCrashPad
     );
+    // Whatever a strong-slider follow-up matched onto — explicit or implicit
+    // — gets applied last, on top of the profile the fixed questions
+    // already built, via the exact same reinforcement math the drag-and-drop
+    // correction flow uses.
+    const reinforced = pendingReinforcements.reduce(
+      (p, m) => reinforceVariable(p, m.variableId, m.direction),
+      profile
+    );
+    onComplete(reinforced);
   }
 
   function goQuickNext() {
+    if (currentQuickStep.kind === "slider") {
+      closeOutFollowUp(currentQuickStep.config, weights[currentQuickStep.config.key as QuickQuestionKey]);
+    }
     if (quickIndex < QUICK_STEPS.length - 1) {
       setQuickIndex(quickIndex + 1);
     } else {
@@ -250,11 +281,17 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
   }
 
   function goQuickBack() {
+    if (currentQuickStep.kind === "slider") {
+      closeOutFollowUp(currentQuickStep.config, weights[currentQuickStep.config.key as QuickQuestionKey]);
+    }
     if (quickIndex > 0) setQuickIndex(quickIndex - 1);
     else setPhase("commuter");
   }
 
   function goDeepSliderNext() {
+    if (currentDeepStep.kind === "slider") {
+      closeOutFollowUp(currentDeepStep.config, weights[currentDeepStep.config.key]);
+    }
     if (deepSliderIndex < activeDeepSteps.length - 1) {
       setDeepSliderIndex(deepSliderIndex + 1);
     } else {
@@ -318,14 +355,29 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
         {phase === "quick" && (
           <div key={`quick-${quickIndex}`} className="animate-fade-in">
             {currentQuickStep.kind === "slider" && (
-              <SliderStep
-                config={currentQuickStep.config}
-                value={weights[currentQuickStep.config.key as QuickQuestionKey]}
-                onChange={(v) =>
-                  setWeights((w) => ({ ...w, [currentQuickStep.config.key]: v }))
-                }
-                extra={sliderExtraFor(currentQuickStep.config.key)}
-              />
+              <>
+                <SliderStep
+                  config={currentQuickStep.config}
+                  value={weights[currentQuickStep.config.key as QuickQuestionKey]}
+                  onChange={(v) =>
+                    setWeights((w) => ({ ...w, [currentQuickStep.config.key]: v }))
+                  }
+                  extra={sliderExtraFor(currentQuickStep.config.key)}
+                />
+                {shouldOfferFollowUp(
+                  currentQuickStep.config.key,
+                  weights[currentQuickStep.config.key as QuickQuestionKey]
+                ) && (
+                  <AdaptiveFollowUp
+                    key={currentQuickStep.config.key}
+                    context={followUpContextFor(
+                      currentQuickStep.config,
+                      weights[currentQuickStep.config.key as QuickQuestionKey]
+                    )}
+                    onResolved={handleFollowUpResolved}
+                  />
+                )}
+              </>
             )}
             {currentQuickStep.kind === "target" && (
               <div>
@@ -373,14 +425,23 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
         {phase === "deep-sliders" && (
           <div key={`deep-slider-${deepSliderIndex}`} className="animate-fade-in">
             {currentDeepStep.kind === "slider" && (
-              <SliderStep
-                config={currentDeepStep.config}
-                value={weights[currentDeepStep.config.key]}
-                onChange={(v) =>
-                  setWeights((w) => ({ ...w, [currentDeepStep.config.key]: v }))
-                }
-                extra={sliderExtraFor(currentDeepStep.config.key)}
-              />
+              <>
+                <SliderStep
+                  config={currentDeepStep.config}
+                  value={weights[currentDeepStep.config.key]}
+                  onChange={(v) =>
+                    setWeights((w) => ({ ...w, [currentDeepStep.config.key]: v }))
+                  }
+                  extra={sliderExtraFor(currentDeepStep.config.key)}
+                />
+                {shouldOfferFollowUp(currentDeepStep.config.key, weights[currentDeepStep.config.key]) && (
+                  <AdaptiveFollowUp
+                    key={currentDeepStep.config.key}
+                    context={followUpContextFor(currentDeepStep.config, weights[currentDeepStep.config.key])}
+                    onResolved={handleFollowUpResolved}
+                  />
+                )}
+              </>
             )}
             {currentDeepStep.kind === "amenities" && (
               <HotelAmenitiesStep

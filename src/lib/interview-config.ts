@@ -35,7 +35,7 @@ export const QUICK_QUESTIONS: SliderQuestionConfig[] = [
   },
   {
     key: "creditHours",
-    question: "Way more concerned with pay, or way more concerned with lifestyle?",
+    question: "Optimizing more for pay, or more for lifestyle?",
     helpText:
       "Not about total hours flown — a maxed-out line is fine if it's still enjoyable to fly. This is about what you're actually optimizing for day to day.",
     lowLabel: "Lifestyle — a schedule that's genuinely enjoyable to live with",
