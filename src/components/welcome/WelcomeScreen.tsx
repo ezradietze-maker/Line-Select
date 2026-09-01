@@ -24,7 +24,7 @@ const FEATURES = [
   },
   {
     title: "Yours alone",
-    description: "Runs in your browser. Your bid pack and preferences stay on this device unless you create an account to save them.",
+    description: "Your bid pack PDF is parsed on our server and never stored there — the extracted line data and your preferences stay on this device unless you create an account to save them.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
         <rect x="5" y="11" width="14" height="9" rx="2" />
@@ -86,8 +86,9 @@ export function WelcomeScreen({
           </Button>
         </div>
         <p className="mt-4 text-xs text-ink-faint">
-          PDF stays on this device for parsing. Takes about a minute after
-          that, or two if you go deeper.
+          Parsed on our server, never stored there — only the extracted line
+          data comes back to this device. Takes about a minute after that,
+          or two if you go deeper.
         </p>
         <button
           type="button"

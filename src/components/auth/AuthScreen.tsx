@@ -131,11 +131,11 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
       </div>
 
       <p className="mt-4 text-center text-xs leading-relaxed text-ink-faint">
-        Your account is real and stored on this app&rsquo;s server so trade
-        offers can be seen by other pilots &mdash; but this is still a
-        prototype, running on a single dev server, not production
-        infrastructure. Your bid pack and preferences stay saved locally on
-        each device, as before.
+        Your account is real and stored on this app&rsquo;s own server so
+        trade offers can be seen by other pilots &mdash; but this is still a
+        prototype: there&rsquo;s no password reset yet, so hold onto your
+        password. Your bid pack and preferences stay saved locally on each
+        device, as before.
       </p>
     </div>
   );
