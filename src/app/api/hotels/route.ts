@@ -165,16 +165,20 @@ const REVIEW_THEME_KEYS = new Set<ReviewThemeKey>([
   "sleepComfort",
   "breakfast",
   "safety",
+  "onSiteGym",
+  "walkability",
 ]);
 const REVIEW_SENTIMENTS = new Set<ReviewSentiment>(["positive", "mixed", "negative"]);
 
-const REVIEW_SUMMARY_SYSTEM_PROMPT = `You analyze hotel guest reviews for airline flight crew on work layovers. Given review excerpts for one hotel, identify what reviewers actually said about up to six themes:
+const REVIEW_SUMMARY_SYSTEM_PROMPT = `You analyze hotel guest reviews for airline flight crew on work layovers. Given review excerpts for one hotel, identify what reviewers actually said about up to eight themes:
 - quietness: room/hotel noise
 - cleanliness: how clean the property is
 - service: staff friendliness and helpfulness
 - sleepComfort: bed and sleep quality
 - breakfast: breakfast quality (only if reviewers mention breakfast at all)
-- safety: safety and neighborhood feel
+- safety: how safe the property and neighborhood feel (only if reviewers actually raise safety, not just proximity)
+- onSiteGym: whether the hotel's OWN on-site fitness center is usable and well-equipped — only if reviewers describe the property's own gym, not a gym elsewhere
+- walkability: whether reviewers describe the surrounding area as easy to get around on foot — restaurants, shops, or transit within walking distance, sidewalks that actually exist, that kind of thing
 
 Only include a theme in your output if the reviews actually discuss it — never guess, infer, or embellish a theme with no real textual support. Rate each included theme "positive", "mixed", or "negative" based on the balance of what reviewers wrote.
 

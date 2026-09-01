@@ -492,6 +492,7 @@ export default function Home() {
               bidPack={bidPack}
               seniority={seniority}
               profile={profile}
+              user={user}
               onSaveSeniority={handleSaveSeniority}
               onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
               onStartInterview={handleStartInterview}

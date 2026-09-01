@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { AutoBidPanel } from "@/components/strategies/AutoBidPanel";
+import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { buildAutoBid, generateStrategies, rankStrategiesByPreference } from "@/lib/strategy-engine";
 import type { BidPack } from "@/types/bidpack";
+import type { UserAccount } from "@/types/auth";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 
@@ -14,6 +16,7 @@ interface StrategiesScreenProps {
   bidPack: BidPack | null;
   seniority: SeniorityInput | null;
   profile: PreferenceProfile | null;
+  user: UserAccount | null;
   onSaveSeniority: (input: SeniorityInput) => void;
   onGoToUpload: () => void;
   onStartInterview: () => void;
@@ -23,6 +26,7 @@ export function StrategiesScreen({
   bidPack,
   seniority,
   profile,
+  user,
   onSaveSeniority,
   onGoToUpload,
   onStartInterview,
@@ -47,6 +51,7 @@ export function StrategiesScreen({
       bidPack={bidPack}
       seniority={seniority}
       profile={profile}
+      user={user}
       onSaveSeniority={onSaveSeniority}
       onStartInterview={onStartInterview}
     />
@@ -57,12 +62,14 @@ function SeniorityGate({
   bidPack,
   seniority,
   profile,
+  user,
   onSaveSeniority,
   onStartInterview,
 }: {
   bidPack: BidPack;
   seniority: SeniorityInput | null;
   profile: PreferenceProfile | null;
+  user: UserAccount | null;
   onSaveSeniority: (input: SeniorityInput) => void;
   onStartInterview: () => void;
 }) {
@@ -86,6 +93,7 @@ function SeniorityGate({
       bidPack={bidPack}
       seniority={seniority}
       profile={profile}
+      user={user}
       onEditSeniority={() => setEditing(true)}
       onStartInterview={onStartInterview}
     />
@@ -160,12 +168,14 @@ function StrategyResults({
   bidPack,
   seniority,
   profile,
+  user,
   onEditSeniority,
   onStartInterview,
 }: {
   bidPack: BidPack;
   seniority: SeniorityInput;
   profile: PreferenceProfile | null;
+  user: UserAccount | null;
   onEditSeniority: () => void;
   onStartInterview: () => void;
 }) {
@@ -227,6 +237,10 @@ function StrategyResults({
             topPick={!!profile && i === 0 && !strategy.isProcessTip}
           />
         ))}
+      </div>
+
+      <div className="mt-6">
+        <AwardHistoryPanel bidPack={bidPack} seniority={seniority} user={user} />
       </div>
     </div>
   );

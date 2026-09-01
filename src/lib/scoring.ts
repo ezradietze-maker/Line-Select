@@ -169,7 +169,14 @@ function reviewThemeScore(summary: ReviewSummary | null, theme: ReviewThemeKey):
   return sentiment ? REVIEW_SENTIMENT_SCORE[sentiment] : null;
 }
 
-const GENERAL_QUALITY_THEMES: ReviewThemeKey[] = ["cleanliness", "service", "sleepComfort", "breakfast", "safety"];
+const GENERAL_QUALITY_THEMES: ReviewThemeKey[] = [
+  "cleanliness",
+  "service",
+  "sleepComfort",
+  "breakfast",
+  "safety",
+  "walkability",
+];
 
 /**
  * Overall review-based quality (everything except room noise, which is its
@@ -196,6 +203,19 @@ export interface HotelSubscores {
   /** Null = no review signal on this theme at all, not "neutral." */
   quiet: number | null;
   quality: number | null;
+}
+
+/**
+ * Nearby third-party gyms are a real, verified count, but a pilot asking
+ * about "gym" mostly means "can I work out without leaving the hotel" — once
+ * reviewers actually say whether the property's own gym is any good, that
+ * review-derived read is weighted above the raw nearby count rather than
+ * just averaged in beside it.
+ */
+export function gymScore(normalizedNearbyCount: number, reviewSummary: ReviewSummary | null): number {
+  const onSite = reviewThemeScore(reviewSummary, "onSiteGym");
+  if (onSite === null) return normalizedNearbyCount;
+  return normalizedNearbyCount * 0.4 + onSite * 0.6;
 }
 
 /** Every distinct assigned (city, hotel) pair in this bid pack, mapped to its normalized layoverQuality sub-scores — computed once and reused across every line. */
@@ -233,7 +253,7 @@ function computeHotelSubscores(bidPack: BidPack, data: HotelQualityData): Record
     const counts = rawCounts.get(key)!;
     result[key] = {
       food: normalize(counts.food, foodRange[0], foodRange[1]),
-      gym: normalize(counts.gym, gymRange[0], gymRange[1]),
+      gym: gymScore(normalize(counts.gym, gymRange[0], gymRange[1]), data[key]?.reviewSummary ?? null),
       grocery: normalize(counts.grocery, groceryRange[0], groceryRange[1]),
       quiet: reviewThemeScore(data[key]?.reviewSummary ?? null, "quietness"),
       quality: reviewQualityScore(data[key]),

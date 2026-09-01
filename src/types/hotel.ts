@@ -19,7 +19,11 @@ export type ReviewThemeKey =
   | "service"
   | "sleepComfort"
   | "breakfast"
-  | "safety";
+  | "safety"
+  /** Whether the hotel itself has a usable on-site fitness center — distinct from `amenities.gym`, which counts nearby third-party gyms, not the property's own. */
+  | "onSiteGym"
+  /** Whether reviewers describe the surrounding area as easy to get around on foot — distinct from `safety`, which is about how safe it feels rather than how walkable it is. */
+  | "walkability";
 
 export type ReviewSentiment = "positive" | "mixed" | "negative";
 

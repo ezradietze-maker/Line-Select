@@ -14,14 +14,17 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
+import { BidOrderExport, type BidOrderEntry } from "@/components/results/BidOrderExport";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
+import { ResultsFilterBar } from "@/components/results/ResultsFilterBar";
 import { Button } from "@/components/ui/Button";
 import { LineCard } from "@/components/results/LineCard";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
+import { collectLayoverCities, EMPTY_FILTERS, lineMatchesFilters, type LineFilters } from "@/lib/line-filters";
 import { PHRASES } from "@/lib/preference-summary";
 import {
   learnFromReorder,
@@ -116,7 +119,19 @@ export function ResultsView({
   const [promptJudgment, setPromptJudgment] = useState<PairwiseJudgment | null>(null);
   const [promptCount, setPromptCount] = useState(0);
   const [askedPairIds, setAskedPairIds] = useState<Set<string>>(new Set());
+  const [filters, setFilters] = useState<LineFilters>(EMPTY_FILTERS);
   const caresAboutHotel = caresAboutLayoverQuality(profile);
+
+  // A pack swap (new upload) can leave filters referencing cities or
+  // constraints that don't exist in the new pack — reset rather than risk a
+  // silently-empty results list. Adjusted during render (React's documented
+  // pattern for resetting state on prop change) rather than in an effect, so
+  // it takes effect before the filtered-out first paint rather than after.
+  const [filtersForBidPackId, setFiltersForBidPackId] = useState(bidPack.id);
+  if (bidPack.id !== filtersForBidPackId) {
+    setFiltersForBidPackId(bidPack.id);
+    setFilters(EMPTY_FILTERS);
+  }
 
   useEffect(() => {
     if (!caresAboutHotel) return;
@@ -137,6 +152,23 @@ export function ResultsView({
     () => rankLines(bidPack, profile, hotelQualityData),
     [bidPack, profile, hotelQualityData]
   );
+
+  // Global rank survives filtering — a filtered card or export entry always
+  // shows its true position in the full ranking, not a renumbered index into
+  // whatever subset currently matches the filters.
+  const rankById = useMemo(() => new Map(ranked.map((r, i) => [r.line.id, i + 1] as const)), [ranked]);
+
+  const visibleRanked = useMemo(
+    () => ranked.filter((r) => lineMatchesFilters(r.line, filters)),
+    [ranked, filters]
+  );
+
+  const bidOrderEntries = useMemo<BidOrderEntry[]>(
+    () => visibleRanked.map((r) => ({ lineScore: r, rank: rankById.get(r.line.id) ?? 0 })),
+    [visibleRanked, rankById]
+  );
+
+  const availableCities = useMemo(() => collectLayoverCities(bidPack.lines), [bidPack]);
 
   // The implicit taxonomy's normalized per-line values only depend on the
   // bid pack's own trip data, never on the pilot's weights — computed once
@@ -262,6 +294,16 @@ export function ResultsView({
         you actually care about, so your ranking keeps getting more accurate.
       </p>
 
+      <ResultsFilterBar
+        filters={filters}
+        onChange={setFilters}
+        availableCities={availableCities}
+        visibleCount={visibleRanked.length}
+        totalCount={ranked.length}
+      />
+
+      <BidOrderExport entries={bidOrderEntries} />
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -279,17 +321,23 @@ export function ResultsView({
         measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
       >
         <div className="mt-3 space-y-3">
-          {ranked.map((lineScore, i) => (
-            <ErrorBoundary key={lineScore.line.id}>
-              <LineCard
-                rank={i + 1}
-                lineScore={lineScore}
-                profile={profile}
-                implicitValuesByLine={implicitValuesByLine}
-                homeBaseOffsetMinutes={homeBaseOffsetMinutes}
-              />
-            </ErrorBoundary>
-          ))}
+          {visibleRanked.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-ink-faint">
+              No lines match the current filters. Try clearing one or two.
+            </div>
+          ) : (
+            visibleRanked.map((lineScore) => (
+              <ErrorBoundary key={lineScore.line.id}>
+                <LineCard
+                  rank={rankById.get(lineScore.line.id) ?? 0}
+                  lineScore={lineScore}
+                  profile={profile}
+                  implicitValuesByLine={implicitValuesByLine}
+                  homeBaseOffsetMinutes={homeBaseOffsetMinutes}
+                />
+              </ErrorBoundary>
+            ))
+          )}
         </div>
         <DragOverlay>{activeLineScore && <DragPreview lineScore={activeLineScore} />}</DragOverlay>
       </DndContext>

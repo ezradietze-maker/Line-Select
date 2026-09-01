@@ -24,6 +24,8 @@ const THEME_LABELS: Record<ReviewThemeKey, string> = {
   sleepComfort: "Bed & sleep comfort",
   breakfast: "Breakfast",
   safety: "Safety & area",
+  onSiteGym: "On-site gym",
+  walkability: "Walkable area",
 };
 
 const SENTIMENT_CLASS: Record<ReviewSentiment, string> = {

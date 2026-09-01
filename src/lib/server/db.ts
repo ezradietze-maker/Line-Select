@@ -1,4 +1,5 @@
 import { getJson, setJson } from "@/lib/server/kv";
+import type { AwardHistoryRecord } from "@/types/award-history";
 import type { StoredCredential, UserAccount } from "@/types/auth";
 import type { CandidateVariable } from "@/types/candidate-variable";
 import type { TradeOffer } from "@/types/trade";
@@ -24,12 +25,20 @@ interface DbShape {
   sessions: ServerSession[];
   tradeOffers: TradeOffer[];
   candidateVariables: CandidateVariable[];
+  awardHistoryRecords: AwardHistoryRecord[];
 }
 
 const DB_KEY = "line-select:db";
 
 function emptyDb(): DbShape {
-  return { users: [], credentials: [], sessions: [], tradeOffers: [], candidateVariables: [] };
+  return {
+    users: [],
+    credentials: [],
+    sessions: [],
+    tradeOffers: [],
+    candidateVariables: [],
+    awardHistoryRecords: [],
+  };
 }
 
 async function readDb(): Promise<DbShape> {
@@ -145,4 +154,23 @@ export async function updateTradeOffer(
   db.tradeOffers[index] = { ...db.tradeOffers[index], ...patch };
   await writeDb(db);
   return db.tradeOffers[index];
+}
+
+// ---- Award history ----
+
+export async function listAwardHistoryRecords(filter: {
+  base: string;
+  aircraft: string;
+  seat: string;
+}): Promise<AwardHistoryRecord[]> {
+  const records = (await readDb()).awardHistoryRecords ?? [];
+  return records.filter(
+    (r) => r.base === filter.base && r.aircraft === filter.aircraft && r.seat === filter.seat
+  );
+}
+
+export async function createAwardHistoryRecord(record: AwardHistoryRecord): Promise<void> {
+  const db = await readDb();
+  db.awardHistoryRecords = [...(db.awardHistoryRecords ?? []), record];
+  await writeDb(db);
 }

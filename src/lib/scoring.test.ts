@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildProfile, emptyWeights } from "@/lib/preference-logic";
-import { getBidPackRanges, rankLines } from "@/lib/scoring";
+import { getBidPackRanges, gymScore, rankLines } from "@/lib/scoring";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
+import type { ReviewSummary } from "@/types/hotel";
 
 /**
  * Regression coverage built on the same sample bid pack used by the "Try a
@@ -42,6 +43,29 @@ describe("scoreBidPack / rankLines", () => {
       const dim = r.dimensions.find((d) => d.key === "circadianHealth");
       expect(dim?.importance).toBe(0);
     }
+  });
+});
+
+describe("gymScore", () => {
+  function reviewSummaryWithTheme(theme: ReviewSummary["themes"]): ReviewSummary {
+    return { summary: "test", themes: theme, reviewCount: 3, generatedAt: "2026-01-01T00:00:00.000Z" };
+  }
+
+  it("falls back to the plain nearby-amenity count when reviews say nothing about the on-site gym", () => {
+    expect(gymScore(0.5, null)).toBe(0.5);
+    expect(gymScore(0.5, reviewSummaryWithTheme({}))).toBe(0.5);
+  });
+
+  it("pulls the score up when reviewers say the on-site gym is good, even with an identical nearby count", () => {
+    const withPositiveGym = gymScore(0.5, reviewSummaryWithTheme({ onSiteGym: "positive" }));
+    expect(withPositiveGym).toBeGreaterThan(0.5);
+    expect(withPositiveGym).toBeCloseTo(0.8, 5);
+  });
+
+  it("pulls the score down when reviewers say the on-site gym is bad", () => {
+    const withNegativeGym = gymScore(0.5, reviewSummaryWithTheme({ onSiteGym: "negative" }));
+    expect(withNegativeGym).toBeLessThan(0.5);
+    expect(withNegativeGym).toBeCloseTo(0.2, 5);
   });
 });
 
