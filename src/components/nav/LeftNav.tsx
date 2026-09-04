@@ -99,6 +99,12 @@ function NavList({
         const disabled =
           (item.target === "results" && !hasProfile) ||
           (item.target === "strategies" && !hasBidPack);
+        const disabledReason =
+          item.target === "results" && !hasProfile
+            ? "Set your preferences first to see your ranked lines."
+            : item.target === "strategies" && !hasBidPack
+              ? "Upload a bid pack first to see strategies."
+              : undefined;
         const isActive = active === item.target;
         const badgeCount = item.target === "inbox" ? inboxUnreadCount : 0;
         return (
@@ -109,6 +115,7 @@ function NavList({
             }}
             type="button"
             disabled={disabled}
+            title={disabledReason}
             onClick={() => onGo(item.target)}
             className={`relative z-10 mb-1 flex w-full items-center gap-3 rounded-md py-2.5 pl-3 pr-3 text-left text-sm transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
               isActive

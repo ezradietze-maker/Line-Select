@@ -13,6 +13,7 @@ import { StrategiesScreen } from "@/components/strategies/StrategiesScreen";
 import { InboxScreen } from "@/components/trade-board/InboxScreen";
 import { TradeBoardScreen } from "@/components/trade-board/TradeBoardScreen";
 import { Modal } from "@/components/ui/Modal";
+import { ScreenTransition } from "@/components/ui/ScreenTransition";
 import { Spinner } from "@/components/ui/Spinner";
 import { PreviewScreen } from "@/components/upload/PreviewScreen";
 import { UploadScreen } from "@/components/upload/UploadScreen";
@@ -50,6 +51,29 @@ type Screen =
 
 const SIDEBAR_HIDDEN_SCREENS: Screen[] = ["loading", "welcome", "auth"];
 
+/** The linear onboarding spine — a screen change between two entries here
+ * gets a directional slide; a jump involving anything outside it (a
+ * sidebar nav jump between results/strategies/trade-board/inbox/hotel-
+ * ratings, or anything to/from "loading") falls back to a plain cross-fade,
+ * since there's no meaningful "forward" or "back" between those. */
+const SCREEN_ORDER: Screen[] = [
+  "welcome",
+  "auth",
+  "upload",
+  "preview",
+  "preferences",
+  "interview",
+  "confirm-preferences",
+  "results",
+];
+
+function getDirection(from: Screen, to: Screen): 1 | -1 | 0 {
+  const fromIndex = SCREEN_ORDER.indexOf(from);
+  const toIndex = SCREEN_ORDER.indexOf(to);
+  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return 0;
+  return toIndex > fromIndex ? 1 : -1;
+}
+
 function screenToNavTarget(screen: Screen): NavTarget {
   if (screen === "interview" || screen === "confirm-preferences") return "preferences";
   if (screen === "preview") return "upload";
@@ -85,6 +109,19 @@ export default function Home() {
       seniority: null,
     });
   const [interviewKey, setInterviewKey] = useState(0);
+
+  // Tracks which screen the transition direction was last computed against,
+  // so a screen change can derive its slide direction from the SCREEN_ORDER
+  // spine before the new content ever renders — adjusted during render
+  // (React's documented pattern for reacting to a prop/state change) rather
+  // than in an effect, so the very first paint of the new screen already
+  // carries the correct direction instead of flashing a stale one.
+  const [renderedScreen, setRenderedScreen] = useState(screen);
+  const [screenDirection, setScreenDirection] = useState<1 | -1 | 0>(0);
+  if (screen !== renderedScreen) {
+    setScreenDirection(getDirection(renderedScreen, screen));
+    setRenderedScreen(screen);
+  }
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [demoOffer, setDemoOffer] = useState<TradeOffer | null>(null);
   const [realOffers, setRealOffers] = useState<TradeOffer[]>([]);
@@ -396,6 +433,127 @@ export default function Home() {
 
   const showSidebar = !SIDEBAR_HIDDEN_SCREENS.includes(screen);
 
+  const screenContent = (() => {
+    switch (screen) {
+      case "loading":
+        return (
+          <div className="flex justify-center">
+            <Spinner size="md" />
+          </div>
+        );
+
+      case "welcome":
+        return (
+          <WelcomeScreen
+            onStart={() => setState((s) => ({ ...s, screen: "upload" }))}
+            onTrySample={handleTrySample}
+          />
+        );
+
+      case "auth":
+        return (
+          <AuthScreen
+            onAuthenticated={handleAuthenticated}
+            onContinueAsGuest={handleContinueAsGuest}
+          />
+        );
+
+      case "upload":
+        return (
+          <UploadScreen onParsed={handleParsed} currentBidPack={bidPack} onTrySample={handleTrySample} />
+        );
+
+      case "preview":
+        return parseResult ? (
+          <PreviewScreen
+            result={parseResult}
+            onConfirm={handleBidPackConfirmed}
+            onUploadDifferent={() =>
+              setState((s) => ({ ...s, screen: "upload", parseResult: null }))
+            }
+          />
+        ) : null;
+
+      case "preferences":
+        return (
+          <PreferencesScreen
+            hasBidPack={!!bidPack}
+            profile={profile}
+            onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
+            onStartInterview={handleStartInterview}
+          />
+        );
+
+      case "interview":
+        return bidPack ? (
+          <Interview key={interviewKey} bidPack={bidPack} onComplete={handleInterviewComplete} />
+        ) : null;
+
+      case "confirm-preferences":
+        return pendingProfile && bidPack ? (
+          <ConfirmPreferencesScreen
+            profile={pendingProfile}
+            onConfirm={handleConfirmPreferences}
+            onRetakeInterview={handleStartInterview}
+          />
+        ) : null;
+
+      case "results":
+        return profile && bidPack ? (
+          <ResultsView
+            bidPack={bidPack}
+            profile={profile}
+            onStartOver={handleStartOver}
+            onRefine={handleStartInterview}
+            onUpdateProfile={handleUpdateProfile}
+          />
+        ) : (
+          <PreferencesScreen
+            hasBidPack={!!bidPack}
+            profile={profile}
+            onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
+            onStartInterview={handleStartInterview}
+          />
+        );
+
+      case "strategies":
+        return (
+          <StrategiesScreen
+            bidPack={bidPack}
+            seniority={seniority}
+            profile={profile}
+            user={user}
+            onSaveSeniority={handleSaveSeniority}
+            onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
+            onStartInterview={handleStartInterview}
+          />
+        );
+
+      case "trade-board":
+        return (
+          <TradeBoardScreen
+            bidPack={bidPack}
+            user={user}
+            demoOffer={demoOffer}
+            onAcceptDemoOffer={handleAcceptDemoOffer}
+          />
+        );
+
+      case "inbox":
+        return (
+          <InboxScreen
+            bidPack={bidPack}
+            user={user}
+            demoOffer={demoOffer}
+            onGoToTradeBoard={() => setState((s) => ({ ...s, screen: "trade-board" }))}
+          />
+        );
+
+      case "hotel-ratings":
+        return <HotelRatingsScreen bidPack={bidPack} />;
+    }
+  })();
+
   return (
     <div className="flex min-h-full flex-col">
       {showSidebar && (
@@ -414,115 +572,9 @@ export default function Home() {
 
       <div className={`flex flex-1 flex-col ${showSidebar ? "md:pl-60" : ""}`}>
         <main className="flex flex-1 flex-col justify-center px-4 py-10 sm:py-16">
-          {screen === "loading" && (
-            <div className="flex justify-center">
-              <Spinner size="md" />
-            </div>
-          )}
-
-          {screen === "welcome" && (
-            <WelcomeScreen
-              onStart={() => setState((s) => ({ ...s, screen: "upload" }))}
-              onTrySample={handleTrySample}
-            />
-          )}
-
-          {screen === "auth" && (
-            <AuthScreen
-              onAuthenticated={handleAuthenticated}
-              onContinueAsGuest={handleContinueAsGuest}
-            />
-          )}
-
-          {screen === "upload" && (
-            <UploadScreen onParsed={handleParsed} currentBidPack={bidPack} onTrySample={handleTrySample} />
-          )}
-
-          {screen === "preview" && parseResult && (
-            <PreviewScreen
-              result={parseResult}
-              onConfirm={handleBidPackConfirmed}
-              onUploadDifferent={() =>
-                setState((s) => ({ ...s, screen: "upload", parseResult: null }))
-              }
-            />
-          )}
-
-          {screen === "preferences" && (
-            <PreferencesScreen
-              hasBidPack={!!bidPack}
-              profile={profile}
-              onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
-              onStartInterview={handleStartInterview}
-            />
-          )}
-
-          {screen === "interview" && bidPack && (
-            <Interview
-              key={interviewKey}
-              bidPack={bidPack}
-              onComplete={handleInterviewComplete}
-            />
-          )}
-
-          {screen === "confirm-preferences" && pendingProfile && bidPack && (
-            <ConfirmPreferencesScreen
-              profile={pendingProfile}
-              onConfirm={handleConfirmPreferences}
-              onRetakeInterview={handleStartInterview}
-            />
-          )}
-
-          {screen === "results" && profile && bidPack && (
-            <ResultsView
-              bidPack={bidPack}
-              profile={profile}
-              onStartOver={handleStartOver}
-              onRefine={handleStartInterview}
-              onUpdateProfile={handleUpdateProfile}
-            />
-          )}
-
-          {screen === "results" && (!profile || !bidPack) && (
-            <PreferencesScreen
-              hasBidPack={!!bidPack}
-              profile={profile}
-              onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
-              onStartInterview={handleStartInterview}
-            />
-          )}
-
-          {screen === "strategies" && (
-            <StrategiesScreen
-              bidPack={bidPack}
-              seniority={seniority}
-              profile={profile}
-              user={user}
-              onSaveSeniority={handleSaveSeniority}
-              onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
-              onStartInterview={handleStartInterview}
-            />
-          )}
-
-          {screen === "trade-board" && (
-            <TradeBoardScreen
-              bidPack={bidPack}
-              user={user}
-              demoOffer={demoOffer}
-              onAcceptDemoOffer={handleAcceptDemoOffer}
-            />
-          )}
-
-          {screen === "inbox" && (
-            <InboxScreen
-              bidPack={bidPack}
-              user={user}
-              demoOffer={demoOffer}
-              onGoToTradeBoard={() => setState((s) => ({ ...s, screen: "trade-board" }))}
-            />
-          )}
-
-          {screen === "hotel-ratings" && <HotelRatingsScreen bidPack={bidPack} />}
+          <ScreenTransition screenKey={screen} direction={screenDirection}>
+            {screenContent}
+          </ScreenTransition>
         </main>
         <Footer />
       </div>
