@@ -1,5 +1,6 @@
 "use client";
 
+import { SelectableCard } from "@/components/ui/SelectableCard";
 import type { TradeoffQuestionConfig } from "@/lib/interview-config";
 
 interface TradeoffStepProps {
@@ -20,13 +21,13 @@ export function TradeoffStep({ config, value, onChange }: TradeoffStepProps) {
       </p>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-2">
-        <OptionCard
+        <SelectableCard
           label={config.optionA.label}
           description={config.optionA.description}
           selected={value === -1}
           onClick={() => onChange(-1)}
         />
-        <OptionCard
+        <SelectableCard
           label={config.optionB.label}
           description={config.optionB.description}
           selected={value === 1}
@@ -44,45 +45,5 @@ export function TradeoffStep({ config, value, onChange }: TradeoffStepProps) {
         Honestly, no strong preference either way
       </button>
     </div>
-  );
-}
-
-function OptionCard({
-  label,
-  description,
-  selected,
-  onClick,
-}: {
-  label: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onClick}
-      className={`relative rounded-lg border-2 p-5 text-left transition-all ${
-        selected
-          ? "border-brand bg-brand-soft ring-2 ring-brand/25 ring-offset-2 ring-offset-canvas"
-          : "border-border bg-surface hover:border-border-strong hover:bg-canvas"
-      }`}
-    >
-      <div
-        className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors ${
-          selected
-            ? "border-brand bg-brand text-white"
-            : "border-border-strong bg-surface text-transparent"
-        }`}
-        aria-hidden
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} className="h-3 w-3">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M20 6L9 17l-5-5" />
-        </svg>
-      </div>
-      <div className="pr-6 text-sm font-semibold text-ink">{label}</div>
-      <div className="mt-1 pr-6 text-sm text-ink-muted">{description}</div>
-    </button>
   );
 }
