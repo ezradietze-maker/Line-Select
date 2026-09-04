@@ -26,43 +26,51 @@ export function AdaptiveFollowUp({ context, onResolved }: AdaptiveFollowUpProps)
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [thanks, setThanks] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit() {
     const trimmed = text.trim();
     if (!trimmed) return;
     setBusy(true);
-    const result = await classifyFreeText({ freeText: trimmed, context });
-    setBusy(false);
+    setError(null);
 
-    if (result?.matchedVariableId) {
-      setThanks("Got it — factored that in.");
-      onResolved({ variableId: result.matchedVariableId, direction: result.direction === "favors_less" ? -1 : 1 });
-      return;
-    }
+    try {
+      const result = await classifyFreeText({ freeText: trimmed, context });
 
-    if (result?.proposedName) {
+      if (result?.matchedVariableId) {
+        setThanks("Got it — factored that in.");
+        onResolved({ variableId: result.matchedVariableId, direction: result.direction === "favors_less" ? -1 : 1 });
+        return;
+      }
+
+      if (result?.proposedName) {
+        await submitCandidateVariable({
+          rawQuote: trimmed,
+          proposedName: result.proposedName,
+          proposedDescription: result.proposedDescription ?? "",
+          favoredLineNumber: "",
+          overtakenLineNumber: "",
+        });
+        setThanks("Got it — that's not something I'm tracking yet, but I've made a note of it.");
+        onResolved(null);
+        return;
+      }
+
+      // Classification unavailable/failed — still keep the pilot's words rather than silently drop them.
       await submitCandidateVariable({
         rawQuote: trimmed,
-        proposedName: result.proposedName,
-        proposedDescription: result.proposedDescription ?? "",
+        proposedName: "Unclassified note",
+        proposedDescription: "",
         favoredLineNumber: "",
         overtakenLineNumber: "",
       });
-      setThanks("Got it — that's not something I'm tracking yet, but I've made a note of it.");
+      setThanks("Noted, thanks.");
       onResolved(null);
-      return;
+    } catch {
+      setError("Couldn't save that — check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
-
-    // Classification unavailable/failed — still keep the pilot's words rather than silently drop them.
-    await submitCandidateVariable({
-      rawQuote: trimmed,
-      proposedName: "Unclassified note",
-      proposedDescription: "",
-      favoredLineNumber: "",
-      overtakenLineNumber: "",
-    });
-    setThanks("Noted, thanks.");
-    onResolved(null);
   }
 
   if (thanks) {
@@ -94,6 +102,7 @@ export function AdaptiveFollowUp({ context, onResolved }: AdaptiveFollowUpProps)
           {busy ? "Thinking…" : "Send"}
         </button>
       </div>
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
     </div>
   );
 }
