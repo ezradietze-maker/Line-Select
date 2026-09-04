@@ -119,12 +119,7 @@ function NavList({
             <span className="relative shrink-0 transition-transform duration-150">
               <item.icon className="h-[18px] w-[18px]" />
               {badgeCount > 0 && (
-                // A fixed red rather than the `danger` theme token — that
-                // token's dark-mode value is a muted salmon (meant for
-                // soft error banners), which read as barely-there for an
-                // unread dot that's supposed to grab attention regardless
-                // of theme.
-                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#e0342a] px-1 text-[10px] font-semibold leading-none text-white">
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-white">
                   {badgeCount > 9 ? "9+" : badgeCount}
                 </span>
               )}

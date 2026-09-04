@@ -21,6 +21,12 @@
   --color-accent-soft: #f4e6d2;
   --color-accent-wash: #ecd3a0;
 
+  /* Second accent: a desaturated "dispatch stamp" blue — cooler and grayer than
+     brand-navy on purpose, so the two don't read as one hue at two weights. */
+  --color-dispatch: #3d5a7a;
+  --color-dispatch-soft: #e3e9ef;
+  --color-dispatch-wash: #c7d4e0;
+
   /* Sidebar: a distinct recessed panel, not a copy of the content surface */
   --color-sidebar: #eeeae1;
   --color-sidebar-border: #cdc4b0;
@@ -30,15 +36,34 @@
   --color-good-soft: #e1f0e7;
   --color-warn: #a15b1f;
   --color-warn-soft: #f6e8d7;
-  --color-danger: #b3432f;
+  /* NOTAM red: saturated and stamped, not a muted salmon — reserved strictly
+     for warnings/alerts, never generic UI chrome. */
+  --color-danger: #c33a2e;
   --color-danger-soft: #f8e3de;
 
   --color-focus-ring: #1c3d5c;
 
-  --shadow-color: 220 20% 20%;
+  /* Warm paper shadow — hue 35 (amber-brown), not a generic cool gray. */
+  --shadow-color: 35 15% 20%;
   --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.06);
   --shadow-md: 0 2px 8px hsl(var(--shadow-color) / 0.08), 0 1px 2px hsl(var(--shadow-color) / 0.06);
   --shadow-lg: 0 12px 32px hsl(var(--shadow-color) / 0.12), 0 2px 6px hsl(var(--shadow-color) / 0.06);
+
+  /* Nav-log paper grid — a hairline texture, faint enough to sit behind
+     content without ever competing with it. A repeating hard-edged line
+     reads far busier than its alpha value suggests in isolation, so this
+     stays well under what a color swatch alone would imply is "faint." */
+  --texture-grid-line: color-mix(in srgb, var(--color-ink) 2%, transparent);
+  --texture-grid-size: 32px;
+
+  /* Motion: one shared duration/easing vocabulary instead of untimed
+     transition-all/transition-colors scattered per component. */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 400ms;
+  --duration-page: 320ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -60,6 +85,10 @@
     --color-accent-soft: #2c2417;
     --color-accent-wash: #3a2c14;
 
+    --color-dispatch: #7fa8cc;
+    --color-dispatch-soft: #1b2530;
+    --color-dispatch-wash: #2a3846;
+
     --color-sidebar: #05070a;
     --color-sidebar-border: #1f2830;
 
@@ -67,11 +96,14 @@
     --color-good-soft: #16281f;
     --color-warn: #d99a52;
     --color-warn-soft: #2c2114;
-    --color-danger: #e28674;
+    --color-danger: #e2604a;
     --color-danger-soft: #2e1a16;
 
     --color-focus-ring: #8db4d6;
-    --shadow-color: 220 40% 2%;
+    --shadow-color: 35 25% 2%;
+
+    /* Dark surfaces need a stronger alpha than light for the grid to read at the same subtlety. */
+    --texture-grid-line: color-mix(in srgb, var(--color-ink) 3%, transparent);
   }
 }
 
@@ -93,6 +125,10 @@
   --color-accent-soft: #2c2417;
   --color-accent-wash: #3a2c14;
 
+  --color-dispatch: #7fa8cc;
+  --color-dispatch-soft: #1b2530;
+  --color-dispatch-wash: #2a3846;
+
   --color-sidebar: #05070a;
   --color-sidebar-border: #1f2830;
 
@@ -100,11 +136,11 @@
   --color-good-soft: #16281f;
   --color-warn: #d99a52;
   --color-warn-soft: #2c2114;
-  --color-danger: #e28674;
+  --color-danger: #e2604a;
   --color-danger-soft: #2e1a16;
 
   --color-focus-ring: #8db4d6;
-  --shadow-color: 220 40% 2%;
+  --shadow-color: 35 25% 2%;
 }
 
 @theme inline {
@@ -125,6 +161,10 @@
   --color-accent-soft: var(--color-accent-soft);
   --color-accent-wash: var(--color-accent-wash);
 
+  --color-dispatch: var(--color-dispatch);
+  --color-dispatch-soft: var(--color-dispatch-soft);
+  --color-dispatch-wash: var(--color-dispatch-wash);
+
   --color-sidebar: var(--color-sidebar);
   --color-sidebar-border: var(--color-sidebar-border);
 
@@ -137,6 +177,13 @@
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+
+  --duration-fast: var(--duration-fast);
+  --duration-base: var(--duration-base);
+  --duration-slow: var(--duration-slow);
+  --duration-page: var(--duration-page);
+  --ease-standard: var(--ease-standard);
+  --ease-emphasized: var(--ease-emphasized);
 }
 
 /*
@@ -154,6 +201,13 @@
 
 body {
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  /* Nav-log paper grid, layered under the `bg-canvas` utility's background
+     color (set via className in layout.tsx) — a hairline texture behind
+     everything, never repeated per-card or per-surface. */
+  background-image:
+    linear-gradient(var(--texture-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--texture-grid-line) 1px, transparent 1px);
+  background-size: var(--texture-grid-size) var(--texture-grid-size);
 }
 
 .font-tabular {
@@ -302,7 +356,7 @@ body {
 }
 
 .animate-rise-in {
-  animation: rise-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: rise-in 0.5s var(--ease-emphasized) both;
 }
 
 @keyframes slide-in-left {
