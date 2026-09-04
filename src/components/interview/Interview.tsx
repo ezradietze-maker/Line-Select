@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ProgressDots } from "@/components/ui/ProgressDots";
+import { ScreenTransition } from "@/components/ui/ScreenTransition";
 import { AdaptiveFollowUp, type FollowUpMatch } from "@/components/interview/AdaptiveFollowUp";
 import { CityPreferenceStep } from "@/components/interview/CityPreferenceStep";
 import { CommuterStep } from "@/components/interview/CommuterStep";
@@ -245,6 +246,21 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
                 tradeoffIndex
               : 1 + QUICK_STEPS.length;
 
+  // A step change's slide direction comes from comparing this monotonic
+  // step count to whatever it was last render, the same render-time
+  // adjustment pattern page.tsx uses for its own screen transitions —
+  // adjusted here (not in an effect) so the very first paint of a new step
+  // already carries the right direction.
+  const stepKey = `${phase}-${quickIndex}-${deepSliderIndex}-${targetIndex}-${tradeoffIndex}`;
+  const [renderedStepKey, setRenderedStepKey] = useState(stepKey);
+  const [renderedStepsDone, setRenderedStepsDone] = useState(stepsDone);
+  const [stepDirection, setStepDirection] = useState<1 | -1 | 0>(0);
+  if (stepKey !== renderedStepKey) {
+    setStepDirection(stepsDone > renderedStepsDone ? 1 : stepsDone < renderedStepsDone ? -1 : 0);
+    setRenderedStepsDone(stepsDone);
+    setRenderedStepKey(stepKey);
+  }
+
   function finish(deepRoundCompleted: boolean) {
     const answers: TradeoffAnswer[] = Object.entries(tradeoffAnswers).map(
       ([id, value]) => ({ id, value })
@@ -335,25 +351,19 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
     }
   }
 
-  return (
-    <div className="mx-auto w-full max-w-xl">
-      <div className="mb-8 flex items-center justify-between">
-        <ProgressDots total={totalSteps} current={Math.min(stepsDone, totalSteps - 1)} />
-        <span className="font-mono text-xs text-ink-faint">
-          {phase === "deep-offer" ? "almost there" : `${stepsDone + 1} / ${totalSteps}`}
-        </span>
-      </div>
-
-      <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
-        {phase === "commuter" && (
-          <div className="animate-fade-in">
+  const stepContent = (() => {
+    switch (phase) {
+      case "commuter":
+        return (
+          <div>
             <CommuterStep value={isCommuter} onChange={setIsCommuter} base={bidPack.base} />
             <StepNav onNext={() => setPhase("quick")} nextLabel="Next" />
           </div>
-        )}
+        );
 
-        {phase === "quick" && (
-          <div key={`quick-${quickIndex}`} className="animate-fade-in">
+      case "quick":
+        return (
+          <div>
             {currentQuickStep.kind === "slider" && (
               <>
                 <SliderStep
@@ -411,19 +421,19 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
               }
             />
           </div>
-        )}
+        );
 
-        {phase === "deep-offer" && (
-          <div className="animate-fade-in">
-            <DeepOffer
-              onSkip={() => finish(false)}
-              onContinue={() => setPhase("deep-sliders")}
-            />
-          </div>
-        )}
+      case "deep-offer":
+        return (
+          <DeepOffer
+            onSkip={() => finish(false)}
+            onContinue={() => setPhase("deep-sliders")}
+          />
+        );
 
-        {phase === "deep-sliders" && (
-          <div key={`deep-slider-${deepSliderIndex}`} className="animate-fade-in">
+      case "deep-sliders":
+        return (
+          <div>
             {currentDeepStep.kind === "slider" && (
               <>
                 <SliderStep
@@ -460,10 +470,11 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
               nextLabel="Next"
             />
           </div>
-        )}
+        );
 
-        {phase === "deep-targets" && (
-          <div key={`target-${targetIndex}`} className="animate-fade-in">
+      case "deep-targets":
+        return (
+          <div>
             <TargetSliderStep
               config={currentTarget}
               range={ranges[currentTarget.key]}
@@ -474,10 +485,11 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
             />
             <StepNav onBack={goTargetBack} onNext={goTargetNext} nextLabel="Next" />
           </div>
-        )}
+        );
 
-        {phase === "deep-tradeoffs" && (
-          <div key={`tradeoff-${tradeoffIndex}`} className="animate-fade-in">
+      case "deep-tradeoffs":
+        return (
+          <div>
             <TradeoffStep
               config={currentTradeoff}
               value={tradeoffAnswers[currentTradeoff.id] ?? 0}
@@ -495,7 +507,29 @@ export function Interview({ bidPack, onComplete }: InterviewProps) {
               }
             />
           </div>
-        )}
+        );
+    }
+  })();
+
+  return (
+    <div className="mx-auto w-full max-w-xl">
+      <div className="mb-8 flex items-center justify-between">
+        <ProgressDots
+          total={totalSteps}
+          // "deep-offer" is a fork, not a numbered step — hold the dots at
+          // the end of the quick round instead of advancing past a count
+          // the "almost there" label deliberately doesn't name.
+          current={phase === "deep-offer" ? QUICK_STEPS.length : Math.min(stepsDone, totalSteps - 1)}
+        />
+        <span className="font-mono text-xs text-ink-faint">
+          {phase === "deep-offer" ? "almost there" : `${stepsDone + 1} / ${totalSteps}`}
+        </span>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
+        <ScreenTransition screenKey={stepKey} direction={stepDirection}>
+          {stepContent}
+        </ScreenTransition>
       </div>
     </div>
   );
