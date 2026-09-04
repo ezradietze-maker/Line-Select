@@ -34,6 +34,39 @@ function zuluAt(anchorISO: string, minutes: number): string {
   return DateTime.fromISO(anchorISO, { zone: "utc" }).plus({ minutes }).toISO()!;
 }
 
+/**
+ * Real anchor for THIS pairing's own elapsed-minute clock (`t=0` at its
+ * report — see `RunningClock.seed` in pairing-parser.ts) — not just
+ * `monthAnchorZulu`'s bare month-start, which would put every pairing's
+ * report at exactly midnight UTC regardless of when it actually happens.
+ * Different pairings report at wildly different real times, so anchoring
+ * all of them to the same instant silently shifted every leg's derived
+ * Zulu timestamp away from its real GMT time-of-day — harmless for the
+ * places that already read a leg's own printed `depTimeLocal`/`depTimeGmt`
+ * directly, but wrong for anything deriving real local time *positioning*
+ * from the anchor instead (Local-mode day-splitting, date-line detection —
+ * see trip-timeline.ts).
+ *
+ * Derived from the pairing's own first leg: its real printed GMT departure
+ * time, minus how many elapsed minutes past report that departure already
+ * is, gives the real GMT time-of-day the report itself happens at. The
+ * calendar date stays arbitrary (still the bid month's own 1st, rolling
+ * over a day if the subtraction crosses midnight) — a bid pack ties a
+ * pairing to a line, not to one specific date — but the hour is now real.
+ */
+function pairingAnchorZulu(pairing: ParsedPairing, bidPackMonth: string): string {
+  const monthStart = monthAnchorZulu(bidPackMonth);
+  const firstLeg = pairing.schedule[0]?.legs[0];
+  const gmtMatch = firstLeg?.depTimeGmt.match(/^(\d{2})(\d{2})$/);
+  if (!firstLeg || !gmtMatch) return monthStart;
+
+  const [, hh, mm] = gmtMatch;
+  return DateTime.fromISO(monthStart, { zone: "utc" })
+    .set({ hour: Number(hh), minute: Number(mm), second: 0, millisecond: 0 })
+    .minus({ minutes: firstLeg.startMinutes })
+    .toISO()!;
+}
+
 /** Materializes real Zulu timestamps onto every leg of a parsed schedule — the one place `ScheduledLeg`'s elapsed `startMinutes`/`endMinutes` (already Zulu-consistent, per its own doc comment) turns into an actual instant. */
 function anchorSchedule(schedule: ParsedPairing["schedule"], anchorISO: string): TripDutyPeriod[] {
   return schedule.map((duty) => ({
@@ -47,7 +80,7 @@ function anchorSchedule(schedule: ParsedPairing["schedule"], anchorISO: string):
 }
 
 export function pairingToTrip(pairing: ParsedPairing, bidPackMonth: string): Trip {
-  const anchor = monthAnchorZulu(bidPackMonth);
+  const anchor = pairingAnchorZulu(pairing, bidPackMonth);
   return {
     id: pairing.id,
     pairingNumber: pairing.sequenceNumber,

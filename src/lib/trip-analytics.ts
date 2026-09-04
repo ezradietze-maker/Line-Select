@@ -177,6 +177,13 @@ export interface TripAnalytics {
  */
 export type MissingCategories = never;
 
+/** Cheap standalone check for filtering — true if any leg departs or arrives in the 00:00-05:00 local red-eye window. Reuses the exact same window `computeTripAnalytics` counts, without computing everything else about the trip just to answer one boolean. */
+export function hasRedEyeLeg(trip: Trip): boolean {
+  return trip.schedule
+    .flatMap((d) => d.legs)
+    .some((l) => isRedEyeLocal(l.depTimeLocal) || isRedEyeLocal(l.arrTimeLocal));
+}
+
 export function computeTripAnalytics(trip: Trip): TripAnalytics {
   const duties = trip.schedule;
   const allLegs: TripLeg[] = duties.flatMap((d) => d.legs);

@@ -21,6 +21,11 @@ const REPORT_LABELS: Record<Trip["reportTime"], string> = {
 };
 
 const MINUTES_PER_DAY = 24 * 60;
+/** Pixels per hour in the calendar grid — 24 * 13 = 312px tall, compact enough to keep a long trip's day columns from needing a huge scroll, tall enough that a 30-45min segment still gets a few readable pixels. */
+const HOUR_HEIGHT_PX = 13;
+const CALENDAR_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
+/** Hours labeled in the shared time gutter — every 3h reads cleanly without crowding 9px text. */
+const GUTTER_HOURS = [0, 3, 6, 9, 12, 15, 18, 21];
 
 function formatHours(hours: number): string {
   const h = Math.floor(hours);
@@ -73,18 +78,18 @@ const SEGMENT_TOOLTIP_SUFFIX: Partial<Record<TimelineDay["segments"][number]["ki
 };
 
 /**
- * Below these clipped-duration thresholds, a segment's bar renders too
- * narrow for its city/time labels to read cleanly (there's no pixel width
+ * Below these clipped-duration thresholds, a segment's block renders too
+ * short for its city/time labels to read cleanly (there's no pixel height
  * to check at this layer — segments are positioned by percentage — so
- * duration is the real-world proxy for "will this bar actually be wide
+ * duration is the real-world proxy for "will this block actually be tall
  * enough"). Below the threshold the label is dropped entirely rather than
  * left to overlap or spill; the full detail is still one hover away via
- * the segment's `title`. Flight legs need room for two labels (departure
- * and arrival) sharing one bar, so their threshold is higher than a
- * layover's single, centered label.
+ * the segment's `title`. A flight leg needs room to stack a departure label
+ * at its top edge and an arrival label at its bottom, so its threshold is
+ * higher than a layover's single, centered label.
  */
-const MIN_MINUTES_FOR_FLIGHT_LABELS = 210;
-const MIN_MINUTES_FOR_LAYOVER_LABEL = 90;
+const MIN_MINUTES_FOR_FLIGHT_LABELS = 150;
+const MIN_MINUTES_FOR_LAYOVER_LABEL = 75;
 
 function showsInlineText(seg: TimelineDay["segments"][number]): boolean {
   const duration = seg.endMinuteOfDay - seg.startMinuteOfDay;
@@ -93,7 +98,7 @@ function showsInlineText(seg: TimelineDay["segments"][number]): boolean {
   return false;
 }
 
-/** Deadhead's bar is a lighter, hatched tint of brand rather than a solid saturated color, so dark text reads better on it than the white used for the solid flying/layover bars. */
+/** Deadhead's block is a lighter, hatched tint of brand rather than a solid saturated color, so dark text reads better on it than the white used for the solid flying/layover blocks. */
 function inlineTextClass(kind: TimelineDay["segments"][number]["kind"]): string {
   return kind === "deadhead" ? "text-ink" : "text-white";
 }
@@ -111,60 +116,100 @@ function DateLineChip({ badge }: { badge: TimelineDay["segments"][number]["dateL
   );
 }
 
-function DayRow({ day }: { day: TimelineDay }) {
+/**
+ * One calendar day as a real vertical column — midnight at the top, midnight
+ * at the bottom, exactly like a week view in any calendar app — instead of
+ * the old left-to-right bar. `heightPx` is shared across every column in
+ * the grid so every day lines up against the same hour gutter regardless of
+ * how packed any single day is.
+ */
+function DayColumn({ day, heightPx }: { day: TimelineDay; heightPx: number }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="w-8 shrink-0 text-right font-mono text-[9px] font-medium text-brand">
-        D{day.dayNumber}
-      </div>
-      <div className="flex-1">
-        <div className="relative h-5 overflow-visible rounded-sm bg-canvas">
-          {[6, 12, 18].map((h) => (
-            <div key={h} className="absolute top-0 bottom-0 w-px bg-border/70" style={{ left: `${(h / 24) * 100}%` }} />
-          ))}
-          {day.segments.map((seg, i) => (
-            <div
-              key={i}
-              title={
-                SEGMENT_TOOLTIP_SUFFIX[seg.kind]
-                  ? `${seg.label} — ${seg.detail}\n${SEGMENT_TOOLTIP_SUFFIX[seg.kind]}`
-                  : `${seg.label} — ${seg.detail}`
-              }
-              className={`absolute top-0 bottom-0 ${segmentClass(seg.kind)} ${
-                seg.continuesFromPreviousDay ? "" : "rounded-l-sm"
-              } ${seg.continuesToNextDay ? "" : "rounded-r-sm"}`}
-              style={{
-                left: `${(seg.startMinuteOfDay / MINUTES_PER_DAY) * 100}%`,
-                width: `${Math.max(0.6, ((seg.endMinuteOfDay - seg.startMinuteOfDay) / MINUTES_PER_DAY) * 100)}%`,
-              }}
-            >
-              <DateLineChip badge={seg.dateLineBadge} />
-              {showsInlineText(seg) && (
-                <div
-                  className={`flex h-full items-center gap-1 px-1 font-mono text-[8px] font-medium leading-none ${inlineTextClass(seg.kind)}`}
-                >
-                  {/* `flex-1` gives each label a fixed half-width share of the bar (rather than its natural text width), so `truncate` has an actual boundary to ellipsize against — without it, two long labels in a narrow bar would overlap instead of cleanly cutting off. */}
-                  <span className="min-w-0 flex-1 truncate text-left">{seg.inlineStart}</span>
-                  {seg.inlineEnd && <span className="min-w-0 flex-1 truncate text-right">{seg.inlineEnd}</span>}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-        {day.zuluRulerLabel && (
+    <div className="w-[4.5rem] shrink-0 sm:w-20">
+      <div className="text-center font-mono text-[9px] font-medium text-brand">D{day.dayNumber}</div>
+      <div className="relative mt-1 overflow-visible rounded-sm bg-canvas" style={{ height: heightPx }}>
+        {GUTTER_HOURS.map((h) => (
           <div
-            className="mt-0.5 font-mono text-[8px] leading-none text-ink-faint"
-            title="This local day's own boundaries, read in Zulu — always visible so you can cross-check without switching the toggle."
+            key={h}
+            className="absolute inset-x-0 h-px bg-border/70"
+            style={{ top: `${(h / 24) * 100}%` }}
+            aria-hidden
+          />
+        ))}
+        {day.segments.map((seg, i) => (
+          <div
+            key={i}
+            title={
+              SEGMENT_TOOLTIP_SUFFIX[seg.kind]
+                ? `${seg.label} — ${seg.detail}\n${SEGMENT_TOOLTIP_SUFFIX[seg.kind]}`
+                : `${seg.label} — ${seg.detail}`
+            }
+            className={`absolute inset-x-0 ${segmentClass(seg.kind)} ${
+              seg.continuesFromPreviousDay ? "" : "rounded-t-sm"
+            } ${seg.continuesToNextDay ? "" : "rounded-b-sm"}`}
+            style={{
+              top: `${(seg.startMinuteOfDay / MINUTES_PER_DAY) * 100}%`,
+              height: `${Math.max(0.8, ((seg.endMinuteOfDay - seg.startMinuteOfDay) / MINUTES_PER_DAY) * 100)}%`,
+            }}
           >
-            {day.zuluRulerLabel}
+            <DateLineChip badge={seg.dateLineBadge} />
+            {showsInlineText(seg) && (
+              <div
+                className={`flex h-full flex-col justify-between px-1 py-0.5 font-mono text-[8px] font-medium leading-tight ${inlineTextClass(seg.kind)}`}
+              >
+                {/* Stacked top/bottom (departure at the top edge, arrival at the bottom) rather than side by side — a tall, narrow column reads that direction naturally, the same way the segment itself flows top-to-bottom in time. */}
+                <span className="truncate text-left">{seg.inlineStart}</span>
+                {seg.inlineEnd && <span className="truncate text-right">{seg.inlineEnd}</span>}
+              </div>
+            )}
           </div>
-        )}
+        ))}
+      </div>
+      {day.zuluRulerLabel && (
+        <div
+          className="mt-0.5 text-center font-mono text-[7px] leading-tight text-ink-faint"
+          title="This local day's own boundaries, read in Zulu — always visible so you can cross-check without switching the toggle."
+        >
+          {day.zuluRulerLabel}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The shared left-hand hour gutter every day column lines up against — the one piece of a real calendar's week view that only needs to be drawn once, not once per column. */
+function HourGutter({ heightPx }: { heightPx: number }) {
+  return (
+    <div className="sticky left-0 z-10 w-6 shrink-0 bg-surface pr-1">
+      <div className="h-[13px]" aria-hidden />
+      <div className="relative mt-1" style={{ height: heightPx }}>
+        {GUTTER_HOURS.map((h) => (
+          <div
+            key={h}
+            className="absolute right-0 -translate-y-1/2 font-mono text-[8px] leading-none text-ink-faint"
+            style={{ top: `${(h / 24) * 100}%` }}
+          >
+            {String(h).padStart(2, "0")}
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-/** The visual "at a glance" schedule — day-by-day rows so a long international trip doesn't compress into one unreadable sliver. Real, printed clock times drive every segment's position; nothing here is estimated. Deliberately dense: full explanations live in tooltips rather than always-on caption text, so several lines' schedules can stay on screen together. `mode` decides whether day columns (and which clock reads as primary on each segment) follow Zulu or local calendar days — see trip-timeline.ts for why those aren't the same grid. */
+/**
+ * The visual "at a glance" schedule — a real calendar week view: one column
+ * per day, midnight-to-midnight top-to-bottom, so a long international trip
+ * reads the way a pilot actually thinks about it ("day 3 starts with a long
+ * layover, day 4 is the long leg home") instead of compressing into an
+ * unreadable horizontal sliver. Real, printed clock times drive every
+ * segment's position; nothing here is estimated. Deliberately dense: full
+ * explanations live in tooltips rather than always-on caption text, so
+ * several lines' schedules can stay on screen together. `mode` decides
+ * whether day columns (and which clock reads as primary on each segment)
+ * follow Zulu or local calendar days — see trip-timeline.ts for why those
+ * aren't the same grid.
+ */
 function TripTimelineChart({ trip, mode }: { trip: Trip; mode: TimeMode }) {
   const days = buildTimelineDays(trip, mode);
   if (days.length === 0) return null;
@@ -178,17 +223,13 @@ function TripTimelineChart({ trip, mode }: { trip: Trip; mode: TimeMode }) {
         <LegendSwatch className="bg-accent" label="Ground" title={GROUND_TOOLTIP} />
         <LegendSwatch className="bg-border-strong" label="Connection" title={CONNECTION_TOOLTIP} />
       </div>
-      <div className="mt-1.5 flex justify-between pl-[2.375rem] font-mono text-[8px] leading-none text-brand/70">
-        <span>0</span>
-        <span>6</span>
-        <span>12</span>
-        <span>18</span>
-        <span>24h</span>
-      </div>
-      <div className="mt-0.5 space-y-1">
-        {days.map((day) => (
-          <DayRow key={day.dayNumber} day={day} />
-        ))}
+      <div className="mt-1.5 flex overflow-x-auto pb-1">
+        <HourGutter heightPx={CALENDAR_HEIGHT_PX} />
+        <div className="flex gap-1 pl-1">
+          {days.map((day) => (
+            <DayColumn key={day.dayNumber} day={day} heightPx={CALENDAR_HEIGHT_PX} />
+          ))}
+        </div>
       </div>
     </div>
   );

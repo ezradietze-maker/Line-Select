@@ -51,14 +51,20 @@ describe("filtersActive / activeFilterCount", () => {
 
   it("counts each independently-set dimension once", () => {
     const filters: LineFilters = {
+      ...EMPTY_FILTERS,
       minDaysOff: 5,
+      minCreditHours: 30,
+      maxTripDays: 3,
+      tripCount: "3plus",
       reportTimes: new Set(["early"]),
       cities: new Set(["ANC"]),
       noDeadheadsOnly: true,
+      noRedEyesOnly: true,
+      verifiedOnly: true,
       international: "international",
     };
     expect(filtersActive(filters)).toBe(true);
-    expect(activeFilterCount(filters)).toBe(5);
+    expect(activeFilterCount(filters)).toBe(10);
   });
 });
 
@@ -98,6 +104,106 @@ describe("lineMatchesFilters — layover city", () => {
   it("excludes a line that never touches a selected city", () => {
     const line = makeLine({}, [makeTrip({ layoverCities: ["LAX"] })]);
     expect(lineMatchesFilters(line, { ...EMPTY_FILTERS, cities: new Set(["SEA"]) })).toBe(false);
+  });
+});
+
+describe("lineMatchesFilters — minCreditHours", () => {
+  it("excludes a line with fewer credit hours than the threshold", () => {
+    const line = makeLine({ totalCreditHours: 45 });
+    expect(lineMatchesFilters(line, { ...EMPTY_FILTERS, minCreditHours: 50 })).toBe(false);
+  });
+
+  it("includes a line with exactly the threshold", () => {
+    const line = makeLine({ totalCreditHours: 50 });
+    expect(lineMatchesFilters(line, { ...EMPTY_FILTERS, minCreditHours: 50 })).toBe(true);
+  });
+});
+
+describe("lineMatchesFilters — maxTripDays", () => {
+  it("excludes a line if any single trip exceeds the cap", () => {
+    const line = makeLine({}, [makeTrip({ days: 2 }), makeTrip({ id: "t2", days: 5 })]);
+    expect(lineMatchesFilters(line, { ...EMPTY_FILTERS, maxTripDays: 3 })).toBe(false);
+  });
+
+  it("includes a line whose longest trip is exactly at the cap", () => {
+    const line = makeLine({}, [makeTrip({ days: 3 })]);
+    expect(lineMatchesFilters(line, { ...EMPTY_FILTERS, maxTripDays: 3 })).toBe(true);
+  });
+});
+
+describe("lineMatchesFilters — tripCount", () => {
+  it("matches an exact trip count for 1 or 2", () => {
+    const oneTrip = makeLine({}, [makeTrip()]);
+    const twoTrips = makeLine({}, [makeTrip(), makeTrip({ id: "t2" })]);
+    expect(lineMatchesFilters(oneTrip, { ...EMPTY_FILTERS, tripCount: 1 })).toBe(true);
+    expect(lineMatchesFilters(twoTrips, { ...EMPTY_FILTERS, tripCount: 1 })).toBe(false);
+    expect(lineMatchesFilters(twoTrips, { ...EMPTY_FILTERS, tripCount: 2 })).toBe(true);
+  });
+
+  it("treats 3plus as a floor, not an exact match", () => {
+    const threeTrips = makeLine({}, [makeTrip(), makeTrip({ id: "t2" }), makeTrip({ id: "t3" })]);
+    const fourTrips = makeLine({}, [
+      makeTrip(),
+      makeTrip({ id: "t2" }),
+      makeTrip({ id: "t3" }),
+      makeTrip({ id: "t4" }),
+    ]);
+    expect(lineMatchesFilters(threeTrips, { ...EMPTY_FILTERS, tripCount: "3plus" })).toBe(true);
+    expect(lineMatchesFilters(fourTrips, { ...EMPTY_FILTERS, tripCount: "3plus" })).toBe(true);
+    const twoTrips = makeLine({}, [makeTrip(), makeTrip({ id: "t2" })]);
+    expect(lineMatchesFilters(twoTrips, { ...EMPTY_FILTERS, tripCount: "3plus" })).toBe(false);
+  });
+});
+
+describe("lineMatchesFilters — noRedEyesOnly", () => {
+  const redEyeTrip = makeTrip({
+    schedule: [
+      {
+        reportTimeLocal: "0300",
+        startMinutes: 0,
+        legs: [
+          {
+            flightNumber: "1",
+            equipment: "76",
+            isDeadhead: false,
+            depAirport: "MEM",
+            depTimeLocal: "0300",
+            depTimeGmt: "0900",
+            arrAirport: "LAX",
+            arrTimeLocal: "0500",
+            arrTimeGmt: "1100",
+            blockHours: 4,
+            startMinutes: 0,
+            endMinutes: 240,
+            depTimeZulu: "2026-01-01T09:00:00.000Z",
+            arrTimeZulu: "2026-01-01T11:00:00.000Z",
+          },
+        ],
+        layover: null,
+      },
+    ],
+  });
+
+  it("excludes a line with a red-eye departure on any trip", () => {
+    const line = makeLine({}, [redEyeTrip]);
+    expect(lineMatchesFilters(line, { ...EMPTY_FILTERS, noRedEyesOnly: true })).toBe(false);
+  });
+
+  it("includes a line whose trips have no schedule data to flag (nothing to exclude on)", () => {
+    const line = makeLine({}, [makeTrip()]);
+    expect(lineMatchesFilters(line, { ...EMPTY_FILTERS, noRedEyesOnly: true })).toBe(true);
+  });
+});
+
+describe("lineMatchesFilters — verifiedOnly", () => {
+  it("excludes an estimated line", () => {
+    const line = makeLine({ estimated: true });
+    expect(lineMatchesFilters(line, { ...EMPTY_FILTERS, verifiedOnly: true })).toBe(false);
+  });
+
+  it("includes a verified (non-estimated) line", () => {
+    const line = makeLine({ estimated: false });
+    expect(lineMatchesFilters(line, { ...EMPTY_FILTERS, verifiedOnly: true })).toBe(true);
   });
 });
 

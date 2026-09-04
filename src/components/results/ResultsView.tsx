@@ -24,6 +24,7 @@ import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
+import { computeFilterOptions } from "@/lib/line-filter-options";
 import { collectLayoverCities, EMPTY_FILTERS, lineMatchesFilters, type LineFilters } from "@/lib/line-filters";
 import { PHRASES } from "@/lib/preference-summary";
 import {
@@ -169,6 +170,7 @@ export function ResultsView({
   );
 
   const availableCities = useMemo(() => collectLayoverCities(bidPack.lines), [bidPack]);
+  const filterOptions = useMemo(() => computeFilterOptions(bidPack.lines), [bidPack]);
 
   // The implicit taxonomy's normalized per-line values only depend on the
   // bid pack's own trip data, never on the pilot's weights — computed once
@@ -297,6 +299,7 @@ export function ResultsView({
       <ResultsFilterBar
         filters={filters}
         onChange={setFilters}
+        options={filterOptions}
         availableCities={availableCities}
         visibleCount={visibleRanked.length}
         totalCount={ranked.length}

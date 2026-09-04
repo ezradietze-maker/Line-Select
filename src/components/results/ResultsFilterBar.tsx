@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { formatHoursValue } from "@/lib/interview-config";
+import type { FilterOptions } from "@/lib/line-filter-options";
 import {
   EMPTY_FILTERS,
   activeFilterCount,
   filtersActive,
   type InternationalFilter,
   type LineFilters,
+  type TripCountFilter,
 } from "@/lib/line-filters";
 import type { ReportTime } from "@/types/bidpack";
 
@@ -22,11 +25,17 @@ const ROUTING_LABEL: Record<InternationalFilter, string> = {
   domestic: "Domestic",
 };
 
-const DAYS_OFF_STEPS = [0, 3, 5, 7, 10];
+const TRIP_COUNT_LABEL: Record<TripCountFilter, string> = {
+  any: "Any",
+  1: "1 trip",
+  2: "2 trips",
+  "3plus": "3+ trips",
+};
 
 interface ResultsFilterBarProps {
   filters: LineFilters;
   onChange: (next: LineFilters) => void;
+  options: FilterOptions;
   availableCities: string[];
   visibleCount: number;
   totalCount: number;
@@ -35,6 +44,7 @@ interface ResultsFilterBarProps {
 export function ResultsFilterBar({
   filters,
   onChange,
+  options,
   availableCities,
   visibleCount,
   totalCount,
@@ -55,6 +65,8 @@ export function ResultsFilterBar({
     else next.add(city);
     onChange({ ...filters, cities: next });
   }
+
+  const showToggleRow = options.showDeadheadToggle || options.showRedEyeToggle;
 
   return (
     <div className="mt-4 rounded-lg border border-border bg-surface">
@@ -95,41 +107,142 @@ export function ResultsFilterBar({
 
       {expanded && (
         <div className="space-y-3 border-t border-border px-4 py-3.5">
-          <FilterRow label="Days off">
-            <div className="flex flex-wrap gap-1.5">
-              {DAYS_OFF_STEPS.map((n) => (
-                <Chip key={n} active={filters.minDaysOff === n} onClick={() => onChange({ ...filters, minDaysOff: n })}>
-                  {n === 0 ? "Any" : `${n}+`}
+          {options.minDaysOffSteps.length > 0 && (
+            <FilterRow label="Days off">
+              <div className="flex flex-wrap gap-1.5">
+                <Chip active={filters.minDaysOff === 0} onClick={() => onChange({ ...filters, minDaysOff: 0 })}>
+                  Any
                 </Chip>
-              ))}
-            </div>
-          </FilterRow>
+                {options.minDaysOffSteps.map((n) => (
+                  <Chip
+                    key={n}
+                    active={filters.minDaysOff === n}
+                    onClick={() => onChange({ ...filters, minDaysOff: n })}
+                  >
+                    {n}+
+                  </Chip>
+                ))}
+              </div>
+            </FilterRow>
+          )}
 
-          <FilterRow label="Report time">
-            <div className="flex flex-wrap gap-1.5">
-              {(Object.keys(REPORT_TIME_LABEL) as ReportTime[]).map((rt) => (
-                <Chip key={rt} active={filters.reportTimes.has(rt)} onClick={() => toggleReportTime(rt)}>
-                  {REPORT_TIME_LABEL[rt]}
+          {options.minCreditHoursSteps.length > 0 && (
+            <FilterRow label="Credit hours">
+              <div className="flex flex-wrap gap-1.5">
+                <Chip
+                  active={filters.minCreditHours === 0}
+                  onClick={() => onChange({ ...filters, minCreditHours: 0 })}
+                >
+                  Any
                 </Chip>
-              ))}
-            </div>
-          </FilterRow>
+                {options.minCreditHoursSteps.map((n) => (
+                  <Chip
+                    key={n}
+                    active={filters.minCreditHours === n}
+                    onClick={() => onChange({ ...filters, minCreditHours: n })}
+                  >
+                    {formatHoursValue(n)}+
+                  </Chip>
+                ))}
+              </div>
+            </FilterRow>
+          )}
 
-          <FilterRow label="Routing">
-            <div className="flex flex-wrap gap-1.5">
-              {(Object.keys(ROUTING_LABEL) as InternationalFilter[]).map((v) => (
-                <Chip key={v} active={filters.international === v} onClick={() => onChange({ ...filters, international: v })}>
-                  {ROUTING_LABEL[v]}
+          {options.maxTripDaysSteps.length > 0 && (
+            <FilterRow label="Longest trip">
+              <div className="flex flex-wrap gap-1.5">
+                <Chip active={filters.maxTripDays === 0} onClick={() => onChange({ ...filters, maxTripDays: 0 })}>
+                  Any
                 </Chip>
-              ))}
-              <Chip
-                active={filters.noDeadheadsOnly}
-                onClick={() => onChange({ ...filters, noDeadheadsOnly: !filters.noDeadheadsOnly })}
-              >
-                No deadheads
-              </Chip>
-            </div>
-          </FilterRow>
+                {options.maxTripDaysSteps.map((n) => (
+                  <Chip
+                    key={n}
+                    active={filters.maxTripDays === n}
+                    onClick={() => onChange({ ...filters, maxTripDays: n })}
+                  >
+                    {n}d or less
+                  </Chip>
+                ))}
+              </div>
+            </FilterRow>
+          )}
+
+          {options.tripCountOptions.length > 0 && (
+            <FilterRow label="Trip count">
+              <div className="flex flex-wrap gap-1.5">
+                <Chip active={filters.tripCount === "any"} onClick={() => onChange({ ...filters, tripCount: "any" })}>
+                  Any
+                </Chip>
+                {options.tripCountOptions.map((v) => (
+                  <Chip
+                    key={String(v)}
+                    active={filters.tripCount === v}
+                    onClick={() => onChange({ ...filters, tripCount: v })}
+                  >
+                    {TRIP_COUNT_LABEL[v]}
+                  </Chip>
+                ))}
+              </div>
+            </FilterRow>
+          )}
+
+          {options.availableReportTimes.length > 0 && (
+            <FilterRow label="Report time">
+              <div className="flex flex-wrap gap-1.5">
+                {options.availableReportTimes.map((rt) => (
+                  <Chip key={rt} active={filters.reportTimes.has(rt)} onClick={() => toggleReportTime(rt)}>
+                    {REPORT_TIME_LABEL[rt]}
+                  </Chip>
+                ))}
+              </div>
+            </FilterRow>
+          )}
+
+          {(options.showRoutingOptions || showToggleRow) && (
+            <FilterRow label="Routing">
+              <div className="flex flex-wrap gap-1.5">
+                {options.showRoutingOptions &&
+                  (Object.keys(ROUTING_LABEL) as InternationalFilter[]).map((v) => (
+                    <Chip
+                      key={v}
+                      active={filters.international === v}
+                      onClick={() => onChange({ ...filters, international: v })}
+                    >
+                      {ROUTING_LABEL[v]}
+                    </Chip>
+                  ))}
+                {options.showDeadheadToggle && (
+                  <Chip
+                    active={filters.noDeadheadsOnly}
+                    onClick={() => onChange({ ...filters, noDeadheadsOnly: !filters.noDeadheadsOnly })}
+                  >
+                    No deadheads
+                  </Chip>
+                )}
+                {options.showRedEyeToggle && (
+                  <Chip
+                    active={filters.noRedEyesOnly}
+                    onClick={() => onChange({ ...filters, noRedEyesOnly: !filters.noRedEyesOnly })}
+                  >
+                    No red-eyes
+                  </Chip>
+                )}
+              </div>
+            </FilterRow>
+          )}
+
+          {options.showVerifiedToggle && (
+            <FilterRow label="Data quality">
+              <div className="flex flex-wrap gap-1.5">
+                <Chip
+                  active={filters.verifiedOnly}
+                  onClick={() => onChange({ ...filters, verifiedOnly: !filters.verifiedOnly })}
+                >
+                  Verified schedules only
+                </Chip>
+              </div>
+            </FilterRow>
+          )}
 
           {availableCities.length > 0 && (
             <FilterRow label="Layover city">
