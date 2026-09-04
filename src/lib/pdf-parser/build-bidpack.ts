@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import type { ParsedLineSummary, ParsedPairing } from "@/lib/pdf-parser/types";
+import { buildTimelineDays } from "@/lib/trip-timeline";
 import type { Line, Trip, TripDutyPeriod } from "@/types/bidpack";
 
 function round2(n: number): number {
@@ -79,9 +80,31 @@ function anchorSchedule(schedule: ParsedPairing["schedule"], anchorISO: string):
   }));
 }
 
+/**
+ * `pairing.days` counts distinct day-letters seen on the pairing's own
+ * flight-leg rows — real printed text, but it only advances when a leg
+ * actually flies that calendar day. A layover longer than 24 hours spans a
+ * calendar date with no flight on it at all, so that date never gets its
+ * own letter and silently drops out of the count, even though the pilot is
+ * still away from base that whole day. `Trip.days`'s own contract is
+ * "calendar days the trip spans, report to release" — this recomputes it
+ * from the trip's actual anchored schedule (the same local-day splitting
+ * the calendar view itself uses) so a long layover is counted the same way
+ * everywhere in the app, instead of the calendar showing more days than
+ * every other "N-day" label. Falls back to the printed count when there's
+ * no schedule to split (or it fails to produce anything), consistent with
+ * this file's honesty policy elsewhere: never invent when real data is
+ * missing.
+ */
+function realCalendarDaySpan(trip: Trip, fallback: number): number {
+  if (trip.schedule.length === 0) return fallback;
+  const days = buildTimelineDays(trip, "local").length;
+  return days > 0 ? days : fallback;
+}
+
 export function pairingToTrip(pairing: ParsedPairing, bidPackMonth: string): Trip {
   const anchor = pairingAnchorZulu(pairing, bidPackMonth);
-  return {
+  const trip: Trip = {
     id: pairing.id,
     pairingNumber: pairing.sequenceNumber,
     days: pairing.days,
@@ -99,6 +122,7 @@ export function pairingToTrip(pairing: ParsedPairing, bidPackMonth: string): Tri
     schedule: anchorSchedule(pairing.schedule, anchor),
     zuluAnchor: anchor,
   };
+  return { ...trip, days: realCalendarDaySpan(trip, pairing.days) };
 }
 
 /**

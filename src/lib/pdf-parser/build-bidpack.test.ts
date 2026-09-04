@@ -82,3 +82,83 @@ describe("pairingToTrip — zulu anchor", () => {
     expect(trip.zuluAnchor).toBe("2026-09-01T00:00:00.000Z");
   });
 });
+
+describe("pairingToTrip — days", () => {
+  /**
+   * `pairing.days` (from day-letter counting in pairing-parser.ts) only
+   * advances on a calendar date that has an actual flight-leg row — a
+   * layover longer than 24 hours spans a calendar date with no leg on it
+   * at all, so that date never gets counted even though the pilot is still
+   * away from base. Real numbers from OAK line 1052: a 24h20m HKG layover
+   * between two duty periods, printed as a 2-day pairing but really
+   * spanning 4 real calendar dates report to release.
+   */
+  it("recomputes days from the real anchored schedule instead of trusting the printed day-letter count", () => {
+    const pairing = makePairing({
+      days: 2,
+      tafbHours: 46,
+      flightNumbers: ["UA0877", "CX0982"],
+      schedule: [
+        {
+          reportTimeLocal: "2130",
+          startMinutes: 0,
+          legs: [
+            {
+              flightNumber: "UA0877",
+              equipment: "JET",
+              isDeadhead: true,
+              depAirport: "SFO",
+              depTimeLocal: "2330",
+              depTimeGmt: "0630",
+              arrAirport: "HKG",
+              arrTimeLocal: "0500",
+              arrTimeGmt: "2100",
+              blockHours: 14.5,
+              startMinutes: 120,
+              endMinutes: 990,
+            },
+          ],
+          layover: {
+            city: "HKG",
+            hotelName: "SHERATON",
+            transportToHotel: null,
+            transportFromHotel: null,
+            hours: 24.333333333333332,
+            startMinutes: 990,
+            endMinutes: 2450,
+          },
+        },
+        {
+          reportTimeLocal: "0750",
+          startMinutes: 2450,
+          legs: [
+            {
+              flightNumber: "CX0982",
+              equipment: "JET",
+              isDeadhead: true,
+              depAirport: "HKG",
+              depTimeLocal: "0750",
+              depTimeGmt: "2350",
+              arrAirport: "CAN",
+              arrTimeLocal: "0855",
+              arrTimeGmt: "0055",
+              blockHours: 1.0833333333333333,
+              startMinutes: 2600,
+              endMinutes: 2665,
+            },
+          ],
+          layover: null,
+        },
+      ],
+    });
+
+    const trip = pairingToTrip(pairing, "SEP26");
+    expect(trip.days).toBeGreaterThan(pairing.days);
+    expect(trip.days).toBe(4);
+  });
+
+  it("falls back to the printed day count when there's no schedule to split", () => {
+    const trip = pairingToTrip(makePairing({ days: 3, schedule: [] }), "SEP26");
+    expect(trip.days).toBe(3);
+  });
+});
