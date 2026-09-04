@@ -7,6 +7,10 @@ interface SliderProps {
   highLabel: string;
   centerLabel: string;
   ariaLabel: string;
+  /** Renders the same fill/label visualization without a draggable input —
+   * for showing a previously-answered value (e.g. a preferences summary)
+   * rather than collecting one. */
+  readOnly?: boolean;
 }
 
 function formatSignedValue(value: number): string {
@@ -21,6 +25,7 @@ export function Slider({
   highLabel,
   centerLabel,
   ariaLabel,
+  readOnly = false,
 }: SliderProps) {
   const magnitude = Math.abs(value);
   const strength =
@@ -51,20 +56,31 @@ export function Slider({
           className="pointer-events-none absolute left-1/2 top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-border-strong"
           aria-hidden
         />
-        <input
-          type="range"
-          min={-100}
-          max={100}
-          step={5}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          aria-label={ariaLabel}
-          aria-valuetext={`${formatSignedValue(value)}, ${strength}`}
-          className="line-slider relative w-full"
-          style={{
-            background: `linear-gradient(to right, var(--color-border-strong) 0%, var(--color-border-strong) ${fillStart}%, var(--color-brand) ${fillStart}%, var(--color-brand) ${fillEnd}%, var(--color-border-strong) ${fillEnd}%, var(--color-border-strong) 100%)`,
-          }}
-        />
+        {readOnly ? (
+          <div
+            role="img"
+            aria-label={`${ariaLabel}: ${formatSignedValue(value)}, ${strength}`}
+            className="h-1.5 w-full rounded-full"
+            style={{
+              background: `linear-gradient(to right, var(--color-border-strong) 0%, var(--color-border-strong) ${fillStart}%, var(--color-brand) ${fillStart}%, var(--color-brand) ${fillEnd}%, var(--color-border-strong) ${fillEnd}%, var(--color-border-strong) 100%)`,
+            }}
+          />
+        ) : (
+          <input
+            type="range"
+            min={-100}
+            max={100}
+            step={5}
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            aria-label={ariaLabel}
+            aria-valuetext={`${formatSignedValue(value)}, ${strength}`}
+            className="line-slider relative w-full"
+            style={{
+              background: `linear-gradient(to right, var(--color-border-strong) 0%, var(--color-border-strong) ${fillStart}%, var(--color-brand) ${fillStart}%, var(--color-brand) ${fillEnd}%, var(--color-border-strong) ${fillEnd}%, var(--color-border-strong) 100%)`,
+            }}
+          />
+        )}
       </div>
       <div className="mt-2 flex items-start justify-between gap-3 text-xs text-ink-muted">
         <span className="max-w-[40%]">{lowLabel}</span>

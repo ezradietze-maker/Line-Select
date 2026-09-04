@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Spinner } from "@/components/ui/Spinner";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { fetchHotel } from "@/lib/hotel-client";
 import type { BidPack } from "@/types/bidpack";
@@ -86,13 +88,10 @@ export function HotelRatingsScreen({ bidPack }: HotelRatingsScreenProps) {
 
   if (!bidPack) {
     return (
-      <div className="mx-auto w-full max-w-2xl animate-fade-in text-center">
-        <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Hotel Ratings</h1>
-        <p className="mt-3 text-sm text-ink-muted">
-          Upload your bid pack first — hotel ratings are pulled for the specific hotels its own
-          pairing schedule assigns to each layover.
-        </p>
-      </div>
+      <EmptyState
+        title="Hotel Ratings"
+        description="Upload your bid pack first — hotel ratings are pulled for the specific hotels its own pairing schedule assigns to each layover."
+      />
     );
   }
 
@@ -106,7 +105,7 @@ export function HotelRatingsScreen({ bidPack }: HotelRatingsScreenProps) {
         generic nearby search — rated from Google Places, most-used first.
       </p>
 
-      {loading && <p className="mt-8 text-sm text-ink-faint">Loading hotel ratings&hellip;</p>}
+      {loading && <Spinner label="Loading hotel ratings…" className="mt-8" />}
 
       {!loading && notConfigured && (
         <div className="mt-6 rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
@@ -117,10 +116,11 @@ export function HotelRatingsScreen({ bidPack }: HotelRatingsScreenProps) {
       )}
 
       {!loading && !notConfigured && groups.length === 0 && (
-        <p className="mt-8 text-sm text-ink-faint">
-          No assigned hotels found in this bid pack yet &mdash; lines with a full trip-by-trip
-          breakdown will show their hotels here.
-        </p>
+        <EmptyState
+          compact
+          className="mt-8"
+          description="No assigned hotels found in this bid pack yet — lines with a full trip-by-trip breakdown will show their hotels here."
+        />
       )}
 
       {!loading && !notConfigured && groups.length > 0 && (
@@ -160,7 +160,7 @@ function HotelCard({ group, hotel }: { group: HotelGroup; hotel: HotelResult | n
       </div>
 
       {hotel === undefined ? (
-        <p className="mt-2 text-sm text-ink-faint">Loading&hellip;</p>
+        <Spinner label="Loading…" className="mt-2" />
       ) : hotel === null ? (
         <p className="mt-2 text-sm text-ink-faint">No Google Places match found for this hotel.</p>
       ) : (

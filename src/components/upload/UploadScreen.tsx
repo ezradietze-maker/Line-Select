@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import type { BidPack } from "@/types/bidpack";
@@ -153,11 +154,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample }
         )}
       </div>
 
-      {error && (
-        <div className="mt-4 rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner className="mt-4">{error}</ErrorBanner>}
 
       {!uploading && (currentBidPack || onCancel) && (
         <button

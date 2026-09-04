@@ -13,6 +13,7 @@ import { StrategiesScreen } from "@/components/strategies/StrategiesScreen";
 import { InboxScreen } from "@/components/trade-board/InboxScreen";
 import { TradeBoardScreen } from "@/components/trade-board/TradeBoardScreen";
 import { Modal } from "@/components/ui/Modal";
+import { Spinner } from "@/components/ui/Spinner";
 import { PreviewScreen } from "@/components/upload/PreviewScreen";
 import { UploadScreen } from "@/components/upload/UploadScreen";
 import { WelcomeScreen } from "@/components/welcome/WelcomeScreen";
@@ -413,7 +414,11 @@ export default function Home() {
 
       <div className={`flex flex-1 flex-col ${showSidebar ? "md:pl-60" : ""}`}>
         <main className="flex flex-1 flex-col justify-center px-4 py-10 sm:py-16">
-          {screen === "loading" && null}
+          {screen === "loading" && (
+            <div className="flex justify-center">
+              <Spinner size="md" />
+            </div>
+          )}
 
           {screen === "welcome" && (
             <WelcomeScreen

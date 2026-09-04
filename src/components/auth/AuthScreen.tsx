@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { login, signUp } from "@/lib/auth";
 import type { UserAccount } from "@/types/auth";
@@ -106,11 +107,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
             />
           )}
 
-          {error && (
-            <div className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-sm text-danger">
-              {error}
-            </div>
-          )}
+          {error && <ErrorBanner>{error}</ErrorBanner>}
 
           <Button type="submit" disabled={submitting} className="w-full">
             {submitting

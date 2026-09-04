@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Spinner } from "@/components/ui/Spinner";
 import { TextField } from "@/components/ui/TextField";
 import { sameBidPack } from "@/lib/inbox";
 import {
@@ -142,14 +145,10 @@ export function TradeBoardScreen({
         />
       )}
 
-      {actionError && (
-        <div className="mt-4 rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
-          {actionError}
-        </div>
-      )}
+      {actionError && <ErrorBanner className="mt-4">{actionError}</ErrorBanner>}
 
       {loading ? (
-        <p className="mt-8 text-sm text-ink-faint">Loading offers&hellip;</p>
+        <Spinner label="Loading offers…" className="mt-8" />
       ) : (
         <div className="mt-8 space-y-8">
           {needsResponse.length > 0 && (
@@ -188,9 +187,10 @@ export function TradeBoardScreen({
 
           <Section title="Open offers from other pilots">
             {openFromOthers.length === 0 ? (
-              <p className="text-sm text-ink-faint">
-                No open offers right now{bidPack ? " for this bid pack" : ""}.
-              </p>
+              <EmptyState
+                compact
+                description={`No open offers right now${bidPack ? " for this bid pack" : ""}.`}
+              />
             ) : (
               openFromOthers.map((offer) =>
                 offer.isDemo ? (

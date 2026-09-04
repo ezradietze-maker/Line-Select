@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Spinner } from "@/components/ui/Spinner";
 import {
   InfoBanner,
   NonBindingDisclaimer,
@@ -63,12 +65,12 @@ export function InboxScreen({ bidPack, user, demoOffer, onGoToTradeBoard }: Inbo
       {user && !bidPack && <InfoBanner>Upload your bid pack to use the Inbox.</InfoBanner>}
 
       {loading ? (
-        <p className="mt-8 text-sm text-ink-faint">Loading&hellip;</p>
+        <Spinner label="Loading…" className="mt-8" />
       ) : (
         <div className="mt-8 space-y-8">
           <Section title="Needs your response">
             {needsResponse.length === 0 ? (
-              <p className="text-sm text-ink-faint">No proposals waiting on you right now.</p>
+              <EmptyState compact description="No proposals waiting on you right now." />
             ) : (
               needsResponse.map((offer) => (
                 <div key={offer.id} className="space-y-3">
@@ -83,9 +85,10 @@ export function InboxScreen({ bidPack, user, demoOffer, onGoToTradeBoard }: Inbo
 
           <Section title="Direct interest in your trips">
             {directInterest.length === 0 ? (
-              <p className="text-sm text-ink-faint">
-                No one&rsquo;s specifically asked for one of your posted trips yet.
-              </p>
+              <EmptyState
+                compact
+                description="No one’s specifically asked for one of your posted trips yet."
+              />
             ) : (
               directInterest.map((offer) => (
                 <div key={offer.id} className="space-y-3">
@@ -100,7 +103,7 @@ export function InboxScreen({ bidPack, user, demoOffer, onGoToTradeBoard }: Inbo
 
           <Section title="Accepted trades">
             {accepted.length === 0 ? (
-              <p className="text-sm text-ink-faint">No agreed trades yet.</p>
+              <EmptyState compact description="No agreed trades yet." />
             ) : (
               accepted.map((offer) => (
                 <OfferCard key={offer.id} offer={offer} currentUserId={user?.id} busy={false} />

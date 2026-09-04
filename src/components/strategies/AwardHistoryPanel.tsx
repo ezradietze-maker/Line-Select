@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Spinner } from "@/components/ui/Spinner";
 import { fetchAwardHistory, submitAwardHistory, summarizeAwardHistory } from "@/lib/award-history";
 import type { BidPack } from "@/types/bidpack";
 import type { AwardHistoryRecord, AwardHistorySubmission } from "@/types/award-history";
@@ -88,13 +90,17 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
       </div>
 
       {summary === null ? (
-        <p className="mt-4 text-sm text-ink-faint">Loading&hellip;</p>
+        <Spinner label="Loading…" className="mt-4" />
       ) : summary.avgDaysOff === null ? (
-        <p className="mt-4 rounded-lg border border-dashed border-border px-3.5 py-3 text-sm text-ink-faint">
-          {summary.nearbyCount === 0
-            ? "No reports near your seniority yet — be the first."
-            : `${summary.nearbyCount} nearby report${summary.nearbyCount === 1 ? "" : "s"} so far — not quite enough yet to show a reliable pattern.`}
-        </p>
+        <EmptyState
+          compact
+          description={
+            summary.nearbyCount === 0
+              ? "No reports near your seniority yet — be the first."
+              : `${summary.nearbyCount} nearby report${summary.nearbyCount === 1 ? "" : "s"} so far — not quite enough yet to show a reliable pattern.`
+          }
+          className="mt-4"
+        />
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Stat label="Nearby reports" value={String(summary.nearbyCount)} />

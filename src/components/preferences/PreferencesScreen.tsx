@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Slider } from "@/components/ui/Slider";
 import {
   ALL_TARGET_CONFIGS,
   DEEP_SLIDERS,
@@ -167,56 +169,18 @@ export function PreferencesScreen({
 }
 
 function WeightRow({ config, weight }: { config: SliderQuestionConfig; weight: number }) {
-  const pct = (weight + 100) / 2;
-  const magnitude = Math.abs(weight);
-  const label =
-    magnitude < 10
-      ? config.centerLabel
-      : weight > 0
-        ? config.highLabel
-        : config.lowLabel;
-
   return (
     <div>
-      <div className="flex items-center justify-between text-sm">
-        <span className="font-medium text-ink">{config.question}</span>
-        <span className="text-xs text-ink-muted">{label}</span>
-      </div>
-      <div className="relative mt-2 h-1.5 rounded-full bg-canvas">
-        <div
-          className="pointer-events-none absolute left-1/2 top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-border-strong"
-          aria-hidden
-        />
-        <div
-          className="h-1.5 rounded-full bg-brand transition-all"
-          style={{
-            marginLeft: `${Math.min(50, pct)}%`,
-            width: `${Math.abs(pct - 50)}%`,
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({
-  title,
-  description,
-  actionLabel,
-  onAction,
-}: {
-  title: string;
-  description: string;
-  actionLabel: string;
-  onAction: () => void;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-md animate-fade-in text-center">
-      <h1 className="text-xl font-semibold text-ink sm:text-2xl">{title}</h1>
-      <p className="mt-2 text-sm leading-relaxed text-ink-muted">{description}</p>
-      <Button onClick={onAction} className="mt-6">
-        {actionLabel}
-      </Button>
+      <div className="mb-1 text-sm font-medium text-ink">{config.question}</div>
+      <Slider
+        readOnly
+        value={weight}
+        onChange={() => {}}
+        lowLabel={config.lowLabel}
+        highLabel={config.highLabel}
+        centerLabel={config.centerLabel}
+        ariaLabel={config.question}
+      />
     </div>
   );
 }

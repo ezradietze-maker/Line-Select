@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import type { BidPack } from "@/types/bidpack";
 
@@ -30,12 +31,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent }: PreviewS
         </h1>
         <div className="mt-4 space-y-2">
           {result.errors.map((e, i) => (
-            <div
-              key={i}
-              className="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger"
-            >
-              {e.message}
-            </div>
+            <ErrorBanner key={i}>{e.message}</ErrorBanner>
           ))}
         </div>
         <div className="mt-6">

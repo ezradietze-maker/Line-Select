@@ -19,6 +19,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
 import { ResultsFilterBar } from "@/components/results/ResultsFilterBar";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { LineCard } from "@/components/results/LineCard";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
@@ -325,9 +326,7 @@ export function ResultsView({
       >
         <div className="mt-3 space-y-3">
           {visibleRanked.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-ink-faint">
-              No lines match the current filters. Try clearing one or two.
-            </div>
+            <EmptyState compact description="No lines match the current filters. Try clearing one or two." />
           ) : (
             visibleRanked.map((lineScore) => (
               <ErrorBoundary key={lineScore.line.id}>
