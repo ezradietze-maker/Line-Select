@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { LineCard } from "@/components/results/LineCard";
+import { PilotProfileSummary } from "@/components/results/PilotProfileSummary";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
@@ -293,6 +294,10 @@ export function ResultsView({
           onResolved={handlePromptResolved}
         />
       )}
+
+      <div className="mt-6">
+        <PilotProfileSummary profile={profile} />
+      </div>
 
       <p className="mt-6 text-xs text-ink-faint">
         Think a line is ranked too high or too low? Drag it by the grip on the left and drop it
