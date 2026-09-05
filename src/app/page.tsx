@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import { HotelRatingsScreen } from "@/components/hotels/HotelRatingsScreen";
-import { Interview } from "@/components/interview/Interview";
+import { AdaptiveInterview } from "@/components/interview/AdaptiveInterview";
 import { LeftNav, type NavTarget } from "@/components/nav/LeftNav";
 import { ConfirmPreferencesScreen } from "@/components/preferences/ConfirmPreferencesScreen";
 import { PreferencesScreen } from "@/components/preferences/PreferencesScreen";
@@ -486,7 +486,7 @@ export default function Home() {
 
       case "interview":
         return bidPack ? (
-          <Interview key={interviewKey} bidPack={bidPack} onComplete={handleInterviewComplete} />
+          <AdaptiveInterview key={interviewKey} bidPack={bidPack} onComplete={handleInterviewComplete} />
         ) : null;
 
       case "confirm-preferences":

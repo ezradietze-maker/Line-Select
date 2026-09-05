@@ -1,4 +1,12 @@
-import type { CitySentiment, ExplicitTargetKey, PreferenceWeights } from "@/types/preferences";
+import type {
+  CitySentiment,
+  DeepSliderKey,
+  ExplicitTargetKey,
+  QuickQuestionKey,
+} from "@/types/preferences";
+
+/** Every real key that can carry a directional -100..100 (or 0..100 magnitude-only) lean — deliberately excludes "departures", which is target-only (see `ExplicitTargetKey`) and has no directional form. */
+export type ExplicitWeightKey = QuickQuestionKey | DeepSliderKey;
 
 /**
  * The adaptive interview's own data shapes — a turn-by-turn transcript plus
@@ -12,7 +20,7 @@ import type { CitySentiment, ExplicitTargetKey, PreferenceWeights } from "@/type
 
 /** How a measurable fact actually plugs into scoring — `direction`/`value` mirror the sign convention `scoring.ts`/`rank-learning.ts` already use per key type (bipolar -100..100, magnitude-only 0..100, or implicit -1.5..1.5). */
 export type MeasurableBinding =
-  | { type: "explicit-weight"; key: keyof PreferenceWeights; direction: 1 | -1 }
+  | { type: "explicit-weight"; key: ExplicitWeightKey; direction: 1 | -1 }
   | { type: "explicit-target"; key: ExplicitTargetKey; value: number }
   | { type: "implicit-weight"; variableId: string; direction: 1 | -1 }
   | { type: "city-sentiment"; code: string; sentiment: CitySentiment };
@@ -48,7 +56,7 @@ export type InterviewQuestion =
       lowLabel: string;
       highLabel: string;
       centerLabel: string;
-      boundTo: keyof PreferenceWeights;
+      boundTo: ExplicitWeightKey;
     }
   | {
       id: string;

@@ -2,6 +2,7 @@ import { emptyWeights } from "@/lib/preference-logic";
 import { MAGNITUDE_ONLY_KEYS } from "@/lib/rank-learning";
 import type {
   BidPackGroundingStats,
+  ExplicitWeightKey,
   InterviewTurnRecord,
   PreferenceFact,
   PreferenceFactUpdate,
@@ -67,7 +68,7 @@ export function applyProfileUpdates(facts: PreferenceFact[], updates: Preference
  * `turnIndex` order), same as a pilot dragging a slider again supersedes
  * its previous position.
  */
-function explicitWeightValue(key: keyof PreferenceProfile["weights"], direction: 1 | -1, importance: number): number {
+function explicitWeightValue(key: ExplicitWeightKey, direction: 1 | -1, importance: number): number {
   const floor = MAGNITUDE_ONLY_KEYS.has(key) ? 0 : -100;
   const magnitude = Math.min(1, Math.max(0, importance)) * 100;
   return Math.min(100, Math.max(floor, direction * magnitude));

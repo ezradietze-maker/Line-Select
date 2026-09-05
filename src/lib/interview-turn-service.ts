@@ -3,13 +3,14 @@ import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
 import { buildInterviewSystemPrompt } from "@/lib/interview-prompt";
 import { allKnownVariableDescriptors } from "@/lib/preference-classifier";
 import type {
+  ExplicitWeightKey,
   InterviewQuestion,
   PreferenceFact,
   PreferenceFactUpdate,
   TurnRequestBody,
   TurnResponse,
 } from "@/types/interview-session";
-import { DEFAULT_WEIGHTS, type ExplicitTargetKey, type PreferenceWeights } from "@/types/preferences";
+import { DEFAULT_WEIGHTS, type ExplicitTargetKey } from "@/types/preferences";
 
 /**
  * The adaptive interview's turn loop, as a plain framework-agnostic
@@ -156,7 +157,7 @@ function buildUserMessage(body: TurnRequestBody): string {
 /** "departures" is deliberately excluded — it's target-only (see `ExplicitTargetKey`), not a dimension the interview can bind directionally the same way a real bipolar/magnitude slider works. */
 const PREFERENCE_WEIGHTS_KEYS = new Set(Object.keys(DEFAULT_WEIGHTS).filter((k) => k !== "departures"));
 
-function isPreferenceWeightsKey(key: unknown): key is keyof PreferenceWeights {
+function isPreferenceWeightsKey(key: unknown): key is ExplicitWeightKey {
   return typeof key === "string" && PREFERENCE_WEIGHTS_KEYS.has(key);
 }
 
