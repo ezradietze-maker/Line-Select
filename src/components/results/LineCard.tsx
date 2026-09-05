@@ -3,6 +3,8 @@
 import { memo, useMemo, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { CategoryBars } from "@/components/results/CategoryBars";
+import { DealbreakerBanner } from "@/components/results/DealbreakerBanner";
 import { MatchBar } from "@/components/results/MatchBar";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { ScoreRing } from "@/components/results/ScoreRing";
@@ -41,8 +43,19 @@ export const LineCard = memo(function LineCard({
 }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showMatch, setShowMatch] = useState(false);
+  const [showEveryDimension, setShowEveryDimension] = useState(false);
   const reduceMotion = useReducedMotion();
-  const { line, score, explanation, dimensions } = lineScore;
+  const {
+    line,
+    score,
+    explanation,
+    dimensions,
+    categoryScores,
+    contributors,
+    detractors,
+    violatedDealbreakers,
+    qualitativeTieIns,
+  } = lineScore;
   const implicitFactors = useMemo(
     () => topImplicitContributions(line.id, implicitValuesByLine, profile, 4),
     [line.id, implicitValuesByLine, profile]
@@ -72,6 +85,7 @@ export const LineCard = memo(function LineCard({
           Top pick
         </div>
       )}
+      <DealbreakerBanner violations={violatedDealbreakers} />
       <div className="flex items-stretch">
         <button
           ref={setDragRef}
@@ -182,6 +196,15 @@ export const LineCard = memo(function LineCard({
                 </div>
               )}
 
+              <div className="mt-4 border-t border-border pt-3">
+                <h3 className="text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
+                  Satisfaction breakdown
+                </h3>
+                <div className="mt-2">
+                  <CategoryBars categoryScores={categoryScores} />
+                </div>
+              </div>
+
               <div className="mt-3 border-t border-border pt-2">
                 <button
                   type="button"
@@ -193,30 +216,86 @@ export const LineCard = memo(function LineCard({
                   <ChevronDownIcon className={`h-3 w-3 shrink-0 transition-transform ${showMatch ? "rotate-180" : ""}`} />
                 </button>
                 {showMatch && (
-                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                    {dimensions.map((d) => (
-                      <MatchBar key={d.key} dimension={d} />
-                    ))}
-                  </div>
-                )}
-                {showMatch && implicitFactors.length > 0 && (
-                  <div className="mt-3">
-                    <div
-                      className="text-[10px] font-medium uppercase tracking-wide text-ink-faint"
-                      title="Patterns the model found predict what you pick — either from dragging lines up or down here, or from how you answered the interview."
+                  <div className="mt-2 space-y-3">
+                    {qualitativeTieIns.length > 0 && (
+                      <ul className="space-y-1.5">
+                        {qualitativeTieIns.map((statement, i) => (
+                          <li key={i} className="rounded-md bg-brand-soft/50 px-2.5 py-1.5 text-xs leading-relaxed text-ink">
+                            You mentioned: &ldquo;{statement}&rdquo;
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {contributors.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">
+                          What&rsquo;s working
+                        </div>
+                        <ul className="mt-1 space-y-1">
+                          {contributors.map((f, i) => (
+                            <li key={i} className="flex items-center justify-between gap-2 text-xs text-ink-muted">
+                              <span className="text-ink">{f.label}</span>
+                              <span className="font-mono text-good">{f.matchPercent}%</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {detractors.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">
+                          What&rsquo;s not
+                        </div>
+                        <ul className="mt-1 space-y-1">
+                          {detractors.map((f, i) => (
+                            <li key={i} className="flex items-center justify-between gap-2 text-xs text-ink-muted">
+                              <span className="text-ink">{f.label}</span>
+                              <span className="font-mono text-warn">{f.matchPercent}%</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setShowEveryDimension((v) => !v)}
+                      className="flex items-center gap-1.5 text-[10px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
+                      aria-expanded={showEveryDimension}
                     >
-                      Also factored in
-                    </div>
-                    <ul className="mt-1.5 space-y-1">
-                      {implicitFactors.map((f) => (
-                        <li key={f.id} className="flex items-center justify-between gap-2 text-xs text-ink-muted">
-                          <span>{f.label}</span>
-                          <span className={f.contribution >= 0 ? "text-good" : "text-danger"}>
-                            {f.contribution >= 0 ? "helps" : "hurts"} this line
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
+                      See every dimension
+                      <ChevronDownIcon className={`h-3 w-3 shrink-0 transition-transform ${showEveryDimension ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {showEveryDimension && (
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        {dimensions.map((d) => (
+                          <MatchBar key={d.key} dimension={d} />
+                        ))}
+                      </div>
+                    )}
+                    {showEveryDimension && implicitFactors.length > 0 && (
+                      <div>
+                        <div
+                          className="text-[10px] font-medium uppercase tracking-wide text-ink-faint"
+                          title="Patterns the model found predict what you pick — either from dragging lines up or down here, or from how you answered the interview."
+                        >
+                          Also factored in
+                        </div>
+                        <ul className="mt-1.5 space-y-1">
+                          {implicitFactors.map((f) => (
+                            <li key={f.id} className="flex items-center justify-between gap-2 text-xs text-ink-muted">
+                              <span>{f.label}</span>
+                              <span className={f.contribution >= 0 ? "text-good" : "text-danger"}>
+                                {f.contribution >= 0 ? "helps" : "hurts"} this line
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

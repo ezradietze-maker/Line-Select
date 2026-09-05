@@ -48,7 +48,7 @@ export function ScoreRing({ score, size = 56 }: ScoreRingProps) {
       className="relative shrink-0"
       style={{ width: size, height: size }}
       role="img"
-      aria-label={`Match score ${Math.round(score)} out of 100`}
+      aria-label={`Satisfaction Index ${Math.round(score)} out of 100`}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
         <circle

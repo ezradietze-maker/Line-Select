@@ -1,7 +1,7 @@
 import { StarIcon } from "@/components/ui/icons";
 import type { CircadianAssessment } from "@/lib/circadian";
 
-/** Worse scores read as more alarming colors — the same good/warn/danger vocabulary already used for match quality elsewhere, so a pilot doesn't have to learn a new color language for a health-facing rating. */
+/** Worse scores read as more alarming colors — the same good/warn/danger vocabulary already used for the Satisfaction Index elsewhere, so a pilot doesn't have to learn a new color language for a health-facing rating. */
 function colorForStars(stars: number): string {
   if (stars >= 4) return "text-good";
   if (stars === 3) return "text-ink-muted";
@@ -20,8 +20,8 @@ function tooltipFor(a: CircadianAssessment): string {
 }
 
 /**
- * A separate, health-facing 1-5 rating from the 0-100 preference match
- * score — see `lib/circadian.ts` for the real science behind it (time-zone
+ * A separate, health-facing 1-5 rating from the 0-100 Satisfaction Index —
+ * see `lib/circadian.ts` for the real science behind it (time-zone
  * phase-shift direction, Window of Circadian Low, FAA Part 117 rest floor).
  * `size` lets the same component read clearly both in the compact mini
  * preview and the fuller trip-list header.

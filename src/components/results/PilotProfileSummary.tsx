@@ -12,7 +12,7 @@ interface PilotProfileSummaryProps {
  * "Here's what we learned about you" — the qualitative half of the
  * adaptive interview's output, as distinct from the measurable half
  * (which, once wired into scoring, already surfaces through each line's
- * own match bars and explanation text — see scoring.ts). A qualitative
+ * own Satisfaction Index breakdown and explanation text — see scoring.ts). A qualitative
  * fact never moves a score; this is the only place it's shown at all, so
  * it lives once, page-level, rather than per-line — genuinely different
  * from LineCard's own "Also factored in" panel, which is specifically

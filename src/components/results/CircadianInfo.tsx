@@ -36,7 +36,7 @@ export function CircadianInfo() {
         <Modal title="Circadian disruption score" onClose={() => setOpen(false)}>
           <div className="space-y-4 text-sm leading-relaxed text-ink-muted">
             <p>
-              A separate 1-5 rating from the 0-100 match score &mdash; this
+              A separate 1-5 rating from the 0-100 Satisfaction Index &mdash; this
               one&rsquo;s about how much a trip is likely to mess with your
               sleep and body clock, regardless of how well it otherwise fits
               what you asked for.

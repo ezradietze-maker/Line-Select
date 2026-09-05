@@ -187,6 +187,21 @@ describe("dealbreakers", () => {
     expect(line9001.violatedDealbreakers).toHaveLength(0);
   });
 
+  it("still catches the violation on a multi-trip line where only one trip is international — averaging must not dilute a real dealbreaker away", () => {
+    // Line 9004 is [tripA (domestic LAX), tripB (international CDG)] — a
+    // naive line-averaged "internationalShare" check (0.5) would sit well
+    // above the ordinary violation threshold and silently miss this. Caught
+    // live during Phase 3 UI verification: the very bug this test guards.
+    const profile = {
+      ...neutralProfile(),
+      discoveredFacts: [dealbreakerFact({ type: "explicit-weight", key: "international", direction: -1 })],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const line9004 = ranked.find((r) => r.line.lineNumber === "9004")!;
+    expect(line9004.violatedDealbreakers).toHaveLength(1);
+    expect(line9004.score).toBeLessThanOrEqual(35);
+  });
+
   it("caps a line's score when it touches a city-sentiment dealbreaker marked 'avoid'", () => {
     // CDG only appears on the sample pack's Paris trip (lines 9002/9004/9006).
     const profile = {

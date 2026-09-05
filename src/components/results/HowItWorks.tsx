@@ -56,7 +56,7 @@ const POINTS: Point[] = [
     body: (
       <>
         <strong className="text-ink">
-          This is a preference-matching tool, not an awards predictor.
+          This is a tool that predicts your satisfaction, not an awards predictor.
         </strong>{" "}
         It has no idea what your seniority is, what other pilots are
         bidding, or what you&rsquo;ll actually be awarded. It only tells you

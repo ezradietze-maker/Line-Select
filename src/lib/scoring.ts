@@ -702,6 +702,25 @@ function dealbreakerViolatedFor(
   }
 
   if (binding.type === "explicit-weight") {
+    // "international" and "deadheadTolerance" are per-trip presence
+    // concepts averaged into a line-level share/count for ordinary scoring
+    // — exactly the dilution this whole rewrite otherwise exists to avoid.
+    // A pilot who says "I will not accept ANY international flying" means
+    // literally any trip, not "the line's average share is clearly bad": a
+    // two-trip line that's half domestic would average to match=0.5, well
+    // above the ordinary violation threshold, and silently slip through.
+    // Checked directly against real per-trip data for these two keys
+    // instead of the averaged dimension value.
+    if (binding.key === "international") {
+      const anyInternational = line.trips.some((t) => t.international);
+      const violated = binding.direction < 0 ? anyInternational : !anyInternational;
+      return violated ? { statement: fact.statement, label: "International" } : null;
+    }
+    if (binding.key === "deadheadTolerance") {
+      const anyDeadhead = line.trips.some((t) => t.deadheadLegs > 0);
+      const violated = binding.direction < 0 ? anyDeadhead : !anyDeadhead;
+      return violated ? { statement: fact.statement, label: "Deadhead legs" } : null;
+    }
     const value = values[binding.key as DimensionKey];
     if (value === undefined) return null;
     const target = binding.direction > 0 ? 1 : 0;
@@ -710,6 +729,14 @@ function dealbreakerViolatedFor(
   }
 
   if (binding.type === "implicit-weight") {
+    // Same per-trip-average dilution risk applies to most of the implicit
+    // catalog too — many ids are literally named "...PerTrip". Not fixed
+    // here: a real per-trip presence recheck would need raw, pre-
+    // normalization implicit values threaded through from
+    // implicit-dimensions.ts, which this layer doesn't have access to today
+    // (only the already bid-pack-normalized implicitValuesByLine). Known
+    // limitation: an implicit-weight dealbreaker can under-trigger on a
+    // multi-trip line where only one trip exhibits the violating pattern.
     const value = implicitValues?.[binding.variableId];
     if (value === undefined) return null;
     const target = binding.direction > 0 ? 1 : 0;

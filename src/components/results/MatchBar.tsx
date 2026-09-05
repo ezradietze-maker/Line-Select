@@ -60,7 +60,7 @@ export function MatchBar({ dimension }: MatchBarProps) {
           {labelFor(dimension.key)}
         </span>
         <span className="font-mono text-ink-faint">
-          {showsPreference ? `${matchPct}% match` : "not weighted"}
+          {showsPreference ? `${matchPct}% aligned` : "not weighted"}
         </span>
       </div>
       <div className="relative mt-1.5 h-2 rounded-full bg-brand-soft">
