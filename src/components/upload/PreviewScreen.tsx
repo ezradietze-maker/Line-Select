@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Heading } from "@/components/ui/Heading";
@@ -23,6 +24,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent }: PreviewS
   const availableSeats = (["CAP", "FO"] as const).filter((s) => result.bidPacksBySeat[s]);
   const [selectedSeat, setSelectedSeat] = useState(availableSeats[0]);
   const [showDetails, setShowDetails] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   if (result.errors.length > 0) {
     return (
@@ -144,34 +146,45 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent }: PreviewS
         {showDetails ? "Hide parsing details" : "Show parsing details"}
       </button>
 
-      {showDetails && (
-        <div className="mt-3 rounded-lg border border-border bg-canvas p-4 text-xs text-ink-muted">
-          <ul className="space-y-1">
-            <li>Pairing schedule pages parsed: {pageCounts["pairing-schedule"] ?? 0}</li>
-            <li>Line grid pages parsed: {pageCounts["line-grid"] ?? 0}</li>
-            <li>
-              Pages skipped (contain other pilots&rsquo; personal data, never read):{" "}
-              {pageCounts["ignored-personal-data"] ?? 0}
-            </li>
-            <li>Other pages skipped (cover, info, sweep, etc.): {pageCounts["ignored-other"] ?? 0}</li>
-            <li>Pairings parsed: {result.pairingsParsed}</li>
-          </ul>
-          {result.warnings.length > 0 && (
-            <>
-              <div className="mt-3 font-medium text-ink-muted">
-                {result.warnings.length} parsing warning{result.warnings.length !== 1 ? "s" : ""}:
-              </div>
-              <ul className="mt-1 max-h-40 space-y-1 overflow-y-auto">
-                {result.warnings.slice(0, 30).map((w, i) => (
-                  <li key={i}>
-                    Page {w.pageNumber}: {w.message}
-                  </li>
-                ))}
+      <AnimatePresence initial={false}>
+        {showDetails && (
+          <motion.div
+            key="parsing-details"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 rounded-lg border border-border bg-canvas p-4 text-xs text-ink-muted">
+              <ul className="space-y-1">
+                <li>Pairing schedule pages parsed: {pageCounts["pairing-schedule"] ?? 0}</li>
+                <li>Line grid pages parsed: {pageCounts["line-grid"] ?? 0}</li>
+                <li>
+                  Pages skipped (contain other pilots&rsquo; personal data, never read):{" "}
+                  {pageCounts["ignored-personal-data"] ?? 0}
+                </li>
+                <li>Other pages skipped (cover, info, sweep, etc.): {pageCounts["ignored-other"] ?? 0}</li>
+                <li>Pairings parsed: {result.pairingsParsed}</li>
               </ul>
-            </>
-          )}
-        </div>
-      )}
+              {result.warnings.length > 0 && (
+                <>
+                  <div className="mt-3 font-medium text-ink-muted">
+                    {result.warnings.length} parsing warning{result.warnings.length !== 1 ? "s" : ""}:
+                  </div>
+                  <ul className="mt-1 max-h-40 space-y-1 overflow-y-auto">
+                    {result.warnings.slice(0, 30).map((w, i) => (
+                      <li key={i}>
+                        Page {w.pageNumber}: {w.message}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row">
         <Button variant="ghost" onClick={onUploadDifferent}>
