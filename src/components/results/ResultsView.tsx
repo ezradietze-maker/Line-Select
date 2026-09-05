@@ -348,6 +348,8 @@ export function ResultsView({
                     profile={profile}
                     implicitValuesByLine={implicitValuesByLine}
                     homeBaseOffsetMinutes={homeBaseOffsetMinutes}
+                    bidPeriodStart={bidPack.bidPeriodStart}
+                    bidPeriodDays={bidPack.bidPeriodDays}
                   />
                 </ErrorBoundary>
               </motion.div>

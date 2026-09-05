@@ -17,6 +17,7 @@ const westboundTrip: Trip = {
   tafbHours: 10.5,
   departures: 1,
   zuluAnchor: "2024-07-02T18:00:00.000Z",
+  startDayIndex: null,
   schedule: [
     {
       reportTimeLocal: "1100",

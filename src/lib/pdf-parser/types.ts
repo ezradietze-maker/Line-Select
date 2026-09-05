@@ -127,6 +127,8 @@ export interface BidPackMeta {
   base: string;
   aircraft: string;
   seat: "CAP" | "FO";
+  /** See `BidPack.bidPeriodStart`. Null when the line-grid header didn't match the expected date-range format. */
+  bidPeriodStart: string | null;
 }
 
 export interface ParseBidPackResult {

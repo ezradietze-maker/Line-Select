@@ -25,6 +25,7 @@ function makeTrip(overrides: Partial<Trip> = {}): Trip {
     departures: 1,
     schedule: [],
     zuluAnchor: "",
+    startDayIndex: null,
     ...overrides,
   };
 }

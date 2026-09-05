@@ -381,3 +381,23 @@ export function buildTimelineDays(trip: Trip, mode: TimeMode = "local"): Timelin
   if (raw.length === 0) return [];
   return mode === "local" ? buildLocalDays(raw) : buildZuluDays(raw);
 }
+
+/**
+ * Local-anchored day columns (see `buildLocalDays`) whose segment labels and
+ * inline clocks still switch with `mode` — used by the mini month calendar,
+ * which keeps its day-column structure (which real calendar day each column
+ * is) stable across the Local/Zulu toggle, so a whole month's shape doesn't
+ * reflow every time the toggle is pressed, while every segment's own times
+ * still read in whichever clock is primary, the same as the full per-trip
+ * chart's own labels do. A side effect worth calling out: `buildLocalDays`
+ * always runs its date-line-crossing check regardless of which mode built
+ * the segment labels, so the mini calendar's day-boundary badges show up
+ * the same in either toggle state — a deliberate choice for this
+ * always-local-anchored view, not the toggle-dependent badge behavior the
+ * full per-trip chart has in its own Local mode.
+ */
+export function buildLocalDaysWithMode(trip: Trip, mode: TimeMode): TimelineDay[] {
+  const raw = buildRawSegments(trip, mode);
+  if (raw.length === 0) return [];
+  return buildLocalDays(raw);
+}

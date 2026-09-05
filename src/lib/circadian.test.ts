@@ -26,6 +26,7 @@ function stubTrip(overrides: Partial<Trip> & { schedule: Trip["schedule"] }): Tr
     tafbHours: 24,
     departures: 2,
     zuluAnchor: Z,
+    startDayIndex: null,
     ...overrides,
   };
 }
@@ -38,6 +39,7 @@ function stubBidPack(base: string, trip: Trip): BidPack {
     aircraft: "77",
     seat: "CAP",
     bidPeriodDays: 28,
+    bidPeriodStart: null,
     lines: [{ id: "l1", lineNumber: "1", trips: [trip], daysOff: 20, totalCreditHours: 10, totalTafbHours: 24, totalLandings: 2, totalDepartures: 2 }],
   };
 }

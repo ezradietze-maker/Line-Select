@@ -28,7 +28,7 @@ function timeToHours(hhmm: string): number {
 }
 
 /** Groups a line-grid page's rows into per-LINE blocks, delimited by the horizontal rule rows. */
-function splitIntoLineBlocks(rows: string[]): string[][] {
+export function splitIntoLineBlocks(rows: string[]): string[][] {
   const blocks: string[][] = [];
   let current: string[] = [];
   for (const row of rows) {

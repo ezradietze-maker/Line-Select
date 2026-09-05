@@ -25,6 +25,9 @@ interface LineCardProps {
   implicitValuesByLine: Record<string, Record<string, number>>;
   /** Real UTC offset derived from the bid pack's own printed times — see lib/circadian.ts. Null when it couldn't be derived (no trip in the pack has a verified schedule departing home base). */
   homeBaseOffsetMinutes: number | null;
+  /** The bid pack's own real start date and period length — see `BidPack.bidPeriodStart`'s doc comment. Threaded down to the mini month calendar. */
+  bidPeriodStart: string | null;
+  bidPeriodDays: number;
 }
 
 export const LineCard = memo(function LineCard({
@@ -33,6 +36,8 @@ export const LineCard = memo(function LineCard({
   profile,
   implicitValuesByLine,
   homeBaseOffsetMinutes,
+  bidPeriodStart,
+  bidPeriodDays,
 }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showMatch, setShowMatch] = useState(false);
@@ -141,7 +146,12 @@ export const LineCard = memo(function LineCard({
 
       {!lineScore.estimated && (
         <div className="border-t border-border px-5 py-3 sm:px-6">
-          <MiniLinePreview line={line} homeBaseOffsetMinutes={homeBaseOffsetMinutes} />
+          <MiniLinePreview
+            line={line}
+            homeBaseOffsetMinutes={homeBaseOffsetMinutes}
+            bidPeriodStart={bidPeriodStart}
+            bidPeriodDays={bidPeriodDays}
+          />
         </div>
       )}
 

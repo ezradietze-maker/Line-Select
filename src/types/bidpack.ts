@@ -109,6 +109,18 @@ export interface Trip {
    * empty for).
    */
   zuluAnchor: string;
+  /**
+   * 0-indexed offset from `BidPack.bidPeriodStart` for the calendar day this
+   * trip actually starts on within its line — real, read from the line-grid
+   * page's own per-day columns (see `lib/pdf-parser/line-grid-days.ts`), not
+   * inferred. Null when it couldn't be confidently read (an estimated line,
+   * a bid pack whose grid didn't match the expected layout, or a mismatch
+   * between the grid's own trip count and this line's matched pairings) —
+   * a whole line's trips are placed together or not at all, since a
+   * partially-real calendar would look authoritative while quietly being
+   * wrong for some of its trips.
+   */
+  startDayIndex: number | null;
 }
 
 export interface Line {
@@ -180,6 +192,15 @@ export interface BidPack {
   seat: Seat;
   /** Length of the bid period in days, e.g. 28 for a 4-week bidmonth. */
   bidPeriodDays: number;
+  /**
+   * The bid period's real first calendar day (e.g. "2026-08-31"), read from
+   * the line-grid page's own printed date range — the anchor `Trip.
+   * startDayIndex` is an offset against. Null when the PDF's line-grid
+   * header didn't match the expected format, in which case every trip's
+   * `startDayIndex` is null too and the month calendar falls back to a
+   * sequential, non-dated layout.
+   */
+  bidPeriodStart: string | null;
   lines: Line[];
   /** Absent when this bid pack's PDF had no recognizable Reserve Lines grid for this seat, or none was uploaded. */
   reserveLines?: ReserveLine[];

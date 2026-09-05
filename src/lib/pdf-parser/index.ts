@@ -1,5 +1,6 @@
 import { buildLine } from "@/lib/pdf-parser/build-bidpack";
 import { parseInfoPage } from "@/lib/pdf-parser/info-page-parser";
+import { extractLinePlacements, type DayPlacement } from "@/lib/pdf-parser/line-grid-days";
 import {
   indexPairingsByFlightNumber,
   indexPairingsBySequence,
@@ -117,6 +118,7 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
     pairings: ParsedPairing[] | null;
   }[] = [];
   let lineGridMeta: Partial<BidPackMeta> | null = null;
+  const placementsBySeat: Partial<Record<Seat, Map<string, DayPlacement[]>>> = {};
 
   for (let i = 0; i < pages.length; i++) {
     if (pageClassifications[i].kind !== "line-grid") continue;
@@ -130,6 +132,12 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
     lineResults.push(
       ...parseLineGridColumn(rows, page.pageNumber, seat, pairingsBySeq, pairingsByFlightNumber, warnings)
     );
+
+    const seatPlacements = placementsBySeat[seat] ?? new Map<string, DayPlacement[]>();
+    for (const [lineNumber, entries] of extractLinePlacements(rows)) {
+      seatPlacements.set(lineNumber, entries);
+    }
+    placementsBySeat[seat] = seatPlacements;
   }
 
   if (lineResults.length === 0) {
@@ -146,6 +154,7 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
     base: pairingMeta?.base ?? lineGridMeta?.base ?? "UNKNOWN",
     aircraft: pairingMeta?.aircraft ?? lineGridMeta?.aircraft ?? "UNKNOWN",
     seat: lineGridMeta?.seat ?? "CAP",
+    bidPeriodStart: lineGridMeta?.bidPeriodStart ?? null,
   };
 
   // Pass 3: reserve line grid + info page — both purely numeric/summary
@@ -189,7 +198,10 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
       aircraft: meta.aircraft,
       seat,
       bidPeriodDays: 28,
-      lines: seatResults.map((r) => buildLine(r.summary, r.pairings, meta.month)),
+      bidPeriodStart: meta.bidPeriodStart,
+      lines: seatResults.map((r) =>
+        buildLine(r.summary, r.pairings, meta.month, placementsBySeat[seat]?.get(r.summary.lineNumber))
+      ),
       reserveLines: reserveLinesBySeat[seat],
       info: infoBySeat?.[seat],
     };

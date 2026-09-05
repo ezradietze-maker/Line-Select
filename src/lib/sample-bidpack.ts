@@ -40,6 +40,12 @@ const tripA: Trip = {
   tafbHours: 28.75,
   departures: 2,
   zuluAnchor: SAMPLE_ZULU_ANCHOR,
+  // Null rather than a guessed day — this same trip object is reused
+  // verbatim across several sample lines below at different positions, so
+  // there's no one real day to claim here. The mini calendar's sequential
+  // fallback layout handles this the same way it would a real bid pack
+  // whose grid couldn't be confidently placed.
+  startDayIndex: null,
   schedule: [
     {
       reportTimeLocal: "1400",
@@ -113,6 +119,7 @@ const tripB: Trip = {
   tafbHours: 26.75,
   departures: 2,
   zuluAnchor: SAMPLE_ZULU_ANCHOR,
+  startDayIndex: null,
   schedule: [
     {
       reportTimeLocal: "0300",
@@ -186,6 +193,7 @@ const tripC: Trip = {
   tafbHours: 44,
   departures: 2,
   zuluAnchor: SAMPLE_ZULU_ANCHOR,
+  startDayIndex: null,
   schedule: [
     {
       reportTimeLocal: "1100",
@@ -271,6 +279,10 @@ export const SAMPLE_BID_PACK: BidPack = {
   aircraft: "B777",
   seat: "CAP",
   bidPeriodDays: 28,
+  // Null, not a guessed date — see each sample trip's own startDayIndex
+  // comment for why (the same trip object gets reused at different
+  // positions across several lines below).
+  bidPeriodStart: null,
   lines: [
     buildLine("9001", 24, [tripA]),
     buildLine("9002", 24, [tripB]),

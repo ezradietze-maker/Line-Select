@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import type { DayPlacement } from "@/lib/pdf-parser/line-grid-days";
 import type { ParsedLineSummary, ParsedPairing } from "@/lib/pdf-parser/types";
 import { buildTimelineDays } from "@/lib/trip-timeline";
 import type { Line, Trip, TripDutyPeriod } from "@/types/bidpack";
@@ -121,6 +122,7 @@ export function pairingToTrip(pairing: ParsedPairing, bidPackMonth: string): Tri
     departures: pairing.layoverDetails.length + 1,
     schedule: anchorSchedule(pairing.schedule, anchor),
     zuluAnchor: anchor,
+    startDayIndex: null,
   };
   return { ...trip, days: realCalendarDaySpan(trip, pairing.days) };
 }
@@ -150,17 +152,51 @@ export function buildEstimatedTrip(summary: ParsedLineSummary, bidPackMonth: str
     departures: 1,
     schedule: [],
     zuluAnchor: monthAnchorZulu(bidPackMonth),
+    startDayIndex: null,
   };
+}
+
+/**
+ * Matches a line's grid-derived day placements onto its already-built
+ * trips, in place — one placement per trip, matched by pairing number and
+ * consumed in day order so a pairing number repeated across the line (the
+ * same short trip pattern flown more than once that month) still gets each
+ * occurrence its own real day. Deliberately all-or-nothing: if the grid's
+ * own placement count doesn't match this line's trip count, or any
+ * placement's pairing number doesn't match a trip at all, every trip on
+ * this line is left unplaced rather than showing a calendar that's right
+ * for some trips and silently wrong for others.
+ */
+function applyDayPlacements(trips: Trip[], placements: DayPlacement[] | undefined): void {
+  if (!placements || placements.length !== trips.length) return;
+
+  const ordered = [...placements].sort((a, b) => a.startDayIndex - b.startDayIndex);
+  const pool = [...trips];
+  const resolved: { trip: Trip; startDayIndex: number }[] = [];
+
+  for (const placement of ordered) {
+    const idx = pool.findIndex((t) => t.pairingNumber === placement.pairingNumber);
+    if (idx === -1) return;
+    resolved.push({ trip: pool[idx], startDayIndex: placement.startDayIndex });
+    pool.splice(idx, 1);
+  }
+
+  for (const { trip, startDayIndex } of resolved) {
+    trip.startDayIndex = startDayIndex;
+  }
 }
 
 export function buildLine(
   summary: ParsedLineSummary,
   matchedPairings: ParsedPairing[] | null,
-  bidPackMonth: string
+  bidPackMonth: string,
+  dayPlacements?: DayPlacement[]
 ): Line {
   const trips = matchedPairings
     ? matchedPairings.map((p) => pairingToTrip(p, bidPackMonth))
     : [buildEstimatedTrip(summary, bidPackMonth)];
+
+  applyDayPlacements(trips, dayPlacements);
 
   return {
     id: `line-${summary.lineNumber}`,
