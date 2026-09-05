@@ -203,9 +203,9 @@ export const LineCard = memo(function LineCard({
                   <div className="mt-3">
                     <div
                       className="text-[10px] font-medium uppercase tracking-wide text-ink-faint"
-                      title="Learned entirely from dragging lines up or down — not from anything you answered in the interview."
+                      title="Patterns the model found predict what you pick — either from dragging lines up or down here, or from how you answered the interview."
                     >
-                      Also learned from your drags
+                      Also factored in
                     </div>
                     <ul className="mt-1.5 space-y-1">
                       {implicitFactors.map((f) => (

@@ -123,7 +123,13 @@ function predictScore(
       score += nonLearnedFeatureWeight(dim.key, dim.importance) * dim.value;
       continue;
     }
-    score += explicitFeatureWeight(dim.key, weights) * dim.value;
+    // `line.dimensions` now also carries implicit-catalog entries (see
+    // `scoring.ts`'s `DimensionScore.key` doc comment) — those are already
+    // folded in via the dedicated `implicitValues`/`implicitWeights` loop
+    // below, so skip them here rather than double-counting them (and
+    // rather than misreading an implicit id as a `PreferenceWeights` key).
+    if (IMPLICIT_VARIABLES.some((v) => v.id === dim.key)) continue;
+    score += explicitFeatureWeight(dim.key as keyof PreferenceWeights, weights) * dim.value;
   }
   if (implicitValues) {
     for (const variable of IMPLICIT_VARIABLES) {

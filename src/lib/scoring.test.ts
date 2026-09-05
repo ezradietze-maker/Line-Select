@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { buildProfile, emptyWeights } from "@/lib/preference-logic";
 import { getBidPackRanges, gymScore, rankLines } from "@/lib/scoring";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
@@ -42,6 +43,65 @@ describe("scoreBidPack / rankLines", () => {
     for (const r of ranked) {
       const dim = r.dimensions.find((d) => d.key === "circadianHealth");
       expect(dim?.importance).toBe(0);
+    }
+  });
+});
+
+describe("implicit dimension wiring (the open dimension list)", () => {
+  const implicitValuesByLine = computeImplicitLineValues(SAMPLE_BID_PACK);
+
+  it("adds no implicit dimensions at all for the default profile shape (empty implicitWeights/implicitConfidence)", () => {
+    const ranked = rankLines(SAMPLE_BID_PACK, neutralProfile(), {}, implicitValuesByLine);
+    for (const r of ranked) {
+      expect(r.dimensions).toHaveLength(10); // exactly the ten fixed DimensionKeys, nothing more
+    }
+  });
+
+  it("scores identically whether or not implicitValuesByLine is even passed, for a profile with no real implicit confidence", () => {
+    const withValues = rankLines(SAMPLE_BID_PACK, neutralProfile(), {}, implicitValuesByLine);
+    const withoutValues = rankLines(SAMPLE_BID_PACK, neutralProfile());
+    expect(withValues.map((r) => r.score)).toEqual(withoutValues.map((r) => r.score));
+  });
+
+  it("moves a line's score when the pilot has a confident implicit weight on a dimension that line is strong on", () => {
+    // Line 9002 (the sample pack's single Paris trip) pays much better per
+    // hour away from base than line 9001 (the single LAX trip) — a real,
+    // large spread on creditPerTafbHour, not a hand-picked coincidence.
+    const line9001Value = implicitValuesByLine["sample-line-9001"].creditPerTafbHour;
+    const line9002Value = implicitValuesByLine["sample-line-9002"].creditPerTafbHour;
+    expect(line9002Value).toBeGreaterThan(line9001Value);
+
+    const neutral = rankLines(SAMPLE_BID_PACK, neutralProfile(), {}, implicitValuesByLine);
+    const before9001 = neutral.find((r) => r.line.id === "sample-line-9001")!.score;
+    const before9002 = neutral.find((r) => r.line.id === "sample-line-9002")!.score;
+
+    const withImplicit = {
+      ...neutralProfile(),
+      implicitWeights: { creditPerTafbHour: 1.5 },
+      implicitConfidence: { creditPerTafbHour: 0.9 },
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, withImplicit, {}, implicitValuesByLine);
+    const after9001 = ranked.find((r) => r.line.id === "sample-line-9001")!.score;
+    const after9002 = ranked.find((r) => r.line.id === "sample-line-9002")!.score;
+
+    // The pay-efficiency-strong line should gain relative to the weak one —
+    // checking the gap widens is more robust than asserting exact scores.
+    expect(after9002 - after9001).toBeGreaterThan(before9002 - before9001);
+
+    const dim = ranked.find((r) => r.line.id === "sample-line-9002")!.dimensions.find((d) => d.key === "creditPerTafbHour");
+    expect(dim).toBeDefined();
+    expect(dim!.importance).toBeGreaterThan(0);
+  });
+
+  it("gates out a weak-confidence implicit weight entirely, regardless of its magnitude", () => {
+    const lowConfidence = {
+      ...neutralProfile(),
+      implicitWeights: { creditPerTafbHour: 1.5 },
+      implicitConfidence: { creditPerTafbHour: 0.05 },
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, lowConfidence, {}, implicitValuesByLine);
+    for (const r of ranked) {
+      expect(r.dimensions.some((d) => d.key === "creditPerTafbHour")).toBe(false);
     }
   });
 });

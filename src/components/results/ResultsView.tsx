@@ -153,9 +153,15 @@ export function ResultsView({
     // changed.
   }, [bidPack, caresAboutHotel]);
 
+  // The implicit taxonomy's normalized per-line values only depend on the
+  // bid pack's own trip data, never on the pilot's weights — computed once
+  // per bid pack and reused both by scoring below and by every drag
+  // judgment, rather than recomputed per use.
+  const implicitValuesByLine = useMemo(() => computeImplicitLineValues(bidPack), [bidPack]);
+
   const ranked = useMemo(
-    () => rankLines(bidPack, profile, hotelQualityData),
-    [bidPack, profile, hotelQualityData]
+    () => rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine),
+    [bidPack, profile, hotelQualityData, implicitValuesByLine]
   );
 
   // Global rank survives filtering — a filtered card or export entry always
@@ -175,12 +181,6 @@ export function ResultsView({
 
   const availableCities = useMemo(() => collectLayoverCities(bidPack.lines), [bidPack]);
   const filterOptions = useMemo(() => computeFilterOptions(bidPack.lines), [bidPack]);
-
-  // The implicit taxonomy's normalized per-line values only depend on the
-  // bid pack's own trip data, never on the pilot's weights — computed once
-  // per bid pack and reused across every drag rather than recomputed per
-  // judgment.
-  const implicitValuesByLine = useMemo(() => computeImplicitLineValues(bidPack), [bidPack]);
 
   // Derived once from the bid pack's own printed times — see lib/circadian.ts.
   const homeBaseOffsetMinutes = useMemo(() => computeHomeBaseOffsetMinutes(bidPack), [bidPack]);

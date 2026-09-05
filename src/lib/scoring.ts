@@ -1,4 +1,5 @@
 import { computeCircadianAssessment, computeHomeBaseOffsetMinutes } from "@/lib/circadian";
+import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { HotelAmenitySummary, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 import type { CitySentiment, PreferenceProfile, PreferenceWeights } from "@/types/preferences";
@@ -47,8 +48,29 @@ export type DimensionKey =
 /** Dimensions driven by a -100..100 slider weight (everything except cityPreference, which is driven by a set of flagged cities instead). */
 type WeightedDimensionKey = keyof PreferenceWeights;
 
+/**
+ * Below this, there isn't enough real evidence yet to let a learned
+ * implicit weight move a line's actual score — mirrors the threshold
+ * `rank-learning.ts`'s `MIN_CONFIDENCE_TO_EXPLAIN` already uses for the
+ * separate "why" explanatory surface (kept as its own local constant here,
+ * not imported, since `rank-learning.ts` already imports types from this
+ * file — importing a value back the other way would make the two modules
+ * circularly dependent).
+ */
+const MIN_CONFIDENCE_FOR_IMPLICIT_SCORING = 0.15;
+
 export interface DimensionScore {
-  key: DimensionKey;
+  /**
+   * One of the fixed `DimensionKey`s for an explicit dimension, or an
+   * `IMPLICIT_VARIABLES` id (a plain string, not a member of `DimensionKey`)
+   * for a dimension the adaptive interview or drag-and-drop learner
+   * discovered mattered to this pilot — see `isFixedDimensionKey` for how
+   * callers tell the two apart. This is the concrete mechanism behind the
+   * "open list" of scoreable dimensions: the fixed union never grows, but a
+   * `DimensionScore` can carry any id from the real, code-backed implicit
+   * catalog too.
+   */
+  key: DimensionKey | string;
   /** 0-1, how well this line matches the pilot's target on this dimension. */
   match: number;
   /** 0-1, this line's raw normalized value on this dimension. */
@@ -377,8 +399,41 @@ function matchFromDistance(value: number, target: number): number {
   return 1 - Math.abs(value - target);
 }
 
+const FIXED_DIMENSION_KEYS = new Set<DimensionKey>([
+  "daysOff", "tripLength", "international", "cityPreference", "reportTime",
+  "creditHours", "deadheadTolerance", "departures", "layoverQuality", "circadianHealth",
+]);
+
+/** Distinguishes a fixed explicit dimension from an implicit-catalog id living in the same `DimensionScore.key` field — see that field's own doc comment. */
+function isFixedDimensionKey(key: string): key is DimensionKey {
+  return FIXED_DIMENSION_KEYS.has(key as DimensionKey);
+}
+
+const IMPLICIT_LABELS = new Map(IMPLICIT_VARIABLES.map((v) => [v.id, v.label] as const));
+
 function weightFor(weights: PreferenceWeights, key: DimensionKey): number {
   return key === "cityPreference" || key === "layoverQuality" ? 0 : weights[key];
+}
+
+/**
+ * Generic (not hand-authored per variable, unlike the fixed dimensions'
+ * `hitPhrase`/`missPhrase` below) explanation phrasing for an implicit
+ * dimension — there are 20+ of these and growing, so a bespoke phrase pair
+ * per id isn't maintainable the way it is for the ten fixed dimensions.
+ * Every `IMPLICIT_VARIABLES` label is written to read reasonably in this
+ * template; a genuinely awkward one is a copy fix in `implicit-dimensions.ts`,
+ * not a reason to hand-author more switch cases here.
+ */
+function implicitHitPhrase(label: string, weight: number): string {
+  const l = label.toLowerCase();
+  return weight > 0 ? `real strength on ${l}` : `staying refreshingly light on ${l}`;
+}
+
+function implicitMissPhrase(label: string, weight: number, below: boolean): string | null {
+  const l = label.toLowerCase();
+  if (weight > 0 && below) return `less ${l} than you'd probably like`;
+  if (weight < 0 && !below) return `more ${l} than you'd probably want`;
+  return null;
 }
 
 function hitPhrase(key: DimensionKey, weight: number): string {
@@ -454,7 +509,18 @@ function missPhrase(
   }
 }
 
-function explain(topDimensions: DimensionScore[], weights: PreferenceWeights): string {
+/** `hitPhrase`/`missPhrase` for a fixed dimension, `implicitHitPhrase`/`implicitMissPhrase` for anything else — see `DimensionScore.key`'s own doc comment for why both live in one array. */
+function hitPhraseFor(d: DimensionScore, weights: PreferenceWeights, implicitWeights: Record<string, number>): string {
+  if (isFixedDimensionKey(d.key)) return hitPhrase(d.key, weightFor(weights, d.key));
+  return implicitHitPhrase(IMPLICIT_LABELS.get(d.key) ?? d.key, implicitWeights[d.key] ?? 0);
+}
+
+function missPhraseFor(d: DimensionScore, weights: PreferenceWeights, implicitWeights: Record<string, number>): string | null {
+  if (isFixedDimensionKey(d.key)) return missPhrase(d.key, weightFor(weights, d.key), d.value, d.target);
+  return implicitMissPhrase(IMPLICIT_LABELS.get(d.key) ?? d.key, implicitWeights[d.key] ?? 0, d.value < d.target);
+}
+
+function explain(topDimensions: DimensionScore[], weights: PreferenceWeights, implicitWeights: Record<string, number>): string {
   const meaningful = topDimensions.filter((d) => d.importance > 0.05);
   if (meaningful.length === 0) {
     return "Scored on overall balance since no strong preferences were set.";
@@ -469,14 +535,14 @@ function explain(topDimensions: DimensionScore[], weights: PreferenceWeights): s
   const goodPhrases = verifiable
     .filter((d) => d.match > 0.6)
     .slice(0, 2)
-    .map((d) => hitPhrase(d.key, weightFor(weights, d.key)));
+    .map((d) => hitPhraseFor(d, weights, implicitWeights));
 
   const missDimension = [...verifiable]
     .filter((d) => d.match <= 0.5)
     .sort((a, b) => b.importance - a.importance)
     .map((d) => ({
       d,
-      phrase: missPhrase(d.key, weightFor(weights, d.key), d.value, d.target),
+      phrase: missPhraseFor(d, weights, implicitWeights),
     }))
     .find((entry) => entry.phrase !== null);
 
@@ -538,9 +604,10 @@ export function rankLayoverCitiesByFrequency(bidPack: BidPack): { code: string; 
 export function scoreBidPack(
   bidPack: BidPack,
   profile: PreferenceProfile,
-  hotelQualityData: HotelQualityData = {}
+  hotelQualityData: HotelQualityData = {},
+  implicitValuesByLine: Record<string, Record<string, number>> = {}
 ): LineScore[] {
-  const { weights, explicitTargets, cityPreferences, isCommuter, hasCrashPad } = profile;
+  const { weights, explicitTargets, cityPreferences, isCommuter, hasCrashPad, implicitWeights, implicitConfidence } = profile;
   const rawMetrics = bidPack.lines.map(computeRawMetrics);
   const cityScores = bidPack.lines.map((l) => computeCityScore(l, cityPreferences));
   const hotelSubscores = computeHotelSubscores(bidPack, hotelQualityData);
@@ -694,28 +761,64 @@ export function scoreBidPack(
       };
     });
 
-    const totalImportance = dimensions.reduce(
+    // The open-dimension-list half of scoring: every implicit-catalog
+    // variable the adaptive interview or the drag-and-drop learner has
+    // real confidence about gets folded in here, exactly like a fixed
+    // dimension — this is the actual wiring that was previously missing
+    // (implicitWeights fed rank-learning.ts's own internal predictive model
+    // and the "Also learned from your drags" explanatory footnote, but
+    // never the score a pilot actually sees). Gated on confidence, not just
+    // a nonzero weight, so a single noisy data point can't move the sort
+    // order the way a real, repeatedly-confirmed preference can.
+    const implicitValues = implicitValuesByLine[line.id];
+    const implicitDimensions: DimensionScore[] = implicitValues
+      ? IMPLICIT_VARIABLES.flatMap((variable) => {
+          const weight = implicitWeights[variable.id] ?? 0;
+          const confidence = implicitConfidence[variable.id] ?? 0;
+          if (confidence < MIN_CONFIDENCE_FOR_IMPLICIT_SCORING || Math.abs(weight) < 0.01) return [];
+          const value = implicitValues[variable.id];
+          const target = weight > 0 ? 1 : 0;
+          return [
+            {
+              key: variable.id,
+              value,
+              target,
+              importance: Math.min(1, Math.abs(weight) / 1.5) * confidence,
+              match: matchFromDistance(value, target),
+              // Estimated lines only ever produce a neutral 0.5 placeholder
+              // for every implicit variable (see computeImplicitLineValues),
+              // never a real measurement — the same honesty policy the
+              // fixed dimensions already apply via UNVERIFIED_WHEN_ESTIMATED.
+              verified: !line.estimated,
+            },
+          ];
+        })
+      : [];
+
+    const allDimensions = [...dimensions, ...implicitDimensions];
+
+    const totalImportance = allDimensions.reduce(
       (s, d) => s + Math.max(d.importance, 0.05),
       0
     );
     const score =
-      (dimensions.reduce(
+      (allDimensions.reduce(
         (s, d) => s + d.match * Math.max(d.importance, 0.05),
         0
       ) /
         totalImportance) *
       100;
 
-    const topDimensions = [...dimensions]
+    const topDimensions = [...allDimensions]
       .sort((a, b) => b.importance - a.importance)
       .slice(0, 3);
 
     return {
       line,
       score: Math.round(score * 10) / 10,
-      dimensions,
+      dimensions: allDimensions,
       topDimensions,
-      explanation: explain(topDimensions, weights),
+      explanation: explain(topDimensions, weights, implicitWeights),
       estimated: !!line.estimated,
     };
   });
@@ -724,7 +827,8 @@ export function scoreBidPack(
 export function rankLines(
   bidPack: BidPack,
   profile: PreferenceProfile,
-  hotelQualityData: HotelQualityData = {}
+  hotelQualityData: HotelQualityData = {},
+  implicitValuesByLine: Record<string, Record<string, number>> = {}
 ): LineScore[] {
-  return scoreBidPack(bidPack, profile, hotelQualityData).sort((a, b) => b.score - a.score);
+  return scoreBidPack(bidPack, profile, hotelQualityData, implicitValuesByLine).sort((a, b) => b.score - a.score);
 }
