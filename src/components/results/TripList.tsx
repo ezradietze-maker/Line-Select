@@ -6,6 +6,7 @@ import { CircadianInfo } from "@/components/results/CircadianInfo";
 import { CircadianStars } from "@/components/results/CircadianStars";
 import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
+import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { fetchHotel } from "@/lib/hotel-client";
 import { loadTimeMode, saveTimeMode } from "@/lib/time-mode-storage";
@@ -457,6 +458,109 @@ function TripInsights({ trip }: { trip: Trip }) {
   );
 }
 
+/**
+ * Every one of the chart's generic, non-per-instance explanations (what a
+ * segment color means, what an insight chip's label means) was previously
+ * locked behind a hover-only `title` on a tiny touch target — invisible on
+ * a phone or tablet even though the app has a full mobile nav drawer.
+ * Surfaced here as one findable reference instead, the same pattern
+ * CircadianInfo already uses for the star scale. Per-instance data (a
+ * specific segment's own flight number and times, a date-line badge's own
+ * dates) stays a hover tooltip on desktop — touch users get the same
+ * specifics through "Show flight-by-flight itinerary" instead, which is
+ * already full plain text, not something layered behind hover.
+ */
+function TripLegendInfo() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center text-[10px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
+      >
+        What do these mean?
+      </button>
+
+      {open && (
+        <Modal title="Chart & metric key" onClose={() => setOpen(false)}>
+          <div className="space-y-4 text-sm leading-relaxed text-ink-muted">
+            <div>
+              <div className="font-medium text-ink">Chart segments</div>
+              <ul className="mt-1.5 space-y-2">
+                <li>
+                  <span className="font-medium text-ink">Flying.</span> Actual block time,
+                  wheels up to wheels down.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Deadhead.</span> Riding along, not
+                  operating.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Layover.</span> {LAYOVER_TOOLTIP}
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Ground.</span> {GROUND_TOOLTIP}
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Connection.</span> {CONNECTION_TOOLTIP}
+                </li>
+              </ul>
+            </div>
+            <div>
+              <div className="font-medium text-ink">Trip insight chips</div>
+              <ul className="mt-1.5 space-y-2">
+                <li>
+                  <span className="font-medium text-ink">Day-rig rate.</span> Credit hours
+                  earned per 24 hours away from base — this trip&rsquo;s own pay-per-day-away
+                  rate, independent of how long the trip runs.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Timezone crossing.</span> Total
+                  time-zone distance crossed across every leg (both directions added
+                  together), and which way the trip nets out overall.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Avg sleep opportunity.</span> Layover
+                  time minus the real hotel-pickup/ground gap around it — closer to actual
+                  usable rest than the printed layover duration.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Duty-to-flying ratio.</span> Total
+                  duty time divided by actual block time — higher means more of the day is
+                  ground time and connections than real flying.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Back-to-back red-eyes.</span>{" "}
+                  Consecutive duty periods that each include a red-eye (00:00-05:00 local)
+                  departure or arrival — compounding fatigue risk rather than one bad night
+                  followed by recovery.
+                </li>
+              </ul>
+            </div>
+            <div>
+              <div className="font-medium text-ink">Other marks</div>
+              <ul className="mt-1.5 space-y-2">
+                <li>
+                  <span className="font-medium text-ink">+1d / -1d badge.</span> Flags a
+                  date-line crossing on the fragment that actually lands — hover or tap the
+                  badge itself for the specific explanation.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Small label under a day column.</span>{" "}
+                  This local day&rsquo;s own boundaries, read in Zulu — always visible so you
+                  can cross-check without switching the toggle.
+                </li>
+              </ul>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 interface TripListProps {
   trips: Trip[];
   /** Real UTC offset derived from the bid pack's own printed times — see lib/circadian.ts. Null when it couldn't be derived. */
@@ -525,7 +629,10 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <TimeModeToggle mode={mode} onChange={handleModeChange} />
-        <CircadianInfo />
+        <div className="flex items-center gap-3">
+          <TripLegendInfo />
+          <CircadianInfo />
+        </div>
       </div>
       <ul className="divide-y divide-border">
       {trips.map((trip, tripIndex) => {
