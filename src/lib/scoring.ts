@@ -730,13 +730,24 @@ function dealbreakerViolatedFor(
 
   if (binding.type === "implicit-weight") {
     // Same per-trip-average dilution risk applies to most of the implicit
-    // catalog too — many ids are literally named "...PerTrip". Not fixed
-    // here: a real per-trip presence recheck would need raw, pre-
-    // normalization implicit values threaded through from
-    // implicit-dimensions.ts, which this layer doesn't have access to today
-    // (only the already bid-pack-normalized implicitValuesByLine). Known
-    // limitation: an implicit-weight dealbreaker can under-trigger on a
-    // multi-trip line where only one trip exhibits the violating pattern.
+    // catalog too — many ids are literally named "...PerTrip". Fixed for
+    // "redEyeDeparturesPerTrip" specifically (the single most common
+    // real-world dealbreaker — confirmed live in Phase 4 validation, where a
+    // persona's genuine "I will not accept a red-eye, full stop" correctly
+    // got flagged by the model on exactly this id) by reusing the same
+    // per-trip `hasRedEyeLeg` primitive `line-filters.ts` already relies on.
+    // The remaining threshold-shaped implicit ids (back-of-clock departures,
+    // short-rest overnights, etc.) still use the averaged value below — a
+    // full fix needs raw, pre-normalization per-trip values threaded through
+    // from implicit-dimensions.ts, which this layer doesn't have access to
+    // today. Known, real limitation: an implicit-weight dealbreaker on one
+    // of those remaining ids can under-trigger on a multi-trip line where
+    // only one trip exhibits the violating pattern.
+    if (binding.variableId === "redEyeDeparturesPerTrip") {
+      const anyRedEye = line.trips.some(hasRedEyeLeg);
+      const violated = binding.direction < 0 ? anyRedEye : !anyRedEye;
+      return violated ? { statement: fact.statement, label: "Red-eye departures" } : null;
+    }
     const value = implicitValues?.[binding.variableId];
     if (value === undefined) return null;
     const target = binding.direction > 0 ? 1 : 0;

@@ -202,6 +202,28 @@ describe("dealbreakers", () => {
     expect(line9004.score).toBeLessThanOrEqual(35);
   });
 
+  it("catches a redEyeDeparturesPerTrip dealbreaker on any trip, not just when it dominates the line average — caught live in Phase 4 validation against a real pilot statement", () => {
+    // tripB (the sample pack's Paris trip) departs 0345/0400 local, both
+    // real red-eyes. Line 9004 is [tripA (no red-eye), tripB (red-eye)] —
+    // the same averaging-dilution risk as the international case above.
+    const profile = {
+      ...neutralProfile(),
+      discoveredFacts: [
+        dealbreakerFact(
+          { type: "implicit-weight", variableId: "redEyeDeparturesPerTrip", direction: -1 },
+          "A red-eye departure is an absolute dealbreaker — will not accept a line with one."
+        ),
+      ],
+    };
+    const implicitValuesByLine = computeImplicitLineValues(SAMPLE_BID_PACK);
+    const ranked = rankLines(SAMPLE_BID_PACK, profile, {}, implicitValuesByLine);
+    const line9004 = ranked.find((r) => r.line.lineNumber === "9004")!;
+    const line9001 = ranked.find((r) => r.line.lineNumber === "9001")!;
+    expect(line9004.violatedDealbreakers).toHaveLength(1);
+    expect(line9004.score).toBeLessThanOrEqual(35);
+    expect(line9001.violatedDealbreakers).toHaveLength(0);
+  });
+
   it("caps a line's score when it touches a city-sentiment dealbreaker marked 'avoid'", () => {
     // CDG only appears on the sample pack's Paris trip (lines 9002/9004/9006).
     const profile = {

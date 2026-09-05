@@ -96,6 +96,14 @@ const PERSONAS: Persona[] = [
     targetLeanings: { daysOff: 0.75, creditHours: 0.15 },
     choiceKeywords: ["lifestyle", "lighter", "downtime", "rest", "fewer duty hours", "home"],
     freeTextAnswers: [
+      // Deliberately unambiguous refusal language (Phase 4 validation of the
+      // Satisfaction Index's dealbreaker detection) — checked first since
+      // pickFreeText takes the first keyword match, and "red-eye" is likely
+      // to appear in whatever circadian-adjacent question this persona's
+      // strong circadianHealth lean provokes.
+      { keyword: "0300", text: "A red-eye departure is an absolute dealbreaker for me — I will not accept a line with one, full stop, no matter what else it offers." },
+      { keyword: "back-of-clock", text: "A red-eye departure is an absolute dealbreaker for me — I will not accept a line with one, full stop, no matter what else it offers." },
+      { keyword: "early-side", text: "A red-eye departure is an absolute dealbreaker for me — I will not accept a line with one, full stop, no matter what else it offers." },
       { keyword: "credit", text: "I'll take a leaner line every time if it means a schedule I actually enjoy living with — I'm not trying to max out hours this point in my career." },
       { text: "Protecting my sleep and having real predictable time off matters a lot more to me than squeezing out extra pay." },
     ],
@@ -238,6 +246,9 @@ async function runPersona(persona: Persona): Promise<string> {
         cityPreferences: profile.cityPreferences,
         implicitWeights: profile.implicitWeights,
         qualitativeFacts: profile.discoveredFacts.filter((f) => f.kind === "qualitative").map((f) => f.statement),
+        dealbreakers: profile.discoveredFacts
+          .filter((f) => f.severity === "dealbreaker")
+          .map((f) => ({ statement: f.statement, measurable: f.measurable })),
       },
       null,
       2
