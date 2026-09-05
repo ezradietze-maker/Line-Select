@@ -1,3 +1,4 @@
+import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import type { Trip, TripDutyPeriod, TripLeg } from "@/types/bidpack";
 
 /**
@@ -157,6 +158,10 @@ export interface TripAnalytics {
   // ---- E. Hotel & layover environment ----
   hotelChains: (string | null)[];
   layoverBuckets: Record<LayoverBucket, number>;
+  /** Share of this trip's overnights spent in a city outside the US (`isInternationalCity`) — distinct from `Trip.international`, which is about international *flying* time, not where the pilot actually lays over. */
+  internationalLayoverShare: number | null;
+  /** Duty periods whose first leg departs in the circadian-low window (see `isBackOfClockLocal`) AND were immediately preceded by a layover in an international city — the specific "early report right after an international layover" pattern, not just either condition alone. */
+  earlyReportAfterInternationalLayoverCount: number;
 
   // ---- I. Financial & pay efficiency ----
   /** Credit hours earned per hour away from base — a trip that pays well per hour of actual time gone, independent of how long the trip is. */
@@ -269,6 +274,18 @@ export function computeTripAnalytics(trip: Trip): TripAnalytics {
   const buckets: Record<LayoverBucket, number> = { short: 0, standard: 0, extended: 0 };
   for (const l of layovers) buckets[layoverBucket(l.hours)]++;
 
+  const internationalLayoverCount = layovers.filter((l) => isInternationalCity(l.city)).length;
+
+  let earlyReportAfterInternationalLayoverCount = 0;
+  for (let i = 1; i < duties.length; i++) {
+    const precedingLayover = duties[i - 1].layover;
+    const firstLeg = duties[i].legs[0];
+    if (!precedingLayover || !firstLeg) continue;
+    if (isInternationalCity(precedingLayover.city) && isBackOfClockLocal(firstLeg.depTimeLocal)) {
+      earlyReportAfterInternationalLayoverCount++;
+    }
+  }
+
   return {
     redEyeDepartures,
     redEyeArrivals,
@@ -310,6 +327,8 @@ export function computeTripAnalytics(trip: Trip): TripAnalytics {
 
     hotelChains: trip.layoverDetails.map((d) => guessHotelChain(d.hotelName)),
     layoverBuckets: buckets,
+    internationalLayoverShare: layovers.length > 0 ? internationalLayoverCount / layovers.length : null,
+    earlyReportAfterInternationalLayoverCount,
 
     creditPerTafbHour: trip.tafbHours > 0 ? trip.creditHours / trip.tafbHours : null,
   };

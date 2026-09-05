@@ -72,6 +72,8 @@ export function buildProfile(
     completedAt: new Date().toISOString(),
     implicitWeights: {},
     implicitConfidence: {},
+    discoveredFacts: [],
+    interviewTranscript: [],
   };
 }
 

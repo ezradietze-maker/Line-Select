@@ -146,4 +146,13 @@ export interface PreferenceProfile {
    * evidence about it.
    */
   implicitConfidence: Record<string, number>;
+  /**
+   * Every fact the adaptive interview extracted from its transcript,
+   * measurable and qualitative alike — see `src/types/interview-session.ts`.
+   * Empty for a profile built by the legacy static interview, or for a pilot
+   * who hasn't re-interviewed since this field was added.
+   */
+  discoveredFacts: import("./interview-session").PreferenceFact[];
+  /** The adaptive interview's own turn-by-turn record, kept on the profile so the results screen can show "what we learned about you" without re-deriving it. Empty for the legacy static interview. */
+  interviewTranscript: import("./interview-session").InterviewTurnRecord[];
 }

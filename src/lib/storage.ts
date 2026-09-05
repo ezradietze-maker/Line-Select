@@ -24,6 +24,8 @@ function normalizeProfile(parsed: Partial<PreferenceProfile>): PreferenceProfile
     completedAt: parsed.completedAt ?? new Date(0).toISOString(),
     implicitWeights: parsed.implicitWeights ?? {},
     implicitConfidence: parsed.implicitConfidence ?? {},
+    discoveredFacts: parsed.discoveredFacts ?? [],
+    interviewTranscript: parsed.interviewTranscript ?? [],
   };
 }
 

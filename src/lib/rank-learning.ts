@@ -45,8 +45,8 @@ const HOTEL_WEIGHT_KEYS: Record<keyof HotelSubscores, keyof PreferenceWeights> =
   quality: "hotelQuality",
 };
 
-/** Magnitude-only weights (0 = doesn't matter, 100 = matters a lot) — there's no "opposite" of caring about a quiet room (or, for circadianHealth, no "opposite" of caring about sleep and body-clock disruption), so these clamp to [0, 100] rather than [-100, 100]. */
-const MAGNITUDE_ONLY_KEYS = new Set<keyof PreferenceWeights>([...Object.values(HOTEL_WEIGHT_KEYS), "circadianHealth"]);
+/** Magnitude-only weights (0 = doesn't matter, 100 = matters a lot) — there's no "opposite" of caring about a quiet room (or, for circadianHealth, no "opposite" of caring about sleep and body-clock disruption), so these clamp to [0, 100] rather than [-100, 100]. Exported for reuse by `interview-engine.ts`, which needs the same floor when folding an adaptive-interview fact into a weight. */
+export const MAGNITUDE_ONLY_KEYS = new Set<keyof PreferenceWeights>([...Object.values(HOTEL_WEIGHT_KEYS), "circadianHealth"]);
 
 const EXPLICIT_LABELS: Partial<Record<keyof PreferenceWeights, string>> = {
   daysOff: "Days off",

@@ -166,6 +166,20 @@ export const IMPLICIT_VARIABLES: ImplicitVariable[] = [
     description: "Credit hours earned per hour away from base — how well the trip pays relative to the total time it costs, independent of trip length.",
     valueShape: "linear",
   },
+  {
+    id: "internationalLayoverSharePerTrip",
+    category: "layover",
+    label: "International layover share",
+    description: "Share of this trip's overnights spent in a city outside the US — distinct from how much of the flying itself is international.",
+    valueShape: "linear",
+  },
+  {
+    id: "earlyReportAfterInternationalLayoverPerTrip",
+    category: "circadian",
+    label: "Early report after an international layover",
+    description: "Duty periods that report during the circadian low right after an overnight in a city outside the US — the specific combination, not either condition alone.",
+    valueShape: "threshold",
+  },
 ];
 
 function normalize(value: number, min: number, max: number): number {
@@ -220,6 +234,12 @@ function computeRawLineValues(line: Line): Record<string, number | null> {
         ? analytics.reduce((sum, a) => sum + a.layoverBuckets.extended, 0) / totalLayovers
         : null,
     creditPerTafbHour: mean(analytics.map((a) => a.creditPerTafbHour).filter((v): v is number => v !== null)),
+    internationalLayoverSharePerTrip: mean(
+      analytics.map((a) => a.internationalLayoverShare).filter((v): v is number => v !== null)
+    ),
+    earlyReportAfterInternationalLayoverPerTrip: mean(
+      analytics.map((a) => a.earlyReportAfterInternationalLayoverCount)
+    ),
   };
 }
 

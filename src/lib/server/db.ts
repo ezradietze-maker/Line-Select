@@ -2,6 +2,7 @@ import { getJson, setJson } from "@/lib/server/kv";
 import type { AwardHistoryRecord } from "@/types/award-history";
 import type { StoredCredential, UserAccount } from "@/types/auth";
 import type { CandidateVariable } from "@/types/candidate-variable";
+import type { InterviewCandidateFact } from "@/types/interview-candidate-fact";
 import type { TradeOffer } from "@/types/trade";
 
 /**
@@ -26,6 +27,7 @@ interface DbShape {
   tradeOffers: TradeOffer[];
   candidateVariables: CandidateVariable[];
   awardHistoryRecords: AwardHistoryRecord[];
+  interviewCandidateFacts: InterviewCandidateFact[];
 }
 
 const DB_KEY = "line-select:db";
@@ -38,6 +40,7 @@ function emptyDb(): DbShape {
     tradeOffers: [],
     candidateVariables: [],
     awardHistoryRecords: [],
+    interviewCandidateFacts: [],
   };
 }
 
@@ -135,6 +138,18 @@ export async function listCandidateVariables(): Promise<CandidateVariable[]> {
 export async function createCandidateVariable(candidate: CandidateVariable): Promise<void> {
   const db = await readDb();
   db.candidateVariables.push(candidate);
+  await writeDb(db);
+}
+
+// ---- Interview candidate facts ----
+
+export async function listInterviewCandidateFacts(): Promise<InterviewCandidateFact[]> {
+  return [...(await readDb()).interviewCandidateFacts].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function createInterviewCandidateFact(fact: InterviewCandidateFact): Promise<void> {
+  const db = await readDb();
+  db.interviewCandidateFacts = [...(db.interviewCandidateFacts ?? []), fact];
   await writeDb(db);
 }
 
