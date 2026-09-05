@@ -44,55 +44,60 @@ function LineRecommendationRow({ rec }: { rec: StrategyLineRecommendation }) {
 export function StrategyCard({ strategy, topPick }: { strategy: Strategy; topPick?: boolean }) {
   return (
     <div
-      className={`rounded-xl border bg-surface p-5 sm:p-6 ${
-        topPick ? "border-brand/40 ring-1 ring-brand/20" : "border-border"
+      className={`overflow-hidden rounded-xl border bg-surface ${
+        topPick ? "border-dispatch/40 ring-1 ring-dispatch/20" : "border-border"
       }`}
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-semibold text-ink">{strategy.name}</h2>
-        {topPick && (
-          <span className="inline-flex items-center rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-white">
-            Best match for you
-          </span>
-        )}
-        {!topPick && strategy.isProcessTip && (
-          <span className="inline-flex items-center rounded-full border border-border-strong px-2 py-0.5 text-xs font-medium text-ink-faint">
-            Bonus move
-          </span>
-        )}
-      </div>
-      <p className="mt-1 text-sm font-medium text-brand">{strategy.tagline}</p>
-      {strategy.preferenceMatch && strategy.preferenceMatch.length > 0 && (
-        <p className="mt-2 text-xs leading-relaxed text-ink-muted">
-          <span className="font-medium text-ink">From your interview:</span>{" "}
-          {strategy.preferenceMatch.join(" and ")}.
-        </p>
-      )}
-      <p className="mt-3 text-sm leading-relaxed text-ink-muted">{strategy.mechanism}</p>
-
-      <ul className="mt-3 space-y-1.5">
-        {strategy.benefits.map((b) => (
-          <li key={b} className="flex gap-2 text-sm text-ink-muted">
-            <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
-            {b}
-          </li>
-        ))}
-      </ul>
-
-      {strategy.lines.length > 0 && (
-        <div className="mt-4 space-y-2.5">
-          {strategy.lines.map((rec) => (
-            <LineRecommendationRow key={rec.lineNumber} rec={rec} />
-          ))}
+      {topPick && (
+        <div className="flex items-center gap-1.5 bg-dispatch-soft px-5 py-1.5 text-xs font-semibold uppercase tracking-wide text-dispatch sm:px-6">
+          <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3">
+            <path d="M12 2l2.6 6.5 7 .5-5.3 4.5 1.7 6.9L12 16.9 5.9 20.4l1.7-6.9L2.4 9l7-.5L12 2z" />
+          </svg>
+          Best match for you
         </div>
       )}
+      <div className="p-5 sm:p-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold text-ink">{strategy.name}</h2>
+          {!topPick && strategy.isProcessTip && (
+            <span className="inline-flex items-center rounded-full border border-border-strong px-2 py-0.5 text-xs font-medium text-ink-faint">
+              Bonus move
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-sm font-medium text-brand">{strategy.tagline}</p>
+        {strategy.preferenceMatch && strategy.preferenceMatch.length > 0 && (
+          <p className="mt-2 text-xs leading-relaxed text-ink-muted">
+            <span className="font-medium text-ink">From your interview:</span>{" "}
+            {strategy.preferenceMatch.join(" and ")}.
+          </p>
+        )}
+        <p className="mt-3 text-sm leading-relaxed text-ink-muted">{strategy.mechanism}</p>
 
-      {!strategy.isProcessTip && strategy.lines.length === 0 && (
-        <p className="mt-4 text-sm text-ink-faint">
-          No line in this bid pack clears this pattern strongly enough to recommend — nothing here
-          rises to a real edge this month.
-        </p>
-      )}
+        <ul className="mt-3 space-y-1.5">
+          {strategy.benefits.map((b) => (
+            <li key={b} className="flex gap-2 text-sm text-ink-muted">
+              <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
+              {b}
+            </li>
+          ))}
+        </ul>
+
+        {strategy.lines.length > 0 && (
+          <div className="mt-4 space-y-2.5">
+            {strategy.lines.map((rec) => (
+              <LineRecommendationRow key={rec.lineNumber} rec={rec} />
+            ))}
+          </div>
+        )}
+
+        {!strategy.isProcessTip && strategy.lines.length === 0 && (
+          <p className="mt-4 text-sm text-ink-faint">
+            No line in this bid pack clears this pattern strongly enough to recommend — nothing
+            here rises to a real edge this month.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

@@ -14,12 +14,14 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
+import { motion, useReducedMotion } from "motion/react";
 import { BidOrderExport, type BidOrderEntry } from "@/components/results/BidOrderExport";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
 import { ResultsFilterBar } from "@/components/results/ResultsFilterBar";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Heading } from "@/components/ui/Heading";
 import { LineCard } from "@/components/results/LineCard";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
@@ -123,6 +125,7 @@ export function ResultsView({
   const [askedPairIds, setAskedPairIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<LineFilters>(EMPTY_FILTERS);
   const caresAboutHotel = caresAboutLayoverQuality(profile);
+  const reduceMotion = useReducedMotion();
 
   // A pack swap (new upload) can leave filters referencing cities or
   // constraints that don't exist in the new pack — reset rather than risk a
@@ -253,9 +256,9 @@ export function ResultsView({
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-ink sm:text-3xl">
+          <Heading as="h1" className="text-2xl text-ink sm:text-3xl">
             Your ranked lines
-          </h1>
+          </Heading>
           <p className="mt-1.5 text-sm text-ink-muted">
             {bidPack.base} {bidPack.aircraft} {bidPack.seat} &middot; {bidPack.month}{" "}
             &middot; {bidPack.lines.length} lines scored against your preferences
@@ -329,15 +332,25 @@ export function ResultsView({
             <EmptyState compact description="No lines match the current filters. Try clearing one or two." />
           ) : (
             visibleRanked.map((lineScore) => (
-              <ErrorBoundary key={lineScore.line.id}>
-                <LineCard
-                  rank={rankById.get(lineScore.line.id) ?? 0}
-                  lineScore={lineScore}
-                  profile={profile}
-                  implicitValuesByLine={implicitValuesByLine}
-                  homeBaseOffsetMinutes={homeBaseOffsetMinutes}
-                />
-              </ErrorBoundary>
+              <motion.div
+                key={lineScore.line.id}
+                layout
+                transition={
+                  reduceMotion
+                    ? { duration: 0 }
+                    : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }
+                }
+              >
+                <ErrorBoundary>
+                  <LineCard
+                    rank={rankById.get(lineScore.line.id) ?? 0}
+                    lineScore={lineScore}
+                    profile={profile}
+                    implicitValuesByLine={implicitValuesByLine}
+                    homeBaseOffsetMinutes={homeBaseOffsetMinutes}
+                  />
+                </ErrorBoundary>
+              </motion.div>
             ))
           )}
         </div>

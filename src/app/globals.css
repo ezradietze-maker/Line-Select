@@ -328,17 +328,6 @@ body {
   animation: fade-in 0.25s ease both;
 }
 
-@keyframes expand-down {
-  from {
-    grid-template-rows: 0fr;
-    opacity: 0;
-  }
-  to {
-    grid-template-rows: 1fr;
-    opacity: 1;
-  }
-}
-
 /*
  * For leaf content only (no fixed-position descendants) — safe to animate
  * transform here, unlike `.animate-fade-in` above. Used for one-off entrance
