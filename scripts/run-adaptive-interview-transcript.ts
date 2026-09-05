@@ -177,6 +177,13 @@ async function runPersona(persona: Persona): Promise<string> {
       aircraft: SAMPLE_BID_PACK.aircraft,
       isCommuter: persona.isCommuter,
       turnsUsed,
+      // This script never simulates the real app's 8-turn guaranteed seed
+      // round, so its own turnsUsed is already adaptive-loop-relative —
+      // unlike AdaptiveInterview.tsx, which has to subtract the seed count.
+      // (This gap is exactly why the real off-by-eight bug this fixes was
+      // never caught by transcript testing — the script's turnsUsed was
+      // accidentally already correct.)
+      adaptiveTurnsUsed: turnsUsed,
     });
 
     const result = await runInterviewTurn(apiKey, request);

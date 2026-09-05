@@ -146,7 +146,12 @@ function buildUserMessage(body: TurnRequestBody): string {
         confidence: f.confidence,
         importance: f.importance,
       })),
-      turnsUsed: body.turnsUsed,
+      // Deliberately NOT body.turnsUsed here — that counter is continuous
+      // from the guaranteed seed questions (which this "transcript" array
+      // above never includes), so it would make the very first adaptive
+      // turn look like it's already most of the way through the soft cap.
+      // adaptiveTurnsUsed is zeroed at the true start of this loop instead.
+      adaptiveTurnsUsed: body.adaptiveTurnsUsed,
       softCapTurns: body.softCapTurns,
       hardCeilingTurns: body.hardCeilingTurns,
       validCatalogIds: Array.from(catalogIds),
@@ -337,7 +342,13 @@ export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Pr
     // it) so it wins any conflict for the same key — see
     // `deterministicFactFromAnswer`'s own doc comment for why the model
     // can't be trusted to correctly restate a number it was already handed.
-    if (lastTurn) {
+    // Skipped when the pilot added their own elaboration text: that's
+    // exactly the case where the raw value alone can be misleading (a
+    // slider answer the pilot's own words go on to contradict or qualify),
+    // so here the model's reading — which sees the elaboration too — is the
+    // one that should win, not a blind read of the number.
+    const elaboration = lastTurn && "elaboration" in lastTurn.answer ? lastTurn.answer.elaboration : undefined;
+    if (lastTurn && !elaboration) {
       const deterministicFact = deterministicFactFromAnswer(lastTurn.question, lastTurn.answer, req.turnsUsed);
       if (deterministicFact) profileUpdates.push({ op: "add", fact: deterministicFact });
     }

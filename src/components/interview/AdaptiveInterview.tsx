@@ -147,6 +147,41 @@ function StepNav({ onNext, nextLabel, disabled }: { onNext: () => void; nextLabe
   );
 }
 
+/**
+ * "Free-text elaboration... should always be an option, not just a slider"
+ * — offered on every adaptive slider/target-slider/choice question, not
+ * only when the model itself happens to pick "free-text" as the question
+ * kind. Collapsed by default so it doesn't visually compete with the
+ * primary answer control; the pilot opts in only if they actually want to
+ * explain themselves. Read by the same extraction call that already
+ * processes the primary answer — no extra network round trip.
+ */
+function ElaborationToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [expanded, setExpanded] = useState(value.length > 0);
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="mt-4 text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted"
+      >
+        Want to explain why?
+      </button>
+    );
+  }
+  return (
+    <div className="mt-4">
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Optional — anything about this answer worth knowing"
+        rows={2}
+        className="w-full rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
+      />
+    </div>
+  );
+}
+
 export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProps) {
   const grounding = useMemo(() => computeBidPackGroundingStats(bidPack), [bidPack]);
   const ranges = useMemo(() => getBidPackRanges(bidPack), [bidPack]);
@@ -168,6 +203,7 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
   const [turnsUsed, setTurnsUsed] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
   const [choiceSelection, setChoiceSelection] = useState<number | null>(null);
+  const [choiceElaboration, setChoiceElaboration] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const seedSteps = useMemo(() => [...QUICK_STEPS, { kind: "slider" as const, config: deadheadQuestionFor(isCommuter) }], [isCommuter]);
@@ -197,6 +233,12 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
         aircraft: bidPack.aircraft,
         isCommuter,
         turnsUsed: nextTurnsUsed,
+        // turnsUsed is a running counter starting from the guaranteed seed
+        // questions (0-7) — sending that raw number to the model as its
+        // budget would make the very first adaptive question look like
+        // turn 8 of a 10-turn soft cap. This is what the model (and the
+        // hard-ceiling check below) actually reasons against.
+        adaptiveTurnsUsed: Math.max(0, nextTurnsUsed - seedSteps.length),
       });
       const res = await fetch("/api/interview-turn", {
         method: "POST",
@@ -219,6 +261,7 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
       }
       setCurrentQuestion(turn.question);
       setChoiceSelection(null);
+      setChoiceElaboration("");
       setPhase("adaptive-question");
     } catch {
       setError("Couldn't reach the interview service. Check your connection and try again.");
@@ -252,8 +295,10 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
     setTurnsUsed(nextTurnsUsed);
     setCurrentQuestion(null);
 
-    if (nextTurnsUsed >= HARD_CEILING_TURNS) {
+    if (nextTurnsUsed - seedSteps.length >= HARD_CEILING_TURNS) {
       // Hard ceiling enforced client-side, regardless of what the model would have asked next.
+      // Measured from the start of the adaptive loop, not from turnsUsed's raw
+      // seed-inclusive value — see the matching comment in requestNextTurn.
       finish(facts, nextTranscript);
       return;
     }
@@ -416,7 +461,10 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
 
           {q.kind === "slider" && (
             <>
-              <SliderStepInline question={q} onSubmit={(value) => handleAdaptiveAnswer({ kind: "slider", value })} />
+              <SliderStepInline
+                question={q}
+                onSubmit={(value, elaboration) => handleAdaptiveAnswer({ kind: "slider", value, elaboration })}
+              />
             </>
           )}
 
@@ -424,7 +472,7 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
             <TargetSliderStepInline
               question={q}
               range={ranges[q.boundTo]}
-              onSubmit={(value) => handleAdaptiveAnswer({ kind: "target-slider", value })}
+              onSubmit={(value, elaboration) => handleAdaptiveAnswer({ kind: "target-slider", value, elaboration })}
             />
           )}
 
@@ -445,8 +493,16 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
                   />
                 ))}
               </div>
+              <ElaborationToggle value={choiceElaboration} onChange={setChoiceElaboration} />
               <StepNav
-                onNext={() => choiceSelection !== null && handleAdaptiveAnswer({ kind: "choice", selectedIndex: choiceSelection })}
+                onNext={() =>
+                  choiceSelection !== null &&
+                  handleAdaptiveAnswer({
+                    kind: "choice",
+                    selectedIndex: choiceSelection,
+                    elaboration: choiceElaboration.trim() || undefined,
+                  })
+                }
                 nextLabel="Next"
                 disabled={choiceSelection === null}
               />
@@ -513,9 +569,10 @@ function SliderStepInline({
   onSubmit,
 }: {
   question: Extract<InterviewQuestion, { kind: "slider" }>;
-  onSubmit: (value: number) => void;
+  onSubmit: (value: number, elaboration?: string) => void;
 }) {
   const [value, setValue] = useState(0);
+  const [elaboration, setElaboration] = useState("");
   return (
     <div>
       <SliderStep
@@ -530,7 +587,8 @@ function SliderStepInline({
         value={value}
         onChange={setValue}
       />
-      <StepNav onNext={() => onSubmit(value)} nextLabel="Next" />
+      <ElaborationToggle value={elaboration} onChange={setElaboration} />
+      <StepNav onNext={() => onSubmit(value, elaboration.trim() || undefined)} nextLabel="Next" />
     </div>
   );
 }
@@ -542,9 +600,10 @@ function TargetSliderStepInline({
 }: {
   question: Extract<InterviewQuestion, { kind: "target-slider" }>;
   range: readonly [number, number];
-  onSubmit: (value: number | undefined) => void;
+  onSubmit: (value: number | undefined, elaboration?: string) => void;
 }) {
   const [value, setValue] = useState<number | undefined>(Math.round((range[0] + range[1]) / 2));
+  const [elaboration, setElaboration] = useState("");
   return (
     <div>
       <TargetSliderStep
@@ -561,7 +620,8 @@ function TargetSliderStepInline({
         value={value}
         onChange={setValue}
       />
-      <StepNav onNext={() => onSubmit(value)} nextLabel="Next" />
+      <ElaborationToggle value={elaboration} onChange={setElaboration} />
+      <StepNav onNext={() => onSubmit(value, elaboration.trim() || undefined)} nextLabel="Next" />
     </div>
   );
 }

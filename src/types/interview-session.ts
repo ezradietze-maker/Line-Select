@@ -72,9 +72,10 @@ export type InterviewQuestion =
   | { id: string; kind: "wrap-up"; prompt: string };
 
 export type InterviewAnswer =
-  | { kind: "slider"; value: number }
-  | { kind: "target-slider"; value: number | undefined }
-  | { kind: "choice"; selectedIndex: number }
+  /** `elaboration`: optional free-text the pilot chose to add alongside a slider answer — always offered in the adaptive loop, never required. Read by the same extraction step that reads the slider value itself. */
+  | { kind: "slider"; value: number; elaboration?: string }
+  | { kind: "target-slider"; value: number | undefined; elaboration?: string }
+  | { kind: "choice"; selectedIndex: number; elaboration?: string }
   | { kind: "free-text"; text: string }
   | { kind: "skipped" };
 
@@ -110,7 +111,10 @@ export interface TurnRequestBody {
   base: string;
   aircraft: string;
   isCommuter: boolean | null;
+  /** Raw running turn counter, continuous from the guaranteed seed questions (0-7) into the adaptive loop (8+) — used server-side purely as each new fact's `turnIndex`, so ordering stays correct across the seed/adaptive boundary. Never shown to the model as a budget number (see `adaptiveTurnsUsed`) — it would make turn 1 of the adaptive loop look like turn 8 of a 10-turn budget. */
   turnsUsed: number;
+  /** How many LLM-generated adaptive turns have happened so far, zeroed at the start of the adaptive loop (unlike `turnsUsed`) — this, not `turnsUsed`, is what's sent to the model and compared against softCapTurns/hardCeilingTurns. */
+  adaptiveTurnsUsed: number;
   softCapTurns: number;
   hardCeilingTurns: number;
 }

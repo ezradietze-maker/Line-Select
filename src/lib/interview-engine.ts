@@ -37,6 +37,7 @@ export function buildTurnRequest(params: {
   aircraft: string;
   isCommuter: boolean | null;
   turnsUsed: number;
+  adaptiveTurnsUsed: number;
 }): TurnRequestBody {
   return {
     ...params,
