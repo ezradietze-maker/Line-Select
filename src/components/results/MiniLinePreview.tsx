@@ -289,7 +289,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
             <LegendSwatch className={segmentClass("deadhead")} label="Deadhead" title="Riding along, not operating" />
             <LegendSwatch className="bg-good" label="Layover" title={LAYOVER_TOOLTIP} />
             <LegendSwatch className="bg-accent" label="Ground" title={GROUND_TOOLTIP} />
-            <LegendSwatch className="border border-dashed border-border-strong bg-transparent" label="Day off" />
+            <LegendSwatch className={segmentClass("connection")} label="Connection" title={CONNECTION_TOOLTIP} />
           </div>
           <MonthLegendInfo />
           <CircadianInfo />
