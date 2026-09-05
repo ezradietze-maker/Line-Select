@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Heading } from "@/components/ui/Heading";
 import { Slider } from "@/components/ui/Slider";
 import {
   ALL_TARGET_CONFIGS,
@@ -69,9 +70,9 @@ export function ConfirmPreferencesScreen({
           </span>
         )}
       </div>
-      <h1 className="mt-4 text-2xl font-semibold leading-snug text-ink sm:text-3xl">
+      <Heading as="h1" className="mt-4 text-2xl leading-snug text-ink sm:text-3xl">
         {sentence}
-      </h1>
+      </Heading>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
         This is what will drive your ranking. Nudge anything that looks off before we score
         your lines, or redo the interview from scratch if you&rsquo;d rather start over.

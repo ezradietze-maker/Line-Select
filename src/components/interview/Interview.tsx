@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Heading } from "@/components/ui/Heading";
 import { ProgressDots } from "@/components/ui/ProgressDots";
 import { ScreenTransition } from "@/components/ui/ScreenTransition";
 import { AdaptiveFollowUp, type FollowUpMatch } from "@/components/interview/AdaptiveFollowUp";
@@ -544,9 +545,9 @@ function DeepOffer({
 }) {
   return (
     <div>
-      <h2 className="text-xl font-semibold text-ink sm:text-2xl">
+      <Heading as="h2" className="text-xl text-ink sm:text-2xl">
         Want to fine-tune further?
-      </h2>
+      </Heading>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
         A few more questions &mdash; layover hotel amenities, an exact credit
         target you can pin down, and some quick &ldquo;would you

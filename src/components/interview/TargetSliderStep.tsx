@@ -1,5 +1,6 @@
 "use client";
 
+import { Heading } from "@/components/ui/Heading";
 import { RangeSlider } from "@/components/ui/RangeSlider";
 import type { TargetSliderQuestionConfig } from "@/lib/interview-config";
 
@@ -22,9 +23,9 @@ export function TargetSliderStep({
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-ink sm:text-2xl">
+      <Heading as="h2" className="text-xl text-ink sm:text-2xl">
         {config.question}
-      </h2>
+      </Heading>
       <p className="mt-1.5 text-sm text-ink-muted">{config.helpText}</p>
 
       <div className="mt-8 rounded-lg border border-border bg-canvas p-5">

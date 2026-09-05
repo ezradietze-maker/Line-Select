@@ -1,5 +1,6 @@
 "use client";
 
+import { Heading } from "@/components/ui/Heading";
 import { SelectableCard } from "@/components/ui/SelectableCard";
 
 interface CommuterStepProps {
@@ -11,9 +12,9 @@ interface CommuterStepProps {
 export function CommuterStep({ value, onChange, base }: CommuterStepProps) {
   return (
     <div>
-      <h2 className="text-xl font-semibold text-ink sm:text-2xl">
+      <Heading as="h2" className="text-xl text-ink sm:text-2xl">
         Do you commute to base, or live locally?
-      </h2>
+      </Heading>
       <p className="mt-1.5 text-sm text-ink-muted">
         This changes what actually matters in a schedule &mdash; an early or
         late report, or one extra trip, can mean a hotel night or a missed

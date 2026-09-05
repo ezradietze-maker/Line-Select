@@ -1,5 +1,6 @@
 "use client";
 
+import { Heading } from "@/components/ui/Heading";
 import { SelectableCard } from "@/components/ui/SelectableCard";
 import { HOTEL_AMENITIES } from "@/lib/interview-config";
 import type { PreferenceWeights } from "@/types/preferences";
@@ -12,9 +13,9 @@ interface HotelAmenitiesStepProps {
 export function HotelAmenitiesStep({ weights, onToggle }: HotelAmenitiesStepProps) {
   return (
     <div>
-      <h2 className="text-xl font-semibold text-ink sm:text-2xl">
+      <Heading as="h2" className="text-xl text-ink sm:text-2xl">
         Which of these actually matter to you at a layover hotel?
-      </h2>
+      </Heading>
       <p className="mt-1.5 text-sm text-ink-muted">
         Tap whichever ones you actually care about. Totally optional &mdash; leave them all unselected if none of these sway you.
       </p>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Heading } from "@/components/ui/Heading";
 import type { CitySentiment } from "@/types/preferences";
 
 interface CityPreferenceStepProps {
@@ -20,9 +21,9 @@ export function CityPreferenceStep({
 }: CityPreferenceStepProps) {
   return (
     <div>
-      <h2 className="text-xl font-semibold text-ink sm:text-2xl">
+      <Heading as="h2" className="text-xl text-ink sm:text-2xl">
         Any layover cities you love or want to avoid?
-      </h2>
+      </Heading>
       <p className="mt-1.5 text-sm text-ink-muted">
         These are the actual cities in your bid pack. Tap a city to cycle
         through favorite &rarr; avoid &rarr; no opinion. Totally optional.

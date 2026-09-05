@@ -1,5 +1,6 @@
 "use client";
 
+import { Heading } from "@/components/ui/Heading";
 import { SelectableCard } from "@/components/ui/SelectableCard";
 import type { TradeoffQuestionConfig } from "@/lib/interview-config";
 
@@ -12,9 +13,9 @@ interface TradeoffStepProps {
 export function TradeoffStep({ config, value, onChange }: TradeoffStepProps) {
   return (
     <div>
-      <h2 className="text-xl font-semibold text-ink sm:text-2xl">
+      <Heading as="h2" className="text-xl text-ink sm:text-2xl">
         {config.prompt}
-      </h2>
+      </Heading>
       <p className="mt-1.5 text-sm text-ink-muted">
         {config.helpText ??
           "Pick whichever you’d actually choose — there’s no wrong answer."}
