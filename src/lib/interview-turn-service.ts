@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
+import { deterministicFactFromAnswer } from "@/lib/interview-engine";
 import { buildInterviewSystemPrompt } from "@/lib/interview-prompt";
 import { allKnownVariableDescriptors } from "@/lib/preference-classifier";
 import type {
@@ -82,12 +83,12 @@ const TURN_TOOL: Anthropic.Tool = {
           type: "object",
           properties: {
             op: { type: "string", enum: ["add", "revise", "retire"] },
-            factId: { type: "string", description: "Required for op 'retire' — the fact id to remove." },
+            factId: { type: "string", description: "Required for op 'retire' — the id of one of the facts listed in currentFacts (below) to remove. Never invent an id — if nothing in currentFacts is actually wrong, use 'add' instead." },
             fact: {
               type: "object",
               description: "Required for op 'add' or 'revise'.",
               properties: {
-                id: { type: "string", description: "Required for op 'revise' — the fact id being updated." },
+                id: { type: "string", description: "Required for op 'revise' — the id of one of the facts listed in currentFacts (below) being updated. Never invent an id you don't see there — if nothing in currentFacts actually needs correcting, use 'add' for a new fact instead of 'revise'." },
                 statement: { type: "string", description: "Plain-English, pilot-voice, finished copy." },
                 kind: { type: "string", enum: ["measurable", "qualitative"] },
                 confidence: { type: "number", description: "0-1." },
@@ -138,6 +139,7 @@ function buildUserMessage(body: TurnRequestBody): string {
       isCommuter: body.isCommuter,
       transcript: body.transcript.map((t) => ({ question: t.question, answer: t.answer })),
       currentFacts: body.facts.map((f) => ({
+        id: f.id,
         statement: f.statement,
         kind: f.kind,
         measurable: f.measurable,
@@ -326,9 +328,19 @@ export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Pr
 
     const input = toolUse.input as Record<string, unknown>;
     const action = input.action === "wrap_up" ? "wrap_up" : "ask";
-    const answeredQuestionId = req.transcript[req.transcript.length - 1]?.question.id;
+    const lastTurn = req.transcript[req.transcript.length - 1];
+    const answeredQuestionId = lastTurn?.question.id;
     const profileUpdates = parseProfileUpdates(input.profileUpdates, req.turnsUsed, answeredQuestionId);
     const reasoning = typeof input.reasoning === "string" ? input.reasoning : undefined;
+
+    // Appended after the model's own extraction for this turn (never before
+    // it) so it wins any conflict for the same key — see
+    // `deterministicFactFromAnswer`'s own doc comment for why the model
+    // can't be trusted to correctly restate a number it was already handed.
+    if (lastTurn) {
+      const deterministicFact = deterministicFactFromAnswer(lastTurn.question, lastTurn.answer, req.turnsUsed);
+      if (deterministicFact) profileUpdates.push({ op: "add", fact: deterministicFact });
+    }
 
     if (action === "wrap_up") {
       return { ok: true, turn: { action: "wrap_up", question: null, profileUpdates, reasoning } };

@@ -3,6 +3,8 @@ import { MAGNITUDE_ONLY_KEYS } from "@/lib/rank-learning";
 import type {
   BidPackGroundingStats,
   ExplicitWeightKey,
+  InterviewAnswer,
+  InterviewQuestion,
   InterviewTurnRecord,
   PreferenceFact,
   PreferenceFactUpdate,
@@ -77,6 +79,63 @@ function explicitWeightValue(key: ExplicitWeightKey, direction: 1 | -1, importan
 function implicitWeightValue(direction: 1 | -1, importance: number): number {
   const magnitude = Math.min(1, Math.max(0, importance)) * 1.5;
   return Math.min(1.5, Math.max(-1.5, direction * magnitude));
+}
+
+/**
+ * Deterministically derives the "obvious" measurable fact directly implied
+ * by a plain slider/target-slider answer — the same arithmetic
+ * `factsFromSeedStep` (`AdaptiveInterview.tsx`) already uses for the
+ * guaranteed seed questions, generalized to any adaptive-turn question with
+ * the same shape. Returns null for a choice/free-text/wrap-up answer (no
+ * numeric value to derive from — direction there is unavoidably the model's
+ * own interpretive job) or a slider left at 0 / a target left unset.
+ *
+ * Exists because leaving even this literal a read to the LLM turned out to
+ * be a real, repeat failure mode under live testing (Phase 6 transcript
+ * validation): with the exact signed answer value in hand, the model still
+ * twice produced a fact whose direction contradicted it (once amplifying a
+ * barely-there +10 lean into a confidently wrong -70 in the opposite
+ * direction). There's no reason to trust an LLM's reconstruction of a
+ * number the client already has exactly. The caller (`interview-turn-
+ * service.ts`) appends this fact after the model's own extraction for the
+ * same turn, so it wins any conflict for this key via `finalizeAdaptiveProfile`'s
+ * "last fact per key, ordered by turnIndex" rule — while still leaving a
+ * genuinely later turn's revision (a later turnIndex) free to override it,
+ * exactly as intended when new context actually changes the picture.
+ */
+export function deterministicFactFromAnswer(
+  question: InterviewQuestion,
+  answer: InterviewAnswer,
+  turnIndex: number
+): PreferenceFact | null {
+  if (question.kind === "slider" && answer.kind === "slider") {
+    if (answer.value === 0) return null;
+    const towardHigh = answer.value > 0;
+    return {
+      id: crypto.randomUUID(),
+      statement: `${towardHigh ? question.highLabel : question.lowLabel} — answered ${answer.value} on "${question.prompt}"`,
+      kind: "measurable",
+      measurable: { type: "explicit-weight", key: question.boundTo, direction: towardHigh ? 1 : -1 },
+      confidence: 1,
+      importance: Math.min(1, Math.abs(answer.value) / 100),
+      source: { kind: "adaptive-question", questionId: question.id },
+      turnIndex,
+    };
+  }
+  if (question.kind === "target-slider" && answer.kind === "target-slider") {
+    if (answer.value === undefined) return null;
+    return {
+      id: crypto.randomUUID(),
+      statement: `Pinned an exact target of ${answer.value} on "${question.prompt}"`,
+      kind: "measurable",
+      measurable: { type: "explicit-target", key: question.boundTo, value: answer.value },
+      confidence: 1,
+      importance: 0.7,
+      source: { kind: "adaptive-question", questionId: question.id },
+      turnIndex,
+    };
+  }
+  return null;
 }
 
 /**

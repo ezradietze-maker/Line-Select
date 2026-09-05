@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyProfileUpdates, finalizeAdaptiveProfile } from "@/lib/interview-engine";
-import type { InterviewTurnRecord, PreferenceFact, PreferenceFactUpdate } from "@/types/interview-session";
+import { applyProfileUpdates, deterministicFactFromAnswer, finalizeAdaptiveProfile } from "@/lib/interview-engine";
+import type { InterviewQuestion, InterviewTurnRecord, PreferenceFact, PreferenceFactUpdate } from "@/types/interview-session";
 
 function fact(overrides: Partial<PreferenceFact> = {}): PreferenceFact {
   return {
@@ -195,5 +195,74 @@ describe("finalizeAdaptiveProfile", () => {
     expect(profile.isCommuter).toBe(true);
     expect(profile.hasCrashPad).toBe(false);
     expect(profile.interviewTranscript).toBe(transcript);
+  });
+});
+
+describe("deterministicFactFromAnswer", () => {
+  const sliderQuestion: InterviewQuestion = {
+    id: "q1",
+    kind: "slider",
+    prompt: "Pay or lifestyle?",
+    lowLabel: "Lifestyle — leaner credit, easier line",
+    highLabel: "Pay — maximize credit hours",
+    centerLabel: "Balanced",
+    boundTo: "creditHours",
+  };
+
+  const targetQuestion: InterviewQuestion = {
+    id: "q2",
+    kind: "target-slider",
+    prompt: "Ideal credit for the month?",
+    unitSingular: "hour",
+    unitPlural: "hours",
+    boundTo: "creditHours",
+  };
+
+  it("derives a positive-direction explicit-weight fact from a positive slider answer, regardless of what an LLM might have inferred from the surrounding conversation", () => {
+    const result = deterministicFactFromAnswer(sliderQuestion, { kind: "slider", value: 10 }, 3);
+    expect(result?.measurable).toEqual({ type: "explicit-weight", key: "creditHours", direction: 1 });
+    expect(result?.importance).toBeCloseTo(0.1, 5);
+    expect(result?.confidence).toBe(1);
+  });
+
+  it("derives a negative-direction fact from a negative slider answer — this is the exact case a live transcript run got backwards when left to the model", () => {
+    const result = deterministicFactFromAnswer(sliderQuestion, { kind: "slider", value: -40 }, 3);
+    expect(result?.measurable).toEqual({ type: "explicit-weight", key: "creditHours", direction: -1 });
+    expect(result?.importance).toBeCloseTo(0.4, 5);
+  });
+
+  it("returns null for a slider left at 0 (no strong preference, nothing to score)", () => {
+    expect(deterministicFactFromAnswer(sliderQuestion, { kind: "slider", value: 0 }, 3)).toBeNull();
+  });
+
+  it("derives an explicit-target fact from a target-slider answer", () => {
+    const result = deterministicFactFromAnswer(targetQuestion, { kind: "target-slider", value: 68 }, 5);
+    expect(result?.measurable).toEqual({ type: "explicit-target", key: "creditHours", value: 68 });
+    expect(result?.importance).toBe(0.7);
+  });
+
+  it("returns null when a target-slider was left unset", () => {
+    expect(deterministicFactFromAnswer(targetQuestion, { kind: "target-slider", value: undefined }, 5)).toBeNull();
+  });
+
+  it("returns null for choice/free-text answers — direction there has no numeric ground truth and stays the model's job", () => {
+    const choiceQuestion: InterviewQuestion = { id: "q3", kind: "choice", prompt: "Pick one", options: [{ label: "A" }, { label: "B" }] };
+    expect(deterministicFactFromAnswer(choiceQuestion, { kind: "choice", selectedIndex: 0 }, 3)).toBeNull();
+  });
+
+  it("wins over a conflicting same-turn model-extracted fact once applied through applyProfileUpdates + finalizeAdaptiveProfile, by being appended after it", () => {
+    const modelFact = fact({
+      id: "model-fact",
+      measurable: { type: "explicit-weight", key: "creditHours", direction: 1 },
+      importance: 0.5,
+      turnIndex: 3,
+    });
+    const deterministic = deterministicFactFromAnswer(sliderQuestion, { kind: "slider", value: -40 }, 3)!;
+    const facts = applyProfileUpdates([], [
+      { op: "add", fact: modelFact },
+      { op: "add", fact: deterministic },
+    ]);
+    const profile = finalizeAdaptiveProfile({ facts, transcript: [], isCommuter: null, hasCrashPad: null });
+    expect(profile.weights.creditHours).toBeLessThan(0);
   });
 });
