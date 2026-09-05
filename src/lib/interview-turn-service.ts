@@ -302,7 +302,11 @@ export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Pr
   try {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 1500,
+      // Observed reasoning fields alone running 600-900 output tokens once the
+      // interview reaches contradiction-resolution territory (Phase 6 transcript
+      // testing) — 1500 left too little headroom, and a truncated tool call means
+      // a lost turn (parseQuestion sees an incomplete/missing question object).
+      max_tokens: 2200,
       system: buildInterviewSystemPrompt(),
       messages: [{ role: "user", content: buildUserMessage(req) }],
       tools: [TURN_TOOL],
@@ -332,12 +336,21 @@ export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Pr
 
     const question = parseQuestion(input.question);
     if (!question) {
-      console.warn("[interview-turn] unparseable question", JSON.stringify(input.question));
-      return { ok: false, error: "Couldn't read the next question." };
+      // The tool schema can't express "question is required when action is
+      // 'ask'" as a hard constraint (only the top-level action/profileUpdates
+      // are truly required), so this does happen in practice — caught live in
+      // Phase 6 transcript testing, almost always in the interview's later
+      // turns. Treating it as a wrap-up rather than failing the turn outright
+      // is a safe interpretation (the model was clearly ambivalent about
+      // asking anything further) and avoids bouncing the pilot back to
+      // re-answer a question they already answered.
+      console.warn("[interview-turn] ask action with no valid question, treating as wrap_up", JSON.stringify(input.question), "stop_reason:", response.stop_reason);
+      return { ok: true, turn: { action: "wrap_up", question: null, profileUpdates, reasoning } };
     }
 
     return { ok: true, turn: { action: "ask", question, profileUpdates, reasoning } };
-  } catch {
+  } catch (e) {
+    console.error("[interview-turn] request failed", e);
     return { ok: false, error: "Couldn't reach the interview service." };
   }
 }
