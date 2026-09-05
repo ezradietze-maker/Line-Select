@@ -593,20 +593,26 @@ export default function Home() {
 function Footer() {
   return (
     <footer className="border-t border-border">
-      <div className="mx-auto max-w-5xl px-4 py-6 text-xs leading-relaxed text-ink-faint">
-        Line Select is an independent, unofficial prototype built for FedEx
-        pilots. It is not affiliated with, endorsed by, or connected to
-        Federal Express Corporation in any way. Bid pack PDFs are uploaded to
-        this app&rsquo;s own server for parsing — never to FedEx or any third
-        party — which extracts pairing data, line data, reserve-line on-call
-        types, and the pack&rsquo;s own summary numbers (guarantees, credit
-        ranges, line counts) only; pages listing other pilots&rsquo; names,
-        employee numbers, or seniority are never read, and the PDF itself
-        isn&rsquo;t stored once parsing finishes. The extracted result, and
-        your preferences, are then stored only on this device unless you
-        create an account to save them. Account sign-in, Trade Board posts,
-        and that one-time bid pack upload are the only things sent to a
-        server.
+      <div className="mx-auto max-w-5xl space-y-2 px-4 py-6 text-xs leading-relaxed text-ink-faint">
+        <p>
+          <strong className="font-semibold text-ink-muted">Not affiliated with FedEx.</strong>{" "}
+          Line Select is an independent, unofficial prototype built for FedEx
+          pilots. It is not affiliated with, endorsed by, or connected to
+          Federal Express Corporation in any way.
+        </p>
+        <p>
+          <strong className="font-semibold text-ink-muted">What happens to your data:</strong>{" "}
+          Bid pack PDFs are uploaded to this app&rsquo;s own server for parsing — never to FedEx or any third
+          party — which extracts pairing data, line data, reserve-line on-call
+          types, and the pack&rsquo;s own summary numbers (guarantees, credit
+          ranges, line counts) only; pages listing other pilots&rsquo; names,
+          employee numbers, or seniority are never read, and the PDF itself
+          isn&rsquo;t stored once parsing finishes. The extracted result, and
+          your preferences, are then stored only on this device unless you
+          create an account to save them. Account sign-in, Trade Board posts,
+          and that one-time bid pack upload are the only things sent to a
+          server.
+        </p>
       </div>
     </footer>
   );
