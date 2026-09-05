@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { buildProfile, emptyWeights } from "@/lib/preference-logic";
-import { getBidPackRanges, gymScore, rankLines } from "@/lib/scoring";
+import { categoryFor, SATISFACTION_CATEGORIES } from "@/lib/satisfaction-categories";
+import { getBidPackRanges, gymScore, rankLines, type DimensionKey } from "@/lib/scoring";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import type { ReviewSummary } from "@/types/hotel";
+import type { MeasurableBinding, PreferenceFact } from "@/types/interview-session";
 
 /**
  * Regression coverage built on the same sample bid pack used by the "Try a
@@ -16,6 +18,20 @@ import type { ReviewSummary } from "@/types/hotel";
 
 function neutralProfile() {
   return buildProfile(emptyWeights(), false, []);
+}
+
+function dealbreakerFact(measurable: MeasurableBinding, statement = "Absolute dealbreaker."): PreferenceFact {
+  return {
+    id: "dealbreaker-1",
+    statement,
+    kind: "measurable",
+    measurable,
+    confidence: 1,
+    importance: 1,
+    severity: "dealbreaker",
+    source: { kind: "adaptive-question", questionId: "q1" },
+    turnIndex: 0,
+  };
 }
 
 describe("scoreBidPack / rankLines", () => {
@@ -102,6 +118,140 @@ describe("implicit dimension wiring (the open dimension list)", () => {
     const ranked = rankLines(SAMPLE_BID_PACK, lowConfidence, {}, implicitValuesByLine);
     for (const r of ranked) {
       expect(r.dimensions.some((d) => d.key === "creditPerTafbHour")).toBe(false);
+    }
+  });
+});
+
+describe("confidence-weighted importance", () => {
+  it("gives a confidently-stated weight more importance than an identical but low-confidence one", () => {
+    const base = { ...neutralProfile(), weights: { ...emptyWeights(), creditHours: 80 } };
+    const confident = { ...base, implicitConfidence: { creditHours: 0.95 } };
+    const unconfident = { ...base, implicitConfidence: { creditHours: 0.2 } };
+
+    const confidentRanked = rankLines(SAMPLE_BID_PACK, confident);
+    const unconfidentRanked = rankLines(SAMPLE_BID_PACK, unconfident);
+
+    const confidentImportance = confidentRanked[0].dimensions.find((d) => d.key === "creditHours")!.importance;
+    const unconfidentImportance = unconfidentRanked[0].dimensions.find((d) => d.key === "creditHours")!.importance;
+    expect(confidentImportance).toBeGreaterThan(unconfidentImportance);
+  });
+
+  it("treats a real weight with no recorded confidence as a deliberate answer (0.7), not a guess", () => {
+    const profile = { ...neutralProfile(), weights: { ...emptyWeights(), creditHours: 80 } };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const importance = ranked[0].dimensions.find((d) => d.key === "creditHours")!.importance;
+    expect(importance).toBeCloseTo(Math.min(1, 80 / 100) * 0.7, 5);
+  });
+});
+
+describe("category sub-indices (Satisfaction Index breakdown)", () => {
+  it("covers every fixed and implicit dimension with no leftovers", () => {
+    const fixedKeys: DimensionKey[] = [
+      "daysOff", "tripLength", "international", "cityPreference", "reportTime",
+      "creditHours", "deadheadTolerance", "departures", "layoverQuality", "circadianHealth",
+    ];
+    for (const key of fixedKeys) {
+      expect(SATISFACTION_CATEGORIES).toContain(categoryFor(key));
+    }
+  });
+
+  it("is internally consistent with the overall score — computed from the same dimensions, just partitioned", () => {
+    const profile = { ...neutralProfile(), weights: { ...emptyWeights(), creditHours: 90, daysOff: 60 } };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    for (const r of ranked) {
+      for (const category of SATISFACTION_CATEGORIES) {
+        expect(Number.isFinite(r.categoryScores[category].score)).toBe(true);
+        expect(r.categoryScores[category].score).toBeGreaterThanOrEqual(0);
+        expect(r.categoryScores[category].score).toBeLessThanOrEqual(100);
+      }
+    }
+  });
+});
+
+describe("dealbreakers", () => {
+  it("caps a line's score when it violates an explicit-weight dealbreaker, without touching a line that doesn't", () => {
+    // Direction -1 on "international" = wants to avoid international flying.
+    // Line 9002 is the sample pack's single all-international (Paris) trip;
+    // line 9001 is purely domestic (LAX) — a real, not hand-picked, split.
+    const profile = {
+      ...neutralProfile(),
+      discoveredFacts: [dealbreakerFact({ type: "explicit-weight", key: "international", direction: -1 })],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const line9002 = ranked.find((r) => r.line.lineNumber === "9002")!;
+    const line9001 = ranked.find((r) => r.line.lineNumber === "9001")!;
+
+    expect(line9002.violatedDealbreakers).toHaveLength(1);
+    expect(line9002.violatedDealbreakers[0].statement).toBe("Absolute dealbreaker.");
+    expect(line9002.score).toBeLessThanOrEqual(35);
+    expect(line9001.violatedDealbreakers).toHaveLength(0);
+  });
+
+  it("caps a line's score when it touches a city-sentiment dealbreaker marked 'avoid'", () => {
+    // CDG only appears on the sample pack's Paris trip (lines 9002/9004/9006).
+    const profile = {
+      ...neutralProfile(),
+      discoveredFacts: [dealbreakerFact({ type: "city-sentiment", code: "CDG", sentiment: "avoid" }, "Won't accept CDG.")],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const touchesCdg = ranked.filter((r) => r.line.trips.some((t) => t.layoverCities.includes("CDG")));
+    const doesNotTouchCdg = ranked.filter((r) => !r.line.trips.some((t) => t.layoverCities.includes("CDG")));
+
+    expect(touchesCdg.length).toBeGreaterThan(0);
+    expect(doesNotTouchCdg.length).toBeGreaterThan(0);
+    for (const r of touchesCdg) {
+      expect(r.violatedDealbreakers).toHaveLength(1);
+      expect(r.score).toBeLessThanOrEqual(35);
+    }
+    for (const r of doesNotTouchCdg) {
+      expect(r.violatedDealbreakers).toHaveLength(0);
+    }
+  });
+
+  it("never honors a dealbreaker on an explicit-target binding", () => {
+    const profile = {
+      ...neutralProfile(),
+      discoveredFacts: [dealbreakerFact({ type: "explicit-target", key: "creditHours", value: 10 })],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    for (const r of ranked) {
+      expect(r.violatedDealbreakers).toHaveLength(0);
+    }
+  });
+
+  it("leaves a normal (non-dealbreaker) fact's line score completely uncapped", () => {
+    const profile = {
+      ...neutralProfile(),
+      weights: { ...emptyWeights(), international: -100 },
+      discoveredFacts: [],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const line9002 = ranked.find((r) => r.line.lineNumber === "9002")!;
+    expect(line9002.violatedDealbreakers).toHaveLength(0);
+  });
+});
+
+describe("thin-profile backward compatibility", () => {
+  it("still produces a full, non-throwing score for a completely blank profile", () => {
+    const ranked = rankLines(SAMPLE_BID_PACK, neutralProfile());
+    expect(ranked).toHaveLength(SAMPLE_BID_PACK.lines.length);
+    for (const r of ranked) {
+      expect(Number.isFinite(r.score)).toBe(true);
+      expect(r.violatedDealbreakers).toEqual([]);
+      expect(r.qualitativeTieIns).toEqual([]);
+      expect(r.contributors).toBeInstanceOf(Array);
+      expect(r.detractors).toBeInstanceOf(Array);
+    }
+  });
+
+  it("degrades gracefully for a legacy-interview profile with no discoveredFacts at all", () => {
+    const legacy = { ...neutralProfile(), weights: { ...emptyWeights(), daysOff: 70 } };
+    // @ts-expect-error - simulating a profile shape that predates discoveredFacts
+    delete legacy.discoveredFacts;
+    const ranked = rankLines(SAMPLE_BID_PACK, legacy);
+    for (const r of ranked) {
+      expect(Number.isFinite(r.score)).toBe(true);
+      expect(r.violatedDealbreakers).toEqual([]);
     }
   });
 });

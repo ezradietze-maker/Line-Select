@@ -41,6 +41,21 @@ export interface PreferenceFact {
   confidence: number;
   /** 0-1: how strongly the pilot seems to feel about it, independent of confidence — a pilot can be very sure about something they only mildly care about. */
   importance: number;
+  /**
+   * Absent for the overwhelming majority of facts — a normal soft preference,
+   * folded into the continuous weighted average like everything else.
+   * `"dealbreaker"` means the pilot's own words were unambiguous about
+   * refusal ("I will not," "that's a dealbreaker"), not just a strongly-worded
+   * preference ("I really don't like") — see `interview-prompt.ts`'s guidance
+   * on this distinction. Scoring caps (rather than dilutes) a line's index
+   * when a dealbreaker is violated — see `scoring.ts`'s
+   * `applyDealbreakerViolations`. Only meaningful when `measurable.type` is
+   * `"explicit-weight"`, `"implicit-weight"`, or `"city-sentiment"` — an
+   * `"explicit-target"` binding (an exact pinned number) has no natural
+   * single violation threshold, so a dealbreaker flag on one is never honored
+   * (see `parseProfileUpdates` in `interview-turn-service.ts`).
+   */
+  severity?: "dealbreaker";
   source: FactSource;
   /** Which turn in interviewTranscript this was learned or last revised on. */
   turnIndex: number;

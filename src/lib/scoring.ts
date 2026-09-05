@@ -1,7 +1,15 @@
 import { computeCircadianAssessment, computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
+import {
+  categoryFor,
+  SATISFACTION_CATEGORIES,
+  SATISFACTION_CATEGORY_LABELS,
+  type SatisfactionCategory,
+} from "@/lib/satisfaction-categories";
+import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { HotelAmenitySummary, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
+import type { MeasurableBinding, PreferenceFact } from "@/types/interview-session";
 import type { CitySentiment, PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
 /**
@@ -92,12 +100,23 @@ export interface DimensionScore {
 
 export interface LineScore {
   line: Line;
+  /** The Satisfaction Index, 0-100 — already capped when `violatedDealbreakers` is non-empty (see `DEALBREAKER_SCORE_CAP`). */
   score: number;
   dimensions: DimensionScore[];
   topDimensions: DimensionScore[];
   explanation: string;
   /** Mirrors `line.estimated` for convenience. */
   estimated: boolean;
+  /** A sub-index per `SatisfactionCategory` — computed from the same per-dimension data as `score`, pre-dealbreaker-cap (a category can honestly read well even when `score` itself is capped for an unrelated dealbreaker). */
+  categoryScores: Record<SatisfactionCategory, { score: number; label: string }>;
+  /** Named, specific reasons the index went up — more than `explanation`'s own 1-2-item cap, for an expanded breakdown view. */
+  contributors: SatisfactionFactor[];
+  /** Named, specific reasons the index went down. */
+  detractors: SatisfactionFactor[];
+  /** Empty for the overwhelming majority of lines/profiles. Non-empty means this line violates something the pilot was unambiguous about refusing — `score` is capped accordingly, and this should be surfaced prominently, not folded quietly into the average. */
+  violatedDealbreakers: DealbreakerViolation[];
+  /** Up to 3 of the pilot's own qualitative statements that this specific line's real data actually confirms the relevance of (a shared city, a red-eye they said they'd avoid, etc.) — narrative context tying the index back to the interview conversation, not a generic dimension list. */
+  qualitativeTieIns: string[];
 }
 
 /**
@@ -375,16 +394,27 @@ function weightToTarget(weight: number): number {
  * dead time), whether or not they thought to weight it strongly themselves.
  * A commuter with no crash pad in domicile feels an extra departure even
  * more, so that combination raises departures' floor further still.
+ *
+ * `confidence` (0-1) scales the pilot-derived portion only — a preference
+ * stated once, ambiguously, now counts less than one repeated with real
+ * certainty (see `defaultConfidence`/`PreferenceFact.confidence`'s own doc
+ * comment for what feeds this). The commuter-driven structural floors below
+ * are the app's own judgment about a commuter's real, always-true costs, not
+ * something the pilot needs to have confidently stated — they stay
+ * unscaled, applied after confidence, so a low-confidence weight can still
+ * never sink a commuter's reportTime/departures/deadhead importance below
+ * what commuting itself already guarantees.
  */
 function weightToImportance(
   key: WeightedDimensionKey,
   weight: number,
   hasExplicitTarget: boolean,
   isCommuter: boolean | null,
-  hasCrashPad: boolean | null
+  hasCrashPad: boolean | null,
+  confidence: number
 ): number {
   const base = Math.min(1, Math.abs(weight) / 100);
-  let importance = hasExplicitTarget ? Math.max(base, 0.5) : base;
+  let importance = (hasExplicitTarget ? Math.max(base, 0.5) : base) * confidence;
   if (isCommuter && (key === "reportTime" || key === "departures" || key === "deadheadTolerance")) {
     importance = Math.max(importance, 0.35);
   }
@@ -392,6 +422,20 @@ function weightToImportance(
     importance = Math.max(importance, 0.5);
   }
   return importance;
+}
+
+/**
+ * The confidence to assume for a dimension the pilot has a real weight/
+ * target on but that has no recorded `implicitConfidence` entry — a legacy
+ * static-interview profile, or a key touched only via an explicit target
+ * (which, per `finalizeAdaptiveProfile`, never records its own confidence).
+ * Mirrors the exact default `rank-learning.ts`'s `collectCandidates` already
+ * established (`weights[key] !== 0 ? 0.7 : 0.3`) — a deliberate answer is
+ * trusted more than a total guess, kept consistent across both files rather
+ * than inventing a second convention.
+ */
+function defaultConfidence(hasRealSignal: boolean): number {
+  return hasRealSignal ? 0.7 : 0.3;
 }
 
 /** 1 - distance between value and target, so closer = higher score. */
@@ -566,6 +610,142 @@ function explain(topDimensions: DimensionScore[], weights: PreferenceWeights, im
   return base;
 }
 
+/** A single named, specific reason a line's Satisfaction Index went up or down — reuses the exact same hand-authored/generic phrase generators `explain()` draws from, just surfaced as a richer list instead of folded into one sentence. */
+export interface SatisfactionFactor {
+  label: string;
+  matchPercent: number;
+}
+
+/**
+ * The expanded "why" breakdown — more than `explain()`'s own 1-2-item cap,
+ * for a dedicated results-screen section rather than the short collapsed-
+ * card sentence. Ranked by actual contribution strength (importance *
+ * match for a contributor, importance alone for a detractor, since a low
+ * match is the point there) rather than importance alone, so the list leads
+ * with what's genuinely moving the number the most.
+ */
+function topContributorsAndDetractors(
+  allDimensions: DimensionScore[],
+  weights: PreferenceWeights,
+  implicitWeights: Record<string, number>,
+  limit = 3
+): { contributors: SatisfactionFactor[]; detractors: SatisfactionFactor[] } {
+  const verifiable = allDimensions.filter((d) => d.verified && d.importance > 0.05);
+
+  const contributors = [...verifiable]
+    .filter((d) => d.match > 0.6)
+    .sort((a, b) => b.importance * b.match - a.importance * a.match)
+    .slice(0, limit)
+    .map((d) => ({ label: hitPhraseFor(d, weights, implicitWeights), matchPercent: Math.round(d.match * 100) }));
+
+  const detractors = [...verifiable]
+    .filter((d) => d.match <= 0.5)
+    .map((d) => ({ d, phrase: missPhraseFor(d, weights, implicitWeights) }))
+    .filter((x): x is { d: DimensionScore; phrase: string } => x.phrase !== null)
+    .sort((a, b) => b.d.importance - a.d.importance)
+    .slice(0, limit)
+    .map((x) => ({ label: x.phrase, matchPercent: Math.round(x.d.match * 100) }));
+
+  return { contributors, detractors };
+}
+
+/** Every dimension partitioned by `categoryFor`, scored via the exact same weighted-average formula `scoreBidPack` uses for the overall index — so a pilot can trust the categories genuinely explain the overall number, not run through a separate parallel calculation. Every category is guaranteed at least one fixed dimension (see `satisfaction-categories.ts`'s mapping), so this never divides by zero. */
+function computeCategoryScores(allDimensions: DimensionScore[]): Record<SatisfactionCategory, { score: number; label: string }> {
+  const result = {} as Record<SatisfactionCategory, { score: number; label: string }>;
+  for (const category of SATISFACTION_CATEGORIES) {
+    const dims = allDimensions.filter((d) => categoryFor(d.key) === category);
+    const totalImportance = dims.reduce((s, d) => s + Math.max(d.importance, 0.05), 0);
+    const weightedMatch = dims.reduce((s, d) => s + d.match * Math.max(d.importance, 0.05), 0);
+    const score = totalImportance > 0 ? (weightedMatch / totalImportance) * 100 : 50;
+    result[category] = { score: Math.round(score * 10) / 10, label: SATISFACTION_CATEGORY_LABELS[category] };
+  }
+  return result;
+}
+
+/** How far below "clearly fine" a match has to fall before a dealbreaker counts as violated — deliberately well below the ordinary 0.5 miss-phrase threshold, since a dealbreaker should only fire on a line that's unambiguously on the wrong side, not one that merely misses the pilot's target by a little. */
+const DEALBREAKER_MATCH_THRESHOLD = 0.25;
+/** A violating line is capped, not zeroed — it should still read as a real, rankable line ("flagged," per the spec's own "still surface if nothing better exists" requirement), not look like a broken/empty score. */
+const DEALBREAKER_SCORE_CAP = 35;
+
+function humanizeKey(key: string): string {
+  return key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()).trim();
+}
+
+const IMPLICIT_LABELS_FOR_DEALBREAKERS = new Map(IMPLICIT_VARIABLES.map((v) => [v.id, v.label] as const));
+
+/** A single dealbreaker the line actually violates, ready to surface prominently — never silently folded into the continuous average. */
+export interface DealbreakerViolation {
+  statement: string;
+  label: string;
+}
+
+/**
+ * Checked directly against the line's own raw normalized values/city list —
+ * independent of whether that dimension happened to clear the *scoring*
+ * inclusion gates (e.g. an implicit dimension below `MIN_CONFIDENCE_FOR_
+ * IMPLICIT_SCORING`) — a stated dealbreaker should always be checked, even
+ * in the rare case its confidence wasn't quite enough to move the
+ * continuous score on its own.
+ */
+function dealbreakerViolatedFor(
+  fact: PreferenceFact & { measurable: MeasurableBinding },
+  line: Line,
+  values: Record<DimensionKey, number>,
+  implicitValues: Record<string, number> | undefined
+): DealbreakerViolation | null {
+  const binding = fact.measurable;
+
+  if (binding.type === "city-sentiment") {
+    if (binding.sentiment !== "avoid") return null;
+    const violated = line.trips.some((t) => t.layoverCities.includes(binding.code));
+    return violated ? { statement: fact.statement, label: binding.code } : null;
+  }
+
+  if (binding.type === "explicit-weight") {
+    const value = values[binding.key as DimensionKey];
+    if (value === undefined) return null;
+    const target = binding.direction > 0 ? 1 : 0;
+    const violated = matchFromDistance(value, target) < DEALBREAKER_MATCH_THRESHOLD;
+    return violated ? { statement: fact.statement, label: humanizeKey(binding.key) } : null;
+  }
+
+  if (binding.type === "implicit-weight") {
+    const value = implicitValues?.[binding.variableId];
+    if (value === undefined) return null;
+    const target = binding.direction > 0 ? 1 : 0;
+    const violated = matchFromDistance(value, target) < DEALBREAKER_MATCH_THRESHOLD;
+    return violated
+      ? { statement: fact.statement, label: IMPLICIT_LABELS_FOR_DEALBREAKERS.get(binding.variableId) ?? humanizeKey(binding.variableId) }
+      : null;
+  }
+
+  return null; // "explicit-target" dealbreakers are never honored — see parseProfileUpdates.
+}
+
+/**
+ * Real, cheap context tying a qualitative fact back to THIS specific line's
+ * actual data — not an AI-authored narrative sentence per line (see the
+ * plan's Flag F4: an LLM call per line on every drag-and-drop re-rank isn't
+ * viable for an interactive results page). A fact surfaces here only when
+ * the line's own data concretely confirms its relevance: it names a city
+ * this line actually touches, or — for the one keyword this function knows
+ * how to check cheaply — mentions a red-eye and this line actually has one.
+ */
+function qualitativeTieInsForLine(qualitativeFacts: PreferenceFact[], line: Line, limit = 3): string[] {
+  if (qualitativeFacts.length === 0) return [];
+  const lineCities = new Set(line.trips.flatMap((t) => t.layoverCities).map((c) => c.toLowerCase()));
+  const lineHasRedEye = line.trips.some(hasRedEyeLeg);
+
+  const matches = qualitativeFacts.filter((f) => {
+    const text = f.statement.toLowerCase();
+    if ([...lineCities].some((c) => text.includes(c))) return true;
+    if (lineHasRedEye && /red-eye|red eye/.test(text)) return true;
+    return false;
+  });
+
+  return matches.slice(0, limit).map((f) => f.statement);
+}
+
 export interface BidPackRanges {
   daysOff: readonly [number, number];
   creditHours: readonly [number, number];
@@ -607,7 +787,20 @@ export function scoreBidPack(
   hotelQualityData: HotelQualityData = {},
   implicitValuesByLine: Record<string, Record<string, number>> = {}
 ): LineScore[] {
-  const { weights, explicitTargets, cityPreferences, isCommuter, hasCrashPad, implicitWeights, implicitConfidence } = profile;
+  const {
+    weights,
+    explicitTargets,
+    cityPreferences,
+    isCommuter,
+    hasCrashPad,
+    implicitWeights,
+    implicitConfidence,
+    discoveredFacts,
+  } = profile;
+  const dealbreakerFacts = (discoveredFacts ?? []).filter(
+    (f): f is PreferenceFact & { measurable: MeasurableBinding } => f.severity === "dealbreaker" && f.kind === "measurable" && !!f.measurable
+  );
+  const qualitativeFacts = (discoveredFacts ?? []).filter((f) => f.kind === "qualitative");
   const rawMetrics = bidPack.lines.map(computeRawMetrics);
   const cityScores = bidPack.lines.map((l) => computeCityScore(l, cityPreferences));
   const hotelSubscores = computeHotelSubscores(bidPack, hotelQualityData);
@@ -691,14 +884,18 @@ export function scoreBidPack(
         // driven by whichever of them the pilot weighted most strongly —
         // caring a lot about even one aspect should give the dimension real
         // weight in the total score.
-        const maxHotelWeight = Math.max(
-          Math.abs(weights.hotelFood),
-          Math.abs(weights.hotelGym),
-          Math.abs(weights.hotelGrocery),
-          Math.abs(weights.hotelQuiet),
-          Math.abs(weights.hotelQuality)
+        const hotelWeightKeys = ["hotelFood", "hotelGym", "hotelGrocery", "hotelQuiet", "hotelQuality"] as const;
+        const dominantHotelKey = hotelWeightKeys.reduce((best, k) =>
+          Math.abs(weights[k]) > Math.abs(weights[best]) ? k : best
         );
-        const importance = Math.min(1, maxHotelWeight / 100);
+        const maxHotelWeight = Math.abs(weights[dominantHotelKey]);
+        // Confidence of whichever hotel aspect is actually driving this
+        // dimension's importance — "caring a lot about even one aspect"
+        // should be scaled by how sure the extraction was about that one
+        // aspect, not an unrelated hotel slider's own confidence.
+        const hotelConfidence =
+          implicitConfidence[dominantHotelKey] ?? defaultConfidence(weights[dominantHotelKey] !== 0);
+        const importance = Math.min(1, maxHotelWeight / 100) * hotelConfidence;
         return {
           key,
           value: values[key],
@@ -719,7 +916,9 @@ export function scoreBidPack(
         // to score it from, regardless of how strongly the pilot weighted
         // it — an unverified guess shouldn't silently move anyone's ranking.
         const hasRealData = circadianScores[i] !== null;
-        const importance = hasRealData ? Math.min(1, Math.abs(weights.circadianHealth) / 100) : 0;
+        const circadianConfidence =
+          implicitConfidence.circadianHealth ?? defaultConfidence(weights.circadianHealth !== 0);
+        const importance = hasRealData ? Math.min(1, Math.abs(weights.circadianHealth) / 100) * circadianConfidence : 0;
         return {
           key,
           value: values[key],
@@ -750,7 +949,8 @@ export function scoreBidPack(
         target = weightToTarget(weights[key]);
       }
 
-      const importance = weightToImportance(key, weights[key], hasExplicitTarget, isCommuter, hasCrashPad);
+      const confidence = implicitConfidence[key] ?? defaultConfidence(weights[key] !== 0 || hasExplicitTarget);
+      const importance = weightToImportance(key, weights[key], hasExplicitTarget, isCommuter, hasCrashPad, confidence);
       return {
         key,
         value: values[key],
@@ -813,13 +1013,27 @@ export function scoreBidPack(
       .sort((a, b) => b.importance - a.importance)
       .slice(0, 3);
 
+    const violatedDealbreakers = dealbreakerFacts
+      .map((fact) => dealbreakerViolatedFor(fact, line, values, implicitValues))
+      .filter((v): v is DealbreakerViolation => v !== null);
+    // A cap, not a zero-out — see DEALBREAKER_SCORE_CAP's own doc comment.
+    // Computed from the uncapped score; explanation/contributors/detractors
+    // stay uncapped too, since they describe *why the dimensions scored as
+    // they did*, a separate concern from the dealbreaker banner that
+    // explains the cap itself.
+    const finalScore = violatedDealbreakers.length > 0 ? Math.min(score, DEALBREAKER_SCORE_CAP) : score;
+
     return {
       line,
-      score: Math.round(score * 10) / 10,
+      score: Math.round(finalScore * 10) / 10,
       dimensions: allDimensions,
       topDimensions,
       explanation: explain(topDimensions, weights, implicitWeights),
       estimated: !!line.estimated,
+      categoryScores: computeCategoryScores(allDimensions),
+      ...topContributorsAndDetractors(allDimensions, weights, implicitWeights),
+      violatedDealbreakers,
+      qualitativeTieIns: qualitativeTieInsForLine(qualitativeFacts, line),
     };
   });
 }

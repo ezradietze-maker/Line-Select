@@ -93,6 +93,12 @@ const TURN_TOOL: Anthropic.Tool = {
                 kind: { type: "string", enum: ["measurable", "qualitative"] },
                 confidence: { type: "number", description: "0-1." },
                 importance: { type: "number", description: "0-1." },
+                severity: {
+                  type: "string",
+                  enum: ["dealbreaker"],
+                  description:
+                    "Omit for the overwhelming majority of facts. Only include \"dealbreaker\" when the pilot's own words are unambiguous about refusal — \"I will not,\" \"that's a dealbreaker,\" \"I'd reject any line with X.\" Never for a merely strong-sounding preference (\"I really don't like,\" \"I'd rather avoid,\" \"I'm not a fan of\") — those stay ordinary preferences with a high importance value instead. Only meaningful on a 'measurable' fact whose binding is 'explicit-weight', 'implicit-weight', or 'city-sentiment' — never 'explicit-target' (an exact pinned number has no natural single violation threshold).",
+                },
                 measurable: {
                   type: "object",
                   description: "Required when fact.kind is 'measurable'; omit entirely for 'qualitative'.",
@@ -282,6 +288,18 @@ function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId
       const measurable = f.kind === "measurable" ? parseMeasurableBinding(f.measurable) : undefined;
       if (f.kind === "measurable" && !measurable) continue; // claimed measurable but didn't bind to anything real — drop rather than silently score against nothing.
 
+      // Only honored on the three binding types with a real violation
+      // condition — an "explicit-target" (an exact pinned number) has no
+      // natural single threshold to be "violated" against, so the flag is
+      // dropped rather than the whole fact (same spirit as dropping a bad
+      // `measurable` above: lose the part that doesn't hold up, not the turn).
+      const severity =
+        f.severity === "dealbreaker" &&
+        measurable &&
+        (measurable.type === "explicit-weight" || measurable.type === "implicit-weight" || measurable.type === "city-sentiment")
+          ? ("dealbreaker" as const)
+          : undefined;
+
       const fact: PreferenceFact = {
         id: u.op === "revise" && typeof f.id === "string" ? f.id : crypto.randomUUID(),
         statement: f.statement,
@@ -289,6 +307,7 @@ function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId
         measurable,
         confidence: Math.min(1, Math.max(0, f.confidence)),
         importance: Math.min(1, Math.max(0, f.importance)),
+        severity,
         source: answeredQuestionId
           ? { kind: "adaptive-question", questionId: answeredQuestionId }
           : { kind: "adaptive-question", questionId: "turn-1" },
