@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Heading } from "@/components/ui/Heading";
 import { Slider } from "@/components/ui/Slider";
 import {
   ALL_TARGET_CONFIGS,
@@ -62,7 +63,7 @@ export function PreferencesScreen({
     <div className="mx-auto w-full max-w-2xl animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Your preferences</h1>
+          <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Your preferences</Heading>
           <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
             <span>
               Last answered {completedDate.toLocaleDateString(undefined, {

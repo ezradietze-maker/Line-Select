@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { fetchHotel } from "@/lib/hotel-client";
@@ -99,7 +100,7 @@ export function HotelRatingsScreen({ bidPack }: HotelRatingsScreenProps) {
 
   return (
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
-      <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Hotel Ratings</h1>
+      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Hotel Ratings</Heading>
       <p className="mt-1.5 text-sm text-ink-muted">
         The actual hotel your bid pack&rsquo;s pairing schedule assigns to each layover — not a
         generic nearby search — rated from Google Places, most-used first.

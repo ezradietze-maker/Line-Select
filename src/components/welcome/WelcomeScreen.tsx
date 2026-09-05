@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/Button";
+import { Heading } from "@/components/ui/Heading";
 
 const FEATURES = [
   {
@@ -69,10 +70,10 @@ export function WelcomeScreen({
         <span className="rounded-full border border-border-strong bg-surface/80 px-3 py-1 font-mono text-[11px] uppercase tracking-wide text-ink-faint backdrop-blur-sm">
           Independent prototype &middot; not affiliated with FedEx
         </span>
-        <h1 className="mt-6 text-4xl font-semibold leading-[1.1] tracking-tight text-ink sm:text-5xl">
+        <Heading as="h1" className="mt-6 text-4xl leading-[1.1] tracking-tight text-ink sm:text-5xl">
           Find the line that actually
           <br className="hidden sm:block" /> fits how you want to fly.
-        </h1>
+        </Heading>
         <p className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-ink-muted">
           No more spreading pairings across your kitchen table to cross-check
           them by hand. Tell Line Select what actually matters to you, and it

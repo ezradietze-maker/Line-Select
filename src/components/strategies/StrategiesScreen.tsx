@@ -5,6 +5,7 @@ import { AutoBidPanel } from "@/components/strategies/AutoBidPanel";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { Button } from "@/components/ui/Button";
+import { Heading } from "@/components/ui/Heading";
 import { TextField } from "@/components/ui/TextField";
 import { buildAutoBid, generateStrategies, rankStrategiesByPreference } from "@/lib/strategy-engine";
 import type { BidPack } from "@/types/bidpack";
@@ -34,7 +35,7 @@ export function StrategiesScreen({
   if (!bidPack) {
     return (
       <div className="mx-auto w-full max-w-md animate-fade-in text-center">
-        <h1 className="text-xl font-semibold text-ink sm:text-2xl">Upload a bid pack first</h1>
+        <Heading as="h1" className="text-xl text-ink sm:text-2xl">Upload a bid pack first</Heading>
         <p className="mt-2 text-sm leading-relaxed text-ink-muted">
           Strategies are built from your bid pack&rsquo;s own real lines, so upload one before
           Line Select can find your best moves.
@@ -123,7 +124,7 @@ function SeniorityForm({
 
   return (
     <div className="mx-auto w-full max-w-md animate-fade-in">
-      <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Where do you rank?</h1>
+      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Where do you rank?</Heading>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
         Every strategy below is built from the real lines in your {bidPack.base} {bidPack.aircraft}{" "}
         {bidPack.seat} pack. Your seniority number just tells Line Select which of those moves are
@@ -192,7 +193,7 @@ function StrategyResults({
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Your strategies</h1>
+          <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Your strategies</Heading>
           <p className="mt-1.5 text-sm text-ink-muted">
             Seniority #{seniority.rank} of {seniority.totalPilots} in {bidPack.base}{" "}
             {bidPack.aircraft} {bidPack.seat}

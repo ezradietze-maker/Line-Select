@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import {
   InfoBanner,
@@ -49,7 +50,7 @@ export function InboxScreen({ bidPack, user, demoOffer, onGoToTradeBoard }: Inbo
 
   return (
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
-      <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Inbox</h1>
+      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Inbox</Heading>
       <p className="mt-1.5 text-sm text-ink-muted">
         Trades that need your response, pilots specifically after one of your posted trips, and
         any of your trades that reached an agreement.

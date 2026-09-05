@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Heading } from "@/components/ui/Heading";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import type { BidPack } from "@/types/bidpack";
 
@@ -26,9 +27,9 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent }: PreviewS
   if (result.errors.length > 0) {
     return (
       <div className="mx-auto w-full max-w-xl animate-fade-in">
-        <h1 className="text-2xl font-semibold text-ink sm:text-3xl">
+        <Heading as="h1" className="text-2xl text-ink sm:text-3xl">
           We couldn&rsquo;t read this bid pack
-        </h1>
+        </Heading>
         <div className="mt-4 space-y-2">
           {result.errors.map((e, i) => (
             <ErrorBanner key={i}>{e.message}</ErrorBanner>
@@ -56,7 +57,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent }: PreviewS
 
   return (
     <div className="mx-auto w-full max-w-2xl animate-fade-in">
-      <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Does this look right?</h1>
+      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Does this look right?</Heading>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
         We found <strong className="font-semibold text-ink">{result.linesParsed} lines</strong>{" "}
         from{" "}

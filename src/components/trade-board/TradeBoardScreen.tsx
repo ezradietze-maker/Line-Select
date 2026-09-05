@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { TextField } from "@/components/ui/TextField";
 import { sameBidPack } from "@/lib/inbox";
@@ -114,7 +115,7 @@ export function TradeBoardScreen({
 
   return (
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
-      <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Trade Board</h1>
+      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Trade Board</Heading>
       <p className="mt-1.5 text-sm text-ink-muted">
         Find other pilots interested in trading a trip &mdash; coordinate directly, since a real
         trip trade only happens after bidding closes and nothing here finalizes one.

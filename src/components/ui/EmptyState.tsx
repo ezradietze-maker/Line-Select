@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
+import { Heading } from "@/components/ui/Heading";
 
 interface EmptyStateProps {
   icon?: ReactNode;
@@ -41,7 +42,7 @@ export function EmptyState({
   return (
     <div className={`mx-auto w-full max-w-md animate-fade-in text-center ${className}`}>
       {icon && <div className="mb-4 flex justify-center text-ink-faint">{icon}</div>}
-      {title && <h1 className="text-xl font-semibold text-ink sm:text-2xl">{title}</h1>}
+      {title && <Heading as="h1" className="text-xl text-ink sm:text-2xl">{title}</Heading>}
       <p className={`text-sm leading-relaxed text-ink-muted ${title ? "mt-2" : ""}`}>{description}</p>
       {actionLabel && onAction && (
         <Button onClick={onAction} className="mt-6">

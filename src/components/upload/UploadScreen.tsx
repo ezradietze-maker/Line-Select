@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Heading } from "@/components/ui/Heading";
 import { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import type { BidPack } from "@/types/bidpack";
@@ -82,7 +83,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample }
 
   return (
     <div className="mx-auto w-full max-w-xl animate-fade-in">
-      <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Upload your bid pack</h1>
+      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Upload your bid pack</Heading>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
         Upload the bid pack PDF for your base, aircraft, and month. Line Select reads the
         pairing schedule and line grid pages directly from it &mdash; nothing is typed in by
@@ -188,7 +189,7 @@ function AlreadyUploaded({
 }) {
   return (
     <div className="mx-auto w-full max-w-xl animate-fade-in">
-      <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Your bid pack</h1>
+      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Your bid pack</Heading>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
         Already loaded and ready to score. Head to Preferences or My Rankings, or upload a
         different file if this isn&rsquo;t the one you meant to bid.
