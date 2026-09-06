@@ -21,7 +21,22 @@ export type ExplicitWeightKey = QuickQuestionKey | DeepSliderKey;
 /** How a measurable fact actually plugs into scoring — `direction`/`value` mirror the sign convention `scoring.ts`/`rank-learning.ts` already use per key type (bipolar -100..100, magnitude-only 0..100, or implicit -1.5..1.5). */
 export type MeasurableBinding =
   | { type: "explicit-weight"; key: ExplicitWeightKey; direction: 1 | -1 }
-  | { type: "explicit-target"; key: ExplicitTargetKey; value: number }
+  | {
+      type: "explicit-target";
+      key: ExplicitTargetKey;
+      value: number;
+      /**
+       * Absent (or `"ideal"`) means exactly what it always has — a single
+       * pinned number. `"min"`/`"max"` mark this fact as one piece of a
+       * tolerance band instead — only meaningful for `daysOff`/`departures`
+       * (see `RangeTarget` in `types/preferences.ts`); `finalizeAdaptiveProfile`
+       * merges facts sharing a key into one `RangeTarget` rather than the
+       * usual last-write-wins. Each role is its own fact/turn, captured via
+       * up to three separate `target-slider` questions (a floor question,
+       * an ideal question, a ceiling question) — no new UI widget needed.
+       */
+      rangeRole?: "min" | "ideal" | "max";
+    }
   | { type: "implicit-weight"; variableId: string; direction: 1 | -1 }
   | { type: "city-sentiment"; code: string; sentiment: CitySentiment };
 
@@ -49,11 +64,13 @@ export interface PreferenceFact {
    * preference ("I really don't like") — see `interview-prompt.ts`'s guidance
    * on this distinction. Scoring caps (rather than dilutes) a line's index
    * when a dealbreaker is violated — see `scoring.ts`'s
-   * `applyDealbreakerViolations`. Only meaningful when `measurable.type` is
-   * `"explicit-weight"`, `"implicit-weight"`, or `"city-sentiment"` — an
-   * `"explicit-target"` binding (an exact pinned number) has no natural
-   * single violation threshold, so a dealbreaker flag on one is never honored
-   * (see `parseProfileUpdates` in `interview-turn-service.ts`).
+   * `applyDealbreakerViolations`. Meaningful on `"explicit-weight"`,
+   * `"implicit-weight"`, and `"city-sentiment"` bindings always; on an
+   * `"explicit-target"` binding only when `rangeRole` is `"min"` or `"max"`
+   * — a stated floor or ceiling has a real violation condition (falling
+   * below it / exceeding it) a bare pinned "ideal" number doesn't, so
+   * severity is dropped rather than honored when `rangeRole` is absent or
+   * `"ideal"` (see `parseProfileUpdates` in `interview-turn-service.ts`).
    */
   severity?: "dealbreaker";
   source: FactSource;
@@ -81,6 +98,8 @@ export type InterviewQuestion =
       unitSingular: string;
       unitPlural: string;
       boundTo: ExplicitTargetKey;
+      /** Mirrors `MeasurableBinding`'s explicit-target `rangeRole` — which part of a tolerance band this specific question is asking about. Absent/"ideal" behaves exactly as before. */
+      rangeRole?: "min" | "ideal" | "max";
     }
   | { id: string; kind: "choice"; prompt: string; helpText?: string; options: { label: string; description?: string }[] }
   | { id: string; kind: "free-text"; prompt: string; helpText?: string; placeholder?: string }
@@ -116,6 +135,10 @@ export interface BidPackGroundingStats {
   deadheadTripSharePercent: number | null;
   distinctHotelCount: number;
   distinctCityCount: number;
+  /** Real per-line landings span — grounds the landings-preference topic the same way creditHours/tripLength are already grounded. */
+  landings: { min: number; max: number };
+  /** Null when this bid pack's PDF had no recognizable Reserve Lines grid at all — grounds the reserve-tolerance topic with real numbers rather than a vague "does this pack have reserve lines" guess. */
+  reserveLines: { count: number; typeBreakdown: Partial<Record<"24hr" | "a" | "b", number>> } | null;
 }
 
 /** What the client sends the turn-loop route each turn. */
@@ -126,10 +149,17 @@ export interface TurnRequestBody {
   base: string;
   aircraft: string;
   isCommuter: boolean | null;
-  /** Raw running turn counter, continuous from the guaranteed seed questions (0-7) into the adaptive loop (8+) — used server-side purely as each new fact's `turnIndex`, so ordering stays correct across the seed/adaptive boundary. Never shown to the model as a budget number (see `adaptiveTurnsUsed`) — it would make turn 1 of the adaptive loop look like turn 8 of a 10-turn budget. */
+  /**
+   * Running turn counter, zeroed at the true start of the interview (right
+   * after the one-off commuter toggle) — used both as each new fact's
+   * `turnIndex` and as the budget number sent to the model / compared
+   * against softCapTurns/hardCeilingTurns. These used to be two separate
+   * fields (`turnsUsed` vs `adaptiveTurnsUsed`) back when a deterministic
+   * seed round ran before the adaptive loop and needed excluding from the
+   * model's own budget framing — with no more seed phase, turn 0 of the
+   * loop really is turn 0, so the split no longer means anything.
+   */
   turnsUsed: number;
-  /** How many LLM-generated adaptive turns have happened so far, zeroed at the start of the adaptive loop (unlike `turnsUsed`) — this, not `turnsUsed`, is what's sent to the model and compared against softCapTurns/hardCeilingTurns. */
-  adaptiveTurnsUsed: number;
   softCapTurns: number;
   hardCeilingTurns: number;
 }

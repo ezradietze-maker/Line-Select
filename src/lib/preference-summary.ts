@@ -1,5 +1,5 @@
-import { ALL_TARGET_CONFIGS } from "@/lib/interview-config";
-import type { ExplicitTargetKey, PreferenceWeights } from "@/types/preferences";
+import { ALL_TARGET_CONFIGS, formatExplicitTarget } from "@/lib/interview-config";
+import type { ExplicitTargetKey, PreferenceWeights, RangeTarget } from "@/types/preferences";
 
 export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negative: string }> = {
   daysOff: {
@@ -54,6 +54,10 @@ export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negati
     positive: "protecting your sleep and body clock, even at a cost elsewhere",
     negative: "not worrying much about circadian disruption",
   },
+  landings: {
+    positive: "getting more landings in for proficiency and comfort",
+    negative: "keeping landings down for fatigue management",
+  },
 };
 
 /** Below this, a preference reads as "no strong opinion" and isn't worth mentioning. */
@@ -72,7 +76,7 @@ interface RankedPreference {
  */
 export function rankPreferences(
   weights: PreferenceWeights,
-  explicitTargets: Partial<Record<ExplicitTargetKey, number>>
+  explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>>
 ): RankedPreference[] {
   const keys = Object.keys(weights) as (keyof PreferenceWeights)[];
 
@@ -89,12 +93,7 @@ export function rankPreferences(
     let phrase: string;
     if (hasExplicit) {
       const config = ALL_TARGET_CONFIGS.find((t) => t.key === explicitKey);
-      const unit = config
-        ? explicitValue === 1
-          ? config.unitSingular
-          : config.unitPlural
-        : "";
-      phrase = `wanting close to ${config?.formatValue(explicitValue) ?? explicitValue} ${unit}`.trim();
+      phrase = config ? `wanting ${formatExplicitTarget(config, explicitValue!)}` : "";
     } else {
       phrase = weight >= 0 ? PHRASES[key].positive : PHRASES[key].negative;
     }
@@ -110,7 +109,7 @@ export function rankPreferences(
 /** "You care most about X, then Y, then Z." — the top-line summary sentence. */
 export function summarizePreferencesSentence(
   weights: PreferenceWeights,
-  explicitTargets: Partial<Record<ExplicitTargetKey, number>>
+  explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>>
 ): string {
   const phrases = rankPreferences(weights, explicitTargets)
     .slice(0, 3)

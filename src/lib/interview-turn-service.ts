@@ -63,6 +63,12 @@ const TURN_TOOL: Anthropic.Tool = {
           centerLabel: { type: "string", description: "Required for kind 'slider'." },
           unitSingular: { type: "string", description: "Required for kind 'target-slider', e.g. 'day'." },
           unitPlural: { type: "string", description: "Required for kind 'target-slider', e.g. 'days'." },
+          rangeRole: {
+            type: "string",
+            enum: ["min", "ideal", "max"],
+            description:
+              "Only for kind 'target-slider' on 'daysOff' or 'departures' when you're building a tolerance band (floor/ideal/ceiling) instead of one pinned number — see the system prompt's range-target guidance. Omit entirely for a plain single-number target-slider (including any 'creditHours' target-slider, which never gets range treatment).",
+          },
           options: {
             type: "array",
             description: "Required for kind 'choice' — at least 2 options.",
@@ -97,7 +103,7 @@ const TURN_TOOL: Anthropic.Tool = {
                   type: "string",
                   enum: ["dealbreaker"],
                   description:
-                    "Omit for the overwhelming majority of facts. Only include \"dealbreaker\" when the pilot's own words are unambiguous about refusal — \"I will not,\" \"that's a dealbreaker,\" \"I'd reject any line with X.\" Never for a merely strong-sounding preference (\"I really don't like,\" \"I'd rather avoid,\" \"I'm not a fan of\") — those stay ordinary preferences with a high importance value instead. Only meaningful on a 'measurable' fact whose binding is 'explicit-weight', 'implicit-weight', or 'city-sentiment' — never 'explicit-target' (an exact pinned number has no natural single violation threshold).",
+                    "Omit for the overwhelming majority of facts. Only include \"dealbreaker\" when the pilot's own words are unambiguous about refusal — \"I will not,\" \"that's a dealbreaker,\" \"I'd reject any line with X.\" Never for a merely strong-sounding preference (\"I really don't like,\" \"I'd rather avoid,\" \"I'm not a fan of\") — those stay ordinary preferences with a high importance value instead. Meaningful on a 'measurable' fact whose binding is 'explicit-weight', 'implicit-weight', or 'city-sentiment'. Also valid on 'explicit-target' but ONLY when rangeRole is 'min' or 'max' — a stated floor or ceiling ('fewer than X days off is a dealbreaker', 'more than Y departures is a dealbreaker') has a real violation condition; a bare pinned 'ideal' number does not, and severity there is dropped.",
                 },
                 measurable: {
                   type: "object",
@@ -113,7 +119,12 @@ const TURN_TOOL: Anthropic.Tool = {
                       enum: [1, -1],
                       description: "For 'explicit-weight' or 'implicit-weight'.",
                     },
-                    value: { type: "number", description: "For 'explicit-target' — the exact pinned number." },
+                    value: { type: "number", description: "For 'explicit-target' — the exact pinned number for this rangeRole." },
+                    rangeRole: {
+                      type: "string",
+                      enum: ["min", "ideal", "max"],
+                      description: "For 'explicit-target' only, and only when 'daysOff'/'departures' — mirrors the question's own rangeRole. Omit for a plain single-number target (including creditHours, always).",
+                    },
                     variableId: { type: "string", description: "For 'implicit-weight'." },
                     code: { type: "string", description: "For 'city-sentiment' — a real city code from this bid pack." },
                     sentiment: { type: "string", enum: ["love", "avoid"], description: "For 'city-sentiment'." },
@@ -151,13 +162,12 @@ function buildUserMessage(body: TurnRequestBody): string {
         measurable: f.measurable,
         confidence: f.confidence,
         importance: f.importance,
+        severity: f.severity,
       })),
-      // Deliberately NOT body.turnsUsed here — that counter is continuous
-      // from the guaranteed seed questions (which this "transcript" array
-      // above never includes), so it would make the very first adaptive
-      // turn look like it's already most of the way through the soft cap.
-      // adaptiveTurnsUsed is zeroed at the true start of this loop instead.
-      adaptiveTurnsUsed: body.adaptiveTurnsUsed,
+      // turnsUsed is zeroed at the true start of the interview (right after
+      // the one-off commuter toggle) — there's no separate seed phase to
+      // exclude anymore, so this is a plain, honest turn count.
+      turnsUsed: body.turnsUsed,
       softCapTurns: body.softCapTurns,
       hardCeilingTurns: body.hardCeilingTurns,
       validCatalogIds: Array.from(catalogIds),
@@ -178,6 +188,14 @@ function isExplicitTargetKey(key: unknown): key is ExplicitTargetKey {
   return typeof key === "string" && (EXPLICIT_TARGET_KEYS as string[]).includes(key);
 }
 
+/** Only "daysOff"/"departures" ever get range treatment — a rangeRole on "creditHours" (or a garbage value) is silently dropped rather than rejecting the whole fact/question over it. */
+const RANGE_TARGET_KEYS = new Set<ExplicitTargetKey>(["daysOff", "departures"]);
+
+function parseRangeRole(key: ExplicitTargetKey, raw: unknown): "min" | "ideal" | "max" | undefined {
+  if (!RANGE_TARGET_KEYS.has(key)) return undefined;
+  return raw === "min" || raw === "ideal" || raw === "max" ? raw : undefined;
+}
+
 const IMPLICIT_VARIABLE_IDS = new Set(IMPLICIT_VARIABLES.map((v) => v.id));
 
 function isKnownVariableId(id: unknown): boolean {
@@ -193,7 +211,7 @@ function parseMeasurableBinding(raw: unknown): PreferenceFact["measurable"] {
     return { type: "explicit-weight", key: m.key, direction: m.direction };
   }
   if (m.type === "explicit-target" && isExplicitTargetKey(m.key) && typeof m.value === "number") {
-    return { type: "explicit-target", key: m.key, value: m.value };
+    return { type: "explicit-target", key: m.key, value: m.value, rangeRole: parseRangeRole(m.key, m.rangeRole) };
   }
   if (m.type === "implicit-weight" && isKnownVariableId(m.variableId) && (m.direction === 1 || m.direction === -1)) {
     return { type: "implicit-weight", variableId: m.variableId as string, direction: m.direction };
@@ -236,6 +254,7 @@ function parseQuestion(raw: unknown): InterviewQuestion | null {
       boundTo: q.boundTo,
       unitSingular: typeof q.unitSingular === "string" ? q.unitSingular : fallbackSingular,
       unitPlural: typeof q.unitPlural === "string" ? q.unitPlural : fallbackPlural,
+      rangeRole: parseRangeRole(q.boundTo, q.rangeRole),
     };
   }
 
@@ -247,7 +266,16 @@ function parseQuestion(raw: unknown): InterviewQuestion | null {
   }
   if (q.kind === "target-slider" && isExplicitTargetKey(q.boundTo)) {
     if (typeof q.unitSingular !== "string" || typeof q.unitPlural !== "string") return null;
-    return { id, kind: "target-slider", prompt: q.prompt, helpText, boundTo: q.boundTo, unitSingular: q.unitSingular, unitPlural: q.unitPlural };
+    return {
+      id,
+      kind: "target-slider",
+      prompt: q.prompt,
+      helpText,
+      boundTo: q.boundTo,
+      unitSingular: q.unitSingular,
+      unitPlural: q.unitPlural,
+      rangeRole: parseRangeRole(q.boundTo, q.rangeRole),
+    };
   }
   if (q.kind === "choice" && Array.isArray(q.options) && q.options.length >= 2) {
     const options = q.options
@@ -288,15 +316,20 @@ function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId
       const measurable = f.kind === "measurable" ? parseMeasurableBinding(f.measurable) : undefined;
       if (f.kind === "measurable" && !measurable) continue; // claimed measurable but didn't bind to anything real — drop rather than silently score against nothing.
 
-      // Only honored on the three binding types with a real violation
-      // condition — an "explicit-target" (an exact pinned number) has no
-      // natural single threshold to be "violated" against, so the flag is
-      // dropped rather than the whole fact (same spirit as dropping a bad
-      // `measurable` above: lose the part that doesn't hold up, not the turn).
+      // Honored on explicit-weight/implicit-weight/city-sentiment always,
+      // and on explicit-target ONLY when rangeRole is "min" or "max" — a
+      // stated floor or ceiling has a real violation condition (falling
+      // below it / exceeding it); a bare pinned "ideal" number doesn't, so
+      // the flag is dropped rather than the whole fact (same spirit as
+      // dropping a bad `measurable` above: lose the part that doesn't hold
+      // up, not the turn).
       const severity =
         f.severity === "dealbreaker" &&
         measurable &&
-        (measurable.type === "explicit-weight" || measurable.type === "implicit-weight" || measurable.type === "city-sentiment")
+        (measurable.type === "explicit-weight" ||
+          measurable.type === "implicit-weight" ||
+          measurable.type === "city-sentiment" ||
+          (measurable.type === "explicit-target" && (measurable.rangeRole === "min" || measurable.rangeRole === "max")))
           ? ("dealbreaker" as const)
           : undefined;
 

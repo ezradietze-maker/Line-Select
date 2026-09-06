@@ -46,6 +46,8 @@ export interface PreferenceWeights {
    * Drives the circadianHealth scoring dimension (lib/circadian.ts).
    */
   circadianHealth: number;
+  /** -100 = fewer landings is fine (fatigue management), +100 = wants more landings (proficiency/comfort). Real per-line data (`Line.totalLandings`), just never asked about until the interview topic-backlog expansion. */
+  landings: number;
 }
 
 export const DEFAULT_WEIGHTS: PreferenceWeights = {
@@ -62,6 +64,7 @@ export const DEFAULT_WEIGHTS: PreferenceWeights = {
   hotelQuiet: 0,
   hotelQuality: 0,
   circadianHealth: 0,
+  landings: 0,
 };
 
 export type QuickQuestionKey =
@@ -78,10 +81,26 @@ export type DeepSliderKey =
   | "hotelGym"
   | "hotelGrocery"
   | "hotelQuiet"
-  | "hotelQuality";
+  | "hotelQuality"
+  | "landings";
 
 /** Dimensions a pilot can pin to an exact stated value. */
 export type ExplicitTargetKey = "daysOff" | "creditHours" | "departures";
+
+/**
+ * A tolerance band instead of one bare number — "the fewest I could live
+ * with, my actual ideal, and the point a month becomes a dealbreaker." Only
+ * `daysOff` and `departures` ever receive this richer shape (see the
+ * interview topic backlog); `creditHours` stays a bare number. `ideal` is
+ * itself optional since a pilot might answer floor/ceiling questions before
+ * (or without) ever pinning an exact ideal — scoring falls back to the
+ * midpoint, or whichever bound exists, when it's missing.
+ */
+export interface RangeTarget {
+  min?: number;
+  ideal?: number;
+  max?: number;
+}
 
 /** A single "would you rather" trade-off answer, -1..1. */
 export interface TradeoffAnswer {
@@ -102,7 +121,14 @@ export interface PreferenceProfile {
    * are used as the match target for that dimension instead of the rough
    * midpoint a -100..100 slider alone implies.
    */
-  explicitTargets: Partial<Record<ExplicitTargetKey, number>>;
+  /**
+   * A bare `number` means exactly what it always has — a single pinned
+   * ideal, no floor/ceiling. `daysOff`/`departures` can additionally be a
+   * full `RangeTarget` when the pilot gave a tolerance band — every
+   * existing profile (and `creditHours`, which never gets range treatment)
+   * keeps working unchanged since a bare number is still valid everywhere.
+   */
+  explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>>;
   /**
    * Whether the pilot commutes to base. Not a scored dimension on its own —
    * it raises the effective importance floor on reportTime and departures

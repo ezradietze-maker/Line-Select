@@ -10,7 +10,7 @@ import type {
   PreferenceFactUpdate,
   TurnRequestBody,
 } from "@/types/interview-session";
-import type { CitySentiment, ExplicitTargetKey, PreferenceProfile } from "@/types/preferences";
+import type { CitySentiment, ExplicitTargetKey, PreferenceProfile, RangeTarget } from "@/types/preferences";
 
 /**
  * Pure functions only — no `fetch`, no React. This is what makes "test
@@ -19,15 +19,22 @@ import type { CitySentiment, ExplicitTargetKey, PreferenceProfile } from "@/type
  * functions run unchanged once real UI/network code calls them.
  */
 
-/** Below this, the model can end anytime; between this and HARD_CEILING_TURNS it's told to wrap up unless one more turn is clearly worth it. Product numbers, not engineering ones — easy to retune. */
-export const SOFT_CAP_TURNS = 10;
+/**
+ * Below this, the model can end anytime; between this and HARD_CEILING_TURNS
+ * it's told to wrap up unless one more turn is clearly worth it. Raised from
+ * 10/16 alongside the interview topic-backlog expansion — there's roughly
+ * 3x the topic ground to cover now that the interview is one continuous
+ * loop with no separate free seed round (see `AdaptiveInterview.tsx`'s own
+ * doc comment). Product numbers, not engineering ones — easy to retune.
+ */
+export const SOFT_CAP_TURNS = 18;
 /**
  * Enforced client-side, never model-side — the loop simply stops calling
  * the turn route at this point regardless of what the last response asked
  * for, per the hard requirement that a rambling pilot can't make the
  * interview run away no matter what the model itself judges.
  */
-export const HARD_CEILING_TURNS = 16;
+export const HARD_CEILING_TURNS = 28;
 
 export function buildTurnRequest(params: {
   transcript: InterviewTurnRecord[];
@@ -37,7 +44,6 @@ export function buildTurnRequest(params: {
   aircraft: string;
   isCommuter: boolean | null;
   turnsUsed: number;
-  adaptiveTurnsUsed: number;
 }): TurnRequestBody {
   return {
     ...params,
@@ -84,10 +90,8 @@ function implicitWeightValue(direction: 1 | -1, importance: number): number {
 
 /**
  * Deterministically derives the "obvious" measurable fact directly implied
- * by a plain slider/target-slider answer — the same arithmetic
- * `factsFromSeedStep` (`AdaptiveInterview.tsx`) already uses for the
- * guaranteed seed questions, generalized to any adaptive-turn question with
- * the same shape. Returns null for a choice/free-text/wrap-up answer (no
+ * by a plain slider/target-slider answer, for any adaptive-turn question
+ * with that shape. Returns null for a choice/free-text/wrap-up answer (no
  * numeric value to derive from — direction there is unavoidably the model's
  * own interpretive job) or a slider left at 0 / a target left unset.
  *
@@ -125,11 +129,13 @@ export function deterministicFactFromAnswer(
   }
   if (question.kind === "target-slider" && answer.kind === "target-slider") {
     if (answer.value === undefined) return null;
+    const roleLabel =
+      question.rangeRole === "min" ? "floor" : question.rangeRole === "max" ? "ceiling" : "exact target";
     return {
       id: crypto.randomUUID(),
-      statement: `Pinned an exact target of ${answer.value} on "${question.prompt}"`,
+      statement: `Pinned a ${roleLabel} of ${answer.value} on "${question.prompt}"`,
       kind: "measurable",
-      measurable: { type: "explicit-target", key: question.boundTo, value: answer.value },
+      measurable: { type: "explicit-target", key: question.boundTo, value: answer.value, rangeRole: question.rangeRole },
       confidence: 1,
       importance: 0.7,
       source: { kind: "adaptive-question", questionId: question.id },
@@ -137,6 +143,12 @@ export function deterministicFactFromAnswer(
     };
   }
   return null;
+}
+
+/** Normalizes today's bare-number shape and the new `RangeTarget` shape into one read — a bare number has always meant "ideal only." */
+function asRangeTarget(value: number | RangeTarget | undefined): RangeTarget {
+  if (value === undefined) return {};
+  return typeof value === "number" ? { ideal: value } : value;
 }
 
 /**
@@ -159,7 +171,7 @@ export function finalizeAdaptiveProfile(params: {
   const { facts, transcript, isCommuter, hasCrashPad, cityPreferencesSeed = {} } = params;
 
   const weights = emptyWeights();
-  const explicitTargets: Partial<Record<ExplicitTargetKey, number>> = {};
+  const explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>> = {};
   const cityPreferences: Record<string, CitySentiment> = { ...cityPreferencesSeed };
   const implicitWeights: Record<string, number> = {};
   const implicitConfidence: Record<string, number> = {};
@@ -174,7 +186,17 @@ export function finalizeAdaptiveProfile(params: {
       weights[binding.key] = explicitWeightValue(binding.key, binding.direction, fact.importance);
       implicitConfidence[binding.key] = Math.max(implicitConfidence[binding.key] ?? 0, fact.confidence);
     } else if (binding.type === "explicit-target") {
-      explicitTargets[binding.key] = binding.value;
+      // No rangeRole at all (creditHours, or any bare single-number answer)
+      // still just overwrites — identical to today's behavior. Any real
+      // role ("min"/"ideal"/"max") instead merges into whatever range is
+      // already building for this key, so a floor answered on one turn
+      // survives an ideal answered on a later one.
+      if (binding.rangeRole === undefined) {
+        explicitTargets[binding.key] = binding.value;
+      } else {
+        const existing = asRangeTarget(explicitTargets[binding.key]);
+        explicitTargets[binding.key] = { ...existing, [binding.rangeRole]: binding.value };
+      }
     } else if (binding.type === "implicit-weight") {
       implicitWeights[binding.variableId] = implicitWeightValue(binding.direction, fact.importance);
       implicitConfidence[binding.variableId] = Math.max(implicitConfidence[binding.variableId] ?? 0, fact.confidence);

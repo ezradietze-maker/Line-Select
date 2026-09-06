@@ -10,7 +10,7 @@ import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { HotelAmenitySummary, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 import type { MeasurableBinding, PreferenceFact } from "@/types/interview-session";
-import type { CitySentiment, PreferenceProfile, PreferenceWeights } from "@/types/preferences";
+import type { CitySentiment, PreferenceProfile, PreferenceWeights, RangeTarget } from "@/types/preferences";
 
 /**
  * Everything the layoverQuality dimension needs about one real assigned
@@ -51,7 +51,8 @@ export type DimensionKey =
   | "deadheadTolerance"
   | "departures"
   | "layoverQuality"
-  | "circadianHealth";
+  | "circadianHealth"
+  | "landings";
 
 /** Dimensions driven by a -100..100 slider weight (everything except cityPreference, which is driven by a set of flagged cities instead). */
 type WeightedDimensionKey = keyof PreferenceWeights;
@@ -145,6 +146,8 @@ interface LineMetrics {
   deadheadPerTrip: number;
   /** Line-level total, not averaged — mirrors `creditHours` below. */
   totalDepartures: number;
+  /** Line-level total, exact even on an estimated line (see `Line.totalLandings`'s own doc comment) — same honesty tier as daysOff/creditHours. */
+  totalLandings: number;
 }
 
 function computeRawMetrics(line: Line): LineMetrics {
@@ -169,6 +172,7 @@ function computeRawMetrics(line: Line): LineMetrics {
     creditHours: line.totalCreditHours,
     deadheadPerTrip,
     totalDepartures: line.totalDepartures,
+    totalLandings: line.totalLandings,
   };
 }
 
@@ -443,9 +447,45 @@ function matchFromDistance(value: number, target: number): number {
   return 1 - Math.abs(value - target);
 }
 
+/** Today's bare number has always meant "ideal only" — normalizing here means `daysOff`/`departures`/`creditHours` can all be read through the same range-aware match logic below, with creditHours (which never receives min/max) degenerating exactly to today's single-point behavior. */
+function asRangeTargetForScoring(value: number | RangeTarget | undefined): RangeTarget | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === "number" ? { ideal: value } : value;
+}
+
+/**
+ * A pinned single point (`matchFromDistance`) generalized to a tolerance
+ * band: anywhere inside `[min, max]` is a full match, same as hitting the
+ * ideal exactly used to be; outside it, distance-penalized from the nearer
+ * bound exactly like the single-point case always was. With neither bound
+ * set this is byte-for-byte `matchFromDistance(value, normalizedIdeal)`.
+ */
+function matchFromRange(
+  value: number,
+  normalizedIdeal: number,
+  normalizedMin: number | undefined,
+  normalizedMax: number | undefined
+): number {
+  if (normalizedMin === undefined && normalizedMax === undefined) {
+    return matchFromDistance(value, normalizedIdeal);
+  }
+  // A stated floor with no ceiling (or vice versa) is open-ended on the
+  // unstated side — "at least 20 days off" is a full match at 24, not a
+  // point target collapsed onto 20 — so the unstated bound defaults to the
+  // normalized extreme of this dimension's own bid-pack range, not back to
+  // normalizedIdeal (which, with only one bound stated, is just that same
+  // bound and would otherwise silently turn a floor/ceiling into a pinned
+  // point).
+  const lo = normalizedMin ?? 0;
+  const hi = normalizedMax ?? 1;
+  if (value >= lo && value <= hi) return 1;
+  const distanceOutside = value < lo ? lo - value : value - hi;
+  return Math.max(0, 1 - distanceOutside);
+}
+
 const FIXED_DIMENSION_KEYS = new Set<DimensionKey>([
   "daysOff", "tripLength", "international", "cityPreference", "reportTime",
-  "creditHours", "deadheadTolerance", "departures", "layoverQuality", "circadianHealth",
+  "creditHours", "deadheadTolerance", "departures", "layoverQuality", "circadianHealth", "landings",
 ]);
 
 /** Distinguishes a fixed explicit dimension from an implicit-catalog id living in the same `DimensionScore.key` field — see that field's own doc comment. */
@@ -502,6 +542,8 @@ function hitPhrase(key: DimensionKey, weight: number): string {
       return "well-reviewed layover hotels near the things you said matter to you";
     case "circadianHealth":
       return "trips that stay easy on your sleep and body clock";
+    case "landings":
+      return weight > 0 ? "plenty of landings for proficiency and comfort" : "a lighter landing count for fatigue management";
   }
 }
 
@@ -550,6 +592,10 @@ function missPhrase(
       return value < 0.35 ? "layover hotels that fall short on what you flagged as important" : null;
     case "circadianHealth":
       return value < 0.35 ? "trips that are rough on your sleep and body clock" : null;
+    case "landings":
+      if (weight > 0 && below) return "fewer landings than you're after";
+      if (weight < 0 && !below) return "more landings than you'd probably want";
+      return null;
   }
 }
 
@@ -757,7 +803,18 @@ function dealbreakerViolatedFor(
       : null;
   }
 
-  return null; // "explicit-target" dealbreakers are never honored — see parseProfileUpdates.
+  if (binding.type === "explicit-target") {
+    // Only "min"/"max" ever carry severity (parseProfileUpdates drops it
+    // otherwise) — a stated floor or ceiling on daysOff/departures, checked
+    // against the line's own real raw total, no normalization needed.
+    if (binding.rangeRole !== "min" && binding.rangeRole !== "max") return null;
+    const rawValue = binding.key === "daysOff" ? line.daysOff : binding.key === "departures" ? line.totalDepartures : undefined;
+    if (rawValue === undefined) return null; // creditHours never receives a rangeRole, so never reaches here in practice.
+    const violated = binding.rangeRole === "min" ? rawValue < binding.value : rawValue > binding.value;
+    return violated ? { statement: fact.statement, label: humanizeKey(binding.key) } : null;
+  }
+
+  return null;
 }
 
 /**
@@ -863,6 +920,10 @@ export function scoreBidPack(
     cityScore: [Math.min(...cityScores), Math.max(...cityScores)] as const,
     layoverQuality: [Math.min(...layoverQualityScores), Math.max(...layoverQualityScores)] as const,
     departures: bidPackRanges.departures,
+    landings: [
+      Math.min(...rawMetrics.map((m) => m.totalLandings)),
+      Math.max(...rawMetrics.map((m) => m.totalLandings)),
+    ] as const,
   };
 
   return bidPack.lines.map((line, i) => {
@@ -896,6 +957,7 @@ export function scoreBidPack(
       // the `verified` flag below (via circadianScores[i] === null) is what
       // actually tells the caller "no real data," not this placeholder.
       circadianHealth: circadianScores[i] ?? 0.5,
+      landings: normalize(raw.totalLandings, ranges.landings[0], ranges.landings[1]),
     };
 
     const dimensions: DimensionScore[] = (
@@ -968,23 +1030,35 @@ export function scoreBidPack(
       }
 
       let target: number;
+      let match: number;
       let hasExplicitTarget = false;
 
-      if (key === "daysOff" && explicitTargets.daysOff !== undefined) {
-        target = normalize(explicitTargets.daysOff, ranges.daysOff[0], ranges.daysOff[1]);
+      if ((key === "daysOff" || key === "creditHours" || key === "departures") && explicitTargets[key] !== undefined) {
         hasExplicitTarget = true;
-      } else if (key === "creditHours" && explicitTargets.creditHours !== undefined) {
-        target = normalize(
-          explicitTargets.creditHours,
-          ranges.creditHours[0],
-          ranges.creditHours[1]
-        );
-        hasExplicitTarget = true;
-      } else if (key === "departures" && explicitTargets.departures !== undefined) {
-        target = normalize(explicitTargets.departures, ranges.departures[0], ranges.departures[1]);
-        hasExplicitTarget = true;
+        const bounds = key === "daysOff" ? ranges.daysOff : key === "creditHours" ? ranges.creditHours : ranges.departures;
+        // Only daysOff/departures ever actually carry min/max (creditHours
+        // never receives range treatment — see RangeTarget's own doc
+        // comment) — asRangeTargetForScoring/matchFromRange handle both
+        // uniformly, with creditHours' bare number degenerating to exactly
+        // today's single-point behavior.
+        const range = asRangeTargetForScoring(explicitTargets[key])!;
+        const normalizedIdeal =
+          range.ideal !== undefined
+            ? normalize(range.ideal, bounds[0], bounds[1])
+            : range.min !== undefined && range.max !== undefined
+              ? normalize((range.min + range.max) / 2, bounds[0], bounds[1])
+              : range.min !== undefined
+                ? normalize(range.min, bounds[0], bounds[1])
+                : range.max !== undefined
+                  ? normalize(range.max, bounds[0], bounds[1])
+                  : 0.5;
+        const normalizedMin = range.min !== undefined ? normalize(range.min, bounds[0], bounds[1]) : undefined;
+        const normalizedMax = range.max !== undefined ? normalize(range.max, bounds[0], bounds[1]) : undefined;
+        target = normalizedIdeal;
+        match = matchFromRange(values[key], normalizedIdeal, normalizedMin, normalizedMax);
       } else {
         target = weightToTarget(weights[key]);
+        match = matchFromDistance(values[key], target);
       }
 
       const confidence = implicitConfidence[key] ?? defaultConfidence(weights[key] !== 0 || hasExplicitTarget);
@@ -994,7 +1068,7 @@ export function scoreBidPack(
         value: values[key],
         target,
         importance,
-        match: matchFromDistance(values[key], target),
+        match,
         verified: !(line.estimated && UNVERIFIED_WHEN_ESTIMATED.includes(key)),
       };
     });

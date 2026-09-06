@@ -14,13 +14,6 @@ import { FreeTextAnswerBox } from "@/components/interview/FreeTextAnswerBox";
 import { SliderStep } from "@/components/interview/SliderStep";
 import { TargetSliderStep } from "@/components/interview/TargetSliderStep";
 import {
-  QUICK_STEPS,
-  deadheadQuestionFor,
-  formatHoursValue,
-  type QuickStepConfig,
-  type SliderQuestionConfig,
-} from "@/lib/interview-config";
-import {
   HARD_CEILING_TURNS,
   SOFT_CAP_TURNS,
   applyProfileUpdates,
@@ -28,7 +21,7 @@ import {
   finalizeAdaptiveProfile,
 } from "@/lib/interview-engine";
 import { computeBidPackGroundingStats } from "@/lib/interview-grounding";
-import { cycleCitySentiment, emptyWeights } from "@/lib/preference-logic";
+import { cycleCitySentiment } from "@/lib/preference-logic";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
 import type {
@@ -38,32 +31,33 @@ import type {
   PreferenceFact,
   TurnResponse,
 } from "@/types/interview-session";
-import type { CitySentiment, ExplicitTargetKey, PreferenceProfile, PreferenceWeights } from "@/types/preferences";
+import type { CitySentiment, PreferenceProfile } from "@/types/preferences";
 
 /**
- * Replaces the old fixed-order `Interview.tsx` with a conversational flow:
- * a short guaranteed-baseline seed sequence (home time/domicile, trip
- * length, departures, cities, report time, pay-vs-lifestyle, circadian
- * health, deadhead — the same ground the brief itself names as anchor
- * coverage), then a live turn loop against `/api/interview-turn` that asks
- * whatever it judges is actually worth asking next, until it wraps up, the
- * pilot ends early, or the hard turn ceiling is hit.
+ * A continuous conversation from the first real question to the last — not
+ * a static form with AI follow-ups bolted on afterward. Only two things
+ * happen before the turn loop starts, and both are widget-shaped tasks a
+ * conversation would handle worse, not substantive preference-gathering:
+ * commute status (`CommuterStep`, needed to correctly phrase several later
+ * topics) and an initial city love/avoid pass (`CityPreferenceStep`, a
+ * multi-select genuinely faster than naming cities one at a time in
+ * free text). Both seed real facts into the loop's own starting context —
+ * the city picks specifically so the model's very first turns can ask
+ * *why* a flagged city is loved or avoided, per the interview topic
+ * backlog (`interview-prompt.ts`) — rather than sitting in a side channel
+ * the model never sees.
  *
- * Seed answers never touch the network — each one is a deterministic,
- * lossless conversion straight from the slider/target value into a
- * `PreferenceFact` (see `factsFromSeedStep`), the same arithmetic the
- * legacy interview already did, just expressed as a fact instead of a
- * direct weight write. The first live LLM call only happens once every
- * seed question has been asked, so the guaranteed baseline really is free
- * and instant, and the model's first real turn already has the full seed
- * transcript as context.
- *
- * Scope note: the legacy interview's separate hotel-amenities multi-select
- * and "would you rather" trade-off cards are not part of the guaranteed
- * seed set here — the model already asks about layover quality and similar
- * trade-offs organically when a pilot's answers suggest it matters (see the
- * live transcripts from Phase 2), which is more in the spirit of an
- * adaptive interview than forcing every pilot through a fixed deep round.
+ * Every other topic — the reworked originals (home time, departures, pay
+ * vs. lifestyle, deadhead/commute, per-city "why") and everything new
+ * (landings, international ceiling, report-time/circadian tolerance,
+ * reserve tolerance, predictability vs. variety, rest/recovery, financial
+ * context, and the topics that stay qualitative-only for lack of reliable
+ * calendar data) — is entirely the turn loop's call: what to ask, how deep
+ * to go, when to move on. There is no guaranteed-free deterministic round
+ * anymore; every question after the two pre-steps is a real `/api/interview-turn`
+ * call, which is why the turn budget (`SOFT_CAP_TURNS`/`HARD_CEILING_TURNS`)
+ * was raised alongside this restructure — there's roughly 3x the topic
+ * ground a thorough interview might actually cover now.
  */
 
 interface AdaptiveInterviewProps {
@@ -73,68 +67,20 @@ interface AdaptiveInterviewProps {
 
 const MAX_CITY_CHOICES = 12;
 
-type Phase = "commuter" | "seed" | "adaptive-loading" | "adaptive-question" | "finishing";
+type Phase = "commuter" | "cities" | "adaptive-loading" | "adaptive-question" | "finishing";
 
-function seedStatement(config: SliderQuestionConfig, value: number): string {
-  const label = Math.abs(value) < 10 ? config.centerLabel : value > 0 ? config.highLabel : config.lowLabel;
-  return `${config.question} — ${label}.`;
-}
-
-/** Deterministic, network-free conversion of one answered seed step into zero or more facts — a slider left at 0 (no strong preference) produces nothing to score, matching the legacy interview's own "importance floor" behavior. */
-function factsFromSeedStep(
-  step: QuickStepConfig,
-  weights: PreferenceWeights,
-  explicitTargets: Partial<Record<ExplicitTargetKey, number>>,
-  turnIndex: number
-): PreferenceFact[] {
-  if (step.kind === "slider") {
-    const key = step.config.key;
-    const value = weights[key];
-    if (value === 0) return [];
-    return [
-      {
-        id: crypto.randomUUID(),
-        statement: seedStatement(step.config, value),
-        kind: "measurable",
-        measurable: { type: "explicit-weight", key, direction: value > 0 ? 1 : -1 },
-        confidence: 1,
-        importance: Math.min(1, Math.abs(value) / 100),
-        source: { kind: "seed-question", questionKey: key },
-        turnIndex,
-      },
-    ];
-  }
-  if (step.kind === "target") {
-    const value = explicitTargets[step.config.key];
-    if (value === undefined) return [];
-    const unit = value === 1 ? step.config.unitSingular : step.config.unitPlural;
-    return [
-      {
-        id: crypto.randomUUID(),
-        statement: `Wants ${step.config.formatValue(value)} ${unit} this bid period.`,
-        kind: "measurable",
-        measurable: { type: "explicit-target", key: step.config.key, value },
-        confidence: 1,
-        importance: 0.7,
-        source: { kind: "seed-question", questionKey: step.config.key },
-        turnIndex,
-      },
-    ];
-  }
-  return []; // "cities" is threaded straight through as cityPreferencesSeed instead — see finalizeAdaptiveProfile.
-}
-
-function StatCallout({ stats }: { stats: { label: string; value: string }[] }) {
-  return (
-    <div className={`mt-6 grid gap-3 ${stats.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-      {stats.map((s, i) => (
-        <div key={i} className="rounded-lg border border-border bg-canvas px-4 py-3 text-center">
-          <div className="font-mono text-xl font-semibold text-brand">{s.value}</div>
-          <div className="mt-1 text-xs text-ink-faint">{s.label}</div>
-        </div>
-      ))}
-    </div>
-  );
+/** Deterministic, network-free conversion of the city picker's initial picks into real facts — so the turn loop's very first context already includes them, and the model can follow up on *why* rather than the picks sitting in a side channel it never sees. */
+function factsFromCityPreferences(cityPreferences: Record<string, CitySentiment>): PreferenceFact[] {
+  return Object.entries(cityPreferences).map(([code, sentiment]) => ({
+    id: crypto.randomUUID(),
+    statement: `${sentiment === "love" ? "Loves" : "Wants to avoid"} layovers in ${code}.`,
+    kind: "measurable",
+    measurable: { type: "city-sentiment", code, sentiment },
+    confidence: 1,
+    importance: 0.6,
+    source: { kind: "seed-question", questionKey: "cities" },
+    turnIndex: 0,
+  }));
 }
 
 function StepNav({ onNext, nextLabel, disabled }: { onNext: () => void; nextLabel: string; disabled?: boolean }) {
@@ -194,10 +140,7 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
   const [isCommuter, setIsCommuter] = useState<boolean | null>(null);
   const [hasCrashPad, setHasCrashPad] = useState<boolean | null>(null);
   const [cityPreferences, setCityPreferences] = useState<Record<string, CitySentiment>>({});
-  const [weights, setWeights] = useState(emptyWeights());
-  const [explicitTargets, setExplicitTargets] = useState<Partial<Record<ExplicitTargetKey, number>>>({});
 
-  const [seedIndex, setSeedIndex] = useState(0);
   const [facts, setFacts] = useState<PreferenceFact[]>([]);
   const [transcript, setTranscript] = useState<InterviewTurnRecord[]>([]);
   const [turnsUsed, setTurnsUsed] = useState(0);
@@ -205,9 +148,6 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
   const [choiceSelection, setChoiceSelection] = useState<number | null>(null);
   const [choiceElaboration, setChoiceElaboration] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  const seedSteps = useMemo(() => [...QUICK_STEPS, { kind: "slider" as const, config: deadheadQuestionFor(isCommuter) }], [isCommuter]);
-  const currentSeedStep = seedSteps[seedIndex];
 
   function finish(finalFacts: PreferenceFact[], finalTranscript: InterviewTurnRecord[]) {
     setPhase("finishing");
@@ -233,12 +173,6 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
         aircraft: bidPack.aircraft,
         isCommuter,
         turnsUsed: nextTurnsUsed,
-        // turnsUsed is a running counter starting from the guaranteed seed
-        // questions (0-7) — sending that raw number to the model as its
-        // budget would make the very first adaptive question look like
-        // turn 8 of a 10-turn soft cap. This is what the model (and the
-        // hard-ceiling check below) actually reasons against.
-        adaptiveTurnsUsed: Math.max(0, nextTurnsUsed - seedSteps.length),
       });
       const res = await fetch("/api/interview-turn", {
         method: "POST",
@@ -269,21 +203,6 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
     }
   }
 
-  function advanceSeed() {
-    const newFacts = factsFromSeedStep(currentSeedStep, weights, explicitTargets, seedIndex);
-    const nextFacts = [...facts, ...newFacts];
-    const nextTurnsUsed = turnsUsed + 1;
-    setFacts(nextFacts);
-    setTurnsUsed(nextTurnsUsed);
-
-    if (seedIndex < seedSteps.length - 1) {
-      setSeedIndex(seedIndex + 1);
-      return;
-    }
-    // Seed coverage complete — hand off to the live turn loop.
-    requestNextTurn(nextFacts, transcript, nextTurnsUsed);
-  }
-
   function handleAdaptiveAnswer(answer: InterviewAnswer) {
     if (!currentQuestion) return;
     const nextTranscript: InterviewTurnRecord[] = [
@@ -295,66 +214,23 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
     setTurnsUsed(nextTurnsUsed);
     setCurrentQuestion(null);
 
-    if (nextTurnsUsed - seedSteps.length >= HARD_CEILING_TURNS) {
+    if (nextTurnsUsed >= HARD_CEILING_TURNS) {
       // Hard ceiling enforced client-side, regardless of what the model would have asked next.
-      // Measured from the start of the adaptive loop, not from turnsUsed's raw
-      // seed-inclusive value — see the matching comment in requestNextTurn.
       finish(facts, nextTranscript);
       return;
     }
     requestNextTurn(facts, nextTranscript, nextTurnsUsed);
   }
 
-  function sliderExtraFor(key: string) {
-    if (key === "tripLength" && grounding.tripLength) {
-      return (
-        <StatCallout
-          stats={[
-            { label: "Shortest trip in this bid pack", value: `${grounding.tripLength.min}-day` },
-            { label: "Longest trip in this bid pack", value: `${grounding.tripLength.max}-day` },
-          ]}
-        />
-      );
-    }
-    if (key === "reportTime" && grounding.reportTime) {
-      return (
-        <StatCallout
-          stats={[
-            { label: "Earliest report in this bid pack", value: grounding.reportTime.earliest.replace(/^(\d{2})(\d{2})$/, "$1:$2") },
-            { label: "Latest report in this bid pack", value: grounding.reportTime.latest.replace(/^(\d{2})(\d{2})$/, "$1:$2") },
-          ]}
-        />
-      );
-    }
-    if (key === "creditHours") {
-      return (
-        <StatCallout
-          stats={[
-            { label: "Leanest line in this bid pack", value: `${formatHoursValue(grounding.creditHours.min)} credit` },
-            { label: "Max line in this bid pack", value: `${formatHoursValue(grounding.creditHours.max)} credit` },
-          ]}
-        />
-      );
-    }
-    if (key === "deadheadTolerance" && grounding.deadheadTripSharePercent !== null) {
-      return (
-        <StatCallout
-          stats={[{ label: "of trips in this bid pack include at least one deadhead leg", value: `${grounding.deadheadTripSharePercent}%` }]}
-        />
-      );
-    }
-    return undefined;
-  }
-
   const stepsDone =
-    phase === "commuter" ? 0 : 1 + (phase === "seed" ? seedIndex : seedSteps.length) + Math.max(0, turnsUsed - seedSteps.length);
-  const totalStepsApprox = 1 + seedSteps.length + SOFT_CAP_TURNS;
+    phase === "commuter" ? 0 : phase === "cities" ? 1 : 2 + turnsUsed;
+  const totalStepsApprox = 2 + SOFT_CAP_TURNS;
 
   const stepKey =
     phase === "commuter"
       ? "commuter"
-      : phase === "seed"
-        ? `seed-${seedIndex}`
+      : phase === "cities"
+        ? "cities"
         : currentQuestion
           ? `q-${currentQuestion.id}`
           : phase;
@@ -364,74 +240,47 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
       return (
         <div>
           <CommuterStep value={isCommuter} onChange={setIsCommuter} base={bidPack.base} />
-          <StepNav onNext={() => setPhase("seed")} nextLabel="Next" disabled={isCommuter === null} />
+          <StepNav onNext={() => setPhase("cities")} nextLabel="Next" disabled={isCommuter === null} />
+          {isCommuter === true && (
+            <div className="mt-6 rounded-lg border border-border bg-canvas p-4">
+              <div className="text-sm font-medium text-ink">Got a crash pad in domicile?</div>
+              <p className="mt-1 text-xs text-ink-muted">
+                Worth factoring in — without a place to stage between duty days, an extra separate trip costs
+                you more than it would otherwise.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  aria-pressed={hasCrashPad === true}
+                  onClick={() => setHasCrashPad(true)}
+                  className={`rounded-full border-2 px-3.5 py-1.5 text-sm font-medium transition-all ${
+                    hasCrashPad === true
+                      ? "border-brand bg-brand-soft text-brand"
+                      : "border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink"
+                  }`}
+                >
+                  Yes, I&rsquo;ve got a place
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={hasCrashPad === false}
+                  onClick={() => setHasCrashPad(false)}
+                  className={`rounded-full border-2 px-3.5 py-1.5 text-sm font-medium transition-all ${
+                    hasCrashPad === false
+                      ? "border-brand bg-brand-soft text-brand"
+                      : "border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink"
+                  }`}
+                >
+                  No crash pad
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
 
-    if (phase === "seed") {
-      if (currentSeedStep.kind === "slider") {
-        return (
-          <div>
-            <SliderStep
-              config={currentSeedStep.config}
-              value={weights[currentSeedStep.config.key as keyof PreferenceWeights]}
-              onChange={(v) => setWeights((w) => ({ ...w, [currentSeedStep.config.key]: v }))}
-              extra={sliderExtraFor(currentSeedStep.config.key)}
-            />
-            <StepNav onNext={advanceSeed} nextLabel={seedIndex === seedSteps.length - 1 ? "Continue" : "Next"} />
-          </div>
-        );
-      }
-      if (currentSeedStep.kind === "target") {
-        return (
-          <div>
-            <TargetSliderStep
-              config={currentSeedStep.config}
-              range={ranges[currentSeedStep.config.key]}
-              value={explicitTargets[currentSeedStep.config.key]}
-              onChange={(v) => setExplicitTargets((t) => ({ ...t, [currentSeedStep.config.key]: v }))}
-            />
-            {currentSeedStep.showCrashPad && isCommuter === true && (
-              <div className="mt-6 rounded-lg border border-border bg-canvas p-4">
-                <div className="text-sm font-medium text-ink">Got a crash pad in domicile?</div>
-                <p className="mt-1 text-xs text-ink-muted">
-                  Worth factoring in — without a place to stage between duty days, an extra separate trip costs
-                  you more than it would otherwise.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    aria-pressed={hasCrashPad === true}
-                    onClick={() => setHasCrashPad(true)}
-                    className={`rounded-full border-2 px-3.5 py-1.5 text-sm font-medium transition-all ${
-                      hasCrashPad === true
-                        ? "border-brand bg-brand-soft text-brand"
-                        : "border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink"
-                    }`}
-                  >
-                    Yes, I&rsquo;ve got a place
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={hasCrashPad === false}
-                    onClick={() => setHasCrashPad(false)}
-                    className={`rounded-full border-2 px-3.5 py-1.5 text-sm font-medium transition-all ${
-                      hasCrashPad === false
-                        ? "border-brand bg-brand-soft text-brand"
-                        : "border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink"
-                    }`}
-                  >
-                    No crash pad
-                  </button>
-                </div>
-              </div>
-            )}
-            <StepNav onNext={advanceSeed} nextLabel="Next" />
-          </div>
-        );
-      }
-      // "cities"
+    if (phase === "cities") {
       return (
         <div>
           <CityPreferenceStep
@@ -439,7 +288,14 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
             preferences={cityPreferences}
             onToggleCity={(code) => setCityPreferences((prev) => cycleCitySentiment(prev, code))}
           />
-          <StepNav onNext={advanceSeed} nextLabel="Next" />
+          <StepNav
+            onNext={() => {
+              const cityFacts = factsFromCityPreferences(cityPreferences);
+              setFacts(cityFacts);
+              requestNextTurn(cityFacts, transcript, 0);
+            }}
+            nextLabel="Continue"
+          />
         </div>
       );
     }

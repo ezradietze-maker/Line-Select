@@ -10,6 +10,8 @@ import {
   HOTEL_AMENITIES,
   QUICK_QUESTIONS,
   deadheadQuestionFor,
+  formatExplicitTarget,
+  touchedSliderConfigs,
 } from "@/lib/interview-config";
 import { summarizePreferencesSentence } from "@/lib/preference-summary";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
@@ -34,12 +36,15 @@ export function ConfirmPreferencesScreen({
 }: ConfirmPreferencesScreenProps) {
   const [weights, setWeights] = useState<PreferenceWeights>(profile.weights);
 
-  const sliderConfigs = [
-    ...QUICK_QUESTIONS,
-    ...DEEP_SLIDERS.map((s) =>
-      s.key === "deadheadTolerance" ? deadheadQuestionFor(profile.isCommuter) : s
-    ),
-  ];
+  const sliderConfigs = touchedSliderConfigs(
+    [
+      ...QUICK_QUESTIONS,
+      ...DEEP_SLIDERS.map((s) =>
+        s.key === "deadheadTolerance" ? deadheadQuestionFor(profile.isCommuter) : s
+      ),
+    ],
+    profile.discoveredFacts
+  );
   const selectedAmenities = HOTEL_AMENITIES.filter((a) => weights[a.key] > 0);
 
   const sentence = summarizePreferencesSentence(weights, profile.explicitTargets);
@@ -109,7 +114,7 @@ export function ConfirmPreferencesScreen({
               <div key={t.key} className="flex items-center justify-between text-sm">
                 <span className="text-ink-muted">{t.question}</span>
                 <span className="font-mono font-semibold text-ink">
-                  {t.formatValue(profile.explicitTargets[t.key]!)} {t.unitPlural}
+                  {formatExplicitTarget(t, profile.explicitTargets[t.key]!)}
                 </span>
               </div>
             ))}

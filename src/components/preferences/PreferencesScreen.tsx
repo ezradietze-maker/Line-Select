@@ -8,6 +8,8 @@ import {
   HOTEL_AMENITIES,
   QUICK_QUESTIONS,
   deadheadQuestionFor,
+  formatExplicitTarget,
+  touchedSliderConfigs,
   type SliderQuestionConfig,
 } from "@/lib/interview-config";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -48,8 +50,14 @@ export function PreferencesScreen({
   }
 
   const completedDate = new Date(profile.completedAt);
-  const deepSliders = DEEP_SLIDERS.map((s) =>
-    s.key === "deadheadTolerance" ? deadheadQuestionFor(profile.isCommuter) : s
+  const sliderConfigs = touchedSliderConfigs(
+    [
+      ...QUICK_QUESTIONS,
+      ...DEEP_SLIDERS.map((s) =>
+        s.key === "deadheadTolerance" ? deadheadQuestionFor(profile.isCommuter) : s
+      ),
+    ],
+    profile.discoveredFacts
   );
   const selectedAmenities = HOTEL_AMENITIES.filter((a) => profile.weights[a.key] > 0);
   const lovedCities = Object.entries(profile.cityPreferences)
@@ -93,10 +101,7 @@ export function PreferencesScreen({
       </div>
 
       <div className="mt-6 space-y-3 rounded-xl border border-border bg-surface p-5 sm:p-6">
-        {QUICK_QUESTIONS.map((config) => (
-          <WeightRow key={config.key} config={config} weight={profile.weights[config.key]} />
-        ))}
-        {deepSliders.map((config) => (
+        {sliderConfigs.map((config) => (
           <WeightRow key={config.key} config={config} weight={profile.weights[config.key]} />
         ))}
       </div>
@@ -130,7 +135,7 @@ export function PreferencesScreen({
                 <div key={t.key} className="flex items-center justify-between text-sm">
                   <span className="text-ink-muted">{t.question}</span>
                   <span className="font-mono font-semibold text-ink">
-                    {t.formatValue(profile.explicitTargets[t.key]!)} {t.unitPlural}
+                    {formatExplicitTarget(t, profile.explicitTargets[t.key]!)}
                   </span>
                 </div>
               )

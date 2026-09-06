@@ -180,6 +180,13 @@ export const IMPLICIT_VARIABLES: ImplicitVariable[] = [
     description: "Duty periods that report during the circadian low right after an overnight in a city outside the US — the specific combination, not either condition alone.",
     valueShape: "threshold",
   },
+  {
+    id: "tripShapeVariancePerLine",
+    category: "dutyStructure",
+    label: "Trip-length variety across the line",
+    description: "How much this line's own trips vary in length (days) from each other — a repeatable month of similar-length trips versus a wide mix of very different ones. Direction 1 = wants more variety/spread; direction -1 = wants a repeatable, consistent month.",
+    valueShape: "linear",
+  },
 ];
 
 function normalize(value: number, min: number, max: number): number {
@@ -191,12 +198,22 @@ function mean(values: number[]): number | null {
   return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
 }
 
+/** Population standard deviation — no Bessel correction needed, this is describing the line's own trips, not estimating a wider population from a sample. */
+function stddev(values: number[]): number | null {
+  if (values.length < 2) return null;
+  const m = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + (b - m) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
 /** Raw (unnormalized) per-line values for every implicit variable, averaged across the line's schedule-verified trips — an estimated or unverified trip has nothing real to measure, so it's excluded rather than guessed. */
 function computeRawLineValues(line: Line): Record<string, number | null> {
   const analytics = line.trips.filter((t) => t.schedule.length > 0).map((t) => computeTripAnalytics(t));
+  // trip.days is a raw line-grid field, not schedule-dependent, so it's available even for lines whose duty-level schedule couldn't be confirmed.
+  const tripShapeVariancePerLine = stddev(line.trips.map((t) => t.days));
 
   if (analytics.length === 0) {
-    return Object.fromEntries(IMPLICIT_VARIABLES.map((v) => [v.id, null]));
+    return { ...Object.fromEntries(IMPLICIT_VARIABLES.map((v) => [v.id, null])), tripShapeVariancePerLine };
   }
 
   const totalLayovers = analytics.reduce(
@@ -240,6 +257,7 @@ function computeRawLineValues(line: Line): Record<string, number | null> {
     earlyReportAfterInternationalLayoverPerTrip: mean(
       analytics.map((a) => a.earlyReportAfterInternationalLayoverCount)
     ),
+    tripShapeVariancePerLine,
   };
 }
 

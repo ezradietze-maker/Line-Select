@@ -69,7 +69,7 @@ describe("implicit dimension wiring (the open dimension list)", () => {
   it("adds no implicit dimensions at all for the default profile shape (empty implicitWeights/implicitConfidence)", () => {
     const ranked = rankLines(SAMPLE_BID_PACK, neutralProfile(), {}, implicitValuesByLine);
     for (const r of ranked) {
-      expect(r.dimensions).toHaveLength(10); // exactly the ten fixed DimensionKeys, nothing more
+      expect(r.dimensions).toHaveLength(11); // exactly the eleven fixed DimensionKeys, nothing more
     }
   });
 
@@ -313,6 +313,132 @@ describe("gymScore", () => {
     const withNegativeGym = gymScore(0.5, reviewSummaryWithTheme({ onSiteGym: "negative" }));
     expect(withNegativeGym).toBeLessThan(0.5);
     expect(withNegativeGym).toBeCloseTo(0.2, 5);
+  });
+});
+
+describe("range targets (daysOff/departures floor-ideal-ceiling)", () => {
+  it("scores a full match for any line inside [min,max], distance-penalized only outside it", () => {
+    // Sample pack daysOff spread is [18,24]: 9001=24, 9002=24, 9003=23, 9004=20, 9005=19, 9006=18.
+    const profile = {
+      ...neutralProfile(),
+      explicitTargets: { daysOff: { min: 20, max: 24 } },
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const matchFor = (lineNumber: string) =>
+      ranked.find((r) => r.line.lineNumber === lineNumber)!.dimensions.find((d) => d.key === "daysOff")!.match;
+
+    // 9001/9002/9003/9004 all sit inside [20,24] -> full match.
+    expect(matchFor("9001")).toBe(1);
+    expect(matchFor("9002")).toBe(1);
+    expect(matchFor("9003")).toBe(1);
+    expect(matchFor("9004")).toBe(1);
+    // 9005 (19) and 9006 (18) sit below the floor -> distance-penalized, worse the further below.
+    expect(matchFor("9005")).toBeLessThan(1);
+    expect(matchFor("9006")).toBeLessThan(matchFor("9005"));
+  });
+
+  it("behaves identically to a bare pinned number when only min is given (degenerates to a floor, not a two-point band)", () => {
+    const profile = {
+      ...neutralProfile(),
+      explicitTargets: { daysOff: { min: 22 } },
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const matchFor = (lineNumber: string) =>
+      ranked.find((r) => r.line.lineNumber === lineNumber)!.dimensions.find((d) => d.key === "daysOff")!.match;
+    // 24, 24, 23 all clear the floor -> full match. 20, 19, 18 fall short.
+    expect(matchFor("9001")).toBe(1);
+    expect(matchFor("9003")).toBe(1);
+    expect(matchFor("9004")).toBeLessThan(1);
+  });
+});
+
+describe("dealbreakers on explicit-target ranges (floor/ceiling breach)", () => {
+  it("caps a line whose real daysOff falls below a stated floor (rangeRole min), leaves lines at or above it uncapped", () => {
+    const profile = {
+      ...neutralProfile(),
+      discoveredFacts: [
+        dealbreakerFact(
+          { type: "explicit-target", key: "daysOff", value: 20, rangeRole: "min" },
+          "Fewer than 20 days off is a dealbreaker."
+        ),
+      ],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const line9005 = ranked.find((r) => r.line.lineNumber === "9005")!; // daysOff 19
+    const line9006 = ranked.find((r) => r.line.lineNumber === "9006")!; // daysOff 18
+    const line9004 = ranked.find((r) => r.line.lineNumber === "9004")!; // daysOff 20
+
+    expect(line9005.violatedDealbreakers).toHaveLength(1);
+    expect(line9005.score).toBeLessThanOrEqual(35);
+    expect(line9006.violatedDealbreakers).toHaveLength(1);
+    expect(line9004.violatedDealbreakers).toHaveLength(0);
+  });
+
+  it("caps a line whose real departures exceed a stated ceiling (rangeRole max)", () => {
+    // Single-trip lines (9001/9002/9003) total 2 departures; two-trip lines (9004/9005/9006) total 4.
+    const profile = {
+      ...neutralProfile(),
+      discoveredFacts: [
+        dealbreakerFact(
+          { type: "explicit-target", key: "departures", value: 2, rangeRole: "max" },
+          "More than 2 departures is a dealbreaker."
+        ),
+      ],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const line9004 = ranked.find((r) => r.line.lineNumber === "9004")!;
+    const line9001 = ranked.find((r) => r.line.lineNumber === "9001")!;
+
+    expect(line9004.violatedDealbreakers).toHaveLength(1);
+    expect(line9004.score).toBeLessThanOrEqual(35);
+    expect(line9001.violatedDealbreakers).toHaveLength(0);
+  });
+
+  it("still never honors a dealbreaker on a bare 'ideal' explicit-target (no rangeRole)", () => {
+    const profile = {
+      ...neutralProfile(),
+      discoveredFacts: [dealbreakerFact({ type: "explicit-target", key: "daysOff", value: 20, rangeRole: "ideal" })],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    for (const r of ranked) {
+      expect(r.violatedDealbreakers).toHaveLength(0);
+    }
+  });
+});
+
+describe("landings dimension", () => {
+  it("is a real fixed dimension every line gets scored on", () => {
+    const ranked = rankLines(SAMPLE_BID_PACK, neutralProfile());
+    for (const r of ranked) {
+      expect(r.dimensions.some((d) => d.key === "landings")).toBe(true);
+    }
+  });
+
+  it("favors more-landings lines when weighted positive, fewer-landings lines when weighted negative", () => {
+    // Single-trip lines (9001/9002/9003) total 2 landings; two-trip lines (9004/9005/9006) total 4.
+    const wantsMore = { ...neutralProfile(), weights: { ...emptyWeights(), landings: 100 } };
+    const wantsFewer = { ...neutralProfile(), weights: { ...emptyWeights(), landings: -100 } };
+
+    const rankedMore = rankLines(SAMPLE_BID_PACK, wantsMore);
+    const rankedFewer = rankLines(SAMPLE_BID_PACK, wantsFewer);
+
+    const matchIn = (ranked: typeof rankedMore, lineNumber: string) =>
+      ranked.find((r) => r.line.lineNumber === lineNumber)!.dimensions.find((d) => d.key === "landings")!.match;
+
+    expect(matchIn(rankedMore, "9004")).toBeGreaterThan(matchIn(rankedMore, "9001"));
+    expect(matchIn(rankedFewer, "9001")).toBeGreaterThan(matchIn(rankedFewer, "9004"));
+  });
+});
+
+describe("tripShapeVariancePerLine (predictability vs. variety implicit variable)", () => {
+  it("is zero for a line whose own trips are all the same length, positive for a line whose trips differ", () => {
+    const implicitValuesByLine = computeImplicitLineValues(SAMPLE_BID_PACK);
+    // Raw values aren't exposed directly, but the sample pack's own construction guarantees this:
+    // line 9004 = [tripA(2 days), tripB(2 days)] -> no variance; 9005 = [tripA(2 days), tripC(3 days)] -> real variance.
+    // computeImplicitLineValues only returns normalized [0,1] values, so assert via the normalized spread instead.
+    expect(implicitValuesByLine["sample-line-9004"].tripShapeVariancePerLine).toBeLessThan(
+      implicitValuesByLine["sample-line-9005"].tripShapeVariancePerLine
+    );
   });
 });
 

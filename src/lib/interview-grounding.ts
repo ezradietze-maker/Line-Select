@@ -44,6 +44,23 @@ export function computeBidPackGroundingStats(bidPack: BidPack): BidPackGrounding
 
   const [creditMin, creditMax] = getBidPackRanges(bidPack).creditHours;
 
+  const landingsValues = bidPack.lines.map((l) => l.totalLandings);
+  const landings =
+    landingsValues.length > 0
+      ? { min: Math.min(...landingsValues), max: Math.max(...landingsValues) }
+      : { min: 0, max: 0 };
+
+  const reserveLines =
+    bidPack.reserveLines && bidPack.reserveLines.length > 0
+      ? {
+          count: bidPack.reserveLines.length,
+          typeBreakdown: bidPack.reserveLines.reduce<Partial<Record<"24hr" | "a" | "b", number>>>((acc, r) => {
+            if (r.reserveType) acc[r.reserveType] = (acc[r.reserveType] ?? 0) + 1;
+            return acc;
+          }, {}),
+        }
+      : null;
+
   return {
     tripLength,
     reportTime,
@@ -51,5 +68,7 @@ export function computeBidPackGroundingStats(bidPack: BidPack): BidPackGrounding
     deadheadTripSharePercent,
     distinctHotelCount,
     distinctCityCount,
+    landings,
+    reserveLines,
   };
 }

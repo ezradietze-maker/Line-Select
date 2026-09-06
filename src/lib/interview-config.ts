@@ -2,7 +2,9 @@ import type {
   DeepSliderKey,
   ExplicitTargetKey,
   QuickQuestionKey,
+  RangeTarget,
 } from "@/types/preferences";
+import type { PreferenceFact } from "@/types/interview-session";
 
 export interface SliderQuestionConfig {
   key: QuickQuestionKey | DeepSliderKey;
@@ -163,7 +165,7 @@ export function formatHoursValue(hours: number): string {
 
 const NO_SLIDER_FALLBACK_TEXT = "No exact target set — this won't be weighted specifically in your ranking.";
 
-/** Asked in the quick round, combined with a crash-pad toggle for commuters — see `QUICK_STEPS`. */
+/** Pinned nights-home target — bare-number shape used by `formatExplicitTarget` for review screens; the adaptive interview now asks the underlying question itself, up to three times, one per `rangeRole`. */
 export const NIGHTS_HOME_CONFIG: TargetSliderQuestionConfig = {
   key: "daysOff",
   question: "What does your ideal bid month look like?",
@@ -176,7 +178,7 @@ export const NIGHTS_HOME_CONFIG: TargetSliderQuestionConfig = {
   noTargetFallbackText: NO_SLIDER_FALLBACK_TEXT,
 };
 
-/** Asked in the quick round, right after trip length — see `QUICK_STEPS`. */
+/** Pinned departures target — bare-number shape used by `formatExplicitTarget` for review screens; the adaptive interview now asks the underlying question itself, up to three times, one per `rangeRole`. */
 export const DEPARTURES_CONFIG: TargetSliderQuestionConfig = {
   key: "departures",
   question: "How many separate departures do you want in a month?",
@@ -189,7 +191,7 @@ export const DEPARTURES_CONFIG: TargetSliderQuestionConfig = {
   noTargetFallbackText: NO_SLIDER_FALLBACK_TEXT,
 };
 
-/** Deep-round-only exact targets — nights home and departures now live in the quick round instead (`NIGHTS_HOME_CONFIG`, `DEPARTURES_CONFIG`). */
+/** Exact targets other than nights home and departures, which have their own configs (`NIGHTS_HOME_CONFIG`, `DEPARTURES_CONFIG`). */
 export const TARGET_SLIDERS: TargetSliderQuestionConfig[] = [
   {
     key: "creditHours",
@@ -209,27 +211,50 @@ export const ALL_TARGET_CONFIGS: TargetSliderQuestionConfig[] = [
   ...TARGET_SLIDERS,
 ];
 
-/** One quick-round step can be a plain bipolar slider, an exact-number target (optionally paired with the crash-pad toggle), or the city picker — heterogeneous by design, since these are the questions the user asked to make concrete rather than abstract dial positions. */
-export type QuickStepConfig =
-  | { kind: "slider"; config: SliderQuestionConfig }
-  | { kind: "target"; config: TargetSliderQuestionConfig; showCrashPad?: boolean }
-  | { kind: "cities" };
-
-function findQuickQuestion(key: QuickQuestionKey): SliderQuestionConfig {
-  const found = QUICK_QUESTIONS.find((q) => q.key === key);
-  if (!found) throw new Error(`Missing quick question config for "${key}"`);
-  return found;
+/**
+ * Renders either shape `PreferenceProfile.explicitTargets[key]` can hold —
+ * today's bare number (unchanged: "18 nights home"), or a `RangeTarget`
+ * tolerance band ("16-20 nights home, ideal 18") for the two keys
+ * (`daysOff`/`departures`) that can now carry one. Shared by every screen
+ * that lists pinned targets so the format stays consistent in one place.
+ */
+/**
+ * Filters a slider-config list down to keys the adaptive interview actually
+ * asked about (per `discoveredFacts`), so a review screen doesn't show a
+ * full wall of sliders still sitting at their untouched default. A profile
+ * with no discovered facts at all — the legacy static interview, which
+ * always walks every slider by design, or a profile from before this field
+ * existed — keeps showing every slider, exactly as before this filter
+ * existed.
+ */
+export function touchedSliderConfigs<T extends { key: QuickQuestionKey | DeepSliderKey }>(
+  configs: T[],
+  discoveredFacts: PreferenceFact[]
+): T[] {
+  if (discoveredFacts.length === 0) return configs;
+  const touchedKeys = new Set(
+    discoveredFacts
+      .map((f) => f.measurable)
+      .filter((m) => m?.type === "explicit-weight")
+      .map((m) => (m as { key: string }).key)
+  );
+  return configs.filter((c) => touchedKeys.has(c.key));
 }
 
-export const QUICK_STEPS: QuickStepConfig[] = [
-  { kind: "target", config: NIGHTS_HOME_CONFIG, showCrashPad: true },
-  { kind: "slider", config: findQuickQuestion("tripLength") },
-  { kind: "target", config: DEPARTURES_CONFIG },
-  { kind: "cities" },
-  { kind: "slider", config: findQuickQuestion("reportTime") },
-  { kind: "slider", config: findQuickQuestion("creditHours") },
-  { kind: "slider", config: findQuickQuestion("circadianHealth") },
-];
+export function formatExplicitTarget(config: TargetSliderQuestionConfig, value: number | RangeTarget): string {
+  if (typeof value === "number") {
+    return `${config.formatValue(value)} ${value === 1 ? config.unitSingular : config.unitPlural}`;
+  }
+  const { min, ideal, max } = value;
+  if (min !== undefined && max !== undefined) {
+    const idealPart = ideal !== undefined ? `, ideal ${config.formatValue(ideal)}` : "";
+    return `${config.formatValue(min)}–${config.formatValue(max)} ${config.unitPlural}${idealPart}`;
+  }
+  if (min !== undefined) return `at least ${config.formatValue(min)} ${config.unitPlural}`;
+  if (max !== undefined) return `up to ${config.formatValue(max)} ${config.unitPlural}`;
+  if (ideal !== undefined) return `${config.formatValue(ideal)} ${config.unitPlural}`;
+  return `— ${config.unitPlural}`;
+}
 
 function findDeepSlider(key: DeepSliderKey): SliderQuestionConfig {
   const found = DEEP_SLIDERS.find((q) => q.key === key);
