@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
-import { deterministicFactFromAnswer } from "@/lib/interview-engine";
+import { MIN_TURNS_BEFORE_WRAP, deterministicFactFromAnswer } from "@/lib/interview-engine";
 import { buildInterviewSystemPrompt } from "@/lib/interview-prompt";
 import { allKnownVariableDescriptors } from "@/lib/preference-classifier";
 import type {
@@ -38,14 +38,24 @@ const MODEL = "claude-sonnet-5";
 
 const EXPLICIT_TARGET_KEYS: ExplicitTargetKey[] = ["daysOff", "creditHours", "departures"];
 
-const TURN_TOOL: Anthropic.Tool = {
+/**
+ * Built per-turn rather than a static const: below `MIN_TURNS_BEFORE_WRAP`,
+ * "wrap_up" is dropped from the action enum entirely so the model cannot
+ * select it, no matter how it reads the conversation — a hard, structural
+ * floor rather than a soft prompt instruction the model can (and, in real
+ * live usage, did) misjudge. See `MIN_TURNS_BEFORE_WRAP`'s own doc comment
+ * in `interview-engine.ts` for why this exists.
+ */
+export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
+  return {
   name: "submit_interview_turn",
-  description:
-    "Submit this turn's decision: either the next question to ask, or a decision to wrap up the interview, plus any updates to the pilot's profile learned from their last answer.",
+  description: canWrapUp
+    ? "Submit this turn's decision: either the next question to ask, or a decision to wrap up the interview, plus any updates to the pilot's profile learned from their last answer."
+    : "Submit this turn's decision: the next question to ask (wrapping up is not available yet — there's still real, required ground to cover), plus any updates to the pilot's profile learned from their last answer.",
   input_schema: {
     type: "object",
     properties: {
-      action: { type: "string", enum: ["ask", "wrap_up"] },
+      action: canWrapUp ? { type: "string", enum: ["ask", "wrap_up"] } : { type: "string", enum: ["ask"] },
       question: {
         type: ["object", "null"],
         description: "Required when action is 'ask'; null when action is 'wrap_up'.",
@@ -145,7 +155,8 @@ const TURN_TOOL: Anthropic.Tool = {
     },
     required: ["action", "profileUpdates"],
   },
-};
+  };
+}
 
 function buildUserMessage(body: TurnRequestBody): string {
   const catalogIds = new Set(allKnownVariableDescriptors().map((d) => d.id));
@@ -355,38 +366,86 @@ function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId
 
 export type InterviewTurnResult = { ok: true; turn: TurnResponse } | { ok: false; error: string };
 
+/** One Anthropic call for one turn attempt — factored out so a malformed response below the floor (see below) can be retried with a corrective note rather than duplicating the whole call. */
+async function requestTurnFromModel(
+  client: Anthropic,
+  req: TurnRequestBody,
+  canWrapUp: boolean,
+  extraNote?: string
+): Promise<Record<string, unknown> | null> {
+  const response = await client.messages.create({
+    model: MODEL,
+    // Observed reasoning fields alone running 600-900 output tokens once the
+    // interview reaches contradiction-resolution territory (Phase 6 transcript
+    // testing) — 1500 left too little headroom, and a truncated tool call means
+    // a lost turn (parseQuestion sees an incomplete/missing question object).
+    max_tokens: 2200,
+    system: buildInterviewSystemPrompt(),
+    messages: [{ role: "user", content: extraNote ? `${buildUserMessage(req)}\n\n${extraNote}` : buildUserMessage(req) }],
+    tools: [buildTurnTool(canWrapUp)],
+    tool_choice: { type: "tool", name: "submit_interview_turn" },
+  });
+
+  console.log("[interview-turn] usage", {
+    turnsUsed: req.turnsUsed,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    retry: !!extraNote,
+  });
+
+  const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
+  return toolUse ? (toolUse.input as Record<string, unknown>) : null;
+}
+
+/**
+ * The tool schema can't express "question is required when action is 'ask'"
+ * as a hard constraint (only the top-level action/profileUpdates are truly
+ * required) — the model sometimes returns action "ask" with no question
+ * object at all. Below `MIN_TURNS_BEFORE_WRAP` this must never be read as a
+ * wrap-up: caught live, this exact gap silently ended a real pilot's
+ * interview after only 5 turns even with `buildTurnTool`'s enum restriction
+ * in place, because the restriction only ever stopped the model from
+ * *choosing* "wrap_up" — it did nothing about "ask" with a missing question,
+ * which reached the exact same dead end through the older, separate
+ * null-question fallback below.
+ */
+const MISSING_QUESTION_RETRY_NOTE =
+  "IMPORTANT: your previous response had action \"ask\" but no valid \"question\" object. You are still below the minimum-turns floor, so wrapping up is not available yet — you must return action \"ask\" with a complete question object: \"prompt\" is always required, plus lowLabel/highLabel/centerLabel/boundTo for kind \"slider\", unitSingular/unitPlural/boundTo for kind \"target-slider\", or at least 2 \"options\" for kind \"choice\". A kind \"free-text\" question only ever needs \"prompt\" — use that if nothing else fits.";
+
 export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Promise<InterviewTurnResult> {
   const client = new Anthropic({ apiKey });
+  const canWrapUp = req.turnsUsed >= MIN_TURNS_BEFORE_WRAP;
+  const lastTurn = req.transcript[req.transcript.length - 1];
+  const answeredQuestionId = lastTurn?.question.id;
 
   try {
-    const response = await client.messages.create({
-      model: MODEL,
-      // Observed reasoning fields alone running 600-900 output tokens once the
-      // interview reaches contradiction-resolution territory (Phase 6 transcript
-      // testing) — 1500 left too little headroom, and a truncated tool call means
-      // a lost turn (parseQuestion sees an incomplete/missing question object).
-      max_tokens: 2200,
-      system: buildInterviewSystemPrompt(),
-      messages: [{ role: "user", content: buildUserMessage(req) }],
-      tools: [TURN_TOOL],
-      tool_choice: { type: "tool", name: "submit_interview_turn" },
-    });
-
-    console.log("[interview-turn] usage", {
-      turnsUsed: req.turnsUsed,
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
-    });
-
-    const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
-    if (!toolUse) {
+    let input = await requestTurnFromModel(client, req, canWrapUp);
+    if (!input) {
       return { ok: false, error: "Couldn't read the interview response." };
     }
 
-    const input = toolUse.input as Record<string, unknown>;
-    const action = input.action === "wrap_up" ? "wrap_up" : "ask";
-    const lastTurn = req.transcript[req.transcript.length - 1];
-    const answeredQuestionId = lastTurn?.question.id;
+    // The tool schema itself excludes "wrap_up" from the enum when !canWrapUp
+    // (see buildTurnTool), so this shouldn't be reachable — but the schema is
+    // a strong steer, not a runtime guarantee, so it's re-checked here rather
+    // than trusted blindly.
+    if (input.action === "wrap_up" && !canWrapUp) {
+      console.warn("[interview-turn] model returned wrap_up before MIN_TURNS_BEFORE_WRAP despite a restricted tool schema", { turnsUsed: req.turnsUsed });
+    }
+    const action = input.action === "wrap_up" && canWrapUp ? "wrap_up" : "ask";
+    let question = action === "ask" ? parseQuestion(input.question) : null;
+
+    // See MISSING_QUESTION_RETRY_NOTE's own doc comment — this is the fix for
+    // the live bug, not a defensive nicety: a malformed/missing question this
+    // early must never silently collapse into a wrap-up.
+    if (action === "ask" && !question && !canWrapUp) {
+      console.warn("[interview-turn] ask action with no valid question below MIN_TURNS_BEFORE_WRAP, retrying once", { turnsUsed: req.turnsUsed, rawQuestion: JSON.stringify(input.question) });
+      const retryInput = await requestTurnFromModel(client, req, canWrapUp, MISSING_QUESTION_RETRY_NOTE);
+      if (retryInput) {
+        input = retryInput;
+        question = parseQuestion(input.question);
+      }
+    }
+
     const profileUpdates = parseProfileUpdates(input.profileUpdates, req.turnsUsed, answeredQuestionId);
     const reasoning = typeof input.reasoning === "string" ? input.reasoning : undefined;
 
@@ -409,18 +468,25 @@ export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Pr
       return { ok: true, turn: { action: "wrap_up", question: null, profileUpdates, reasoning } };
     }
 
-    const question = parseQuestion(input.question);
     if (!question) {
-      // The tool schema can't express "question is required when action is
-      // 'ask'" as a hard constraint (only the top-level action/profileUpdates
-      // are truly required), so this does happen in practice — caught live in
-      // Phase 6 transcript testing, almost always in the interview's later
-      // turns. Treating it as a wrap-up rather than failing the turn outright
-      // is a safe interpretation (the model was clearly ambivalent about
-      // asking anything further) and avoids bouncing the pilot back to
-      // re-answer a question they already answered.
-      console.warn("[interview-turn] ask action with no valid question, treating as wrap_up", JSON.stringify(input.question), "stop_reason:", response.stop_reason);
-      return { ok: true, turn: { action: "wrap_up", question: null, profileUpdates, reasoning } };
+      if (!canWrapUp) {
+        // The retry above also failed to produce a valid question — never
+        // end the interview this early over a malformed response. A generic,
+        // always-valid free-text question keeps the loop going rather than
+        // silently wrapping up.
+        question = {
+          id: crypto.randomUUID(),
+          kind: "free-text",
+          prompt: "What else about your ideal schedule should I know before I put together your ranking?",
+        };
+      } else {
+        // Past the floor, a model that couldn't produce a valid question is
+        // a safe signal it was genuinely ambivalent about asking anything
+        // further — caught live in Phase 6 transcript testing, almost always
+        // in the interview's later turns.
+        console.warn("[interview-turn] ask action with no valid question, treating as wrap_up", { turnsUsed: req.turnsUsed, rawQuestion: JSON.stringify(input.question) });
+        return { ok: true, turn: { action: "wrap_up", question: null, profileUpdates, reasoning } };
+      }
     }
 
     return { ok: true, turn: { action: "ask", question, profileUpdates, reasoning } };

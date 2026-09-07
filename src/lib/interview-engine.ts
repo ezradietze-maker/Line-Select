@@ -20,8 +20,29 @@ import type { CitySentiment, ExplicitTargetKey, PreferenceProfile, RangeTarget }
  */
 
 /**
- * Below this, the model can end anytime; between this and HARD_CEILING_TURNS
- * it's told to wrap up unless one more turn is clearly worth it. Raised from
+ * Below this, "wrap_up" isn't even offered as a valid action — the turn
+ * tool's own schema excludes it (see `interview-turn-service.ts`'s
+ * `buildTurnTool`), so the model structurally cannot end the interview this
+ * early no matter how it reads the conversation so far. Added after a real
+ * live-usage failure: with only a soft-guidance floor ("treat early turns as
+ * still exploring"), the model wrapped up after just 4 turns on a real
+ * pilot's interview — nowhere near enough to touch a meaningful slice of the
+ * 15-topic backlog. A model can misjudge or misread soft language; it can't
+ * select an action that isn't in its tool's enum.
+ *
+ * Set at 12, not lower: live re-testing after the first fix (floor 8) showed
+ * the model reaches directly for wrap_up the instant it's legally available
+ * — it stopped at exactly turnsUsed 8 both times, having covered barely half
+ * the topic backlog. The model consistently treats "allowed to stop" as
+ * "should stop" rather than as a floor with real discretion above it, so the
+ * floor itself has to carry more of the weight than the softer guidance
+ * further down in the prompt does.
+ */
+export const MIN_TURNS_BEFORE_WRAP = 12;
+/**
+ * Between MIN_TURNS_BEFORE_WRAP and this, wrap_up is offered but the model
+ * is told to keep going unless one more turn is clearly worth it; below
+ * MIN_TURNS_BEFORE_WRAP it isn't offered at all (see above). Raised from
  * 10/16 alongside the interview topic-backlog expansion — there's roughly
  * 3x the topic ground to cover now that the interview is one continuous
  * loop with no separate free seed round (see `AdaptiveInterview.tsx`'s own
