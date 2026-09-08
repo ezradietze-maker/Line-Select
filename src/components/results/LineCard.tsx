@@ -142,10 +142,10 @@ export const LineCard = memo(function LineCard({
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
-          className="flex flex-1 flex-col gap-4 p-5 text-left sm:flex-row sm:items-center sm:p-6"
+          className="flex flex-1 flex-col gap-4 p-5 text-left lg:flex-row lg:items-center lg:p-6"
           aria-expanded={expanded}
         >
-          <div className="flex items-center gap-4 sm:w-56 sm:shrink-0">
+          <div className="flex items-center gap-4 lg:w-56 lg:shrink-0">
             <ScoreRing score={score} />
             <div>
               <div className="text-xs font-medium uppercase tracking-wide text-ink-faint">
@@ -176,13 +176,6 @@ export const LineCard = memo(function LineCard({
 
           <p className="flex-1 text-sm leading-relaxed text-ink">{explanation}</p>
 
-          <div className="hidden shrink-0 items-center gap-4 font-mono text-xs text-ink-muted sm:flex">
-            <Stat icon={<CalendarIcon />} label="Days off" value={String(line.daysOff)} />
-            <Stat icon={<CoinIcon />} label="Credit" value={formatHours(line.totalCreditHours)} />
-            <Stat icon={<ClockIcon />} label="TAFB" value={formatHours(line.totalTafbHours)} />
-            <Stat icon={<PlaneIcon />} label="Ldgs" value={String(line.totalLandings)} />
-          </div>
-
           <svg
             className={`h-5 w-5 shrink-0 text-ink-faint transition-transform ${expanded ? "rotate-180" : ""}`}
             fill="none"
@@ -196,7 +189,7 @@ export const LineCard = memo(function LineCard({
         </button>
       </div>
 
-      <div className="flex items-center gap-4 border-t border-border px-5 py-3 font-mono text-xs text-ink-muted sm:hidden">
+      <div className="flex items-center gap-4 border-t border-border px-5 py-3 font-mono text-xs text-ink-muted">
         <Stat icon={<CalendarIcon />} label="Days off" value={String(line.daysOff)} />
         <Stat icon={<CoinIcon />} label="Credit" value={formatHours(line.totalCreditHours)} />
         <Stat icon={<ClockIcon />} label="TAFB" value={formatHours(line.totalTafbHours)} />
