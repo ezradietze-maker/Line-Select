@@ -1196,11 +1196,34 @@ export function scoreBidPack(
     (f): f is PreferenceFact & { measurable: MeasurableBinding } => f.severity === "dealbreaker" && f.kind === "measurable" && !!f.measurable
   );
   const qualitativeFacts = (discoveredFacts ?? []).filter((f) => f.kind === "qualitative");
+
+  // A pilot who told the interview a city's hotel was specifically why they
+  // loved/avoided it (`cityReason.category === "hotel"`) has given real
+  // signal that hotel quality matters to them — even if they never
+  // separately answered a generic hotelQuality slider, which would
+  // otherwise leave `weights.hotelQuality` at 0 and silently zero out
+  // `layoverQuality`'s importance no matter how high its confidence reads
+  // (importance is `magnitude * confidence` — a 0 magnitude stays 0
+  // regardless). `effectiveWeights`/`effectiveImplicitConfidence` are used
+  // ONLY for the `layoverQuality` dimension below (both its value-blending
+  // via `computeLayoverQualityScore` and its own importance calculation) —
+  // never for any other dimension, and never overwriting a real weight the
+  // pilot actually set themselves.
+  const hasHotelReasonFact = qualitativeFacts.some((f) => f.cityReason?.category === "hotel");
+  const HOTEL_REASON_IMPLIED_WEIGHT = 60;
+  const effectiveWeights: PreferenceWeights =
+    hasHotelReasonFact && weights.hotelQuality === 0
+      ? { ...weights, hotelQuality: HOTEL_REASON_IMPLIED_WEIGHT }
+      : weights;
+  const effectiveImplicitConfidence: Record<string, number> = hasHotelReasonFact
+    ? { ...implicitConfidence, hotelQuality: Math.max(implicitConfidence.hotelQuality ?? 0, 0.7) }
+    : implicitConfidence;
+
   const rawMetrics = bidPack.lines.map(computeRawMetrics);
   const cityScores = bidPack.lines.map((l) => computeCityScore(l, cityPreferences));
   const hotelSubscores = computeHotelSubscores(bidPack, hotelQualityData);
   const layoverQualityScores = bidPack.lines.map((l) =>
-    computeLayoverQualityScore(l, weights, hotelSubscores)
+    computeLayoverQualityScore(l, effectiveWeights, hotelSubscores)
   );
   const homeBaseOffsetMinutes = computeHomeBaseOffsetMinutes(bidPack);
   // A bare number is the only shape this key is ever meant to have (see
@@ -1295,15 +1318,15 @@ export function scoreBidPack(
         // weight in the total score.
         const hotelWeightKeys = ["hotelFood", "hotelGym", "hotelGrocery", "hotelQuiet", "hotelQuality"] as const;
         const dominantHotelKey = hotelWeightKeys.reduce((best, k) =>
-          Math.abs(weights[k]) > Math.abs(weights[best]) ? k : best
+          Math.abs(effectiveWeights[k]) > Math.abs(effectiveWeights[best]) ? k : best
         );
-        const maxHotelWeight = Math.abs(weights[dominantHotelKey]);
+        const maxHotelWeight = Math.abs(effectiveWeights[dominantHotelKey]);
         // Confidence of whichever hotel aspect is actually driving this
         // dimension's importance — "caring a lot about even one aspect"
         // should be scaled by how sure the extraction was about that one
         // aspect, not an unrelated hotel slider's own confidence.
         const hotelConfidence =
-          implicitConfidence[dominantHotelKey] ?? defaultConfidence(weights[dominantHotelKey] !== 0);
+          effectiveImplicitConfidence[dominantHotelKey] ?? defaultConfidence(effectiveWeights[dominantHotelKey] !== 0);
         const importance = Math.min(1, maxHotelWeight / 100) * hotelConfidence;
         return {
           key,

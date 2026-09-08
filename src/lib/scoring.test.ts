@@ -722,6 +722,38 @@ describe("hotel review tie-in", () => {
       expect(r.hotelReviewTieIn).toBeNull();
     }
   });
+
+  it("gives layoverQuality real importance from a hotel-related cityReason alone, even with every hotel slider left at 0", () => {
+    const profile = {
+      ...buildProfile(emptyWeights(), false, []),
+      discoveredFacts: [qualitativeCityReasonFact("CDG", "hotel")],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile, {});
+    const line9002 = ranked.find((r) => r.line.lineNumber === "9002")!;
+    const layoverDim = line9002.dimensions.find((d) => d.key === "layoverQuality")!;
+    expect(layoverDim.importance).toBeGreaterThan(0);
+  });
+
+  it("leaves layoverQuality importance at 0 with no hotel-related cityReason and no hotel sliders set", () => {
+    const profile = buildProfile(emptyWeights(), false, []);
+    const ranked = rankLines(SAMPLE_BID_PACK, profile, {});
+    for (const r of ranked) {
+      const layoverDim = r.dimensions.find((d) => d.key === "layoverQuality")!;
+      expect(layoverDim.importance).toBe(0);
+    }
+  });
+
+  it("never overrides a hotel weight the pilot actually set themselves", () => {
+    const profile = {
+      ...buildProfile({ ...emptyWeights(), hotelQuality: 30 }, false, []),
+      discoveredFacts: [qualitativeCityReasonFact("CDG", "hotel")],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile, {});
+    const line9002 = ranked.find((r) => r.line.lineNumber === "9002")!;
+    const layoverDim = line9002.dimensions.find((d) => d.key === "layoverQuality")!;
+    // Importance should reflect the pilot's own real 30, not be silently replaced by the implied 60.
+    expect(layoverDim.importance).toBeCloseTo(0.3 * 0.7, 5);
+  });
 });
 
 describe("getBidPackRanges", () => {

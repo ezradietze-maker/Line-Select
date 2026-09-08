@@ -58,7 +58,22 @@ export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negati
     positive: "getting more landings in for proficiency and comfort",
     negative: "keeping landings down for fatigue management",
   },
+  // riskTolerance/adminEffortAppetite are strategy-board inputs, not line
+  // preferences — scoring.ts never reads them, so they're deliberately
+  // filtered out of rankPreferences below before this phrasing is ever
+  // reached. Entries exist only to satisfy this Record's exhaustiveness.
+  riskTolerance: {
+    positive: "an aggressive, high-upside bidding approach",
+    negative: "the safest, most guaranteed pick available",
+  },
+  adminEffortAppetite: {
+    positive: "putting in real effort — trades, grievances, re-bids — for a better outcome",
+    negative: "avoiding extra paperwork or process work",
+  },
 };
+
+/** Strategy-board-only inputs — see their own doc comments in `types/preferences.ts` — deliberately excluded from any "what's driving your ranking" narrative, since neither one actually moves a line's score. */
+const NON_LINE_PREFERENCE_KEYS = new Set<keyof PreferenceWeights>(["riskTolerance", "adminEffortAppetite"]);
 
 /** Below this, a preference reads as "no strong opinion" and isn't worth mentioning. */
 const MEANINGFUL_THRESHOLD = 0.12;
@@ -78,7 +93,7 @@ export function rankPreferences(
   weights: PreferenceWeights,
   explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>>
 ): RankedPreference[] {
-  const keys = Object.keys(weights) as (keyof PreferenceWeights)[];
+  const keys = (Object.keys(weights) as (keyof PreferenceWeights)[]).filter((k) => !NON_LINE_PREFERENCE_KEYS.has(k));
 
   const ranked = keys.map((key): RankedPreference => {
     const weight = weights[key];

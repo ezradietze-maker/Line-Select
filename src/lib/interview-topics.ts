@@ -101,15 +101,27 @@ export const INTERVIEW_TOPIC_BACKLOG: InterviewTopic[] = [
       "Ask directly what layover length actually feels like real recovery to them versus just enough to sleep and go — this is exactly what shortRestOvernightsPerTrip and avgSleepOpportunityHours measure, but today they're only ever reached by inference from an unrelated answer, never asked about head-on. A pilot who says a 10-hour layover leaves them wrecked but 14 hours feels fine is giving you a direct, bindable signal on both those ids.",
   },
   {
+    id: "real-schedule-effort-metrics",
+    label: "Day-rig rate and duty-to-flying ratio",
+    guidance:
+      "Two real per-trip stats the results screen already shows a pilot by name (\"Day-rig rate,\" \"Duty-to-flying ratio\") have never been asked about directly, so they sit at zero weight for almost everyone even though they're real, scoreable ids. Ask about day-rig rate (creditPerTafbHour) using money-per-day-away framing: \"would you take a trip that pays a bit less overall if it paid better per day you're actually away from home?\" Ask about duty-to-flying ratio (dutyToBlockRatio) using the real-workload framing: \"does it bother you when a lot of the duty day is sitting around — connections, standby — versus actually flying, even if the total credit is the same?\" Bind each to its own implicit id from the answer's direction, using the exact same terms (\"day-rig rate,\" \"duty-to-flying ratio\") the pilot will later see on their results screen, so their answer and what they're shown later obviously refer to the same thing.",
+  },
+  {
     id: "seniority-realism",
     label: "Seniority / realism context",
     guidance:
-      "Asking a bid number or rough seniority standing can be useful context, but be honest about what it's for: this app has no seniority list, no visibility into how other pilots are bidding, and no award history, so there is no way to compute how realistically achievable any line actually is for them. If you ask this at all, capture the answer as a plain informational qualitative fact only — never frame it as something that will be used to filter or weight results, because it won't be.",
+      "Asking a bid number or rough seniority standing can be useful context — this app does have a real, separate crowd-sourced record of what pilots at various seniority numbers have actually held before (the Strategies board's own award-history feature), so a stated number isn't wasted. But be precise about what it's for here: it has no effect on this pilot's Satisfaction Index or line ranking, and it isn't turned into a strategy or achievability read inside this interview either — that's the Strategies board's own job when the pilot visits it separately. Capture the answer as a plain informational qualitative fact only; don't imply this interview itself is computing anything from it.",
   },
   {
     id: "financial-context",
     label: "Financial context beyond pay-vs-lifestyle",
     guidance:
       "Separate from the concrete credit-hours-for-days-home trade in the pay-vs-lifestyle topic, leave room for an open-ended free-text ask about their broader financial picture right now, if it seems relevant and hasn't already come up there. Purely qualitative narrative context — there's no additional scoreable dimension here beyond creditHours itself.",
+  },
+  {
+    id: "strategy-fit",
+    label: "Strategy fit — risk tolerance and admin effort appetite",
+    guidance:
+      "Two real inputs to the separate Strategies board, not to this pilot's line ranking or Satisfaction Index — be clear about that distinction if it comes up. Ask about risk tolerance directly: \"if a genuinely rare, far-from-guaranteed line existed, would you rank it high anyway, or only bid what you're confident about?\" Bind to \"riskTolerance\" (direction 1 = ranks the reach high anyway, direction -1 = only bids what's realistic). Ask about admin effort appetite separately: \"if there were a real but effortful way to do better — filing a grievance, working a manual trade, chasing every re-bid window — would you actually do it, or is that more hassle than it's worth?\" Bind to \"adminEffortAppetite\" (direction 1 = would do the work, direction -1 = wants the low-effort outcome). These two only ever affect which Strategies-board moves get surfaced/ordered for this pilot — never phrase a question here as if it changes how a line scores, because it doesn't.",
   },
 ];

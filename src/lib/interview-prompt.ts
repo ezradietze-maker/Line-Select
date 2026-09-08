@@ -35,7 +35,7 @@ Hard rules, not suggestions:
 const EXPLICIT_WEIGHT_IDS = [
   "daysOff", "tripLength", "international", "reportTime", "creditHours",
   "deadheadTolerance", "hotelFood", "hotelGym", "hotelGrocery", "hotelQuiet",
-  "hotelQuality", "circadianHealth", "landings",
+  "hotelQuality", "circadianHealth", "landings", "riskTolerance", "adminEffortAppetite",
 ];
 const EXPLICIT_TARGET_IDS = ["daysOff", "creditHours", "departures", "circadianTolerance"];
 
@@ -69,6 +69,8 @@ const DIRECTION_HINTS: Record<string, string> = {
   hotelQuality: "magnitude-only — direction 1 = \"Matters a lot — a rough hotel ruins the trip\"; direction -1 (or just not raising it) = doesn't matter much either way.",
   circadianHealth: "magnitude-only — direction 1 = \"Protect it, even if it costs me elsewhere\"; direction -1 (or just not raising it) = doesn't need to be a factor.",
   landings: "direction 1 = wants MORE landings (proficiency/currency comfort); direction -1 = wants FEWER landings (fatigue management).",
+  riskTolerance: "direction 1 = would rank a rare, far-from-guaranteed line high anyway and accept the real chance of not getting it; direction -1 = only wants to bid what they're genuinely likely to hold. This is a Strategies-board input, not a line-scoring dimension — it never changes how any line's own Satisfaction Index is computed.",
+  adminEffortAppetite: "direction 1 = would actually file a grievance, work a manual trade, or chase every re-bid window for a meaningfully better outcome; direction -1 = wants the outcome that requires no extra process work, even if it's not the best possible one. Also a Strategies-board input only, never a line-scoring dimension.",
 };
 
 function buildCatalogSection(): string {

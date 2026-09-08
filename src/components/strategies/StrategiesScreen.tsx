@@ -7,11 +7,19 @@ import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { Button } from "@/components/ui/Button";
 import { Heading } from "@/components/ui/Heading";
 import { TextField } from "@/components/ui/TextField";
-import { buildAutoBid, generateStrategies, rankStrategiesByPreference } from "@/lib/strategy-engine";
+import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
+import { rankLines } from "@/lib/scoring";
+import {
+  attachScoreContext,
+  buildAutoBid,
+  generateStrategies,
+  rankStrategiesByPreference,
+} from "@/lib/strategy-engine";
+import { learnFromStrategyReaction } from "@/lib/strategy-learning";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { PreferenceProfile } from "@/types/preferences";
-import type { SeniorityInput } from "@/types/strategy";
+import type { SeniorityInput, StrategyId } from "@/types/strategy";
 
 interface StrategiesScreenProps {
   bidPack: BidPack | null;
@@ -21,6 +29,7 @@ interface StrategiesScreenProps {
   onSaveSeniority: (input: SeniorityInput) => void;
   onGoToUpload: () => void;
   onStartInterview: () => void;
+  onUpdateProfile: (profile: PreferenceProfile) => void;
 }
 
 export function StrategiesScreen({
@@ -31,6 +40,7 @@ export function StrategiesScreen({
   onSaveSeniority,
   onGoToUpload,
   onStartInterview,
+  onUpdateProfile,
 }: StrategiesScreenProps) {
   if (!bidPack) {
     return (
@@ -55,6 +65,7 @@ export function StrategiesScreen({
       user={user}
       onSaveSeniority={onSaveSeniority}
       onStartInterview={onStartInterview}
+      onUpdateProfile={onUpdateProfile}
     />
   );
 }
@@ -66,6 +77,7 @@ function SeniorityGate({
   user,
   onSaveSeniority,
   onStartInterview,
+  onUpdateProfile,
 }: {
   bidPack: BidPack;
   seniority: SeniorityInput | null;
@@ -73,6 +85,7 @@ function SeniorityGate({
   user: UserAccount | null;
   onSaveSeniority: (input: SeniorityInput) => void;
   onStartInterview: () => void;
+  onUpdateProfile: (profile: PreferenceProfile) => void;
 }) {
   const [editing, setEditing] = useState(!seniority);
 
@@ -97,6 +110,7 @@ function SeniorityGate({
       user={user}
       onEditSeniority={() => setEditing(true)}
       onStartInterview={onStartInterview}
+      onUpdateProfile={onUpdateProfile}
     />
   );
 }
@@ -172,6 +186,7 @@ function StrategyResults({
   user,
   onEditSeniority,
   onStartInterview,
+  onUpdateProfile,
 }: {
   bidPack: BidPack;
   seniority: SeniorityInput;
@@ -179,15 +194,42 @@ function StrategyResults({
   user: UserAccount | null;
   onEditSeniority: () => void;
   onStartInterview: () => void;
+  onUpdateProfile: (profile: PreferenceProfile) => void;
 }) {
+  // Real per-line Satisfaction Index scores, so a strategy's recommended
+  // line can cite its own actual number instead of just a feasibility tier
+  // — see `attachScoreContext`'s own doc comment for why this is the real
+  // line's real score, never a hypothetical "if applied" transformation.
+  // No hotel-review data fetched here (that's ResultsView's own async
+  // effect) — layoverQuality still scores from amenities/whatever's cached,
+  // just without a fresh review lookup; a reasonable trade against adding a
+  // second hotel-fetch effect purely for this screen's score-lift context.
+  const implicitValuesByLine = useMemo(() => computeImplicitLineValues(bidPack), [bidPack]);
+  const ranked = useMemo(
+    () => (profile ? rankLines(bidPack, profile, {}, implicitValuesByLine) : null),
+    [bidPack, profile, implicitValuesByLine]
+  );
+
   const strategies = useMemo(() => {
     const generated = generateStrategies(bidPack, seniority);
-    return rankStrategiesByPreference(generated, profile?.weights ?? null);
-  }, [bidPack, seniority, profile]);
+    const preferenceRanked = rankStrategiesByPreference(generated, profile?.weights ?? null);
+    return attachScoreContext(preferenceRanked, ranked);
+  }, [bidPack, seniority, profile, ranked]);
   const autoBid = useMemo(() => buildAutoBid(strategies), [strategies]);
   const strongCount = strategies.filter((s) =>
     s.lines.some((l) => l.feasibility === "strong")
   ).length;
+
+  function handleReaction(strategyId: StrategyId, reaction: "used" | "dismissed") {
+    if (!profile) return;
+    const { weights, implicitConfidence } = learnFromStrategyReaction(profile, strategyId, reaction);
+    onUpdateProfile({
+      ...profile,
+      weights,
+      implicitConfidence,
+      strategyReactions: { ...profile.strategyReactions, [strategyId]: reaction },
+    });
+  }
 
   return (
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
@@ -213,8 +255,14 @@ function StrategyResults({
         </Button>
       </div>
 
+      <p className="mt-4 rounded-lg border border-border-strong bg-canvas px-3.5 py-2.5 text-xs leading-relaxed text-ink-faint">
+        Every strategy here works within FAR Part 117 duty and rest limits. &ldquo;Aggressive&rdquo;
+        means legal and contractual leverage, never bent rest — that&rsquo;s not on the table
+        regardless of how this board grows.
+      </p>
+
       {!profile && (
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/30 bg-brand-soft px-4 py-3.5">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/30 bg-brand-soft px-4 py-3.5">
           <p className="text-sm leading-relaxed text-ink">
             These are ranked by how rare each pattern is, not by what you&rsquo;d actually
             enjoy. Answer the preferences interview and Line Select will reorder them by how
@@ -236,6 +284,8 @@ function StrategyResults({
             key={strategy.id}
             strategy={strategy}
             topPick={!!profile && i === 0 && !strategy.isProcessTip}
+            reaction={profile?.strategyReactions?.[strategy.id] ?? null}
+            onReact={profile ? (reaction) => handleReaction(strategy.id, reaction) : undefined}
           />
         ))}
       </div>

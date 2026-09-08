@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { emptyWeights } from "@/lib/preference-logic";
+import { buildProfile, emptyWeights } from "@/lib/preference-logic";
+import { rankLines } from "@/lib/scoring";
 import {
+  attachScoreContext,
   buildAutoBid,
   estimateFeasibility,
   generateStrategies,
   rankStrategiesByPreference,
 } from "@/lib/strategy-engine";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
-import type { SeniorityInput } from "@/types/strategy";
+import type { SeniorityInput, Strategy } from "@/types/strategy";
 
 const SENIOR: SeniorityInput = { rank: 1, totalPilots: 200 };
 const JUNIOR: SeniorityInput = { rank: 199, totalPilots: 200 };
@@ -19,7 +21,7 @@ describe("generateStrategies", () => {
     // show the same seven strategies a real bid pack with reserve data does.
     const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
     expect(strategies.map((s) => s.id)).toContain("reserve-ladder");
-    expect(strategies).toHaveLength(7);
+    expect(strategies).toHaveLength(10);
     for (const s of strategies) {
       expect(s.name.length).toBeGreaterThan(0);
       expect(s.mechanism.length).toBeGreaterThan(0);
@@ -184,12 +186,26 @@ describe("rankStrategiesByPreference", () => {
     expect(recurringIndex).toBeLessThan(megaIndex);
   });
 
-  it("always sorts the process-tip strategy to the end, and never gives it a preferenceMatch", () => {
+  it("always sorts Reserve Ladder to the end and never gives it a preferenceMatch — whether it applies depends on circumstance, not a stated preference", () => {
     const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
     const weights = { ...emptyWeights(), creditHours: 90 };
     const ranked = rankStrategiesByPreference(strategies, weights);
-    expect(ranked[ranked.length - 1].id).toBe("re-bid-chain");
-    expect(ranked.find((s) => s.id === "re-bid-chain")?.preferenceMatch).toBeUndefined();
+    expect(ranked[ranked.length - 1].id).toBe("reserve-ladder");
+    expect(ranked.find((s) => s.id === "reserve-ladder")?.preferenceMatch).toBeUndefined();
+  });
+
+  it("now preference-ranks the process-tip strategies that reflect adminEffortAppetite/riskTolerance, unlike before those traits existed", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const weights = { ...emptyWeights(), adminEffortAppetite: 80 };
+    const ranked = rankStrategiesByPreference(strategies, weights);
+    const reBidChain = ranked.find((s) => s.id === "re-bid-chain");
+    expect(reBidChain?.preferenceMatch).toEqual(
+      expect.arrayContaining([expect.stringContaining("effort")])
+    );
+    // Still sorts ahead of Reserve Ladder, which has no trait mapping at all.
+    expect(ranked.findIndex((s) => s.id === "re-bid-chain")).toBeLessThan(
+      ranked.findIndex((s) => s.id === "reserve-ladder")
+    );
   });
 
   it("ranks the Vacation Vault ahead of strategies unrelated to days off for a pilot who weighted daysOff heavily", () => {
@@ -218,5 +234,83 @@ describe("buildAutoBid", () => {
     const lineNumbers = autoBid.map((e) => e.lineNumber);
     expect(new Set(lineNumbers).size).toBe(lineNumbers.length);
     autoBid.forEach((entry, i) => expect(entry.rank).toBe(i + 1));
+  });
+});
+
+describe("attachScoreContext", () => {
+  function findRecommendation(strategies: Strategy[], lineNumber: string) {
+    for (const s of strategies) {
+      const rec = s.lines.find((l) => l.lineNumber === lineNumber);
+      if (rec) return rec;
+    }
+    return undefined;
+  }
+
+  it("leaves every recommendation's scoreContext null when no line scores are supplied", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const result = attachScoreContext(strategies, null);
+    for (const s of result) {
+      for (const rec of s.lines) {
+        expect(rec.scoreContext).toBeNull();
+      }
+    }
+  });
+
+  it("attaches a real score and a zero delta to the pack's own top-scoring line when it's also a strategy pick", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const ranked = rankLines(SAMPLE_BID_PACK, buildProfile(emptyWeights(), false, []));
+    const topLine = ranked[0];
+
+    // Force the top-scoring line into a recommendation list so this test doesn't depend on which archetype it happens to qualify for.
+    const withForcedPick = strategies.map((s, i) =>
+      i === 0 ? { ...s, lines: [{ ...s.lines[0], lineNumber: topLine.line.lineNumber }] } : s
+    );
+    const result = attachScoreContext(withForcedPick, ranked);
+    const rec = findRecommendation(result, topLine.line.lineNumber);
+    expect(rec?.scoreContext).toEqual({ score: topLine.score, deltaFromTopPick: 0 });
+  });
+
+  it("computes a negative delta for a line scoring below the current top pick", () => {
+    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
+    const ranked = rankLines(SAMPLE_BID_PACK, buildProfile(emptyWeights(), false, []));
+    const notTop = ranked[ranked.length - 1];
+
+    const withForcedPick = strategies.map((s, i) =>
+      i === 0 ? { ...s, lines: [{ ...s.lines[0], lineNumber: notTop.line.lineNumber }] } : s
+    );
+    const result = attachScoreContext(withForcedPick, ranked);
+    const rec = findRecommendation(result, notTop.line.lineNumber);
+    expect(rec?.scoreContext?.score).toBe(notTop.score);
+    if (notTop.score < ranked[0].score) {
+      expect(rec?.scoreContext?.deltaFromTopPick).toBeLessThan(0);
+    }
+  });
+
+  it("leaves scoreContext null for a recommended line that isn't in the supplied line scores at all", () => {
+    const strategies: Strategy[] = [
+      {
+        id: "ghost-line",
+        name: "Test",
+        tagline: "",
+        mechanism: "",
+        benefits: [],
+        lines: [
+          {
+            lineNumber: "not-a-real-line",
+            headline: "",
+            detail: "",
+            daysOff: 0,
+            totalCreditHours: 0,
+            totalTafbHours: 0,
+            feasibility: "possible",
+            feasibilityNote: "",
+            scoreContext: null,
+          },
+        ],
+      },
+    ];
+    const ranked = rankLines(SAMPLE_BID_PACK, buildProfile(emptyWeights(), false, []));
+    const result = attachScoreContext(strategies, ranked);
+    expect(result[0].lines[0].scoreContext).toBeNull();
   });
 });

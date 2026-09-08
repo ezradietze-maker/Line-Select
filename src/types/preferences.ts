@@ -48,6 +48,25 @@ export interface PreferenceWeights {
   circadianHealth: number;
   /** -100 = fewer landings is fine (fatigue management), +100 = wants more landings (proficiency/comfort). Real per-line data (`Line.totalLandings`), just never asked about until the interview topic-backlog expansion. */
   landings: number;
+  /**
+   * Not a scored bid-pack dimension — no line "has" a risk tolerance, so
+   * `scoring.ts`'s per-`DimensionKey` loop never reads this key, the same
+   * way `departures` above sits unused by that loop. Read only by
+   * `strategy-engine.ts`'s `scorePreferenceFit`/`FIT_FACTORS`, to reorder
+   * and filter the Strategies board. -100 = wants the safest, most
+   * guaranteed pick; +100 = wants the most aggressive legal/contractual
+   * play even at real risk of not getting it.
+   */
+  riskTolerance: number;
+  /**
+   * Same non-scored-dimension status as `riskTolerance` above — how much
+   * extra administrative effort (filing a grievance, working a manual
+   * trade, chasing every re-bid window) this pilot is actually willing to
+   * put in, independent of how aggressive a result they want. -100 = wants
+   * zero extra paperwork; +100 = will do real work for a meaningfully
+   * better outcome.
+   */
+  adminEffortAppetite: number;
 }
 
 export const DEFAULT_WEIGHTS: PreferenceWeights = {
@@ -65,6 +84,8 @@ export const DEFAULT_WEIGHTS: PreferenceWeights = {
   hotelQuality: 0,
   circadianHealth: 0,
   landings: 0,
+  riskTolerance: 0,
+  adminEffortAppetite: 0,
 };
 
 export type QuickQuestionKey =
@@ -193,4 +214,15 @@ export interface PreferenceProfile {
   discoveredFacts: import("./interview-session").PreferenceFact[];
   /** The adaptive interview's own turn-by-turn record, kept on the profile so the results screen can show "what we learned about you" without re-deriving it. Empty for the legacy static interview. */
   interviewTranscript: import("./interview-session").InterviewTurnRecord[];
+  /**
+   * How this pilot has actually reacted to specific Strategies-board
+   * suggestions — "dismissed" (explicitly said not for them, or repeatedly
+   * ignored) or "used" — kept separately from `discoveredFacts` since these
+   * come from board interactions, not interview answers. Feeds
+   * `strategy-learning.ts`'s small nudge to `riskTolerance`/
+   * `adminEffortAppetite`, the same "behavior is signal" principle
+   * `rank-learning.ts`'s drag-to-reorder already uses for line rankings.
+   * Absent/empty for a pilot who hasn't reacted to anything yet.
+   */
+  strategyReactions?: Partial<Record<import("./strategy").StrategyId, "used" | "dismissed">>;
 }

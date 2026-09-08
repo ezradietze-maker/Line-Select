@@ -1,13 +1,23 @@
 import type {
   DeepSliderKey,
   ExplicitTargetKey,
+  PreferenceWeights,
   QuickQuestionKey,
   RangeTarget,
 } from "@/types/preferences";
 import type { PreferenceFact } from "@/types/interview-session";
 
 export interface SliderQuestionConfig {
-  key: QuickQuestionKey | DeepSliderKey;
+  /**
+   * `keyof PreferenceWeights` rather than the narrower `QuickQuestionKey |
+   * DeepSliderKey` — every legacy-interview config below still only ever
+   * uses those two, but the adaptive interview's own inline slider wrapper
+   * (`AdaptiveInterview.tsx`'s `SliderStepInline`) reuses this same shape
+   * for every explicit-weight id, including "riskTolerance"/
+   * "adminEffortAppetite", which aren't part of either legacy union (see
+   * `ExplicitWeightKey`'s own doc comment in `types/interview-session.ts`).
+   */
+  key: keyof PreferenceWeights;
   question: string;
   /** Optional richer, pilot-voice explanation shown under the question — falls back to a generic line when omitted. */
   helpText?: string;
@@ -236,7 +246,7 @@ export const ALL_TARGET_CONFIGS: TargetSliderQuestionConfig[] = [
  * existed — keeps showing every slider, exactly as before this filter
  * existed.
  */
-export function touchedSliderConfigs<T extends { key: QuickQuestionKey | DeepSliderKey }>(
+export function touchedSliderConfigs<T extends { key: keyof PreferenceWeights }>(
   configs: T[],
   discoveredFacts: PreferenceFact[]
 ): T[] {

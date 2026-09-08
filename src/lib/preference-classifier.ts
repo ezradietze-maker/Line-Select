@@ -15,6 +15,9 @@ const EXPLICIT_DESCRIPTORS = [
   { id: "hotelQuiet", label: "Room quietness", description: "How quiet the layover hotel room is." },
   { id: "hotelQuality", label: "Overall hotel quality", description: "General hotel comfort/cleanliness/service." },
   { id: "circadianHealth", label: "Circadian health", description: "Time-zone shifts, red-eye/early reports, and rest length that disrupt sleep and body clock." },
+  { id: "landings", label: "Landings", description: "How many landings the line has — more for proficiency/currency comfort, fewer for fatigue management." },
+  { id: "riskTolerance", label: "Risk tolerance", description: "Whether this pilot would rank a rare, far-from-guaranteed line high anyway, or only wants what they're genuinely likely to hold — a Strategies-board input, not a line-scoring dimension." },
+  { id: "adminEffortAppetite", label: "Admin effort appetite", description: "Whether this pilot would actually put in extra process work (grievances, manual trades, chasing re-bid windows) for a better outcome — a Strategies-board input, not a line-scoring dimension." },
 ];
 
 export function allKnownVariableDescriptors() {

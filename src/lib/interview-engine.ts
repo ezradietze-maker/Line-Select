@@ -289,7 +289,12 @@ function touchedDimensionIds(facts: PreferenceFact[]): Set<string> {
  * to detect whether one of those got covered from bindings alone, so rather
  * than guess, richness leans entirely on the topics that actually move the
  * Satisfaction Index, which is also the thing this assessment exists to
- * inform in the first place.
+ * inform in the first place. "strategy-fit" is omitted for the same reason
+ * from the opposite direction: it's a real, cleanly-bindable explicit-weight
+ * topic (riskTolerance/adminEffortAppetite), just one that — by design —
+ * never moves the Satisfaction Index at all, so crediting it here would
+ * inflate a score-confidence metric with something that doesn't affect the
+ * score.
  */
 const TOPIC_COVERAGE_HINTS: Record<string, string[]> = {
   "home-time": ["daysOff"],
@@ -302,6 +307,7 @@ const TOPIC_COVERAGE_HINTS: Record<string, string[]> = {
   "landings-currency": ["landings"],
   "predictability-variety": ["tripShapeVariancePerLine"],
   "rest-recovery": ["shortRestOvernightsPerTrip", "avgSleepOpportunityHours"],
+  "real-schedule-effort-metrics": ["creditPerTafbHour", "dutyToBlockRatio"],
 };
 
 /**

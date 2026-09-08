@@ -532,6 +532,7 @@ export default function Home() {
             onSaveSeniority={handleSaveSeniority}
             onGoToUpload={() => setState((s) => ({ ...s, screen: "upload" }))}
             onStartInterview={handleStartInterview}
+            onUpdateProfile={handleUpdateProfile}
           />
         );
 
@@ -556,7 +557,7 @@ export default function Home() {
         );
 
       case "hotel-ratings":
-        return <HotelRatingsScreen bidPack={bidPack} />;
+        return <HotelRatingsScreen bidPack={bidPack} profile={profile} />;
     }
   })();
 

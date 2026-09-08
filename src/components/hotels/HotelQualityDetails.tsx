@@ -1,5 +1,7 @@
 import { BasketIcon, CupIcon, DumbbellIcon, UtensilsIcon } from "@/components/ui/icons";
+import { orderedAmenityCategories, orderedThemeEntries, wantsQuietRoom } from "@/lib/hotel-personalization";
 import type { HotelAmenityCategory, HotelResult, ReviewSentiment, ReviewThemeKey } from "@/types/hotel";
+import type { PreferenceProfile } from "@/types/preferences";
 
 const AMENITY_META: Record<
   HotelAmenityCategory,
@@ -45,17 +47,27 @@ export function hasHotelQualityDetails(hotel: HotelResult): boolean {
  * two stay in sync rather than drifting into two slightly different
  * presentations of the same underlying data.
  */
-export function HotelQualityDetails({ hotel }: { hotel: HotelResult }) {
-  const themeEntries = Object.entries(hotel.reviewSummary?.themes ?? {}) as [
+export function HotelQualityDetails({
+  hotel,
+  profile = null,
+}: {
+  hotel: HotelResult;
+  /** When supplied, amenity tiles and review themes reorder toward whatever this pilot's own interview actually weighted, instead of the same fixed order for every pilot. */
+  profile?: PreferenceProfile | null;
+}) {
+  const rawThemeEntries = Object.entries(hotel.reviewSummary?.themes ?? {}) as [
     ReviewThemeKey,
     ReviewSentiment,
   ][];
+  const themeEntries = orderedThemeEntries(profile, rawThemeEntries);
+  const hasQuietSignal = themeEntries.some(([theme]) => theme === "quietness" || theme === "sleepComfort");
+  const showQuietNote = wantsQuietRoom(profile) && !hasQuietSignal;
 
   return (
     <div className="space-y-4">
       {hotel.amenities && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {(Object.keys(AMENITY_META) as HotelAmenityCategory[]).map((category) => {
+          {orderedAmenityCategories(profile, Object.keys(AMENITY_META) as HotelAmenityCategory[]).map((category) => {
             const { label, icon: Icon } = AMENITY_META[category];
             const count = hotel.amenities![category];
             return (
@@ -67,6 +79,14 @@ export function HotelQualityDetails({ hotel }: { hotel: HotelResult }) {
             );
           })}
         </div>
+      )}
+
+      {showQuietNote && (
+        <p className="rounded-md border border-accent/30 bg-accent-soft px-2.5 py-1.5 text-xs leading-relaxed text-ink">
+          You flagged room quiet or circadian recovery in your interview — worth calling the hotel
+          or asking at check-in for a quiet floor or blackout curtains, since reviews here
+          don&rsquo;t say either way.
+        </p>
       )}
 
       {hotel.reviewSummary && (

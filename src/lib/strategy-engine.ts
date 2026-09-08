@@ -1,6 +1,7 @@
 import { PHRASES } from "@/lib/preference-summary";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
+import type { LineScore } from "@/lib/scoring";
 import type { PreferenceWeights } from "@/types/preferences";
 import type {
   AutoBidEntry,
@@ -178,6 +179,9 @@ function toRecommendation(
     totalTafbHours: p.line.totalTafbHours,
     feasibility: feasibility.tier,
     feasibilityNote: feasibility.note,
+    // Filled in by `attachScoreContext` once a ranking exists — every
+    // recommendation starts without one, same as before this field existed.
+    scoreContext: null,
   };
 }
 
@@ -431,6 +435,57 @@ export function generateStrategies(bidPack: BidPack, seniority: SeniorityInput):
     isProcessTip: true,
   });
 
+  // ---- Reserve Avoidance (process, pending contract verification) ----
+  strategies.push({
+    id: "reserve-avoidance",
+    name: "Reserve Avoidance",
+    tagline: "Bid a wide enough spread that a gap in your primary picks never defaults you onto reserve.",
+    mechanism:
+      "Distinct from the Reserve Ladder above (which is about what to do once you're already on reserve) — this is about not landing there in the first place. The Re-Bid Chain's own logic already establishes that a seniority-ordered award runs through several rounds, not just one; the exposure to reserve mostly comes from a bid list that's too narrow to survive a conflict in an early round, not from bad luck. Ranking a deliberately wide spread of realistically-feasible lines — not just your top few reaches — means a conflict anywhere above you is far more likely to fall through to something you actually ranked, rather than to nothing at all. Works entirely within FAR Part 117 duty and rest limits — this is about bid-list construction, never about what a line itself is legally allowed to require.",
+    benefits: [
+      "A conflict in an early round is far less likely to leave you with no ranked line left to fall to",
+      "No cost to ranking widely — seniority bidding never penalizes a long list",
+      "Turns the Re-Bid Chain's own multi-round logic into a deliberate defensive strategy, not just an opportunistic one",
+    ],
+    lines: [],
+    isProcessTip: true,
+    verification: "pending-contract",
+  });
+
+  // ---- Trip Trading (process, pending contract verification) ----
+  strategies.push({
+    id: "trip-trading",
+    name: "Trip Trading",
+    tagline: "Reconstruct your ideal month after award by trading trips with other pilots.",
+    mechanism:
+      "No single awarded line usually matches everything a pilot wants — but most seniority-ordered schedules allow real, pilot-to-pilot trip-for-trip trades after award, typically subject to qualification and seniority checks Line Select has no visibility into. Rather than treat your awarded line as final, treat it as a starting point: trading away a trip that doesn't fit for one that does can close much of the gap between what you were awarded and what you actually wanted, without re-entering the bid process at all. This is genuinely more effort than bidding once and waiting — it's the right move mainly for a pilot who said they'd actually put in that work, not a passive default. Trading itself never touches duty or rest limits — every trip involved is already a real, FAR Part 117-compliant pairing on someone's own awarded line.",
+    benefits: [
+      "Can close the gap between an awarded line and an ideal one without waiting for the next bid period",
+      "Works even for a pilot who bid conservatively and got a safe but unexciting line",
+      "Every trip involved is already a real, legal pairing — trading it changes who flies it, not what it legally requires",
+    ],
+    lines: [],
+    isProcessTip: true,
+    verification: "pending-contract",
+  });
+
+  // ---- Grievance / Slide Paperwork (process, pending contract verification) ----
+  strategies.push({
+    id: "grievance-slide",
+    name: "Grievance & Slide Paperwork",
+    tagline: "A missed or misapplied entitlement is a real lever most pilots never pull.",
+    mechanism:
+      "When a specific contractual entitlement is missed or misapplied in an award — a guarantee, a protected day, a bid-process rule not followed correctly — a formal grievance or a schedule-slide request is a real, underused avenue, not a last resort. Line Select has no visibility into any pilot's actual grievance history or the exact contract language that would apply to a specific situation, so this is deliberately general: know that this process exists and is worth using when something genuinely was missed, rather than assuming an award mistake just has to stand. Like everything else here, this is about enforcing what you're actually entitled to — never a route to something outside FAR Part 117 duty/rest limits or outside the contract itself.",
+    benefits: [
+      "A real process, not a hypothetical one — most contracts specifically provide for this",
+      "Worth knowing about even if rarely needed, since the cost of raising a legitimate miss is low",
+      "The natural fit for a pilot who said they'd actually do the paperwork for a better outcome",
+    ],
+    lines: [],
+    isProcessTip: true,
+    verification: "pending-contract",
+  });
+
   return strategies;
 }
 
@@ -485,20 +540,33 @@ const FIT_FACTORS: Partial<Record<StrategyId, { key: keyof PreferenceWeights; fa
   "ghost-line": [
     { key: "creditHours", favorsHigh: true },
     { key: "deadheadTolerance", favorsHigh: true },
+    { key: "riskTolerance", favorsHigh: true },
   ],
   "mega-trip": [
     { key: "tripLength", favorsHigh: true },
     { key: "daysOff", favorsHigh: true },
+    { key: "riskTolerance", favorsHigh: true },
   ],
-  "recurring-turn": [{ key: "tripLength", favorsHigh: false }],
+  "recurring-turn": [
+    { key: "tripLength", favorsHigh: false },
+    { key: "riskTolerance", favorsHigh: false },
+  ],
   "safety-net": [
     { key: "creditHours", favorsHigh: true },
     { key: "daysOff", favorsHigh: true },
+    { key: "riskTolerance", favorsHigh: false },
   ],
   // Reserve Ladder isn't ranked here on purpose — whether it applies to you
   // depends on circumstance (how close you sit to the reserve cutoff), not
   // a stated preference.
   "vacation-vault": [{ key: "daysOff", favorsHigh: true }],
+  "re-bid-chain": [{ key: "adminEffortAppetite", favorsHigh: true }],
+  "reserve-avoidance": [{ key: "adminEffortAppetite", favorsHigh: true }],
+  "trip-trading": [
+    { key: "adminEffortAppetite", favorsHigh: true },
+    { key: "riskTolerance", favorsHigh: true },
+  ],
+  "grievance-slide": [{ key: "adminEffortAppetite", favorsHigh: true }],
 };
 
 /** Below this magnitude a slider reads as "no strong opinion" — same bar preference-summary.ts uses before it's worth naming in a sentence. */
@@ -545,4 +613,31 @@ export function rankStrategiesByPreference(
   const unranked = scored.filter((x) => x.fit === null).map((x) => x.strategy);
 
   return [...ranked, ...unranked];
+}
+
+/**
+ * Ties a strategy's recommended lines back to this pilot's own real
+ * Satisfaction Index — not a hypothetical "if you applied this strategy"
+ * transformation (a strategy here always points at an existing, already-
+ * scored line, it doesn't modify one), but that line's own real score
+ * compared to the pilot's current top pick. Null (not a strategy touched at
+ * all) when `lineScores` is empty/absent — a pilot who hasn't interviewed
+ * yet sees strategies exactly as they did before this existed.
+ */
+export function attachScoreContext(strategies: Strategy[], lineScores: LineScore[] | null | undefined): Strategy[] {
+  if (!lineScores || lineScores.length === 0) return strategies;
+  const topScore = Math.max(...lineScores.map((r) => r.score));
+  const scoreByLineNumber = new Map(lineScores.map((r) => [r.line.lineNumber, r.score]));
+
+  return strategies.map((s) => ({
+    ...s,
+    lines: s.lines.map((rec) => {
+      const score = scoreByLineNumber.get(rec.lineNumber);
+      if (score === undefined) return rec;
+      return {
+        ...rec,
+        scoreContext: { score, deltaFromTopPick: Math.round((score - topScore) * 10) / 10 },
+      };
+    }),
+  }));
 }

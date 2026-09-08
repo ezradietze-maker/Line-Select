@@ -7,11 +7,14 @@ import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { fetchHotel } from "@/lib/hotel-client";
+import { hotelCityReason } from "@/lib/hotel-personalization";
 import type { BidPack } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
+import type { PreferenceProfile } from "@/types/preferences";
 
 interface HotelRatingsScreenProps {
   bidPack: BidPack | null;
+  profile: PreferenceProfile | null;
 }
 
 interface HotelGroup {
@@ -48,7 +51,7 @@ function groupByHotel(bidPack: BidPack): HotelGroup[] {
 
 const NOT_CONFIGURED_MARKER = "aren't configured yet";
 
-export function HotelRatingsScreen({ bidPack }: HotelRatingsScreenProps) {
+export function HotelRatingsScreen({ bidPack, profile }: HotelRatingsScreenProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [notConfigured, setNotConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -127,7 +130,7 @@ export function HotelRatingsScreen({ bidPack }: HotelRatingsScreenProps) {
       {!loading && !notConfigured && groups.length > 0 && (
         <div className="mt-8 space-y-3">
           {groups.map((g) => (
-            <HotelCard key={g.key} group={g} hotel={ratings[g.key]} />
+            <HotelCard key={g.key} group={g} hotel={ratings[g.key]} profile={profile} />
           ))}
         </div>
       )}
@@ -135,11 +138,20 @@ export function HotelRatingsScreen({ bidPack }: HotelRatingsScreenProps) {
   );
 }
 
-function HotelCard({ group, hotel }: { group: HotelGroup; hotel: HotelResult | null | undefined }) {
+function HotelCard({
+  group,
+  hotel,
+  profile,
+}: {
+  group: HotelGroup;
+  hotel: HotelResult | null | undefined;
+  profile: PreferenceProfile | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const shownLines = group.lineNumbers.slice(0, 8);
   const extra = group.lineNumbers.length - shownLines.length;
   const hasDetails = !!hotel && hasHotelQualityDetails(hotel);
+  const cityReason = hotelCityReason(profile, group.code);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
@@ -159,6 +171,12 @@ function HotelCard({ group, hotel }: { group: HotelGroup; hotel: HotelResult | n
           </span>
         )}
       </div>
+
+      {cityReason && (
+        <p className="mt-2 rounded-md border border-brand/30 bg-brand-soft px-2.5 py-1.5 text-xs leading-relaxed text-ink">
+          <span className="font-medium">From your interview:</span> {cityReason}
+        </p>
+      )}
 
       {hotel === undefined ? (
         <Spinner label="Loading…" className="mt-2" />
@@ -205,7 +223,7 @@ function HotelCard({ group, hotel }: { group: HotelGroup; hotel: HotelResult | n
 
               {expanded && (
                 <div className="mt-3">
-                  <HotelQualityDetails hotel={hotel} />
+                  <HotelQualityDetails hotel={hotel} profile={profile} />
                 </div>
               )}
             </div>

@@ -47,35 +47,54 @@ const MIN_AMENITY_RATING = 3.5;
 /** ~1km — roughly a 12-minute walk, a reasonable "actually usable on a layover" radius. */
 const AMENITY_RADIUS_METERS = 1000;
 
-async function countNearbyAmenities(location: LatLng, types: string[], apiKey: string): Promise<number> {
-  const response = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": "places.rating",
-    },
-    body: JSON.stringify({
-      includedTypes: types,
-      maxResultCount: 10,
-      locationRestriction: { circle: { center: location, radius: AMENITY_RADIUS_METERS } },
-    }),
-  });
-  if (!response.ok) return 0;
-  const data = (await response.json()) as { places?: { rating?: number }[] };
-  return (data.places ?? []).filter((p) => (p.rating ?? 0) >= MIN_AMENITY_RATING).length;
-}
+/** Google's own cap on `searchNearby` result counts — the most a single call can return regardless of how many types it covers. */
+const MAX_NEARBY_RESULTS = 20;
 
-async function fetchAmenitySummary(
+/**
+ * One `searchNearby` call covering every amenity category's Google types at
+ * once (Google's `includedTypes` already accepts a mixed list and ORs them),
+ * then buckets the results back into per-category counts locally via each
+ * place's own `types` array. Previously this was 4 separate calls, one per
+ * category — same amenity signal, a quarter of the Places API quota per hotel.
+ */
+export async function fetchAmenitySummary(
   location: LatLng | null,
   apiKey: string
 ): Promise<HotelAmenitySummary | null> {
   if (!location) return null;
   const categories = Object.keys(AMENITY_TYPES) as HotelAmenityCategory[];
-  const counts = await Promise.all(
-    categories.map((c) => countNearbyAmenities(location, AMENITY_TYPES[c], apiKey))
-  );
-  return Object.fromEntries(categories.map((c, i) => [c, counts[i]])) as HotelAmenitySummary;
+  const typeToCategory = new Map<string, HotelAmenityCategory>();
+  for (const category of categories) {
+    for (const type of AMENITY_TYPES[category]) typeToCategory.set(type, category);
+  }
+
+  const response = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "places.rating,places.types",
+    },
+    body: JSON.stringify({
+      includedTypes: [...typeToCategory.keys()],
+      maxResultCount: MAX_NEARBY_RESULTS,
+      locationRestriction: { circle: { center: location, radius: AMENITY_RADIUS_METERS } },
+    }),
+  });
+  const counts = Object.fromEntries(categories.map((c) => [c, 0])) as Record<HotelAmenityCategory, number>;
+  if (!response.ok) return counts as HotelAmenitySummary;
+
+  const data = (await response.json()) as { places?: { rating?: number; types?: string[] }[] };
+  for (const place of data.places ?? []) {
+    if ((place.rating ?? 0) < MIN_AMENITY_RATING) continue;
+    const matchedCategories = new Set<HotelAmenityCategory>();
+    for (const type of place.types ?? []) {
+      const category = typeToCategory.get(type);
+      if (category) matchedCategories.add(category);
+    }
+    for (const category of matchedCategories) counts[category]++;
+  }
+  return counts as HotelAmenitySummary;
 }
 
 /** Words too generic to help tell one property from another. */

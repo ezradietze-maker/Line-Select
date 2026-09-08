@@ -1,5 +1,37 @@
 import type { FeasibilityTier, Strategy, StrategyLineRecommendation } from "@/types/strategy";
 
+function VerificationBadge({ verification }: { verification: Strategy["verification"] }) {
+  if (verification !== "pending-contract") return null;
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded-full border border-warn/30 bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn"
+      title="This mechanism depends on specific contract/PBS language this app hasn't confirmed yet — built ahead of that confirmation on purpose, but not the same confidence level as a strategy read straight from your own bid pack's printed numbers."
+    >
+      Pending contract verification
+    </span>
+  );
+}
+
+function ScoreContextLine({ scoreContext }: { scoreContext: StrategyLineRecommendation["scoreContext"] }) {
+  if (!scoreContext) return null;
+  const { score, deltaFromTopPick } = scoreContext;
+  if (deltaFromTopPick === 0) {
+    return (
+      <p className="mt-2 text-xs font-medium text-good">
+        Scores {score} on your Satisfaction Index — already your current top pick.
+      </p>
+    );
+  }
+  const isAhead = deltaFromTopPick > 0;
+  return (
+    <p className={`mt-2 text-xs font-medium ${isAhead ? "text-good" : "text-ink-faint"}`}>
+      Scores {score} on your Satisfaction Index — {Math.abs(deltaFromTopPick)} point
+      {Math.abs(deltaFromTopPick) === 1 ? "" : "s"} {isAhead ? "above" : "below"} your current top
+      pick.
+    </p>
+  );
+}
+
 const FEASIBILITY_STYLE: Record<FeasibilityTier, string> = {
   strong: "border-good/30 bg-good-soft text-good",
   possible: "border-accent/30 bg-accent-soft text-accent",
@@ -36,12 +68,63 @@ function LineRecommendationRow({ rec }: { rec: StrategyLineRecommendation }) {
         <span>{rec.totalCreditHours.toFixed(1)} credit hrs</span>
         <span>{(rec.totalTafbHours / 24).toFixed(1)} days away</span>
       </div>
+      <ScoreContextLine scoreContext={rec.scoreContext} />
       <p className="mt-2 text-xs italic leading-relaxed text-ink-faint">{rec.feasibilityNote}</p>
     </div>
   );
 }
 
-export function StrategyCard({ strategy, topPick }: { strategy: Strategy; topPick?: boolean }) {
+function ReactionButtons({
+  reaction,
+  onReact,
+}: {
+  reaction: "used" | "dismissed" | null;
+  onReact: (reaction: "used" | "dismissed") => void;
+}) {
+  return (
+    <div className="mt-4 flex items-center gap-2 border-t border-border pt-3">
+      <span className="text-xs text-ink-faint">Actually going to try this?</span>
+      <button
+        type="button"
+        onClick={() => onReact("used")}
+        aria-pressed={reaction === "used"}
+        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+          reaction === "used"
+            ? "border-good bg-good-soft text-good"
+            : "border-border text-ink-faint hover:border-border-strong hover:text-ink-muted"
+        }`}
+      >
+        I&rsquo;m using this
+      </button>
+      <button
+        type="button"
+        onClick={() => onReact("dismissed")}
+        aria-pressed={reaction === "dismissed"}
+        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+          reaction === "dismissed"
+            ? "border-ink-faint bg-canvas text-ink-muted"
+            : "border-border text-ink-faint hover:border-border-strong hover:text-ink-muted"
+        }`}
+      >
+        Not for me
+      </button>
+    </div>
+  );
+}
+
+export function StrategyCard({
+  strategy,
+  topPick,
+  reaction = null,
+  onReact,
+}: {
+  strategy: Strategy;
+  topPick?: boolean;
+  /** This pilot's own prior reaction, if any — null when they haven't reacted yet, or when `onReact` isn't supplied at all (no profile to persist to). */
+  reaction?: "used" | "dismissed" | null;
+  /** Absent hides the reaction buttons entirely — there's no profile yet for a reaction to nudge. */
+  onReact?: (reaction: "used" | "dismissed") => void;
+}) {
   return (
     <div
       className={`overflow-hidden rounded-xl border bg-surface ${
@@ -59,11 +142,14 @@ export function StrategyCard({ strategy, topPick }: { strategy: Strategy; topPic
       <div className="p-5 sm:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold text-ink">{strategy.name}</h2>
-          {!topPick && strategy.isProcessTip && (
-            <span className="inline-flex items-center rounded-full border border-border-strong px-2 py-0.5 text-xs font-medium text-ink-faint">
-              Bonus move
-            </span>
-          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <VerificationBadge verification={strategy.verification} />
+            {!topPick && strategy.isProcessTip && (
+              <span className="inline-flex items-center rounded-full border border-border-strong px-2 py-0.5 text-xs font-medium text-ink-faint">
+                Bonus move
+              </span>
+            )}
+          </div>
         </div>
         <p className="mt-1 text-sm font-medium text-brand">{strategy.tagline}</p>
         {strategy.preferenceMatch && strategy.preferenceMatch.length > 0 && (
@@ -97,6 +183,8 @@ export function StrategyCard({ strategy, topPick }: { strategy: Strategy; topPic
             here rises to a real edge this month.
           </p>
         )}
+
+        {onReact && <ReactionButtons reaction={reaction} onReact={onReact} />}
       </div>
     </div>
   );

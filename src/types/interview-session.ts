@@ -5,8 +5,18 @@ import type {
   QuickQuestionKey,
 } from "@/types/preferences";
 
-/** Every real key that can carry a directional -100..100 (or 0..100 magnitude-only) lean — deliberately excludes "departures", which is target-only (see `ExplicitTargetKey`) and has no directional form. */
-export type ExplicitWeightKey = QuickQuestionKey | DeepSliderKey;
+/**
+ * Every real key that can carry a directional -100..100 (or 0..100
+ * magnitude-only) lean — deliberately excludes "departures", which is
+ * target-only (see `ExplicitTargetKey`) and has no directional form.
+ * "riskTolerance"/"adminEffortAppetite" are appended directly here rather
+ * than folded into `DeepSliderKey` — that union's own name and every
+ * existing member is a legacy-static-interview-consumed slider key, and
+ * these two are adaptive-interview-only, strategy-board inputs (see their
+ * doc comments in `types/preferences.ts`) with no equivalent in that older
+ * flow.
+ */
+export type ExplicitWeightKey = QuickQuestionKey | DeepSliderKey | "riskTolerance" | "adminEffortAppetite";
 
 /**
  * The adaptive interview's own data shapes — a turn-by-turn transcript plus

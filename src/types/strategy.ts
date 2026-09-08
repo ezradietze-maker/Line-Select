@@ -21,7 +21,21 @@ export type StrategyId =
   | "safety-net"
   | "re-bid-chain"
   | "reserve-ladder"
-  | "vacation-vault";
+  | "vacation-vault"
+  | "reserve-avoidance"
+  | "trip-trading"
+  | "grievance-slide";
+
+/**
+ * "grounded" = computed straight from this pilot's own parsed bid pack data,
+ * same trust level as the original strategies. "pending-contract" = the
+ * mechanism depends on specific contract/PBS language this app hasn't
+ * confirmed — built ahead of that confirmation on purpose (see the
+ * Strategies-board plan), but never presented at the same confidence as a
+ * grounded one. Absent on the original seven strategies (all grounded) for
+ * backward compatibility; only ever set explicitly on new ones.
+ */
+export type StrategyVerification = "grounded" | "pending-contract";
 
 export interface StrategyLineRecommendation {
   lineNumber: string;
@@ -33,6 +47,16 @@ export interface StrategyLineRecommendation {
   totalTafbHours: number;
   feasibility: FeasibilityTier;
   feasibilityNote: string;
+  /**
+   * This line's own real Satisfaction Index and how it compares to the
+   * pilot's current top pick — null when no profile/ranking exists yet (a
+   * pilot who hasn't interviewed sees strategies exactly as before this
+   * existed), or when the recommended line couldn't be matched to a scored
+   * line for some reason. Never a hypothetical "if you applied this
+   * strategy" transformation — a strategy here always points at a real,
+   * already-scored line, so this is that line's own real number.
+   */
+  scoreContext: { score: number; deltaFromTopPick: number } | null;
 }
 
 export interface Strategy {
@@ -46,6 +70,8 @@ export interface Strategy {
   lines: StrategyLineRecommendation[];
   /** True for strategies (like the re-bid chain) that are general bidding-process advice rather than a read of this specific pack's lines. */
   isProcessTip?: boolean;
+  /** Absent means "grounded" (the original seven strategies) — see `StrategyVerification`'s own doc comment. */
+  verification?: StrategyVerification;
   /**
    * Real phrases from the pilot's own interview answers that this strategy's
    * ranking was based on — present only when a profile exists and the
