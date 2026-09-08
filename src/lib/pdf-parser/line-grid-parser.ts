@@ -134,14 +134,14 @@ function searchSubsets(
 
 function findMatchingPairings(
   sequenceMatches: SequenceMatch[],
-  flightPool: ParsedPairing[],
+  flightMatches: SequenceMatch[],
   targetCredit: number,
   targetBlock: number,
   targetLandings: number
 ): ParsedPairing[] | null {
   const pool: Candidate[] = [
     ...sequenceMatches.map((m) => ({ pairing: m.pairing, weight: m.count })),
-    ...flightPool.map((p) => ({ pairing: p, weight: 1 })),
+    ...flightMatches.map((m) => ({ pairing: m.pairing, weight: m.count })),
   ];
 
   if (pool.length > MAX_POOL_FOR_SEARCH) return null;
@@ -221,6 +221,18 @@ export function parseLineGridColumn(
     for (const m of coMatches) {
       excludedRanges.push([m.index!, m.index! + m[0].length]);
     }
+    // "DAYS OFF NN" is always the last labeled field in a line's block —
+    // confirmed against real data that a bare, un-piped run of numbers
+    // sometimes trails it (e.g. "DAYS OFF 13 | 640 931 624 1531 640 1531
+    // 640 1531"). None of those numbers correspond to any real pairing
+    // sequence or flight number anywhere in the schedule; they were being
+    // swept up as candidates purely because the extraction regex accepts a
+    // bare space as a terminator, which both wastes search budget and can
+    // inflate a real candidate's occurrence-based weight when a genuine
+    // sequence/flight number happens to coincide with one of these values.
+    if (daysOffMatch?.index !== undefined) {
+      excludedRanges.push([daysOffMatch.index + daysOffMatch[0].length, text.length]);
+    }
 
     const candidateMatches = Array.from(text.matchAll(/\b(\d{1,4})(?=[:|]|\s|$)/g)).filter(
       (m) => !excludedRanges.some(([start, end]) => m.index! >= start && m.index! < end)
@@ -258,15 +270,27 @@ export function parseLineGridColumn(
       }
     }
 
-    const flightPool = new Map<string, ParsedPairing>();
+    // Keyed by pairing id, weighted by the *candidate's own* occurrence
+    // count (mirroring sequenceMatches' `count`) rather than a flat 1 —
+    // a trip repeated across several weeks in the same line often only
+    // shows up in the grid via its deadhead flight number (no bare
+    // sequence-number cell for the repeat weeks at all), so a flat weight
+    // of 1 under-counts its real credit/block/landings contribution and
+    // makes an otherwise-solvable line impossible to match. `Math.max`
+    // guards against double-counting when more than one flight number in
+    // the same candidate set happens to belong to this same pairing.
+    const flightPool = new Map<string, SequenceMatch>();
     for (const c of candidates) {
+      const count = occurrenceCounts.get(c)!;
       // pairingsByFlightNumber's own keys are leading-zero-stripped (see
       // normalizeFlightNumberDigits) since the pairing schedule and the
       // line grid don't always pad a flight number the same way (e.g. a
       // grid cell's "0762" for the schedule's own "762") — the lookup key
       // needs the same normalization or it silently misses a real match.
       for (const p of pairingsByFlightNumber.get(normalizeFlightNumberDigits(c)) ?? []) {
-        if (!sequenceMatchedIds.has(p.id)) flightPool.set(p.id, p);
+        if (sequenceMatchedIds.has(p.id)) continue;
+        const existing = flightPool.get(p.id);
+        flightPool.set(p.id, { pairing: p, count: Math.max(existing?.count ?? 0, count) });
       }
     }
 
