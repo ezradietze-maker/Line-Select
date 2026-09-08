@@ -38,13 +38,17 @@ const isNonEmptyRow = (r: string) => r.trim().length > 0 && !SEPARATOR_RE.test(r
 // even glued on with no space at all, e.g. "PUDONG SHANGRI-LA862168826888"),
 // so a trailing run of digits/punctuation is stripped from the captured
 // name — whitespace before it is optional, since the source PDF isn't
-// consistent about including one.
+// consistent about including one. "/" is included in that trailing run
+// (confirmed against a real entry, "HILTON 907/272-7411") since a phone
+// number sometimes prints with a slash before the area code rather than a
+// dash — without it, the cleanup regex stops at the slash and leaves a
+// stray "907/" glued onto the name.
 const HOTEL_RE = /^Hotel:\s*(.+?)\s*\(([A-Z]{3})\)/i;
 
 function extractHotelName(row: string): string | null {
   const match = row.match(HOTEL_RE);
   if (!match) return null;
-  const cleaned = match[1].replace(/\s*\d[\d\s\-()]{5,}$/, "").trim();
+  const cleaned = match[1].replace(/\s*\d[\d\s\-()/]{5,}$/, "").trim();
   return cleaned || null;
 }
 
@@ -87,25 +91,49 @@ interface LegInfo {
   layoverCity?: string;
 }
 
+// A ground-duty code — "STHOTL" (standby/reserve at a hotel near base) is
+// the one confirmed against real bid packs, printed as a same-airport
+// "leg" with no flying at all. Written to recognize the *shape* rather
+// than that one literal string: a real flight number always ends in at
+// least one digit (company or interline), so an all-letters code is never
+// ambiguous with one. Ground duty also has no EQP column at all — every
+// field after the code sits one position earlier than on a flown leg.
+const GROUND_DUTY_CODE_RE = /^[A-Z]{3,8}$/;
+
+/** True when `code`/`afterCode` match the ground-duty row shape (all-letters code immediately followed by an airport, rather than a flight number followed by an equipment code). */
+function isGroundDutyRow(code: string, afterCode: string | undefined): boolean {
+  return GROUND_DUTY_CODE_RE.test(code) && AIRPORT_RE.test(afterCode ?? "");
+}
+
 function tryParseLeg(row: string): LegInfo | null {
   const tokens = row.split(" ").filter(Boolean);
-  if (tokens.length < 7) return null;
+  if (tokens.length < 6) return null;
 
   const dayMatch = tokens[0].match(DAY_TOKEN_RE);
   if (!dayMatch) return null;
-  const flightNumber = tokens[1];
-  if (!/^[A-Z]{0,3}\d+$/.test(flightNumber)) return null;
-  if (!/^(\d+|JET)$/.test(tokens[2])) return null;
-  const depAirport = tokens[3];
-  if (!AIRPORT_RE.test(depAirport)) return null;
-  if (!TIME_PAIR_RE.test(tokens[4])) return null;
-  const arrAirport = tokens[5];
-  if (!AIRPORT_RE.test(arrAirport)) return null;
-  if (!TIME_PAIR_RE.test(tokens[6])) return null;
-  if (tokens.length > 7 && !HHMM_RE.test(tokens[7])) return null;
 
-  const rest = tokens.slice(8);
-  const isDeadhead = rest.length > 0 && rest[0].toUpperCase() === "DH";
+  const flightNumber = tokens[1];
+  const groundDuty = isGroundDutyRow(flightNumber, tokens[2]);
+  if (!groundDuty) {
+    if (!/^[A-Z]{0,3}\d+$/.test(flightNumber)) return null;
+    if (!/^(\d+|JET)$/.test(tokens[2])) return null;
+  }
+  // Ground duty has no EQP token to skip past, so its fields start one
+  // position earlier than a flown leg's.
+  const base = groundDuty ? 2 : 3;
+
+  const depAirport = tokens[base];
+  if (!AIRPORT_RE.test(depAirport)) return null;
+  if (!TIME_PAIR_RE.test(tokens[base + 1])) return null;
+  const arrAirport = tokens[base + 2];
+  if (!AIRPORT_RE.test(arrAirport)) return null;
+  if (!TIME_PAIR_RE.test(tokens[base + 3])) return null;
+  if (tokens.length > base + 4 && !HHMM_RE.test(tokens[base + 4])) return null;
+
+  const rest = tokens.slice(base + 5);
+  // Ground duty is standby, never a deadhead — the "DH" flag only ever
+  // marks a flown leg ridden as a passenger.
+  const isDeadhead = !groundDuty && rest.length > 0 && rest[0].toUpperCase() === "DH";
 
   // Layover city: a 3-letter code immediately followed by an HH:MM at the
   // tail of the row (the last leg of a duty period reports its layover).
@@ -194,26 +222,36 @@ interface RichLegMatch {
  */
 function tryParseRichLeg(row: string): RichLegMatch | null {
   const tokens = row.split(" ").filter(Boolean);
-  if (tokens.length < 7) return null;
+  if (tokens.length < 6) return null;
 
   const dayMatch = tokens[0].match(DAY_TOKEN_RE);
   if (!dayMatch) return null;
-  const flightNumber = tokens[1];
-  if (!/^[A-Z]{0,3}\d+$/.test(flightNumber)) return null;
-  if (!/^(\d+|JET)$/.test(tokens[2])) return null;
-  const depAirport = tokens[3];
-  if (!AIRPORT_RE.test(depAirport)) return null;
-  const depPair = parseTimePair(tokens[4]);
-  if (!depPair) return null;
-  const arrAirport = tokens[5];
-  if (!AIRPORT_RE.test(arrAirport)) return null;
-  const arrPair = parseTimePair(tokens[6]);
-  if (!arrPair) return null;
-  if (tokens.length > 7 && !HHMM_RE.test(tokens[7])) return null;
 
-  const blockHours = tokens.length > 7 ? timeToHours(tokens[7]) : null;
-  const rest = tokens.slice(8);
-  const isDeadhead = !/^\d+$/.test(flightNumber) || rest.some((t) => t.toUpperCase() === "DH");
+  const flightNumber = tokens[1];
+  const groundDuty = isGroundDutyRow(flightNumber, tokens[2]);
+  if (!groundDuty) {
+    if (!/^[A-Z]{0,3}\d+$/.test(flightNumber)) return null;
+    if (!/^(\d+|JET)$/.test(tokens[2])) return null;
+  }
+  const base = groundDuty ? 2 : 3;
+
+  const depAirport = tokens[base];
+  if (!AIRPORT_RE.test(depAirport)) return null;
+  const depPair = parseTimePair(tokens[base + 1]);
+  if (!depPair) return null;
+  const arrAirport = tokens[base + 2];
+  if (!AIRPORT_RE.test(arrAirport)) return null;
+  const arrPair = parseTimePair(tokens[base + 3]);
+  if (!arrPair) return null;
+  if (tokens.length > base + 4 && !HHMM_RE.test(tokens[base + 4])) return null;
+
+  // Ground duty's own "block"-column value is really its duty/standby
+  // length, not flying time — the pack's footer BLOCK HRS already
+  // reflects the real (zero) total, so this is left null rather than
+  // mislabeling standby hours as block.
+  const blockHours = groundDuty ? null : tokens.length > base + 4 ? timeToHours(tokens[base + 4]) : null;
+  const rest = tokens.slice(base + 5);
+  const isDeadhead = !groundDuty && (!/^\d+$/.test(flightNumber) || rest.some((t) => t.toUpperCase() === "DH"));
 
   let layover: { city: string; hours: number } | null = null;
   for (let i = rest.length - 2; i >= 0; i--) {
@@ -225,7 +263,9 @@ function tryParseRichLeg(row: string): RichLegMatch | null {
 
   return {
     flightNumber,
-    equipment: tokens[2],
+    // No EQP column at all for ground duty — honestly empty rather than
+    // borrowing the airport code that now sits in that token position.
+    equipment: groundDuty ? "" : tokens[2],
     depAirport,
     depGmt: depPair.gmt,
     depLocal: depPair.local,

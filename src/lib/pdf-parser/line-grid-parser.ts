@@ -260,7 +260,12 @@ export function parseLineGridColumn(
 
     const flightPool = new Map<string, ParsedPairing>();
     for (const c of candidates) {
-      for (const p of pairingsByFlightNumber.get(c) ?? []) {
+      // pairingsByFlightNumber's own keys are leading-zero-stripped (see
+      // normalizeFlightNumberDigits) since the pairing schedule and the
+      // line grid don't always pad a flight number the same way (e.g. a
+      // grid cell's "0762" for the schedule's own "762") — the lookup key
+      // needs the same normalization or it silently misses a real match.
+      for (const p of pairingsByFlightNumber.get(normalizeFlightNumberDigits(c)) ?? []) {
         if (!sequenceMatchedIds.has(p.id)) flightPool.set(p.id, p);
       }
     }
