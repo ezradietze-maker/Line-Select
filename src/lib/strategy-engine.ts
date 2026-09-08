@@ -1,3 +1,4 @@
+import type { AwardHistorySummary } from "@/lib/award-history";
 import { PHRASES } from "@/lib/preference-summary";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
@@ -108,26 +109,60 @@ function seniorityPercentile(seniority: SeniorityInput): number {
   return 1 - (rank - 1) / (total - 1);
 }
 
+/** Below this, even a real award-history lineRate is showing you noise, not signal — see `MIN_SAMPLE_SIZE` in `lib/award-history.ts`, which this mirrors. */
+const MIN_NEARBY_FOR_GROUNDING = 3;
+
 export function estimateFeasibility(
   desirabilityPct: number,
-  seniorityPct: number
-): { tier: FeasibilityTier; note: string } {
+  seniorityPct: number,
+  awardSummary?: AwardHistorySummary | null
+): { tier: FeasibilityTier; note: string; source: "award-history" | "heuristic" } {
+  // Real data wins when there's enough of it: `lineRate` is the share of
+  // real, self-reported outcomes near this pilot's own seniority percentile
+  // for this exact base/aircraft/seat that actually held a regular line
+  // (vs. reserve/other) — a real empirical read, not a rarity estimate.
+  if (awardSummary && awardSummary.lineRate !== null && awardSummary.nearbyCount >= MIN_NEARBY_FOR_GROUNDING) {
+    const pct = Math.round(awardSummary.lineRate * 100);
+    if (awardSummary.lineRate >= 0.65) {
+      return {
+        tier: "strong",
+        note: `${pct}% of real, self-reported pilots near your seniority for this base/aircraft/seat held a regular line — grounded in actual reports, not an estimate.`,
+        source: "award-history",
+      };
+    }
+    if (awardSummary.lineRate >= 0.3) {
+      return {
+        tier: "possible",
+        note: `${pct}% of real, self-reported pilots near your seniority for this base/aircraft/seat held a regular line — a real but mixed track record, not a guaranteed hold.`,
+        source: "award-history",
+      };
+    }
+    return {
+      tier: "longshot",
+      note: `Only ${pct}% of real, self-reported pilots near your seniority for this base/aircraft/seat actually held a regular line — a genuine reach based on real reports, not just a rarity estimate.`,
+      source: "award-history",
+    };
+  }
+
   const margin = seniorityPct - desirabilityPct;
   if (margin >= 0) {
     return {
       tier: "strong",
       note: "Your seniority number comfortably clears how rare this pattern is in this pack.",
+      source: "heuristic",
     };
   }
   if (margin >= -0.15) {
     return {
       tier: "possible",
       note: "Within real reach at your number — rank it high, but don't build your whole list around it.",
+      source: "heuristic",
     };
   }
   return {
     tier: "longshot",
     note: "A genuine reach at your current number this bid period — still worth ranking first if you want it, just don't let it be your only real option.",
+    source: "heuristic",
   };
 }
 
@@ -168,7 +203,7 @@ function toRecommendation(
   p: LineProfile,
   headline: string,
   detail: string,
-  feasibility: { tier: FeasibilityTier; note: string }
+  feasibility: { tier: FeasibilityTier; note: string; source: "award-history" | "heuristic" }
 ): StrategyLineRecommendation {
   return {
     lineNumber: p.line.lineNumber,
@@ -179,6 +214,7 @@ function toRecommendation(
     totalTafbHours: p.line.totalTafbHours,
     feasibility: feasibility.tier,
     feasibilityNote: feasibility.note,
+    feasibilitySource: feasibility.source,
     // Filled in by `attachScoreContext` once a ranking exists — every
     // recommendation starts without one, same as before this field existed.
     scoreContext: null,
@@ -193,7 +229,11 @@ function toRecommendation(
  * actual lines in *this* pack that fit each one. Nothing here is invented:
  * every number quoted is a real total already on the parsed line.
  */
-export function generateStrategies(bidPack: BidPack, seniority: SeniorityInput): Strategy[] {
+export function generateStrategies(
+  bidPack: BidPack,
+  seniority: SeniorityInput,
+  awardSummary?: AwardHistorySummary | null
+): Strategy[] {
   const profiles = bidPack.lines.map(buildLineProfile);
   const total = profiles.length;
   const seniorityPct = seniorityPercentile(seniority);
@@ -214,7 +254,7 @@ export function generateStrategies(bidPack: BidPack, seniority: SeniorityInput):
 
     const lines = candidates.map((p) => {
       const position = rankPosition(profiles, p, ghostLineScore);
-      const feasibility = estimateFeasibility(desirabilityPercentile(position, total), seniorityPct);
+      const feasibility = estimateFeasibility(desirabilityPercentile(position, total), seniorityPct, awardSummary);
       const block = p.realFlyingHours ?? 0;
       return toRecommendation(
         p,
@@ -253,7 +293,7 @@ export function generateStrategies(bidPack: BidPack, seniority: SeniorityInput):
 
     const lines = candidates.map((p) => {
       const position = rankPosition(profiles, p, megaTripScore);
-      const feasibility = estimateFeasibility(desirabilityPercentile(position, total), seniorityPct);
+      const feasibility = estimateFeasibility(desirabilityPercentile(position, total), seniorityPct, awardSummary);
       return toRecommendation(
         p,
         `One trip covers ${Math.round(p.maxTripCreditShare * 100)}% of this line's ${hours(
@@ -289,7 +329,7 @@ export function generateStrategies(bidPack: BidPack, seniority: SeniorityInput):
 
     const lines = candidates.map((p) => {
       const position = rankPosition(profiles, p, recurringTurnScore);
-      const feasibility = estimateFeasibility(desirabilityPercentile(position, total), seniorityPct);
+      const feasibility = estimateFeasibility(desirabilityPercentile(position, total), seniorityPct, awardSummary);
       const predictability = p.distinctReportTimes === 1 ? "the exact same time" : "a narrow band of times";
       return toRecommendation(
         p,
@@ -329,7 +369,7 @@ export function generateStrategies(bidPack: BidPack, seniority: SeniorityInput):
 
     const lines = candidates.map((p) => {
       const position = rankPosition(profiles, p, score);
-      const feasibility = estimateFeasibility(desirabilityPercentile(position, total), seniorityPct);
+      const feasibility = estimateFeasibility(desirabilityPercentile(position, total), seniorityPct, awardSummary);
       return toRecommendation(
         p,
         `${hours(p.line.totalCreditHours)} credit hours and ${p.line.daysOff} days off — strong on both`,

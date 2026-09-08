@@ -9,7 +9,12 @@ import {
   rankStrategiesByPreference,
 } from "@/lib/strategy-engine";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
+import type { AwardHistorySummary } from "@/lib/award-history";
 import type { SeniorityInput, Strategy } from "@/types/strategy";
+
+function awardSummary(overrides: Partial<AwardHistorySummary>): AwardHistorySummary {
+  return { totalReports: 10, nearbyCount: 10, avgDaysOff: 18, avgCreditHours: 80, lineRate: 0.5, ...overrides };
+}
 
 const SENIOR: SeniorityInput = { rank: 1, totalPilots: 200 };
 const JUNIOR: SeniorityInput = { rank: 199, totalPilots: 200 };
@@ -159,6 +164,43 @@ describe("estimateFeasibility", () => {
   it("calls it a longshot when seniority falls well short of how rare the pattern is", () => {
     expect(estimateFeasibility(0.95, 0.2).tier).toBe("longshot");
   });
+
+  it("tags the heuristic result as such when no award-history data is supplied", () => {
+    expect(estimateFeasibility(0.9, 0.95).source).toBe("heuristic");
+    expect(estimateFeasibility(0.9, 0.95, null).source).toBe("heuristic");
+  });
+
+  it("ignores an award summary with too few nearby reports and falls back to the heuristic", () => {
+    const result = estimateFeasibility(0.95, 0.2, awardSummary({ nearbyCount: 2, lineRate: 0.9 }));
+    expect(result.source).toBe("heuristic");
+    expect(result.tier).toBe("longshot");
+  });
+
+  it("ignores an award summary with a null lineRate (not enough nearby reports) even with a high nearbyCount", () => {
+    const result = estimateFeasibility(0.95, 0.2, awardSummary({ nearbyCount: 10, lineRate: null }));
+    expect(result.source).toBe("heuristic");
+  });
+
+  it("grounds the tier in real data once there's enough of it, overriding what the heuristic alone would say", () => {
+    // Heuristic alone would call this a longshot (seniority far below desirability) —
+    // real reports showing most nearby pilots held a line should override that.
+    const result = estimateFeasibility(0.95, 0.2, awardSummary({ nearbyCount: 5, lineRate: 0.8 }));
+    expect(result.source).toBe("award-history");
+    expect(result.tier).toBe("strong");
+    expect(result.note).toContain("80%");
+  });
+
+  it("grounds a mixed real track record as possible, not strong", () => {
+    const result = estimateFeasibility(0.9, 0.95, awardSummary({ nearbyCount: 5, lineRate: 0.5 }));
+    expect(result.source).toBe("award-history");
+    expect(result.tier).toBe("possible");
+  });
+
+  it("grounds a poor real track record as a longshot even if the heuristic alone would call it strong", () => {
+    const result = estimateFeasibility(0.9, 0.95, awardSummary({ nearbyCount: 5, lineRate: 0.1 }));
+    expect(result.source).toBe("award-history");
+    expect(result.tier).toBe("longshot");
+  });
 });
 
 describe("rankStrategiesByPreference", () => {
@@ -304,6 +346,7 @@ describe("attachScoreContext", () => {
             totalTafbHours: 0,
             feasibility: "possible",
             feasibilityNote: "",
+            feasibilitySource: "heuristic",
             scoreContext: null,
           },
         ],

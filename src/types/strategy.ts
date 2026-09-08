@@ -48,6 +48,17 @@ export interface StrategyLineRecommendation {
   feasibility: FeasibilityTier;
   feasibilityNote: string;
   /**
+   * "award-history" means this tier came from real, self-reported hold
+   * outcomes near this pilot's own seniority percentile for this exact
+   * base/aircraft/seat (see `summarizeAwardHistory` in `lib/award-history.ts`
+   * and its `MIN_SAMPLE_SIZE` gate) — a real empirical read, not a guess.
+   * "heuristic" is the original seniority-vs-rarity margin estimate, used
+   * whenever there isn't yet enough nearby real data. Surfaced so a
+   * data-backed tier is never shown with the same confidence as an
+   * estimated one.
+   */
+  feasibilitySource: "award-history" | "heuristic";
+  /**
    * This line's own real Satisfaction Index and how it compares to the
    * pilot's current top pick — null when no profile/ranking exists yet (a
    * pilot who hasn't interviewed sees strategies exactly as before this

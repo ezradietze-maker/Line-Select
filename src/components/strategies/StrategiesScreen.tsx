@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AutoBidPanel } from "@/components/strategies/AutoBidPanel";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { Button } from "@/components/ui/Button";
 import { Heading } from "@/components/ui/Heading";
 import { TextField } from "@/components/ui/TextField";
+import { fetchAwardHistory, summarizeAwardHistory } from "@/lib/award-history";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { rankLines } from "@/lib/scoring";
 import {
@@ -16,6 +17,7 @@ import {
   rankStrategiesByPreference,
 } from "@/lib/strategy-engine";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
+import type { AwardHistoryRecord } from "@/types/award-history";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -210,11 +212,31 @@ function StrategyResults({
     [bidPack, profile, implicitValuesByLine]
   );
 
+  // Real self-reported hold outcomes for this exact base/aircraft/seat —
+  // fetched here (a second copy of what AwardHistoryPanel below also
+  // fetches for its own display) purely to ground `estimateFeasibility`'s
+  // tiers in real data instead of the seniority-vs-rarity heuristic alone;
+  // see `lib/award-history.ts`'s own doc comments for the sample-size gate.
+  const [awardRecords, setAwardRecords] = useState<AwardHistoryRecord[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchAwardHistory(bidPack.base, bidPack.aircraft, bidPack.seat).then((data) => {
+      if (!cancelled) setAwardRecords(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bidPack.base, bidPack.aircraft, bidPack.seat]);
+  const awardSummary = useMemo(
+    () => (awardRecords ? summarizeAwardHistory(awardRecords, seniority) : null),
+    [awardRecords, seniority]
+  );
+
   const strategies = useMemo(() => {
-    const generated = generateStrategies(bidPack, seniority);
+    const generated = generateStrategies(bidPack, seniority, awardSummary);
     const preferenceRanked = rankStrategiesByPreference(generated, profile?.weights ?? null);
     return attachScoreContext(preferenceRanked, ranked);
-  }, [bidPack, seniority, profile, ranked]);
+  }, [bidPack, seniority, profile, ranked, awardSummary]);
   const autoBid = useMemo(() => buildAutoBid(strategies), [strategies]);
   const strongCount = strategies.filter((s) =>
     s.lines.some((l) => l.feasibility === "strong")

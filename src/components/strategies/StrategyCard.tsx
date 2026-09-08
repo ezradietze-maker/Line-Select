@@ -54,12 +54,27 @@ function FeasibilityBadge({ tier }: { tier: FeasibilityTier }) {
   );
 }
 
+/** Only rendered when a tier actually came from real, self-reported hold outcomes (see `estimateFeasibility`'s doc comment) — never shown for the seniority-vs-rarity heuristic, so a real read is never confused with an estimate. */
+function AwardHistoryBadge() {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded-full border border-brand/30 bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand"
+      title="Based on real, self-reported hold outcomes from pilots near your seniority for this exact base/aircraft/seat — not the usual rarity estimate."
+    >
+      Real reports
+    </span>
+  );
+}
+
 function LineRecommendationRow({ rec }: { rec: StrategyLineRecommendation }) {
   return (
     <div className="rounded-lg border border-border bg-canvas p-3.5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="text-sm font-semibold text-ink">Line {rec.lineNumber}</div>
-        <FeasibilityBadge tier={rec.feasibility} />
+        <div className="flex shrink-0 items-center gap-1.5">
+          {rec.feasibilitySource === "award-history" && <AwardHistoryBadge />}
+          <FeasibilityBadge tier={rec.feasibility} />
+        </div>
       </div>
       <p className="mt-1.5 text-sm font-medium text-ink">{rec.headline}</p>
       <p className="mt-1 text-sm leading-relaxed text-ink-muted">{rec.detail}</p>
