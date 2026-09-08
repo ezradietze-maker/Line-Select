@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -74,6 +75,9 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
+
+  const { ok } = await checkRateLimit("classify-preference", user.id, 60, 60 * 60);
+  if (!ok) return rateLimitedResponse();
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {

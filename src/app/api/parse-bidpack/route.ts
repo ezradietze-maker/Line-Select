@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { parseBidPackPdf } from "@/lib/pdf-parser";
 import { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
+import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 // pdfjs-dist needs Node APIs (Buffer, etc.), not the edge runtime.
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const { ok } = await checkRateLimit("parse-bidpack", clientIp(request), 10, 60 * 60);
+  if (!ok) return rateLimitedResponse();
+
   let formData: FormData;
   try {
     formData = await request.formData();

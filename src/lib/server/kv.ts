@@ -66,3 +66,23 @@ export async function setJson<T>(key: string, value: T, options?: { ttlSeconds?:
   };
   writeFileSync(file, JSON.stringify(envelope, null, 2), "utf8");
 }
+
+/**
+ * Atomically increments a counter key by 1, creating it at 1 with the given
+ * TTL the first time it's touched — used for rate limiting (see
+ * `lib/rate-limit.ts`). Redis's own INCR/EXPIRE are atomic under concurrent
+ * requests, which matters here; the local-file fallback does a plain
+ * read-modify-write, imprecise under true concurrency but fine for the
+ * single-process dev server it's actually used on.
+ */
+export async function incrementCounter(key: string, ttlSeconds: number): Promise<number> {
+  if (redis) {
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, ttlSeconds);
+    return count;
+  }
+  const current = (await getJson<number>(key)) ?? 0;
+  const next = current + 1;
+  await setJson(key, next, { ttlSeconds });
+  return next;
+}

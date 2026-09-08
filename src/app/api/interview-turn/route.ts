@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runInterviewTurn } from "@/lib/interview-turn-service";
+import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 import type { TurnRequestBody } from "@/types/interview-session";
 
 export const runtime = "nodejs";
@@ -19,6 +20,9 @@ export const runtime = "nodejs";
  * `hotels/route.ts` already accepts for unlimited paid lookups today.
  */
 export async function POST(request: Request) {
+  const { ok } = await checkRateLimit("interview-turn", clientIp(request), 60, 60 * 60);
+  if (!ok) return rateLimitedResponse();
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "The adaptive interview isn't configured on this server." }, { status: 503 });

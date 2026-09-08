@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { airportSearchName, citySearchName } from "@/lib/hotels/airport-names";
 import { cacheKey, getCachedHotel, setCachedHotel } from "@/lib/server/hotel-cache";
+import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 import type {
   HotelAmenityCategory,
   HotelAmenitySummary,
@@ -353,6 +354,12 @@ export async function GET(request: Request) {
     const result: HotelLookupResult = { code, hotelName, hotel: cached, error: null };
     return NextResponse.json(result);
   }
+
+  // Only cache misses reach here, which is what actually costs a Google
+  // Places call — a cache hit above never touches this limit, so pilots
+  // repeatedly viewing already-cached hotels are never throttled.
+  const { ok } = await checkRateLimit("hotels-lookup", clientIp(request), 60, 60 * 60);
+  if (!ok) return rateLimitedResponse();
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
