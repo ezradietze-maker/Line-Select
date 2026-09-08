@@ -114,10 +114,64 @@ function formatShift(hours: number): string {
   return `${rounded}h ${direction === "east" ? "eastward" : "westward"}`;
 }
 
+/**
+ * The longest run of CONSECUTIVE duty periods within one trip whose report
+ * time falls in the WOCL — distinct from a bare count, since two isolated
+ * early reports on a 4-day trip are a very different experience from two
+ * back-to-back ones. Order is exact here (a trip's own duty sequence is
+ * known outright, unlike calendar position ACROSS trips — see
+ * `MissingCategories` in `trip-analytics.ts` for why that distinction
+ * matters and where this app draws the line on what it will and won't
+ * infer).
+ */
+function longestConsecutiveWocStreak(trip: Trip): number {
+  let longest = 0;
+  let current = 0;
+  for (const duty of trip.schedule) {
+    const reportMin = hhmmToMinutes(duty.reportTimeLocal);
+    if (reportMin >= WOCL_START_MIN && reportMin < WOCL_END_MIN) {
+      current++;
+      longest = Math.max(longest, current);
+    } else {
+      current = 0;
+    }
+  }
+  return longest;
+}
+
+/**
+ * `Math.min(wocEncroachments, 3)` (unchanged) when no pilot tolerance is
+ * known — the same generic default this scoring has always used. Once a
+ * pilot has actually stated how many consecutive early/late reports they
+ * can handle before it wears on them (the report-time-circadian interview
+ * topic, captured as `explicitTargets.circadianTolerance`), the penalty is
+ * personalized instead: a report streak within their own stated tolerance
+ * costs a mild, capped amount (matching how forgiving the generic default
+ * already was), while a streak that exceeds what they themselves said they
+ * can handle costs sharply more per report beyond it — this pilot told the
+ * interview exactly where that line is, so the model should trust it rather
+ * than falling back to a one-size-fits-all cap.
+ */
+function personalizedWocPenalty(
+  wocEncroachments: number,
+  streak: number,
+  consecutiveTolerance: number | null | undefined
+): number {
+  if (consecutiveTolerance === null || consecutiveTolerance === undefined) {
+    return Math.min(wocEncroachments, 3);
+  }
+  if (wocEncroachments === 0) return 0;
+  const withinTolerance = Math.min(streak, consecutiveTolerance);
+  const overTolerance = Math.max(0, streak - consecutiveTolerance);
+  return Math.min(3, withinTolerance * 0.5) + overTolerance * 2;
+}
+
 /** Null when the trip has no verified schedule (estimated line, or reconciliation failed) or the bid pack's home-base offset couldn't be derived — same honesty policy as the rest of the app: no real data in, no score out. */
 export function computeCircadianAssessment(
   trip: Trip,
-  homeBaseOffsetMinutes: number | null
+  homeBaseOffsetMinutes: number | null,
+  /** This pilot's own stated ceiling on consecutive WOCL-window reports (`explicitTargets.circadianTolerance`), if the interview ever asked. Absent/null keeps the exact generic behavior this function always had. */
+  consecutiveTolerance?: number | null
 ): CircadianAssessment | null {
   if (trip.schedule.length === 0 || homeBaseOffsetMinutes === null) return null;
 
@@ -139,7 +193,8 @@ export function computeCircadianAssessment(
     const reportMin = hhmmToMinutes(duty.reportTimeLocal);
     if (reportMin >= WOCL_START_MIN && reportMin < WOCL_END_MIN) wocEncroachments++;
   }
-  const wocPenalty = Math.min(wocEncroachments, 3);
+  const wocStreak = longestConsecutiveWocStreak(trip);
+  const wocPenalty = personalizedWocPenalty(wocEncroachments, wocStreak, consecutiveTolerance);
 
   let shortRestCount = 0;
   let restPenalty = 0;
@@ -158,6 +213,8 @@ export function computeCircadianAssessment(
   const stars = starsFromPenalty(totalPenalty);
 
   let summary: string;
+  const exceedsPersonalTolerance =
+    consecutiveTolerance !== null && consecutiveTolerance !== undefined && wocStreak > consecutiveTolerance;
   if (totalPenalty === 0) {
     summary = "No real circadian red flags — stays close to home-base time with real rest between duty periods.";
   } else if (tzPenalty >= wocPenalty && tzPenalty >= restPenalty) {
@@ -165,7 +222,9 @@ export function computeCircadianAssessment(
       worstShift > 0 ? " — the harder phase-advance direction to adapt to" : ""
     }.`;
   } else if (wocPenalty >= restPenalty) {
-    summary = `Biggest factor: ${wocEncroachments} report time${wocEncroachments > 1 ? "s" : ""} inside the 2-6am window when the body's alertness is naturally lowest.`;
+    summary = exceedsPersonalTolerance
+      ? `Biggest factor: ${wocStreak} consecutive report times inside the 2-6am window — beyond the ${consecutiveTolerance} in a row you said you can handle.`
+      : `Biggest factor: ${wocEncroachments} report time${wocEncroachments > 1 ? "s" : ""} inside the 2-6am window when the body's alertness is naturally lowest.`;
   } else {
     summary = `Biggest factor: ${shortRestCount} layover${shortRestCount > 1 ? "s" : ""} under the 10-hour rest floor needed for a real 8 hours of sleep.`;
   }
@@ -177,4 +236,78 @@ export function computeCircadianAssessment(
     shortRestCount,
     summary,
   };
+}
+
+/** How many real days off a line needs between two trips to count as genuine recovery, not just a token gap — deliberately generous (this is about avoiding *compounding* disruption, not the ordinary short-rest-overnight check `SHORT_REST_FLOOR_HOURS` already covers within a single trip). */
+const MIN_REAL_RECOVERY_DAYS = 3;
+/** A per-trip star rating at or below this counts as "meaningfully disruptive" for compounding-risk purposes — the same bar `starsFromPenalty` already treats as a real problem (3 stars is "some issues," 2 and below is "rough"). */
+const DISRUPTIVE_STAR_THRESHOLD = 2;
+
+export interface CumulativeCircadianAssessment {
+  /** The smallest real gap (in days off) between any two of this line's trips — null only when the line has fewer than two trips. */
+  tightestRecoveryGapDays: number | null;
+  /** True when two meaningfully disruptive trips sit closer together than a real recovery window — the specific pattern a per-trip-only view can't see. */
+  hasCompoundingRisk: boolean;
+  summary: string;
+}
+
+/**
+ * Whether a line's trips into this cumulative check are worth trusting at
+ * all — real calendar placement only (`Trip.startDayIndex` populated for
+ * every trip, which requires `BidPack.bidPeriodStart` to exist too). This is
+ * exactly the same calendar-position honesty boundary `trip-analytics.ts`'s
+ * `MissingCategories` doc comment already draws for this whole app: the
+ * line-grid parser confirms which pairings belong to a line by matching
+ * aggregate totals, not by verifying each pairing's calendar day — so
+ * approximating a recovery gap from trip *order* alone on a line without
+ * confirmed placement would silently state a number that was never
+ * verified. When it's not real, this returns null rather than guess.
+ */
+export function hasRealTripPlacement(trips: Trip[], bidPeriodStart: string | null): boolean {
+  return bidPeriodStart !== null && trips.every((t) => t.startDayIndex !== null);
+}
+
+/**
+ * Cross-trip view `computeCircadianAssessment` deliberately doesn't attempt
+ * (see that function's own doc comment on what it does NOT model) — how
+ * much real recovery separates this line's own trips, and whether two
+ * genuinely rough trips sit close enough together to compound. Gated on
+ * `hasRealTripPlacement`: for the (common) case where a line's exact
+ * calendar placement couldn't be confirmed, this returns null rather than
+ * approximate a recovery window from trip order alone.
+ */
+export function computeCumulativeCircadianAssessment(
+  trips: Trip[],
+  homeBaseOffsetMinutes: number | null,
+  bidPeriodStart: string | null,
+  consecutiveTolerance?: number | null
+): CumulativeCircadianAssessment | null {
+  if (!hasRealTripPlacement(trips, bidPeriodStart) || homeBaseOffsetMinutes === null) return null;
+  if (trips.length < 2) return { tightestRecoveryGapDays: null, hasCompoundingRisk: false, summary: "Only one trip this month — nothing to compound." };
+
+  const sorted = [...trips].sort((a, b) => a.startDayIndex! - b.startDayIndex!);
+  const assessments = sorted.map((t) => computeCircadianAssessment(t, homeBaseOffsetMinutes, consecutiveTolerance));
+
+  let tightestGap: number | null = null;
+  let hasCompoundingRisk = false;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    const gap = next.startDayIndex! - (current.startDayIndex! + current.days);
+    if (tightestGap === null || gap < tightestGap) tightestGap = gap;
+
+    const a = assessments[i];
+    const b = assessments[i + 1];
+    if (a && b && a.stars <= DISRUPTIVE_STAR_THRESHOLD && b.stars <= DISRUPTIVE_STAR_THRESHOLD && gap < MIN_REAL_RECOVERY_DAYS) {
+      hasCompoundingRisk = true;
+    }
+  }
+
+  const summary = hasCompoundingRisk
+    ? `Two rough trips back to back with only ${tightestGap} real day${tightestGap === 1 ? "" : "s"} off between them.`
+    : tightestGap !== null
+      ? `At least ${tightestGap} real day${tightestGap === 1 ? "" : "s"} off between every trip this month.`
+      : "No real gaps to assess.";
+
+  return { tightestRecoveryGapDays: tightestGap, hasCompoundingRisk, summary };
 }

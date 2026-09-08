@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import { AccountMenu } from "@/components/nav/AccountMenu";
+import { CalendarAccentPicker } from "@/components/nav/CalendarAccentPicker";
 import { ThemeToggle } from "@/components/nav/ThemeToggle";
 import {
   BuildingIcon,
@@ -198,7 +199,10 @@ export function LeftNav({
       </nav>
 
       <div className="space-y-3 border-t border-sidebar-border px-3 pb-4 pt-4">
-        <ThemeToggle />
+        <div className="flex items-center justify-between">
+          <ThemeToggle />
+          <CalendarAccentPicker />
+        </div>
         <AccountMenu user={user} onSignIn={onSignIn} onLogout={onLogout} />
       </div>
     </div>

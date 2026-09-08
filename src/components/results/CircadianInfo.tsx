@@ -83,10 +83,13 @@ export function CircadianInfo() {
             </div>
 
             <p className="text-xs text-ink-faint">
-              What this can&rsquo;t know: how well you personally adapt, how
-              you actually sleep on the road, or anything about your own
-              schedule before or after this trip. Treat it as a real,
-              science-based flag worth factoring in — not a verdict.
+              If you&rsquo;ve told the interview how many consecutive early or
+              late reports actually wear on you, that&rsquo;s factored into
+              this specific score too, not just a generic cap. What this
+              still can&rsquo;t know: exactly how well you personally sleep on
+              the road, or — for a line whose exact calendar dates couldn&rsquo;t
+              be confirmed — real recovery time between trips. Treat it as a
+              real, science-based flag worth factoring in, not a verdict.
             </p>
           </div>
         </Modal>

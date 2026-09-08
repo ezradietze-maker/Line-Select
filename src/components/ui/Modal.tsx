@@ -7,9 +7,11 @@ interface ModalProps {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  /** Wider max-width for content that genuinely needs the room (e.g. two things shown side by side) — most modals stay at the default single-column width. */
+  wide?: boolean;
 }
 
-export function Modal({ title, onClose, children }: ModalProps) {
+export function Modal({ title, onClose, children, wide = false }: ModalProps) {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -35,7 +37,7 @@ export function Modal({ title, onClose, children }: ModalProps) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative w-full max-w-lg animate-fade-in rounded-xl border border-border bg-surface shadow-elevated-lg"
+        className={`relative w-full animate-fade-in rounded-xl border border-border bg-surface shadow-elevated-lg ${wide ? "max-w-3xl" : "max-w-lg"}`}
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <Heading as="h2" className="text-base text-ink">{title}</Heading>

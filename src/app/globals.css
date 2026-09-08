@@ -20,6 +20,12 @@
   --color-accent: #b5792b;
   --color-accent-soft: #f4e6d2;
   --color-accent-wash: #ecd3a0;
+  /* Calendar views' own "Flying" segment color — defaults to brand, but is
+     the one color a pilot can personalize (see calendar-theme.ts) without
+     touching the rest of the app's palette. Set directly on documentElement
+     as an inline style override, never re-defined per theme block itself,
+     so a pilot's choice survives a light/dark switch unchanged. */
+  --color-calendar-accent: var(--color-brand);
 
   /* Second accent: a desaturated "dispatch stamp" blue — cooler and grayer than
      brand-navy on purpose, so the two don't read as one hue at two weights. */
@@ -84,6 +90,7 @@
     --color-accent: #d6a44f;
     --color-accent-soft: #2c2417;
     --color-accent-wash: #3a2c14;
+    --color-calendar-accent: var(--color-brand);
 
     --color-dispatch: #7fa8cc;
     --color-dispatch-soft: #1b2530;
@@ -124,6 +131,7 @@
   --color-accent: #d6a44f;
   --color-accent-soft: #2c2417;
   --color-accent-wash: #3a2c14;
+  --color-calendar-accent: var(--color-brand);
 
   --color-dispatch: #7fa8cc;
   --color-dispatch-soft: #1b2530;
@@ -160,6 +168,7 @@
   --color-accent: var(--color-accent);
   --color-accent-soft: var(--color-accent-soft);
   --color-accent-wash: var(--color-accent-wash);
+  --color-calendar-accent: var(--color-calendar-accent);
 
   --color-dispatch: var(--color-dispatch);
   --color-dispatch-soft: var(--color-dispatch-soft);

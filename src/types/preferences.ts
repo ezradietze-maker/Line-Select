@@ -84,8 +84,20 @@ export type DeepSliderKey =
   | "hotelQuality"
   | "landings";
 
-/** Dimensions a pilot can pin to an exact stated value. */
-export type ExplicitTargetKey = "daysOff" | "creditHours" | "departures";
+/**
+ * Dimensions a pilot can pin to an exact stated value. `circadianTolerance`
+ * is the odd one out here: it's a personalization parameter (how many
+ * consecutive WOCL-window reports this pilot can handle before it wears on
+ * them — see `lib/circadian.ts`'s `personalizedWocPenalty`), not a scored
+ * bid-pack dimension the way the other three are. It reuses this same
+ * pinned-number storage/UI plumbing (a target-slider question, a bare
+ * number in `explicitTargets`) because that machinery already exists and
+ * fits, but `scoring.ts`'s ordinary per-dimension loop never reads this key
+ * — it's consumed directly by the circadianHealth computation instead, and
+ * never receives range/floor-ceiling treatment (`RANGE_TARGET_KEYS` in
+ * `interview-turn-service.ts` deliberately excludes it).
+ */
+export type ExplicitTargetKey = "daysOff" | "creditHours" | "departures" | "circadianTolerance";
 
 /**
  * A tolerance band instead of one bare number — "the fewest I could live

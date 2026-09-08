@@ -202,6 +202,15 @@ export const TARGET_SLIDERS: TargetSliderQuestionConfig[] = [
     formatValue: formatHoursValue,
     step: 0.25,
   },
+  {
+    key: "circadianTolerance",
+    question: "How many consecutive early/late reports can you handle?",
+    helpText: "Personalizes how a rough report-time stretch actually scores for you, rather than a one-size-fits-all rule.",
+    unitSingular: "report in a row",
+    unitPlural: "reports in a row",
+    formatValue: (v) => String(Math.round(v)),
+    step: 1,
+  },
 ];
 
 /** Every exact-target config, quick-round and deep-round alike — for screens that summarize whatever the pilot pinned, regardless of which round asked it. */

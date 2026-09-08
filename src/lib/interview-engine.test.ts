@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { applyProfileUpdates, deterministicFactFromAnswer, finalizeAdaptiveProfile } from "@/lib/interview-engine";
+import {
+  applyProfileUpdates,
+  assessProfileRichness,
+  deterministicFactFromAnswer,
+  detectContradiction,
+  finalizeAdaptiveProfile,
+} from "@/lib/interview-engine";
+import { emptyWeights } from "@/lib/preference-logic";
 import type { InterviewQuestion, InterviewTurnRecord, PreferenceFact, PreferenceFactUpdate } from "@/types/interview-session";
+import type { PreferenceProfile } from "@/types/preferences";
 
 function fact(overrides: Partial<PreferenceFact> = {}): PreferenceFact {
   return {
@@ -264,5 +272,203 @@ describe("deterministicFactFromAnswer", () => {
     ]);
     const profile = finalizeAdaptiveProfile({ facts, transcript: [], isCommuter: null, hasCrashPad: null });
     expect(profile.weights.creditHours).toBeLessThan(0);
+  });
+});
+
+function priorProfileWithFacts(discoveredFacts: PreferenceFact[]): PreferenceProfile {
+  return {
+    weights: emptyWeights(),
+    deepRoundCompleted: true,
+    tradeoffAnswers: [],
+    explicitTargets: {},
+    isCommuter: null,
+    cityPreferences: {},
+    hasCrashPad: null,
+    completedAt: "2026-01-01T00:00:00.000Z",
+    implicitWeights: {},
+    implicitConfidence: {},
+    discoveredFacts,
+    interviewTranscript: [],
+  };
+}
+
+describe("detectContradiction", () => {
+  it("flags an opposite-direction explicit-weight fact on the same key", () => {
+    const prior = [fact({ measurable: { type: "explicit-weight", key: "creditHours", direction: 1 }, statement: "Wants pay." })];
+    const newFact = fact({ measurable: { type: "explicit-weight", key: "creditHours", direction: -1 }, statement: "Wants lifestyle." });
+    const flag = detectContradiction(newFact, prior);
+    expect(flag).toEqual({ newStatement: "Wants lifestyle.", priorStatement: "Wants pay." });
+  });
+
+  it("does not flag agreement on the same key", () => {
+    const prior = [fact({ measurable: { type: "explicit-weight", key: "creditHours", direction: 1 } })];
+    const newFact = fact({ measurable: { type: "explicit-weight", key: "creditHours", direction: 1 } });
+    expect(detectContradiction(newFact, prior)).toBeNull();
+  });
+
+  it("flags a reversed city sentiment for the same city", () => {
+    const prior = [fact({ measurable: { type: "city-sentiment", code: "CDG", sentiment: "avoid" }, statement: "Avoids CDG." })];
+    const newFact = fact({ measurable: { type: "city-sentiment", code: "CDG", sentiment: "love" }, statement: "Loves CDG now." });
+    expect(detectContradiction(newFact, prior)).toEqual({ newStatement: "Loves CDG now.", priorStatement: "Avoids CDG." });
+  });
+
+  it("flags a materially different pinned explicit-target value at the same rangeRole", () => {
+    const prior = [fact({ measurable: { type: "explicit-target", key: "daysOff", value: 24 }, statement: "Wanted 24 days off." })];
+    const newFact = fact({ measurable: { type: "explicit-target", key: "daysOff", value: 16 }, statement: "Now wants 16 days off." });
+    expect(detectContradiction(newFact, prior)).not.toBeNull();
+  });
+
+  it("does not flag a trivial drift on a pinned explicit-target value", () => {
+    const prior = [fact({ measurable: { type: "explicit-target", key: "daysOff", value: 20 } })];
+    const newFact = fact({ measurable: { type: "explicit-target", key: "daysOff", value: 21 } });
+    expect(detectContradiction(newFact, prior)).toBeNull();
+  });
+
+  it("does not flag a floor against a ceiling on the same key (different rangeRole = different slot)", () => {
+    const prior = [fact({ measurable: { type: "explicit-target", key: "daysOff", value: 18, rangeRole: "min" } })];
+    const newFact = fact({ measurable: { type: "explicit-target", key: "daysOff", value: 24, rangeRole: "max" } });
+    expect(detectContradiction(newFact, prior)).toBeNull();
+  });
+
+  it("returns null when there's no prior fact on the same binding at all", () => {
+    const newFact = fact({ measurable: { type: "explicit-weight", key: "international", direction: 1 } });
+    expect(detectContradiction(newFact, [])).toBeNull();
+  });
+
+  it("never flags a qualitative fact — prose contradiction is left to the model, not diffed here", () => {
+    const newFact = fact({ kind: "qualitative", measurable: undefined, statement: "Something new." });
+    const prior = [fact({ kind: "qualitative", measurable: undefined, statement: "Something old." })];
+    expect(detectContradiction(newFact, prior)).toBeNull();
+  });
+});
+
+describe("finalizeAdaptiveProfile — cross-cycle history", () => {
+  it("starts a fresh cycleHistory (count 1, no reaffirmation) for a fact with nothing to match in the prior profile", () => {
+    const prior = priorProfileWithFacts([]);
+    const profile = finalizeAdaptiveProfile({
+      facts: [fact({ measurable: { type: "explicit-weight", key: "tripLength", direction: 1 } })],
+      transcript: [],
+      isCommuter: null,
+      hasCrashPad: null,
+      priorProfile: prior,
+    });
+    expect(profile.discoveredFacts[0].cycleHistory).toEqual({
+      cycleCount: 1,
+      lastCycleId: profile.completedAt,
+      reaffirmedCount: 0,
+    });
+    expect(profile.discoveredFacts[0].volatile).toBeUndefined();
+  });
+
+  it("increments reaffirmedCount when this cycle's binding agrees with the prior cycle's", () => {
+    const prior = priorProfileWithFacts([
+      fact({
+        measurable: { type: "explicit-weight", key: "tripLength", direction: 1 },
+        cycleHistory: { cycleCount: 2, lastCycleId: "2025-12-01T00:00:00.000Z", reaffirmedCount: 1 },
+      }),
+    ]);
+    const profile = finalizeAdaptiveProfile({
+      facts: [fact({ measurable: { type: "explicit-weight", key: "tripLength", direction: 1 } })],
+      transcript: [],
+      isCommuter: null,
+      hasCrashPad: null,
+      priorProfile: prior,
+    });
+    expect(profile.discoveredFacts[0].cycleHistory).toEqual({
+      cycleCount: 3,
+      lastCycleId: profile.completedAt,
+      reaffirmedCount: 2,
+    });
+  });
+
+  it("resets reaffirmedCount to 0 and marks volatile when this cycle's binding disagrees with the prior cycle's", () => {
+    const prior = priorProfileWithFacts([
+      fact({
+        measurable: { type: "explicit-weight", key: "tripLength", direction: 1 },
+        cycleHistory: { cycleCount: 2, lastCycleId: "2025-12-01T00:00:00.000Z", reaffirmedCount: 1 },
+      }),
+    ]);
+    const profile = finalizeAdaptiveProfile({
+      facts: [fact({ measurable: { type: "explicit-weight", key: "tripLength", direction: -1 } })],
+      transcript: [],
+      isCommuter: null,
+      hasCrashPad: null,
+      priorProfile: prior,
+    });
+    expect(profile.discoveredFacts[0].cycleHistory?.reaffirmedCount).toBe(0);
+    expect(profile.discoveredFacts[0].volatile).toBe(true);
+  });
+
+  it("bumps confidence to a real floor once a binding has been reaffirmed twice or more, without lowering an already-higher confidence", () => {
+    const prior = priorProfileWithFacts([
+      fact({
+        measurable: { type: "explicit-weight", key: "tripLength", direction: 1 },
+        cycleHistory: { cycleCount: 3, lastCycleId: "x", reaffirmedCount: 2 },
+      }),
+    ]);
+    const lowConfidence = finalizeAdaptiveProfile({
+      facts: [fact({ measurable: { type: "explicit-weight", key: "tripLength", direction: 1 }, confidence: 0.4 })],
+      transcript: [],
+      isCommuter: null,
+      hasCrashPad: null,
+      priorProfile: prior,
+    });
+    expect(lowConfidence.discoveredFacts[0].confidence).toBeGreaterThanOrEqual(0.9);
+
+    const alreadyHighConfidence = finalizeAdaptiveProfile({
+      facts: [fact({ measurable: { type: "explicit-weight", key: "tripLength", direction: 1 }, confidence: 0.99 })],
+      transcript: [],
+      isCommuter: null,
+      hasCrashPad: null,
+      priorProfile: prior,
+    });
+    expect(alreadyHighConfidence.discoveredFacts[0].confidence).toBe(0.99);
+  });
+
+  it("leaves cycleHistory/volatile entirely absent with no priorProfile — unchanged, first-time-interview behavior", () => {
+    const profile = finalizeAdaptiveProfile({
+      facts: [fact()],
+      transcript: [],
+      isCommuter: null,
+      hasCrashPad: null,
+    });
+    expect(profile.discoveredFacts[0].cycleHistory).toBeUndefined();
+    expect(profile.discoveredFacts[0].volatile).toBeUndefined();
+  });
+});
+
+describe("assessProfileRichness", () => {
+  function profileWithFacts(discoveredFacts: PreferenceFact[]): PreferenceProfile {
+    return priorProfileWithFacts(discoveredFacts);
+  }
+
+  it("rates a profile with almost no measurable facts as thin", () => {
+    const richness = assessProfileRichness(profileWithFacts([fact({ measurable: { type: "explicit-weight", key: "tripLength", direction: 1 } })]));
+    expect(richness.level).toBe("thin");
+  });
+
+  it("rates a profile touching a broad, confident spread of real dimensions as thorough", () => {
+    const keys: Array<[string, 1 | -1]> = [
+      ["daysOff", 1], ["tripLength", 1], ["international", 1], ["reportTime", 1],
+      ["creditHours", 1], ["deadheadTolerance", 1], ["circadianHealth", 1],
+      ["landings", 1], ["departures", 1],
+    ];
+    const facts = keys.map(([key, direction]) =>
+      fact({ id: key, measurable: { type: "explicit-weight", key: key as never, direction }, confidence: 0.9 })
+    );
+    const richness = assessProfileRichness(profileWithFacts(facts));
+    expect(richness.level).toBe("thorough");
+  });
+
+  it("lists a backlog topic with a real dimension hint as uncovered when nothing touches it", () => {
+    const richness = assessProfileRichness(profileWithFacts([]));
+    expect(richness.uncoveredTopics).toContain("Landings / currency preference");
+  });
+
+  it("does not list a topic as uncovered once its hinted dimension is touched", () => {
+    const richness = assessProfileRichness(
+      profileWithFacts([fact({ measurable: { type: "explicit-weight", key: "landings", direction: 1 } })])
+    );
+    expect(richness.uncoveredTopics).not.toContain("Landings / currency preference");
   });
 });

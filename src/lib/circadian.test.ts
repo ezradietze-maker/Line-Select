@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeCircadianAssessment, computeHomeBaseOffsetMinutes } from "@/lib/circadian";
+import {
+  computeCircadianAssessment,
+  computeCumulativeCircadianAssessment,
+  computeHomeBaseOffsetMinutes,
+  hasRealTripPlacement,
+} from "@/lib/circadian";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /**
@@ -175,5 +180,108 @@ describe("computeCircadianAssessment", () => {
     expect(Math.abs(eastward.timezoneShiftHours)).toBeCloseTo(Math.abs(westward.timezoneShiftHours), 1);
     // Same magnitude, opposite direction — eastward must score no better than westward.
     expect(eastward.stars).toBeLessThanOrEqual(westward.stars);
+  });
+});
+
+/** N duty periods, all reporting inside the 02:00-05:59 WOCL window, back to back — legs/layover left empty since only reportTimeLocal matters for this streak. */
+function woclStreakTrip(streakLength: number, overrides: Partial<Trip> = {}): Trip {
+  return stubTrip({
+    schedule: Array.from({ length: streakLength }, (_, i) => ({
+      reportTimeLocal: "0300",
+      startMinutes: i * 1440,
+      legs: [],
+      layover: null,
+    })),
+    ...overrides,
+  });
+}
+
+describe("computeCircadianAssessment — personalized consecutive-WOCL tolerance", () => {
+  it("behaves exactly like the generic Math.min(wocEncroachments, 3) cap when no tolerance is given", () => {
+    const result = computeCircadianAssessment(woclStreakTrip(2), -300)!;
+    expect(result.wocEncroachments).toBe(2);
+    expect(result.stars).toBe(4); // penalty 2 -> "<=3" bucket
+  });
+
+  it("scores a WOCL streak comfortably within a stated tolerance more gently than the generic default", () => {
+    const generic = computeCircadianAssessment(woclStreakTrip(2), -300)!;
+    const tolerant = computeCircadianAssessment(woclStreakTrip(2), -300, 3)!;
+    expect(tolerant.stars).toBeGreaterThan(generic.stars);
+  });
+
+  it("scores a WOCL streak that exceeds a stated tolerance more harshly than the generic default", () => {
+    const generic = computeCircadianAssessment(woclStreakTrip(3), -300)!;
+    const intolerant = computeCircadianAssessment(woclStreakTrip(3), -300, 0)!;
+    expect(intolerant.stars).toBeLessThan(generic.stars);
+  });
+
+  it("names the pilot's own stated tolerance in the summary once it's exceeded and the biggest factor", () => {
+    const result = computeCircadianAssessment(woclStreakTrip(3), -300, 1)!;
+    expect(result.summary).toMatch(/you said you can handle/);
+  });
+});
+
+describe("hasRealTripPlacement", () => {
+  it("is false when bidPeriodStart is null, even with every trip's startDayIndex set", () => {
+    expect(hasRealTripPlacement([stubTrip({ schedule: [], startDayIndex: 0 })], null)).toBe(false);
+  });
+
+  it("is false when any trip's startDayIndex is null", () => {
+    const trips = [stubTrip({ schedule: [], startDayIndex: 0 }), stubTrip({ schedule: [], startDayIndex: null })];
+    expect(hasRealTripPlacement(trips, "2026-01-01")).toBe(false);
+  });
+
+  it("is true only when bidPeriodStart exists and every trip has a real startDayIndex", () => {
+    const trips = [stubTrip({ schedule: [], startDayIndex: 0 }), stubTrip({ schedule: [], startDayIndex: 5 })];
+    expect(hasRealTripPlacement(trips, "2026-01-01")).toBe(true);
+  });
+});
+
+describe("computeCumulativeCircadianAssessment", () => {
+  it("returns null when trip placement isn't confirmed real, never an approximated gap", () => {
+    const trips = [
+      stubTrip({ schedule: [{ reportTimeLocal: "1400", startMinutes: 0, legs: [], layover: null }], startDayIndex: null, days: 2 }),
+      stubTrip({ schedule: [{ reportTimeLocal: "1400", startMinutes: 0, legs: [], layover: null }], startDayIndex: null, days: 2 }),
+    ];
+    expect(computeCumulativeCircadianAssessment(trips, -300, null)).toBeNull();
+    expect(computeCumulativeCircadianAssessment(trips, -300, "2026-01-01")).toBeNull(); // startDayIndex still null on both
+  });
+
+  it("reports 'only one trip' with no gap to assess when the line has a single trip", () => {
+    const trips = [stubTrip({ schedule: [{ reportTimeLocal: "1400", startMinutes: 0, legs: [], layover: null }], startDayIndex: 0, days: 2 })];
+    const result = computeCumulativeCircadianAssessment(trips, -300, "2026-01-01");
+    expect(result).toEqual({ tightestRecoveryGapDays: null, hasCompoundingRisk: false, summary: expect.stringContaining("Only one trip") });
+  });
+
+  it("computes the real day-off gap between two trips from their startDayIndex/days", () => {
+    // Trip A: days 0-1 (2 days). Trip B starts day 5 -> gap = 5 - (0+2) = 3 real days off.
+    const trips = [
+      stubTrip({ schedule: [{ reportTimeLocal: "1400", startMinutes: 0, legs: [], layover: null }], startDayIndex: 0, days: 2 }),
+      stubTrip({ schedule: [{ reportTimeLocal: "1400", startMinutes: 0, legs: [], layover: null }], startDayIndex: 5, days: 2 }),
+    ];
+    const result = computeCumulativeCircadianAssessment(trips, -300, "2026-01-01");
+    expect(result!.tightestRecoveryGapDays).toBe(3);
+  });
+
+  it("flags compounding risk when two meaningfully disruptive trips sit closer together than a real recovery window", () => {
+    // A 4-long WOCL streak with 0 stated tolerance reuses the already-verified
+    // personalization math above to reliably land at 2 stars (penalty 8: 0
+    // within-tolerance + 4 reports * 2 over-tolerance) — well inside the
+    // DISRUPTIVE_STAR_THRESHOLD (<=2), without needing a separately
+    // hand-engineered timezone/rest fixture.
+    const closeTrips = [
+      woclStreakTrip(4, { startDayIndex: 0, days: 2 }),
+      woclStreakTrip(4, { startDayIndex: 3, days: 2 }), // gap = 3 - (0+2) = 1 real day off
+    ];
+    const farTrips = [
+      woclStreakTrip(4, { startDayIndex: 0, days: 2 }),
+      woclStreakTrip(4, { startDayIndex: 10, days: 2 }), // gap = 10 - (0+2) = 8 real days off
+    ];
+
+    const closeResult = computeCumulativeCircadianAssessment(closeTrips, -300, "2026-01-01", 0);
+    const farResult = computeCumulativeCircadianAssessment(farTrips, -300, "2026-01-01", 0);
+
+    expect(closeResult!.hasCompoundingRisk).toBe(true);
+    expect(farResult!.hasCompoundingRisk).toBe(false);
   });
 });

@@ -67,9 +67,9 @@ function segmentClass(kind: TimelineDay["segments"][number]["kind"]): string {
   if (kind === "ground") return "bg-accent";
   if (kind === "connection") return "bg-border-strong";
   if (kind === "deadhead") {
-    return "bg-brand/40 [background-image:repeating-linear-gradient(135deg,transparent,transparent_3px,rgba(255,255,255,0.35)_3px,rgba(255,255,255,0.35)_6px)]";
+    return "bg-calendar-accent/40 [background-image:repeating-linear-gradient(135deg,transparent,transparent_3px,rgba(255,255,255,0.35)_3px,rgba(255,255,255,0.35)_6px)]";
   }
-  return "bg-brand";
+  return "bg-calendar-accent";
 }
 
 const SEGMENT_TOOLTIP_SUFFIX: Partial<Record<TimelineDay["segments"][number]["kind"], string>> = {
@@ -218,7 +218,7 @@ function TripTimelineChart({ trip, mode }: { trip: Trip; mode: TimeMode }) {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-medium text-brand">
-        <LegendSwatch className="bg-brand" label="Flying" />
+        <LegendSwatch className="bg-calendar-accent" label="Flying" />
         <LegendSwatch className={segmentClass("deadhead")} label="Deadhead" title="Riding along, not operating" />
         <LegendSwatch className="bg-good" label="Layover" title={LAYOVER_TOOLTIP} />
         <LegendSwatch className="bg-accent" label="Ground" title={GROUND_TOOLTIP} />
@@ -268,7 +268,7 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
             return (
               <div key={legIndex} className="flex flex-wrap items-center gap-x-1.5 py-1">
                 <span
-                  className={`h-1 w-1 shrink-0 rounded-full ${leg.isDeadhead ? "bg-brand/45" : "bg-brand"}`}
+                  className={`h-1 w-1 shrink-0 rounded-full ${leg.isDeadhead ? "bg-calendar-accent/45" : "bg-calendar-accent"}`}
                   aria-hidden
                 />
                 <span className="font-mono text-brand">

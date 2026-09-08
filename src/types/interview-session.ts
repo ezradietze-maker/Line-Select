@@ -76,6 +76,45 @@ export interface PreferenceFact {
   source: FactSource;
   /** Which turn in interviewTranscript this was learned or last revised on. */
   turnIndex: number;
+  /**
+   * Absent for a fact that has only ever existed in one bid cycle (the
+   * overwhelming majority, including every fact in a pilot's very first
+   * interview). Present once `finalizeAdaptiveProfile` has matched this
+   * fact's binding against a prior cycle's profile — see
+   * `interview-engine.ts`'s `foldCycleHistory`. `lastCycleId` is that prior
+   * profile's own `completedAt`, reused as a cheap, already-unique cycle
+   * identifier rather than inventing a separate counter.
+   */
+  cycleHistory?: {
+    /** How many completed cycles (including this one) have produced a fact for this same binding identity. */
+    cycleCount: number;
+    lastCycleId: string;
+    /** Resets to 0 the moment a cycle's binding actually disagrees with the previous one — see `bindingsAgree`. A high count means "reaffirmed the same conclusion repeatedly," not just "existed a long time." */
+    reaffirmedCount: number;
+  };
+  /**
+   * True once a fact's binding has disagreed with its own prior-cycle value
+   * at least once (see `cycleHistory.reaffirmedCount` resetting to 0) —
+   * distinct from a single one-off disagreement, this is the sticky flag the
+   * interview prompt reads to keep re-checking a preference that's shown
+   * real cycle-to-cycle drift, rather than treating it as settled the way a
+   * `reaffirmedCount >= 2` fact is treated.
+   */
+  volatile?: boolean;
+  /**
+   * Set only on a qualitative fact that's specifically the "why" behind a
+   * city-sentiment pick (the city-preferences topic's mandatory follow-up —
+   * see `interview-topics.ts`). Not a `MeasurableBinding`: this never feeds
+   * scoring, it's a structured tag so the results screen can reliably tie a
+   * "why" statement back to a real city and, when the reason is hotel-
+   * related, surface that city's actual review summary — without resorting
+   * to fragile text-matching on the statement's own prose the way
+   * `qualitativeTieInsForLine` (`scoring.ts`) has to for everything else.
+   */
+  cityReason?: {
+    code: string;
+    category: "weather" | "people" | "hotel" | "layover-length" | "downtime" | "other";
+  };
 }
 
 /** What the LLM (or a seed question, replayed through the same machinery) asks. `kind` discriminates how the client renders it — every non-free-text kind is bound to a real, existing catalog slot via `boundTo`, never an invented one. */
@@ -162,6 +201,33 @@ export interface TurnRequestBody {
   turnsUsed: number;
   softCapTurns: number;
   hardCeilingTurns: number;
+  /**
+   * Facts from the pilot's prior bid-cycle profile they explicitly flagged
+   * as "something's changed" on the returning-pilot check screen (see
+   * `ReturningPilotCheckStep.tsx`) — deliberately never folded into `facts`
+   * itself, since they're stated as no longer accurate. Given to the model
+   * so it asks what changed in its own voice instead of the thread just
+   * silently disappearing. Absent for a first-time interview, or a
+   * returning one where nothing was flagged.
+   */
+  priorFactsChanged?: PreferenceFact[];
+  /**
+   * Free-text (or a quick-tag label) the pilot gave on the returning-pilot
+   * check screen — "moved," "new baby," etc. Reprioritizes what the model
+   * chooses to re-open this cycle toward the topics that flag actually
+   * implicates, rather than leaving that connection to be inferred later.
+   * Absent for a first-time interview or when nothing was flagged.
+   */
+  lifeEvent?: string;
+  /**
+   * Set for exactly one turn request: a contradiction between the pilot's
+   * most recent answer and a prior-cycle fact was just detected client-side
+   * (see `detectContradiction` in `interview-engine.ts`). The model is told
+   * to ask about this directly on this turn, in its own voice, before
+   * moving to fresh ground — surfacing it as signal, not silently
+   * overwriting or silently keeping the old fact.
+   */
+  contradictionFlag?: { newStatement: string; priorStatement: string };
 }
 
 /** What the route returns — one Anthropic call handles both "what to ask next" and "what to extract from the last answer," per turn. */

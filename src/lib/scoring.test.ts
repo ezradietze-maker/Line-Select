@@ -2,7 +2,17 @@ import { describe, expect, it } from "vitest";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { buildProfile, emptyWeights } from "@/lib/preference-logic";
 import { categoryFor, SATISFACTION_CATEGORIES } from "@/lib/satisfaction-categories";
-import { getBidPackRanges, gymScore, rankLines, type DimensionKey } from "@/lib/scoring";
+import {
+  computeCounterfactual,
+  getBidPackRanges,
+  gymScore,
+  historicalConsistencyNote,
+  mostLeveragedDimension,
+  rankLines,
+  type CounterfactualRanges,
+  type DimensionKey,
+  type DimensionScore,
+} from "@/lib/scoring";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import type { ReviewSummary } from "@/types/hotel";
 import type { MeasurableBinding, PreferenceFact } from "@/types/interview-session";
@@ -439,6 +449,278 @@ describe("tripShapeVariancePerLine (predictability vs. variety implicit variable
     expect(implicitValuesByLine["sample-line-9004"].tripShapeVariancePerLine).toBeLessThan(
       implicitValuesByLine["sample-line-9005"].tripShapeVariancePerLine
     );
+  });
+});
+
+function dim(overrides: Partial<DimensionScore> = {}): DimensionScore {
+  return {
+    key: "daysOff",
+    match: 0.5,
+    value: 0.5,
+    target: 0.8,
+    importance: 0.5,
+    verified: true,
+    ...overrides,
+  };
+}
+
+describe("mostLeveragedDimension", () => {
+  it("picks the highest-importance dimension among those with real room to improve", () => {
+    const result = mostLeveragedDimension({
+      dimensions: [
+        dim({ key: "daysOff", importance: 0.3, match: 0.5 }),
+        dim({ key: "creditHours", importance: 0.8, match: 0.4 }),
+        dim({ key: "tripLength", importance: 0.2, match: 0.9 }),
+      ],
+    });
+    expect(result?.key).toBe("creditHours");
+  });
+
+  it("skips a dimension already at a full match, even if it's the most important one", () => {
+    const result = mostLeveragedDimension({
+      dimensions: [
+        dim({ key: "creditHours", importance: 0.9, match: 1 }),
+        dim({ key: "daysOff", importance: 0.4, match: 0.6 }),
+      ],
+    });
+    expect(result?.key).toBe("daysOff");
+  });
+
+  it("ignores an unverified (estimated-line) dimension even if it looks like the top lever", () => {
+    const result = mostLeveragedDimension({
+      dimensions: [
+        dim({ key: "tripLength", importance: 0.9, match: 0.3, verified: false }),
+        dim({ key: "daysOff", importance: 0.3, match: 0.6, verified: true }),
+      ],
+    });
+    expect(result?.key).toBe("daysOff");
+  });
+
+  it("returns null when every dimension is already maxed out or unverified", () => {
+    const result = mostLeveragedDimension({
+      dimensions: [dim({ match: 1 }), dim({ verified: false, match: 0.2 })],
+    });
+    expect(result).toBeNull();
+  });
+});
+
+describe("computeCounterfactual", () => {
+  const ranges: CounterfactualRanges = {
+    daysOff: [16, 24],
+    avgTripLength: [2, 4],
+    creditHours: [10, 30],
+    departures: [2, 6],
+    landings: [2, 8],
+  };
+
+  it("returns null when the line is already the top score", () => {
+    const lineScore = { score: 90, dimensions: [dim({ importance: 0.8, match: 0.7 })] };
+    expect(computeCounterfactual(lineScore, 90, ranges)).toBeNull();
+  });
+
+  it("returns null when the gap to the top score is negligible", () => {
+    const lineScore = { score: 89.8, dimensions: [dim({ importance: 0.8, match: 0.7 })] };
+    expect(computeCounterfactual(lineScore, 90, ranges)).toBeNull();
+  });
+
+  it("cites a real number of real units for a fixed dimension with a clean scale", () => {
+    // Single dimension carries all the importance, so closing a 10-point gap needs exactly a 0.10 match increase.
+    const lineScore = {
+      score: 80,
+      dimensions: [dim({ key: "daysOff", importance: 1, match: 0.5, value: 0.5, target: 1 })],
+    };
+    const result = computeCounterfactual(lineScore, 90, ranges);
+    expect(result).not.toBeNull();
+    // range span 8 (16..24) * 0.10 needed match increase = 0.8 days, rounds to 1.
+    expect(result).toContain("more");
+    expect(result).toContain("day");
+  });
+
+  it("falls back to a qualitative, non-numeric phrase for a dimension with no clean denormalizable unit (e.g. reportTime)", () => {
+    const lineScore = {
+      score: 80,
+      dimensions: [dim({ key: "reportTime", importance: 1, match: 0.5, value: 0.5, target: 1 })],
+    };
+    const result = computeCounterfactual(lineScore, 90, ranges);
+    expect(result).not.toBeNull();
+    expect(result).toMatch(/meaningfully better/);
+  });
+
+  it("returns null rather than overclaiming when no single realistic change on the leading dimension could close the gap", () => {
+    // Huge gap relative to this dimension's own match headroom — even a perfect match there can't get there.
+    const lineScore = {
+      score: 10,
+      dimensions: [dim({ key: "daysOff", importance: 0.1, match: 0.3, value: 0.3, target: 1 })],
+    };
+    expect(computeCounterfactual(lineScore, 99, ranges)).toBeNull();
+  });
+});
+
+describe("dealbreaker near-misses", () => {
+  function dealbreakerFact(measurable: MeasurableBinding, statement = "Absolute dealbreaker."): PreferenceFact {
+    return {
+      id: "nm-1",
+      statement,
+      kind: "measurable",
+      measurable,
+      confidence: 1,
+      importance: 1,
+      severity: "dealbreaker",
+      source: { kind: "adaptive-question", questionId: "q1" },
+      turnIndex: 0,
+    };
+  }
+
+  it("flags a line sitting close to (but not below) a stated daysOff floor as a near-miss, not a violation", () => {
+    // Sample pack daysOff: 9001/9002=24, 9003=23, 9004=20, 9005=19, 9006=18.
+    const profile = {
+      ...buildProfile(emptyWeights(), false, []),
+      discoveredFacts: [
+        dealbreakerFact(
+          { type: "explicit-target", key: "daysOff", value: 18, rangeRole: "min" },
+          "Fewer than 18 days off is a dealbreaker."
+        ),
+      ],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const line9006 = ranked.find((r) => r.line.lineNumber === "9006")!; // daysOff 18 == the floor itself, not below it -> not violated
+    expect(line9006.violatedDealbreakers).toHaveLength(0);
+
+    const line9005 = ranked.find((r) => r.line.lineNumber === "9005")!; // daysOff 19, 1 above the floor -> near-miss
+    expect(line9005.violatedDealbreakers).toHaveLength(0);
+    expect(line9005.nearMissDealbreakers).toHaveLength(1);
+
+    const line9001 = ranked.find((r) => r.line.lineNumber === "9001")!; // daysOff 24, far above the floor -> neither
+    expect(line9001.nearMissDealbreakers).toHaveLength(0);
+  });
+
+  it("never lists the same fact as both a violation and a near-miss on the same line", () => {
+    const profile = {
+      ...buildProfile(emptyWeights(), false, []),
+      discoveredFacts: [
+        dealbreakerFact({ type: "explicit-target", key: "daysOff", value: 20, rangeRole: "min" }),
+      ],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    for (const r of ranked) {
+      if (r.violatedDealbreakers.length > 0) {
+        expect(r.nearMissDealbreakers).toHaveLength(0);
+      }
+    }
+  });
+});
+
+describe("confidenceLevel wiring", () => {
+  it("carries the caller-supplied profileRichness level onto every line", () => {
+    const ranked = rankLines(SAMPLE_BID_PACK, buildProfile(emptyWeights(), false, []), {}, {}, {
+      level: "thorough",
+      uncoveredTopics: [],
+    });
+    for (const r of ranked) {
+      expect(r.confidenceLevel).toBe("thorough");
+    }
+  });
+
+  it("is null on every line when the caller doesn't supply profileRichness", () => {
+    const ranked = rankLines(SAMPLE_BID_PACK, buildProfile(emptyWeights(), false, []));
+    for (const r of ranked) {
+      expect(r.confidenceLevel).toBeNull();
+    }
+  });
+});
+
+describe("historicalConsistencyNote", () => {
+  it("returns null when there's no prior snapshot at all", () => {
+    const lineScore = { dimensions: [dim({ key: "daysOff", value: 0.8 })] };
+    expect(historicalConsistencyNote(lineScore, null)).toBeNull();
+    expect(historicalConsistencyNote(lineScore, [])).toBeNull();
+  });
+
+  it("flags a line whose dimension values closely match a prior favorite", () => {
+    const lineScore = {
+      dimensions: [dim({ key: "daysOff", value: 0.8 }), dim({ key: "creditHours", value: 0.3 })],
+    };
+    const prior = [{ lineNumber: "1", score: 90, dimensionValues: { daysOff: 0.82, creditHours: 0.29 } }];
+    expect(historicalConsistencyNote(lineScore, prior)).not.toBeNull();
+  });
+
+  it("returns null when nothing in the snapshot is genuinely close", () => {
+    const lineScore = {
+      dimensions: [dim({ key: "daysOff", value: 0.9 }), dim({ key: "creditHours", value: 0.1 })],
+    };
+    const prior = [{ lineNumber: "1", score: 90, dimensionValues: { daysOff: 0.1, creditHours: 0.9 } }];
+    expect(historicalConsistencyNote(lineScore, prior)).toBeNull();
+  });
+
+  it("skips dimension keys that don't exist on both sides rather than penalizing the comparison", () => {
+    const lineScore = {
+      dimensions: [dim({ key: "daysOff", value: 0.8 }), dim({ key: "landings", value: 0.5 })],
+    };
+    // No "landings" in the prior snapshot at all — comparison should rely only on the shared "daysOff" key.
+    const prior = [{ lineNumber: "1", score: 90, dimensionValues: { daysOff: 0.81 } }];
+    expect(historicalConsistencyNote(lineScore, prior)).not.toBeNull();
+  });
+});
+
+describe("hotel review tie-in", () => {
+  function qualitativeCityReasonFact(code: string, category: "hotel" | "weather"): PreferenceFact {
+    return {
+      id: "cr-1",
+      statement: `Not a fan of the hotel in ${code}.`,
+      kind: "qualitative",
+      confidence: 0.9,
+      importance: 0.6,
+      source: { kind: "adaptive-question", questionId: "q1" },
+      turnIndex: 0,
+      cityReason: { code, category },
+    };
+  }
+
+  it("surfaces the real review summary when the pilot's hotel-related reason matches a city this line actually touches", () => {
+    // CDG is a real layover city in the sample pack (lines 9002/9004/9006), assigned "Hilton Paris Charles De Gaulle Airport".
+    const profile = {
+      ...buildProfile(emptyWeights(), false, []),
+      discoveredFacts: [qualitativeCityReasonFact("CDG", "hotel")],
+    };
+    const hotelQualityData = {
+      "CDG|Hilton Paris Charles De Gaulle Airport": {
+        amenities: null,
+        rating: null,
+        reviewSummary: { summary: "Reviewers say the rooms run noisy.", themes: {}, reviewCount: 5, generatedAt: "2026-01-01T00:00:00.000Z" },
+      },
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile, hotelQualityData);
+    const line9002 = ranked.find((r) => r.line.lineNumber === "9002")!; // the sample pack's CDG-touching line
+    expect(line9002.hotelReviewTieIn).toEqual({
+      cityCode: "CDG",
+      hotelName: "Hilton Paris Charles De Gaulle Airport",
+      summary: "Reviewers say the rooms run noisy.",
+    });
+
+    const line9001 = ranked.find((r) => r.line.lineNumber === "9001")!; // doesn't touch CDG at all
+    expect(line9001.hotelReviewTieIn).toBeNull();
+  });
+
+  it("returns null when the reason category is not hotel-related", () => {
+    const profile = {
+      ...buildProfile(emptyWeights(), false, []),
+      discoveredFacts: [qualitativeCityReasonFact("CDG", "weather")],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile, {});
+    for (const r of ranked) {
+      expect(r.hotelReviewTieIn).toBeNull();
+    }
+  });
+
+  it("returns null when there's no review summary on file for the matching hotel", () => {
+    const profile = {
+      ...buildProfile(emptyWeights(), false, []),
+      discoveredFacts: [qualitativeCityReasonFact("CDG", "hotel")],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile, {}); // no hotelQualityData at all
+    for (const r of ranked) {
+      expect(r.hotelReviewTieIn).toBeNull();
+    }
   });
 });
 

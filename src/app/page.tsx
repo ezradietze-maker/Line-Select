@@ -486,7 +486,12 @@ export default function Home() {
 
       case "interview":
         return bidPack ? (
-          <AdaptiveInterview key={interviewKey} bidPack={bidPack} onComplete={handleInterviewComplete} />
+          <AdaptiveInterview
+            key={interviewKey}
+            bidPack={bidPack}
+            onComplete={handleInterviewComplete}
+            priorProfile={profile}
+          />
         ) : null;
 
       case "confirm-preferences":
@@ -506,6 +511,7 @@ export default function Home() {
             onStartOver={handleStartOver}
             onRefine={handleStartInterview}
             onUpdateProfile={handleUpdateProfile}
+            userId={user?.id ?? null}
           />
         ) : (
           <PreferencesScreen

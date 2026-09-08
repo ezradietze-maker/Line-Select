@@ -1,3 +1,4 @@
+import { INTERVIEW_TOPIC_BACKLOG } from "@/lib/interview-topics";
 import { emptyWeights } from "@/lib/preference-logic";
 import { MAGNITUDE_ONLY_KEYS } from "@/lib/rank-learning";
 import type {
@@ -6,6 +7,7 @@ import type {
   InterviewAnswer,
   InterviewQuestion,
   InterviewTurnRecord,
+  MeasurableBinding,
   PreferenceFact,
   PreferenceFactUpdate,
   TurnRequestBody,
@@ -65,6 +67,9 @@ export function buildTurnRequest(params: {
   aircraft: string;
   isCommuter: boolean | null;
   turnsUsed: number;
+  priorFactsChanged?: PreferenceFact[];
+  lifeEvent?: string;
+  contradictionFlag?: { newStatement: string; priorStatement: string };
 }): TurnRequestBody {
   return {
     ...params,
@@ -166,6 +171,162 @@ export function deterministicFactFromAnswer(
   return null;
 }
 
+export interface ContradictionFlag {
+  newStatement: string;
+  priorStatement: string;
+}
+
+/**
+ * Same-binding-identity, opposite-conclusion check between a just-produced
+ * fact and the pilot's prior bid-cycle facts. Deliberately narrow: only
+ * measurable bindings get checked here, since they have a clean enough shape
+ * (a key/id plus a direction, value, or sentiment) to compare mechanically.
+ * A qualitative fact's prose can't be honestly diffed this way — those are
+ * left to the model's own judgment once the prior cycle's qualitative facts
+ * are sitting in its own context, the same way it already notices things
+ * from conversation, not faked with a hand-built NLP layer here.
+ */
+export function detectContradiction(newFact: PreferenceFact, priorFacts: PreferenceFact[]): ContradictionFlag | null {
+  if (newFact.kind !== "measurable" || !newFact.measurable) return null;
+  const nb = newFact.measurable;
+
+  for (const prior of priorFacts) {
+    if (prior.kind !== "measurable" || !prior.measurable) continue;
+    const pb = prior.measurable;
+    if (!sameBindingIdentity(nb, pb)) continue;
+    return bindingsAgree(nb, pb) ? null : { newStatement: newFact.statement, priorStatement: prior.statement };
+  }
+  return null;
+}
+
+/** Same real-world slot — same key/id and, for a range target, the same role (a floor and a ceiling on the same key are different slots, not a contradiction with each other). */
+function sameBindingIdentity(a: MeasurableBinding, b: MeasurableBinding): boolean {
+  if (a.type !== b.type) return false;
+  if (a.type === "explicit-weight" && b.type === "explicit-weight") return a.key === b.key;
+  if (a.type === "explicit-target" && b.type === "explicit-target") return a.key === b.key && a.rangeRole === b.rangeRole;
+  if (a.type === "implicit-weight" && b.type === "implicit-weight") return a.variableId === b.variableId;
+  if (a.type === "city-sentiment" && b.type === "city-sentiment") return a.code === b.code;
+  return false;
+}
+
+/** Whether two bindings at the same identity actually reach the same conclusion — a >25% drift on a pinned number counts as real disagreement, not noise from natural month-to-month rounding. */
+function bindingsAgree(a: MeasurableBinding, b: MeasurableBinding): boolean {
+  if (a.type === "explicit-weight" && b.type === "explicit-weight") return a.direction === b.direction;
+  if (a.type === "explicit-target" && b.type === "explicit-target") {
+    return Math.abs(a.value - b.value) / Math.max(1, Math.abs(b.value)) <= 0.25;
+  }
+  if (a.type === "implicit-weight" && b.type === "implicit-weight") return a.direction === b.direction;
+  if (a.type === "city-sentiment" && b.type === "city-sentiment") return a.sentiment === b.sentiment;
+  return false;
+}
+
+/** A binding's real-world identity as a string key, for grouping facts across cycles without an O(n²) scan. */
+function bindingIdentityKey(b: MeasurableBinding): string {
+  if (b.type === "explicit-weight") return `explicit-weight:${b.key}`;
+  if (b.type === "explicit-target") return `explicit-target:${b.key}:${b.rangeRole ?? "ideal"}`;
+  if (b.type === "implicit-weight") return `implicit-weight:${b.variableId}`;
+  return `city-sentiment:${b.code}`;
+}
+
+/**
+ * Folds each new fact's cycle history against the prior profile's own facts
+ * — a brand-new binding starts a fresh history; one that matches a prior
+ * cycle's conclusion gets `reaffirmedCount` incremented (feeds a real
+ * confidence floor bump downstream, same `confidence` field `scoring.ts`
+ * already reads — no new scoring mechanism); one that disagrees resets the
+ * count to 0 and sets `volatile: true`, the interview prompt's cue to keep
+ * re-checking this one rather than assuming it's settled.
+ */
+function foldCycleHistory(facts: PreferenceFact[], priorFacts: PreferenceFact[], newCycleId: string): PreferenceFact[] {
+  const priorByIdentity = new Map<string, PreferenceFact>();
+  for (const pf of priorFacts) {
+    if (pf.kind === "measurable" && pf.measurable) priorByIdentity.set(bindingIdentityKey(pf.measurable), pf);
+  }
+
+  return facts.map((f) => {
+    if (f.kind !== "measurable" || !f.measurable) return f;
+    const prior = priorByIdentity.get(bindingIdentityKey(f.measurable));
+    if (!prior || !prior.measurable) {
+      return { ...f, cycleHistory: { cycleCount: 1, lastCycleId: newCycleId, reaffirmedCount: 0 } };
+    }
+    const agrees = bindingsAgree(f.measurable, prior.measurable);
+    const priorHistory = prior.cycleHistory ?? { cycleCount: 1, lastCycleId: newCycleId, reaffirmedCount: 0 };
+    return {
+      ...f,
+      cycleHistory: {
+        cycleCount: priorHistory.cycleCount + 1,
+        lastCycleId: newCycleId,
+        reaffirmedCount: agrees ? priorHistory.reaffirmedCount + 1 : 0,
+      },
+      volatile: agrees ? f.volatile : true,
+    };
+  });
+}
+
+export interface ProfileRichness {
+  level: "thin" | "moderate" | "thorough";
+  /** Backlog topic labels with no plausible touching fact — only ever populated for topics with a real measurable dimension to check (see TOPIC_COVERAGE_HINTS's own doc comment). */
+  uncoveredTopics: string[];
+}
+
+function touchedDimensionIds(facts: PreferenceFact[]): Set<string> {
+  const ids = new Set<string>();
+  for (const f of facts) {
+    if (f.kind !== "measurable" || !f.measurable) continue;
+    const b = f.measurable;
+    if (b.type === "explicit-weight" || b.type === "explicit-target") ids.add(b.key);
+    else if (b.type === "implicit-weight") ids.add(b.variableId);
+    else ids.add("cityPreference");
+  }
+  return ids;
+}
+
+/**
+ * Topic id -> the real dimension/implicit ids that count as "this topic got
+ * real ground covered." Deliberately omits every purely-qualitative backlog
+ * topic (reserve tolerance, day-of-week needs, commute logistics, seniority,
+ * financial context, the "why" behind a city pick) — there's no honest way
+ * to detect whether one of those got covered from bindings alone, so rather
+ * than guess, richness leans entirely on the topics that actually move the
+ * Satisfaction Index, which is also the thing this assessment exists to
+ * inform in the first place.
+ */
+const TOPIC_COVERAGE_HINTS: Record<string, string[]> = {
+  "home-time": ["daysOff"],
+  departures: ["departures", "tripLength"],
+  "pay-vs-lifestyle": ["creditHours"],
+  "deadhead-commuter": ["deadheadTolerance"],
+  "city-preferences": ["cityPreference"],
+  "international-intensity": ["international"],
+  "report-time-circadian": ["reportTime", "circadianHealth", "backOfClockDeparturesPerTrip", "distinctReportHoursPerTrip"],
+  "landings-currency": ["landings"],
+  "predictability-variety": ["tripShapeVariancePerLine"],
+  "rest-recovery": ["shortRestOvernightsPerTrip", "avgSleepOpportunityHours"],
+};
+
+/**
+ * How thin or rich the resulting profile actually is — not just gathering
+ * data, but knowing how much is still unknown. Feeds the Satisfaction
+ * Index's confidence display and an honest, optional continue-or-finish
+ * nudge on the interview's own wrap-up screen (never a forced continuation).
+ */
+export function assessProfileRichness(profile: { discoveredFacts: PreferenceFact[] }): ProfileRichness {
+  const touched = touchedDimensionIds(profile.discoveredFacts);
+  const measurableFacts = profile.discoveredFacts.filter((f) => f.kind === "measurable");
+  const avgConfidence =
+    measurableFacts.length > 0 ? measurableFacts.reduce((s, f) => s + f.confidence, 0) / measurableFacts.length : 0;
+
+  const uncoveredTopics = INTERVIEW_TOPIC_BACKLOG.filter((t) => {
+    const hints = TOPIC_COVERAGE_HINTS[t.id];
+    return hints && !hints.some((id) => touched.has(id));
+  }).map((t) => t.label);
+
+  const level: ProfileRichness["level"] =
+    touched.size >= 9 && avgConfidence >= 0.7 ? "thorough" : touched.size >= 5 ? "moderate" : "thin";
+
+  return { level, uncoveredTopics };
+}
+
 /** Normalizes today's bare-number shape and the new `RangeTarget` shape into one read — a bare number has always meant "ideal only." */
 function asRangeTarget(value: number | RangeTarget | undefined): RangeTarget {
   if (value === undefined) return {};
@@ -188,8 +349,10 @@ export function finalizeAdaptiveProfile(params: {
   isCommuter: boolean | null;
   hasCrashPad: boolean | null;
   cityPreferencesSeed?: Record<string, CitySentiment>;
+  /** The pilot's completed profile from before this cycle, if any — used only to fold `cycleHistory`/`volatile` onto this cycle's own facts (see `foldCycleHistory`). Absent for a first-time interview. */
+  priorProfile?: PreferenceProfile | null;
 }): PreferenceProfile {
-  const { facts, transcript, isCommuter, hasCrashPad, cityPreferencesSeed = {} } = params;
+  const { facts, transcript, isCommuter, hasCrashPad, cityPreferencesSeed = {}, priorProfile } = params;
 
   const weights = emptyWeights();
   const explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>> = {};
@@ -197,7 +360,17 @@ export function finalizeAdaptiveProfile(params: {
   const implicitWeights: Record<string, number> = {};
   const implicitConfidence: Record<string, number> = {};
 
-  const orderedFacts = [...facts].sort((a, b) => a.turnIndex - b.turnIndex);
+  const cycleId = new Date().toISOString();
+  const sortedFacts = [...facts].sort((a, b) => a.turnIndex - b.turnIndex);
+  const historyFolded = priorProfile ? foldCycleHistory(sortedFacts, priorProfile.discoveredFacts, cycleId) : sortedFacts;
+  // A preference reaffirmed across multiple cycles is real, settled evidence
+  // — not just a guess that happened to repeat — so it gets a real
+  // confidence floor bump here, feeding the exact same `confidence` field
+  // `scoring.ts` already reads downstream. Never lowers an already-higher
+  // confidence.
+  const orderedFacts = historyFolded.map((f) =>
+    (f.cycleHistory?.reaffirmedCount ?? 0) >= 2 ? { ...f, confidence: Math.max(f.confidence, 0.9) } : f
+  );
 
   for (const fact of orderedFacts) {
     if (fact.kind !== "measurable" || !fact.measurable) continue;
@@ -234,7 +407,7 @@ export function finalizeAdaptiveProfile(params: {
     isCommuter,
     cityPreferences,
     hasCrashPad,
-    completedAt: new Date().toISOString(),
+    completedAt: cycleId,
     implicitWeights,
     implicitConfidence,
     discoveredFacts: orderedFacts,

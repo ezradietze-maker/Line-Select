@@ -36,9 +36,9 @@ function segmentClass(kind: TimelineSegment["kind"]): string {
   if (kind === "ground") return "bg-accent";
   if (kind === "connection") return "bg-border-strong";
   if (kind === "deadhead") {
-    return "bg-brand/40 [background-image:repeating-linear-gradient(135deg,transparent,transparent_3px,rgba(255,255,255,0.35)_3px,rgba(255,255,255,0.35)_6px)]";
+    return "bg-calendar-accent/40 [background-image:repeating-linear-gradient(135deg,transparent,transparent_3px,rgba(255,255,255,0.35)_3px,rgba(255,255,255,0.35)_6px)]";
   }
-  return "bg-brand";
+  return "bg-calendar-accent";
 }
 
 const LAYOVER_TOOLTIP =
@@ -285,7 +285,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
         <TimeModeToggle mode={mode} onChange={handleModeChange} />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-medium text-brand">
-            <LegendSwatch className="bg-brand" label="Flying" />
+            <LegendSwatch className="bg-calendar-accent" label="Flying" />
             <LegendSwatch className={segmentClass("deadhead")} label="Deadhead" title="Riding along, not operating" />
             <LegendSwatch className="bg-good" label="Layover" title={LAYOVER_TOOLTIP} />
             <LegendSwatch className="bg-accent" label="Ground" title={GROUND_TOOLTIP} />

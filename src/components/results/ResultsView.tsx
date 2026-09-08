@@ -23,13 +23,16 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { LineCard } from "@/components/results/LineCard";
+import { LineComparisonModal } from "@/components/results/LineComparisonModal";
 import { PilotProfileSummary } from "@/components/results/PilotProfileSummary";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
+import { assessProfileRichness } from "@/lib/interview-engine";
 import { computeFilterOptions } from "@/lib/line-filter-options";
 import { collectLayoverCities, EMPTY_FILTERS, lineMatchesFilters, type LineFilters } from "@/lib/line-filters";
+import { loadTopLinesSnapshot, saveTopLinesSnapshot } from "@/lib/line-history-storage";
 import { PHRASES } from "@/lib/preference-summary";
 import {
   learnFromReorder,
@@ -109,6 +112,8 @@ interface ResultsViewProps {
   onStartOver: () => void;
   onRefine: () => void;
   onUpdateProfile: (profile: PreferenceProfile) => void;
+  /** Identifies which pilot's remembered prior-cycle top lines to read/write (see `line-history-storage.ts`) — null for a guest. */
+  userId: string | null;
 }
 
 export function ResultsView({
@@ -117,6 +122,7 @@ export function ResultsView({
   onStartOver,
   onRefine,
   onUpdateProfile,
+  userId,
 }: ResultsViewProps) {
   const [hotelQualityData, setHotelQualityData] = useState<HotelQualityData>({});
   const [learnMessage, setLearnMessage] = useState<string | null>(null);
@@ -125,6 +131,8 @@ export function ResultsView({
   const [promptCount, setPromptCount] = useState(0);
   const [askedPairIds, setAskedPairIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<LineFilters>(EMPTY_FILTERS);
+  // At most two at a time — picking a third drops the oldest rather than growing unbounded, since the comparison view only ever shows two side by side.
+  const [compareIds, setCompareIds] = useState<string[]>([]);
   const caresAboutHotel = caresAboutLayoverQuality(profile);
   const reduceMotion = useReducedMotion();
 
@@ -160,10 +168,43 @@ export function ResultsView({
   // judgment, rather than recomputed per use.
   const implicitValuesByLine = useMemo(() => computeImplicitLineValues(bidPack), [bidPack]);
 
-  const ranked = useMemo(
-    () => rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine),
-    [bidPack, profile, hotelQualityData, implicitValuesByLine]
+  // A legacy static-interview profile has no discoveredFacts at all — its
+  // richness genuinely can't be assessed from facts that don't exist, so it
+  // stays unlabeled (null) rather than reading as artificially "thin".
+  const profileRichness = useMemo(
+    () => (profile.discoveredFacts.length > 0 ? assessProfileRichness(profile) : undefined),
+    [profile]
   );
+
+  // Loaded once per pilot rather than memoized against `ranked` itself — this
+  // is deliberately last cycle's snapshot, read once, not something that
+  // should silently update mid-session as `ranked` (and the save effect
+  // below) recomputes.
+  const [priorTopLines] = useState(() => loadTopLinesSnapshot(userId));
+
+  const ranked = useMemo(
+    () => rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines),
+    [bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines]
+  );
+
+  function toggleCompare(lineId: string) {
+    setCompareIds((prev) => {
+      if (prev.includes(lineId)) return prev.filter((id) => id !== lineId);
+      return prev.length < 2 ? [...prev, lineId] : [prev[1], lineId];
+    });
+  }
+  const compareLineScores = compareIds
+    .map((id) => ranked.find((r) => r.line.id === id))
+    .filter((r): r is LineScore => !!r);
+
+  // Keeps this cycle's own top lines current in storage as the pilot
+  // refines their ranking (drag-to-swap, preference nudges), so whatever was
+  // true the last time they looked at results is what a future cycle's
+  // "historically preferred" comparison reads — not just a one-time snapshot
+  // from the moment they first landed here.
+  useEffect(() => {
+    saveTopLinesSnapshot(userId, ranked);
+  }, [userId, ranked]);
 
   // Global rank survives filtering — a filtered card or export entry always
   // shows its true position in the full ranking, not a renumbered index into
@@ -355,6 +396,8 @@ export function ResultsView({
                     homeBaseOffsetMinutes={homeBaseOffsetMinutes}
                     bidPeriodStart={bidPack.bidPeriodStart}
                     bidPeriodDays={bidPack.bidPeriodDays}
+                    isComparing={compareIds.includes(lineScore.line.id)}
+                    onToggleCompare={() => toggleCompare(lineScore.line.id)}
                   />
                 </ErrorBoundary>
               </motion.div>
@@ -363,6 +406,16 @@ export function ResultsView({
         </div>
         <DragOverlay>{activeLineScore && <DragPreview lineScore={activeLineScore} />}</DragOverlay>
       </DndContext>
+
+      {compareLineScores.length === 2 && (
+        <LineComparisonModal
+          lineScores={[compareLineScores[0], compareLineScores[1]]}
+          homeBaseOffsetMinutes={homeBaseOffsetMinutes}
+          bidPeriodStart={bidPack.bidPeriodStart}
+          bidPeriodDays={bidPack.bidPeriodDays}
+          onClose={() => setCompareIds([])}
+        />
+      )}
     </div>
   );
 }

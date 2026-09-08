@@ -11,14 +11,19 @@ import { Spinner } from "@/components/ui/Spinner";
 import { CityPreferenceStep } from "@/components/interview/CityPreferenceStep";
 import { CommuterStep } from "@/components/interview/CommuterStep";
 import { FreeTextAnswerBox } from "@/components/interview/FreeTextAnswerBox";
+import { ReturningPilotCheckStep } from "@/components/interview/ReturningPilotCheckStep";
 import { SliderStep } from "@/components/interview/SliderStep";
 import { TargetSliderStep } from "@/components/interview/TargetSliderStep";
 import {
   HARD_CEILING_TURNS,
+  MIN_TURNS_BEFORE_WRAP,
   SOFT_CAP_TURNS,
   applyProfileUpdates,
+  assessProfileRichness,
   buildTurnRequest,
+  detectContradiction,
   finalizeAdaptiveProfile,
+  type ContradictionFlag,
 } from "@/lib/interview-engine";
 import { computeBidPackGroundingStats } from "@/lib/interview-grounding";
 import { cycleCitySentiment } from "@/lib/preference-logic";
@@ -29,6 +34,7 @@ import type {
   InterviewQuestion,
   InterviewTurnRecord,
   PreferenceFact,
+  PreferenceFactUpdate,
   TurnResponse,
 } from "@/types/interview-session";
 import type { CitySentiment, PreferenceProfile } from "@/types/preferences";
@@ -63,11 +69,32 @@ import type { CitySentiment, PreferenceProfile } from "@/types/preferences";
 interface AdaptiveInterviewProps {
   bidPack: BidPack;
   onComplete: (profile: PreferenceProfile) => void;
+  /** This pilot's completed profile from a prior bid cycle, if any — enables the returning-pilot check step and cross-cycle contradiction/volatility tracking. Absent (or a profile with no discoveredFacts, e.g. one from the legacy static interview) means a first-time-shaped interview, unchanged from before this existed. */
+  priorProfile?: PreferenceProfile | null;
 }
 
 const MAX_CITY_CHOICES = 12;
+const TOP_PRIOR_FACTS_SHOWN = 5;
+/**
+ * Not a bid-pack-derived quantity (see `ExplicitTargetKey`'s own doc comment
+ * on why `circadianTolerance` is the odd one out) — a fixed, sensible
+ * self-report bound instead of something read out of `getBidPackRanges`.
+ */
+const CIRCADIAN_TOLERANCE_RANGE: readonly [number, number] = [0, 4];
 
-type Phase = "commuter" | "cities" | "adaptive-loading" | "adaptive-question" | "finishing";
+type Phase = "commuter" | "cities" | "returning-check" | "adaptive-loading" | "adaptive-question" | "finishing";
+
+/** Highest-confidence, most load-bearing prior-cycle facts worth actively re-confirming — dealbreakers first, then by importance*confidence. Everything else from the prior profile carries forward unreviewed (see `ReturningPilotCheckStep`'s own copy). */
+function topPriorFacts(discoveredFacts: PreferenceFact[], limit: number): PreferenceFact[] {
+  return [...discoveredFacts]
+    .sort((a, b) => {
+      const aDealbreaker = a.severity === "dealbreaker" ? 1 : 0;
+      const bDealbreaker = b.severity === "dealbreaker" ? 1 : 0;
+      if (aDealbreaker !== bDealbreaker) return bDealbreaker - aDealbreaker;
+      return b.importance * b.confidence - a.importance * a.confidence;
+    })
+    .slice(0, limit);
+}
 
 /** Deterministic, network-free conversion of the city picker's initial picks into real facts — so the turn loop's very first context already includes them, and the model can follow up on *why* rather than the picks sitting in a side channel it never sees. */
 function factsFromCityPreferences(cityPreferences: Record<string, CitySentiment>): PreferenceFact[] {
@@ -128,18 +155,27 @@ function ElaborationToggle({ value, onChange }: { value: string; onChange: (v: s
   );
 }
 
-export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProps) {
+export function AdaptiveInterview({ bidPack, onComplete, priorProfile }: AdaptiveInterviewProps) {
   const grounding = useMemo(() => computeBidPackGroundingStats(bidPack), [bidPack]);
   const ranges = useMemo(() => getBidPackRanges(bidPack), [bidPack]);
   const topCities = useMemo(
     () => rankLayoverCitiesByFrequency(bidPack).slice(0, MAX_CITY_CHOICES).map((c) => c.code),
     [bidPack]
   );
+  const hasReturningCheck = !!priorProfile && priorProfile.discoveredFacts.length > 0;
+  const preStepCount = hasReturningCheck ? 3 : 2;
+  const priorTopFacts = useMemo(
+    () => (hasReturningCheck ? topPriorFacts(priorProfile!.discoveredFacts, TOP_PRIOR_FACTS_SHOWN) : []),
+    [hasReturningCheck, priorProfile]
+  );
 
   const [phase, setPhase] = useState<Phase>("commuter");
   const [isCommuter, setIsCommuter] = useState<boolean | null>(null);
   const [hasCrashPad, setHasCrashPad] = useState<boolean | null>(null);
   const [cityPreferences, setCityPreferences] = useState<Record<string, CitySentiment>>({});
+  const [changedFactIds, setChangedFactIds] = useState<Set<string>>(new Set());
+  const [lifeEvent, setLifeEvent] = useState("");
+  const [pendingContradiction, setPendingContradiction] = useState<ContradictionFlag | null>(null);
 
   const [facts, setFacts] = useState<PreferenceFact[]>([]);
   const [transcript, setTranscript] = useState<InterviewTurnRecord[]>([]);
@@ -157,13 +193,21 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
       isCommuter,
       hasCrashPad,
       cityPreferencesSeed: cityPreferences,
+      priorProfile,
     });
     onComplete(profile);
   }
 
-  async function requestNextTurn(nextFacts: PreferenceFact[], nextTranscript: InterviewTurnRecord[], nextTurnsUsed: number) {
+  async function requestNextTurn(
+    nextFacts: PreferenceFact[],
+    nextTranscript: InterviewTurnRecord[],
+    nextTurnsUsed: number,
+    extras?: { priorFactsChanged?: PreferenceFact[]; lifeEvent?: string }
+  ) {
     setPhase("adaptive-loading");
     setError(null);
+    const contradictionForThisTurn = pendingContradiction;
+    if (contradictionForThisTurn) setPendingContradiction(null);
     try {
       const body = buildTurnRequest({
         transcript: nextTranscript,
@@ -173,6 +217,9 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
         aircraft: bidPack.aircraft,
         isCommuter,
         turnsUsed: nextTurnsUsed,
+        priorFactsChanged: extras?.priorFactsChanged,
+        lifeEvent: extras?.lifeEvent,
+        contradictionFlag: contradictionForThisTurn ?? undefined,
       });
       const res = await fetch("/api/interview-turn", {
         method: "POST",
@@ -188,6 +235,25 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
       const turn = (await res.json()) as TurnResponse;
       const mergedFacts = applyProfileUpdates(nextFacts, turn.profileUpdates);
       setFacts(mergedFacts);
+
+      // Cross-cycle contradiction check: only ever runs against a real prior
+      // profile, and only on facts this exact turn actually added/revised —
+      // not a re-scan of the whole running fact list every turn. A hit is
+      // queued for the *next* request rather than acted on immediately,
+      // since this turn's own question still needs to be shown/answered first.
+      if (priorProfile) {
+        const newlyMeasurable: PreferenceFact[] = turn.profileUpdates
+          .filter((u): u is Extract<PreferenceFactUpdate, { op: "add" | "revise" }> => u.op === "add" || u.op === "revise")
+          .map((u) => u.fact)
+          .filter((f) => f.kind === "measurable");
+        for (const f of newlyMeasurable) {
+          const flag = detectContradiction(f, priorProfile.discoveredFacts);
+          if (flag) {
+            setPendingContradiction(flag);
+            break;
+          }
+        }
+      }
 
       if (turn.action === "wrap_up" || !turn.question) {
         finish(mergedFacts, nextTranscript);
@@ -223,17 +289,19 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
   }
 
   const stepsDone =
-    phase === "commuter" ? 0 : phase === "cities" ? 1 : 2 + turnsUsed;
-  const totalStepsApprox = 2 + SOFT_CAP_TURNS;
+    phase === "commuter" ? 0 : phase === "cities" ? 1 : phase === "returning-check" ? 2 : preStepCount + turnsUsed;
+  const totalStepsApprox = preStepCount + SOFT_CAP_TURNS;
 
   const stepKey =
     phase === "commuter"
       ? "commuter"
       : phase === "cities"
         ? "cities"
-        : currentQuestion
-          ? `q-${currentQuestion.id}`
-          : phase;
+        : phase === "returning-check"
+          ? "returning-check"
+          : currentQuestion
+            ? `q-${currentQuestion.id}`
+            : phase;
 
   const content = (() => {
     if (phase === "commuter") {
@@ -292,7 +360,50 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
             onNext={() => {
               const cityFacts = factsFromCityPreferences(cityPreferences);
               setFacts(cityFacts);
-              requestNextTurn(cityFacts, transcript, 0);
+              if (hasReturningCheck) {
+                setPhase("returning-check");
+              } else {
+                requestNextTurn(cityFacts, transcript, 0);
+              }
+            }}
+            nextLabel="Continue"
+          />
+        </div>
+      );
+    }
+
+    if (phase === "returning-check") {
+      const otherFactCount = priorProfile!.discoveredFacts.length - priorTopFacts.length;
+      return (
+        <div>
+          <ReturningPilotCheckStep
+            topFacts={priorTopFacts}
+            changedFactIds={changedFactIds}
+            onToggleFact={(factId) =>
+              setChangedFactIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(factId)) next.delete(factId);
+                else next.add(factId);
+                return next;
+              })
+            }
+            otherFactCount={otherFactCount}
+            lifeEvent={lifeEvent}
+            onLifeEventChange={setLifeEvent}
+          />
+          <StepNav
+            onNext={() => {
+              const shownIds = new Set(priorTopFacts.map((f) => f.id));
+              const carriedOver = priorProfile!.discoveredFacts.filter((f) => !shownIds.has(f.id));
+              const confirmedShown = priorTopFacts.filter((f) => !changedFactIds.has(f.id));
+              const changedShown = priorTopFacts.filter((f) => changedFactIds.has(f.id));
+              const confirmedFacts = [...carriedOver, ...confirmedShown].map((f) => ({ ...f, turnIndex: 0 }));
+              const initialFacts = [...facts, ...confirmedFacts];
+              setFacts(initialFacts);
+              requestNextTurn(initialFacts, transcript, 0, {
+                priorFactsChanged: changedShown,
+                lifeEvent: lifeEvent.trim() || undefined,
+              });
             }}
             nextLabel="Continue"
           />
@@ -327,7 +438,7 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
           {q.kind === "target-slider" && (
             <TargetSliderStepInline
               question={q}
-              range={ranges[q.boundTo]}
+              range={q.boundTo === "circadianTolerance" ? CIRCADIAN_TOLERANCE_RANGE : ranges[q.boundTo]}
               onSubmit={(value, elaboration) => handleAdaptiveAnswer({ kind: "target-slider", value, elaboration })}
             />
           )}
@@ -388,6 +499,10 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
   })();
 
   const canFinishEarly = phase === "adaptive-loading" || phase === "adaptive-question";
+  // Only worth mentioning once wrap_up is even legally reachable (see
+  // MIN_TURNS_BEFORE_WRAP) — below that floor the interview keeps going
+  // regardless, so a richness nudge here would just be noise.
+  const richness = canFinishEarly && turnsUsed >= MIN_TURNS_BEFORE_WRAP ? assessProfileRichness({ discoveredFacts: facts }) : null;
 
   return (
     <div className="mx-auto w-full max-w-xl">
@@ -406,6 +521,13 @@ export function AdaptiveInterview({ bidPack, onComplete }: AdaptiveInterviewProp
 
       {canFinishEarly && (
         <div className="mt-4 text-center">
+          {richness && richness.level !== "thorough" && (
+            <p className="mb-2 text-xs text-ink-faint">
+              {richness.level === "thin"
+                ? "Your profile's still on the thinner side — a few more questions would meaningfully sharpen your ranking."
+                : "A couple more questions here would sharpen your ranking further, if you've got the time."}
+            </p>
+          )}
           <button
             type="button"
             onClick={() => finish(facts, transcript)}

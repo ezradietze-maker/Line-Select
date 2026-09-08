@@ -141,6 +141,16 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
                   },
                   required: ["type"],
                 },
+                cityReason: {
+                  type: "object",
+                  description:
+                    "Only for a qualitative fact that's specifically the 'why' behind a city-sentiment love/avoid pick (never on a measurable fact). Lets this tie back to a real city and, when hotel-related, surface that city's real review summary — without you needing to name the city again in the statement text for the app to find it.",
+                  properties: {
+                    code: { type: "string", description: "The real city code this reason is about — must match a city-sentiment fact already on file." },
+                    category: { type: "string", enum: ["weather", "people", "hotel", "layover-length", "downtime", "other"] },
+                  },
+                  required: ["code", "category"],
+                },
               },
               required: ["statement", "kind", "confidence", "importance"],
             },
@@ -174,6 +184,7 @@ function buildUserMessage(body: TurnRequestBody): string {
         confidence: f.confidence,
         importance: f.importance,
         severity: f.severity,
+        volatile: f.volatile,
       })),
       // turnsUsed is zeroed at the true start of the interview (right after
       // the one-off commuter toggle) — there's no separate seed phase to
@@ -181,6 +192,16 @@ function buildUserMessage(body: TurnRequestBody): string {
       turnsUsed: body.turnsUsed,
       softCapTurns: body.softCapTurns,
       hardCeilingTurns: body.hardCeilingTurns,
+      // Returning-pilot signals — all absent for a first-time interview.
+      // priorFactsChanged: facts the pilot themselves flagged as no longer
+      // accurate, NOT added to currentFacts since they aren't current
+      // anymore — the model's job is to ask what changed, not re-derive them.
+      priorFactsChanged: body.priorFactsChanged?.map((f) => ({ statement: f.statement, measurable: f.measurable })),
+      lifeEvent: body.lifeEvent,
+      // contradictionFlag is set for exactly one turn by the client right
+      // after it detects a conflict with a prior-cycle fact — address it
+      // directly this turn before moving to fresh ground.
+      contradictionFlag: body.contradictionFlag,
       validCatalogIds: Array.from(catalogIds),
     },
     null,
@@ -233,11 +254,21 @@ function parseMeasurableBinding(raw: unknown): PreferenceFact["measurable"] {
   return undefined;
 }
 
+const CITY_REASON_CATEGORIES = new Set(["weather", "people", "hotel", "layover-length", "downtime", "other"]);
+
+function parseCityReason(raw: unknown): PreferenceFact["cityReason"] {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.code !== "string" || typeof r.category !== "string" || !CITY_REASON_CATEGORIES.has(r.category)) return undefined;
+  return { code: r.code, category: r.category as NonNullable<PreferenceFact["cityReason"]>["category"] };
+}
+
 /** Fallback unit labels when the model mislabels a target-only id as a "slider" (see the coercion in `parseQuestion` below) and so never supplied its own unitSingular/unitPlural. */
 const TARGET_UNIT_LABELS: Record<ExplicitTargetKey, [string, string]> = {
   daysOff: ["day off", "days off"],
   creditHours: ["hour", "hours"],
   departures: ["departure", "departures"],
+  circadianTolerance: ["consecutive report", "consecutive reports"],
 };
 
 function parseQuestion(raw: unknown): InterviewQuestion | null {
@@ -356,6 +387,8 @@ function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId
           ? { kind: "adaptive-question", questionId: answeredQuestionId }
           : { kind: "adaptive-question", questionId: "turn-1" },
         turnIndex,
+        // Only meaningful on a qualitative fact — never on a measurable one, which already has its own real binding.
+        cityReason: f.kind === "qualitative" ? parseCityReason(f.cityReason) : undefined,
       };
       updates.push({ op: u.op, fact });
     }
