@@ -71,6 +71,7 @@ export async function signUp(
     email: normalized,
     displayName: displayName.trim(),
     createdAt: new Date().toISOString(),
+    plan: "free",
   };
   const salt = randomBytes(16).toString("hex");
   const passwordHash = await hashPassword(password, salt);
