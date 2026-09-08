@@ -50,6 +50,24 @@ function tripLabel(entry: LineTripEntry): string {
   return `${base} — ${entry.trip.days}-day${entry.trip.international ? " intl" : ""}, ${cities} (Line ${entry.lineNumber})`;
 }
 
+/** Above this many open offers, an unfiltered scroll stops being the fastest way to find a specific pairing or city — worth showing a search box. Below it, the box would just be clutter over a handful of cards. */
+const SEARCH_THRESHOLD = 4;
+
+function matchesSearch(offer: TradeOffer, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    offer.offeringDisplayName,
+    offer.offeredTrip.pairingNumber,
+    offer.wantedPairingNumber,
+    ...offer.offeredTrip.layoverCities,
+  ]
+    .filter((v): v is string => !!v)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
 interface TradeBoardScreenProps {
   bidPack: BidPack | null;
   user: UserAccount | null;
@@ -70,6 +88,7 @@ export function TradeBoardScreen({
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -98,6 +117,8 @@ export function TradeBoardScreen({
   const openFromOthers = visibleOffers.filter(
     (o) => o.status === "open" && o.offeringUserId !== user?.id
   );
+  const shownOpenOffers =
+    openFromOthers.length > SEARCH_THRESHOLD ? openFromOthers.filter((o) => matchesSearch(o, search)) : openFromOthers;
 
   async function runAction(action: () => Promise<{ ok: boolean; error?: string }>) {
     setBusy(true);
@@ -187,13 +208,23 @@ export function TradeBoardScreen({
           )}
 
           <Section title="Open offers from other pilots">
+            {openFromOthers.length > SEARCH_THRESHOLD && (
+              <TextField
+                label="Search by pilot, pairing, or city"
+                placeholder="e.g. NRT, 27, or a pilot's name"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            )}
             {openFromOthers.length === 0 ? (
               <EmptyState
                 compact
                 description={`No open offers right now${bidPack ? " for this bid pack" : ""}.`}
               />
+            ) : shownOpenOffers.length === 0 ? (
+              <EmptyState compact description="No open offers match that search." />
             ) : (
-              openFromOthers.map((offer) =>
+              shownOpenOffers.map((offer) =>
                 offer.isDemo ? (
                   <OfferCard
                     key={offer.id}

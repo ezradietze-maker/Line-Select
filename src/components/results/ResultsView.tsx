@@ -355,7 +355,7 @@ export function ResultsView({
         totalCount={ranked.length}
       />
 
-      <BidOrderExport entries={bidOrderEntries} />
+      <BidOrderExport entries={bidOrderEntries} bidPeriodStart={bidPack.bidPeriodStart} />
 
       <DndContext
         sensors={sensors}
