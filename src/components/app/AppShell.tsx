@@ -125,6 +125,12 @@ function Footer() {
           <Link href="/how-it-works" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
             How this works
           </Link>
+          <Link href="/terms" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
+            Terms of Service
+          </Link>
+          <Link href="/privacy" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
+            Privacy Policy
+          </Link>
         </p>
         <p>
           <strong className="font-semibold text-ink-muted">Not affiliated with FedEx.</strong>{" "}
@@ -139,11 +145,14 @@ function Footer() {
           types, and the pack&rsquo;s own summary numbers (guarantees, credit
           ranges, line counts) only; pages listing other pilots&rsquo; names,
           employee numbers, or seniority are never read, and the PDF itself
-          isn&rsquo;t stored once parsing finishes. The extracted result, and
-          your preferences, are then stored only on this device unless you
-          create an account to save them. Account sign-in, Trade Board posts,
-          and that one-time bid pack upload are the only things sent to a
-          server.
+          isn&rsquo;t stored once parsing finishes. The extracted result and
+          your preferences are stored only on this device, whether or not you
+          create an account — an account only enables Trade Board, Inbox, and
+          reporting what you held. See the{" "}
+          <Link href="/privacy" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
+            Privacy Policy
+          </Link>{" "}
+          for the full picture.
         </p>
       </div>
     </footer>

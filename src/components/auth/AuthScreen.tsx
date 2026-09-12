@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -20,6 +21,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,6 +36,14 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
 
     if (mode === "signup" && password !== confirmPassword) {
       setError("Passwords don't match.");
+      return;
+    }
+
+    // Affirmative, logged agreement at the moment of account creation — not
+    // just a footer link — is what actually makes the Terms (including the
+    // arbitration and liability sections) enforceable if it's ever tested.
+    if (mode === "signup" && !agreedToTerms) {
+      setError("You need to agree to the Terms of Service and Privacy Policy to create an account.");
       return;
     }
 
@@ -105,6 +115,30 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
               required
               minLength={6}
             />
+          )}
+
+          {mode === "signup" && (
+            <label className="flex items-start gap-2.5 text-xs leading-relaxed text-ink-muted">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-border-strong text-brand focus:ring-brand"
+              />
+              <span>
+                I agree to the{" "}
+                <Link href="/terms" target="_blank" className="underline decoration-dotted underline-offset-4 hover:text-ink">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" target="_blank" className="underline decoration-dotted underline-offset-4 hover:text-ink">
+                  Privacy Policy
+                </Link>
+                , including that this app is independent and not affiliated with FedEx, that
+                nothing here is a substitute for verifying against my own official bid pack, and
+                that Trade Board offers aren&rsquo;t real, binding trades.
+              </span>
+            </label>
           )}
 
           {error && <ErrorBanner>{error}</ErrorBanner>}

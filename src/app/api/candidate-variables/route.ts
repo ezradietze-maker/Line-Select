@@ -13,9 +13,19 @@ export const runtime = "nodejs";
  * real pilot population yet for clustering to mean anything. GET lists them
  * for review; POST is called internally by the classify route, not directly
  * by the client.
+ *
+ * GET requires sign-in as a floor, not a real access-control model — each
+ * entry carries another pilot's own `pilotId` and verbatim `rawQuote`, and
+ * this route has no admin-role concept yet to actually restrict it to
+ * reviewers. Until one exists, treat this endpoint as internal-only and
+ * don't wire it into any pilot-facing UI.
  */
 
 export async function GET() {
+  const user = await getCurrentServerUser();
+  if (!user) {
+    return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  }
   return NextResponse.json({ candidates: await listCandidateVariables() });
 }
 
