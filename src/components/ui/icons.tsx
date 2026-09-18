@@ -224,6 +224,25 @@ export function BasketIcon({ className = base }: IconProps) {
   );
 }
 
+/** A painter's palette with a few dabs of color — personalizing the app's look. */
+export function PaletteIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3.5C7 3.5 3 7.3 3 12s4 8.5 9 8.5c1.25 0 2.1-.8 2.1-1.9 0-.5-.2-1-.55-1.4-.35-.4-.55-.85-.55-1.4 0-1.05.9-1.8 2-1.8h1.6c2.4 0 4.4-2 4.4-4.5C21 6 17 3.5 12 3.5z"
+        fill="currentColor"
+        fillOpacity="0.1"
+      />
+      <circle cx="7.6" cy="11" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="9.8" cy="7.2" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="14.6" cy="6.6" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="17.6" cy="10" r="1.3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 /** A steaming cup — nearby coffee. */
 export function CupIcon({ className = base }: IconProps) {
   return (

@@ -2,8 +2,7 @@
 
 import { useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import { AccountMenu } from "@/components/nav/AccountMenu";
-import { CalendarAccentPicker } from "@/components/nav/CalendarAccentPicker";
-import { ThemeToggle } from "@/components/nav/ThemeToggle";
+import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import {
   BuildingIcon,
   LogoMark,
@@ -167,14 +166,17 @@ export function LeftNav({
   // like the same element rendered twice.
   const sidebar = (
     <div className="flex h-full flex-col">
-      <button
-        type="button"
-        onClick={() => go(homeTarget)}
-        className="group flex items-center gap-2.5 px-4 py-5"
-      >
-        <LogoMark className="h-8 w-8 shrink-0 transition-transform duration-200 group-hover:scale-105" />
-        <span className="text-sm font-semibold tracking-tight text-ink">Line Select</span>
-      </button>
+      <div className="flex items-center justify-between gap-2 px-4 py-5">
+        <button
+          type="button"
+          onClick={() => go(homeTarget)}
+          className="group flex min-w-0 items-center gap-2.5"
+        >
+          <LogoMark className="h-8 w-8 shrink-0 transition-transform duration-200 group-hover:scale-105" />
+          <span className="truncate text-sm font-semibold tracking-tight text-ink">Line Select</span>
+        </button>
+        <AppearanceMenu />
+      </div>
 
       <nav className="flex-1 space-y-1 px-3">
         <NavList
@@ -198,11 +200,7 @@ export function LeftNav({
         </button>
       </nav>
 
-      <div className="space-y-3 border-t border-sidebar-border px-3 pb-4 pt-4">
-        <div className="flex items-center justify-between">
-          <ThemeToggle />
-          <CalendarAccentPicker />
-        </div>
+      <div className="border-t border-sidebar-border px-3 pb-4 pt-4">
         <AccountMenu user={user} onSignIn={onSignIn} onLogout={onLogout} />
       </div>
     </div>
