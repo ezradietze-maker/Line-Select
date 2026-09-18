@@ -302,7 +302,17 @@ function buildZuluDays(raw: RawSegment[]): TimelineDay[] {
  * guessed at or rendered in the wrong place.
  */
 function buildLocalDays(raw: RawSegment[]): TimelineDay[] {
-  const base = localDayStart(raw[0].zuluStart, raw[0].startAirport);
+  // Day 1 is normally the trip's very first segment's own local day — but an
+  // unlisted airport (a new base, a new country the timezone table hasn't
+  // caught up to yet) showing up first shouldn't blank the whole trip when
+  // every other segment's airport is perfectly resolvable. Fall through to
+  // the first segment that *does* resolve, so one unknown airport costs only
+  // itself, not the entire calendar.
+  let base: ReturnType<typeof localDayStart> = null;
+  for (const seg of raw) {
+    base = localDayStart(seg.zuluStart, seg.startAirport);
+    if (base) break;
+  }
   if (!base) return [];
 
   interface Positioned {
