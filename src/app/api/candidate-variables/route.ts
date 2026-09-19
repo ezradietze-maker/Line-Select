@@ -14,17 +14,20 @@ export const runtime = "nodejs";
  * for review; POST is called internally by the classify route, not directly
  * by the client.
  *
- * GET requires sign-in as a floor, not a real access-control model — each
- * entry carries another pilot's own `pilotId` and verbatim `rawQuote`, and
- * this route has no admin-role concept yet to actually restrict it to
- * reviewers. Until one exists, treat this endpoint as internal-only and
- * don't wire it into any pilot-facing UI.
+ * GET is gated by a server-only shared secret (`ADMIN_API_KEY`), not a
+ * pilot sign-in — each entry carries another pilot's own `pilotId` and
+ * verbatim `rawQuote`, and there's no real admin-role concept in this app
+ * yet to check against, so "signed in" would mean "any pilot" here. A
+ * shared secret only the developer holds is the right-sized fix until an
+ * actual admin role exists to justify the complexity of one — never wire
+ * this into pilot-facing UI, and check with `curl -H "x-admin-key: ..."`
+ * instead.
  */
 
-export async function GET() {
-  const user = await getCurrentServerUser();
-  if (!user) {
-    return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+export async function GET(request: Request) {
+  const key = request.headers.get("x-admin-key");
+  if (!key || key !== process.env.ADMIN_API_KEY) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
   return NextResponse.json({ candidates: await listCandidateVariables() });
 }
