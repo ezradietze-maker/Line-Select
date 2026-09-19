@@ -1,16 +1,15 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "September 11, 2026";
+const LAST_UPDATED = "September 18, 2026";
 
 /**
  * A real Terms of Service — not boilerplate copy-pasted from a generator.
  * Grounded in what this app actually does and actually stores (verified
- * against the real code, not assumed) as of the date above. Three bracketed
- * placeholders below need the operator's own facts filled in before this is
- * relied on: the operating entity/individual, the governing-law state, and
- * the legal contact address. This document is not a substitute for review
- * by a licensed attorney in the relevant jurisdiction.
+ * against the real code, not assumed) as of the date above. Operated by
+ * Ezra Dietze as an individual (no LLC formed yet — update this and the
+ * arbitration/liability sections if that changes). This document is not a
+ * substitute for review by a licensed attorney in the relevant jurisdiction.
  */
 export default function TermsPage() {
   return (
@@ -25,8 +24,8 @@ export default function TermsPage() {
           <p>
             These Terms of Service (&ldquo;Terms&rdquo;) govern your use of Line Select (the
             &ldquo;Service&rdquo;), operated by{" "}
-            <span className="font-medium text-ink">[OPERATOR NAME/ENTITY]</span> (&ldquo;we,&rdquo;
-            &ldquo;us,&rdquo; or &ldquo;the Company&rdquo;). By creating an account, uploading a
+            <span className="font-medium text-ink">Ezra Dietze</span> (&ldquo;we&rdquo; or
+            &ldquo;us&rdquo;). By creating an account, uploading a
             bid pack, or otherwise using the Service, you agree to be bound by these Terms and by
             our{" "}
             <Link href="/privacy" className="underline decoration-dotted underline-offset-4 hover:text-ink">
@@ -205,7 +204,7 @@ export default function TermsPage() {
             licensors and protected by intellectual property law. Except for your own content, you
             may not copy, modify, distribute, sell, or lease any part of the Service without our
             written permission. If you believe material on the Service infringes your copyright,
-            contact us at the address in Section 17 with enough detail to identify the material and
+            contact us at the address in Section 18 with enough detail to identify the material and
             your rights in it.
           </p>
         </Section>
@@ -274,7 +273,7 @@ export default function TermsPage() {
         <Section title="16. Dispute resolution, arbitration, and governing law">
           <p>
             These Terms are governed by the laws of the State of{" "}
-            <span className="font-medium text-ink">[GOVERNING LAW STATE]</span>, without regard to
+            <span className="font-medium text-ink">California</span>, without regard to
             its conflict-of-laws principles.
           </p>
           <p className="mt-3">
@@ -288,10 +287,10 @@ export default function TermsPage() {
           </p>
           <p className="mt-3">
             <strong className="font-medium text-ink">Opt-out.</strong> You may opt out of this
-            arbitration agreement by sending written notice to the address in Section 17 within 30
-            days of first agreeing to these Terms; if you opt out, disputes will instead be
+            arbitration agreement by sending written notice to the contact address in Section 18
+            within 30 days of first agreeing to these Terms; if you opt out, disputes will instead be
             resolved in the state or federal courts located in{" "}
-            <span className="font-medium text-ink">[GOVERNING LAW STATE]</span>, and you consent to
+            <span className="font-medium text-ink">California</span>, and you consent to
             personal jurisdiction there.
           </p>
         </Section>
@@ -309,10 +308,10 @@ export default function TermsPage() {
           <p>
             Questions about these Terms can be sent to{" "}
             <a
-              href="mailto:legal@lineselect.app"
+              href="mailto:ezradietze@gmail.com"
               className="underline decoration-dotted underline-offset-4 hover:text-ink"
             >
-              legal@lineselect.app
+              ezradietze@gmail.com
             </a>
             .
           </p>

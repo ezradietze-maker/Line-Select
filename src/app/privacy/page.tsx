@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "September 11, 2026";
+const LAST_UPDATED = "September 18, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -10,8 +10,8 @@ const LAST_UPDATED = "September 11, 2026";
  * generic template, specifically so this document doesn't promise more (or
  * less) protection than what's actually implemented. If the app's data
  * handling changes, this page needs to change with it — a Privacy Policy
- * that no longer matches real behavior is a liability, not a shield. Two
- * bracketed placeholders need the operator's own facts filled in. Not a
+ * that no longer matches real behavior is a liability, not a shield.
+ * Operated by Ezra Dietze as an individual (no LLC formed yet). Not a
  * substitute for review by a licensed attorney.
  */
 export default function PrivacyPage() {
@@ -27,7 +27,7 @@ export default function PrivacyPage() {
           <p>
             This Privacy Policy explains what information Line Select (&ldquo;the
             Service,&rdquo; operated by{" "}
-            <span className="font-medium text-ink">[OPERATOR NAME/ENTITY]</span>) collects, why,
+            <span className="font-medium text-ink">Ezra Dietze</span>) collects, why,
             and what happens to it. We built the Service around a simple rule: your bid pack and
             your preferences are yours, and as little as possible about you ever reaches a server
             at all. Read this alongside our{" "}
@@ -208,10 +208,10 @@ export default function PrivacyPage() {
           <p>
             Questions about this policy, or a request about your data, can be sent to{" "}
             <a
-              href="mailto:privacy@lineselect.app"
+              href="mailto:ezradietze@gmail.com"
               className="underline decoration-dotted underline-offset-4 hover:text-ink"
             >
-              privacy@lineselect.app
+              ezradietze@gmail.com
             </a>
             .
           </p>
