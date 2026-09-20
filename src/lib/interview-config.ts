@@ -148,6 +148,51 @@ export const DEEP_SLIDERS: SliderQuestionConfig[] = [
     highLabel: "Matters a lot — a rough hotel ruins the trip",
     centerLabel: "Somewhat matters",
   },
+  {
+    key: "daysOff",
+    question: "Days off — a compact schedule, or as many as you can get?",
+    helpText:
+      "This is about overall days off for the month, not any single trip's length.",
+    lowLabel: "Fine with a compact schedule, fewer days off",
+    highLabel: "Wants more days off / a lighter schedule",
+    centerLabel: "No strong preference",
+  },
+  {
+    key: "international",
+    question: "Domestic flying, or international?",
+    helpText:
+      "How much of your line's flying you actually want crossing a border, versus staying domestic.",
+    lowLabel: "Prefer mostly domestic flying",
+    highLabel: "Prefer a strong international mix",
+    centerLabel: "No strong preference",
+  },
+  {
+    key: "landings",
+    question: "More landings for currency, or fewer for a lighter workload?",
+    helpText:
+      "Some pilots want more landings for proficiency and currency comfort; others, especially managing fatigue, want fewer.",
+    lowLabel: "Fewer landings — keep workload light",
+    highLabel: "More landings — proficiency/currency comfort",
+    centerLabel: "No strong preference",
+  },
+  {
+    key: "riskTolerance",
+    question: "If a rare, hard-to-hold line existed, would you rank it high anyway?",
+    helpText:
+      "A Strategies-board input, not a line-scoring dimension — this never changes how any line's own Satisfaction Index is computed, only which Strategies-board moves get surfaced for you.",
+    lowLabel: "Only bid what I'm confident about",
+    highLabel: "Rank the reach high anyway",
+    centerLabel: "Depends on the line",
+  },
+  {
+    key: "adminEffortAppetite",
+    question: "Would you put in real extra effort for a better outcome?",
+    helpText:
+      "Filing a grievance, working a manual trade, chasing every re-bid window — a Strategies-board input, not a line-scoring dimension.",
+    lowLabel: "Wants the low-effort outcome",
+    highLabel: "Would do the extra work",
+    centerLabel: "Depends on how much it'd help",
+  },
 ];
 
 export interface TargetSliderQuestionConfig {

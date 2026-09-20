@@ -4,7 +4,9 @@ import {
   assessProfileRichness,
   deterministicFactFromAnswer,
   detectContradiction,
+  EXPLICIT_WEIGHT_IDS,
   finalizeAdaptiveProfile,
+  uncoveredExplicitWeightIds,
 } from "@/lib/interview-engine";
 import { emptyWeights } from "@/lib/preference-logic";
 import type { InterviewQuestion, InterviewTurnRecord, PreferenceFact, PreferenceFactUpdate } from "@/types/interview-session";
@@ -470,5 +472,43 @@ describe("assessProfileRichness", () => {
       profileWithFacts([fact({ measurable: { type: "explicit-weight", key: "landings", direction: 1 } })])
     );
     expect(richness.uncoveredTopics).not.toContain("Landings / currency preference");
+  });
+});
+
+/**
+ * Regression coverage for a real live-usage failure: a rich, engaged
+ * 14-turn interview wrapped up having never touched 9 of the 15
+ * explicit-weight ids (trip length, hotel food/gym/grocery, the generic
+ * circadian-health slider, both Strategies-board inputs, and more) — this
+ * is the computed gap list that closes that hole by making it a hard,
+ * checkable fact each turn rather than prose the model has to remember.
+ */
+describe("uncoveredExplicitWeightIds", () => {
+  it("lists every explicit-weight id when nothing has been touched yet", () => {
+    expect(uncoveredExplicitWeightIds([])).toEqual([...EXPLICIT_WEIGHT_IDS]);
+  });
+
+  it("excludes an id once a matching explicit-weight fact exists", () => {
+    const result = uncoveredExplicitWeightIds([
+      fact({ measurable: { type: "explicit-weight", key: "landings", direction: -1 } }),
+    ]);
+    expect(result).not.toContain("landings");
+    expect(result).toHaveLength(EXPLICIT_WEIGHT_IDS.length - 1);
+  });
+
+  it("is unaffected by facts that don't bind to an explicit-weight id (city-sentiment, implicit, explicit-target)", () => {
+    const result = uncoveredExplicitWeightIds([
+      fact({ measurable: { type: "city-sentiment", code: "LAX", sentiment: "love" } }),
+      fact({ measurable: { type: "implicit-weight", variableId: "creditPerTafbHour", direction: 1 } }),
+      fact({ measurable: { type: "explicit-target", key: "departures", value: 2 } }),
+    ]);
+    expect(result).toEqual([...EXPLICIT_WEIGHT_IDS]);
+  });
+
+  it("returns empty once every explicit-weight id has real coverage", () => {
+    const facts = EXPLICIT_WEIGHT_IDS.map((key) =>
+      fact({ id: key, measurable: { type: "explicit-weight", key: key as never, direction: 1 } })
+    );
+    expect(uncoveredExplicitWeightIds(facts)).toEqual([]);
   });
 });

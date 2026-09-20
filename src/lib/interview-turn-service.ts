@@ -36,7 +36,7 @@ import { DEFAULT_WEIGHTS, type ExplicitTargetKey } from "@/types/preferences";
 
 const MODEL = "claude-sonnet-5";
 
-const EXPLICIT_TARGET_KEYS: ExplicitTargetKey[] = ["daysOff", "creditHours", "departures"];
+const EXPLICIT_TARGET_KEYS: ExplicitTargetKey[] = ["daysOff", "creditHours", "departures", "circadianTolerance"];
 
 /**
  * Built per-turn rather than a static const: below `MIN_TURNS_BEFORE_WRAP`,
@@ -66,7 +66,7 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
           boundTo: {
             type: "string",
             description:
-              "Required for kind 'slider' or 'target-slider'. For 'slider', must be one of the EXPLICIT-WEIGHT ids (never 'departures', never an implicit id). For 'target-slider', must be one of the EXPLICIT-TARGET ids (daysOff, creditHours, or departures) — see the system prompt's catalog section for the exact lists.",
+              "Required for kind 'slider' or 'target-slider'. For 'slider', must be one of the EXPLICIT-WEIGHT ids (never 'departures', never an implicit id). For 'target-slider', must be one of the EXPLICIT-TARGET ids (daysOff, creditHours, departures, or circadianTolerance) — see the system prompt's catalog section for the exact lists.",
           },
           lowLabel: { type: "string", description: "Required for kind 'slider'." },
           highLabel: { type: "string", description: "Required for kind 'slider'." },
@@ -192,6 +192,7 @@ function buildUserMessage(body: TurnRequestBody): string {
       turnsUsed: body.turnsUsed,
       softCapTurns: body.softCapTurns,
       hardCeilingTurns: body.hardCeilingTurns,
+      uncoveredExplicitWeightIds: body.uncoveredExplicitWeightIds,
       // Returning-pilot signals — all absent for a first-time interview.
       // priorFactsChanged: facts the pilot themselves flagged as no longer
       // accurate, NOT added to currentFacts since they aren't current
@@ -235,7 +236,7 @@ function isKnownVariableId(id: unknown): boolean {
 }
 
 /** Validates and reconstructs one raw `measurable` object from the tool input into a real `MeasurableBinding`, or undefined if it doesn't hold up against the real catalog — the runtime allowlist check tool-schema conformance alone doesn't guarantee, the same spirit as `classify-preference`'s existing `validVariableIds` check. */
-function parseMeasurableBinding(raw: unknown): PreferenceFact["measurable"] {
+export function parseMeasurableBinding(raw: unknown): PreferenceFact["measurable"] {
   if (!raw || typeof raw !== "object") return undefined;
   const m = raw as Record<string, unknown>;
 
@@ -271,7 +272,7 @@ const TARGET_UNIT_LABELS: Record<ExplicitTargetKey, [string, string]> = {
   circadianTolerance: ["consecutive report", "consecutive reports"],
 };
 
-function parseQuestion(raw: unknown): InterviewQuestion | null {
+export function parseQuestion(raw: unknown): InterviewQuestion | null {
   if (!raw || typeof raw !== "object") return null;
   const q = raw as Record<string, unknown>;
   if (typeof q.prompt !== "string" || !q.prompt.trim()) return null;
@@ -443,11 +444,23 @@ async function requestTurnFromModel(
  * null-question fallback below.
  */
 const MISSING_QUESTION_RETRY_NOTE =
-  "IMPORTANT: your previous response had action \"ask\" but no valid \"question\" object. You are still below the minimum-turns floor, so wrapping up is not available yet — you must return action \"ask\" with a complete question object: \"prompt\" is always required, plus lowLabel/highLabel/centerLabel/boundTo for kind \"slider\", unitSingular/unitPlural/boundTo for kind \"target-slider\", or at least 2 \"options\" for kind \"choice\". A kind \"free-text\" question only ever needs \"prompt\" — use that if nothing else fits.";
+  "IMPORTANT: your previous response had action \"ask\" but no valid \"question\" object. Wrapping up is not available yet (either you're still below the minimum-turns floor, or real catalog coverage is still incomplete — see uncoveredExplicitWeightIds) — you must return action \"ask\" with a complete question object: \"prompt\" is always required, plus lowLabel/highLabel/centerLabel/boundTo for kind \"slider\", unitSingular/unitPlural/boundTo for kind \"target-slider\", or at least 2 \"options\" for kind \"choice\". A kind \"free-text\" question only ever needs \"prompt\" — use that if nothing else fits.";
 
 export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Promise<InterviewTurnResult> {
   const client = new Anthropic({ apiKey });
-  const canWrapUp = req.turnsUsed >= MIN_TURNS_BEFORE_WRAP;
+  // Structural, not just prose: below the floor, or with real catalog
+  // coverage still missing, "wrap_up" is dropped from the tool schema's own
+  // enum entirely (see buildTurnTool) so the model cannot select it no
+  // matter how the conversation reads — the hard ceiling is the one escape
+  // hatch, so a pilot who genuinely won't engage with a couple of ids can't
+  // trap the loop forever. Mirrors MIN_TURNS_BEFORE_WRAP's own reasoning:
+  // a soft "don't wrap up with gaps" instruction is a strong steer, not a
+  // guarantee — live testing showed the model treats prose guidance as
+  // negotiable in a way it structurally can't treat a missing enum value.
+  const pastFloor = req.turnsUsed >= MIN_TURNS_BEFORE_WRAP;
+  const hasFullCoverage = req.uncoveredExplicitWeightIds.length === 0;
+  const pastHardCeiling = req.turnsUsed >= req.hardCeilingTurns;
+  const canWrapUp = pastFloor && (hasFullCoverage || pastHardCeiling);
   const lastTurn = req.transcript[req.transcript.length - 1];
   const answeredQuestionId = lastTurn?.question.id;
 
@@ -462,7 +475,11 @@ export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Pr
     // a strong steer, not a runtime guarantee, so it's re-checked here rather
     // than trusted blindly.
     if (input.action === "wrap_up" && !canWrapUp) {
-      console.warn("[interview-turn] model returned wrap_up before MIN_TURNS_BEFORE_WRAP despite a restricted tool schema", { turnsUsed: req.turnsUsed });
+      console.warn("[interview-turn] model returned wrap_up despite a restricted tool schema", {
+        turnsUsed: req.turnsUsed,
+        pastFloor,
+        uncoveredCount: req.uncoveredExplicitWeightIds.length,
+      });
     }
     const action = input.action === "wrap_up" && canWrapUp ? "wrap_up" : "ask";
     let question = action === "ask" ? parseQuestion(input.question) : null;

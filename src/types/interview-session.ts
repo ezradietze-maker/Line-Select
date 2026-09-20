@@ -212,6 +212,15 @@ export interface TurnRequestBody {
   softCapTurns: number;
   hardCeilingTurns: number;
   /**
+   * Explicit-weight ids (see `interview-engine.ts`'s `EXPLICIT_WEIGHT_IDS`)
+   * with zero engagement so far this cycle, recomputed fresh each turn from
+   * `facts` — a concrete, checkable gap list handed to the model every turn
+   * rather than a paragraph of "remember to check the catalog" prose it has
+   * to re-derive from memory. See `uncoveredExplicitWeightIds`'s own doc
+   * comment for the live-testing failure this exists to close.
+   */
+  uncoveredExplicitWeightIds: string[];
+  /**
    * Facts from the pilot's prior bid-cycle profile they explicitly flagged
    * as "something's changed" on the returning-pilot check screen (see
    * `ReturningPilotCheckStep.tsx`) — deliberately never folded into `facts`

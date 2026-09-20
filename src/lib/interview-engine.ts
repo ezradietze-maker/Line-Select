@@ -32,32 +32,79 @@ import type { CitySentiment, ExplicitTargetKey, PreferenceProfile, RangeTarget }
  * 15-topic backlog. A model can misjudge or misread soft language; it can't
  * select an action that isn't in its tool's enum.
  *
- * Set at 12, not lower: live re-testing after the first fix (floor 8) showed
- * the model reaches directly for wrap_up the instant it's legally available
- * — it stopped at exactly turnsUsed 8 both times, having covered barely half
- * the topic backlog. The model consistently treats "allowed to stop" as
- * "should stop" rather than as a floor with real discretion above it, so the
- * floor itself has to carry more of the weight than the softer guidance
- * further down in the prompt does.
+ * Set at 12, not lower originally: live re-testing after the first fix
+ * (floor 8) showed the model reaches directly for wrap_up the instant it's
+ * legally available — it stopped at exactly turnsUsed 8 both times, having
+ * covered barely half the topic backlog. The model consistently treats
+ * "allowed to stop" as "should stop" rather than as a floor with real
+ * discretion above it, so the floor itself has to carry more of the weight
+ * than the softer guidance further down in the prompt does.
+ *
+ * Raised to 22 after a further live run at 12 wrapped at turnsUsed 14 —
+ * past the floor, but having touched only 6 of 15 explicit-weight ids and
+ * skipped 6 of 15 topic-backlog areas entirely, on an engaged, elaborate
+ * pilot answering every question with real detail. The floor alone was
+ * still the dominant lever on how thorough a real interview actually runs,
+ * regardless of how much prose the prompt spent on "don't stop early" —
+ * paired with the new per-turn `uncoveredExplicitWeightIds` list (see
+ * below), which gives the model a concrete, checkable gap rather than a
+ * paragraph to remember to re-read.
  */
-export const MIN_TURNS_BEFORE_WRAP = 12;
+export const MIN_TURNS_BEFORE_WRAP = 22;
 /**
  * Between MIN_TURNS_BEFORE_WRAP and this, wrap_up is offered but the model
  * is told to keep going unless one more turn is clearly worth it; below
  * MIN_TURNS_BEFORE_WRAP it isn't offered at all (see above). Raised from
- * 10/16 alongside the interview topic-backlog expansion — there's roughly
- * 3x the topic ground to cover now that the interview is one continuous
- * loop with no separate free seed round (see `AdaptiveInterview.tsx`'s own
- * doc comment). Product numbers, not engineering ones — easy to retune.
+ * 18 alongside the same live finding that motivated the floor increase —
+ * genuinely covering all 15 explicit-weight ids plus real depth on several
+ * topic-backlog threads realistically takes turns in the high 20s/low 30s,
+ * not high teens. Product numbers, not engineering ones — easy to retune.
  */
-export const SOFT_CAP_TURNS = 18;
+export const SOFT_CAP_TURNS = 32;
 /**
  * Enforced client-side, never model-side — the loop simply stops calling
  * the turn route at this point regardless of what the last response asked
  * for, per the hard requirement that a rambling pilot can't make the
- * interview run away no matter what the model itself judges.
+ * interview run away no matter what the model itself judges. Raised from 28
+ * alongside MIN_TURNS_BEFORE_WRAP/SOFT_CAP_TURNS so the ceiling still sits
+ * meaningfully above the new soft cap rather than nearly coinciding with it.
  */
-export const HARD_CEILING_TURNS = 28;
+export const HARD_CEILING_TURNS = 42;
+
+/**
+ * Every real, closed-catalog explicit-weight id — the single source of truth
+ * shared between the system prompt (`interview-prompt.ts`, which needs the
+ * full list to describe the catalog) and the per-turn coverage check below
+ * (which needs it to know what's still untouched). Kept here rather than in
+ * `interview-prompt.ts` so `interview-prompt.ts` can import it without a
+ * circular dependency (it already imports `MIN_TURNS_BEFORE_WRAP` from this
+ * file). "departures" is deliberately excluded — it's target-only, never a
+ * directional slider (see `ExplicitWeightKey`'s own doc comment).
+ */
+export const EXPLICIT_WEIGHT_IDS = [
+  "daysOff", "tripLength", "international", "reportTime", "creditHours",
+  "deadheadTolerance", "hotelFood", "hotelGym", "hotelGrocery", "hotelQuiet",
+  "hotelQuality", "circadianHealth", "landings", "riskTolerance", "adminEffortAppetite",
+] as const;
+
+/**
+ * Which explicit-weight ids have zero engagement so far this cycle — fed
+ * back into the next turn's own request so the model isn't relying on its
+ * own memory of a long system prompt's catalog list to notice a gap. Added
+ * after live testing showed the model will happily wrap up a rich-feeling
+ * conversation at turnsUsed 14 having never once touched 9 of the 15
+ * explicit-weight ids (trip length, the plain pay-vs-lifestyle slider, three
+ * of four hotel amenities, the generic circadian-health slider, and both
+ * Strategies-board inputs) — soft "check the backlog" prose alone wasn't
+ * enough to stop an otherwise-engaged conversation from feeling "done."
+ * Making the gap a literal, computed list the model is handed every turn is
+ * a much harder thing to rationalize past than a paragraph of guidance it
+ * has to remember to re-check itself.
+ */
+export function uncoveredExplicitWeightIds(facts: PreferenceFact[]): string[] {
+  const touched = touchedDimensionIds(facts);
+  return EXPLICIT_WEIGHT_IDS.filter((id) => !touched.has(id));
+}
 
 export function buildTurnRequest(params: {
   transcript: InterviewTurnRecord[];
@@ -75,6 +122,7 @@ export function buildTurnRequest(params: {
     ...params,
     softCapTurns: SOFT_CAP_TURNS,
     hardCeilingTurns: HARD_CEILING_TURNS,
+    uncoveredExplicitWeightIds: uncoveredExplicitWeightIds(params.facts),
   };
 }
 

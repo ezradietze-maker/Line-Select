@@ -47,6 +47,12 @@ export const INTERVIEW_TOPIC_BACKLOG: InterviewTopic[] = [
       "For a commuter specifically, ask whether they actively seek trips that deadhead them both to and from work (a \"double deadhead\") — this is a real, extreme-positive reading on the existing deadheadTolerance dimension, not a new one, so bind it there with direction 1 when they're seeking it. Ask whether they prefer that deadhead at the front of the trip, the back, or don't care — qualitative, since there's no separate scoreable slot for placement. For any commuter, ask about real commute logistics: how much buffer time before a report they actually need to feel safe, and whether a red-eye commute (flying in overnight to make an early report) is something they'd do or actively avoid — both qualitative, pilot-personal facts with no bid-pack-side counterpart to score against, but valuable narrative context for why a given line does or doesn't work for them.",
   },
   {
+    id: "hotel-amenities",
+    label: "Hotel amenities — food, gym, grocery",
+    guidance:
+      "Three real, distinct explicit-weight ids (hotelFood, hotelGym, hotelGrocery) never get their own moment otherwise — they're easy to skip past on the way to the more dramatic hotel-quality/noise questions. Ask directly, once, which of these actually matter on the road: walkable food or coffee near the hotel, gym or fitness access, a grocery or pharmacy nearby to restock without a car. Ask this as a \"choice\" (pick the one that matters most, with an \"a few of these\"/\"none of these\" option among the choices) or as \"free-text\", never as if several options could be selected at once — this app's \"choice\" question kind only ever records one selectedIndex, so a question phrased like a multi-select checkbox list is silently misleading about what the pilot can actually do with it. A free-text answer naming two or three of them is exactly how to get more than one bound in a single turn: extract a separate hotelFood/hotelGym/hotelGrocery profile update for each one the pilot's own words call out as mattering, direction 1 with a real importance. For any of the three the pilot explicitly says doesn't matter (not just \"didn't mention\" — a real, answered no), still add an explicit-weight fact for it with direction 1 and importance EXACTLY 0 rather than leaving it unbound — see the coverage-mechanics note above for why an unbound id here traps the interview into re-asking the same question forever, and why 0 (not a small nonzero number) is the value that avoids incorrectly showing that amenity as \"matters to you\" on the pilot's own results screen.",
+  },
+  {
     id: "city-preferences",
     label: "City preferences",
     guidance:
@@ -98,7 +104,7 @@ export const INTERVIEW_TOPIC_BACKLOG: InterviewTopic[] = [
     id: "rest-recovery",
     label: "Rest / recovery sensitivity beyond average TAFB",
     guidance:
-      "Ask directly what layover length actually feels like real recovery to them versus just enough to sleep and go — this is exactly what shortRestOvernightsPerTrip and avgSleepOpportunityHours measure, but today they're only ever reached by inference from an unrelated answer, never asked about head-on. A pilot who says a 10-hour layover leaves them wrecked but 14 hours feels fine is giving you a direct, bindable signal on both those ids.",
+      "Ask directly what layover length actually feels like real recovery to them versus just enough to sleep and go — this is exactly what shortRestOvernightsPerTrip and avgSleepOpportunityHours measure, but today they're only ever reached by inference from an unrelated answer, never asked about head-on. A pilot who says a 10-hour layover leaves them wrecked but 14 hours feels fine is giving you a direct, bindable signal on both those ids. While on this thread, also ask directly whether room noise specifically gets in the way of actually using that rest time — thin walls, street noise, a bar downstairs — and bind a clear answer to the explicit-weight id hotelQuiet; it's thematically the same conversation (can this layover actually deliver real recovery) but a distinct, otherwise-easy-to-miss dimension.",
   },
   {
     id: "real-schedule-effort-metrics",
