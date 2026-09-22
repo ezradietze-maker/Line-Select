@@ -25,7 +25,7 @@ const FEATURES = [
   },
   {
     title: "Yours alone",
-    description: "Your bid pack PDF is parsed on our server and never stored there — the extracted line data and your preferences stay on this device, whether or not you create an account.",
+    description: "Your bid pack PDF is parsed on our server and never stored there — the extracted line data always stays on this device. Your preferences do too as a guest; create an account and they follow you to a new device instead of staying put on this one.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
         <rect x="5" y="11" width="14" height="9" rx="2" />

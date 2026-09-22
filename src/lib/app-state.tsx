@@ -9,7 +9,7 @@ import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
-import { clearProfile, loadProfile, saveProfile } from "@/lib/storage";
+import { clearProfileForUser, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
@@ -97,7 +97,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const currentUser = await getCurrentUser();
       if (cancelled) return;
       const savedBidPack = loadBidPack(currentUser?.id ?? null);
-      const savedProfile = savedBidPack ? loadProfile(currentUser?.id ?? null) : null;
+      const savedProfile = await loadProfileForUser(currentUser?.id ?? null);
       const savedSeniority = loadSeniority(currentUser?.id ?? null);
       setState({
         ready: true,
@@ -270,13 +270,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function handleBidPackConfirmed(newBidPack: BidPack) {
+    // Deliberately does NOT clear the existing profile: a new bid pack
+    // almost always means a new bidding cycle for a pilot who's used this
+    // app before, not a brand-new pilot. The old profile stays in state so
+    // the next interview receives it as `priorProfile` and can actually
+    // fold cross-cycle history (reaffirmed facts, contradictions) instead
+    // of starting from zero every month — the entire point of that
+    // machinery, which a blanket clear here used to defeat on every single
+    // confirm. `handleStartOver` is the deliberate, explicit reset instead.
     saveBidPack(user?.id ?? null, newBidPack);
-    clearProfile(user?.id ?? null);
     setState((s) => ({
       ...s,
       bidPack: newBidPack,
       parseResult: null,
-      profile: null,
       pendingProfile: null,
     }));
     router.push("/preferences");
@@ -297,14 +303,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   function handleConfirmPreferences(weights: PreferenceWeights) {
     if (!pendingProfile) return;
     const confirmed: PreferenceProfile = { ...pendingProfile, weights };
-    saveProfile(user?.id ?? null, confirmed);
     setState((s) => ({ ...s, profile: confirmed, pendingProfile: null }));
     router.push("/results");
+    void saveProfileForUser(user?.id ?? null, confirmed);
   }
 
   function handleUpdateProfile(updated: PreferenceProfile) {
-    saveProfile(user?.id ?? null, updated);
     setState((s) => ({ ...s, profile: updated }));
+    void saveProfileForUser(user?.id ?? null, updated);
   }
 
   function handleSaveSeniority(input: SeniorityInput) {
@@ -319,11 +325,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function handleStartOver() {
-    clearProfile(user?.id ?? null);
     clearBidPack(user?.id ?? null);
     setInterviewKey((k) => k + 1);
     setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null }));
     router.push("/");
+    void clearProfileForUser(user?.id ?? null);
   }
 
   function handleDismissToast(id: string) {
@@ -335,9 +341,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     router.push("/inbox");
   }
 
-  function handleAuthenticated(newUser: UserAccount) {
+  async function handleAuthenticated(newUser: UserAccount) {
     const theirBidPack = loadBidPack(newUser.id);
-    const theirProfile = theirBidPack ? loadProfile(newUser.id) : null;
+    const theirProfile = await loadProfileForUser(newUser.id);
     setState({
       ready: true,
       profile: theirProfile,
@@ -350,9 +356,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     router.push(landingPathFor(theirBidPack, theirProfile));
   }
 
-  function handleContinueAsGuest() {
+  async function handleContinueAsGuest() {
     const guestBidPack = loadBidPack(null);
-    const guestProfile = guestBidPack ? loadProfile(null) : null;
+    const guestProfile = await loadProfileForUser(null);
     setState((s) => ({
       ...s,
       profile: guestProfile,
@@ -365,7 +371,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   async function handleLogout() {
     await logoutAccount();
     const guestBidPack = loadBidPack(null);
-    const guestProfile = guestBidPack ? loadProfile(null) : null;
+    const guestProfile = await loadProfileForUser(null);
     setState({
       ready: true,
       profile: guestProfile,

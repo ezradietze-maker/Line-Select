@@ -3,6 +3,7 @@ import type { AwardHistoryRecord } from "@/types/award-history";
 import type { StoredCredential, UserAccount } from "@/types/auth";
 import type { CandidateVariable } from "@/types/candidate-variable";
 import type { InterviewCandidateFact } from "@/types/interview-candidate-fact";
+import type { PreferenceProfile } from "@/types/preferences";
 import type { TradeOffer } from "@/types/trade";
 
 /**
@@ -28,6 +29,8 @@ interface DbShape {
   candidateVariables: CandidateVariable[];
   awardHistoryRecords: AwardHistoryRecord[];
   interviewCandidateFacts: InterviewCandidateFact[];
+  /** Keyed by userId — one flat overwrite per pilot, same shape as the localStorage record it replaces as the source of truth. See `getPreferenceProfile` for why this exists. */
+  preferenceProfiles: Record<string, PreferenceProfile>;
 }
 
 const DB_KEY = "line-select:db";
@@ -41,6 +44,7 @@ function emptyDb(): DbShape {
     candidateVariables: [],
     awardHistoryRecords: [],
     interviewCandidateFacts: [],
+    preferenceProfiles: {},
   };
 }
 
@@ -187,5 +191,36 @@ export async function listAwardHistoryRecords(filter: {
 export async function createAwardHistoryRecord(record: AwardHistoryRecord): Promise<void> {
   const db = await readDb();
   db.awardHistoryRecords = [...(db.awardHistoryRecords ?? []), record];
+  await writeDb(db);
+}
+
+// ---- Preference profiles ----
+
+/**
+ * A pilot's preference profile used to live only in that browser's
+ * localStorage — meaning it never survived a device change, and (a real,
+ * live-confirmed bug) the app was also nulling it out client-side on every
+ * new bid pack confirmation, before the next interview ever got a chance to
+ * treat it as a prior cycle. This is the server-verified source of truth a
+ * signed-in pilot's profile now round-trips through instead, so the
+ * cross-cycle "returning pilot" logic in interview-engine.ts actually has
+ * something real to fold against, on any device.
+ */
+export async function getPreferenceProfile(userId: string): Promise<PreferenceProfile | null> {
+  return (await readDb()).preferenceProfiles?.[userId] ?? null;
+}
+
+export async function savePreferenceProfile(userId: string, profile: PreferenceProfile): Promise<void> {
+  const db = await readDb();
+  db.preferenceProfiles = { ...(db.preferenceProfiles ?? {}), [userId]: profile };
+  await writeDb(db);
+}
+
+export async function deletePreferenceProfile(userId: string): Promise<void> {
+  const db = await readDb();
+  if (!db.preferenceProfiles || !(userId in db.preferenceProfiles)) return;
+  const rest = { ...db.preferenceProfiles };
+  delete rest[userId];
+  db.preferenceProfiles = rest;
   await writeDb(db);
 }

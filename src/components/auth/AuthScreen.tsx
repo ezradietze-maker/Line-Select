@@ -163,10 +163,11 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
 
       <p className="mt-4 text-center text-xs leading-relaxed text-ink-faint">
         Your account is real and stored on this app&rsquo;s own server so
-        trade offers can be seen by other pilots &mdash; but this is still a
-        prototype: there&rsquo;s no password reset yet, so hold onto your
-        password. Your bid pack and preferences stay saved locally on each
-        device, as before.
+        trade offers can be seen by other pilots, and so your preferences
+        follow you to a new device or browser once you&rsquo;re signed in
+        &mdash; but this is still a prototype: there&rsquo;s no password
+        reset yet, so hold onto your password. Your bid pack itself still
+        stays on each device.
       </p>
     </div>
   );

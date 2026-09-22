@@ -1,3 +1,4 @@
+import { clearServerProfile, fetchServerProfile, saveServerProfile } from "@/lib/preference-profile-client";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
 
 const GUEST_KEY = "line-select:preference-profile:guest:v1";
@@ -59,4 +60,36 @@ export function clearProfile(userId: string | null): void {
   } catch {
     // ignore
   }
+}
+
+/**
+ * The server (see `preference-profile-client.ts`) is the source of truth
+ * for a signed-in pilot — the whole point is that it survives a device
+ * change localStorage alone never could. A guest has no server identity, so
+ * stays on the plain localStorage functions above. On a hit, the server
+ * profile also refreshes the local cache so the next boot has something to
+ * show instantly before the network call resolves. On a miss, this
+ * migrates any pre-existing local-only profile up to the server once
+ * (covers a pilot who used the app before server-side persistence existed).
+ */
+export async function loadProfileForUser(userId: string | null): Promise<PreferenceProfile | null> {
+  if (!userId) return loadProfile(null);
+  const serverProfile = await fetchServerProfile();
+  if (serverProfile) {
+    saveProfile(userId, serverProfile);
+    return serverProfile;
+  }
+  const localProfile = loadProfile(userId);
+  if (localProfile) await saveServerProfile(localProfile);
+  return localProfile;
+}
+
+export async function saveProfileForUser(userId: string | null, profile: PreferenceProfile): Promise<void> {
+  saveProfile(userId, profile);
+  if (userId) await saveServerProfile(profile);
+}
+
+export async function clearProfileForUser(userId: string | null): Promise<void> {
+  clearProfile(userId);
+  if (userId) await clearServerProfile();
 }
