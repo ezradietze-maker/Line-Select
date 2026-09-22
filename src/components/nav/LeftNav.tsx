@@ -34,6 +34,7 @@ interface LeftNavProps {
   onSignIn: () => void;
   onLogout: () => void;
   onOpenHowItWorks: () => void;
+  onOpenFeedback: () => void;
 }
 
 const NAV_ITEMS: {
@@ -149,6 +150,7 @@ export function LeftNav({
   onSignIn,
   onLogout,
   onOpenHowItWorks,
+  onOpenFeedback,
 }: LeftNavProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -197,6 +199,17 @@ export function LeftNav({
             <path strokeLinecap="round" d="M12 17v-5M12 8h.01" />
           </svg>
           How this works
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenFeedback}
+          className="mt-1 flex w-full items-center gap-3 rounded-md py-2.5 pl-3 pr-3 text-left text-sm font-medium text-ink-faint transition-all duration-150 hover:translate-x-0.5 hover:bg-black/[0.035] hover:text-ink-muted"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-[18px] w-[18px] shrink-0">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.5a8.38 8.38 0 01-1.9 5.4L21 21l-4.65-1.55a8.5 8.5 0 11-6.85-15A8.5 8.5 0 0121 11.5z" />
+          </svg>
+          Send feedback
         </button>
       </nav>
 

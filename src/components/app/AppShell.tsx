@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { FeedbackForm } from "@/components/feedback/FeedbackForm";
 import { LeftNav, type NavTarget } from "@/components/nav/LeftNav";
 import { HowItWorksContent } from "@/components/results/HowItWorks";
 import { Modal } from "@/components/ui/Modal";
@@ -44,6 +45,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
   const { ready, profile, bidPack, user, inboxUnreadCount, toasts, handleLogout, handleDismissToast, handleToastClick } =
     useAppState();
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   // Tracks which route the transition direction was last computed against,
   // so a route change can derive its slide direction from ROUTE_ORDER before
@@ -83,6 +85,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
           onSignIn={() => router.push("/auth")}
           onLogout={handleLogout}
           onOpenHowItWorks={() => setHowItWorksOpen(true)}
+          onOpenFeedback={() => setFeedbackOpen(true)}
         />
       )}
 
@@ -98,6 +101,12 @@ function Chrome({ children }: { children: React.ReactNode }) {
       {howItWorksOpen && (
         <Modal title="How this works" onClose={() => setHowItWorksOpen(false)}>
           <HowItWorksContent />
+        </Modal>
+      )}
+
+      {feedbackOpen && (
+        <Modal title="Send feedback" onClose={() => setFeedbackOpen(false)}>
+          <FeedbackForm page={pathname} onClose={() => setFeedbackOpen(false)} />
         </Modal>
       )}
 
@@ -146,9 +155,10 @@ function Footer() {
           ranges, line counts) only; pages listing other pilots&rsquo; names,
           employee numbers, or seniority are never read, and the PDF itself
           isn&rsquo;t stored once parsing finishes. The extracted result and
-          your preferences are stored only on this device, whether or not you
-          create an account — an account only enables Trade Board, Inbox, and
-          reporting what you held. See the{" "}
+          your preferences are stored only on this device as a guest; create
+          an account and your preferences follow you to a new device too,
+          alongside the Trade Board, Inbox, and reporting what you held that
+          an account also enables. See the{" "}
           <Link href="/privacy" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
             Privacy Policy
           </Link>{" "}

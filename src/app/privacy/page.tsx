@@ -51,15 +51,19 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="2. Your preferences and rankings stay on your device">
+        <Section title="2. Your bid pack and rankings stay on your device; your preferences follow your account">
           <p>
-            The parsed bid pack, your interview answers, your preference weights, and your line
-            rankings are stored only in your own browser&rsquo;s local storage on your own device
-            &mdash; they are never uploaded to, or stored on, our servers, whether or not you have
-            an account. If you clear your browser data or switch devices, that information is
-            gone and you&rsquo;ll need to re-upload and re-answer. Creating an account does not
-            change this &mdash; it only enables the account-linked features described below
-            (Trade Board, Inbox, and reporting what you held).
+            The parsed bid pack and your line rankings are stored only in your own browser&rsquo;s
+            local storage on your own device &mdash; they are never uploaded to, or stored on, our
+            servers, whether or not you have an account. If you clear your browser data or switch
+            devices, that information is gone and you&rsquo;ll need to re-upload.
+          </p>
+          <p className="mt-3">
+            Your interview answers and preference weights work differently if you create an
+            account: they&rsquo;re also stored on our server, keyed to your account, specifically
+            so they follow you to a new device or browser instead of being lost &mdash; the same
+            reasoning as Trade Board and Inbox below. If you use the Service only as a guest, your
+            preferences stay local-only, the same as your bid pack.
           </p>
         </Section>
 
@@ -131,21 +135,34 @@ export default function PrivacyPage() {
             financial information) in these answers &mdash; they&rsquo;re not necessary for the
             Service to work, and while they&rsquo;re not shown to other pilots, they are retained
             longer-term for this review purpose. You can request deletion of these at any time
-            (Section 11).
+            (Section 12).
           </p>
         </Section>
 
-        <Section title="9. Technical and abuse-prevention data">
+        <Section title="9. Feedback you send us">
+          <p>
+            If you use the &ldquo;Send feedback&rdquo; option in the app, your message is sent to
+            our server and stored there &mdash; unlike your bid pack and preferences, this one
+            piece of data is never local-only, since the whole point is that it reaches us. If
+            you&rsquo;re signed in, your name and email are attached to it so we can follow up; a
+            guest submission carries no identifying information at all. Please avoid including
+            sensitive personal details you wouldn&rsquo;t want stored this way &mdash; they&rsquo;re
+            not necessary to report a bug or an idea.
+          </p>
+        </Section>
+
+        <Section title="10. Technical and abuse-prevention data">
           <p>
             To prevent abuse of the Service (and its underlying paid AI and data providers), we
             briefly record request counts keyed to your account (if signed in) or IP address (if
-            not), for routes like the interview, bid-pack upload, and hotel lookups. These counters
+            not), for routes like the interview, bid-pack upload, hotel lookups, and feedback
+            submissions. These counters
             expire automatically, typically within an hour, and are used only to enforce rate
             limits &mdash; not for tracking or profiling.
           </p>
         </Section>
 
-        <Section title="10. What we don't do">
+        <Section title="11. What we don't do">
           <ul className="list-disc space-y-1.5 pl-5">
             <li>We don&rsquo;t sell or rent your personal information to anyone.</li>
             <li>
@@ -160,14 +177,15 @@ export default function PrivacyPage() {
           </ul>
         </Section>
 
-        <Section title="11. Your choices and rights">
+        <Section title="12. Your choices and rights">
           <p>
             You can delete your account at any time by contacting us at the address below; this
             removes your login credentials and disassociates your future access, though Trade Board
-            posts and award-history reports already made may remain (the former because they were
-            shared publicly by design, the latter because they were never linked to you in the
-            first place). You can clear your locally-stored bid pack and preferences at any time
-            from within the app, or simply by clearing your browser&rsquo;s site data.
+            posts, award-history reports, and feedback (Section 9) already sent may remain &mdash;
+            the first because it was shared publicly by design, the other two because they were
+            never linked back to you once your account is gone. You can clear your locally-stored
+            bid pack, and any preferences saved only as a guest, at any time from within the app,
+            or simply by clearing your browser&rsquo;s site data.
           </p>
           <p className="mt-3">
             Regardless of where you live, you may contact us to ask what account-linked data we
@@ -178,7 +196,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="12. Children's privacy">
+        <Section title="13. Children's privacy">
           <p>
             The Service is intended for working airline pilots and is not directed at, or intended
             for use by, anyone under 18. We don&rsquo;t knowingly collect information from anyone
@@ -186,7 +204,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="13. Security">
+        <Section title="14. Security">
           <p>
             We use industry-standard measures appropriate to the data we actually hold &mdash;
             encrypted connections, salted password hashing, httpOnly session cookies, and rate
@@ -196,7 +214,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="14. Changes to this policy">
+        <Section title="15. Changes to this policy">
           <p>
             We may update this Privacy Policy as the Service changes. We&rsquo;ll update the
             &ldquo;Last updated&rdquo; date above whenever we do, and for a material change
@@ -204,7 +222,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="15. Contact">
+        <Section title="16. Contact">
           <p>
             Questions about this policy, or a request about your data, can be sent to{" "}
             <a

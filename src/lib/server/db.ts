@@ -2,6 +2,7 @@ import { getJson, setJson } from "@/lib/server/kv";
 import type { AwardHistoryRecord } from "@/types/award-history";
 import type { StoredCredential, UserAccount } from "@/types/auth";
 import type { CandidateVariable } from "@/types/candidate-variable";
+import type { FeedbackSubmission } from "@/types/feedback";
 import type { InterviewCandidateFact } from "@/types/interview-candidate-fact";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { TradeOffer } from "@/types/trade";
@@ -31,6 +32,7 @@ interface DbShape {
   interviewCandidateFacts: InterviewCandidateFact[];
   /** Keyed by userId — one flat overwrite per pilot, same shape as the localStorage record it replaces as the source of truth. See `getPreferenceProfile` for why this exists. */
   preferenceProfiles: Record<string, PreferenceProfile>;
+  feedbackSubmissions: FeedbackSubmission[];
 }
 
 const DB_KEY = "line-select:db";
@@ -45,6 +47,7 @@ function emptyDb(): DbShape {
     awardHistoryRecords: [],
     interviewCandidateFacts: [],
     preferenceProfiles: {},
+    feedbackSubmissions: [],
   };
 }
 
@@ -223,4 +226,16 @@ export async function deletePreferenceProfile(userId: string): Promise<void> {
   delete rest[userId];
   db.preferenceProfiles = rest;
   await writeDb(db);
+}
+
+// ---- Feedback ----
+
+export async function createFeedbackSubmission(submission: FeedbackSubmission): Promise<void> {
+  const db = await readDb();
+  db.feedbackSubmissions = [...(db.feedbackSubmissions ?? []), submission];
+  await writeDb(db);
+}
+
+export async function listFeedbackSubmissions(): Promise<FeedbackSubmission[]> {
+  return [...((await readDb()).feedbackSubmissions ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
