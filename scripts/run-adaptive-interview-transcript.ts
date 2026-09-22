@@ -35,6 +35,7 @@ import type {
   InterviewTurnRecord,
   PreferenceFact,
 } from "../src/types/interview-session";
+import type { CitySentiment } from "../src/types/preferences";
 
 interface Persona {
   name: string;
@@ -48,6 +49,30 @@ interface Persona {
   choiceKeywords: string[];
   /** Canned free-text answers, tried in order against the question prompt's own keywords; the last entry has no keyword and is the fallback. */
   freeTextAnswers: { keyword?: string; text: string }[];
+  /**
+   * Real IATA-style codes from SAMPLE_BID_PACK's own layover cities
+   * (LAX/CDG/HNL) — mirrors the city picker's real pre-loop step
+   * (`AdaptiveInterview.tsx`'s `factsFromCityPreferences`), which every
+   * canned persona run before this one skipped entirely (this script never
+   * simulated it), so none of them ever got a chance to exercise the
+   * "why" follow-up or city-reason tagging the real UI always has a shot
+   * at. Absent means no cities seeded, exactly like before.
+   */
+  citySeed?: Record<string, CitySentiment>;
+}
+
+/** Mirrors `AdaptiveInterview.tsx`'s own `factsFromCityPreferences` exactly — kept as a separate small copy here since that one lives in a "use client" component file this Node script can't import from. */
+function factsFromCitySeed(citySeed: Record<string, CitySentiment>): PreferenceFact[] {
+  return Object.entries(citySeed).map(([code, sentiment]) => ({
+    id: crypto.randomUUID(),
+    statement: `${sentiment === "love" ? "Loves" : "Wants to avoid"} layovers in ${code}.`,
+    kind: "measurable",
+    measurable: { type: "city-sentiment", code, sentiment },
+    confidence: 1,
+    importance: 0.6,
+    source: { kind: "seed-question", questionKey: "cities" },
+    turnIndex: 0,
+  }));
 }
 
 const PERSONAS: Persona[] = [
@@ -108,6 +133,120 @@ const PERSONAS: Persona[] = [
       { text: "Protecting my sleep and having real predictable time off matters a lot more to me than squeezing out extra pay." },
     ],
   },
+  {
+    // Deliberately the richest, most specific persona in the set: a
+    // mid-seniority local FO who has an opinion on nearly every plausible
+    // topic and expresses it with concrete, distinguishable language
+    // instead of one or two boilerplate lines repeated under different
+    // questions. Built to test whether answer depth/specificity —
+    // not just directional leanings — measurably reduces the
+    // rephrase-and-give-up turns and produces richer qualitative facts,
+    // a sane circadianTolerance, and populated city-preference reasons
+    // (via `citySeed`, which none of the four personas above exercise).
+    name: "deep",
+    isCommuter: false,
+    hasCrashPad: true,
+    sliderLeanings: {
+      tripLength: 30,
+      reportTime: -20,
+      deadheadTolerance: 25,
+      creditHours: 40,
+      circadianHealth: 45,
+      hotelQuality: 60,
+      international: 55,
+      landings: -25,
+      riskTolerance: -20,
+      adminEffortAppetite: -35,
+    },
+    targetLeanings: { daysOff: 0.65, creditHours: 0.7, departures: 0.35, circadianTolerance: 0.15 },
+    citySeed: { LAX: "love", HNL: "love", CDG: "avoid" },
+    choiceKeywords: ["international", "wide-body", "predictable", "consistent", "same", "quiet", "low", "few"],
+    freeTextAnswers: [
+      {
+        keyword: "hnl",
+        text: "Honolulu is my favorite layover on the system, hands down — the crew hotel is walkable to the beach, the weather's a guaranteed break from whatever's happening back home, and the time change is mild enough that I actually sleep well there instead of fighting it.",
+      },
+      {
+        keyword: "lax",
+        text: "LAX works great for me specifically because it's a same-night connection to my crash pad — I'm not paying for a hotel or losing a day, so even a short layover there is basically free time off.",
+      },
+      {
+        keyword: "cdg",
+        text: "I actively try to avoid Paris turns — it's not the city, it's that the layover is just long enough to wreck my sleep schedule for the next three days but too short to actually enjoy being there, so it's the worst of both.",
+      },
+      {
+        keyword: "report",
+        text: "A single early report I can absorb fine, especially if I know it's coming and can pre-adapt the night before. Two in a row is where my sleep debt actually starts to show up in the cockpit, and I try hard to never bid a third.",
+      },
+      {
+        keyword: "0300",
+        text: "A single early report I can absorb fine, especially if I know it's coming and can pre-adapt the night before. Two in a row is where my sleep debt actually starts to show up in the cockpit, and I try hard to never bid a third.",
+      },
+      {
+        keyword: "consecutive",
+        text: "One early report is a non-issue for me. By the second one back-to-back I'm noticeably running on a deficit, and that's the real ceiling — I don't think I've ever handled three well even when the schedule forced it.",
+      },
+      {
+        keyword: "deadhead",
+        text: "A deadhead on the front end of a trip is genuinely useful to me if it lands me somewhere better positioned for the flying, but a deadhead tacked onto the back end just to get me home feels like a wasted duty period I'd rather not have at all.",
+      },
+      {
+        keyword: "day-rig",
+        text: "I care less about the day-rig ratio in isolation and more about whether the credit reflects the actual time I'm away from home — a trip that pays light for how many days it eats is the one that annoys me, regardless of the exact ratio.",
+      },
+      {
+        keyword: "duty",
+        text: "Long duty days don't bother me much as long as there's a real, protected rest period on the back end — it's back-to-back short-rest turns that actually grind on me, not one long day by itself.",
+      },
+      {
+        keyword: "reserve",
+        text: "Reserve is fine in small doses but I structure my whole bid to avoid heavy reserve months — the unpredictability costs me more in disrupted plans than the schedule flexibility is worth.",
+      },
+      {
+        keyword: "predictab",
+        text: "I'd take a slightly worse but consistent schedule over a better one that changes every month — being able to actually plan my life outside work matters more to me at this point in my career than optimizing every single line.",
+      },
+      {
+        keyword: "hotel",
+        text: "A quiet room and a real gym or at least a walkable area to run in the morning matters a lot to me — I'm in these hotels enough that the difference between a good one and a bad one genuinely affects how I feel flying the next leg.",
+      },
+      {
+        keyword: "noise",
+        text: "Room noise is a bigger deal for me than most people probably admit — a loud hotel on a short layover means I land the next leg genuinely tired, not just annoyed.",
+      },
+      {
+        keyword: "international",
+        text: "I actively seek out the international trips — the pay premium is nice but honestly I'd take them even at parity, I just enjoy that flying more than the short domestic turns.",
+      },
+      {
+        keyword: "landing",
+        text: "I don't chase landings the way some guys do — currency is currency, I'd rather have fewer, longer legs than a bunch of short hops just to pad the count.",
+      },
+      {
+        keyword: "risk",
+        text: "I bid conservatively — I'd rather hold a line I know I can fly reliably than reach for something that might get pulled out from under me and leave me scrambling on reserve instead.",
+      },
+      {
+        keyword: "admin",
+        text: "I'll take a schedule with a little less pay if it means less paperwork and fewer logistics headaches on my end — trip-trading and re-optimizing every month isn't how I want to spend my off days.",
+      },
+      {
+        keyword: "financ",
+        text: "I'm past the phase of my career where I need every trip to max out credit — steady, comfortable pay with a schedule I actually enjoy living inside of is worth more to me now than squeezing out the last few hours.",
+      },
+      {
+        keyword: "family",
+        text: "Being reliably home on the same days each month matters more to me than any single trip's pay — my family plans around my schedule and last-minute changes cost me more goodwill at home than they're worth.",
+      },
+      {
+        keyword: "grocery",
+        text: "Being near a real grocery store or walkable food options on a longer layover makes a bigger difference to how I feel than people give it credit for — living off hotel room service for three days wears on me.",
+      },
+      {
+        text: "Overall I'd describe myself as someone who optimizes for a stable, predictable schedule with good international layovers, protects my sleep aggressively, and is willing to give up some raw credit and admin flexibility to get all of that.",
+      },
+    ],
+  },
 ];
 
 function pickSliderValue(persona: Persona, boundTo: string): number {
@@ -144,7 +283,17 @@ function answerQuestion(persona: Persona, question: InterviewQuestion, creditRan
     case "slider":
       return { kind: "slider", value: pickSliderValue(persona, question.boundTo) };
     case "target-slider": {
-      const range = question.boundTo === "creditHours" ? creditRange : { min: 4, max: 20 };
+      // circadianTolerance is a small, fixed [0, 4] "how many consecutive
+      // early reports" count — not a bid-pack-derived range. Mirrors
+      // `AdaptiveInterview.tsx`'s own `CIRCADIAN_TOLERANCE_RANGE`, which this
+      // harness previously ignored (falling through to the generic 4-20
+      // default and producing nonsensical values like "12 in a row").
+      const range =
+        question.boundTo === "creditHours"
+          ? creditRange
+          : question.boundTo === "circadianTolerance"
+            ? { min: 0, max: 4 }
+            : { min: 4, max: 20 };
       return { kind: "target-slider", value: pickTargetValue(persona, question.boundTo, range.min, range.max) };
     }
     case "choice":
@@ -172,7 +321,7 @@ async function runPersona(persona: Persona): Promise<string> {
 
   const grounding = computeBidPackGroundingStats(SAMPLE_BID_PACK);
   let transcript: InterviewTurnRecord[] = [];
-  let facts: PreferenceFact[] = [];
+  let facts: PreferenceFact[] = persona.citySeed ? factsFromCitySeed(persona.citySeed) : [];
   let turnsUsed = 0;
   const lines: string[] = [`# Adaptive interview transcript — persona: ${persona.name}\n`];
 
@@ -227,6 +376,7 @@ async function runPersona(persona: Persona): Promise<string> {
     transcript,
     isCommuter: persona.isCommuter,
     hasCrashPad: persona.hasCrashPad,
+    cityPreferencesSeed: persona.citySeed,
   });
 
   lines.push(`\n## Final profile\n`);
