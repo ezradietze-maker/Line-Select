@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "September 18, 2026";
+const LAST_UPDATED = "September 22, 2026";
 
 /**
  * A real Terms of Service — not boilerplate copy-pasted from a generator.
@@ -186,8 +186,9 @@ export default function TermsPage() {
           <p>
             The Service relies on third-party providers to function, including an AI processing
             provider (to power the adaptive interview and summarize hotel reviews), a mapping/places
-            data provider (to look up hotel information), and cloud hosting and data-storage
-            infrastructure. These providers process limited data on our behalf as described in the{" "}
+            data provider (to look up hotel information), an analytics and error-monitoring
+            provider, and cloud hosting and data-storage infrastructure. These providers process
+            limited data on our behalf as described in the{" "}
             <Link href="/privacy" className="underline decoration-dotted underline-offset-4 hover:text-ink">
               Privacy Policy
             </Link>

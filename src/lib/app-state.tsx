@@ -7,6 +7,7 @@ import { clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
 import { generateFakeOffer } from "@/lib/fake-trade-offers";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
+import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/posthog-client";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
 import { clearProfileForUser, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
@@ -96,6 +97,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     async function bootstrap() {
       const currentUser = await getCurrentUser();
       if (cancelled) return;
+      if (currentUser) identifyPilot(currentUser.id);
       const savedBidPack = loadBidPack(currentUser?.id ?? null);
       const savedProfile = await loadProfileForUser(currentUser?.id ?? null);
       const savedSeniority = loadSeniority(currentUser?.id ?? null);
@@ -286,6 +288,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       pendingProfile: null,
     }));
     router.push("/preferences");
+    captureUsageEvent("bid_pack_confirmed");
   }
 
   function handleUploadDifferent() {
@@ -305,6 +308,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const confirmed: PreferenceProfile = { ...pendingProfile, weights };
     setState((s) => ({ ...s, profile: confirmed, pendingProfile: null }));
     router.push("/results");
+    captureUsageEvent("interview_completed");
     void saveProfileForUser(user?.id ?? null, confirmed);
   }
 
@@ -342,6 +346,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleAuthenticated(newUser: UserAccount) {
+    identifyPilot(newUser.id);
     const theirBidPack = loadBidPack(newUser.id);
     const theirProfile = await loadProfileForUser(newUser.id);
     setState({
@@ -370,6 +375,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   async function handleLogout() {
     await logoutAccount();
+    resetPilotIdentity();
     const guestBidPack = loadBidPack(null);
     const guestProfile = await loadProfileForUser(null);
     setState({

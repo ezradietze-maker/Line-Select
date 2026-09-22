@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "September 18, 2026";
+const LAST_UPDATED = "September 22, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -135,7 +135,7 @@ export default function PrivacyPage() {
             financial information) in these answers &mdash; they&rsquo;re not necessary for the
             Service to work, and while they&rsquo;re not shown to other pilots, they are retained
             longer-term for this review purpose. You can request deletion of these at any time
-            (Section 12).
+            (Section 13).
           </p>
         </Section>
 
@@ -162,12 +162,28 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="11. What we don't do">
+        <Section title="11. Usage analytics and error monitoring">
+          <p>
+            The Service uses PostHog to see which pages get used and to catch errors before a
+            pilot has to report one themselves. This sends page-view events and a small, fixed set
+            of named usage events (for example, that a bid pack was confirmed, or that the
+            interview was completed) &mdash; never the bid pack&rsquo;s contents, your interview
+            answers, your preference weights, or any free text you&rsquo;ve written anywhere in the
+            Service. If something crashes, the error and the page it happened on are sent the same
+            way. If you&rsquo;re signed in, these events are tied to your account id so we can tell
+            how many distinct pilots hit an issue rather than how many times it happened to one
+            pilot &mdash; never your name or email. We don&rsquo;t use this for advertising, and we
+            don&rsquo;t run session recording or record what you click or type.
+          </p>
+        </Section>
+
+        <Section title="12. What we don't do">
           <ul className="list-disc space-y-1.5 pl-5">
             <li>We don&rsquo;t sell or rent your personal information to anyone.</li>
             <li>
-              We don&rsquo;t run analytics trackers, advertising pixels, or third-party marketing
-              scripts on the Service.
+              We don&rsquo;t run advertising pixels or third-party marketing scripts on the
+              Service. We do run one analytics/error-monitoring tool (Section 11) &mdash; see there
+              for exactly what it collects.
             </li>
             <li>
               We don&rsquo;t read, extract, or store any page from your bid pack that lists another
@@ -177,7 +193,7 @@ export default function PrivacyPage() {
           </ul>
         </Section>
 
-        <Section title="12. Your choices and rights">
+        <Section title="13. Your choices and rights">
           <p>
             You can delete your account at any time by contacting us at the address below; this
             removes your login credentials and disassociates your future access, though Trade Board
@@ -196,7 +212,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="13. Children's privacy">
+        <Section title="14. Children's privacy">
           <p>
             The Service is intended for working airline pilots and is not directed at, or intended
             for use by, anyone under 18. We don&rsquo;t knowingly collect information from anyone
@@ -204,7 +220,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="14. Security">
+        <Section title="15. Security">
           <p>
             We use industry-standard measures appropriate to the data we actually hold &mdash;
             encrypted connections, salted password hashing, httpOnly session cookies, and rate
@@ -214,7 +230,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="15. Changes to this policy">
+        <Section title="16. Changes to this policy">
           <p>
             We may update this Privacy Policy as the Service changes. We&rsquo;ll update the
             &ldquo;Last updated&rdquo; date above whenever we do, and for a material change
@@ -222,7 +238,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="16. Contact">
+        <Section title="17. Contact">
           <p>
             Questions about this policy, or a request about your data, can be sent to{" "}
             <a

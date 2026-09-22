@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/Button";
+import { captureClientException } from "@/lib/posthog-client";
 
 /**
  * Next.js App Router's segment error boundary — catches anything that
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 export default function RootError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error(error);
+    captureClientException(error);
   }, [error]);
 
   return (
@@ -25,10 +27,10 @@ export default function RootError({ error, reset }: { error: Error & { digest?: 
         </div>
         <h1 className="mt-4 text-lg font-semibold text-ink">Something went wrong</h1>
         <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-          This is a prototype and something broke unexpectedly. Your bid
-          pack and preferences are still saved on this device &mdash; nothing
-          was lost. Try again, and if it keeps happening, reloading the page
-          or re-uploading your bid pack usually clears it.
+          This is a prototype and something broke unexpectedly. Nothing was
+          lost &mdash; your bid pack and preferences are safe. Try again, and
+          if it keeps happening, reloading the page or re-uploading your bid
+          pack usually clears it.
         </p>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-center">
           <Button variant="secondary" onClick={() => (window.location.href = "/")}>

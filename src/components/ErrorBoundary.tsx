@@ -1,6 +1,7 @@
 "use client";
 
 import { Component, type ReactNode } from "react";
+import { captureClientException } from "@/lib/posthog-client";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -29,6 +30,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error) {
     console.error(error);
+    captureClientException(error);
   }
 
   render() {
