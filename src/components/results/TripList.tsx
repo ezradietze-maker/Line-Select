@@ -110,7 +110,7 @@ function DateLineChip({ badge }: { badge: TimelineDay["segments"][number]["dateL
   return (
     <span
       title={badge.explanation}
-      className="absolute -top-1.5 -right-1.5 z-10 rounded-full border border-warn/40 bg-warn-soft px-1 font-mono text-[8px] font-semibold leading-tight text-warn"
+      className="absolute -top-1.5 -right-1.5 z-10 rounded-full border border-warn/40 bg-warn-soft px-1 font-mono text-[10px] font-semibold leading-tight text-warn"
     >
       {badge.delta > 0 ? `+${badge.delta}d` : `${badge.delta}d`}
     </span>
@@ -127,7 +127,7 @@ function DateLineChip({ badge }: { badge: TimelineDay["segments"][number]["dateL
 function DayColumn({ day, heightPx }: { day: TimelineDay; heightPx: number }) {
   return (
     <div className="w-[4.5rem] shrink-0 sm:w-20">
-      <div className="text-center font-mono text-[9px] font-medium text-brand">D{day.dayNumber}</div>
+      <div className="text-center font-mono text-[11px] font-medium text-brand">D{day.dayNumber}</div>
       <div className="relative mt-1 overflow-visible rounded-sm bg-canvas" style={{ height: heightPx }}>
         {GUTTER_HOURS.map((h) => (
           <div
@@ -156,7 +156,7 @@ function DayColumn({ day, heightPx }: { day: TimelineDay; heightPx: number }) {
             <DateLineChip badge={seg.dateLineBadge} />
             {showsInlineText(seg) && (
               <div
-                className={`flex h-full flex-col justify-between px-1 py-0.5 font-mono text-[8px] font-medium leading-tight ${inlineTextClass(seg.kind)}`}
+                className={`flex h-full flex-col justify-between px-1 py-0.5 font-mono text-[10px] font-medium leading-tight ${inlineTextClass(seg.kind)}`}
               >
                 {/* Stacked top/bottom (departure at the top edge, arrival at the bottom) rather than side by side — a tall, narrow column reads that direction naturally, the same way the segment itself flows top-to-bottom in time. */}
                 <span className="truncate text-left">{seg.inlineStart}</span>
@@ -168,7 +168,7 @@ function DayColumn({ day, heightPx }: { day: TimelineDay; heightPx: number }) {
       </div>
       {day.zuluRulerLabel && (
         <div
-          className="mt-0.5 text-center font-mono text-[7px] leading-tight text-ink-faint"
+          className="mt-0.5 text-center font-mono text-[10px] leading-tight text-ink-faint"
           title="This local day's own boundaries, read in Zulu — always visible so you can cross-check without switching the toggle."
         >
           {day.zuluRulerLabel}
@@ -187,7 +187,7 @@ function HourGutter({ heightPx }: { heightPx: number }) {
         {GUTTER_HOURS.map((h) => (
           <div
             key={h}
-            className="absolute right-0 -translate-y-1/2 font-mono text-[8px] leading-none text-ink-faint"
+            className="absolute right-0 -translate-y-1/2 font-mono text-[10px] leading-none text-ink-faint"
             style={{ top: `${(h / 24) * 100}%` }}
           >
             {String(h).padStart(2, "0")}
@@ -217,7 +217,7 @@ function TripTimelineChart({ trip, mode }: { trip: Trip; mode: TimeMode }) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-medium text-brand">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-medium text-brand">
         <LegendSwatch className="bg-calendar-accent" label="Flying" />
         <LegendSwatch className={segmentClass("deadhead")} label="Deadhead" title="Riding along, not operating" />
         <LegendSwatch className="bg-good" label="Layover" title={LAYOVER_TOOLTIP} />
@@ -478,7 +478,7 @@ function TripLegendInfo() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center text-[10px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
+        className="inline-flex items-center text-[11px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
       >
         What do these mean?
       </button>
@@ -646,7 +646,7 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
             <div className="flex min-w-[7rem] items-baseline gap-1.5">
               <span className="font-mono text-sm font-semibold text-ink">{trip.days}-day</span>
               {trip.international && (
-                <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+                <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-accent">
                   Intl
                 </span>
               )}
@@ -674,7 +674,7 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
               <button
                 type="button"
                 onClick={() => toggleItinerary(trip.id)}
-                className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-brand hover:text-ink"
+                className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand hover:text-ink"
                 aria-expanded={openItineraries.has(trip.id)}
               >
                 {openItineraries.has(trip.id) ? "Hide" : "Show"} flight-by-flight itinerary

@@ -39,7 +39,7 @@ const POINTS: Point[] = [
     body: (
       <>
         Several questions let you pin an exact number instead of just leaning
-        a slider &mdash; nights home, departures, and (in the deeper round)
+        a slider &mdash; days off, departures, and (in the deeper round)
         credit hours &mdash; and that exact target is used directly instead
         of the rough midpoint a slider alone implies.
       </>

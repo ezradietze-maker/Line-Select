@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Heading } from "@/components/ui/Heading";
-import { ProgressDots } from "@/components/ui/ProgressDots";
 import { ScreenTransition } from "@/components/ui/ScreenTransition";
 import { SelectableCard } from "@/components/ui/SelectableCard";
 import { Spinner } from "@/components/ui/Spinner";
@@ -17,15 +16,17 @@ import { TargetSliderStep } from "@/components/interview/TargetSliderStep";
 import {
   HARD_CEILING_TURNS,
   MIN_TURNS_BEFORE_WRAP,
-  SOFT_CAP_TURNS,
   applyProfileUpdates,
   assessProfileRichness,
   buildTurnRequest,
   detectContradiction,
   finalizeAdaptiveProfile,
+  uncoveredExplicitWeightIds,
   type ContradictionFlag,
 } from "@/lib/interview-engine";
+import { clearDraft, loadDraft, saveDraft, type InterviewDraft } from "@/lib/interview-draft";
 import { computeBidPackGroundingStats } from "@/lib/interview-grounding";
+import { computeInterviewProgress } from "@/lib/interview-progress";
 import { cycleCitySentiment } from "@/lib/preference-logic";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
@@ -71,9 +72,10 @@ interface AdaptiveInterviewProps {
   onComplete: (profile: PreferenceProfile) => void;
   /** This pilot's completed profile from a prior bid cycle, if any — enables the returning-pilot check step and cross-cycle contradiction/volatility tracking. Absent (or a profile with no discoveredFacts, e.g. one from the legacy static interview) means a first-time-shaped interview, unchanged from before this existed. */
   priorProfile?: PreferenceProfile | null;
+  /** Whose device-local saved progress to read/write — null for a guest. */
+  userId?: string | null;
 }
 
-const MAX_CITY_CHOICES = 12;
 const TOP_PRIOR_FACTS_SHOWN = 5;
 /**
  * Not a bid-pack-derived quantity (see `ExplicitTargetKey`'s own doc comment
@@ -120,6 +122,41 @@ function StepNav({ onNext, nextLabel, disabled }: { onNext: () => void; nextLabe
   );
 }
 
+/** A thin, honest progress bar with a plain-language readout — replaces a row of ~36 dots labeled "question 2 of roughly 35", which overstated the length up front. */
+function InterviewProgressBar({ fraction, label }: { fraction: number; label: string }) {
+  return (
+    <div className="mb-8">
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(fraction * 100)}
+        aria-label="Interview progress"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-border"
+      >
+        <div
+          className="h-full rounded-full bg-brand transition-[width] duration-500 ease-out"
+          style={{ width: `${Math.max(2, fraction * 100)}%` }}
+        />
+      </div>
+      <div className="mt-2 text-xs text-ink-muted">{label}</div>
+    </div>
+  );
+}
+
+/** What the pilot needs back to undo an answer: the question they saw and the interview's state from just before they answered it. */
+interface AnswerSnapshot {
+  question: InterviewQuestion;
+  facts: PreferenceFact[];
+  transcript: InterviewTurnRecord[];
+  turnsUsed: number;
+}
+
+/** A prior-cycle city pick is re-asked on the cities step itself (prefilled), so it must not also ride along as a carried-over fact — a pick the pilot just cleared would otherwise silently come back. */
+function isCitySentimentFact(f: PreferenceFact): boolean {
+  return f.measurable?.type === "city-sentiment";
+}
+
 /**
  * "Free-text elaboration... should always be an option, not just a slider"
  * — offered on every adaptive slider/target-slider/choice question, not
@@ -155,24 +192,32 @@ function ElaborationToggle({ value, onChange }: { value: string; onChange: (v: s
   );
 }
 
-export function AdaptiveInterview({ bidPack, onComplete, priorProfile }: AdaptiveInterviewProps) {
+export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = null }: AdaptiveInterviewProps) {
   const grounding = useMemo(() => computeBidPackGroundingStats(bidPack), [bidPack]);
   const ranges = useMemo(() => getBidPackRanges(bidPack), [bidPack]);
-  const topCities = useMemo(
-    () => rankLayoverCitiesByFrequency(bidPack).slice(0, MAX_CITY_CHOICES).map((c) => c.code),
-    [bidPack]
-  );
+  // Every layover city in the pack, not just the 12 most frequent — a pilot's
+  // favorite (HNL on a real B777 pack) is very often not one of the most
+  // visited, and silently not offering it meant they could never flag it here.
+  const allCities = useMemo(() => rankLayoverCitiesByFrequency(bidPack).map((c) => c.code), [bidPack]);
   const hasReturningCheck = !!priorProfile && priorProfile.discoveredFacts.length > 0;
   const preStepCount = hasReturningCheck ? 3 : 2;
-  const priorTopFacts = useMemo(
-    () => (hasReturningCheck ? topPriorFacts(priorProfile!.discoveredFacts, TOP_PRIOR_FACTS_SHOWN) : []),
+  const priorFactsForCheck = useMemo(
+    () => (hasReturningCheck ? priorProfile!.discoveredFacts.filter((f) => !isCitySentimentFact(f)) : []),
     [hasReturningCheck, priorProfile]
+  );
+  const priorTopFacts = useMemo(
+    () => topPriorFacts(priorFactsForCheck, TOP_PRIOR_FACTS_SHOWN),
+    [priorFactsForCheck]
   );
 
   const [phase, setPhase] = useState<Phase>("commuter");
-  const [isCommuter, setIsCommuter] = useState<boolean | null>(null);
-  const [hasCrashPad, setHasCrashPad] = useState<boolean | null>(null);
-  const [cityPreferences, setCityPreferences] = useState<Record<string, CitySentiment>>({});
+  // A returning pilot starts from last cycle's answers — still shown, so a
+  // change (a move, a new crash pad) is one tap, but never re-asked blank.
+  const [isCommuter, setIsCommuter] = useState<boolean | null>(priorProfile?.isCommuter ?? null);
+  const [hasCrashPad, setHasCrashPad] = useState<boolean | null>(priorProfile?.hasCrashPad ?? null);
+  const [cityPreferences, setCityPreferences] = useState<Record<string, CitySentiment>>(() => ({
+    ...(priorProfile?.cityPreferences ?? {}),
+  }));
   const [changedFactIds, setChangedFactIds] = useState<Set<string>>(new Set());
   const [lifeEvent, setLifeEvent] = useState("");
   const [pendingContradiction, setPendingContradiction] = useState<ContradictionFlag | null>(null);
@@ -185,7 +230,86 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile }: Adaptiv
   const [choiceElaboration, setChoiceElaboration] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // Snapshots for "Back" — a ref for the logic (async callbacks need the
+  // latest value) mirrored into a count for rendering.
+  const historyRef = useRef<AnswerSnapshot[]>([]);
+  const [historyCount, setHistoryCount] = useState(0);
+  const [savedDraft] = useState<InterviewDraft | null>(() => loadDraft(userId, bidPack.id));
+  const [resumeDismissed, setResumeDismissed] = useState(false);
+
+  function pushHistory(snapshot: AnswerSnapshot) {
+    historyRef.current = [...historyRef.current, snapshot];
+    setHistoryCount(historyRef.current.length);
+  }
+
+  function popHistory(): AnswerSnapshot | null {
+    const last = historyRef.current.at(-1) ?? null;
+    if (last) {
+      historyRef.current = historyRef.current.slice(0, -1);
+      setHistoryCount(historyRef.current.length);
+    }
+    return last;
+  }
+
+  function restoreSnapshot(snapshot: AnswerSnapshot, message: string | null) {
+    setFacts(snapshot.facts);
+    setTranscript(snapshot.transcript);
+    setTurnsUsed(snapshot.turnsUsed);
+    setCurrentQuestion(snapshot.question);
+    setChoiceSelection(null);
+    setChoiceElaboration("");
+    setPendingContradiction(null);
+    setError(message);
+    setPhase("adaptive-question");
+  }
+
+  /** A failed turn request used to leave an empty card (the answered question was already cleared) with the error nowhere in sight. Now the pilot lands back on the question they just answered, with the reason, and can simply answer again. */
+  function failTurn(message: string) {
+    const last = popHistory();
+    if (last) {
+      restoreSnapshot(last, message);
+      return;
+    }
+    setError(message);
+    setPhase(hasReturningCheck ? "returning-check" : "cities");
+  }
+
+  function goBack() {
+    setError(null);
+    if (phase === "adaptive-question") {
+      const last = popHistory();
+      if (last) {
+        restoreSnapshot(last, null);
+        return;
+      }
+      // First real question: back to the last pre-step. Nothing answered yet in the loop, so nothing to keep.
+      setCurrentQuestion(null);
+      setFacts([]);
+      setTranscript([]);
+      setTurnsUsed(0);
+      setPhase(hasReturningCheck ? "returning-check" : "cities");
+    } else if (phase === "returning-check") {
+      setPhase("cities");
+    } else if (phase === "cities") {
+      setPhase("commuter");
+    }
+  }
+
+  function resumeSavedDraft(d: InterviewDraft) {
+    setIsCommuter(d.isCommuter);
+    setHasCrashPad(d.hasCrashPad);
+    setCityPreferences(d.cityPreferences);
+    setFacts(d.facts);
+    setTranscript(d.transcript);
+    setTurnsUsed(d.turnsUsed);
+    setCurrentQuestion(d.currentQuestion);
+    setChoiceSelection(null);
+    setChoiceElaboration("");
+    setPhase("adaptive-question");
+  }
+
   function finish(finalFacts: PreferenceFact[], finalTranscript: InterviewTurnRecord[]) {
+    clearDraft(userId);
     setPhase("finishing");
     const profile = finalizeAdaptiveProfile({
       facts: finalFacts,
@@ -228,8 +352,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile }: Adaptiv
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        setError(body?.error ?? "Couldn't reach the interview service. Try again.");
-        setPhase("adaptive-question"); // stay put so the pilot can retry via the same question controls, or finish early
+        failTurn(body?.error ?? "Couldn't reach the interview service. Try again.");
         return;
       }
       const turn = (await res.json()) as TurnResponse;
@@ -264,13 +387,13 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile }: Adaptiv
       setChoiceElaboration("");
       setPhase("adaptive-question");
     } catch {
-      setError("Couldn't reach the interview service. Check your connection and try again.");
-      setPhase("adaptive-question");
+      failTurn("Couldn't reach the interview service. Check your connection and try again.");
     }
   }
 
   function handleAdaptiveAnswer(answer: InterviewAnswer) {
     if (!currentQuestion) return;
+    pushHistory({ question: currentQuestion, facts, transcript, turnsUsed });
     const nextTranscript: InterviewTurnRecord[] = [
       ...transcript,
       { turnIndex: turnsUsed, question: currentQuestion, answer, profileFactIdsTouched: [] },
@@ -288,9 +411,46 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile }: Adaptiv
     requestNextTurn(facts, nextTranscript, nextTurnsUsed);
   }
 
-  const stepsDone =
-    phase === "commuter" ? 0 : phase === "cities" ? 1 : phase === "returning-check" ? 2 : preStepCount + turnsUsed;
-  const totalStepsApprox = preStepCount + SOFT_CAP_TURNS;
+  const preStepsDone = phase === "commuter" ? 0 : phase === "cities" ? 1 : phase === "returning-check" ? 2 : preStepCount;
+  const progress = computeInterviewProgress({
+    turnsUsed,
+    uncoveredCount: uncoveredExplicitWeightIds(facts).length,
+    preStepsDone,
+    preStepTotal: preStepCount,
+  });
+  const progressLabel =
+    phase === "commuter" || phase === "cities" || phase === "returning-check"
+      ? "Getting started \u2014 about 8\u201310 minutes in all, and you can stop any time."
+      : `${progress.topicsCovered} of ${progress.topicsTotal} topics covered \u00b7 about ${progress.minutesLeft} min left`;
+
+  // Progress worth resuming: only after at least one real answer, and only while a question is on screen.
+  useEffect(() => {
+    if (phase !== "adaptive-question" || !currentQuestion) return;
+    // Nothing answered yet (a fresh start, or backed all the way up) is nothing worth resuming.
+    if (turnsUsed === 0) {
+      clearDraft(userId);
+      return;
+    }
+    saveDraft(userId, {
+      version: 1,
+      bidPackId: bidPack.id,
+      savedAt: Date.now(),
+      isCommuter,
+      hasCrashPad,
+      cityPreferences,
+      facts,
+      transcript,
+      turnsUsed,
+      currentQuestion,
+    });
+  }, [phase, currentQuestion, userId, bidPack.id, isCommuter, hasCrashPad, cityPreferences, facts, transcript, turnsUsed]);
+
+  // After a resume there's no in-memory history, so Back is only offered from the very first question (to the pre-steps) or once new answers exist to undo — never in a way that would wipe resumed progress.
+  const canGoBack =
+    (phase === "adaptive-question" && !!currentQuestion && (historyCount > 0 || turnsUsed === 0)) ||
+    phase === "returning-check" ||
+    phase === "cities";
+  const showResumePrompt = !!savedDraft && !resumeDismissed && phase === "commuter";
 
   const stepKey =
     phase === "commuter"
@@ -352,7 +512,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile }: Adaptiv
       return (
         <div>
           <CityPreferenceStep
-            cities={topCities}
+            cities={allCities}
             preferences={cityPreferences}
             onToggleCity={(code) => setCityPreferences((prev) => cycleCitySentiment(prev, code))}
           />
@@ -373,7 +533,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile }: Adaptiv
     }
 
     if (phase === "returning-check") {
-      const otherFactCount = priorProfile!.discoveredFacts.length - priorTopFacts.length;
+      const otherFactCount = priorFactsForCheck.length - priorTopFacts.length;
       return (
         <div>
           <ReturningPilotCheckStep
@@ -394,7 +554,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile }: Adaptiv
           <StepNav
             onNext={() => {
               const shownIds = new Set(priorTopFacts.map((f) => f.id));
-              const carriedOver = priorProfile!.discoveredFacts.filter((f) => !shownIds.has(f.id));
+              const carriedOver = priorFactsForCheck.filter((f) => !shownIds.has(f.id));
               const confirmedShown = priorTopFacts.filter((f) => !changedFactIds.has(f.id));
               const changedShown = priorTopFacts.filter((f) => changedFactIds.has(f.id));
               const confirmedFacts = [...carriedOver, ...confirmedShown].map((f) => ({ ...f, turnIndex: 0 }));
@@ -506,14 +666,40 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile }: Adaptiv
 
   return (
     <div className="mx-auto w-full max-w-xl">
-      <div className="mb-8 flex items-center justify-between">
-        <ProgressDots total={totalStepsApprox} current={Math.min(stepsDone, totalStepsApprox - 1)} />
-        <span className="font-mono text-xs text-ink-faint">
-          {phase === "commuter" ? "getting started" : `question ${stepsDone + 1} of roughly ${totalStepsApprox}`}
-        </span>
-      </div>
+      <InterviewProgressBar fraction={progress.fraction} label={progressLabel} />
+
+      {showResumePrompt && savedDraft && (
+        <div className="mb-4 rounded-xl border border-brand/30 bg-brand-soft/60 p-5">
+          <div className="text-sm font-semibold text-ink">Pick up where you left off?</div>
+          <p className="mt-1 text-sm text-ink-muted">
+            You were partway through &mdash; {savedDraft.turnsUsed} question{savedDraft.turnsUsed === 1 ? "" : "s"} answered.
+          </p>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <Button onClick={() => resumeSavedDraft(savedDraft)}>Resume</Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                clearDraft(userId);
+                setResumeDismissed(true);
+              }}
+            >
+              Start fresh
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
+        {canGoBack && (
+          <button
+            type="button"
+            onClick={goBack}
+            className="mb-4 inline-flex items-center gap-1 text-sm text-ink-muted transition-colors hover:text-ink"
+          >
+            <span aria-hidden>&larr;</span> Back
+          </button>
+        )}
+        {error && phase !== "adaptive-question" && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
         <ScreenTransition screenKey={stepKey} direction={1}>
           {content}
         </ScreenTransition>
@@ -550,6 +736,8 @@ function SliderStepInline({
   onSubmit: (value: number, elaboration?: string) => void;
 }) {
   const [value, setValue] = useState(0);
+  // A slider that's never been moved still reads as an answer (it sits at "no preference"), so say so — and label the button for what pressing it actually records.
+  const [touched, setTouched] = useState(false);
   const [elaboration, setElaboration] = useState("");
   return (
     <div>
@@ -563,10 +751,19 @@ function SliderStepInline({
           centerLabel: question.centerLabel,
         }}
         value={value}
-        onChange={setValue}
+        onChange={(v) => {
+          setTouched(true);
+          setValue(v);
+        }}
       />
+      {!touched && (
+        <p className="mt-3 text-xs text-ink-muted">Not set yet &mdash; drag toward a side, or continue if you have no preference.</p>
+      )}
       <ElaborationToggle value={elaboration} onChange={setElaboration} />
-      <StepNav onNext={() => onSubmit(value, elaboration.trim() || undefined)} nextLabel="Next" />
+      <StepNav
+        onNext={() => onSubmit(value, elaboration.trim() || undefined)}
+        nextLabel={touched ? "Next" : "No preference \u2014 next"}
+      />
     </div>
   );
 }
@@ -580,7 +777,10 @@ function TargetSliderStepInline({
   range: readonly [number, number];
   onSubmit: (value: number | undefined, elaboration?: string) => void;
 }) {
-  const [value, setValue] = useState<number | undefined>(Math.round((range[0] + range[1]) / 2));
+  const midpoint = Math.round((range[0] + range[1]) / 2);
+  const [value, setValue] = useState<number | undefined>(midpoint);
+  // The slider opens at the middle of the pack's range — pressing Next without touching it used to silently record that midpoint as the pilot's answer. Now the button says exactly what it will record.
+  const [touched, setTouched] = useState(false);
   const [elaboration, setElaboration] = useState("");
   return (
     <div>
@@ -596,10 +796,16 @@ function TargetSliderStepInline({
         }}
         range={range}
         value={value}
-        onChange={setValue}
+        onChange={(v) => {
+          setTouched(true);
+          setValue(v);
+        }}
       />
       <ElaborationToggle value={elaboration} onChange={setElaboration} />
-      <StepNav onNext={() => onSubmit(value, elaboration.trim() || undefined)} nextLabel="Next" />
+      <StepNav
+        onNext={() => onSubmit(value, elaboration.trim() || undefined)}
+        nextLabel={touched || value === undefined ? "Next" : `Use ${value} ${value === 1 ? question.unitSingular : question.unitPlural}`}
+      />
     </div>
   );
 }

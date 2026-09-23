@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { FeedbackForm } from "@/components/feedback/FeedbackForm";
-import { LeftNav, type NavTarget } from "@/components/nav/LeftNav";
+import { LeftNav } from "@/components/nav/LeftNav";
 import { HowItWorksContent } from "@/components/results/HowItWorks";
 import { Modal } from "@/components/ui/Modal";
 import { ScreenTransition } from "@/components/ui/ScreenTransition";
 import { Spinner } from "@/components/ui/Spinner";
 import { ToastStack } from "@/components/ui/Toast";
 import { AppStateProvider, useAppState } from "@/lib/app-state";
+import { navTargetForPath } from "@/lib/nav-target";
 
 const HIDDEN_SIDEBAR_PATHS = ["/", "/auth"];
 
@@ -26,17 +27,6 @@ function getDirection(from: string, to: string): 1 | -1 | 0 {
   const toIndex = ROUTE_ORDER.indexOf(to);
   if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return 0;
   return toIndex > fromIndex ? 1 : -1;
-}
-
-function navTargetForPath(pathname: string): NavTarget {
-  if (pathname === "/interview" || pathname === "/confirm-preferences") return "preferences";
-  if (pathname === "/preview") return "upload";
-  if (pathname.startsWith("/results")) return "results";
-  if (pathname.startsWith("/strategies")) return "strategies";
-  if (pathname.startsWith("/trade-board")) return "trade-board";
-  if (pathname.startsWith("/inbox")) return "inbox";
-  if (pathname.startsWith("/hotel-ratings")) return "hotel-ratings";
-  return "upload";
 }
 
 function Chrome({ children }: { children: React.ReactNode }) {

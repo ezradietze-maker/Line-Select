@@ -141,3 +141,23 @@ describe("computeFilterOptions — routing", () => {
     expect(computeFilterOptions(lines).showRoutingOptions).toBe(true);
   });
 });
+
+describe("computeFilterOptions — whole-hour credit cutoffs", () => {
+  it("rounds credit cutoffs down to whole hours while every cutoff still splits the pack", () => {
+    const values = [76.92, 78.4, 81.22, 83, 84.97, 86.5, 89.85];
+    const lines = values.map((v, i) => makeLine({ id: `l${i}`, totalCreditHours: v }));
+    const steps = computeFilterOptions(lines).minCreditHoursSteps;
+    expect(steps.length).toBeGreaterThan(0);
+    for (const step of steps) {
+      expect(Number.isInteger(step)).toBe(true);
+      expect(values.some((v) => v >= step)).toBe(true);
+      expect(values.some((v) => v < step)).toBe(true);
+    }
+  });
+
+  it("keeps an exact cutoff when rounding down would collapse onto the pack's own minimum", () => {
+    const lines = [makeLine({ id: "a", totalCreditHours: 76.2 }), makeLine({ id: "b", totalCreditHours: 76.9 })];
+    const steps = computeFilterOptions(lines).minCreditHoursSteps;
+    expect(steps).toEqual([76.9]);
+  });
+});

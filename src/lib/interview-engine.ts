@@ -153,7 +153,9 @@ export function applyProfileUpdates(facts: PreferenceFact[], updates: Preference
  */
 function explicitWeightValue(key: ExplicitWeightKey, direction: 1 | -1, importance: number): number {
   const floor = MAGNITUDE_ONLY_KEYS.has(key) ? 0 : -100;
-  const magnitude = Math.min(1, Math.max(0, importance)) * 100;
+  // Rounded so a 0.55 importance is a clean 55, not 55.00000000000001 — this
+  // number is shown to pilots directly on the sliders.
+  const magnitude = Math.round(Math.min(1, Math.max(0, importance)) * 100);
   return Math.min(100, Math.max(floor, direction * magnitude));
 }
 

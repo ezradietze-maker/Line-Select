@@ -11,6 +11,8 @@ export interface AuthResult {
   ok: boolean;
   error?: string;
   user?: UserAccount;
+  /** Present only in the response that just created or rotated it — shown to the pilot once, never stored client-side. */
+  recoveryCode?: string;
 }
 
 async function postJson(url: string, body: unknown): Promise<AuthResult> {
@@ -25,7 +27,7 @@ async function postJson(url: string, body: unknown): Promise<AuthResult> {
     if (!res.ok) {
       return { ok: false, error: data.error ?? "Something went wrong. Try again." };
     }
-    return { ok: true, user: data.user };
+    return { ok: true, user: data.user, recoveryCode: data.recoveryCode };
   } catch {
     return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
   }
@@ -41,6 +43,27 @@ export async function signUp(
 
 export async function login(email: string, password: string): Promise<AuthResult> {
   return postJson("/api/auth/login", { email, password });
+}
+
+export async function resetPassword(email: string, recoveryCode: string, newPassword: string): Promise<AuthResult> {
+  return postJson("/api/auth/reset", { email, recoveryCode, newPassword });
+}
+
+/** For a signed-in pilot: mints a fresh recovery code (replacing any old one), after re-checking their password. */
+export async function createRecoveryCode(password: string): Promise<{ ok: boolean; error?: string; recoveryCode?: string }> {
+  try {
+    const res = await fetch("/api/auth/recovery-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.error ?? "Something went wrong. Try again." };
+    return { ok: true, recoveryCode: data.recoveryCode };
+  } catch {
+    return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
+  }
 }
 
 export async function logout(): Promise<void> {

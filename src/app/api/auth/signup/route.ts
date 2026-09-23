@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error ?? "Something went wrong." }, { status: 400 });
   }
 
-  const response = NextResponse.json({ user: result.user });
+  const response = NextResponse.json({ user: result.user, recoveryCode: result.recoveryCode });
   response.cookies.set(SESSION_COOKIE, result.sessionToken, sessionCookieOptions());
   return response;
 }

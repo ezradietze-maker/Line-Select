@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -20,10 +20,13 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
 import { ResultsFilterBar } from "@/components/results/ResultsFilterBar";
 import { Button } from "@/components/ui/Button";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
+import { Spinner } from "@/components/ui/Spinner";
 import { LineCard } from "@/components/results/LineCard";
 import { LineComparisonModal } from "@/components/results/LineComparisonModal";
+import { MonthLegend } from "@/components/results/MiniLinePreview";
 import { PilotProfileSummary } from "@/components/results/PilotProfileSummary";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
@@ -33,7 +36,22 @@ import { assessProfileRichness } from "@/lib/interview-engine";
 import { computeFilterOptions } from "@/lib/line-filter-options";
 import { collectLayoverCities, EMPTY_FILTERS, lineMatchesFilters, type LineFilters } from "@/lib/line-filters";
 import { loadTopLinesSnapshot, saveTopLinesSnapshot } from "@/lib/line-history-storage";
+import { buildLineFactChips, lineFactsText } from "@/lib/line-summary";
+import { loadLineMarks, saveLineMarks } from "@/lib/line-marks-storage";
 import { PHRASES } from "@/lib/preference-summary";
+import {
+  PAGE_SIZE,
+  SORT_OPTIONS,
+  hideLine,
+  matchesLineSearch,
+  nextVisibleCount,
+  pruneMarks,
+  restoreLine,
+  sortLineScores,
+  toggleStar,
+  type LineMarks,
+  type SortMode,
+} from "@/lib/results-list";
 import {
   learnFromReorder,
   type DimensionUpdate,
@@ -106,11 +124,17 @@ function buildJudgments(ranked: LineScore[], fromIndex: number, toIndex: number)
   return judgments;
 }
 
+/** How long to hold the list back waiting on hotel reviews before showing it anyway. Hotel data changes scores, so showing the list first and then reshuffling it under a pilot who's already reading is worse than a short wait. */
+const HOTEL_WAIT_MS = 6000;
+
 interface ResultsViewProps {
   bidPack: BidPack;
   profile: PreferenceProfile;
   onStartOver: () => void;
-  onRefine: () => void;
+  /** Lets the "Start over" confirmation offer the milder thing most pilots actually mean — a new month's bid pack, keeping their preferences. */
+  onUploadNewPack: () => void;
+  /** Opens the (editable) Preferences page. */
+  onEditPreferences: () => void;
   onUpdateProfile: (profile: PreferenceProfile) => void;
   /** Identifies which pilot's remembered prior-cycle top lines to read/write (see `line-history-storage.ts`) — null for a guest. */
   userId: string | null;
@@ -120,11 +144,15 @@ export function ResultsView({
   bidPack,
   profile,
   onStartOver,
-  onRefine,
+  onUploadNewPack,
+  onEditPreferences,
   onUpdateProfile,
   userId,
 }: ResultsViewProps) {
+  const [confirmingStartOver, setConfirmingStartOver] = useState(false);
   const [hotelQualityData, setHotelQualityData] = useState<HotelQualityData>({});
+  const [hotelDone, setHotelDone] = useState(false);
+  const [hotelTimedOut, setHotelTimedOut] = useState(false);
   const [learnMessage, setLearnMessage] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [promptJudgment, setPromptJudgment] = useState<PairwiseJudgment | null>(null);
@@ -133,6 +161,12 @@ export function ResultsView({
   const [filters, setFilters] = useState<LineFilters>(EMPTY_FILTERS);
   // At most two at a time — picking a third drops the oldest rather than growing unbounded, since the comparison view only ever shows two side by side.
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [sortMode, setSortMode] = useState<SortMode>("match");
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<"all" | "shortlist">("all");
+  const [showHidden, setShowHidden] = useState(false);
+  const [marks, setMarks] = useState<LineMarks>(() => loadLineMarks(userId, bidPack.id));
+  const [pageState, setPageState] = useState({ key: "", shown: PAGE_SIZE });
   const caresAboutHotel = caresAboutLayoverQuality(profile);
   const reduceMotion = useReducedMotion();
 
@@ -145,22 +179,42 @@ export function ResultsView({
   if (bidPack.id !== filtersForBidPackId) {
     setFiltersForBidPackId(bidPack.id);
     setFilters(EMPTY_FILTERS);
+    setMarks(loadLineMarks(userId, bidPack.id));
+    setSearch("");
+    setView("all");
   }
 
   useEffect(() => {
     if (!caresAboutHotel) return;
     let cancelled = false;
+    // Deliberately reset here: a different pack (or a returning visit) must wait for its own hotel data, not inherit "done" from the last one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHotelDone(false);
+    setHotelTimedOut(false);
     fetchAllHotelQualityData(bidPack).then((data) => {
-      if (!cancelled) setHotelQualityData(data);
+      if (cancelled) return;
+      setHotelQualityData(data);
+      setHotelDone(true);
     });
+    const timer = setTimeout(() => {
+      if (!cancelled) setHotelTimedOut(true);
+    }, HOTEL_WAIT_MS);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
     // Only the bid pack's identity and whether the pilot cares at all should
     // re-trigger this — re-fetching on every profile tweak (a slider nudge
     // elsewhere) would be wasted, cached network calls for data that hasn't
     // changed.
   }, [bidPack, caresAboutHotel]);
+
+  // The list is held back until hotel data lands (or the wait runs out) so
+  // the ranking a pilot starts reading is the ranking they keep — hotel
+  // reviews move scores, and a top-3 that reshuffles a few seconds in reads
+  // as the app changing its mind.
+  const hotelsSettled = !caresAboutHotel || hotelDone || hotelTimedOut;
+  const hotelsArrivedLate = caresAboutHotel && hotelTimedOut && hotelDone;
 
   // The implicit taxonomy's normalized per-line values only depend on the
   // bid pack's own trip data, never on the pilot's weights — computed once
@@ -187,6 +241,22 @@ export function ResultsView({
     [bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines]
   );
 
+  const updateMarks = useCallback(
+    (fn: (m: LineMarks) => LineMarks) => {
+      setMarks((prev) => {
+        const next = fn(prev);
+        saveLineMarks(userId, bidPack.id, next);
+        return next;
+      });
+    },
+    [userId, bidPack.id]
+  );
+
+  // Marks for lines that no longer exist (an older pack under the same id) never leak into counts.
+  const validMarks = useMemo(() => pruneMarks(marks, new Set(bidPack.lines.map((l) => l.id))), [marks, bidPack]);
+  const starredSet = useMemo(() => new Set(validMarks.starred), [validMarks]);
+  const hiddenSet = useMemo(() => new Set(validMarks.hidden), [validMarks]);
+
   function toggleCompare(lineId: string) {
     setCompareIds((prev) => {
       if (prev.includes(lineId)) return prev.filter((id) => id !== lineId);
@@ -203,23 +273,51 @@ export function ResultsView({
   // "historically preferred" comparison reads — not just a one-time snapshot
   // from the moment they first landed here.
   useEffect(() => {
+    if (!hotelsSettled) return;
     saveTopLinesSnapshot(userId, ranked);
-  }, [userId, ranked]);
+  }, [userId, ranked, hotelsSettled]);
 
   // Global rank survives filtering — a filtered card or export entry always
   // shows its true position in the full ranking, not a renumbered index into
   // whatever subset currently matches the filters.
   const rankById = useMemo(() => new Map(ranked.map((r, i) => [r.line.id, i + 1] as const)), [ranked]);
 
-  const visibleRanked = useMemo(
-    () => ranked.filter((r) => lineMatchesFilters(r.line, filters)),
-    [ranked, filters]
+  const matching = useMemo(
+    () => ranked.filter((r) => lineMatchesFilters(r.line, filters) && matchesLineSearch(r.line, search)),
+    [ranked, filters, search]
+  );
+  const hiddenMatchingCount = matching.filter((r) => hiddenSet.has(r.line.id)).length;
+  const listable = useMemo(
+    () => matching.filter((r) => (showHidden || !hiddenSet.has(r.line.id)) && (view === "all" || starredSet.has(r.line.id))),
+    [matching, showHidden, hiddenSet, view, starredSet]
+  );
+  const sorted = useMemo(() => sortLineScores(listable, sortMode), [listable, sortMode]);
+
+  // Back to the first page whenever what's being listed changes — landing on
+  // "page 4 of a different list" would show a scrolled-past-nothing view.
+  const listKey = `${sortMode}|${search}|${view}|${showHidden}|${filtersKey(filters)}|${ranked.length}`;
+  if (pageState.key !== listKey) setPageState({ key: listKey, shown: PAGE_SIZE });
+  const shown = pageState.key === listKey ? pageState.shown : PAGE_SIZE;
+  const displayed = sorted.slice(0, shown);
+
+  // Exports follow the pilot's own ranking (best match), among lines they haven't hidden — a sort-by-days-off view is for looking, not for what to bid.
+  const exportable = useMemo(() => matching.filter((r) => !hiddenSet.has(r.line.id)), [matching, hiddenSet]);
+  const bidOrderEntries = useMemo<BidOrderEntry[]>(
+    () =>
+      exportable.map((r) => ({
+        lineScore: r,
+        rank: rankById.get(r.line.id) ?? 0,
+        note: lineFactsText(buildLineFactChips(r.line, profile)),
+      })),
+    [exportable, rankById, profile]
+  );
+  const shortlistEntries = useMemo<BidOrderEntry[]>(
+    () => bidOrderEntries.filter((e) => starredSet.has(e.lineScore.line.id)),
+    [bidOrderEntries, starredSet]
   );
 
-  const bidOrderEntries = useMemo<BidOrderEntry[]>(
-    () => visibleRanked.map((r) => ({ lineScore: r, rank: rankById.get(r.line.id) ?? 0 })),
-    [visibleRanked, rankById]
-  );
+  // Same value on every line (it describes the pilot's profile, not any one line), so it's said once here instead of on all 283 cards.
+  const confidenceLevel = ranked[0]?.confidenceLevel ?? null;
 
   const availableCities = useMemo(() => collectLayoverCities(bidPack.lines), [bidPack]);
   const filterOptions = useMemo(() => computeFilterOptions(bidPack.lines), [bidPack]);
@@ -241,6 +339,8 @@ export function ResultsView({
   );
 
   const activeLineScore = activeId ? ranked.find((r) => r.line.id === activeId) ?? null : null;
+  // Drag-to-swap only means something in the pilot's own ranking order — in any other sort the visual order isn't the ranked order the judgment is built from.
+  const dragEnabled = sortMode === "match";
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
@@ -294,16 +394,23 @@ export function ResultsView({
     setPromptJudgment(null);
   }
 
+  const emptyMessage =
+    view === "shortlist"
+      ? "Nothing shortlisted yet — tap the star on any line to save it here."
+      : search.trim()
+        ? `No line matches “${search.trim()}”.`
+        : "No lines match the current filters. Try clearing one or two.";
+
   return (
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex items-start justify-between gap-3 sm:items-end">
         <div>
           <Heading as="h1" className="text-2xl text-ink sm:text-3xl">
             Your ranked lines
           </Heading>
           <p className="mt-1.5 text-sm text-ink-muted">
             {bidPack.base} {bidPack.aircraft} {bidPack.seat} &middot; {bidPack.month}{" "}
-            &middot; {bidPack.lines.length} lines scored against your preferences
+            &middot; {bidPack.lines.length} lines<span className="hidden sm:inline"> scored against your preferences</span>
             {profile.deepRoundCompleted && (
               <span className="ml-2 inline-flex items-center rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
                 Deep interview
@@ -311,15 +418,30 @@ export function ResultsView({
             )}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={onRefine}>
-            Refine preferences
-          </Button>
-          <Button variant="ghost" onClick={onStartOver}>
-            Start over
-          </Button>
-        </div>
+        <Button variant="secondary" onClick={onEditPreferences} className="shrink-0 px-3 sm:px-4">
+          Edit<span className="hidden sm:inline">&nbsp;preferences</span>
+        </Button>
       </div>
+
+      {confirmingStartOver && (
+        <ConfirmModal
+          title="Start over from scratch?"
+          confirmLabel="Yes, delete everything"
+          destructive
+          alternative={{ label: "Upload a new bid pack instead", onClick: onUploadNewPack }}
+          onConfirm={onStartOver}
+          onCancel={() => setConfirmingStartOver(false)}
+        >
+          <p>
+            This deletes your bid pack <strong className="text-ink">and</strong> your saved preferences &mdash;
+            including everything Line Select has learned about you over past months. It can&rsquo;t be undone.
+          </p>
+          <p>
+            Bidding a new month? You don&rsquo;t need to start over &mdash; upload the new bid pack and your
+            preferences carry forward.
+          </p>
+        </ConfirmModal>
+      )}
 
       {learnMessage && !promptJudgment && (
         <div className="mt-4 flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent animate-fade-in">
@@ -336,76 +458,195 @@ export function ResultsView({
         />
       )}
 
-      <div className="mt-6">
+      {hotelsArrivedLate && (
+        <div className="mt-4 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent">
+          Hotel reviews just finished loading &mdash; your ranking was updated to include them.
+        </div>
+      )}
+
+      {(confidenceLevel === "thin" || confidenceLevel === "moderate") && (
+        <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-ink-muted">
+          These rankings are based on a{confidenceLevel === "thin" ? " shorter" : " moderate-length"} interview
+          {confidenceLevel === "thin" ? ", so treat them as a first cut" : ""}.{" "}
+          <button
+            type="button"
+            onClick={onEditPreferences}
+            className="font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand-strong"
+          >
+            Add detail on your Preferences page
+          </button>{" "}
+          to sharpen them.
+        </div>
+      )}
+
+      <div className="mt-5">
         <PilotProfileSummary profile={profile} />
       </div>
 
-      <p className="mt-6 text-xs text-ink-faint">
-        Think a line is ranked too high or too low? Drag it by the grip on the left and drop it
-        directly onto another line to swap — each swap teaches the model something about what
-        you actually care about, so your ranking keeps getting more accurate.
-      </p>
-
-      <ResultsFilterBar
-        filters={filters}
-        onChange={setFilters}
-        options={filterOptions}
-        availableCities={availableCities}
-        visibleCount={visibleRanked.length}
-        totalCount={ranked.length}
-      />
-
-      <BidOrderExport entries={bidOrderEntries} bidPeriodStart={bidPack.bidPeriodStart} />
-
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        // This is a swap-on-drop interaction, not a live-reordering sortable
-        // list — no card moves or resizes until the drop actually happens,
-        // so every droppable's rect is still valid for the whole gesture.
-        // dnd-kit's default measures every droppable's rect on every pointer
-        // move to support layouts that DO reflow mid-drag; with up to ~100
-        // cards that's ~100 getBoundingClientRect layout reads per frame,
-        // which is the actual source of the drag feeling laggy. Measuring
-        // once at drag start is correct here and removes that cost entirely.
-        measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
-      >
-        <div className="mt-3 space-y-3">
-          {visibleRanked.length === 0 ? (
-            <EmptyState compact description="No lines match the current filters. Try clearing one or two." />
-          ) : (
-            visibleRanked.map((lineScore) => (
-              <motion.div
-                key={lineScore.line.id}
-                layout
-                transition={
-                  reduceMotion
-                    ? { duration: 0 }
-                    : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }
-                }
-              >
-                <ErrorBoundary>
-                  <LineCard
-                    rank={rankById.get(lineScore.line.id) ?? 0}
-                    lineScore={lineScore}
-                    profile={profile}
-                    implicitValuesByLine={implicitValuesByLine}
-                    homeBaseOffsetMinutes={homeBaseOffsetMinutes}
-                    bidPeriodStart={bidPack.bidPeriodStart}
-                    bidPeriodDays={bidPack.bidPeriodDays}
-                    isComparing={compareIds.includes(lineScore.line.id)}
-                    onToggleCompare={() => toggleCompare(lineScore.line.id)}
-                  />
-                </ErrorBoundary>
-              </motion.div>
-            ))
-          )}
+      {!hotelsSettled ? (
+        <div className="mt-6 flex flex-col items-center gap-3 rounded-xl border border-border bg-surface px-6 py-14 text-center">
+          <Spinner size="md" />
+          <p className="text-sm text-ink-muted">Checking layover hotel reviews so your ranking is right the first time&hellip;</p>
         </div>
-        <DragOverlay>{activeLineScore && <DragPreview lineScore={activeLineScore} />}</DragOverlay>
-      </DndContext>
+      ) : (
+        <>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[9rem] flex-1 sm:max-w-[14rem]">
+              <input
+                type="search"
+                inputMode="numeric"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Find a line number"
+                aria-label="Find a line by number"
+                className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-ink-muted">
+              <span className="sr-only sm:not-sr-only">Sort</span>
+              <select
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as SortMode)}
+                className="rounded-md border border-border-strong bg-surface px-2.5 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
+              >
+                {SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="ml-auto flex overflow-hidden rounded-md border border-border-strong text-sm" role="tablist" aria-label="Which lines to show">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === "all"}
+                onClick={() => setView("all")}
+                className={`px-3 py-2 font-medium transition-colors ${view === "all" ? "bg-brand-soft text-brand" : "text-ink-muted hover:text-ink"}`}
+              >
+                All lines
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === "shortlist"}
+                onClick={() => setView("shortlist")}
+                className={`border-l border-border-strong px-3 py-2 font-medium transition-colors ${view === "shortlist" ? "bg-brand-soft text-brand" : "text-ink-muted hover:text-ink"}`}
+              >
+                Shortlist ({validMarks.starred.length})
+              </button>
+            </div>
+          </div>
+
+          <ResultsFilterBar
+            filters={filters}
+            onChange={setFilters}
+            options={filterOptions}
+            availableCities={availableCities}
+            visibleCount={matching.length}
+            totalCount={ranked.length}
+          />
+
+          <BidOrderExport
+            entries={bidOrderEntries}
+            shortlistEntries={shortlistEntries}
+            bidPeriodStart={bidPack.bidPeriodStart}
+          />
+
+          <MonthLegend className="mt-3" />
+
+          {dragEnabled && (
+            <p className="mt-2 hidden text-xs text-ink-faint sm:block">
+              Ranked something wrong? Drag a line by its handle onto another to swap &mdash; each swap teaches Line
+              Select what you actually care about.
+            </p>
+          )}
+
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            // This is a swap-on-drop interaction, not a live-reordering sortable
+            // list — no card moves or resizes until the drop actually happens,
+            // so every droppable's rect is still valid for the whole gesture.
+            // dnd-kit's default measures every droppable's rect on every pointer
+            // move to support layouts that DO reflow mid-drag; measuring once at
+            // drag start is correct here and removes that cost entirely.
+            measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
+          >
+            <div className="mt-3 space-y-3">
+              {displayed.length === 0 ? (
+                <EmptyState compact description={emptyMessage} />
+              ) : (
+                displayed.map((lineScore) => (
+                  <motion.div
+                    key={lineScore.line.id}
+                    layout={dragEnabled ? "position" : false}
+                    transition={
+                      reduceMotion
+                        ? { duration: 0 }
+                        : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }
+                    }
+                  >
+                    <ErrorBoundary>
+                      <LineCard
+                        rank={rankById.get(lineScore.line.id) ?? 0}
+                        lineScore={lineScore}
+                        profile={profile}
+                        implicitValuesByLine={implicitValuesByLine}
+                        homeBaseOffsetMinutes={homeBaseOffsetMinutes}
+                        bidPeriodStart={bidPack.bidPeriodStart}
+                        bidPeriodDays={bidPack.bidPeriodDays}
+                        isComparing={compareIds.includes(lineScore.line.id)}
+                        onToggleCompare={() => toggleCompare(lineScore.line.id)}
+                        starred={starredSet.has(lineScore.line.id)}
+                        onToggleStar={() => updateMarks((m) => toggleStar(m, lineScore.line.id))}
+                        hidden={hiddenSet.has(lineScore.line.id)}
+                        onHide={() => updateMarks((m) => hideLine(m, lineScore.line.id))}
+                        onRestore={() => updateMarks((m) => restoreLine(m, lineScore.line.id))}
+                        draggable={dragEnabled}
+                      />
+                    </ErrorBoundary>
+                  </motion.div>
+                ))
+              )}
+            </div>
+            <DragOverlay>{activeLineScore && <DragPreview lineScore={activeLineScore} />}</DragOverlay>
+          </DndContext>
+
+          {sorted.length > displayed.length && (
+            <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-border bg-surface px-4 py-4 text-center">
+              <p className="text-sm text-ink-muted">
+                Showing {displayed.length} of {sorted.length} lines
+                {view === "all" && sortMode === "match" ? " — the best matches first" : ""}.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => setPageState({ key: listKey, shown: nextVisibleCount(shown, sorted.length) })}
+                >
+                  Show {Math.min(PAGE_SIZE, sorted.length - displayed.length)} more
+                </Button>
+                <Button variant="ghost" onClick={() => setPageState({ key: listKey, shown: sorted.length })}>
+                  Show all {sorted.length}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {hiddenMatchingCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowHidden((v) => !v)}
+              className="mt-3 text-xs text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted"
+            >
+              {showHidden ? "Hide the" : "Show the"} {hiddenMatchingCount} line{hiddenMatchingCount === 1 ? "" : "s"} you hid
+            </button>
+          )}
+        </>
+      )}
 
       {compareLineScores.length === 2 && (
         <LineComparisonModal
@@ -416,6 +657,32 @@ export function ResultsView({
           onClose={() => setCompareIds([])}
         />
       )}
+
+      <div className="mt-10 border-t border-border pt-5 text-center">
+        <button
+          type="button"
+          onClick={() => setConfirmingStartOver(true)}
+          className="text-xs text-ink-faint underline decoration-dotted underline-offset-4 hover:text-danger"
+        >
+          Start over from scratch
+        </button>
+      </div>
     </div>
   );
+}
+
+/** A stable string for "what filters are on" — lets the page reset to the first page when they change without depending on Set identity. */
+function filtersKey(f: LineFilters): string {
+  return [
+    f.minDaysOff,
+    f.minCreditHours,
+    f.maxTripDays,
+    f.tripCount,
+    [...f.reportTimes].sort().join(","),
+    [...f.cities].sort().join(","),
+    f.noDeadheadsOnly,
+    f.noRedEyesOnly,
+    f.verifiedOnly,
+    f.international,
+  ].join("/");
 }

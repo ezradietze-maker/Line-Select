@@ -13,6 +13,9 @@ import type {
 } from "@/types/hotel";
 
 // Reads/writes the local hotel-cache file, which needs Node's fs module.
+/** Uncached Google Places lookups allowed per IP per hour. Raised deliberately to cover a full cold bid pack, accepting the extra Places spend. */
+const HOTEL_LOOKUPS_PER_HOUR = 250;
+
 export const runtime = "nodejs";
 
 const PRICE_LEVELS: Record<string, number> = {
@@ -358,7 +361,11 @@ export async function GET(request: Request) {
   // Only cache misses reach here, which is what actually costs a Google
   // Places call — a cache hit above never touches this limit, so pilots
   // repeatedly viewing already-cached hotels are never throttled.
-  const { ok } = await checkRateLimit("hotels-lookup", clientIp(request), 60, 60 * 60);
+  // Sized for one real bid pack loading cold: a 283-line Captain pack has
+  // ~100 unique hotels and a larger First Officer pack more, and the results
+  // page looks all of them up at once. 60 left the first pilot to open a
+  // fresh pack with only partial hotel data until the next hour.
+  const { ok } = await checkRateLimit("hotels-lookup", clientIp(request), HOTEL_LOOKUPS_PER_HOUR, 60 * 60);
   if (!ok) return rateLimitedResponse();
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;

@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { RecoveryCodePanel } from "@/components/auth/RecoveryCodePanel";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { TextField } from "@/components/ui/TextField";
+import { createRecoveryCode } from "@/lib/auth";
 import type { UserAccount } from "@/types/auth";
 
 interface AccountMenuProps {
@@ -19,6 +23,7 @@ function initials(name: string): string {
 
 export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -87,6 +92,17 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
             role="menuitem"
             onClick={() => {
               setOpen(false);
+              setRecoveryOpen(true);
+            }}
+            className="block w-full px-4 py-2.5 text-left text-sm text-ink hover:bg-canvas"
+          >
+            Account recovery code
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
               onLogout();
             }}
             className="block w-full px-4 py-2.5 text-left text-sm text-ink hover:bg-canvas"
@@ -95,6 +111,54 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
           </button>
         </div>
       )}
+      {recoveryOpen && <RecoveryCodeModal onClose={() => setRecoveryOpen(false)} />}
     </div>
+  );
+}
+
+function RecoveryCodeModal({ onClose }: { onClose: () => void }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [code, setCode] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    const result = await createRecoveryCode(password);
+    setSubmitting(false);
+    if (!result.ok || !result.recoveryCode) {
+      setError(result.error ?? "Something went wrong. Try again.");
+      return;
+    }
+    setCode(result.recoveryCode);
+  }
+
+  return (
+    <Modal title="Account recovery code" onClose={onClose}>
+      {code ? (
+        <RecoveryCodePanel code={code} reason="new" onDone={onClose} doneLabel="Done" />
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <p className="text-sm leading-relaxed text-ink-muted">
+            If you forget your password, a recovery code is your only way back in &mdash; there&rsquo;s no email reset.
+            Making a new one replaces any code you had before. Confirm your password to continue.
+          </p>
+          <TextField
+            label="Your password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          {error && <p className="text-sm text-danger">{error}</p>}
+          <Button type="submit" disabled={submitting || !password} className="w-full">
+            {submitting ? "Please wait…" : "Create a new recovery code"}
+          </Button>
+        </form>
+      )}
+    </Modal>
   );
 }

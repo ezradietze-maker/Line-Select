@@ -52,6 +52,17 @@ function pickMaxThresholds(values: number[]): number[] {
   return sampleByRank(distinct.slice(0, -1), MAX_THRESHOLD_STEPS);
 }
 
+/**
+ * Whole-hour cutoffs for credit ("84+" reads like a bid-sheet number; "84:58+"
+ * reads like a database value). Rounding DOWN keeps the guarantee this file
+ * exists for — the line that produced the threshold still qualifies — and a
+ * cutoff that would round down to the pack's own minimum (excluding nothing)
+ * keeps its exact value instead.
+ */
+function roundDownToWholeHours(thresholds: number[], min: number): number[] {
+  return Array.from(new Set(thresholds.map((t) => (Math.floor(t) > min ? Math.floor(t) : t)))).sort((a, b) => a - b);
+}
+
 function computeTripCountOptions(counts: number[]): TripCountFilter[] {
   const distinct = Array.from(new Set(counts)).sort((a, b) => a - b);
   if (distinct.length <= 1) return [];
@@ -77,7 +88,7 @@ export function computeFilterOptions(lines: Line[]): FilterOptions {
 
   return {
     minDaysOffSteps: pickMinThresholds(daysOffValues),
-    minCreditHoursSteps: pickMinThresholds(creditValues),
+    minCreditHoursSteps: roundDownToWholeHours(pickMinThresholds(creditValues), Math.min(...creditValues)),
     maxTripDaysSteps: pickMaxThresholds(tripDayValues),
     tripCountOptions: computeTripCountOptions(tripCounts),
     availableReportTimes:

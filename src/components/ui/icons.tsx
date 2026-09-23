@@ -119,9 +119,9 @@ export function MailIcon({ className = base }: IconProps) {
   );
 }
 
-export function StarIcon({ className = base }: IconProps) {
+export function StarIcon({ className = base, filled = false }: IconProps & { filled?: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+    <svg viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} className={className}>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"

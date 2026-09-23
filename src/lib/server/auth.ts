@@ -5,10 +5,13 @@ import {
   createSession,
   createUserWithCredential,
   deleteSession,
+  deleteSessionsForUser,
   findCredentialByEmail,
+  findCredentialByUserId,
   findSession,
   findUserByEmail,
   findUserById,
+  updateCredential,
 } from "@/lib/server/db";
 import { clearAttempts, isRateLimited, recordFailedAttempt } from "@/lib/server/rate-limit";
 import type { UserAccount } from "@/types/auth";
@@ -45,6 +48,41 @@ export interface AuthResult {
   error?: string;
   user?: UserAccount;
   sessionToken?: string;
+  /** Plain-text recovery code — only ever present in the single response that just created or rotated it. */
+  recoveryCode?: string;
+}
+
+/** No 0/O/1/I/L — a code someone has to read off a screen and type in later shouldn't hinge on telling look-alikes apart. */
+const RECOVERY_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const RECOVERY_GROUPS = 5;
+const RECOVERY_GROUP_LENGTH = 4;
+
+/** 20 characters from a 31-symbol alphabet is ~99 bits — far beyond guessing, and short enough to write down. */
+export function generateRecoveryCode(): string {
+  const groups: string[] = [];
+  for (let g = 0; g < RECOVERY_GROUPS; g++) {
+    let group = "";
+    for (let i = 0; i < RECOVERY_GROUP_LENGTH; i++) {
+      // rejection sampling: 248 = 31 * 8, so bytes >= 248 are re-rolled to keep every symbol equally likely
+      let byte = randomBytes(1)[0];
+      while (byte >= 248) byte = randomBytes(1)[0];
+      group += RECOVERY_ALPHABET[byte % RECOVERY_ALPHABET.length];
+    }
+    groups.push(group);
+  }
+  return groups.join("-");
+}
+
+/** Case, dashes and spaces are all ignored on entry — however someone copies it down, it should still match. */
+export function normalizeRecoveryCode(code: string): string {
+  return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+async function storeNewRecoveryCode(userId: string): Promise<string> {
+  const code = generateRecoveryCode();
+  const salt = randomBytes(16).toString("hex");
+  await updateCredential(userId, { recoveryHash: await hashPassword(normalizeRecoveryCode(code), salt), recoverySalt: salt });
+  return code;
 }
 
 export async function signUp(
@@ -77,9 +115,69 @@ export async function signUp(
   const passwordHash = await hashPassword(password, salt);
 
   await createUserWithCredential(user, { userId: user.id, email: normalized, passwordHash, salt });
+  const recoveryCode = await storeNewRecoveryCode(user.id);
 
   const sessionToken = await startSession(user.id);
-  return { ok: true, user, sessionToken };
+  return { ok: true, user, sessionToken, recoveryCode };
+}
+
+const RESET_RATE_LIMIT_SCOPE = "password-reset";
+const RESET_FAILURE_MESSAGE = "That email and recovery code don't match.";
+
+/**
+ * Forgot-password path with no email service: the recovery code shown once
+ * at signup proves the pilot is the account's owner. Deliberately gives the
+ * same error for "no such account", "no recovery code on file" and "wrong
+ * code" so it can't be used to discover which emails have accounts, is
+ * rate-limited per email like login, signs out every existing session on
+ * success, and rotates the code (the used one is spent).
+ */
+export async function resetPasswordWithRecoveryCode(email: string, recoveryCode: string, newPassword: string): Promise<AuthResult> {
+  const normalized = normalizeEmail(email);
+  if (await isRateLimited(RESET_RATE_LIMIT_SCOPE, normalized)) {
+    return { ok: false, error: "Too many failed attempts. Try again in a few minutes." };
+  }
+  if (newPassword.length < 6) {
+    return { ok: false, error: "Password must be at least 6 characters." };
+  }
+
+  const credential = await findCredentialByEmail(normalized);
+  const matches =
+    !!credential?.recoveryHash &&
+    !!credential.recoverySalt &&
+    timingSafeStringEqual(await hashPassword(normalizeRecoveryCode(recoveryCode), credential.recoverySalt), credential.recoveryHash);
+  if (!credential || !matches) {
+    await recordFailedAttempt(RESET_RATE_LIMIT_SCOPE, normalized);
+    return { ok: false, error: RESET_FAILURE_MESSAGE };
+  }
+
+  const user = await findUserById(credential.userId);
+  if (!user) return { ok: false, error: RESET_FAILURE_MESSAGE };
+
+  const salt = randomBytes(16).toString("hex");
+  await updateCredential(credential.userId, { passwordHash: await hashPassword(newPassword, salt), salt });
+  await deleteSessionsForUser(credential.userId);
+  await clearAttempts(RESET_RATE_LIMIT_SCOPE, normalized);
+  await clearAttempts(LOGIN_RATE_LIMIT_SCOPE, normalized);
+  const newRecoveryCode = await storeNewRecoveryCode(credential.userId);
+  const sessionToken = await startSession(credential.userId);
+  return { ok: true, user, sessionToken, recoveryCode: newRecoveryCode };
+}
+
+/** For a signed-in pilot with no recovery code yet (an account from before they existed) or who wants a fresh one. Re-checks the password first, so a borrowed unlocked laptop can't mint one. */
+export async function createRecoveryCodeForUser(userId: string, password: string): Promise<AuthResult> {
+  const credential = await findCredentialByUserId(userId);
+  if (!credential) return { ok: false, error: "Account data is missing." };
+  if (await isRateLimited(LOGIN_RATE_LIMIT_SCOPE, credential.email)) {
+    return { ok: false, error: "Too many failed attempts. Try again in a few minutes." };
+  }
+  const attempt = await hashPassword(password, credential.salt);
+  if (!timingSafeStringEqual(attempt, credential.passwordHash)) {
+    await recordFailedAttempt(LOGIN_RATE_LIMIT_SCOPE, credential.email);
+    return { ok: false, error: "Incorrect password." };
+  }
+  await clearAttempts(LOGIN_RATE_LIMIT_SCOPE, credential.email);
+  return { ok: true, recoveryCode: await storeNewRecoveryCode(userId) };
 }
 
 const LOGIN_RATE_LIMIT_SCOPE = "login";

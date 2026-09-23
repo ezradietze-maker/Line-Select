@@ -7,7 +7,7 @@ import { useAppState } from "@/lib/app-state";
 
 export default function PreviewPage() {
   const router = useRouter();
-  const { parseResult, handleBidPackConfirmed, handleUploadDifferent } = useAppState();
+  const { parseResult, bidPack, handleBidPackConfirmed, handleUploadDifferent } = useAppState();
 
   useEffect(() => {
     // A direct/refreshed visit with no parse result in memory (it's never
@@ -23,6 +23,7 @@ export default function PreviewPage() {
       result={parseResult}
       onConfirm={handleBidPackConfirmed}
       onUploadDifferent={handleUploadDifferent}
+      previousSeat={bidPack && !bidPack.id.startsWith("sample") ? bidPack.seat : null}
     />
   );
 }

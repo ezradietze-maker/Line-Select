@@ -8,6 +8,7 @@ import { generateFakeOffer } from "@/lib/fake-trade-offers";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/posthog-client";
+import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
 import { clearProfileForUser, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
@@ -28,6 +29,8 @@ interface DataState {
   /** The just-finished interview's profile, awaiting confirmation before it's saved. */
   pendingProfile: PreferenceProfile | null;
   seniority: SeniorityInput | null;
+  /** True from the moment a new bid pack is confirmed until the pilot either looks at rankings or starts the interview — drives the "same as last month?" prompt on Preferences, so a returning pilot isn't left with only "Retake the interview". */
+  freshBidPack: boolean;
 }
 
 /** Where a pilot with this bid pack/profile combination actually belongs — the same "resume point" logic used both on first load and after sign-in/sign-out. */
@@ -49,8 +52,10 @@ interface AppStateValue extends DataState {
   handleInterviewComplete: (newProfile: PreferenceProfile) => void;
   handleConfirmPreferences: (weights: PreferenceWeights) => void;
   handleUpdateProfile: (updated: PreferenceProfile) => void;
+  handleSaveProfileEdits: (edits: ProfileEdits) => void;
   handleSaveSeniority: (input: SeniorityInput) => void;
   handleStartInterview: () => void;
+  handleAcknowledgeFreshBidPack: () => void;
   handleStartOver: () => void;
   handleDismissToast: (id: string) => void;
   handleToastClick: (id: string) => void;
@@ -77,6 +82,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     parseResult: null,
     pendingProfile: null,
     seniority: null,
+    freshBidPack: false,
   });
   const { user, bidPack, pendingProfile } = state;
   const [interviewKey, setInterviewKey] = useState(0);
@@ -109,6 +115,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         parseResult: null,
         pendingProfile: null,
         seniority: savedSeniority,
+        freshBidPack: false,
       });
     }
     bootstrap();
@@ -172,12 +179,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const notifiableOffers = useMemo(() => {
     if (!bidPack || !user) return [];
     const visible = realOffers.filter((o) => sameBidPack(o, bidPack));
-    const combined = demoOffer && sameBidPack(demoOffer, bidPack) ? [demoOffer, ...visible] : visible;
-    const { needsResponse, directInterest } = computeInboxSections(combined, user.id);
+    // Example offers never notify — a real pilot shouldn't get a toast or an
+    // unread badge for a trade offer that doesn't exist.
+    const { needsResponse, directInterest } = computeInboxSections(visible, user.id);
     const byId = new Map<string, TradeOffer>();
     for (const offer of [...needsResponse, ...directInterest]) byId.set(offer.id, offer);
     return [...byId.values()];
-  }, [realOffers, demoOffer, bidPack, user]);
+  }, [realOffers, bidPack, user]);
 
   const inboxUnreadCount = notifiableOffers.filter((o) => !seenOfferIds.has(o.id)).length;
 
@@ -286,6 +294,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       bidPack: newBidPack,
       parseResult: null,
       pendingProfile: null,
+      freshBidPack: true,
     }));
     router.push("/preferences");
     captureUsageEvent("bid_pack_confirmed");
@@ -305,7 +314,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   function handleConfirmPreferences(weights: PreferenceWeights) {
     if (!pendingProfile) return;
-    const confirmed: PreferenceProfile = { ...pendingProfile, weights };
+    // Goes through applyManualEdits (not a bare `{...profile, weights}`) so a
+    // nudge on the confirmation screen is written back into the underlying
+    // facts too — otherwise it would revert the next bid cycle.
+    const confirmed = applyManualEdits(pendingProfile, { weights });
     setState((s) => ({ ...s, profile: confirmed, pendingProfile: null }));
     router.push("/results");
     captureUsageEvent("interview_completed");
@@ -317,6 +329,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void saveProfileForUser(user?.id ?? null, updated);
   }
 
+  function handleSaveProfileEdits(edits: ProfileEdits) {
+    if (!state.profile) return;
+    handleUpdateProfile(applyManualEdits(state.profile, edits));
+  }
+
   function handleSaveSeniority(input: SeniorityInput) {
     saveSeniority(user?.id ?? null, input);
     setState((s) => ({ ...s, seniority: input }));
@@ -324,14 +341,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   function handleStartInterview() {
     setInterviewKey((k) => k + 1);
-    setState((s) => ({ ...s, pendingProfile: null }));
+    setState((s) => ({ ...s, pendingProfile: null, freshBidPack: false }));
     router.push("/interview");
+  }
+
+  function handleAcknowledgeFreshBidPack() {
+    setState((s) => (s.freshBidPack ? { ...s, freshBidPack: false } : s));
   }
 
   function handleStartOver() {
     clearBidPack(user?.id ?? null);
     setInterviewKey((k) => k + 1);
-    setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null }));
+    setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null, freshBidPack: false }));
     router.push("/");
     void clearProfileForUser(user?.id ?? null);
   }
@@ -357,6 +378,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       parseResult: null,
       pendingProfile: null,
       seniority: loadSeniority(newUser.id),
+      freshBidPack: false,
     });
     router.push(landingPathFor(theirBidPack, theirProfile));
   }
@@ -386,6 +408,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       bidPack: guestBidPack,
       parseResult: null,
       pendingProfile: null,
+      freshBidPack: false,
     });
     router.push(landingPathFor(guestBidPack, guestProfile));
   }
@@ -404,8 +427,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     handleInterviewComplete,
     handleConfirmPreferences,
     handleUpdateProfile,
+    handleSaveProfileEdits,
     handleSaveSeniority,
     handleStartInterview,
+    handleAcknowledgeFreshBidPack,
     handleStartOver,
     handleDismissToast,
     handleToastClick,

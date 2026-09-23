@@ -52,7 +52,9 @@ export type MeasurableBinding =
 
 export type FactSource =
   | { kind: "seed-question"; questionKey: string }
-  | { kind: "adaptive-question"; questionId: string };
+  | { kind: "adaptive-question"; questionId: string }
+  /** The pilot set this directly on the Preferences or confirmation screen instead of answering an interview question — see `lib/profile-edits.ts`. */
+  | { kind: "manual-edit" };
 
 export interface PreferenceFact {
   /** Client-generated (crypto.randomUUID()). */

@@ -6,12 +6,15 @@ import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Heading } from "@/components/ui/Heading";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
+import { initialSeat, shouldWarnAboutEstimatedLines, type Seat } from "@/lib/seat-choice";
 import type { BidPack } from "@/types/bidpack";
 
 interface PreviewScreenProps {
   result: ParseBidPackResult;
   onConfirm: (bidPack: BidPack) => void;
   onUploadDifferent: () => void;
+  /** The seat of the pilot's currently loaded (real, non-sample) bid pack, if any — the only honest basis for pre-selecting a seat when the PDF contains both. */
+  previousSeat?: Seat | null;
 }
 
 function formatHours(hours: number): string {
@@ -20,9 +23,9 @@ function formatHours(hours: number): string {
   return `${h}:${m.toString().padStart(2, "0")}`;
 }
 
-export function PreviewScreen({ result, onConfirm, onUploadDifferent }: PreviewScreenProps) {
+export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSeat = null }: PreviewScreenProps) {
   const availableSeats = (["CAP", "FO"] as const).filter((s) => result.bidPacksBySeat[s]);
-  const [selectedSeat, setSelectedSeat] = useState(availableSeats[0]);
+  const [selectedSeat, setSelectedSeat] = useState<Seat | undefined>(() => initialSeat(availableSeats, previousSeat));
   const [showDetails, setShowDetails] = useState(false);
   const reduceMotion = useReducedMotion();
 
@@ -81,6 +84,9 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent }: PreviewS
       {availableSeats.length > 1 && (
         <div className="mt-6">
           <div className="mb-2 text-sm font-medium text-ink">Which seat are you bidding?</div>
+          {selectedSeat === undefined && (
+            <p className="mb-2 text-xs text-ink-faint">This PDF has both — pick yours so you&rsquo;re ranked against the right lines.</p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             {availableSeats.map((seat) => (
               <button
@@ -127,12 +133,19 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent }: PreviewS
             />
           </div>
           {incompleteForSeat > 0 && (
-            <p className="mt-4 text-xs leading-relaxed text-ink-faint">
-              {incompleteForSeat} line{incompleteForSeat !== 1 ? "s" : ""} couldn&rsquo;t be
-              matched to a specific pairing with full confidence. Their days off, credit, and
+            <p
+              className={`mt-4 rounded-lg px-3 py-2.5 text-xs leading-relaxed ${
+                shouldWarnAboutEstimatedLines(incompleteForSeat, bidPack.lines.length)
+                  ? "border border-warn/30 bg-warn-soft text-warn"
+                  : "text-ink-faint"
+              }`}
+            >
+              {incompleteForSeat} of {bidPack.lines.length} lines ({Math.round((incompleteForSeat / bidPack.lines.length) * 100)}%)
+              couldn&rsquo;t be matched to a specific pairing with full confidence. Their days off, credit, and
               TAFB totals are exact (read straight from the bid pack), but their trip-length,
               international, report-time, and deadhead scoring uses an estimate rather than a
-              verified trip-by-trip breakdown.
+              verified trip-by-trip breakdown. They&rsquo;re marked &ldquo;Estimated&rdquo; in your rankings, and you
+              can filter them out.
             </p>
           )}
         </div>

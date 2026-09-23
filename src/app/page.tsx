@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { WelcomeScreen } from "@/components/welcome/WelcomeScreen";
 import { landingPathFor, useAppState } from "@/lib/app-state";
 
@@ -17,8 +17,17 @@ export default function RootPage() {
   const router = useRouter();
   const { ready, bidPack, profile, handleTrySample } = useAppState();
 
+  // Only a pilot who ARRIVED here already holding a bid pack gets bounced to
+  // their resume point. A bid pack that appears while this page is showing
+  // (e.g. "Try it with sample data") already navigates itself — redirecting
+  // again here raced that navigation and dropped a returning pilot straight
+  // onto Results, skipping the "same preferences as last time?" prompt.
+  const hadBidPackOnArrival = useRef<boolean | null>(null);
+
   useEffect(() => {
-    if (!ready || !bidPack) return;
+    if (!ready) return;
+    if (hadBidPackOnArrival.current === null) hadBidPackOnArrival.current = !!bidPack;
+    if (!hadBidPackOnArrival.current || !bidPack) return;
     const target = landingPathFor(bidPack, profile);
     if (target !== "/") router.replace(target);
   }, [ready, bidPack, profile, router]);

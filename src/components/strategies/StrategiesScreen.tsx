@@ -16,6 +16,7 @@ import {
   generateStrategies,
   rankStrategiesByPreference,
 } from "@/lib/strategy-engine";
+import { SENIORITY_BANDS } from "@/lib/seniority-bands";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
 import type { AwardHistoryRecord } from "@/types/award-history";
 import type { BidPack } from "@/types/bidpack";
@@ -30,6 +31,7 @@ interface StrategiesScreenProps {
   user: UserAccount | null;
   onSaveSeniority: (input: SeniorityInput) => void;
   onGoToUpload: () => void;
+  onGoToResults: () => void;
   onStartInterview: () => void;
   onUpdateProfile: (profile: PreferenceProfile) => void;
 }
@@ -41,6 +43,7 @@ export function StrategiesScreen({
   user,
   onSaveSeniority,
   onGoToUpload,
+  onGoToResults,
   onStartInterview,
   onUpdateProfile,
 }: StrategiesScreenProps) {
@@ -66,6 +69,7 @@ export function StrategiesScreen({
       profile={profile}
       user={user}
       onSaveSeniority={onSaveSeniority}
+      onGoToResults={onGoToResults}
       onStartInterview={onStartInterview}
       onUpdateProfile={onUpdateProfile}
     />
@@ -78,6 +82,7 @@ function SeniorityGate({
   profile,
   user,
   onSaveSeniority,
+  onGoToResults,
   onStartInterview,
   onUpdateProfile,
 }: {
@@ -86,6 +91,7 @@ function SeniorityGate({
   profile: PreferenceProfile | null;
   user: UserAccount | null;
   onSaveSeniority: (input: SeniorityInput) => void;
+  onGoToResults: () => void;
   onStartInterview: () => void;
   onUpdateProfile: (profile: PreferenceProfile) => void;
 }) {
@@ -111,6 +117,7 @@ function SeniorityGate({
       profile={profile}
       user={user}
       onEditSeniority={() => setEditing(true)}
+      onGoToResults={onGoToResults}
       onStartInterview={onStartInterview}
       onUpdateProfile={onUpdateProfile}
     />
@@ -165,7 +172,7 @@ function SeniorityForm({
           onChange={(e) => setRank(e.target.value)}
         />
         <TextField
-          label="Total pilots holding this seat at this domicile"
+          label="Total pilots in this seat at your domicile (a rough number is fine)"
           type="number"
           min={1}
           inputMode="numeric"
@@ -177,6 +184,26 @@ function SeniorityForm({
           Find my strategies
         </Button>
       </form>
+
+      <div className="mt-8 border-t border-border pt-6">
+        <div className="text-sm font-medium text-ink">Don&rsquo;t know your exact numbers?</div>
+        <p className="mt-1 text-xs text-ink-muted">
+          A rough idea is enough &mdash; pick where you sit and you&rsquo;ll get the same strategies.
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {SENIORITY_BANDS.map((band) => (
+            <button
+              key={band.id}
+              type="button"
+              onClick={() => onSave(band.input)}
+              className="rounded-lg border border-border-strong px-3 py-2.5 text-left transition-colors hover:border-brand hover:bg-brand-soft"
+            >
+              <div className="text-sm font-medium text-ink">{band.label}</div>
+              <div className="mt-0.5 text-xs text-ink-muted">{band.hint}</div>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -187,6 +214,7 @@ function StrategyResults({
   profile,
   user,
   onEditSeniority,
+  onGoToResults,
   onStartInterview,
   onUpdateProfile,
 }: {
@@ -195,6 +223,7 @@ function StrategyResults({
   profile: PreferenceProfile | null;
   user: UserAccount | null;
   onEditSeniority: () => void;
+  onGoToResults: () => void;
   onStartInterview: () => void;
   onUpdateProfile: (profile: PreferenceProfile) => void;
 }) {
@@ -297,7 +326,7 @@ function StrategyResults({
       )}
 
       <div className="mt-6">
-        <AutoBidPanel entries={autoBid} />
+        <AutoBidPanel entries={autoBid} onGoToResults={profile ? onGoToResults : undefined} />
       </div>
 
       <div className="mt-6 space-y-4">

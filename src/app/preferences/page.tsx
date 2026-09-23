@@ -6,13 +6,26 @@ import { useAppState } from "@/lib/app-state";
 
 export default function PreferencesPage() {
   const router = useRouter();
-  const { bidPack, profile, handleStartInterview } = useAppState();
+  const {
+    bidPack,
+    profile,
+    freshBidPack,
+    handleStartInterview,
+    handleAcknowledgeFreshBidPack,
+    handleSaveProfileEdits,
+  } = useAppState();
   return (
     <PreferencesScreen
-      hasBidPack={!!bidPack}
+      bidPack={bidPack}
       profile={profile}
+      freshBidPack={freshBidPack}
       onGoToUpload={() => router.push("/upload")}
       onStartInterview={handleStartInterview}
+      onShowRankings={() => {
+        handleAcknowledgeFreshBidPack();
+        router.push("/results");
+      }}
+      onSaveEdits={handleSaveProfileEdits}
     />
   );
 }

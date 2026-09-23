@@ -26,7 +26,7 @@ export function CircadianInfo() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 text-[10px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
+        className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
       >
         <StarIcon className="h-2.5 w-2.5" />
         What do the circadian stars mean?

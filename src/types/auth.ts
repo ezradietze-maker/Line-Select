@@ -27,6 +27,15 @@ export interface StoredCredential {
   email: string;
   passwordHash: string;
   salt: string;
+  /**
+   * Hash of the pilot's one-time recovery code — their way back in if they
+   * forget the password, with no email service involved. Absent on an
+   * account created before recovery codes existed (they can generate one
+   * from the account menu while signed in). Hashed and salted exactly like
+   * the password; the code itself is only ever shown once, at creation.
+   */
+  recoveryHash?: string;
+  recoverySalt?: string;
 }
 
 export interface AuthSession {

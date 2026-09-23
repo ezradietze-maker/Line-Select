@@ -21,11 +21,10 @@ interface InboxScreenProps {
   bidPack: BidPack | null;
   user: UserAccount | null;
   /** A synthetic, client-only offer for demo purposes — see `fake-trade-offers.ts`. */
-  demoOffer?: TradeOffer | null;
   onGoToTradeBoard: () => void;
 }
 
-export function InboxScreen({ bidPack, user, demoOffer, onGoToTradeBoard }: InboxScreenProps) {
+export function InboxScreen({ bidPack, user, onGoToTradeBoard }: InboxScreenProps) {
   const [offers, setOffers] = useState<TradeOffer[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,7 +43,7 @@ export function InboxScreen({ bidPack, user, demoOffer, onGoToTradeBoard }: Inbo
   }, [refresh]);
 
   const realVisibleOffers = bidPack ? offers.filter((o) => sameBidPack(o, bidPack)) : offers;
-  const visibleOffers = demoOffer && bidPack ? [demoOffer, ...realVisibleOffers] : realVisibleOffers;
+  const visibleOffers = realVisibleOffers;
 
   const { needsResponse, directInterest, accepted } = computeInboxSections(visibleOffers, user?.id);
 

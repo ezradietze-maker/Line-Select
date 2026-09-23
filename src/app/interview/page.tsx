@@ -7,7 +7,7 @@ import { useAppState } from "@/lib/app-state";
 
 export default function InterviewPage() {
   const router = useRouter();
-  const { bidPack, profile, interviewKey, handleInterviewComplete } = useAppState();
+  const { bidPack, profile, user, interviewKey, handleInterviewComplete } = useAppState();
 
   useEffect(() => {
     if (!bidPack) router.replace("/upload");
@@ -21,6 +21,7 @@ export default function InterviewPage() {
       bidPack={bidPack}
       onComplete={handleInterviewComplete}
       priorProfile={profile}
+      userId={user?.id ?? null}
     />
   );
 }

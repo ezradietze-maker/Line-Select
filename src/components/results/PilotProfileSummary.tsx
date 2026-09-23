@@ -32,7 +32,7 @@ export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
   if (qualitativeFacts.length === 0) return null;
 
   return (
-    <div className="mb-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
+    <div className="mb-4 rounded-xl border border-border bg-surface p-4 sm:p-6">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
@@ -41,7 +41,7 @@ export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
       >
         <div>
           <div className="text-sm font-semibold text-ink">What we learned about you</div>
-          <p className="mt-0.5 text-xs text-ink-faint">
+          <p className="mt-0.5 hidden text-xs text-ink-faint sm:block">
             {qualitativeFacts.length} thing{qualitativeFacts.length === 1 ? "" : "s"} from your interview that
             {qualitativeFacts.length === 1 ? " doesn't" : " don't"} show up as a number on any line, but are
             still worth knowing.

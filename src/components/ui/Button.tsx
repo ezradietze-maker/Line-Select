@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "primary" | "secondary" | "ghost" | "danger";
 }
 
 const VARIANT_CLASSES: Record<NonNullable<ButtonProps["variant"]>, string> = {
@@ -10,6 +10,7 @@ const VARIANT_CLASSES: Record<NonNullable<ButtonProps["variant"]>, string> = {
   secondary:
     "bg-surface border border-border-strong text-ink hover:border-brand hover:text-brand hover:shadow-sm disabled:opacity-40 disabled:hover:translate-y-0",
   ghost: "text-ink-muted hover:text-ink disabled:opacity-40 disabled:hover:translate-y-0",
+  danger: "bg-danger text-white shadow-sm hover:opacity-90 hover:shadow-md disabled:opacity-40 disabled:hover:translate-y-0",
 };
 
 export function Button({

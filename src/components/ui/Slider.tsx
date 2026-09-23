@@ -14,8 +14,9 @@ interface SliderProps {
 }
 
 function formatSignedValue(value: number): string {
-  if (value === 0) return "0";
-  return value > 0 ? `+${value}` : `${value}`;
+  const rounded = Math.round(value);
+  if (rounded === 0) return "0";
+  return rounded > 0 ? `+${rounded}` : `${rounded}`;
 }
 
 export function Slider({

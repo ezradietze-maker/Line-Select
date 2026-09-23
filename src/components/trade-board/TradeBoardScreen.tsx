@@ -105,7 +105,11 @@ export function TradeBoardScreen({
   }, [refresh]);
 
   const realVisibleOffers = bidPack ? offers.filter((o) => sameBidPack(o, bidPack)) : offers;
-  const visibleOffers = demoOffer && bidPack ? [demoOffer, ...realVisibleOffers] : realVisibleOffers;
+  // The example offer only fills an otherwise-empty board — once a real
+  // pilot has posted something for this pack, the board shows only real
+  // offers, so an invented one never sits next to (or gets mistaken for) them.
+  const hasRealOpenOffer = realVisibleOffers.some((o) => o.status === "open" && o.offeringUserId !== user?.id);
+  const visibleOffers = demoOffer && bidPack && !hasRealOpenOffer ? [demoOffer, ...realVisibleOffers] : realVisibleOffers;
   const needsResponse = visibleOffers.filter(
     (o) => o.status === "pending" && o.offeringUserId === user?.id
   );
@@ -355,10 +359,13 @@ export function OfferCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-ink">
-            {isMine ? "You" : offer.offeringDisplayName} offering {offerTripName(offer.offeredTrip)}
+            {isMine ? "You" : offer.isDemo ? "Example pilot" : offer.offeringDisplayName} offering {offerTripName(offer.offeredTrip)}
             {offer.isDemo && (
-              <span className="ml-2 rounded-full bg-ink-faint/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
-                Demo
+              <span
+                title="No real pilot has posted an offer for this bid pack yet, so this is an example of what one looks like."
+                className="ml-2 rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-warn"
+              >
+                Example &mdash; not real
               </span>
             )}
           </div>

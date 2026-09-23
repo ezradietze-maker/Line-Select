@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { formatHoursValue } from "@/lib/interview-config";
 import type { FilterOptions } from "@/lib/line-filter-options";
 import {
   EMPTY_FILTERS,
@@ -75,7 +74,7 @@ export function ResultsFilterBar({
           type="button"
           onClick={() => setExpanded((e) => !e)}
           aria-expanded={expanded}
-          className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
             active ? "bg-brand-soft text-brand" : "text-ink-muted hover:text-ink"
           }`}
         >
@@ -141,7 +140,7 @@ export function ResultsFilterBar({
                     active={filters.minCreditHours === n}
                     onClick={() => onChange({ ...filters, minCreditHours: n })}
                   >
-                    {formatHoursValue(n)}+
+                    {Number.isInteger(n) ? `${n}+ hrs` : `${n.toFixed(1)}+ hrs`}
                   </Chip>
                 ))}
               </div>
@@ -264,7 +263,7 @@ export function ResultsFilterBar({
 function FilterRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
-      <span className="mt-1 w-24 shrink-0 text-xs font-medium text-ink-muted">{label}</span>
+      <span className="mt-1.5 w-24 shrink-0 text-[13px] font-medium text-ink-muted">{label}</span>
       {children}
     </div>
   );
@@ -275,7 +274,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
     <button
       type="button"
       onClick={onClick}
-      className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+      className={`shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${
         active
           ? "border-brand bg-brand-soft text-brand"
           : "border-border-strong text-ink-muted hover:border-brand hover:text-brand"

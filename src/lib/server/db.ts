@@ -84,6 +84,21 @@ export async function createUserWithCredential(
   await writeDb(db);
 }
 
+export async function updateCredential(
+  userId: string,
+  patch: Partial<Pick<StoredCredential, "passwordHash" | "salt" | "recoveryHash" | "recoverySalt">>
+): Promise<void> {
+  const db = await readDb();
+  const index = db.credentials.findIndex((c) => c.userId === userId);
+  if (index === -1) return;
+  db.credentials[index] = { ...db.credentials[index], ...patch };
+  await writeDb(db);
+}
+
+export async function findCredentialByUserId(userId: string): Promise<StoredCredential | null> {
+  return (await readDb()).credentials.find((c) => c.userId === userId) ?? null;
+}
+
 // ---- Sessions ----
 
 export async function createSession(session: ServerSession): Promise<void> {
@@ -100,6 +115,13 @@ export async function findSession(token: string): Promise<ServerSession | null> 
     return null;
   }
   return session;
+}
+
+/** Signs a pilot out everywhere — used after a password reset, so a session someone else may be holding can't outlive the credential that created it. */
+export async function deleteSessionsForUser(userId: string): Promise<void> {
+  const db = await readDb();
+  db.sessions = db.sessions.filter((s) => s.userId !== userId);
+  await writeDb(db);
 }
 
 export async function deleteSession(token: string): Promise<void> {

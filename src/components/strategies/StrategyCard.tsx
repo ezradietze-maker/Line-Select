@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import type { FeasibilityTier, Strategy, StrategyLineRecommendation } from "@/types/strategy";
 
 function VerificationBadge({ verification }: { verification: Strategy["verification"] }) {
@@ -140,6 +143,8 @@ export function StrategyCard({
   /** Absent hides the reaction buttons entirely — there's no profile yet for a reaction to nudge. */
   onReact?: (reaction: "used" | "dismissed") => void;
 }) {
+  // The mechanism paragraph and benefit bullets are the "why this works" — worth having, not worth putting in front of someone scanning eleven strategies for the one that fits. Lines (the actual picks) stay visible; the explanation is one tap away. A process tip (trade, grievance, vacation) has no lines at all — its explanation IS its content, so it starts open.
+  const [showHow, setShowHow] = useState(!!strategy.isProcessTip);
   return (
     <div
       className={`overflow-hidden rounded-xl border bg-surface ${
@@ -173,16 +178,27 @@ export function StrategyCard({
             {strategy.preferenceMatch.join(" and ")}.
           </p>
         )}
-        <p className="mt-3 text-sm leading-relaxed text-ink-muted">{strategy.mechanism}</p>
-
-        <ul className="mt-3 space-y-1.5">
-          {strategy.benefits.map((b) => (
-            <li key={b} className="flex gap-2 text-sm text-ink-muted">
-              <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
-              {b}
-            </li>
-          ))}
-        </ul>
+        <button
+          type="button"
+          onClick={() => setShowHow((v) => !v)}
+          aria-expanded={showHow}
+          className="mt-3 text-sm font-medium text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink"
+        >
+          {showHow ? "Hide how this works" : "How this works"}
+        </button>
+        {showHow && (
+          <div className="mt-3">
+            <p className="text-sm leading-relaxed text-ink-muted">{strategy.mechanism}</p>
+            <ul className="mt-3 space-y-1.5">
+              {strategy.benefits.map((b) => (
+                <li key={b} className="flex gap-2 text-sm text-ink-muted">
+                  <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
+                  {b}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {strategy.lines.length > 0 && (
           <div className="mt-4 space-y-2.5">

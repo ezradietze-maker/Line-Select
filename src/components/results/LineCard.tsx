@@ -11,8 +11,9 @@ import { MatchBar } from "@/components/results/MatchBar";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { TripList } from "@/components/results/TripList";
-import { CalendarIcon, ChevronDownIcon, ClockIcon, CoinIcon, GripIcon, PlaneIcon } from "@/components/ui/icons";
+import { ChevronDownIcon, GripIcon, StarIcon } from "@/components/ui/icons";
 import { Tabs } from "@/components/ui/Tabs";
+import { buildLineFactChips, type LineFactChip } from "@/lib/line-summary";
 import { topImplicitContributions } from "@/lib/rank-learning";
 import type { LineScore } from "@/lib/scoring";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -48,6 +49,15 @@ interface LineCardProps {
   /** Whether this line is currently one of the (at most two) picked for the side-by-side comparison view — see `LineComparisonModal`. */
   isComparing: boolean;
   onToggleCompare: () => void;
+  /** Shortlisted by the pilot. */
+  starred: boolean;
+  onToggleStar: () => void;
+  /** Hidden by the pilot — rendered as a one-line placeholder with a restore button, only ever reached when "show hidden lines" is on. */
+  hidden: boolean;
+  onHide: () => void;
+  onRestore: () => void;
+  /** Whether the drag handle is offered — drag-to-swap only means something when the list is in the pilot's own ranking order. */
+  draggable: boolean;
 }
 
 export const LineCard = memo(function LineCard({
@@ -60,6 +70,12 @@ export const LineCard = memo(function LineCard({
   bidPeriodDays,
   isComparing,
   onToggleCompare,
+  starred,
+  onToggleStar,
+  hidden,
+  onHide,
+  onRestore,
+  draggable,
 }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
@@ -77,7 +93,6 @@ export const LineCard = memo(function LineCard({
     nearMissDealbreakers,
     qualitativeTieIns,
     counterfactual,
-    confidenceLevel,
     historicalNote,
     cumulativeCircadian,
     hotelReviewTieIn,
@@ -87,16 +102,6 @@ export const LineCard = memo(function LineCard({
     [line.id, implicitValuesByLine, profile]
   );
   const isTopPick = rank === 1;
-  // Only worth a caveat when the profile is thin/moderate — a "thorough"
-  // interview needs no qualifier, and null (richness wasn't computed, e.g. a
-  // legacy static-interview profile) stays silent rather than guessing.
-  const confidenceNote =
-    confidenceLevel === "thin"
-      ? "Based on a shorter interview — a few more questions would sharpen this."
-      : confidenceLevel === "moderate"
-        ? "Based on a moderate-length interview."
-        : null;
-
   function openToTab(tab: DetailTab) {
     setActiveTab(tab);
     setExpanded(true);
@@ -109,6 +114,25 @@ export const LineCard = memo(function LineCard({
   // ResultsView renders the actual floating copy that follows the pointer.
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: line.id });
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
+
+  const chips = useMemo(() => buildLineFactChips(line, profile), [line, profile]);
+
+  if (hidden) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-surface px-4 py-2.5 text-sm text-ink-faint">
+        <span>
+          Line {line.lineNumber} <span className="text-ink-faint">&middot; hidden</span>
+        </span>
+        <button
+          type="button"
+          onClick={onRestore}
+          className="font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand-strong"
+        >
+          Restore
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -127,103 +151,124 @@ export const LineCard = memo(function LineCard({
       )}
       <DealbreakerBanner violations={violatedDealbreakers} />
       <div className="flex items-stretch">
-        <button
-          ref={setDragRef}
-          type="button"
-          {...attributes}
-          {...listeners}
-          title="Drag onto another line to swap ranks"
-          aria-label="Drag onto another line to swap ranks — teaches the app your preferences"
-          className="flex shrink-0 touch-none cursor-grab items-center justify-center border-r border-border px-2.5 text-ink-faint hover:bg-black/[0.05] hover:text-ink active:cursor-grabbing"
-        >
-          <GripIcon className="h-4 w-4" />
-        </button>
+        {draggable && (
+          <button
+            ref={setDragRef}
+            type="button"
+            {...attributes}
+            {...listeners}
+            title="Drag onto another line to swap ranks"
+            aria-label="Drag onto another line to swap ranks — teaches the app your preferences"
+            className="flex shrink-0 touch-none cursor-grab items-center justify-center border-r border-border px-2.5 text-ink-faint hover:bg-black/[0.05] hover:text-ink active:cursor-grabbing"
+          >
+            <GripIcon className="h-4 w-4" />
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={() => setExpanded((e) => !e)}
-          className="flex flex-1 flex-col gap-4 p-5 text-left lg:flex-row lg:items-center lg:p-6"
-          aria-expanded={expanded}
-        >
-          <div className="flex items-center gap-4 lg:w-56 lg:shrink-0">
-            <ScoreRing score={score} />
-            <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-ink-faint">
+        <div className="min-w-0 flex-1 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <ScoreRing score={score} size={48} />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium uppercase tracking-wide text-ink-muted">
                 #{rank} &middot; Line {line.lineNumber}
               </div>
-              {lineScore.estimated ? (
-                <div
-                  className="mt-0.5 inline-flex items-center gap-1 text-sm font-medium text-warn"
-                  title="This line's calendar entries couldn't be confidently matched to a specific pairing, so its trip shape is estimated from monthly totals rather than verified."
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 3h.01M10.3 3.9L2.7 17a2 2 0 001.7 3h15.2a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
-                  </svg>
-                  Estimated trip
-                </div>
-              ) : (
-                <div className="mt-0.5 text-sm text-ink-muted">
-                  {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
-                </div>
-              )}
-              {confidenceNote && (
-                <div className="mt-0.5 text-[11px] text-ink-faint" title="How much of your interview this score actually has to go on — more questions answered means a more confident number, not a different scoring method.">
-                  {confidenceNote}
-                </div>
-              )}
+              <div className="mt-0.5 text-sm text-ink-muted">
+                {lineScore.estimated ? (
+                  <span
+                    className="inline-flex items-center gap-1 font-medium text-warn"
+                    title="This line's calendar entries couldn't be confidently matched to a specific pairing, so its trip shape is estimated from monthly totals rather than verified."
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 3h.01M10.3 3.9L2.7 17a2 2 0 001.7 3h15.2a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+                    </svg>
+                    Estimated trips
+                  </span>
+                ) : (
+                  <>
+                    {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
+                  </>
+                )}
+                {" · "}TAFB {formatHours(line.totalTafbHours)} &middot; {line.totalLandings} landings
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <button
+                type="button"
+                onClick={onToggleStar}
+                aria-pressed={starred}
+                aria-label={starred ? "Remove from shortlist" : "Add to shortlist"}
+                title={starred ? "On your shortlist" : "Shortlist this line"}
+                className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-black/[0.05] ${
+                  starred ? "text-warn" : "text-ink-faint hover:text-ink"
+                }`}
+              >
+                <StarIcon filled={starred} className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={onHide}
+                aria-label="Hide this line"
+                title="Hide this line"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-black/[0.05] hover:text-ink"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4" aria-hidden>
+                  <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
             </div>
           </div>
 
-          <p className="flex-1 text-sm leading-relaxed text-ink">{explanation}</p>
+          <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_15.5rem] lg:items-start">
+            <div>
+              <ul className="flex flex-wrap gap-1.5" aria-label="Key facts for this line">
+                {chips.map((chip, i) => (
+                  <FactChip key={i} chip={chip} />
+                ))}
+              </ul>
 
-          <svg
-            className={`h-5 w-5 shrink-0 text-ink-faint transition-transform ${expanded ? "rotate-180" : ""}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-            aria-hidden
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-      </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {!lineScore.estimated && (
+                  <LineInsightBadge
+                    nearMissCount={nearMissDealbreakers.length}
+                    hasCircadianRisk={!!cumulativeCircadian?.hasCompoundingRisk}
+                    onClick={() => openToTab(cumulativeCircadian?.hasCompoundingRisk ? "circadian" : "breakdown")}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={onToggleCompare}
+                  className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    isComparing
+                      ? "border-brand bg-brand-soft text-brand"
+                      : "border-border text-ink-muted hover:border-border-strong hover:text-ink"
+                  }`}
+                >
+                  {isComparing ? "Comparing" : "Compare"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpanded((e) => !e)}
+                  aria-expanded={expanded}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-border-strong hover:text-ink"
+                >
+                  {expanded ? "Hide details" : "Details"}
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                </button>
+              </div>
+            </div>
 
-      <div className="flex items-center gap-4 border-t border-border px-5 py-3 font-mono text-xs text-ink-muted">
-        <Stat icon={<CalendarIcon />} label="Days off" value={String(line.daysOff)} />
-        <Stat icon={<CoinIcon />} label="Credit" value={formatHours(line.totalCreditHours)} />
-        <Stat icon={<ClockIcon />} label="TAFB" value={formatHours(line.totalTafbHours)} />
-        <Stat icon={<PlaneIcon />} label="Ldgs" value={String(line.totalLandings)} />
-      </div>
-
-      {!lineScore.estimated && (
-        <div className="space-y-2.5 border-t border-border px-5 py-3 sm:px-6">
-          <div className="flex flex-wrap items-center gap-2">
-            <LineInsightBadge
-              nearMissCount={nearMissDealbreakers.length}
-              hasCircadianRisk={!!cumulativeCircadian?.hasCompoundingRisk}
-              onClick={() => openToTab(cumulativeCircadian?.hasCompoundingRisk ? "circadian" : "breakdown")}
-            />
-            <button
-              type="button"
-              onClick={onToggleCompare}
-              className={`inline-flex w-fit items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
-                isComparing
-                  ? "border-brand bg-brand-soft text-brand"
-                  : "border-border text-ink-faint hover:border-border-strong hover:text-ink-muted"
-              }`}
-            >
-              {isComparing ? "Comparing" : "Compare"}
-            </button>
+            {!lineScore.estimated && (
+              <MiniLinePreview
+                line={line}
+                homeBaseOffsetMinutes={homeBaseOffsetMinutes}
+                bidPeriodStart={bidPeriodStart}
+                bidPeriodDays={bidPeriodDays}
+                showLegend={false}
+              />
+            )}
           </div>
-          <MiniLinePreview
-            line={line}
-            homeBaseOffsetMinutes={homeBaseOffsetMinutes}
-            bidPeriodStart={bidPeriodStart}
-            bidPeriodDays={bidPeriodDays}
-          />
         </div>
-      )}
+      </div>
 
       <AnimatePresence initial={false}>
         {expanded && (
@@ -263,6 +308,7 @@ export const LineCard = memo(function LineCard({
 
               {activeTab === "breakdown" && (
                 <div className="space-y-3">
+                  {explanation && <p className="text-sm leading-relaxed text-ink">{explanation}</p>}
                   <CategoryBars categoryScores={categoryScores} />
 
                   {qualitativeTieIns.length > 0 && (
@@ -283,7 +329,7 @@ export const LineCard = memo(function LineCard({
 
                   {contributors.length > 0 && (
                     <div>
-                      <div className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
                         What&rsquo;s working
                       </div>
                       <ul className="mt-1 space-y-1">
@@ -299,7 +345,7 @@ export const LineCard = memo(function LineCard({
 
                   {detractors.length > 0 && (
                     <div>
-                      <div className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
                         What&rsquo;s not
                       </div>
                       <ul className="mt-1 space-y-1">
@@ -315,7 +361,7 @@ export const LineCard = memo(function LineCard({
 
                   {nearMissDealbreakers.length > 0 && (
                     <div>
-                      <div className="text-[10px] font-medium uppercase tracking-wide text-warn">
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-warn">
                         Close call{nearMissDealbreakers.length > 1 ? "s" : ""}
                       </div>
                       <ul className="mt-1 space-y-1">
@@ -337,7 +383,7 @@ export const LineCard = memo(function LineCard({
                   <button
                     type="button"
                     onClick={() => setShowEveryDimension((v) => !v)}
-                    className="flex items-center gap-1.5 text-[10px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
+                    className="flex items-center gap-1.5 text-[11px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
                     aria-expanded={showEveryDimension}
                   >
                     See every dimension
@@ -354,7 +400,7 @@ export const LineCard = memo(function LineCard({
                   {showEveryDimension && implicitFactors.length > 0 && (
                     <div>
                       <div
-                        className="text-[10px] font-medium uppercase tracking-wide text-ink-faint"
+                        className="text-[11px] font-medium uppercase tracking-wide text-ink-faint"
                         title="Patterns the model found predict what you pick — either from dragging lines up or down here, or from how you answered the interview."
                       >
                         Also factored in
@@ -410,22 +456,17 @@ export const LineCard = memo(function LineCard({
   );
 });
 
-function Stat({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
+const CHIP_TONE: Record<LineFactChip["tone"], string> = {
+  good: "border-good/40 bg-good-soft text-good",
+  warn: "border-warn/40 bg-warn-soft text-warn",
+  neutral: "border-border bg-canvas text-ink",
+};
+
+function FactChip({ chip }: { chip: LineFactChip }) {
   return (
-    <div>
-      <div className="flex items-center gap-1 text-ink-faint">
-        {icon}
-        {label}
-      </div>
-      <div className="mt-0.5 font-tabular text-ink">{value}</div>
-    </div>
+    <li className={`inline-flex items-baseline gap-1.5 rounded-full border px-3 py-1 text-[13px] ${CHIP_TONE[chip.tone]}`}>
+      <span className="font-semibold">{chip.main}</span>
+      {chip.note && <span className="font-normal opacity-90">{chip.note}</span>}
+    </li>
   );
 }

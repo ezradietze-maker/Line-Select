@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { RecoveryCodePanel } from "@/components/auth/RecoveryCodePanel";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
-import { login, signUp } from "@/lib/auth";
+import { login, resetPassword, signUp } from "@/lib/auth";
 import type { UserAccount } from "@/types/auth";
 
-type Mode = "login" | "signup";
+type Mode = "login" | "signup" | "reset";
 
 interface AuthScreenProps {
   onAuthenticated: (user: UserAccount) => void;
@@ -21,6 +22,9 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  // After signup or a reset, the pilot must see (and confirm they saved) their recovery code before being let in.
+  const [reveal, setReveal] = useState<{ user: UserAccount; code: string; reason: "signup" | "reset" } | null>(null);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -34,7 +38,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
     e.preventDefault();
     setError(null);
 
-    if (mode === "signup" && password !== confirmPassword) {
+    if ((mode === "signup" || mode === "reset") && password !== confirmPassword) {
       setError("Passwords don't match.");
       return;
     }
@@ -51,7 +55,9 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
     const result =
       mode === "login"
         ? await login(email, password)
-        : await signUp(email, password, displayName);
+        : mode === "reset"
+          ? await resetPassword(email, recoveryCode, password)
+          : await signUp(email, password, displayName);
     setSubmitting(false);
 
     if (!result.ok || !result.user) {
@@ -59,20 +65,49 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
       return;
     }
 
+    if (mode !== "login" && result.recoveryCode) {
+      setReveal({ user: result.user, code: result.recoveryCode, reason: mode === "reset" ? "reset" : "signup" });
+      return;
+    }
     onAuthenticated(result.user);
+  }
+
+  if (reveal) {
+    return (
+      <div className="mx-auto w-full max-w-md animate-fade-in">
+        <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
+          <RecoveryCodePanel
+            code={reveal.code}
+            reason={reveal.reason}
+            doneLabel="Continue to Line Select"
+            onDone={() => onAuthenticated(reveal.user)}
+          />
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="mx-auto w-full max-w-md animate-fade-in">
       <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
-        <div className="mb-6 grid grid-cols-2 rounded-lg bg-canvas p-1">
-          <TabButton active={mode === "login"} onClick={() => switchMode("login")}>
-            Log in
-          </TabButton>
-          <TabButton active={mode === "signup"} onClick={() => switchMode("signup")}>
-            Create account
-          </TabButton>
-        </div>
+        {mode === "reset" ? (
+          <div className="mb-6">
+            <h1 className="text-lg font-semibold text-ink">Reset your password</h1>
+            <p className="mt-1 text-sm leading-relaxed text-ink-muted">
+              Enter the recovery code you saved when you created your account. There&rsquo;s no email reset, so this
+              code is how we know it&rsquo;s you.
+            </p>
+          </div>
+        ) : (
+          <div className="mb-6 grid grid-cols-2 rounded-lg bg-canvas p-1">
+            <TabButton active={mode === "login"} onClick={() => switchMode("login")}>
+              Log in
+            </TabButton>
+            <TabButton active={mode === "signup"} onClick={() => switchMode("signup")}>
+              Create account
+            </TabButton>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {mode === "signup" && (
@@ -95,8 +130,21 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
             placeholder="you@example.com"
             required
           />
+          {mode === "reset" && (
+            <TextField
+              label="Recovery code"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              value={recoveryCode}
+              onChange={(e) => setRecoveryCode(e.target.value)}
+              placeholder="XXXX-XXXX-XXXX-XXXX-XXXX"
+              required
+            />
+          )}
           <TextField
-            label="Password"
+            label={mode === "reset" ? "New password" : "Password"}
             type="password"
             autoComplete={mode === "login" ? "current-password" : "new-password"}
             value={password}
@@ -105,9 +153,9 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
             required
             minLength={6}
           />
-          {mode === "signup" && (
+          {(mode === "signup" || mode === "reset") && (
             <TextField
-              label="Confirm password"
+              label={mode === "reset" ? "Confirm new password" : "Confirm password"}
               type="password"
               autoComplete="new-password"
               value={confirmPassword}
@@ -148,8 +196,28 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
               ? "Please wait…"
               : mode === "login"
                 ? "Log in"
-                : "Create account"}
+                : mode === "reset"
+                  ? "Reset password"
+                  : "Create account"}
           </Button>
+          {mode === "login" && (
+            <button
+              type="button"
+              onClick={() => switchMode("reset")}
+              className="block w-full text-center text-sm text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink"
+            >
+              Forgot your password?
+            </button>
+          )}
+          {mode === "reset" && (
+            <button
+              type="button"
+              onClick={() => switchMode("login")}
+              className="block w-full text-center text-sm text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink"
+            >
+              Back to log in
+            </button>
+          )}
         </form>
 
         <button
@@ -165,8 +233,8 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
         Your account is real and stored on this app&rsquo;s own server so
         trade offers can be seen by other pilots, and so your preferences
         follow you to a new device or browser once you&rsquo;re signed in
-        &mdash; but this is still a prototype: there&rsquo;s no password
-        reset yet, so hold onto your password. Your bid pack itself still
+        &mdash; and if you forget your password, the recovery code you get
+        when you sign up is your way back in. Your bid pack itself still
         stays on each device.
       </p>
     </div>

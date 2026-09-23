@@ -225,9 +225,9 @@ export const NIGHTS_HOME_CONFIG: TargetSliderQuestionConfig = {
   key: "daysOff",
   question: "What does your ideal bid month look like?",
   helpText:
-    "How many nights do you want to actually sleep in your own bed this bid period? Drag to the number that feels right — bounded to what's actually available in this bid pack.",
-  unitSingular: "night home",
-  unitPlural: "nights home",
+    "How many days off do you want this bid period? Drag to the number that feels right — bounded to what's actually available in this bid pack.",
+  unitSingular: "day off",
+  unitPlural: "days off",
   formatValue: (v) => String(Math.round(v)),
   step: 1,
   noTargetFallbackText: NO_SLIDER_FALLBACK_TEXT,
@@ -428,14 +428,14 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
     dimension: "daysOff",
     prompt: "Would you rather have...",
     helpText:
-      "Same idea as the nights-home question earlier, posed as a direct trade-off against a fuller schedule.",
+      "Same idea as the days-off question earlier, posed as a direct trade-off against a fuller schedule.",
     optionA: {
-      label: "More nights home",
-      description: "A lighter schedule — more nights actually home this month.",
+      label: "More days off",
+      description: "A lighter schedule — more days off this month.",
     },
     optionB: {
       label: "A fuller schedule",
-      description: "Fewer nights home, but more trips and more total pay.",
+      description: "Fewer days off, but more trips and more total pay.",
     },
     positiveOption: "A",
   },

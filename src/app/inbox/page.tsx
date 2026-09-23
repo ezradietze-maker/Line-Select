@@ -6,12 +6,11 @@ import { useAppState } from "@/lib/app-state";
 
 export default function InboxPage() {
   const router = useRouter();
-  const { bidPack, user, demoOffer } = useAppState();
+  const { bidPack, user } = useAppState();
   return (
     <InboxScreen
       bidPack={bidPack}
       user={user}
-      demoOffer={demoOffer}
       onGoToTradeBoard={() => router.push("/trade-board")}
     />
   );

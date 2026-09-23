@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "September 22, 2026";
+const LAST_UPDATED = "September 23, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -75,9 +75,10 @@ export default function PrivacyPage() {
             text (for hotel summaries), are sent to Anthropic to generate that turn&rsquo;s response
             or summary. We do not send your name, email, or account identity as part of these
             requests. Anthropic processes this data under its own API terms; as of this writing,
-            Anthropic does not use API inputs to train its models by default. We do not separately
-            store your interview transcript on our servers &mdash; it lives in your browser
-            alongside the rest of your profile, as described above.
+            Anthropic does not use API inputs to train its models by default. Your interview
+            transcript is stored alongside the rest of your profile &mdash; in your browser, and,
+            if you&rsquo;re signed in, on our server as part of your saved preferences (Section 2) &mdash;
+            not in any separate record.
           </p>
         </Section>
 
@@ -99,6 +100,10 @@ export default function PrivacyPage() {
               Your password &mdash; never in plain text. It&rsquo;s hashed with a per-account
               random salt using scrypt, a standard, well-reviewed algorithm, before it&rsquo;s
               stored;
+            </li>
+            <li>
+              A recovery code, shown to you once when you sign up, so you can get back in if you forget your
+              password &mdash; also stored only as a salted hash, never in a form that can be read back;
             </li>
             <li>
               A session token in an <code className="font-mono text-xs">httpOnly</code> cookie

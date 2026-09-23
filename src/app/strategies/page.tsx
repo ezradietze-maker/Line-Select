@@ -16,6 +16,7 @@ export default function StrategiesPage() {
       user={user}
       onSaveSeniority={handleSaveSeniority}
       onGoToUpload={() => router.push("/upload")}
+      onGoToResults={() => router.push("/results")}
       onStartInterview={handleStartInterview}
       onUpdateProfile={handleUpdateProfile}
     />
