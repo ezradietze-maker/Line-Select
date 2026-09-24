@@ -10,12 +10,15 @@ const CO_RE = /C\/O\.\s+(\d{1,3}):(\d{2})/g;
 const DUTY_PERIODS_RE = /NO\.\s+DP.?S\s+(\d+)/i;
 const SEPARATOR_RE = /^_{5,}$/;
 const TOLERANCE_HOURS = 0.1;
-/** Above this many candidate pairings, a combination search stops being
- * worth the (still small) cost — a pool this size usually means the
- * candidate numbers were mostly noise, and a coincidental sum match becomes
- * more likely precisely when it's least trustworthy. This is a sanity cap,
- * not a real performance constraint. */
-const MAX_POOL_FOR_SEARCH = 200;
+/** Up to this many candidates, the search is exhaustive (smallest subset
+ * first, no cost cap) — the original, fully-trusted behavior. */
+const MAX_POOL_FOR_EXHAUSTIVE_SEARCH = 200;
+/** Real busy lines (B777 MEM) carry 200–320 candidates — most are
+ * incidental short digit runs (day cells, stray counts) that happen to equal
+ * some pairing's flight number. Above the exhaustive size, the pool is
+ * narrowed and searched in stages under a node budget so a pathological
+ * line fails fast instead of hanging the upload. */
+const NODE_BUDGET_PER_STAGE = 400_000;
 /** The busiest real lines (high duty-period counts, lots of short
  * flight-number-only trips stitched together) can combine well past three
  * separate pairings in a month — this is generous enough to cover them
@@ -71,9 +74,8 @@ interface SequenceMatch {
  * make an otherwise-solvable line impossible to match; letting the search
  * choose which candidates actually belong is what the self-verification
  * against CR/TAFB/BLK/LANDINGS is really for. A combined pool above
- * MAX_POOL_FOR_SEARCH skips the search entirely: a pool that size usually
- * means the candidate numbers were mostly noise, and a coincidental sum
- * match becomes more likely precisely when it's least trustworthy.
+ * MAX_POOL_FOR_EXHAUSTIVE_SEARCH is narrowed and searched in stages under a
+ * node budget instead — see `findMatchingPairings`.
  */
 interface Candidate {
   pairing: ParsedPairing;
@@ -94,13 +96,20 @@ function searchSubsets(
   maxSize: number,
   targetCredit: number,
   targetBlock: number,
-  targetLandings: number
+  targetLandings: number,
+  nodeBudget = Infinity,
+  tafb: { target: number; exact: boolean } | null = null
 ): Candidate[] | null {
-  function isMatch(credit: number, block: number, landings: number): boolean {
+  let nodes = 0;
+  function isMatch(credit: number, block: number, landings: number, accTafbHours: number): boolean {
     return (
       Math.abs(credit - targetCredit) < TOLERANCE_HOURS &&
       Math.abs(block - targetBlock) < TOLERANCE_HOURS &&
-      landings === targetLandings
+      landings === targetLandings &&
+      (tafb === null ||
+        (tafb.exact
+          ? Math.abs(accTafbHours - tafb.target) < TOLERANCE_HOURS
+          : accTafbHours > tafb.target - TOLERANCE_HOURS))
     );
   }
 
@@ -109,12 +118,14 @@ function searchSubsets(
     chosen: Candidate[],
     accCredit: number,
     accBlock: number,
-    accLandings: number
+    accLandings: number,
+    accTafb: number
   ): Candidate[] | null {
-    if (chosen.length > 0 && isMatch(accCredit, accBlock, accLandings)) return chosen;
+    if (chosen.length > 0 && isMatch(accCredit, accBlock, accLandings, accTafb)) return chosen;
     if (chosen.length >= maxSize) return null;
 
     for (let i = startIndex; i < pool.length; i++) {
+      if (++nodes > nodeBudget) return null;
       const c = pool[i];
       const nextCredit = accCredit + c.pairing.creditHours * c.weight;
       const nextBlock = accBlock + c.pairing.blockHours * c.weight;
@@ -122,14 +133,16 @@ function searchSubsets(
       if (nextCredit > targetCredit + TOLERANCE_HOURS) continue;
       if (nextBlock > targetBlock + TOLERANCE_HOURS) continue;
       if (nextLandings > targetLandings) continue;
+      const nextTafb = accTafb + c.pairing.tafbHours * c.weight;
+      if (tafb?.exact && nextTafb > tafb.target + TOLERANCE_HOURS) continue;
 
-      const result = search(i + 1, [...chosen, c], nextCredit, nextBlock, nextLandings);
+      const result = search(i + 1, [...chosen, c], nextCredit, nextBlock, nextLandings, nextTafb);
       if (result) return result;
     }
     return null;
   }
 
-  return search(0, [], 0, 0, 0);
+  return search(0, [], 0, 0, 0, 0);
 }
 
 function findMatchingPairings(
@@ -137,16 +150,49 @@ function findMatchingPairings(
   flightMatches: SequenceMatch[],
   targetCredit: number,
   targetBlock: number,
-  targetLandings: number
+  targetLandings: number,
+  targetTafb: number
 ): ParsedPairing[] | null {
-  const pool: Candidate[] = [
-    ...sequenceMatches.map((m) => ({ pairing: m.pairing, weight: m.count })),
-    ...flightMatches.map((m) => ({ pairing: m.pairing, weight: m.count })),
-  ];
+  // A line's printed TAFB is the sum of its pairings' own TAFBs, a fourth,
+  // independent check on top of credit/block/landings — different pairing
+  // combinations often tie on those three and only the right one also agrees
+  // on TAFB.
+  const seq = sequenceMatches.map((m) => ({ pairing: m.pairing, weight: m.count }));
+  const flights = flightMatches.map((m) => ({ pairing: m.pairing, weight: m.count }));
+  const exhaustive = seq.length + flights.length <= MAX_POOL_FOR_EXHAUSTIVE_SEARCH;
 
-  if (pool.length > MAX_POOL_FOR_SEARCH) return null;
+  let stages: Candidate[][];
+  if (exhaustive) {
+    stages = [[...seq, ...flights]];
+  } else {
+    // A candidate can only belong if it fits inside the line's totals on its
+    // own. Then widen in stages, most-trustworthy first: sequence numbers
+    // (near-unique), then repeated flight numbers, then everything else.
+    const fits = (c: Candidate) =>
+      c.pairing.creditHours * c.weight <= targetCredit + TOLERANCE_HOURS &&
+      c.pairing.blockHours * c.weight <= targetBlock + TOLERANCE_HOURS &&
+      c.pairing.landings * c.weight <= targetLandings;
+    const fitSeq = seq.filter(fits);
+    const fitFlights = flights.filter(fits).sort((x, y) => y.weight - x.weight);
+    stages = [fitSeq, [...fitSeq, ...fitFlights.slice(0, 60)], [...fitSeq, ...fitFlights]];
+  }
+  const budget = exhaustive ? Infinity : NODE_BUDGET_PER_STAGE;
 
-  const chosen = searchSubsets(pool, MAX_COMBINATION_SIZE, targetCredit, targetBlock, targetLandings);
+  let chosen: Candidate[] | null = null;
+  // Exact TAFB first; then TAFB only as a floor. A trip straddling the bid
+  // period's edge prints a line TAFB *below* its pairing's full TAFB (never
+  // above it — verified across every matched line of a real pack), so a
+  // combination whose TAFB falls short of the line's is always wrong.
+  for (const tafb of [
+    { target: targetTafb, exact: true },
+    { target: targetTafb, exact: false },
+  ]) {
+    for (const stage of stages) {
+      chosen = searchSubsets(stage, MAX_COMBINATION_SIZE, targetCredit, targetBlock, targetLandings, budget, tafb);
+      if (chosen) break;
+    }
+    if (chosen) break;
+  }
   if (!chosen) return null;
   return chosen.flatMap((c) => Array(c.weight).fill(c.pairing) as ParsedPairing[]);
 }
@@ -304,7 +350,8 @@ export function parseLineGridColumn(
       Array.from(flightPool.values()),
       totalCreditHours + creditCarryOver,
       totalBlockHours + blockCarryOver,
-      totalLandings
+      totalLandings,
+      totalTafbHours
     );
 
     if (!pairings) {

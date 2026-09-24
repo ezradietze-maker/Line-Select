@@ -33,6 +33,14 @@ interface DbShape {
   /** Keyed by userId — one flat overwrite per pilot, same shape as the localStorage record it replaces as the source of truth. See `getPreferenceProfile` for why this exists. */
   preferenceProfiles: Record<string, PreferenceProfile>;
   feedbackSubmissions: FeedbackSubmission[];
+  /** Emailed password-reset links. Only a hash of each token is stored, so a leaked database can't be used to take over an account. */
+  passwordResetTokens: PasswordResetToken[];
+}
+
+export interface PasswordResetToken {
+  tokenHash: string;
+  userId: string;
+  expiresAt: string;
 }
 
 const DB_KEY = "line-select:db";
@@ -48,6 +56,7 @@ function emptyDb(): DbShape {
     interviewCandidateFacts: [],
     preferenceProfiles: {},
     feedbackSubmissions: [],
+    passwordResetTokens: [],
   };
 }
 
@@ -97,6 +106,29 @@ export async function updateCredential(
 
 export async function findCredentialByUserId(userId: string): Promise<StoredCredential | null> {
   return (await readDb()).credentials.find((c) => c.userId === userId) ?? null;
+}
+
+// ---- Password reset tokens ----
+
+/** One live token per pilot — asking again replaces the previous link. Expired tokens are swept on every write. */
+export async function saveResetToken(token: PasswordResetToken): Promise<void> {
+  const db = await readDb();
+  const now = Date.now();
+  db.passwordResetTokens = db.passwordResetTokens.filter(
+    (t) => t.userId !== token.userId && new Date(t.expiresAt).getTime() > now
+  );
+  db.passwordResetTokens.push(token);
+  await writeDb(db);
+}
+
+/** Single-use: a valid token is removed as it's returned, so a link can never be replayed. */
+export async function consumeResetToken(tokenHash: string): Promise<string | null> {
+  const db = await readDb();
+  const match = db.passwordResetTokens.find((t) => t.tokenHash === tokenHash);
+  if (!match) return null;
+  db.passwordResetTokens = db.passwordResetTokens.filter((t) => t.tokenHash !== tokenHash);
+  await writeDb(db);
+  return new Date(match.expiresAt).getTime() > Date.now() ? match.userId : null;
 }
 
 // ---- Sessions ----

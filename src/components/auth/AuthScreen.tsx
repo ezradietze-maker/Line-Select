@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { RecoveryCodePanel } from "@/components/auth/RecoveryCodePanel";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
-import { login, resetPassword, signUp } from "@/lib/auth";
+import { fetchEmailResetEnabled, login, requestResetEmail, resetPassword, signUp } from "@/lib/auth";
 import type { UserAccount } from "@/types/auth";
 
-type Mode = "login" | "signup" | "reset";
+type Mode = "login" | "signup" | "reset" | "forgot";
 
 interface AuthScreenProps {
   onAuthenticated: (user: UserAccount) => void;
@@ -28,15 +28,43 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [emailResetEnabled, setEmailResetEnabled] = useState(false);
+  const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchEmailResetEnabled().then((enabled) => {
+      if (!cancelled) setEmailResetEnabled(enabled);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function switchMode(next: Mode) {
     setMode(next);
     setError(null);
+    setLinkSentTo(null);
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (mode === "forgot") {
+      setSubmitting(true);
+      const sent = await requestResetEmail(email);
+      setSubmitting(false);
+      if (!sent.ok) {
+        setError(sent.error ?? "Something went wrong. Try again.");
+      } else if (!sent.emailEnabled) {
+        setEmailResetEnabled(false);
+        switchMode("reset");
+      } else {
+        setLinkSentTo(email.trim());
+      }
+      return;
+    }
 
     if ((mode === "signup" || mode === "reset") && password !== confirmPassword) {
       setError("Passwords don't match.");
@@ -90,12 +118,23 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
   return (
     <div className="mx-auto w-full max-w-md animate-fade-in">
       <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
-        {mode === "reset" ? (
+        {mode === "forgot" ? (
+          <div className="mb-6">
+            <h1 className="text-lg font-semibold text-ink">Reset your password</h1>
+            {!linkSentTo && (
+              <p className="mt-1 text-sm leading-relaxed text-ink-muted">
+                Enter your account email and we&rsquo;ll send you a link to choose a new password.
+              </p>
+            )}
+          </div>
+        ) : mode === "reset" ? (
           <div className="mb-6">
             <h1 className="text-lg font-semibold text-ink">Reset your password</h1>
             <p className="mt-1 text-sm leading-relaxed text-ink-muted">
-              Enter the recovery code you saved when you created your account. There&rsquo;s no email reset, so this
-              code is how we know it&rsquo;s you.
+              Enter the recovery code you saved when you created your account.{" "}
+              {emailResetEnabled
+                ? "It proves it's you without needing your old password."
+                : "There\u2019s no email reset yet, so this code is how we know it\u2019s you."}
             </p>
           </div>
         ) : (
@@ -109,6 +148,21 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
           </div>
         )}
 
+        {mode === "forgot" && linkSentTo ? (
+          <div className="space-y-4">
+            <p className="rounded-lg border border-border bg-canvas px-4 py-3 text-sm leading-relaxed text-ink">
+              If there&rsquo;s an account for <span className="font-medium">{linkSentTo}</span>, a reset link is on its
+              way. It works for one hour and only once. Check your spam folder if it doesn&rsquo;t show up.
+            </p>
+            <button
+              type="button"
+              onClick={() => switchMode("login")}
+              className="block w-full text-center text-sm text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink"
+            >
+              Back to log in
+            </button>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {mode === "signup" && (
             <TextField
@@ -143,6 +197,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
               required
             />
           )}
+          {mode !== "forgot" && (
           <TextField
             label={mode === "reset" ? "New password" : "Password"}
             type="password"
@@ -153,6 +208,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
             required
             minLength={6}
           />
+          )}
           {(mode === "signup" || mode === "reset") && (
             <TextField
               label={mode === "reset" ? "Confirm new password" : "Confirm password"}
@@ -196,20 +252,40 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
               ? "Please wait…"
               : mode === "login"
                 ? "Log in"
-                : mode === "reset"
-                  ? "Reset password"
-                  : "Create account"}
+                : mode === "forgot"
+                  ? "Email me a reset link"
+                  : mode === "reset"
+                    ? "Reset password"
+                    : "Create account"}
           </Button>
           {mode === "login" && (
             <button
               type="button"
-              onClick={() => switchMode("reset")}
+              onClick={() => switchMode(emailResetEnabled ? "forgot" : "reset")}
               className="block w-full text-center text-sm text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink"
             >
               Forgot your password?
             </button>
           )}
-          {mode === "reset" && (
+          {mode === "forgot" && (
+            <button
+              type="button"
+              onClick={() => switchMode("reset")}
+              className="block w-full text-center text-sm text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink"
+            >
+              I have a recovery code instead
+            </button>
+          )}
+          {mode === "reset" && emailResetEnabled && (
+            <button
+              type="button"
+              onClick={() => switchMode("forgot")}
+              className="block w-full text-center text-sm text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink"
+            >
+              Email me a reset link instead
+            </button>
+          )}
+          {(mode === "reset" || mode === "forgot") && (
             <button
               type="button"
               onClick={() => switchMode("login")}
@@ -219,6 +295,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
             </button>
           )}
         </form>
+        )}
 
         <button
           type="button"

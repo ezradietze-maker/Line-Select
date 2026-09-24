@@ -58,6 +58,7 @@ import {
   type PairwiseJudgment,
 } from "@/lib/rank-learning";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
+import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
@@ -138,6 +139,8 @@ interface ResultsViewProps {
   onUpdateProfile: (profile: PreferenceProfile) => void;
   /** Identifies which pilot's remembered prior-cycle top lines to read/write (see `line-history-storage.ts`) — null for a guest. */
   userId: string | null;
+  /** Arrived from a Hotel Ratings card — start with the list narrowed to lines that stay at this hotel. */
+  initialHotelFilter?: HotelFilter | null;
 }
 
 export function ResultsView({
@@ -148,6 +151,7 @@ export function ResultsView({
   onEditPreferences,
   onUpdateProfile,
   userId,
+  initialHotelFilter = null,
 }: ResultsViewProps) {
   const [confirmingStartOver, setConfirmingStartOver] = useState(false);
   const [hotelQualityData, setHotelQualityData] = useState<HotelQualityData>({});
@@ -163,6 +167,7 @@ export function ResultsView({
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("match");
   const [search, setSearch] = useState("");
+  const [hotelFilter, setHotelFilter] = useState<HotelFilter | null>(initialHotelFilter);
   const [view, setView] = useState<"all" | "shortlist">("all");
   const [showHidden, setShowHidden] = useState(false);
   const [marks, setMarks] = useState<LineMarks>(() => loadLineMarks(userId, bidPack.id));
@@ -181,6 +186,7 @@ export function ResultsView({
     setFilters(EMPTY_FILTERS);
     setMarks(loadLineMarks(userId, bidPack.id));
     setSearch("");
+    setHotelFilter(null);
     setView("all");
   }
 
@@ -283,8 +289,14 @@ export function ResultsView({
   const rankById = useMemo(() => new Map(ranked.map((r, i) => [r.line.id, i + 1] as const)), [ranked]);
 
   const matching = useMemo(
-    () => ranked.filter((r) => lineMatchesFilters(r.line, filters) && matchesLineSearch(r.line, search)),
-    [ranked, filters, search]
+    () =>
+      ranked.filter(
+        (r) =>
+          lineMatchesFilters(r.line, filters) &&
+          matchesLineSearch(r.line, search) &&
+          (!hotelFilter || lineHasHotel(r.line, hotelFilter))
+      ),
+    [ranked, filters, search, hotelFilter]
   );
   const hiddenMatchingCount = matching.filter((r) => hiddenSet.has(r.line.id)).length;
   const listable = useMemo(
@@ -295,7 +307,7 @@ export function ResultsView({
 
   // Back to the first page whenever what's being listed changes — landing on
   // "page 4 of a different list" would show a scrolled-past-nothing view.
-  const listKey = `${sortMode}|${search}|${view}|${showHidden}|${filtersKey(filters)}|${ranked.length}`;
+  const listKey = `${sortMode}|${search}|${hotelFilter?.city}|${hotelFilter?.hotelName}|${view}|${showHidden}|${filtersKey(filters)}|${ranked.length}`;
   if (pageState.key !== listKey) setPageState({ key: listKey, shown: PAGE_SIZE });
   const shown = pageState.key === listKey ? pageState.shown : PAGE_SIZE;
   const displayed = sorted.slice(0, shown);
@@ -399,7 +411,9 @@ export function ResultsView({
       ? "Nothing shortlisted yet — tap the star on any line to save it here."
       : search.trim()
         ? `No line matches “${search.trim()}”.`
-        : "No lines match the current filters. Try clearing one or two.";
+        : hotelFilter
+          ? `No line matches these filters at ${hotelFilter.hotelName}. Try clearing one or two.`
+          : "No lines match the current filters. Try clearing one or two.";
 
   return (
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
@@ -490,6 +504,21 @@ export function ResultsView({
         </div>
       ) : (
         <>
+          {hotelFilter && (
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-brand/30 bg-brand-soft px-3 py-2 text-sm text-ink">
+              <span>
+                Only lines with a layover at <span className="font-semibold">{hotelFilter.hotelName}</span>{" "}
+                <span className="text-ink-muted">&middot; {hotelFilter.city}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setHotelFilter(null)}
+                className="shrink-0 font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand-strong"
+              >
+                Show all lines
+              </button>
+            </div>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <div className="relative min-w-[9rem] flex-1 sm:max-w-[14rem]">
               <input

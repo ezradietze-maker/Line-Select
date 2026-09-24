@@ -49,6 +49,39 @@ export async function resetPassword(email: string, recoveryCode: string, newPass
   return postJson("/api/auth/reset", { email, recoveryCode, newPassword });
 }
 
+/** Whether this deployment can send reset emails — the sign-in screen only offers the option when it will actually work. */
+export async function fetchEmailResetEnabled(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/forgot", { credentials: "same-origin" });
+    const data = await res.json().catch(() => ({}));
+    return res.ok && data.emailEnabled === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Asks for a reset link. Succeeds identically whether or not the address has an account. */
+export async function requestResetEmail(email: string): Promise<{ ok: boolean; emailEnabled?: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/auth/forgot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.error ?? "Something went wrong. Try again." };
+    return { ok: true, emailEnabled: data.emailEnabled };
+  } catch {
+    return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
+  }
+}
+
+/** Finishes an emailed reset — signs the pilot in on success. */
+export async function resetPasswordWithToken(token: string, newPassword: string): Promise<AuthResult> {
+  return postJson("/api/auth/reset-email", { token, newPassword });
+}
+
 /** For a signed-in pilot: mints a fresh recovery code (replacing any old one), after re-checking their password. */
 export async function createRecoveryCode(password: string): Promise<{ ok: boolean; error?: string; recoveryCode?: string }> {
   try {

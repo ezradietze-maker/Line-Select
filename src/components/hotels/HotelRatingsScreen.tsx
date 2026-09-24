@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -7,6 +8,7 @@ import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { fetchHotel } from "@/lib/hotel-client";
+import { hotelFilterHref } from "@/lib/hotel-filter";
 import { hotelCityReason } from "@/lib/hotel-personalization";
 import type { BidPack } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
@@ -148,7 +150,8 @@ function HotelCard({
   profile: PreferenceProfile | null;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const shownLines = group.lineNumbers.slice(0, 8);
+  const [showAllLines, setShowAllLines] = useState(false);
+  const shownLines = showAllLines ? group.lineNumbers : group.lineNumbers.slice(0, 8);
   const extra = group.lineNumbers.length - shownLines.length;
   const hasDetails = !!hotel && hasHotelQualityDetails(hotel);
   const cityReason = hotelCityReason(profile, group.code);
@@ -162,8 +165,37 @@ function HotelCard({
           </div>
           <div className="mt-1 text-xs text-ink-muted">
             Lines {shownLines.join(", ")}
-            {extra > 0 ? ` +${extra} more` : ""}
+            {extra > 0 && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => setShowAllLines(true)}
+                  className="font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand-strong"
+                >
+                  +{extra} more
+                </button>
+              </>
+            )}
+            {showAllLines && group.lineNumbers.length > 8 && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => setShowAllLines(false)}
+                  className="font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand-strong"
+                >
+                  show fewer
+                </button>
+              </>
+            )}
           </div>
+          <Link
+            href={hotelFilterHref({ city: group.code, hotelName: group.hotelName })}
+            className="mt-1.5 inline-block text-xs font-medium text-brand hover:underline"
+          >
+            See these {group.lineNumbers.length === 1 ? "line" : `${group.lineNumbers.length} lines`} in your ranking &rarr;
+          </Link>
         </div>
         {hotel?.priceLevel !== null && hotel?.priceLevel !== undefined && (
           <span className="shrink-0 font-mono text-xs text-ink-faint">

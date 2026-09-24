@@ -106,6 +106,11 @@ export default function PrivacyPage() {
               password &mdash; also stored only as a salted hash, never in a form that can be read back;
             </li>
             <li>
+              If you ask to reset your password by email, a single-use reset link is sent to the address on your
+              account through a transactional email provider (Resend). Only a hash of the link&rsquo;s token is
+              kept, and it expires after an hour or once used. That is the only email we send you;
+            </li>
+            <li>
               A session token in an <code className="font-mono text-xs">httpOnly</code> cookie
               (inaccessible to page scripts) used to keep you signed in.
             </li>

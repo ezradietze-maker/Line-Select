@@ -1,8 +1,9 @@
-import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { cookies } from "next/headers";
 import {
   createSession,
+  consumeResetToken,
   createUserWithCredential,
   deleteSession,
   deleteSessionsForUser,
@@ -11,8 +12,10 @@ import {
   findSession,
   findUserByEmail,
   findUserById,
+  saveResetToken,
   updateCredential,
 } from "@/lib/server/db";
+import { getEmailConfig, sendEmail } from "@/lib/server/email";
 import { clearAttempts, isRateLimited, recordFailedAttempt } from "@/lib/server/rate-limit";
 import type { UserAccount } from "@/types/auth";
 
@@ -162,6 +165,61 @@ export async function resetPasswordWithRecoveryCode(email: string, recoveryCode:
   const newRecoveryCode = await storeNewRecoveryCode(credential.userId);
   const sessionToken = await startSession(credential.userId);
   return { ok: true, user, sessionToken, recoveryCode: newRecoveryCode };
+}
+
+const RESET_LINK_TTL_MS = 60 * 60 * 1000; // 1 hour
+const RESET_EMAIL_SCOPE = "password-reset-email";
+
+function hashResetToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+/**
+ * Emails a one-hour, single-use reset link. Says nothing about whether the
+ * address has an account — the caller gets the same answer either way, so
+ * this can't be used to discover who's registered — and is limited to a few
+ * requests per address in a short window so it can't be used to spam an inbox.
+ * Returns false only when email isn't configured on this deployment.
+ */
+export async function requestPasswordResetEmail(email: string): Promise<boolean> {
+  const config = getEmailConfig();
+  if (!config) return false;
+  const normalized = normalizeEmail(email);
+  if (await isRateLimited(RESET_EMAIL_SCOPE, normalized)) return true;
+  await recordFailedAttempt(RESET_EMAIL_SCOPE, normalized);
+
+  const credential = await findCredentialByEmail(normalized);
+  if (!credential) return true;
+
+  const token = randomBytes(32).toString("hex");
+  await saveResetToken({
+    tokenHash: hashResetToken(token),
+    userId: credential.userId,
+    expiresAt: new Date(Date.now() + RESET_LINK_TTL_MS).toISOString(),
+  });
+  await sendEmail({
+    to: normalized,
+    subject: "Reset your Line Select password",
+    text:
+      `Someone asked to reset the password for your Line Select account.\n\n` +
+      `Open this link within the hour to choose a new one:\n${config.appUrl}/reset-password?token=${token}\n\n` +
+      `If that wasn't you, ignore this email — your password hasn't changed.`,
+  });
+  return true;
+}
+
+/** Completes an emailed reset: the token is spent, every old session is signed out, and the pilot is signed straight in. */
+export async function resetPasswordWithEmailToken(token: string, newPassword: string): Promise<AuthResult> {
+  if (newPassword.length < 6) return { ok: false, error: "Password must be at least 6 characters." };
+  const userId = await consumeResetToken(hashResetToken(token));
+  const user = userId ? await findUserById(userId) : null;
+  if (!userId || !user) return { ok: false, error: "This reset link is invalid or has expired. Request a new one." };
+
+  const salt = randomBytes(16).toString("hex");
+  await updateCredential(userId, { passwordHash: await hashPassword(newPassword, salt), salt });
+  await deleteSessionsForUser(userId);
+  await clearAttempts(LOGIN_RATE_LIMIT_SCOPE, normalizeEmail(user.email));
+  return { ok: true, user, sessionToken: await startSession(userId) };
 }
 
 /** For a signed-in pilot with no recovery code yet (an account from before they existed) or who wants a fresh one. Re-checks the password first, so a borrowed unlocked laptop can't mint one. */

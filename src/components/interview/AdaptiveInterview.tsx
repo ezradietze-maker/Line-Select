@@ -575,7 +575,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       return (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <Spinner size="md" />
-          <p className="text-sm text-ink-faint">Thinking about what to ask next…</p>
+          <ThinkingNote />
         </div>
       );
     }
@@ -807,5 +807,27 @@ function TargetSliderStepInline({
         nextLabel={touched || value === undefined ? "Next" : `Use ${value} ${value === 1 ? question.unitSingular : question.unitPlural}`}
       />
     </div>
+  );
+}
+
+const THINKING_STEPS: { afterMs: number; text: string }[] = [
+  { afterMs: 0, text: "Got it — thinking about what to ask next…" },
+  { afterMs: 4000, text: "Working out what matters most to you…" },
+  { afterMs: 9000, text: "Still working — this one is taking a little longer than usual…" },
+];
+
+/** A question takes several seconds to come back; a message that visibly changes reads as progress, one that never changes reads as a hang. */
+function ThinkingNote() {
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const id = setInterval(() => setElapsedMs(Date.now() - started), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const step = [...THINKING_STEPS].reverse().find((t) => elapsedMs >= t.afterMs) ?? THINKING_STEPS[0];
+  return (
+    <p className="text-sm text-ink-faint" role="status" aria-live="polite">
+      {step.text}
+    </p>
   );
 }

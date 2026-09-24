@@ -142,7 +142,7 @@ function RecoveryCodeModal({ onClose }: { onClose: () => void }) {
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <p className="text-sm leading-relaxed text-ink-muted">
-            If you forget your password, a recovery code is your only way back in &mdash; there&rsquo;s no email reset.
+            If you forget your password, a recovery code gets you back in without needing your email.
             Making a new one replaces any code you had before. Confirm your password to continue.
           </p>
           <TextField
