@@ -13,6 +13,7 @@ const FIXED_DIMENSION_LABELS: Record<DimensionKey, string> = {
   layoverQuality: "Layover quality",
   circadianHealth: "Circadian health",
   landings: "Landings",
+  hotelStandby: "Hotel standby",
 };
 
 /** `IMPLICIT_VARIABLES`-derived label for a dimension key not in the fixed set — see `DimensionScore.key`'s own doc comment for why the two kinds share one field. Falls back to the raw key itself in the (should-never-happen) case of a truly unknown id, rather than rendering blank. */

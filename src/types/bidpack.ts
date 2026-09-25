@@ -82,6 +82,8 @@ export interface Trip {
   international: boolean;
   /** Count of deadhead (non-flying, repositioning) legs in the trip. */
   deadheadLegs: number;
+  /** Hotel-standby duty days in this trip — days spent on call at a layover hotel, paid credit but no flight flown. Absent on a bid pack parsed before this was tracked (treat as 0, and re-uploading fills it in). */
+  standbyDays?: number;
   /** Credit hours earned for this trip. */
   creditHours: number;
   /** Landings flown during the trip (not counting deadhead legs). */

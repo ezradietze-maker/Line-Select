@@ -1,4 +1,5 @@
 import { getBidPackRanges } from "@/lib/scoring";
+import { STANDBY_CREDIT_PER_DAY, tripStandbyDays } from "@/lib/standby";
 import type { BidPack } from "@/types/bidpack";
 import type { BidPackGroundingStats } from "@/types/interview-session";
 
@@ -50,6 +51,17 @@ export function computeBidPackGroundingStats(bidPack: BidPack): BidPackGrounding
       ? { min: Math.min(...landingsValues), max: Math.max(...landingsValues) }
       : { min: 0, max: 0 };
 
+  const standbyByLine = verifiedLines.map((l) => l.trips.map(tripStandbyDays));
+  const linesWithStandby = standbyByLine.filter((days) => days.some((d) => d > 0)).length;
+  const hotelStandby = {
+    linesWithStandby,
+    verifiedLines: verifiedLines.length,
+    maxDaysOnALine: Math.max(0, ...standbyByLine.map((days) => days.reduce((a, b) => a + b, 0))),
+    longestStretchDays: Math.max(0, ...standbyByLine.flat()),
+    maxStintsOnALine: Math.max(0, ...standbyByLine.map((days) => days.filter((d) => d > 0).length)),
+    creditHoursPerStandbyDay: STANDBY_CREDIT_PER_DAY,
+  };
+
   const reserveLines =
     bidPack.reserveLines && bidPack.reserveLines.length > 0
       ? {
@@ -69,6 +81,7 @@ export function computeBidPackGroundingStats(bidPack: BidPack): BidPackGrounding
     distinctHotelCount,
     distinctCityCount,
     landings,
+    hotelStandby,
     reserveLines,
   };
 }

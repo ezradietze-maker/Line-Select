@@ -42,6 +42,7 @@ const TOPIC_LABELS: Record<ExplicitWeightKey, string> = {
   hotelQuality: "overall hotel quality",
   circadianHealth: "protecting your body clock",
   landings: "landings",
+  hotelStandby: "hotel standby",
   riskTolerance: "reaching for hard-to-hold lines",
   adminEffortAppetite: "extra bidding effort",
 };

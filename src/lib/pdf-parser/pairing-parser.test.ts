@@ -77,6 +77,45 @@ describe("parsePairingColumn", () => {
   });
 });
 
+describe("hotel standby", () => {
+  it("counts each standby duty row as one standby day, and the pairing flies nothing", () => {
+    // Real shape (A300 MEM pairing 75): two interline positioning flights, then
+    // one STHOTL row per standby day at the layover hotel.
+    const rows = [
+      "75 MO REPORT AT 2209 (1709) STANDARD CREW",
+      "EFFECTIVE SEPTEMBER 28 ONLY",
+      "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+      "28MO DL1681 JET MEM 2309(1809) ATL 0029(2029) 01:20 S",
+      "*29TU DL3153 JET ATL 0150(2150) IND 0322(2322) 01:32 S 00:00 03:49 05:43 IND 19:38",
+      "Hotel: HYATT PLACE HYATT HOUSE (IND), +1-317-762-8000",
+      "29TU STHOTL IND 2330(1930) IND 1100(0700) 11:30 S 00:00 03:12 00:00 IND 12:30",
+      "Hotel: HYATT PLACE HYATT HOUSE (IND), +1-317-762-8000",
+      "30WE STHOTL IND 2330(1930) IND 1100(0700) 11:30 S 00:00 03:12 00:00 IND 12:30",
+      "Hotel: HYATT PLACE HYATT HOUSE (IND), +1-317-762-8000",
+      "01TH STHOTL IND 2330(1930) IND 1100(0700) 11:30 S 00:00 03:12 00:00",
+      "LDGS: 0 BLOCK HRS: 02:52 CREDIT HRS: 26:45 T TAFB: 91:00",
+    ];
+    const warnings: ParseWarning[] = [];
+    const [pairing] = parsePairingColumn(rows, 15, warnings);
+
+    expect(pairing.standbyDays).toBe(3);
+    expect(pairing.landings).toBe(0);
+  });
+
+  it("reports zero standby days for an ordinary flying pairing", () => {
+    const rows = [
+      "3 TU REPORT AT 0520 (*2120) STANDARD CREW",
+      "EFFECTIVE SEPTEMBER 29 ONLY",
+      "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+      "*29TU 6017 83 ANC 0620(2220) CAN 1732(0132) 11:12 DH/BH 11:12 11:12 12:42 CAN 49:28",
+      "#06TU 6014 83 CAN 2130(0530) ANC 0718(2318) 09:48 BH/DH 09:48 09:48 11:18",
+      "LDGS: 2 BLOCK HRS: 21:00 CREDIT HRS: 24:00 T TAFB: 194:28",
+    ];
+    const [pairing] = parsePairingColumn(rows, 15, []);
+    expect(pairing.standbyDays).toBe(0);
+  });
+});
+
 describe("parsePairingPages", () => {
   it("joins a pairing split across a page break into one pairing, without the page title in the middle", () => {
     // Real shape (B777 MEM pp. 118-119): a pairing starts at the bottom of one

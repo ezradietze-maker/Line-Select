@@ -84,7 +84,7 @@ export const HARD_CEILING_TURNS = 42;
 export const EXPLICIT_WEIGHT_IDS = [
   "daysOff", "tripLength", "international", "reportTime", "creditHours",
   "deadheadTolerance", "hotelFood", "hotelGym", "hotelGrocery", "hotelQuiet",
-  "hotelQuality", "circadianHealth", "landings", "riskTolerance", "adminEffortAppetite",
+  "hotelQuality", "circadianHealth", "landings", "hotelStandby", "riskTolerance", "adminEffortAppetite",
 ] as const;
 
 /**
@@ -101,9 +101,19 @@ export const EXPLICIT_WEIGHT_IDS = [
  * a much harder thing to rationalize past than a paragraph of guidance it
  * has to remember to re-check itself.
  */
-export function uncoveredExplicitWeightIds(facts: PreferenceFact[]): string[] {
+export function uncoveredExplicitWeightIds(facts: PreferenceFact[], hasStandby = true): string[] {
   const touched = touchedDimensionIds(facts);
-  return EXPLICIT_WEIGHT_IDS.filter((id) => !touched.has(id));
+  return applicableExplicitWeightIds(hasStandby).filter((id) => !touched.has(id));
+}
+
+/** Whether this pilot's own bid pack has any hotel standby at all — a pack with none can't separate one line from another on it, so the interview neither asks about it nor waits on it. */
+export function packHasHotelStandby(grounding: BidPackGroundingStats): boolean {
+  return (grounding.hotelStandby?.linesWithStandby ?? 0) > 0;
+}
+
+/** The explicit-weight ids this interview has to cover — everything, minus hotel standby when the pack has none. */
+export function applicableExplicitWeightIds(hasStandby: boolean): readonly string[] {
+  return hasStandby ? EXPLICIT_WEIGHT_IDS : EXPLICIT_WEIGHT_IDS.filter((id) => id !== "hotelStandby");
 }
 
 export function buildTurnRequest(params: {
@@ -122,7 +132,7 @@ export function buildTurnRequest(params: {
     ...params,
     softCapTurns: SOFT_CAP_TURNS,
     hardCeilingTurns: HARD_CEILING_TURNS,
-    uncoveredExplicitWeightIds: uncoveredExplicitWeightIds(params.facts),
+    uncoveredExplicitWeightIds: uncoveredExplicitWeightIds(params.facts, packHasHotelStandby(params.grounding)),
   };
 }
 
@@ -355,6 +365,7 @@ const TOPIC_COVERAGE_HINTS: Record<string, string[]> = {
   "international-intensity": ["international"],
   "report-time-circadian": ["reportTime", "circadianHealth", "backOfClockDeparturesPerTrip", "distinctReportHoursPerTrip"],
   "landings-currency": ["landings"],
+  "hotel-standby": ["hotelStandby", "longestStandbyStretchPerLine", "standbyStintsPerLine"],
   "predictability-variety": ["tripShapeVariancePerLine"],
   "rest-recovery": ["shortRestOvernightsPerTrip", "avgSleepOpportunityHours"],
   "real-schedule-effort-metrics": ["creditPerTafbHour", "dutyToBlockRatio"],

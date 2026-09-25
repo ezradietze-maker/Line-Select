@@ -668,6 +668,12 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
               {trip.landings} landing{trip.landings === 1 ? "" : "s"}
             </div>
 
+            {(trip.standbyDays ?? 0) > 0 && (
+              <div className="font-mono text-xs text-warn" title="Days on call at a layover hotel — paid the standby credit, not flying">
+                {trip.standbyDays} hotel standby day{trip.standbyDays === 1 ? "" : "s"}
+              </div>
+            )}
+
             <div className="font-mono text-xs text-brand/70">
               {trip.deadheadLegs > 0
                 ? `${trip.deadheadLegs} deadhead leg${trip.deadheadLegs > 1 ? "s" : ""}`

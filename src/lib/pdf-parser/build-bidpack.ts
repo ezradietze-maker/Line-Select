@@ -114,6 +114,7 @@ export function pairingToTrip(pairing: ParsedPairing, bidPackMonth: string): Tri
     reportTime: pairing.reportTime,
     international: pairing.international,
     deadheadLegs: pairing.deadheadLegs,
+    standbyDays: pairing.standbyDays ?? 0,
     creditHours: round2(pairing.creditHours),
     landings: pairing.landings,
     tafbHours: round2(pairing.tafbHours),

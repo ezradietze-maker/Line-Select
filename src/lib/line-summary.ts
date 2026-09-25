@@ -1,4 +1,5 @@
 import { formatHoursValue } from "@/lib/interview-config";
+import { lineStandbyDays } from "@/lib/standby";
 import { targetParts, type TargetParts } from "@/lib/target-editing";
 import type { Line } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -57,6 +58,16 @@ export function buildLineFactChips(line: Line, profile: PreferenceProfile): Line
 
   const credit = compareToTarget(line.totalCreditHours, targetParts(profile.explicitTargets.creditHours), CREDIT_TOLERANCE_HOURS, formatHoursValue);
   chips.push({ main: `${formatHoursValue(line.totalCreditHours)} credit`, ...credit });
+
+  const standbyDays = lineStandbyDays(line);
+  if (standbyDays > 0) {
+    const lean = profile.weights.hotelStandby ?? 0;
+    chips.push({
+      main: `${standbyDays} standby day${standbyDays === 1 ? "" : "s"}`,
+      note: lean < 0 ? "you'd rather avoid" : lean > 0 ? "you like it" : "",
+      tone: lean < 0 ? "warn" : lean > 0 ? "good" : "neutral",
+    });
+  }
 
   const lineCities = Array.from(new Set(line.trips.flatMap((t) => t.layoverCities)));
   const loved = lineCities.filter((c) => profile.cityPreferences[c] === "love");

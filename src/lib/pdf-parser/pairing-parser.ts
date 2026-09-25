@@ -101,6 +101,16 @@ interface LegInfo {
 const GROUND_DUTY_CODE_RE = /^[A-Z]{3,8}$/;
 
 /** True when `code`/`afterCode` match the ground-duty row shape (all-letters code immediately followed by an airport, rather than a flight number followed by an equipment code). */
+/**
+ * "STHOTL" — hotel standby: the pilot sits at a layover hotel on call, one
+ * printed duty row per standby day, each paying its own guaranteed credit
+ * with no flight flown (so a pairing made only of these plus repositioning
+ * has 0 landings). Matched by the ground-duty code's own "ST" prefix rather
+ * than the one spelling seen so far, so a sibling code doesn't silently
+ * vanish from the count.
+ */
+const STANDBY_DUTY_RE = /^ST[A-Z]{2,6}$/;
+
 function isGroundDutyRow(code: string, afterCode: string | undefined): boolean {
   return GROUND_DUTY_CODE_RE.test(code) && AIRPORT_RE.test(afterCode ?? "");
 }
@@ -429,6 +439,7 @@ export function parsePairingColumn(
     ]);
     const international = Array.from(allCities).some(isInternationalCity);
     const deadheadLegs = legs.filter((l) => l.isDeadhead).length;
+    const standbyDays = legs.filter((l) => STANDBY_DUTY_RE.test(l.flightNumber)).length;
     const flightNumbers = legs.map((l) => l.flightNumber);
 
     const reportTimeGmt = headerMatch[3];
@@ -564,6 +575,7 @@ export function parsePairingColumn(
       reportTimeLocal: reportTimeLocal,
       international,
       deadheadLegs,
+      standbyDays,
       creditHours: timeToHours(footerMatch[3]),
       blockHours: timeToHours(footerMatch[2]),
       landings,

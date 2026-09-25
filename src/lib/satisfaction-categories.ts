@@ -45,6 +45,7 @@ const FIXED_DIMENSION_CATEGORIES: Record<DimensionKey, SatisfactionCategory> = {
   reportTime: "commuteAndDeadhead",
   deadheadTolerance: "commuteAndDeadhead",
   landings: "tripCharacter",
+  hotelStandby: "timeAndHomeLife",
   circadianHealth: "restAndCircadian",
 };
 

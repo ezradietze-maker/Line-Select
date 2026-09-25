@@ -1,4 +1,4 @@
-import { EXPLICIT_WEIGHT_IDS, MIN_TURNS_BEFORE_WRAP } from "@/lib/interview-engine";
+import { applicableExplicitWeightIds, MIN_TURNS_BEFORE_WRAP } from "@/lib/interview-engine";
 
 /** Rough real-world pace: the AI's turn plus reading and answering — measured at a few seconds each way. Used only to turn "questions left" into a friendly "about N min". */
 const SECONDS_PER_QUESTION = 22;
@@ -6,7 +6,7 @@ const SECONDS_PER_QUESTION = 22;
 export interface InterviewProgress {
   /** 0-1, never 1 until the interview is actually over. */
   fraction: number;
-  /** How many of the 15 scored dimensions have been touched so far. */
+  /** How many of the scored dimensions have been touched so far. */
   topicsCovered: number;
   topicsTotal: number;
   /** Best guess at questions still to come. */
@@ -28,9 +28,11 @@ export function computeInterviewProgress(params: {
   /** Steps before the question loop (commuter, cities, optional returning-check) that count as progress too. */
   preStepsDone: number;
   preStepTotal: number;
+  /** False when the pilot's bid pack has no hotel standby, which drops that topic from the count. Defaults to true. */
+  hasStandby?: boolean;
 }): InterviewProgress {
-  const { turnsUsed, uncoveredCount, preStepsDone, preStepTotal } = params;
-  const topicsTotal = EXPLICIT_WEIGHT_IDS.length;
+  const { turnsUsed, uncoveredCount, preStepsDone, preStepTotal, hasStandby = true } = params;
+  const topicsTotal = applicableExplicitWeightIds(hasStandby).length;
   const questionsLeft = Math.max(MIN_TURNS_BEFORE_WRAP - turnsUsed, uncoveredCount, 1);
   const done = preStepsDone + turnsUsed;
   const total = preStepTotal + turnsUsed + questionsLeft;

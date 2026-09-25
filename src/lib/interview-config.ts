@@ -128,8 +128,20 @@ export const HOTEL_AMENITIES: HotelAmenityOption[] = [
 /** Flat "cares about this" weight applied when a pilot flags an amenity as mattering — see `HOTEL_AMENITIES`. */
 export const HOTEL_AMENITY_WEIGHT = 75;
 
+/** Hotel standby — sitting on call at a layover hotel, paid a guaranteed credit per day, not flying. Only meaningful (and only offered) when the pilot's own bid pack has lines that include it. */
+export const HOTEL_STANDBY_CONFIG: SliderQuestionConfig = {
+  key: "hotelStandby",
+  question: "How do you feel about hotel standby?",
+  helpText:
+    "Some lines have you sitting on call at a layover hotel for days — paid the standby credit, but not flying. Some pilots see that as easy, guaranteed pay and real rest; others hate being tied to a hotel room waiting on a phone call.",
+  lowLabel: "Avoid it — I don't want to sit at a hotel on call",
+  highLabel: "Like it — easy guaranteed pay",
+  centerLabel: "Depends on how long",
+};
+
 export const DEEP_SLIDERS: SliderQuestionConfig[] = [
   DEADHEAD_LOCAL,
+  HOTEL_STANDBY_CONFIG,
   {
     key: "hotelQuiet",
     question: "How much does a quiet, low-noise room matter for sleeping on the road?",

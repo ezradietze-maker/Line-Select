@@ -1,3 +1,4 @@
+import { tripStandbyDays } from "@/lib/standby";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
 
@@ -187,6 +188,20 @@ export const IMPLICIT_VARIABLES: ImplicitVariable[] = [
     description: "How much this line's own trips vary in length (days) from each other — a repeatable month of similar-length trips versus a wide mix of very different ones. Direction 1 = wants more variety/spread; direction -1 = wants a repeatable, consistent month.",
     valueShape: "linear",
   },
+  {
+    id: "longestStandbyStretchPerLine",
+    category: "restRecovery",
+    label: "Longest run of hotel standby",
+    description: "The most consecutive days on hotel standby in any one trip on this line — a short sit versus days on end at the hotel, on call. Direction 1 = fine with long stretches (or likes them); direction -1 = wants any standby kept short.",
+    valueShape: "threshold",
+  },
+  {
+    id: "standbyStintsPerLine",
+    category: "dutyStructure",
+    label: "Separate hotel-standby stints",
+    description: "How many separate trips on this line include standby — one sit versus coming back to it again and again through the month. Direction 1 = fine with several stints; direction -1 = wants as few separate ones as possible.",
+    valueShape: "linear",
+  },
 ];
 
 function normalize(value: number, min: number, max: number): number {
@@ -211,9 +226,18 @@ function computeRawLineValues(line: Line): Record<string, number | null> {
   const analytics = line.trips.filter((t) => t.schedule.length > 0).map((t) => computeTripAnalytics(t));
   // trip.days is a raw line-grid field, not schedule-dependent, so it's available even for lines whose duty-level schedule couldn't be confirmed.
   const tripShapeVariancePerLine = stddev(line.trips.map((t) => t.days));
+  // Standby days are a raw pairing field like trip.days, so they're available even when the duty-level schedule couldn't be confirmed (an estimated line has no trip breakdown at all, so it stays null).
+  const standbyTrips = line.trips.map(tripStandbyDays);
+  const longestStandbyStretchPerLine = line.estimated ? null : Math.max(0, ...standbyTrips);
+  const standbyStintsPerLine = line.estimated ? null : standbyTrips.filter((d) => d > 0).length;
 
   if (analytics.length === 0) {
-    return { ...Object.fromEntries(IMPLICIT_VARIABLES.map((v) => [v.id, null])), tripShapeVariancePerLine };
+    return {
+      ...Object.fromEntries(IMPLICIT_VARIABLES.map((v) => [v.id, null])),
+      tripShapeVariancePerLine,
+      longestStandbyStretchPerLine,
+      standbyStintsPerLine,
+    };
   }
 
   const totalLayovers = analytics.reduce(
@@ -258,6 +282,8 @@ function computeRawLineValues(line: Line): Record<string, number | null> {
       analytics.map((a) => a.earlyReportAfterInternationalLayoverCount)
     ),
     tripShapeVariancePerLine,
+    longestStandbyStretchPerLine,
+    standbyStintsPerLine,
   };
 }
 

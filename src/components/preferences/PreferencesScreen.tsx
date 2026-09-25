@@ -20,6 +20,7 @@ import {
 import { hasEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { MAGNITUDE_ONLY_KEYS } from "@/lib/rank-learning";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
+import { packHasStandby } from "@/lib/standby";
 import type { BidPack } from "@/types/bidpack";
 import type {
   CitySentiment,
@@ -41,7 +42,7 @@ interface PreferencesScreenProps {
 }
 
 const SLIDER_GROUPS: { title: string; keys: (keyof PreferenceWeights)[] }[] = [
-  { title: "Your schedule", keys: ["daysOff", "tripLength", "reportTime", "international", "landings", "deadheadTolerance"] },
+  { title: "Your schedule", keys: ["daysOff", "tripLength", "reportTime", "international", "landings", "deadheadTolerance", "hotelStandby"] },
   { title: "Pay, rest and body clock", keys: ["creditHours", "circadianHealth"] },
   { title: "On the road", keys: ["hotelQuiet", "hotelQuality"] },
   { title: "Bidding strategy", keys: ["riskTolerance", "adminEffortAppetite"] },
@@ -218,6 +219,8 @@ export function PreferencesScreen({
             {group.keys.map((key) => {
               const config = sliderConfigs.get(key);
               if (!config) return null;
+              // Standby only matters when this pack has lines that include it (or the pilot already answered it for another pack).
+              if (key === "hotelStandby" && !touchedKeys.has(key) && !(bidPack && packHasStandby(bidPack.lines))) return null;
               const value = weightOf(key);
               const notAsked = hasFacts && !touchedKeys.has(key) && !(key in weightsDraft);
               const magnitudeOnly = MAGNITUDE_ONLY_KEYS.has(key);

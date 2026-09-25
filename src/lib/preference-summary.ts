@@ -58,6 +58,10 @@ export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negati
     positive: "getting more landings in for proficiency and comfort",
     negative: "keeping landings down for fatigue management",
   },
+  hotelStandby: {
+    positive: "hotel standby days — paid to sit at the hotel rather than fly",
+    negative: "avoiding hotel standby",
+  },
   // riskTolerance/adminEffortAppetite are strategy-board inputs, not line
   // preferences — scoring.ts never reads them, so they're deliberately
   // filtered out of rankPreferences below before this phrasing is ever

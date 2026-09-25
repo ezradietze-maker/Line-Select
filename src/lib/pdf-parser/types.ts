@@ -90,6 +90,8 @@ export interface ParsedPairing {
   reportTimeLocal: string;
   international: boolean;
   deadheadLegs: number;
+  /** Hotel-standby duty days in this pairing (printed "STHOTL" rows) — sitting on call at a layover hotel, paid but not flying. */
+  standbyDays?: number;
   creditHours: number;
   blockHours: number;
   landings: number;

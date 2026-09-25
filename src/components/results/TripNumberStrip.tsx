@@ -1,3 +1,4 @@
+import { tripStandbyDays } from "@/lib/standby";
 import type { Trip } from "@/types/bidpack";
 
 /** In calendar order when the grid gave every trip a real start day; otherwise the order the line lists them. */
@@ -22,12 +23,17 @@ export function TripNumberStrip({ trips }: { trips: Trip[] }) {
         <span
           key={`${trip.id}-${i}`}
           className="inline-flex items-baseline gap-1 rounded-md border border-border bg-canvas px-2 py-0.5 font-mono text-xs text-ink"
-          title={`Trip ${trip.pairingNumber} — ${trip.landings} landing${trip.landings === 1 ? "" : "s"}`}
+          title={`Trip ${trip.pairingNumber} — ${trip.landings} landing${trip.landings === 1 ? "" : "s"}${tripStandbyDays(trip) > 0 ? `, ${tripStandbyDays(trip)} standby day${tripStandbyDays(trip) === 1 ? "" : "s"}` : ""}`}
         >
           <span className="font-semibold">{trip.pairingNumber}</span>
           <span className="text-ink-muted">
             &middot; {trip.landings} ldg{trip.landings === 1 ? "" : "s"}
           </span>
+          {tripStandbyDays(trip) > 0 && (
+            <span className="text-warn" title="Days on standby at a layover hotel — paid, not flying">
+              &middot; {tripStandbyDays(trip)} standby
+            </span>
+          )}
         </span>
       ))}
     </div>

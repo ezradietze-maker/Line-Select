@@ -21,6 +21,7 @@ import {
   buildTurnRequest,
   detectContradiction,
   finalizeAdaptiveProfile,
+  packHasHotelStandby,
   uncoveredExplicitWeightIds,
   type ContradictionFlag,
 } from "@/lib/interview-engine";
@@ -194,6 +195,7 @@ function ElaborationToggle({ value, onChange }: { value: string; onChange: (v: s
 
 export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = null }: AdaptiveInterviewProps) {
   const grounding = useMemo(() => computeBidPackGroundingStats(bidPack), [bidPack]);
+  const hasStandby = packHasHotelStandby(grounding);
   const ranges = useMemo(() => getBidPackRanges(bidPack), [bidPack]);
   // Every layover city in the pack, not just the 12 most frequent — a pilot's
   // favorite (HNL on a real B777 pack) is very often not one of the most
@@ -414,7 +416,8 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   const preStepsDone = phase === "commuter" ? 0 : phase === "cities" ? 1 : phase === "returning-check" ? 2 : preStepCount;
   const progress = computeInterviewProgress({
     turnsUsed,
-    uncoveredCount: uncoveredExplicitWeightIds(facts).length,
+    uncoveredCount: uncoveredExplicitWeightIds(facts, hasStandby).length,
+    hasStandby,
     preStepsDone,
     preStepTotal: preStepCount,
   });

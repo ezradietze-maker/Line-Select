@@ -79,7 +79,7 @@ describe("implicit dimension wiring (the open dimension list)", () => {
   it("adds no implicit dimensions at all for the default profile shape (empty implicitWeights/implicitConfidence)", () => {
     const ranked = rankLines(SAMPLE_BID_PACK, neutralProfile(), {}, implicitValuesByLine);
     for (const r of ranked) {
-      expect(r.dimensions).toHaveLength(11); // exactly the eleven fixed DimensionKeys, nothing more
+      expect(r.dimensions).toHaveLength(12); // exactly the twelve fixed DimensionKeys, nothing more
     }
   });
 
@@ -510,6 +510,7 @@ describe("computeCounterfactual", () => {
     avgTripLength: [2, 4],
     creditHours: [10, 30],
     departures: [2, 6],
+    hotelStandby: [0, 4],
     landings: [2, 8],
   };
 

@@ -49,6 +49,14 @@ export interface PreferenceWeights {
   /** -100 = fewer landings is fine (fatigue management), +100 = wants more landings (proficiency/comfort). Real per-line data (`Line.totalLandings`), just never asked about until the interview topic-backlog expansion. */
   landings: number;
   /**
+   * Hotel standby — days spent on call at a layover hotel, paid a guaranteed
+   * credit per day but not flying. -100 = wants none of it, +100 = actively
+   * likes it (easy pay, rest, no flying); scored against each line's real
+   * standby-day count (`Line`'s trips' `standbyDays`). Has no effect on a
+   * bid pack where no line has any standby at all.
+   */
+  hotelStandby: number;
+  /**
    * Not a scored bid-pack dimension — no line "has" a risk tolerance, so
    * `scoring.ts`'s per-`DimensionKey` loop never reads this key, the same
    * way `departures` above sits unused by that loop. Read only by
@@ -84,6 +92,7 @@ export const DEFAULT_WEIGHTS: PreferenceWeights = {
   hotelQuality: 0,
   circadianHealth: 0,
   landings: 0,
+  hotelStandby: 0,
   riskTolerance: 0,
   adminEffortAppetite: 0,
 };
@@ -103,7 +112,8 @@ export type DeepSliderKey =
   | "hotelGrocery"
   | "hotelQuiet"
   | "hotelQuality"
-  | "landings";
+  | "landings"
+  | "hotelStandby";
 
 /**
  * Dimensions a pilot can pin to an exact stated value. `circadianTolerance`

@@ -17,11 +17,12 @@ import {
   SATISFACTION_CATEGORY_LABELS,
   type SatisfactionCategory,
 } from "@/lib/satisfaction-categories";
+import { lineStandbyDays } from "@/lib/standby";
 import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { HotelAmenitySummary, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 import type { MeasurableBinding, PreferenceFact } from "@/types/interview-session";
-import type { CitySentiment, PreferenceProfile, PreferenceWeights, RangeTarget } from "@/types/preferences";
+import { DEFAULT_WEIGHTS, type CitySentiment, type PreferenceProfile, type PreferenceWeights, type RangeTarget } from "@/types/preferences";
 
 /**
  * Everything the layoverQuality dimension needs about one real assigned
@@ -63,7 +64,8 @@ export type DimensionKey =
   | "departures"
   | "layoverQuality"
   | "circadianHealth"
-  | "landings";
+  | "landings"
+  | "hotelStandby";
 
 /** Dimensions driven by a -100..100 slider weight (everything except cityPreference, which is driven by a set of flagged cities instead). */
 type WeightedDimensionKey = keyof PreferenceWeights;
@@ -178,6 +180,7 @@ const UNVERIFIED_WHEN_ESTIMATED: DimensionKey[] = [
   "departures",
   "layoverQuality",
   "circadianHealth",
+  "hotelStandby",
 ];
 
 interface LineMetrics {
@@ -191,6 +194,8 @@ interface LineMetrics {
   totalDepartures: number;
   /** Line-level total, exact even on an estimated line (see `Line.totalLandings`'s own doc comment) — same honesty tier as daysOff/creditHours. */
   totalLandings: number;
+  /** Days spent on hotel standby across the line's trips — see `lineStandbyDays`. */
+  totalStandbyDays: number;
 }
 
 function computeRawMetrics(line: Line): LineMetrics {
@@ -216,6 +221,7 @@ function computeRawMetrics(line: Line): LineMetrics {
     deadheadPerTrip,
     totalDepartures: line.totalDepartures,
     totalLandings: line.totalLandings,
+    totalStandbyDays: lineStandbyDays(line),
   };
 }
 
@@ -532,7 +538,7 @@ function matchFromRange(
 
 const FIXED_DIMENSION_KEYS = new Set<DimensionKey>([
   "daysOff", "tripLength", "international", "cityPreference", "reportTime",
-  "creditHours", "deadheadTolerance", "departures", "layoverQuality", "circadianHealth", "landings",
+  "creditHours", "deadheadTolerance", "departures", "layoverQuality", "circadianHealth", "landings", "hotelStandby",
 ]);
 
 /** Distinguishes a fixed explicit dimension from an implicit-catalog id living in the same `DimensionScore.key` field — see that field's own doc comment. */
@@ -591,6 +597,8 @@ function hitPhrase(key: DimensionKey, weight: number): string {
       return "trips that stay easy on your sleep and body clock";
     case "landings":
       return weight > 0 ? "plenty of landings for proficiency and comfort" : "a lighter landing count for fatigue management";
+    case "hotelStandby":
+      return weight > 0 ? "hotel standby days, as you'd want" : "no hotel standby";
   }
 }
 
@@ -642,6 +650,10 @@ function missPhrase(
     case "landings":
       if (weight > 0 && below) return "fewer landings than you're after";
       if (weight < 0 && !below) return "more landings than you'd probably want";
+      return null;
+    case "hotelStandby":
+      if (weight > 0 && below) return "less hotel standby than you'd like";
+      if (weight < 0 && !below) return "more hotel standby than you'd want";
       return null;
   }
 }
@@ -766,6 +778,7 @@ const NUMERIC_COUNTERFACTUAL_UNITS: Partial<Record<DimensionKey, { unit: string;
   creditHours: { unit: "hour of credit", unitPlural: "hours of credit", decimals: 1 },
   departures: { unit: "departure", unitPlural: "departures", decimals: 0 },
   landings: { unit: "landing", unitPlural: "landings", decimals: 0 },
+  hotelStandby: { unit: "day of hotel standby", unitPlural: "days of hotel standby", decimals: 0 },
   tripLength: { unit: "day of trip length", unitPlural: "days of trip length", decimals: 1 },
 };
 
@@ -775,6 +788,7 @@ export interface CounterfactualRanges {
   creditHours: readonly [number, number];
   departures: readonly [number, number];
   landings: readonly [number, number];
+  hotelStandby: readonly [number, number];
 }
 
 function boundsForCounterfactual(key: DimensionKey, ranges: CounterfactualRanges): readonly [number, number] | undefined {
@@ -789,6 +803,8 @@ function boundsForCounterfactual(key: DimensionKey, ranges: CounterfactualRanges
       return ranges.departures;
     case "landings":
       return ranges.landings;
+    case "hotelStandby":
+      return ranges.hotelStandby;
     default:
       return undefined;
   }
@@ -1183,7 +1199,6 @@ export function scoreBidPack(
   priorTopLines?: LineSnapshot[] | null
 ): LineScore[] {
   const {
-    weights,
     explicitTargets,
     cityPreferences,
     isCommuter,
@@ -1192,6 +1207,8 @@ export function scoreBidPack(
     implicitConfidence,
     discoveredFacts,
   } = profile;
+  // A profile saved before a weight existed (e.g. hotelStandby) lacks that key — fill it from the defaults rather than let an undefined slip into the math.
+  const weights: PreferenceWeights = { ...DEFAULT_WEIGHTS, ...profile.weights };
   const dealbreakerFacts = (discoveredFacts ?? []).filter(
     (f): f is PreferenceFact & { measurable: MeasurableBinding } => f.severity === "dealbreaker" && f.kind === "measurable" && !!f.measurable
   );
@@ -1256,6 +1273,10 @@ export function scoreBidPack(
       Math.min(...rawMetrics.map((m) => m.totalLandings)),
       Math.max(...rawMetrics.map((m) => m.totalLandings)),
     ] as const,
+    hotelStandby: [
+      Math.min(...rawMetrics.map((m) => m.totalStandbyDays)),
+      Math.max(...rawMetrics.map((m) => m.totalStandbyDays)),
+    ] as const,
   };
 
   const results = bidPack.lines.map((line, i) => {
@@ -1290,6 +1311,7 @@ export function scoreBidPack(
       // actually tells the caller "no real data," not this placeholder.
       circadianHealth: circadianScores[i] ?? 0.5,
       landings: normalize(raw.totalLandings, ranges.landings[0], ranges.landings[1]),
+      hotelStandby: normalize(raw.totalStandbyDays, ranges.hotelStandby[0], ranges.hotelStandby[1]),
     };
 
     const dimensions: DimensionScore[] = (
@@ -1394,7 +1416,11 @@ export function scoreBidPack(
       }
 
       const confidence = implicitConfidence[key] ?? defaultConfidence(weights[key] !== 0 || hasExplicitTarget);
-      const importance = weightToImportance(key, weights[key], hasExplicitTarget, isCommuter, hasCrashPad, confidence);
+      // A pack where no line has any hotel standby can't be separated on it, so a standby preference carries no weight there rather than pulling every line to the same neutral midpoint.
+      const noSpread = key === "hotelStandby" && ranges.hotelStandby[1] - ranges.hotelStandby[0] < 1e-9;
+      const importance = noSpread
+        ? 0
+        : weightToImportance(key, weights[key], hasExplicitTarget, isCommuter, hasCrashPad, confidence);
       return {
         key,
         value: values[key],

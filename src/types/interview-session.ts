@@ -188,6 +188,22 @@ export interface BidPackGroundingStats {
   distinctCityCount: number;
   /** Real per-line landings span — grounds the landings-preference topic the same way creditHours/tripLength are already grounded. */
   landings: { min: number; max: number };
+  /**
+   * Real hotel-standby numbers for this pack (days sitting on call at a layover hotel, paid, not flying) — grounds the hotel-standby topic, and is how the interview knows whether to raise it at all. Absent on a request from before standby was tracked.
+   */
+  hotelStandby?: {
+    /** Lines (of the verified ones) with at least one standby day. 0 means the pack has none and the topic must not be raised. */
+    linesWithStandby: number;
+    verifiedLines: number;
+    /** Most standby days on any single line. */
+    maxDaysOnALine: number;
+    /** Most consecutive standby days inside any single trip. */
+    longestStretchDays: number;
+    /** Most separate trips with standby on any single line. */
+    maxStintsOnALine: number;
+    /** The guaranteed credit hours a standby day pays (the pack's own printed figure, usually 3:12). */
+    creditHoursPerStandbyDay: number | null;
+  };
   /** Null when this bid pack's PDF had no recognizable Reserve Lines grid at all — grounds the reserve-tolerance topic with real numbers rather than a vague "does this pack have reserve lines" guess. */
   reserveLines: { count: number; typeBreakdown: Partial<Record<"24hr" | "a" | "b", number>> } | null;
 }
