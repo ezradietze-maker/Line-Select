@@ -29,10 +29,10 @@ export const INTERVIEW_TOPIC_BACKLOG: InterviewTopic[] = [
       "Get a real range, not one number: the fewest days off they could tolerate, their actual ideal, and the point it becomes unacceptable — as up to three target-slider questions on \"daysOff\" with rangeRole min/ideal/max (see RANGE TARGETS above), only asking the ones their answers actually imply. Ask why that ideal number specifically, in their own words, as a free-text or elaboration hook — the reason (kids' schedule, a second job, just burnout) often turns out to matter more than the number. Separately, ask whether they'd rather have those days off consecutive in one block or spread through the month — this is real and worth knowing, but it's calendar-clustering-dependent so it can only ever be captured as a qualitative fact, never scored.",
   },
   {
-    id: "departures",
-    label: "Departures per month",
+    id: "duty-periods",
+    label: "Duty periods per month",
     guidance:
-      "Same range treatment as home time: floor/ideal/ceiling target-sliders on \"departures\" via rangeRole, only as many as their answers support. Separately probe whether they'd rather have a few big trips or lots of short ones covering the same total credit — this is really asking about tripLength with better framing, not a new dimension, so bind it there. Also ask, qualitatively, whether unpredictable/scattered departure timing through the month bothers them independent of the count — a pilot who's fine with 14 departures spread evenly can still hate 14 departures bunched unpredictably, and that distinction has no scoreable home but is worth capturing as a qualitative fact.",
+      "A duty period is one report-to-release stretch, counted the way the bid pack prints it on each line (\"NO. DP'S\") — hotel standby days included. It is the number of times this pilot reports for duty in the month, and it is NOT the number of takeoffs: a departure is a takeoff, always equals a landing, and lives on the \"landings\" id instead (see the landings topic) — never conflate the two when phrasing a question. Same range treatment as home time: floor/ideal/ceiling target-sliders on \"dutyPeriods\" via rangeRole, only as many as their answers support. Separately probe whether they'd rather have a few big trips or lots of short ones covering the same total credit — this is really asking about tripLength with better framing, not a new dimension, so bind it there. Also ask, qualitatively, whether unpredictable/scattered report timing through the month bothers them independent of the count — a pilot who's fine with 14 duty periods spread evenly can still hate 14 bunched unpredictably, and that distinction has no scoreable home but is worth capturing as a qualitative fact.",
   },
   {
     id: "pay-vs-lifestyle",
@@ -80,7 +80,7 @@ export const INTERVIEW_TOPIC_BACKLOG: InterviewTopic[] = [
     id: "landings-currency",
     label: "Landings / currency preference",
     guidance:
-      "This is a real, currently-unused explicit-weight id (\"landings\") backed by each line's actual tracked landing count — cite the bid pack's real landings min/max from the grounding stats when asking. Some pilots want more landings for proficiency/currency comfort (direction 1); others, especially those managing fatigue, want fewer (direction -1). This has never been asked about before this topic existed, so don't assume a prior answer already covers it.",
+      "This is a real, currently-unused explicit-weight id (\"landings\") backed by each line's actual tracked landing count — cite the bid pack's real landings min/max from the grounding stats when asking. Some pilots want more landings for proficiency/currency comfort (direction 1); others, especially those managing fatigue, want fewer (direction -1). This has never been asked about before this topic existed, so don't assume a prior answer already covers it. Note that a line's landings are also its departures (takeoffs) — this is the takeoff count, and it is a different number from duty periods (report-to-release stretches; see the duty-periods topic), so never blur the two when phrasing a question.",
   },
   {
     id: "hotel-standby",

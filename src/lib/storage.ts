@@ -1,4 +1,5 @@
 import { clearServerProfile, fetchServerProfile, saveServerProfile } from "@/lib/preference-profile-client";
+import { migrateDeparturesToDutyPeriods } from "@/lib/profile-migration";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
 
 const GUEST_KEY = "line-select:preference-profile:guest:v1";
@@ -13,7 +14,8 @@ function profileKey(userId: string | null): string {
  * by an older version of the app doesn't crash the newer one — it just
  * treats anything unanswered as "no preference" / "not asked".
  */
-function normalizeProfile(parsed: Partial<PreferenceProfile>): PreferenceProfile {
+function normalizeProfile(raw: Partial<PreferenceProfile>): PreferenceProfile {
+  const parsed = migrateDeparturesToDutyPeriods(raw);
   return {
     weights: { ...DEFAULT_WEIGHTS, ...parsed.weights },
     deepRoundCompleted: parsed.deepRoundCompleted ?? false,

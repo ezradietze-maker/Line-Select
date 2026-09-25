@@ -500,7 +500,7 @@ describe("uncoveredExplicitWeightIds", () => {
     const result = uncoveredExplicitWeightIds([
       fact({ measurable: { type: "city-sentiment", code: "LAX", sentiment: "love" } }),
       fact({ measurable: { type: "implicit-weight", variableId: "creditPerTafbHour", direction: 1 } }),
-      fact({ measurable: { type: "explicit-target", key: "departures", value: 2 } }),
+      fact({ measurable: { type: "explicit-target", key: "dutyPeriods", value: 2 } }),
     ]);
     expect(result).toEqual([...EXPLICIT_WEIGHT_IDS]);
   });

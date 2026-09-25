@@ -17,6 +17,7 @@ import {
   SATISFACTION_CATEGORY_LABELS,
   type SatisfactionCategory,
 } from "@/lib/satisfaction-categories";
+import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
 import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
@@ -61,7 +62,7 @@ export type DimensionKey =
   | "reportTime"
   | "creditHours"
   | "deadheadTolerance"
-  | "departures"
+  | "dutyPeriods"
   | "layoverQuality"
   | "circadianHealth"
   | "landings"
@@ -139,7 +140,7 @@ export interface LineScore {
    * concrete statement of the smallest realistic single-dimension change
    * that would likely make this line the top pick, using real units for a
    * dimension with a clean, denormalizable one (`daysOff`, `creditHours`,
-   * `departures`, `landings`, `tripLength`) and a qualitative direction-only
+   * `dutyPeriods`, `landings`, `tripLength`) and a qualitative direction-only
    * phrase for everything else (a blended composite like `layoverQuality`,
    * a discrete count like `cityPreference`, or any implicit-catalog
    * dimension) — see `computeCounterfactual`'s own doc comment for why a
@@ -177,7 +178,7 @@ const UNVERIFIED_WHEN_ESTIMATED: DimensionKey[] = [
   "cityPreference",
   "reportTime",
   "deadheadTolerance",
-  "departures",
+  "dutyPeriods",
   "layoverQuality",
   "circadianHealth",
   "hotelStandby",
@@ -191,7 +192,7 @@ interface LineMetrics {
   creditHours: number;
   deadheadPerTrip: number;
   /** Line-level total, not averaged — mirrors `creditHours` below. */
-  totalDepartures: number;
+  totalDutyPeriods: number;
   /** Line-level total, exact even on an estimated line (see `Line.totalLandings`'s own doc comment) — same honesty tier as daysOff/creditHours. */
   totalLandings: number;
   /** Days spent on hotel standby across the line's trips — see `lineStandbyDays`. */
@@ -219,7 +220,7 @@ function computeRawMetrics(line: Line): LineMetrics {
     reportLean,
     creditHours: line.totalCreditHours,
     deadheadPerTrip,
-    totalDepartures: line.totalDepartures,
+    totalDutyPeriods: lineDutyPeriods(line),
     totalLandings: line.totalLandings,
     totalStandbyDays: lineStandbyDays(line),
   };
@@ -444,13 +445,13 @@ function weightToTarget(weight: number): number {
  * A pilot who typed in an exact target (e.g. "16 days off") clearly cares
  * about that dimension even if they left the quick-round slider centered,
  * so an explicit target guarantees at least moderate importance. Commuting
- * does the same for reportTime, departures, and deadheadTolerance
+ * does the same for reportTime, dutyPeriods, and deadheadTolerance
  * specifically — an early/late report or an extra departure costs a
  * commuter a hotel night or a missed flight home, and a deadhead is a real,
  * higher-stakes call for them either way (it can save a commute or just be
  * dead time), whether or not they thought to weight it strongly themselves.
  * A commuter with no crash pad in domicile feels an extra departure even
- * more, so that combination raises departures' floor further still.
+ * more, so that combination raises dutyPeriods' floor further still.
  *
  * `confidence` (0-1) scales the pilot-derived portion only — a preference
  * stated once, ambiguously, now counts less than one repeated with real
@@ -459,7 +460,7 @@ function weightToTarget(weight: number): number {
  * are the app's own judgment about a commuter's real, always-true costs, not
  * something the pilot needs to have confidently stated — they stay
  * unscaled, applied after confidence, so a low-confidence weight can still
- * never sink a commuter's reportTime/departures/deadhead importance below
+ * never sink a commuter's reportTime/dutyPeriods/deadhead importance below
  * what commuting itself already guarantees.
  */
 function weightToImportance(
@@ -472,10 +473,10 @@ function weightToImportance(
 ): number {
   const base = Math.min(1, Math.abs(weight) / 100);
   let importance = (hasExplicitTarget ? Math.max(base, 0.5) : base) * confidence;
-  if (isCommuter && (key === "reportTime" || key === "departures" || key === "deadheadTolerance")) {
+  if (isCommuter && (key === "reportTime" || key === "dutyPeriods" || key === "deadheadTolerance")) {
     importance = Math.max(importance, 0.35);
   }
-  if (isCommuter && hasCrashPad === false && key === "departures") {
+  if (isCommuter && hasCrashPad === false && key === "dutyPeriods") {
     importance = Math.max(importance, 0.5);
   }
   return importance;
@@ -500,7 +501,7 @@ function matchFromDistance(value: number, target: number): number {
   return 1 - Math.abs(value - target);
 }
 
-/** Today's bare number has always meant "ideal only" — normalizing here means `daysOff`/`departures`/`creditHours` can all be read through the same range-aware match logic below, with creditHours (which never receives min/max) degenerating exactly to today's single-point behavior. */
+/** Today's bare number has always meant "ideal only" — normalizing here means `daysOff`/`dutyPeriods`/`creditHours` can all be read through the same range-aware match logic below, with creditHours (which never receives min/max) degenerating exactly to today's single-point behavior. */
 function asRangeTargetForScoring(value: number | RangeTarget | undefined): RangeTarget | undefined {
   if (value === undefined) return undefined;
   return typeof value === "number" ? { ideal: value } : value;
@@ -538,7 +539,7 @@ function matchFromRange(
 
 const FIXED_DIMENSION_KEYS = new Set<DimensionKey>([
   "daysOff", "tripLength", "international", "cityPreference", "reportTime",
-  "creditHours", "deadheadTolerance", "departures", "layoverQuality", "circadianHealth", "landings", "hotelStandby",
+  "creditHours", "deadheadTolerance", "dutyPeriods", "layoverQuality", "circadianHealth", "landings", "hotelStandby",
 ]);
 
 /** Distinguishes a fixed explicit dimension from an implicit-catalog id living in the same `DimensionScore.key` field — see that field's own doc comment. */
@@ -589,8 +590,8 @@ function hitPhrase(key: DimensionKey, weight: number): string {
       return weight > 0 ? "high credit hours" : "a lean line";
     case "deadheadTolerance":
       return weight > 0 ? "deadhead legs mixed in, as expected" : "minimal deadheading";
-    case "departures":
-      return "close to the number of separate departures you asked for";
+    case "dutyPeriods":
+      return "close to the number of duty periods you asked for";
     case "layoverQuality":
       return "well-reviewed layover hotels near the things you said matter to you";
     case "circadianHealth":
@@ -641,8 +642,8 @@ function missPhrase(
     case "deadheadTolerance":
       if (weight < 0 && !below) return "more deadheading than you'd prefer";
       return null;
-    case "departures":
-      return below ? "fewer departures than you pinned" : "more departures than you pinned";
+    case "dutyPeriods":
+      return below ? "fewer duty periods than you pinned" : "more duty periods than you pinned";
     case "layoverQuality":
       return value < 0.35 ? "layover hotels that fall short on what you flagged as important" : null;
     case "circadianHealth":
@@ -776,7 +777,7 @@ export function mostLeveragedDimension(lineScore: { dimensions: DimensionScore[]
 const NUMERIC_COUNTERFACTUAL_UNITS: Partial<Record<DimensionKey, { unit: string; unitPlural: string; decimals: number }>> = {
   daysOff: { unit: "day off", unitPlural: "days off", decimals: 0 },
   creditHours: { unit: "hour of credit", unitPlural: "hours of credit", decimals: 1 },
-  departures: { unit: "departure", unitPlural: "departures", decimals: 0 },
+  dutyPeriods: { unit: "duty period", unitPlural: "duty periods", decimals: 0 },
   landings: { unit: "landing", unitPlural: "landings", decimals: 0 },
   hotelStandby: { unit: "day of hotel standby", unitPlural: "days of hotel standby", decimals: 0 },
   tripLength: { unit: "day of trip length", unitPlural: "days of trip length", decimals: 1 },
@@ -786,7 +787,7 @@ export interface CounterfactualRanges {
   daysOff: readonly [number, number];
   avgTripLength: readonly [number, number];
   creditHours: readonly [number, number];
-  departures: readonly [number, number];
+  dutyPeriods: readonly [number, number];
   landings: readonly [number, number];
   hotelStandby: readonly [number, number];
 }
@@ -799,8 +800,8 @@ function boundsForCounterfactual(key: DimensionKey, ranges: CounterfactualRanges
       return ranges.avgTripLength;
     case "creditHours":
       return ranges.creditHours;
-    case "departures":
-      return ranges.departures;
+    case "dutyPeriods":
+      return ranges.dutyPeriods;
     case "landings":
       return ranges.landings;
     case "hotelStandby":
@@ -905,7 +906,7 @@ export interface DealbreakerNearMiss {
 
 /** How far above the violation threshold a match still counts as "close enough to flag" — deliberately narrow, so this only catches genuine near-misses, not every line that merely isn't great on that dimension. */
 const NEAR_MISS_MATCH_BAND = 0.15;
-/** How close (in real units — days off, or departures) a line can sit to a stated floor/ceiling and still count as a near-miss. */
+/** How close (in real units — days off, or duty periods) a line can sit to a stated floor/ceiling and still count as a near-miss. */
 const NEAR_MISS_RANGE_UNITS = 2;
 
 /**
@@ -930,7 +931,7 @@ function dealbreakerNearMissFor(
 
   if (binding.type === "explicit-target") {
     if (binding.rangeRole !== "min" && binding.rangeRole !== "max") return null;
-    const rawValue = binding.key === "daysOff" ? line.daysOff : binding.key === "departures" ? line.totalDepartures : undefined;
+    const rawValue = binding.key === "daysOff" ? line.daysOff : binding.key === "dutyPeriods" ? lineDutyPeriods(line) : undefined;
     if (rawValue === undefined) return null;
     const distance = binding.rangeRole === "min" ? rawValue - binding.value : binding.value - rawValue;
     if (distance > 0 && distance <= NEAR_MISS_RANGE_UNITS) {
@@ -1047,10 +1048,10 @@ function dealbreakerViolatedFor(
 
   if (binding.type === "explicit-target") {
     // Only "min"/"max" ever carry severity (parseProfileUpdates drops it
-    // otherwise) — a stated floor or ceiling on daysOff/departures, checked
+    // otherwise) — a stated floor or ceiling on daysOff/dutyPeriods, checked
     // against the line's own real raw total, no normalization needed.
     if (binding.rangeRole !== "min" && binding.rangeRole !== "max") return null;
-    const rawValue = binding.key === "daysOff" ? line.daysOff : binding.key === "departures" ? line.totalDepartures : undefined;
+    const rawValue = binding.key === "daysOff" ? line.daysOff : binding.key === "dutyPeriods" ? lineDutyPeriods(line) : undefined;
     if (rawValue === undefined) return null; // creditHours never receives a rangeRole, so never reaches here in practice.
     const violated = binding.rangeRole === "min" ? rawValue < binding.value : rawValue > binding.value;
     return violated ? { statement: fact.statement, label: humanizeKey(binding.key) } : null;
@@ -1156,22 +1157,22 @@ export function historicalConsistencyNote(
 export interface BidPackRanges {
   daysOff: readonly [number, number];
   creditHours: readonly [number, number];
-  departures: readonly [number, number];
+  dutyPeriods: readonly [number, number];
 }
 
 /**
- * Real min/max span of daysOff, creditHours, and departures across a bid
+ * Real min/max span of daysOff, creditHours, and duty periods across a bid
  * pack's lines, used to bound "type in your ideal number" inputs in actual
  * units instead of an abstract -100..100 scale.
  */
 export function getBidPackRanges(bidPack: BidPack): BidPackRanges {
   const daysOffValues = bidPack.lines.map((l) => l.daysOff);
   const creditValues = bidPack.lines.map((l) => l.totalCreditHours);
-  const departuresValues = bidPack.lines.map((l) => l.totalDepartures);
+  const dutyPeriodsValues = bidPack.lines.map((l) => lineDutyPeriods(l));
   return {
     daysOff: [Math.min(...daysOffValues), Math.max(...daysOffValues)],
     creditHours: [Math.min(...creditValues), Math.max(...creditValues)],
-    departures: [Math.min(...departuresValues), Math.max(...departuresValues)],
+    dutyPeriods: [Math.min(...dutyPeriodsValues), Math.max(...dutyPeriodsValues)],
   };
 }
 
@@ -1268,7 +1269,7 @@ export function scoreBidPack(
     ] as const,
     cityScore: [Math.min(...cityScores), Math.max(...cityScores)] as const,
     layoverQuality: [Math.min(...layoverQualityScores), Math.max(...layoverQualityScores)] as const,
-    departures: bidPackRanges.departures,
+    dutyPeriods: bidPackRanges.dutyPeriods,
     landings: [
       Math.min(...rawMetrics.map((m) => m.totalLandings)),
       Math.max(...rawMetrics.map((m) => m.totalLandings)),
@@ -1305,7 +1306,7 @@ export function scoreBidPack(
         ranges.deadheadPerTrip[1]
       ),
       layoverQuality: normalize(layoverQualityScores[i], ranges.layoverQuality[0], ranges.layoverQuality[1]),
-      departures: normalize(raw.totalDepartures, ranges.departures[0], ranges.departures[1]),
+      dutyPeriods: normalize(raw.totalDutyPeriods, ranges.dutyPeriods[0], ranges.dutyPeriods[1]),
       // Neutral fallback when no trip in the line has a real assessment —
       // the `verified` flag below (via circadianScores[i] === null) is what
       // actually tells the caller "no real data," not this placeholder.
@@ -1387,10 +1388,10 @@ export function scoreBidPack(
       let match: number;
       let hasExplicitTarget = false;
 
-      if ((key === "daysOff" || key === "creditHours" || key === "departures") && explicitTargets[key] !== undefined) {
+      if ((key === "daysOff" || key === "creditHours" || key === "dutyPeriods") && explicitTargets[key] !== undefined) {
         hasExplicitTarget = true;
-        const bounds = key === "daysOff" ? ranges.daysOff : key === "creditHours" ? ranges.creditHours : ranges.departures;
-        // Only daysOff/departures ever actually carry min/max (creditHours
+        const bounds = key === "daysOff" ? ranges.daysOff : key === "creditHours" ? ranges.creditHours : ranges.dutyPeriods;
+        // Only daysOff/dutyPeriods ever actually carry min/max (creditHours
         // never receives range treatment — see RangeTarget's own doc
         // comment) — asRangeTargetForScoring/matchFromRange handle both
         // uniformly, with creditHours' bare number degenerating to exactly

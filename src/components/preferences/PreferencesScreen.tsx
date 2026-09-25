@@ -48,7 +48,7 @@ const SLIDER_GROUPS: { title: string; keys: (keyof PreferenceWeights)[] }[] = [
   { title: "Bidding strategy", keys: ["riskTolerance", "adminEffortAppetite"] },
 ];
 
-const RANGE_TARGET_KEYS = new Set<ExplicitTargetKey>(["daysOff", "departures"]);
+const RANGE_TARGET_KEYS = new Set<ExplicitTargetKey>(["daysOff", "dutyPeriods"]);
 const CIRCADIAN_TOLERANCE_RANGE: readonly [number, number] = [0, 4];
 
 function nextSentiment(current: CitySentiment | null): CitySentiment | null {
@@ -298,8 +298,8 @@ export function PreferencesScreen({
                 ? CIRCADIAN_TOLERANCE_RANGE
                 : config.key === "daysOff" && ranges
                   ? ranges.daysOff
-                  : config.key === "departures" && ranges
-                    ? ranges.departures
+                  : config.key === "dutyPeriods" && ranges
+                    ? ranges.dutyPeriods
                     : config.key === "creditHours" && ranges
                       ? ranges.creditHours
                       : null;

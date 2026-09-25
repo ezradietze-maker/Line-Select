@@ -33,7 +33,7 @@ export function isStandbyLeg(leg: { flightNumber: string; isStandby?: boolean })
 }
 
 /**
- * The trip's schedule as flying only: every hotel-standby row removed, and any duty that was nothing but standby dropped entirely (along with the "layover" printed on it, which is really just the pilot still sitting in the hotel). Standby is on-call time, not a departure, a report, a rest period or a flight, so statistics about any of those must be computed from this, never from `trip.schedule`.
+ * The trip's schedule as flying only: every hotel-standby row removed, and any duty that was nothing but standby dropped entirely (along with the "layover" printed on it, which is really just the pilot still sitting in the hotel). Standby is on-call time, not a report, a rest period or a flight, so statistics about any of those must be computed from this, never from `trip.schedule`.
  */
 export function flyingSchedule(trip: Trip): Trip["schedule"] {
   return trip.schedule
@@ -41,13 +41,8 @@ export function flyingSchedule(trip: Trip): Trip["schedule"] {
     .filter((duty, i) => duty.legs.length > 0 || trip.schedule[i].legs.length === 0);
 }
 
-/** How many times this trip actually sends the pilot out to fly: duty periods with at least one real flight. Standby days never count — sitting on call at a hotel is not a departure. Never below 1. */
-export function tripFlyingDepartures(trip: Trip): number {
-  return Math.max(1, flyingSchedule(trip).length);
-}
-
 /**
- * Brings a trip saved by an earlier version up to date from its own saved schedule, so a pilot never has to re-upload for it: flags each standby leg (what draws the chart's standby color), counts the days, and — the part that matters for ranking — recomputes departures so standby days aren't counted as them. Saved trips come in several generations (no standby fields at all; a day count but unflagged legs; flagged legs but departures still counting standby), so this is safe to run on any of them and does nothing to a trip with no standby or no saved schedule.
+ * Brings a trip saved by an earlier version up to date from its own saved schedule, so a pilot never has to re-upload for it: flags each standby leg (what draws the chart's standby color), counts the days. Saved trips come in several generations (no standby fields at all; a day count but unflagged legs), so this is safe to run on any of them and does nothing to a trip with no saved schedule.
  */
 export function backfillStandby(trip: Trip): Trip {
   if (trip.schedule.length === 0) return trip;
@@ -59,6 +54,5 @@ export function backfillStandby(trip: Trip): Trip {
     ...duty,
     legs: duty.legs.map((leg) => ({ ...leg, isStandby: isStandbyLeg(leg) })),
   }));
-  const withFlags: Trip = { ...trip, schedule, standbyDays: days };
-  return days > 0 ? { ...withFlags, departures: tripFlyingDepartures(withFlags) } : withFlags;
+  return { ...trip, schedule, standbyDays: days };
 }

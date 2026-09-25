@@ -39,6 +39,8 @@ export function parseDraft(raw: string | null, bidPackId: string, now: number): 
     if (!Array.isArray(d.facts) || !Array.isArray(d.transcript)) return null;
     if (typeof d.turnsUsed !== "number" || d.turnsUsed < 0) return null;
     if (!d.currentQuestion || typeof d.currentQuestion !== "object") return null;
+    // A draft saved before "departures" was renamed to "dutyPeriods" would resume a question bound to the old key — start fresh instead.
+    if ((d.currentQuestion as { boundTo?: string }).boundTo === "departures") return null;
     return d as InterviewDraft;
   } catch {
     return null;

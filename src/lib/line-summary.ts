@@ -1,4 +1,5 @@
 import { formatHoursValue } from "@/lib/interview-config";
+import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
 import { targetParts, type TargetParts } from "@/lib/target-editing";
 import type { Line } from "@/types/bidpack";
@@ -7,15 +8,15 @@ import type { PreferenceProfile } from "@/types/preferences";
 export type ChipTone = "good" | "warn" | "neutral";
 
 export interface LineFactChip {
-  /** The number itself — "15 days off", "8 departures", "HNL". */
+  /** The number itself — "15 days off", "8 duty periods", "HNL". */
   main: string;
   /** How it compares to what the pilot said — "in your 12–16", "below your 14 minimum". Empty when there's nothing to compare against. */
   note: string;
   tone: ChipTone;
 }
 
-/** A departures/credit figure this close to the pilot's pinned ideal counts as "what you asked for". */
-const DEPARTURES_TOLERANCE = 1;
+/** A duty-periods/credit figure this close to the pilot's pinned ideal counts as "what you asked for". */
+const DUTY_PERIODS_TOLERANCE = 1;
 const CREDIT_TOLERANCE_HOURS = 2;
 
 function compareToTarget(
@@ -53,8 +54,11 @@ export function buildLineFactChips(line: Line, profile: PreferenceProfile): Line
   const daysOff = compareToTarget(line.daysOff, targetParts(profile.explicitTargets.daysOff), 0, int);
   chips.push({ main: `${line.daysOff} days off`, ...daysOff });
 
-  const departures = compareToTarget(line.totalDepartures, targetParts(profile.explicitTargets.departures), DEPARTURES_TOLERANCE, int);
-  chips.push({ main: `${line.totalDepartures} departure${line.totalDepartures === 1 ? "" : "s"}`, ...departures });
+  const dutyPeriodCount = lineDutyPeriods(line);
+  const dutyPeriods = compareToTarget(dutyPeriodCount, targetParts(profile.explicitTargets.dutyPeriods), DUTY_PERIODS_TOLERANCE, int);
+  chips.push({ main: `${dutyPeriodCount} duty period${dutyPeriodCount === 1 ? "" : "s"}`, ...dutyPeriods });
+  // Takeoffs — always the same number as the line's landings — shown for reference; nothing to compare it against.
+  chips.push({ main: `${line.totalDepartures} departure${line.totalDepartures === 1 ? "" : "s"}`, note: "", tone: "neutral" });
 
   const credit = compareToTarget(line.totalCreditHours, targetParts(profile.explicitTargets.creditHours), CREDIT_TOLERANCE_HOURS, formatHoursValue);
   chips.push({ main: `${formatHoursValue(line.totalCreditHours)} credit`, ...credit });

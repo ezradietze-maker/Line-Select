@@ -15,7 +15,7 @@ interface TargetEditorProps {
   config: TargetSliderQuestionConfig;
   range: readonly [number, number];
   value: number | RangeTarget | undefined;
-  /** Whether a floor/ceiling band makes sense for this dimension (days off, departures) — the others (credit, consecutive early reports) are a single pinned number. */
+  /** Whether a floor/ceiling band makes sense for this dimension (days off, duty periods) — the others (credit, consecutive early reports) are a single pinned number. */
   allowRange: boolean;
   /** `null` removes the target entirely. */
   onChange: (value: number | RangeTarget | null) => void;

@@ -158,7 +158,7 @@ describe("category sub-indices (Satisfaction Index breakdown)", () => {
   it("covers every fixed and implicit dimension with no leftovers", () => {
     const fixedKeys: DimensionKey[] = [
       "daysOff", "tripLength", "international", "cityPreference", "reportTime",
-      "creditHours", "deadheadTolerance", "departures", "layoverQuality", "circadianHealth",
+      "creditHours", "deadheadTolerance", "dutyPeriods", "layoverQuality", "circadianHealth",
     ];
     for (const key of fixedKeys) {
       expect(SATISFACTION_CATEGORIES).toContain(categoryFor(key));
@@ -326,7 +326,7 @@ describe("gymScore", () => {
   });
 });
 
-describe("range targets (daysOff/departures floor-ideal-ceiling)", () => {
+describe("range targets (daysOff/dutyPeriods floor-ideal-ceiling)", () => {
   it("scores a full match for any line inside [min,max], distance-penalized only outside it", () => {
     // Sample pack daysOff spread is [18,24]: 9001=24, 9002=24, 9003=23, 9004=20, 9005=19, 9006=18.
     const profile = {
@@ -384,14 +384,14 @@ describe("dealbreakers on explicit-target ranges (floor/ceiling breach)", () => 
     expect(line9004.violatedDealbreakers).toHaveLength(0);
   });
 
-  it("caps a line whose real departures exceed a stated ceiling (rangeRole max)", () => {
-    // Single-trip lines (9001/9002/9003) total 2 departures; two-trip lines (9004/9005/9006) total 4.
+  it("caps a line whose real duty periods exceed a stated ceiling (rangeRole max)", () => {
+    // Single-trip lines (9001/9002/9003) total 2 duty periods; two-trip lines (9004/9005/9006) total 4.
     const profile = {
       ...neutralProfile(),
       discoveredFacts: [
         dealbreakerFact(
-          { type: "explicit-target", key: "departures", value: 2, rangeRole: "max" },
-          "More than 2 departures is a dealbreaker."
+          { type: "explicit-target", key: "dutyPeriods", value: 2, rangeRole: "max" },
+          "More than 2 duty periods is a dealbreaker."
         ),
       ],
     };
@@ -509,7 +509,7 @@ describe("computeCounterfactual", () => {
     daysOff: [16, 24],
     avgTripLength: [2, 4],
     creditHours: [10, 30],
-    departures: [2, 6],
+    dutyPeriods: [2, 6],
     hotelStandby: [0, 4],
     landings: [2, 8],
   };
@@ -763,6 +763,6 @@ describe("getBidPackRanges", () => {
     const daysOffValues = SAMPLE_BID_PACK.lines.map((l) => l.daysOff);
     expect(ranges.daysOff).toEqual([Math.min(...daysOffValues), Math.max(...daysOffValues)]);
     expect(ranges.creditHours[0]).toBeLessThanOrEqual(ranges.creditHours[1]);
-    expect(ranges.departures[0]).toBeLessThanOrEqual(ranges.departures[1]);
+    expect(ranges.dutyPeriods[0]).toBeLessThanOrEqual(ranges.dutyPeriods[1]);
   });
 });

@@ -494,6 +494,7 @@ export function parseLineGridColumn(
         totalTafbHours,
         totalLandings,
         numDutyPeriods: pairings?.length ?? 0,
+        printedDutyPeriods: dutyPeriodsMatch ? parseInt(dutyPeriodsMatch[1], 10) : undefined,
         flightNumberSequence: pairings?.flatMap((p) => p.flightNumbers) ?? [],
       },
       pairings,

@@ -92,8 +92,16 @@ export interface Trip {
   landings: number;
   /** Time away from base for this trip, in hours. */
   tafbHours: number;
-  /** Number of separate duty periods (report-to-release stretches) in this trip — the real count of times a pilot leaves home for this trip, distinct from `days`, since several short duty periods can be bundled into one multi-day trip. */
+  /** Takeoffs on this trip. Every takeoff has a landing to match, so this is always exactly `landings` — one number, never two. */
   departures: number;
+  /**
+   * Duty periods (report-to-release stretches) in this trip, counted the way
+   * the bid pack itself prints them on each line ("NO. DP'S"): every duty
+   * day, including days spent on hotel standby. Distinct from `days` (several
+   * short duty periods can be bundled into one multi-day trip) and from
+   * `departures`/`landings` (a duty period can hold several flights, or none).
+   */
+  dutyPeriods?: number;
   /**
    * The full report/fly/layover schedule, minute-by-minute from real printed
    * data — powers the per-trip visual timeline. Empty when the schedule
@@ -140,8 +148,10 @@ export interface Line {
   totalTafbHours: number;
   /** Sum of trip landings for the whole line. */
   totalLandings: number;
-  /** Sum of trip departures for the whole line. */
+  /** Sum of trip departures for the whole line — always equal to `totalLandings`. */
   totalDepartures: number;
+  /** The line's duty periods. Read straight from the bid pack's own printed "NO. DP'S" figure when the line was parsed from one; otherwise the sum of its trips' duty periods. */
+  totalDutyPeriods?: number;
   /**
    * True when `trips` isn't a verified breakdown — e.g. a parsed bid pack
    * line whose calendar entries couldn't be confidently matched to a

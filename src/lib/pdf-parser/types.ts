@@ -122,6 +122,8 @@ export interface ParsedLineSummary {
   totalTafbHours: number;
   totalLandings: number;
   numDutyPeriods: number;
+  /** The line's own printed "NO. DP'S" — its duty-period count as the bid pack states it, standby days included. Absent when the line didn't print one. */
+  printedDutyPeriods?: number;
   /** Flight numbers found in this line's calendar cells, in date order, for trip matching. */
   flightNumberSequence: string[];
 }

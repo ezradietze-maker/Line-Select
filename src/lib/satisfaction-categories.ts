@@ -36,7 +36,7 @@ export const SATISFACTION_CATEGORIES: SatisfactionCategory[] = [
 
 const FIXED_DIMENSION_CATEGORIES: Record<DimensionKey, SatisfactionCategory> = {
   daysOff: "timeAndHomeLife",
-  departures: "timeAndHomeLife",
+  dutyPeriods: "timeAndHomeLife",
   creditHours: "compensation",
   tripLength: "tripCharacter",
   international: "tripCharacter",

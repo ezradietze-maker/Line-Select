@@ -189,7 +189,7 @@ export const LineCard = memo(function LineCard({
                     {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
                   </>
                 )}
-                {" · "}TAFB {formatHours(line.totalTafbHours)} &middot; {line.totalLandings} landings
+                {" · "}TAFB {formatHours(line.totalTafbHours)} &middot; {line.totalLandings} landing{line.totalLandings === 1 ? "" : "s"}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-0.5">

@@ -5,7 +5,7 @@ import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
 
 function line(over: Partial<Line> = {}, cities: string[] = []): Line {
   const trip = { id: "t", layoverCities: cities, days: 3 } as unknown as Trip;
-  return { id: "l", lineNumber: "1105", trips: [trip], daysOff: 15, totalCreditHours: 83.87, totalTafbHours: 0, totalLandings: 0, totalDepartures: 8, ...over };
+  return { id: "l", lineNumber: "1105", trips: [trip], daysOff: 15, totalCreditHours: 83.87, totalTafbHours: 0, totalLandings: 0, totalDepartures: 8, totalDutyPeriods: 8, ...over };
 }
 
 function profile(over: Partial<PreferenceProfile> = {}): PreferenceProfile {
@@ -29,7 +29,7 @@ function profile(over: Partial<PreferenceProfile> = {}): PreferenceProfile {
 describe("buildLineFactChips", () => {
   it("shows the real numbers with no comparison when the pilot pinned nothing", () => {
     const chips = buildLineFactChips(line(), profile());
-    expect(chips.map((c) => c.main)).toEqual(["15 days off", "8 departures", "83:52 credit"]);
+    expect(chips.map((c) => c.main)).toEqual(["15 days off", "8 duty periods", "8 departures", "83:52 credit"]);
     expect(chips.every((c) => c.tone === "neutral" && c.note === "")).toBe(true);
   });
 
@@ -41,9 +41,9 @@ describe("buildLineFactChips", () => {
   });
 
   it("treats a bare pinned number as an ideal with a small tolerance", () => {
-    const p = profile({ explicitTargets: { departures: 8 } });
-    expect(buildLineFactChips(line({ totalDepartures: 9 }), p)[1]).toMatchObject({ tone: "good", note: "right at your 8" });
-    expect(buildLineFactChips(line({ totalDepartures: 12 }), p)[1]).toMatchObject({ tone: "neutral", note: "you wanted 8" });
+    const p = profile({ explicitTargets: { dutyPeriods: 8 } });
+    expect(buildLineFactChips(line({ totalDutyPeriods: 9 }), p)[1]).toMatchObject({ tone: "good", note: "right at your 8" });
+    expect(buildLineFactChips(line({ totalDutyPeriods: 12 }), p)[1]).toMatchObject({ tone: "neutral", note: "you wanted 8" });
   });
 
   it("names the specific loved and avoided cities on THIS line, and only those", () => {

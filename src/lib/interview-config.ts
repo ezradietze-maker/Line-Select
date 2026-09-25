@@ -31,7 +31,7 @@ export const QUICK_QUESTIONS: SliderQuestionConfig[] = [
     key: "tripLength",
     question: "Short trips or long trips?",
     helpText:
-      "This is about how many days a single trip runs, report to release. Right after this, there's a separate question about how many total departures you want in the month — those aren't the same thing.",
+      "This is about how many days a single trip runs, report to release. Right after this, there's a separate question about how many total duty periods you want in the month — those aren't the same thing.",
     lowLabel: "Prefer short trips",
     highLabel: "Prefer long trips",
     centerLabel: "No strong preference",
@@ -219,7 +219,7 @@ export interface TargetSliderQuestionConfig {
   /**
    * Overrides the generic "your slider answer will be used instead" text
    * shown when this target is skipped — needed for a dimension with no
-   * bipolar slider counterpart (nights home, departures).
+   * bipolar slider counterpart (nights home, duty periods).
    */
   noTargetFallbackText?: string;
 }
@@ -245,20 +245,20 @@ export const NIGHTS_HOME_CONFIG: TargetSliderQuestionConfig = {
   noTargetFallbackText: NO_SLIDER_FALLBACK_TEXT,
 };
 
-/** Pinned departures target — bare-number shape used by `formatExplicitTarget` for review screens; the adaptive interview now asks the underlying question itself, up to three times, one per `rangeRole`. */
-export const DEPARTURES_CONFIG: TargetSliderQuestionConfig = {
-  key: "departures",
-  question: "How many separate departures do you want in a month?",
+/** Pinned duty-periods target — bare-number shape used by `formatExplicitTarget` for review screens; the adaptive interview now asks the underlying question itself, up to three times, one per `rangeRole`. */
+export const DUTY_PERIODS_CONFIG: TargetSliderQuestionConfig = {
+  key: "dutyPeriods",
+  question: "How many duty periods do you want in a month?",
   helpText:
-    "A handful of short trips bunched together can still add up to a lot of separate report times, even if it only reads as \"a couple trips.\" This is about how many times you actually leave home, not how many trips it gets counted as.",
-  unitSingular: "departure",
-  unitPlural: "departures",
+    "A duty period is one report-to-release stretch, counted the way your bid pack prints it on each line (\"NO. DP'S\") — hotel standby days included. A handful of short trips bunched together can still add up to a lot of them, even if it only reads as \"a couple trips.\" This is about how many times you actually report, not how many trips it gets counted as.",
+  unitSingular: "duty period",
+  unitPlural: "duty periods",
   formatValue: (v) => String(Math.round(v)),
   step: 1,
   noTargetFallbackText: NO_SLIDER_FALLBACK_TEXT,
 };
 
-/** Exact targets other than nights home and departures, which have their own configs (`NIGHTS_HOME_CONFIG`, `DEPARTURES_CONFIG`). */
+/** Exact targets other than nights home and duty periods, which have their own configs (`NIGHTS_HOME_CONFIG`, `DUTY_PERIODS_CONFIG`). */
 export const TARGET_SLIDERS: TargetSliderQuestionConfig[] = [
   {
     key: "creditHours",
@@ -283,7 +283,7 @@ export const TARGET_SLIDERS: TargetSliderQuestionConfig[] = [
 /** Every exact-target config, quick-round and deep-round alike — for screens that summarize whatever the pilot pinned, regardless of which round asked it. */
 export const ALL_TARGET_CONFIGS: TargetSliderQuestionConfig[] = [
   NIGHTS_HOME_CONFIG,
-  DEPARTURES_CONFIG,
+  DUTY_PERIODS_CONFIG,
   ...TARGET_SLIDERS,
 ];
 
@@ -291,7 +291,7 @@ export const ALL_TARGET_CONFIGS: TargetSliderQuestionConfig[] = [
  * Renders either shape `PreferenceProfile.explicitTargets[key]` can hold —
  * today's bare number (unchanged: "18 nights home"), or a `RangeTarget`
  * tolerance band ("16-20 nights home, ideal 18") for the two keys
- * (`daysOff`/`departures`) that can now carry one. Shared by every screen
+ * (`daysOff`/`dutyPeriods`) that can now carry one. Shared by every screen
  * that lists pinned targets so the format stays consistent in one place.
  */
 /**

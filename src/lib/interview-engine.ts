@@ -78,7 +78,7 @@ export const HARD_CEILING_TURNS = 42;
  * (which needs it to know what's still untouched). Kept here rather than in
  * `interview-prompt.ts` so `interview-prompt.ts` can import it without a
  * circular dependency (it already imports `MIN_TURNS_BEFORE_WRAP` from this
- * file). "departures" is deliberately excluded — it's target-only, never a
+ * file). "dutyPeriods" is deliberately excluded — it's target-only, never a
  * directional slider (see `ExplicitWeightKey`'s own doc comment).
  */
 export const EXPLICIT_WEIGHT_IDS = [
@@ -358,7 +358,7 @@ function touchedDimensionIds(facts: PreferenceFact[]): Set<string> {
  */
 const TOPIC_COVERAGE_HINTS: Record<string, string[]> = {
   "home-time": ["daysOff"],
-  departures: ["departures", "tripLength"],
+  "duty-periods": ["dutyPeriods", "tripLength"],
   "pay-vs-lifestyle": ["creditHours"],
   "deadhead-commuter": ["deadheadTolerance"],
   "city-preferences": ["cityPreference"],

@@ -1,3 +1,4 @@
+import { migrateDeparturesToDutyPeriods } from "@/lib/profile-migration";
 import type { PreferenceProfile } from "@/types/preferences";
 
 /**
@@ -16,7 +17,7 @@ export async function fetchServerProfile(): Promise<PreferenceProfile | null> {
     const res = await fetch("/api/preference-profile", { credentials: "same-origin" });
     if (!res.ok) return null;
     const data = await res.json();
-    return (data.profile as PreferenceProfile | null) ?? null;
+    return data.profile ? migrateDeparturesToDutyPeriods(data.profile as PreferenceProfile) : null;
   } catch {
     return null;
   }

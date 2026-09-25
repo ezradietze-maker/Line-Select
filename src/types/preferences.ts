@@ -19,10 +19,12 @@ export interface PreferenceWeights {
   deadheadTolerance: number;
   /**
    * Vestigial — never moved by a bipolar slider (there's no "fewer vs. more
-   * departures" spectrum, just a number the pilot pins). Importance for this
-   * dimension comes entirely from `explicitTargets.departures` being set.
+   * duty periods" spectrum, just a number the pilot pins). Importance for
+   * this dimension comes entirely from `explicitTargets.dutyPeriods` being
+   * set. (Duty periods are report-to-release stretches, as the bid pack's own
+   * "NO. DP'S" counts them — not takeoffs; those are `landings`.)
    */
-  departures: number;
+  dutyPeriods: number;
   /**
    * The five layover-hotel dimensions below are all one-directional despite
    * the shared -100..100 scale: only magnitude is used (0 = doesn't matter,
@@ -59,7 +61,7 @@ export interface PreferenceWeights {
   /**
    * Not a scored bid-pack dimension — no line "has" a risk tolerance, so
    * `scoring.ts`'s per-`DimensionKey` loop never reads this key, the same
-   * way `departures` above sits unused by that loop. Read only by
+   * way `dutyPeriods` above sits unused by that loop. Read only by
    * `strategy-engine.ts`'s `scorePreferenceFit`/`FIT_FACTORS`, to reorder
    * and filter the Strategies board. -100 = wants the safest, most
    * guaranteed pick; +100 = wants the most aggressive legal/contractual
@@ -84,7 +86,7 @@ export const DEFAULT_WEIGHTS: PreferenceWeights = {
   reportTime: 0,
   creditHours: 0,
   deadheadTolerance: 0,
-  departures: 0,
+  dutyPeriods: 0,
   hotelFood: 0,
   hotelGym: 0,
   hotelGrocery: 0,
@@ -128,12 +130,12 @@ export type DeepSliderKey =
  * never receives range/floor-ceiling treatment (`RANGE_TARGET_KEYS` in
  * `interview-turn-service.ts` deliberately excludes it).
  */
-export type ExplicitTargetKey = "daysOff" | "creditHours" | "departures" | "circadianTolerance";
+export type ExplicitTargetKey = "daysOff" | "creditHours" | "dutyPeriods" | "circadianTolerance";
 
 /**
  * A tolerance band instead of one bare number — "the fewest I could live
  * with, my actual ideal, and the point a month becomes a dealbreaker." Only
- * `daysOff` and `departures` ever receive this richer shape (see the
+ * `daysOff` and `dutyPeriods` ever receive this richer shape (see the
  * interview topic backlog); `creditHours` stays a bare number. `ideal` is
  * itself optional since a pilot might answer floor/ceiling questions before
  * (or without) ever pinning an exact ideal — scoring falls back to the
@@ -166,7 +168,7 @@ export interface PreferenceProfile {
    */
   /**
    * A bare `number` means exactly what it always has — a single pinned
-   * ideal, no floor/ceiling. `daysOff`/`departures` can additionally be a
+   * ideal, no floor/ceiling. `daysOff`/`dutyPeriods` can additionally be a
    * full `RangeTarget` when the pilot gave a tolerance band — every
    * existing profile (and `creditHours`, which never gets range treatment)
    * keeps working unchanged since a bare number is still valid everywhere.
@@ -174,8 +176,8 @@ export interface PreferenceProfile {
   explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>>;
   /**
    * Whether the pilot commutes to base. Not a scored dimension on its own —
-   * it raises the effective importance floor on reportTime and departures
-   * (an early/late report or an extra departure is a much bigger deal when
+   * it raises the effective importance floor on reportTime and dutyPeriods
+   * (an early/late report or an extra duty period is a much bigger deal when
    * it costs a commuter an extra hotel night or a missed flight home), even
    * if they left those near neutral. `null` means not asked/skipped.
    */
@@ -183,8 +185,8 @@ export interface PreferenceProfile {
   /**
    * Whether the pilot has a crash pad in domicile. Only meaningful (and only
    * asked) for a commuter — a locally based pilot doesn't need one. When a
-   * commuter has no crash pad, an extra departure is a bigger real cost
-   * (nowhere to stage between duty days), so this raises departures'
+   * commuter has no crash pad, an extra duty period is a bigger real cost
+   * (nowhere to stage between duty days), so this raises dutyPeriods'
    * effective importance floor further. `null` means not asked/skipped.
    */
   hasCrashPad: boolean | null;

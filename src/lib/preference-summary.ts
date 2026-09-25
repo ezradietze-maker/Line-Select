@@ -26,9 +26,9 @@ export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negati
     positive: "not worrying about deadhead legs",
     negative: "avoiding deadhead legs",
   },
-  departures: {
-    positive: "keeping the number of separate departures close to what you pinned",
-    negative: "not worrying about the number of separate departures",
+  dutyPeriods: {
+    positive: "keeping the number of duty periods close to what you pinned",
+    negative: "not worrying about the number of duty periods",
   },
   hotelFood: {
     positive: "having good food within walking distance of your layover hotel",
@@ -103,7 +103,7 @@ export function rankPreferences(
     const weight = weights[key];
     const explicitKey = key as ExplicitTargetKey;
     const explicitValue =
-      key === "daysOff" || key === "creditHours" || key === "departures"
+      key === "daysOff" || key === "creditHours" || key === "dutyPeriods"
         ? explicitTargets[explicitKey]
         : undefined;
     const hasExplicit = explicitValue !== undefined;

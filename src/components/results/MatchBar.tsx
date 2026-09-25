@@ -9,7 +9,7 @@ const FIXED_DIMENSION_LABELS: Record<DimensionKey, string> = {
   reportTime: "Report time",
   creditHours: "Credit hours",
   deadheadTolerance: "Deadhead legs",
-  departures: "Departures",
+  dutyPeriods: "Duty periods",
   layoverQuality: "Layover quality",
   circadianHealth: "Circadian health",
   landings: "Landings",

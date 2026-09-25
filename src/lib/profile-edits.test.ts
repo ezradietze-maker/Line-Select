@@ -68,10 +68,10 @@ describe("applyManualEdits — weights", () => {
     expect(flipped.discoveredFacts.find((f) => f.severity === "dealbreaker")).toBeUndefined();
   });
 
-  it("ignores keys that aren't explicit-weight dimensions (departures is target-only)", () => {
+  it("ignores keys that aren't explicit-weight dimensions (dutyPeriods is target-only)", () => {
     const profile = profileWith([]);
-    const edited = applyManualEdits(profile, { weights: { departures: 50 } });
-    expect(edited.weights.departures).toBe(DEFAULT_WEIGHTS.departures);
+    const edited = applyManualEdits(profile, { weights: { dutyPeriods: 50 } });
+    expect(edited.weights.dutyPeriods).toBe(DEFAULT_WEIGHTS.dutyPeriods);
     expect(edited.discoveredFacts).toBe(profile.discoveredFacts);
   });
 

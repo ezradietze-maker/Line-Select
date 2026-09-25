@@ -7,7 +7,8 @@ import { buildProfile, emptyWeights } from "@/lib/preference-logic";
 import { rankLines } from "@/lib/scoring";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { computeCircadianAssessment } from "@/lib/circadian";
-import { backfillStandby, flyingSchedule, lineStandbyDays, packHasStandby, tripFlyingDepartures, tripStandbyDays } from "@/lib/standby";
+import { backfillStandby, flyingSchedule, lineStandbyDays, packHasStandby, tripStandbyDays } from "@/lib/standby";
+import { buildEstimatedTrip, pairingToTrip } from "@/lib/pdf-parser/build-bidpack";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import { buildRawSegments } from "@/lib/trip-timeline";
 import type { BidPack, Line } from "@/types/bidpack";
@@ -192,52 +193,37 @@ describe("standby in the trip schedule", () => {
   });
 });
 
-describe("standby is never a departure", () => {
-  /** A real sample trip plus `n` standby-only duties (each printing the hotel "layover" a standby row carries), with departures counted the old way — layovers + 1. */
-  function tripWithStandbyDuties(n: number) {
+describe("departures are landings", () => {
+  const partial = (o: object) => o as never;
+
+  it("gives a parsed trip exactly as many departures as landings", () => {
+    const pairing = { id: "p", sequenceNumber: "1", pageNumber: 1, days: 2, layoverCities: ["IND"], layoverDetails: [{ city: "IND", hotelName: "H" }, { city: "IND", hotelName: "H" }, { city: "IND", hotelName: "H" }], reportTime: "afternoon", reportTimeLocal: "1200", international: false, deadheadLegs: 0, standbyDays: 3, creditHours: 20, blockHours: 5, landings: 2, tafbHours: 60, effectiveText: "", firstFlightNumber: "1", flightNumbers: ["1"], schedule: [] };
+    // Three standby rows each printed a hotel "layover" — which used to inflate departures to 4.
+    const trip = pairingToTrip(partial(pairing), "SEP26");
+    expect(trip.departures).toBe(2);
+    expect(trip.departures).toBe(trip.landings);
+  });
+
+  it("gives a trip with no landings (all standby and repositioning) zero departures", () => {
+    const trip = pairingToTrip(partial({ id: "p", sequenceNumber: "1", pageNumber: 1, days: 3, layoverCities: [], layoverDetails: [], reportTime: "afternoon", reportTimeLocal: "1200", international: false, deadheadLegs: 0, standbyDays: 3, creditHours: 9, blockHours: 0, landings: 0, tafbHours: 60, effectiveText: "", firstFlightNumber: "1", flightNumbers: ["1"], schedule: [] }), "SEP26");
+    expect(trip.departures).toBe(0);
+  });
+
+  it("gives an estimated line's trip departures equal to the line's printed landings", () => {
+    const trip = buildEstimatedTrip({ lineNumber: "1", pageNumber: 1, seat: "CAP", daysOff: 13, totalCreditHours: 80, totalTafbHours: 240, totalLandings: 9, numDutyPeriods: 0, flightNumberSequence: [] }, "SEP26");
+    expect(trip.departures).toBe(9);
+  });
+
+  it("keeps flying statistics free of standby duties (no early reports or short rests from them)", () => {
     const base = SAMPLE_BID_PACK.lines.flatMap((l) => l.trips).find((t) => t.schedule.length > 0)!;
     const last = base.schedule[base.schedule.length - 1];
-    const standbyDuty = () => ({
+    const standbyDuty = {
       ...last,
       legs: [{ ...last.legs[0], flightNumber: "STHOTL", equipment: "", blockHours: null, isStandby: true as const }],
-      layover: { city: "IND", hotelName: "HYATT", transportToHotel: null, transportFromHotel: null, hours: 12.5, startMinutes: last.startMinutes, endMinutes: last.startMinutes + 750 },
-    });
-    const schedule = [...base.schedule, ...Array.from({ length: n }, standbyDuty)];
-    return { base, trip: { ...base, schedule, standbyDays: n, departures: schedule.length } };
-  }
-
-  it("counts only duties that fly", () => {
-    const { base, trip } = tripWithStandbyDuties(3);
-    expect(trip.departures).toBe(base.schedule.length + 3); // the old, inflated way
-    expect(tripFlyingDepartures(trip)).toBe(base.schedule.length);
-  });
-
-  it("drops standby-only duties (and their fake layovers) from the flying schedule", () => {
-    const { base, trip } = tripWithStandbyDuties(2);
+      layover: { city: "IND", hotelName: "HYATT", transportToHotel: null, transportFromHotel: null, hours: 3, startMinutes: last.startMinutes, endMinutes: last.startMinutes + 180 },
+    };
+    const trip = { ...base, standbyDays: 4, schedule: [...base.schedule, standbyDuty, standbyDuty, standbyDuty, standbyDuty] };
     expect(flyingSchedule(trip)).toHaveLength(base.schedule.length);
-    expect(flyingSchedule(trip).every((d) => d.legs.every((l) => !l.isStandby))).toBe(true);
-  });
-
-  it("corrects departures on a saved trip, whichever earlier version saved it", () => {
-    const { base, trip } = tripWithStandbyDuties(3);
-    const fixed = backfillStandby(trip);
-    expect(fixed.departures).toBe(base.schedule.length);
-    // A trip saved with legs already flagged but departures still inflated is corrected too.
-    expect(backfillStandby({ ...trip, departures: 99 }).departures).toBe(base.schedule.length);
-    // An ordinary trip with no standby keeps its departures exactly.
-    expect(backfillStandby(base).departures).toBe(base.departures);
-    expect(backfillStandby(base).standbyDays).toBe(0);
-  });
-
-  it("does not let standby duties count as early reports or short rests for circadian scoring", () => {
-    const { base, trip } = tripWithStandbyDuties(4);
     expect(computeCircadianAssessment(trip, 0)).toEqual(computeCircadianAssessment(base, 0));
-  });
-
-  it("keeps a line's departures total free of standby", () => {
-    const { pack } = packWithStandby();
-    const line = pack.lines[0];
-    const summed = line.trips.reduce((s, t) => s + t.departures, 0);
-    expect(summed).toBe(line.trips.length === 0 ? 0 : summed);
   });
 });

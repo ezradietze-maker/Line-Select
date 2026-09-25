@@ -4,7 +4,7 @@ import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
 const EXPLICIT_DESCRIPTORS = [
   { id: "daysOff", label: "Days off", description: "How many scheduled days off the line has." },
   { id: "tripLength", label: "Trip length", description: "Whether trips run long or short." },
-  { id: "departures", label: "Number of separate departures", description: "How many separate times a pilot leaves home for the month." },
+  { id: "dutyPeriods", label: "Number of duty periods", description: "How many duty periods (report-to-release stretches, hotel standby days included) a pilot works for the month — the number of times they report, as the bid pack prints it." },
   { id: "international", label: "International vs domestic", description: "How much of the flying is international." },
   { id: "reportTime", label: "Report time", description: "Early versus late/evening report times." },
   { id: "creditHours", label: "Credit hours", description: "Total pay/credit hours for the line." },

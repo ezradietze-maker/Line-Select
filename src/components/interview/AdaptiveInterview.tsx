@@ -55,7 +55,7 @@ import type { CitySentiment, PreferenceProfile } from "@/types/preferences";
  * backlog (`interview-prompt.ts`) — rather than sitting in a side channel
  * the model never sees.
  *
- * Every other topic — the reworked originals (home time, departures, pay
+ * Every other topic — the reworked originals (home time, duty periods, pay
  * vs. lifestyle, deadhead/commute, per-city "why") and everything new
  * (landings, international ceiling, report-time/circadian tolerance,
  * reserve tolerance, predictability vs. variety, rest/recovery, financial

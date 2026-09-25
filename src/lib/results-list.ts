@@ -1,3 +1,4 @@
+import { lineDutyPeriods } from "@/lib/duty-periods";
 import type { LineScore } from "@/lib/scoring";
 import type { Line } from "@/types/bidpack";
 
@@ -10,12 +11,13 @@ import type { Line } from "@/types/bidpack";
  */
 export const PAGE_SIZE = 25;
 
-export type SortMode = "match" | "daysOff" | "credit" | "departures" | "lineNumber";
+export type SortMode = "match" | "daysOff" | "credit" | "dutyPeriods" | "departures" | "lineNumber";
 
 export const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "match", label: "Best match" },
   { value: "daysOff", label: "Most days off" },
   { value: "credit", label: "Highest credit" },
+  { value: "dutyPeriods", label: "Fewest duty periods" },
   { value: "departures", label: "Fewest departures" },
   { value: "lineNumber", label: "Line number" },
 ];
@@ -34,6 +36,8 @@ export function sortLineScores(list: LineScore[], mode: SortMode): LineScore[] {
       return sorted.sort((a, b) => b.line.daysOff - a.line.daysOff || tieBreak(a, b));
     case "credit":
       return sorted.sort((a, b) => b.line.totalCreditHours - a.line.totalCreditHours || tieBreak(a, b));
+    case "dutyPeriods":
+      return sorted.sort((a, b) => lineDutyPeriods(a.line) - lineDutyPeriods(b.line) || tieBreak(a, b));
     case "departures":
       return sorted.sort((a, b) => a.line.totalDepartures - b.line.totalDepartures || tieBreak(a, b));
     case "lineNumber":

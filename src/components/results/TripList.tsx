@@ -8,6 +8,7 @@ import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
+import { tripDutyPeriods } from "@/lib/duty-periods";
 import { fetchHotel } from "@/lib/hotel-client";
 import { loadTimeMode, saveTimeMode } from "@/lib/time-mode-storage";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
@@ -687,6 +688,10 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
 
             <div className="font-mono text-xs text-brand">
               {trip.landings} landing{trip.landings === 1 ? "" : "s"}
+            </div>
+
+            <div className="font-mono text-xs text-brand" title="Report-to-release stretches on this trip, counted the way the bid pack prints them — hotel standby days included">
+              {tripDutyPeriods(trip)} duty period{tripDutyPeriods(trip) === 1 ? "" : "s"}
             </div>
 
             {(trip.standbyDays ?? 0) > 0 && (

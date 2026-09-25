@@ -36,7 +36,7 @@ import { DEFAULT_WEIGHTS, type ExplicitTargetKey } from "@/types/preferences";
 
 const MODEL = "claude-sonnet-5";
 
-const EXPLICIT_TARGET_KEYS: ExplicitTargetKey[] = ["daysOff", "creditHours", "departures", "circadianTolerance"];
+const EXPLICIT_TARGET_KEYS: ExplicitTargetKey[] = ["daysOff", "creditHours", "dutyPeriods", "circadianTolerance"];
 
 /**
  * Built per-turn rather than a static const: below `MIN_TURNS_BEFORE_WRAP`,
@@ -66,7 +66,7 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
           boundTo: {
             type: "string",
             description:
-              "Required for kind 'slider' or 'target-slider'. For 'slider', must be one of the EXPLICIT-WEIGHT ids (never 'departures', never an implicit id). For 'target-slider', must be one of the EXPLICIT-TARGET ids (daysOff, creditHours, departures, or circadianTolerance) — see the system prompt's catalog section for the exact lists.",
+              "Required for kind 'slider' or 'target-slider'. For 'slider', must be one of the EXPLICIT-WEIGHT ids (never 'dutyPeriods', never an implicit id). For 'target-slider', must be one of the EXPLICIT-TARGET ids (daysOff, creditHours, departures, or circadianTolerance) — see the system prompt's catalog section for the exact lists.",
           },
           lowLabel: { type: "string", description: "Required for kind 'slider'." },
           highLabel: { type: "string", description: "Required for kind 'slider'." },
@@ -77,7 +77,7 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
             type: "string",
             enum: ["min", "ideal", "max"],
             description:
-              "Only for kind 'target-slider' on 'daysOff' or 'departures' when you're building a tolerance band (floor/ideal/ceiling) instead of one pinned number — see the system prompt's range-target guidance. Omit entirely for a plain single-number target-slider (including any 'creditHours' target-slider, which never gets range treatment).",
+              "Only for kind 'target-slider' on 'daysOff' or 'dutyPeriods' when you're building a tolerance band (floor/ideal/ceiling) instead of one pinned number — see the system prompt's range-target guidance. Omit entirely for a plain single-number target-slider (including any 'creditHours' target-slider, which never gets range treatment).",
           },
           options: {
             type: "array",
@@ -133,7 +133,7 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
                     rangeRole: {
                       type: "string",
                       enum: ["min", "ideal", "max"],
-                      description: "For 'explicit-target' only, and only when 'daysOff'/'departures' — mirrors the question's own rangeRole. Omit for a plain single-number target (including creditHours, always).",
+                      description: "For 'explicit-target' only, and only when 'daysOff'/'dutyPeriods' — mirrors the question's own rangeRole. Omit for a plain single-number target (including creditHours, always).",
                     },
                     variableId: { type: "string", description: "For 'implicit-weight'." },
                     code: { type: "string", description: "For 'city-sentiment' — a real city code from this bid pack." },
@@ -210,8 +210,8 @@ function buildUserMessage(body: TurnRequestBody): string {
   );
 }
 
-/** "departures" is deliberately excluded — it's target-only (see `ExplicitTargetKey`), not a dimension the interview can bind directionally the same way a real bipolar/magnitude slider works. */
-const PREFERENCE_WEIGHTS_KEYS = new Set(Object.keys(DEFAULT_WEIGHTS).filter((k) => k !== "departures"));
+/** "dutyPeriods" is deliberately excluded — it's target-only (see `ExplicitTargetKey`), not a dimension the interview can bind directionally the same way a real bipolar/magnitude slider works. */
+const PREFERENCE_WEIGHTS_KEYS = new Set(Object.keys(DEFAULT_WEIGHTS).filter((k) => k !== "dutyPeriods"));
 
 function isPreferenceWeightsKey(key: unknown): key is ExplicitWeightKey {
   return typeof key === "string" && PREFERENCE_WEIGHTS_KEYS.has(key);
@@ -221,8 +221,8 @@ function isExplicitTargetKey(key: unknown): key is ExplicitTargetKey {
   return typeof key === "string" && (EXPLICIT_TARGET_KEYS as string[]).includes(key);
 }
 
-/** Only "daysOff"/"departures" ever get range treatment — a rangeRole on "creditHours" (or a garbage value) is silently dropped rather than rejecting the whole fact/question over it. */
-const RANGE_TARGET_KEYS = new Set<ExplicitTargetKey>(["daysOff", "departures"]);
+/** Only "daysOff"/"dutyPeriods" ever get range treatment — a rangeRole on "creditHours" (or a garbage value) is silently dropped rather than rejecting the whole fact/question over it. */
+const RANGE_TARGET_KEYS = new Set<ExplicitTargetKey>(["daysOff", "dutyPeriods"]);
 
 function parseRangeRole(key: ExplicitTargetKey, raw: unknown): "min" | "ideal" | "max" | undefined {
   if (!RANGE_TARGET_KEYS.has(key)) return undefined;
@@ -268,7 +268,7 @@ function parseCityReason(raw: unknown): PreferenceFact["cityReason"] {
 const TARGET_UNIT_LABELS: Record<ExplicitTargetKey, [string, string]> = {
   daysOff: ["day off", "days off"],
   creditHours: ["hour", "hours"],
-  departures: ["departure", "departures"],
+  dutyPeriods: ["duty period", "duty periods"],
   circadianTolerance: ["consecutive report", "consecutive reports"],
 };
 
@@ -279,7 +279,7 @@ export function parseQuestion(raw: unknown): InterviewQuestion | null {
   const id = crypto.randomUUID();
   const helpText = typeof q.helpText === "string" ? q.helpText : undefined;
 
-  // The model occasionally mislabels a target-only id (departures, or
+  // The model occasionally mislabels a target-only id (dutyPeriods, or
   // daysOff/creditHours when it wants an exact number) as kind "slider"
   // despite the system prompt's explicit instruction not to — rather than
   // failing the whole turn over a shape mismatch when the underlying intent

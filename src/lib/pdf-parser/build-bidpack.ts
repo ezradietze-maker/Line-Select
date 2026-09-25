@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { tripFlyingDepartures } from "@/lib/standby";
+import { tripDutyPeriods } from "@/lib/duty-periods";
 import type { DayPlacement } from "@/lib/pdf-parser/line-grid-days";
 import type { ParsedLineSummary, ParsedPairing } from "@/lib/pdf-parser/types";
 import { buildTimelineDays } from "@/lib/trip-timeline";
@@ -119,21 +119,18 @@ export function pairingToTrip(pairing: ParsedPairing, bidPackMonth: string): Tri
     creditHours: round2(pairing.creditHours),
     landings: pairing.landings,
     tafbHours: round2(pairing.tafbHours),
-    // Real from the first, always-successful parse pass — not gated by
-    // whether the rich minute-by-minute `schedule` self-verified. Hotel
-    // standby rows each print a hotel "layover" of their own but are not
-    // departures — corrected below once the schedule (which says which duties
-    // actually fly) is attached, or by the row count when it isn't.
-    departures: Math.max(1, pairing.layoverDetails.length + 1 - (pairing.standbyDays ?? 0)),
+    // A departure is a takeoff, and every takeoff is followed by a landing, so a
+    // trip's departures are its landings — one number, never two. (Hotel
+    // standby rows print a hotel "layover" of their own, which is why this
+    // can't be derived from layover counts.)
+    departures: pairing.landings,
+    // The old, layover-based count — one duty period per layover, plus the last. Hotel standby days each print a layover, so they're included, exactly as the pack's own printed duty-period total includes them.
+    dutyPeriods: pairing.layoverDetails.length + 1,
     schedule: anchorSchedule(pairing.schedule, anchor),
     zuluAnchor: anchor,
     startDayIndex: null,
   };
-  const withDays = { ...trip, days: realCalendarDaySpan(trip, pairing.days) };
-  // With a real schedule, departures are exactly the duty periods that fly.
-  return trip.schedule.length > 0 && (pairing.standbyDays ?? 0) > 0
-    ? { ...withDays, departures: tripFlyingDepartures(withDays) }
-    : withDays;
+  return { ...trip, days: realCalendarDaySpan(trip, pairing.days) };
 }
 
 /**
@@ -158,7 +155,8 @@ export function buildEstimatedTrip(summary: ParsedLineSummary, bidPackMonth: str
     creditHours: round2(summary.totalCreditHours),
     landings: summary.totalLandings,
     tafbHours: round2(summary.totalTafbHours),
-    departures: 1,
+    departures: summary.totalLandings,
+    dutyPeriods: summary.printedDutyPeriods ?? 1,
     schedule: [],
     zuluAnchor: monthAnchorZulu(bidPackMonth),
     startDayIndex: null,
@@ -216,6 +214,7 @@ export function buildLine(
     totalTafbHours: round2(summary.totalTafbHours),
     totalLandings: summary.totalLandings,
     totalDepartures: trips.reduce((s, t) => s + t.departures, 0),
+    totalDutyPeriods: summary.printedDutyPeriods ?? trips.reduce((s, t) => s + tripDutyPeriods(t), 0),
     estimated: matchedPairings === null,
   };
 }

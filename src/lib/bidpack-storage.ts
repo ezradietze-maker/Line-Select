@@ -1,4 +1,5 @@
 import { monthAnchorZulu } from "@/lib/pdf-parser/build-bidpack";
+import { tripDutyPeriods } from "@/lib/duty-periods";
 import { backfillStandby } from "@/lib/standby";
 import type { BidPack, Trip, TripDutyPeriod } from "@/types/bidpack";
 
@@ -43,7 +44,10 @@ function normalizeBidPack(parsed: BidPack): BidPack {
               layoverDetails: trip.layoverDetails ?? [],
               schedule: trip.schedule ?? [],
               pairingNumber: trip.pairingNumber ?? null,
-              departures: trip.departures ?? (trip.layoverDetails?.length ?? 0) + 1,
+              // Departures are landings — a trip saved when they were counted another way (duty periods, or with standby days mixed in) is corrected here.
+              departures: trip.landings,
+              // Saved before duty periods were tracked as their own number: the old "departures" was exactly this count (layovers + 1), so rebuild it from the trip itself.
+              dutyPeriods: trip.dutyPeriods ?? (trip.layoverDetails?.length ?? 0) + 1,
             },
             parsed.month
           ))
@@ -51,8 +55,9 @@ function normalizeBidPack(parsed: BidPack): BidPack {
       return {
         ...line,
         trips,
-        // Always the sum of the (possibly just-corrected) trips, never a stored total that may predate a fix to how departures are counted.
+        // Always the sum of the (possibly just-corrected) trips, never a stored total that may predate a change to how departures are counted.
         totalDepartures: trips.reduce((s, t) => s + t.departures, 0),
+        totalDutyPeriods: line.totalDutyPeriods ?? trips.reduce((s, t) => s + tripDutyPeriods(t), 0),
       };
     }),
   };
