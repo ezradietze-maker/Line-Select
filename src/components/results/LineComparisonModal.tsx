@@ -5,6 +5,7 @@ import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import type { LineScore } from "@/lib/scoring";
+import type { CitySentiment } from "@/types/preferences";
 
 /**
  * Two lines' month calendars side by side, instead of holding one in memory
@@ -18,6 +19,8 @@ interface LineComparisonModalProps {
   homeBaseOffsetMinutes: number | null;
   bidPeriodStart: string | null;
   bidPeriodDays: number;
+  /** The pilot's loved/avoided layover cities, so each calendar can say how they feel about a layover. */
+  cityPreferences?: Record<string, CitySentiment>;
   onClose: () => void;
 }
 
@@ -42,6 +45,7 @@ export function LineComparisonModal({
   homeBaseOffsetMinutes,
   bidPeriodStart,
   bidPeriodDays,
+  cityPreferences,
   onClose,
 }: LineComparisonModalProps) {
   const worstCircadianStars = lineScores.map((ls) => {
@@ -107,6 +111,7 @@ export function LineComparisonModal({
                 homeBaseOffsetMinutes={homeBaseOffsetMinutes}
                 bidPeriodStart={bidPeriodStart}
                 bidPeriodDays={bidPeriodDays}
+                cityPreferences={cityPreferences}
               />
             </div>
           )

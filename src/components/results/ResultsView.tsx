@@ -683,6 +683,7 @@ export function ResultsView({
           homeBaseOffsetMinutes={homeBaseOffsetMinutes}
           bidPeriodStart={bidPack.bidPeriodStart}
           bidPeriodDays={bidPack.bidPeriodDays}
+          cityPreferences={profile.cityPreferences}
           onClose={() => setCompareIds([])}
         />
       )}

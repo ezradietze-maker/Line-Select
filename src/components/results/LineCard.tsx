@@ -221,7 +221,7 @@ export const LineCard = memo(function LineCard({
 
           {!lineScore.estimated && <TripNumberStrip trips={line.trips} />}
 
-          <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_15.5rem] lg:items-start">
+          <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_25rem] lg:items-start">
             <div>
               <ul className="flex flex-wrap gap-1.5" aria-label="Key facts for this line">
                 {chips.map((chip, i) => (
@@ -267,6 +267,7 @@ export const LineCard = memo(function LineCard({
                 bidPeriodStart={bidPeriodStart}
                 bidPeriodDays={bidPeriodDays}
                 showLegend={false}
+                cityPreferences={profile.cityPreferences}
               />
             )}
           </div>
