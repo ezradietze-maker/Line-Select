@@ -23,6 +23,8 @@ export interface TripLeg {
   equipment: string;
   /** True when the pilot is riding along rather than operating. */
   isDeadhead: boolean;
+  /** True for a hotel-standby duty row — on call at the hotel, not a flight. Absent on a pack parsed before standby was tracked. */
+  isStandby?: boolean;
   depAirport: string;
   /** "HHMM", local time as printed. */
   depTimeLocal: string;

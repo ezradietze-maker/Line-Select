@@ -12,7 +12,7 @@ const MINUTES_PER_DAY = 24 * 60;
 
 export type TimeMode = "zulu" | "local";
 
-export type TimelineSegmentKind = "flying" | "deadhead" | "layover" | "ground" | "connection";
+export type TimelineSegmentKind = "flying" | "deadhead" | "standby" | "layover" | "ground" | "connection";
 
 export interface DateLineBadge {
   /** Signed day delta the destination's timezone added (positive) or removed (negative) beyond what the leg's real duration alone would suggest; never zero (see `detectDateLineCrossing`). */
@@ -197,6 +197,23 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegme
     raw.push(...connectionSegments(duty, trip.zuluAnchor));
 
     for (const leg of duty.legs) {
+      if (leg.isStandby) {
+        // On call at the hotel, not a flight: no flight number, no route, no block time — just where and when.
+        raw.push({
+          kind: "standby",
+          label: `Hotel standby · ${leg.depAirport}`,
+          detail: `${leg.depAirport} · on call at the hotel ${legInlineClock(leg, "dep", mode)} → ${legInlineClock(leg, "arr", mode)} · paid the standby credit, not flying`,
+          inlineStart: `Standby ${leg.depAirport}`,
+          inlineEnd: "",
+          startMinutes: leg.startMinutes,
+          endMinutes: leg.endMinutes,
+          zuluStart: leg.depTimeZulu,
+          zuluEnd: leg.arrTimeZulu,
+          startAirport: leg.depAirport,
+          endAirport: leg.arrAirport,
+        });
+        continue;
+      }
       raw.push({
         kind: leg.isDeadhead ? "deadhead" : "flying",
         label: legLabel(leg),

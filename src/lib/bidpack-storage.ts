@@ -1,4 +1,5 @@
 import { monthAnchorZulu } from "@/lib/pdf-parser/build-bidpack";
+import { backfillStandby } from "@/lib/standby";
 import type { BidPack, Trip, TripDutyPeriod } from "@/types/bidpack";
 
 function bidPackKey(userId: string | null): string {
@@ -36,7 +37,7 @@ function normalizeBidPack(parsed: BidPack): BidPack {
     lines: parsed.lines.map((line) => {
       const trips = line.trips.map(
         (trip): Trip =>
-          backfillZuluFields(
+          backfillStandby(backfillZuluFields(
             {
               ...trip,
               layoverDetails: trip.layoverDetails ?? [],
@@ -45,7 +46,7 @@ function normalizeBidPack(parsed: BidPack): BidPack {
               departures: trip.departures ?? (trip.layoverDetails?.length ?? 0) + 1,
             },
             parsed.month
-          )
+          ))
       );
       return {
         ...line,

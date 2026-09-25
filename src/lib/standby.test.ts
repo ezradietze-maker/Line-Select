@@ -6,7 +6,9 @@ import { buildLineFactChips } from "@/lib/line-summary";
 import { buildProfile, emptyWeights } from "@/lib/preference-logic";
 import { rankLines } from "@/lib/scoring";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
-import { lineStandbyDays, packHasStandby, tripStandbyDays } from "@/lib/standby";
+import { backfillStandby, lineStandbyDays, packHasStandby, tripStandbyDays } from "@/lib/standby";
+import { computeTripAnalytics } from "@/lib/trip-analytics";
+import { buildRawSegments } from "@/lib/trip-timeline";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { PreferenceFact } from "@/types/interview-session";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -133,5 +135,48 @@ describe("standby chip", () => {
     expect(chip).toMatchObject({ main: "3 standby days", tone: "warn" });
     expect(buildLineFactChips(a, profileWith(60)).find((x) => x.main.includes("standby"))?.tone).toBe("good");
     expect(buildLineFactChips(c, profileWith(-60)).some((x) => x.main.includes("standby"))).toBe(false);
+  });
+});
+
+describe("standby in the trip schedule", () => {
+  /** A real sample trip with one extra standby row appended to its first duty, as a pilot's saved (pre-tracking) trip would look. */
+  function tripWithStandbyRow(tag: boolean) {
+    const base = SAMPLE_BID_PACK.lines.flatMap((l) => l.trips).find((t) => t.schedule.length > 0)!;
+    const flightLeg = base.schedule[0].legs[0];
+    const standbyLeg = {
+      ...flightLeg,
+      flightNumber: "STHOTL",
+      equipment: "",
+      isDeadhead: false,
+      blockHours: null,
+      ...(tag ? { isStandby: true } : {}),
+    };
+    const schedule = base.schedule.map((d, i) => (i === 0 ? { ...d, legs: [...d.legs, standbyLeg] } : d));
+    return { base, trip: { ...base, standbyDays: undefined, schedule } };
+  }
+
+  it("draws a standby row as its own chart category, not as flying", () => {
+    const { trip } = tripWithStandbyRow(true);
+    const kinds = buildRawSegments({ ...trip, standbyDays: 1 }).map((s) => s.kind);
+    expect(kinds).toContain("standby");
+    const standbySegment = buildRawSegments({ ...trip, standbyDays: 1 }).find((s) => s.kind === "standby")!;
+    expect(standbySegment.label).toContain("Hotel standby");
+  });
+
+  it("keeps standby rows out of the flying statistics", () => {
+    const { base, trip } = tripWithStandbyRow(true);
+    const before = computeTripAnalytics(base);
+    const after = computeTripAnalytics(trip);
+    expect(after.redEyeDepartures).toBe(before.redEyeDepartures);
+    expect(after.legsPerDuty).toEqual(before.legsPerDuty);
+    expect(after.totalBlockHours).toEqual(before.totalBlockHours);
+  });
+
+  it("fills in standby for a trip saved before it was tracked, from its own schedule", () => {
+    const { trip } = tripWithStandbyRow(false);
+    const filled = backfillStandby(trip);
+    expect(filled.standbyDays).toBe(1);
+    expect(filled.schedule[0].legs.some((l) => l.isStandby)).toBe(true);
+    expect(backfillStandby({ ...filled, standbyDays: 5 }).standbyDays).toBe(5);
   });
 });

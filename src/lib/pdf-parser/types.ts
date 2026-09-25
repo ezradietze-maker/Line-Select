@@ -43,6 +43,8 @@ export interface ScheduledLeg {
   equipment: string;
   /** True when the pilot is riding along rather than operating — either an interline flight number, or the pairing schedule's own "DH" flag on an otherwise company-operated leg (a repositioning ride on their own metal). */
   isDeadhead: boolean;
+  /** True for a hotel-standby duty row (printed "STHOTL") — sitting on call at the hotel, not a flight. Excluded from every flying statistic. */
+  isStandby?: boolean;
   depAirport: string;
   /** "HHMM", local time as printed — what a pilot would actually read on the schedule. */
   depTimeLocal: string;

@@ -1,4 +1,5 @@
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
+import { flyingSchedule } from "@/lib/standby";
 import type { Trip, TripDutyPeriod, TripLeg } from "@/types/bidpack";
 
 /**
@@ -184,13 +185,13 @@ export type MissingCategories = never;
 
 /** Cheap standalone check for filtering — true if any leg departs or arrives in the 00:00-05:00 local red-eye window. Reuses the exact same window `computeTripAnalytics` counts, without computing everything else about the trip just to answer one boolean. */
 export function hasRedEyeLeg(trip: Trip): boolean {
-  return trip.schedule
+  return flyingSchedule(trip)
     .flatMap((d) => d.legs)
     .some((l) => isRedEyeLocal(l.depTimeLocal) || isRedEyeLocal(l.arrTimeLocal));
 }
 
 export function computeTripAnalytics(trip: Trip): TripAnalytics {
-  const duties = trip.schedule;
+  const duties = flyingSchedule(trip);
   const allLegs: TripLeg[] = duties.flatMap((d) => d.legs);
 
   const redEyeDepartures = allLegs.filter((l) => isRedEyeLocal(l.depTimeLocal)).length;
@@ -220,7 +221,8 @@ export function computeTripAnalytics(trip: Trip): TripAnalytics {
     })
     .filter((h): h is number => h !== null && h >= 0);
 
-  const legsPerDuty = duties.map((d) => d.legs.length);
+  // A duty that was only standby has no legs to count — leaving it in would drag the average legs per duty toward zero.
+  const legsPerDuty = duties.map((d) => d.legs.length).filter((n) => n > 0);
 
   const lastDuty = duties[duties.length - 1];
   const lastLegOverall = lastDuty?.legs[lastDuty.legs.length - 1];

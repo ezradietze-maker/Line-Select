@@ -47,6 +47,9 @@ function formatDuration(hours: number): string {
 const LAYOVER_TOOLTIP =
   "Layover / hotel — real time from block-in to hotel pickup for the next departure. Not exactly when you'll sleep, since that's down to you and the jet lag.";
 
+const STANDBY_TOOLTIP =
+  "Hotel standby — you sit on call at the layover hotel for the day. It pays the guaranteed standby credit, but no flight is flown unless you're called out.";
+
 const GROUND_TOOLTIP =
   "On the ground before departure — report/check-in at trip start, or hotel-to-airport transport plus check-in after a layover. Not split further since the bid pack doesn't print a separate drop-off time.";
 
@@ -66,6 +69,7 @@ function segmentClass(kind: TimelineDay["segments"][number]["kind"]): string {
   if (kind === "layover") return "bg-good";
   if (kind === "ground") return "bg-accent";
   if (kind === "connection") return "bg-border-strong";
+  if (kind === "standby") return "bg-standby";
   if (kind === "deadhead") {
     return "bg-calendar-accent/40 [background-image:repeating-linear-gradient(135deg,transparent,transparent_3px,rgba(255,255,255,0.35)_3px,rgba(255,255,255,0.35)_6px)]";
   }
@@ -76,6 +80,7 @@ const SEGMENT_TOOLTIP_SUFFIX: Partial<Record<TimelineDay["segments"][number]["ki
   layover: LAYOVER_TOOLTIP,
   ground: GROUND_TOOLTIP,
   connection: CONNECTION_TOOLTIP,
+  standby: STANDBY_TOOLTIP,
 };
 
 /**
@@ -95,7 +100,7 @@ const MIN_MINUTES_FOR_LAYOVER_LABEL = 75;
 function showsInlineText(seg: TimelineDay["segments"][number]): boolean {
   const duration = seg.endMinuteOfDay - seg.startMinuteOfDay;
   if (seg.kind === "flying" || seg.kind === "deadhead") return duration >= MIN_MINUTES_FOR_FLIGHT_LABELS;
-  if (seg.kind === "layover") return duration >= MIN_MINUTES_FOR_LAYOVER_LABEL;
+  if (seg.kind === "layover" || seg.kind === "standby") return duration >= MIN_MINUTES_FOR_LAYOVER_LABEL;
   return false;
 }
 
@@ -221,6 +226,9 @@ function TripTimelineChart({ trip, mode }: { trip: Trip; mode: TimeMode }) {
         <LegendSwatch className="bg-calendar-accent" label="Flying" />
         <LegendSwatch className={segmentClass("deadhead")} label="Deadhead" title="Riding along, not operating" />
         <LegendSwatch className="bg-good" label="Layover" title={LAYOVER_TOOLTIP} />
+        {trip.schedule.some((d) => d.legs.some((l) => l.isStandby)) && (
+          <LegendSwatch className="bg-standby" label="Hotel standby" title={STANDBY_TOOLTIP} />
+        )}
         <LegendSwatch className="bg-accent" label="Ground" title={GROUND_TOOLTIP} />
         <LegendSwatch className="bg-border-strong" label="Connection" title={CONNECTION_TOOLTIP} />
       </div>
@@ -261,6 +269,16 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
       {trip.schedule.map((duty, dutyIndex) => (
         <div key={dutyIndex}>
           {duty.legs.map((leg, legIndex) => {
+            if (leg.isStandby) {
+              return (
+                <div key={legIndex} className="flex flex-wrap items-center gap-x-1.5 py-1">
+                  <span className="h-1 w-1 shrink-0 rounded-full bg-standby" aria-hidden />
+                  <span className="font-medium text-standby">Hotel standby</span>
+                  <span className="text-ink">{leg.depAirport}</span>
+                  <span className="text-brand/70">on call at the hotel — paid, not flying</span>
+                </div>
+              );
+            }
             const depPrimary = mode === "zulu" ? formatHHMM(leg.depTimeGmt) : formatHHMM(leg.depTimeLocal);
             const depSecondary = mode === "zulu" ? formatHHMM(leg.depTimeLocal) : formatHHMM(leg.depTimeGmt);
             const arrPrimary = mode === "zulu" ? formatHHMM(leg.arrTimeGmt) : formatHHMM(leg.arrTimeLocal);
@@ -499,6 +517,9 @@ function TripLegendInfo() {
                 </li>
                 <li>
                   <span className="font-medium text-ink">Layover.</span> {LAYOVER_TOOLTIP}
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Hotel standby.</span> {STANDBY_TOOLTIP}
                 </li>
                 <li>
                   <span className="font-medium text-ink">Ground.</span> {GROUND_TOOLTIP}

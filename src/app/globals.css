@@ -39,6 +39,7 @@
 
   /* Semantic */
   --color-good: #2f7d5f;
+  --color-standby: #7b5ea7;
   --color-good-soft: #e1f0e7;
   --color-warn: #a15b1f;
   --color-warn-soft: #f6e8d7;
@@ -100,6 +101,7 @@
     --color-sidebar-border: #1f2830;
 
     --color-good: #5cb98d;
+    --color-standby: #a48bd0;
     --color-good-soft: #16281f;
     --color-warn: #d99a52;
     --color-warn-soft: #2c2114;
@@ -141,6 +143,7 @@
   --color-sidebar-border: #1f2830;
 
   --color-good: #5cb98d;
+  --color-standby: #a48bd0;
   --color-good-soft: #16281f;
   --color-warn: #d99a52;
   --color-warn-soft: #2c2114;
@@ -178,6 +181,7 @@
   --color-sidebar-border: var(--color-sidebar-border);
 
   --color-good: var(--color-good);
+  --color-standby: var(--color-standby);
   --color-good-soft: var(--color-good-soft);
   --color-warn: var(--color-warn);
   --color-warn-soft: var(--color-warn-soft);
