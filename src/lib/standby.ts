@@ -28,10 +28,11 @@ export function isStandbyDutyCode(flightNumber: string): boolean {
 }
 
 /**
- * Brings a trip saved before standby was tracked up to date from its own saved schedule, so a pilot doesn't have to re-upload just to see standby: flags each standby leg and counts the days. A trip that already has a count is left alone; one with no schedule (nothing to read it from) stays as it was.
+ * Brings a trip saved before standby was fully tracked up to date from its own saved schedule, so a pilot doesn't have to re-upload just to see it: flags each standby leg (what draws the chart's standby color) and counts the days. Two generations of saved trips need this — ones with neither field, and ones from the short window when only the day count was saved but legs weren't flagged yet. A trip whose legs are all already flagged is left alone; one with no schedule (nothing to read it from) stays as it was.
  */
 export function backfillStandby(trip: Trip): Trip {
-  if (trip.standbyDays !== undefined || trip.schedule.length === 0) return trip;
+  const legs = trip.schedule.flatMap((d) => d.legs);
+  if (legs.length === 0 || legs.every((l) => l.isStandby !== undefined)) return trip;
   let days = 0;
   const schedule = trip.schedule.map((duty) => ({
     ...duty,

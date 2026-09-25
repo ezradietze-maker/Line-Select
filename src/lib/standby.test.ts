@@ -179,4 +179,13 @@ describe("standby in the trip schedule", () => {
     expect(filled.schedule[0].legs.some((l) => l.isStandby)).toBe(true);
     expect(backfillStandby({ ...filled, standbyDays: 5 }).standbyDays).toBe(5);
   });
+
+  it("also flags the legs on a trip saved with a standby day count but unflagged legs", () => {
+    // The short window between "days counted" and "legs flagged": standbyDays is already there, the chart color isn't.
+    const { trip } = tripWithStandbyRow(false);
+    const halfSaved = { ...trip, standbyDays: 1 };
+    const filled = backfillStandby(halfSaved);
+    expect(filled.schedule[0].legs.some((l) => l.isStandby)).toBe(true);
+    expect(buildRawSegments(filled).some((s) => s.kind === "standby")).toBe(true);
+  });
 });
