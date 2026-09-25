@@ -51,7 +51,8 @@ function normalizeBidPack(parsed: BidPack): BidPack {
       return {
         ...line,
         trips,
-        totalDepartures: line.totalDepartures ?? trips.reduce((s, t) => s + t.departures, 0),
+        // Always the sum of the (possibly just-corrected) trips, never a stored total that may predate a fix to how departures are counted.
+        totalDepartures: trips.reduce((s, t) => s + t.departures, 0),
       };
     }),
   };

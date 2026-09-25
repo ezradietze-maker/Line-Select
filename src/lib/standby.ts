@@ -27,27 +27,38 @@ export function isStandbyDutyCode(flightNumber: string): boolean {
   return STANDBY_DUTY_CODE_RE.test(flightNumber);
 }
 
-/**
- * Brings a trip saved before standby was fully tracked up to date from its own saved schedule, so a pilot doesn't have to re-upload just to see it: flags each standby leg (what draws the chart's standby color) and counts the days. Two generations of saved trips need this — ones with neither field, and ones from the short window when only the day count was saved but legs weren't flagged yet. A trip whose legs are all already flagged is left alone; one with no schedule (nothing to read it from) stays as it was.
- */
-export function backfillStandby(trip: Trip): Trip {
-  const legs = trip.schedule.flatMap((d) => d.legs);
-  if (legs.length === 0 || legs.every((l) => l.isStandby !== undefined)) return trip;
-  let days = 0;
-  const schedule = trip.schedule.map((duty) => ({
-    ...duty,
-    legs: duty.legs.map((leg) => {
-      const isStandby = isStandbyDutyCode(leg.flightNumber);
-      if (isStandby) days++;
-      return { ...leg, isStandby };
-    }),
-  }));
-  return { ...trip, schedule, standbyDays: days };
+/** A leg is standby when it's flagged so, or — on a trip saved before the flag existed — when its own flight-number field carries the standby duty code. */
+export function isStandbyLeg(leg: { flightNumber: string; isStandby?: boolean }): boolean {
+  return leg.isStandby ?? isStandbyDutyCode(leg.flightNumber);
 }
 
 /**
- * The trip's schedule with hotel-standby rows removed from every duty's legs, for statistics about flying (red-eyes, block time, legs per duty, turn times): a standby row is on-call time at a hotel, not a departure, and would otherwise be counted as a flight with a departure time, a leg and a duty of its own. Duties themselves (and their layovers) are kept.
+ * The trip's schedule as flying only: every hotel-standby row removed, and any duty that was nothing but standby dropped entirely (along with the "layover" printed on it, which is really just the pilot still sitting in the hotel). Standby is on-call time, not a departure, a report, a rest period or a flight, so statistics about any of those must be computed from this, never from `trip.schedule`.
  */
 export function flyingSchedule(trip: Trip): Trip["schedule"] {
-  return trip.schedule.map((duty) => ({ ...duty, legs: duty.legs.filter((l) => !l.isStandby) }));
+  return trip.schedule
+    .map((duty) => ({ ...duty, legs: duty.legs.filter((l) => !isStandbyLeg(l)) }))
+    .filter((duty, i) => duty.legs.length > 0 || trip.schedule[i].legs.length === 0);
+}
+
+/** How many times this trip actually sends the pilot out to fly: duty periods with at least one real flight. Standby days never count — sitting on call at a hotel is not a departure. Never below 1. */
+export function tripFlyingDepartures(trip: Trip): number {
+  return Math.max(1, flyingSchedule(trip).length);
+}
+
+/**
+ * Brings a trip saved by an earlier version up to date from its own saved schedule, so a pilot never has to re-upload for it: flags each standby leg (what draws the chart's standby color), counts the days, and — the part that matters for ranking — recomputes departures so standby days aren't counted as them. Saved trips come in several generations (no standby fields at all; a day count but unflagged legs; flagged legs but departures still counting standby), so this is safe to run on any of them and does nothing to a trip with no standby or no saved schedule.
+ */
+export function backfillStandby(trip: Trip): Trip {
+  if (trip.schedule.length === 0) return trip;
+  const legs = trip.schedule.flatMap((d) => d.legs);
+  const days = legs.filter(isStandbyLeg).length;
+  if (days === 0 && legs.every((l) => l.isStandby !== undefined)) return trip;
+
+  const schedule = trip.schedule.map((duty) => ({
+    ...duty,
+    legs: duty.legs.map((leg) => ({ ...leg, isStandby: isStandbyLeg(leg) })),
+  }));
+  const withFlags: Trip = { ...trip, schedule, standbyDays: days };
+  return days > 0 ? { ...withFlags, departures: tripFlyingDepartures(withFlags) } : withFlags;
 }

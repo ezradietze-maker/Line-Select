@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { tripFlyingDepartures } from "@/lib/standby";
 import type { DayPlacement } from "@/lib/pdf-parser/line-grid-days";
 import type { ParsedLineSummary, ParsedPairing } from "@/lib/pdf-parser/types";
 import { buildTimelineDays } from "@/lib/trip-timeline";
@@ -119,13 +120,20 @@ export function pairingToTrip(pairing: ParsedPairing, bidPackMonth: string): Tri
     landings: pairing.landings,
     tafbHours: round2(pairing.tafbHours),
     // Real from the first, always-successful parse pass — not gated by
-    // whether the rich minute-by-minute `schedule` self-verified.
-    departures: pairing.layoverDetails.length + 1,
+    // whether the rich minute-by-minute `schedule` self-verified. Hotel
+    // standby rows each print a hotel "layover" of their own but are not
+    // departures — corrected below once the schedule (which says which duties
+    // actually fly) is attached, or by the row count when it isn't.
+    departures: Math.max(1, pairing.layoverDetails.length + 1 - (pairing.standbyDays ?? 0)),
     schedule: anchorSchedule(pairing.schedule, anchor),
     zuluAnchor: anchor,
     startDayIndex: null,
   };
-  return { ...trip, days: realCalendarDaySpan(trip, pairing.days) };
+  const withDays = { ...trip, days: realCalendarDaySpan(trip, pairing.days) };
+  // With a real schedule, departures are exactly the duty periods that fly.
+  return trip.schedule.length > 0 && (pairing.standbyDays ?? 0) > 0
+    ? { ...withDays, departures: tripFlyingDepartures(withDays) }
+    : withDays;
 }
 
 /**

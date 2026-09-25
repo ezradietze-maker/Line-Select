@@ -6,7 +6,8 @@ import { buildLineFactChips } from "@/lib/line-summary";
 import { buildProfile, emptyWeights } from "@/lib/preference-logic";
 import { rankLines } from "@/lib/scoring";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
-import { backfillStandby, lineStandbyDays, packHasStandby, tripStandbyDays } from "@/lib/standby";
+import { computeCircadianAssessment } from "@/lib/circadian";
+import { backfillStandby, flyingSchedule, lineStandbyDays, packHasStandby, tripFlyingDepartures, tripStandbyDays } from "@/lib/standby";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import { buildRawSegments } from "@/lib/trip-timeline";
 import type { BidPack, Line } from "@/types/bidpack";
@@ -177,7 +178,8 @@ describe("standby in the trip schedule", () => {
     const filled = backfillStandby(trip);
     expect(filled.standbyDays).toBe(1);
     expect(filled.schedule[0].legs.some((l) => l.isStandby)).toBe(true);
-    expect(backfillStandby({ ...filled, standbyDays: 5 }).standbyDays).toBe(5);
+    // The count always comes from the legs themselves, so a stale number can't survive.
+    expect(backfillStandby({ ...filled, standbyDays: 5 }).standbyDays).toBe(1);
   });
 
   it("also flags the legs on a trip saved with a standby day count but unflagged legs", () => {
@@ -187,5 +189,55 @@ describe("standby in the trip schedule", () => {
     const filled = backfillStandby(halfSaved);
     expect(filled.schedule[0].legs.some((l) => l.isStandby)).toBe(true);
     expect(buildRawSegments(filled).some((s) => s.kind === "standby")).toBe(true);
+  });
+});
+
+describe("standby is never a departure", () => {
+  /** A real sample trip plus `n` standby-only duties (each printing the hotel "layover" a standby row carries), with departures counted the old way — layovers + 1. */
+  function tripWithStandbyDuties(n: number) {
+    const base = SAMPLE_BID_PACK.lines.flatMap((l) => l.trips).find((t) => t.schedule.length > 0)!;
+    const last = base.schedule[base.schedule.length - 1];
+    const standbyDuty = () => ({
+      ...last,
+      legs: [{ ...last.legs[0], flightNumber: "STHOTL", equipment: "", blockHours: null, isStandby: true as const }],
+      layover: { city: "IND", hotelName: "HYATT", transportToHotel: null, transportFromHotel: null, hours: 12.5, startMinutes: last.startMinutes, endMinutes: last.startMinutes + 750 },
+    });
+    const schedule = [...base.schedule, ...Array.from({ length: n }, standbyDuty)];
+    return { base, trip: { ...base, schedule, standbyDays: n, departures: schedule.length } };
+  }
+
+  it("counts only duties that fly", () => {
+    const { base, trip } = tripWithStandbyDuties(3);
+    expect(trip.departures).toBe(base.schedule.length + 3); // the old, inflated way
+    expect(tripFlyingDepartures(trip)).toBe(base.schedule.length);
+  });
+
+  it("drops standby-only duties (and their fake layovers) from the flying schedule", () => {
+    const { base, trip } = tripWithStandbyDuties(2);
+    expect(flyingSchedule(trip)).toHaveLength(base.schedule.length);
+    expect(flyingSchedule(trip).every((d) => d.legs.every((l) => !l.isStandby))).toBe(true);
+  });
+
+  it("corrects departures on a saved trip, whichever earlier version saved it", () => {
+    const { base, trip } = tripWithStandbyDuties(3);
+    const fixed = backfillStandby(trip);
+    expect(fixed.departures).toBe(base.schedule.length);
+    // A trip saved with legs already flagged but departures still inflated is corrected too.
+    expect(backfillStandby({ ...trip, departures: 99 }).departures).toBe(base.schedule.length);
+    // An ordinary trip with no standby keeps its departures exactly.
+    expect(backfillStandby(base).departures).toBe(base.departures);
+    expect(backfillStandby(base).standbyDays).toBe(0);
+  });
+
+  it("does not let standby duties count as early reports or short rests for circadian scoring", () => {
+    const { base, trip } = tripWithStandbyDuties(4);
+    expect(computeCircadianAssessment(trip, 0)).toEqual(computeCircadianAssessment(base, 0));
+  });
+
+  it("keeps a line's departures total free of standby", () => {
+    const { pack } = packWithStandby();
+    const line = pack.lines[0];
+    const summed = line.trips.reduce((s, t) => s + t.departures, 0);
+    expect(summed).toBe(line.trips.length === 0 ? 0 : summed);
   });
 });

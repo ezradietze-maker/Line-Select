@@ -1,3 +1,4 @@
+import { flyingSchedule } from "@/lib/standby";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /**
@@ -127,7 +128,7 @@ function formatShift(hours: number): string {
 function longestConsecutiveWocStreak(trip: Trip): number {
   let longest = 0;
   let current = 0;
-  for (const duty of trip.schedule) {
+  for (const duty of flyingSchedule(trip)) {
     const reportMin = hhmmToMinutes(duty.reportTimeLocal);
     if (reportMin >= WOCL_START_MIN && reportMin < WOCL_END_MIN) {
       current++;
@@ -176,7 +177,7 @@ export function computeCircadianAssessment(
   if (trip.schedule.length === 0 || homeBaseOffsetMinutes === null) return null;
 
   let worstShift = 0; // signed hours, keep the one with the largest magnitude
-  for (const duty of trip.schedule) {
+  for (const duty of flyingSchedule(trip)) {
     if (!duty.layover) continue;
     const arrivingLeg = duty.legs[duty.legs.length - 1];
     if (!arrivingLeg) continue;
@@ -189,7 +190,7 @@ export function computeCircadianAssessment(
   const tzPenalty = shiftPenalty(effectiveShift);
 
   let wocEncroachments = 0;
-  for (const duty of trip.schedule) {
+  for (const duty of flyingSchedule(trip)) {
     const reportMin = hhmmToMinutes(duty.reportTimeLocal);
     if (reportMin >= WOCL_START_MIN && reportMin < WOCL_END_MIN) wocEncroachments++;
   }
@@ -198,7 +199,7 @@ export function computeCircadianAssessment(
 
   let shortRestCount = 0;
   let restPenalty = 0;
-  for (const duty of trip.schedule) {
+  for (const duty of flyingSchedule(trip)) {
     if (!duty.layover) continue;
     if (duty.layover.hours < SEVERE_REST_FLOOR_HOURS) {
       shortRestCount++;
