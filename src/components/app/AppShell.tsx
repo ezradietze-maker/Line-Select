@@ -142,9 +142,11 @@ function Footer() {
           Bid pack PDFs are uploaded to this app&rsquo;s own server for parsing — never to FedEx or any third
           party — which extracts pairing data, line data, reserve-line on-call
           types, and the pack&rsquo;s own summary numbers (guarantees, credit
-          ranges, line counts) only; pages listing other pilots&rsquo; names,
-          employee numbers, or seniority are never read, and the PDF itself
-          isn&rsquo;t stored once parsing finishes. The extracted result and
+          ranges, line counts) only. Pages listing other pilots&rsquo; names or
+          employee numbers are never read; from the pack&rsquo;s Bid Seniority
+          List, only two numbers per pilot &mdash; bid order and seniority
+          &mdash; are used, to estimate your chances at each line. The PDF
+          itself isn&rsquo;t stored once parsing finishes. The extracted result and
           your preferences are stored only on this device as a guest; create
           an account and your preferences follow you to a new device too,
           alongside the Trade Board, Inbox, and reporting what you held that

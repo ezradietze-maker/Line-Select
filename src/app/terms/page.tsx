@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "September 22, 2026";
+const LAST_UPDATED = "September 25, 2026";
 
 /**
  * A real Terms of Service — not boilerplate copy-pasted from a generator.
@@ -61,7 +61,7 @@ export default function TermsPage() {
             preferences, and in return generates a ranking, explanatory scoring, and related
             planning content (including the Strategies board, Trade Board, Inbox, and Hotel
             Ratings features) intended solely to help you think through your own bid. Some content
-            is generated with the help of a third-party AI system (see Section 10) and some
+            is generated with the help of a third-party AI system (see Section 11) and some
             reflects patterns the Service has detected in your own uploaded data, not information
             from FedEx or any official source.
           </p>
@@ -182,7 +182,22 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section title="10. Third-party services">
+        <Section title="10. The bid forecast is an estimate">
+          <p>
+            The bid forecast &mdash; the &ldquo;chance&rdquo; shown on each line, the &ldquo;realistic
+            lines&rdquo; filter, and the outlook for your seniority &mdash; is a statistical estimate
+            built from the bid pack&rsquo;s list of seniority numbers, assumptions about what pilots
+            generally prefer, and rankings that other users chose to share. It does not know how any
+            particular pilot will actually bid, is not verified against FedEx&rsquo;s bidding system,
+            and can be wrong &mdash; sometimes badly, especially early in a bid month when few pilots
+            have used the Service. It is not a prediction, promise or guarantee of any award, and you
+            should never rely on it instead of your own judgment and the official bid materials. If you
+            choose to share your ranking, you agree it may be used, anonymously and only in aggregate
+            form as described in the Privacy Policy, to estimate forecasts for other users.
+          </p>
+        </Section>
+
+        <Section title="11. Third-party services">
           <p>
             The Service relies on third-party providers to function, including an AI processing
             provider (to power the adaptive interview and summarize hotel reviews), a mapping/places
@@ -199,18 +214,18 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section title="11. Intellectual property">
+        <Section title="12. Intellectual property">
           <p>
             The Service&rsquo;s software, design, and original content are owned by us or our
             licensors and protected by intellectual property law. Except for your own content, you
             may not copy, modify, distribute, sell, or lease any part of the Service without our
             written permission. If you believe material on the Service infringes your copyright,
-            contact us at the address in Section 18 with enough detail to identify the material and
+            contact us at the address in Section 19 with enough detail to identify the material and
             your rights in it.
           </p>
         </Section>
 
-        <Section title="12. Disclaimer of warranties">
+        <Section title="13. Disclaimer of warranties">
           <p className="font-medium text-ink">
             THE SERVICE IS PROVIDED &ldquo;AS IS&rdquo; AND &ldquo;AS AVAILABLE,&rdquo; WITHOUT
             WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, OR STATUTORY, INCLUDING WITHOUT
@@ -227,7 +242,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section title="13. Limitation of liability">
+        <Section title="14. Limitation of liability">
           <p className="font-medium text-ink">
             TO THE MAXIMUM EXTENT PERMITTED BY LAW, WE AND OUR OFFICERS, EMPLOYEES, AND AGENTS
             WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE
@@ -251,7 +266,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section title="14. Indemnification">
+        <Section title="15. Indemnification">
           <p>
             You agree to indemnify and hold us harmless from any claim, loss, liability, or expense
             (including reasonable attorneys&rsquo; fees) arising from: your violation of these
@@ -262,16 +277,16 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section title="15. Termination">
+        <Section title="16. Termination">
           <p>
             You may stop using the Service and delete your account at any time. We may suspend or
             terminate your access at our discretion, including for violating these Terms, without
             liability to you. Sections that by their nature should survive termination
-            (including Sections 4, 6, 8&ndash;14, and 16) will survive.
+            (including Sections 4, 6, 8&ndash;15, and 17) will survive.
           </p>
         </Section>
 
-        <Section title="16. Dispute resolution, arbitration, and governing law">
+        <Section title="17. Dispute resolution, arbitration, and governing law">
           <p>
             These Terms are governed by the laws of the State of{" "}
             <span className="font-medium text-ink">California</span>, without regard to
@@ -288,7 +303,7 @@ export default function TermsPage() {
           </p>
           <p className="mt-3">
             <strong className="font-medium text-ink">Opt-out.</strong> You may opt out of this
-            arbitration agreement by sending written notice to the contact address in Section 18
+            arbitration agreement by sending written notice to the contact address in Section 19
             within 30 days of first agreeing to these Terms; if you opt out, disputes will instead be
             resolved in the state or federal courts located in{" "}
             <span className="font-medium text-ink">California</span>, and you consent to
@@ -296,7 +311,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section title="17. Changes to these Terms">
+        <Section title="18. Changes to these Terms">
           <p>
             We may update these Terms from time to time. If we make a material change, we&rsquo;ll
             update the &ldquo;Last updated&rdquo; date above and, where appropriate, provide
@@ -305,7 +320,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section title="18. Contact">
+        <Section title="19. Contact">
           <p>
             Questions about these Terms can be sent to{" "}
             <a

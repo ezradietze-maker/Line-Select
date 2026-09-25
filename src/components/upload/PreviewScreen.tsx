@@ -174,6 +174,10 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
                 <li>Pairing schedule pages parsed: {pageCounts["pairing-schedule"] ?? 0}</li>
                 <li>Line grid pages parsed: {pageCounts["line-grid"] ?? 0}</li>
                 <li>
+                  Seniority list pages (only bid order and seniority numbers are read &mdash; never names or employee numbers):{" "}
+                  {pageCounts["seniority-list"] ?? 0}
+                </li>
+                <li>
                   Pages skipped (contain other pilots&rsquo; personal data, never read):{" "}
                   {pageCounts["ignored-personal-data"] ?? 0}
                 </li>

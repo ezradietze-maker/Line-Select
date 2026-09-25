@@ -26,12 +26,14 @@ import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { LineCard } from "@/components/results/LineCard";
 import { LineComparisonModal } from "@/components/results/LineComparisonModal";
+import { ForecastBanner } from "@/components/results/ForecastBanner";
 import { MonthLegend } from "@/components/results/MiniLinePreview";
 import { PilotProfileSummary } from "@/components/results/PilotProfileSummary";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
+import { useBidForecast } from "@/lib/forecast/use-bid-forecast";
 import { assessProfileRichness } from "@/lib/interview-engine";
 import { computeFilterOptions } from "@/lib/line-filter-options";
 import { collectLayoverCities, EMPTY_FILTERS, lineMatchesFilters, type LineFilters } from "@/lib/line-filters";
@@ -168,7 +170,7 @@ export function ResultsView({
   const [sortMode, setSortMode] = useState<SortMode>("match");
   const [search, setSearch] = useState("");
   const [hotelFilter, setHotelFilter] = useState<HotelFilter | null>(initialHotelFilter);
-  const [view, setView] = useState<"all" | "shortlist">("all");
+  const [view, setView] = useState<"all" | "shortlist" | "realistic">("all");
   const [showHidden, setShowHidden] = useState(false);
   const [marks, setMarks] = useState<LineMarks>(() => loadLineMarks(userId, bidPack.id));
   const [pageState, setPageState] = useState({ key: "", shown: PAGE_SIZE });
@@ -288,6 +290,22 @@ export function ResultsView({
   // whatever subset currently matches the filters.
   const rankById = useMemo(() => new Map(ranked.map((r, i) => [r.line.id, i + 1] as const)), [ranked]);
 
+  // The pilot's chance at every line, given where their seniority number puts them in bid order — held until the ranking has settled, since it's a forecast of *this* ranking.
+  const rankingLineIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
+  const forecast = useBidForecast({
+    bidPack,
+    rankingLineIds: hotelsSettled ? rankingLineIds : [],
+    implicitValuesByLine,
+    seniorityNumber: profile.seniorityNumber,
+    userId,
+    enabled: hotelsSettled,
+  });
+  const forecastLines = forecast.result?.forecast.lines ?? null;
+  const realisticIds = useMemo(
+    () => new Set(forecastLines ? Object.values(forecastLines).filter((l) => l.pAvailable >= 0.2).map((l) => l.lineId) : []),
+    [forecastLines]
+  );
+
   const matching = useMemo(
     () =>
       ranked.filter(
@@ -300,8 +318,10 @@ export function ResultsView({
   );
   const hiddenMatchingCount = matching.filter((r) => hiddenSet.has(r.line.id)).length;
   const listable = useMemo(
-    () => matching.filter((r) => (showHidden || !hiddenSet.has(r.line.id)) && (view === "all" || starredSet.has(r.line.id))),
-    [matching, showHidden, hiddenSet, view, starredSet]
+    () => matching.filter((r) => (showHidden || !hiddenSet.has(r.line.id)) &&
+        (view === "all" || (view === "shortlist" ? starredSet.has(r.line.id) : realisticIds.has(r.line.id)))
+    ),
+    [matching, showHidden, hiddenSet, view, starredSet, realisticIds]
   );
   const sorted = useMemo(() => sortLineScores(listable, sortMode), [listable, sortMode]);
 
@@ -409,6 +429,8 @@ export function ResultsView({
   const emptyMessage =
     view === "shortlist"
       ? "Nothing shortlisted yet — tap the star on any line to save it here."
+      : view === "realistic"
+        ? "No line matches the current filters among the ones you could realistically hold. Try clearing one or two."
       : search.trim()
         ? `No line matches “${search.trim()}”.`
         : hotelFilter
@@ -504,6 +526,20 @@ export function ResultsView({
         </div>
       ) : (
         <>
+          <ForecastBanner
+            forecast={forecast.result?.forecast ?? null}
+            response={forecast.result}
+            loading={forecast.loading}
+            seniorityNumber={profile.seniorityNumber}
+            hasList={!!bidPack.seniorityList?.length}
+            onAddSeniority={onEditPreferences}
+            realisticCount={realisticIds.size}
+            showingRealistic={view === "realistic"}
+            onToggleRealistic={() => setView((v) => (v === "realistic" ? "all" : "realistic"))}
+            canShare={forecast.canShare}
+            sharing={forecast.sharing}
+            onSharingChange={forecast.setSharing}
+          />
           {hotelFilter && (
             <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-brand/30 bg-brand-soft px-3 py-2 text-sm text-ink">
               <span>
@@ -564,6 +600,17 @@ export function ResultsView({
               >
                 Shortlist ({validMarks.starred.length})
               </button>
+              {forecastLines && (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === "realistic"}
+                  onClick={() => setView("realistic")}
+                  className={`border-l border-border-strong px-3 py-2 font-medium transition-colors ${view === "realistic" ? "bg-brand-soft text-brand" : "text-ink-muted hover:text-ink"}`}
+                >
+                  Realistic ({realisticIds.size})
+                </button>
+              )}
             </div>
           </div>
 
@@ -636,6 +683,7 @@ export function ResultsView({
                         onHide={() => updateMarks((m) => hideLine(m, lineScore.line.id))}
                         onRestore={() => updateMarks((m) => restoreLine(m, lineScore.line.id))}
                         draggable={dragEnabled}
+                        forecast={forecastLines?.[lineScore.line.id] ?? null}
                       />
                     </ErrorBoundary>
                   </motion.div>

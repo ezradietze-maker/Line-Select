@@ -415,11 +415,14 @@ export function finalizeAdaptiveProfile(params: {
   transcript: InterviewTurnRecord[];
   isCommuter: boolean | null;
   hasCrashPad: boolean | null;
+  /** Entered at the start of the interview; a returning pilot who left it blank keeps the number from last cycle. */
+  seniorityNumber?: number | null;
   cityPreferencesSeed?: Record<string, CitySentiment>;
   /** The pilot's completed profile from before this cycle, if any — used only to fold `cycleHistory`/`volatile` onto this cycle's own facts (see `foldCycleHistory`). Absent for a first-time interview. */
   priorProfile?: PreferenceProfile | null;
 }): PreferenceProfile {
   const { facts, transcript, isCommuter, hasCrashPad, cityPreferencesSeed = {}, priorProfile } = params;
+  const seniorityNumber = params.seniorityNumber ?? priorProfile?.seniorityNumber ?? null;
 
   const weights = emptyWeights();
   const explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>> = {};
@@ -474,6 +477,7 @@ export function finalizeAdaptiveProfile(params: {
     isCommuter,
     cityPreferences,
     hasCrashPad,
+    seniorityNumber,
     completedAt: cycleId,
     implicitWeights,
     implicitConfidence,

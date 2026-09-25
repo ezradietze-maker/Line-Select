@@ -191,6 +191,13 @@ export interface PreferenceProfile {
    */
   hasCrashPad: boolean | null;
   /**
+   * The pilot's own system seniority number, as they entered it at the start
+   * of the interview (or on the Preferences page) — how the forecast knows
+   * where in the bid order they sit. `null`/absent means not given. Never a
+   * scored dimension; it only places the pilot among the others bidding.
+   */
+  seniorityNumber?: number | null;
+  /**
    * Specific layover cities the pilot flagged, keyed by IATA-style code —
    * built from the actual cities present in their uploaded bid pack, not a
    * generic list. Drives the cityPreference scoring dimension.

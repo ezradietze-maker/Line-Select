@@ -197,6 +197,18 @@ export interface BidPackInfo {
   totalSecondaryLines: number | null;
 }
 
+/**
+ * One pilot's place in a seat's bid, from the bid pack's own Bid Seniority
+ * List — two numbers and nothing else. No name, no employee number: the
+ * parser never carries either through (see `seniority-list-parser.ts`).
+ */
+export interface SeniorityEntry {
+  /** Position in bid order among the pilots bidding this seat, 1 = first to bid. */
+  bidNumber: number;
+  /** The pilot's system seniority number (lower = more senior). */
+  seniority: number;
+}
+
 export interface BidPack {
   id: string;
   /** e.g. "SEP26" */
@@ -220,4 +232,6 @@ export interface BidPack {
   reserveLines?: ReserveLine[];
   /** Absent when this bid pack's PDF had no recognizable "Bid Information" page. */
   info?: BidPackInfo;
+  /** Every pilot bidding this seat, in bid order — numbers only. Absent when the PDF had no readable Bid Seniority List. */
+  seniorityList?: SeniorityEntry[];
 }

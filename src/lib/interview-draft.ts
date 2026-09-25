@@ -14,6 +14,8 @@ export interface InterviewDraft {
   savedAt: number;
   isCommuter: boolean | null;
   hasCrashPad: boolean | null;
+  /** Absent on a draft saved before the interview asked for it. */
+  seniorityNumber?: number | null;
   cityPreferences: Record<string, CitySentiment>;
   facts: PreferenceFact[];
   transcript: InterviewTurnRecord[];

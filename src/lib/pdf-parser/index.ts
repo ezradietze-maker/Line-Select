@@ -10,6 +10,7 @@ import { extractMetaFromLineGridHeader, extractMetaFromPairingHeader } from "@/l
 import { parsePairingPages } from "@/lib/pdf-parser/pairing-parser";
 import { classifyPage } from "@/lib/pdf-parser/page-classifier";
 import { extractReserveLineSeat, parseReserveLineGridRows } from "@/lib/pdf-parser/reserve-line-parser";
+import { extractSeniorityListSeat, parseSeniorityListRows, validateSeniorityList } from "@/lib/pdf-parser/seniority-list-parser";
 import {
   extractPage,
   extractTwoColumnRows,
@@ -26,7 +27,7 @@ import type {
   ParsedPairing,
   ParseWarning,
 } from "@/lib/pdf-parser/types";
-import type { BidPack, BidPackInfo, ReserveLine, Seat } from "@/types/bidpack";
+import type { BidPack, BidPackInfo, ReserveLine, Seat, SeniorityEntry } from "@/types/bidpack";
 
 export { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 export type { ParseBidPackResult } from "@/lib/pdf-parser/types";
@@ -164,12 +165,19 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
   // stats), never a page that names anyone.
   const reserveLinesBySeat: Partial<Record<Seat, ReserveLine[]>> = {};
   let infoBySeat: Partial<Record<Seat, BidPackInfo>> | null = null;
+  const seniorityBySeat: Partial<Record<Seat, SeniorityEntry[]>> = {};
 
   for (let i = 0; i < pages.length; i++) {
     const kind = pageClassifications[i].kind;
-    if (kind !== "reserve-line-grid" && kind !== "info-page") continue;
+    if (kind !== "reserve-line-grid" && kind !== "info-page" && kind !== "seniority-list") continue;
     const page = pages[i];
     const rows = groupIntoRows(page.items);
+
+    if (kind === "seniority-list") {
+      const seat = extractSeniorityListSeat(rows.slice(0, 8));
+      if (seat) seniorityBySeat[seat] = [...(seniorityBySeat[seat] ?? []), ...parseSeniorityListRows(rows)];
+      continue;
+    }
 
     if (kind === "reserve-line-grid") {
       const seat = extractReserveLineSeat(rows.slice(0, 4)) ?? "CAP";
@@ -206,6 +214,7 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
       ),
       reserveLines: reserveLinesBySeat[seat],
       info: infoBySeat?.[seat],
+      seniorityList: validateSeniorityList(seniorityBySeat[seat] ?? [], seat, warnings) ?? undefined,
     };
   }
 

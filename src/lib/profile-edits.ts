@@ -26,6 +26,8 @@ export interface ProfileEdits {
   explicitTargets?: Partial<Record<ExplicitTargetKey, number | RangeTarget | null>>;
   /** `null` clears the city back to "no opinion". */
   cityPreferences?: Record<string, CitySentiment | null>;
+  /** The pilot's seniority number — a plain field, not a preference fact. `null` clears it. */
+  seniorityNumber?: number | null;
 }
 
 const TOPIC_LABELS: Record<ExplicitWeightKey, string> = {
@@ -183,7 +185,9 @@ export function applyManualEdits(profile: PreferenceProfile, edits: ProfileEdits
     }
   }
 
-  return { ...profile, weights, explicitTargets, cityPreferences, discoveredFacts: facts };
+  const seniorityNumber = edits.seniorityNumber === undefined ? profile.seniorityNumber ?? null : edits.seniorityNumber;
+
+  return { ...profile, weights, explicitTargets, cityPreferences, seniorityNumber, discoveredFacts: facts };
 }
 
 /** Whether `edits` would change anything at all — drives the Save button's enabled state. */
@@ -193,6 +197,7 @@ export function hasEdits(profile: PreferenceProfile, edits: ProfileEdits): boole
     next.discoveredFacts !== profile.discoveredFacts ||
     JSON.stringify(next.weights) !== JSON.stringify(profile.weights) ||
     JSON.stringify(next.explicitTargets) !== JSON.stringify(profile.explicitTargets) ||
-    JSON.stringify(next.cityPreferences) !== JSON.stringify(profile.cityPreferences)
+    JSON.stringify(next.cityPreferences) !== JSON.stringify(profile.cityPreferences) ||
+    (next.seniorityNumber ?? null) !== (profile.seniorityNumber ?? null)
   );
 }

@@ -8,6 +8,7 @@ import { CircadianInfo } from "@/components/results/CircadianInfo";
 import { DealbreakerBanner } from "@/components/results/DealbreakerBanner";
 import { LineInsightBadge } from "@/components/results/LineInsightBadge";
 import { MatchBar } from "@/components/results/MatchBar";
+import { ForecastChip } from "@/components/results/ForecastBanner";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { TripNumberStrip } from "@/components/results/TripNumberStrip";
 import { ScoreRing } from "@/components/results/ScoreRing";
@@ -17,6 +18,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { buildLineFactChips, type LineFactChip } from "@/lib/line-summary";
 import { topImplicitContributions } from "@/lib/rank-learning";
 import type { LineScore } from "@/lib/scoring";
+import type { LineForecast } from "@/lib/forecast/forecast";
 import type { PreferenceProfile } from "@/types/preferences";
 
 /**
@@ -59,6 +61,8 @@ interface LineCardProps {
   onRestore: () => void;
   /** Whether the drag handle is offered — drag-to-swap only means something when the list is in the pilot's own ranking order. */
   draggable: boolean;
+  /** This pilot's chance at the line, when they've given a seniority number and the pack lists the pilots bidding. */
+  forecast?: LineForecast | null;
 }
 
 export const LineCard = memo(function LineCard({
@@ -77,6 +81,7 @@ export const LineCard = memo(function LineCard({
   onHide,
   onRestore,
   draggable,
+  forecast,
 }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
@@ -218,6 +223,8 @@ export const LineCard = memo(function LineCard({
               </button>
             </div>
           </div>
+
+          {forecast && <div className="mt-2.5"><ForecastChip forecast={forecast} /></div>}
 
           {!lineScore.estimated && <TripNumberStrip trips={line.trips} />}
 

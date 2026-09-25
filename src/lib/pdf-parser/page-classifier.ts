@@ -2,9 +2,11 @@ import type { PageClassification, PageKind } from "@/lib/pdf-parser/types";
 
 /**
  * Classifies a page from its first several text rows. Only two kinds get
- * parsed further (pairing-schedule, line-grid); everything else — most
- * importantly pages listing named individuals — is classified and then
- * never touched again by the rest of the pipeline.
+ * parsed further (pairing-schedule, line-grid) plus a few numeric-only pages;
+ * everything else — most importantly pages listing named individuals — is
+ * classified and then never touched again by the rest of the pipeline. The
+ * one exception is the seniority list, of which only two numeric columns are
+ * read.
  */
 export function classifyPage(pageNumber: number, headerRows: string[]): PageClassification {
   const header = headerRows.slice(0, 8).join(" | ");
@@ -30,9 +32,15 @@ export function classifyPage(pageNumber: number, headerRows: string[]): PageClas
     return { pageNumber, kind: "info-page", reason: "matched 'Bid Information for' header" };
   }
 
+  // The seniority list is the one personal-data page we do read from, and only
+  // its two numeric columns (see seniority-list-parser.ts) — the forecast
+  // needs to know how many pilots bid ahead of a given pilot.
+  if (/Bid\s+Seniority\s+List/i.test(header)) {
+    return { pageNumber, kind: "seniority-list", reason: "matched 'Bid Seniority List' header" };
+  }
+
   const personalDataPatterns: { pattern: RegExp; label: string }[] = [
     { pattern: /Vacation\s+Schedule\s+by\s+Week/i, label: "Vacation Schedule by Week" },
-    { pattern: /Bid\s+Seniority\s+List/i, label: "Bid Seniority List" },
     { pattern: /Training\s+List/i, label: "Training List" },
   ];
   for (const { pattern, label } of personalDataPatterns) {
@@ -52,6 +60,7 @@ export function summarizeClassifications(
     "line-grid": 0,
     "reserve-line-grid": 0,
     "info-page": 0,
+    "seniority-list": 0,
     "ignored-personal-data": 0,
     "ignored-other": 0,
   };

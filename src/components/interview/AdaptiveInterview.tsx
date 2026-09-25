@@ -7,6 +7,7 @@ import { Heading } from "@/components/ui/Heading";
 import { ScreenTransition } from "@/components/ui/ScreenTransition";
 import { SelectableCard } from "@/components/ui/SelectableCard";
 import { Spinner } from "@/components/ui/Spinner";
+import { parseSeniorityInput, SeniorityStep } from "@/components/interview/SeniorityStep";
 import { CityPreferenceStep } from "@/components/interview/CityPreferenceStep";
 import { CommuterStep } from "@/components/interview/CommuterStep";
 import { FreeTextAnswerBox } from "@/components/interview/FreeTextAnswerBox";
@@ -85,7 +86,7 @@ const TOP_PRIOR_FACTS_SHOWN = 5;
  */
 const CIRCADIAN_TOLERANCE_RANGE: readonly [number, number] = [0, 4];
 
-type Phase = "commuter" | "cities" | "returning-check" | "adaptive-loading" | "adaptive-question" | "finishing";
+type Phase = "seniority" | "commuter" | "cities" | "returning-check" | "adaptive-loading" | "adaptive-question" | "finishing";
 
 /** Highest-confidence, most load-bearing prior-cycle facts worth actively re-confirming — dealbreakers first, then by importance*confidence. Everything else from the prior profile carries forward unreviewed (see `ReturningPilotCheckStep`'s own copy). */
 function topPriorFacts(discoveredFacts: PreferenceFact[], limit: number): PreferenceFact[] {
@@ -202,7 +203,9 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   // visited, and silently not offering it meant they could never flag it here.
   const allCities = useMemo(() => rankLayoverCitiesByFrequency(bidPack).map((c) => c.code), [bidPack]);
   const hasReturningCheck = !!priorProfile && priorProfile.discoveredFacts.length > 0;
-  const preStepCount = hasReturningCheck ? 3 : 2;
+  // Only worth asking when the pack lists the pilots bidding this seat — that list is what gives the number meaning.
+  const hasSeniorityStep = !!bidPack.seniorityList && bidPack.seniorityList.length > 0;
+  const preStepCount = (hasReturningCheck ? 3 : 2) + (hasSeniorityStep ? 1 : 0);
   const priorFactsForCheck = useMemo(
     () => (hasReturningCheck ? priorProfile!.discoveredFacts.filter((f) => !isCitySentimentFact(f)) : []),
     [hasReturningCheck, priorProfile]
@@ -212,7 +215,9 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     [priorFactsForCheck]
   );
 
-  const [phase, setPhase] = useState<Phase>("commuter");
+  const firstPhase: Phase = hasSeniorityStep ? "seniority" : "commuter";
+  const [phase, setPhase] = useState<Phase>(firstPhase);
+  const [seniorityText, setSeniorityText] = useState(priorProfile?.seniorityNumber ? String(priorProfile.seniorityNumber) : "");
   // A returning pilot starts from last cycle's answers — still shown, so a
   // change (a move, a new crash pad) is one tap, but never re-asked blank.
   const [isCommuter, setIsCommuter] = useState<boolean | null>(priorProfile?.isCommuter ?? null);
@@ -294,12 +299,15 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       setPhase("cities");
     } else if (phase === "cities") {
       setPhase("commuter");
+    } else if (phase === "commuter" && hasSeniorityStep) {
+      setPhase("seniority");
     }
   }
 
   function resumeSavedDraft(d: InterviewDraft) {
     setIsCommuter(d.isCommuter);
     setHasCrashPad(d.hasCrashPad);
+    if (d.seniorityNumber) setSeniorityText(String(d.seniorityNumber));
     setCityPreferences(d.cityPreferences);
     setFacts(d.facts);
     setTranscript(d.transcript);
@@ -318,6 +326,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       transcript: finalTranscript,
       isCommuter,
       hasCrashPad,
+      seniorityNumber: parseSeniorityInput(seniorityText),
       cityPreferencesSeed: cityPreferences,
       priorProfile,
     });
@@ -413,7 +422,9 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     requestNextTurn(facts, nextTranscript, nextTurnsUsed);
   }
 
-  const preStepsDone = phase === "commuter" ? 0 : phase === "cities" ? 1 : phase === "returning-check" ? 2 : preStepCount;
+  const seniorityOffset = hasSeniorityStep ? 1 : 0;
+  const preStepsDone =
+    phase === "seniority" ? 0 : phase === "commuter" ? seniorityOffset : phase === "cities" ? seniorityOffset + 1 : phase === "returning-check" ? seniorityOffset + 2 : preStepCount;
   const progress = computeInterviewProgress({
     turnsUsed,
     uncoveredCount: uncoveredExplicitWeightIds(facts, hasStandby).length,
@@ -422,7 +433,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     preStepTotal: preStepCount,
   });
   const progressLabel =
-    phase === "commuter" || phase === "cities" || phase === "returning-check"
+    phase === "seniority" || phase === "commuter" || phase === "cities" || phase === "returning-check"
       ? "Getting started \u2014 about 8\u201310 minutes in all, and you can stop any time."
       : `${progress.topicsCovered} of ${progress.topicsTotal} topics covered \u00b7 about ${progress.minutesLeft} min left`;
 
@@ -440,23 +451,27 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       savedAt: Date.now(),
       isCommuter,
       hasCrashPad,
+      seniorityNumber: parseSeniorityInput(seniorityText),
       cityPreferences,
       facts,
       transcript,
       turnsUsed,
       currentQuestion,
     });
-  }, [phase, currentQuestion, userId, bidPack.id, isCommuter, hasCrashPad, cityPreferences, facts, transcript, turnsUsed]);
+  }, [phase, currentQuestion, userId, bidPack.id, isCommuter, hasCrashPad, seniorityText, cityPreferences, facts, transcript, turnsUsed]);
 
   // After a resume there's no in-memory history, so Back is only offered from the very first question (to the pre-steps) or once new answers exist to undo — never in a way that would wipe resumed progress.
   const canGoBack =
     (phase === "adaptive-question" && !!currentQuestion && (historyCount > 0 || turnsUsed === 0)) ||
     phase === "returning-check" ||
-    phase === "cities";
-  const showResumePrompt = !!savedDraft && !resumeDismissed && phase === "commuter";
+    phase === "cities" ||
+    (phase === "commuter" && hasSeniorityStep);
+  const showResumePrompt = !!savedDraft && !resumeDismissed && phase === firstPhase;
 
   const stepKey =
-    phase === "commuter"
+    phase === "seniority"
+      ? "seniority"
+      : phase === "commuter"
       ? "commuter"
       : phase === "cities"
         ? "cities"
@@ -467,6 +482,16 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
             : phase;
 
   const content = (() => {
+    if (phase === "seniority" && bidPack.seniorityList) {
+      const typed = seniorityText.trim();
+      return (
+        <div>
+          <SeniorityStep value={seniorityText} onChange={setSeniorityText} list={bidPack.seniorityList} seat={bidPack.seat} />
+          <StepNav onNext={() => setPhase("commuter")} nextLabel={typed === "" ? "Skip for now" : "Next"} disabled={typed !== "" && parseSeniorityInput(typed) === null} />
+        </div>
+      );
+    }
+
     if (phase === "commuter") {
       return (
         <div>

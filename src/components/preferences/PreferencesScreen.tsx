@@ -17,6 +17,8 @@ import {
   deadheadQuestionFor,
   type SliderQuestionConfig,
 } from "@/lib/interview-config";
+import { parseSeniorityInput } from "@/components/interview/SeniorityStep";
+import { resolveBidPosition } from "@/lib/forecast/forecast";
 import { hasEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { MAGNITUDE_ONLY_KEYS } from "@/lib/rank-learning";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
@@ -69,10 +71,17 @@ export function PreferencesScreen({
   const [weightsDraft, setWeightsDraft] = useState<Partial<PreferenceWeights>>({});
   const [targetsDraft, setTargetsDraft] = useState<Partial<Record<ExplicitTargetKey, number | RangeTarget | null>>>({});
   const [citiesDraft, setCitiesDraft] = useState<Record<string, CitySentiment | null>>({});
+  /** The seniority number as typed; null until the pilot touches the field. */
+  const [seniorityDraft, setSeniorityDraft] = useState<string | null>(null);
 
   const edits: ProfileEdits = useMemo(
-    () => ({ weights: weightsDraft, explicitTargets: targetsDraft, cityPreferences: citiesDraft }),
-    [weightsDraft, targetsDraft, citiesDraft]
+    () => ({
+      weights: weightsDraft,
+      explicitTargets: targetsDraft,
+      cityPreferences: citiesDraft,
+      ...(seniorityDraft !== null ? { seniorityNumber: parseSeniorityInput(seniorityDraft) } : {}),
+    }),
+    [weightsDraft, targetsDraft, citiesDraft, seniorityDraft]
   );
   const dirty = profile ? hasEdits(profile, edits) : false;
 
@@ -146,12 +155,14 @@ export function PreferencesScreen({
     setWeightsDraft({});
     setTargetsDraft({});
     setCitiesDraft({});
+    setSeniorityDraft(null);
   }
 
   function discard() {
     setWeightsDraft({});
     setTargetsDraft({});
     setCitiesDraft({});
+    setSeniorityDraft(null);
   }
 
   const sentiments: Record<string, CitySentiment | null> = Object.fromEntries(cityCodes.map((c) => [c, sentimentOf(c)]));
@@ -211,6 +222,40 @@ export function PreferencesScreen({
         Everything here is editable. Change a slider or a number and save &mdash; your rankings update right away, and
         this is what carries forward to next month.
       </p>
+
+      {bidPack?.seniorityList && bidPack.seniorityList.length > 0 && (() => {
+        const list = bidPack.seniorityList;
+        const shown = seniorityDraft ?? (currentProfile.seniorityNumber ? String(currentProfile.seniorityNumber) : "");
+        const parsed = parseSeniorityInput(shown);
+        const position = parsed !== null ? resolveBidPosition(list, parsed) : null;
+        return (
+          <section className="mt-6 rounded-xl border border-border bg-surface p-5 sm:p-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Your place in the bid</h2>
+            <div className="mt-4 flex flex-wrap items-end gap-4">
+              <div>
+                <label htmlFor="prefs-seniority" className="text-sm font-medium text-ink">Seniority number</label>
+                <input
+                  id="prefs-seniority"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={shown}
+                  onChange={(e) => setSeniorityDraft(e.target.value.replace(/[^\d]/g, "").slice(0, 6))}
+                  placeholder="e.g. 1234"
+                  className="mt-1.5 block w-40 rounded-lg border border-border bg-canvas px-3 py-2 font-mono text-base text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
+                />
+              </div>
+              <p className="max-w-sm text-sm text-ink-muted" aria-live="polite">
+                {position
+                  ? position.exact
+                    ? `${position.bidNumber - 1} of the ${list.length} pilots bidding this seat bid ahead of you.`
+                    : `Not on this pack's list — placed by where it would fall, about ${position.bidNumber} of ${list.length}.`
+                  : "Used only to estimate which lines you could realistically hold. Leave blank to skip."}
+              </p>
+            </div>
+          </section>
+        );
+      })()}
 
       {SLIDER_GROUPS.map((group) => (
         <section key={group.title} className="mt-6 rounded-xl border border-border bg-surface p-5 sm:p-6">

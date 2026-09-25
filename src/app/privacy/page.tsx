@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "September 23, 2026";
+const LAST_UPDATED = "September 25, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -45,9 +45,13 @@ export default function PrivacyPage() {
             the pack&rsquo;s own printed summary numbers (guarantees, credit ranges, line counts).
             The PDF itself is never written to disk or stored &mdash; it is held in memory only for
             the seconds it takes to parse, then discarded. We deliberately never read or extract
-            pages listing other pilots&rsquo; names, employee numbers, seniority lists, vacation
-            schedules, or training rosters, even when they appear in the same file; our parser
-            classifies and skips those pages by design.
+            pages listing other pilots&rsquo; names, employee numbers, vacation schedules, or
+            training rosters, even when they appear in the same file; our parser classifies and
+            skips those pages by design. The one exception is the pack&rsquo;s Bid Seniority List,
+            from which we read exactly two numbers per pilot &mdash; their place in bid order and
+            their seniority number &mdash; and nothing else: no name and no employee number is ever
+            read into memory that outlives the row it was printed on. Those numbers tell the bid
+            forecast (Section 7) how many pilots bid ahead of you.
           </p>
         </Section>
 
@@ -127,7 +131,28 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="7. Award-history reports are anonymous">
+        <Section title="7. Bid forecast and shared rankings">
+          <p>
+            If you enter your seniority number (on your Preferences page or at the start of the
+            interview), Line Select uses it, the bid pack&rsquo;s list of seniority numbers, and your
+            ranking of the lines to estimate your chance at each one. That estimate runs on our
+            server, which receives numbers only &mdash; the lines&rsquo; features, the seniority
+            list, and your ranking &mdash; not your bid pack file. Your seniority number is stored
+            with your preferences: on your device, and on our server too if you have an account.
+          </p>
+          <p className="mt-3">
+            If you&rsquo;re signed in, your ranking is also stored on our server by default so it can
+            improve the forecast for other pilots bidding the same seat and month. It is kept under
+            a one-way hash of your account and your place in bid order (a number from the bid
+            pack&rsquo;s own list) &mdash; never your name or email &mdash; and is never shown to any
+            other pilot: the server uses it only to work out which lines are likely to be taken, and
+            sends back nothing but probabilities. You can stop sharing at any time with the checkbox
+            on your results page, which removes your stored ranking, and you can ask us to delete
+            everything (Section 14).
+          </p>
+        </Section>
+
+        <Section title="8. Award-history reports are anonymous">
           <p>
             If you report what you actually held for a bid period, we store your seniority number,
             the base/aircraft/seat, and the outcome (line, reserve, or other) &mdash; but that
@@ -136,7 +161,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="8. Free-text explanations for a ranking correction">
+        <Section title="9. Free-text explanations for a ranking correction">
           <p>
             If you drag-correct a line&rsquo;s ranking and the Service asks why, and your answer
             doesn&rsquo;t map cleanly onto an existing preference, we store your verbatim answer
@@ -145,11 +170,11 @@ export default function PrivacyPage() {
             financial information) in these answers &mdash; they&rsquo;re not necessary for the
             Service to work, and while they&rsquo;re not shown to other pilots, they are retained
             longer-term for this review purpose. You can request deletion of these at any time
-            (Section 13).
+            (Section 14).
           </p>
         </Section>
 
-        <Section title="9. Feedback you send us">
+        <Section title="10. Feedback you send us">
           <p>
             If you use the &ldquo;Send feedback&rdquo; option in the app, your message is sent to
             our server and stored there &mdash; unlike your bid pack and preferences, this one
@@ -161,7 +186,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="10. Technical and abuse-prevention data">
+        <Section title="11. Technical and abuse-prevention data">
           <p>
             To prevent abuse of the Service (and its underlying paid AI and data providers), we
             briefly record request counts keyed to your account (if signed in) or IP address (if
@@ -172,7 +197,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="11. Usage analytics and error monitoring">
+        <Section title="12. Usage analytics and error monitoring">
           <p>
             The Service uses PostHog to see which pages get used and to catch errors before a
             pilot has to report one themselves. This sends page-view events and a small, fixed set
@@ -187,27 +212,27 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="12. What we don't do">
+        <Section title="13. What we don't do">
           <ul className="list-disc space-y-1.5 pl-5">
             <li>We don&rsquo;t sell or rent your personal information to anyone.</li>
             <li>
               We don&rsquo;t run advertising pixels or third-party marketing scripts on the
-              Service. We do run one analytics/error-monitoring tool (Section 11) &mdash; see there
+              Service. We do run one analytics/error-monitoring tool (Section 12) &mdash; see there
               for exactly what it collects.
             </li>
             <li>
-              We don&rsquo;t read, extract, or store any page from your bid pack that lists another
-              pilot&rsquo;s name, employee number, or seniority.
+              We don&rsquo;t read, extract, or store another pilot&rsquo;s name or employee number from your
+              bid pack. From its seniority list we use only bid order and seniority numbers (Section 1).
             </li>
             <li>We don&rsquo;t use your bid pack, interview answers, or account data to train any AI model ourselves.</li>
           </ul>
         </Section>
 
-        <Section title="13. Your choices and rights">
+        <Section title="14. Your choices and rights">
           <p>
             You can delete your account at any time by contacting us at the address below; this
             removes your login credentials and disassociates your future access, though Trade Board
-            posts, award-history reports, and feedback (Section 9) already sent may remain &mdash;
+            posts, award-history reports, and feedback (Section 10) already sent may remain &mdash;
             the first because it was shared publicly by design, the other two because they were
             never linked back to you once your account is gone. You can clear your locally-stored
             bid pack, and any preferences saved only as a guest, at any time from within the app,
@@ -222,7 +247,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="14. Children's privacy">
+        <Section title="15. Children's privacy">
           <p>
             The Service is intended for working airline pilots and is not directed at, or intended
             for use by, anyone under 18. We don&rsquo;t knowingly collect information from anyone
@@ -230,7 +255,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="15. Security">
+        <Section title="16. Security">
           <p>
             We use industry-standard measures appropriate to the data we actually hold &mdash;
             encrypted connections, salted password hashing, httpOnly session cookies, and rate
@@ -240,7 +265,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="16. Changes to this policy">
+        <Section title="17. Changes to this policy">
           <p>
             We may update this Privacy Policy as the Service changes. We&rsquo;ll update the
             &ldquo;Last updated&rdquo; date above whenever we do, and for a material change
@@ -248,7 +273,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="17. Contact">
+        <Section title="18. Contact">
           <p>
             Questions about this policy, or a request about your data, can be sent to{" "}
             <a
