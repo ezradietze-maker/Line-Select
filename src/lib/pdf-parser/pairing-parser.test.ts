@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePairingColumn } from "@/lib/pdf-parser/pairing-parser";
+import { parsePairingColumn, parsePairingPages } from "@/lib/pdf-parser/pairing-parser";
 import type { ParseWarning } from "@/lib/pdf-parser/types";
 
 // Row shapes below are copied verbatim (column-separated, not the raw
@@ -74,5 +74,63 @@ describe("parsePairingColumn", () => {
     expect(result).toHaveLength(0);
     expect(warnings).toHaveLength(1);
     expect(warnings[0].message).toContain("no readable flight legs");
+  });
+});
+
+describe("parsePairingPages", () => {
+  it("joins a pairing split across a page break into one pairing, without the page title in the middle", () => {
+    // Real shape (B777 MEM pp. 118-119): a pairing starts at the bottom of one
+    // page and its second leg and summary line print at the top of the next,
+    // under that page's own title row.
+    const page1 = [
+      "5 TU REPORT AT 2016 (1516) STANDARD CREW",
+      "EFFECTIVE OCTOBER 13 ONLY",
+      "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+      "13TU UA1347 JET MEM 2116(1616) DEN 2356(1756) 02:40 S 00:00 03:12 04:10 DEN 09:34",
+      "Hotel: HAMPTON INN (DEN), 303-375-8118",
+    ];
+    const page2 = [
+      "OCTOBER 2026 BID PACK PAIRING SCHEDULE FOR B777 MEM",
+      "14WE UA2367 JET DEN 1100(0500) MEM 1341(0841) 02:41 S 00:00 03:41 05:41",
+      "LDGS: 2 BLOCK HRS: 05:21 CREDIT HRS: 06:53 T TAFB: 22:00",
+      "6 WE REPORT AT 0900 (0400) STANDARD CREW",
+      "EFFECTIVE OCTOBER 14 ONLY",
+      "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+      "14WE UA0100 JET MEM 1000(0500) ORD 1130(0630) 01:30 S 00:00 03:12 02:30",
+      "LDGS: 1 BLOCK HRS: 01:30 CREDIT HRS: 03:12 T TAFB: 04:00",
+    ];
+    const warnings: ParseWarning[] = [];
+    const pairings = parsePairingPages(
+      [
+        { rows: page1, pageNumber: 118 },
+        { rows: page2, pageNumber: 119 },
+      ],
+      warnings
+    );
+
+    // (Soft timeline-reconcile warnings from this hand-made fixture's hours are fine; a dropped pairing is not.)
+    expect(warnings.filter((w) => w.message.startsWith("Skipped"))).toEqual([]);
+    expect(pairings.map((p) => p.sequenceNumber)).toEqual(["5", "6"]);
+    expect(pairings[0].flightNumbers).toEqual(["UA1347", "UA2367"]);
+    expect(pairings[0].pageNumber).toBe(118);
+  });
+
+  it("still warns about a pairing that never finishes, on the last page", () => {
+    const warnings: ParseWarning[] = [];
+    const pairings = parsePairingPages(
+      [
+        {
+          rows: [
+            "5 TU REPORT AT 2016 (1516) STANDARD CREW",
+            "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+            "13TU UA1347 JET MEM 2116(1616) DEN 2356(1756) 02:40 S 00:00 03:12 04:10 DEN 09:34",
+          ],
+          pageNumber: 118,
+        },
+      ],
+      warnings
+    );
+    expect(pairings).toHaveLength(0);
+    expect(warnings).toHaveLength(1);
   });
 });

@@ -1,4 +1,4 @@
-import { splitIntoLineBlocks } from "@/lib/pdf-parser/line-grid-parser";
+import { splitDayTokens, splitIntoLineBlocks } from "@/lib/pdf-parser/line-grid-parser";
 
 const LINE_RE = /LINE\s+(\d+)/;
 const DATE_RANGE_RE = /\((\d{4}-\d{2}-\d{2})\s*-\s*\d{4}-\d{2}-\d{2}\)/;
@@ -18,25 +18,6 @@ export interface DayPlacement {
 export function extractBidPeriodStart(headerText: string): string | null {
   const m = headerText.match(DATE_RANGE_RE);
   return m ? m[1] : null;
-}
-
-/**
- * Splits a grid row's own day-columns into ordinal tokens, one per day
- * column — confirmed against real bid-pack line-grid pages that every row
- * (the day-of-week/day-of-month header rows and every line's own content
- * rows alike) prints exactly one ":" or "|" delimiter per day column, so
- * the Nth token in any row lines up with the Nth token in every other row
- * on the same page without needing pixel-position math. `groupIntoRows`
- * inserts an incidental space between adjacent PDF text runs, which this
- * trims away along with the delimiter itself.
- */
-function splitDayTokens(row: string): string[] {
-  const gridStart = row.indexOf("|");
-  if (gridStart === -1) return [];
-  return row
-    .slice(gridStart + 1)
-    .split(/[:|]/)
-    .map((s) => s.trim());
 }
 
 /**

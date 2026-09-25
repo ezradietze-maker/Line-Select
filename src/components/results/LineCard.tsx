@@ -9,6 +9,7 @@ import { DealbreakerBanner } from "@/components/results/DealbreakerBanner";
 import { LineInsightBadge } from "@/components/results/LineInsightBadge";
 import { MatchBar } from "@/components/results/MatchBar";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
+import { TripNumberStrip } from "@/components/results/TripNumberStrip";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { TripList } from "@/components/results/TripList";
 import { ChevronDownIcon, GripIcon, StarIcon } from "@/components/ui/icons";
@@ -217,6 +218,8 @@ export const LineCard = memo(function LineCard({
               </button>
             </div>
           </div>
+
+          {!lineScore.estimated && <TripNumberStrip trips={line.trips} />}
 
           <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_15.5rem] lg:items-start">
             <div>

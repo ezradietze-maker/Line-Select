@@ -46,6 +46,42 @@ export function splitIntoLineBlocks(rows: string[]): string[][] {
   return blocks;
 }
 
+/**
+ * Splits a grid row's own day-columns into ordinal tokens, one per day
+ * column — confirmed against real bid-pack line-grid pages that every row
+ * (the day-of-week/day-of-month header rows and every line's own content
+ * rows alike) prints exactly one ":" or "|" delimiter per day column, so
+ * the Nth token in any row lines up with the Nth token in every other row
+ * on the same page without needing pixel-position math. `groupIntoRows`
+ * inserts an incidental space between adjacent PDF text runs, which this
+ * trims away along with the delimiter itself.
+ */
+export function splitDayTokens(row: string): string[] {
+  const gridStart = row.indexOf("|");
+  if (gridStart === -1) return [];
+  return row
+    .slice(gridStart + 1)
+    .split(/[:|]/)
+    .map((s) => s.trim());
+}
+
+/**
+ * The bottom of a line block's five content rows is the grid's dedicated
+ * placement row: a bare number is the sequence number of the pairing that
+ * starts on that day. Read left to right, that is the line's own complete,
+ * ordered list of trips — the authoritative answer to "which pairings does
+ * this line fly", which the calendar's noisier rows above it can only
+ * approximate. Returns [] when the block doesn't have the expected layout.
+ */
+export function placementSequenceNumbers(block: string[]): { sequenceNumber: string; dayIndex: number }[] {
+  if (block.length < 5) return [];
+  const entries: { sequenceNumber: string; dayIndex: number }[] = [];
+  splitDayTokens(block[4]).forEach((token, dayIndex) => {
+    if (/^\d+$/.test(token)) entries.push({ sequenceNumber: token, dayIndex });
+  });
+  return entries;
+}
+
 /** A pairing referenced by its own sequence number, plus how many separate
  * times that sequence number appears in the line's calendar — a short trip
  * flown several times in the same month (e.g. the same LAX turn done three
@@ -98,11 +134,13 @@ function searchSubsets(
   targetBlock: number,
   targetLandings: number,
   nodeBudget = Infinity,
-  tafb: { target: number; exact: boolean } | null = null
+  tafb: { target: number; exact: boolean } | null = null,
+  requiredCount: number | null = null
 ): Candidate[] | null {
   let nodes = 0;
-  function isMatch(credit: number, block: number, landings: number, accTafbHours: number): boolean {
+  function isMatch(credit: number, block: number, landings: number, accTafbHours: number, tripCount: number): boolean {
     return (
+      (requiredCount === null || tripCount === requiredCount) &&
       Math.abs(credit - targetCredit) < TOLERANCE_HOURS &&
       Math.abs(block - targetBlock) < TOLERANCE_HOURS &&
       landings === targetLandings &&
@@ -119,9 +157,10 @@ function searchSubsets(
     accCredit: number,
     accBlock: number,
     accLandings: number,
-    accTafb: number
+    accTafb: number,
+    accCount: number
   ): Candidate[] | null {
-    if (chosen.length > 0 && isMatch(accCredit, accBlock, accLandings, accTafb)) return chosen;
+    if (chosen.length > 0 && isMatch(accCredit, accBlock, accLandings, accTafb, accCount)) return chosen;
     if (chosen.length >= maxSize) return null;
 
     for (let i = startIndex; i < pool.length; i++) {
@@ -135,14 +174,70 @@ function searchSubsets(
       if (nextLandings > targetLandings) continue;
       const nextTafb = accTafb + c.pairing.tafbHours * c.weight;
       if (tafb?.exact && nextTafb > tafb.target + TOLERANCE_HOURS) continue;
+      const nextCount = accCount + c.weight;
+      if (requiredCount !== null && nextCount > requiredCount) continue;
 
-      const result = search(i + 1, [...chosen, c], nextCredit, nextBlock, nextLandings, nextTafb);
+      const result = search(i + 1, [...chosen, c], nextCredit, nextBlock, nextLandings, nextTafb, nextCount);
       if (result) return result;
     }
     return null;
   }
 
-  return search(0, [], 0, 0, 0, 0);
+  return search(0, [], 0, 0, 0, 0, 0);
+}
+
+/** Caps the product of alternatives across reused sequence numbers — real packs reuse a number for a handful of same-shaped trips, never dozens. */
+const MAX_PLACEMENT_COMBINATIONS = 64;
+
+/**
+ * Resolves the line's placement row (its own ordered list of trip sequence
+ * numbers — see `placementSequenceNumbers`) straight to pairings, then
+ * verifies the result against the line's printed totals exactly the way a
+ * searched combination is. This is a lookup, not a guess: when the pairing
+ * schedule has every listed number and the sums agree, the answer is the
+ * line's own printed one. Returns null (and the caller falls back to the
+ * search) if a number is missing from the schedule or the sums don't agree.
+ */
+function resolvePlacementPairings(
+  placementSeqs: string[],
+  pairingsBySeq: Map<string, ParsedPairing[]>,
+  targetCredit: number,
+  targetBlock: number,
+  targetLandings: number,
+  targetTafb: number
+): ParsedPairing[] | null {
+  if (placementSeqs.length === 0) return null;
+  const distinct = Array.from(new Set(placementSeqs));
+  const alternatives = distinct.map((seq) => pairingsBySeq.get(seq) ?? []);
+  if (alternatives.some((a) => a.length === 0)) return null;
+  if (alternatives.reduce((n, a) => n * a.length, 1) > MAX_PLACEMENT_COMBINATIONS) return null;
+
+  let best: ParsedPairing[] | null = null;
+  function tryCombination(index: number, chosen: Map<string, ParsedPairing>) {
+    if (best) return;
+    if (index === distinct.length) {
+      const pairings = placementSeqs.map((seq) => chosen.get(seq)!);
+      const credit = pairings.reduce((a, p) => a + p.creditHours, 0);
+      const block = pairings.reduce((a, p) => a + p.blockHours, 0);
+      const landings = pairings.reduce((a, p) => a + p.landings, 0);
+      const tafb = pairings.reduce((a, p) => a + p.tafbHours, 0);
+      if (
+        Math.abs(credit - targetCredit) < TOLERANCE_HOURS &&
+        Math.abs(block - targetBlock) < TOLERANCE_HOURS &&
+        landings === targetLandings &&
+        tafb > targetTafb - TOLERANCE_HOURS
+      ) {
+        best = pairings;
+      }
+      return;
+    }
+    for (const alt of alternatives[index]) {
+      chosen.set(distinct[index], alt);
+      tryCombination(index + 1, chosen);
+    }
+  }
+  tryCombination(0, new Map());
+  return best;
 }
 
 function findMatchingPairings(
@@ -151,8 +246,20 @@ function findMatchingPairings(
   targetCredit: number,
   targetBlock: number,
   targetLandings: number,
-  targetTafb: number
+  targetTafb: number,
+  placementSeqs: string[],
+  pairingsBySeq: Map<string, ParsedPairing[]>
 ): ParsedPairing[] | null {
+  const fromPlacements = resolvePlacementPairings(
+    placementSeqs,
+    pairingsBySeq,
+    targetCredit,
+    targetBlock,
+    targetLandings,
+    targetTafb
+  );
+  if (fromPlacements) return fromPlacements;
+
   // A line's printed TAFB is the sum of its pairings' own TAFBs, a fourth,
   // independent check on top of credit/block/landings — different pairing
   // combinations often tie on those three and only the right one also agrees
@@ -179,19 +286,33 @@ function findMatchingPairings(
   const budget = exhaustive ? Infinity : NODE_BUDGET_PER_STAGE;
 
   let chosen: Candidate[] | null = null;
+  // With a placement row, a combination must also have exactly as many trips
+  // as the row lists; try that first, then without it (a misread row must
+  // not turn a solvable line into an estimated one).
+  const requiredCounts: (number | null)[] = placementSeqs.length > 0 ? [placementSeqs.length, null] : [null];
   // Exact TAFB first; then TAFB only as a floor. A trip straddling the bid
   // period's edge prints a line TAFB *below* its pairing's full TAFB (never
   // above it — verified across every matched line of a real pack), so a
   // combination whose TAFB falls short of the line's is always wrong.
-  for (const tafb of [
-    { target: targetTafb, exact: true },
-    { target: targetTafb, exact: false },
-  ]) {
-    for (const stage of stages) {
-      chosen = searchSubsets(stage, MAX_COMBINATION_SIZE, targetCredit, targetBlock, targetLandings, budget, tafb);
-      if (chosen) break;
+  search: for (const requiredCount of requiredCounts) {
+    for (const tafb of [
+      { target: targetTafb, exact: true },
+      { target: targetTafb, exact: false },
+    ]) {
+      for (const stage of stages) {
+        chosen = searchSubsets(
+          stage,
+          MAX_COMBINATION_SIZE,
+          targetCredit,
+          targetBlock,
+          targetLandings,
+          budget,
+          tafb,
+          requiredCount
+        );
+        if (chosen) break search;
+      }
     }
-    if (chosen) break;
   }
   if (!chosen) return null;
   return chosen.flatMap((c) => Array(c.weight).fill(c.pairing) as ParsedPairing[]);
@@ -351,7 +472,9 @@ export function parseLineGridColumn(
       totalCreditHours + creditCarryOver,
       totalBlockHours + blockCarryOver,
       totalLandings,
-      totalTafbHours
+      totalTafbHours,
+      placementSequenceNumbers(block).map((e) => e.sequenceNumber),
+      pairingsBySeq
     );
 
     if (!pairings) {

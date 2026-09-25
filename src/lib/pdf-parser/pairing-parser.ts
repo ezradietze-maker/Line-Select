@@ -306,6 +306,56 @@ function splitIntoBlocks(rows: string[]): RawBlock[] {
   return blocks;
 }
 
+const PAGE_TITLE_RE = /BID PACK PAIRING SCHEDULE/i;
+
+/**
+ * Parses consecutive pairing-schedule pages as one continuous stream. A
+ * pairing that starts at the bottom of one page finishes at the top of the
+ * next (real packs split them mid-pairing — seen on B777 MEM, where each such
+ * pairing used to be dropped as "couldn't find its summary line", taking
+ * every line that flew it down to a totals-only estimate). The unfinished
+ * trailing block of a page is held back, joined with the next page's leading
+ * rows (its own page title excluded), and parsed as the single pairing it is.
+ */
+export function parsePairingPages(
+  pages: { rows: string[]; pageNumber: number }[],
+  warnings: ParseWarning[]
+): ParsedPairing[] {
+  const pairings: ParsedPairing[] = [];
+  let carry: { rows: string[]; pageNumber: number } | null = null;
+
+  pages.forEach(({ rows, pageNumber }, index) => {
+    let body = rows.filter(isNonEmptyRow);
+
+    if (carry) {
+      const firstHeader = body.findIndex((r) => HEADER_RE.test(r));
+      const splitAt = firstHeader === -1 ? body.length : firstHeader;
+      const continuation = body.slice(0, splitAt).filter((r) => !PAGE_TITLE_RE.test(r));
+      pairings.push(...parsePairingColumn([...carry.rows, ...continuation], carry.pageNumber, warnings));
+      body = body.slice(splitAt);
+      carry = null;
+    }
+
+    if (index < pages.length - 1) {
+      let lastHeader = -1;
+      for (let i = body.length - 1; i >= 0; i--) {
+        if (HEADER_RE.test(body[i])) {
+          lastHeader = i;
+          break;
+        }
+      }
+      if (lastHeader !== -1 && !body.slice(lastHeader).some((r) => FOOTER_RE.test(r))) {
+        carry = { rows: body.slice(lastHeader), pageNumber };
+        body = body.slice(0, lastHeader);
+      }
+    }
+
+    pairings.push(...parsePairingColumn(body, pageNumber, warnings));
+  });
+
+  return pairings;
+}
+
 export function parsePairingColumn(
   rows: string[],
   pageNumber: number,

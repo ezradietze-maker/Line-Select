@@ -644,6 +644,11 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
         <li key={`${trip.id}-${tripIndex}`} className="py-2.5 first:pt-0">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <div className="flex min-w-[7rem] items-baseline gap-1.5">
+              {trip.pairingNumber !== null && (
+                <span className="font-mono text-sm font-semibold text-ink" title="Trip number in the bid pack">
+                  #{trip.pairingNumber}
+                </span>
+              )}
               <span className="font-mono text-sm font-semibold text-ink">{trip.days}-day</span>
               {trip.international && (
                 <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-accent">
@@ -658,6 +663,10 @@ export function TripList({ trips, homeBaseOffsetMinutes }: TripListProps) {
             <div className="text-xs text-brand">{REPORT_LABELS[trip.reportTime]}</div>
 
             <div className="font-mono text-xs text-brand">{formatHours(trip.creditHours)} credit</div>
+
+            <div className="font-mono text-xs text-brand">
+              {trip.landings} landing{trip.landings === 1 ? "" : "s"}
+            </div>
 
             <div className="font-mono text-xs text-brand/70">
               {trip.deadheadLegs > 0

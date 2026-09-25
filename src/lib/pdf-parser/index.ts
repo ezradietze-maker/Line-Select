@@ -7,7 +7,7 @@ import {
   parseLineGridColumn,
 } from "@/lib/pdf-parser/line-grid-parser";
 import { extractMetaFromLineGridHeader, extractMetaFromPairingHeader } from "@/lib/pdf-parser/meta";
-import { parsePairingColumn } from "@/lib/pdf-parser/pairing-parser";
+import { parsePairingPages } from "@/lib/pdf-parser/pairing-parser";
 import { classifyPage } from "@/lib/pdf-parser/page-classifier";
 import { extractReserveLineSeat, parseReserveLineGridRows } from "@/lib/pdf-parser/reserve-line-parser";
 import {
@@ -90,6 +90,7 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
   const allPairings: ParsedPairing[] = [];
   let pairingMeta: Partial<BidPackMeta> | null = null;
 
+  const pairingPages: { rows: string[]; pageNumber: number }[] = [];
   for (let i = 0; i < pages.length; i++) {
     if (pageClassifications[i].kind !== "pairing-schedule") continue;
     const page = pages[i];
@@ -97,8 +98,9 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
     if (!pairingMeta) pairingMeta = extractMetaFromPairingHeader(headerText);
 
     const { left, right } = extractTwoColumnRows(page);
-    allPairings.push(...parsePairingColumn([...left, ...right], page.pageNumber, warnings));
+    pairingPages.push({ rows: [...left, ...right], pageNumber: page.pageNumber });
   }
+  allPairings.push(...parsePairingPages(pairingPages, warnings));
 
   if (allPairings.length === 0) {
     errors.push({

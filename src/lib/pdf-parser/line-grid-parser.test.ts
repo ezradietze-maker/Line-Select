@@ -162,4 +162,25 @@ describe("parseLineGridColumn", () => {
 
     expect(result.pairings).toBeNull();
   });
+
+  it("takes a line's trips from its own placement row when several pairing combinations tie on the totals", () => {
+    // Real bug class: credit/block/landings can be satisfied by different
+    // pairing sets. The grid's bottom row lists the line's actual trips, so
+    // it — not the search — decides.
+    const a = makePairing({ id: "p-a", sequenceNumber: "10", creditHours: 12, blockHours: 10, landings: 3, tafbHours: 40 });
+    const b = makePairing({ id: "p-b", sequenceNumber: "11", creditHours: 12, blockHours: 10, landings: 3, tafbHours: 40 });
+    const all = [a, b];
+    const rows = [
+      "LINE 1300 | 10: 11: : : | : | : : : : | : | CR. 12:00 TAFB 40:00 | : : : : | : | C/O. 0:00 NO. DP’S 1 | : : : : | : | BLK. 10:00 LANDINGS 3 | : : : : | : | C/O. 0:00 DAYS OFF 13",
+      "| : : : : | : | : : : : | : | : : : :",
+      "| : : : : | : | : : : : | : | : : : :",
+      "| : : : : | : | : : : : | : | : : : :",
+      "| : : 11: : | : | : : : : | : | : : : :",
+      "____________________",
+    ];
+    const warnings: ParseWarning[] = [];
+    const [result] = parseLineGridColumn(rows, 202, "CAP", indexPairingsBySequence(all), indexPairingsByFlightNumber(all), warnings);
+
+    expect(result.pairings).toEqual([b]);
+  });
 });
