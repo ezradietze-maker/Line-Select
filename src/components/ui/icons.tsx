@@ -270,3 +270,13 @@ export function SunriseIcon({ className = base }: IconProps) {
     </svg>
   );
 }
+
+/** A microphone — voice/dictation input. */
+export function MicIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path strokeLinecap="round" d="M5 11a7 7 0 0014 0M12 18v4M8 22h8" />
+    </svg>
+  );
+}

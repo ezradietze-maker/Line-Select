@@ -1,6 +1,8 @@
 "use client";
 
 import { Heading } from "@/components/ui/Heading";
+import { MicButton } from "@/components/ui/MicButton";
+import { useDictation } from "@/lib/use-speech-to-text";
 
 interface BiddingStoryStepProps {
   value: string;
@@ -24,6 +26,7 @@ interface BiddingStoryStepProps {
  */
 export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, error, maxLength }: BiddingStoryStepProps) {
   const remaining = maxLength - value.length;
+  const dictation = useDictation(value, (next) => onChange(next.slice(0, maxLength)));
   return (
     <div>
       <Heading as="h2" className="text-xl text-ink sm:text-2xl">
@@ -39,18 +42,24 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
       </p>
 
       <div className="mt-6">
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value.slice(0, maxLength))}
-          disabled={busy}
-          rows={10}
-          placeholder="I usually start by looking at how many days off a line has, then..."
-          className="w-full rounded-lg border border-border bg-canvas px-3.5 py-3 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none disabled:opacity-60"
-        />
+        <div className="relative">
+          <textarea
+            value={value}
+            onChange={(e) => onChange(e.target.value.slice(0, maxLength))}
+            disabled={busy}
+            rows={10}
+            placeholder="I usually start by looking at how many days off a line has, then... (or tap the mic and just say it)"
+            className="w-full rounded-lg border border-border bg-canvas px-3.5 py-3 pr-14 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none disabled:opacity-60"
+          />
+          {dictation.supported && (
+            <MicButton listening={dictation.listening} onClick={dictation.toggle} className="absolute right-3 top-3" />
+          )}
+        </div>
         <div className="mt-1.5 flex items-center justify-between text-xs text-ink-faint">
           <span>{value.trim().length === 0 ? "" : `${value.trim().length.toLocaleString()} characters`}</span>
           {remaining < 500 && <span>{remaining.toLocaleString()} left</span>}
         </div>
+        {dictation.error && <p className="mt-1.5 text-xs text-danger">{dictation.error}</p>}
       </div>
 
       {error && <p className="mt-3 text-sm text-danger">{error}</p>}

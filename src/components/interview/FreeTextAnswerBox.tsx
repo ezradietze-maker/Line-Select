@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { MicButton } from "@/components/ui/MicButton";
+import { useDictation } from "@/lib/use-speech-to-text";
 
 interface FreeTextAnswerBoxProps {
   placeholder?: string;
@@ -22,6 +24,7 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dictation = useDictation(text, setText);
 
   async function handleSubmit() {
     const trimmed = text.trim();
@@ -51,6 +54,7 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
           disabled={busy}
           className="flex-1 rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40 disabled:opacity-60"
         />
+        {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} />}
         <button
           type="button"
           onClick={handleSubmit}
@@ -70,6 +74,7 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
           Skip this one
         </button>
       )}
+      {dictation.error && <p className="mt-2 text-xs text-danger">{dictation.error}</p>}
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
     </div>
   );
