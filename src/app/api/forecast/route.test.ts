@@ -1,16 +1,66 @@
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FEATURE_COUNT } from "@/lib/forecast/features";
 
 const authMocks = vi.hoisted(() => ({ getCurrentServerUser: vi.fn() }));
 vi.mock("@/lib/server/auth", () => authMocks);
 
-const kv = vi.hoisted(() => ({ store: new Map<string, unknown>() }));
+// Rate limiting (checkRateLimit) still goes through kv.ts — this route's
+// own storage (forecast-store) moved to Postgres, mocked separately below.
 vi.mock("@/lib/server/kv", () => ({
-  getJson: vi.fn(async (key: string) => kv.store.get(key) ?? null),
-  setJson: vi.fn(async (key: string, value: unknown) => {
-    kv.store.set(key, JSON.parse(JSON.stringify(value)));
-  }),
+  getJson: vi.fn(async () => null),
+  setJson: vi.fn(async () => {}),
   incrementCounter: vi.fn(async () => 1),
+}));
+
+/**
+ * An in-memory stand-in for the Postgres-backed forecast-store, mirroring
+ * its real semantics (one entry per pilot per pack, a bid position can't be
+ * taken from someone who already holds it) without touching a real database.
+ */
+const forecastStore = vi.hoisted(() => {
+  interface Entry {
+    userHash: string;
+    bidNumber: number;
+    seniority: number;
+    ranking: number[];
+  }
+  const blobs = new Map<string, Entry[]>();
+  return { blobs };
+});
+
+function hashUserForTest(userId: string): string {
+  return createHash("sha256").update(`line-select-forecast:${userId}`).digest("hex").slice(0, 20);
+}
+
+vi.mock("@/lib/server/forecast-store", () => ({
+  blobKey: (packKey: string, lineNumbers: string[]) => `${packKey}:${lineNumbers.length}`,
+  hashUser: hashUserForTest,
+  loadKnownRankings: vi.fn(async (packKey: string, lineNumbers: string[], excludeUserId: string | null) => {
+    const key = `${packKey}:${lineNumbers.length}`;
+    const all = forecastStore.blobs.get(key) ?? [];
+    const me = excludeUserId ? hashUserForTest(excludeUserId) : null;
+    const others = me ? all.filter((e) => e.userHash !== me) : all;
+    return { known: others.map((e) => ({ bidNumber: e.bidNumber, ranking: e.ranking })), total: all.length };
+  }),
+  saveSubmission: vi.fn(
+    async (params: { packKey: string; lineNumbers: string[]; userId: string; bidNumber: number; seniority: number; ranking: number[] }) => {
+      const key = `${params.packKey}:${params.lineNumbers.length}`;
+      const entries = forecastStore.blobs.get(key) ?? [];
+      const user = hashUserForTest(params.userId);
+      const claimedByOther = entries.some((e) => e.bidNumber === params.bidNumber && e.userHash !== user);
+      if (claimedByOther) return { stored: false, reason: "position-taken" };
+      const next = entries.filter((e) => e.userHash !== user);
+      next.push({ userHash: user, bidNumber: params.bidNumber, seniority: params.seniority, ranking: params.ranking });
+      forecastStore.blobs.set(key, next);
+      return { stored: true };
+    }
+  ),
+  removeSubmission: vi.fn(async (packKey: string, lineNumbers: string[], userId: string) => {
+    const key = `${packKey}:${lineNumbers.length}`;
+    const user = hashUserForTest(userId);
+    forecastStore.blobs.set(key, (forecastStore.blobs.get(key) ?? []).filter((e) => e.userHash !== user));
+  }),
 }));
 
 import { DELETE, POST } from "./route";
@@ -45,7 +95,7 @@ function goodBody(overrides: Record<string, unknown> = {}) {
 
 describe("/api/forecast", () => {
   beforeEach(() => {
-    kv.store.clear();
+    forecastStore.blobs.clear();
     authMocks.getCurrentServerUser.mockReset().mockResolvedValue(null);
   });
 
@@ -75,17 +125,17 @@ describe("/api/forecast", () => {
     authMocks.getCurrentServerUser.mockResolvedValue(USER);
     const res = await POST(request(goodBody({ share: true })));
     expect((await res.json()).shared).toBe("stored");
-    const stored = JSON.stringify([...kv.store.values()]);
+    const stored = JSON.stringify([...forecastStore.blobs.values()]);
     expect(stored).not.toContain("user-1");
     expect(stored).not.toContain("a@example.com");
-    expect(stored).toContain('"b":10');
+    expect(stored).toContain('"bidNumber":10');
   });
 
   it("does not store anything for a guest, or for a seniority number that isn't on the list", async () => {
     expect((await (await POST(request(goodBody({ share: true })))).json()).shared).toBe("not-signed-in");
     authMocks.getCurrentServerUser.mockResolvedValue(USER);
     expect((await (await POST(request(goodBody({ share: true, seniorityNumber: 52 })))).json()).shared).toBe("unlisted");
-    expect(kv.store.size).toBe(0);
+    expect(forecastStore.blobs.size).toBe(0);
   });
 
   it("uses other pilots' shared rankings but never sends them back", async () => {

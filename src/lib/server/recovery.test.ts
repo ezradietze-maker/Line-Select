@@ -23,6 +23,7 @@ vi.mock("@/lib/server/db", () => ({
   createUserWithCredential: vi.fn(async (user, credential) => {
     store.users.push(user);
     store.credentials.push(credential);
+    return { ok: true };
   }),
   createSession: vi.fn(async (s) => {
     store.sessions.push(s);

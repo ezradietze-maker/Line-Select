@@ -1,19 +1,32 @@
-import { getJson, setJson } from "@/lib/server/kv";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { db } from "@/lib/server/postgres";
+import {
+  awardHistoryRecords,
+  bidPackMetaOf,
+  candidateVariables,
+  credentials as credentialsTable,
+  feedbackSubmissions,
+  interviewCandidateFacts,
+  passwordResetTokens,
+  preferenceProfiles,
+  sessions,
+  tradeOffers,
+  users,
+} from "@/lib/server/schema";
 import type { AwardHistoryRecord } from "@/types/award-history";
 import type { StoredCredential, UserAccount } from "@/types/auth";
 import type { CandidateVariable } from "@/types/candidate-variable";
 import type { FeedbackSubmission } from "@/types/feedback";
 import type { InterviewCandidateFact } from "@/types/interview-candidate-fact";
 import type { PreferenceProfile } from "@/types/preferences";
-import type { TradeOffer } from "@/types/trade";
+import type { TradeOffer, TradeOfferStatus } from "@/types/trade";
 
 /**
- * The whole point of moving auth server-side for this feature is that a
- * trade offer has to be visible to a DIFFERENT pilot on a different device —
- * something a browser-local mock account can never do. This is still a
- * prototype-grade store (one JSON blob behind `kv.ts`, not a real database
- * with indexes/queries), but it's genuinely shared and server-verified,
- * which is the part that actually matters here.
+ * Real tables behind Postgres (`schema.ts`/`postgres.ts`) — replaces the old
+ * single-JSON-blob store. Unique constraints and atomic conditional updates
+ * (see `updateTradeOffer`, `createUserWithCredential`) are what actually
+ * prevent two concurrent signups or trade responses from corrupting each
+ * other; a read-modify-write blob could never guarantee that.
  */
 
 export interface ServerSession {
@@ -22,214 +35,272 @@ export interface ServerSession {
   expiresAt: string;
 }
 
-interface DbShape {
-  users: UserAccount[];
-  credentials: StoredCredential[];
-  sessions: ServerSession[];
-  tradeOffers: TradeOffer[];
-  candidateVariables: CandidateVariable[];
-  awardHistoryRecords: AwardHistoryRecord[];
-  interviewCandidateFacts: InterviewCandidateFact[];
-  /** Keyed by userId — one flat overwrite per pilot, same shape as the localStorage record it replaces as the source of truth. See `getPreferenceProfile` for why this exists. */
-  preferenceProfiles: Record<string, PreferenceProfile>;
-  feedbackSubmissions: FeedbackSubmission[];
-  /** Emailed password-reset links. Only a hash of each token is stored, so a leaked database can't be used to take over an account. */
-  passwordResetTokens: PasswordResetToken[];
-}
-
 export interface PasswordResetToken {
   tokenHash: string;
   userId: string;
   expiresAt: string;
 }
 
-const DB_KEY = "line-select:db";
-
-function emptyDb(): DbShape {
-  return {
-    users: [],
-    credentials: [],
-    sessions: [],
-    tradeOffers: [],
-    candidateVariables: [],
-    awardHistoryRecords: [],
-    interviewCandidateFacts: [],
-    preferenceProfiles: {},
-    feedbackSubmissions: [],
-    passwordResetTokens: [],
-  };
+function pgErrorCode(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  if ("code" in err && typeof (err as { code?: unknown }).code === "string") return (err as { code: string }).code;
+  // drizzle-orm wraps the driver's error in `DrizzleQueryError`, which puts the original on `.cause`.
+  if ("cause" in err) return pgErrorCode((err as { cause?: unknown }).cause);
+  return undefined;
 }
 
-async function readDb(): Promise<DbShape> {
-  const stored = await getJson<DbShape>(DB_KEY);
-  return { ...emptyDb(), ...stored };
-}
-
-async function writeDb(db: DbShape): Promise<void> {
-  await setJson(DB_KEY, db);
+function isUniqueViolation(err: unknown): boolean {
+  return pgErrorCode(err) === "23505";
 }
 
 // ---- Users & credentials ----
 
+function toUserAccount(row: typeof users.$inferSelect): UserAccount {
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.displayName,
+    createdAt: row.createdAt.toISOString(),
+    plan: row.plan as UserAccount["plan"],
+  };
+}
+
+function toStoredCredential(row: typeof credentialsTable.$inferSelect): StoredCredential {
+  return {
+    userId: row.userId,
+    email: row.email,
+    passwordHash: row.passwordHash,
+    salt: row.salt,
+    recoveryHash: row.recoveryHash ?? undefined,
+    recoverySalt: row.recoverySalt ?? undefined,
+  };
+}
+
 export async function findUserByEmail(email: string): Promise<UserAccount | null> {
-  return (await readDb()).users.find((u) => u.email === email) ?? null;
+  const [row] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return row ? toUserAccount(row) : null;
 }
 
 export async function findUserById(id: string): Promise<UserAccount | null> {
-  return (await readDb()).users.find((u) => u.id === id) ?? null;
+  const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return row ? toUserAccount(row) : null;
 }
 
 export async function findCredentialByEmail(email: string): Promise<StoredCredential | null> {
-  return (await readDb()).credentials.find((c) => c.email === email) ?? null;
+  const [row] = await db.select().from(credentialsTable).where(eq(credentialsTable.email, email)).limit(1);
+  return row ? toStoredCredential(row) : null;
 }
 
+export async function findCredentialByUserId(userId: string): Promise<StoredCredential | null> {
+  const [row] = await db.select().from(credentialsTable).where(eq(credentialsTable.userId, userId)).limit(1);
+  return row ? toStoredCredential(row) : null;
+}
+
+export type CreateUserResult = { ok: true } | { ok: false; reason: "duplicate-email" };
+
+/**
+ * Inserts the account and its credential in one transaction, and turns a
+ * unique-constraint violation on `users.email` into a typed result instead
+ * of throwing. This is the real guard against two concurrent signups for
+ * the same email — `signUp()` in `auth.ts` also pre-checks
+ * `findUserByEmail` for a fast, friendly error, but that check alone can't
+ * close the race window; this one can, because the database enforces it.
+ */
 export async function createUserWithCredential(
   user: UserAccount,
   credential: StoredCredential
-): Promise<void> {
-  const db = await readDb();
-  db.users.push(user);
-  db.credentials.push(credential);
-  await writeDb(db);
+): Promise<CreateUserResult> {
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(users).values({
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        createdAt: new Date(user.createdAt),
+        plan: user.plan ?? "free",
+      });
+      await tx.insert(credentialsTable).values({
+        userId: credential.userId,
+        email: credential.email,
+        passwordHash: credential.passwordHash,
+        salt: credential.salt,
+        recoveryHash: credential.recoveryHash ?? null,
+        recoverySalt: credential.recoverySalt ?? null,
+      });
+    });
+    return { ok: true };
+  } catch (err) {
+    if (isUniqueViolation(err)) return { ok: false, reason: "duplicate-email" };
+    throw err;
+  }
 }
 
 export async function updateCredential(
   userId: string,
   patch: Partial<Pick<StoredCredential, "passwordHash" | "salt" | "recoveryHash" | "recoverySalt">>
 ): Promise<void> {
-  const db = await readDb();
-  const index = db.credentials.findIndex((c) => c.userId === userId);
-  if (index === -1) return;
-  db.credentials[index] = { ...db.credentials[index], ...patch };
-  await writeDb(db);
-}
-
-export async function findCredentialByUserId(userId: string): Promise<StoredCredential | null> {
-  return (await readDb()).credentials.find((c) => c.userId === userId) ?? null;
+  const set: Partial<typeof credentialsTable.$inferInsert> = {};
+  if (patch.passwordHash !== undefined) set.passwordHash = patch.passwordHash;
+  if (patch.salt !== undefined) set.salt = patch.salt;
+  if (patch.recoveryHash !== undefined) set.recoveryHash = patch.recoveryHash;
+  if (patch.recoverySalt !== undefined) set.recoverySalt = patch.recoverySalt;
+  if (Object.keys(set).length === 0) return;
+  await db.update(credentialsTable).set(set).where(eq(credentialsTable.userId, userId));
 }
 
 // ---- Password reset tokens ----
 
-/** One live token per pilot — asking again replaces the previous link. Expired tokens are swept on every write. */
+/** One live token per pilot — a single atomic upsert replaces the previous read-filter-push dance. */
 export async function saveResetToken(token: PasswordResetToken): Promise<void> {
-  const db = await readDb();
-  const now = Date.now();
-  db.passwordResetTokens = db.passwordResetTokens.filter(
-    (t) => t.userId !== token.userId && new Date(t.expiresAt).getTime() > now
-  );
-  db.passwordResetTokens.push(token);
-  await writeDb(db);
+  await db
+    .insert(passwordResetTokens)
+    .values({ tokenHash: token.tokenHash, userId: token.userId, expiresAt: new Date(token.expiresAt) })
+    .onConflictDoUpdate({
+      target: passwordResetTokens.userId,
+      set: { tokenHash: token.tokenHash, expiresAt: new Date(token.expiresAt) },
+    });
 }
 
-/** Single-use: a valid token is removed as it's returned, so a link can never be replayed. */
+/** Single-use: one atomic delete-and-return, so a link can never be replayed. */
 export async function consumeResetToken(tokenHash: string): Promise<string | null> {
-  const db = await readDb();
-  const match = db.passwordResetTokens.find((t) => t.tokenHash === tokenHash);
-  if (!match) return null;
-  db.passwordResetTokens = db.passwordResetTokens.filter((t) => t.tokenHash !== tokenHash);
-  await writeDb(db);
-  return new Date(match.expiresAt).getTime() > Date.now() ? match.userId : null;
+  const [row] = await db
+    .delete(passwordResetTokens)
+    .where(eq(passwordResetTokens.tokenHash, tokenHash))
+    .returning();
+  if (!row) return null;
+  return row.expiresAt.getTime() > Date.now() ? row.userId : null;
 }
 
 // ---- Sessions ----
 
 export async function createSession(session: ServerSession): Promise<void> {
-  const db = await readDb();
-  db.sessions.push(session);
-  await writeDb(db);
+  await db
+    .insert(sessions)
+    .values({ token: session.token, userId: session.userId, expiresAt: new Date(session.expiresAt) });
 }
 
 export async function findSession(token: string): Promise<ServerSession | null> {
-  const session = (await readDb()).sessions.find((s) => s.token === token) ?? null;
-  if (!session) return null;
-  if (new Date(session.expiresAt).getTime() < Date.now()) {
+  const [row] = await db.select().from(sessions).where(eq(sessions.token, token)).limit(1);
+  if (!row) return null;
+  if (row.expiresAt.getTime() < Date.now()) {
     await deleteSession(token);
     return null;
   }
-  return session;
+  return { token: row.token, userId: row.userId, expiresAt: row.expiresAt.toISOString() };
 }
 
 /** Signs a pilot out everywhere — used after a password reset, so a session someone else may be holding can't outlive the credential that created it. */
 export async function deleteSessionsForUser(userId: string): Promise<void> {
-  const db = await readDb();
-  db.sessions = db.sessions.filter((s) => s.userId !== userId);
-  await writeDb(db);
+  await db.delete(sessions).where(eq(sessions.userId, userId));
 }
 
 export async function deleteSession(token: string): Promise<void> {
-  const db = await readDb();
-  db.sessions = db.sessions.filter((s) => s.token !== token);
-  await writeDb(db);
+  await db.delete(sessions).where(eq(sessions.token, token));
 }
 
 // ---- Trade offers ----
 
-/**
- * Trade offers switched from whole-line snapshots (`offeredLine`) to
- * per-trip snapshots (`offeredTrip`) — any offer already sitting in the
- * store from before that change is shaped like the old schema and would
- * crash every reader expecting `offeredTrip` to exist (this app has no
- * migration step for a single JSON blob). There's no honest way to
- * synthesize per-trip fields (days, cities, international mix) from a
- * line-level snapshot, so rather than fabricate them, a stale offer is
- * simply dropped from what's served — the same "don't show a client
- * malformed or invented data" policy used everywhere else in this app.
- */
-function isCurrentShape(offer: TradeOffer): boolean {
-  return !!offer.offeredTrip;
+function toTradeOffer(row: typeof tradeOffers.$inferSelect): TradeOffer {
+  return {
+    id: row.id,
+    bidPackMeta: bidPackMetaOf(row),
+    offeringUserId: row.offeringUserId,
+    offeringDisplayName: row.offeringDisplayName,
+    offeredTrip: row.offeredTrip,
+    wantedPairingNumber: row.wantedPairingNumber,
+    note: row.note,
+    status: row.status as TradeOfferStatus,
+    createdAt: row.createdAt.toISOString(),
+    responderUserId: row.responderUserId,
+    responderDisplayName: row.responderDisplayName,
+    responderTrip: row.responderTrip,
+    respondedAt: row.respondedAt ? row.respondedAt.toISOString() : null,
+    resolvedAt: row.resolvedAt ? row.resolvedAt.toISOString() : null,
+  };
 }
 
 export async function listTradeOffers(): Promise<TradeOffer[]> {
-  return [...(await readDb()).tradeOffers]
-    .filter(isCurrentShape)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const rows = await db.select().from(tradeOffers).orderBy(desc(tradeOffers.createdAt));
+  return rows.map(toTradeOffer);
 }
 
 export async function findTradeOffer(id: string): Promise<TradeOffer | null> {
-  const offer = (await readDb()).tradeOffers.find((o) => o.id === id) ?? null;
-  return offer && isCurrentShape(offer) ? offer : null;
+  const [row] = await db.select().from(tradeOffers).where(eq(tradeOffers.id, id)).limit(1);
+  return row ? toTradeOffer(row) : null;
+}
+
+export async function createTradeOffer(offer: TradeOffer): Promise<void> {
+  await db.insert(tradeOffers).values({
+    id: offer.id,
+    createdAt: new Date(offer.createdAt),
+    base: offer.bidPackMeta.base,
+    aircraft: offer.bidPackMeta.aircraft,
+    seat: offer.bidPackMeta.seat,
+    month: offer.bidPackMeta.month,
+    offeringUserId: offer.offeringUserId,
+    offeringDisplayName: offer.offeringDisplayName,
+    offeredTrip: offer.offeredTrip,
+    wantedPairingNumber: offer.wantedPairingNumber,
+    note: offer.note,
+    status: offer.status,
+    responderUserId: offer.responderUserId,
+    responderDisplayName: offer.responderDisplayName,
+    responderTrip: offer.responderTrip,
+    respondedAt: offer.respondedAt ? new Date(offer.respondedAt) : null,
+    resolvedAt: offer.resolvedAt ? new Date(offer.resolvedAt) : null,
+  });
+}
+
+/**
+ * Atomically applies `patch` only if the offer's current status is still
+ * one of `expectedStatuses` — `UPDATE ... WHERE id = $1 AND status = ANY($2)`
+ * in one round trip. Returns null when the row doesn't exist *or* its
+ * status already moved out from under the caller (e.g. a second pilot's
+ * response arriving a beat after the first already claimed it) — the
+ * caller can't tell those apart from this alone, but both mean "don't treat
+ * this as your update," which is all every route actually needs.
+ */
+export async function updateTradeOffer(
+  id: string,
+  patch: Partial<TradeOffer>,
+  expectedStatuses: TradeOfferStatus[]
+): Promise<TradeOffer | null> {
+  const set: Partial<typeof tradeOffers.$inferInsert> = {};
+  if (patch.status !== undefined) set.status = patch.status;
+  if (patch.responderUserId !== undefined) set.responderUserId = patch.responderUserId;
+  if (patch.responderDisplayName !== undefined) set.responderDisplayName = patch.responderDisplayName;
+  if (patch.responderTrip !== undefined) set.responderTrip = patch.responderTrip;
+  if (patch.respondedAt !== undefined) set.respondedAt = patch.respondedAt ? new Date(patch.respondedAt) : null;
+  if (patch.resolvedAt !== undefined) set.resolvedAt = patch.resolvedAt ? new Date(patch.resolvedAt) : null;
+
+  const [row] = await db
+    .update(tradeOffers)
+    .set(set)
+    .where(and(eq(tradeOffers.id, id), inArray(tradeOffers.status, expectedStatuses)))
+    .returning();
+  return row ? toTradeOffer(row) : null;
 }
 
 // ---- Candidate variables ----
 
 export async function listCandidateVariables(): Promise<CandidateVariable[]> {
-  return [...(await readDb()).candidateVariables].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const rows = await db.select().from(candidateVariables).orderBy(desc(candidateVariables.createdAt));
+  return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
 }
 
 export async function createCandidateVariable(candidate: CandidateVariable): Promise<void> {
-  const db = await readDb();
-  db.candidateVariables.push(candidate);
-  await writeDb(db);
+  await db.insert(candidateVariables).values({ ...candidate, createdAt: new Date(candidate.createdAt) });
 }
 
 // ---- Interview candidate facts ----
 
 export async function listInterviewCandidateFacts(): Promise<InterviewCandidateFact[]> {
-  return [...(await readDb()).interviewCandidateFacts].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const rows = await db.select().from(interviewCandidateFacts).orderBy(desc(interviewCandidateFacts.createdAt));
+  return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
 }
 
 export async function createInterviewCandidateFact(fact: InterviewCandidateFact): Promise<void> {
-  const db = await readDb();
-  db.interviewCandidateFacts = [...(db.interviewCandidateFacts ?? []), fact];
-  await writeDb(db);
-}
-
-export async function createTradeOffer(offer: TradeOffer): Promise<void> {
-  const db = await readDb();
-  db.tradeOffers.push(offer);
-  await writeDb(db);
-}
-
-export async function updateTradeOffer(
-  id: string,
-  patch: Partial<TradeOffer>
-): Promise<TradeOffer | null> {
-  const db = await readDb();
-  const index = db.tradeOffers.findIndex((o) => o.id === id);
-  if (index === -1) return null;
-  db.tradeOffers[index] = { ...db.tradeOffers[index], ...patch };
-  await writeDb(db);
-  return db.tradeOffers[index];
+  await db.insert(interviewCandidateFacts).values({ ...fact, createdAt: new Date(fact.createdAt) });
 }
 
 // ---- Award history ----
@@ -239,16 +310,49 @@ export async function listAwardHistoryRecords(filter: {
   aircraft: string;
   seat: string;
 }): Promise<AwardHistoryRecord[]> {
-  const records = (await readDb()).awardHistoryRecords ?? [];
-  return records.filter(
-    (r) => r.base === filter.base && r.aircraft === filter.aircraft && r.seat === filter.seat
-  );
+  const rows = await db
+    .select()
+    .from(awardHistoryRecords)
+    .where(
+      and(
+        eq(awardHistoryRecords.base, filter.base),
+        eq(awardHistoryRecords.aircraft, filter.aircraft),
+        eq(awardHistoryRecords.seat, filter.seat)
+      )
+    );
+  return rows.map((row) => ({
+    id: row.id,
+    base: row.base,
+    aircraft: row.aircraft,
+    seat: row.seat as AwardHistoryRecord["seat"],
+    month: row.month,
+    seniorityRank: row.seniorityRank,
+    seniorityTotalPilots: row.seniorityTotalPilots,
+    outcome: row.outcome as AwardHistoryRecord["outcome"],
+    lineNumber: row.lineNumber,
+    daysOff: row.daysOff,
+    totalCreditHours: row.totalCreditHours,
+    totalTafbHours: row.totalTafbHours,
+    submittedAt: row.submittedAt.toISOString(),
+  }));
 }
 
 export async function createAwardHistoryRecord(record: AwardHistoryRecord): Promise<void> {
-  const db = await readDb();
-  db.awardHistoryRecords = [...(db.awardHistoryRecords ?? []), record];
-  await writeDb(db);
+  await db.insert(awardHistoryRecords).values({
+    id: record.id,
+    base: record.base,
+    aircraft: record.aircraft,
+    seat: record.seat,
+    month: record.month,
+    seniorityRank: record.seniorityRank,
+    seniorityTotalPilots: record.seniorityTotalPilots,
+    outcome: record.outcome,
+    lineNumber: record.lineNumber,
+    daysOff: record.daysOff,
+    totalCreditHours: record.totalCreditHours,
+    totalTafbHours: record.totalTafbHours,
+    submittedAt: new Date(record.submittedAt),
+  });
 }
 
 // ---- Preference profiles ----
@@ -264,32 +368,40 @@ export async function createAwardHistoryRecord(record: AwardHistoryRecord): Prom
  * something real to fold against, on any device.
  */
 export async function getPreferenceProfile(userId: string): Promise<PreferenceProfile | null> {
-  return (await readDb()).preferenceProfiles?.[userId] ?? null;
+  const [row] = await db.select().from(preferenceProfiles).where(eq(preferenceProfiles.userId, userId)).limit(1);
+  return row ? row.profile : null;
 }
 
 export async function savePreferenceProfile(userId: string, profile: PreferenceProfile): Promise<void> {
-  const db = await readDb();
-  db.preferenceProfiles = { ...(db.preferenceProfiles ?? {}), [userId]: profile };
-  await writeDb(db);
+  await db
+    .insert(preferenceProfiles)
+    .values({ userId, profile, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: preferenceProfiles.userId,
+      set: { profile, updatedAt: new Date() },
+    });
 }
 
 export async function deletePreferenceProfile(userId: string): Promise<void> {
-  const db = await readDb();
-  if (!db.preferenceProfiles || !(userId in db.preferenceProfiles)) return;
-  const rest = { ...db.preferenceProfiles };
-  delete rest[userId];
-  db.preferenceProfiles = rest;
-  await writeDb(db);
+  await db.delete(preferenceProfiles).where(eq(preferenceProfiles.userId, userId));
 }
 
 // ---- Feedback ----
 
 export async function createFeedbackSubmission(submission: FeedbackSubmission): Promise<void> {
-  const db = await readDb();
-  db.feedbackSubmissions = [...(db.feedbackSubmissions ?? []), submission];
-  await writeDb(db);
+  await db.insert(feedbackSubmissions).values({ ...submission, createdAt: new Date(submission.createdAt) });
 }
 
 export async function listFeedbackSubmissions(): Promise<FeedbackSubmission[]> {
-  return [...((await readDb()).feedbackSubmissions ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const rows = await db.select().from(feedbackSubmissions).orderBy(desc(feedbackSubmissions.createdAt));
+  return rows.map((row) => ({
+    id: row.id,
+    pilotId: row.pilotId,
+    pilotDisplayName: row.pilotDisplayName,
+    pilotEmail: row.pilotEmail,
+    category: row.category as FeedbackSubmission["category"],
+    message: row.message,
+    page: row.page,
+    createdAt: row.createdAt.toISOString(),
+  }));
 }

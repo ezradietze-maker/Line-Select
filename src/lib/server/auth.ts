@@ -117,7 +117,13 @@ export async function signUp(
   const salt = randomBytes(16).toString("hex");
   const passwordHash = await hashPassword(password, salt);
 
-  await createUserWithCredential(user, { userId: user.id, email: normalized, passwordHash, salt });
+  const created = await createUserWithCredential(user, { userId: user.id, email: normalized, passwordHash, salt });
+  if (!created.ok) {
+    // The pre-check above already caught the common case; this closes the
+    // race where two signups for the same email landed at once — the
+    // database's own unique constraint is the real guard.
+    return { ok: false, error: "An account with that email already exists." };
+  }
   const recoveryCode = await storeNewRecoveryCode(user.id);
 
   const sessionToken = await startSession(user.id);

@@ -49,13 +49,20 @@ export async function POST(
     );
   }
 
-  const updated = await updateTradeOffer(id, {
-    status: "pending",
-    responderUserId: user.id,
-    responderDisplayName: user.displayName,
-    responderTrip,
-    respondedAt: new Date().toISOString(),
-  });
+  const updated = await updateTradeOffer(
+    id,
+    {
+      status: "pending",
+      responderUserId: user.id,
+      responderDisplayName: user.displayName,
+      responderTrip,
+      respondedAt: new Date().toISOString(),
+    },
+    ["open"]
+  );
+  if (!updated) {
+    return NextResponse.json({ error: "This offer isn't open anymore." }, { status: 409 });
+  }
 
   return NextResponse.json({ offer: updated });
 }

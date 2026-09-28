@@ -25,9 +25,13 @@ export async function POST(
     return NextResponse.json({ error: "This offer isn't waiting on a response." }, { status: 409 });
   }
 
-  const updated = await updateTradeOffer(id, {
-    status: "declined",
-    resolvedAt: new Date().toISOString(),
-  });
+  const updated = await updateTradeOffer(
+    id,
+    { status: "declined", resolvedAt: new Date().toISOString() },
+    ["pending"]
+  );
+  if (!updated) {
+    return NextResponse.json({ error: "This offer isn't waiting on a response." }, { status: 409 });
+  }
   return NextResponse.json({ offer: updated });
 }

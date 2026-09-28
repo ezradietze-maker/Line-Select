@@ -25,9 +25,13 @@ export async function POST(
     return NextResponse.json({ error: "This offer is already resolved." }, { status: 409 });
   }
 
-  const updated = await updateTradeOffer(id, {
-    status: "withdrawn",
-    resolvedAt: new Date().toISOString(),
-  });
+  const updated = await updateTradeOffer(
+    id,
+    { status: "withdrawn", resolvedAt: new Date().toISOString() },
+    ["open", "pending"]
+  );
+  if (!updated) {
+    return NextResponse.json({ error: "This offer is already resolved." }, { status: 409 });
+  }
   return NextResponse.json({ offer: updated });
 }
