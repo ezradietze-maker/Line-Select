@@ -148,11 +148,28 @@ export default function PrivacyPage() {
             other pilot: the server uses it only to work out which lines are likely to be taken, and
             sends back nothing but probabilities. You can stop sharing at any time with the checkbox
             on your results page, which removes your stored ranking, and you can ask us to delete
-            everything (Section 14).
+            everything (Section 15).
           </p>
         </Section>
 
-        <Section title="8. Award-history reports are anonymous">
+        <Section title="8. Your bidding-story answer, and anonymized phrasing samples">
+          <p>
+            Early in the adaptive interview, you can answer one open-ended question describing your
+            whole bidding process in your own words. That answer is read by our AI provider (Section
+            3) to build your profile, the same as any other interview answer, and is stored with your
+            preferences the same way (on your device, and on our server too if you have an account).
+          </p>
+          <p className="mt-3">
+            Separately, a handful of short phrases from that answer &mdash; never full sentences,
+            never anything identifying like a base, city, aircraft, or number &mdash; may be stored on
+            our server with no link to your account at all, and shown to our AI provider on other
+            pilots&rsquo; interviews to help it communicate in a way that feels natural to pilots
+            generally. Nothing here is ever shown to another pilot, and this process never sees your
+            name, email, or account id. Skipping this question means nothing from it is sent anywhere.
+          </p>
+        </Section>
+
+        <Section title="9. Award-history reports are anonymous">
           <p>
             If you report what you actually held for a bid period, we store your seniority number,
             the base/aircraft/seat, and the outcome (line, reserve, or other) &mdash; but that
@@ -161,7 +178,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="9. Free-text explanations for a ranking correction">
+        <Section title="10. Free-text explanations for a ranking correction">
           <p>
             If you drag-correct a line&rsquo;s ranking and the Service asks why, and your answer
             doesn&rsquo;t map cleanly onto an existing preference, we store your verbatim answer
@@ -170,11 +187,11 @@ export default function PrivacyPage() {
             financial information) in these answers &mdash; they&rsquo;re not necessary for the
             Service to work, and while they&rsquo;re not shown to other pilots, they are retained
             longer-term for this review purpose. You can request deletion of these at any time
-            (Section 14).
+            (Section 15).
           </p>
         </Section>
 
-        <Section title="10. Feedback you send us">
+        <Section title="11. Feedback you send us">
           <p>
             If you use the &ldquo;Send feedback&rdquo; option in the app, your message is sent to
             our server and stored there &mdash; unlike your bid pack and preferences, this one
@@ -186,7 +203,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="11. Technical and abuse-prevention data">
+        <Section title="12. Technical and abuse-prevention data">
           <p>
             To prevent abuse of the Service (and its underlying paid AI and data providers), we
             briefly record request counts keyed to your account (if signed in) or IP address (if
@@ -197,7 +214,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="12. Usage analytics and error monitoring">
+        <Section title="13. Usage analytics and error monitoring">
           <p>
             The Service uses PostHog to see which pages get used and to catch errors before a
             pilot has to report one themselves. This sends page-view events and a small, fixed set
@@ -212,12 +229,12 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="13. What we don't do">
+        <Section title="14. What we don't do">
           <ul className="list-disc space-y-1.5 pl-5">
             <li>We don&rsquo;t sell or rent your personal information to anyone.</li>
             <li>
               We don&rsquo;t run advertising pixels or third-party marketing scripts on the
-              Service. We do run one analytics/error-monitoring tool (Section 12) &mdash; see there
+              Service. We do run one analytics/error-monitoring tool (Section 13) &mdash; see there
               for exactly what it collects.
             </li>
             <li>
@@ -228,11 +245,11 @@ export default function PrivacyPage() {
           </ul>
         </Section>
 
-        <Section title="14. Your choices and rights">
+        <Section title="15. Your choices and rights">
           <p>
             You can delete your account at any time by contacting us at the address below; this
             removes your login credentials and disassociates your future access, though Trade Board
-            posts, award-history reports, and feedback (Section 10) already sent may remain &mdash;
+            posts, award-history reports, and feedback (Section 11) already sent may remain &mdash;
             the first because it was shared publicly by design, the other two because they were
             never linked back to you once your account is gone. You can clear your locally-stored
             bid pack, and any preferences saved only as a guest, at any time from within the app,
@@ -247,7 +264,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="15. Children's privacy">
+        <Section title="16. Children's privacy">
           <p>
             The Service is intended for working airline pilots and is not directed at, or intended
             for use by, anyone under 18. We don&rsquo;t knowingly collect information from anyone
@@ -255,7 +272,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="16. Security">
+        <Section title="17. Security">
           <p>
             We use industry-standard measures appropriate to the data we actually hold &mdash;
             encrypted connections, salted password hashing, httpOnly session cookies, and rate
@@ -265,7 +282,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="17. Changes to this policy">
+        <Section title="18. Changes to this policy">
           <p>
             We may update this Privacy Policy as the Service changes. We&rsquo;ll update the
             &ldquo;Last updated&rdquo; date above whenever we do, and for a material change
@@ -273,7 +290,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="18. Contact">
+        <Section title="19. Contact">
           <p>
             Questions about this policy, or a request about your data, can be sent to{" "}
             <a

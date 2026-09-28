@@ -181,3 +181,21 @@ export const forecastRankings = pgTable(
     uniqueIndex("forecast_rankings_blob_user_idx").on(t.blobKey, t.userHash),
   ]
 );
+
+/**
+ * Anonymized phrase snippets pulled from pilots' free-text "walk through
+ * your bidding process" interview answers (see `server/style-store.ts`) —
+ * calibration material for how the interview talks to *future* pilots, not
+ * a record of what any one pilot said. Deliberately carries no pilot link
+ * at all (not even a hash, unlike `forecastRankings.userHash`) — there's no
+ * need to know who said it, only what it sounds like, and not storing a
+ * link is the simplest way to make "anonymized" actually true. Global
+ * across every base/aircraft/seat: phrasing style has nothing to do with
+ * which pack someone flies, unlike a shared bid ranking.
+ */
+export const interviewStyleSamples = pgTable("interview_style_samples", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  phrase: text("phrase").notNull(),
+  tags: jsonb("tags").notNull().$type<string[]>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

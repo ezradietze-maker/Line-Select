@@ -33,6 +33,8 @@ interface DataState {
   freshBidPack: boolean;
   /** True when the browser refused to keep the bid pack (storage full or blocked) — the pack works this session but won't survive a refresh. */
   bidPackSaveFailed: boolean;
+  /** True when the browser refused to keep a GUEST's profile locally — the one case a local save failure means real data loss, since a signed-in pilot's profile also lives on the server. */
+  profileSaveFailed: boolean;
 }
 
 /** Where a pilot with this bid pack/profile combination actually belongs — the same "resume point" logic used both on first load and after sign-in/sign-out. */
@@ -87,6 +89,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     seniority: null,
     freshBidPack: false,
     bidPackSaveFailed: false,
+    profileSaveFailed: false,
   });
   const { user, bidPack, pendingProfile } = state;
   const [interviewKey, setInterviewKey] = useState(0);
@@ -121,6 +124,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         seniority: savedSeniority,
         freshBidPack: false,
         bidPackSaveFailed: false,
+        profileSaveFailed: false,
       });
     }
     bootstrap();
@@ -327,12 +331,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, profile: confirmed, pendingProfile: null }));
     router.push("/results");
     captureUsageEvent("interview_completed");
-    void saveProfileForUser(user?.id ?? null, confirmed);
+    const signedIn = !!user?.id;
+    saveProfileForUser(user?.id ?? null, confirmed).then((savedLocally) => {
+      // A signed-in pilot's profile also lives on the server, so a local
+      // miss here is cosmetic; for a guest, local storage is the only copy.
+      if (!savedLocally && !signedIn) setState((s) => ({ ...s, profileSaveFailed: true }));
+    });
   }
 
   function handleUpdateProfile(updated: PreferenceProfile) {
     setState((s) => ({ ...s, profile: updated }));
-    void saveProfileForUser(user?.id ?? null, updated);
+    const signedIn = !!user?.id;
+    saveProfileForUser(user?.id ?? null, updated).then((savedLocally) => {
+      if (!savedLocally && !signedIn) setState((s) => ({ ...s, profileSaveFailed: true }));
+    });
   }
 
   function handleSaveProfileEdits(edits: ProfileEdits) {
@@ -364,7 +376,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function handleDismissStorageWarning() {
-    setState((s) => ({ ...s, bidPackSaveFailed: false }));
+    setState((s) => ({ ...s, bidPackSaveFailed: false, profileSaveFailed: false }));
   }
 
   function handleDismissToast(id: string) {
@@ -408,6 +420,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       seniority: theirSeniority,
       freshBidPack: false,
       bidPackSaveFailed: false,
+      profileSaveFailed: false,
     });
     router.push(landingPathFor(theirBidPack, theirProfile));
   }
@@ -439,6 +452,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       pendingProfile: null,
       freshBidPack: false,
       bidPackSaveFailed: false,
+      profileSaveFailed: false,
     });
     router.push(landingPathFor(guestBidPack, guestProfile));
   }

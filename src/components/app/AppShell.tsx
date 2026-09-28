@@ -40,6 +40,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
     inboxUnreadCount,
     toasts,
     bidPackSaveFailed,
+    profileSaveFailed,
     handleLogout,
     handleDismissStorageWarning,
     handleDismissToast,
@@ -97,6 +98,17 @@ function Chrome({ children }: { children: React.ReactNode }) {
               <span>
                 This bid pack is too big for your browser to keep, so it works right now but will be gone if you refresh or close this
                 tab &mdash; you&rsquo;d need to upload it again. Your preferences are saved either way.
+              </span>
+              <button type="button" onClick={handleDismissStorageWarning} className="shrink-0 font-medium underline decoration-dotted underline-offset-4">
+                Dismiss
+              </button>
+            </div>
+          )}
+          {profileSaveFailed && (
+            <div role="alert" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
+              <span>
+                Your finished profile is too big for this browser to keep &mdash; it works right now but will be gone if
+                you refresh or close this tab. Signing in saves it to your account instead, so it survives that.
               </span>
               <button type="button" onClick={handleDismissStorageWarning} className="shrink-0 font-medium underline decoration-dotted underline-offset-4">
                 Dismiss

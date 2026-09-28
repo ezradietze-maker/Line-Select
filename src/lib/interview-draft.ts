@@ -16,6 +16,8 @@ export interface InterviewDraft {
   hasCrashPad: boolean | null;
   /** Absent on a draft saved before the interview asked for it. */
   seniorityNumber?: number | null;
+  /** Absent on a draft saved before the bidding-story question existed, or when the pilot skipped it. */
+  bidStoryText?: string;
   cityPreferences: Record<string, CitySentiment>;
   facts: PreferenceFact[];
   transcript: InterviewTurnRecord[];

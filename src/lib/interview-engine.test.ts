@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyProfileUpdates,
   assessProfileRichness,
+  buildTurnRequest,
   deterministicFactFromAnswer,
   detectContradiction,
   EXPLICIT_WEIGHT_IDS,
@@ -9,8 +10,19 @@ import {
   uncoveredExplicitWeightIds,
 } from "@/lib/interview-engine";
 import { emptyWeights } from "@/lib/preference-logic";
-import type { InterviewQuestion, InterviewTurnRecord, PreferenceFact, PreferenceFactUpdate } from "@/types/interview-session";
+import type { BidPackGroundingStats, InterviewQuestion, InterviewTurnRecord, PreferenceFact, PreferenceFactUpdate } from "@/types/interview-session";
 import type { PreferenceProfile } from "@/types/preferences";
+
+const FAKE_GROUNDING: BidPackGroundingStats = {
+  tripLength: { min: 1, max: 4 },
+  reportTime: { earliest: "05:00", latest: "22:00" },
+  creditHours: { min: 60, max: 95 },
+  deadheadTripSharePercent: 10,
+  distinctHotelCount: 20,
+  distinctCityCount: 15,
+  landings: { min: 4, max: 20 },
+  reserveLines: null,
+};
 
 function fact(overrides: Partial<PreferenceFact> = {}): PreferenceFact {
   return {
@@ -510,5 +522,29 @@ describe("uncoveredExplicitWeightIds", () => {
       fact({ id: key, measurable: { type: "explicit-weight", key: key as never, direction: 1 } })
     );
     expect(uncoveredExplicitWeightIds(facts)).toEqual([]);
+  });
+});
+
+describe("buildTurnRequest", () => {
+  function baseParams() {
+    return {
+      transcript: [] as InterviewTurnRecord[],
+      facts: [] as PreferenceFact[],
+      grounding: FAKE_GROUNDING,
+      base: "MEM",
+      aircraft: "B777",
+      isCommuter: null,
+      turnsUsed: 0,
+    };
+  }
+
+  it("carries the pilot's own bidding-story text through to the request body", () => {
+    const body = buildTurnRequest({ ...baseParams(), bidStory: "I always look at days off first." });
+    expect(body.bidStory).toBe("I always look at days off first.");
+  });
+
+  it("omits bidStory when the pilot skipped that question", () => {
+    const body = buildTurnRequest(baseParams());
+    expect(body.bidStory).toBeUndefined();
   });
 });

@@ -265,6 +265,40 @@ export interface TurnRequestBody {
    * overwriting or silently keeping the old fact.
    */
   contradictionFlag?: { newStatement: string; priorStatement: string };
+  /**
+   * The pilot's own unedited answer to the bidding-story question (see
+   * `BiddingStoryStep.tsx`), threaded into every later turn so the model
+   * keeps writing in a voice that matches this specific pilot's own words
+   * for the whole interview, not just the one extraction pass that read it.
+   * Absent when the pilot skipped that question.
+   */
+  bidStory?: string;
+  /**
+   * A small, rotating sample of anonymized phrase snippets pulled from many
+   * pilots' own bidding-story answers (see `server/style-store.ts`) — loose
+   * calibration for vocabulary/register across the whole pilot population,
+   * never quoted back verbatim. Empty until enough pilots have answered the
+   * story question to have anything to sample from.
+   */
+  styleSample?: string[];
+}
+
+/** What the client sends the one-shot bidding-story extraction call — see `runBiddingStoryExtraction` in `interview-turn-service.ts`. No transcript/facts yet: this runs before the adaptive loop exists. */
+export interface BiddingStoryRequestBody {
+  bidStoryText: string;
+  grounding: BidPackGroundingStats;
+  base: string;
+  aircraft: string;
+  isCommuter: boolean | null;
+}
+
+/** What the bidding-story extraction call returns — every fact it could pull out of the narrative, plus anonymized style material the route stores server-side (never returned past that). */
+export interface BiddingStoryResponse {
+  profileUpdates: PreferenceFactUpdate[];
+  /** Short, scrubbed phrases capturing how this pilot writes — never full sentences from the actual answer, never anything identifying. Stored anonymously; not shown to this or any pilot. */
+  styleSamplePhrases: string[];
+  /** A few loose style descriptors (e.g. "terse", "dry humor") describing the same thing, redundantly, for cheap future filtering. */
+  styleTags: string[];
 }
 
 /** What the route returns — one Anthropic call handles both "what to ask next" and "what to extract from the last answer," per turn. */

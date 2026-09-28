@@ -44,15 +44,24 @@ export function loadProfile(userId: string | null): PreferenceProfile | null {
   }
 }
 
+/**
+ * Returns whether the write actually landed — mirrors `saveBidPack`'s own
+ * boolean return in `bidpack-storage.ts`. The adaptive interview's
+ * transcript/discoveredFacts (now including a potentially long bidding-
+ * story answer) have no compaction the way a bid pack does, so a quota
+ * failure here is more plausible than it used to be; silently swallowing
+ * it left a pilot with no idea their finished profile never actually saved.
+ */
 export function saveProfile(
   userId: string | null,
   profile: PreferenceProfile
-): void {
-  if (typeof window === "undefined") return;
+): boolean {
+  if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(profileKey(userId), JSON.stringify(profile));
+    return true;
   } catch {
-    // localStorage unavailable (private browsing, quota, etc.) - fail silently.
+    return false;
   }
 }
 
@@ -87,9 +96,10 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
   return localProfile;
 }
 
-export async function saveProfileForUser(userId: string | null, profile: PreferenceProfile): Promise<void> {
-  saveProfile(userId, profile);
+export async function saveProfileForUser(userId: string | null, profile: PreferenceProfile): Promise<boolean> {
+  const savedLocally = saveProfile(userId, profile);
   if (userId) await saveServerProfile(profile);
+  return savedLocally;
 }
 
 export async function clearProfileForUser(userId: string | null): Promise<void> {

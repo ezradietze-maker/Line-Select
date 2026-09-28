@@ -8,6 +8,7 @@ import { ScreenTransition } from "@/components/ui/ScreenTransition";
 import { SelectableCard } from "@/components/ui/SelectableCard";
 import { Spinner } from "@/components/ui/Spinner";
 import { parseSeniorityInput, SeniorityStep } from "@/components/interview/SeniorityStep";
+import { BiddingStoryStep } from "@/components/interview/BiddingStoryStep";
 import { CityPreferenceStep } from "@/components/interview/CityPreferenceStep";
 import { CommuterStep } from "@/components/interview/CommuterStep";
 import { FreeTextAnswerBox } from "@/components/interview/FreeTextAnswerBox";
@@ -86,7 +87,10 @@ const TOP_PRIOR_FACTS_SHOWN = 5;
  */
 const CIRCADIAN_TOLERANCE_RANGE: readonly [number, number] = [0, 4];
 
-type Phase = "seniority" | "commuter" | "cities" | "returning-check" | "adaptive-loading" | "adaptive-question" | "finishing";
+type Phase = "seniority" | "bidding-story" | "commuter" | "cities" | "returning-check" | "adaptive-loading" | "adaptive-question" | "finishing";
+
+/** Matches `MAX_BID_STORY_LENGTH` in `/api/interview-bidding-story/route.ts` — generous enough for genuinely exhaustive detail, still a sane ceiling for one LLM call and one localStorage-bound profile. */
+const MAX_BID_STORY_LENGTH = 12000;
 
 /** Highest-confidence, most load-bearing prior-cycle facts worth actively re-confirming — dealbreakers first, then by importance*confidence. Everything else from the prior profile carries forward unreviewed (see `ReturningPilotCheckStep`'s own copy). */
 function topPriorFacts(discoveredFacts: PreferenceFact[], limit: number): PreferenceFact[] {
@@ -205,7 +209,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   const hasReturningCheck = !!priorProfile && priorProfile.discoveredFacts.length > 0;
   // Only worth asking when the pack lists the pilots bidding this seat — that list is what gives the number meaning.
   const hasSeniorityStep = !!bidPack.seniorityList && bidPack.seniorityList.length > 0;
-  const preStepCount = (hasReturningCheck ? 3 : 2) + (hasSeniorityStep ? 1 : 0);
+  const preStepCount = (hasReturningCheck ? 3 : 2) + (hasSeniorityStep ? 1 : 0) + 1; // +1 for the bidding-story step, always shown
   const priorFactsForCheck = useMemo(
     () => (hasReturningCheck ? priorProfile!.discoveredFacts.filter((f) => !isCitySentimentFact(f)) : []),
     [hasReturningCheck, priorProfile]
@@ -215,9 +219,12 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     [priorFactsForCheck]
   );
 
-  const firstPhase: Phase = hasSeniorityStep ? "seniority" : "commuter";
+  const firstPhase: Phase = hasSeniorityStep ? "seniority" : "bidding-story";
   const [phase, setPhase] = useState<Phase>(firstPhase);
   const [seniorityText, setSeniorityText] = useState(priorProfile?.seniorityNumber ? String(priorProfile.seniorityNumber) : "");
+  const [bidStoryText, setBidStoryText] = useState("");
+  const [bidStoryBusy, setBidStoryBusy] = useState(false);
+  const [bidStoryError, setBidStoryError] = useState<string | null>(null);
   // A returning pilot starts from last cycle's answers — still shown, so a
   // change (a move, a new crash pad) is one tap, but never re-asked blank.
   const [isCommuter, setIsCommuter] = useState<boolean | null>(priorProfile?.isCommuter ?? null);
@@ -299,7 +306,9 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       setPhase("cities");
     } else if (phase === "cities") {
       setPhase("commuter");
-    } else if (phase === "commuter" && hasSeniorityStep) {
+    } else if (phase === "commuter") {
+      setPhase("bidding-story");
+    } else if (phase === "bidding-story" && hasSeniorityStep) {
       setPhase("seniority");
     }
   }
@@ -308,6 +317,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     setIsCommuter(d.isCommuter);
     setHasCrashPad(d.hasCrashPad);
     if (d.seniorityNumber) setSeniorityText(String(d.seniorityNumber));
+    if (d.bidStoryText) setBidStoryText(d.bidStoryText);
     setCityPreferences(d.cityPreferences);
     setFacts(d.facts);
     setTranscript(d.transcript);
@@ -333,6 +343,43 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     onComplete(profile);
   }
 
+  /**
+   * Reads the pilot's bidding-story answer once, extracts whatever it can
+   * (see `runBiddingStoryExtraction`), and seeds the result into `facts`
+   * before the adaptive loop's first turn — the same pre-loop-seeding
+   * pattern the city picker already uses (`factsFromCityPreferences`), so a
+   * topic this narrative already covered simply won't show up in
+   * `uncoveredExplicitWeightIds` once the loop starts. Never blocks the
+   * interview on failure: an error here still lets the pilot continue with
+   * a plain, unenriched interview, with the raw text they wrote preserved
+   * so they can retry without retyping it.
+   */
+  async function submitBiddingStory() {
+    const trimmed = bidStoryText.trim();
+    if (!trimmed) return;
+    setBidStoryBusy(true);
+    setBidStoryError(null);
+    try {
+      const res = await fetch("/api/interview-bidding-story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bidStoryText: trimmed, grounding, base: bidPack.base, aircraft: bidPack.aircraft, isCommuter }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setBidStoryError(body?.error ?? "Couldn't read that just now — you can try again, or skip and answer as you go instead.");
+        return;
+      }
+      const { profileUpdates } = (await res.json()) as { profileUpdates: PreferenceFactUpdate[] };
+      setFacts((prev) => applyProfileUpdates(prev, profileUpdates));
+      setPhase("commuter");
+    } catch {
+      setBidStoryError("Couldn't reach the interview service. Check your connection and try again, or skip for now.");
+    } finally {
+      setBidStoryBusy(false);
+    }
+  }
+
   async function requestNextTurn(
     nextFacts: PreferenceFact[],
     nextTranscript: InterviewTurnRecord[],
@@ -355,6 +402,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
         priorFactsChanged: extras?.priorFactsChanged,
         lifeEvent: extras?.lifeEvent,
         contradictionFlag: contradictionForThisTurn ?? undefined,
+        bidStory: bidStoryText.trim() || undefined,
       });
       const res = await fetch("/api/interview-turn", {
         method: "POST",
@@ -424,7 +472,17 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
 
   const seniorityOffset = hasSeniorityStep ? 1 : 0;
   const preStepsDone =
-    phase === "seniority" ? 0 : phase === "commuter" ? seniorityOffset : phase === "cities" ? seniorityOffset + 1 : phase === "returning-check" ? seniorityOffset + 2 : preStepCount;
+    phase === "seniority"
+      ? 0
+      : phase === "bidding-story"
+        ? seniorityOffset
+        : phase === "commuter"
+          ? seniorityOffset + 1
+          : phase === "cities"
+            ? seniorityOffset + 2
+            : phase === "returning-check"
+              ? seniorityOffset + 3
+              : preStepCount;
   const progress = computeInterviewProgress({
     turnsUsed,
     uncoveredCount: uncoveredExplicitWeightIds(facts, hasStandby).length,
@@ -433,7 +491,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     preStepTotal: preStepCount,
   });
   const progressLabel =
-    phase === "seniority" || phase === "commuter" || phase === "cities" || phase === "returning-check"
+    phase === "seniority" || phase === "bidding-story" || phase === "commuter" || phase === "cities" || phase === "returning-check"
       ? "Getting started \u2014 about 8\u201310 minutes in all, and you can stop any time."
       : `${progress.topicsCovered} of ${progress.topicsTotal} topics covered \u00b7 about ${progress.minutesLeft} min left`;
 
@@ -452,25 +510,29 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       isCommuter,
       hasCrashPad,
       seniorityNumber: parseSeniorityInput(seniorityText),
+      bidStoryText: bidStoryText.trim() || undefined,
       cityPreferences,
       facts,
       transcript,
       turnsUsed,
       currentQuestion,
     });
-  }, [phase, currentQuestion, userId, bidPack.id, isCommuter, hasCrashPad, seniorityText, cityPreferences, facts, transcript, turnsUsed]);
+  }, [phase, currentQuestion, userId, bidPack.id, isCommuter, hasCrashPad, seniorityText, bidStoryText, cityPreferences, facts, transcript, turnsUsed]);
 
   // After a resume there's no in-memory history, so Back is only offered from the very first question (to the pre-steps) or once new answers exist to undo — never in a way that would wipe resumed progress.
   const canGoBack =
     (phase === "adaptive-question" && !!currentQuestion && (historyCount > 0 || turnsUsed === 0)) ||
     phase === "returning-check" ||
     phase === "cities" ||
-    (phase === "commuter" && hasSeniorityStep);
+    phase === "commuter" ||
+    (phase === "bidding-story" && hasSeniorityStep);
   const showResumePrompt = !!savedDraft && !resumeDismissed && phase === firstPhase;
 
   const stepKey =
     phase === "seniority"
       ? "seniority"
+      : phase === "bidding-story"
+      ? "bidding-story"
       : phase === "commuter"
       ? "commuter"
       : phase === "cities"
@@ -487,8 +549,22 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       return (
         <div>
           <SeniorityStep value={seniorityText} onChange={setSeniorityText} list={bidPack.seniorityList} seat={bidPack.seat} />
-          <StepNav onNext={() => setPhase("commuter")} nextLabel={typed === "" ? "Skip for now" : "Next"} disabled={typed !== "" && parseSeniorityInput(typed) === null} />
+          <StepNav onNext={() => setPhase("bidding-story")} nextLabel={typed === "" ? "Skip for now" : "Next"} disabled={typed !== "" && parseSeniorityInput(typed) === null} />
         </div>
+      );
+    }
+
+    if (phase === "bidding-story") {
+      return (
+        <BiddingStoryStep
+          value={bidStoryText}
+          onChange={setBidStoryText}
+          onSubmit={submitBiddingStory}
+          onSkip={() => setPhase("commuter")}
+          busy={bidStoryBusy}
+          error={bidStoryError}
+          maxLength={MAX_BID_STORY_LENGTH}
+        />
       );
     }
 

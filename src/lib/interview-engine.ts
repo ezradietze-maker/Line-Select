@@ -127,6 +127,7 @@ export function buildTurnRequest(params: {
   priorFactsChanged?: PreferenceFact[];
   lifeEvent?: string;
   contradictionFlag?: { newStatement: string; priorStatement: string };
+  bidStory?: string;
 }): TurnRequestBody {
   return {
     ...params,

@@ -1,9 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
 import { MIN_TURNS_BEFORE_WRAP, deterministicFactFromAnswer } from "@/lib/interview-engine";
-import { buildInterviewSystemPrompt } from "@/lib/interview-prompt";
+import { buildBiddingStoryPrompt, buildInterviewSystemPrompt } from "@/lib/interview-prompt";
 import { allKnownVariableDescriptors } from "@/lib/preference-classifier";
 import type {
+  BiddingStoryRequestBody,
   ExplicitWeightKey,
   InterviewQuestion,
   PreferenceFact,
@@ -46,6 +47,82 @@ const EXPLICIT_TARGET_KEYS: ExplicitTargetKey[] = ["daysOff", "creditHours", "du
  * live usage, did) misjudge. See `MIN_TURNS_BEFORE_WRAP`'s own doc comment
  * in `interview-engine.ts` for why this exists.
  */
+/**
+ * The `profileUpdates` array's own JSON schema — identical for the normal
+ * turn tool and the bidding-story extraction tool below (a fact extracted
+ * from the story has to be indistinguishable from one extracted turn by
+ * turn), so it's built once and reused rather than kept as two copies that
+ * could quietly drift apart.
+ */
+function profileUpdatesSchemaProperty() {
+  return {
+    type: "array",
+    description: "Deltas from the pilot's last answer. Empty array on turn 1.",
+    items: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["add", "revise", "retire"] },
+        factId: { type: "string", description: "Required for op 'retire' — the id of one of the facts listed in currentFacts (below) to remove. Never invent an id — if nothing in currentFacts is actually wrong, use 'add' instead." },
+        fact: {
+          type: "object",
+          description: "Required for op 'add' or 'revise'.",
+          properties: {
+            id: { type: "string", description: "Required for op 'revise' — the id of one of the facts listed in currentFacts (below) being updated. Never invent an id you don't see there — if nothing in currentFacts actually needs correcting, use 'add' for a new fact instead of 'revise'." },
+            statement: { type: "string", description: "Plain-English, pilot-voice, finished copy." },
+            kind: { type: "string", enum: ["measurable", "qualitative"] },
+            confidence: { type: "number", description: "0-1." },
+            importance: { type: "number", description: "0-1." },
+            severity: {
+              type: "string",
+              enum: ["dealbreaker"],
+              description:
+                "Omit for the overwhelming majority of facts. Only include \"dealbreaker\" when the pilot's own words are unambiguous about refusal — \"I will not,\" \"that's a dealbreaker,\" \"I'd reject any line with X.\" Never for a merely strong-sounding preference (\"I really don't like,\" \"I'd rather avoid,\" \"I'm not a fan of\") — those stay ordinary preferences with a high importance value instead. Meaningful on a 'measurable' fact whose binding is 'explicit-weight', 'implicit-weight', or 'city-sentiment'. Also valid on 'explicit-target' but ONLY when rangeRole is 'min' or 'max' — a stated floor or ceiling ('fewer than X days off is a dealbreaker', 'more than Y departures is a dealbreaker') has a real violation condition; a bare pinned 'ideal' number does not, and severity there is dropped.",
+            },
+            measurable: {
+              type: "object",
+              description: "Required when fact.kind is 'measurable'; omit entirely for 'qualitative'.",
+              properties: {
+                type: {
+                  type: "string",
+                  enum: ["explicit-weight", "explicit-target", "implicit-weight", "city-sentiment"],
+                },
+                key: { type: "string", description: "For 'explicit-weight' or 'explicit-target'." },
+                direction: {
+                  type: "integer",
+                  enum: [1, -1],
+                  description: "For 'explicit-weight' or 'implicit-weight'.",
+                },
+                value: { type: "number", description: "For 'explicit-target' — the exact pinned number for this rangeRole." },
+                rangeRole: {
+                  type: "string",
+                  enum: ["min", "ideal", "max"],
+                  description: "For 'explicit-target' only, and only when 'daysOff'/'dutyPeriods' — mirrors the question's own rangeRole. Omit for a plain single-number target (including creditHours, always).",
+                },
+                variableId: { type: "string", description: "For 'implicit-weight'." },
+                code: { type: "string", description: "For 'city-sentiment' — a real city code from this bid pack." },
+                sentiment: { type: "string", enum: ["love", "avoid"], description: "For 'city-sentiment'." },
+              },
+              required: ["type"],
+            },
+            cityReason: {
+              type: "object",
+              description:
+                "Only for a qualitative fact that's specifically the 'why' behind a city-sentiment love/avoid pick (never on a measurable fact). Lets this tie back to a real city and, when hotel-related, surface that city's real review summary — without you needing to name the city again in the statement text for the app to find it.",
+              properties: {
+                code: { type: "string", description: "The real city code this reason is about — must match a city-sentiment fact already on file." },
+                category: { type: "string", enum: ["weather", "people", "hotel", "layover-length", "downtime", "other"] },
+              },
+              required: ["code", "category"],
+            },
+          },
+          required: ["statement", "kind", "confidence", "importance"],
+        },
+      },
+      required: ["op"],
+    },
+  } as const;
+}
+
 export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
   return {
   name: "submit_interview_turn",
@@ -92,72 +169,7 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
         },
         required: ["kind", "prompt"],
       },
-      profileUpdates: {
-        type: "array",
-        description: "Deltas from the pilot's last answer. Empty array on turn 1.",
-        items: {
-          type: "object",
-          properties: {
-            op: { type: "string", enum: ["add", "revise", "retire"] },
-            factId: { type: "string", description: "Required for op 'retire' — the id of one of the facts listed in currentFacts (below) to remove. Never invent an id — if nothing in currentFacts is actually wrong, use 'add' instead." },
-            fact: {
-              type: "object",
-              description: "Required for op 'add' or 'revise'.",
-              properties: {
-                id: { type: "string", description: "Required for op 'revise' — the id of one of the facts listed in currentFacts (below) being updated. Never invent an id you don't see there — if nothing in currentFacts actually needs correcting, use 'add' for a new fact instead of 'revise'." },
-                statement: { type: "string", description: "Plain-English, pilot-voice, finished copy." },
-                kind: { type: "string", enum: ["measurable", "qualitative"] },
-                confidence: { type: "number", description: "0-1." },
-                importance: { type: "number", description: "0-1." },
-                severity: {
-                  type: "string",
-                  enum: ["dealbreaker"],
-                  description:
-                    "Omit for the overwhelming majority of facts. Only include \"dealbreaker\" when the pilot's own words are unambiguous about refusal — \"I will not,\" \"that's a dealbreaker,\" \"I'd reject any line with X.\" Never for a merely strong-sounding preference (\"I really don't like,\" \"I'd rather avoid,\" \"I'm not a fan of\") — those stay ordinary preferences with a high importance value instead. Meaningful on a 'measurable' fact whose binding is 'explicit-weight', 'implicit-weight', or 'city-sentiment'. Also valid on 'explicit-target' but ONLY when rangeRole is 'min' or 'max' — a stated floor or ceiling ('fewer than X days off is a dealbreaker', 'more than Y departures is a dealbreaker') has a real violation condition; a bare pinned 'ideal' number does not, and severity there is dropped.",
-                },
-                measurable: {
-                  type: "object",
-                  description: "Required when fact.kind is 'measurable'; omit entirely for 'qualitative'.",
-                  properties: {
-                    type: {
-                      type: "string",
-                      enum: ["explicit-weight", "explicit-target", "implicit-weight", "city-sentiment"],
-                    },
-                    key: { type: "string", description: "For 'explicit-weight' or 'explicit-target'." },
-                    direction: {
-                      type: "integer",
-                      enum: [1, -1],
-                      description: "For 'explicit-weight' or 'implicit-weight'.",
-                    },
-                    value: { type: "number", description: "For 'explicit-target' — the exact pinned number for this rangeRole." },
-                    rangeRole: {
-                      type: "string",
-                      enum: ["min", "ideal", "max"],
-                      description: "For 'explicit-target' only, and only when 'daysOff'/'dutyPeriods' — mirrors the question's own rangeRole. Omit for a plain single-number target (including creditHours, always).",
-                    },
-                    variableId: { type: "string", description: "For 'implicit-weight'." },
-                    code: { type: "string", description: "For 'city-sentiment' — a real city code from this bid pack." },
-                    sentiment: { type: "string", enum: ["love", "avoid"], description: "For 'city-sentiment'." },
-                  },
-                  required: ["type"],
-                },
-                cityReason: {
-                  type: "object",
-                  description:
-                    "Only for a qualitative fact that's specifically the 'why' behind a city-sentiment love/avoid pick (never on a measurable fact). Lets this tie back to a real city and, when hotel-related, surface that city's real review summary — without you needing to name the city again in the statement text for the app to find it.",
-                  properties: {
-                    code: { type: "string", description: "The real city code this reason is about — must match a city-sentiment fact already on file." },
-                    category: { type: "string", enum: ["weather", "people", "hotel", "layover-length", "downtime", "other"] },
-                  },
-                  required: ["code", "category"],
-                },
-              },
-              required: ["statement", "kind", "confidence", "importance"],
-            },
-          },
-          required: ["op"],
-        },
-      },
+      profileUpdates: profileUpdatesSchemaProperty(),
       reasoning: {
         type: "string",
         description: "Internal-only: why you chose this action. Never shown to the pilot.",
@@ -204,6 +216,12 @@ function buildUserMessage(body: TurnRequestBody): string {
       // directly this turn before moving to fresh ground.
       contradictionFlag: body.contradictionFlag,
       validCatalogIds: Array.from(catalogIds),
+      // The pilot's own bidding-story answer (if they gave one) and a
+      // rotating anonymous cross-pilot sample — both purely for how this
+      // turn's question gets WRITTEN, never inputs to what gets extracted.
+      // See VOICE_AND_QUALITY_RULES rules 9-10 in interview-prompt.ts.
+      bidStory: body.bidStory,
+      styleSample: body.styleSample,
     },
     null,
     0
@@ -542,6 +560,109 @@ export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Pr
     return { ok: true, turn: { action: "ask", question, profileUpdates, reasoning } };
   } catch (e) {
     console.error("[interview-turn] request failed", e);
+    return { ok: false, error: "Couldn't reach the interview service." };
+  }
+}
+
+/**
+ * The bidding-story extraction tool — a different job from `buildTurnTool`
+ * above (exhaustive one-shot extraction over a long narrative, no "next
+ * question" to decide), so it's a separate tool rather than a variant, but
+ * shares the exact same `profileUpdates` shape (`profileUpdatesSchemaProperty`)
+ * so a fact extracted here is indistinguishable from one extracted turn by
+ * turn. The two new fields are this call's whole other job: capturing how
+ * the pilot writes, for the anonymous cross-pilot style corpus (see
+ * `server/style-store.ts`) — never returned to any client, only ever stored
+ * server-side by the caller.
+ */
+function buildStoryExtractionTool(): Anthropic.Tool {
+  return {
+    name: "submit_bidding_story_extraction",
+    description: "Submit every preference you extracted from the pilot's bidding-story answer, plus anonymized material capturing how they write.",
+    input_schema: {
+      type: "object",
+      properties: {
+        profileUpdates: profileUpdatesSchemaProperty(),
+        styleSamplePhrases: {
+          type: "array",
+          description: "2-5 short, scrubbed phrases capturing this pilot's vocabulary/rhythm/formality — never a full sentence lifted from their actual answer, never anything identifying (no base/city/aircraft names, no numbers, no named people). Fewer (even zero) is fine if the answer is too short to responsibly generalize from.",
+          items: { type: "string" },
+        },
+        styleTags: {
+          type: "array",
+          description: "A few one- or two-word style descriptors, e.g. \"terse\", \"dry humor\", \"heavy jargon\", \"formal\", \"self-deprecating\".",
+          items: { type: "string" },
+        },
+      },
+      required: ["profileUpdates", "styleSamplePhrases", "styleTags"],
+    },
+  };
+}
+
+function buildStoryUserMessage(req: BiddingStoryRequestBody): string {
+  return JSON.stringify(
+    {
+      bidStoryText: req.bidStoryText,
+      groundingStats: req.grounding,
+      bidPack: { base: req.base, aircraft: req.aircraft },
+      isCommuter: req.isCommuter,
+      validCatalogIds: Array.from(new Set(allKnownVariableDescriptors().map((d) => d.id))),
+    },
+    null,
+    0
+  );
+}
+
+export type BiddingStoryExtractionResult =
+  | { ok: true; profileUpdates: PreferenceFactUpdate[]; styleSamplePhrases: string[]; styleTags: string[] }
+  | { ok: false; error: string };
+
+/** Bounds so one adversarial or malformed response can't produce absurdly long stored style material. */
+const MAX_STYLE_PHRASE_LENGTH = 200;
+const MAX_STYLE_TAG_LENGTH = 40;
+
+export async function runBiddingStoryExtraction(apiKey: string, req: BiddingStoryRequestBody): Promise<BiddingStoryExtractionResult> {
+  const client = new Anthropic({ apiKey });
+  try {
+    const response = await client.messages.create({
+      model: MODEL,
+      // A detailed, "every small detail" narrative can produce many more
+      // extracted facts in one response than a single normal turn ever
+      // does — the normal turn budget (2200) is too tight for this call.
+      max_tokens: 4000,
+      system: buildBiddingStoryPrompt(),
+      messages: [{ role: "user", content: buildStoryUserMessage(req) }],
+      tools: [buildStoryExtractionTool()],
+      tool_choice: { type: "tool", name: "submit_bidding_story_extraction" },
+    });
+
+    const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
+    const input = toolUse ? (toolUse.input as Record<string, unknown>) : null;
+    if (!input) return { ok: false, error: "Couldn't read the extraction response." };
+
+    // Rewritten to a "seed-question" source (matching how the pre-loop city
+    // picker's own facts are sourced — see `factsFromCityPreferences` in
+    // `AdaptiveInterview.tsx`) rather than parseProfileUpdates' default
+    // "adaptive-question" source, since this genuinely isn't a turn in the
+    // adaptive loop — it happens before that loop's own turnsUsed exists.
+    const profileUpdates = parseProfileUpdates(input.profileUpdates, 0, undefined).map((update) =>
+      update.op === "retire"
+        ? update
+        : { ...update, fact: { ...update.fact, source: { kind: "seed-question" as const, questionKey: "bidding-story" } } }
+    );
+
+    const styleSamplePhrases = Array.isArray(input.styleSamplePhrases)
+      ? input.styleSamplePhrases.filter(
+          (p): p is string => typeof p === "string" && p.trim().length > 0 && p.length <= MAX_STYLE_PHRASE_LENGTH
+        )
+      : [];
+    const styleTags = Array.isArray(input.styleTags)
+      ? input.styleTags.filter((t): t is string => typeof t === "string" && t.trim().length > 0 && t.length <= MAX_STYLE_TAG_LENGTH)
+      : [];
+
+    return { ok: true, profileUpdates, styleSamplePhrases, styleTags };
+  } catch (e) {
+    console.error("[interview-bidding-story] request failed", e);
     return { ok: false, error: "Couldn't reach the interview service." };
   }
 }
