@@ -53,6 +53,20 @@ function isUniqueViolation(err: unknown): boolean {
   return pgErrorCode(err) === "23505";
 }
 
+/**
+ * `id`/`userId` columns are Postgres `uuid`, which throws (error 22P02,
+ * "invalid input syntax for type uuid") rather than just not matching when
+ * given a malformed string — unlike the old blob store's plain `===`
+ * comparison, which just found nothing. The trade offer id in particular
+ * comes straight from a URL path segment a client controls, so a garbage
+ * value there must look like "not found," not crash the request. Every
+ * lookup below checks this first rather than letting Postgres reject it.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 // ---- Users & credentials ----
 
 function toUserAccount(row: typeof users.$inferSelect): UserAccount {
@@ -82,6 +96,7 @@ export async function findUserByEmail(email: string): Promise<UserAccount | null
 }
 
 export async function findUserById(id: string): Promise<UserAccount | null> {
+  if (!isUuid(id)) return null;
   const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return row ? toUserAccount(row) : null;
 }
@@ -92,6 +107,7 @@ export async function findCredentialByEmail(email: string): Promise<StoredCreden
 }
 
 export async function findCredentialByUserId(userId: string): Promise<StoredCredential | null> {
+  if (!isUuid(userId)) return null;
   const [row] = await db.select().from(credentialsTable).where(eq(credentialsTable.userId, userId)).limit(1);
   return row ? toStoredCredential(row) : null;
 }
@@ -191,6 +207,7 @@ export async function findSession(token: string): Promise<ServerSession | null> 
 
 /** Signs a pilot out everywhere — used after a password reset, so a session someone else may be holding can't outlive the credential that created it. */
 export async function deleteSessionsForUser(userId: string): Promise<void> {
+  if (!isUuid(userId)) return;
   await db.delete(sessions).where(eq(sessions.userId, userId));
 }
 
@@ -225,6 +242,7 @@ export async function listTradeOffers(): Promise<TradeOffer[]> {
 }
 
 export async function findTradeOffer(id: string): Promise<TradeOffer | null> {
+  if (!isUuid(id)) return null;
   const [row] = await db.select().from(tradeOffers).where(eq(tradeOffers.id, id)).limit(1);
   return row ? toTradeOffer(row) : null;
 }
@@ -265,6 +283,7 @@ export async function updateTradeOffer(
   patch: Partial<TradeOffer>,
   expectedStatuses: TradeOfferStatus[]
 ): Promise<TradeOffer | null> {
+  if (!isUuid(id)) return null;
   const set: Partial<typeof tradeOffers.$inferInsert> = {};
   if (patch.status !== undefined) set.status = patch.status;
   if (patch.responderUserId !== undefined) set.responderUserId = patch.responderUserId;
@@ -368,11 +387,13 @@ export async function createAwardHistoryRecord(record: AwardHistoryRecord): Prom
  * something real to fold against, on any device.
  */
 export async function getPreferenceProfile(userId: string): Promise<PreferenceProfile | null> {
+  if (!isUuid(userId)) return null;
   const [row] = await db.select().from(preferenceProfiles).where(eq(preferenceProfiles.userId, userId)).limit(1);
   return row ? row.profile : null;
 }
 
 export async function savePreferenceProfile(userId: string, profile: PreferenceProfile): Promise<void> {
+  if (!isUuid(userId)) return;
   await db
     .insert(preferenceProfiles)
     .values({ userId, profile, updatedAt: new Date() })
@@ -383,6 +404,7 @@ export async function savePreferenceProfile(userId: string, profile: PreferenceP
 }
 
 export async function deletePreferenceProfile(userId: string): Promise<void> {
+  if (!isUuid(userId)) return;
   await db.delete(preferenceProfiles).where(eq(preferenceProfiles.userId, userId));
 }
 

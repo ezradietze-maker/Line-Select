@@ -267,4 +267,18 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect((await forecastStore.loadKnownRankings(packKey, lineNumbers, null)).total).toBe(0);
     });
   });
+
+  describe("malformed ids: a Postgres uuid column throws on non-uuid input", () => {
+    it("looks like 'not found' rather than crashing, for every uuid-keyed lookup", async () => {
+      const garbage = "not-a-real-id";
+      await expect(mod.findUserById(garbage)).resolves.toBeNull();
+      await expect(mod.findCredentialByUserId(garbage)).resolves.toBeNull();
+      await expect(mod.findTradeOffer(garbage)).resolves.toBeNull();
+      await expect(mod.updateTradeOffer(garbage, { status: "accepted" }, ["pending"])).resolves.toBeNull();
+      await expect(mod.getPreferenceProfile(garbage)).resolves.toBeNull();
+      await expect(mod.savePreferenceProfile(garbage, fakeProfile())).resolves.toBeUndefined();
+      await expect(mod.deletePreferenceProfile(garbage)).resolves.toBeUndefined();
+      await expect(mod.deleteSessionsForUser(garbage)).resolves.toBeUndefined();
+    });
+  });
 });

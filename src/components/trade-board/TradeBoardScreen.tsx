@@ -131,6 +131,10 @@ export function TradeBoardScreen({
     setBusy(false);
     if (!result.ok) {
       setActionError(result.error ?? "Something went wrong. Try again.");
+      // Refresh anyway — a failure here usually means the offer's real state moved
+      // (someone else claimed it, it was withdrawn), so the stale copy on screen
+      // needs replacing rather than sitting there inviting the same retry.
+      await refresh();
       return;
     }
     setShowPostForm(false);

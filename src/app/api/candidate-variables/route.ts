@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { isJsonObject } from "@/lib/server/json-body";
+import { isJsonObject, isText } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createCandidateVariable, listCandidateVariables } from "@/lib/server/db";
 import type { CandidateVariable } from "@/types/candidate-variable";
@@ -53,7 +53,13 @@ export async function POST(request: Request) {
   }
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
-  if (!body.rawQuote || !body.proposedName) {
+  if (
+    !isText(body.rawQuote, 2000) ||
+    !isText(body.proposedName, 200) ||
+    (body.proposedDescription !== undefined && typeof body.proposedDescription !== "string") ||
+    (body.favoredLineNumber !== undefined && typeof body.favoredLineNumber !== "string") ||
+    (body.overtakenLineNumber !== undefined && typeof body.overtakenLineNumber !== "string")
+  ) {
     return NextResponse.json({ error: "Missing candidate variable details." }, { status: 400 });
   }
 
@@ -62,9 +68,9 @@ export async function POST(request: Request) {
     pilotId: user.id,
     rawQuote: body.rawQuote,
     proposedName: body.proposedName,
-    proposedDescription: body.proposedDescription ?? "",
-    favoredLineNumber: body.favoredLineNumber ?? "",
-    overtakenLineNumber: body.overtakenLineNumber ?? "",
+    proposedDescription: (body.proposedDescription ?? "").slice(0, 500),
+    favoredLineNumber: (body.favoredLineNumber ?? "").slice(0, 12),
+    overtakenLineNumber: (body.overtakenLineNumber ?? "").slice(0, 12),
     createdAt: new Date().toISOString(),
   };
 

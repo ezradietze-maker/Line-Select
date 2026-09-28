@@ -1,11 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { isJsonObject } from "@/lib/server/json-body";
+import { isJsonObject, isText } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createAwardHistoryRecord, listAwardHistoryRecords } from "@/lib/server/db";
 import type { AwardHistoryRecord } from "@/types/award-history";
 
 export const runtime = "nodejs";
+
+/** An integer within a plausible real-world range, or null — every optional numeric field below maps to a Postgres `integer` column, which throws on a fraction or a non-numeric string rather than just rejecting it. */
+function isIntOrNull(value: unknown, max: number): value is number | null {
+  return value === null || value === undefined || (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max);
+}
 
 /**
  * GET lists every self-reported hold outcome for one base/aircraft/seat —
@@ -42,13 +47,19 @@ export async function POST(request: Request) {
 
   const { base, aircraft, seat, month, seniorityRank, seniorityTotalPilots, outcome } = body;
   if (
-    !base ||
-    !aircraft ||
+    !isText(base, 20) ||
+    !isText(aircraft, 20) ||
     (seat !== "CAP" && seat !== "FO") ||
-    !month ||
-    typeof seniorityRank !== "number" ||
-    typeof seniorityTotalPilots !== "number" ||
-    (outcome !== "line" && outcome !== "reserve" && outcome !== "other")
+    !isText(month, 20) ||
+    !Number.isInteger(seniorityRank) ||
+    (seniorityRank as number) < 0 ||
+    !Number.isInteger(seniorityTotalPilots) ||
+    (seniorityTotalPilots as number) < 0 ||
+    (outcome !== "line" && outcome !== "reserve" && outcome !== "other") ||
+    (body.lineNumber !== undefined && body.lineNumber !== null && !isText(body.lineNumber, 12)) ||
+    !isIntOrNull(body.daysOff, 31) ||
+    !isIntOrNull(body.totalCreditHours, 500) ||
+    !isIntOrNull(body.totalTafbHours, 1000)
   ) {
     return NextResponse.json({ error: "Missing or invalid report details." }, { status: 400 });
   }
@@ -60,8 +71,8 @@ export async function POST(request: Request) {
     aircraft,
     seat,
     month,
-    seniorityRank,
-    seniorityTotalPilots,
+    seniorityRank: seniorityRank as number,
+    seniorityTotalPilots: seniorityTotalPilots as number,
     outcome,
     lineNumber: isLine ? (body.lineNumber ?? null) : null,
     daysOff: isLine ? (body.daysOff ?? null) : null,

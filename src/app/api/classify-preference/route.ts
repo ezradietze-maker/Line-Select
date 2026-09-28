@@ -92,9 +92,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  const hasPairwiseContext = !!body.favoredSummary && !!body.overtakenSummary;
-  const hasStandaloneContext = !!body.context;
-  if (!body.freeText?.trim() || !body.variables || (!hasPairwiseContext && !hasStandaloneContext)) {
+  const hasPairwiseContext = typeof body.favoredSummary === "string" && typeof body.overtakenSummary === "string";
+  const hasStandaloneContext = typeof body.context === "string" && body.context.trim().length > 0;
+  const validVariables =
+    Array.isArray(body.variables) &&
+    body.variables.every(
+      (v) => isJsonObject(v) && typeof v.id === "string" && typeof v.label === "string" && typeof v.description === "string"
+    );
+  if (
+    typeof body.freeText !== "string" ||
+    !body.freeText.trim() ||
+    !validVariables ||
+    (!hasPairwiseContext && !hasStandaloneContext)
+  ) {
     return NextResponse.json({ error: "Missing classification input." }, { status: 400 });
   }
 
