@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { deletePreferenceProfile, getPreferenceProfile, savePreferenceProfile } from "@/lib/server/db";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -25,8 +26,13 @@ export async function PUT(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   if (!body.profile || typeof body.profile !== "object" || !body.profile.weights) {
     return NextResponse.json({ error: "Missing or malformed profile." }, { status: 400 });
+  }
+
+  if (JSON.stringify(body.profile).length > 1_000_000) {
+    return NextResponse.json({ error: "That profile is too large to save." }, { status: 413 });
   }
 
   await savePreferenceProfile(user.id, body.profile);

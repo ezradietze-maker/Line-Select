@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isJsonObject } from "@/lib/server/json-body";
 import { runInterviewTurn } from "@/lib/interview-turn-service";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 import type { TurnRequestBody } from "@/types/interview-session";
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
   if (!Array.isArray(body.transcript) || !Array.isArray(body.facts) || !body.grounding) {
     return NextResponse.json({ error: "Missing interview turn input." }, { status: 400 });

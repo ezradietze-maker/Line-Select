@@ -37,8 +37,9 @@ interface Params {
 export function useBidForecast({ bidPack, rankingLineIds, implicitValuesByLine, seniorityNumber, userId, enabled }: Params) {
   const features = useMemo(() => buildLineFeatures(bidPack, implicitValuesByLine), [bidPack, implicitValuesByLine]);
   const [sharing, setSharingState] = useState(() => (typeof window === "undefined" ? false : loadSharing(userId)));
-  const [result, setResult] = useState<ForecastResponse | null>(null);
+  const [result, setResult] = useState<(ForecastResponse & { seniorityNumber: number }) | null>(null);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   const rankingKey = rankingLineIds.join(",");
   const active = enabled && !!seniorityNumber && !!bidPack.seniorityList?.length && rankingLineIds.length > 0;
@@ -54,7 +55,8 @@ export function useBidForecast({ bidPack, rankingLineIds, implicitValuesByLine, 
     const timer = setTimeout(async () => {
       const response = await fetchForecast({ bidPack, features, seniorityNumber, rankingLineIds, share: sharing && !!userId });
       if (cancelled) return;
-      setResult(response);
+      setResult(response ? { ...response, seniorityNumber } : null);
+      setFailed(!response);
       setLoading(false);
     }, 500);
     return () => {
@@ -79,5 +81,11 @@ export function useBidForecast({ bidPack, rankingLineIds, implicitValuesByLine, 
     [userId, bidPack, features]
   );
 
-  return { result: active ? result : null, loading: active && loading, sharing, setSharing, canShare: !!userId };
+  // A forecast belongs to one pack and one seniority number; while a new one is being worked out after either changes, showing the old one would put last month's chances (or someone else's position) on this pack's cards.
+  const current =
+    result && result.forecast.packKey === forecastPackKey(bidPack) && result.seniorityNumber === seniorityNumber
+      ? result
+      : null;
+
+  return { failed: active && failed && !current, result: active ? current : null, loading: active && loading, sharing, setSharing, canShare: !!userId };
 }

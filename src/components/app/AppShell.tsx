@@ -32,8 +32,19 @@ function getDirection(from: string, to: string): 1 | -1 | 0 {
 function Chrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { ready, profile, bidPack, user, inboxUnreadCount, toasts, handleLogout, handleDismissToast, handleToastClick } =
-    useAppState();
+  const {
+    ready,
+    profile,
+    bidPack,
+    user,
+    inboxUnreadCount,
+    toasts,
+    bidPackSaveFailed,
+    handleLogout,
+    handleDismissStorageWarning,
+    handleDismissToast,
+    handleToastClick,
+  } = useAppState();
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
@@ -81,6 +92,17 @@ function Chrome({ children }: { children: React.ReactNode }) {
 
       <div className={`flex flex-1 flex-col ${showSidebar ? "md:pl-60" : ""}`}>
         <main className="flex flex-1 flex-col justify-center px-4 py-10 sm:py-16">
+          {bidPackSaveFailed && (
+            <div role="alert" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
+              <span>
+                This bid pack is too big for your browser to keep, so it works right now but will be gone if you refresh or close this
+                tab &mdash; you&rsquo;d need to upload it again. Your preferences are saved either way.
+              </span>
+              <button type="button" onClick={handleDismissStorageWarning} className="shrink-0 font-medium underline decoration-dotted underline-offset-4">
+                Dismiss
+              </button>
+            </div>
+          )}
           <ScreenTransition screenKey={pathname} direction={direction}>
             {children}
           </ScreenTransition>
@@ -118,16 +140,16 @@ function Footer() {
     <footer className="border-t border-border">
       <div className="mx-auto max-w-5xl space-y-2 px-4 py-6 text-xs leading-relaxed text-ink-faint">
         <p className="flex flex-wrap gap-x-3">
-          <Link href="/pricing" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
+          <Link href="/pricing" className="inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted">
             Pricing
           </Link>
-          <Link href="/how-it-works" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
+          <Link href="/how-it-works" className="inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted">
             How this works
           </Link>
-          <Link href="/terms" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
+          <Link href="/terms" className="inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted">
             Terms of Service
           </Link>
-          <Link href="/privacy" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
+          <Link href="/privacy" className="inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted">
             Privacy Policy
           </Link>
         </p>
@@ -151,7 +173,7 @@ function Footer() {
           an account and your preferences follow you to a new device too,
           alongside the Trade Board, Inbox, and reporting what you held that
           an account also enables. See the{" "}
-          <Link href="/privacy" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
+          <Link href="/privacy" className="inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted">
             Privacy Policy
           </Link>{" "}
           for the full picture.

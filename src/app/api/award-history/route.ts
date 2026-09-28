@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createAwardHistoryRecord, listAwardHistoryRecords } from "@/lib/server/db";
 import type { AwardHistoryRecord } from "@/types/award-history";
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
   const { base, aircraft, seat, month, seniorityRank, seniorityTotalPilots, outcome } = body;
   if (

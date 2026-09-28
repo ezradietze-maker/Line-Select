@@ -530,6 +530,7 @@ export function ResultsView({
             forecast={forecast.result?.forecast ?? null}
             response={forecast.result}
             loading={forecast.loading}
+            failed={forecast.failed}
             seniorityNumber={profile.seniorityNumber}
             hasList={!!bidPack.seniorityList?.length}
             onAddSeniority={onEditPreferences}

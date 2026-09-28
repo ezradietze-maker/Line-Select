@@ -95,13 +95,50 @@ export function buildLineMonthCalendar(
     timeline: buildLocalDaysWithMode(span.trip, mode),
   }));
 
+  // Which trip owns each day. When the line's own grid says which days are off
+  // ("---"), that's the truth: every other day belongs to whichever trip most
+  // recently started (a blank cell continues it), so days off and each trip's
+  // footprint match the bid pack exactly. Without it, fall back to laying each
+  // trip out from its start for its own day count.
+  const gridOff = placementIsReal && line.gridOffDays ? new Set(line.gridOffDays) : null;
+  const owner: (number | "off" | null)[] = new Array(totalDays).fill(null);
+  if (gridOff) {
+    const byStart = [...spans].sort((x, y) => x.start - y.start);
+    for (let i = 0; i < totalDays; i++) {
+      if (gridOff.has(i)) {
+        owner[i] = "off";
+        continue;
+      }
+      let current: Span | null = null;
+      for (const span of byStart) if (span.start <= i) current = span;
+      // Nothing has started yet: a trip carried in from the previous bid period.
+      owner[i] = current ? current.tripIndex : null;
+    }
+  } else {
+    for (let i = 0; i < totalDays; i++) {
+      const entry = timelineBySpan.find(({ span }) => i >= span.start && i < span.start + span.trip.days);
+      owner[i] = entry ? entry.span.tripIndex : "off";
+    }
+  }
+
+  /** First and last day each trip occupies, and how many days that is. */
+  const footprint = new Map<number, { first: number; last: number; count: number }>();
+  owner.forEach((o, i) => {
+    if (typeof o !== "number") return;
+    const f = footprint.get(o);
+    if (f) {
+      f.last = i;
+      f.count++;
+    } else footprint.set(o, { first: i, last: i, count: 1 });
+  });
+
   const days: LineMonthDay[] = [];
   for (let i = 0; i < totalDays; i++) {
-    const entry = timelineBySpan.find(({ span }) => i >= span.start && i < span.start + span.trip.days);
     const date = base ? base.plus({ days: i }).toISODate() : null;
     const weekday = base ? base.plus({ days: i }).toFormat("ccc") : null;
+    const o = owner[i];
 
-    if (!entry) {
+    if (o === "off") {
       days.push({
         dayIndex: i,
         date,
@@ -118,7 +155,27 @@ export function buildLineMonthCalendar(
       continue;
     }
 
-    const tripDayNumber = i - entry.span.start + 1;
+    if (o === null) {
+      // Carried in from the previous bid period: occupied, with nothing in this pack to say what it is.
+      days.push({
+        dayIndex: i,
+        date,
+        weekday,
+        isOff: false,
+        tripIndex: null,
+        tripDayNumber: null,
+        tripDayCount: null,
+        hasSchedule: false,
+        segments: [],
+        isTripStart: false,
+        isTripEnd: false,
+      });
+      continue;
+    }
+
+    const entry = timelineBySpan.find(({ span }) => span.tripIndex === o)!;
+    const f = footprint.get(o)!;
+    const tripDayNumber = i - f.first + 1;
     const timelineDay = entry.timeline.find((d) => d.dayNumber === tripDayNumber);
 
     days.push({
@@ -126,13 +183,13 @@ export function buildLineMonthCalendar(
       date,
       weekday,
       isOff: false,
-      tripIndex: entry.span.tripIndex,
+      tripIndex: o,
       tripDayNumber,
-      tripDayCount: entry.span.trip.days,
+      tripDayCount: f.count,
       hasSchedule: entry.span.trip.schedule.length > 0,
       segments: timelineDay?.segments ?? [],
-      isTripStart: tripDayNumber === 1,
-      isTripEnd: tripDayNumber === entry.span.trip.days,
+      isTripStart: i === f.first,
+      isTripEnd: i === f.last,
     });
   }
 

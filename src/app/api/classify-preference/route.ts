@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   const hasPairwiseContext = !!body.favoredSummary && !!body.overtakenSummary;
   const hasStandaloneContext = !!body.context;
   if (!body.freeText?.trim() || !body.variables || (!hasPairwiseContext && !hasStandaloneContext)) {

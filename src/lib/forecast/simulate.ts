@@ -74,20 +74,44 @@ export function simulateBid(params: ForecastParams): ForecastCore {
   const rankHistogram = new Float64Array(myRanking.length);
   let noLine = 0;
 
+  // Per-pilot, per-line taste is drawn from one pool of standard normals
+  // generated up front (same seed, so still repeatable) and read from a random
+  // offset per pilot, instead of drawing a fresh normal for every pilot-line
+  // pair — that draw was most of the cost of a forecast on a big seat.
+  const NOISE_POOL = 1 << 19;
+  const noisePool = new Float64Array(NOISE_POOL + L);
+  for (let i = 0; i < noisePool.length; i++) noisePool[i] = normal();
+
   const free = new Uint8Array(L);
+  /** The lines still open, kept compact so a late pilot only scores what's actually left — as the bid fills, each pick gets cheaper. */
+  const openList = new Int32Array(L);
+  const openPos = new Int32Array(L);
   const shared = new Float64Array(L);
   const w = new Float64Array(K);
 
   for (let sim = 0; sim < S; sim++) {
     free.fill(1);
-    for (let i = 0; i < L; i++) shared[i] = population.popularity[i] + population.popularitySd * normal();
+    let openCount = L;
+    for (let i = 0; i < L; i++) {
+      openList[i] = i;
+      openPos[i] = i;
+      shared[i] = population.popularity[i] + population.popularitySd * normal();
+    }
+    const take = (line: number) => {
+      free[line] = 0;
+      const pos = openPos[line];
+      const last = openList[openCount - 1];
+      openList[pos] = last;
+      openPos[last] = pos;
+      openCount--;
+    };
 
-    for (let bid = 1; bid <= pilotsAhead; bid++) {
+    for (let bid = 1; bid <= pilotsAhead && openCount > 0; bid++) {
       const known = knownByBid.get(bid);
       if (known) {
         for (const line of known) {
           if (line >= 0 && line < L && free[line]) {
-            free[line] = 0;
+            take(line);
             break;
           }
         }
@@ -96,11 +120,13 @@ export function simulateBid(params: ForecastParams): ForecastCore {
       if (rand() < dropout) continue;
 
       for (let k = 0; k < K; k++) w[k] = population.mean[k] + population.sd[k] * normal();
+      const noiseOffset = Math.floor(rand() * NOISE_POOL);
+      const noiseSd = population.noiseSd;
       let best = -1;
       let bestUtility = -Infinity;
-      for (let i = 0; i < L; i++) {
-        if (!free[i]) continue;
-        let u = shared[i] + population.noiseSd * normal();
+      for (let n = 0; n < openCount; n++) {
+        const i = openList[n];
+        let u = shared[i] + noiseSd * noisePool[noiseOffset + i];
         const base = i * K;
         for (let k = 0; k < K; k++) u += w[k] * F[base + k];
         if (u > bestUtility) {
@@ -108,7 +134,7 @@ export function simulateBid(params: ForecastParams): ForecastCore {
           best = i;
         }
       }
-      if (best >= 0) free[best] = 0;
+      if (best >= 0) take(best);
     }
 
     for (let i = 0; i < L; i++) availableCount[i] += free[i];

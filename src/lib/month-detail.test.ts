@@ -120,3 +120,41 @@ describe("buildDetailedMonth", () => {
     expect(m.days[0].weekday).toBeNull();
   });
 });
+
+describe("calendar drawn from the grid's own off days", () => {
+  /** A one-trip line whose grid says exactly which days are off — deliberately not the days the trip's own length would leave. */
+  function withGrid(off: number[]): Line {
+    const l = placed("9001", [4]);
+    return { ...l, daysOff: off.length, gridOffDays: off };
+  }
+  const offExcept = (work: number[]) => Array.from({ length: 28 }, (_, i) => i).filter((i) => !work.includes(i));
+
+  it("marks exactly the days the grid marks off, so days off always match what the bid pack prints", () => {
+    // The trip starts on day 4 but the grid gives it four days (4-7), longer than its own 2-day schedule span.
+    const m = buildDetailedMonth(withGrid(offExcept([4, 5, 6, 7])), START, 28);
+    expect(m.summary.daysOff).toBe(24);
+    expect(m.summary.printedDaysOff).toBe(24);
+    expect(m.days.filter((d) => d.kind !== "off").map((d) => d.dayIndex)).toEqual([4, 5, 6, 7]);
+  });
+
+  it("gives the trip the whole stretch of non-off days the grid gives it", () => {
+    const m = buildDetailedMonth(withGrid(offExcept([4, 5, 6, 7])), START, 28);
+    expect(m.days[4].isTripStart).toBe(true);
+    expect(m.days[4].tripDayCount).toBe(4);
+    expect(m.days[7].isTripEnd).toBe(true);
+    expect(m.days[7].tripDay).toBe(4);
+  });
+
+  it("shows days before the first trip starts, when the grid doesn't mark them off, as a trip carried in from the previous period", () => {
+    const m = buildDetailedMonth(withGrid(offExcept([0, 1, 4, 5])), START, 28);
+    expect(m.days[0].kind).toBe("estimated");
+    expect(m.days[0].tripIndex).toBeNull();
+    expect(m.days[0].title).toMatch(/previous bid period/);
+    expect(m.summary.daysOff).toBe(24);
+  });
+
+  it("falls back to laying trips out by their own length when the pack has no grid off days", () => {
+    const m = buildDetailedMonth(placed("9001", [4]), START, 28);
+    expect(m.days.filter((d) => d.kind !== "off")).toHaveLength(placed("9001", [4]).trips[0].days);
+  });
+});

@@ -174,6 +174,28 @@ export function buildEstimatedTrip(summary: ParsedLineSummary, bidPackMonth: str
  * this line is left unplaced rather than showing a calendar that's right
  * for some trips and silently wrong for others.
  */
+/**
+ * A trip's length as the bid pack's own calendar gives it: from the day it
+ * starts to the day before the next trip starts or a day off begins. The
+ * pairing schedule's local-calendar span runs a day longer than that on
+ * roughly a fifth of trips (a trip landing just past midnight), while the
+ * grid's footprint is what makes each line's days off add up to the printed
+ * number — so the two labels a pilot sees, "N-day" and the days on the
+ * calendar, should be the same thing. A trip that runs to the very end of the
+ * grid may continue into the next period, so its full schedule length is kept.
+ */
+function applyGridFootprints(trips: Trip[], offDays: number[], dayCount: number): void {
+  if (trips.some((t) => t.startDayIndex === null)) return;
+  const off = new Set(offDays);
+  const starts = new Set(trips.map((t) => t.startDayIndex!));
+  for (const trip of trips) {
+    let end = trip.startDayIndex! + 1;
+    while (end < dayCount && !off.has(end) && !starts.has(end)) end++;
+    const footprint = end - trip.startDayIndex!;
+    if (end < dayCount && footprint >= 1) trip.days = footprint;
+  }
+}
+
 function applyDayPlacements(trips: Trip[], placements: DayPlacement[] | undefined): void {
   if (!placements || placements.length !== trips.length) return;
 
@@ -197,13 +219,17 @@ export function buildLine(
   summary: ParsedLineSummary,
   matchedPairings: ParsedPairing[] | null,
   bidPackMonth: string,
-  dayPlacements?: DayPlacement[]
+  dayPlacements?: DayPlacement[],
+  /** The grid's own "---" (no trip) days for this line — kept only when they add up to its printed days off. */
+  gridDays?: { offDays: number[]; dayCount: number }
 ): Line {
   const trips = matchedPairings
     ? matchedPairings.map((p) => pairingToTrip(p, bidPackMonth))
     : [buildEstimatedTrip(summary, bidPackMonth)];
 
   applyDayPlacements(trips, dayPlacements);
+  const gridOffDays = gridDays && gridDays.offDays.length === summary.daysOff ? gridDays.offDays : undefined;
+  if (gridOffDays) applyGridFootprints(trips, gridOffDays, gridDays!.dayCount);
 
   return {
     id: `line-${summary.lineNumber}`,
@@ -216,5 +242,6 @@ export function buildLine(
     totalDepartures: trips.reduce((s, t) => s + t.departures, 0),
     totalDutyPeriods: summary.printedDutyPeriods ?? trips.reduce((s, t) => s + tripDutyPeriods(t), 0),
     estimated: matchedPairings === null,
+    ...(gridOffDays ? { gridOffDays } : {}),
   };
 }

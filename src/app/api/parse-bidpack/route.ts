@@ -5,9 +5,12 @@ import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate
 
 // pdfjs-dist needs Node APIs (Buffer, etc.), not the edge runtime.
 export const runtime = "nodejs";
+// A 400-page pack takes up to ~12s to parse on a cold function; don't let the platform default cut it off mid-parse.
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("parse-bidpack", clientIp(request), 10, 60 * 60);
+  // Parsing costs only CPU (no paid API), and every pilot uploads within hours of bid release — often behind shared wifi — so this allows a crowd from one address.
+  const { ok } = await checkRateLimit("parse-bidpack", clientIp(request), 40, 60 * 60);
   if (!ok) return rateLimitedResponse();
 
   let formData: FormData;

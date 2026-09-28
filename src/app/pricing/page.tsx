@@ -8,7 +8,8 @@ import { useAppState } from "@/lib/app-state";
 
 const FREE_FEATURES = [
   "The full adaptive preference interview",
-  "Every line in your bid pack scored against your own Satisfaction Index",
+  "Every line in your bid pack scored against your own Satisfaction Index, with a detailed month calendar for each",
+  "A bid forecast: your chance at every line, from where your seniority number puts you in bid order",
   "The Strategies board, including score-lift context and real award-history grounding",
   "Trade Board, Inbox, and Hotel Ratings",
   "Bid-order export and .ics calendar export",

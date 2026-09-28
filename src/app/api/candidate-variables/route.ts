@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createCandidateVariable, listCandidateVariables } from "@/lib/server/db";
 import type { CandidateVariable } from "@/types/candidate-variable";
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
   if (!body.rawQuote || !body.proposedName) {
     return NextResponse.json({ error: "Missing candidate variable details." }, { status: 400 });

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { findTradeOffer, updateTradeOffer } from "@/lib/server/db";
+import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { sanitizeTripSnapshot } from "@/lib/server/trade-validation";
 import type { TripSnapshot } from "@/types/trade";
 
 export const runtime = "nodejs";
@@ -32,10 +35,14 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  if (!body.responderTrip) {
-    return NextResponse.json({ error: "Missing your trip details." }, { status: 400 });
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  const responderTrip = sanitizeTripSnapshot(body.responderTrip);
+  if (!responderTrip) {
+    return NextResponse.json({ error: "Missing or malformed trip details." }, { status: 400 });
   }
-  if (offer.wantedPairingNumber && body.responderTrip.pairingNumber !== offer.wantedPairingNumber) {
+  const { ok } = await checkRateLimit("trade-respond", user.id, 60, 60 * 60);
+  if (!ok) return rateLimitedResponse();
+  if (offer.wantedPairingNumber && responderTrip.pairingNumber !== offer.wantedPairingNumber) {
     return NextResponse.json(
       { error: `This pilot wants Pairing ${offer.wantedPairingNumber} specifically.` },
       { status: 400 }
@@ -46,7 +53,7 @@ export async function POST(
     status: "pending",
     responderUserId: user.id,
     responderDisplayName: user.displayName,
-    responderTrip: body.responderTrip,
+    responderTrip,
     respondedAt: new Date().toISOString(),
   });
 

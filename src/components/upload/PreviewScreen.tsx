@@ -69,8 +69,9 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
         <strong className="font-semibold text-ink">
           {pageCounts["pairing-schedule"] ?? 0} pairing schedule pages
         </strong>{" "}
-        in this PDF. Skimmed and skipped the rest &mdash; vacation, seniority, and training
-        pages were never parsed.
+        in this PDF. Skimmed and skipped the rest &mdash; vacation and training pages were never
+        parsed, and from the seniority list only bid order and seniority numbers were read (no names,
+        no employee numbers).
       </p>
 
       {result.meta && (

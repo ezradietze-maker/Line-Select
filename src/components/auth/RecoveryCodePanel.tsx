@@ -18,8 +18,8 @@ const INTRO: Record<RecoveryCodePanelProps["reason"], string> = {
 };
 
 /**
- * There's no email reset — this code is the only way back into an account
- * whose password is forgotten, so it's shown exactly once and the pilot has
+ * This code gets a pilot back into an account whose password is forgotten —
+ * without email, and as the only route when email reset isn't configured — so it's shown exactly once and the pilot has
  * to say they've kept it before moving on. Deliberately can't be dismissed
  * by accident: the only exit is the confirmed button.
  */
@@ -42,9 +42,9 @@ export function RecoveryCodePanel({ code, reason, onDone, doneLabel = "Continue"
       <p className="text-sm text-ink-muted">{INTRO[reason]}</p>
       <h2 className="mt-3 text-lg font-semibold text-ink">Save your recovery code</h2>
       <p className="mt-1 text-sm leading-relaxed text-ink-muted">
-        If you ever forget your password, this code is the <strong className="text-ink">only</strong> way back into your
-        account &mdash; there&rsquo;s no email reset. It&rsquo;s shown once. Write it down or keep it in your password
-        manager.
+        If you ever forget your password, this code gets you back into your account without needing your email &mdash; and
+        if email reset isn&rsquo;t available, it&rsquo;s the <strong className="text-ink">only</strong> way back in. It&rsquo;s shown
+        once. Write it down or keep it in your password manager.
       </p>
 
       <div

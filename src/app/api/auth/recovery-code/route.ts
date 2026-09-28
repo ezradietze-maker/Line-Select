@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isJsonObject, isText } from "@/lib/server/json-body";
 import { createRecoveryCodeForUser, getCurrentServerUser } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
@@ -15,7 +16,8 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  if (!body.password) {
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  if (!isText(body.password, 500)) {
     return NextResponse.json({ error: "Enter your password to create a recovery code." }, { status: 400 });
   }
 

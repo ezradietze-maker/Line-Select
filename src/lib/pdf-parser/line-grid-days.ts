@@ -54,3 +54,25 @@ export function extractLinePlacements(rows: string[]): Map<string, DayPlacement[
 
   return placements;
 }
+
+/**
+ * The days a line is off, exactly as its own placement row prints them: every
+ * "---" cell is a day with no trip. Summed, these reproduce each line's printed
+ * DAYS OFF on every line of every real pack checked (548 of 548), which the
+ * trips' own day counts do not — a trip's calendar span from its schedule can
+ * run a day longer or shorter than the days the grid actually gives it.
+ */
+export function extractLineOffDays(rows: string[]): Map<string, { offDays: number[]; dayCount: number }> {
+  const offDays = new Map<string, { offDays: number[]; dayCount: number }>();
+  for (const block of splitIntoLineBlocks(rows)) {
+    const lineMatch = block[0]?.match(LINE_RE);
+    if (!lineMatch || block.length < 5) continue;
+    const days: number[] = [];
+    const tokens = splitDayTokens(block[4]);
+    tokens.forEach((token, dayIndex) => {
+      if (token === "---") days.push(dayIndex);
+    });
+    offDays.set(lineMatch[1], { offDays: days, dayCount: tokens.length });
+  }
+  return offDays;
+}

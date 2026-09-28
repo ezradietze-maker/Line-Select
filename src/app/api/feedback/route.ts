@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createFeedbackSubmission, listFeedbackSubmissions } from "@/lib/server/db";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -39,8 +40,9 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
-  const message = body.message?.trim();
+  const message = typeof body.message === "string" ? body.message.trim() : "";
   if (!message) {
     return NextResponse.json({ error: "Enter some feedback before sending." }, { status: 400 });
   }

@@ -144,7 +144,8 @@ export function toStripSegment(s: TimelineSegment): StripSegment {
 function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">): string {
   const date = day.date && day.weekday ? `${day.weekday} ${day.date.slice(5)}` : `Day ${day.dayIndex + 1}`;
   if (d.kind === "off") return `${date} — day off${d.offRun && d.offRun.length > 1 ? ` (day ${d.offRun.position} of ${d.offRun.length} off)` : ""}`;
-  const parts = [`${date} — trip ${d.tripNumber ?? (d.tripIndex ?? 0) + 1}, day ${d.tripDay} of ${d.tripDayCount}`];
+  if (d.tripIndex === null) return `${date} — on duty, continuing a trip from the previous bid period`;
+  const parts = [`${date} — trip ${d.tripNumber ?? d.tripIndex + 1}, day ${d.tripDay} of ${d.tripDayCount}`];
   if (d.kind === "estimated") return `${parts[0]} (exact daily detail unavailable)`;
   if (d.dutyStart) parts.push(`duty starts ${d.dutyStart}`);
   if (d.landings > 0) parts.push(`${d.landings} landing${d.landings === 1 ? "" : "s"}`);

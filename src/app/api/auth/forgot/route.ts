@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isJsonObject, isText } from "@/lib/server/json-body";
 import { requestPasswordResetEmail } from "@/lib/server/auth";
 import { isEmailConfigured } from "@/lib/server/email";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -20,7 +21,8 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  if (!body.email) return NextResponse.json({ error: "Enter your email address." }, { status: 400 });
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  if (!isText(body.email, 200)) return NextResponse.json({ error: "Enter your email address." }, { status: 400 });
 
   const emailEnabled = await requestPasswordResetEmail(body.email);
   return NextResponse.json({ emailEnabled });

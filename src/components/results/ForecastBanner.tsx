@@ -38,6 +38,8 @@ interface ForecastBannerProps {
   forecast: BidForecast | null;
   response: ForecastResponse | null;
   loading: boolean;
+  /** The estimate couldn't be produced at all (not just slow). */
+  failed?: boolean;
   seniorityNumber: number | null | undefined;
   hasList: boolean;
   onAddSeniority: () => void;
@@ -53,6 +55,7 @@ export function ForecastBanner({
   forecast,
   response,
   loading,
+  failed = false,
   seniorityNumber,
   hasList,
   onAddSeniority,
@@ -76,6 +79,14 @@ export function ForecastBanner({
         <Button className="mt-3" variant="secondary" onClick={onAddSeniority}>
           Add my seniority number
         </Button>
+      </div>
+    );
+  }
+
+  if (!forecast && failed) {
+    return (
+      <div className="mt-5 rounded-xl border border-border bg-surface p-4 text-sm text-ink-muted">
+        Couldn&rsquo;t estimate your chances just now. Your rankings below are unaffected &mdash; try reloading in a moment.
       </div>
     );
   }

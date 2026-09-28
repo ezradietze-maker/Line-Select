@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isJsonObject, isText } from "@/lib/server/json-body";
 import { SESSION_COOKIE, sessionCookieOptions, signUp } from "@/lib/server/auth";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 
@@ -14,9 +15,10 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
   const { email, password, displayName } = body;
-  if (!email || !password || !displayName) {
+  if (!isText(email, 200) || !isText(password, 500) || !isText(displayName, 80)) {
     return NextResponse.json({ error: "Email, password, and display name are required." }, { status: 400 });
   }
 

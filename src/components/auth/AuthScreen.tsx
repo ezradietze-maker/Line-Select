@@ -138,6 +138,8 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
             </p>
           </div>
         ) : (
+          <>
+          <h1 className="sr-only">{mode === "signup" ? "Create a Line Select account" : "Log in to Line Select"}</h1>
           <div className="mb-6 grid grid-cols-2 rounded-lg bg-canvas p-1">
             <TabButton active={mode === "login"} onClick={() => switchMode("login")}>
               Log in
@@ -146,6 +148,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
               Create account
             </TabButton>
           </div>
+          </>
         )}
 
         {mode === "forgot" && linkSentTo ? (

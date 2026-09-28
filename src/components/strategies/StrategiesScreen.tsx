@@ -27,6 +27,9 @@ import type { SeniorityInput, StrategyId } from "@/types/strategy";
 interface StrategiesScreenProps {
   bidPack: BidPack | null;
   seniority: SeniorityInput | null;
+  /** True when `seniority` was worked out from the pilot's seniority number and the pack's list, so changing it means changing that number on Preferences. */
+  seniorityFromProfile?: boolean;
+  onChangeSeniorityNumber?: () => void;
   profile: PreferenceProfile | null;
   user: UserAccount | null;
   onSaveSeniority: (input: SeniorityInput) => void;
@@ -39,6 +42,8 @@ interface StrategiesScreenProps {
 export function StrategiesScreen({
   bidPack,
   seniority,
+  seniorityFromProfile = false,
+  onChangeSeniorityNumber,
   profile,
   user,
   onSaveSeniority,
@@ -66,6 +71,8 @@ export function StrategiesScreen({
     <SeniorityGate
       bidPack={bidPack}
       seniority={seniority}
+      fromProfile={seniorityFromProfile}
+      onChangeSeniorityNumber={onChangeSeniorityNumber}
       profile={profile}
       user={user}
       onSaveSeniority={onSaveSeniority}
@@ -79,6 +86,8 @@ export function StrategiesScreen({
 function SeniorityGate({
   bidPack,
   seniority,
+  fromProfile,
+  onChangeSeniorityNumber,
   profile,
   user,
   onSaveSeniority,
@@ -88,6 +97,8 @@ function SeniorityGate({
 }: {
   bidPack: BidPack;
   seniority: SeniorityInput | null;
+  fromProfile: boolean;
+  onChangeSeniorityNumber?: () => void;
   profile: PreferenceProfile | null;
   user: UserAccount | null;
   onSaveSeniority: (input: SeniorityInput) => void;
@@ -116,7 +127,8 @@ function SeniorityGate({
       seniority={seniority}
       profile={profile}
       user={user}
-      onEditSeniority={() => setEditing(true)}
+      fromProfile={fromProfile}
+      onEditSeniority={() => (fromProfile && onChangeSeniorityNumber ? onChangeSeniorityNumber() : setEditing(true))}
       onGoToResults={onGoToResults}
       onStartInterview={onStartInterview}
       onUpdateProfile={onUpdateProfile}
@@ -214,6 +226,7 @@ function StrategyResults({
   profile,
   user,
   onEditSeniority,
+  fromProfile,
   onGoToResults,
   onStartInterview,
   onUpdateProfile,
@@ -223,6 +236,7 @@ function StrategyResults({
   profile: PreferenceProfile | null;
   user: UserAccount | null;
   onEditSeniority: () => void;
+  fromProfile: boolean;
   onGoToResults: () => void;
   onStartInterview: () => void;
   onUpdateProfile: (profile: PreferenceProfile) => void;
@@ -288,7 +302,7 @@ function StrategyResults({
         <div>
           <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Your strategies</Heading>
           <p className="mt-1.5 text-sm text-ink-muted">
-            Seniority #{seniority.rank} of {seniority.totalPilots} in {bidPack.base}{" "}
+            {fromProfile ? "Bid position" : "Seniority"} #{seniority.rank} of {seniority.totalPilots} in {bidPack.base}{" "}
             {bidPack.aircraft} {bidPack.seat}
             {strongCount > 0 && (
               <>
@@ -302,7 +316,7 @@ function StrategyResults({
           </p>
         </div>
         <Button variant="secondary" onClick={onEditSeniority}>
-          Update seniority
+          {fromProfile ? "Change seniority number" : "Update seniority"}
         </Button>
       </div>
 

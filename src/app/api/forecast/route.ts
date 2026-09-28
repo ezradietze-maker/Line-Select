@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isJsonObject } from "@/lib/server/json-body";
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
 import { forecastFromFeatures, resolveBidPosition } from "@/lib/forecast/forecast";
 import { getCurrentServerUser } from "@/lib/server/auth";
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
   const { packKey, lineIds, lineNumbers, features, seniorityList, regularLines, dropoutRate, seniorityNumber, ranking } = body;
   if (typeof packKey !== "string" || packKey.length === 0 || packKey.length > 100) return NextResponse.json({ error: "Missing pack." }, { status: 400 });
@@ -98,6 +100,7 @@ export async function DELETE(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   if (typeof body.packKey !== "string" || !isStringArray(body.lineNumbers, MAX_LINES)) return NextResponse.json({ error: "Missing pack." }, { status: 400 });
   await removeSubmission(body.packKey, body.lineNumbers, user.id);
   return NextResponse.json({ ok: true });

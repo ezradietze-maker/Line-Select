@@ -56,11 +56,13 @@ const POINTS: Point[] = [
     body: (
       <>
         <strong className="text-ink">
-          This is a tool that predicts your satisfaction, not an awards predictor.
+          The match score predicts your satisfaction, not what you&rsquo;ll be awarded.
         </strong>{" "}
-        It has no idea what your seniority is, what other pilots are
-        bidding, or what you&rsquo;ll actually be awarded. It only tells you
-        which lines, on paper, look closest to what you said you want.
+        It only tells you which lines, on paper, look closest to what you said
+        you want. If you give your seniority number, a separate estimate shows
+        your chance at each line from where you sit in bid order &mdash; a
+        statistical guess that gets sharper as more pilots use the app, never
+        a promise of what you&rsquo;ll actually hold.
       </>
     ),
   },
@@ -77,10 +79,13 @@ const POINTS: Point[] = [
         Your bid pack PDF is uploaded to this app&rsquo;s own server to be
         parsed &mdash; never to FedEx or any third party &mdash; and the PDF
         itself isn&rsquo;t stored once parsing finishes. The extracted line
-        data and your preferences are then stored only on this device unless
-        you create an account to save them. Account sign-in, Trade Board
-        posts, and that one-time upload are the only things sent to a
-        server.
+        data and your preferences are then stored on this device, and on the
+        server too if you create an account. Beyond the upload itself, the
+        server sees: your interview answers (sent to an AI provider to write
+        the next question), hotel names (looked up on Google), your
+        seniority number and line ranking if you ask for a bid forecast
+        (numbers only, never the pack), and anything you post to the Trade
+        Board or send as feedback. The Privacy Policy has the full list.
       </>
     ),
   },

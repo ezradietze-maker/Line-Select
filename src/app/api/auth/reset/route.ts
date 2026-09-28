@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isJsonObject, isText } from "@/lib/server/json-body";
 import { SESSION_COOKIE, resetPasswordWithRecoveryCode, sessionCookieOptions } from "@/lib/server/auth";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 
@@ -17,9 +18,10 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
   const { email, recoveryCode, newPassword } = body;
-  if (!email || !recoveryCode || !newPassword) {
+  if (!isText(email, 200) || !isText(recoveryCode, 100) || !isText(newPassword, 500)) {
     return NextResponse.json({ error: "Email, recovery code, and a new password are required." }, { status: 400 });
   }
 

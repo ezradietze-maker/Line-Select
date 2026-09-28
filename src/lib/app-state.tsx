@@ -31,6 +31,8 @@ interface DataState {
   seniority: SeniorityInput | null;
   /** True from the moment a new bid pack is confirmed until the pilot either looks at rankings or starts the interview — drives the "same as last month?" prompt on Preferences, so a returning pilot isn't left with only "Retake the interview". */
   freshBidPack: boolean;
+  /** True when the browser refused to keep the bid pack (storage full or blocked) — the pack works this session but won't survive a refresh. */
+  bidPackSaveFailed: boolean;
 }
 
 /** Where a pilot with this bid pack/profile combination actually belongs — the same "resume point" logic used both on first load and after sign-in/sign-out. */
@@ -57,6 +59,7 @@ interface AppStateValue extends DataState {
   handleStartInterview: () => void;
   handleAcknowledgeFreshBidPack: () => void;
   handleStartOver: () => void;
+  handleDismissStorageWarning: () => void;
   handleDismissToast: (id: string) => void;
   handleToastClick: (id: string) => void;
   handleAuthenticated: (newUser: UserAccount) => void;
@@ -83,6 +86,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     pendingProfile: null,
     seniority: null,
     freshBidPack: false,
+    bidPackSaveFailed: false,
   });
   const { user, bidPack, pendingProfile } = state;
   const [interviewKey, setInterviewKey] = useState(0);
@@ -116,6 +120,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         pendingProfile: null,
         seniority: savedSeniority,
         freshBidPack: false,
+        bidPackSaveFailed: false,
       });
     }
     bootstrap();
@@ -288,9 +293,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // of starting from zero every month — the entire point of that
     // machinery, which a blanket clear here used to defeat on every single
     // confirm. `handleStartOver` is the deliberate, explicit reset instead.
-    saveBidPack(user?.id ?? null, newBidPack);
+    const saved = saveBidPack(user?.id ?? null, newBidPack);
     setState((s) => ({
       ...s,
+      bidPackSaveFailed: !saved,
       bidPack: newBidPack,
       parseResult: null,
       pendingProfile: null,
@@ -357,6 +363,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void clearProfileForUser(user?.id ?? null);
   }
 
+  function handleDismissStorageWarning() {
+    setState((s) => ({ ...s, bidPackSaveFailed: false }));
+  }
+
   function handleDismissToast(id: string) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }
@@ -368,8 +378,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   async function handleAuthenticated(newUser: UserAccount) {
     identifyPilot(newUser.id);
-    const theirBidPack = loadBidPack(newUser.id);
-    const theirProfile = await loadProfileForUser(newUser.id);
+    let theirBidPack = loadBidPack(newUser.id);
+    let theirProfile = await loadProfileForUser(newUser.id);
+    let theirSeniority = loadSeniority(newUser.id);
+
+    // A guest who uploaded a pack and answered the interview, then makes an account so it "follows them to a new device", must not land on an empty app. An account that has nothing of its own adopts what the guest was just working on; one that already has data keeps it untouched.
+    if (!state.user) {
+      if (!theirBidPack && state.bidPack && !state.bidPack.id.startsWith("sample")) {
+        saveBidPack(newUser.id, state.bidPack);
+        theirBidPack = state.bidPack;
+      }
+      if (!theirProfile && state.profile) {
+        await saveProfileForUser(newUser.id, state.profile);
+        theirProfile = state.profile;
+      }
+      if (!theirSeniority && state.seniority) {
+        saveSeniority(newUser.id, state.seniority);
+        theirSeniority = state.seniority;
+      }
+    }
+
     setState({
       ready: true,
       profile: theirProfile,
@@ -377,8 +405,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       bidPack: theirBidPack,
       parseResult: null,
       pendingProfile: null,
-      seniority: loadSeniority(newUser.id),
+      seniority: theirSeniority,
       freshBidPack: false,
+      bidPackSaveFailed: false,
     });
     router.push(landingPathFor(theirBidPack, theirProfile));
   }
@@ -409,6 +438,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       parseResult: null,
       pendingProfile: null,
       freshBidPack: false,
+      bidPackSaveFailed: false,
     });
     router.push(landingPathFor(guestBidPack, guestProfile));
   }
@@ -432,6 +462,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     handleStartInterview,
     handleAcknowledgeFreshBidPack,
     handleStartOver,
+    handleDismissStorageWarning,
     handleDismissToast,
     handleToastClick,
     handleAuthenticated,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isJsonObject, isText } from "@/lib/server/json-body";
 import { SESSION_COOKIE, resetPasswordWithEmailToken, sessionCookieOptions } from "@/lib/server/auth";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 
@@ -14,7 +15,8 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  if (!body.token || !body.newPassword) {
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  if (!isText(body.token, 200) || !isText(body.newPassword, 500)) {
     return NextResponse.json({ error: "A reset link and a new password are required." }, { status: 400 });
   }
 

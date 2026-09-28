@@ -1,6 +1,6 @@
 import { buildLine } from "@/lib/pdf-parser/build-bidpack";
 import { parseInfoPage } from "@/lib/pdf-parser/info-page-parser";
-import { extractLinePlacements, type DayPlacement } from "@/lib/pdf-parser/line-grid-days";
+import { extractLineOffDays, extractLinePlacements, type DayPlacement } from "@/lib/pdf-parser/line-grid-days";
 import {
   indexPairingsByFlightNumber,
   indexPairingsBySequence,
@@ -122,6 +122,7 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
   }[] = [];
   let lineGridMeta: Partial<BidPackMeta> | null = null;
   const placementsBySeat: Partial<Record<Seat, Map<string, DayPlacement[]>>> = {};
+  const offDaysBySeat: Partial<Record<Seat, Map<string, { offDays: number[]; dayCount: number }>>> = {};
 
   for (let i = 0; i < pages.length; i++) {
     if (pageClassifications[i].kind !== "line-grid") continue;
@@ -141,6 +142,10 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
       seatPlacements.set(lineNumber, entries);
     }
     placementsBySeat[seat] = seatPlacements;
+
+    const seatOffDays = offDaysBySeat[seat] ?? new Map<string, { offDays: number[]; dayCount: number }>();
+    for (const [lineNumber, grid] of extractLineOffDays(rows)) seatOffDays.set(lineNumber, grid);
+    offDaysBySeat[seat] = seatOffDays;
   }
 
   if (lineResults.length === 0) {
@@ -210,7 +215,7 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
       bidPeriodDays: 28,
       bidPeriodStart: meta.bidPeriodStart,
       lines: seatResults.map((r) =>
-        buildLine(r.summary, r.pairings, meta.month, placementsBySeat[seat]?.get(r.summary.lineNumber))
+        buildLine(r.summary, r.pairings, meta.month, placementsBySeat[seat]?.get(r.summary.lineNumber), offDaysBySeat[seat]?.get(r.summary.lineNumber))
       ),
       reserveLines: reserveLinesBySeat[seat],
       info: infoBySeat?.[seat],

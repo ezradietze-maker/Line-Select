@@ -162,6 +162,10 @@ export interface Line {
    * count) is a rough estimate rather than a verified fact.
    */
   estimated?: boolean;
+  /**
+   * The day indices (0 = the pack's first printed day) the line's own grid marks "---", i.e. days with no trip. The authority for which days are off: it always adds up to `daysOff`, where trips' schedule-derived day counts sometimes don't. Absent on a pack parsed before this was kept.
+   */
+  gridOffDays?: number[];
 }
 
 /**
