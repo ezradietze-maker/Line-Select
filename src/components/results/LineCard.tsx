@@ -10,6 +10,7 @@ import { LineInsightBadge } from "@/components/results/LineInsightBadge";
 import { MatchBar } from "@/components/results/MatchBar";
 import { ForecastChip } from "@/components/results/ForecastBanner";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
+import { RecurringCommitmentBanner } from "@/components/results/RecurringCommitmentBanner";
 import { TripNumberStrip } from "@/components/results/TripNumberStrip";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { TripList } from "@/components/results/TripList";
@@ -102,6 +103,7 @@ export const LineCard = memo(function LineCard({
     historicalNote,
     cumulativeCircadian,
     hotelReviewTieIn,
+    recurringCommitmentConflicts,
   } = lineScore;
   const implicitFactors = useMemo(
     () => topImplicitContributions(line.id, implicitValuesByLine, profile, 4),
@@ -156,6 +158,7 @@ export const LineCard = memo(function LineCard({
         </div>
       )}
       <DealbreakerBanner violations={violatedDealbreakers} />
+      <RecurringCommitmentBanner conflicts={recurringCommitmentConflicts} />
       <div className="flex items-stretch">
         {draggable && (
           <button

@@ -18,11 +18,12 @@ import {
   type SatisfactionCategory,
 } from "@/lib/satisfaction-categories";
 import { lineDutyPeriods } from "@/lib/duty-periods";
+import { weekdayFlyingPattern } from "@/lib/line-month";
 import { lineStandbyDays } from "@/lib/standby";
 import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { HotelAmenitySummary, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
-import type { MeasurableBinding, PreferenceFact } from "@/types/interview-session";
+import type { MeasurableBinding, PreferenceFact, WeekdayAbbreviation } from "@/types/interview-session";
 import { DEFAULT_WEIGHTS, type CitySentiment, type PreferenceProfile, type PreferenceWeights, type RangeTarget } from "@/types/preferences";
 
 /**
@@ -160,6 +161,8 @@ export interface LineScore {
   confidenceLevel: ProfileRichness["level"] | null;
   /** Null unless the caller supplied `priorTopLines` AND this line's dimension shape is genuinely close to one of the pilot's remembered prior-cycle favorites — see `historicalConsistencyNote`. */
   historicalNote: string | null;
+  /** Empty for the overwhelming majority of lines — non-empty means a pilot's stated recurring weekly commitment (see `PreferenceFact.recurringWeekday`) genuinely conflicts with this line's real calendar, and should be surfaced prominently, the same as a dealbreaker. See `recurringCommitmentConflictsForLine`. */
+  recurringCommitmentConflicts: RecurringCommitmentConflict[];
   /** Null when this line's trip placement isn't confirmed real (see `hasRealTripPlacement` in `lib/circadian.ts`) or it has fewer than two trips to compare — never an approximated recovery window built on unverified calendar position. */
   cumulativeCircadian: CumulativeCircadianAssessment | null;
   /** Null unless the pilot gave a hotel-related reason for a city this line touches AND a real review summary is on file for the hotel assigned there — see `hotelReviewTieInForLine`. */
@@ -1084,6 +1087,58 @@ function qualitativeTieInsForLine(qualitativeFacts: PreferenceFact[], line: Line
   return matches.slice(0, limit).map((f) => f.statement);
 }
 
+/** A real, computed conflict between a pilot's stated recurring weekly commitment and this line's actual calendar — the one qualitative fact this app can verify against data rather than just repeat back. */
+export interface RecurringCommitmentConflict {
+  factId: string;
+  statement: string;
+  weekday: WeekdayAbbreviation;
+  /** How many times this weekday occurs in the bid period. */
+  totalOccurrences: number;
+  /** How many of those this line has the pilot flying rather than off. Always > 0 — a fully clear match is never included here. */
+  conflictCount: number;
+}
+
+/**
+ * Checks every fact tagged with a `recurringWeekday` (see its own doc
+ * comment in `types/interview-session.ts`) against this line's real
+ * calendar via `weekdayFlyingPattern`. Only ever returns facts with a
+ * genuine conflict (flying on that weekday at least once) — a fully clear
+ * line says nothing here, the same "only surface a real problem" posture
+ * as `dealbreakerViolatedFor`, so callers can render this exactly like a
+ * warning banner without a separate "is this actually a problem" check.
+ * Empty when the line's calendar placement isn't grid-confirmed real
+ * (`weekdayFlyingPattern` returns null) — never a fabricated claim against
+ * a synthesized layout.
+ */
+function recurringCommitmentConflictsForLine(
+  qualitativeFacts: PreferenceFact[],
+  line: Line,
+  bidPeriodStart: string | null,
+  bidPeriodDays: number
+): RecurringCommitmentConflict[] {
+  const dayFacts = qualitativeFacts.filter((f) => f.recurringWeekday);
+  if (dayFacts.length === 0) return [];
+
+  const pattern = weekdayFlyingPattern(line, bidPeriodStart, bidPeriodDays);
+  if (!pattern) return [];
+  const byWeekday = new Map(pattern.map((p) => [p.weekday, p]));
+
+  const conflicts: RecurringCommitmentConflict[] = [];
+  for (const fact of dayFacts) {
+    const count = byWeekday.get(fact.recurringWeekday!);
+    if (count && count.flyingCount > 0) {
+      conflicts.push({
+        factId: fact.id,
+        statement: fact.statement,
+        weekday: fact.recurringWeekday!,
+        totalOccurrences: count.totalOccurrences,
+        conflictCount: count.flyingCount,
+      });
+    }
+  }
+  return conflicts;
+}
+
 /** Real, on-file review text tied back to a pilot's own stated hotel-related reason for loving/avoiding a city — see `PreferenceFact.cityReason`. */
 export interface HotelReviewTieIn {
   cityCode: string;
@@ -1522,6 +1577,7 @@ export function scoreBidPack(
       historicalNote: historicalConsistencyNote({ dimensions: allDimensions }, priorTopLines),
       cumulativeCircadian: cumulativeCircadianByLine[i],
       hotelReviewTieIn: hotelReviewTieInForLine(line, qualitativeFacts, hotelQualityData),
+      recurringCommitmentConflicts: recurringCommitmentConflictsForLine(qualitativeFacts, line, bidPack.bidPeriodStart, bidPack.bidPeriodDays),
     };
   });
 

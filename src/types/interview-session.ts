@@ -127,7 +127,21 @@ export interface PreferenceFact {
     code: string;
     category: "weather" | "people" | "hotel" | "layover-length" | "downtime" | "other";
   };
+  /**
+   * Set only on a qualitative fact describing a recurring, day-of-week-
+   * shaped personal commitment (coaching practice every Tuesday, a standing
+   * weekly appointment) — never a one-off calendar date, which this app
+   * still can't reliably measure (see `interview-prompt.ts`'s catalog
+   * section). Not a `MeasurableBinding`: this never feeds the Satisfaction
+   * Index. It does let the results screen check the statement against each
+   * line's own real calendar (`lib/line-month.ts`'s `weekdayFlyingPattern`)
+   * and flag a genuine conflict — the one qualitative fact this app can
+   * actually verify against real data rather than just repeat back.
+   */
+  recurringWeekday?: WeekdayAbbreviation;
 }
+
+export type WeekdayAbbreviation = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 
 /** What the LLM (or a seed question, replayed through the same machinery) asks. `kind` discriminates how the client renders it — every non-free-text kind is bound to a real, existing catalog slot via `boundTo`, never an invented one. */
 export type InterviewQuestion =

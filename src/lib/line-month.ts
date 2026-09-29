@@ -195,3 +195,43 @@ export function buildLineMonthCalendar(
 
   return { days, placementIsReal };
 }
+
+/** Occurrences of one weekday in the displayed bid period, and how many of those this line has the pilot flying rather than off. */
+export interface WeekdayFlyingCount {
+  weekday: string;
+  totalOccurrences: number;
+  flyingCount: number;
+}
+
+/**
+ * The cheap subset of `buildLineMonthCalendar`'s own day-placement logic —
+ * no segments/timeline, which this doesn't need — used to check a pilot's
+ * stated recurring weekday commitment (`PreferenceFact.recurringWeekday`)
+ * against a line's real calendar. Null when placement isn't grid-confirmed
+ * real (see `placementIsReal`) — never fabricates a weekday count against a
+ * synthesized/estimated layout. Counts are clamped to exactly
+ * `bidPeriodDays` (not extended for trip overflow the way the UI calendar
+ * is) so every line in the same pack reports the same total occurrences
+ * for a given weekday — a fixed property of the bid period itself, not of
+ * any one line's trip shapes.
+ */
+export function weekdayFlyingPattern(line: Line, bidPeriodStart: string | null, bidPeriodDays: number): WeekdayFlyingCount[] | null {
+  const placementIsReal = bidPeriodStart !== null && line.trips.every((t) => t.startDayIndex !== null);
+  if (!placementIsReal) return null;
+
+  const spans = line.trips.map((t) => ({ start: t.startDayIndex!, days: t.days }));
+  const base = DateTime.fromISO(bidPeriodStart!, { zone: "utc" });
+  const gridOff = line.gridOffDays ? new Set(line.gridOffDays) : null;
+
+  const counts = new Map<string, WeekdayFlyingCount>();
+  for (let i = 0; i < bidPeriodDays; i++) {
+    const weekday = base.plus({ days: i }).toFormat("ccc");
+    const entry = counts.get(weekday) ?? { weekday, totalOccurrences: 0, flyingCount: 0 };
+    entry.totalOccurrences++;
+    const isOff = gridOff ? gridOff.has(i) : !spans.some((s) => i >= s.start && i < s.start + s.days);
+    if (!isOff) entry.flyingCount++;
+    counts.set(weekday, entry);
+  }
+
+  return Array.from(counts.values());
+}

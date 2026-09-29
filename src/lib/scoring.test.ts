@@ -766,3 +766,79 @@ describe("getBidPackRanges", () => {
     expect(ranges.dutyPeriods[0]).toBeLessThanOrEqual(ranges.dutyPeriods[1]);
   });
 });
+
+describe("recurring commitment conflicts", () => {
+  const START = "2026-09-28"; // a Monday
+
+  function recurringFact(
+    weekday: PreferenceFact["recurringWeekday"],
+    statement = "Coaches on Monday evenings."
+  ): PreferenceFact {
+    return {
+      id: "rw-1",
+      statement,
+      kind: "qualitative",
+      confidence: 0.9,
+      importance: 0.8,
+      source: { kind: "adaptive-question", questionId: "q1" },
+      turnIndex: 0,
+      recurringWeekday: weekday,
+    };
+  }
+
+  /** SAMPLE_BID_PACK with a real bid-period start and one line's trip pinned to a real start day + grid off-days, as a parsed pack's grid would give it. */
+  function packWithRealPlacement(lineNumber: string, tripStarts: number[], off: number[]) {
+    return {
+      ...SAMPLE_BID_PACK,
+      bidPeriodStart: START,
+      lines: SAMPLE_BID_PACK.lines.map((l) =>
+        l.lineNumber !== lineNumber
+          ? l
+          : {
+              ...l,
+              daysOff: off.length,
+              gridOffDays: off,
+              trips: l.trips.map((t, i) => ({ ...t, startDayIndex: tripStarts[i] })),
+            }
+      ),
+    };
+  }
+
+  it("flags a real conflict when the pilot's committed weekday falls on a flying day", () => {
+    // Day 0 = Mon Sep 28; a trip on days 4-7 (Fri-Mon) makes day 7 the line's second Monday.
+    const off = Array.from({ length: 28 }, (_, i) => i).filter((i) => i < 4 || i > 7);
+    const pack = packWithRealPlacement("9001", [4], off);
+    const profile = { ...buildProfile(emptyWeights(), false, []), discoveredFacts: [recurringFact("Mon")] };
+    const ranked = rankLines(pack, profile);
+    const line9001 = ranked.find((r) => r.line.lineNumber === "9001")!;
+    expect(line9001.recurringCommitmentConflicts).toHaveLength(1);
+    expect(line9001.recurringCommitmentConflicts[0]).toMatchObject({ weekday: "Mon", totalOccurrences: 4, conflictCount: 1 });
+  });
+
+  it("stays empty when every occurrence of the committed weekday is off", () => {
+    const off = Array.from({ length: 28 }, (_, i) => i); // fully off
+    const pack = packWithRealPlacement("9001", [4], off);
+    const profile = { ...buildProfile(emptyWeights(), false, []), discoveredFacts: [recurringFact("Mon")] };
+    const ranked = rankLines(pack, profile);
+    expect(ranked.find((r) => r.line.lineNumber === "9001")!.recurringCommitmentConflicts).toEqual([]);
+  });
+
+  it("stays empty when the line's calendar placement isn't grid-confirmed real", () => {
+    const profile = { ...buildProfile(emptyWeights(), false, []), discoveredFacts: [recurringFact("Mon")] };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile); // unmodified — no bidPeriodStart at all
+    for (const r of ranked) {
+      expect(r.recurringCommitmentConflicts).toEqual([]);
+    }
+  });
+
+  it("stays empty for a qualitative fact with no recurringWeekday tag", () => {
+    const off = Array.from({ length: 28 }, (_, i) => i).filter((i) => i < 4 || i > 7);
+    const pack = packWithRealPlacement("9001", [4], off);
+    const profile = {
+      ...buildProfile(emptyWeights(), false, []),
+      discoveredFacts: [recurringFact(undefined, "Some other note entirely.")],
+    };
+    const ranked = rankLines(pack, profile);
+    expect(ranked.find((r) => r.line.lineNumber === "9001")!.recurringCommitmentConflicts).toEqual([]);
+  });
+});

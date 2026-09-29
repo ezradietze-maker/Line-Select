@@ -114,6 +114,12 @@ function profileUpdatesSchemaProperty() {
               },
               required: ["code", "category"],
             },
+            recurringWeekday: {
+              type: "string",
+              enum: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+              description:
+                "Only for a qualitative fact describing a commitment that recurs on the SAME day every week (a standing Tuesday practice, a weekly appointment) — never a one-off date, a holiday, or 'sometime this month.' This lets the results screen check the real weekday against each line's actual calendar and flag a genuine conflict. Omit for anything not literally weekly-recurring, including a vague 'I have plans some days' with no specific day named.",
+            },
           },
           required: ["statement", "kind", "confidence", "importance"],
         },
@@ -282,6 +288,12 @@ function parseCityReason(raw: unknown): PreferenceFact["cityReason"] {
   return { code: r.code, category: r.category as NonNullable<PreferenceFact["cityReason"]>["category"] };
 }
 
+const WEEKDAY_ABBREVIATIONS = new Set(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+
+function parseRecurringWeekday(raw: unknown): PreferenceFact["recurringWeekday"] {
+  return typeof raw === "string" && WEEKDAY_ABBREVIATIONS.has(raw) ? (raw as PreferenceFact["recurringWeekday"]) : undefined;
+}
+
 /** Fallback unit labels when the model mislabels a target-only id as a "slider" (see the coercion in `parseQuestion` below) and so never supplied its own unitSingular/unitPlural. */
 const TARGET_UNIT_LABELS: Record<ExplicitTargetKey, [string, string]> = {
   daysOff: ["day off", "days off"],
@@ -408,6 +420,7 @@ function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId
         turnIndex,
         // Only meaningful on a qualitative fact — never on a measurable one, which already has its own real binding.
         cityReason: f.kind === "qualitative" ? parseCityReason(f.cityReason) : undefined,
+        recurringWeekday: f.kind === "qualitative" ? parseRecurringWeekday(f.recurringWeekday) : undefined,
       };
       updates.push({ op: u.op, fact });
     }

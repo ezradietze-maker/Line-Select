@@ -18,18 +18,29 @@ interface PilotProfileSummaryProps {
  * from LineCard's own "Also factored in" panel, which is specifically
  * about why *one line* scored the way it did.
  *
+ * Open by default, not collapsed — this used to start closed, which meant
+ * a pilot could scroll straight past it without ever seeing what they told
+ * the interview came through. A fact tagged `recurringWeekday` gets its own
+ * callout here too: it's the one kind of personal-life detail this app can
+ * actually check against a line's real calendar (see
+ * `recurringCommitmentConflictsForLine` in `scoring.ts`), not just repeat
+ * back, and it's worth saying so up front rather than leaving that
+ * connection to be discovered only by scrolling into a line that conflicts.
+ *
  * Renders nothing for a profile with no qualitative facts (the legacy
  * static interview, or an adaptive interview that never surfaced anything
  * qualitative) rather than showing an empty shell.
  */
 export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   const qualitativeFacts = [...profile.discoveredFacts]
     .filter((f) => f.kind === "qualitative")
     .sort((a, b) => b.importance - a.importance);
 
   if (qualitativeFacts.length === 0) return null;
+
+  const checkedCount = qualitativeFacts.filter((f) => f.recurringWeekday).length;
 
   return (
     <div className="mb-4 rounded-xl border border-border bg-surface p-4 sm:p-6">
@@ -44,7 +55,10 @@ export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
           <p className="mt-0.5 hidden text-xs text-ink-faint sm:block">
             {qualitativeFacts.length} thing{qualitativeFacts.length === 1 ? "" : "s"} from your interview that
             {qualitativeFacts.length === 1 ? " doesn't" : " don't"} show up as a number on any line, but are
-            still worth knowing.
+            still worth knowing
+            {checkedCount > 0 &&
+              ` — ${checkedCount === 1 ? "one of them is" : `${checkedCount} of them are`} checked directly against each line's calendar below`}
+            .
           </p>
         </div>
         <ChevronDownIcon
@@ -56,7 +70,14 @@ export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
           {qualitativeFacts.map((f) => (
             <li key={f.id} className="flex gap-2 text-sm text-ink-muted">
               <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
-              <span>{f.statement}</span>
+              <span>
+                {f.statement}
+                {f.recurringWeekday && (
+                  <span className="ml-1.5 inline-flex items-center rounded-full bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
+                    Checked against every line&rsquo;s {f.recurringWeekday}s
+                  </span>
+                )}
+              </span>
             </li>
           ))}
         </ul>
