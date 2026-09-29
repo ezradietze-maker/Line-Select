@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { pairingToTrip } from "@/lib/pdf-parser/build-bidpack";
-import type { ParsedPairing } from "@/lib/pdf-parser/types";
+import { buildLine, pairingToTrip } from "@/lib/pdf-parser/build-bidpack";
+import type { DayPlacement } from "@/lib/pdf-parser/line-grid-days";
+import type { ParsedLineSummary, ParsedPairing } from "@/lib/pdf-parser/types";
 
 /**
  * A report far from midnight GMT is exactly the case that exposed the real
@@ -160,5 +161,129 @@ describe("pairingToTrip — days", () => {
   it("falls back to the printed day count when there's no schedule to split", () => {
     const trip = pairingToTrip(makePairing({ days: 3, schedule: [] }), "SEP26");
     expect(trip.days).toBe(3);
+  });
+});
+
+/** A same-day out-and-back — one short daytime leg, no layover — the shape a repeated 1-day pairing actually has. */
+function makeOneDayPairing(overrides: Partial<ParsedPairing> = {}): ParsedPairing {
+  return {
+    id: "p-1",
+    sequenceNumber: "12",
+    pageNumber: 1,
+    days: 1,
+    layoverCities: [],
+    layoverDetails: [],
+    reportTime: "afternoon",
+    reportTimeLocal: "1200",
+    international: false,
+    deadheadLegs: 0,
+    creditHours: 4,
+    blockHours: 1,
+    landings: 2,
+    tafbHours: 6,
+    effectiveText: "",
+    firstFlightNumber: "FX100",
+    flightNumbers: ["FX100"],
+    schedule: [
+      {
+        reportTimeLocal: "1200",
+        startMinutes: 0,
+        legs: [
+          {
+            flightNumber: "FX100",
+            equipment: "76",
+            isDeadhead: false,
+            depAirport: "MEM",
+            depTimeLocal: "1200",
+            depTimeGmt: "1700",
+            arrAirport: "BHM",
+            arrTimeLocal: "1300",
+            arrTimeGmt: "1800",
+            blockHours: 1,
+            startMinutes: 0,
+            endMinutes: 60,
+          },
+        ],
+        layover: null,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function makeSummary(overrides: Partial<ParsedLineSummary> = {}): ParsedLineSummary {
+  return {
+    lineNumber: "1001",
+    pageNumber: 1,
+    seat: "CAP",
+    daysOff: 20,
+    totalCreditHours: 12,
+    totalTafbHours: 18,
+    totalLandings: 6,
+    numDutyPeriods: 3,
+    flightNumberSequence: [],
+    ...overrides,
+  };
+}
+
+describe("buildLine — consolidating repeated 1-day trips", () => {
+  it("merges three consecutive same-pairing 1-day trips into one 3-day trip", () => {
+    const pairings = [
+      makeOneDayPairing({ id: "p-a" }),
+      makeOneDayPairing({ id: "p-b" }),
+      makeOneDayPairing({ id: "p-c" }),
+    ];
+    const placements: DayPlacement[] = [
+      { pairingNumber: "12", startDayIndex: 4 },
+      { pairingNumber: "12", startDayIndex: 5 },
+      { pairingNumber: "12", startDayIndex: 6 },
+    ];
+    const line = buildLine(makeSummary(), pairings, "SEP26", placements);
+
+    expect(line.trips).toHaveLength(1);
+    const trip = line.trips[0];
+    expect(trip.days).toBe(3);
+    expect(trip.startDayIndex).toBe(4);
+    expect(trip.creditHours).toBe(12);
+    expect(trip.landings).toBe(6);
+    expect(trip.departures).toBe(6);
+    expect(trip.schedule).toHaveLength(3);
+
+    // Each occurrence's leg timestamps must land exactly a real day apart —
+    // not all piled onto the same instant, which is what you'd get if only
+    // the trip's day count changed without re-anchoring the schedule itself.
+    const [dep1, dep2, dep3] = trip.schedule.map((duty) => new Date(duty.legs[0].depTimeZulu).getTime());
+    expect((dep2 - dep1) / 60000).toBe(1440);
+    expect((dep3 - dep1) / 60000).toBe(2880);
+  });
+
+  it("does not merge different pairing numbers, even consecutive and 1-day each", () => {
+    const pairings = [
+      makeOneDayPairing({ id: "p-a", sequenceNumber: "12" }),
+      makeOneDayPairing({ id: "p-b", sequenceNumber: "13" }),
+    ];
+    const placements: DayPlacement[] = [
+      { pairingNumber: "12", startDayIndex: 4 },
+      { pairingNumber: "13", startDayIndex: 5 },
+    ];
+    const line = buildLine(makeSummary(), pairings, "SEP26", placements);
+    expect(line.trips).toHaveLength(2);
+  });
+
+  it("does not merge the same pairing number across a gap in days", () => {
+    const pairings = [makeOneDayPairing({ id: "p-a" }), makeOneDayPairing({ id: "p-b" })];
+    const placements: DayPlacement[] = [
+      { pairingNumber: "12", startDayIndex: 4 },
+      { pairingNumber: "12", startDayIndex: 8 },
+    ];
+    const line = buildLine(makeSummary(), pairings, "SEP26", placements);
+    expect(line.trips).toHaveLength(2);
+  });
+
+  it("leaves trips unmerged when they have no placed day at all", () => {
+    const pairings = [makeOneDayPairing({ id: "p-a" }), makeOneDayPairing({ id: "p-b" }), makeOneDayPairing({ id: "p-c" })];
+    const line = buildLine(makeSummary(), pairings, "SEP26");
+    expect(line.trips).toHaveLength(3);
+    expect(line.trips.every((t) => t.startDayIndex === null)).toBe(true);
   });
 });

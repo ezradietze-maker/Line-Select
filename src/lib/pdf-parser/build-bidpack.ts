@@ -215,6 +215,99 @@ function applyDayPlacements(trips: Trip[], placements: DayPlacement[] | undefine
   }
 }
 
+/**
+ * A leg's `startMinutes`/`endMinutes` are elapsed minutes since ITS OWN
+ * trip's report (t=0) — see `TripLeg`'s own doc comment — so re-anchoring a
+ * later occurrence onto the first occurrence's `zuluAnchor` means shifting
+ * every minute-based field on it forward by a whole number of days, not
+ * just recomputing the Zulu timestamps in isolation (those are derived FROM
+ * the minutes, so both must move together or they go inconsistent with
+ * each other the moment anything re-derives one from the other).
+ */
+function shiftScheduleByDays(schedule: TripDutyPeriod[], dayOffset: number, anchor: string): TripDutyPeriod[] {
+  if (dayOffset === 0) return schedule;
+  const shift = dayOffset * 1440;
+  return schedule.map((duty) => ({
+    ...duty,
+    startMinutes: duty.startMinutes + shift,
+    legs: duty.legs.map((leg) => ({
+      ...leg,
+      startMinutes: leg.startMinutes + shift,
+      endMinutes: leg.endMinutes + shift,
+      depTimeZulu: zuluAt(anchor, leg.startMinutes + shift),
+      arrTimeZulu: zuluAt(anchor, leg.endMinutes + shift),
+    })),
+    layover: duty.layover
+      ? { ...duty.layover, startMinutes: duty.layover.startMinutes + shift, endMinutes: duty.layover.endMinutes + shift }
+      : null,
+  }));
+}
+
+/** Merges a run of consecutive same-pairing 1-day trips into one N-day trip — the totals below are sums across the run, which is why `Line.totalDepartures`/`totalDutyPeriods` (themselves sums over `trips`) come out identical either way; only the shape of `trips` itself changes. */
+function mergeConsecutiveOneDayTrips(run: Trip[]): Trip {
+  const first = run[0];
+  const standbyValues = run.map((t) => t.standbyDays);
+  return {
+    ...first,
+    days: run.length,
+    creditHours: round2(run.reduce((s, t) => s + t.creditHours, 0)),
+    tafbHours: round2(run.reduce((s, t) => s + t.tafbHours, 0)),
+    landings: run.reduce((s, t) => s + t.landings, 0),
+    departures: run.reduce((s, t) => s + t.departures, 0),
+    deadheadLegs: run.reduce((s, t) => s + t.deadheadLegs, 0),
+    dutyPeriods: run.reduce((s, t) => s + (t.dutyPeriods ?? 1), 0),
+    // Preserve "not tracked" (undefined) rather than promoting it to a real 0
+    // when every occurrence in the run predates standby tracking.
+    standbyDays: standbyValues.every((v) => v === undefined)
+      ? undefined
+      : standbyValues.reduce<number>((s, v) => s + (v ?? 0), 0),
+    international: run.some((t) => t.international),
+    layoverCities: run.flatMap((t) => t.layoverCities),
+    layoverDetails: run.flatMap((t) => t.layoverDetails),
+    schedule: run.flatMap((trip, i) => shiftScheduleByDays(trip.schedule, i, first.zuluAnchor)),
+  };
+}
+
+/**
+ * A pilot bidding a line that flies the same short out-and-back three days
+ * straight thinks of that as "trip 12, three days," not three separate
+ * trips — so once every trip on a line has a real placed day (the same
+ * all-or-nothing precondition `applyGridFootprints` uses; a partial merge
+ * would look authoritative while being wrong for part of the line), collapse
+ * any run of consecutive 1-day occurrences of the same pairing number into
+ * one multi-day trip before this line's trip list is considered final. Runs
+ * of two collapse just as much as runs of three or more — the mental-model
+ * argument doesn't have a minimum length.
+ */
+function consolidateRepeatedSingleDayTrips(trips: Trip[]): Trip[] {
+  if (trips.length === 0 || trips.some((t) => t.startDayIndex === null)) return trips;
+  const ordered = [...trips].sort((a, b) => a.startDayIndex! - b.startDayIndex!);
+
+  const result: Trip[] = [];
+  let run: Trip[] = [ordered[0]];
+  const flush = () => result.push(run.length > 1 ? mergeConsecutiveOneDayTrips(run) : run[0]);
+
+  for (let i = 1; i < ordered.length; i++) {
+    const prev = run[run.length - 1];
+    const next = ordered[i];
+    const continuesRun =
+      prev.days === 1 &&
+      next.days === 1 &&
+      next.pairingNumber !== null &&
+      next.pairingNumber === prev.pairingNumber &&
+      next.startDayIndex === prev.startDayIndex! + 1;
+    if (continuesRun) {
+      run.push(next);
+    } else {
+      flush();
+      run = [next];
+    }
+  }
+  flush();
+
+  return result;
+}
+
 export function buildLine(
   summary: ParsedLineSummary,
   matchedPairings: ParsedPairing[] | null,
@@ -223,13 +316,15 @@ export function buildLine(
   /** The grid's own "---" (no trip) days for this line — kept only when they add up to its printed days off. */
   gridDays?: { offDays: number[]; dayCount: number }
 ): Line {
-  const trips = matchedPairings
+  const rawTrips = matchedPairings
     ? matchedPairings.map((p) => pairingToTrip(p, bidPackMonth))
     : [buildEstimatedTrip(summary, bidPackMonth)];
 
-  applyDayPlacements(trips, dayPlacements);
+  applyDayPlacements(rawTrips, dayPlacements);
   const gridOffDays = gridDays && gridDays.offDays.length === summary.daysOff ? gridDays.offDays : undefined;
-  if (gridOffDays) applyGridFootprints(trips, gridOffDays, gridDays!.dayCount);
+  if (gridOffDays) applyGridFootprints(rawTrips, gridOffDays, gridDays!.dayCount);
+
+  const trips = consolidateRepeatedSingleDayTrips(rawTrips);
 
   return {
     id: `line-${summary.lineNumber}`,
