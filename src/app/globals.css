@@ -1,25 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  /* Base surfaces */
-  --color-canvas: #f6f5f2;
-  --color-surface: #ffffff;
-  --color-surface-raised: #ffffff;
-  --color-border: #e1ddd4;
-  --color-border-strong: #c9c3b6;
+  /* Base surfaces — warm beige/cream, never stark white */
+  --color-canvas: #f1e8d8;
+  --color-surface: #f8f2e6;
+  --color-surface-raised: #fbf6ec;
+  --color-border: #e0d2b3;
+  --color-border-strong: #cdb98c;
 
   /* Text */
-  --color-ink: #171b20;
-  --color-ink-muted: #5a6270;
-  --color-ink-faint: #68707d;
+  --color-ink: #2e2013;
+  --color-ink-muted: #7a6852;
+  --color-ink-faint: #8f7d64;
 
-  /* Brand: deep aviation navy + warm instrument-panel amber */
-  --color-brand: #1c3d5c;
-  --color-brand-strong: #12283f;
-  --color-brand-soft: #e6edf3;
-  --color-accent: #b5792b;
-  --color-accent-soft: #f4e6d2;
-  --color-accent-wash: #ecd3a0;
+  /* Brand: deep coffee brown + warm caramel accent */
+  --color-brand: #4a3420;
+  --color-brand-strong: #34240f;
+  --color-brand-soft: #ece0c8;
+  --color-accent: #9c5b23;
+  --color-accent-soft: #f1e2c4;
+  --color-accent-wash: #e4c48c;
   /* Calendar views' own "Flying" segment color — defaults to brand, but is
      the one color a pilot can personalize (see calendar-theme.ts) without
      touching the rest of the app's palette. Set directly on documentElement
@@ -27,17 +27,18 @@
      so a pilot's choice survives a light/dark switch unchanged. */
   --color-calendar-accent: var(--color-brand);
 
-  /* Second accent: a desaturated "dispatch stamp" blue — cooler and grayer than
-     brand-navy on purpose, so the two don't read as one hue at two weights. */
-  --color-dispatch: #3d5a7a;
-  --color-dispatch-soft: #e3e9ef;
-  --color-dispatch-wash: #c7d4e0;
+  /* Second accent: a warm, grayer taupe — desaturated relative to brand/accent
+     on purpose, so the two don't read as one hue at two weights. */
+  --color-dispatch: #8a6f4e;
+  --color-dispatch-soft: #efe6d6;
+  --color-dispatch-wash: #d9c9a8;
 
   /* Sidebar: a distinct recessed panel, not a copy of the content surface */
-  --color-sidebar: #eeeae1;
-  --color-sidebar-border: #cdc4b0;
+  --color-sidebar: #ece0c8;
+  --color-sidebar-border: #cdb98c;
 
-  /* Semantic */
+  /* Semantic — unchanged by the brand re-theme; status colors carry meaning
+     independent of brand identity. */
   --color-good: #2f7d5f;
   --color-standby: #7b5ea7;
   --color-good-soft: #e1f0e7;
@@ -48,7 +49,7 @@
   --color-danger: #c33a2e;
   --color-danger-soft: #f8e3de;
 
-  --color-focus-ring: #1c3d5c;
+  --color-focus-ring: #4a3420;
 
   /* Warm paper shadow — hue 35 (amber-brown), not a generic cool gray. */
   --shadow-color: 35 15% 20%;
@@ -75,30 +76,30 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-canvas: #0a0d11;
-    --color-surface: #141a21;
-    --color-surface-raised: #1a222b;
-    --color-border: #262f3a;
-    --color-border-strong: #37424f;
+    --color-canvas: #1c150d;
+    --color-surface: #241b11;
+    --color-surface-raised: #2c2115;
+    --color-border: #42331e;
+    --color-border-strong: #54402d;
 
-    --color-ink: #e9ebee;
-    --color-ink-muted: #99a2af;
-    --color-ink-faint: #7d8794;
+    --color-ink: #f2e8d8;
+    --color-ink-muted: #a8977c;
+    --color-ink-faint: #7a6852;
 
-    --color-brand: #6f9dc4;
-    --color-brand-strong: #8db4d6;
-    --color-brand-soft: #1a2733;
-    --color-accent: #d6a44f;
-    --color-accent-soft: #2c2417;
-    --color-accent-wash: #3a2c14;
+    --color-brand: #c9a468;
+    --color-brand-strong: #e0c08a;
+    --color-brand-soft: #3a2b18;
+    --color-accent: #d68a3e;
+    --color-accent-soft: #3d2814;
+    --color-accent-wash: #5c3f1e;
     --color-calendar-accent: var(--color-brand);
 
-    --color-dispatch: #7fa8cc;
-    --color-dispatch-soft: #1b2530;
-    --color-dispatch-wash: #2a3846;
+    --color-dispatch: #b39a72;
+    --color-dispatch-soft: #362a1a;
+    --color-dispatch-wash: #4a3a22;
 
-    --color-sidebar: #05070a;
-    --color-sidebar-border: #1f2830;
+    --color-sidebar: #150f09;
+    --color-sidebar-border: #2e2314;
 
     --color-good: #5cb98d;
     --color-standby: #a48bd0;
@@ -108,7 +109,7 @@
     --color-danger: #e2604a;
     --color-danger-soft: #2e1a16;
 
-    --color-focus-ring: #8db4d6;
+    --color-focus-ring: #c9a468;
     --shadow-color: 35 25% 2%;
 
     /* Dark surfaces need a stronger alpha than light for the grid to read at the same subtlety. */
@@ -117,30 +118,30 @@
 }
 
 :root[data-theme="dark"] {
-  --color-canvas: #0a0d11;
-  --color-surface: #141a21;
-  --color-surface-raised: #1a222b;
-  --color-border: #262f3a;
-  --color-border-strong: #37424f;
+  --color-canvas: #1c150d;
+  --color-surface: #241b11;
+  --color-surface-raised: #2c2115;
+  --color-border: #42331e;
+  --color-border-strong: #54402d;
 
-  --color-ink: #e9ebee;
-  --color-ink-muted: #99a2af;
-  --color-ink-faint: #7d8794;
+  --color-ink: #f2e8d8;
+  --color-ink-muted: #a8977c;
+  --color-ink-faint: #7a6852;
 
-  --color-brand: #6f9dc4;
-  --color-brand-strong: #8db4d6;
-  --color-brand-soft: #1a2733;
-  --color-accent: #d6a44f;
-  --color-accent-soft: #2c2417;
-  --color-accent-wash: #3a2c14;
+  --color-brand: #c9a468;
+  --color-brand-strong: #e0c08a;
+  --color-brand-soft: #3a2b18;
+  --color-accent: #d68a3e;
+  --color-accent-soft: #3d2814;
+  --color-accent-wash: #5c3f1e;
   --color-calendar-accent: var(--color-brand);
 
-  --color-dispatch: #7fa8cc;
-  --color-dispatch-soft: #1b2530;
-  --color-dispatch-wash: #2a3846;
+  --color-dispatch: #b39a72;
+  --color-dispatch-soft: #362a1a;
+  --color-dispatch-wash: #4a3a22;
 
-  --color-sidebar: #05070a;
-  --color-sidebar-border: #1f2830;
+  --color-sidebar: #150f09;
+  --color-sidebar-border: #2e2314;
 
   --color-good: #5cb98d;
   --color-standby: #a48bd0;
@@ -150,7 +151,7 @@
   --color-danger: #e2604a;
   --color-danger-soft: #2e1a16;
 
-  --color-focus-ring: #8db4d6;
+  --color-focus-ring: #c9a468;
   --shadow-color: 35 25% 2%;
 }
 
@@ -242,6 +243,23 @@ body {
 
 .shadow-sidebar {
   box-shadow: 3px 0 14px -6px hsl(var(--shadow-color) / 0.35);
+}
+
+/* A gentle physical lift on hover — for surfaces (cards) that only had a
+   shadow transition before and read flat next to buttons, which already
+   lift. Kept to a small translate so it reads as "responsive," not bouncy. */
+.hover-lift {
+  transition: transform var(--duration-base) var(--ease-standard), box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.hover-lift:hover {
+  transform: translateY(-3px);
+}
+
+/* The one warm halo in the app, reserved for the single top-ranked line so
+   it keeps meaning "this is the one" instead of becoming decoration. */
+.top-pick-glow {
+  box-shadow: 0 0 1px hsl(var(--shadow-color) / 0.4), 0 0 48px -20px var(--color-accent);
 }
 
 /* ---- Slider ---- */
@@ -383,6 +401,9 @@ body {
   }
   .line-slider::-webkit-slider-thumb,
   .line-slider::-moz-range-thumb {
+    transition: none;
+  }
+  .hover-lift {
     transition: none;
   }
 }

@@ -657,14 +657,20 @@ export function ResultsView({
               {displayed.length === 0 ? (
                 <EmptyState compact description={emptyMessage} />
               ) : (
-                displayed.map((lineScore) => (
+                displayed.map((lineScore, index) => (
                   <motion.div
                     key={lineScore.line.id}
                     layout={dragEnabled ? "position" : false}
+                    initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
                     transition={
                       reduceMotion
                         ? { duration: 0 }
-                        : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }
+                        : {
+                            layout: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
+                            opacity: { duration: 0.35, ease: [0.16, 1, 0.3, 1], delay: Math.min(index * 0.035, 0.4) },
+                            y: { duration: 0.35, ease: [0.16, 1, 0.3, 1], delay: Math.min(index * 0.035, 0.4) },
+                          }
                     }
                   >
                     <ErrorBoundary>
