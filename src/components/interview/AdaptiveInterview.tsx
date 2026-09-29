@@ -372,7 +372,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       const res = await fetch("/api/interview-bidding-story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bidStoryText: trimmed, grounding, base: bidPack.base, aircraft: bidPack.aircraft, isCommuter }),
+        body: JSON.stringify({ bidStoryText: trimmed, grounding, base: bidPack.base, aircraft: bidPack.aircraft, isCommuter, cityCodes: allCities }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);

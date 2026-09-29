@@ -44,12 +44,15 @@ export async function POST(request: Request) {
     !isJsonObject(body.grounding) ||
     typeof body.base !== "string" ||
     typeof body.aircraft !== "string" ||
-    (body.isCommuter !== null && typeof body.isCommuter !== "boolean")
+    (body.isCommuter !== null && typeof body.isCommuter !== "boolean") ||
+    (body.cityCodes !== undefined && !Array.isArray(body.cityCodes))
   ) {
     return NextResponse.json({ error: "Missing bidding-story input." }, { status: 400 });
   }
+  // Absent on a client from before this field existed — treated as "no known cities" rather than a hard failure.
+  const cityCodes = Array.isArray(body.cityCodes) ? body.cityCodes.filter((c): c is string => typeof c === "string").slice(0, 300) : [];
 
-  const result = await runBiddingStoryExtraction(apiKey, body as BiddingStoryRequestBody);
+  const result = await runBiddingStoryExtraction(apiKey, { ...body, cityCodes } as BiddingStoryRequestBody);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 502 });
   }

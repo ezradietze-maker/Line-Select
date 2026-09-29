@@ -76,7 +76,7 @@ function profileUpdatesSchemaProperty() {
               type: "string",
               enum: ["dealbreaker"],
               description:
-                "Omit for the overwhelming majority of facts. Only include \"dealbreaker\" when the pilot's own words are unambiguous about refusal — \"I will not,\" \"that's a dealbreaker,\" \"I'd reject any line with X.\" Never for a merely strong-sounding preference (\"I really don't like,\" \"I'd rather avoid,\" \"I'm not a fan of\") — those stay ordinary preferences with a high importance value instead. Meaningful on a 'measurable' fact whose binding is 'explicit-weight', 'implicit-weight', or 'city-sentiment'. Also valid on 'explicit-target' but ONLY when rangeRole is 'min' or 'max' — a stated floor or ceiling ('fewer than X days off is a dealbreaker', 'more than Y departures is a dealbreaker') has a real violation condition; a bare pinned 'ideal' number does not, and severity there is dropped.",
+                "Omit for the overwhelming majority of facts. Only include \"dealbreaker\" when the pilot's own words are unambiguous about refusal — \"I will not,\" \"that's a dealbreaker,\" \"I'd reject any line with X.\" Never for a merely strong-sounding preference (\"I really don't like,\" \"I'd rather avoid,\" \"I'm not a fan of\") — those stay ordinary preferences with a high importance value instead. Also never for a stated number framed as a want/need/target (\"I need at least 16 days off,\" \"I'm trying to stay under 11\") — that's an ordinary explicit-target fact regardless of how firmly it's worded, not a dealbreaker, unless the pilot's words are themselves refusal (\"anything under 16 and I won't bid it\"). Also never for hedged proximity to a dealbreaker (\"that's close to a dealbreaker,\" \"almost a dealbreaker\") — that phrasing is the pilot saying it ISN'T one. Meaningful on a 'measurable' fact whose binding is 'explicit-weight', 'implicit-weight', or 'city-sentiment'. Also valid on 'explicit-target' but ONLY when rangeRole is 'min' or 'max' AND the wording is itself refusal, not just a real number — a bare pinned 'ideal' number never carries severity at all.",
             },
             measurable: {
               type: "object",
@@ -90,7 +90,8 @@ function profileUpdatesSchemaProperty() {
                 direction: {
                   type: "integer",
                   enum: [1, -1],
-                  description: "For 'explicit-weight' or 'implicit-weight'.",
+                  description:
+                    "For 'explicit-weight' or 'implicit-weight'. For the magnitude-only explicit-weight ids (hotelFood, hotelGym, hotelGrocery, hotelQuiet, hotelQuality, circadianHealth) this must always be 1 — there is no real opposite for these, so 'doesn't care' is direction 1 with low importance, never -1.",
                 },
                 value: { type: "number", description: "For 'explicit-target' — the exact pinned number for this rangeRole." },
                 rangeRole: {
@@ -143,7 +144,7 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
         type: ["object", "null"],
         description: "Required when action is 'ask'; null when action is 'wrap_up'.",
         properties: {
-          kind: { type: "string", enum: ["slider", "target-slider", "choice", "free-text", "wrap-up"] },
+          kind: { type: "string", enum: ["slider", "target-slider", "choice", "free-text"] },
           prompt: { type: "string", description: "The question text itself, in pilot voice." },
           helpText: { type: "string", description: "Optional one-line context shown under the prompt." },
           boundTo: {
@@ -181,7 +182,15 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
         description: "Internal-only: why you chose this action. Never shown to the pilot.",
       },
     },
-    required: ["action", "profileUpdates"],
+    // "question" is required at this top level even though it's legitimately
+    // null for a wrap_up (its own type already allows ["object", "null"]) —
+    // a live-tested failure at scale (41% of turns in a stress test with a
+    // large bidStory context) showed the model omitting "question" entirely
+    // on an "ask" response when it wasn't in this list, not from hitting the
+    // output token ceiling (well under budget every time it happened) but
+    // from the field simply reading as skippable. Listing it here is a much
+    // stronger signal than the field's own description alone.
+    required: ["action", "question", "profileUpdates"],
   },
   };
 }
@@ -359,9 +368,6 @@ export function parseQuestion(raw: unknown): InterviewQuestion | null {
   }
   if (q.kind === "free-text") {
     return { id, kind: "free-text", prompt: q.prompt, helpText, placeholder: typeof q.placeholder === "string" ? q.placeholder : undefined };
-  }
-  if (q.kind === "wrap-up") {
-    return { id, kind: "wrap-up", prompt: q.prompt };
   }
   return null;
 }
@@ -620,6 +626,7 @@ function buildStoryUserMessage(req: BiddingStoryRequestBody): string {
       bidPack: { base: req.base, aircraft: req.aircraft },
       isCommuter: req.isCommuter,
       validCatalogIds: Array.from(new Set(allKnownVariableDescriptors().map((d) => d.id))),
+      validCityCodes: req.cityCodes,
     },
     null,
     0

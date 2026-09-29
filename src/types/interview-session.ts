@@ -167,8 +167,7 @@ export type InterviewQuestion =
       rangeRole?: "min" | "ideal" | "max";
     }
   | { id: string; kind: "choice"; prompt: string; helpText?: string; options: { label: string; description?: string }[] }
-  | { id: string; kind: "free-text"; prompt: string; helpText?: string; placeholder?: string }
-  | { id: string; kind: "wrap-up"; prompt: string };
+  | { id: string; kind: "free-text"; prompt: string; helpText?: string; placeholder?: string };
 
 export type InterviewAnswer =
   /** `elaboration`: optional free-text the pilot chose to add alongside a slider answer — always offered in the adaptive loop, never required. Read by the same extraction step that reads the slider value itself. */
@@ -304,6 +303,8 @@ export interface BiddingStoryRequestBody {
   base: string;
   aircraft: string;
   isCommuter: boolean | null;
+  /** This bid pack's real layover city codes, most-visited first (see `rankLayoverCitiesByFrequency` in `scoring.ts`) — lets the model confidently bind a pilot-named city ("I love Paris layovers") to a real city-sentiment fact instead of leaving it an untied qualitative statement, the one thing this extraction couldn't do without knowing which codes are real. */
+  cityCodes: string[];
 }
 
 /** What the bidding-story extraction call returns — every fact it could pull out of the narrative, plus anonymized style material the route stores server-side (never returned past that). */

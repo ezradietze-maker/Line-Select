@@ -300,8 +300,6 @@ function answerQuestion(persona: Persona, question: InterviewQuestion, creditRan
       return { kind: "choice", selectedIndex: pickChoiceIndex(persona, question.options) };
     case "free-text":
       return { kind: "free-text", text: pickFreeText(persona, question.prompt) };
-    case "wrap-up":
-      return { kind: "skipped" };
   }
 }
 
