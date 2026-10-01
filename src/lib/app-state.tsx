@@ -61,7 +61,8 @@ interface AppStateValue extends DataState {
   handleStartInterview: () => void;
   handleAcknowledgeFreshBidPack: () => void;
   handleStartOver: () => void;
-  handleDismissStorageWarning: () => void;
+  handleDismissBidPackSaveWarning: () => void;
+  handleDismissProfileSaveWarning: () => void;
   handleDismissToast: (id: string) => void;
   handleToastClick: (id: string) => void;
   handleAuthenticated: (newUser: UserAccount) => void;
@@ -375,8 +376,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void clearProfileForUser(user?.id ?? null);
   }
 
-  function handleDismissStorageWarning() {
-    setState((s) => ({ ...s, bidPackSaveFailed: false, profileSaveFailed: false }));
+  // Two independent dismissals, not one shared flag reset — a pilot
+  // dismissing the bid-pack warning must not silently also clear the
+  // profile-save warning (and lose their only notice that a finished
+  // profile won't survive a refresh) without ever seeing it.
+  function handleDismissBidPackSaveWarning() {
+    setState((s) => ({ ...s, bidPackSaveFailed: false }));
+  }
+
+  function handleDismissProfileSaveWarning() {
+    setState((s) => ({ ...s, profileSaveFailed: false }));
   }
 
   function handleDismissToast(id: string) {
@@ -476,7 +485,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     handleStartInterview,
     handleAcknowledgeFreshBidPack,
     handleStartOver,
-    handleDismissStorageWarning,
+    handleDismissBidPackSaveWarning,
+    handleDismissProfileSaveWarning,
     handleDismissToast,
     handleToastClick,
     handleAuthenticated,

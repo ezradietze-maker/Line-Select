@@ -61,7 +61,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing interview turn input." }, { status: 400 });
   }
 
-  const styleSample = await loadStyleSample(STYLE_SAMPLE_SIZE);
+  // A style-sample read failing should never fail the interview turn itself
+  // — it's loose calibration, not load-bearing — so this degrades to no
+  // sample rather than propagating a DB hiccup into a dead turn.
+  let styleSample: string[] = [];
+  try {
+    styleSample = await loadStyleSample(STYLE_SAMPLE_SIZE);
+  } catch (e) {
+    console.error("[interview-turn] style sample load failed", e);
+  }
+
   const result = await runInterviewTurn(apiKey, { ...body, styleSample } as TurnRequestBody);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 502 });

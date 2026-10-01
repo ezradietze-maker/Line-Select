@@ -135,13 +135,30 @@ export function useSpeechToText(onChunk: (text: string, isFinal: boolean) => voi
  */
 export function useDictation(value: string, onChange: (next: string) => void) {
   const baseRef = useRef(value);
+  // What we ourselves last asked the caller to adopt — `value` landing on
+  // anything else (the pilot typing by hand mid-dictation, or a caller
+  // like BiddingStoryStep clamping to a max length) means `value` is now
+  // the real authoritative text, not what we think base is.
+  const lastEmittedRef = useRef(value);
+
   const { supported, listening, error, start, stop } = useSpeechToText((chunk, isFinal) => {
     const base = baseRef.current;
     const needsSpace = base.length > 0 && !/\s$/.test(base);
     const combined = base + (needsSpace ? " " : "") + chunk;
+    lastEmittedRef.current = combined;
     onChange(combined);
     if (isFinal) baseRef.current = combined;
   });
+
+  // Re-base onto `value` whenever it diverges from our last emission —
+  // otherwise the next dictated chunk builds on a stale pre-edit or
+  // pre-clamp copy and silently erases whatever changed it.
+  useEffect(() => {
+    if (value !== lastEmittedRef.current) {
+      baseRef.current = value;
+      lastEmittedRef.current = value;
+    }
+  }, [value]);
 
   const toggle = useCallback(() => {
     if (listening) {
@@ -149,6 +166,7 @@ export function useDictation(value: string, onChange: (next: string) => void) {
       return;
     }
     baseRef.current = value;
+    lastEmittedRef.current = value;
     start();
   }, [listening, start, stop, value]);
 

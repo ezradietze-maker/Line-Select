@@ -25,16 +25,16 @@ export async function saveStyleSamples(phrases: string[], tags: string[]): Promi
 
   await db.insert(interviewStyleSamples).values(rows.map((phrase) => ({ phrase, tags })));
 
-  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(interviewStyleSamples);
-  const over = Number(count) - MAX_ROWS;
-  if (over > 0) {
-    await db.execute(sql`
-      delete from interview_style_samples
-      where id in (
-        select id from interview_style_samples order by created_at asc limit ${over}
-      )
-    `);
-  }
+  // One statement, not count-then-delete — two concurrent saves each doing
+  // a separate count-and-decide race each other and can leave the table
+  // either over-pruned or briefly over MAX_ROWS. Keeping only the newest
+  // MAX_ROWS unconditionally is idempotent under concurrent callers.
+  await db.execute(sql`
+    delete from interview_style_samples
+    where id not in (
+      select id from interview_style_samples order by created_at desc limit ${MAX_ROWS}
+    )
+  `);
 }
 
 /** A random sample of up to `n` stored phrases — loose vocabulary/register calibration, never returned to a client, never quoted verbatim per the prompt's own instruction. Empty until the corpus has anything in it. */
