@@ -7,7 +7,7 @@
       "mcp__Claude_Browser__read_console_messages",
       "Bash(npx tsc --noEmit *)",
       "mcp__Claude_Browser__preview_logs",
-      "Bash(git push:*)"
+      "Bash(git push)"
     ]
   }
 }

@@ -552,6 +552,28 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
             ? `q-${currentQuestion.id}`
             : phase;
 
+  // ScreenTransition drifts in from a direction, but there's no single
+  // "going forward" setPhase call to hook — forward moves happen from a
+  // dozen different handlers, while `goBack` is the one and only path
+  // backward. Rather than touch every forward call site, derive direction
+  // from whether this step's key has been seen before in this session:
+  // landing on a key again (goBack restoring an earlier question, or
+  // stepping back through the pre-steps) reads as backward, anything new
+  // reads as forward. Updated via setState directly in the render body —
+  // React's own documented pattern for adjusting state when a prop/derived
+  // value changes (not a ref: that's restricted to effects/handlers here).
+  // React re-renders immediately on this branch before committing anything,
+  // so the direction used below is always correct for the render that
+  // actually reaches the screen, with no extra paint or lag.
+  const [prevStepKey, setPrevStepKey] = useState(stepKey);
+  const [visitedStepKeys, setVisitedStepKeys] = useState<ReadonlySet<string>>(() => new Set([stepKey]));
+  let stepDirection: 1 | -1 | 0 = 1;
+  if (stepKey !== prevStepKey) {
+    stepDirection = visitedStepKeys.has(stepKey) ? -1 : 1;
+    setVisitedStepKeys((prev) => new Set(prev).add(stepKey));
+    setPrevStepKey(stepKey);
+  }
+
   const content = (() => {
     if (phase === "seniority" && bidPack.seniorityList) {
       const typed = seniorityText.trim();
@@ -813,7 +835,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
           </button>
         )}
         {error && phase !== "adaptive-question" && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-        <ScreenTransition screenKey={stepKey} direction={1}>
+        <ScreenTransition screenKey={stepKey} direction={stepDirection}>
           {content}
         </ScreenTransition>
       </div>
