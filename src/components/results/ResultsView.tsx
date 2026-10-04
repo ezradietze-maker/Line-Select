@@ -16,6 +16,7 @@ import {
 import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { motion, useReducedMotion } from "motion/react";
 import { BidOrderExport, type BidOrderEntry } from "@/components/results/BidOrderExport";
+import { BidPeriodChangeBanner } from "@/components/results/BidPeriodChangeBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
 import { ResultsFilterBar } from "@/components/results/ResultsFilterBar";
@@ -34,6 +35,7 @@ import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { useBidForecast } from "@/lib/forecast/use-bid-forecast";
+import { loadPreviousPeriodSnapshot, saveBidPeriodSnapshot, summarizeBidPeriodChange } from "@/lib/bid-period-history";
 import { assessProfileRichness } from "@/lib/interview-engine";
 import { computeFilterOptions } from "@/lib/line-filter-options";
 import { collectLayoverCities, EMPTY_FILTERS, lineMatchesFilters, type LineFilters } from "@/lib/line-filters";
@@ -244,6 +246,12 @@ export function ResultsView({
   // below) recomputes.
   const [priorTopLines] = useState(() => loadTopLinesSnapshot(userId));
 
+  // Same "read once" posture as `priorTopLines` above, and for the same
+  // reason — this is deliberately last bid period's own record, not
+  // something that should shift mid-session as the save effect below
+  // keeps this period's entry current.
+  const [previousPeriodSnapshot] = useState(() => loadPreviousPeriodSnapshot(userId, bidPack.month));
+
   const ranked = useMemo(
     () => rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines),
     [bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines]
@@ -283,7 +291,13 @@ export function ResultsView({
   useEffect(() => {
     if (!hotelsSettled) return;
     saveTopLinesSnapshot(userId, ranked);
-  }, [userId, ranked, hotelsSettled]);
+    saveBidPeriodSnapshot(userId, bidPack.month, ranked);
+  }, [userId, ranked, hotelsSettled, bidPack.month]);
+
+  const bidPeriodChange = useMemo(
+    () => summarizeBidPeriodChange(previousPeriodSnapshot, ranked),
+    [previousPeriodSnapshot, ranked]
+  );
 
   // Global rank survives filtering — a filtered card or export entry always
   // shows its true position in the full ranking, not a renumbered index into
@@ -459,6 +473,7 @@ export function ResultsView({
         </Button>
       </div>
 
+      <BidPeriodChangeBanner summary={bidPeriodChange} />
       {confirmingStartOver && (
         <ConfirmModal
           title="Start over from scratch?"
