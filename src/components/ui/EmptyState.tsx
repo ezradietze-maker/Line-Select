@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Heading } from "@/components/ui/Heading";
+import { EmptyTrayIcon } from "@/components/ui/icons";
 
 interface EmptyStateProps {
   icon?: ReactNode;
@@ -27,7 +28,7 @@ export function EmptyState({
   if (compact) {
     return (
       <div className={`animate-fade-in rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-ink-faint ${className}`}>
-        {icon && <div className="mb-2 flex justify-center">{icon}</div>}
+        <div className="mb-2 flex justify-center text-ink-faint">{icon ?? <EmptyTrayIcon className="h-6 w-6" />}</div>
         {title && <div className="font-medium text-ink-muted">{title}</div>}
         <div className={title ? "mt-1" : ""}>{description}</div>
         {actionLabel && onAction && (
@@ -41,7 +42,7 @@ export function EmptyState({
 
   return (
     <div className={`mx-auto w-full max-w-md animate-fade-in text-center ${className}`}>
-      {icon && <div className="mb-4 flex justify-center text-ink-faint">{icon}</div>}
+      <div className="mb-4 flex justify-center text-ink-faint">{icon ?? <EmptyTrayIcon className="h-10 w-10" />}</div>
       {title && <Heading as="h1" className="text-xl text-ink sm:text-2xl">{title}</Heading>}
       <p className={`text-sm leading-relaxed text-ink-muted ${title ? "mt-2" : ""}`}>{description}</p>
       {actionLabel && onAction && (

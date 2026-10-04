@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
+import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { Spinner } from "@/components/ui/Spinner";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { fetchHotel } from "@/lib/hotel-client";
@@ -111,7 +112,7 @@ export function HotelRatingsScreen({ bidPack, profile }: HotelRatingsScreenProps
         generic nearby search — rated from Google Places, most-used first.
       </p>
 
-      {loading && <Spinner label="Loading hotel ratings…" className="mt-8" />}
+      {loading && <SkeletonCards className="mt-8" />}
 
       {!loading && notConfigured && (
         <div className="mt-6 rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">

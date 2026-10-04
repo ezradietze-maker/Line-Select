@@ -21,6 +21,7 @@ import { BidPeriodChangeBanner } from "@/components/results/BidPeriodChangeBanne
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
 import { ResultsFilterBar } from "@/components/results/ResultsFilterBar";
+import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -540,9 +541,12 @@ export function ResultsView({
       </div>
 
       {!hotelsSettled ? (
-        <div className="mt-6 flex flex-col items-center gap-3 rounded-xl border border-border bg-surface px-6 py-14 text-center">
-          <Spinner size="md" />
-          <p className="text-sm text-ink-muted">Checking layover hotel reviews so your ranking is right the first time&hellip;</p>
+        <div className="mt-6">
+          <p className="mb-3 flex items-center gap-2 text-sm text-ink-muted">
+            <Spinner size="sm" />
+            Checking layover hotel reviews so your ranking is right the first time&hellip;
+          </p>
+          <SkeletonCards />
         </div>
       ) : (
         <>

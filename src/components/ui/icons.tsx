@@ -280,3 +280,14 @@ export function MicIcon({ className = base }: IconProps) {
     </svg>
   );
 }
+
+/** An empty inbox tray — the shared "nothing here yet" state's default icon, generic enough for an empty list, a not-yet-uploaded pack, or an unset preference alike. */
+export function EmptyTrayIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 12l2.2-7.5A1 1 0 017.2 4h9.6a1 1 0 01.96.5L20 12" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v5a2 2 0 002 2h12a2 2 0 002-2v-5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 12h5a1 1 0 011 .9 2 2 0 004 0 1 1 0 011-.9h5" />
+    </svg>
+  );
+}

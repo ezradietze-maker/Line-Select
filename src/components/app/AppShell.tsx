@@ -63,17 +63,39 @@ function Chrome({ children }: { children: React.ReactNode }) {
     setRenderedPath(pathname);
   }
 
+  const showSidebar = !HIDDEN_SIDEBAR_PATHS.includes(pathname);
+
   if (!ready) {
     return (
-      <main className="flex flex-1 flex-col justify-center px-4 py-10 sm:py-16">
-        <div className="flex justify-center">
-          <Spinner size="md" />
-        </div>
-      </main>
+      <div className="flex min-h-full flex-col md:flex-row">
+        {showSidebar && (
+          <div className="hidden shrink-0 border-r border-sidebar-border bg-sidebar md:block md:w-60">
+            <div className="flex items-center gap-2.5 px-4 py-5">
+              <div className="skeleton-pulse h-8 w-8 rounded-lg bg-border" aria-hidden />
+              <div className="skeleton-pulse h-4 w-24 rounded bg-border" aria-hidden />
+            </div>
+            <div className="space-y-2 px-3 pt-3">
+              {Array.from({ length: 6 }, (_, i) => (
+                <div key={i} className="skeleton-pulse h-9 rounded-md bg-border" aria-hidden />
+              ))}
+            </div>
+          </div>
+        )}
+        <main className="flex flex-1 items-start justify-center px-4 py-10 sm:py-16">
+          <div className="w-full max-w-3xl space-y-4">
+            <div className="flex items-center gap-2.5 text-sm text-ink-faint">
+              <Spinner size="sm" />
+              <span>Loading&hellip;</span>
+            </div>
+            <div className="skeleton-pulse h-8 w-56 rounded-md bg-border" aria-hidden />
+            <div className="skeleton-pulse h-4 w-72 rounded bg-border" aria-hidden />
+            <div className="skeleton-pulse h-32 rounded-xl bg-border" aria-hidden />
+            <div className="skeleton-pulse h-32 rounded-xl bg-border" aria-hidden />
+          </div>
+        </main>
+      </div>
     );
   }
-
-  const showSidebar = !HIDDEN_SIDEBAR_PATHS.includes(pathname);
 
   return (
     <div className="flex min-h-full flex-col">

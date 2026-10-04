@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Heading } from "@/components/ui/Heading";
-import { Spinner } from "@/components/ui/Spinner";
+import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { TextField } from "@/components/ui/TextField";
 import { sameBidPack } from "@/lib/inbox";
 import {
@@ -178,7 +178,7 @@ export function TradeBoardScreen({
       {actionError && <ErrorBanner className="mt-4">{actionError}</ErrorBanner>}
 
       {loading ? (
-        <Spinner label="Loading offers…" className="mt-8" />
+        <SkeletonCards className="mt-8" />
       ) : (
         <div className="mt-8 space-y-8">
           {needsResponse.length > 0 && (

@@ -451,10 +451,27 @@ body {
   animation: slide-in-left 0.2s ease-out both;
 }
 
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* The app's first-paint loading shell — a page-shaped placeholder instead
+   of a bare spinner floating on an otherwise blank screen. */
+.skeleton-pulse {
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-rise-in,
-  .animate-slide-in-left {
+  .animate-slide-in-left,
+  .skeleton-pulse {
     animation: none;
   }
   .line-slider::-webkit-slider-thumb,

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
-import { Spinner } from "@/components/ui/Spinner";
+import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import {
   InfoBanner,
   NonBindingDisclaimer,
@@ -65,7 +65,7 @@ export function InboxScreen({ bidPack, user, onGoToTradeBoard }: InboxScreenProp
       {user && !bidPack && <InfoBanner>Upload your bid pack to use the Inbox.</InfoBanner>}
 
       {loading ? (
-        <Spinner label="Loading…" className="mt-8" />
+        <SkeletonCards className="mt-8" />
       ) : (
         <div className="mt-8 space-y-8">
           <Section title="Needs your response">
