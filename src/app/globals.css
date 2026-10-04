@@ -161,6 +161,58 @@
   --shadow-color: 35 25% 2%;
 }
 
+/*
+ * Real cockpit red-light lighting — pilots dim everything to red at night
+ * to protect night vision, so this isn't "a darker dark theme," it's a
+ * genuinely different constraint: as close to monochrome red as the app
+ * can get while still keeping good/warn/danger tellable apart. That
+ * distinction survives on brightness and saturation alone (dim amber-red
+ * -> hotter orange-red -> the most saturated red), the same way a real
+ * annunciator panel stays readable under red flood lighting without
+ * introducing a second hue.
+ */
+:root[data-theme="night"] {
+  --color-canvas: #0d0404;
+  --color-surface: #150606;
+  --color-surface-raised: #1c0808;
+  --color-border: #3a0f0f;
+  --color-border-strong: #521515;
+
+  --color-ink: #ff5c5c;
+  --color-ink-muted: #c25959;
+  --color-ink-faint: #a56a6a;
+
+  /* Darker than the focus ring/decorative red on purpose — this is the one
+     spot white button text has to sit on top of it, and the brighter glow
+     red failed contrast there. */
+  --color-brand: #d44040;
+  --color-brand-strong: #b53535;
+  --color-brand-soft: #2e0d0d;
+  --color-accent: #ff7a3d;
+  --color-accent-soft: #331008;
+  --color-accent-wash: #4a160a;
+  --color-calendar-accent: var(--color-brand);
+
+  --color-dispatch: #b16e6e;
+  --color-dispatch-soft: #2a0f0f;
+  --color-dispatch-wash: #3d1515;
+
+  --color-sidebar: #0a0303;
+  --color-sidebar-border: #3a0f0f;
+
+  --color-good: #ce5c3b;
+  --color-standby: #b34d66;
+  --color-good-soft: #241008;
+  --color-warn: #ff6b1a;
+  --color-warn-soft: #331507;
+  --color-danger: #ff2020;
+  --color-danger-soft: #330a0a;
+
+  --color-focus-ring: #ff4d4d;
+  --shadow-color: 0 70% 2%;
+  --texture-grid-line: color-mix(in srgb, var(--color-ink) 3%, transparent);
+}
+
 @theme inline {
   --color-canvas: var(--color-canvas);
   --color-surface: var(--color-surface);

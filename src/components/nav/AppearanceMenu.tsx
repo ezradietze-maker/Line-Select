@@ -10,7 +10,7 @@ import {
 import { applyThemeAttribute, getStoredTheme, setStoredTheme, type ThemeMode } from "@/lib/theme";
 import { PaletteIcon } from "@/components/ui/icons";
 
-const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: React.ReactNode }[] = [
+const THEME_OPTIONS: { mode: ThemeMode; label: string; title?: string; icon: React.ReactNode }[] = [
   {
     mode: "light",
     label: "Light",
@@ -37,6 +37,17 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: React.ReactNode }[]
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
         <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+      </svg>
+    ),
+  },
+  {
+    mode: "night",
+    label: "Night",
+    title: "Night — real red cockpit lighting, to protect your night vision",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.5.8.5 1.3V16h6v-.8c0-.5.1-1 .5-1.3A6 6 0 0 0 12 3z" />
+        <path strokeLinecap="round" d="M9.5 18h5M10.5 21h3" />
       </svg>
     ),
   },
@@ -139,7 +150,7 @@ export function AppearanceMenu() {
                     type="button"
                     role="radio"
                     aria-checked={mode === opt.mode}
-                    title={opt.label}
+                    title={opt.title ?? opt.label}
                     onClick={() => chooseTheme(opt.mode)}
                     className={`flex flex-1 items-center justify-center rounded-full py-1.5 transition-colors ${
                       mode === opt.mode ? "bg-brand text-white shadow-sm" : "text-ink-faint hover:text-ink"

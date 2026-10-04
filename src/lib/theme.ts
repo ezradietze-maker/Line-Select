@@ -1,4 +1,5 @@
-export type ThemeMode = "light" | "dark" | "system";
+/** "night" is real cockpit red-light lighting (dimming everything to red to protect night vision), not just another dark variant — a pilot reaches for it specifically at night regardless of their light/dark/system preference otherwise, so it sits as its own mode rather than a toggle layered on "dark". */
+export type ThemeMode = "light" | "dark" | "night" | "system";
 
 const THEME_KEY = "line-select:theme:v1";
 
@@ -6,7 +7,7 @@ export function getStoredTheme(): ThemeMode {
   if (typeof window === "undefined") return "system";
   try {
     const raw = window.localStorage.getItem(THEME_KEY);
-    if (raw === "light" || raw === "dark" || raw === "system") return raw;
+    if (raw === "light" || raw === "dark" || raw === "night" || raw === "system") return raw;
   } catch {
     // ignore
   }
@@ -40,7 +41,7 @@ export const THEME_BOOTSTRAP_SCRIPT = `
 (function () {
   try {
     var mode = localStorage.getItem('${THEME_KEY}');
-    if (mode === 'light' || mode === 'dark') {
+    if (mode === 'light' || mode === 'dark' || mode === 'night') {
       document.documentElement.setAttribute('data-theme', mode);
     }
   } catch (e) {}
