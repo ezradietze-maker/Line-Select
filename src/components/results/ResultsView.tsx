@@ -15,6 +15,7 @@ import {
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { motion, useReducedMotion } from "motion/react";
+import { BidCountdown } from "@/components/results/BidCountdown";
 import { BidOrderExport, type BidOrderEntry } from "@/components/results/BidOrderExport";
 import { BidPeriodChangeBanner } from "@/components/results/BidPeriodChangeBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -471,6 +472,10 @@ export function ResultsView({
         <Button variant="secondary" onClick={onEditPreferences} className="shrink-0 px-3 sm:px-4">
           Edit<span className="hidden sm:inline">&nbsp;preferences</span>
         </Button>
+      </div>
+
+      <div className="mt-4">
+        <BidCountdown bidPackId={bidPack.id} />
       </div>
 
       <BidPeriodChangeBanner summary={bidPeriodChange} />
