@@ -8,16 +8,20 @@
   --color-border: #e0d2b3;
   --color-border-strong: #cdb98c;
 
-  /* Text */
+  /* Text — ink-muted/ink-faint tuned to hold WCAG AA (4.5:1) against every
+     surface they're actually rendered on (canvas, surface, surface-2), not
+     just the lightest of the three. */
   --color-ink: #2e2013;
-  --color-ink-muted: #7a6852;
-  --color-ink-faint: #8f7d64;
+  --color-ink-muted: #70604b;
+  --color-ink-faint: #756652;
 
-  /* Brand: deep coffee brown + warm caramel accent */
+  /* Brand: deep coffee brown + warm caramel accent. Accent tuned to hold
+     4.5:1 as text on accent-soft (the "Top pick" banner's own background),
+     not just on the page surface. */
   --color-brand: #4a3420;
   --color-brand-strong: #34240f;
   --color-brand-soft: #ece0c8;
-  --color-accent: #9c5b23;
+  --color-accent: #935621;
   --color-accent-soft: #f1e2c4;
   --color-accent-wash: #e4c48c;
   /* Calendar views' own "Flying" segment color — defaults to brand, but is
@@ -29,7 +33,7 @@
 
   /* Second accent: a warm, grayer taupe — desaturated relative to brand/accent
      on purpose, so the two don't read as one hue at two weights. */
-  --color-dispatch: #8a6f4e;
+  --color-dispatch: #7c6446;
   --color-dispatch-soft: #efe6d6;
   --color-dispatch-wash: #d9c9a8;
 
@@ -37,16 +41,18 @@
   --color-sidebar: #ece0c8;
   --color-sidebar-border: #cdb98c;
 
-  /* Semantic — unchanged by the brand re-theme; status colors carry meaning
-     independent of brand identity. */
-  --color-good: #2f7d5f;
+  /* Semantic — same hues as before the re-theme (status colors carry meaning
+     independent of brand identity), each darkened just enough to hold 4.5:1
+     against its own "-soft" background at the small sizes these render at
+     (banners, badges) — they were a hair under AA before. */
+  --color-good: #2d785b;
   --color-standby: #7b5ea7;
   --color-good-soft: #e1f0e7;
-  --color-warn: #a15b1f;
+  --color-warn: #9b571e;
   --color-warn-soft: #f6e8d7;
   /* NOTAM red: saturated and stamped, not a muted salmon — reserved strictly
      for warnings/alerts, never generic UI chrome. */
-  --color-danger: #c33a2e;
+  --color-danger: #bb382c;
   --color-danger-soft: #f8e3de;
 
   --color-focus-ring: #4a3420;
@@ -84,7 +90,7 @@
 
     --color-ink: #f2e8d8;
     --color-ink-muted: #a8977c;
-    --color-ink-faint: #7a6852;
+    --color-ink-faint: #968876;
 
     --color-brand: #c9a468;
     --color-brand-strong: #e0c08a;
@@ -126,7 +132,7 @@
 
   --color-ink: #f2e8d8;
   --color-ink-muted: #a8977c;
-  --color-ink-faint: #7a6852;
+  --color-ink-faint: #968876;
 
   --color-brand: #c9a468;
   --color-brand-strong: #e0c08a;

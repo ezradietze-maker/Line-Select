@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Heading } from "@/components/ui/Heading";
 
 interface ModalProps {
@@ -12,6 +12,8 @@ interface ModalProps {
 }
 
 export function Modal({ title, onClose, children, wide = false }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -24,6 +26,18 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
     };
   }, [onClose]);
 
+  // Move focus into the dialog on open, and back to whatever triggered it
+  // once it closes — without this, a keyboard or screen-reader user's focus
+  // silently stays on (or disappears from) the page underneath, with no
+  // indication a dialog is even open.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => {
+      previouslyFocused?.focus?.();
+    };
+  }, []);
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 px-4 py-10 backdrop-blur-[2px] sm:items-center">
       <button
@@ -34,10 +48,12 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
         tabIndex={-1}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative w-full animate-fade-in rounded-xl border border-border bg-surface shadow-elevated-lg ${wide ? "max-w-3xl" : "max-w-lg"}`}
+        tabIndex={-1}
+        className={`relative w-full animate-fade-in rounded-xl border border-border bg-surface shadow-elevated-lg outline-none ${wide ? "max-w-3xl" : "max-w-lg"}`}
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <Heading as="h2" className="text-base text-ink">{title}</Heading>

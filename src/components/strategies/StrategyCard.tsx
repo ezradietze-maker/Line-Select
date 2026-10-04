@@ -148,11 +148,11 @@ export function StrategyCard({
   return (
     <div
       className={`overflow-hidden rounded-xl border bg-surface ${
-        topPick ? "border-dispatch/40 ring-1 ring-dispatch/20" : "border-border"
+        topPick ? "border-accent/40 ring-1 ring-accent/20" : "border-border"
       }`}
     >
       {topPick && (
-        <div className="flex items-center gap-1.5 bg-dispatch-soft px-5 py-1.5 text-xs font-semibold uppercase tracking-wide text-dispatch sm:px-6">
+        <div className="flex items-center gap-1.5 bg-accent-soft px-5 py-1.5 text-xs font-semibold uppercase tracking-wide text-accent sm:px-6">
           <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3">
             <path d="M12 2l2.6 6.5 7 .5-5.3 4.5 1.7 6.9L12 16.9 5.9 20.4l1.7-6.9L2.4 9l7-.5L12 2z" />
           </svg>
