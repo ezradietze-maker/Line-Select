@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/Button";
 import { MicButton } from "@/components/ui/MicButton";
 import { useDictation } from "@/lib/use-speech-to-text";
 
@@ -52,17 +53,12 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
           }}
           placeholder={placeholder}
           disabled={busy}
-          className="flex-1 rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40 disabled:opacity-60"
+          className="flex-1 rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)] placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40 disabled:opacity-60"
         />
         {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} />}
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={busy || !text.trim()}
-          className="shrink-0 rounded-md bg-brand px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
-        >
+        <Button type="button" onClick={handleSubmit} disabled={busy || !text.trim()} className="shrink-0">
           {busy ? "Sending…" : submitLabel}
-        </button>
+        </Button>
       </div>
       {onSkip && (
         <button

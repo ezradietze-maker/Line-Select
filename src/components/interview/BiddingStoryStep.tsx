@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
 import { Heading } from "@/components/ui/Heading";
 import { MicButton } from "@/components/ui/MicButton";
 import { useDictation } from "@/lib/use-speech-to-text";
@@ -49,7 +50,7 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
             disabled={busy}
             rows={10}
             placeholder="I usually start by looking at how many days off a line has, then... (or tap the mic and just say it)"
-            className="w-full rounded-lg border border-border bg-canvas px-3.5 py-3 pr-14 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none disabled:opacity-60"
+            className="w-full rounded-lg border border-border bg-canvas px-3.5 py-3 pr-14 text-sm text-ink shadow-[inset_0_1px_3px_rgba(0,0,0,0.1)] placeholder:text-ink-faint focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
           />
           {dictation.supported && (
             <MicButton listening={dictation.listening} onClick={dictation.toggle} className="absolute right-3 top-3" />
@@ -73,14 +74,9 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
         >
           Skip &mdash; I&rsquo;ll answer as I go instead
         </button>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={busy || value.trim().length === 0}
-          className="rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
-        >
+        <Button type="button" onClick={onSubmit} disabled={busy || value.trim().length === 0}>
           {busy ? "Reading through this…" : "Continue"}
-        </button>
+        </Button>
       </div>
       {value.trim().length === 0 && !busy && (
         <p className="mt-2 text-xs text-ink-faint">Skipping still works &mdash; you&rsquo;ll just get a more generic interview from here.</p>

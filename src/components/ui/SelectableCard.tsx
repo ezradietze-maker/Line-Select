@@ -35,10 +35,10 @@ export function SelectableCard({
   onClick,
   layout = "grid",
 }: SelectableCardProps) {
-  const baseClasses = `relative rounded-lg border-2 text-left transition-all ${
+  const baseClasses = `hover-lift relative rounded-lg border-2 text-left transition-all ${
     selected
-      ? "border-brand bg-brand-soft ring-2 ring-brand/25 ring-offset-2 ring-offset-canvas"
-      : "border-border bg-surface hover:border-border-strong hover:bg-canvas"
+      ? "border-brand bg-brand-soft shadow-[0_0_0_2px_var(--color-brand-soft),0_2px_10px_-4px_var(--color-brand)]"
+      : "border-border bg-surface shadow-elevated hover:border-border-strong hover:bg-canvas hover:shadow-elevated-lg"
   }`;
 
   if (layout === "list") {

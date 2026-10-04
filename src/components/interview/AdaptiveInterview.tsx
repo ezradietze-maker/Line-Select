@@ -131,6 +131,9 @@ function StepNav({ onNext, nextLabel, disabled }: { onNext: () => void; nextLabe
 }
 
 /** A thin, honest progress bar with a plain-language readout — replaces a row of ~36 dots labeled "question 2 of roughly 35", which overstated the length up front. */
+const PROGRESS_SEGMENT_COUNT = 14;
+
+/** A multi-segment readout, each cell filling in turn as `fraction` advances through its own slice — reads as a real instrument (think a fuel-quantity ladder) rather than one continuous bar. The accessible progressbar semantics live on the wrapper; each cell is purely decorative. */
 function InterviewProgressBar({ fraction, label }: { fraction: number; label: string }) {
   return (
     <div className="mb-8">
@@ -140,12 +143,21 @@ function InterviewProgressBar({ fraction, label }: { fraction: number; label: st
         aria-valuemax={100}
         aria-valuenow={Math.round(fraction * 100)}
         aria-label="Interview progress"
-        className="h-1.5 w-full overflow-hidden rounded-full bg-border"
+        className="flex gap-[3px]"
       >
-        <div
-          className="h-full rounded-full bg-brand transition-[width] duration-500 ease-out"
-          style={{ width: `${Math.max(2, fraction * 100)}%` }}
-        />
+        {Array.from({ length: PROGRESS_SEGMENT_COUNT }, (_, i) => {
+          const segStart = i / PROGRESS_SEGMENT_COUNT;
+          const segEnd = (i + 1) / PROGRESS_SEGMENT_COUNT;
+          const filled = Math.max(0, Math.min(1, (fraction - segStart) / (segEnd - segStart)));
+          return (
+            <div key={i} aria-hidden className="h-1.5 flex-1 overflow-hidden rounded-[2px] bg-border">
+              <div
+                className="h-full rounded-[2px] bg-brand transition-[width] duration-500 ease-out"
+                style={{ width: `${filled * 100}%` }}
+              />
+            </div>
+          );
+        })}
       </div>
       <div className="mt-2 text-xs text-ink-muted">{label}</div>
     </div>

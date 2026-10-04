@@ -53,6 +53,15 @@ export function Slider({
         </span>
       </div>
       <div className="relative py-2">
+        {/* Quarter-point graduations, same instrument vocabulary as the score gauge and match bars — the center tick (below) stays taller since it's the one that actually means something (no preference). */}
+        {[25, 75].map((pct) => (
+          <div
+            key={pct}
+            className="pointer-events-none absolute top-1/2 h-2.5 w-px -translate-y-1/2 bg-border-strong/60"
+            style={{ left: `${pct}%` }}
+            aria-hidden
+          />
+        ))}
         <div
           className="pointer-events-none absolute left-1/2 top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-border-strong"
           aria-hidden
