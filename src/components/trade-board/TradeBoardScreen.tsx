@@ -325,6 +325,15 @@ export const STATUS_STYLES: Record<TradeOffer["status"], string> = {
   withdrawn: "bg-canvas text-ink-faint",
 };
 
+/** A small status-LED dot inside each pill — the same "this one's live" language the nav's active indicator already uses, not a new motif invented just for this screen. */
+export const STATUS_DOT: Record<TradeOffer["status"], string> = {
+  open: "bg-brand",
+  pending: "bg-accent",
+  accepted: "bg-good",
+  declined: "bg-danger",
+  withdrawn: "bg-ink-faint",
+};
+
 export const STATUS_LABELS: Record<TradeOffer["status"], string> = {
   open: "Open",
   pending: "Pending response",
@@ -378,8 +387,9 @@ export function OfferCard({
           </div>
         </div>
         <span
-          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[offer.status]}`}
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[offer.status]}`}
         >
+          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[offer.status]}`} />
           {STATUS_LABELS[offer.status]}
         </span>
       </div>
