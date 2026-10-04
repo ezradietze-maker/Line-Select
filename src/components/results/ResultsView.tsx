@@ -615,20 +615,25 @@ export function ResultsView({
             </div>
           </div>
 
-          <ResultsFilterBar
-            filters={filters}
-            onChange={setFilters}
-            options={filterOptions}
-            availableCities={availableCities}
-            visibleCount={matching.length}
-            totalCount={ranked.length}
-          />
+          {/* A small staggered beat behind the header above — the page reads as "header settles, then controls, then the list below" instead of everything landing in one flat instant. */}
+          <div className="animate-rise-in" style={{ animationDelay: "60ms" }}>
+            <ResultsFilterBar
+              filters={filters}
+              onChange={setFilters}
+              options={filterOptions}
+              availableCities={availableCities}
+              visibleCount={matching.length}
+              totalCount={ranked.length}
+            />
+          </div>
 
-          <BidOrderExport
-            entries={bidOrderEntries}
-            shortlistEntries={shortlistEntries}
-            bidPeriodStart={bidPack.bidPeriodStart}
-          />
+          <div className="animate-rise-in" style={{ animationDelay: "120ms" }}>
+            <BidOrderExport
+              entries={bidOrderEntries}
+              shortlistEntries={shortlistEntries}
+              bidPeriodStart={bidPack.bidPeriodStart}
+            />
+          </div>
 
           <MonthLegend className="mt-3" />
 
@@ -691,6 +696,7 @@ export function ResultsView({
                         onRestore={() => updateMarks((m) => restoreLine(m, lineScore.line.id))}
                         draggable={dragEnabled}
                         forecast={forecastLines?.[lineScore.line.id] ?? null}
+                        homeBase={bidPack.base}
                       />
                     </ErrorBoundary>
                   </motion.div>

@@ -74,6 +74,8 @@ function Cell({ day, selected, onSelect }: { day: DetailedDay; selected: boolean
   const isOff = day.kind === "off";
   return (
     <button type="button" onClick={onSelect} title={day.title} aria-label={day.title} aria-pressed={selected} className={cellClass(day, selected)}>
+      {/* A red-eye day is genuinely darker, not just icon-flagged — a faint tonal wash rather than a new hue, so it stays inside the warm palette. */}
+      {!isOff && day.redEye && <span aria-hidden className="absolute inset-0 -z-10 rounded-md bg-ink/10" />}
       <span className="flex items-start justify-between gap-0.5">
         <span className={`text-[11px] tabular-nums ${isOff ? "" : "font-semibold"}`}>{day.label}</span>
         {day.isTripStart && day.tripNumber && (

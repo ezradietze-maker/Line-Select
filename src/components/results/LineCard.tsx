@@ -11,6 +11,7 @@ import { MatchBar } from "@/components/results/MatchBar";
 import { ForecastChip } from "@/components/results/ForecastBanner";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { RecurringCommitmentBanner } from "@/components/results/RecurringCommitmentBanner";
+import { RouteMap } from "@/components/results/RouteMap";
 import { TripNumberStrip } from "@/components/results/TripNumberStrip";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { TripList } from "@/components/results/TripList";
@@ -32,7 +33,7 @@ import type { PreferenceProfile } from "@/types/preferences";
  * should earn their way into whichever tab (or the always-visible header)
  * fits, not just get appended to the bottom of one.
  */
-type DetailTab = "calendar" | "breakdown" | "circadian" | "reviews";
+type DetailTab = "calendar" | "breakdown" | "circadian" | "route" | "reviews";
 
 function formatHours(hours: number): string {
   const h = Math.floor(hours);
@@ -64,6 +65,8 @@ interface LineCardProps {
   draggable: boolean;
   /** This pilot's chance at the line, when they've given a seniority number and the pack lists the pilots bidding. */
   forecast?: LineForecast | null;
+  /** The bid pack's own home base code, e.g. "MEM" — the one fixed point every trip on this line starts and ends at, for the Route tab's map. */
+  homeBase: string;
 }
 
 export const LineCard = memo(function LineCard({
@@ -83,6 +86,7 @@ export const LineCard = memo(function LineCard({
   onRestore,
   draggable,
   forecast,
+  homeBase,
 }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
@@ -300,6 +304,7 @@ export const LineCard = memo(function LineCard({
                   { id: "calendar", label: "Calendar" },
                   { id: "breakdown", label: "Score Breakdown" },
                   { id: "circadian", label: "Circadian", badge: !!cumulativeCircadian?.hasCompoundingRisk },
+                  { id: "route", label: "Route" },
                   ...(hotelReviewTieIn ? [{ id: "reviews", label: "Reviews" }] : []),
                 ]}
                 activeId={activeTab}
@@ -450,6 +455,8 @@ export const LineCard = memo(function LineCard({
                   <CircadianInfo />
                 </div>
               )}
+
+              {activeTab === "route" && <RouteMap homeBase={homeBase} line={line} />}
 
               {activeTab === "reviews" && hotelReviewTieIn && (
                 <div className="space-y-2">
