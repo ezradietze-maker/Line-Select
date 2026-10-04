@@ -83,7 +83,7 @@ export function ConfirmPreferencesScreen({
         your lines, or redo the interview from scratch if you&rsquo;d rather start over.
       </p>
 
-      <div className="mt-6 space-y-6 rounded-xl border border-border bg-surface p-5 sm:p-6">
+      <div className="mt-6 space-y-6 rounded-xl border border-border bg-surface p-5 shadow-elevated sm:p-6">
         {sliderConfigs.map((config) => (
           <div key={config.key}>
             <div className="text-sm font-medium text-ink">{config.question}</div>
@@ -102,7 +102,7 @@ export function ConfirmPreferencesScreen({
       </div>
 
       {pinnedTargets.length > 0 && (
-        <div className="mt-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
+        <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-elevated sm:p-6">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
             Exact targets you pinned
           </h2>
@@ -123,7 +123,7 @@ export function ConfirmPreferencesScreen({
       )}
 
       {selectedAmenities.length > 0 && (
-        <div className="mt-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
+        <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-elevated sm:p-6">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
             Hotel amenities that matter to you
           </h2>
@@ -141,7 +141,7 @@ export function ConfirmPreferencesScreen({
       )}
 
       {(lovedCities.length > 0 || avoidedCities.length > 0) && (
-        <div className="mt-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
+        <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-elevated sm:p-6">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
             Cities you flagged
           </h2>

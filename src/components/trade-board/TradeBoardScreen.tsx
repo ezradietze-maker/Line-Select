@@ -359,7 +359,7 @@ export function OfferCard({
   const isMyResponse = offer.responderUserId === currentUserId;
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5">
+    <div className="hover-lift rounded-xl border border-border bg-surface p-5 shadow-elevated transition-shadow duration-150 hover:shadow-elevated-lg">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-ink">
@@ -488,7 +488,7 @@ function PostOfferForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="mt-4 space-y-4 rounded-xl border border-border bg-surface p-5"
+      className="mt-4 space-y-4 rounded-xl border border-border bg-surface p-5 shadow-elevated"
     >
       <div>
         <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="offer-trip">

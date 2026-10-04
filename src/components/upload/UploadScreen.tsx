@@ -195,7 +195,7 @@ function AlreadyUploaded({
         different file if this isn&rsquo;t the one you meant to bid.
       </p>
 
-      <div className="mt-6 rounded-xl border border-border bg-surface p-6">
+      <div className="mt-6 rounded-xl border border-border bg-surface p-6 shadow-elevated">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-lg font-semibold text-ink">

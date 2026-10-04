@@ -75,7 +75,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
       </p>
 
       {result.meta && (
-        <div className="mt-6 grid grid-cols-3 gap-3 rounded-xl border border-border bg-surface p-5 text-center">
+        <div className="mt-6 grid grid-cols-3 gap-3 rounded-xl border border-border bg-surface p-5 text-center shadow-elevated">
           <Stat label="Base" value={result.meta.base} />
           <Stat label="Aircraft" value={result.meta.aircraft} />
           <Stat label="Month" value={result.meta.month} />
@@ -113,7 +113,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
       )}
 
       {bidPack && (
-        <div className="mt-6 rounded-xl border border-border bg-surface p-5">
+        <div className="mt-6 rounded-xl border border-border bg-surface p-5 shadow-elevated">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Stat label="Lines" value={String(bidPack.lines.length)} />
             <Stat

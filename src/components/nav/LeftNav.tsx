@@ -92,9 +92,12 @@ function NavList({
       {indicator && (
         <div
           aria-hidden
-          className="absolute inset-x-0 z-0 rounded-md bg-accent-wash transition-[transform,height] duration-300 ease-out"
+          className="absolute inset-x-0 z-0 overflow-hidden rounded-md bg-accent-wash shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] transition-[transform,height] duration-300 ease-out"
           style={{ transform: `translateY(${indicator.top}px)`, height: indicator.height }}
-        />
+        >
+          {/* A status-LED strip, not a generic highlight — the panel's own way of saying "this one's live." */}
+          <div className="absolute inset-y-1 left-0 w-[3px] rounded-full bg-accent shadow-[0_0_6px_var(--color-accent)]" />
+        </div>
       )}
       {NAV_ITEMS.map((item, i) => {
         const disabled =
@@ -168,7 +171,7 @@ export function LeftNav({
   // like the same element rendered twice.
   const sidebar = (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 px-4 py-5">
+      <div className="flex items-center justify-between gap-2 border-b border-sidebar-border/70 px-4 py-5">
         <button
           type="button"
           onClick={() => go(homeTarget)}
@@ -180,7 +183,7 @@ export function LeftNav({
         <AppearanceMenu />
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
+      <nav className="flex-1 space-y-1 px-3 pt-3">
         <NavList
           active={active}
           hasProfile={hasProfile}
@@ -188,6 +191,8 @@ export function LeftNav({
           inboxUnreadCount={inboxUnreadCount}
           onGo={go}
         />
+
+        <div className="mx-3 mt-3 border-t border-sidebar-border/70" />
 
         <button
           type="button"

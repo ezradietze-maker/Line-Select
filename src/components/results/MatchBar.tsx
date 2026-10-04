@@ -65,14 +65,20 @@ export function MatchBar({ dimension }: MatchBarProps) {
           {showsPreference ? `${matchPct}% aligned` : "not weighted"}
         </span>
       </div>
-      <div className="relative mt-1.5 h-2 rounded-full bg-brand-soft">
+      <div className="relative mt-2 h-2 rounded-full bg-brand-soft shadow-[inset_0_1px_2px_rgba(0,0,0,0.18)]">
+        {/* Graduation marks at the quarter points — a plain flat bar reads as a web progress indicator; a scaled one reads as an instrument. */}
+        <div className="absolute inset-0" aria-hidden>
+          {[25, 50, 75].map((pct) => (
+            <span key={pct} className="absolute inset-y-0 w-px bg-ink/10" style={{ left: `${pct}%` }} />
+          ))}
+        </div>
         <div
-          className="h-2 rounded-full bg-brand transition-all"
+          className="relative h-2 rounded-full bg-gradient-to-b from-brand-strong to-brand transition-all"
           style={{ width: `${Math.round(dimension.value * 100)}%` }}
         />
         {showsPreference && (
           <div
-            className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-accent"
+            className="absolute top-0 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-accent shadow-[0_1px_2px_rgba(0,0,0,0.35)]"
             style={{ left: `${Math.round(dimension.target * 100)}%` }}
             title="Your target"
           />

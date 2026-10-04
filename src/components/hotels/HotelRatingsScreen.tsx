@@ -157,7 +157,7 @@ function HotelCard({
   const cityReason = hotelCityReason(profile, group.code);
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
+    <div className="hover-lift rounded-xl border border-border bg-surface p-4 shadow-elevated transition-shadow duration-150 hover:shadow-elevated-lg">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-ink">

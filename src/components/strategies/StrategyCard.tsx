@@ -147,8 +147,8 @@ export function StrategyCard({
   const [showHow, setShowHow] = useState(!!strategy.isProcessTip);
   return (
     <div
-      className={`overflow-hidden rounded-xl border bg-surface ${
-        topPick ? "border-accent/40 ring-1 ring-accent/20" : "border-border"
+      className={`hover-lift overflow-hidden rounded-xl border bg-surface transition-shadow duration-150 hover:shadow-elevated ${
+        topPick ? "top-pick-glow border-accent/40 ring-1 ring-accent/20" : "border-border shadow-elevated"
       }`}
     >
       {topPick && (

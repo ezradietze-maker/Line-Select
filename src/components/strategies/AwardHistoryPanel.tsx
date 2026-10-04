@@ -77,7 +77,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 sm:p-6">
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-elevated sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-ink">What pilots near you actually held</h2>
