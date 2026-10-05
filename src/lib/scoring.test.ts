@@ -831,6 +831,105 @@ describe("recurring commitment conflicts", () => {
     }
   });
 
+  function datesFact(specificDates: string[]): PreferenceFact {
+    return { ...recurringFact(undefined, "Sister's wedding."), id: "sd-1", specificDates };
+  }
+
+  it("flags a one-off date the line works, and says which", () => {
+    // Trip on days 4-7 = Fri Oct 2 .. Mon Oct 5.
+    const off = Array.from({ length: 28 }, (_, i) => i).filter((i) => i < 4 || i > 7);
+    const pack = packWithRealPlacement("9001", [4], off);
+    const profile = { ...buildProfile(emptyWeights(), false, []), discoveredFacts: [datesFact(["2026-10-03", "2026-10-10"])] };
+    const line9001 = rankLines(pack, profile).find((r) => r.line.lineNumber === "9001")!;
+    expect(line9001.dateCommitmentConflicts).toEqual([
+      {
+        factId: "sd-1",
+        statement: "Sister's wedding.",
+        datesInPeriod: ["2026-10-03", "2026-10-10"],
+        conflictDates: ["2026-10-03"],
+        dealbreaker: false,
+        // Half the dates worked still costs 75% of the full 30 * 0.8.
+        penaltyPoints: 18,
+      },
+    ]);
+  });
+
+  it("ranks a line lower when it works a date the pilot needs off, by a stated amount", () => {
+    const off = Array.from({ length: 28 }, (_, i) => i).filter((i) => i < 4 || i > 7);
+    const pack = packWithRealPlacement("9001", [4], off);
+    const base = buildProfile(emptyWeights(), false, []);
+    const without = rankLines(pack, { ...base, discoveredFacts: [] }).find((r) => r.line.lineNumber === "9001")!;
+    const withDate = rankLines(pack, { ...base, discoveredFacts: [datesFact(["2026-10-03"])] }).find((r) => r.line.lineNumber === "9001")!;
+    // importance 0.8, the one stated date worked: 30 * 0.8 * 1.
+    expect(withDate.commitmentPenalty).toBe(24);
+    expect(withDate.score).toBeCloseTo(Math.max(0, without.score - 24), 1);
+    expect(without.commitmentPenalty).toBe(0);
+  });
+
+  it("costs a weekly conflict less than a dated one, scaled by how many of those days are worked", () => {
+    const off = Array.from({ length: 28 }, (_, i) => i).filter((i) => i < 4 || i > 7);
+    const pack = packWithRealPlacement("9001", [4], off);
+    const base = buildProfile(emptyWeights(), false, []);
+    const r = rankLines(pack, { ...base, discoveredFacts: [recurringFact("Mon")] }).find((x) => x.line.lineNumber === "9001")!;
+    // 1 of 4 Mondays worked, importance 0.8: 20 * 0.8 * 0.25.
+    expect(r.commitmentPenalty).toBe(4);
+  });
+
+  it("caps a line that works a date the pilot called a dealbreaker, with the red banner instead of the amber one", () => {
+    const off = Array.from({ length: 28 }, (_, i) => i).filter((i) => i < 4 || i > 7);
+    const pack = packWithRealPlacement("9001", [4], off);
+    const base = buildProfile(emptyWeights(), false, []);
+    const mustHave = { ...datesFact(["2026-10-03"]), statement: "Can't miss the 3rd, period.", severity: "dealbreaker" as const };
+    const r = rankLines(pack, { ...base, discoveredFacts: [mustHave] }).find((x) => x.line.lineNumber === "9001")!;
+    expect(r.score).toBeLessThanOrEqual(35);
+    expect(r.violatedDealbreakers).toEqual([
+      { statement: "Can't miss the 3rd, period.", label: "Calendar commitment", detail: "Works Oct 3" },
+    ]);
+    expect(r.dateCommitmentConflicts).toEqual([]);
+    expect(r.commitmentPenalty).toBe(0);
+  });
+
+  it("treats a weekly commitment called a dealbreaker the same way", () => {
+    const off = Array.from({ length: 28 }, (_, i) => i).filter((i) => i < 4 || i > 7);
+    const pack = packWithRealPlacement("9001", [4], off);
+    const base = buildProfile(emptyWeights(), false, []);
+    const never = { ...recurringFact("Mon"), severity: "dealbreaker" as const };
+    const r = rankLines(pack, { ...base, discoveredFacts: [never] }).find((x) => x.line.lineNumber === "9001")!;
+    expect(r.score).toBeLessThanOrEqual(35);
+    expect(r.violatedDealbreakers[0].detail).toBe("Flies 1 of 4 Mondays this month");
+    expect(r.recurringCommitmentConflicts).toEqual([]);
+  });
+
+  it("leaves a line that keeps the dealbreaker date clear completely alone", () => {
+    const off = Array.from({ length: 28 }, (_, i) => i).filter((i) => i < 4 || i > 7);
+    const pack = packWithRealPlacement("9001", [4], off);
+    const base = buildProfile(emptyWeights(), false, []);
+    const mustHave = { ...datesFact(["2026-10-10"]), severity: "dealbreaker" as const };
+    const without = rankLines(pack, { ...base, discoveredFacts: [] }).find((x) => x.line.lineNumber === "9001")!;
+    const r = rankLines(pack, { ...base, discoveredFacts: [mustHave] }).find((x) => x.line.lineNumber === "9001")!;
+    expect(r.violatedDealbreakers).toEqual([]);
+    expect(r.score).toBe(without.score);
+  });
+
+  it("never takes more than the cap, however many commitments a line runs into", () => {
+    const pack = packWithRealPlacement("9001", [4], []); // works every day
+    const base = buildProfile(emptyWeights(), false, []);
+    const facts = ["2026-10-01", "2026-10-05", "2026-10-09"].map((d, i) => ({ ...datesFact([d]), id: `sd-${i}` }));
+    const r = rankLines(pack, { ...base, discoveredFacts: facts }).find((x) => x.line.lineNumber === "9001")!;
+    expect(r.commitmentPenalty).toBe(40);
+  });
+
+  it("ignores a date outside the bid period rather than claiming a conflict", () => {
+    const pack = packWithRealPlacement("9001", [4], []); // works every day
+    const profile = { ...buildProfile(emptyWeights(), false, []), discoveredFacts: [datesFact(["2026-11-20"])] };
+    expect(rankLines(pack, profile).find((r) => r.line.lineNumber === "9001")!.dateCommitmentConflicts).toEqual([]);
+  });
+
+  it("says nothing about dates when the line's placement isn't real", () => {
+    const profile = { ...buildProfile(emptyWeights(), false, []), discoveredFacts: [datesFact(["2026-10-03"])] };
+    for (const r of rankLines(SAMPLE_BID_PACK, profile)) expect(r.dateCommitmentConflicts).toEqual([]);
+  });
+
   it("stays empty for a qualitative fact with no recurringWeekday tag", () => {
     const off = Array.from({ length: 28 }, (_, i) => i).filter((i) => i < 4 || i > 7);
     const pack = packWithRealPlacement("9001", [4], off);

@@ -5,7 +5,7 @@ import type { DimensionKey } from "@/lib/scoring";
  * The five pilot-facing groupings the Satisfaction Index breaks down into —
  * "82% satisfaction" alone isn't enough; a pilot should see "excellent on
  * home time, mediocre on pay." Every one of the 10 fixed `DimensionKey`s and
- * all 22 `IMPLICIT_VARIABLES` ids maps to exactly one of these (see
+ * every `IMPLICIT_VARIABLES` id maps to exactly one of these (see
  * `categoryFor` below) — this is an editorial taxonomy, not a mechanically
  * derived one, so the boundaries/names are a real design choice, not a
  * technical inevitability.
@@ -55,7 +55,7 @@ const FIXED_DIMENSION_CATEGORIES: Record<DimensionKey, SatisfactionCategory> = {
  * each variable is *computed*) down to the 5 pilot-facing
  * `SatisfactionCategory` buckets (oriented around what a pilot actually
  * cares about) — reusing that existing per-variable metadata rather than
- * hand-mapping all 22 ids individually.
+ * hand-mapping every id individually.
  */
 const IMPLICIT_CATEGORY_MAP: Record<string, SatisfactionCategory> = {
   restRecovery: "timeAndHomeLife",
@@ -64,6 +64,7 @@ const IMPLICIT_CATEGORY_MAP: Record<string, SatisfactionCategory> = {
   dutyStructure: "tripCharacter",
   workload: "commuteAndDeadhead",
   circadian: "restAndCircadian",
+  homeTime: "timeAndHomeLife",
 };
 
 const IMPLICIT_VARIABLE_CATEGORIES = new Map(
@@ -72,11 +73,11 @@ const IMPLICIT_VARIABLE_CATEGORIES = new Map(
 
 /**
  * A dimension key is either one of the 10 fixed `DimensionKey`s or one of
- * the 22 open implicit-catalog ids sharing the same `DimensionScore.key`
+ * the open implicit-catalog ids sharing the same `DimensionScore.key`
  * field (see that field's own doc comment in `scoring.ts`) — this covers
  * both without the caller needing to know which kind it's looking at.
  * Falls back to `"tripCharacter"` for a truly unknown id (should never
- * happen — every real dimension key is one of the 32 above) rather than
+ * happen — every real dimension key is one of the above) rather than
  * throwing, matching this codebase's existing "never crash on a display
  * lookup" convention (see `MatchBar.tsx`'s `labelFor`).
  */

@@ -28,7 +28,7 @@ export function DealbreakerBanner({ violations }: DealbreakerBannerProps) {
           <ul className="mt-1 space-y-0.5">
             {violations.map((v, i) => (
               <li key={i} className="text-sm leading-relaxed text-danger">
-                &ldquo;{v.statement}&rdquo;
+                {v.detail && <>{v.detail} &mdash; you said: </>}&ldquo;{v.statement}&rdquo;
               </li>
             ))}
           </ul>

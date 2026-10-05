@@ -108,6 +108,8 @@ export const LineCard = memo(function LineCard({
     cumulativeCircadian,
     hotelReviewTieIn,
     recurringCommitmentConflicts,
+    dateCommitmentConflicts,
+    commitmentPenalty,
   } = lineScore;
   const implicitFactors = useMemo(
     () => topImplicitContributions(line.id, implicitValuesByLine, profile, 4),
@@ -162,7 +164,11 @@ export const LineCard = memo(function LineCard({
         </div>
       )}
       <DealbreakerBanner violations={violatedDealbreakers} />
-      <RecurringCommitmentBanner conflicts={recurringCommitmentConflicts} />
+      <RecurringCommitmentBanner
+        conflicts={recurringCommitmentConflicts}
+        dateConflicts={dateCommitmentConflicts}
+        penalty={commitmentPenalty}
+      />
       <div className="flex items-stretch">
         {draggable && (
           <button

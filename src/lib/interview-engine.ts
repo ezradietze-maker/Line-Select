@@ -358,7 +358,7 @@ function touchedDimensionIds(facts: PreferenceFact[]): Set<string> {
  * score.
  */
 const TOPIC_COVERAGE_HINTS: Record<string, string[]> = {
-  "home-time": ["daysOff"],
+  "home-time": ["daysOff", "longestDaysOffBlockPerLine", "weekendDaysOffPerLine"],
   "duty-periods": ["dutyPeriods", "tripLength"],
   "pay-vs-lifestyle": ["creditHours"],
   "deadhead-commuter": ["deadheadTolerance"],

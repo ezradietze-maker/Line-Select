@@ -130,15 +130,20 @@ export interface PreferenceFact {
   /**
    * Set only on a qualitative fact describing a recurring, day-of-week-
    * shaped personal commitment (coaching practice every Tuesday, a standing
-   * weekly appointment) — never a one-off calendar date, which this app
-   * still can't reliably measure (see `interview-prompt.ts`'s catalog
-   * section). Not a `MeasurableBinding`: this never feeds the Satisfaction
-   * Index. It does let the results screen check the statement against each
-   * line's own real calendar (`lib/line-month.ts`'s `weekdayFlyingPattern`)
-   * and flag a genuine conflict — the one qualitative fact this app can
-   * actually verify against real data rather than just repeat back.
+   * weekly appointment). Not a `MeasurableBinding` — no dimension or slider
+   * of its own — but the results screen checks it against each line's real
+   * calendar (`lib/line-month.ts`'s `weekdayFlyingPattern`), flags a genuine
+   * conflict, and lowers that line's score (`commitmentPenalty` in `scoring.ts`).
    */
   recurringWeekday?: WeekdayAbbreviation;
+  /**
+   * The one-off counterpart: real calendar dates ("2026-10-14") a qualitative
+   * fact needs off — a wedding, a checkride, a kid's recital. Checked the same
+   * way against each line's real calendar (`workingDayIndices`), flagged, and
+   * likewise lowers a conflicting line's score. Dates outside the bid period
+   * are kept on the fact but can't be checked against any line.
+   */
+  specificDates?: string[];
 }
 
 export type WeekdayAbbreviation = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
@@ -219,6 +224,26 @@ export interface BidPackGroundingStats {
   };
   /** Null when this bid pack's PDF had no recognizable Reserve Lines grid at all — grounds the reserve-tolerance topic with real numbers rather than a vague "does this pack have reserve lines" guess. */
   reserveLines: { count: number; typeBreakdown: Partial<Record<"24hr" | "a" | "b", number>> } | null;
+  /*
+   * Everything below is absent on a request from a client built before it
+   * existed — the prompt treats a missing field as "not known", never as 0.
+   */
+  /** The real per-line spread of days off — often narrow (13-16 on a real pack), which is exactly what a days-off target question needs to know. */
+  daysOff?: { min: number; max: number };
+  /** The real per-line spread of printed duty periods ("NO. DP'S"). */
+  dutyPeriods?: { min: number; max: number };
+  /** The bid period's real dates, so "the 14th" or "Halloween weekend" can be pinned to a day. Null when the pack's grid header didn't give a start date. */
+  bidPeriod?: { start: string; end: string; days: number } | null;
+  /** What a day off actually costs in this pack: average credit of the lines at each days-off count — the real numbers behind a "would you give up N hours for M more days home" trade. */
+  creditByDaysOff?: { daysOff: number; lines: number; avgCreditHours: number }[];
+  /** Share of lines with at least one international trip. */
+  internationalLineSharePercent?: number | null;
+  /** The pack's layover cities, most-visited first (top 40), with how many trips lay over in each — the codes a city named mid-interview has to bind to. */
+  layoverCities?: { code: string; trips: number }[];
+  /** Spread of each line's longest run of consecutive days off (`longestDaysOffBlockPerLine`). Null when the pack has no grid day-off marks. */
+  daysOffBlock?: { min: number; max: number } | null;
+  /** Spread of Saturdays + Sundays off per line (`weekendDaysOffPerLine`), and how many weekend days the period has. Null when the pack has no grid day-off marks or start date. */
+  weekendDaysOff?: { min: number; max: number; weekendDaysInPeriod: number } | null;
 }
 
 /** What the client sends the turn-loop route each turn. */
@@ -314,6 +339,8 @@ export interface BiddingStoryResponse {
   styleSamplePhrases: string[];
   /** A few loose style descriptors (e.g. "terse", "dry humor") describing the same thing, redundantly, for cheap future filtering. */
   styleTags: string[];
+  /** Whether the story says this pilot commutes in (true), lives in base (false), or doesn't say (null) — pre-fills the commuter step, which the pilot still confirms. */
+  commuterStatus: boolean | null;
 }
 
 /** What the route returns — one Anthropic call handles both "what to ask next" and "what to extract from the last answer," per turn. */

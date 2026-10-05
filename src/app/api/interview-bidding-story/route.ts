@@ -65,5 +65,5 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.json({ profileUpdates: result.profileUpdates });
+  return NextResponse.json({ profileUpdates: result.profileUpdates, commuterStatus: result.commuterStatus });
 }

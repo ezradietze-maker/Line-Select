@@ -1,4 +1,6 @@
-import { getBidPackRanges } from "@/lib/scoring";
+import { DateTime } from "luxon";
+import { dateOfDayIndex, longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
+import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
 import { STANDBY_CREDIT_PER_DAY, tripStandbyDays } from "@/lib/standby";
 import type { BidPack } from "@/types/bidpack";
 import type { BidPackGroundingStats } from "@/types/interview-session";
@@ -43,7 +45,8 @@ export function computeBidPackGroundingStats(bidPack: BidPack): BidPackGrounding
 
   const distinctCityCount = new Set(bidPack.lines.flatMap((l) => l.trips).flatMap((t) => t.layoverCities)).size;
 
-  const [creditMin, creditMax] = getBidPackRanges(bidPack).creditHours;
+  const ranges = getBidPackRanges(bidPack);
+  const [creditMin, creditMax] = ranges.creditHours;
 
   const landingsValues = bidPack.lines.map((l) => l.totalLandings);
   const landings =
@@ -73,6 +76,41 @@ export function computeBidPackGroundingStats(bidPack: BidPack): BidPackGrounding
         }
       : null;
 
+  const bidPeriod = bidPack.bidPeriodStart
+    ? {
+        start: bidPack.bidPeriodStart,
+        end: dateOfDayIndex(bidPack.bidPeriodStart, bidPack.bidPeriodDays - 1),
+        days: bidPack.bidPeriodDays,
+      }
+    : null;
+
+  const linesByDaysOff = new Map<number, number[]>();
+  for (const l of bidPack.lines) linesByDaysOff.set(l.daysOff, [...(linesByDaysOff.get(l.daysOff) ?? []), l.totalCreditHours]);
+  const creditByDaysOff = [...linesByDaysOff.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([daysOff, credits]) => ({
+      daysOff,
+      lines: credits.length,
+      avgCreditHours: Math.round((credits.reduce((s, c) => s + c, 0) / credits.length) * 10) / 10,
+    }));
+
+  const internationalLineSharePercent =
+    verifiedLines.length > 0
+      ? Math.round((verifiedLines.filter((l) => l.trips.some((t) => t.international)).length / verifiedLines.length) * 100)
+      : null;
+
+  const spread = (values: (number | null)[]) => {
+    const real = values.filter((v): v is number => v !== null);
+    return real.length > 0 ? { min: Math.min(...real), max: Math.max(...real) } : null;
+  };
+  const daysOffBlock = spread(bidPack.lines.map(longestDaysOffBlock));
+  const weekendSpread = spread(bidPack.lines.map((l) => weekendDaysOff(l, bidPack.bidPeriodStart)));
+  const weekendDaysInPeriod = bidPack.bidPeriodStart
+    ? Array.from({ length: bidPack.bidPeriodDays }, (_, i) =>
+        DateTime.fromISO(bidPack.bidPeriodStart!, { zone: "utc" }).plus({ days: i }).weekday
+      ).filter((d) => d >= 6).length
+    : 0;
+
   return {
     tripLength,
     reportTime,
@@ -83,5 +121,15 @@ export function computeBidPackGroundingStats(bidPack: BidPack): BidPackGrounding
     landings,
     hotelStandby,
     reserveLines,
+    daysOff: { min: ranges.daysOff[0], max: ranges.daysOff[1] },
+    dutyPeriods: { min: ranges.dutyPeriods[0], max: ranges.dutyPeriods[1] },
+    bidPeriod,
+    creditByDaysOff,
+    internationalLineSharePercent,
+    layoverCities: rankLayoverCitiesByFrequency(bidPack)
+      .slice(0, 40)
+      .map((c) => ({ code: c.code, trips: c.count })),
+    daysOffBlock,
+    weekendDaysOff: weekendSpread && bidPack.bidPeriodStart ? { ...weekendSpread, weekendDaysInPeriod } : null,
   };
 }

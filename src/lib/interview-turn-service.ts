@@ -35,7 +35,51 @@ import { DEFAULT_WEIGHTS, type ExplicitTargetKey } from "@/types/preferences";
  * entire mid-conversation turn, not one silent classification no-op.
  */
 
-const MODEL = "claude-sonnet-5";
+/** Overridable so a newer model can be tried (or rolled back) from the environment without a code change. */
+const MODEL = process.env.INTERVIEW_MODEL || "claude-sonnet-5";
+
+/**
+ * Models that refuse a forced tool_choice ("tool"/"any" — the 5.5 family
+ * does), learned from the first refusal so every later call skips straight
+ * to the fallback instead of failing once per turn.
+ */
+const MODELS_WITHOUT_FORCED_TOOL = new Set<string>();
+
+/**
+ * One tool-calling request that works on every model: a forced tool_choice
+ * where the model accepts it, otherwise "auto" with the requirement stated in
+ * the system prompt and up to two more tries if the reply comes back as
+ * plain text. Returns the response whose tool call should be read (or the
+ * last one, when none ever called the tool).
+ */
+async function createToolCall(
+  client: Anthropic,
+  params: Omit<Anthropic.MessageCreateParamsNonStreaming, "tool_choice" | "model" | "system"> & {
+    system: Anthropic.TextBlockParam[];
+  },
+  toolName: string
+): Promise<Anthropic.Message> {
+  if (!MODELS_WITHOUT_FORCED_TOOL.has(MODEL)) {
+    try {
+      return await client.messages.create({ ...params, model: MODEL, tool_choice: { type: "tool", name: toolName } });
+    } catch (e) {
+      if (!(e instanceof Anthropic.BadRequestError) || !/tool_choice/.test(e.message)) throw e;
+      MODELS_WITHOUT_FORCED_TOOL.add(MODEL);
+    }
+  }
+  const system: Anthropic.TextBlockParam[] = [
+    ...params.system,
+    { type: "text", text: `Always respond by calling the "${toolName}" tool, never with plain text.` },
+  ];
+  let response: Anthropic.Message | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // Double the budget: these models may think before calling the tool, and
+    // a truncated tool call is a lost turn.
+    response = await client.messages.create({ ...params, max_tokens: params.max_tokens * 2, model: MODEL, system, tool_choice: { type: "auto" } });
+    if (response.content.some((c) => c.type === "tool_use" && c.name === toolName)) break;
+  }
+  return response!;
+}
 
 const EXPLICIT_TARGET_KEYS: ExplicitTargetKey[] = ["daysOff", "creditHours", "dutyPeriods", "circadianTolerance"];
 
@@ -76,7 +120,7 @@ function profileUpdatesSchemaProperty() {
               type: "string",
               enum: ["dealbreaker"],
               description:
-                "Omit for the overwhelming majority of facts. Only include \"dealbreaker\" when the pilot's own words are unambiguous about refusal — \"I will not,\" \"that's a dealbreaker,\" \"I'd reject any line with X.\" Never for a merely strong-sounding preference (\"I really don't like,\" \"I'd rather avoid,\" \"I'm not a fan of\") — those stay ordinary preferences with a high importance value instead. Also never for a stated number framed as a want/need/target (\"I need at least 16 days off,\" \"I'm trying to stay under 11\") — that's an ordinary explicit-target fact regardless of how firmly it's worded, not a dealbreaker, unless the pilot's words are themselves refusal (\"anything under 16 and I won't bid it\"). Also never for hedged proximity to a dealbreaker (\"that's close to a dealbreaker,\" \"almost a dealbreaker\") — that phrasing is the pilot saying it ISN'T one. Meaningful on a 'measurable' fact whose binding is 'explicit-weight', 'implicit-weight', or 'city-sentiment'. Also valid on 'explicit-target' but ONLY when rangeRole is 'min' or 'max' AND the wording is itself refusal, not just a real number — a bare pinned 'ideal' number never carries severity at all.",
+                "Omit for the overwhelming majority of facts. Only include \"dealbreaker\" when the pilot's own words are unambiguous about refusal — \"I will not,\" \"that's a dealbreaker,\" \"I'd reject any line with X.\" Never for a merely strong-sounding preference (\"I really don't like,\" \"I'd rather avoid,\" \"I'm not a fan of\") — those stay ordinary preferences with a high importance value instead. Also never for a stated number framed as a want/need/target (\"I need at least 16 days off,\" \"I'm trying to stay under 11\") — that's an ordinary explicit-target fact regardless of how firmly it's worded, not a dealbreaker, unless the pilot's words are themselves refusal (\"anything under 16 and I won't bid it\"). Also never for hedged proximity to a dealbreaker (\"that's close to a dealbreaker,\" \"almost a dealbreaker\") — that phrasing is the pilot saying it ISN'T one. Meaningful on a 'measurable' fact whose binding is 'explicit-weight', 'implicit-weight', or 'city-sentiment'. Also valid on 'explicit-target' but ONLY when rangeRole is 'min' or 'max' AND the wording is itself refusal, not just a real number — a bare pinned 'ideal' number never carries severity at all. Also valid on a 'qualitative' fact that carries specificDates or recurringWeekday, when the pilot says they cannot work that day at all (\"I can't miss it, period,\" \"that's a dealbreaker\") — not for \"I'd really like that day off.\"",
             },
             measurable: {
               type: "object",
@@ -119,7 +163,13 @@ function profileUpdatesSchemaProperty() {
               type: "string",
               enum: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
               description:
-                "Only for a qualitative fact describing a commitment that recurs on the SAME day every week (a standing Tuesday practice, a weekly appointment) — never a one-off date, a holiday, or 'sometime this month.' This lets the results screen check the real weekday against each line's actual calendar and flag a genuine conflict. Omit for anything not literally weekly-recurring, including a vague 'I have plans some days' with no specific day named.",
+                "Only for a qualitative fact describing a commitment that recurs on the SAME day every week (a standing Tuesday practice, a weekly appointment) — never a one-off date (use specificDates for that), a holiday, or 'sometime this month.' This lets the results screen check the real weekday against each line's actual calendar and flag a genuine conflict. Omit for anything not literally weekly-recurring, including a vague 'I have plans some days' with no specific day named.",
+            },
+            specificDates: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "Only for a qualitative fact about specific calendar days the pilot needs off (a wedding on the 14th, a checkride, 'the 9th through the 11th') — each day as YYYY-MM-DD, every day of a range listed separately. Resolve 'the 14th' or 'Halloween' against groundingStats.bidPeriod (its start/end dates); if you can't tell which real date they mean, ask rather than guess, and omit this field. The results screen checks each date against every line's real calendar and flags a line that works it.",
             },
           },
           required: ["statement", "kind", "confidence", "importance"],
@@ -195,52 +245,60 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
   };
 }
 
-function buildUserMessage(body: TurnRequestBody): string {
+/**
+ * The turn's user message, as two blocks: what stays the same for a whole
+ * interview (the bid pack's numbers, the catalog ids, the pilot's own story)
+ * first, marked for caching, then what changes every turn. With the system
+ * prompt also cached, a turn re-sends only the second block at full price.
+ */
+function buildUserContent(body: TurnRequestBody, extraNote?: string): Anthropic.TextBlockParam[] {
   const catalogIds = new Set(allKnownVariableDescriptors().map((d) => d.id));
-  return JSON.stringify(
-    {
-      bidPack: { base: body.base, aircraft: body.aircraft },
-      groundingStats: body.grounding,
-      isCommuter: body.isCommuter,
-      transcript: body.transcript.map((t) => ({ question: t.question, answer: t.answer })),
-      currentFacts: body.facts.map((f) => ({
-        id: f.id,
-        statement: f.statement,
-        kind: f.kind,
-        measurable: f.measurable,
-        confidence: f.confidence,
-        importance: f.importance,
-        severity: f.severity,
-        volatile: f.volatile,
-      })),
-      // turnsUsed is zeroed at the true start of the interview (right after
-      // the one-off commuter toggle) — there's no separate seed phase to
-      // exclude anymore, so this is a plain, honest turn count.
-      turnsUsed: body.turnsUsed,
-      softCapTurns: body.softCapTurns,
-      hardCeilingTurns: body.hardCeilingTurns,
-      uncoveredExplicitWeightIds: body.uncoveredExplicitWeightIds,
-      // Returning-pilot signals — all absent for a first-time interview.
-      // priorFactsChanged: facts the pilot themselves flagged as no longer
-      // accurate, NOT added to currentFacts since they aren't current
-      // anymore — the model's job is to ask what changed, not re-derive them.
-      priorFactsChanged: body.priorFactsChanged?.map((f) => ({ statement: f.statement, measurable: f.measurable })),
-      lifeEvent: body.lifeEvent,
-      // contradictionFlag is set for exactly one turn by the client right
-      // after it detects a conflict with a prior-cycle fact — address it
-      // directly this turn before moving to fresh ground.
-      contradictionFlag: body.contradictionFlag,
-      validCatalogIds: Array.from(catalogIds),
-      // The pilot's own bidding-story answer (if they gave one) and a
-      // rotating anonymous cross-pilot sample — both purely for how this
-      // turn's question gets WRITTEN, never inputs to what gets extracted.
-      // See VOICE_AND_QUALITY_RULES rules 9-10 in interview-prompt.ts.
-      bidStory: body.bidStory,
-      styleSample: body.styleSample,
-    },
-    null,
-    0
-  );
+  const perInterview = JSON.stringify({
+    bidPack: { base: body.base, aircraft: body.aircraft },
+    groundingStats: body.grounding,
+    isCommuter: body.isCommuter,
+    validCatalogIds: Array.from(catalogIds),
+    // The pilot's own bidding-story answer, if they gave one — for how
+    // questions get WRITTEN (rule 9 in interview-prompt.ts), and as the
+    // place to check before asking about something they already covered.
+    bidStory: body.bidStory,
+  });
+  const perTurn = JSON.stringify({
+    transcript: body.transcript.map((t) => ({ question: t.question, answer: t.answer })),
+    currentFacts: body.facts.map((f) => ({
+      id: f.id,
+      statement: f.statement,
+      kind: f.kind,
+      measurable: f.measurable,
+      confidence: f.confidence,
+      importance: f.importance,
+      severity: f.severity,
+      volatile: f.volatile,
+    })),
+    // turnsUsed is zeroed at the true start of the interview (right after
+    // the one-off commuter toggle) — there's no separate seed phase to
+    // exclude anymore, so this is a plain, honest turn count.
+    turnsUsed: body.turnsUsed,
+    softCapTurns: body.softCapTurns,
+    hardCeilingTurns: body.hardCeilingTurns,
+    uncoveredExplicitWeightIds: body.uncoveredExplicitWeightIds,
+    // Returning-pilot signals — all absent for a first-time interview.
+    // priorFactsChanged: facts the pilot themselves flagged as no longer
+    // accurate, NOT added to currentFacts since they aren't current
+    // anymore — the model's job is to ask what changed, not re-derive them.
+    priorFactsChanged: body.priorFactsChanged?.map((f) => ({ statement: f.statement, measurable: f.measurable })),
+    lifeEvent: body.lifeEvent,
+    // contradictionFlag is set for exactly one turn by the client right
+    // after it detects a conflict with a prior-cycle fact — address it
+    // directly this turn before moving to fresh ground.
+    contradictionFlag: body.contradictionFlag,
+    // A rotating anonymous cross-pilot sample, purely for phrasing (rule 10).
+    styleSample: body.styleSample,
+  });
+  return [
+    { type: "text", text: perInterview, cache_control: { type: "ephemeral" } },
+    { type: "text", text: extraNote ? `${perTurn}\n\n${extraNote}` : perTurn },
+  ];
 }
 
 /** "dutyPeriods" is deliberately excluded — it's target-only (see `ExplicitTargetKey`), not a dimension the interview can bind directionally the same way a real bipolar/magnitude slider works. */
@@ -303,6 +361,22 @@ function parseRecurringWeekday(raw: unknown): PreferenceFact["recurringWeekday"]
   return typeof raw === "string" && WEEKDAY_ABBREVIATIONS.has(raw) ? (raw as PreferenceFact["recurringWeekday"]) : undefined;
 }
 
+/** Real YYYY-MM-DD dates only (a month has no Feb 30), deduplicated and capped — anything else is dropped rather than checked against a line as if it were a day. */
+export function parseSpecificDates(raw: unknown): string[] | undefined {
+  const list = decodeIfJsonText(raw);
+  if (!Array.isArray(list)) return undefined;
+  const dates = [
+    ...new Set(
+      list.filter((d): d is string => {
+        if (typeof d !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+        const parsed = new Date(`${d}T00:00:00Z`);
+        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(d);
+      })
+    ),
+  ].slice(0, 62);
+  return dates.length > 0 ? dates : undefined;
+}
+
 /** Fallback unit labels when the model mislabels a target-only id as a "slider" (see the coercion in `parseQuestion` below) and so never supplied its own unitSingular/unitPlural. */
 const TARGET_UNIT_LABELS: Record<ExplicitTargetKey, [string, string]> = {
   daysOff: ["day off", "days off"],
@@ -311,7 +385,25 @@ const TARGET_UNIT_LABELS: Record<ExplicitTargetKey, [string, string]> = {
   circadianTolerance: ["consecutive report", "consecutive reports"],
 };
 
-export function parseQuestion(raw: unknown): InterviewQuestion | null {
+/**
+ * With a large nested tool schema the model now and then sends an array or
+ * object field as its JSON text ("[{\"op\": ...}]") rather than as the value
+ * itself. Reading only a real array used to turn that into zero updates —
+ * a pilot's whole bidding story silently extracting to nothing.
+ */
+function decodeIfJsonText(raw: unknown): unknown {
+  if (typeof raw !== "string") return raw;
+  const text = raw.trim();
+  if (!text.startsWith("[") && !text.startsWith("{")) return raw;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return raw;
+  }
+}
+
+export function parseQuestion(rawInput: unknown): InterviewQuestion | null {
+  const raw = decodeIfJsonText(rawInput);
   if (!raw || typeof raw !== "object") return null;
   const q = raw as Record<string, unknown>;
   if (typeof q.prompt !== "string" || !q.prompt.trim()) return null;
@@ -373,7 +465,8 @@ export function parseQuestion(raw: unknown): InterviewQuestion | null {
 }
 
 /** Individual bad profile updates are dropped rather than failing the whole turn — the question the pilot needs to keep going is the critical part of the response; losing one mis-shaped fact is low-stakes by comparison. */
-function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId: string | undefined): PreferenceFactUpdate[] {
+export function parseProfileUpdates(rawInput: unknown, turnIndex: number, answeredQuestionId: string | undefined): PreferenceFactUpdate[] {
+  const raw = decodeIfJsonText(rawInput);
   if (!Array.isArray(raw)) return [];
   const updates: PreferenceFactUpdate[] = [];
 
@@ -386,13 +479,14 @@ function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId
       continue;
     }
 
-    if ((u.op === "add" || u.op === "revise") && u.fact && typeof u.fact === "object") {
-      const f = u.fact as Record<string, unknown>;
+    const rawFact = decodeIfJsonText(u.fact);
+    if ((u.op === "add" || u.op === "revise") && rawFact && typeof rawFact === "object") {
+      const f = rawFact as Record<string, unknown>;
       if (typeof f.statement !== "string" || !f.statement.trim()) continue;
       if (f.kind !== "measurable" && f.kind !== "qualitative") continue;
       if (typeof f.confidence !== "number" || typeof f.importance !== "number") continue;
 
-      const measurable = f.kind === "measurable" ? parseMeasurableBinding(f.measurable) : undefined;
+      const measurable = f.kind === "measurable" ? parseMeasurableBinding(decodeIfJsonText(f.measurable)) : undefined;
       if (f.kind === "measurable" && !measurable) continue; // claimed measurable but didn't bind to anything real — drop rather than silently score against nothing.
 
       // Honored on explicit-weight/implicit-weight/city-sentiment always,
@@ -401,14 +495,18 @@ function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId
       // below it / exceeding it); a bare pinned "ideal" number doesn't, so
       // the flag is dropped rather than the whole fact (same spirit as
       // dropping a bad `measurable` above: lose the part that doesn't hold
-      // up, not the turn).
+      // up, not the turn). A qualitative fact can be one only when it carries
+      // something a line can actually violate: dates or a weekday it needs off.
+      const recurringWeekday = f.kind === "qualitative" ? parseRecurringWeekday(f.recurringWeekday) : undefined;
+      const specificDates = f.kind === "qualitative" ? parseSpecificDates(f.specificDates) : undefined;
       const severity =
         f.severity === "dealbreaker" &&
-        measurable &&
-        (measurable.type === "explicit-weight" ||
-          measurable.type === "implicit-weight" ||
-          measurable.type === "city-sentiment" ||
-          (measurable.type === "explicit-target" && (measurable.rangeRole === "min" || measurable.rangeRole === "max")))
+        ((measurable &&
+          (measurable.type === "explicit-weight" ||
+            measurable.type === "implicit-weight" ||
+            measurable.type === "city-sentiment" ||
+            (measurable.type === "explicit-target" && (measurable.rangeRole === "min" || measurable.rangeRole === "max")))) ||
+          (f.kind === "qualitative" && (recurringWeekday || specificDates)))
           ? ("dealbreaker" as const)
           : undefined;
 
@@ -426,7 +524,8 @@ function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId
         turnIndex,
         // Only meaningful on a qualitative fact — never on a measurable one, which already has its own real binding.
         cityReason: f.kind === "qualitative" ? parseCityReason(f.cityReason) : undefined,
-        recurringWeekday: f.kind === "qualitative" ? parseRecurringWeekday(f.recurringWeekday) : undefined,
+        recurringWeekday,
+        specificDates,
       };
       updates.push({ op: u.op, fact });
     }
@@ -437,31 +536,48 @@ function parseProfileUpdates(raw: unknown, turnIndex: number, answeredQuestionId
 
 export type InterviewTurnResult = { ok: true; turn: TurnResponse } | { ok: false; error: string };
 
+/** One model call's token counts — passed to an optional observer so an evaluation script can measure cost and cache hits without scraping logs. */
+export interface TurnUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
 /** One Anthropic call for one turn attempt — factored out so a malformed response below the floor (see below) can be retried with a corrective note rather than duplicating the whole call. */
 async function requestTurnFromModel(
   client: Anthropic,
   req: TurnRequestBody,
   canWrapUp: boolean,
-  extraNote?: string
+  extraNote?: string,
+  onUsage?: (usage: TurnUsage) => void
 ): Promise<Record<string, unknown> | null> {
-  const response = await client.messages.create({
-    model: MODEL,
+  const response = await createToolCall(client, {
     // Observed reasoning fields alone running 600-900 output tokens once the
     // interview reaches contradiction-resolution territory (Phase 6 transcript
     // testing) — 1500 left too little headroom, and a truncated tool call means
     // a lost turn (parseQuestion sees an incomplete/missing question object).
     max_tokens: 2200,
-    system: buildInterviewSystemPrompt(),
-    messages: [{ role: "user", content: extraNote ? `${buildUserMessage(req)}\n\n${extraNote}` : buildUserMessage(req) }],
+    // The system prompt is the same for every turn of every interview, so it
+    // (and the tool definition ahead of it) is cached rather than re-read
+    // in full ~30 times per pilot.
+    system: [{ type: "text", text: buildInterviewSystemPrompt(), cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content: buildUserContent(req, extraNote) }],
     tools: [buildTurnTool(canWrapUp)],
-    tool_choice: { type: "tool", name: "submit_interview_turn" },
-  });
+  }, "submit_interview_turn");
 
   console.log("[interview-turn] usage", {
     turnsUsed: req.turnsUsed,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
     retry: !!extraNote,
+    cacheRead: response.usage.cache_read_input_tokens ?? 0,
+  });
+  onUsage?.({
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
   });
 
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
@@ -483,7 +599,11 @@ async function requestTurnFromModel(
 const MISSING_QUESTION_RETRY_NOTE =
   "IMPORTANT: your previous response had action \"ask\" but no valid \"question\" object. Wrapping up is not available yet (either you're still below the minimum-turns floor, or real catalog coverage is still incomplete — see uncoveredExplicitWeightIds) — you must return action \"ask\" with a complete question object: \"prompt\" is always required, plus lowLabel/highLabel/centerLabel/boundTo for kind \"slider\", unitSingular/unitPlural/boundTo for kind \"target-slider\", or at least 2 \"options\" for kind \"choice\". A kind \"free-text\" question only ever needs \"prompt\" — use that if nothing else fits.";
 
-export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Promise<InterviewTurnResult> {
+export async function runInterviewTurn(
+  apiKey: string,
+  req: TurnRequestBody,
+  onUsage?: (usage: TurnUsage) => void
+): Promise<InterviewTurnResult> {
   const client = new Anthropic({ apiKey });
   // Structural, not just prose: below the floor, or with real catalog
   // coverage still missing, "wrap_up" is dropped from the tool schema's own
@@ -502,7 +622,7 @@ export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Pr
   const answeredQuestionId = lastTurn?.question.id;
 
   try {
-    let input = await requestTurnFromModel(client, req, canWrapUp);
+    let input = await requestTurnFromModel(client, req, canWrapUp, undefined, onUsage);
     if (!input) {
       return { ok: false, error: "Couldn't read the interview response." };
     }
@@ -526,7 +646,7 @@ export async function runInterviewTurn(apiKey: string, req: TurnRequestBody): Pr
     // early must never silently collapse into a wrap-up.
     if (action === "ask" && !question && !canWrapUp) {
       console.warn("[interview-turn] ask action with no valid question below MIN_TURNS_BEFORE_WRAP, retrying once", { turnsUsed: req.turnsUsed, rawQuestion: JSON.stringify(input.question) });
-      const retryInput = await requestTurnFromModel(client, req, canWrapUp, MISSING_QUESTION_RETRY_NOTE);
+      const retryInput = await requestTurnFromModel(client, req, canWrapUp, MISSING_QUESTION_RETRY_NOTE, onUsage);
       if (retryInput) {
         input = retryInput;
         question = parseQuestion(input.question);
@@ -612,8 +732,13 @@ function buildStoryExtractionTool(): Anthropic.Tool {
           description: "A few one- or two-word style descriptors, e.g. \"terse\", \"dry humor\", \"heavy jargon\", \"formal\", \"self-deprecating\".",
           items: { type: "string" },
         },
+        commuterStatus: {
+          type: "string",
+          enum: ["commuter", "local", "unknown"],
+          description: "Whether the story says the pilot commutes to this base from elsewhere, lives in base, or doesn't say.",
+        },
       },
-      required: ["profileUpdates", "styleSamplePhrases", "styleTags"],
+      required: ["profileUpdates", "styleSamplePhrases", "styleTags", "commuterStatus"],
     },
   };
 }
@@ -634,30 +759,50 @@ function buildStoryUserMessage(req: BiddingStoryRequestBody): string {
 }
 
 export type BiddingStoryExtractionResult =
-  | { ok: true; profileUpdates: PreferenceFactUpdate[]; styleSamplePhrases: string[]; styleTags: string[] }
+  | { ok: true; profileUpdates: PreferenceFactUpdate[]; styleSamplePhrases: string[]; styleTags: string[]; commuterStatus: boolean | null }
   | { ok: false; error: string };
 
 /** Bounds so one adversarial or malformed response can't produce absurdly long stored style material. */
 const MAX_STYLE_PHRASE_LENGTH = 200;
 const MAX_STYLE_TAG_LENGTH = 40;
 
+/** A story this long always says something extractable — an empty result from one is a failed read, not an empty story. */
+const MIN_STORY_CHARS_EXPECTING_FACTS = 120;
+
+async function requestStoryExtraction(client: Anthropic, req: BiddingStoryRequestBody): Promise<Record<string, unknown> | null> {
+  const response = await createToolCall(client, {
+    // A detailed, "every small detail" narrative can produce many more
+    // extracted facts in one response than a single normal turn ever
+    // does — the normal turn budget (2200) is too tight for this call.
+    max_tokens: 6000,
+    system: [{ type: "text", text: buildBiddingStoryPrompt() }],
+    messages: [{ role: "user", content: buildStoryUserMessage(req) }],
+    tools: [buildStoryExtractionTool()],
+  }, "submit_bidding_story_extraction");
+  console.log("[interview-bidding-story] usage", {
+    storyChars: req.bidStoryText.length,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    stopReason: response.stop_reason,
+  });
+  const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
+  return toolUse ? (toolUse.input as Record<string, unknown>) : null;
+}
+
 export async function runBiddingStoryExtraction(apiKey: string, req: BiddingStoryRequestBody): Promise<BiddingStoryExtractionResult> {
   const client = new Anthropic({ apiKey });
   try {
-    const response = await client.messages.create({
-      model: MODEL,
-      // A detailed, "every small detail" narrative can produce many more
-      // extracted facts in one response than a single normal turn ever
-      // does — the normal turn budget (2200) is too tight for this call.
-      max_tokens: 4000,
-      system: buildBiddingStoryPrompt(),
-      messages: [{ role: "user", content: buildStoryUserMessage(req) }],
-      tools: [buildStoryExtractionTool()],
-      tool_choice: { type: "tool", name: "submit_bidding_story_extraction" },
-    });
-
-    const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
-    const input = toolUse ? (toolUse.input as Record<string, unknown>) : null;
+    let input = await requestStoryExtraction(client, req);
+    if (
+      req.bidStoryText.trim().length >= MIN_STORY_CHARS_EXPECTING_FACTS &&
+      parseProfileUpdates(input?.profileUpdates, 0, undefined).length === 0
+    ) {
+      console.warn("[interview-bidding-story] no facts from a real story, retrying once", {
+        storyChars: req.bidStoryText.length,
+        rawType: typeof input?.profileUpdates,
+      });
+      input = (await requestStoryExtraction(client, req)) ?? input;
+    }
     if (!input) return { ok: false, error: "Couldn't read the extraction response." };
 
     // Rewritten to a "seed-question" source (matching how the pre-loop city
@@ -680,7 +825,9 @@ export async function runBiddingStoryExtraction(apiKey: string, req: BiddingStor
       ? input.styleTags.filter((t): t is string => typeof t === "string" && t.trim().length > 0 && t.length <= MAX_STYLE_TAG_LENGTH)
       : [];
 
-    return { ok: true, profileUpdates, styleSamplePhrases, styleTags };
+    const commuterStatus = input.commuterStatus === "commuter" ? true : input.commuterStatus === "local" ? false : null;
+
+    return { ok: true, profileUpdates, styleSamplePhrases, styleTags, commuterStatus };
   } catch (e) {
     console.error("[interview-bidding-story] request failed", e);
     return { ok: false, error: "Couldn't reach the interview service." };

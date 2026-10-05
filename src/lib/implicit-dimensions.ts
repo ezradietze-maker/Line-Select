@@ -1,3 +1,4 @@
+import { longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
 import { tripStandbyDays } from "@/lib/standby";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
@@ -27,7 +28,8 @@ export interface ImplicitVariable {
     | "workload"
     | "restRecovery"
     | "layover"
-    | "financial";
+    | "financial"
+    | "homeTime";
   label: string;
   description: string;
   valueShape: ValueShape;
@@ -202,6 +204,20 @@ export const IMPLICIT_VARIABLES: ImplicitVariable[] = [
     description: "How many separate trips on this line include standby — one sit versus coming back to it again and again through the month. Direction 1 = fine with several stints; direction -1 = wants as few separate ones as possible.",
     valueShape: "linear",
   },
+  {
+    id: "longestDaysOffBlockPerLine",
+    category: "homeTime",
+    label: "Days off together",
+    description: "The longest run of consecutive days off on this line, read from its own printed calendar — one long block at home versus days off scattered between trips. Direction 1 = wants days off grouped into a long block; direction -1 = prefers them spread out.",
+    valueShape: "satiation",
+  },
+  {
+    id: "weekendDaysOffPerLine",
+    category: "homeTime",
+    label: "Weekends off",
+    description: "Saturdays and Sundays this line has off, on the bid period's real calendar. Direction 1 = wants weekends off; direction -1 = prefers to work weekends (e.g. to be home midweek).",
+    valueShape: "linear",
+  },
 ];
 
 function normalize(value: number, min: number, max: number): number {
@@ -222,7 +238,7 @@ function stddev(values: number[]): number | null {
 }
 
 /** Raw (unnormalized) per-line values for every implicit variable, averaged across the line's schedule-verified trips — an estimated or unverified trip has nothing real to measure, so it's excluded rather than guessed. */
-function computeRawLineValues(line: Line): Record<string, number | null> {
+function computeRawLineValues(line: Line, bidPeriodStart: string | null): Record<string, number | null> {
   const analytics = line.trips.filter((t) => t.schedule.length > 0).map((t) => computeTripAnalytics(t));
   // trip.days is a raw line-grid field, not schedule-dependent, so it's available even for lines whose duty-level schedule couldn't be confirmed.
   const tripShapeVariancePerLine = stddev(line.trips.map((t) => t.days));
@@ -230,6 +246,9 @@ function computeRawLineValues(line: Line): Record<string, number | null> {
   const standbyTrips = line.trips.map(tripStandbyDays);
   const longestStandbyStretchPerLine = line.estimated ? null : Math.max(0, ...standbyTrips);
   const standbyStintsPerLine = line.estimated ? null : standbyTrips.filter((d) => d > 0).length;
+  // Whole-line calendar shape, from the grid's own day-off marks.
+  const longestDaysOffBlockPerLine = longestDaysOffBlock(line);
+  const weekendDaysOffPerLine = weekendDaysOff(line, bidPeriodStart);
 
   if (analytics.length === 0) {
     return {
@@ -237,6 +256,8 @@ function computeRawLineValues(line: Line): Record<string, number | null> {
       tripShapeVariancePerLine,
       longestStandbyStretchPerLine,
       standbyStintsPerLine,
+      longestDaysOffBlockPerLine,
+      weekendDaysOffPerLine,
     };
   }
 
@@ -284,12 +305,14 @@ function computeRawLineValues(line: Line): Record<string, number | null> {
     tripShapeVariancePerLine,
     longestStandbyStretchPerLine,
     standbyStintsPerLine,
+    longestDaysOffBlockPerLine,
+    weekendDaysOffPerLine,
   };
 }
 
 /** Normalized [0,1] implicit-variable values for every line in the bid pack, scaled against the bid pack's own real spread — same convention `scoring.ts` uses for the explicit dimensions. */
 export function computeImplicitLineValues(bidPack: BidPack): Record<string, Record<string, number>> {
-  const rawByLine = new Map(bidPack.lines.map((line) => [line.id, computeRawLineValues(line)]));
+  const rawByLine = new Map(bidPack.lines.map((line) => [line.id, computeRawLineValues(line, bidPack.bidPeriodStart)]));
 
   const ranges = new Map<string, { min: number; max: number }>();
   for (const variable of IMPLICIT_VARIABLES) {

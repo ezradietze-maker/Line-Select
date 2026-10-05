@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDownIcon } from "@/components/ui/icons";
+import { weekdayPlural } from "@/lib/scoring";
 import type { PreferenceProfile } from "@/types/preferences";
 
 interface PilotProfileSummaryProps {
@@ -13,7 +14,9 @@ interface PilotProfileSummaryProps {
  * adaptive interview's output, as distinct from the measurable half
  * (which, once wired into scoring, already surfaces through each line's
  * own Satisfaction Index breakdown and explanation text — see scoring.ts). A qualitative
- * fact never moves a score; this is the only place it's shown at all, so
+ * fact never moves a score — except a dated or weekly commitment, which is
+ * checked against every line and ranks a conflicting one lower (see
+ * `commitmentPenalty`). This is the only place they're all shown, so
  * it lives once, page-level, rather than per-line — genuinely different
  * from LineCard's own "Also factored in" panel, which is specifically
  * about why *one line* scored the way it did.
@@ -40,7 +43,7 @@ export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
 
   if (qualitativeFacts.length === 0) return null;
 
-  const checkedCount = qualitativeFacts.filter((f) => f.recurringWeekday).length;
+  const checkedCount = qualitativeFacts.filter((f) => f.recurringWeekday || f.specificDates?.length).length;
 
   return (
     <div className="mb-4 rounded-xl border border-border bg-surface p-4 sm:p-6">
@@ -54,10 +57,12 @@ export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
           <div className="text-sm font-semibold text-ink">What we learned about you</div>
           <p className="mt-0.5 hidden text-xs text-ink-faint sm:block">
             {qualitativeFacts.length} thing{qualitativeFacts.length === 1 ? "" : "s"} from your interview that
-            {qualitativeFacts.length === 1 ? " doesn't" : " don't"} show up as a number on any line, but are
-            still worth knowing
+            {qualitativeFacts.length === 1 ? " isn't a slider or score of its own" : " aren't a slider or score of their own"}, but{" "}
+            {qualitativeFacts.length === 1 ? "is" : "are"} still worth knowing
             {checkedCount > 0 &&
-              ` — ${checkedCount === 1 ? "one of them is" : `${checkedCount} of them are`} checked directly against each line's calendar below`}
+              (qualitativeFacts.length === 1
+                ? " — it's checked against each line's calendar below, and lines that conflict rank lower"
+                : ` — ${checkedCount === 1 ? "one of them is" : `${checkedCount} of them are`} checked against each line's calendar below, and lines that conflict rank lower`)}
             .
           </p>
         </div>
@@ -74,7 +79,17 @@ export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
                 {f.statement}
                 {f.recurringWeekday && (
                   <span className="ml-1.5 inline-flex items-center rounded-full bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
-                    Checked against every line&rsquo;s {f.recurringWeekday}s
+                    Checked against every line&rsquo;s {weekdayPlural(f.recurringWeekday)}
+                  </span>
+                )}
+                {f.severity === "dealbreaker" && (!!f.recurringWeekday || !!f.specificDates?.length) && (
+                  <span className="ml-1.5 inline-flex items-center rounded-full bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">
+                    Dealbreaker
+                  </span>
+                )}
+                {!f.recurringWeekday && f.specificDates && f.specificDates.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center rounded-full bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
+                    Checked against every line&rsquo;s calendar
                   </span>
                 )}
               </span>

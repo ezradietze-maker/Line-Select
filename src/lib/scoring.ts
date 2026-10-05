@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { computeCircadianAssessment, computeCumulativeCircadianAssessment, computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import type { CumulativeCircadianAssessment } from "@/lib/circadian";
 import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
@@ -18,7 +19,7 @@ import {
   type SatisfactionCategory,
 } from "@/lib/satisfaction-categories";
 import { lineDutyPeriods } from "@/lib/duty-periods";
-import { weekdayFlyingPattern } from "@/lib/line-month";
+import { weekdayFlyingPattern, workingDayIndices } from "@/lib/line-month";
 import { lineStandbyDays } from "@/lib/standby";
 import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
@@ -116,7 +117,7 @@ export interface DimensionScore {
 
 export interface LineScore {
   line: Line;
-  /** The Satisfaction Index, 0-100 — already capped when `violatedDealbreakers` is non-empty (see `DEALBREAKER_SCORE_CAP`). */
+  /** The Satisfaction Index, 0-100 — already capped when `violatedDealbreakers` is non-empty (see `DEALBREAKER_SCORE_CAP`), and already lowered by `commitmentPenalty`. */
   score: number;
   dimensions: DimensionScore[];
   topDimensions: DimensionScore[];
@@ -163,6 +164,10 @@ export interface LineScore {
   historicalNote: string | null;
   /** Empty for the overwhelming majority of lines — non-empty means a pilot's stated recurring weekly commitment (see `PreferenceFact.recurringWeekday`) genuinely conflicts with this line's real calendar, and should be surfaced prominently, the same as a dealbreaker. See `recurringCommitmentConflictsForLine`. */
   recurringCommitmentConflicts: RecurringCommitmentConflict[];
+  /** The same for a pilot's stated one-off dates (see `PreferenceFact.specificDates`) — non-empty only when this line actually works one of them. See `dateCommitmentConflictsForLine`. */
+  dateCommitmentConflicts: DateCommitmentConflict[];
+  /** Points taken off `score` for those two kinds of conflict together — 0 when there are none. See `commitmentPenalty`. */
+  commitmentPenalty: number;
   /** Null when this line's trip placement isn't confirmed real (see `hasRealTripPlacement` in `lib/circadian.ts`) or it has fewer than two trips to compare — never an approximated recovery window built on unverified calendar position. */
   cumulativeCircadian: CumulativeCircadianAssessment | null;
   /** Null unless the pilot gave a hotel-related reason for a city this line touches AND a real review summary is on file for the hotel assigned there — see `hotelReviewTieInForLine`. */
@@ -899,6 +904,8 @@ const IMPLICIT_LABELS_FOR_DEALBREAKERS = new Map(IMPLICIT_VARIABLES.map((v) => [
 export interface DealbreakerViolation {
   statement: string;
   label: string;
+  /** What on this line breaks it, when that isn't obvious from the statement — e.g. "Works Oct 17" for a date the pilot can't miss. */
+  detail?: string;
 }
 
 /** A stated dealbreaker this line does not violate, but comes close enough to that it's worth flagging as real risk before it becomes a violation. */
@@ -1087,10 +1094,68 @@ function qualitativeTieInsForLine(qualitativeFacts: PreferenceFact[], line: Line
   return matches.slice(0, limit).map((f) => f.statement);
 }
 
+/**
+ * Calendar commitments lower a conflicting line's score rather than only
+ * flagging it — a top-ranked line that works the pilot's daughter's wedding
+ * isn't really their top line. Points, not a cap like a dealbreaker: the
+ * pilot may still trade the trip away, so the line stays rankable and the
+ * size of the drop follows how much was said to matter and how much of the
+ * commitment the line actually runs into. A one-off date costs more than a
+ * weekly one, since one missed Tuesday practice out of four is a far easier
+ * thing to live with or trade around than a missed wedding.
+ */
+const DATE_CONFLICT_MAX_POINTS = 30;
+const WEEKLY_CONFLICT_MAX_POINTS = 20;
+/** However many commitments a line runs into, it keeps a real score — the banner explains the rest. */
+const COMMITMENT_PENALTY_CAP = 40;
+
+/** A pilot tagging a date or weekday at all says it matters, so a low extracted importance never makes the conflict free. */
+function commitmentWeight(fact: PreferenceFact): number {
+  return Math.min(1, Math.max(0.5, fact.importance));
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/**
+ * A commitment the pilot said they can't miss at all ("a dealbreaker, I can
+ * not miss that day, period") that this line runs into, as an ordinary
+ * dealbreaker violation — same cap, same red banner as any other refusal,
+ * because a 30-point drop could still leave a line that works the pilot's
+ * wedding in their top ten.
+ */
+function commitmentDealbreakerViolation(conflict: RecurringCommitmentConflict | DateCommitmentConflict): DealbreakerViolation {
+  const detail =
+    "weekday" in conflict
+      ? `Flies ${conflict.conflictCount} of ${conflict.totalOccurrences} ${weekdayPlural(conflict.weekday)} this month`
+      : `Works ${conflict.conflictDates.map((d) => DateTime.fromISO(d, { zone: "utc" }).toFormat("LLL d")).join(", ")}`;
+  return { statement: conflict.statement, label: "Calendar commitment", detail };
+}
+
+const WEEKDAY_PLURALS: Record<WeekdayAbbreviation, string> = {
+  Mon: "Mondays", Tue: "Tuesdays", Wed: "Wednesdays", Thu: "Thursdays", Fri: "Fridays", Sat: "Saturdays", Sun: "Sundays",
+};
+
+/** "Saturdays" for "Sat" — how a pilot would say it, not the three-letter tag. */
+export function weekdayPlural(weekday: WeekdayAbbreviation): string {
+  return WEEKDAY_PLURALS[weekday];
+}
+
+/** Total points a line loses for its calendar-commitment conflicts. */
+export function commitmentPenalty(weekly: RecurringCommitmentConflict[], dates: DateCommitmentConflict[]): number {
+  const total = [...weekly, ...dates].reduce((s, c) => s + c.penaltyPoints, 0);
+  return round1(Math.min(COMMITMENT_PENALTY_CAP, total));
+}
+
 /** A real, computed conflict between a pilot's stated recurring weekly commitment and this line's actual calendar — the one qualitative fact this app can verify against data rather than just repeat back. */
 export interface RecurringCommitmentConflict {
   factId: string;
   statement: string;
+  /** Points this conflict takes off the line's score — see `commitmentPenalty`. 0 for a dealbreaker, which caps the score instead. */
+  penaltyPoints: number;
+  /** The pilot said they can't miss it at all — handled as a violated dealbreaker, not a penalty. */
+  dealbreaker: boolean;
   weekday: WeekdayAbbreviation;
   /** How many times this weekday occurs in the bid period. */
   totalOccurrences: number;
@@ -1133,6 +1198,68 @@ function recurringCommitmentConflictsForLine(
         weekday: fact.recurringWeekday!,
         totalOccurrences: count.totalOccurrences,
         conflictCount: count.flyingCount,
+        dealbreaker: fact.severity === "dealbreaker",
+        penaltyPoints:
+          fact.severity === "dealbreaker"
+            ? 0
+            : round1(WEEKLY_CONFLICT_MAX_POINTS * commitmentWeight(fact) * (count.flyingCount / count.totalOccurrences)),
+      });
+    }
+  }
+  return conflicts;
+}
+
+/** A real conflict between dates a pilot said they need off and this line's actual calendar. */
+export interface DateCommitmentConflict {
+  factId: string;
+  statement: string;
+  /** Points this conflict takes off the line's score — see `commitmentPenalty`. 0 for a dealbreaker, which caps the score instead. */
+  penaltyPoints: number;
+  /** The pilot said they can't miss it at all — handled as a violated dealbreaker, not a penalty. */
+  dealbreaker: boolean;
+  /** The stated dates that fall inside this bid period. */
+  datesInPeriod: string[];
+  /** Which of those this line works — always at least one. */
+  conflictDates: string[];
+}
+
+/**
+ * Checks every fact tagged with `specificDates` against this line's real
+ * calendar — same "only a genuine conflict" and "never against a synthesized
+ * layout" rules as `recurringCommitmentConflictsForLine`. A date outside the
+ * bid period can't conflict with any line, so it's left out rather than
+ * guessed at.
+ */
+function dateCommitmentConflictsForLine(
+  qualitativeFacts: PreferenceFact[],
+  line: Line,
+  bidPeriodStart: string | null,
+  bidPeriodDays: number
+): DateCommitmentConflict[] {
+  const dateFacts = qualitativeFacts.filter((f) => f.specificDates && f.specificDates.length > 0);
+  if (dateFacts.length === 0 || !bidPeriodStart) return [];
+  const working = workingDayIndices(line, bidPeriodStart, bidPeriodDays);
+  if (!working) return [];
+
+  const start = DateTime.fromISO(bidPeriodStart, { zone: "utc" });
+  const conflicts: DateCommitmentConflict[] = [];
+  for (const fact of dateFacts) {
+    const inPeriod = fact.specificDates!.filter((d) => {
+      const i = DateTime.fromISO(d, { zone: "utc" }).diff(start, "days").days;
+      return Number.isInteger(i) && i >= 0 && i < bidPeriodDays;
+    });
+    const conflictDates = inPeriod.filter((d) => working.has(DateTime.fromISO(d, { zone: "utc" }).diff(start, "days").days));
+    if (conflictDates.length > 0) {
+      // Any worked date costs at least half: needing three days off for a
+      // wedding and getting two is still mostly a conflict.
+      const share = 0.5 + 0.5 * (conflictDates.length / inPeriod.length);
+      conflicts.push({
+        factId: fact.id,
+        statement: fact.statement,
+        datesInPeriod: inPeriod,
+        conflictDates,
+        dealbreaker: fact.severity === "dealbreaker",
+        penaltyPoints: fact.severity === "dealbreaker" ? 0 : round1(DATE_CONFLICT_MAX_POINTS * commitmentWeight(fact) * share),
       });
     }
   }
@@ -1559,7 +1686,17 @@ export function scoreBidPack(
     // stay uncapped too, since they describe *why the dimensions scored as
     // they did*, a separate concern from the dealbreaker banner that
     // explains the cap itself.
-    const finalScore = violatedDealbreakers.length > 0 ? Math.min(score, DEALBREAKER_SCORE_CAP) : score;
+    // Calendar commitments split two ways: one stated as a dealbreaker joins
+    // the violations above (capping the score), everything else stays a
+    // flagged, point-costing conflict.
+    const allWeekly = recurringCommitmentConflictsForLine(qualitativeFacts, line, bidPack.bidPeriodStart, bidPack.bidPeriodDays);
+    const allDates = dateCommitmentConflictsForLine(qualitativeFacts, line, bidPack.bidPeriodStart, bidPack.bidPeriodDays);
+    violatedDealbreakers.push(...[...allWeekly, ...allDates].filter((c) => c.dealbreaker).map(commitmentDealbreakerViolation));
+    const recurringCommitmentConflicts = allWeekly.filter((c) => !c.dealbreaker);
+    const dateCommitmentConflicts = allDates.filter((c) => !c.dealbreaker);
+    const cappedScore = violatedDealbreakers.length > 0 ? Math.min(score, DEALBREAKER_SCORE_CAP) : score;
+    const penalty = commitmentPenalty(recurringCommitmentConflicts, dateCommitmentConflicts);
+    const finalScore = Math.max(0, cappedScore - penalty);
 
     return {
       line,
@@ -1577,7 +1714,9 @@ export function scoreBidPack(
       historicalNote: historicalConsistencyNote({ dimensions: allDimensions }, priorTopLines),
       cumulativeCircadian: cumulativeCircadianByLine[i],
       hotelReviewTieIn: hotelReviewTieInForLine(line, qualitativeFacts, hotelQualityData),
-      recurringCommitmentConflicts: recurringCommitmentConflictsForLine(qualitativeFacts, line, bidPack.bidPeriodStart, bidPack.bidPeriodDays),
+      recurringCommitmentConflicts,
+      dateCommitmentConflicts,
+      commitmentPenalty: penalty,
     };
   });
 

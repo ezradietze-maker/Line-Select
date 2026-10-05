@@ -31,6 +31,7 @@ import {
 import { clearDraft, loadDraft, saveDraft, type InterviewDraft } from "@/lib/interview-draft";
 import { computeBidPackGroundingStats } from "@/lib/interview-grounding";
 import { computeInterviewProgress } from "@/lib/interview-progress";
+import { mergeStoryAndCityFacts, storyCitySentiments } from "@/lib/interview-story";
 import { cycleCitySentiment } from "@/lib/preference-logic";
 import { useDictation } from "@/lib/use-speech-to-text";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
@@ -104,20 +105,6 @@ function topPriorFacts(discoveredFacts: PreferenceFact[], limit: number): Prefer
       return b.importance * b.confidence - a.importance * a.confidence;
     })
     .slice(0, limit);
-}
-
-/** Deterministic, network-free conversion of the city picker's initial picks into real facts — so the turn loop's very first context already includes them, and the model can follow up on *why* rather than the picks sitting in a side channel it never sees. */
-function factsFromCityPreferences(cityPreferences: Record<string, CitySentiment>): PreferenceFact[] {
-  return Object.entries(cityPreferences).map(([code, sentiment]) => ({
-    id: crypto.randomUUID(),
-    statement: `${sentiment === "love" ? "Loves" : "Wants to avoid"} layovers in ${code}.`,
-    kind: "measurable",
-    measurable: { type: "city-sentiment", code, sentiment },
-    confidence: 1,
-    importance: 0.6,
-    source: { kind: "seed-question", questionKey: "cities" },
-    turnIndex: 0,
-  }));
 }
 
 function StepNav({ onNext, nextLabel, disabled }: { onNext: () => void; nextLabel: string; disabled?: boolean }) {
@@ -257,6 +244,10 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   const [lifeEvent, setLifeEvent] = useState("");
   const [pendingContradiction, setPendingContradiction] = useState<ContradictionFlag | null>(null);
 
+  // Kept apart from `facts` until the cities step: the loop's starting facts
+  // are built from both (see `mergeStoryAndCityFacts`), and going back to
+  // the story and resubmitting replaces these rather than piling up copies.
+  const [storyFacts, setStoryFacts] = useState<PreferenceFact[]>([]);
   const [facts, setFacts] = useState<PreferenceFact[]>([]);
   const [transcript, setTranscript] = useState<InterviewTurnRecord[]>([]);
   const [turnsUsed, setTurnsUsed] = useState(0);
@@ -391,8 +382,24 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
         setBidStoryError(body?.error ?? "Couldn't read that just now — you can try again, or skip and answer as you go instead.");
         return;
       }
-      const { profileUpdates } = (await res.json()) as { profileUpdates: PreferenceFactUpdate[] };
-      setFacts((prev) => applyProfileUpdates(prev, profileUpdates));
+      const { profileUpdates, commuterStatus } = (await res.json()) as {
+        profileUpdates: PreferenceFactUpdate[];
+        commuterStatus?: boolean | null;
+      };
+      // The next screen asks this anyway — when the story already said, it
+      // arrives answered for the pilot to confirm, never over their own pick.
+      if (typeof commuterStatus === "boolean") setIsCommuter((prev) => prev ?? commuterStatus);
+      const extracted = applyProfileUpdates([], profileUpdates);
+      // Cities the story named show up on the picker already marked; a
+      // resubmitted story first takes back the marks its previous version made.
+      const previousPicks = storyCitySentiments(storyFacts);
+      const nextPicks = storyCitySentiments(extracted);
+      setCityPreferences((prev) => {
+        const next = { ...prev };
+        for (const [code, sentiment] of Object.entries(previousPicks)) if (next[code] === sentiment) delete next[code];
+        return { ...next, ...nextPicks };
+      });
+      setStoryFacts(extracted);
       setPhase("commuter");
     } catch {
       setBidStoryError("Couldn't reach the interview service. Check your connection and try again, or skip for now.");
@@ -405,7 +412,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     nextFacts: PreferenceFact[],
     nextTranscript: InterviewTurnRecord[],
     nextTurnsUsed: number,
-    extras?: { priorFactsChanged?: PreferenceFact[]; lifeEvent?: string }
+    extras?: { priorFactsChanged?: PreferenceFact[]; lifeEvent?: string; final?: boolean }
   ) {
     setPhase("adaptive-loading");
     setError(null);
@@ -458,7 +465,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
         }
       }
 
-      if (turn.action === "wrap_up" || !turn.question) {
+      if (turn.action === "wrap_up" || !turn.question || extras?.final) {
         finish(mergedFacts, nextTranscript);
         return;
       }
@@ -483,12 +490,10 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     setTurnsUsed(nextTurnsUsed);
     setCurrentQuestion(null);
 
-    if (nextTurnsUsed >= HARD_CEILING_TURNS) {
-      // Hard ceiling enforced client-side, regardless of what the model would have asked next.
-      finish(facts, nextTranscript);
-      return;
-    }
-    requestNextTurn(facts, nextTranscript, nextTurnsUsed);
+    // At the hard ceiling the interview ends no matter what the model would
+    // ask next, but this last answer still gets read — finishing straight
+    // away used to drop whatever the pilot said on their final question.
+    requestNextTurn(facts, nextTranscript, nextTurnsUsed, { final: nextTurnsUsed >= HARD_CEILING_TURNS });
   }
 
   const seniorityOffset = hasSeniorityStep ? 1 : 0;
@@ -603,7 +608,15 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
           value={bidStoryText}
           onChange={setBidStoryText}
           onSubmit={submitBiddingStory}
-          onSkip={() => setPhase("commuter")}
+          onSkip={() => {
+            // Skipping after an earlier submit means none of it should count.
+            const previousPicks = storyCitySentiments(storyFacts);
+            setCityPreferences((prev) =>
+              Object.fromEntries(Object.entries(prev).filter(([code, sentiment]) => previousPicks[code] !== sentiment))
+            );
+            setStoryFacts([]);
+            setPhase("commuter");
+          }}
           busy={bidStoryBusy}
           error={bidStoryError}
           maxLength={MAX_BID_STORY_LENGTH}
@@ -665,12 +678,12 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
           />
           <StepNav
             onNext={() => {
-              const cityFacts = factsFromCityPreferences(cityPreferences);
-              setFacts(cityFacts);
+              const startFacts = mergeStoryAndCityFacts(storyFacts, cityPreferences);
+              setFacts(startFacts);
               if (hasReturningCheck) {
                 setPhase("returning-check");
               } else {
-                requestNextTurn(cityFacts, transcript, 0);
+                requestNextTurn(startFacts, transcript, 0);
               }
             }}
             nextLabel="Continue"
