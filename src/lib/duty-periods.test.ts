@@ -35,7 +35,7 @@ describe("duty periods", () => {
   });
 
   it("uses the printed NO. DP'S for a parsed line, and the sum otherwise", () => {
-    const summary = { lineNumber: "1", pageNumber: 1, seat: "CAP" as const, daysOff: 13, totalCreditHours: 80, totalTafbHours: 240, totalLandings: 9, numDutyPeriods: 0, flightNumberSequence: [] };
+    const summary = { lineNumber: "1", pageNumber: 1, seat: "CAP" as const, daysOff: 13, totalCreditHours: 80, totalTafbHours: 240, totalBlockHours: 50, carryOverCreditHours: 0, carryOverBlockHours: 0, totalLandings: 9, numDutyPeriods: 0, flightNumberSequence: [] };
     expect(buildLine({ ...summary, printedDutyPeriods: 13 }, null, "SEP26").totalDutyPeriods).toBe(13);
     expect(buildLine(summary, null, "SEP26").totalDutyPeriods).toBe(1);
   });

@@ -210,7 +210,7 @@ describe("departures are landings", () => {
   });
 
   it("gives an estimated line's trip departures equal to the line's printed landings", () => {
-    const trip = buildEstimatedTrip({ lineNumber: "1", pageNumber: 1, seat: "CAP", daysOff: 13, totalCreditHours: 80, totalTafbHours: 240, totalLandings: 9, numDutyPeriods: 0, flightNumberSequence: [] }, "SEP26");
+    const trip = buildEstimatedTrip({ lineNumber: "1", pageNumber: 1, seat: "CAP", daysOff: 13, totalCreditHours: 80, totalTafbHours: 240, totalBlockHours: 50, carryOverCreditHours: 0, carryOverBlockHours: 0, totalLandings: 9, numDutyPeriods: 0, flightNumberSequence: [] }, "SEP26");
     expect(trip.departures).toBe(9);
   });
 

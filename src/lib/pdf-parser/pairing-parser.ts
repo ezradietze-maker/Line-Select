@@ -27,6 +27,12 @@ const FOOTER_RE =
 // accept either form rather than rejecting the whole leg row.
 const DAY_TOKEN_RE = /^[*#]?(\d{0,2}[A-Z]{0,2})$/;
 const AIRPORT_RE = /^[A-Z]{3}$/;
+// The EQP column: a company fleet code ("83", "55"), "JET" for an interline
+// airliner, or "CAB" for ground transport between airports ("GT9999 CAB
+// MOB … BFM 19:47") — 355 such rows across real packs, which used to be
+// rejected outright, silently dropping any layover printed on them and
+// merging the duty days on either side into one.
+const EQUIPMENT_RE = /^(\d+|[A-Z]{3})$/;
 const TIME_PAIR_RE = /^\d{4}\([*#]?\d{4}\)$/;
 const HHMM_RE = /^\d{1,3}:\d{2}$/;
 const SEPARATOR_RE = /^[.\s]{10,}$/;
@@ -106,6 +112,37 @@ function isGroundDutyRow(code: string, afterCode: string | undefined): boolean {
   return GROUND_DUTY_CODE_RE.test(code) && AIRPORT_RE.test(afterCode ?? "");
 }
 
+/**
+ * A deadhead is a leg ridden as a passenger, and the pack only ever prints
+ * that one way: an interline flight number carrying another carrier's
+ * prefix ("DL2939", or "GT9999" for a cab between airports). The column
+ * right after BLOCK is MEAL — "BH", "DH", "BH/DH", "BSI", "DSI", "DM",
+ * "NOCAT"… — NOT a deadhead flag: across 1,673 real pairings, counting
+ * every company leg (including every "DH" one) reconciles with the printed
+ * BLOCK HRS footer on 1,671, while dropping the "DH" legs breaks 226 of
+ * them; and 74% of "DH" legs depart between 15:00 and 23:59 local versus
+ * 0% of "BH" legs. "DH" is dinner, hot.
+ */
+function isDeadheadLeg(flightNumber: string, groundDuty: boolean): boolean {
+  return !groundDuty && !/^\d+$/.test(flightNumber);
+}
+
+/**
+ * The layover is the row's last column: a city then its printed length,
+ * directly after the DUTY time ("… 08:52 KIX 23:29"). Anchoring to that
+ * exact position — rather than scanning backwards for any three letters
+ * followed by a time — matters because a 3-letter meal code on a trip's
+ * final leg ("05:55 DSI 05:55 05:55 07:25") otherwise reads as a 5.9-hour
+ * "layover in DSI".
+ */
+function findLayover(rest: string[]): { city: string; hours: number } | null {
+  const n = rest.length;
+  if (n < 3) return null;
+  const [beforeCity, city, hours] = [rest[n - 3], rest[n - 2], rest[n - 1]];
+  if (!AIRPORT_RE.test(city) || !HHMM_RE.test(hours) || !HHMM_RE.test(beforeCity)) return null;
+  return { city, hours: timeToHours(hours) };
+}
+
 function tryParseLeg(row: string): LegInfo | null {
   const tokens = row.split(" ").filter(Boolean);
   if (tokens.length < 6) return null;
@@ -117,7 +154,7 @@ function tryParseLeg(row: string): LegInfo | null {
   const groundDuty = isGroundDutyRow(flightNumber, tokens[2]);
   if (!groundDuty) {
     if (!/^[A-Z]{0,3}\d+$/.test(flightNumber)) return null;
-    if (!/^(\d+|JET)$/.test(tokens[2])) return null;
+    if (!EQUIPMENT_RE.test(tokens[2])) return null;
   }
   // Ground duty has no EQP token to skip past, so its fields start one
   // position earlier than a flown leg's.
@@ -132,19 +169,8 @@ function tryParseLeg(row: string): LegInfo | null {
   if (tokens.length > base + 4 && !HHMM_RE.test(tokens[base + 4])) return null;
 
   const rest = tokens.slice(base + 5);
-  // Ground duty is standby, never a deadhead — the "DH" flag only ever
-  // marks a flown leg ridden as a passenger.
-  const isDeadhead = !groundDuty && rest.length > 0 && rest[0].toUpperCase() === "DH";
-
-  // Layover city: a 3-letter code immediately followed by an HH:MM at the
-  // tail of the row (the last leg of a duty period reports its layover).
-  let layoverCity: string | undefined;
-  for (let i = rest.length - 2; i >= 0; i--) {
-    if (AIRPORT_RE.test(rest[i]) && HHMM_RE.test(rest[i + 1])) {
-      layoverCity = rest[i];
-      break;
-    }
-  }
+  const isDeadhead = isDeadheadLeg(flightNumber, groundDuty);
+  const layoverCity = findLayover(rest)?.city;
 
   return { dayLetters: dayMatch[1], flightNumber, depAirport, arrAirport, isDeadhead, layoverCity };
 }
@@ -232,7 +258,7 @@ function tryParseRichLeg(row: string): RichLegMatch | null {
   const groundDuty = isGroundDutyRow(flightNumber, tokens[2]);
   if (!groundDuty) {
     if (!/^[A-Z]{0,3}\d+$/.test(flightNumber)) return null;
-    if (!/^(\d+|JET)$/.test(tokens[2])) return null;
+    if (!EQUIPMENT_RE.test(tokens[2])) return null;
   }
   const base = groundDuty ? 2 : 3;
 
@@ -252,15 +278,8 @@ function tryParseRichLeg(row: string): RichLegMatch | null {
   // mislabeling standby hours as block.
   const blockHours = groundDuty ? null : tokens.length > base + 4 ? timeToHours(tokens[base + 4]) : null;
   const rest = tokens.slice(base + 5);
-  const isDeadhead = !groundDuty && (!/^\d+$/.test(flightNumber) || rest.some((t) => t.toUpperCase() === "DH"));
-
-  let layover: { city: string; hours: number } | null = null;
-  for (let i = rest.length - 2; i >= 0; i--) {
-    if (AIRPORT_RE.test(rest[i]) && HHMM_RE.test(rest[i + 1])) {
-      layover = { city: rest[i], hours: timeToHours(rest[i + 1]) };
-      break;
-    }
-  }
+  const isDeadhead = isDeadheadLeg(flightNumber, groundDuty);
+  const layover = findLayover(rest);
 
   return {
     flightNumber,
@@ -525,12 +544,8 @@ export function parsePairingColumn(
     // above didn't hold for this pairing, and it's safer to fall back to no
     // detailed schedule than to show a pilot a plausible-looking but wrong
     // one. The footer's BLOCK HRS counts every company-metal (bare-digit
-    // flight number) leg, even ones flagged "DH" — confirmed against real
-    // data: a pairing with two such legs only reconciled once they were
-    // included, so the "DH" flag on a company flight affects the flying/
-    // deadhead label shown to a pilot, not this airline's own block-hour
-    // accounting. Only genuinely interline flight numbers (an actual
-    // different carrier) are excluded here.
+    // flight number) leg and excludes interline deadheads (see
+    // `isDeadheadLeg` for why a "DH" in the meal column is not one).
     const scheduledBlockHours = schedule
       .flatMap((d) => d.legs)
       .filter((l) => /^\d+$/.test(l.flightNumber))
@@ -549,11 +564,10 @@ export function parsePairingColumn(
     // legs the pilot actually flew. A bare-digit flight number (no airline
     // prefix, e.g. "6091") is a company-operated leg the pilot lands; one
     // with an airline code prefix (e.g. "UA0869", "WN1411") is a commercial
-    // flight ridden as a passenger. Counting bare-digit legs matches the
-    // printed LDGS value on every pairing checked where that value was
-    // itself trustworthy — including ones flagged deadhead, so deadhead
-    // status is not part of this rule — so it replaces LDGS entirely rather
-    // than only filling in when the printed value is 0.
+    // flight ridden as a passenger. Counting bare-digit legs is the same
+    // rule that reconciles the printed BLOCK HRS footer on 1,671 of 1,673
+    // real pairings, so it replaces LDGS entirely rather than only filling
+    // in when the printed value is 0.
     const landings = legs.filter((l) => /^\d+$/.test(l.flightNumber)).length;
 
     pairings.push({

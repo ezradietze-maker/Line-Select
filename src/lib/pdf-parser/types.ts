@@ -121,6 +121,12 @@ export interface ParsedLineSummary {
   daysOff: number;
   totalCreditHours: number;
   totalTafbHours: number;
+  /** Printed BLK. — this bid period's own share of operated block hours, net of any carry-over. */
+  totalBlockHours: number;
+  /** The first printed C/O. — credit hours of a trip that spans the period edge, carried into the adjacent period rather than counted in CR. here. 0 when nothing carries. */
+  carryOverCreditHours: number;
+  /** The second printed C/O. — the same for block hours. */
+  carryOverBlockHours: number;
   totalLandings: number;
   numDutyPeriods: number;
   /** The line's own printed "NO. DP'S" — its duty-period count as the bid pack states it, standby days included. Absent when the line didn't print one. */

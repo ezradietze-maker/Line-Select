@@ -68,6 +68,8 @@ export interface DetailedDay {
   citySentiment: CitySentiment | null;
   /** For a day off: the length of the run of days off this one belongs to, and whether it opens it. */
   offRun: { length: number; isFirst: boolean; position: number } | null;
+  /** The evening before a trip that reports just after midnight: not a day off, but nothing flies on it. */
+  preReportTime: string | null;
   segments: TimelineSegment[];
   title: string;
 }
@@ -144,6 +146,9 @@ export function toStripSegment(s: TimelineSegment): StripSegment {
 function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">): string {
   const date = day.date && day.weekday ? `${day.weekday} ${day.date.slice(5)}` : `Day ${day.dayIndex + 1}`;
   if (d.kind === "off") return `${date} — day off${d.offRun && d.offRun.length > 1 ? ` (day ${d.offRun.position} of ${d.offRun.length} off)` : ""}`;
+  if (d.preReportTime !== null) {
+    return `${date} — not a day off: trip ${d.tripNumber ?? (d.tripIndex ?? 0) + 1} reports at ${d.preReportTime} the next morning, so this evening goes to it`;
+  }
   if (d.tripIndex === null) return `${date} — on duty, continuing a trip from the previous bid period`;
   const parts = [`${date} — trip ${d.tripNumber ?? d.tripIndex + 1}, day ${d.tripDay} of ${d.tripDayCount}`];
   if (d.kind === "estimated") return `${parts[0]} (exact daily detail unavailable)`;
@@ -204,6 +209,20 @@ export function buildDetailedMonth(
         redEye: false, earlyReport: false, layoverCode: null, layoverHotel: null, layoverRest: null,
         layoverInternational: false, citySentiment: null,
         offRun: { length: run.length, isFirst: day.dayIndex === run.start, position: day.dayIndex - run.start + 1 },
+        preReportTime: null,
+      };
+      return { ...d, title: describeDay(day, d) };
+    }
+
+    if (day.isPreReport) {
+      const report = trip?.schedule[0]?.reportTimeLocal ?? null;
+      const d = {
+        ...base,
+        kind: "trip" as const,
+        strip: [], dutyStart: null, releaseTime: null, landings: 0, hasDeadhead: false, hasStandby: false,
+        redEye: false, earlyReport: false, layoverCode: null, layoverHotel: null, layoverRest: null,
+        layoverInternational: false, citySentiment: null, offRun: null,
+        preReportTime: report ? `${report.slice(0, 2)}:${report.slice(2, 4)}` : "",
       };
       return { ...d, title: describeDay(day, d) };
     }
@@ -214,7 +233,7 @@ export function buildDetailedMonth(
         kind: "estimated" as const,
         strip: [], dutyStart: null, releaseTime: null, landings: 0, hasDeadhead: false, hasStandby: false,
         redEye: false, earlyReport: false, layoverCode: null, layoverHotel: null, layoverRest: null,
-        layoverInternational: false, citySentiment: null, offRun: null,
+        layoverInternational: false, citySentiment: null, offRun: null, preReportTime: null,
       };
       return { ...d, title: describeDay(day, d) };
     }
@@ -248,6 +267,7 @@ export function buildDetailedMonth(
       layoverInternational: layoverCode ? isInternationalCity(layoverCode) : false,
       citySentiment: layoverCode ? cityPreferences[layoverCode] ?? null : null,
       offRun: null,
+      preReportTime: null,
     };
     return { ...d, title: describeDay(day, d) };
   });

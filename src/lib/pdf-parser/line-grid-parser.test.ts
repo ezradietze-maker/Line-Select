@@ -48,6 +48,22 @@ describe("parseLineGridColumn", () => {
     expect(result.pairings).toEqual([pairing]);
   });
 
+  it("keeps the printed in-period totals and stores the carry-over beside them", () => {
+    // A 12-hour trip running past the period's end: the line prints 7:00 of
+    // it as CR. and the other 5:00 as C/O., and the same split for block.
+    const pairing = makePairing();
+    const rows = [
+      "LINE 1124 * | 0762: : : : | : | CR. 7:00 TAFB 40:00 | : : : : | : | C/O. 5:00 NO. DP’S 1 | : : : : | : | BLK. 6:00 LANDINGS 3 | : : : : | : | C/O. 4:00 DAYS OFF 13",
+    ];
+    const [result] = parseLineGridColumn(rows, 202, "CAP", indexPairingsBySequence([pairing]), indexPairingsByFlightNumber([pairing]), []);
+
+    expect(result.pairings).toEqual([pairing]);
+    expect(result.summary.totalCreditHours).toBe(7);
+    expect(result.summary.carryOverCreditHours).toBe(5);
+    expect(result.summary.totalBlockHours).toBe(6);
+    expect(result.summary.carryOverBlockHours).toBe(4);
+  });
+
   it("weights a flight-number match by how many times it actually occurs, not a flat 1", () => {
     // Real bug: a trip repeated across several weeks in the same line often
     // only shows up via its deadhead flight number (no bare sequence-number

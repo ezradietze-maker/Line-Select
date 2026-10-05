@@ -50,9 +50,14 @@ function buildLineProfile(line: Line): LineProfile {
     const a = computeTripAnalytics(t);
     return a.totalBlockHours === null ? null : a.totalBlockHours - (a.deadheadBlockHours ?? 0);
   });
-  const realFlyingHours = flyingValues.every((b): b is number => b !== null)
-    ? flyingValues.reduce((s, b) => s + (b ?? 0), 0)
-    : null;
+  // The printed BLK. is preferred when present: it's this period's own share,
+  // matching the in-period TAFB it's divided by below. Summing trips counts a
+  // carry-over trip's next-period flying too.
+  const realFlyingHours = line.totalBlockHours !== undefined
+    ? line.totalBlockHours
+    : flyingValues.every((b): b is number => b !== null)
+      ? flyingValues.reduce((s, b) => s + (b ?? 0), 0)
+      : null;
 
   const dayRigHoursPerDay =
     line.totalTafbHours > 0 ? line.totalCreditHours / (line.totalTafbHours / 24) : null;
@@ -65,8 +70,12 @@ function buildLineProfile(line: Line): LineProfile {
     (best, t) => (!best || t.creditHours > best.creditHours ? t : best),
     null
   );
+  // Trip credit is the whole trip, so it's compared against the whole line
+  // (in-period CR. plus C/O.) — against CR. alone a carry-over trip can
+  // claim more than 100% of the line.
+  const fullLineCredit = line.totalCreditHours + (line.carryOverCreditHours ?? 0);
   const maxTripCreditShare =
-    maxTrip && line.totalCreditHours > 0 ? maxTrip.creditHours / line.totalCreditHours : 0;
+    maxTrip && fullLineCredit > 0 ? Math.min(1, maxTrip.creditHours / fullLineCredit) : 0;
 
   const tripCount = line.trips.length;
   const avgTripDays = tripCount > 0 ? line.trips.reduce((s, t) => s + t.days, 0) / tripCount : 0;

@@ -184,6 +184,11 @@ function DayDetail({ day }: { day: DetailedDay }) {
           A day off
           {day.offRun && day.offRun.length > 1 ? ` — day ${day.offRun.position} of ${day.offRun.length} in a row.` : " — a single day, on either side of a trip."}
         </p>
+      ) : day.preReportTime !== null ? (
+        <p className="mt-1">
+          Not a day off: {day.tripNumber ? `trip #${day.tripNumber}` : "the next trip"} reports
+          {day.preReportTime ? ` at ${day.preReportTime}` : ""} the next morning, so the bid pack gives this evening to it.
+        </p>
       ) : (
         <>
           <p className="mt-1">

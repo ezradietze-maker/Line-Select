@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { weekdayFlyingPattern } from "@/lib/line-month";
+import { buildLineMonthCalendar, weekdayFlyingPattern } from "@/lib/line-month";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import type { Line } from "@/types/bidpack";
 
@@ -50,5 +50,32 @@ describe("weekdayFlyingPattern", () => {
     const pattern = weekdayFlyingPattern(l, START, 28)!;
     const totalFlying = pattern.reduce((s, p) => s + p.flyingCount, 0);
     expect(totalFlying).toBe(l.trips[0].days);
+  });
+});
+
+describe("buildLineMonthCalendar — pre-report days", () => {
+  // Trip on days 5..(5 + days - 1); everything else off except the cells under test.
+  function gridWith(blank: number[]): Line {
+    const days = line("9001").trips[0].days;
+    const onTrip = new Set([...Array.from({ length: days }, (_, d) => 5 + d), ...blank]);
+    return withGrid("9001", [5], Array.from({ length: 28 }, (_, i) => i).filter((i) => !onTrip.has(i)));
+  }
+
+  it("gives the blank day right before a trip to that trip, outside its numbered days", () => {
+    const cal = buildLineMonthCalendar(gridWith([4]), START, 28, "local");
+    const eve = cal.days[4];
+    expect(eve.isOff).toBe(false);
+    expect(eve.isPreReport).toBe(true);
+    expect(eve.tripIndex).toBe(0);
+    expect(eve.tripDayNumber).toBeNull();
+    // The trip's own Day 1 is still its real start day.
+    expect(cal.days[5].tripDayNumber).toBe(1);
+    expect(cal.days[5].isPreReport).toBeFalsy();
+  });
+
+  it("still treats a blank day with no trip right after it as carried in from last month", () => {
+    const cal = buildLineMonthCalendar(gridWith([0]), START, 28, "local");
+    expect(cal.days[0].isPreReport).toBeFalsy();
+    expect(cal.days[0].tripIndex).toBeNull();
   });
 });

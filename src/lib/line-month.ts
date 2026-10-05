@@ -20,6 +20,8 @@ export interface LineMonthDay {
   segments: TimelineSegment[];
   isTripStart: boolean;
   isTripEnd: boolean;
+  /** The evening before a trip that reports just after midnight — the grid gives this day to that trip (it isn't a day off), but nothing flies on it, so it sits outside the trip's own numbered days. */
+  isPreReport?: boolean;
 }
 
 export interface LineMonthCalendar {
@@ -102,17 +104,32 @@ export function buildLineMonthCalendar(
   // trip out from its start for its own day count.
   const gridOff = placementIsReal && line.gridOffDays ? new Set(line.gridOffDays) : null;
   const owner: (number | "off" | null)[] = new Array(totalDays).fill(null);
+  const preReport = new Set<number>();
   if (gridOff) {
+    // A blank cell continues the trip that most recently started — but only
+    // back to the last day off: a trip never resumes across one. A blank
+    // cell with no trip running is the evening before the next one (every
+    // such day across 2,054 real lines sits directly before a trip that
+    // reports just after midnight), not a carry-in from last month.
     const byStart = [...spans].sort((x, y) => x.start - y.start);
+    let current: Span | null = null;
+    let next = 0;
     for (let i = 0; i < totalDays; i++) {
+      while (next < byStart.length && byStart[next].start <= i) current = byStart[next++];
       if (gridOff.has(i)) {
         owner[i] = "off";
+        current = null;
         continue;
       }
-      let current: Span | null = null;
-      for (const span of byStart) if (span.start <= i) current = span;
-      // Nothing has started yet: a trip carried in from the previous bid period.
-      owner[i] = current ? current.tripIndex : null;
+      if (current) {
+        owner[i] = current.tripIndex;
+      } else if (byStart[next]?.start === i + 1) {
+        owner[i] = byStart[next].tripIndex;
+        preReport.add(i);
+      } else {
+        // Nothing has started yet: a trip carried in from the previous bid period.
+        owner[i] = null;
+      }
     }
   } else {
     for (let i = 0; i < totalDays; i++) {
@@ -124,7 +141,7 @@ export function buildLineMonthCalendar(
   /** First and last day each trip occupies, and how many days that is. */
   const footprint = new Map<number, { first: number; last: number; count: number }>();
   owner.forEach((o, i) => {
-    if (typeof o !== "number") return;
+    if (typeof o !== "number" || preReport.has(i)) return;
     const f = footprint.get(o);
     if (f) {
       f.last = i;
@@ -173,6 +190,24 @@ export function buildLineMonthCalendar(
       continue;
     }
 
+    if (preReport.has(i)) {
+      days.push({
+        dayIndex: i,
+        date,
+        weekday,
+        isOff: false,
+        tripIndex: o,
+        tripDayNumber: null,
+        tripDayCount: null,
+        hasSchedule: true,
+        segments: [],
+        isTripStart: false,
+        isTripEnd: false,
+        isPreReport: true,
+      });
+      continue;
+    }
+
     const entry = timelineBySpan.find(({ span }) => span.tripIndex === o)!;
     const f = footprint.get(o)!;
     const tripDayNumber = i - f.first + 1;
@@ -216,22 +251,37 @@ export interface WeekdayFlyingCount {
  * any one line's trip shapes.
  */
 export function weekdayFlyingPattern(line: Line, bidPeriodStart: string | null, bidPeriodDays: number): WeekdayFlyingCount[] | null {
-  const placementIsReal = bidPeriodStart !== null && line.trips.every((t) => t.startDayIndex !== null);
-  if (!placementIsReal) return null;
+  const working = workingDayIndices(line, bidPeriodStart, bidPeriodDays);
+  if (!working) return null;
 
-  const spans = line.trips.map((t) => ({ start: t.startDayIndex!, days: t.days }));
   const base = DateTime.fromISO(bidPeriodStart!, { zone: "utc" });
-  const gridOff = line.gridOffDays ? new Set(line.gridOffDays) : null;
-
   const counts = new Map<string, WeekdayFlyingCount>();
   for (let i = 0; i < bidPeriodDays; i++) {
     const weekday = base.plus({ days: i }).toFormat("ccc");
     const entry = counts.get(weekday) ?? { weekday, totalOccurrences: 0, flyingCount: 0 };
     entry.totalOccurrences++;
-    const isOff = gridOff ? gridOff.has(i) : !spans.some((s) => i >= s.start && i < s.start + s.days);
-    if (!isOff) entry.flyingCount++;
+    if (working.has(i)) entry.flyingCount++;
     counts.set(weekday, entry);
   }
 
   return Array.from(counts.values());
+}
+
+/**
+ * The bid-period day indices this line is NOT off — the grid's own day-off
+ * marks when it has them, otherwise each trip laid out from its real start.
+ * Null when placement isn't grid-confirmed real, same as `weekdayFlyingPattern`.
+ */
+export function workingDayIndices(line: Line, bidPeriodStart: string | null, bidPeriodDays: number): Set<number> | null {
+  const placementIsReal = bidPeriodStart !== null && line.trips.every((t) => t.startDayIndex !== null);
+  if (!placementIsReal) return null;
+
+  const spans = line.trips.map((t) => ({ start: t.startDayIndex!, days: t.days }));
+  const gridOff = line.gridOffDays ? new Set(line.gridOffDays) : null;
+  const working = new Set<number>();
+  for (let i = 0; i < bidPeriodDays; i++) {
+    const isOff = gridOff ? gridOff.has(i) : !spans.some((s) => i >= s.start && i < s.start + s.days);
+    if (!isOff) working.add(i);
+  }
+  return working;
 }

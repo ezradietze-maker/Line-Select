@@ -7,7 +7,7 @@ import type { ParseWarning } from "@/lib/pdf-parser/types";
 // ground-duty/flight-number-normalization fixes these guard.
 
 describe("parsePairingColumn", () => {
-  it("parses a normal flown leg, including its deadhead flag and international layover", () => {
+  it("parses a normal flown leg, including its international layover", () => {
     const rows = [
       "3 TU REPORT AT 0520 (*2120) STANDARD CREW",
       "EFFECTIVE SEPTEMBER 29 ONLY",
@@ -74,6 +74,72 @@ describe("parsePairingColumn", () => {
     expect(result).toHaveLength(0);
     expect(warnings).toHaveLength(1);
     expect(warnings[0].message).toContain("no readable flight legs");
+  });
+});
+
+describe("deadheads and the MEAL column", () => {
+  it("does not count a company leg as a deadhead because its meal code is DH (dinner, hot)", () => {
+    const rows = [
+      "3 TU REPORT AT 0520 (*2120) STANDARD CREW",
+      "EFFECTIVE SEPTEMBER 29 ONLY",
+      "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+      "*29TU 6017 83 ANC 0620(2220) CAN 1732(0132) 11:12 DH/BH 11:12 11:12 12:42 CAN 49:28",
+      "#06TU 6014 83 CAN 2130(0530) ANC 0718(2318) 09:48 DH 09:48 09:48 11:18",
+      "LDGS: 2 BLOCK HRS: 21:00 CREDIT HRS: 24:00 T TAFB: 194:28",
+    ];
+    const [pairing] = parsePairingColumn(rows, 15, []);
+    expect(pairing.deadheadLegs).toBe(0);
+    expect(pairing.landings).toBe(2);
+    expect(pairing.schedule.flatMap((d) => d.legs).every((l) => !l.isDeadhead)).toBe(true);
+  });
+
+  // Real B767 MEM pairing 10: two interline rides out (an airliner, then a
+  // cab between airports), a layover printed on the cab row, then flying.
+  const cabRows = [
+    "10 MO REPORT AT 2345 (1845) STANDARD CREW",
+    "EFFECTIVE OCTOBER 5 ONLY",
+    "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+    "*05MO AA3932 JET MEM 0045(1945) DFW 0230(2130) 01:45 S",
+    "*05MO GT9999 CAB DFW 0300(2200) AFW 0350(2250) 00:50 S 00:00 03:12 04:05 AFW 21:20",
+    "Hotel: CY BLACKSTONE (AFW), +1-817-855-8700",
+    "*06TU 1058 76 AFW 0210(2110) DFW 0249(2149) 00:39",
+    "*06TU 1058 76 DFW 0350(2250) GSO 0605(0205) 02:15 02:54 03:37 05:25 GSO 18:21",
+    "Hotel: MARRIOTT GSO (GSO), +1-336-379-8000",
+    "*07WE 1248 76 GSO 0156(2156) MEM 0353(2253) 01:57 01:57 03:12 03:27",
+    "LDGS: 3 BLOCK HRS: 04:51 CREDIT HRS: 14:02 T TAFB: 52:38",
+  ];
+
+  it("counts interline flights, cab rides included, as deadheads", () => {
+    const [pairing] = parsePairingColumn(cabRows, 15, []);
+    expect(pairing.deadheadLegs).toBe(2);
+    expect(pairing.landings).toBe(3);
+    const legs = pairing.schedule.flatMap((d) => d.legs);
+    expect(legs.map((l) => l.isDeadhead)).toEqual([true, true, false, false, false]);
+  });
+
+  it("keeps a layover printed on a CAB row instead of dropping the row and merging duty days", () => {
+    const [pairing] = parsePairingColumn(cabRows, 15, []);
+    expect(pairing.layoverCities).toEqual(["AFW", "GSO"]);
+    expect(pairing.schedule).toHaveLength(3);
+    expect(pairing.schedule[0].legs[1].equipment).toBe("CAB");
+    expect(pairing.schedule[0].layover?.hours).toBeCloseTo(21 + 20 / 60, 5);
+  });
+
+  it("does not read a 3-letter meal code on a trip's final leg as a layover city", () => {
+    // Real ICN→HKG row (B777 MEM) as the pairing's last leg: no layover
+    // column, so "DSI 04:16" must not become a 4.3-hour stop in "DSI".
+    const rows = [
+      "7 WE REPORT AT 0330 (*1930) STANDARD CREW",
+      "EFFECTIVE SEPTEMBER 30 ONLY",
+      "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+      "*30WE 5236 83 ANC 0500(2100) ICN 1435(2335) 09:35 DH/BH 09:35 09:35 11:05 ICN 37:00",
+      "Hotel: GRAND HYATT 82-2-797-1234 (ICN), +82-2-797-1234",
+      "02FR 5991 83 ICN 0505(1405) HKG 0921(1721) 04:16 DSI 04:16 04:16 05:46",
+      "LDGS: 2 BLOCK HRS: 13:51 CREDIT HRS: 13:51 T TAFB: 55:51",
+    ];
+    const [pairing] = parsePairingColumn(rows, 15, []);
+    expect(pairing.layoverCities).toEqual(["ICN"]);
+    expect(pairing.layoverCities).not.toContain("DSI");
   });
 });
 

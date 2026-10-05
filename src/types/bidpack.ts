@@ -142,10 +142,16 @@ export interface Line {
   trips: Trip[];
   /** Scheduled days off in the bid period (not flying or deadheading). */
   daysOff: number;
-  /** Sum of trip credit hours for the whole line. */
+  /** This bid period's credit hours, as the line prints them (CR.). Not always the sum of its trips: a trip spanning the period's end counts only its in-period share here, the rest is `carryOverCreditHours`. */
   totalCreditHours: number;
-  /** Sum of trip TAFB hours for the whole line. */
+  /** This bid period's TAFB, as printed — the same in-period convention as `totalCreditHours`. */
   totalTafbHours: number;
+  /** This bid period's operated block hours, as printed (BLK.) — in-period, deadheads excluded. Absent on a pack parsed before this was kept. */
+  totalBlockHours?: number;
+  /** Credit hours of a trip that runs past the end of the bid period, carried into the next one instead of counted in `totalCreditHours` — the line's own printed C/O. 0 when nothing carries. Absent on a pack parsed before this was kept. */
+  carryOverCreditHours?: number;
+  /** The same carry-over for block hours. */
+  carryOverBlockHours?: number;
   /** Sum of trip landings for the whole line. */
   totalLandings: number;
   /** Sum of trip departures for the whole line — always equal to `totalLandings`. */

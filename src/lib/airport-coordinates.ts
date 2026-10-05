@@ -1,9 +1,9 @@
 /**
  * Airport code -> real-world [latitude, longitude], for drawing a line's
  * actual flight-path geography rather than a decorative stand-in map.
- * Seeded with the same high-confidence set of codes as `airport-timezones.ts`
- * (not a 1:1 copy — a handful of rarer regional codes there are omitted here
- * rather than guessed at). An unlisted code returns null (see
+ * Seeded with the same codes as `airport-timezones.ts`, every one checked
+ * against real bid packs (a code is only added once its identity is
+ * confirmed, e.g. by its own layover hotel). An unlisted code returns null (see
  * `coordinatesForAirport`) so a route map simply skips that leg instead of
  * plotting a point that might be wrong — the same honesty policy the
  * timezone table already uses.
@@ -201,6 +201,10 @@ export const AIRPORT_COORDINATES: Record<string, [number, number]> = {
   NBO: [-1.3192, 36.9278],
   MDW: [41.786, -87.7524],
   DOV: [39.1295, -75.4666],
+  // West Palm Beach — confirmed by its layover hotel in a real pack ("HYATT PLACE WEST PALM BEACH").
+  DJT: [26.6832, -80.0956],
+  // Ramstein Air Base — confirmed by its layover hotel in a real pack ("HTL CHRISTINE LANDSTUHL", the town beside it).
+  RMS: [49.4369, 7.6003],
 };
 
 /** Null (not a guess) when the code isn't in the table — a route map should skip that leg rather than plot something that might be wrong. */
