@@ -34,8 +34,13 @@ export const metadata: Metadata = {
     "An independent prototype that ranks FedEx pilot bid lines against your stated preferences. Not affiliated with or endorsed by FedEx.",
 };
 
+// The phone's browser bar matches the page behind it — the sidebar's color in
+// each scheme — instead of a fixed brown strip above a cream or black page.
 export const viewport: Viewport = {
-  themeColor: "#4a3420",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ece0c8" },
+    { media: "(prefers-color-scheme: dark)", color: "#150f09" },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

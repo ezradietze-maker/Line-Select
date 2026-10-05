@@ -5,7 +5,6 @@ import { AccountMenu } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import {
   BuildingIcon,
-  LogoMark,
   MailIcon,
   SlidersIcon,
   SwapIcon,
@@ -13,6 +12,7 @@ import {
   TrophyIcon,
   UploadIcon,
 } from "@/components/ui/icons";
+import { LogoMark, Wordmark } from "@/components/ui/Logo";
 import type { UserAccount } from "@/types/auth";
 
 export type NavTarget =
@@ -25,7 +25,8 @@ export type NavTarget =
   | "hotel-ratings";
 
 interface LeftNavProps {
-  active: NavTarget;
+  /** Null on a page that isn't a sidebar destination — nothing lights up. */
+  active: NavTarget | null;
   hasProfile: boolean;
   hasBidPack: boolean;
   user: UserAccount | null;
@@ -65,7 +66,7 @@ function NavList({
   inboxUnreadCount,
   onGo,
 }: {
-  active: NavTarget;
+  active: NavTarget | null;
   hasProfile: boolean;
   hasBidPack: boolean;
   inboxUnreadCount: number;
@@ -177,8 +178,8 @@ export function LeftNav({
           onClick={() => go(homeTarget)}
           className="group flex min-w-0 items-center gap-2.5"
         >
-          <LogoMark className="h-8 w-8 shrink-0 transition-transform duration-200 group-hover:scale-105" />
-          <span className="truncate text-sm font-semibold tracking-tight text-ink">Line Select</span>
+          <LogoMark className="h-9 w-9 shrink-0 transition-transform duration-200 group-hover:scale-105" />
+          <Wordmark className="truncate text-[17px]" />
         </button>
         <AppearanceMenu />
       </div>
@@ -228,8 +229,8 @@ export function LeftNav({
     <>
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-sidebar-border bg-sidebar px-4 py-3 md:hidden">
         <button type="button" onClick={() => go(homeTarget)} className="flex items-center gap-2">
-          <LogoMark className="h-7 w-7" />
-          <span className="text-sm font-semibold tracking-tight text-ink">Line Select</span>
+          <LogoMark className="h-8 w-8" />
+          <Wordmark className="text-base" />
         </button>
         <button
           type="button"

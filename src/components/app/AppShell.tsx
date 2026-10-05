@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { FeedbackForm } from "@/components/feedback/FeedbackForm";
 import { LeftNav } from "@/components/nav/LeftNav";
+import { LogoMark } from "@/components/ui/Logo";
 import { HowItWorksContent } from "@/components/results/HowItWorks";
 import { Modal } from "@/components/ui/Modal";
 import { ScreenTransition } from "@/components/ui/ScreenTransition";
@@ -64,6 +65,16 @@ function Chrome({ children }: { children: React.ReactNode }) {
   }
 
   const showSidebar = !HIDDEN_SIDEBAR_PATHS.includes(pathname);
+
+  // The landing and sign-in pages have no app frame to sketch, so a
+  // first-time visitor sees the mark rather than an app's loading skeleton.
+  if (!ready && !showSidebar) {
+    return (
+      <div className="flex min-h-[80vh] flex-1 items-center justify-center" role="status" aria-label="Loading Line Select">
+        <LogoMark className="skeleton-pulse h-16 w-16" detailed />
+      </div>
+    );
+  }
 
   if (!ready) {
     return (

@@ -20,4 +20,11 @@ describe("navTargetForPath", () => {
     expect(navTargetForPath("/inbox")).toBe("inbox");
     expect(navTargetForPath("/hotel-ratings")).toBe("hotel-ratings");
   });
+
+  it("lights nothing on info pages that aren't sidebar destinations", () => {
+    expect(navTargetForPath("/how-it-works")).toBeNull();
+    expect(navTargetForPath("/pricing")).toBeNull();
+    expect(navTargetForPath("/privacy")).toBeNull();
+    expect(navTargetForPath("/terms")).toBeNull();
+  });
 });

@@ -67,7 +67,8 @@ export function WelcomeScreen({
       <HeroMotif />
 
       <div className="animate-rise-in">
-        <span className="rounded-full border border-border-strong bg-surface/80 px-3 py-1 font-mono text-[11px] uppercase tracking-wide text-ink-faint backdrop-blur-sm">
+        {/* inline-block, so on a phone it wraps as one rounded box instead of the border breaking line by line. */}
+        <span className="inline-block max-w-full text-balance rounded-2xl border border-border-strong bg-surface/80 px-3 py-1 font-mono text-[11px] uppercase leading-relaxed tracking-wide text-ink-faint backdrop-blur-sm sm:rounded-full">
           Independent prototype &middot; not affiliated with FedEx
         </span>
         <Heading as="h1" className="mt-6 text-4xl leading-[1.1] tracking-tight text-ink sm:text-5xl">

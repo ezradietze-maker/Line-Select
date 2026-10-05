@@ -1,7 +1,11 @@
 import type { NavTarget } from "@/components/nav/LeftNav";
 
-/** Which sidebar item a route belongs under — a route not listed here falls back to "upload", so every real route needs an explicit case or it lights up the wrong item. */
-export function navTargetForPath(pathname: string): NavTarget {
+/** Info pages that live outside the sidebar's destinations — nothing lights up for them, rather than wrongly lighting "Upload Bid Pack". */
+const NO_NAV_ITEM_PATHS = ["/how-it-works", "/pricing", "/privacy", "/terms"];
+
+/** Which sidebar item a route belongs under, or null for a page that isn't one of them. Any other unlisted route falls back to "upload". */
+export function navTargetForPath(pathname: string): NavTarget | null {
+  if (NO_NAV_ITEM_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return null;
   if (pathname === "/preferences" || pathname === "/interview" || pathname === "/confirm-preferences") return "preferences";
   if (pathname === "/preview") return "upload";
   if (pathname.startsWith("/results")) return "results";

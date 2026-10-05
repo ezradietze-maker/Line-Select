@@ -78,6 +78,30 @@
   --duration-page: 320ms;
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ---- Glass cockpit layer (redesign) ----
+     Instrument-panel surfaces, readout numerals, glows and hairlines. In
+     daylight the "glow" is just a warm shadow — a neon halo on paper would
+     look wrong — so the light values stay quiet on purpose. */
+  --color-panel: #f6eddd;
+  --color-readout: #2e2013;
+  --color-hairline: rgb(46 32 19 / 0.12);
+  --glow-soft: rgb(147 86 33 / 0.1);
+  --glow-strong: rgb(147 86 33 / 0.2);
+  --panel-highlight: rgb(255 255 255 / 0.55);
+  /* The logo plate and its marks — the one place the mark sits on its own
+     surface, so it carries its own tokens per theme. */
+  --logo-plate-1: #fbf4e6;
+  --logo-plate-2: #eadbbf;
+  --logo-ink: #2c1e10;
+  --logo-accent: #a8611c;
+  --logo-rim: rgb(168 97 28 / 0.25);
+  --radius-panel: 14px;
+  --radius-control: 10px;
+  /* Longer, deliberate reveals for instruments (a gauge sweeping up, a route
+     drawing in) — distinct from UI feedback timings above. */
+  --duration-reveal: 600ms;
+  --duration-sweep: 1100ms;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -120,6 +144,18 @@
 
     /* Dark surfaces need a stronger alpha than light for the grid to read at the same subtlety. */
     --texture-grid-line: color-mix(in srgb, var(--color-ink) 3%, transparent);
+
+    --color-panel: #19120a;
+    --color-readout: #ffe1b0;
+    --color-hairline: rgb(242 232 216 / 0.09);
+    --glow-soft: rgb(232 165 75 / 0.16);
+    --glow-strong: rgb(232 165 75 / 0.4);
+    --panel-highlight: rgb(255 236 200 / 0.05);
+    --logo-plate-1: #2b1f12;
+    --logo-plate-2: #100b06;
+    --logo-ink: #f3e4c8;
+    --logo-accent: #e8a54b;
+    --logo-rim: rgb(232 165 75 / 0.25);
   }
 }
 
@@ -159,6 +195,18 @@
 
   --color-focus-ring: #c9a468;
   --shadow-color: 35 25% 2%;
+
+  --color-panel: #19120a;
+  --color-readout: #ffe1b0;
+  --color-hairline: rgb(242 232 216 / 0.09);
+  --glow-soft: rgb(232 165 75 / 0.16);
+  --glow-strong: rgb(232 165 75 / 0.4);
+  --panel-highlight: rgb(255 236 200 / 0.05);
+  --logo-plate-1: #2b1f12;
+  --logo-plate-2: #100b06;
+  --logo-ink: #f3e4c8;
+  --logo-accent: #e8a54b;
+  --logo-rim: rgb(232 165 75 / 0.25);
 }
 
 /*
@@ -211,6 +259,18 @@
   --color-focus-ring: #ff4d4d;
   --shadow-color: 0 70% 2%;
   --texture-grid-line: color-mix(in srgb, var(--color-ink) 3%, transparent);
+
+  --color-panel: #120505;
+  --color-readout: #ff6b6b;
+  --color-hairline: rgb(255 92 92 / 0.12);
+  --glow-soft: rgb(255 59 47 / 0.14);
+  --glow-strong: rgb(255 59 47 / 0.36);
+  --panel-highlight: rgb(255 90 90 / 0.04);
+  --logo-plate-1: #2a0909;
+  --logo-plate-2: #0d0303;
+  --logo-ink: #ff5c5c;
+  --logo-accent: #ff7a3d;
+  --logo-rim: rgb(255 92 92 / 0.28);
 }
 
 @theme inline {
@@ -247,6 +307,10 @@
   --color-danger: var(--color-danger);
   --color-danger-soft: var(--color-danger-soft);
 
+  --color-panel: var(--color-panel);
+  --color-readout: var(--color-readout);
+  --color-hairline: var(--color-hairline);
+
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
@@ -257,6 +321,11 @@
   --duration-page: var(--duration-page);
   --ease-standard: var(--ease-standard);
   --ease-emphasized: var(--ease-emphasized);
+  --duration-reveal: var(--duration-reveal);
+  --duration-sweep: var(--duration-sweep);
+
+  --radius-panel: var(--radius-panel);
+  --radius-control: var(--radius-control);
 }
 
 /*
@@ -318,6 +387,36 @@ body {
    it keeps meaning "this is the one" instead of becoming decoration. */
 .top-pick-glow {
   box-shadow: 0 0 1px hsl(var(--shadow-color) / 0.4), 0 0 48px -20px var(--color-accent);
+}
+
+/* ---- Glass cockpit primitives ---- */
+
+/* An instrument panel: a deep surface with a faint lit top edge and a
+   precise hairline border — the base for cards in the redesign. */
+.panel-glass {
+  background:
+    linear-gradient(180deg, var(--panel-highlight), transparent 38%),
+    var(--color-panel);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-panel);
+  box-shadow: inset 0 1px 0 var(--panel-highlight), var(--shadow-md);
+}
+
+/* Instrument light around something that matters — reserved, like
+   `.top-pick-glow`, so it keeps meaning something. */
+.glow-soft {
+  box-shadow: 0 0 0 1px var(--glow-soft), 0 10px 44px -14px var(--glow-strong);
+}
+
+/* A real number on an instrument: mono, fixed-width digits, readout color. */
+.text-readout {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-readout);
+}
+
+.text-glow {
+  text-shadow: 0 0 22px var(--glow-strong);
 }
 
 /* ---- Slider ---- */

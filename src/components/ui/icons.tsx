@@ -131,28 +131,6 @@ export function StarIcon({ className = base, filled = false }: IconProps & { fil
   );
 }
 
-/**
- * The Line Select mark: a flight path curving from your current position
- * to a chosen waypoint — a line, selected. Uses CSS variables directly so
- * it stays on-brand across the light/dark accent tokens without a prop.
- */
-export function LogoMark({ className = "h-7 w-7" }: IconProps) {
-  return (
-    <svg viewBox="0 0 28 28" className={className} aria-hidden>
-      <rect width="28" height="28" rx="7" fill="var(--color-brand)" />
-      <circle cx="7" cy="20" r="1.6" fill="var(--color-accent)" fillOpacity="0.55" />
-      <path
-        d="M7 20C11 20 11 8 21 8"
-        stroke="var(--color-accent)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        fill="none"
-      />
-      <circle cx="21" cy="8" r="2.1" fill="var(--color-accent)" />
-    </svg>
-  );
-}
-
 /** A bullseye — the strategies you're best positioned to actually hit. */
 export function TargetIcon({ className = base }: IconProps) {
   return (

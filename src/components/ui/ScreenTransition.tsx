@@ -2,12 +2,9 @@
 
 import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
+import { DURATION, EASE } from "@/lib/motion-tokens";
 
 const DRIFT_PX = 24;
-// Mirrors --duration-page / --ease-standard in globals.css — Motion needs a
-// JS value, not a CSS custom property, so these are kept in sync by hand.
-const DURATION_S = 0.32;
-const EASE_STANDARD: [number, number, number, number] = [0.4, 0, 0.2, 1];
 
 interface ScreenTransitionProps {
   screenKey: string;
@@ -42,7 +39,7 @@ export function ScreenTransition({ screenKey, direction, children }: ScreenTrans
       key={screenKey}
       initial={{ opacity: 0, x: drift }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: reduceMotion ? 0 : DURATION_S, ease: EASE_STANDARD }}
+      transition={{ duration: reduceMotion ? 0 : DURATION.page, ease: EASE.standard }}
     >
       {children}
     </motion.div>

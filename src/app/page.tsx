@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { LogoMark } from "@/components/ui/Logo";
 import { WelcomeScreen } from "@/components/welcome/WelcomeScreen";
 import { landingPathFor, useAppState } from "@/lib/app-state";
 
@@ -32,7 +33,15 @@ export default function RootPage() {
     if (target !== "/") router.replace(target);
   }, [ready, bidPack, profile, router]);
 
-  if (!ready || bidPack) return null;
+  // Never a blank page while saved state loads (or while a returning pilot
+  // is being sent on to their resume point): the mark, breathing gently.
+  if (!ready || bidPack) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center" role="status" aria-label="Loading Line Select">
+        <LogoMark className="skeleton-pulse h-16 w-16" detailed />
+      </div>
+    );
+  }
 
   return <WelcomeScreen onStart={() => router.push("/upload")} onTrySample={handleTrySample} />;
 }
