@@ -126,7 +126,8 @@ function Chrome({ children }: { children: React.ReactNode }) {
       )}
 
       <div className={`flex flex-1 flex-col ${showSidebar ? "md:pl-60" : ""}`}>
-        <main className="flex flex-1 flex-col justify-center px-4 py-10 sm:py-16">
+        {/* The landing page is full-bleed — its hero and globe run edge to edge. */}
+        <main className={pathname === "/" ? "flex flex-1 flex-col" : "flex flex-1 flex-col justify-center px-4 py-10 sm:py-16"}>
           {bidPackSaveFailed && (
             <div role="alert" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
               <span>
@@ -181,49 +182,62 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * One quiet line on every page — the links, and the independence notice,
+ * which never hides — with the full account of what happens to a pilot's
+ * data one click away instead of a paragraph wall under every screen.
+ */
 function Footer() {
+  const linkClass = "inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted";
   return (
-    <footer className="border-t border-border">
-      <div className="mx-auto max-w-5xl space-y-2 px-4 py-6 text-xs leading-relaxed text-ink-faint">
-        <p className="flex flex-wrap gap-x-3">
-          <Link href="/pricing" className="inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted">
-            Pricing
-          </Link>
-          <Link href="/how-it-works" className="inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted">
-            How this works
-          </Link>
-          <Link href="/terms" className="inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted">
-            Terms of Service
-          </Link>
-          <Link href="/privacy" className="inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted">
-            Privacy Policy
-          </Link>
-        </p>
-        <p>
-          <strong className="font-semibold text-ink-muted">Not affiliated with FedEx.</strong>{" "}
-          Line Select is an independent, unofficial prototype built for FedEx
-          pilots. It is not affiliated with, endorsed by, or connected to
-          Federal Express Corporation in any way.
-        </p>
-        <p>
-          <strong className="font-semibold text-ink-muted">What happens to your data:</strong>{" "}
-          Bid pack PDFs are uploaded to this app&rsquo;s own server for parsing — never to FedEx or any third
-          party — which extracts pairing data, line data, reserve-line on-call
-          types, and the pack&rsquo;s own summary numbers (guarantees, credit
-          ranges, line counts) only. Pages listing other pilots&rsquo; names or
-          employee numbers are never read; from the pack&rsquo;s Bid Seniority
-          List, only two numbers per pilot &mdash; bid order and seniority
-          &mdash; are used, to estimate your chances at each line. The PDF
-          itself isn&rsquo;t stored once parsing finishes. The extracted result and
-          your preferences are stored only on this device as a guest; create
-          an account and your preferences follow you to a new device too,
-          alongside the Trade Board, Inbox, and reporting what you held that
-          an account also enables. See the{" "}
-          <Link href="/privacy" className="inline-block py-1.5 underline decoration-dotted underline-offset-4 hover:text-ink-muted">
-            Privacy Policy
-          </Link>{" "}
-          for the full picture.
-        </p>
+    <footer className="border-t border-hairline">
+      <div className="mx-auto max-w-5xl px-4 py-5 text-xs leading-relaxed text-ink-faint">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex flex-wrap gap-x-4">
+            <Link href="/pricing" className={linkClass}>
+              Pricing
+            </Link>
+            <Link href="/how-it-works" className={linkClass}>
+              How this works
+            </Link>
+            <Link href="/terms" className={linkClass}>
+              Terms
+            </Link>
+            <Link href="/privacy" className={linkClass}>
+              Privacy
+            </Link>
+          </p>
+          <p>
+            <strong className="font-semibold text-ink-muted">Not affiliated with FedEx.</strong> An independent, unofficial
+            prototype, not endorsed by or connected to Federal Express Corporation.
+          </p>
+        </div>
+        <details className="group mt-2">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 py-1.5 hover:text-ink-muted">
+            What happens to your data
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+            </svg>
+          </summary>
+          <p className="mt-1 max-w-3xl">
+            Bid pack PDFs are uploaded to this app&rsquo;s own server for parsing — never to FedEx or any third
+            party — which extracts pairing data, line data, reserve-line on-call
+            types, and the pack&rsquo;s own summary numbers (guarantees, credit
+            ranges, line counts) only. Pages listing other pilots&rsquo; names or
+            employee numbers are never read; from the pack&rsquo;s Bid Seniority
+            List, only two numbers per pilot &mdash; bid order and seniority
+            &mdash; are used, to estimate your chances at each line. The PDF
+            itself isn&rsquo;t stored once parsing finishes. The extracted result and
+            your preferences are stored only on this device as a guest; create
+            an account and your preferences follow you to a new device too,
+            alongside the Trade Board, Inbox, and reporting what you held that
+            an account also enables. See the{" "}
+            <Link href="/privacy" className={linkClass}>
+              Privacy Policy
+            </Link>{" "}
+            for the full picture.
+          </p>
+        </details>
       </div>
     </footer>
   );
