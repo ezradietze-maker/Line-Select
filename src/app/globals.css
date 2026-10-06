@@ -429,6 +429,21 @@ body {
   box-shadow: 0 0 0 2px var(--color-panel), 0 0 0 4px var(--color-focus-ring), 0 10px 44px -14px var(--glow-strong);
 }
 
+/* Text printed on the calendar's own "Flying" color — that color is the one
+   a pilot can personalize (calendar-theme.ts) and it is light gold in the
+   dark themes but deep brown in daylight, so the ink flips by the color's
+   own lightness instead of being fixed. Plain white where relative color
+   syntax isn't supported. */
+.text-on-calendar {
+  color: #fff;
+  color: oklch(from var(--color-calendar-accent) clamp(0.16, (0.66 - l) * 1000, 0.99) 0.015 70);
+}
+
+/* Diagonal hatching for a deadhead — riding, not operating. */
+.hatch-deadhead {
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--color-calendar-accent) 45%, transparent) 3px 5px);
+}
+
 /* A real number on an instrument: mono, fixed-width digits, readout color. */
 .text-readout {
   font-family: var(--font-mono), ui-monospace, monospace;

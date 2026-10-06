@@ -4,6 +4,7 @@ import { CircadianStars } from "@/components/results/CircadianStars";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
+import { lineDutyPeriods } from "@/lib/duty-periods";
 import type { LineScore } from "@/lib/scoring";
 import type { CitySentiment } from "@/types/preferences";
 
@@ -79,6 +80,7 @@ export function LineComparisonModal({
           values={[formatHours(lineScores[0].line.totalTafbHours), formatHours(lineScores[1].line.totalTafbHours)]}
         />
         <StatRow label="Landings" values={[String(lineScores[0].line.totalLandings), String(lineScores[1].line.totalLandings)]} />
+        <StatRow label="Duty periods" values={[String(lineDutyPeriods(lineScores[0].line)), String(lineDutyPeriods(lineScores[1].line))]} />
         <div className="text-ink-faint">Worst trip&rsquo;s circadian read</div>
         {worstCircadianStars.map((stars, i) => (
           <div key={i} className="flex justify-center">

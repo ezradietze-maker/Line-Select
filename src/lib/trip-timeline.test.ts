@@ -70,12 +70,22 @@ const domesticTrip: Trip = {
 };
 
 describe("buildTimelineDays — zulu mode", () => {
-  it("buckets purely by elapsed Zulu day, ignoring local timezones entirely", () => {
+  it("lays days out on the real Zulu clock, ignoring local timezones entirely", () => {
     const days = buildTimelineDays(westboundTrip, "zulu");
-    // A 630-minute (10.5h) leg starting at elapsed minute 0 never crosses a Zulu midnight.
-    expect(days).toHaveLength(1);
+    // Departs 18:00Z (as printed) and lands 04:30Z — so it crosses Zulu midnight into a second column.
+    expect(days).toHaveLength(2);
+    expect(days[0].segments[0].startMinuteOfDay).toBe(18 * 60);
+    expect(days[0].segments[0].continuesToNextDay).toBe(true);
+    expect(days[1].segments[0].endMinuteOfDay).toBe(4 * 60 + 30);
     expect(days[0].segments[0].dateLineBadge).toBeUndefined();
     expect(days[0].zuluRulerLabel).toBeUndefined();
+  });
+
+  it("keeps a same-day Zulu trip in one column, at its printed GMT time", () => {
+    const days = buildTimelineDays(domesticTrip, "zulu");
+    expect(days).toHaveLength(1);
+    expect(days[0].segments[0].startMinuteOfDay).toBe(18 * 60);
+    expect(days[0].segments[0].endMinuteOfDay).toBe(18 * 60 + 75);
   });
 });
 

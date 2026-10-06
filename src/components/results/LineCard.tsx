@@ -346,7 +346,7 @@ export const LineCard = memo(function LineCard({
                     bid pack&rsquo;s own line totals.
                   </div>
                 ) : (
-                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} />
+                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={profile.cityPreferences} />
                 ))}
 
               {activeTab === "breakdown" && (

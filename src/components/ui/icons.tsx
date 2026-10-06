@@ -269,3 +269,12 @@ export function EmptyTrayIcon({ className = base }: IconProps) {
     </svg>
   );
 }
+
+/** A bed — a night at a layover hotel. */
+export function BedIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 6v13M3 14h18v5M21 14v-2a3 3 0 00-3-3h-7v5M7 11.5a1.5 1.5 0 100-.01" />
+    </svg>
+  );
+}

@@ -2,9 +2,10 @@
 
 import { useInView } from "motion/react";
 import { memo, useMemo, useRef, useState } from "react";
-import { MoonIcon, PlaneIcon, SunriseIcon } from "@/components/ui/icons";
+import { BedIcon, MoonIcon, PlaneIcon, SunriseIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/Modal";
 import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthSummary, type StripSegment } from "@/lib/month-detail";
+import { dayStats, equipmentLabel, hm } from "@/lib/trip-day-stats";
 import type { TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
 import type { CitySentiment } from "@/types/preferences";
@@ -20,18 +21,19 @@ import type { CitySentiment } from "@/types/preferences";
  * The hour-by-hour chart per trip still lives in the expanded card.
  */
 
+/** The same palette as the trip chart in the expanded card, so a day's strip and its column there read as one thing. */
 const STRIP_CLASS: Record<TimelineSegmentKind, string> = {
   flying: "bg-calendar-accent",
-  deadhead: "bg-calendar-accent/45 [background-image:repeating-linear-gradient(135deg,transparent,transparent_2px,rgba(255,255,255,0.4)_2px,rgba(255,255,255,0.4)_4px)]",
+  deadhead: "hatch-deadhead bg-calendar-accent/30",
   standby: "bg-standby",
-  layover: "bg-good",
-  ground: "bg-accent",
+  layover: "bg-good/70",
+  ground: "bg-accent/70",
   connection: "bg-border-strong",
 };
 
 function Strip({ segments }: { segments: StripSegment[] }) {
   return (
-    <div className="relative h-1 w-full overflow-hidden rounded-full bg-border/60" aria-hidden>
+    <div className="relative h-1 w-full overflow-hidden rounded-full bg-ink/10" aria-hidden>
       {segments.map((s, i) => (
         <span
           key={i}
@@ -46,22 +48,17 @@ function Strip({ segments }: { segments: StripSegment[] }) {
 function cellClass(day: DetailedDay, selected: boolean): string {
   const base =
     "relative flex min-h-[3.25rem] flex-col justify-between gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[4.5rem]";
-  const ring = selected
-    ? " ring-2 ring-ink"
-    : day.isTripStart
-      ? " ring-2 ring-calendar-accent ring-offset-1 ring-offset-surface"
-      : "";
+  const ring = selected ? " ring-2 ring-brand ring-offset-1 ring-offset-surface" : "";
   switch (day.kind) {
     case "off":
-      return `${base} border border-dashed ${day.isWeekend ? "border-border-strong bg-canvas" : "border-border"} text-ink-faint hover:border-ink-faint${ring}`;
+      return `${base} border border-dashed ${day.isWeekend ? "border-border-strong/70 bg-surface-raised/40" : "border-border-strong/40"} text-ink-faint hover:border-ink-faint${ring}`;
     case "standby":
-      return `${base} bg-standby/25 text-ink hover:bg-standby/35${ring}`;
-    case "layover":
-      return `${base} bg-good/25 text-ink hover:bg-good/35${ring}`;
+      return `${base} bg-standby/20 text-ink hover:bg-standby/30${ring}`;
     case "estimated":
       return `${base} bg-brand-soft text-brand${ring}`;
     default:
-      return `${base} bg-calendar-accent/20 text-ink hover:bg-calendar-accent/30${ring}`;
+      // Every day of a trip shares one tint, so a trip reads as one block; what each day holds is printed on it.
+      return `${base} bg-calendar-accent/[0.13] text-ink hover:bg-calendar-accent/[0.22]${ring}`;
   }
 }
 
@@ -71,7 +68,37 @@ function SentimentMark({ sentiment }: { sentiment: CitySentiment | null }) {
   return null;
 }
 
-function Cell({ day, selected, onSelect, index }: { day: DetailedDay; selected: boolean; onSelect: () => void; index: number }) {
+/**
+ * The bar across the top of a trip's days, joined across the gaps between
+ * them, so a four-day trip reads as one thing from Monday to Thursday — it
+ * starts on the trip's first day and stops on its last (or at the edge of
+ * the week, where the grid wraps).
+ */
+function TripRail({ joinLeft, joinRight, standby }: { joinLeft: boolean; joinRight: boolean; standby: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none absolute top-0 h-[3px] ${standby ? "bg-standby" : "bg-calendar-accent"} ${joinLeft ? "" : "rounded-l-full"} ${joinRight ? "" : "rounded-r-full"}`}
+      style={{ left: joinLeft ? -4 : 2, right: joinRight ? -4 : 2 }}
+    />
+  );
+}
+
+function Cell({
+  day,
+  selected,
+  onSelect,
+  index,
+  joinLeft,
+  joinRight,
+}: {
+  day: DetailedDay;
+  selected: boolean;
+  onSelect: () => void;
+  index: number;
+  joinLeft: boolean;
+  joinRight: boolean;
+}) {
   const isOff = day.kind === "off";
   return (
     <button
@@ -85,10 +112,11 @@ function Cell({ day, selected, onSelect, index }: { day: DetailedDay; selected: 
     >
       {/* A red-eye day is genuinely darker, not just icon-flagged — a faint tonal wash rather than a new hue, so it stays inside the warm palette. */}
       {!isOff && day.redEye && <span aria-hidden className="absolute inset-0 -z-10 rounded-md bg-ink/10" />}
+      {!isOff && day.tripIndex !== null && day.kind !== "estimated" && <TripRail joinLeft={joinLeft} joinRight={joinRight} standby={day.kind === "standby"} />}
       <span className="flex items-start justify-between gap-0.5">
         <span className={`text-[11px] tabular-nums ${isOff ? "" : "font-semibold"}`}>{day.label}</span>
         {day.isTripStart && day.tripNumber && (
-          <span className="hidden rounded bg-ink/80 px-0.5 font-mono text-[10px] font-semibold text-canvas sm:inline">#{day.tripNumber}</span>
+          <span className="hidden rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar sm:inline">#{day.tripNumber}</span>
         )}
       </span>
 
@@ -108,7 +136,7 @@ function Cell({ day, selected, onSelect, index }: { day: DetailedDay; selected: 
           <span className="flex items-center gap-0.5 text-[11px] font-semibold tracking-tight">
             {day.layoverCode ? (
               <>
-                <span className={day.layoverInternational ? "underline decoration-dotted underline-offset-2" : ""}>{day.layoverCode}</span>
+                <span className={`text-good ${day.layoverInternational ? "underline decoration-dotted underline-offset-2" : ""}`}>{day.layoverCode}</span>
                 <SentimentMark sentiment={day.citySentiment} />
               </>
             ) : day.hasStandby ? (
@@ -154,14 +182,14 @@ function MonthKeyInfo() {
       {open && (
         <Modal title="Month calendar key" onClose={() => setOpen(false)}>
           <ul className="space-y-3 text-sm leading-relaxed text-ink-muted">
-            <li><span className="font-medium text-ink">Shaded day.</span> You&rsquo;re on a trip. The tag on its first day (<span className="font-mono">#60</span>) is the trip&rsquo;s number in your bid pack, and a ringed day is that first day.</li>
-            <li><span className="font-medium text-ink">Green day with a code.</span> The night you check into a layover hotel, and the city. A <span className="text-good">♥</span> is a city you love, a <span className="text-danger">✕</span> one you avoid, and a dotted underline marks an international city.</li>
-            <li><span className="font-medium text-ink">Purple day.</span> Hotel standby &mdash; on call at the hotel, paid, not flying.</li>
+            <li><span className="font-medium text-ink">Shaded days joined by a bar.</span> One trip, from the day it reports to the day it ends. The tag on its first day (<span className="font-mono">#60</span>) is the trip&rsquo;s number in your bid pack.</li>
+            <li><span className="font-medium text-ink">Green code.</span> A night in a layover hotel, and the city. A <span className="text-good">♥</span> is a city you love, a <span className="text-danger">✕</span> one you avoid, and a dotted underline marks an international city.</li>
+            <li><span className="font-medium text-ink">Violet day.</span> Hotel standby &mdash; on call at the hotel, paid, not flying.</li>
             <li><span className="font-medium text-ink">Dashed empty day.</span> A day off. A run of days off is labeled on its first day (&ldquo;4 off&rdquo;), and weekends are shaded.</li>
             <li><span className="font-medium text-ink">R05:20 / →18:04.</span> When the duty starts that day, and (with the arrow) when your last flight lands on the day the trip ends.</li>
             <li><span className="font-medium text-ink">Plane and number.</span> Landings that day. <span className="font-medium text-ink">Moon:</span> a flight departs or lands between midnight and 5am. <span className="font-medium text-ink">Sun:</span> the duty starts between 2 and 6am, when your body clock is at its lowest.</li>
-            <li><span className="font-medium text-ink">Thin bar along the bottom.</span> The day&rsquo;s 24 hours &mdash; the solid trip color is flying, hatched is deadhead, purple is standby, green is layover, gold is report and ground time.</li>
-            <li><span className="font-medium text-ink">Tap any day</span> for every flight, time, layover hotel and rest on it. The hour-by-hour chart for each trip is in the expanded card.</li>
+            <li><span className="font-medium text-ink">Thin bar along the bottom.</span> The day&rsquo;s 24 hours &mdash; the solid trip color is flying, hatched is deadhead, violet is standby, green is hotel time, amber is report and ground time.</li>
+            <li><span className="font-medium text-ink">Tap any day</span> for its duty start, last block-in, block time and landings, and every flight, aircraft, hotel and rest on it. The hour-by-hour chart for each trip is under &ldquo;Details&rdquo;.</li>
           </ul>
         </Modal>
       )}
@@ -173,9 +201,9 @@ function MonthKeyInfo() {
 export function MonthLegend({ className = "" }: { className?: string }) {
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted ${className}`}>
-      <LegendItem swatch="bg-calendar-accent/40" label="Trip day" />
-      <LegendItem swatch="bg-good/40" label="Layover night" />
-      <LegendItem swatch="bg-standby/40" label="Hotel standby" />
+      <LegendItem swatch="bg-calendar-accent/25 border-t-2 border-calendar-accent" label="Trip" />
+      <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px] font-semibold text-good">ANC</span>Layover night</span>
+      <LegendItem swatch="bg-standby/25 border-t-2 border-standby" label="Hotel standby" />
       <LegendItem swatch="border border-dashed border-border-strong" label="Day off" />
       <span className="inline-flex items-center gap-1"><MoonIcon className="h-3 w-3 text-accent" />Red-eye</span>
       <span className="inline-flex items-center gap-1"><SunriseIcon className="h-3 w-3 text-warn" />Early report</span>
@@ -184,10 +212,33 @@ export function MonthLegend({ className = "" }: { className?: string }) {
   );
 }
 
+/** The day's own numbers in one line — the same read the expanded card's trip chart puts above this day's column. */
+function DayNumbers({ day }: { day: DetailedDay }) {
+  const st = dayStats({ dayNumber: day.tripDay ?? 1, segments: day.segments });
+  const parts: string[] = [];
+  if (st.onDuty) parts.push(`on duty ${st.onDuty}`);
+  if (st.lastIn) parts.push(`last in ${st.lastIn}`);
+  if (st.blockMinutes > 0) parts.push(`${hm(st.blockMinutes)} block`);
+  if (st.deadheadMinutes > 0) parts.push(`${hm(st.deadheadMinutes)} deadhead`);
+  if (st.landings > 0) parts.push(`${st.landings} landing${st.landings === 1 ? "" : "s"}`);
+  if (st.restDay) parts.push("a full day at the hotel");
+  if (parts.length === 0) return null;
+  return <p className="mt-1 font-mono text-[11px] text-readout">{parts.join(" · ")}</p>;
+}
+
 function DayDetail({ day }: { day: DetailedDay }) {
   return (
-    <div className="mt-2 rounded-lg border border-border bg-canvas p-3 text-xs leading-relaxed text-ink-muted" aria-live="polite">
-      <div className="font-medium text-ink">{day.title.split(" — ")[0]}</div>
+    <div className="mt-2 rounded-lg border border-hairline bg-canvas/70 p-3 text-xs leading-relaxed text-ink-muted" aria-live="polite">
+      <div className="flex items-center gap-1.5 font-medium text-ink">
+        {day.title.split(" — ")[0]}
+        {day.layoverCode && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-good/15 px-1.5 py-px font-mono text-[10px] font-semibold text-good">
+            <BedIcon className="h-3 w-3" />
+            {day.layoverCode}
+            {day.layoverRest ? ` · ${day.layoverRest}` : ""}
+          </span>
+        )}
+      </div>
       {day.kind === "off" ? (
         <p className="mt-1">
           A day off
@@ -202,8 +253,9 @@ function DayDetail({ day }: { day: DetailedDay }) {
         <>
           <p className="mt-1">
             {day.tripNumber ? `Trip #${day.tripNumber}` : "Trip"}, day {day.tripDay} of {day.tripDayCount}
-            {day.tripCreditHours !== null ? ` · ${day.tripCreditHours.toFixed(1)} credit hours for the trip` : ""}.
+            {day.tripCreditHours !== null ? ` · ${hm(day.tripCreditHours * 60)} credit for the trip` : ""}.
           </p>
+          {day.kind !== "estimated" && <DayNumbers day={day} />}
           {day.kind === "estimated" ? (
             <p className="mt-1">Exact daily detail isn&rsquo;t available for this line.</p>
           ) : (
@@ -216,6 +268,7 @@ function DayDetail({ day }: { day: DetailedDay }) {
                     <span>
                       <span className="font-medium text-ink">{s.label}</span>
                       {s.detail ? <span> — {s.detail}</span> : null}
+                      {s.leg && equipmentLabel(s.leg.equipment, s.leg.deadhead) ? <span className="font-mono"> · {equipmentLabel(s.leg.equipment, s.leg.deadhead)}</span> : null}
                     </span>
                   </li>
                 ))}
@@ -243,22 +296,23 @@ function fmtRuns(runs: number[]): string {
 function SummaryItem({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[10px] uppercase tracking-wide text-ink-faint">{label}</dt>
-      <dd className={`truncate text-xs font-medium ${tone || "text-ink"}`}>{value}</dd>
+      <dt className="truncate text-[10px] uppercase tracking-wide text-ink-faint">{label}</dt>
+      <dd className={`truncate font-mono text-xs font-medium ${tone || "text-readout"}`}>{value}</dd>
     </div>
   );
 }
 
-function Summary({ s }: { s: MonthSummary }) {
+function Summary({ s, line }: { s: MonthSummary; line: Line }) {
   const cities = s.cities.slice(0, 5);
   return (
-    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-lg border border-border bg-canvas px-3 py-2 sm:grid-cols-3">
+    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-lg border border-hairline bg-canvas/70 px-3 py-2 sm:grid-cols-3">
+      {/* Duty periods, landings and time away are already on the card above, so this space goes to what isn't. */}
+      <SummaryItem label="Trips" value={`${line.trips.length} · longest ${s.longestTripDays}d`} />
       <SummaryItem label="Days off in a row" value={`${fmtRuns(s.offRuns)}`} />
       <SummaryItem label="Weekends off" value={s.weekendsTotal > 0 ? `${s.weekendsOff} of ${s.weekendsTotal}` : "—"} />
-      <SummaryItem label="Duty periods" value={String(s.dutyPeriods)} />
       <SummaryItem label="Earliest duty start" value={s.earliestDutyStart ?? "—"} tone={s.earlyReportDays > 0 ? "text-warn" : ""} />
       <SummaryItem label="Latest landing" value={s.latestRelease ?? "—"} />
-      <SummaryItem label="Landings" value={String(s.landings)} />
+      <SummaryItem label="Block hours" value={line.totalBlockHours ? hm(line.totalBlockHours * 60) : "—"} />
       <SummaryItem label="Red-eye days" value={String(s.redEyeDays)} tone={s.redEyeDays > 0 ? "text-accent" : ""} />
       <SummaryItem label="Early reports" value={String(s.earlyReportDays)} tone={s.earlyReportDays > 0 ? "text-warn" : ""} />
       <SummaryItem label="Hotel standby" value={s.standbyDays > 0 ? `${s.standbyDays} day${s.standbyDays === 1 ? "" : "s"}` : "none"} tone={s.standbyDays > 0 ? "text-standby" : ""} />
@@ -337,6 +391,8 @@ export const MiniLinePreview = memo(function MiniLinePreview({
               key={day.dayIndex}
               index={i}
               day={day}
+              joinLeft={!day.isTripStart && i % 7 !== 0 && month.days[i - 1]?.tripIndex === day.tripIndex && month.days[i - 1]?.kind !== "off"}
+              joinRight={!day.isTripEnd && i % 7 !== 6 && month.days[i + 1]?.tripIndex === day.tripIndex && month.days[i + 1]?.kind !== "off"}
               selected={selected === day.dayIndex}
               onSelect={() => setSelected((cur) => (cur === day.dayIndex ? null : day.dayIndex))}
             />
@@ -346,7 +402,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
 
       {selectedDay ? <DayDetail day={selectedDay} /> : <p className="mt-1.5 text-[11px] text-ink-faint">Tap a day for everything on it.</p>}
 
-      <Summary s={month.summary} />
+      <Summary s={month.summary} line={line} />
 
       {showLegend && <MonthLegend className="mt-2" />}
 

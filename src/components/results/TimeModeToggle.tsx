@@ -16,7 +16,7 @@ export function TimeModeToggle({ mode, onChange }: TimeModeToggleProps) {
     <div
       role="radiogroup"
       aria-label="Time system"
-      className="inline-flex items-center gap-0.5 rounded-full border border-border bg-surface p-0.5"
+      className="inline-flex items-center gap-0.5 rounded-full border border-hairline bg-surface p-0.5"
     >
       {OPTIONS.map((opt) => (
         <button
@@ -26,7 +26,7 @@ export function TimeModeToggle({ mode, onChange }: TimeModeToggleProps) {
           aria-checked={mode === opt.mode}
           onClick={() => onChange(opt.mode)}
           className={`rounded-full px-3 py-1 font-mono text-xs font-medium transition-colors ${
-            mode === opt.mode ? "bg-brand text-white" : "text-ink-faint hover:text-ink"
+            mode === opt.mode ? "bg-brand text-canvas" : "text-ink-faint hover:text-ink"
           }`}
         >
           {opt.label}

@@ -20,8 +20,35 @@ export interface DateLineBadge {
   explanation: string;
 }
 
+/** The structured facts behind a flight segment, for views that lay them out themselves rather than print `label`/`detail`. Clocks read in the mode the segments were built in. */
+export interface SegmentLeg {
+  flightNumber: string;
+  dep: string;
+  arr: string;
+  depClock: string;
+  arrClock: string;
+  /** The other clock system, for a cross-reference. */
+  depClockAlt: string;
+  arrClockAlt: string;
+  blockMinutes: number | null;
+  /** As the bid pack prints it — an aircraft code ("76"), "JET" for a ride on another airline, "CAB" for a ground ride. */
+  equipment: string;
+  deadhead: boolean;
+}
+
+/** The structured facts behind a layover segment. */
+export interface SegmentStay {
+  city: string;
+  hotel: string | null;
+  hours: number;
+  transportTo: string | null;
+  transportFrom: string | null;
+}
+
 export interface TimelineSegment {
   kind: TimelineSegmentKind;
+  leg?: SegmentLeg;
+  stay?: SegmentStay;
   /** Short label for the segment, e.g. "6053 · PEN → CAN" or "White Swan". */
   label: string;
   /** One line of specifics, e.g. "21:15 → 01:19 local · 4h04m block" or "Guangzhou · 25h36m at hotel". */
@@ -66,6 +93,8 @@ function formatDuration(hours: number): string {
 
 export interface RawSegment {
   kind: TimelineSegmentKind;
+  leg?: SegmentLeg;
+  stay?: SegmentStay;
   label: string;
   detail: string;
   inlineStart: string;
@@ -216,6 +245,18 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegme
       }
       raw.push({
         kind: leg.isDeadhead ? "deadhead" : "flying",
+        leg: {
+          flightNumber: leg.flightNumber,
+          dep: leg.depAirport,
+          arr: leg.arrAirport,
+          depClock: legInlineClock(leg, "dep", mode),
+          arrClock: legInlineClock(leg, "arr", mode),
+          depClockAlt: legInlineClock(leg, "dep", mode === "zulu" ? "local" : "zulu"),
+          arrClockAlt: legInlineClock(leg, "arr", mode === "zulu" ? "local" : "zulu"),
+          blockMinutes: leg.blockHours !== null ? Math.round(leg.blockHours * 60) : null,
+          equipment: leg.equipment,
+          deadhead: leg.isDeadhead,
+        },
         label: legLabel(leg),
         detail: legDetail(leg, mode),
         inlineStart: `${legInlineClock(leg, "dep", mode)} ${leg.depAirport}`,
@@ -235,6 +276,13 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegme
       const pickedUpBy = duty.layover.transportToHotel ? ` · picked up by ${duty.layover.transportToHotel}` : "";
       raw.push({
         kind: "layover",
+        stay: {
+          city: duty.layover.city,
+          hotel: duty.layover.hotelName,
+          hours: duty.layover.hours,
+          transportTo: duty.layover.transportToHotel,
+          transportFrom: duty.layover.transportFromHotel,
+        },
         label: cityLabel,
         detail: `${duty.layover.city} · ${formatDuration(duty.layover.hours)} at hotel${pickedUpBy}`,
         inlineStart: `${duty.layover.city} · ${formatDuration(duty.layover.hours)}`,
@@ -262,6 +310,8 @@ function toTimelineSegment(
 ): TimelineSegment {
   return {
     kind: seg.kind,
+    ...(seg.leg ? { leg: seg.leg } : {}),
+    ...(seg.stay ? { stay: seg.stay } : {}),
     label: seg.label,
     detail: seg.detail,
     // A fragment split across midnight only shows the real edge label that
@@ -278,7 +328,27 @@ function toTimelineSegment(
   };
 }
 
-function buildZuluDays(raw: RawSegment[]): TimelineDay[] {
+/**
+ * Where the trip's t=0 (its first report) falls on the real Zulu clock, in
+ * minutes after midnight Z. Segment minutes are elapsed time since that
+ * report, and every leg carries its bid-pack-printed GMT departure, so one
+ * leg pins the whole trip to the real clock — without it, Zulu columns would
+ * be "hours since report" drawn against a 00-24 clock scale.
+ */
+function zuluClockOffset(trip: Trip): number {
+  for (const duty of trip.schedule) {
+    for (const leg of duty.legs) {
+      const m = /^(\d{2})(\d{2})$/.exec(leg.depTimeGmt);
+      if (!m) continue;
+      const clock = Number(m[1]) * 60 + Number(m[2]);
+      return (((clock - leg.startMinutes) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+    }
+  }
+  return 0;
+}
+
+function buildZuluDays(rawUnshifted: RawSegment[], clockOffset: number): TimelineDay[] {
+  const raw = rawUnshifted.map((s) => ({ ...s, startMinutes: s.startMinutes + clockOffset, endMinutes: s.endMinutes + clockOffset }));
   const lastEnd = Math.max(...raw.map((s) => s.endMinutes));
   const totalDays = Math.max(1, Math.ceil(lastEnd / MINUTES_PER_DAY));
 
@@ -406,7 +476,7 @@ function buildRulerLabel(dayIndex: number, airportCode: string, base: NonNullabl
 export function buildTimelineDays(trip: Trip, mode: TimeMode = "local"): TimelineDay[] {
   const raw = buildRawSegments(trip, mode);
   if (raw.length === 0) return [];
-  return mode === "local" ? buildLocalDays(raw) : buildZuluDays(raw);
+  return mode === "local" ? buildLocalDays(raw) : buildZuluDays(raw, zuluClockOffset(trip));
 }
 
 /**
