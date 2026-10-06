@@ -38,6 +38,14 @@ export async function POST(request: Request) {
 
   const bytes = new Uint8Array(await file.arrayBuffer());
 
+  // The upload screen asks for newline-delimited JSON so it can show the
+  // parse happening for real — pages read, pairings found, lines built —
+  // then the result as the last line. Any other caller gets the plain JSON
+  // response exactly as before.
+  if (request.headers.get("accept")?.includes("application/x-ndjson")) {
+    return streamParse(bytes);
+  }
+
   try {
     const result = await parseBidPackPdf(bytes);
     return NextResponse.json(result);
@@ -50,4 +58,47 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * The parse, streamed as it happens: `{"type":"progress",...}` lines (see
+ * `ParseProgress`), then one `{"type":"result"}` or `{"type":"error"}`.
+ * Page events are thinned to every third page plus the last, which still
+ * reads as a smooth count without sending hundreds of lines.
+ */
+function streamParse(bytes: Uint8Array): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (message: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(message)}\n`));
+      let lastPageSent = 0;
+      try {
+        const result = await parseBidPackPdf(bytes, {
+          onProgress: (progress) => {
+            if (progress.stage === "pages") {
+              if (progress.done !== progress.total && progress.done - lastPageSent < 3) return;
+              lastPageSent = progress.done;
+            }
+            send({ type: "progress", ...progress });
+          },
+        });
+        send({ type: "result", result });
+      } catch (e) {
+        send({
+          type: "error",
+          error: "Something went wrong while parsing this PDF.",
+          detail: e instanceof Error ? e.message : String(e),
+        });
+      }
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      // Keep proxies from buffering the stream into one late chunk.
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

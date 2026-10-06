@@ -1,11 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useReducedMotion } from "motion/react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Heading } from "@/components/ui/Heading";
+import { NumberTicker } from "@/components/ui/NumberTicker";
+import { FlightPlanLoader, type LoadProgress } from "@/components/upload/FlightPlanLoader";
 import { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
+import { rankLayoverCitiesByFrequency } from "@/lib/scoring";
+import { uploadBidPack } from "@/lib/upload-client";
 import type { BidPack } from "@/types/bidpack";
 
 interface UploadScreenProps {
@@ -17,13 +22,21 @@ interface UploadScreenProps {
   currentBidPack?: BidPack | null;
   /** Loads a fabricated demo bid pack instead of parsing a real PDF — for anyone exploring without their own file handy. Omitted once a real bid pack is already loaded. */
   onTrySample?: () => void;
+  /** Where a pilot with a pack already loaded goes next, and what that button says. */
+  onContinue?: () => void;
+  continueLabel?: string;
 }
 
 const MAX_MB = Math.round(MAX_PDF_BYTES / 1024 / 1024);
+/** How long the "LOADED" lock-in holds before moving on — long enough to land, short enough not to stall anyone. */
+const LOCK_IN_MS = 900;
 
-export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample }: UploadScreenProps) {
+export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, onContinue, continueLabel }: UploadScreenProps) {
+  const reduce = useReducedMotion();
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [progress, setProgress] = useState<LoadProgress>({ received: false });
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [replacing, setReplacing] = useState(false);
@@ -31,7 +44,12 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample }
 
   if (currentBidPack && !replacing) {
     return (
-      <AlreadyUploaded bidPack={currentBidPack} onReplace={() => setReplacing(true)} />
+      <AlreadyUploaded
+        bidPack={currentBidPack}
+        onReplace={() => setReplacing(true)}
+        onContinue={onContinue}
+        continueLabel={continueLabel}
+      />
     );
   }
 
@@ -53,23 +71,31 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample }
 
     setError(null);
     setFileName(file.name);
+    setProgress({ received: false });
+    setLoaded(false);
     setUploading(true);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/parse-bidpack", { method: "POST", body: formData });
-      const body = await res.json();
-
-      if (!res.ok) {
-        setError(body.error ?? "Something went wrong while uploading this file.");
-        setUploading(false);
+      const result = await uploadBidPack(file, (p) =>
+        setProgress((prev) => {
+          const next: LoadProgress = { ...prev, received: true };
+          if (p.stage === "pages") next.pages = { done: p.done, total: p.total };
+          if (p.stage === "pairings") next.pairings = p.pairings;
+          if (p.stage === "lines") next.lines = p.lines;
+          return next;
+        })
+      );
+      // A pack that didn't really parse goes straight to its explanation —
+      // never stamped "LOADED" first.
+      if (result.errors.length > 0) {
+        onParsed(result);
         return;
       }
-
-      onParsed(body as ParseBidPackResult);
-    } catch {
-      setError("Couldn't reach the server to parse this file. Check your connection and try again.");
+      setProgress((prev) => ({ ...prev, received: true, lines: result.linesParsed, pairings: result.pairingsParsed }));
+      setLoaded(true);
+      window.setTimeout(() => onParsed(result), reduce ? 250 : LOCK_IN_MS);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong while uploading this file.");
       setUploading(false);
     }
   }
@@ -82,64 +108,57 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample }
   }
 
   return (
-    <div className="mx-auto w-full max-w-xl animate-fade-in">
-      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Upload your bid pack</Heading>
-      <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-        Upload the bid pack PDF for your base, aircraft, and month. Line Select reads the
-        pairing schedule and line grid pages directly from it &mdash; nothing is typed in by
-        hand.
+    <div className="mx-auto w-full max-w-2xl animate-fade-in">
+      <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Step 1 &middot; Load</div>
+      <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">
+        Load your bid pack
+      </Heading>
+      <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-muted">
+        The PDF for your base, aircraft, and month. Line Select reads the pairing schedules and line grids straight from
+        it &mdash; nothing is typed in by hand.
       </p>
 
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragActive(true);
-        }}
-        onDragLeave={() => setDragActive(false)}
-        onDrop={handleDrop}
-        className={`mt-6 flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 text-center transition-colors ${
-          dragActive ? "border-brand bg-brand-soft" : "border-border-strong bg-surface"
-        }`}
-      >
-        {uploading ? (
-          <>
-            <div
-              className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-brand"
-              aria-hidden
-            />
-            <p className="mt-4 text-sm font-medium text-ink">Reading {fileName}&hellip;</p>
-            <p className="mt-1 text-xs text-ink-faint">
-              Parsing pairing schedules and line grids. This can take a moment for large bid
-              packs.
-            </p>
-          </>
+      <div className="mt-7">
+        {uploading && fileName ? (
+          <FlightPlanLoader fileName={fileName} progress={progress} loaded={loaded} />
         ) : (
-          <>
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              className="h-10 w-10 text-ink-faint"
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragActive(true);
+            }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={handleDrop}
+            className={`panel-glass relative flex flex-col items-center justify-center overflow-hidden px-6 py-14 text-center transition-shadow duration-300 ${
+              dragActive ? "glow-soft" : ""
+            }`}
+          >
+            {/* The drop target's own edge — dashed at rest, lit when a file is over it. */}
+            <div
+              aria-hidden
+              className={`pointer-events-none absolute inset-3 rounded-[10px] border-2 border-dashed transition-colors duration-200 ${
+                dragActive ? "border-accent" : "border-hairline"
+              }`}
+            />
+            <div
+              className={`relative flex h-16 w-16 items-center justify-center rounded-2xl border border-hairline bg-surface-raised transition-transform duration-300 ${
+                dragActive ? "-translate-y-1 scale-105 text-accent" : "text-ink-muted"
+              }`}
+              aria-hidden
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 16V4m0 0L7 9m5-5l5 5M5 20h14"
-              />
-            </svg>
-            <p className="mt-4 text-sm font-medium text-ink">
-              Drag your bid pack PDF here, or
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="h-8 w-8">
+                <path strokeLinejoin="round" d="M6 3h8l4 4v14H6z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 17v-6m0 0l-2.5 2.5M12 11l2.5 2.5" />
+              </svg>
+            </div>
+            <p className="relative mt-5 font-display text-lg font-semibold text-ink">
+              {dragActive ? "Release to load it" : "Drop your bid pack PDF here"}
             </p>
-            <Button
-              type="button"
-              variant="secondary"
-              className="mt-3"
-              onClick={() => inputRef.current?.click()}
-            >
+            <p className="relative mt-1 text-sm text-ink-faint">or</p>
+            <Button type="button" variant="secondary" className="relative mt-3" onClick={() => inputRef.current?.click()}>
               Choose a file
             </Button>
-            <p className="mt-3 text-xs text-ink-faint">PDF only, up to {MAX_MB}MB</p>
+            <p className="relative mt-4 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">PDF only &middot; up to {MAX_MB}MB</p>
             <input
               ref={inputRef}
               type="file"
@@ -151,11 +170,18 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample }
                 e.target.value = "";
               }}
             />
-          </>
+          </div>
         )}
       </div>
 
       {error && <ErrorBanner className="mt-4">{error}</ErrorBanner>}
+
+      {!uploading && (
+        <p className="mt-4 text-xs leading-relaxed text-ink-faint">
+          Parsed on our server and never stored there &mdash; only the extracted line data comes back to this device.
+          Pages naming other pilots are never read.
+        </p>
+      )}
 
       {!uploading && (currentBidPack || onCancel) && (
         <button
@@ -180,69 +206,120 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample }
   );
 }
 
-function AlreadyUploaded({
-  bidPack,
-  onReplace,
-}: {
-  bidPack: BidPack;
-  onReplace: () => void;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-xl animate-fade-in">
-      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Your bid pack</Heading>
-      <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-        Already loaded and ready to score. Head to Preferences or My Rankings, or upload a
-        different file if this isn&rsquo;t the one you meant to bid.
-      </p>
-
-      <div className="mt-6 rounded-xl border border-border bg-surface p-6 shadow-elevated">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-lg font-semibold text-ink">
-              {bidPack.base} {bidPack.aircraft} {bidPack.seat}
-            </div>
-            <div className="mt-0.5 text-sm text-ink-muted">{bidPack.month}</div>
-          </div>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-good-soft text-good">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-        </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-4 border-t border-border pt-4 text-sm sm:grid-cols-3">
-          <div>
-            <div className="text-ink-faint">Lines</div>
-            <div className="mt-0.5 font-mono font-semibold text-ink">{bidPack.lines.length}</div>
-          </div>
-          <div>
-            <div className="text-ink-faint">Avg days off</div>
-            <div className="mt-0.5 font-mono font-semibold text-ink">
-              {(
-                bidPack.lines.reduce((s, l) => s + l.daysOff, 0) / bidPack.lines.length
-              ).toFixed(1)}
-            </div>
-          </div>
-          <div>
-            <div className="text-ink-faint">Avg credit</div>
-            <div className="mt-0.5 font-mono font-semibold text-ink">
-              {formatHours(
-                bidPack.lines.reduce((s, l) => s + l.totalCreditHours, 0) / bidPack.lines.length
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <Button variant="secondary" onClick={onReplace} className="mt-6">
-        Upload a different bid pack
-      </Button>
-    </div>
-  );
-}
-
 function formatHours(hours: number): string {
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return `${h}:${m.toString().padStart(2, "0")}`;
+}
+
+function formatPeriod(start: string | null, days: number): string | null {
+  if (!start) return null;
+  const first = new Date(`${start}T00:00:00Z`);
+  const last = new Date(first.getTime() + (days - 1) * 86_400_000);
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return `${fmt(first)} – ${fmt(last)}`;
+}
+
+/** The pack a returning pilot already has loaded, read like a flight plan's header: what it is, what's in it, where it goes. */
+function AlreadyUploaded({
+  bidPack,
+  onReplace,
+  onContinue,
+  continueLabel = "Continue",
+}: {
+  bidPack: BidPack;
+  onReplace: () => void;
+  onContinue?: () => void;
+  continueLabel?: string;
+}) {
+  const stats = useMemo(() => {
+    const n = Math.max(1, bidPack.lines.length);
+    const cities = rankLayoverCitiesByFrequency(bidPack);
+    const verified = bidPack.lines.filter((l) => !l.estimated);
+    return {
+      lines: bidPack.lines.length,
+      avgDaysOff: bidPack.lines.reduce((s, l) => s + l.daysOff, 0) / n,
+      avgCredit: bidPack.lines.reduce((s, l) => s + l.totalCreditHours, 0) / n,
+      cityCount: cities.length,
+      topCities: cities.slice(0, 10).map((c) => c.code),
+      internationalPct: verified.length ? Math.round((verified.filter((l) => l.trips.some((t) => t.international)).length / verified.length) * 100) : null,
+    };
+  }, [bidPack]);
+  const period = formatPeriod(bidPack.bidPeriodStart, bidPack.bidPeriodDays);
+
+  return (
+    <div className="mx-auto w-full max-w-2xl animate-fade-in">
+      <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Flight plan loaded</div>
+      <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">
+        Your bid pack
+      </Heading>
+
+      <div className="panel-glass mt-6 overflow-hidden">
+        <div className="flex items-start justify-between gap-4 border-b border-hairline p-6">
+          <div>
+            <div className="whitespace-nowrap font-display text-2xl font-semibold tracking-wide text-ink sm:text-4xl">
+              {bidPack.base} <span className="text-ink-faint">&middot;</span> {bidPack.aircraft}{" "}
+              <span className="text-ink-faint">&middot;</span> <span className="text-accent">{bidPack.seat}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">
+              <span className="rounded border border-hairline px-1.5 py-0.5">{bidPack.month}</span>
+              {period && <span>{period}</span>}
+            </div>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-good/40 bg-good-soft px-2.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.14em] text-good">
+            <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+            Ready
+          </span>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-px bg-hairline sm:grid-cols-4">
+          {[
+            ["Lines", <NumberTicker key="l" value={stats.lines} />],
+            ["Avg days off", <NumberTicker key="d" value={stats.avgDaysOff} format={(v) => v.toFixed(1)} />],
+            ["Avg credit", formatHours(stats.avgCredit)],
+            ["Layover cities", <NumberTicker key="c" value={stats.cityCount} />],
+          ].map(([label, value]) => (
+            <div key={label as string} className="bg-panel p-4">
+              <dt className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">{label}</dt>
+              <dd className="text-readout mt-1 text-2xl font-semibold">{value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        {stats.topCities.length > 0 && (
+          <div className="border-t border-hairline p-5">
+            <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
+              Most-flown layovers
+              {stats.internationalPct !== null && <span> &middot; {stats.internationalPct}% of lines fly international</span>}
+            </div>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {stats.topCities.map((c, i) => (
+                <span
+                  key={c}
+                  className={`rounded-md border px-2 py-1 font-mono text-xs ${
+                    i < 3 ? "border-accent/40 bg-accent-soft text-accent" : "border-hairline text-ink-muted"
+                  }`}
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
+        <Button variant="secondary" onClick={onReplace}>
+          Upload a different bid pack
+        </Button>
+        {onContinue && (
+          <Button onClick={onContinue} className="sm:flex-1">
+            {continueLabel}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 }

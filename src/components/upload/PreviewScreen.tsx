@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Heading } from "@/components/ui/Heading";
+import { NumberTicker } from "@/components/ui/NumberTicker";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { initialSeat, shouldWarnAboutEstimatedLines, type Seat } from "@/lib/seat-choice";
 import type { BidPack } from "@/types/bidpack";
@@ -62,7 +63,8 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
 
   return (
     <div className="mx-auto w-full max-w-2xl animate-fade-in">
-      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Does this look right?</Heading>
+      <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Step 1 &middot; Confirm</div>
+      <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">Does this look right?</Heading>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
         We found <strong className="font-semibold text-ink">{result.linesParsed} lines</strong>{" "}
         from{" "}
@@ -75,10 +77,19 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
       </p>
 
       {result.meta && (
-        <div className="mt-6 grid grid-cols-3 gap-3 rounded-xl border border-border bg-surface p-5 text-center shadow-elevated">
-          <Stat label="Base" value={result.meta.base} />
-          <Stat label="Aircraft" value={result.meta.aircraft} />
-          <Stat label="Month" value={result.meta.month} />
+        <div className="panel-glass mt-6 flex flex-wrap items-center justify-between gap-3 px-6 py-5">
+          <div className="whitespace-nowrap font-display text-2xl font-semibold tracking-wide text-ink sm:text-3xl">
+            {result.meta.base} <span className="text-ink-faint">&middot;</span> {result.meta.aircraft}
+            {selectedSeat && (
+              <>
+                {" "}
+                <span className="text-ink-faint">&middot;</span> <span className="text-accent">{selectedSeat}</span>
+              </>
+            )}
+          </div>
+          <span className="rounded border border-hairline px-2 py-1 font-mono text-xs uppercase tracking-[0.14em] text-ink-muted">
+            {result.meta.month}
+          </span>
         </div>
       )}
 
@@ -94,17 +105,17 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
                 key={seat}
                 type="button"
                 onClick={() => setSelectedSeat(seat)}
-                className={`rounded-lg border-2 p-4 text-left transition-colors ${
-                  selectedSeat === seat
-                    ? "border-brand bg-brand-soft"
-                    : "border-border bg-surface hover:border-border-strong"
+                aria-pressed={selectedSeat === seat}
+                className={`panel-glass p-4 text-left transition-[box-shadow,border-color] duration-200 ${
+                  selectedSeat === seat ? "glow-soft !border-accent" : "hover:!border-border-strong"
                 }`}
               >
-                <div className="text-sm font-semibold text-ink">
+                <div className="font-display text-base font-semibold text-ink">
                   {seat === "CAP" ? "Captain" : "First Officer"}
                 </div>
-                <div className="mt-0.5 text-xs text-ink-muted">
-                  {result.bidPacksBySeat[seat]?.lines.length} lines
+                <div className="text-readout mt-1 text-2xl font-semibold">
+                  {result.bidPacksBySeat[seat]?.lines.length}
+                  <span className="ml-1.5 font-sans text-xs font-normal text-ink-faint">lines</span>
                 </div>
               </button>
             ))}
@@ -113,9 +124,9 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
       )}
 
       {bidPack && (
-        <div className="mt-6 rounded-xl border border-border bg-surface p-5 shadow-elevated">
+        <div className="panel-glass mt-6 p-5">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Stat label="Lines" value={String(bidPack.lines.length)} />
+            <Stat label="Lines" value={<NumberTicker value={bidPack.lines.length} />} />
             <Stat
               label="Avg credit"
               value={formatHours(
@@ -170,7 +181,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
             transition={reduceMotion ? { duration: 0 } : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <div className="mt-3 rounded-lg border border-border bg-canvas p-4 text-xs text-ink-muted">
+            <div className="mt-3 rounded-lg border border-hairline bg-panel p-4 text-xs text-ink-muted">
               <ul className="space-y-1">
                 <li>Pairing schedule pages parsed: {pageCounts["pairing-schedule"] ?? 0}</li>
                 <li>Line grid pages parsed: {pageCounts["line-grid"] ?? 0}</li>
@@ -220,11 +231,11 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div className="font-mono text-lg font-semibold text-ink">{value}</div>
-      <div className="text-xs text-ink-faint">{label}</div>
+      <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">{label}</div>
+      <div className="text-readout mt-1 text-2xl font-semibold">{value}</div>
     </div>
   );
 }

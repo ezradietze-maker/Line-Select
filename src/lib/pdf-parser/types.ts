@@ -144,6 +144,16 @@ export interface BidPackMeta {
   bidPeriodStart: string | null;
 }
 
+/**
+ * What the parser can honestly say while it works, in the order it happens:
+ * pages read (the slow part — text extraction), then pairings found, then
+ * lines built. Every number is a real running count, never an estimate.
+ */
+export type ParseProgress =
+  | { stage: "pages"; done: number; total: number }
+  | { stage: "pairings"; pairings: number }
+  | { stage: "lines"; lines: number };
+
 export interface ParseBidPackResult {
   /** One bid pack per seat found in the PDF (a bid pack usually contains both CAP and F/O line grids). */
   bidPacksBySeat: Partial<Record<"CAP" | "FO", BidPack>>;

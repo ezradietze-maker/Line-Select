@@ -24,15 +24,31 @@ import type {
   PageClassification,
   ParsedLineSummary,
   ParseBidPackResult,
+  ParseProgress,
   ParsedPairing,
   ParseWarning,
 } from "@/lib/pdf-parser/types";
 import type { BidPack, BidPackInfo, ReserveLine, Seat, SeniorityEntry } from "@/types/bidpack";
 
 export { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
-export type { ParseBidPackResult } from "@/lib/pdf-parser/types";
+export type { ParseBidPackResult, ParseProgress } from "@/lib/pdf-parser/types";
 
-export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackResult> {
+export async function parseBidPackPdf(
+  data: Uint8Array,
+  { onProgress: listener }: { onProgress?: (progress: ParseProgress) => void } = {}
+): Promise<ParseBidPackResult> {
+  // Text extraction resolves page after page without ever giving the event
+  // loop a turn, so a streamed response would hold every progress event
+  // until the very end. Reporting progress therefore yields one macrotask
+  // after each event — only when someone is listening, so a plain parse
+  // runs exactly as before.
+  const onProgress = listener
+    ? async (progress: ParseProgress) => {
+        listener(progress);
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+    : undefined;
+
   const errors: ParseWarning[] = [];
   const warnings: ParseWarning[] = [];
 
@@ -74,6 +90,7 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
     const rows = groupIntoRows(page.items);
     allRowsForGarbleCheck.push(...rows.slice(0, 10));
     pageClassifications.push(classifyPage(p, rows));
+    await onProgress?.({ stage: "pages", done: p, total: doc.numPages });
   }
 
   const looksLikeScannedPdf = looksGarbled(allRowsForGarbleCheck);
@@ -102,6 +119,7 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
     pairingPages.push({ rows: [...left, ...right], pageNumber: page.pageNumber });
   }
   allPairings.push(...parsePairingPages(pairingPages, warnings));
+  await onProgress?.({ stage: "pairings", pairings: allPairings.length });
 
   if (allPairings.length === 0) {
     errors.push({
@@ -136,6 +154,7 @@ export async function parseBidPackPdf(data: Uint8Array): Promise<ParseBidPackRes
     lineResults.push(
       ...parseLineGridColumn(rows, page.pageNumber, seat, pairingsBySeq, pairingsByFlightNumber, warnings)
     );
+    await onProgress?.({ stage: "lines", lines: lineResults.length });
 
     const seatPlacements = placementsBySeat[seat] ?? new Map<string, DayPlacement[]>();
     for (const [lineNumber, entries] of extractLinePlacements(rows)) {
