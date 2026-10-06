@@ -7,6 +7,8 @@ import type { PreferenceProfile } from "@/types/preferences";
 
 interface PilotProfileSummaryProps {
   profile: PreferenceProfile;
+  /** Inside the results status panel: just the list — no card, heading, or collapse of its own. */
+  bare?: boolean;
 }
 
 /**
@@ -34,7 +36,7 @@ interface PilotProfileSummaryProps {
  * static interview, or an adaptive interview that never surfaced anything
  * qualitative) rather than showing an empty shell.
  */
-export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
+export function PilotProfileSummary({ profile, bare = false }: PilotProfileSummaryProps) {
   const [expanded, setExpanded] = useState(true);
 
   const qualitativeFacts = [...profile.discoveredFacts]
@@ -44,6 +46,36 @@ export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
   if (qualitativeFacts.length === 0) return null;
 
   const checkedCount = qualitativeFacts.filter((f) => f.recurringWeekday || f.specificDates?.length).length;
+
+  const list = (
+        <ul className={bare ? "space-y-2.5" : "mt-4 space-y-2.5 border-t border-border pt-4"}>
+          {qualitativeFacts.map((f) => (
+            <li key={f.id} className="flex gap-2 text-sm text-ink-muted">
+              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
+              <span>
+                {f.statement}
+                {f.recurringWeekday && (
+                  <span className="ml-1.5 inline-flex items-center rounded-full bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
+                    Checked against every line&rsquo;s {weekdayPlural(f.recurringWeekday)}
+                  </span>
+                )}
+                {f.severity === "dealbreaker" && (!!f.recurringWeekday || !!f.specificDates?.length) && (
+                  <span className="ml-1.5 inline-flex items-center rounded-full bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">
+                    Dealbreaker
+                  </span>
+                )}
+                {!f.recurringWeekday && f.specificDates && f.specificDates.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center rounded-full bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
+                    Checked against every line&rsquo;s calendar
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+  );
+
+  if (bare) return list;
 
   return (
     <div className="mb-4 rounded-xl border border-border bg-surface p-4 sm:p-6">
@@ -70,33 +102,7 @@ export function PilotProfileSummary({ profile }: PilotProfileSummaryProps) {
           className={`h-4 w-4 shrink-0 text-ink-faint transition-transform ${expanded ? "rotate-180" : ""}`}
         />
       </button>
-      {expanded && (
-        <ul className="mt-4 space-y-2.5 border-t border-border pt-4">
-          {qualitativeFacts.map((f) => (
-            <li key={f.id} className="flex gap-2 text-sm text-ink-muted">
-              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
-              <span>
-                {f.statement}
-                {f.recurringWeekday && (
-                  <span className="ml-1.5 inline-flex items-center rounded-full bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
-                    Checked against every line&rsquo;s {weekdayPlural(f.recurringWeekday)}
-                  </span>
-                )}
-                {f.severity === "dealbreaker" && (!!f.recurringWeekday || !!f.specificDates?.length) && (
-                  <span className="ml-1.5 inline-flex items-center rounded-full bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">
-                    Dealbreaker
-                  </span>
-                )}
-                {!f.recurringWeekday && f.specificDates && f.specificDates.length > 0 && (
-                  <span className="ml-1.5 inline-flex items-center rounded-full bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
-                    Checked against every line&rsquo;s calendar
-                  </span>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {expanded && list}
     </div>
   );
 }

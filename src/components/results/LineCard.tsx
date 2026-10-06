@@ -18,6 +18,7 @@ import { TripList } from "@/components/results/TripList";
 import { ChevronDownIcon, GripIcon, StarIcon } from "@/components/ui/icons";
 import { Tabs } from "@/components/ui/Tabs";
 import { buildLineFactChips, type LineFactChip } from "@/lib/line-summary";
+import { useMediaQuery } from "@/lib/use-media-query";
 import { topImplicitContributions } from "@/lib/rank-learning";
 import type { LineScore } from "@/lib/scoring";
 import type { LineForecast } from "@/lib/forecast/forecast";
@@ -130,10 +131,30 @@ export const LineCard = memo(function LineCard({
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
 
   const chips = useMemo(() => buildLineFactChips(line, profile), [line, profile]);
+  // On a phone a full-height grip column costs a real slice of the card's
+  // width, so the (single) drag handle moves up into the header row instead.
+  const wide = useMediaQuery("(min-width: 640px)");
+  const grip = draggable ? (
+    <button
+      ref={setDragRef}
+      type="button"
+      {...attributes}
+      {...listeners}
+      title="Drag onto another line to swap ranks"
+      aria-label="Drag onto another line to swap ranks — teaches the app your preferences"
+      className={
+        wide
+          ? "flex shrink-0 touch-none cursor-grab items-center justify-center border-r border-hairline px-2.5 text-ink-faint transition-colors hover:bg-accent-soft/40 hover:text-accent active:cursor-grabbing"
+          : "flex h-9 w-9 shrink-0 touch-none cursor-grab items-center justify-center rounded-md text-ink-faint hover:text-ink active:cursor-grabbing"
+      }
+    >
+      <GripIcon className="h-4 w-4" />
+    </button>
+  ) : null;
 
   if (hidden) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-surface px-4 py-2.5 text-sm text-ink-faint">
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-hairline bg-canvas/30 px-4 py-2.5 text-sm text-ink-faint">
         <span>
           Line {line.lineNumber} <span className="text-ink-faint">&middot; hidden</span>
         </span>
@@ -151,13 +172,13 @@ export const LineCard = memo(function LineCard({
   return (
     <div
       ref={setDropRef}
-      className={`hover-lift overflow-hidden rounded-xl border bg-surface transition-[box-shadow,opacity,border-color] duration-150 hover:shadow-elevated ${
-        isTopPick ? "top-pick-glow border-accent/40 ring-1 ring-accent/20 hover:border-accent/60" : "border-border hover:border-border-strong"
+      className={`panel-glass hover-lift overflow-hidden transition-[box-shadow,opacity,border-color] duration-150 ${
+        isTopPick ? "top-pick-glow !border-accent/50 ring-1 ring-accent/20" : "hover:!border-border-strong"
       } ${isDragging ? "opacity-40" : ""} ${isOver ? "ring-2 ring-accent" : ""}`}
     >
       {isTopPick && (
-        <div className="flex items-center gap-1.5 bg-accent-soft px-5 py-1.5 text-xs font-semibold uppercase tracking-wide text-accent sm:px-6">
-          <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3">
+        <div className="flex items-center gap-1.5 border-b border-accent/20 bg-gradient-to-r from-accent-soft to-transparent px-5 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-accent sm:px-6">
+          <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-hidden>
             <path d="M12 2l2.6 6.5 7 .5-5.3 4.5 1.7 6.9L12 16.9 5.9 20.4l1.7-6.9L2.4 9l7-.5L12 2z" />
           </svg>
           Top pick
@@ -170,28 +191,45 @@ export const LineCard = memo(function LineCard({
         penalty={commitmentPenalty}
       />
       <div className="flex items-stretch">
-        {draggable && (
-          <button
-            ref={setDragRef}
-            type="button"
-            {...attributes}
-            {...listeners}
-            title="Drag onto another line to swap ranks"
-            aria-label="Drag onto another line to swap ranks — teaches the app your preferences"
-            className="flex shrink-0 touch-none cursor-grab items-center justify-center border-r border-border px-2.5 text-ink-faint hover:bg-black/[0.05] hover:text-ink active:cursor-grabbing"
-          >
-            <GripIcon className="h-4 w-4" />
-          </button>
-        )}
+        {wide && grip}
 
         <div className="min-w-0 flex-1 p-4 sm:p-5">
-          <div className="flex items-start gap-3">
-            <ScoreRing score={score} size={48} />
+          <div className="flex items-start gap-3 sm:gap-3.5">
+            <ScoreRing score={score} size={wide ? 60 : 52} capped={violatedDealbreakers.length > 0} />
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-                #{rank} &middot; Line {line.lineNumber}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-xs font-semibold text-ink-faint">#{rank}</span>
+                  <span className="font-display text-xl font-semibold tracking-tight text-ink">Line {line.lineNumber}</span>
+                </div>
+                <div className="-my-1.5 -mr-1.5 flex shrink-0 items-center gap-0.5">
+                  {!wide && grip}
+                  <button
+                    type="button"
+                    onClick={onToggleStar}
+                    aria-pressed={starred}
+                    aria-label={starred ? "Remove from shortlist" : "Add to shortlist"}
+                    title={starred ? "On your shortlist" : "Shortlist this line"}
+                    className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-black/[0.05] ${
+                      starred ? "text-warn" : "text-ink-faint hover:text-ink"
+                    }`}
+                  >
+                    <StarIcon filled={starred} className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onHide}
+                    aria-label="Hide this line"
+                    title="Hide this line"
+                    className="flex h-9 w-9 items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-black/[0.05] hover:text-ink"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4" aria-hidden>
+                      <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-              <div className="mt-0.5 text-sm text-ink-muted">
+              <div className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.03em] text-ink-muted sm:text-[11.5px] sm:tracking-[0.08em]">
                 {lineScore.estimated ? (
                   <span
                     className="inline-flex items-center gap-1 font-medium text-warn"
@@ -203,37 +241,17 @@ export const LineCard = memo(function LineCard({
                     Estimated trips
                   </span>
                 ) : (
-                  <>
+                  <span className="whitespace-nowrap">
                     {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
-                  </>
+                  </span>
                 )}
-                {" · "}TAFB {formatHours(line.totalTafbHours)} &middot; {line.totalLandings} landing{line.totalLandings === 1 ? "" : "s"}
+                {" · "}
+                <span className="whitespace-nowrap">TAFB {formatHours(line.totalTafbHours)}</span>
+                {" · "}
+                <span className="whitespace-nowrap">
+                  {line.totalLandings} landing{line.totalLandings === 1 ? "" : "s"}
+                </span>
               </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-0.5">
-              <button
-                type="button"
-                onClick={onToggleStar}
-                aria-pressed={starred}
-                aria-label={starred ? "Remove from shortlist" : "Add to shortlist"}
-                title={starred ? "On your shortlist" : "Shortlist this line"}
-                className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-black/[0.05] ${
-                  starred ? "text-warn" : "text-ink-faint hover:text-ink"
-                }`}
-              >
-                <StarIcon filled={starred} className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                onClick={onHide}
-                aria-label="Hide this line"
-                title="Hide this line"
-                className="flex h-9 w-9 items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-black/[0.05] hover:text-ink"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4" aria-hidden>
-                  <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
             </div>
           </div>
 
@@ -262,8 +280,8 @@ export const LineCard = memo(function LineCard({
                   onClick={onToggleCompare}
                   className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
                     isComparing
-                      ? "border-brand bg-brand-soft text-brand"
-                      : "border-border text-ink-muted hover:border-border-strong hover:text-ink"
+                      ? "border-accent bg-accent-soft text-accent"
+                      : "border-hairline text-ink-muted hover:border-border-strong hover:text-ink"
                   }`}
                 >
                   {isComparing ? "Comparing" : "Compare"}
@@ -272,7 +290,7 @@ export const LineCard = memo(function LineCard({
                   type="button"
                   onClick={() => setExpanded((e) => !e)}
                   aria-expanded={expanded}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-border-strong hover:text-ink"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-hairline px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-border-strong hover:text-ink"
                 >
                   {expanded ? "Hide details" : "Details"}
                   <ChevronDownIcon className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
@@ -302,7 +320,7 @@ export const LineCard = memo(function LineCard({
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={reduceMotion ? { duration: 0 } : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            className="overflow-hidden border-t border-border"
+            className="overflow-hidden border-t border-hairline"
           >
             <div className="px-4 pt-2 sm:px-5">
               <Tabs
@@ -486,7 +504,7 @@ export const LineCard = memo(function LineCard({
 const CHIP_TONE: Record<LineFactChip["tone"], string> = {
   good: "border-good/40 bg-good-soft text-good",
   warn: "border-warn/40 bg-warn-soft text-warn",
-  neutral: "border-border bg-canvas text-ink",
+  neutral: "border-hairline bg-canvas/50 text-ink",
 };
 
 function FactChip({ chip }: { chip: LineFactChip }) {

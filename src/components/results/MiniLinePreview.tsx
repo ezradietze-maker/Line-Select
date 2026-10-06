@@ -1,6 +1,7 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { useInView } from "motion/react";
+import { memo, useMemo, useRef, useState } from "react";
 import { MoonIcon, PlaneIcon, SunriseIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/Modal";
 import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthSummary, type StripSegment } from "@/lib/month-detail";
@@ -70,10 +71,18 @@ function SentimentMark({ sentiment }: { sentiment: CitySentiment | null }) {
   return null;
 }
 
-function Cell({ day, selected, onSelect }: { day: DetailedDay; selected: boolean; onSelect: () => void }) {
+function Cell({ day, selected, onSelect, index }: { day: DetailedDay; selected: boolean; onSelect: () => void; index: number }) {
   const isOff = day.kind === "off";
   return (
-    <button type="button" onClick={onSelect} title={day.title} aria-label={day.title} aria-pressed={selected} className={cellClass(day, selected)}>
+    <button
+      type="button"
+      onClick={onSelect}
+      title={day.title}
+      aria-label={day.title}
+      aria-pressed={selected}
+      className={cellClass(day, selected)}
+      style={{ "--i": index } as React.CSSProperties}
+    >
       {/* A red-eye day is genuinely darker, not just icon-flagged — a faint tonal wash rather than a new hue, so it stays inside the warm palette. */}
       {!isOff && day.redEye && <span aria-hidden className="absolute inset-0 -z-10 rounded-md bg-ink/10" />}
       <span className="flex items-start justify-between gap-0.5">
@@ -145,13 +154,13 @@ function MonthKeyInfo() {
       {open && (
         <Modal title="Month calendar key" onClose={() => setOpen(false)}>
           <ul className="space-y-3 text-sm leading-relaxed text-ink-muted">
-            <li><span className="font-medium text-ink">Blue day.</span> You&rsquo;re on a trip. The tag on its first day (<span className="font-mono">#60</span>) is the trip&rsquo;s number in your bid pack, and a ringed day is that first day.</li>
+            <li><span className="font-medium text-ink">Shaded day.</span> You&rsquo;re on a trip. The tag on its first day (<span className="font-mono">#60</span>) is the trip&rsquo;s number in your bid pack, and a ringed day is that first day.</li>
             <li><span className="font-medium text-ink">Green day with a code.</span> The night you check into a layover hotel, and the city. A <span className="text-good">♥</span> is a city you love, a <span className="text-danger">✕</span> one you avoid, and a dotted underline marks an international city.</li>
             <li><span className="font-medium text-ink">Purple day.</span> Hotel standby &mdash; on call at the hotel, paid, not flying.</li>
             <li><span className="font-medium text-ink">Dashed empty day.</span> A day off. A run of days off is labeled on its first day (&ldquo;4 off&rdquo;), and weekends are shaded.</li>
             <li><span className="font-medium text-ink">R05:20 / →18:04.</span> When the duty starts that day, and (with the arrow) when your last flight lands on the day the trip ends.</li>
             <li><span className="font-medium text-ink">Plane and number.</span> Landings that day. <span className="font-medium text-ink">Moon:</span> a flight departs or lands between midnight and 5am. <span className="font-medium text-ink">Sun:</span> the duty starts between 2 and 6am, when your body clock is at its lowest.</li>
-            <li><span className="font-medium text-ink">Thin bar along the bottom.</span> The day&rsquo;s 24 hours &mdash; blue is flying, hatched is deadhead, purple is standby, green is layover, gold is report and ground time.</li>
+            <li><span className="font-medium text-ink">Thin bar along the bottom.</span> The day&rsquo;s 24 hours &mdash; the solid trip color is flying, hatched is deadhead, purple is standby, green is layover, gold is report and ground time.</li>
             <li><span className="font-medium text-ink">Tap any day</span> for every flight, time, layover hotel and rest on it. The hour-by-hour chart for each trip is in the expanded card.</li>
           </ul>
         </Modal>
@@ -303,6 +312,11 @@ export const MiniLinePreview = memo(function MiniLinePreview({
     [line, bidPeriodStart, bidPeriodDays, cityPreferences]
   );
   const [selected, setSelected] = useState<number | null>(null);
+  // The month lays itself out the first time it scrolls into view (see
+  // .cal-grid in globals.css) — not before, so a long list doesn't spend its
+  // animation on cards nobody has reached yet.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const revealed = useInView(gridRef, { once: true, margin: "0px 0px -8% 0px" });
 
   if (line.trips.length === 0) return null;
   const selectedDay = selected !== null ? month.days[selected] : null;
@@ -317,9 +331,15 @@ export const MiniLinePreview = memo(function MiniLinePreview({
             ))}
           </div>
         )}
-        <div className="grid grid-cols-7 gap-1">
-          {month.days.map((day) => (
-            <Cell key={day.dayIndex} day={day} selected={selected === day.dayIndex} onSelect={() => setSelected((cur) => (cur === day.dayIndex ? null : day.dayIndex))} />
+        <div ref={gridRef} className={`cal-grid grid grid-cols-7 gap-1 ${revealed ? "is-revealed" : ""}`}>
+          {month.days.map((day, i) => (
+            <Cell
+              key={day.dayIndex}
+              index={i}
+              day={day}
+              selected={selected === day.dayIndex}
+              onSelect={() => setSelected((cur) => (cur === day.dayIndex ? null : day.dayIndex))}
+            />
           ))}
         </div>
       </div>

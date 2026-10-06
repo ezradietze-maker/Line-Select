@@ -573,7 +573,52 @@ body {
   animation: skeleton-pulse 1.6s ease-in-out infinite;
 }
 
+/* A line's month laying itself out, day by day, the first time its card
+   scrolls into view. Leaf cells only, so animating transform is safe. */
+@keyframes cell-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.cal-grid:not(.is-revealed) > * {
+  opacity: 0;
+}
+
+.cal-grid.is-revealed > * {
+  animation: cell-in 0.42s var(--ease-emphasized) both;
+  animation-delay: calc(var(--i, 0) * 14ms);
+}
+
+/* A score breakdown bar filling to its value as it appears. */
+@keyframes bar-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.bar-fill {
+  transform-origin: left center;
+  animation: bar-fill 0.7s var(--ease-emphasized) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .cal-grid > *,
+  .cal-grid:not(.is-revealed) > * {
+    opacity: 1;
+    animation: none;
+  }
+  .bar-fill {
+    animation: none;
+  }
   .animate-fade-in,
   .animate-rise-in,
   .animate-slide-in-left,

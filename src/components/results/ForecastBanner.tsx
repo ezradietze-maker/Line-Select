@@ -49,6 +49,8 @@ interface ForecastBannerProps {
   canShare: boolean;
   sharing: boolean;
   onSharingChange: (next: boolean) => void;
+  /** Inside the results status panel: no card of its own around the content. */
+  bare?: boolean;
 }
 
 export function ForecastBanner({
@@ -65,12 +67,15 @@ export function ForecastBanner({
   canShare,
   sharing,
   onSharingChange,
+  bare = false,
 }: ForecastBannerProps) {
   if (!hasList) return null;
+  // The same content either way; only the frame around it differs.
+  const frame = (cardClass: string) => (bare ? "" : cardClass);
 
   if (!seniorityNumber) {
     return (
-      <div className="mt-5 rounded-xl border border-border bg-surface p-4 sm:p-5">
+      <div className={frame("mt-5 rounded-xl border border-border bg-surface p-4 sm:p-5")}>
         <div className="text-sm font-semibold text-ink">Which of these lines could you actually hold?</div>
         <p className="mt-1 text-sm leading-relaxed text-ink-muted">
           Add your seniority number and Line Select will estimate your chance at every line &mdash; so you can spend your time on lines
@@ -85,7 +90,7 @@ export function ForecastBanner({
 
   if (!forecast && failed) {
     return (
-      <div className="mt-5 rounded-xl border border-border bg-surface p-4 text-sm text-ink-muted">
+      <div className={`text-sm text-ink-muted ${frame("mt-5 rounded-xl border border-border bg-surface p-4")}`}>
         Couldn&rsquo;t estimate your chances just now. Your rankings below are unaffected &mdash; try reloading in a moment.
       </div>
     );
@@ -93,7 +98,7 @@ export function ForecastBanner({
 
   if (!forecast) {
     return (
-      <div className="mt-5 flex items-center gap-3 rounded-xl border border-border bg-surface p-4 text-sm text-ink-muted">
+      <div className={`flex items-center gap-3 text-sm text-ink-muted ${frame("mt-5 rounded-xl border border-border bg-surface p-4")}`}>
         <Spinner size="sm" />
         Estimating your chances at seniority #{seniorityNumber}&hellip;
       </div>
@@ -103,7 +108,7 @@ export function ForecastBanner({
   const sharingPilots = response?.pilotsSharing ?? 0;
 
   return (
-    <div className="mt-5 rounded-xl border border-border bg-surface p-4 sm:p-5" aria-busy={loading}>
+    <div className={frame("mt-5 rounded-xl border border-border bg-surface p-4 sm:p-5")} aria-busy={loading}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="text-sm font-semibold text-ink">
           Your chances &middot; seniority #{seniorityNumber} &middot; {forecast.exactPosition ? "" : "about "}

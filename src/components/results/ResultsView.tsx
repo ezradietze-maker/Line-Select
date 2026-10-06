@@ -15,9 +15,7 @@ import {
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { motion, useReducedMotion } from "motion/react";
-import { BidCountdown } from "@/components/results/BidCountdown";
 import { BidOrderExport, type BidOrderEntry } from "@/components/results/BidOrderExport";
-import { BidPeriodChangeBanner } from "@/components/results/BidPeriodChangeBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
 import { ResultsFilterBar } from "@/components/results/ResultsFilterBar";
@@ -29,9 +27,8 @@ import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { LineCard } from "@/components/results/LineCard";
 import { LineComparisonModal } from "@/components/results/LineComparisonModal";
-import { ForecastBanner } from "@/components/results/ForecastBanner";
 import { MonthLegend } from "@/components/results/MiniLinePreview";
-import { PilotProfileSummary } from "@/components/results/PilotProfileSummary";
+import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
@@ -456,30 +453,44 @@ export function ResultsView({
   return (
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
       <div className="flex items-start justify-between gap-3 sm:items-end">
-        <div>
-          <Heading as="h1" className="text-2xl text-ink sm:text-3xl">
+        <div className="min-w-0">
+          <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">
+            {bidPack.base} &middot; {bidPack.aircraft} &middot; {bidPack.seat} &middot; {bidPack.month}
+          </div>
+          <Heading as="h1" className="mt-1.5 text-3xl text-ink sm:text-4xl">
             Your ranked lines
           </Heading>
           <p className="mt-1.5 text-sm text-ink-muted">
-            {bidPack.base} {bidPack.aircraft} {bidPack.seat} &middot; {bidPack.month}{" "}
-            &middot; {bidPack.lines.length} lines<span className="hidden sm:inline"> scored against your preferences</span>
-            {profile.deepRoundCompleted && (
-              <span className="ml-2 inline-flex items-center rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
-                Deep interview
-              </span>
-            )}
+            {bidPack.lines.length} lines scored against what you told us
+            {sortMode === "match" ? <span className="hidden sm:inline"> &middot; best match first</span> : null}
           </p>
         </div>
         <Button variant="secondary" onClick={onEditPreferences} className="shrink-0 px-3 sm:px-4">
-          Edit<span className="hidden sm:inline">&nbsp;preferences</span>
+          <span className="sm:hidden">Edit</span>
+          <span className="hidden sm:inline">Edit preferences</span>
         </Button>
       </div>
 
-      <div className="mt-4">
-        <BidCountdown bidPackId={bidPack.id} />
-      </div>
-
-      <BidPeriodChangeBanner summary={bidPeriodChange} />
+      <ResultsStatusPanel
+        bidPackId={bidPack.id}
+        profile={profile}
+        confidenceLevel={confidenceLevel}
+        onEditPreferences={onEditPreferences}
+        bidPeriodChange={bidPeriodChange}
+        forecast={{
+          hasList: !!bidPack.seniorityList?.length,
+          forecast: hotelsSettled ? forecast.result?.forecast ?? null : null,
+          response: forecast.result,
+          loading: forecast.loading,
+          failed: forecast.failed,
+          realisticCount: realisticIds.size,
+          showingRealistic: view === "realistic",
+          onToggleRealistic: () => setView((v) => (v === "realistic" ? "all" : "realistic")),
+          canShare: forecast.canShare,
+          sharing: forecast.sharing,
+          onSharingChange: forecast.setSharing,
+        }}
+      />
       {confirmingStartOver && (
         <ConfirmModal
           title="Start over from scratch?"
@@ -521,24 +532,6 @@ export function ResultsView({
         </div>
       )}
 
-      {(confidenceLevel === "thin" || confidenceLevel === "moderate") && (
-        <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-ink-muted">
-          These rankings are based on a{confidenceLevel === "thin" ? " shorter" : " moderate-length"} interview
-          {confidenceLevel === "thin" ? ", so treat them as a first cut" : ""}.{" "}
-          <button
-            type="button"
-            onClick={onEditPreferences}
-            className="font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand-strong"
-          >
-            Add detail on your Preferences page
-          </button>{" "}
-          to sharpen them.
-        </div>
-      )}
-
-      <div className="mt-5">
-        <PilotProfileSummary profile={profile} />
-      </div>
 
       {!hotelsSettled ? (
         <div className="mt-6">
@@ -550,21 +543,6 @@ export function ResultsView({
         </div>
       ) : (
         <>
-          <ForecastBanner
-            forecast={forecast.result?.forecast ?? null}
-            response={forecast.result}
-            loading={forecast.loading}
-            failed={forecast.failed}
-            seniorityNumber={profile.seniorityNumber}
-            hasList={!!bidPack.seniorityList?.length}
-            onAddSeniority={onEditPreferences}
-            realisticCount={realisticIds.size}
-            showingRealistic={view === "realistic"}
-            onToggleRealistic={() => setView((v) => (v === "realistic" ? "all" : "realistic"))}
-            canShare={forecast.canShare}
-            sharing={forecast.sharing}
-            onSharingChange={forecast.setSharing}
-          />
           {hotelFilter && (
             <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-brand/30 bg-brand-soft px-3 py-2 text-sm text-ink">
               <span>
@@ -589,7 +567,7 @@ export function ResultsView({
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Find a line number"
                 aria-label="Find a line by number"
-                className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40"
+                className="w-full rounded-md border border-hairline bg-canvas/50 px-3 py-2 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-faint focus:border-accent focus:outline-none"
               />
             </div>
             <label className="flex items-center gap-2 text-sm text-ink-muted">
@@ -597,7 +575,7 @@ export function ResultsView({
               <select
                 value={sortMode}
                 onChange={(e) => setSortMode(e.target.value as SortMode)}
-                className="rounded-md border border-border-strong bg-surface px-2.5 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
+                className="rounded-md border border-hairline bg-canvas/50 px-2.5 py-2 text-sm text-ink focus:border-accent focus:outline-none"
               >
                 {SORT_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -606,13 +584,13 @@ export function ResultsView({
                 ))}
               </select>
             </label>
-            <div className="ml-auto flex overflow-hidden rounded-md border border-border-strong text-sm" role="tablist" aria-label="Which lines to show">
+            <div className="ml-auto flex overflow-hidden rounded-md border border-hairline text-sm" role="tablist" aria-label="Which lines to show">
               <button
                 type="button"
                 role="tab"
                 aria-selected={view === "all"}
                 onClick={() => setView("all")}
-                className={`px-3 py-2 font-medium transition-colors ${view === "all" ? "bg-brand-soft text-brand" : "text-ink-muted hover:text-ink"}`}
+                className={`px-3 py-2 font-medium transition-colors ${view === "all" ? "bg-accent-soft text-accent" : "text-ink-muted hover:text-ink"}`}
               >
                 All lines
               </button>
@@ -621,7 +599,7 @@ export function ResultsView({
                 role="tab"
                 aria-selected={view === "shortlist"}
                 onClick={() => setView("shortlist")}
-                className={`border-l border-border-strong px-3 py-2 font-medium transition-colors ${view === "shortlist" ? "bg-brand-soft text-brand" : "text-ink-muted hover:text-ink"}`}
+                className={`border-l border-hairline px-3 py-2 font-medium transition-colors ${view === "shortlist" ? "bg-accent-soft text-accent" : "text-ink-muted hover:text-ink"}`}
               >
                 Shortlist ({validMarks.starred.length})
               </button>
@@ -631,7 +609,7 @@ export function ResultsView({
                   role="tab"
                   aria-selected={view === "realistic"}
                   onClick={() => setView("realistic")}
-                  className={`border-l border-border-strong px-3 py-2 font-medium transition-colors ${view === "realistic" ? "bg-brand-soft text-brand" : "text-ink-muted hover:text-ink"}`}
+                  className={`border-l border-hairline px-3 py-2 font-medium transition-colors ${view === "realistic" ? "bg-accent-soft text-accent" : "text-ink-muted hover:text-ink"}`}
                 >
                   Realistic ({realisticIds.size})
                 </button>
@@ -731,7 +709,7 @@ export function ResultsView({
           </DndContext>
 
           {sorted.length > displayed.length && (
-            <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-border bg-surface px-4 py-4 text-center">
+            <div className="panel-glass mt-4 flex flex-col items-center gap-2 px-4 py-4 text-center">
               <p className="text-sm text-ink-muted">
                 Showing {displayed.length} of {sorted.length} lines
                 {view === "all" && sortMode === "match" ? " — the best matches first" : ""}.

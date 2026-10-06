@@ -575,9 +575,15 @@ function implicitHitPhrase(label: string, weight: number): string {
   return weight > 0 ? `real strength on ${l}` : `staying refreshingly light on ${l}`;
 }
 
+/**
+ * A noun phrase that follows "it has…" in the line's summary. "Less {label}"
+ * reads wrong for a label that counts things ("less red-eye departures"),
+ * so the short side is "less to offer on {label}", which reads right either
+ * way; "more" already works for both.
+ */
 function implicitMissPhrase(label: string, weight: number, below: boolean): string | null {
   const l = label.toLowerCase();
-  if (weight > 0 && below) return `less ${l} than you'd probably like`;
+  if (weight > 0 && below) return `less to offer on ${l} than you'd probably like`;
   if (weight < 0 && !below) return `more ${l} than you'd probably want`;
   return null;
 }
@@ -892,7 +898,7 @@ function computeCategoryScores(allDimensions: DimensionScore[]): Record<Satisfac
 /** How far below "clearly fine" a match has to fall before a dealbreaker counts as violated — deliberately well below the ordinary 0.5 miss-phrase threshold, since a dealbreaker should only fire on a line that's unambiguously on the wrong side, not one that merely misses the pilot's target by a little. */
 const DEALBREAKER_MATCH_THRESHOLD = 0.25;
 /** A violating line is capped, not zeroed — it should still read as a real, rankable line ("flagged," per the spec's own "still surface if nothing better exists" requirement), not look like a broken/empty score. */
-const DEALBREAKER_SCORE_CAP = 35;
+export const DEALBREAKER_SCORE_CAP = 35;
 
 function humanizeKey(key: string): string {
   return key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()).trim();

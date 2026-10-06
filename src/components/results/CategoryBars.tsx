@@ -32,7 +32,7 @@ export function CategoryBars({ categoryScores }: CategoryBarsProps) {
             </div>
             <div className="mt-1 h-1.5 rounded-full bg-canvas">
               <div
-                className={`h-1.5 rounded-full transition-all ${toneFor(score)}`}
+                className={`bar-fill h-1.5 rounded-full transition-all ${toneFor(score)}`}
                 style={{ width: `${Math.round(score)}%` }}
               />
             </div>
