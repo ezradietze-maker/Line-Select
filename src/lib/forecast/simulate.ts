@@ -1,5 +1,5 @@
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
-import { estimatePopulation, type PopulationModel } from "@/lib/forecast/population";
+import { estimatePopulation, type LearnedPrior, type PopulationModel } from "@/lib/forecast/population";
 import { makeNormal, mulberry32 } from "@/lib/forecast/random";
 
 /**
@@ -31,6 +31,8 @@ export interface ForecastParams {
   seed?: number;
   /** Chance a pilot ahead doesn't take a regular line this month (vacation, training, leave, choosing reserve). */
   dropoutRate?: number;
+  /** Starting beliefs learned from past months at this seat, when there are any. */
+  learnedPrior?: LearnedPrior | null;
 }
 
 export interface ForecastCore {
@@ -64,7 +66,7 @@ export function simulateBid(params: ForecastParams): ForecastCore {
 
   const knownByBid = new Map<number, number[]>();
   for (const k of params.known) if (k.bidNumber < myBidNumber) knownByBid.set(k.bidNumber, k.ranking);
-  const population: PopulationModel = estimatePopulation(features, params.known.map((k) => k.ranking));
+  const population: PopulationModel = estimatePopulation(features, params.known.map((k) => k.ranking), params.learnedPrior);
 
   const rand = mulberry32(params.seed ?? 1);
   const normal = makeNormal(rand);

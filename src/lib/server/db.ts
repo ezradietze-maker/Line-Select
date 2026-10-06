@@ -329,8 +329,24 @@ export async function listAwardHistoryRecords(filter: {
   aircraft: string;
   seat: string;
 }): Promise<AwardHistoryRecord[]> {
+  // Only the public columns — the pilot hash and choice behind each report
+  // are for that pilot's own history and the learning, never this listing.
   const rows = await db
-    .select()
+    .select({
+      id: awardHistoryRecords.id,
+      base: awardHistoryRecords.base,
+      aircraft: awardHistoryRecords.aircraft,
+      seat: awardHistoryRecords.seat,
+      month: awardHistoryRecords.month,
+      seniorityRank: awardHistoryRecords.seniorityRank,
+      seniorityTotalPilots: awardHistoryRecords.seniorityTotalPilots,
+      outcome: awardHistoryRecords.outcome,
+      lineNumber: awardHistoryRecords.lineNumber,
+      daysOff: awardHistoryRecords.daysOff,
+      totalCreditHours: awardHistoryRecords.totalCreditHours,
+      totalTafbHours: awardHistoryRecords.totalTafbHours,
+      submittedAt: awardHistoryRecords.submittedAt,
+    })
     .from(awardHistoryRecords)
     .where(
       and(
@@ -356,8 +372,14 @@ export async function listAwardHistoryRecords(filter: {
   }));
 }
 
-export async function createAwardHistoryRecord(record: AwardHistoryRecord): Promise<void> {
+export async function createAwardHistoryRecord(
+  record: AwardHistoryRecord,
+  link: { pilotHash?: string | null; packKey?: string | null; awardedChoice?: number | null } = {}
+): Promise<void> {
   await db.insert(awardHistoryRecords).values({
+    pilotHash: link.pilotHash ?? null,
+    packKey: link.packKey ?? null,
+    awardedChoice: link.awardedChoice ?? null,
     id: record.id,
     base: record.base,
     aircraft: record.aircraft,

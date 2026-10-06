@@ -54,7 +54,14 @@ export type FactSource =
   | { kind: "seed-question"; questionKey: string }
   | { kind: "adaptive-question"; questionId: string }
   /** The pilot set this directly on the Preferences or confirmation screen instead of answering an interview question — see `lib/profile-edits.ts`. */
-  | { kind: "manual-edit" };
+  | { kind: "manual-edit" }
+  /**
+   * Not asked: learned from many pilots in the same group, who answer this
+   * one nearly the same way (see `lib/learning/interview-learning.ts`). Shown
+   * to the pilot as an assumption they can change, and never fed back into
+   * the learning itself — only real answers teach it.
+   */
+  | { kind: "population-prior"; modelVersion: string };
 
 export interface PreferenceFact {
   /** Client-generated (crypto.randomUUID()). */
@@ -353,6 +360,8 @@ export interface TurnRequestBody {
   bidStory?: string;
   /** Where a commuter commutes from (airport code), when known. */
   commuteFrom?: string;
+  /** What the fleet has learned about pilots in this one's group — see `PopulationInsights`. */
+  populationInsights?: PopulationInsights;
   /**
    * A small, rotating sample of anonymized phrase snippets pulled from many
    * pilots' own bidding-story answers (see `server/style-store.ts`) — loose
@@ -398,4 +407,25 @@ export interface TurnResponse {
   reasoning?: string;
   /** One short line, in the pilot's own register, saying back what their last answer told the interview — shown above the next question so the pilot sees they were heard (and can catch a misread). Absent on the first turn. */
   heard?: string;
+}
+
+/**
+ * What the fleet has learned about pilots in this one's group, handed to the
+ * interview so it spends its questions where they matter (see
+ * `lib/learning/`). Group-level only — never another pilot's answers — and
+ * never to be repeated to the pilot before they answer, so it can't anchor
+ * what they say.
+ */
+export interface PopulationInsights {
+  /** Interviews behind these numbers, in the most specific group that has any. */
+  groupSize: number;
+  /** Dimensions assumed from the group rather than asked — already in currentFacts as changeable facts. */
+  assumedFromGroup: string[];
+  /** Where pilots in this group split most — worth asking well, and early. */
+  whereThisGroupSplits: { dim: string; split: string }[];
+  /** Topics that usually surface something new for pilots like this, and ones that rarely do. */
+  usuallyRevealsSomething: string[];
+  rarelyChangesAnything: string[];
+  /** Typical numbers this group gives ("daysOff:ideal" -> "15 (most 14-16, from 212 pilots)"). */
+  typicalNumbers: Record<string, string>;
 }

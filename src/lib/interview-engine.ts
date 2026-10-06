@@ -9,6 +9,7 @@ import type {
   InterviewTurnRecord,
   MeasurableBinding,
   PreferenceFact,
+  PopulationInsights,
   PreferenceFactUpdate,
   TurnRequestBody,
 } from "@/types/interview-session";
@@ -151,6 +152,7 @@ export function buildTurnRequest(params: {
   bidStory?: string;
   seniorityKnown?: boolean;
   commuteFrom?: string;
+  populationInsights?: PopulationInsights;
 }): TurnRequestBody {
   const uncovered = uncoveredExplicitWeightIds(params.facts, packHasHotelStandby(params.grounding));
   const floor = minTurnsBeforeWrap(params.facts);

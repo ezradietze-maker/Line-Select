@@ -33,10 +33,31 @@ export interface PopulationModel {
   knownCount: number;
 }
 
-export function priorPopulation(lineCount: number): PopulationModel {
+/**
+ * Starting beliefs learned from past months at this seat (see
+ * `lib/learning/forecast-learning.ts`), used in place of the reasoned
+ * defaults above once enough pilots have shared rankings over time.
+ */
+export interface LearnedPrior {
+  mean: number[];
+  sd: number[];
+  /** How many past rankings it was learned from. */
+  n: number;
+}
+
+function priorOf(learned?: LearnedPrior | null): { mean: number[]; sd: number[]; strength: number } {
+  if (!learned || learned.mean.length !== FEATURE_COUNT || learned.sd.length !== FEATURE_COUNT) {
+    return { mean: PRIOR_MEAN, sd: PRIOR_SD, strength: PRIOR_STRENGTH };
+  }
+  // A belief learned from many past pilots deserves more weight against this month's handful than a reasoned guess does.
+  return { mean: learned.mean, sd: learned.sd, strength: PRIOR_STRENGTH + Math.min(24, Math.sqrt(learned.n)) };
+}
+
+export function priorPopulation(lineCount: number, learned?: LearnedPrior | null): PopulationModel {
+  const prior = priorOf(learned);
   return {
-    mean: [...PRIOR_MEAN],
-    sd: [...PRIOR_SD],
+    mean: [...prior.mean],
+    sd: [...prior.sd],
     popularity: new Float64Array(lineCount),
     popularitySd: PRIOR_POPULARITY_SD,
     noiseSd: NOISE_SD,
@@ -110,8 +131,9 @@ export function fitWeightsFromRanking(features: LineFeatures, ranking: number[])
  * said), and the shared appeal of each line averaged from what the features
  * couldn't explain in their rankings.
  */
-export function estimatePopulation(features: LineFeatures, knownRankings: number[][]): PopulationModel {
-  const prior = priorPopulation(features.lineCount);
+export function estimatePopulation(features: LineFeatures, knownRankings: number[][], learned?: LearnedPrior | null): PopulationModel {
+  const start = priorOf(learned);
+  const prior = priorPopulation(features.lineCount, learned);
   const n = knownRankings.length;
   if (n === 0) return prior;
 
@@ -122,13 +144,13 @@ export function estimatePopulation(features: LineFeatures, knownRankings: number
   const sd = new Array(K).fill(0);
   for (const f of fits) for (let k = 0; k < K; k++) sd[k] += (f.weights[k] - mean[k]) ** 2 / n;
 
-  const blend = n / (n + PRIOR_STRENGTH);
+  const blend = n / (n + start.strength);
   const popularity = new Float64Array(features.lineCount);
   for (const f of fits) for (let i = 0; i < features.lineCount; i++) popularity[i] += (f.residual[i] / n) * (n / (n + 4));
 
   return {
-    mean: mean.map((m, k) => blend * m + (1 - blend) * PRIOR_MEAN[k]),
-    sd: sd.map((v, k) => Math.sqrt(blend * v + (1 - blend) * PRIOR_SD[k] ** 2)),
+    mean: mean.map((m, k) => blend * m + (1 - blend) * start.mean[k]),
+    sd: sd.map((v, k) => Math.sqrt(blend * v + (1 - blend) * start.sd[k] ** 2)),
     popularity,
     popularitySd: PRIOR_POPULARITY_SD / Math.sqrt(1 + n / 6),
     noiseSd: NOISE_SD,

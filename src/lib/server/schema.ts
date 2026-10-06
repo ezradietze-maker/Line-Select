@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -8,6 +9,8 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { CorrectionEvent } from "@/lib/learning/interview-learning";
+import type { InterviewOutcome } from "@/lib/learning/interview-outcome";
 import type { BidPackMetaSnapshot, TripSnapshot } from "@/types/trade";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -124,8 +127,23 @@ export const awardHistoryRecords = pgTable(
     totalCreditHours: integer("total_credit_hours"),
     totalTafbHours: integer("total_tafb_hours"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * One-way hash of the reporting account (same scheme as
+     * `forecastRankings.userHash`) — links one pilot's reports across
+     * months so they can see their own holding history and so the forecast
+     * made for them can be checked against what they got. Never returned
+     * by the public listing, never reversible to a name.
+     */
+    pilotHash: text("pilot_hash"),
+    /** The forecast pack key ("oct26|mem|b767|fo") this award belongs to. */
+    packKey: text("pack_key"),
+    /** Which of the pilot's own choices they were awarded (1 = their first), when known. */
+    awardedChoice: integer("awarded_choice"),
   },
-  (t) => [index("award_history_base_aircraft_seat_idx").on(t.base, t.aircraft, t.seat)]
+  (t) => [
+    index("award_history_base_aircraft_seat_idx").on(t.base, t.aircraft, t.seat),
+    index("award_history_pilot_idx").on(t.pilotHash),
+  ]
 );
 
 export const interviewCandidateFacts = pgTable("interview_candidate_facts", {
@@ -198,4 +216,128 @@ export const interviewStyleSamples = pgTable("interview_style_samples", {
   phrase: text("phrase").notNull(),
   tags: jsonb("tags").notNull().$type<string[]>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// Fleet learning — see `lib/learning/` and `server/learning-store.ts`.
+// Everything here is kept for years (bounded by row caps, not by age), so
+// the models can learn from many months of bids, not just the current one.
+// ---------------------------------------------------------------------------
+
+/**
+ * One finished interview, as the fleet learns from it — the pilot's group,
+ * where each preference landed and where it came from, how each question
+ * went. Never the pilot's words (see `InterviewOutcome`). `pilotHash` is
+ * present only for signed-in pilots, so one pilot's interviews across
+ * months can be told apart from many pilots'.
+ */
+export const interviewOutcomes = pgTable(
+  "interview_outcomes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    pilotHash: text("pilot_hash"),
+    base: text("base").notNull(),
+    aircraft: text("aircraft").notNull(),
+    seat: text("seat").notNull(),
+    month: text("month").notNull(),
+    commute: text("commute").notNull(),
+    seniorityBand: text("seniority_band").notNull(),
+    modelVersion: text("model_version"),
+    payload: jsonb("payload").notNull().$type<InterviewOutcome>(),
+  },
+  (t) => [index("interview_outcomes_pack_idx").on(t.base, t.aircraft, t.seat), index("interview_outcomes_created_idx").on(t.createdAt)]
+);
+
+/** A pilot later changing a value the interview set — the most direct signal of where the interview gets people wrong. */
+export const preferenceCorrections = pgTable(
+  "preference_corrections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    pilotHash: text("pilot_hash"),
+    base: text("base").notNull(),
+    aircraft: text("aircraft").notNull(),
+    seat: text("seat").notNull(),
+    dim: text("dim").notNull(),
+    src: text("src").notNull().$type<CorrectionEvent["src"]>(),
+    fromValue: integer("from_value").notNull(),
+    toValue: integer("to_value").notNull(),
+  },
+  (t) => [index("preference_corrections_created_idx").on(t.createdAt)]
+);
+
+/**
+ * A month's line features (standardized numbers only — never the bid pack
+ * itself), kept so rankings shared that month can be re-read by the
+ * learning long after the month is over. Keyed like `forecastRankings`.
+ */
+export const packFeatures = pgTable(
+  "pack_features",
+  {
+    blobKey: text("blob_key").primaryKey(),
+    packKey: text("pack_key").notNull(),
+    base: text("base").notNull(),
+    aircraft: text("aircraft").notNull(),
+    seat: text("seat").notNull(),
+    month: text("month").notNull(),
+    lineNumbers: jsonb("line_numbers").notNull().$type<string[]>(),
+    features: jsonb("features").notNull().$type<number[]>(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("pack_features_pack_idx").on(t.packKey)]
+);
+
+/**
+ * The forecast a signed-in pilot was shown — their top choices and the
+ * chance each was still open at their turn — kept so it can be checked
+ * against the line they report being awarded. One per pilot per pack
+ * (the latest), keyed by the same one-way hash as everything else.
+ */
+export const forecastPredictions = pgTable(
+  "forecast_predictions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    pilotHash: text("pilot_hash").notNull(),
+    blobKey: text("blob_key").notNull(),
+    packKey: text("pack_key").notNull(),
+    bidNumber: integer("bid_number").notNull(),
+    totalPilots: integer("total_pilots").notNull(),
+    ranking: jsonb("ranking").notNull().$type<number[]>(),
+    pAvailable: jsonb("p_available").notNull().$type<number[]>(),
+    modelVersion: text("model_version"),
+  },
+  (t) => [uniqueIndex("forecast_predictions_pilot_blob_idx").on(t.pilotHash, t.blobKey), index("forecast_predictions_pack_idx").on(t.packKey)]
+);
+
+/**
+ * Every model the learning has produced, kept forever as a version history.
+ * Exactly one per `kind` is `active` — the champion the app actually uses;
+ * a new one only replaces it after scoring at least as well on the newest
+ * data it wasn't trained on (see `server/learning-runner.ts`).
+ */
+export const learnedModels = pgTable(
+  "learned_models",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** "interview" | "forecast-prior" | "forecast-calibration" */
+    kind: text("kind").notNull(),
+    version: text("version").notNull(),
+    active: boolean("active").notNull().default(false),
+    sampleSize: integer("sample_size").notNull(),
+    metrics: jsonb("metrics").notNull().$type<Record<string, unknown>>(),
+    payload: jsonb("payload").notNull().$type<unknown>(),
+  },
+  (t) => [index("learned_models_kind_active_idx").on(t.kind, t.active), uniqueIndex("learned_models_kind_version_idx").on(t.kind, t.version)]
+);
+
+/** One learning run: what triggered it, what it learned from, and which models it promoted or rejected and why. */
+export const learningRuns = pgTable("learning_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  trigger: text("trigger").notNull(),
+  summary: jsonb("summary").notNull().$type<Record<string, unknown>>(),
 });

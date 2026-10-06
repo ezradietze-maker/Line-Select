@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { fetchAwardHistory, submitAwardHistory, summarizeAwardHistory } from "@/lib/award-history";
+import type { HoldHistorySummary } from "@/lib/learning/hold-history";
+import { fetchHoldHistory } from "@/lib/learning/learning-client";
 import type { BidPack } from "@/types/bidpack";
 import type { AwardHistoryRecord, AwardHistorySubmission } from "@/types/award-history";
 import type { UserAccount } from "@/types/auth";
@@ -16,9 +18,11 @@ interface AwardHistoryPanelProps {
   bidPack: BidPack;
   seniority: SeniorityInput;
   user: UserAccount | null;
+  /** This pilot's own ranking of the pack's lines, best first — so a report can say which of their choices they got. */
+  rankedLineIds?: string[];
 }
 
-export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPanelProps) {
+export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: AwardHistoryPanelProps) {
   const [records, setRecords] = useState<AwardHistoryRecord[] | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -26,6 +30,19 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
   const [lineId, setLineId] = useState(bidPack.lines[0]?.id ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HoldHistorySummary | null>(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    fetchHoldHistory().then((h) => {
+      if (!cancelled) setHistory(h);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, historyVersion]);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +64,10 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
     setError(null);
 
     const selectedLine = outcome === "line" ? bidPack.lines.find((l) => l.id === lineId) : null;
+    const choiceIndex = selectedLine && rankedLineIds ? rankedLineIds.indexOf(selectedLine.id) : -1;
+    // The server stores whole numbers — a line's credit and TAFB hours are
+    // usually fractional, which it would otherwise reject outright.
+    const whole = (x: number | null | undefined) => (typeof x === "number" ? Math.round(x) : null);
     const submission: AwardHistorySubmission = {
       base: bidPack.base,
       aircraft: bidPack.aircraft,
@@ -56,9 +77,10 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
       seniorityTotalPilots: seniority.totalPilots,
       outcome,
       lineNumber: selectedLine?.lineNumber ?? null,
-      daysOff: selectedLine?.daysOff ?? null,
-      totalCreditHours: selectedLine?.totalCreditHours ?? null,
-      totalTafbHours: selectedLine?.totalTafbHours ?? null,
+      daysOff: whole(selectedLine?.daysOff),
+      totalCreditHours: whole(selectedLine?.totalCreditHours),
+      totalTafbHours: whole(selectedLine?.totalTafbHours),
+      awardedChoice: choiceIndex >= 0 ? choiceIndex + 1 : null,
     };
 
     const result = await submitAwardHistory(submission);
@@ -69,6 +91,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
     }
     setSubmitted(true);
     setFormOpen(false);
+    setHistoryVersion((v) => v + 1);
     // Reflect the new report immediately rather than re-fetching.
     setRecords((prev) => [
       ...(prev ?? []),
@@ -83,8 +106,9 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
           <h2 className="font-display text-xl font-semibold text-ink">What pilots near you actually held</h2>
           <p className="mt-1 text-sm leading-relaxed text-ink-muted">
             Real, self-reported outcomes for {bidPack.base} {bidPack.aircraft} {bidPack.seat} — no
-            competitor has this data for FedEx specifically. Anonymous: your report shares only
-            your seniority number and what you held, never your name.
+            competitor has this data for FedEx specifically. Other pilots only ever see a
+            seniority number and what was held, never your name. Your own reports also build
+            your private month-by-month record below.
           </p>
         </div>
       </div>
@@ -111,6 +135,8 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
           )}
         </div>
       )}
+
+      {user && history && history.months > 0 && <HoldHistory history={history} />}
 
       <div className="mt-4 border-t border-hairline pt-4">
         {submitted ? (
@@ -170,6 +196,39 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const pctLabel = (p: number) => `top ${Math.max(1, Math.round((1 - p) * 100))}%`;
+
+/** This pilot's own awards, newest first — what they've really held, month after month. Only ever shown to them. */
+function HoldHistory({ history }: { history: HoldHistorySummary }) {
+  return (
+    <div className="mt-5 rounded-lg border border-hairline bg-canvas/50 p-4">
+      <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint">Your hold history</h3>
+      <p className="mt-1.5 text-sm leading-relaxed text-ink">{history.headline}</p>
+      {history.seniorityTrend && history.seniorityTrend.to !== history.seniorityTrend.from && (
+        <p className="mt-1 text-xs text-ink-faint">
+          Seniority: {pctLabel(history.seniorityTrend.from)} &rarr; {pctLabel(history.seniorityTrend.to)} of your list over that time.
+        </p>
+      )}
+      <ul className="mt-3 divide-y divide-hairline">
+        {history.records.slice(0, 12).map((r) => (
+          <li key={`${r.month}-${r.base}-${r.aircraft}-${r.seat}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-1.5 text-sm">
+            <span className="font-mono text-xs tabular-nums text-ink-muted">
+              {r.month} &middot; {r.base} {r.aircraft} {r.seat}
+            </span>
+            <span className="text-ink">
+              {r.outcome === "reserve"
+                ? "Reserve"
+                : r.outcome === "other"
+                  ? "Something else"
+                  : `Line${r.daysOff !== null ? ` · ${r.daysOff} off` : ""}${r.awardedChoice ? ` · your #${r.awardedChoice} choice` : ""}`}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

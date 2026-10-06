@@ -6,6 +6,8 @@ import { getCurrentUser, logout as logoutAccount } from "@/lib/auth";
 import { clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
 import { generateFakeOffer } from "@/lib/fake-trade-offers";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
+import { correctionEvents, isLearnablePack } from "@/lib/learning/corrections";
+import { postCorrections } from "@/lib/learning/learning-client";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/posthog-client";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
@@ -329,6 +331,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // nudge on the confirmation screen is written back into the underlying
     // facts too — otherwise it would revert the next bid cycle.
     const confirmed = applyManualEdits(pendingProfile, { weights });
+    reportCorrections(pendingProfile, confirmed);
     setState((s) => ({ ...s, profile: confirmed, pendingProfile: null }));
     router.push("/results");
     captureUsageEvent("interview_completed");
@@ -348,9 +351,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  /** Tells the fleet learning which interview values the pilot changed, and where those values had come from. */
+  function reportCorrections(before: PreferenceProfile, after: PreferenceProfile) {
+    if (!bidPack || !isLearnablePack(bidPack)) return;
+    postCorrections({ base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat }, correctionEvents(before, after));
+  }
+
   function handleSaveProfileEdits(edits: ProfileEdits) {
     if (!state.profile) return;
-    handleUpdateProfile(applyManualEdits(state.profile, edits));
+    const updated = applyManualEdits(state.profile, edits);
+    reportCorrections(state.profile, updated);
+    handleUpdateProfile(updated);
   }
 
   function handleSaveSeniority(input: SeniorityInput) {

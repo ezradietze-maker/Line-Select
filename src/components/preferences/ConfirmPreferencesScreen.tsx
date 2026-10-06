@@ -66,6 +66,15 @@ export function ConfirmPreferencesScreen({
   // should be invisible at the one moment the pilot is asked to confirm.
   const inTheirWords = profile.discoveredFacts.filter((f) => f.kind === "qualitative");
   const inferred = profile.discoveredFacts.filter((f) => f.measurable?.type === "implicit-weight");
+  // Answers the interview didn't ask because pilots in this group give them
+  // so consistently — listed plainly so the pilot can see they were assumed,
+  // and dropped from the list the moment they move that slider.
+  const assumed = profile.discoveredFacts.filter(
+    (f) =>
+      f.source.kind === "population-prior" &&
+      f.measurable?.type === "explicit-weight" &&
+      weights[f.measurable.key as keyof PreferenceWeights] === profile.weights[f.measurable.key as keyof PreferenceWeights]
+  );
 
   return (
     <div className="mx-auto w-full max-w-2xl animate-fade-in">
@@ -89,6 +98,23 @@ export function ConfirmPreferencesScreen({
         This is what will drive your ranking. Nudge anything that looks off before we score
         your lines, or redo the interview from scratch if you&rsquo;d rather start over.
       </p>
+
+      {assumed.length > 0 && (
+        <div className="panel-glass mt-6 border-accent/30 p-5 sm:p-6">
+          <h2 className={SECTION_HEADING}>Assumed from pilots like you</h2>
+          <p className="mt-1 text-xs text-ink-faint">
+            We didn&rsquo;t ask these &mdash; nearly every pilot in your group answers them the same way. If one isn&rsquo;t you, move its slider below.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {assumed.map((f) => (
+              <li key={f.id} className="flex gap-2.5 text-sm leading-relaxed text-ink-muted">
+                <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-accent" aria-hidden />
+                <span className="first-letter:uppercase">{f.statement.replace(/^Assumed: /, "").replace(/ Change it if that's not you\.$/, "")}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {sliderConfigs.length > 0 && (
       <div className="panel-glass mt-6 space-y-7 p-5 sm:p-6">

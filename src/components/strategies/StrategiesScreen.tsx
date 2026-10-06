@@ -255,6 +255,7 @@ function StrategyResults({
     () => (profile ? rankLines(bidPack, profile, {}, implicitValuesByLine) : null),
     [bidPack, profile, implicitValuesByLine]
   );
+  const rankedLineIds = useMemo(() => ranked?.map((r) => r.line.id), [ranked]);
 
   // Real self-reported hold outcomes for this exact base/aircraft/seat —
   // fetched here (a second copy of what AwardHistoryPanel below also
@@ -390,7 +391,7 @@ function StrategyResults({
       )}
 
       <div className="mt-10">
-        <AwardHistoryPanel bidPack={bidPack} seniority={seniority} user={user} />
+        <AwardHistoryPanel bidPack={bidPack} seniority={seniority} user={user} rankedLineIds={rankedLineIds} />
       </div>
     </div>
   );

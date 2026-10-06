@@ -33,6 +33,25 @@ function hashUserForTest(userId: string): string {
   return createHash("sha256").update(`line-select-forecast:${userId}`).digest("hex").slice(0, 20);
 }
 
+// The fleet learning's storage: no learned models yet, and nothing recorded for real.
+const learningStore = vi.hoisted(() => ({ savedPredictions: [] as unknown[], savedFeatures: [] as unknown[], deletedPredictions: [] as unknown[] }));
+vi.mock("@/lib/server/learning-store", () => ({
+  loadActiveModel: vi.fn(async () => null),
+  parsePackKey: (k: string) => {
+    const [month, base, aircraft, seat] = k.split("|");
+    return month && base && aircraft && seat ? { month, base, aircraft, seat } : null;
+  },
+  savePackFeatures: vi.fn(async (...args: unknown[]) => {
+    learningStore.savedFeatures.push(args);
+  }),
+  deleteForecastPrediction: vi.fn(async (...args: unknown[]) => {
+    learningStore.deletedPredictions.push(args);
+  }),
+  saveForecastPrediction: vi.fn(async (p: unknown) => {
+    learningStore.savedPredictions.push(p);
+  }),
+}));
+
 vi.mock("@/lib/server/forecast-store", () => ({
   blobKey: (packKey: string, lineNumbers: string[]) => `${packKey}:${lineNumbers.length}`,
   hashUser: hashUserForTest,
@@ -96,6 +115,8 @@ function goodBody(overrides: Record<string, unknown> = {}) {
 describe("/api/forecast", () => {
   beforeEach(() => {
     forecastStore.blobs.clear();
+    learningStore.savedPredictions.length = 0;
+    learningStore.deletedPredictions.length = 0;
     authMocks.getCurrentServerUser.mockReset().mockResolvedValue(null);
   });
 
@@ -162,8 +183,20 @@ describe("/api/forecast", () => {
     await POST(request(goodBody({ share: true })));
     const del = await DELETE(request({ packKey: "oct26|mem|b777|cap", lineNumbers }, "DELETE"));
     expect(del.status).toBe(200);
+    // The forecast they were shown goes too — it holds their ranking.
+    expect(learningStore.deletedPredictions).toEqual([[hashUserForTest(USER.id), "oct26|mem|b777|cap"]]);
     authMocks.getCurrentServerUser.mockResolvedValue(null);
     expect((await (await POST(request(goodBody({ seniorityNumber: 100 })))).json()).crowd.pilotsSharing).toBe(0);
+  });
+
+  it("keeps the forecast a pilot was shown only when they share", async () => {
+    authMocks.getCurrentServerUser.mockResolvedValue(USER);
+    await POST(request(goodBody({ share: false })));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(learningStore.savedPredictions).toHaveLength(0);
+    await POST(request(goodBody({ share: true })));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(learningStore.savedPredictions).toHaveLength(1);
   });
 
   it("refuses to delete for someone who isn't signed in", async () => {

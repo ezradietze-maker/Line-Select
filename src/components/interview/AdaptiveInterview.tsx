@@ -13,6 +13,12 @@ import { BiddingStoryStep } from "@/components/interview/BiddingStoryStep";
 import { ChoiceStep, isTypingTarget } from "@/components/interview/ChoiceStep";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { StoryReviewStep } from "@/components/interview/StoryReviewStep";
+import { resolveBidPosition } from "@/lib/forecast/forecast";
+import { assumedFact } from "@/lib/learning/assumed-facts";
+import { bidPercentile, commuteGroupOf, seniorityBandOf, type Cohort } from "@/lib/learning/cohort";
+import { buildInterviewOutcome } from "@/lib/learning/interview-outcome";
+import { isLearnablePack } from "@/lib/learning/corrections";
+import { fetchInterviewPlan, insightsFromPlan, postInterviewOutcome, type InterviewPlan } from "@/lib/learning/learning-client";
 import { ThinkingPanel, type LastExchange } from "@/components/interview/ThinkingPanel";
 import { CityPreferenceStep } from "@/components/interview/CityPreferenceStep";
 import { CommuterStep } from "@/components/interview/CommuterStep";
@@ -309,6 +315,13 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   // change (a move, a new crash pad) is one tap, but never re-asked blank.
   const [isCommuter, setIsCommuter] = useState<boolean | null>(priorProfile?.isCommuter ?? null);
   const [hasCrashPad, setHasCrashPad] = useState<boolean | null>(priorProfile?.hasCrashPad ?? null);
+  /**
+   * What the fleet has learned for pilots in this group (see
+   * `lib/learning/`): answers it can assume, its predictions for the rest,
+   * where pilots like this differ. Read from a ref inside turn requests so a
+   * request never sees a stale copy.
+   */
+  const planRef = useRef<InterviewPlan | null>(null);
   /** Where a commuter commutes from (airport code) — prefilled from the story or last cycle, editable on the commuter step. */
   const [commuteFrom, setCommuteFrom] = useState(priorProfile?.commuteFrom ?? "");
   /** The commute-from city, when it's one of this pack's layovers and was marked as loved on the commuter step's Next. */
@@ -438,6 +451,20 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       cityPreferencesSeed: cityPreferences,
       priorProfile,
     });
+    // What the fleet learns from this interview: where each answer landed and
+    // how each question went — never the pilot's words (see InterviewOutcome).
+    const plan = planRef.current;
+    if (isLearnablePack(bidPack)) postInterviewOutcome(
+      buildInterviewOutcome({
+        profile,
+        transcript: finalTranscript,
+        cohort: cohortFor(isCommuter),
+        month: bidPack.month,
+        modelVersion: plan?.version ?? null,
+        predictions: plan?.predictions ?? {},
+        wrapped: finalTranscript.length < HARD_CEILING_TURNS,
+      })
+    );
     const applicable = applicableExplicitWeightIds(hasStandby).length;
     setFinishSummary({
       learned: profile.discoveredFacts.length,
@@ -509,6 +536,47 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     }
   }
 
+  /** This pilot's learning group — the same coarse facts every bid pack prints. */
+  function cohortFor(commuter: boolean | null): Cohort {
+    const seniority = parseSeniorityInput(seniorityText);
+    const list = bidPack.seniorityList;
+    const percentile = seniority !== null && list?.length ? bidPercentile(resolveBidPosition(list, seniority).bidNumber, list.length) : null;
+    return { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, commute: commuteGroupOf(commuter), seniority: seniorityBandOf(percentile) };
+  }
+
+  /**
+   * Starts the question loop. First asks what the fleet has learned for
+   * pilots like this one (a moment at most — without it the interview just
+   * asks everything): answers this group gives so consistently that they're
+   * assumed rather than asked are added as visible, changeable facts, unless
+   * the pilot already covered them.
+   */
+  async function beginLoop(startFacts: PreferenceFact[], extras?: { priorFactsChanged?: PreferenceFact[]; lifeEvent?: string }) {
+    setPhase("adaptive-loading");
+    const seniority = parseSeniorityInput(seniorityText);
+    const list = bidPack.seniorityList;
+    const plan = !isLearnablePack(bidPack) ? null : await fetchInterviewPlan({
+      base: bidPack.base,
+      aircraft: bidPack.aircraft,
+      seat: bidPack.seat,
+      isCommuter,
+      percentile: seniority !== null && list?.length ? bidPercentile(resolveBidPosition(list, seniority).bidNumber, list.length) : null,
+    });
+    planRef.current = plan;
+    let withAssumed = startFacts;
+    if (plan?.version) {
+      const covered = new Set(startFacts.flatMap((f) => (f.measurable?.type === "explicit-weight" ? [f.measurable.key as string] : [])));
+      const assumed = plan.assume
+        .filter((a) => !covered.has(a.dim) && (a.dim !== "hotelStandby" || hasStandby))
+        .map((a) => assumedFact({ ...a, modelVersion: plan.version! }));
+      if (assumed.length) {
+        withAssumed = [...startFacts, ...assumed];
+        setFacts(withAssumed);
+      }
+    }
+    requestNextTurn(withAssumed, transcript, 0, extras);
+  }
+
   async function requestNextTurn(
     nextFacts: PreferenceFact[],
     nextTranscript: InterviewTurnRecord[],
@@ -534,6 +602,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
         bidStory: bidStoryText.trim() || undefined,
         seniorityKnown: parseSeniorityInput(seniorityText) !== null,
         commuteFrom: isCommuter ? parseAirportCode(commuteFrom) ?? undefined : undefined,
+        populationInsights: insightsFromPlan(planRef.current),
       });
       const res = await fetch("/api/interview-turn", {
         method: "POST",
@@ -891,7 +960,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
               if (hasReturningCheck) {
                 setPhase("returning-check");
               } else {
-                requestNextTurn(startFacts, transcript, 0);
+                void beginLoop(startFacts);
               }
             }}
             nextLabel="Continue"
@@ -928,7 +997,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
               const confirmedFacts = [...carriedOver, ...confirmedShown].map((f) => ({ ...f, turnIndex: 0 }));
               const initialFacts = [...facts, ...confirmedFacts];
               setFacts(initialFacts);
-              requestNextTurn(initialFacts, transcript, 0, {
+              void beginLoop(initialFacts, {
                 priorFactsChanged: changedShown,
                 lifeEvent: lifeEvent.trim() || undefined,
               });

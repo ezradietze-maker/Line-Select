@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { afterResponse } from "@/lib/server/after-response";
 import { isJsonObject } from "@/lib/server/json-body";
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
-import { forecastFromFeatures, resolveBidPosition } from "@/lib/forecast/forecast";
+import { forecastWithCore, resolveBidPosition } from "@/lib/forecast/forecast";
+import { applyCalibration, resolveForecastPrior, type Calibration, type ForecastPriorModel } from "@/lib/learning/forecast-learning";
 import { getCurrentServerUser } from "@/lib/server/auth";
-import { loadKnownRankings, removeSubmission, saveSubmission } from "@/lib/server/forecast-store";
+import { blobKey, hashUser, loadKnownRankings, removeSubmission, saveSubmission } from "@/lib/server/forecast-store";
+import { deleteForecastPrediction, loadActiveModel, parsePackKey, saveForecastPrediction, savePackFeatures } from "@/lib/server/learning-store";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
@@ -64,7 +67,18 @@ export async function POST(request: Request) {
   const user = await getCurrentServerUser();
   const { known, total } = await loadKnownRankings(packKey, lineNumbers, user?.id ?? null);
 
-  const forecast = forecastFromFeatures({
+  // What the fleet has learned: starting beliefs from past months at this
+  // seat, and a correction from how past forecasts compared with real awards.
+  // Missing (a new database, an outage) just means the forecast runs on its
+  // reasoned defaults, exactly as before.
+  const parts = parsePackKey(packKey);
+  const [priorModel, calibration] = await Promise.all([
+    loadActiveModel<ForecastPriorModel>("forecast-prior").catch(() => null),
+    loadActiveModel<Calibration>("forecast-calibration").catch(() => null),
+  ]);
+  const learnedPrior = priorModel && parts ? resolveForecastPrior(priorModel.payload, parts.base, parts.aircraft, parts.seat) : null;
+
+  const { forecast, core } = forecastWithCore({
     packKey,
     features: lineFeatures,
     seniorityList: list,
@@ -74,11 +88,37 @@ export async function POST(request: Request) {
     myRanking: ranking as number[],
     known,
     simulations: SERVER_SIMULATIONS,
+    learnedPrior,
+    calibrate: calibration ? (p) => applyCalibration(calibration.payload, p) : undefined,
+  });
+
+  // Kept for the learning, after the response: this month's line features
+  // (numbers only), and for a signed-in pilot who shares, the raw forecast
+  // they were shown — checked against the award they report later.
+  const position = resolveBidPosition(list, seniority);
+  afterResponse(async () => {
+    try {
+      const key = blobKey(packKey, lineNumbers);
+      await savePackFeatures(key, packKey, lineFeatures);
+      if (user && position.exact && body.share === true) {
+        await saveForecastPrediction({
+          pilotHash: hashUser(user.id),
+          blobKey: key,
+          packKey,
+          bidNumber: position.bidNumber,
+          totalPilots: list.length,
+          ranking: ranking as number[],
+          pAvailableByLine: core.pAvailable,
+          modelVersion: [priorModel?.version, calibration?.version].filter(Boolean).join("+") || null,
+        });
+      }
+    } catch (e) {
+      console.error("[forecast] learning record failed", e);
+    }
   });
 
   let shared: "stored" | "not-signed-in" | "not-requested" | "position-taken" | "store-full" | "unlisted" = "not-requested";
   if (body.share === true) {
-    const position = resolveBidPosition(list, seniority);
     if (!user) shared = "not-signed-in";
     else if (!position.exact) shared = "unlisted";
     else {
@@ -87,7 +127,12 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ forecast, crowd: { pilotsSharing: total }, shared });
+  return NextResponse.json({
+    forecast,
+    crowd: { pilotsSharing: total },
+    shared,
+    learning: { priorFrom: learnedPrior?.n ?? 0, calibratedFrom: calibration?.sampleSize ?? 0 },
+  });
 }
 
 /** Stops sharing: removes the signed-in pilot's stored ranking for this seat. */
@@ -103,5 +148,6 @@ export async function DELETE(request: Request) {
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   if (typeof body.packKey !== "string" || !isStringArray(body.lineNumbers, MAX_LINES)) return NextResponse.json({ error: "Missing pack." }, { status: 400 });
   await removeSubmission(body.packKey, body.lineNumbers, user.id);
+  await deleteForecastPrediction(hashUser(user.id), body.packKey).catch((e) => console.error("[forecast] prediction delete failed", e));
   return NextResponse.json({ ok: true });
 }

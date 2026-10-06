@@ -137,3 +137,6 @@ export const INTERVIEW_TOPIC_BACKLOG: InterviewTopic[] = [
       "Two real inputs to the separate Strategies board, not to this pilot's line ranking or Satisfaction Index — be clear about that distinction if it comes up. Ask about risk tolerance directly: \"if a genuinely rare, far-from-guaranteed line existed, would you rank it high anyway, or only bid what you're confident about?\" Bind to \"riskTolerance\" (direction 1 = ranks the reach high anyway, direction -1 = only bids what's realistic). Ask about admin effort appetite separately: \"if there were a real but effortful way to do better — filing a grievance, working a manual trade, chasing every re-bid window — would you actually do it, or is that more hassle than it's worth?\" Bind to \"adminEffortAppetite\" (direction 1 = would do the work, direction -1 = wants the low-effort outcome). These two only ever affect which Strategies-board moves get surfaced/ordered for this pilot — never phrase a question here as if it changes how a line scores, because it doesn't.",
   },
 ];
+
+/** Every value a question's `topic` can take — one subject per question; see `InterviewQuestion.topic`. */
+export const QUESTION_TOPICS: string[] = [...INTERVIEW_TOPIC_BACKLOG.map((t) => t.id), "closing", "other"];

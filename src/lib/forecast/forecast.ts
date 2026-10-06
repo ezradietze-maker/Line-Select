@@ -1,4 +1,5 @@
 import { buildLineFeatures, type LineFeatures } from "@/lib/forecast/features";
+import type { LearnedPrior } from "@/lib/forecast/population";
 import { hashString } from "@/lib/forecast/random";
 import { DEFAULT_DROPOUT_RATE, DEFAULT_SIMULATIONS, simulateBid, type ForecastCore, type KnownRanking } from "@/lib/forecast/simulate";
 import type { BidPack, SeniorityEntry } from "@/types/bidpack";
@@ -119,9 +120,23 @@ export interface FeatureForecastInput {
   myRanking: number[];
   known: KnownRanking[];
   simulations?: number;
+  /** Starting beliefs learned from past months at this seat (see `lib/learning/forecast-learning.ts`). */
+  learnedPrior?: LearnedPrior | null;
+  /**
+   * Corrects each line's chance using how past forecasts compared with real
+   * awards. Applied to what the pilot sees; the uncorrected numbers stay in
+   * `ForecastCore` for storing, so later calibration is always fitted
+   * against the forecast's own raw output.
+   */
+  calibrate?: (p: number) => number;
 }
 
 export function forecastFromFeatures(input: FeatureForecastInput): BidForecast {
+  return forecastWithCore(input).forecast;
+}
+
+/** The forecast plus the raw simulation behind it — what the server stores to check against the award later. */
+export function forecastWithCore(input: FeatureForecastInput): { forecast: BidForecast; core: ForecastCore } {
   const { features, seniorityList: list } = input;
   const position = resolveBidPosition(list, input.seniorityNumber);
   const core: ForecastCore = simulateBid({
@@ -133,16 +148,19 @@ export function forecastFromFeatures(input: FeatureForecastInput): BidForecast {
     simulations: input.simulations ?? DEFAULT_SIMULATIONS,
     seed: hashString(`${input.packKey}|${input.seniorityNumber}`),
     dropoutRate: input.dropoutRate,
+    learnedPrior: input.learnedPrior,
   });
+  const calibrate = input.calibrate ?? ((p: number) => p);
 
   const lines: Record<string, LineForecast> = {};
   features.lineIds.forEach((lineId, i) => {
+    const pAvailable = calibrate(core.pAvailable[i]);
     lines[lineId] = {
       lineId,
       lineNumber: features.lineNumbers[i],
-      pAvailable: core.pAvailable[i],
+      pAvailable,
       pAward: core.pAward[i],
-      likelihood: likelihoodOf(core.pAvailable[i]),
+      likelihood: likelihoodOf(pAvailable),
     };
   });
 
@@ -161,7 +179,7 @@ export function forecastFromFeatures(input: FeatureForecastInput): BidForecast {
     confidence: confidenceOf(core.knownAhead, core.pilotsAhead),
     simulations: core.simulations,
   };
-  return { ...partial, outlook: outlookText(partial) };
+  return { forecast: { ...partial, outlook: outlookText(partial) }, core };
 }
 
 export interface ForecastInput {

@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createAwardHistoryRecord, listAwardHistoryRecords } from "@/lib/server/db";
+import { forecastPackKey } from "@/lib/forecast/forecast";
+import { afterResponse } from "@/lib/server/after-response";
+import { hashUser } from "@/lib/server/forecast-store";
+import { maybeLearn } from "@/lib/server/learning-runner";
+import { awardedChoiceFromPrediction } from "@/lib/server/learning-store";
 import type { AwardHistoryRecord } from "@/types/award-history";
 
 export const runtime = "nodejs";
@@ -37,7 +42,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sign in to report what you held." }, { status: 401 });
   }
 
-  let body: Partial<AwardHistoryRecord>;
+  let body: Partial<AwardHistoryRecord> & { awardedChoice?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -81,6 +86,15 @@ export async function POST(request: Request) {
     submittedAt: new Date().toISOString(),
   };
 
-  await createAwardHistoryRecord(record);
+  // Linked to the pilot by a one-way hash, so their own months form a history
+  // and the forecast they were shown can be checked against what they got.
+  // Which of their choices it was comes from that forecast when there is one,
+  // otherwise from their own ranking as their browser sent it.
+  const pilotHash = hashUser(user.id);
+  const packKey = forecastPackKey({ month, base, aircraft, seat });
+  const clientChoice = Number.isInteger(body.awardedChoice) && (body.awardedChoice as number) > 0 && (body.awardedChoice as number) <= 2000 ? (body.awardedChoice as number) : null;
+  const fromForecast = isLine ? await awardedChoiceFromPrediction(pilotHash, packKey, record.lineNumber).catch(() => null) : null;
+  await createAwardHistoryRecord(record, { pilotHash, packKey, awardedChoice: isLine ? (fromForecast ?? clientChoice) : null });
+  afterResponse(() => maybeLearn("awards"));
   return NextResponse.json({ record });
 }

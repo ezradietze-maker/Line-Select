@@ -2,7 +2,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
 import { deterministicFactFromAnswer } from "@/lib/interview-engine";
 import { parseAirportCode } from "@/lib/interview-story";
-import { INTERVIEW_TOPIC_BACKLOG } from "@/lib/interview-topics";
+import { QUESTION_TOPICS } from "@/lib/interview-topics";
+
+export { QUESTION_TOPICS };
 import { buildBiddingStoryPrompt, buildInterviewSystemPrompt } from "@/lib/interview-prompt";
 import { allKnownVariableDescriptors } from "@/lib/preference-classifier";
 import type {
@@ -183,8 +185,6 @@ function profileUpdatesSchemaProperty() {
   } as const;
 }
 
-/** Every value a question's `topic` can take — one subject per question; see `InterviewQuestion.topic`. */
-export const QUESTION_TOPICS: string[] = [...INTERVIEW_TOPIC_BACKLOG.map((t) => t.id), "closing", "other"];
 
 export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
   return {
@@ -288,6 +288,8 @@ function buildUserContent(body: TurnRequestBody, extraNote?: string): Anthropic.
     bidStory: body.bidStory,
     // Where a commuter commutes from — known, so never asked; a layover there is a night at home.
     commuteFrom: body.commuteFrom,
+    // What the fleet has learned about pilots in this one's group — how to spend questions, never something to repeat to them.
+    populationInsights: body.populationInsights,
   });
   const perTurn = JSON.stringify({
     transcript: body.transcript.map((t) => ({ question: t.question, answer: t.answer })),

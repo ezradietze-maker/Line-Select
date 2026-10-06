@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "September 25, 2026";
+const LAST_UPDATED = "October 6, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -169,12 +169,33 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="9. Award-history reports are anonymous">
+        <Section title="9. Award history, and how the Service learns from many pilots">
           <p>
             If you report what you actually held for a bid period, we store your seniority number,
-            the base/aircraft/seat, and the outcome (line, reserve, or other) &mdash; but that
-            record is not linked back to your account or identity in our database. We can&rsquo;t
-            tell which report is yours after you submit it, and neither can any other pilot.
+            the base/aircraft/seat, the month, the outcome (line, reserve, or other), the held
+            line&rsquo;s shape, and which of your own ranked choices it was. Other pilots only ever
+            see these as anonymous numbers. On our server the report is also tagged with a one-way
+            hash of your account &mdash; never your name or email &mdash; so your own months build a
+            private hold history that only you are shown, and so the forecast you were shown (if you
+            share your ranking, Section 7) can be checked against what you really got.
+          </p>
+          <p className="mt-3">
+            When you finish the interview, a numeric summary of it is stored: your
+            base/aircraft/seat and month, whether you commute, a broad seniority band (top, middle,
+            or bottom third), where each preference landed, how many questions it took, and which
+            topics each question covered. It never contains your words &mdash; not your answers, not
+            your bidding story &mdash; nor your seniority number, cities, or dates. If you&rsquo;re
+            signed in it carries the same one-way account hash; as a guest it carries nothing. When
+            you later move a slider the interview set, we record which preference changed, from what
+            to what, and whether that value had been asked, read from your story, or assumed.
+          </p>
+          <p className="mt-3">
+            From these summaries, across many pilots and many months, the Service computes
+            statistics: which questions pilots in a group answer almost the same way (so it can
+            assume them, visibly, and let you change them instead of asking), where pilots differ
+            (so it asks those well), the typical numbers in each group, and how accurate past
+            forecasts were. These are counts and averages, not an AI language model, and none of
+            it ever shows another pilot what you answered. The demo bid pack is never learned from.
           </p>
         </Section>
 
@@ -241,7 +262,11 @@ export default function PrivacyPage() {
               We don&rsquo;t read, extract, or store another pilot&rsquo;s name or employee number from your
               bid pack. From its seniority list we use only bid order and seniority numbers (Section 1).
             </li>
-            <li>We don&rsquo;t use your bid pack, interview answers, or account data to train any AI model ourselves.</li>
+            <li>
+              We don&rsquo;t use your bid pack, interview answers, or account data to train any AI
+              language model. The Service does compute group statistics from numeric interview and
+              award summaries (Section 9) &mdash; never from your words.
+            </li>
           </ul>
         </Section>
 
@@ -249,9 +274,11 @@ export default function PrivacyPage() {
           <p>
             You can delete your account at any time by contacting us at the address below; this
             removes your login credentials and disassociates your future access, though Trade Board
-            posts, award-history reports, and feedback (Section 11) already sent may remain &mdash;
-            the first because it was shared publicly by design, the other two because they were
-            never linked back to you once your account is gone. You can clear your locally-stored
+            posts, award-history reports, interview summaries, and feedback (Section 11) already sent
+            may remain &mdash; the first because it was shared publicly by design, the rest because
+            once your account is gone nothing links them back to you (the one-way account hash in
+            Section 9 can no longer be matched to anyone). Ask us and we&rsquo;ll delete your
+            hash-linked award history, interview summaries, and stored forecasts along with the account. You can clear your locally-stored
             bid pack, and any preferences saved only as a guest, at any time from within the app,
             or simply by clearing your browser&rsquo;s site data.
           </p>

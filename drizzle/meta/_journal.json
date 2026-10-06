@@ -15,6 +15,13 @@
       "when": 1790628164583,
       "tag": "0001_good_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791320375647,
+      "tag": "0002_magical_elektra",
+      "breakpoints": true
     }
   ]
 }
