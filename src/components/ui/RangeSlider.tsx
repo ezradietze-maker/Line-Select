@@ -10,6 +10,8 @@ interface RangeSliderProps {
   formatValue: (value: number) => string;
   minLabel: string;
   maxLabel: string;
+  /** For a caller showing the value itself, bigger, elsewhere. */
+  hideValue?: boolean;
 }
 
 export function RangeSlider({
@@ -22,16 +24,19 @@ export function RangeSlider({
   formatValue,
   minLabel,
   maxLabel,
+  hideValue = false,
 }: RangeSliderProps) {
   const pct = max - min < 1e-9 ? 50 : ((value - min) / (max - min)) * 100;
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-center">
-        <span className="rounded-full bg-brand-soft px-3 py-1 font-mono text-base font-semibold tabular-nums text-brand">
-          {formatValue(value)}
-        </span>
-      </div>
+      {!hideValue && (
+        <div className="mb-2 flex items-center justify-center">
+          <span className="rounded-full bg-brand-soft px-3 py-1 font-mono text-base font-semibold tabular-nums text-brand">
+            {formatValue(value)}
+          </span>
+        </div>
+      )}
       <div className="relative py-2">
         <input
           type="range"

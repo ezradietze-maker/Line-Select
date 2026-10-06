@@ -1,6 +1,6 @@
 "use client";
 
-import { Heading } from "@/components/ui/Heading";
+import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { resolveBidPosition } from "@/lib/forecast/forecast";
 import type { SeniorityEntry } from "@/types/bidpack";
 
@@ -10,7 +10,10 @@ interface SeniorityStepProps {
   /** This seat's Bid Seniority List from the pack — numbers only. */
   list: SeniorityEntry[];
   seat: string;
+  eyebrow?: string;
 }
+
+const PROMPT = "What’s your seniority number?";
 
 /** A seniority number as typed: digits only, up to six. Null while empty or not a usable number. */
 export function parseSeniorityInput(text: string): number | null {
@@ -20,24 +23,26 @@ export function parseSeniorityInput(text: string): number | null {
   return n >= 1 ? n : null;
 }
 
-export function SeniorityStep({ value, onChange, list, seat }: SeniorityStepProps) {
+export function SeniorityStep({ value, onChange, list, seat, eyebrow }: SeniorityStepProps) {
   const parsed = parseSeniorityInput(value);
   const position = parsed !== null ? resolveBidPosition(list, parsed) : null;
   const seatWord = seat === "CAP" ? "captains" : "first officers";
 
   return (
     <div>
-      <Heading as="h2" className="text-xl text-ink sm:text-2xl">
-        What&rsquo;s your seniority number?
-      </Heading>
-      <p className="mt-1.5 text-sm text-ink-muted">
-        Your bid pack lists every pilot bidding this seat, in bid order. Line Select uses only your place in that order
-        to estimate which lines you could realistically hold &mdash; a line everyone senior to you will take first is
-        worth less of your time. It never reads anyone&rsquo;s name or employee number.
-      </p>
+      <QuestionPrompt
+        eyebrow={eyebrow}
+        title={PROMPT}
+        help={
+          <>
+            Your bid pack lists every pilot bidding this seat, in bid order. Line Select uses only your place in that order to
+            estimate which lines you could realistically hold. It never reads anyone&rsquo;s name or employee number.
+          </>
+        }
+      />
 
-      <div className="mt-8">
-        <label htmlFor="seniority-number" className="text-sm font-medium text-ink">
+      <RevealControls title={PROMPT} className="mt-8">
+        <label htmlFor="seniority-number" className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint">
           Seniority number
         </label>
         <input
@@ -48,7 +53,7 @@ export function SeniorityStep({ value, onChange, list, seat }: SeniorityStepProp
           value={value}
           onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, "").slice(0, 6))}
           placeholder="e.g. 1234"
-          className="mt-1.5 w-48 rounded-lg border border-border bg-canvas px-3 py-2 font-mono text-lg text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
+          className="text-readout mt-2 block w-56 rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-2xl tracking-wider placeholder:text-ink-faint/60 focus:border-accent focus:shadow-[0_0_0_4px_var(--glow-soft)] focus:outline-none"
         />
         <div className="mt-3 min-h-[3rem] text-sm" aria-live="polite">
           {position && position.exact && (
@@ -62,11 +67,11 @@ export function SeniorityStep({ value, onChange, list, seat }: SeniorityStepProp
             </p>
           )}
         </div>
-      </div>
 
-      <p className="mt-2 text-xs text-ink-faint">
-        Prefer not to say? Leave it blank &mdash; you can add it any time on your Preferences page.
-      </p>
+        <p className="mt-2 text-xs text-ink-faint">
+          Prefer not to say? Leave it blank &mdash; you can add it any time on your Preferences page.
+        </p>
+      </RevealControls>
     </div>
   );
 }

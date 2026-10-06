@@ -14,7 +14,10 @@ import {
   touchedSliderConfigs,
 } from "@/lib/interview-config";
 import { summarizePreferencesSentence } from "@/lib/preference-summary";
+import { weekdayPlural } from "@/lib/scoring";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
+
+const SECTION_HEADING = "font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint";
 
 interface ConfirmPreferencesScreenProps {
   profile: PreferenceProfile;
@@ -57,13 +60,17 @@ export function ConfirmPreferencesScreen({
   const avoidedCities = Object.entries(profile.cityPreferences)
     .filter(([, sentiment]) => sentiment === "avoid")
     .map(([code]) => code);
+  // What the pilot said that isn't a slider — their own words, and the
+  // patterns the interview inferred from them. Both shape the ranking (or,
+  // for dates and weekdays, get checked against every line), so neither
+  // should be invisible at the one moment the pilot is asked to confirm.
+  const inTheirWords = profile.discoveredFacts.filter((f) => f.kind === "qualitative");
+  const inferred = profile.discoveredFacts.filter((f) => f.measurable?.type === "implicit-weight");
 
   return (
     <div className="mx-auto w-full max-w-2xl animate-fade-in">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full border border-border-strong px-3 py-1 font-mono text-[11px] uppercase tracking-wide text-ink-faint">
-          Here&rsquo;s what we heard
-        </span>
+        <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Here&rsquo;s what we heard</span>
         {profile.isCommuter !== null && (
           <span className="rounded-full bg-brand-soft px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-brand">
             {profile.isCommuter ? "Commuter" : "Local"}
@@ -83,7 +90,8 @@ export function ConfirmPreferencesScreen({
         your lines, or redo the interview from scratch if you&rsquo;d rather start over.
       </p>
 
-      <div className="mt-6 space-y-6 rounded-xl border border-border bg-surface p-5 shadow-elevated sm:p-6">
+      {sliderConfigs.length > 0 && (
+      <div className="panel-glass mt-6 space-y-7 p-5 sm:p-6">
         {sliderConfigs.map((config) => (
           <div key={config.key}>
             <div className="text-sm font-medium text-ink">{config.question}</div>
@@ -100,12 +108,11 @@ export function ConfirmPreferencesScreen({
           </div>
         ))}
       </div>
+      )}
 
       {pinnedTargets.length > 0 && (
-        <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-elevated sm:p-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-            Exact targets you pinned
-          </h2>
+        <div className="panel-glass mt-4 p-5 sm:p-6">
+          <h2 className={SECTION_HEADING}>Exact targets you pinned</h2>
           <p className="mt-1 text-xs text-ink-faint">
             Exact numbers you pinned &mdash; redo the interview to change these.
           </p>
@@ -113,7 +120,7 @@ export function ConfirmPreferencesScreen({
             {pinnedTargets.map((t) => (
               <div key={t.key} className="flex items-center justify-between text-sm">
                 <span className="text-ink-muted">{t.question}</span>
-                <span className="font-mono font-semibold text-ink">
+                <span className="text-readout text-base font-semibold">
                   {formatExplicitTarget(t, profile.explicitTargets[t.key]!)}
                 </span>
               </div>
@@ -123,10 +130,8 @@ export function ConfirmPreferencesScreen({
       )}
 
       {selectedAmenities.length > 0 && (
-        <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-elevated sm:p-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-            Hotel amenities that matter to you
-          </h2>
+        <div className="panel-glass mt-4 p-5 sm:p-6">
+          <h2 className={SECTION_HEADING}>Hotel amenities that matter to you</h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {selectedAmenities.map((a) => (
               <span
@@ -141,10 +146,8 @@ export function ConfirmPreferencesScreen({
       )}
 
       {(lovedCities.length > 0 || avoidedCities.length > 0) && (
-        <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-elevated sm:p-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-            Cities you flagged
-          </h2>
+        <div className="panel-glass mt-4 p-5 sm:p-6">
+          <h2 className={SECTION_HEADING}>Cities you flagged</h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {lovedCities.map((code) => (
               <span
@@ -163,6 +166,50 @@ export function ConfirmPreferencesScreen({
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {inTheirWords.length > 0 && (
+        <div className="panel-glass mt-4 p-5 sm:p-6">
+          <h2 className={SECTION_HEADING}>In your words</h2>
+          <ul className="mt-3 space-y-2.5">
+            {inTheirWords.map((f) => (
+              <li key={f.id} className="flex gap-2.5 text-sm leading-relaxed text-ink-muted">
+                <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-accent" aria-hidden />
+                <span>
+                  {f.statement}
+                  {f.severity === "dealbreaker" && (
+                    <span className="ml-1.5 inline-flex rounded-full bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">Dealbreaker</span>
+                  )}
+                  {f.recurringWeekday && (
+                    <span className="ml-1.5 inline-flex rounded-full bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent">
+                      Checked against every line&rsquo;s {weekdayPlural(f.recurringWeekday)}
+                    </span>
+                  )}
+                  {!f.recurringWeekday && f.specificDates && f.specificDates.length > 0 && (
+                    <span className="ml-1.5 inline-flex rounded-full bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent">
+                      Checked against every line&rsquo;s calendar
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {inferred.length > 0 && (
+        <div className="panel-glass mt-4 p-5 sm:p-6">
+          <h2 className={SECTION_HEADING}>Also picked up</h2>
+          <p className="mt-1 text-xs text-ink-faint">Patterns the interview read from your answers &mdash; these shape your ranking too.</p>
+          <ul className="mt-3 space-y-2">
+            {inferred.map((f) => (
+              <li key={f.id} className="flex gap-2.5 text-sm leading-relaxed text-ink-muted">
+                <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-border-strong" aria-hidden />
+                {f.statement}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

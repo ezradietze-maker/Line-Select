@@ -1,7 +1,7 @@
 "use client";
 
+import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { CityChips } from "@/components/preferences/CityChips";
-import { Heading } from "@/components/ui/Heading";
 import type { CitySentiment } from "@/types/preferences";
 
 interface CityPreferenceStepProps {
@@ -14,22 +14,36 @@ interface CityPreferenceStepProps {
    * taps landing before a re-render (a fast double-tap, common on mobile)
    * would both read the same stale value and the second tap would be lost. */
   onToggleCity: (code: string) => void;
+  eyebrow?: string;
+  /** Cities the bidding story itself named, already marked — said out loud so the marks aren't a mystery. */
+  fromStory?: string[];
 }
 
-export function CityPreferenceStep({ cities, preferences, onToggleCity }: CityPreferenceStepProps) {
+const PROMPT = "Any layover cities you love or want to avoid?";
+
+export function CityPreferenceStep({ cities, preferences, onToggleCity, eyebrow, fromStory = [] }: CityPreferenceStepProps) {
   return (
     <div>
-      <Heading as="h2" className="text-xl text-ink sm:text-2xl">
-        Any layover cities you love or want to avoid?
-      </Heading>
-      <p className="mt-1.5 text-sm text-ink-muted">
-        These are all {cities.length} layover cities in your bid pack, most-flown first. Totally optional &mdash; skip
-        anything you don&rsquo;t have a feeling about.
-      </p>
+      <QuestionPrompt
+        eyebrow={eyebrow}
+        title={PROMPT}
+        help={
+          <>
+            All {cities.length} layover cities in your bid pack, most-flown first. Totally optional &mdash; skip anything you
+            don&rsquo;t have a feeling about.
+          </>
+        }
+      />
 
-      <div className="mt-6">
+      <RevealControls title={PROMPT} className="mt-6">
+        {fromStory.length > 0 && (
+          <p className="mb-3 rounded-lg border border-accent/30 bg-accent-soft/50 px-3 py-2 text-xs text-ink-muted">
+            <span className="font-medium text-accent">From your story:</span> {fromStory.join(", ")} already marked &mdash; tap to
+            change.
+          </p>
+        )}
         <CityChips cities={cities} sentiments={preferences} onCycle={onToggleCity} />
-      </div>
+      </RevealControls>
 
       {cities.length === 0 && (
         <p className="mt-4 text-sm text-ink-faint">

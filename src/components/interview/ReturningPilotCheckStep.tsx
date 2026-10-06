@@ -1,6 +1,6 @@
 "use client";
 
-import { Heading } from "@/components/ui/Heading";
+import { QuestionPrompt } from "@/components/interview/QuestionPrompt";
 import { MicButton } from "@/components/ui/MicButton";
 import { useDictation } from "@/lib/use-speech-to-text";
 import type { PreferenceFact } from "@/types/interview-session";
@@ -40,13 +40,16 @@ export function ReturningPilotCheckStep({
   const dictation = useDictation(shownLifeEvent, onLifeEventChange);
   return (
     <div>
-      <Heading as="h2" className="text-xl text-ink sm:text-2xl">
-        Welcome back — still the same picture?
-      </Heading>
-      <p className="mt-1.5 text-sm text-ink-muted">
-        Quick check on what mattered most last cycle before we get into anything new. Leave
-        anything that&rsquo;s still accurate alone &mdash; only flag what&rsquo;s actually changed.
-      </p>
+      <QuestionPrompt
+        eyebrow="Welcome back"
+        title="Still the same picture?"
+        help={
+          <>
+            A quick check on what mattered most last cycle before anything new. Leave anything that&rsquo;s still accurate
+            alone &mdash; only flag what&rsquo;s actually changed.
+          </>
+        }
+      />
 
       <div className="mt-6 space-y-2">
         {topFacts.map((fact) => {

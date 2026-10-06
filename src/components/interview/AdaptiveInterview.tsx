@@ -1,15 +1,18 @@
 "use client";
 
+import { useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { Heading } from "@/components/ui/Heading";
+import { FlightPathProgress } from "@/components/ui/FlightPathProgress";
 import { MicButton } from "@/components/ui/MicButton";
+import { NumberTicker } from "@/components/ui/NumberTicker";
 import { ScreenTransition } from "@/components/ui/ScreenTransition";
-import { SelectableCard } from "@/components/ui/SelectableCard";
-import { Spinner } from "@/components/ui/Spinner";
 import { parseSeniorityInput, SeniorityStep } from "@/components/interview/SeniorityStep";
 import { BiddingStoryStep } from "@/components/interview/BiddingStoryStep";
+import { ChoiceStep, isTypingTarget } from "@/components/interview/ChoiceStep";
+import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
+import { ThinkingPanel, type LastExchange } from "@/components/interview/ThinkingPanel";
 import { CityPreferenceStep } from "@/components/interview/CityPreferenceStep";
 import { CommuterStep } from "@/components/interview/CommuterStep";
 import { FreeTextAnswerBox } from "@/components/interview/FreeTextAnswerBox";
@@ -24,12 +27,14 @@ import {
   buildTurnRequest,
   detectContradiction,
   finalizeAdaptiveProfile,
+  applicableExplicitWeightIds,
   packHasHotelStandby,
   uncoveredExplicitWeightIds,
   type ContradictionFlag,
 } from "@/lib/interview-engine";
 import { clearDraft, loadDraft, saveDraft, type InterviewDraft } from "@/lib/interview-draft";
 import { computeBidPackGroundingStats } from "@/lib/interview-grounding";
+import { answerElaboration, describeAnswer, questionTopicLabel } from "@/lib/interview-display";
 import { computeInterviewProgress } from "@/lib/interview-progress";
 import { mergeStoryAndCityFacts, storyCitySentiments } from "@/lib/interview-story";
 import { cycleCitySentiment } from "@/lib/preference-logic";
@@ -90,6 +95,52 @@ const TOP_PRIOR_FACTS_SHOWN = 5;
  */
 const CIRCADIAN_TOLERANCE_RANGE: readonly [number, number] = [0, 4];
 
+/** How long the "profile locked in" moment holds before the review screen — long enough to land, short enough never to feel like a wait. */
+const FINISH_HOLD_MS = 1500;
+
+interface FinishSummary {
+  learned: number;
+  topicsCovered: number;
+  topicsTotal: number;
+  inYourWords: number;
+  dealbreakers: number;
+}
+
+/** The end of the interview: the aircraft at its destination, and a real tally of what the conversation produced. */
+function FinishPanel({ summary }: { summary: FinishSummary | null }) {
+  return (
+    <div className="flex min-h-[16rem] flex-col items-center justify-center py-6 text-center" role="status" aria-live="polite">
+      <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Interview complete</div>
+      <h2 className="mt-2.5 font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Locking in your profile</h2>
+      {summary && (
+        <dl className="mt-8 grid w-full max-w-md grid-cols-3 gap-px overflow-hidden rounded-xl border border-hairline bg-hairline">
+          {[
+            ["Things learned", <NumberTicker key="l" value={summary.learned} duration={0.9} />],
+            ["Topics covered", (
+              <span key="t">
+                <NumberTicker value={summary.topicsCovered} duration={0.9} />
+                <span className="text-ink-faint">/{summary.topicsTotal}</span>
+              </span>
+            )],
+            ["In your words", <NumberTicker key="w" value={summary.inYourWords} duration={0.9} />],
+          ].map(([label, value]) => (
+            <div key={label as string} className="bg-panel px-3 py-4">
+              <dd className="text-readout text-3xl font-semibold">{value}</dd>
+              <dt className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">{label}</dt>
+            </div>
+          ))}
+        </dl>
+      )}
+      <p className="mt-6 text-sm text-ink-muted">
+        {summary && summary.dealbreakers > 0
+          ? `${summary.dealbreakers} dealbreaker${summary.dealbreakers === 1 ? "" : "s"} noted. `
+          : ""}
+        Next: a quick look at what we heard, before anything is ranked.
+      </p>
+    </div>
+  );
+}
+
 type Phase = "seniority" | "bidding-story" | "commuter" | "cities" | "returning-check" | "adaptive-loading" | "adaptive-question" | "finishing";
 
 /** Matches `MAX_BID_STORY_LENGTH` in `/api/interview-bidding-story/route.ts` — generous enough for genuinely exhaustive detail, still a sane ceiling for one LLM call and one localStorage-bound profile. */
@@ -107,46 +158,64 @@ function topPriorFacts(discoveredFacts: PreferenceFact[], limit: number): Prefer
     .slice(0, limit);
 }
 
+/**
+ * The step's continue button — and Enter, anywhere on the page that isn't a
+ * text box, presses it. Only one step is on screen at a time, so only one
+ * of these is ever listening.
+ */
 function StepNav({ onNext, nextLabel, disabled }: { onNext: () => void; nextLabel: string; disabled?: boolean }) {
+  const onNextRef = useRef(onNext);
+  useEffect(() => {
+    onNextRef.current = onNext;
+  });
+  useEffect(() => {
+    if (disabled) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      const target = e.target as HTMLElement | null;
+      // An answer option (a choice card, a number stop) with focus: Enter on
+      // the one already picked continues — that's what the on-screen hint
+      // promises right after clicking it — while Enter on another one just
+      // picks it, the way a radio button normally behaves.
+      if (target?.getAttribute("role") === "radio") {
+        if (target.getAttribute("aria-checked") !== "true") return;
+        e.preventDefault();
+        onNextRef.current();
+        return;
+      }
+      // Any other focused button handles its own Enter; a text box keeps Enter for typing.
+      if (isTypingTarget(target) || target?.tagName === "BUTTON" || target?.tagName === "A") return;
+      e.preventDefault();
+      onNextRef.current();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [disabled]);
   return (
     <div className="mt-10 flex items-center justify-end">
-      <Button onClick={onNext} disabled={disabled}>
+      <Button onClick={onNext} disabled={disabled} className="sm:min-w-[9rem] sm:px-6">
         {nextLabel}
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-5-5l5 5-5 5" />
+        </svg>
       </Button>
     </div>
   );
 }
 
-/** A thin, honest progress bar with a plain-language readout — replaces a row of ~36 dots labeled "question 2 of roughly 35", which overstated the length up front. */
-const PROGRESS_SEGMENT_COUNT = 14;
-
-/** A multi-segment readout, each cell filling in turn as `fraction` advances through its own slice — reads as a real instrument (think a fuel-quantity ladder) rather than one continuous bar. The accessible progressbar semantics live on the wrapper; each cell is purely decorative. */
-function InterviewProgressBar({ fraction, label }: { fraction: number; label: string }) {
+/**
+ * Progress drawn as the flight it is: from the brief to your ranking, the
+ * aircraft moving along as you answer — with the honest readout underneath
+ * (topics actually covered, a real estimate of time left).
+ */
+function InterviewProgress({ fraction, left, right }: { fraction: number; left: string; right?: string }) {
   return (
-    <div className="mb-8">
-      <div
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(fraction * 100)}
-        aria-label="Interview progress"
-        className="flex gap-[3px]"
-      >
-        {Array.from({ length: PROGRESS_SEGMENT_COUNT }, (_, i) => {
-          const segStart = i / PROGRESS_SEGMENT_COUNT;
-          const segEnd = (i + 1) / PROGRESS_SEGMENT_COUNT;
-          const filled = Math.max(0, Math.min(1, (fraction - segStart) / (segEnd - segStart)));
-          return (
-            <div key={i} aria-hidden className="h-1.5 flex-1 overflow-hidden rounded-[2px] bg-border">
-              <div
-                className="h-full rounded-[2px] bg-brand transition-[width] duration-500 ease-out"
-                style={{ width: `${filled * 100}%` }}
-              />
-            </div>
-          );
-        })}
+    <div className="mb-6">
+      <FlightPathProgress fraction={fraction} label="Interview progress" waypoints={3} />
+      <div className="mt-1.5 flex items-center justify-between gap-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
+        <span className="whitespace-nowrap">{left}</span>
+        {right && <span className="whitespace-nowrap text-right">{right}</span>}
       </div>
-      <div className="mt-2 text-xs text-ink-muted">{label}</div>
     </div>
   );
 }
@@ -255,6 +324,9 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   const [choiceSelection, setChoiceSelection] = useState<number | null>(null);
   const [choiceElaboration, setChoiceElaboration] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
+  const finishingRef = useRef(false);
+  const [finishSummary, setFinishSummary] = useState<FinishSummary | null>(null);
 
   // Snapshots for "Back" — a ref for the logic (async callbacks need the
   // latest value) mirrored into a count for rendering.
@@ -341,8 +413,9 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   }
 
   function finish(finalFacts: PreferenceFact[], finalTranscript: InterviewTurnRecord[]) {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
     clearDraft(userId);
-    setPhase("finishing");
     const profile = finalizeAdaptiveProfile({
       facts: finalFacts,
       transcript: finalTranscript,
@@ -352,7 +425,19 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       cityPreferencesSeed: cityPreferences,
       priorProfile,
     });
-    onComplete(profile);
+    const applicable = applicableExplicitWeightIds(hasStandby).length;
+    setFinishSummary({
+      learned: profile.discoveredFacts.length,
+      topicsCovered: applicable - uncoveredExplicitWeightIds(finalFacts, hasStandby).length,
+      topicsTotal: applicable,
+      inYourWords: profile.discoveredFacts.filter((f) => f.kind === "qualitative").length,
+      dealbreakers: profile.discoveredFacts.filter((f) => f.severity === "dealbreaker").length,
+    });
+    setPhase("finishing");
+    // The profile is ready the instant it's computed; this beat exists only
+    // so the end of the interview lands instead of cutting away, and it's
+    // skipped entirely under reduced motion.
+    window.setTimeout(() => onComplete(profile), reduceMotion ? 0 : FINISH_HOLD_MS);
   }
 
   /**
@@ -516,10 +601,40 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     preStepsDone,
     preStepTotal: preStepCount,
   });
-  const progressLabel =
-    phase === "seniority" || phase === "bidding-story" || phase === "commuter" || phase === "cities" || phase === "returning-check"
-      ? "Getting started \u2014 about 8\u201310 minutes in all, and you can stop any time."
-      : `${progress.topicsCovered} of ${progress.topicsTotal} topics covered \u00b7 about ${progress.minutesLeft} min left`;
+  const inSetup =
+    phase === "seniority" || phase === "bidding-story" || phase === "commuter" || phase === "cities" || phase === "returning-check";
+  const progressLeft =
+    phase === "finishing" ? "Arrived" : inSetup ? "Getting started" : `${progress.topicsCovered} of ${progress.topicsTotal} topics covered`;
+  const progressRight =
+    phase === "finishing" ? "Your ranking" : inSetup ? "About 8\u201310 min" : `About ${progress.minutesLeft} min left`;
+
+  /** "Step 2 of 4 · Your story" — where the pilot is in the setup steps; short enough for one line on a phone. */
+  const preStepEyebrow = (label: string) => `Step ${Math.min(preStepCount, preStepsDone + 1)} of ${preStepCount} \u00b7 ${label}`;
+  const topic = currentQuestion ? questionTopicLabel(currentQuestion) : null;
+  const questionEyebrow = currentQuestion ? `Question ${turnsUsed + 1}${topic ? ` \u00b7 ${topic}` : ""}` : undefined;
+  // Before the first question there's no answer to echo — say what the interview is starting from instead.
+  // City picks are counted once, as cities, even when the story is where they came from.
+  const storyCount = facts.filter(
+    (f) => f.source.kind === "seed-question" && f.source.questionKey === "bidding-story" && f.measurable?.type !== "city-sentiment"
+  ).length;
+  const pickedCities = Object.keys(cityPreferences).length;
+  const briefing =
+    storyCount + pickedCities > 0
+      ? `Starting from ${[
+          storyCount > 0 ? `${storyCount} thing${storyCount === 1 ? "" : "s"} from your story` : null,
+          pickedCities > 0 ? `${pickedCities} cit${pickedCities === 1 ? "y" : "ies"} you flagged` : null,
+        ]
+          .filter(Boolean)
+          .join(" and ")}. Anything already covered won\u2019t be asked again.`
+      : "Building your first question from your bid pack.";
+  const lastTurn = transcript.at(-1);
+  const lastExchange: LastExchange | null = lastTurn
+    ? {
+        question: lastTurn.question.prompt,
+        answer: describeAnswer(lastTurn.question, lastTurn.answer),
+        elaboration: answerElaboration(lastTurn.answer),
+      }
+    : null;
 
   // Progress worth resuming: only after at least one real answer, and only while a question is on screen.
   useEffect(() => {
@@ -555,7 +670,9 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   const showResumePrompt = !!savedDraft && !resumeDismissed && phase === firstPhase;
 
   const stepKey =
-    phase === "seniority"
+    phase === "finishing"
+      ? "finishing"
+      : phase === "seniority"
       ? "seniority"
       : phase === "bidding-story"
       ? "bidding-story"
@@ -596,7 +713,13 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       const typed = seniorityText.trim();
       return (
         <div>
-          <SeniorityStep value={seniorityText} onChange={setSeniorityText} list={bidPack.seniorityList} seat={bidPack.seat} />
+          <SeniorityStep
+            value={seniorityText}
+            onChange={setSeniorityText}
+            list={bidPack.seniorityList}
+            seat={bidPack.seat}
+            eyebrow={preStepEyebrow("Your place in the bid")}
+          />
           <StepNav onNext={() => setPhase("bidding-story")} nextLabel={typed === "" ? "Skip for now" : "Next"} disabled={typed !== "" && parseSeniorityInput(typed) === null} />
         </div>
       );
@@ -620,51 +743,45 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
           busy={bidStoryBusy}
           error={bidStoryError}
           maxLength={MAX_BID_STORY_LENGTH}
+          eyebrow={preStepEyebrow("Your story")}
         />
       );
     }
 
     if (phase === "commuter") {
       return (
-        <div>
-          <CommuterStep value={isCommuter} onChange={setIsCommuter} base={bidPack.base} />
-          <StepNav onNext={() => setPhase("cities")} nextLabel="Next" disabled={isCommuter === null} />
+        <CommuterStep value={isCommuter} onChange={setIsCommuter} base={bidPack.base} eyebrow={preStepEyebrow("Your commute")}>
           {isCommuter === true && (
-            <div className="mt-6 rounded-lg border border-border bg-canvas p-4">
+            <div className="mt-6 rounded-xl border border-hairline bg-canvas/50 p-4">
               <div className="text-sm font-medium text-ink">Got a crash pad in domicile?</div>
               <p className="mt-1 text-xs text-ink-muted">
-                Worth factoring in — without a place to stage between duty days, an extra separate trip costs
-                you more than it would otherwise.
+                Worth factoring in &mdash; without a place to stage between duty days, an extra separate trip costs you more than
+                it would otherwise.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  aria-pressed={hasCrashPad === true}
-                  onClick={() => setHasCrashPad(true)}
-                  className={`rounded-full border-2 px-3.5 py-1.5 text-sm font-medium transition-all ${
-                    hasCrashPad === true
-                      ? "border-brand bg-brand-soft text-brand"
-                      : "border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink"
-                  }`}
-                >
-                  Yes, I&rsquo;ve got a place
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={hasCrashPad === false}
-                  onClick={() => setHasCrashPad(false)}
-                  className={`rounded-full border-2 px-3.5 py-1.5 text-sm font-medium transition-all ${
-                    hasCrashPad === false
-                      ? "border-brand bg-brand-soft text-brand"
-                      : "border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink"
-                  }`}
-                >
-                  No crash pad
-                </button>
+                {([
+                  [true, "Yes, I\u2019ve got a place"],
+                  [false, "No crash pad"],
+                ] as const).map(([v, label]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={hasCrashPad === v}
+                    onClick={() => setHasCrashPad(v)}
+                    className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all ${
+                      hasCrashPad === v
+                        ? "glow-soft border-accent bg-accent-soft text-accent"
+                        : "border-hairline bg-surface/70 text-ink-muted hover:border-border-strong hover:text-ink"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
           )}
-        </div>
+          <StepNav onNext={() => setPhase("cities")} nextLabel="Next" disabled={isCommuter === null} />
+        </CommuterStep>
       );
     }
 
@@ -675,6 +792,10 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
             cities={allCities}
             preferences={cityPreferences}
             onToggleCity={(code) => setCityPreferences((prev) => cycleCitySentiment(prev, code))}
+            eyebrow={preStepEyebrow("Layover cities")}
+            fromStory={Object.entries(storyCitySentiments(storyFacts))
+              .filter(([code, sentiment]) => cityPreferences[code] === sentiment)
+              .map(([code]) => code)}
           />
           <StepNav
             onNext={() => {
@@ -732,12 +853,11 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     }
 
     if (phase === "adaptive-loading") {
-      return (
-        <div className="flex flex-col items-center gap-3 py-10 text-center">
-          <Spinner size="md" />
-          <ThinkingNote />
-        </div>
-      );
+      return <ThinkingPanel lastExchange={lastExchange} briefing={briefing} />;
+    }
+
+    if (phase === "finishing") {
+      return <FinishPanel summary={finishSummary} />;
     }
 
     if (phase === "adaptive-question" && currentQuestion) {
@@ -750,6 +870,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
             <>
               <SliderStepInline
                 question={q}
+                eyebrow={questionEyebrow}
                 onSubmit={(value, elaboration) => handleAdaptiveAnswer({ kind: "slider", value, elaboration })}
               />
             </>
@@ -758,28 +879,21 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
           {q.kind === "target-slider" && (
             <TargetSliderStepInline
               question={q}
+              eyebrow={questionEyebrow}
               range={q.boundTo === "circadianTolerance" ? CIRCADIAN_TOLERANCE_RANGE : ranges[q.boundTo]}
               onSubmit={(value, elaboration) => handleAdaptiveAnswer({ kind: "target-slider", value, elaboration })}
             />
           )}
 
           {q.kind === "choice" && (
-            <div>
-              <Heading as="h2" className="text-xl text-ink sm:text-2xl">
-                {q.prompt}
-              </Heading>
-              {q.helpText && <p className="mt-1.5 text-sm text-ink-muted">{q.helpText}</p>}
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                {q.options.map((opt, i) => (
-                  <SelectableCard
-                    key={i}
-                    label={opt.label}
-                    description={opt.description}
-                    selected={choiceSelection === i}
-                    onClick={() => setChoiceSelection(i)}
-                  />
-                ))}
-              </div>
+            <ChoiceStep
+              eyebrow={questionEyebrow}
+              prompt={q.prompt}
+              helpText={q.helpText}
+              options={q.options}
+              selected={choiceSelection}
+              onSelect={setChoiceSelection}
+            >
               <ElaborationToggle value={choiceElaboration} onChange={setChoiceElaboration} />
               <StepNav
                 onNext={() =>
@@ -793,22 +907,19 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
                 nextLabel="Next"
                 disabled={choiceSelection === null}
               />
-            </div>
+            </ChoiceStep>
           )}
 
           {q.kind === "free-text" && (
             <div>
-              <Heading as="h2" className="text-xl text-ink sm:text-2xl">
-                {q.prompt}
-              </Heading>
-              {q.helpText && <p className="mt-1.5 text-sm text-ink-muted">{q.helpText}</p>}
-              <div className="mt-8">
+              <QuestionPrompt eyebrow={questionEyebrow} title={q.prompt} help={q.helpText} />
+              <RevealControls title={q.prompt} className="mt-8">
                 <FreeTextAnswerBox
                   placeholder={q.placeholder}
                   onSubmit={async (text) => handleAdaptiveAnswer({ kind: "free-text", text })}
                   onSkip={() => handleAdaptiveAnswer({ kind: "skipped" })}
                 />
-              </div>
+              </RevealControls>
             </div>
           )}
         </div>
@@ -825,12 +936,13 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   const richness = canFinishEarly && turnsUsed >= MIN_TURNS_BEFORE_WRAP ? assessProfileRichness({ discoveredFacts: facts }) : null;
 
   return (
-    <div className="mx-auto w-full max-w-xl">
-      <InterviewProgressBar fraction={progress.fraction} label={progressLabel} />
+    <div className="mx-auto w-full max-w-2xl">
+      <InterviewProgress fraction={phase === "finishing" ? 1 : progress.fraction} left={progressLeft} right={progressRight} />
 
       {showResumePrompt && savedDraft && (
-        <div className="mb-4 rounded-xl border border-brand/30 bg-brand-soft/60 p-5">
-          <div className="text-sm font-semibold text-ink">Pick up where you left off?</div>
+        <div className="panel-glass glow-soft mb-5 p-5">
+          <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Saved progress</div>
+          <div className="mt-1.5 font-display text-lg font-semibold text-ink">Pick up where you left off?</div>
           <p className="mt-1 text-sm text-ink-muted">
             You were partway through &mdash; {savedDraft.turnsUsed} question{savedDraft.turnsUsed === 1 ? "" : "s"} answered.
           </p>
@@ -849,14 +961,17 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
         </div>
       )}
 
-      <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
+      <div className="panel-glass p-6 sm:p-10">
         {canGoBack && (
           <button
             type="button"
             onClick={goBack}
-            className="mb-4 inline-flex items-center gap-1 text-sm text-ink-muted transition-colors hover:text-ink"
+            className="-ml-1 mb-5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint transition-colors hover:text-ink"
           >
-            <span aria-hidden>&larr;</span> Back
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5m5 5l-5-5 5-5" />
+            </svg>
+            Back
           </button>
         )}
         {error && phase !== "adaptive-question" && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
@@ -866,7 +981,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       </div>
 
       {canFinishEarly && (
-        <div className="mt-4 text-center">
+        <div className="mt-5 text-center">
           {richness && richness.level !== "thorough" && (
             <p className="mb-2 text-xs text-ink-faint">
               {richness.level === "thin"
@@ -891,9 +1006,11 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
 function SliderStepInline({
   question,
   onSubmit,
+  eyebrow,
 }: {
   question: Extract<InterviewQuestion, { kind: "slider" }>;
   onSubmit: (value: number, elaboration?: string) => void;
+  eyebrow?: string;
 }) {
   const [value, setValue] = useState(0);
   // A slider that's never been moved still reads as an answer (it sits at "no preference"), so say so — and label the button for what pressing it actually records.
@@ -902,6 +1019,7 @@ function SliderStepInline({
   return (
     <div>
       <SliderStep
+        eyebrow={eyebrow}
         config={{
           key: question.boundTo,
           question: question.prompt,
@@ -932,10 +1050,12 @@ function TargetSliderStepInline({
   question,
   range,
   onSubmit,
+  eyebrow,
 }: {
   question: Extract<InterviewQuestion, { kind: "target-slider" }>;
   range: readonly [number, number];
   onSubmit: (value: number | undefined, elaboration?: string) => void;
+  eyebrow?: string;
 }) {
   const midpoint = Math.round((range[0] + range[1]) / 2);
   const [value, setValue] = useState<number | undefined>(midpoint);
@@ -945,6 +1065,7 @@ function TargetSliderStepInline({
   return (
     <div>
       <TargetSliderStep
+        eyebrow={eyebrow}
         config={{
           key: question.boundTo,
           question: question.prompt,
@@ -967,27 +1088,5 @@ function TargetSliderStepInline({
         nextLabel={touched || value === undefined ? "Next" : `Use ${value} ${value === 1 ? question.unitSingular : question.unitPlural}`}
       />
     </div>
-  );
-}
-
-const THINKING_STEPS: { afterMs: number; text: string }[] = [
-  { afterMs: 0, text: "Got it — thinking about what to ask next…" },
-  { afterMs: 4000, text: "Working out what matters most to you…" },
-  { afterMs: 9000, text: "Still working — this one is taking a little longer than usual…" },
-];
-
-/** A question takes several seconds to come back; a message that visibly changes reads as progress, one that never changes reads as a hang. */
-function ThinkingNote() {
-  const [elapsedMs, setElapsedMs] = useState(0);
-  useEffect(() => {
-    const started = Date.now();
-    const id = setInterval(() => setElapsedMs(Date.now() - started), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const step = [...THINKING_STEPS].reverse().find((t) => elapsedMs >= t.afterMs) ?? THINKING_STEPS[0];
-  return (
-    <p className="text-sm text-ink-faint" role="status" aria-live="polite">
-      {step.text}
-    </p>
   );
 }

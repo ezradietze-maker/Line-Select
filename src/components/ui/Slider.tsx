@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+
 interface SliderProps {
   value: number; // -100..100
   onChange: (value: number) => void;
@@ -19,6 +21,9 @@ function formatSignedValue(value: number): string {
   return rounded > 0 ? `+${rounded}` : `${rounded}`;
 }
 
+/** Within this of center while dragging, the thumb settles on exactly "no preference" — a detent, so a pilot who means "doesn't matter" doesn't have to land on a pixel. Keyboard steps are left alone, so arrowing off center still works one step at a time. */
+const CENTER_DETENT = 5;
+
 export function Slider({
   value,
   onChange,
@@ -28,6 +33,7 @@ export function Slider({
   ariaLabel,
   readOnly = false,
 }: SliderProps) {
+  const dragging = useRef(false);
   const magnitude = Math.abs(value);
   const strength =
     magnitude < 10 ? centerLabel : magnitude < 45 ? "Some preference" : "Strong preference";
@@ -82,7 +88,13 @@ export function Slider({
             max={100}
             step={5}
             value={value}
-            onChange={(e) => onChange(Number(e.target.value))}
+            onPointerDown={() => (dragging.current = true)}
+            onPointerUp={() => (dragging.current = false)}
+            onPointerCancel={() => (dragging.current = false)}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              onChange(dragging.current && Math.abs(v) <= CENTER_DETENT ? 0 : v);
+            }}
             aria-label={ariaLabel}
             aria-valuetext={`${formatSignedValue(value)}, ${strength}`}
             className="line-slider relative w-full"
@@ -92,10 +104,13 @@ export function Slider({
           />
         )}
       </div>
-      <div className="mt-2 flex items-start justify-between gap-3 text-xs text-ink-muted">
-        <span className="max-w-[40%]">{lowLabel}</span>
+      {/* The side being leaned toward lights up, so the answer reads in words, not just as a thumb position. */}
+      <div className="mt-2 flex items-start justify-between gap-3 text-xs">
+        <span className={`max-w-[40%] transition-colors duration-200 ${value <= -10 ? "font-medium text-accent" : "text-ink-muted"}`}>{lowLabel}</span>
         <span className="text-center font-medium text-ink-faint">{strength}</span>
-        <span className="max-w-[40%] text-right">{highLabel}</span>
+        <span className={`max-w-[40%] text-right transition-colors duration-200 ${value >= 10 ? "font-medium text-accent" : "text-ink-muted"}`}>
+          {highLabel}
+        </span>
       </div>
     </div>
   );

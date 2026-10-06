@@ -408,6 +408,12 @@ body {
   box-shadow: 0 0 0 1px var(--glow-soft), 0 10px 44px -14px var(--glow-strong);
 }
 
+/* A lit element that also has keyboard focus keeps both: the focus ring
+   stays visible instead of being replaced by the glow. */
+.glow-soft:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-panel), 0 0 0 4px var(--color-focus-ring), 0 10px 44px -14px var(--glow-strong);
+}
+
 /* A real number on an instrument: mono, fixed-width digits, readout color. */
 .text-readout {
   font-family: var(--font-mono), ui-monospace, monospace;
@@ -440,7 +446,8 @@ body {
   border-radius: 999px;
   background: var(--color-surface);
   border: 3px solid var(--color-brand);
-  box-shadow: var(--shadow-md);
+  /* A ring of instrument light around the thumb — quiet at rest, brighter while held. */
+  box-shadow: var(--shadow-md), 0 0 0 5px var(--glow-soft);
   cursor: grab;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
   margin-top: 0;
@@ -453,7 +460,7 @@ body {
 .line-slider:active::-webkit-slider-thumb {
   cursor: grabbing;
   transform: scale(1.15);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), 0 0 0 7px var(--glow-soft), 0 0 22px var(--glow-strong);
 }
 
 .line-slider::-moz-range-thumb {
@@ -462,7 +469,7 @@ body {
   border-radius: 999px;
   background: var(--color-surface);
   border: 3px solid var(--color-brand);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-md), 0 0 0 5px var(--glow-soft);
   cursor: grab;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
@@ -474,7 +481,7 @@ body {
 .line-slider:active::-moz-range-thumb {
   cursor: grabbing;
   transform: scale(1.15);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), 0 0 0 7px var(--glow-soft), 0 0 22px var(--glow-strong);
 }
 
 .line-slider:focus-visible::-webkit-slider-thumb {
