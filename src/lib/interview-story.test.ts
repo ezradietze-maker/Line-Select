@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { mergeStoryAndCityFacts, storyCitySentiments } from "@/lib/interview-story";
+import { openEssentials } from "@/lib/interview-engine";
+import { homeCityReasonFact, mergeStoryAndCityFacts, parseAirportCode, storyCitySentiments } from "@/lib/interview-story";
 import type { PreferenceFact } from "@/types/interview-session";
 
 function fact(id: string, overrides: Partial<PreferenceFact> = {}): PreferenceFact {
@@ -48,5 +49,21 @@ describe("mergeStoryAndCityFacts", () => {
     const flipped = mergeStoryAndCityFacts([lovesDen], { DEN: "avoid" });
     expect(flipped).toHaveLength(1);
     expect(flipped[0].measurable).toEqual({ type: "city-sentiment", code: "DEN", sentiment: "avoid" });
+  });
+});
+
+describe("commuter home city", () => {
+  it("reads only a real 3-letter airport code", () => {
+    expect(parseAirportCode(" clt ")).toBe("CLT");
+    expect(parseAirportCode("Charlotte")).toBeNull();
+    expect(parseAirportCode("")).toBeNull();
+    expect(parseAirportCode(undefined)).toBeNull();
+  });
+
+  it("gives the home city its reason up front, so the interview doesn't ask why it's loved", () => {
+    const reason = homeCityReasonFact("DEN");
+    expect(reason.cityReason).toEqual({ code: "DEN", category: "people" });
+    const loves = { ...reason, id: "c", kind: "measurable" as const, cityReason: undefined, measurable: { type: "city-sentiment" as const, code: "DEN", sentiment: "love" as const } };
+    expect(openEssentials({ transcript: [], facts: [loves, reason], isCommuter: false })).not.toContain("city-preferences");
   });
 });

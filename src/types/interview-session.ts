@@ -148,6 +148,13 @@ export interface PreferenceFact {
 
 export type WeekdayAbbreviation = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 
+/**
+ * What the LLM (or a seed question, replayed through the same machinery) asks.
+ * `topic` is the one subject the question is about — a topic-backlog id
+ * (`interview-topics.ts`), an explicit-weight id, or "closing" for the final
+ * anything-I-missed check. One per question: it's how the interview knows
+ * which conversations have happened, and what the screen labels it.
+ */
 /** What the LLM (or a seed question, replayed through the same machinery) asks. `kind` discriminates how the client renders it — every non-free-text kind is bound to a real, existing catalog slot via `boundTo`, never an invented one. */
 export type InterviewQuestion =
   | {
@@ -155,6 +162,7 @@ export type InterviewQuestion =
       kind: "slider";
       prompt: string;
       helpText?: string;
+      topic?: string;
       lowLabel: string;
       highLabel: string;
       centerLabel: string;
@@ -165,14 +173,15 @@ export type InterviewQuestion =
       kind: "target-slider";
       prompt: string;
       helpText?: string;
+      topic?: string;
       unitSingular: string;
       unitPlural: string;
       boundTo: ExplicitTargetKey;
       /** Mirrors `MeasurableBinding`'s explicit-target `rangeRole` — which part of a tolerance band this specific question is asking about. Absent/"ideal" behaves exactly as before. */
       rangeRole?: "min" | "ideal" | "max";
     }
-  | { id: string; kind: "choice"; prompt: string; helpText?: string; options: { label: string; description?: string }[] }
-  | { id: string; kind: "free-text"; prompt: string; helpText?: string; placeholder?: string };
+  | { id: string; kind: "choice"; prompt: string; helpText?: string; topic?: string; options: { label: string; description?: string }[] }
+  | { id: string; kind: "free-text"; prompt: string; helpText?: string; topic?: string; placeholder?: string };
 
 export type InterviewAnswer =
   /** `elaboration`: optional free-text the pilot chose to add alongside a slider answer — always offered in the adaptive loop, never required. Read by the same extraction step that reads the slider value itself. */
@@ -244,6 +253,16 @@ export interface BidPackGroundingStats {
   daysOffBlock?: { min: number; max: number } | null;
   /** Spread of Saturdays + Sundays off per line (`weekendDaysOffPerLine`), and how many weekend days the period has. Null when the pack has no grid day-off marks or start date. */
   weekendDaysOff?: { min: number; max: number; weekendDaysInPeriod: number } | null;
+  /**
+   * How firm a calendar commitment can realistically be in this pack: of the
+   * lines with a real calendar (`linesWithCalendar`), how many never work
+   * each weekday (`byWeekday`) and how many are off on each date of the bid
+   * period (`byDate`, YYYY-MM-DD). A weekly dealbreaker on a weekday few
+   * lines keep free would cap nearly the whole pack — the interview reads
+   * these to say so before treating it as a hard line. Null when the pack has
+   * no real calendar placement.
+   */
+  linesFree?: { linesWithCalendar: number; byWeekday: Record<string, number>; byDate: Record<string, number> } | null;
 }
 
 /** What the client sends the turn-loop route each turn. */
@@ -276,6 +295,27 @@ export interface TurnRequestBody {
    * comment for the live-testing failure this exists to close.
    */
   uncoveredExplicitWeightIds: string[];
+  /**
+   * The earliest turn wrap_up can be offered — lower when the bidding story
+   * already covered a lot, so a pilot who wrote a thorough story really does
+   * get fewer questions (see `minTurnsBeforeWrap` in `interview-engine.ts`).
+   */
+  minTurnsBeforeWrap: number;
+  /**
+   * Conversations that have to happen before wrap_up, beyond catalog
+   * coverage — the calendar check, the why behind a picked city, the
+   * closing anything-I-missed question. Computed each turn from the
+   * transcript's question topics and the facts; empty when all are done.
+   */
+  openEssentials: string[];
+  /**
+   * Whether the closing anything-I-missed question may be asked now: every
+   * other essential done, every dimension covered, and the floor nearly
+   * reached. Before that, asking it early just forces filler afterward.
+   */
+  closingAllowed: boolean;
+  /** The pilot already gave a seniority number on the screen before the story — never ask for it again. */
+  seniorityKnown?: boolean;
   /**
    * Facts from the pilot's prior bid-cycle profile they explicitly flagged
    * as "something's changed" on the returning-pilot check screen (see
@@ -311,6 +351,8 @@ export interface TurnRequestBody {
    * Absent when the pilot skipped that question.
    */
   bidStory?: string;
+  /** Where a commuter commutes from (airport code), when known. */
+  commuteFrom?: string;
   /**
    * A small, rotating sample of anonymized phrase snippets pulled from many
    * pilots' own bidding-story answers (see `server/style-store.ts`) — loose
@@ -341,6 +383,8 @@ export interface BiddingStoryResponse {
   styleTags: string[];
   /** Whether the story says this pilot commutes in (true), lives in base (false), or doesn't say (null) — pre-fills the commuter step, which the pilot still confirms. */
   commuterStatus: boolean | null;
+  /** Where a commuter commutes from, as an airport code, when the story said — pre-fills the commuter step. */
+  commuteFrom?: string | null;
 }
 
 /** What the route returns — one Anthropic call handles both "what to ask next" and "what to extract from the last answer," per turn. */
@@ -352,4 +396,6 @@ export interface TurnResponse {
   profileUpdates: PreferenceFactUpdate[];
   /** Internal-only rationale for this turn's choice, logged for debugging/pilot-review transcripts — never shown to the pilot. */
   reasoning?: string;
+  /** One short line, in the pilot's own register, saying back what their last answer told the interview — shown above the next question so the pilot sees they were heard (and can catch a misread). Absent on the first turn. */
+  heard?: string;
 }

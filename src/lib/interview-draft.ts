@@ -2,7 +2,7 @@ import type { InterviewQuestion, InterviewTurnRecord, PreferenceFact } from "@/t
 import type { CitySentiment } from "@/types/preferences";
 
 /**
- * An interview is 22+ questions of a pilot's own words — losing it to a
+ * An interview is a dozen or more questions of a pilot's own words — losing it to a
  * refresh, a dropped connection or a phone locking mid-way is the single
  * most expensive failure this flow can have. The answers-so-far live in this
  * one local record (same device, same as the rest of their data) so the
@@ -14,6 +14,8 @@ export interface InterviewDraft {
   savedAt: number;
   isCommuter: boolean | null;
   hasCrashPad: boolean | null;
+  /** Where a commuter commutes from; absent on older drafts or when not given. */
+  commuteFrom?: string;
   /** Absent on a draft saved before the interview asked for it. */
   seniorityNumber?: number | null;
   /** Absent on a draft saved before the bidding-story question existed, or when the pilot skipped it. */

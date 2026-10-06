@@ -25,7 +25,7 @@ import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { HotelAmenitySummary, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 import type { MeasurableBinding, PreferenceFact, WeekdayAbbreviation } from "@/types/interview-session";
-import { DEFAULT_WEIGHTS, type CitySentiment, type PreferenceProfile, type PreferenceWeights, type RangeTarget } from "@/types/preferences";
+import { DEFAULT_WEIGHTS, type CitySentiment, type ExplicitTargetKey, type PreferenceProfile, type PreferenceWeights, type RangeTarget } from "@/types/preferences";
 
 /**
  * Everything the layoverQuality dimension needs about one real assigned
@@ -477,10 +477,12 @@ function weightToImportance(
   hasExplicitTarget: boolean,
   isCommuter: boolean | null,
   hasCrashPad: boolean | null,
-  confidence: number
+  confidence: number,
+  /** How much the pilot said their pinned target matters (`PreferenceProfile.targetImportance`); a target with no recorded importance counts as 0.5, as it always has. */
+  targetImportance?: number
 ): number {
   const base = Math.min(1, Math.abs(weight) / 100);
-  let importance = (hasExplicitTarget ? Math.max(base, 0.5) : base) * confidence;
+  let importance = (hasExplicitTarget ? Math.max(base, targetImportance ?? 0.5) : base) * confidence;
   if (isCommuter && (key === "reportTime" || key === "dutyPeriods" || key === "deadheadTolerance")) {
     importance = Math.max(importance, 0.35);
   }
@@ -897,7 +899,16 @@ function computeCategoryScores(allDimensions: DimensionScore[]): Record<Satisfac
 
 /** How far below "clearly fine" a match has to fall before a dealbreaker counts as violated — deliberately well below the ordinary 0.5 miss-phrase threshold, since a dealbreaker should only fire on a line that's unambiguously on the wrong side, not one that merely misses the pilot's target by a little. */
 const DEALBREAKER_MATCH_THRESHOLD = 0.25;
-/** A violating line is capped, not zeroed — it should still read as a real, rankable line ("flagged," per the spec's own "still surface if nothing better exists" requirement), not look like a broken/empty score. */
+/**
+ * A violating line is capped, not zeroed — it should still read as a real,
+ * rankable line ("flagged," per the spec's own "still surface if nothing
+ * better exists" requirement), not look like a broken/empty score. The cap
+ * scales the score down to this ceiling rather than clipping it: a weekly
+ * commitment can be violated by most of a pack (in a real 324-line pack only
+ * 14 lines keep every Wednesday free), and clipping would flatten all of
+ * those to the same 35 and throw away their order. Scaled, the best of the
+ * violating lines still rank first among them.
+ */
 export const DEALBREAKER_SCORE_CAP = 35;
 
 function humanizeKey(key: string): string {
@@ -1346,6 +1357,8 @@ export interface BidPackRanges {
   daysOff: readonly [number, number];
   creditHours: readonly [number, number];
   dutyPeriods: readonly [number, number];
+  /** Shortest to longest single trip, in days — the span a trip-length sweet spot is asked within. */
+  tripLength: readonly [number, number];
 }
 
 /**
@@ -1357,10 +1370,12 @@ export function getBidPackRanges(bidPack: BidPack): BidPackRanges {
   const daysOffValues = bidPack.lines.map((l) => l.daysOff);
   const creditValues = bidPack.lines.map((l) => l.totalCreditHours);
   const dutyPeriodsValues = bidPack.lines.map((l) => lineDutyPeriods(l));
+  const tripDays = bidPack.lines.flatMap((l) => l.trips.map((t) => t.days)).filter((d) => d > 0);
   return {
     daysOff: [Math.min(...daysOffValues), Math.max(...daysOffValues)],
     creditHours: [Math.min(...creditValues), Math.max(...creditValues)],
     dutyPeriods: [Math.min(...dutyPeriodsValues), Math.max(...dutyPeriodsValues)],
+    tripLength: tripDays.length > 0 ? [Math.min(...tripDays), Math.max(...tripDays)] : [1, 1],
   };
 }
 
@@ -1389,6 +1404,7 @@ export function scoreBidPack(
 ): LineScore[] {
   const {
     explicitTargets,
+    targetImportance = {},
     cityPreferences,
     isCommuter,
     hasCrashPad,
@@ -1576,9 +1592,18 @@ export function scoreBidPack(
       let match: number;
       let hasExplicitTarget = false;
 
-      if ((key === "daysOff" || key === "creditHours" || key === "dutyPeriods") && explicitTargets[key] !== undefined) {
+      if ((key === "daysOff" || key === "creditHours" || key === "dutyPeriods" || key === "tripLength") && explicitTargets[key] !== undefined) {
         hasExplicitTarget = true;
-        const bounds = key === "daysOff" ? ranges.daysOff : key === "creditHours" ? ranges.creditHours : ranges.dutyPeriods;
+        // A trip-length sweet spot is in days of an average trip, matched
+        // against the same average-trip-length scale the plain lean uses.
+        const bounds =
+          key === "daysOff"
+            ? ranges.daysOff
+            : key === "creditHours"
+              ? ranges.creditHours
+              : key === "dutyPeriods"
+                ? ranges.dutyPeriods
+                : ranges.avgTripLength;
         // Only daysOff/dutyPeriods ever actually carry min/max (creditHours
         // never receives range treatment — see RangeTarget's own doc
         // comment) — asRangeTargetForScoring/matchFromRange handle both
@@ -1609,7 +1634,15 @@ export function scoreBidPack(
       const noSpread = key === "hotelStandby" && ranges.hotelStandby[1] - ranges.hotelStandby[0] < 1e-9;
       const importance = noSpread
         ? 0
-        : weightToImportance(key, weights[key], hasExplicitTarget, isCommuter, hasCrashPad, confidence);
+        : weightToImportance(
+            key,
+            weights[key],
+            hasExplicitTarget,
+            isCommuter,
+            hasCrashPad,
+            confidence,
+            hasExplicitTarget ? targetImportance[key as ExplicitTargetKey] : undefined
+          );
       return {
         key,
         value: values[key],
@@ -1700,7 +1733,7 @@ export function scoreBidPack(
     violatedDealbreakers.push(...[...allWeekly, ...allDates].filter((c) => c.dealbreaker).map(commitmentDealbreakerViolation));
     const recurringCommitmentConflicts = allWeekly.filter((c) => !c.dealbreaker);
     const dateCommitmentConflicts = allDates.filter((c) => !c.dealbreaker);
-    const cappedScore = violatedDealbreakers.length > 0 ? Math.min(score, DEALBREAKER_SCORE_CAP) : score;
+    const cappedScore = violatedDealbreakers.length > 0 ? (score * DEALBREAKER_SCORE_CAP) / 100 : score;
     const penalty = commitmentPenalty(recurringCommitmentConflicts, dateCommitmentConflicts);
     const finalScore = Math.max(0, cappedScore - penalty);
 

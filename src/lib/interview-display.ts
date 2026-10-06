@@ -1,3 +1,4 @@
+import { INTERVIEW_TOPIC_BACKLOG } from "@/lib/interview-topics";
 import { allKnownVariableDescriptors } from "@/lib/preference-classifier";
 import type { InterviewAnswer, InterviewQuestion } from "@/types/interview-session";
 
@@ -13,15 +14,21 @@ const TARGET_LABELS: Record<string, string> = {
   dutyPeriods: "Duty periods",
   creditHours: "Credit hours",
   circadianTolerance: "Early shows in a row",
+  tripLength: "Trip length",
 };
 
 const LABELS = new Map(allKnownVariableDescriptors().map((d) => [d.id, d.label] as const));
 
-/** "Days off", "Hotel standby" — the topic a slider or number question is bound to, for its eyebrow. Null for choice and free-text questions, which aren't bound to one. */
+const TOPIC_LABELS = new Map<string, string>([
+  ...INTERVIEW_TOPIC_BACKLOG.map((t) => [t.id, t.label] as const),
+  ["closing", "Before we finish"],
+]);
+
+/** "Days off", "Hotel standby", "Commute logistics detail" — what a question is about, for its eyebrow: the dimension a slider or number question is bound to, otherwise the topic the interview tagged it with. Null when there's nothing meaningful to say. */
 export function questionTopicLabel(q: InterviewQuestion): string | null {
   if (q.kind === "target-slider") return TARGET_LABELS[q.boundTo] ?? LABELS.get(q.boundTo) ?? null;
   if (q.kind === "slider") return LABELS.get(q.boundTo) ?? null;
-  return null;
+  return q.topic ? TOPIC_LABELS.get(q.topic) ?? null : null;
 }
 
 /** How far toward a side a slider answer leans, in words — the same bands the slider itself shows. */

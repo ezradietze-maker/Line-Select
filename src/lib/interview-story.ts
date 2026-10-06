@@ -50,3 +50,30 @@ export function mergeStoryAndCityFacts(
   const pickerOnly = Object.fromEntries(Object.entries(cityPreferences).filter(([code]) => !coveredByStory.has(code)));
   return [...kept, ...factsFromCityPreferences(pickerOnly)];
 }
+
+/**
+ * A commuter's home city, when it's one of this pack's layover cities: a
+ * layover there is a night at home, which is worth more than any other
+ * overnight. Marked as a loved city (shown on the city screen, where the
+ * pilot can still change it), with the reason already on file so the
+ * interview doesn't ask "what is it about DEN?".
+ */
+export function homeCityReasonFact(code: string): PreferenceFact {
+  return {
+    id: crypto.randomUUID(),
+    statement: `${code} is home — a layover there is a night at home.`,
+    kind: "qualitative",
+    confidence: 1,
+    importance: 0.6,
+    source: { kind: "seed-question", questionKey: "commute-from" },
+    turnIndex: 0,
+    cityReason: { code, category: "people" },
+  };
+}
+
+/** A 3-letter airport code, uppercased, or null for anything else. */
+export function parseAirportCode(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const code = raw.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : null;
+}

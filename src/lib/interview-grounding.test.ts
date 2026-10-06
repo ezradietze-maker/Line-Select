@@ -49,3 +49,17 @@ describe("calendar implicit dimensions", () => {
     expect(values[pack.lines[1].id].longestDaysOffBlockPerLine).toBe(0);
   });
 });
+
+describe("computeBidPackGroundingStats — what a calendar hard line costs", () => {
+  it("counts the lines that never work each weekday and are off each date", () => {
+    // Trips placed on real days, as a parsed pack's are — without placement there's no calendar to count.
+    const pack = packWithCalendar();
+    const placed = { ...pack, lines: pack.lines.map((l) => ({ ...l, trips: l.trips.map((t) => ({ ...t, startDayIndex: 6 })) })) };
+    const g = computeBidPackGroundingStats(placed);
+    expect(g.linesFree?.linesWithCalendar).toBe(placed.lines.length);
+    expect(Object.keys(g.linesFree!.byWeekday).sort()).toEqual(["Fri", "Mon", "Sat", "Sun", "Thu", "Tue", "Wed"]);
+    expect(Object.keys(g.linesFree!.byDate)).toHaveLength(SAMPLE_BID_PACK.bidPeriodDays);
+    // Day 0 (2026-09-28) is off on line 0 only — its 6-day block — and the other lines' first day off is day 1.
+    expect(g.linesFree!.byDate["2026-09-28"]).toBe(1);
+  });
+});

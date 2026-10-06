@@ -270,6 +270,15 @@ export const TARGET_SLIDERS: TargetSliderQuestionConfig[] = [
     step: 0.25,
   },
   {
+    key: "tripLength",
+    question: "What trip length suits you best?",
+    helpText: "The sweet spot for an average trip on your line — say, 3 to 4 days — rather than just \"longer\" or \"shorter.\"",
+    unitSingular: "day",
+    unitPlural: "days",
+    formatValue: (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1)),
+    step: 0.5,
+  },
+  {
     key: "circadianTolerance",
     question: "How many consecutive early/late reports can you handle?",
     helpText: "Personalizes how a rough report-time stretch actually scores for you, rather than a one-size-fits-all rule.",

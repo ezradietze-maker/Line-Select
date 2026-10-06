@@ -941,3 +941,48 @@ describe("recurring commitment conflicts", () => {
     expect(ranked.find((r) => r.line.lineNumber === "9001")!.recurringCommitmentConflicts).toEqual([]);
   });
 });
+
+describe("targets that say how much they matter", () => {
+  it("weighs a pinned target by how strongly the pilot said it, not a flat 0.5", () => {
+    const base = { ...neutralProfile(), explicitTargets: { daysOff: 16 } };
+    const flat = rankLines(SAMPLE_BID_PACK, base)[0].dimensions.find((d) => d.key === "daysOff")!;
+    const strong = rankLines(SAMPLE_BID_PACK, { ...base, targetImportance: { daysOff: 0.95 } })[0].dimensions.find((d) => d.key === "daysOff")!;
+    expect(strong.importance).toBeGreaterThan(flat.importance);
+  });
+});
+
+describe("a trip-length sweet spot", () => {
+  it("scores lines by closeness to the pilot's ideal average trip, not just longer-is-better", () => {
+    const ranges = getBidPackRanges(SAMPLE_BID_PACK);
+    const avgTrip = (lineNumber: string) => {
+      const line = SAMPLE_BID_PACK.lines.find((l) => l.lineNumber === lineNumber)!;
+      return line.trips.reduce((s, t) => s + t.days, 0) / line.trips.length;
+    };
+    const lines = SAMPLE_BID_PACK.lines.map((l) => l.lineNumber).sort((a, b) => avgTrip(a) - avgTrip(b));
+    const shortest = lines[0];
+    const longest = lines[lines.length - 1];
+    // The sweet spot at the short end: the shortest-trip line should now match better than the longest.
+    const profile = { ...neutralProfile(), explicitTargets: { tripLength: avgTrip(shortest) }, targetImportance: { tripLength: 0.8 } };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const match = (n: string) => ranked.find((r) => r.line.lineNumber === n)!.dimensions.find((d) => d.key === "tripLength")!.match;
+    expect(ranges.tripLength[0]).toBeGreaterThan(0);
+    expect(match(shortest)).toBeGreaterThan(match(longest));
+  });
+});
+
+describe("dealbreaker cap keeps order", () => {
+  it("scales a violating line's score down rather than flattening every violator to the same number", () => {
+    const profile = {
+      ...neutralProfile(),
+      weights: { ...emptyWeights(), daysOff: 80 },
+      discoveredFacts: [dealbreakerFact({ type: "explicit-weight", key: "international", direction: -1 })],
+    };
+    const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    const violators = ranked.filter((r) => r.violatedDealbreakers.length > 0);
+    expect(violators.length).toBeGreaterThan(0);
+    for (const r of violators) expect(r.score).toBeLessThanOrEqual(35);
+    // Ranked order among violators follows their uncapped quality, so no two distinct lines collapse to one score by the cap alone.
+    const scores = violators.map((r) => r.score);
+    expect([...scores].sort((a, b) => b - a)).toEqual(scores);
+  });
+});

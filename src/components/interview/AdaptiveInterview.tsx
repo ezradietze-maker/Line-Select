@@ -12,6 +12,7 @@ import { parseSeniorityInput, SeniorityStep } from "@/components/interview/Senio
 import { BiddingStoryStep } from "@/components/interview/BiddingStoryStep";
 import { ChoiceStep, isTypingTarget } from "@/components/interview/ChoiceStep";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
+import { StoryReviewStep } from "@/components/interview/StoryReviewStep";
 import { ThinkingPanel, type LastExchange } from "@/components/interview/ThinkingPanel";
 import { CityPreferenceStep } from "@/components/interview/CityPreferenceStep";
 import { CommuterStep } from "@/components/interview/CommuterStep";
@@ -22,6 +23,8 @@ import { TargetSliderStep } from "@/components/interview/TargetSliderStep";
 import {
   HARD_CEILING_TURNS,
   MIN_TURNS_BEFORE_WRAP,
+  minTurnsBeforeWrap,
+  openEssentials,
   applyProfileUpdates,
   assessProfileRichness,
   buildTurnRequest,
@@ -36,7 +39,7 @@ import { clearDraft, loadDraft, saveDraft, type InterviewDraft } from "@/lib/int
 import { computeBidPackGroundingStats } from "@/lib/interview-grounding";
 import { answerElaboration, describeAnswer, questionTopicLabel } from "@/lib/interview-display";
 import { computeInterviewProgress } from "@/lib/interview-progress";
-import { mergeStoryAndCityFacts, storyCitySentiments } from "@/lib/interview-story";
+import { homeCityReasonFact, mergeStoryAndCityFacts, parseAirportCode, storyCitySentiments } from "@/lib/interview-story";
 import { cycleCitySentiment } from "@/lib/preference-logic";
 import { useDictation } from "@/lib/use-speech-to-text";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
@@ -306,6 +309,10 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   // change (a move, a new crash pad) is one tap, but never re-asked blank.
   const [isCommuter, setIsCommuter] = useState<boolean | null>(priorProfile?.isCommuter ?? null);
   const [hasCrashPad, setHasCrashPad] = useState<boolean | null>(priorProfile?.hasCrashPad ?? null);
+  /** Where a commuter commutes from (airport code) — prefilled from the story or last cycle, editable on the commuter step. */
+  const [commuteFrom, setCommuteFrom] = useState(priorProfile?.commuteFrom ?? "");
+  /** The commute-from city, when it's one of this pack's layovers and was marked as loved on the commuter step's Next. */
+  const [homeCity, setHomeCity] = useState<string | null>(null);
   const [cityPreferences, setCityPreferences] = useState<Record<string, CitySentiment>>(() => ({
     ...(priorProfile?.cityPreferences ?? {}),
   }));
@@ -317,10 +324,14 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   // are built from both (see `mergeStoryAndCityFacts`), and going back to
   // the story and resubmitting replaces these rather than piling up copies.
   const [storyFacts, setStoryFacts] = useState<PreferenceFact[]>([]);
+  /** Showing what was taken from the story, for the pilot to confirm or correct, before moving on. */
+  const [storyReview, setStoryReview] = useState(false);
   const [facts, setFacts] = useState<PreferenceFact[]>([]);
   const [transcript, setTranscript] = useState<InterviewTurnRecord[]>([]);
   const [turnsUsed, setTurnsUsed] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
+  /** What the interview took from the last answer, said back above the question it led to — keyed to that question so going back never shows a stale one. */
+  const [heard, setHeard] = useState<{ questionId: string; text: string } | null>(null);
   const [choiceSelection, setChoiceSelection] = useState<number | null>(null);
   const [choiceElaboration, setChoiceElaboration] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -400,6 +411,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   function resumeSavedDraft(d: InterviewDraft) {
     setIsCommuter(d.isCommuter);
     setHasCrashPad(d.hasCrashPad);
+    if (d.commuteFrom) setCommuteFrom(d.commuteFrom);
     if (d.seniorityNumber) setSeniorityText(String(d.seniorityNumber));
     if (d.bidStoryText) setBidStoryText(d.bidStoryText);
     setCityPreferences(d.cityPreferences);
@@ -421,6 +433,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       transcript: finalTranscript,
       isCommuter,
       hasCrashPad,
+      commuteFrom: parseAirportCode(commuteFrom),
       seniorityNumber: parseSeniorityInput(seniorityText),
       cityPreferencesSeed: cityPreferences,
       priorProfile,
@@ -467,10 +480,12 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
         setBidStoryError(body?.error ?? "Couldn't read that just now — you can try again, or skip and answer as you go instead.");
         return;
       }
-      const { profileUpdates, commuterStatus } = (await res.json()) as {
+      const { profileUpdates, commuterStatus, commuteFrom: storyCommuteFrom } = (await res.json()) as {
         profileUpdates: PreferenceFactUpdate[];
         commuterStatus?: boolean | null;
+        commuteFrom?: string | null;
       };
+      if (storyCommuteFrom) setCommuteFrom((prev) => prev || storyCommuteFrom);
       // The next screen asks this anyway — when the story already said, it
       // arrives answered for the pilot to confirm, never over their own pick.
       if (typeof commuterStatus === "boolean") setIsCommuter((prev) => prev ?? commuterStatus);
@@ -485,7 +500,8 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
         return { ...next, ...nextPicks };
       });
       setStoryFacts(extracted);
-      setPhase("commuter");
+      if (extracted.length > 0) setStoryReview(true);
+      else setPhase("commuter");
     } catch {
       setBidStoryError("Couldn't reach the interview service. Check your connection and try again, or skip for now.");
     } finally {
@@ -516,6 +532,8 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
         lifeEvent: extras?.lifeEvent,
         contradictionFlag: contradictionForThisTurn ?? undefined,
         bidStory: bidStoryText.trim() || undefined,
+        seniorityKnown: parseSeniorityInput(seniorityText) !== null,
+        commuteFrom: isCommuter ? parseAirportCode(commuteFrom) ?? undefined : undefined,
       });
       const res = await fetch("/api/interview-turn", {
         method: "POST",
@@ -555,6 +573,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
         return;
       }
       setCurrentQuestion(turn.question);
+      setHeard(turn.heard ? { questionId: turn.question.id, text: turn.heard } : null);
       setChoiceSelection(null);
       setChoiceElaboration("");
       setPhase("adaptive-question");
@@ -600,6 +619,8 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     hasStandby,
     preStepsDone,
     preStepTotal: preStepCount,
+    minTurns: minTurnsBeforeWrap(facts),
+    openEssentialsCount: openEssentials({ transcript, facts, isCommuter }).length,
   });
   const inSetup =
     phase === "seniority" || phase === "bidding-story" || phase === "commuter" || phase === "cities" || phase === "returning-check";
@@ -650,6 +671,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       savedAt: Date.now(),
       isCommuter,
       hasCrashPad,
+      commuteFrom: parseAirportCode(commuteFrom) ?? undefined,
       seniorityNumber: parseSeniorityInput(seniorityText),
       bidStoryText: bidStoryText.trim() || undefined,
       cityPreferences,
@@ -658,7 +680,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       turnsUsed,
       currentQuestion,
     });
-  }, [phase, currentQuestion, userId, bidPack.id, isCommuter, hasCrashPad, seniorityText, bidStoryText, cityPreferences, facts, transcript, turnsUsed]);
+  }, [phase, currentQuestion, userId, bidPack.id, isCommuter, hasCrashPad, commuteFrom, seniorityText, bidStoryText, cityPreferences, facts, transcript, turnsUsed]);
 
   // After a resume there's no in-memory history, so Back is only offered from the very first question (to the pre-steps) or once new answers exist to undo — never in a way that would wipe resumed progress.
   const canGoBack =
@@ -725,6 +747,35 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       );
     }
 
+    if (phase === "bidding-story" && storyReview) {
+      return (
+        <StoryReviewStep
+          facts={storyFacts}
+          eyebrow={preStepEyebrow("Your story")}
+          onRemove={(id) => {
+            const gone = storyFacts.find((f) => f.id === id);
+            setStoryFacts((prev) => prev.filter((f) => f.id !== id));
+            // A city taken off here comes off the city screen's prefill too.
+            if (gone?.measurable?.type === "city-sentiment") {
+              const { code, sentiment } = gone.measurable;
+              setCityPreferences((prev) => {
+                if (prev[code] !== sentiment) return prev;
+                const next = { ...prev };
+                delete next[code];
+                return next;
+              });
+            }
+          }}
+          onRestore={(restored) => {
+            setStoryFacts((prev) => [...prev, ...restored]);
+            setCityPreferences((prev) => ({ ...prev, ...storyCitySentiments(restored) }));
+          }}
+          onConfirm={() => setPhase("commuter")}
+          onEdit={() => setStoryReview(false)}
+        />
+      );
+    }
+
     if (phase === "bidding-story") {
       return (
         <BiddingStoryStep
@@ -738,6 +789,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
               Object.fromEntries(Object.entries(prev).filter(([code, sentiment]) => previousPicks[code] !== sentiment))
             );
             setStoryFacts([]);
+            setStoryReview(false);
             setPhase("commuter");
           }}
           busy={bidStoryBusy}
@@ -753,6 +805,22 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
         <CommuterStep value={isCommuter} onChange={setIsCommuter} base={bidPack.base} eyebrow={preStepEyebrow("Your commute")}>
           {isCommuter === true && (
             <div className="mt-6 rounded-xl border border-hairline bg-canvas/50 p-4">
+              <label htmlFor="commute-from" className="mb-1 block text-sm font-medium text-ink">
+                Where do you commute from?
+              </label>
+              <p className="mb-2 text-xs text-ink-muted">The airport code — if it&rsquo;s a layover in this pack, a trip that overnights there gets you a night at home.</p>
+              <input
+                id="commute-from"
+                type="text"
+                inputMode="text"
+                autoComplete="off"
+                autoCapitalize="characters"
+                maxLength={3}
+                value={commuteFrom}
+                onChange={(e) => setCommuteFrom(e.target.value.replace(/[^a-z]/gi, "").toUpperCase().slice(0, 3))}
+                placeholder="e.g. CLT"
+                className="mb-5 block w-28 rounded-lg border border-hairline bg-canvas/60 px-3 py-2 font-mono text-base uppercase tracking-wider text-readout placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
+              />
               <div className="text-sm font-medium text-ink">Got a crash pad in domicile?</div>
               <p className="mt-1 text-xs text-ink-muted">
                 Worth factoring in &mdash; without a place to stage between duty days, an extra separate trip costs you more than
@@ -780,7 +848,21 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
               </div>
             </div>
           )}
-          <StepNav onNext={() => setPhase("cities")} nextLabel="Next" disabled={isCommuter === null} />
+          <StepNav
+            onNext={() => {
+              // A layover in the city they commute from is a night at home — marked as loved on the city screen, where they can still change it.
+              const home = isCommuter ? parseAirportCode(commuteFrom) : null;
+              if (home && allCities.includes(home)) {
+                setCityPreferences((prev) => (prev[home] ? prev : { ...prev, [home]: "love" }));
+                setHomeCity(home);
+              } else {
+                setHomeCity(null);
+              }
+              setPhase("cities");
+            }}
+            nextLabel="Next"
+            disabled={isCommuter === null}
+          />
         </CommuterStep>
       );
     }
@@ -794,12 +876,17 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
             onToggleCity={(code) => setCityPreferences((prev) => cycleCitySentiment(prev, code))}
             eyebrow={preStepEyebrow("Layover cities")}
             fromStory={Object.entries(storyCitySentiments(storyFacts))
-              .filter(([code, sentiment]) => cityPreferences[code] === sentiment)
+              .filter(([code, sentiment]) => cityPreferences[code] === sentiment && code !== homeCity)
               .map(([code]) => code)}
+            homeCity={homeCity && cityPreferences[homeCity] === "love" ? homeCity : undefined}
           />
           <StepNav
             onNext={() => {
-              const startFacts = mergeStoryAndCityFacts(storyFacts, cityPreferences);
+              const merged = mergeStoryAndCityFacts(storyFacts, cityPreferences);
+              const startFacts =
+                homeCity && cityPreferences[homeCity] === "love" && !merged.some((f) => f.cityReason?.code === homeCity)
+                  ? [...merged, homeCityReasonFact(homeCity)]
+                  : merged;
               setFacts(startFacts);
               if (hasReturningCheck) {
                 setPhase("returning-check");
@@ -865,6 +952,12 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       return (
         <div key={q.id}>
           {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
+          {heard?.questionId === q.id && (
+            <p className="mb-5 flex items-start gap-2.5 text-sm leading-relaxed text-ink-muted">
+              <span className="mt-0.5 shrink-0 font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-good">Noted</span>
+              <span>{heard.text}</span>
+            </p>
+          )}
 
           {q.kind === "slider" && (
             <>

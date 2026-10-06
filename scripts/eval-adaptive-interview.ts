@@ -44,8 +44,51 @@ import type { BidPack } from "../src/types/bidpack";
 import type { InterviewAnswer, InterviewQuestion, InterviewTurnRecord, PreferenceFact } from "../src/types/interview-session";
 import type { CitySentiment, PreferenceProfile, RangeTarget } from "../src/types/preferences";
 
-const SIM_MODEL = "claude-opus-5-5";
-const JUDGE_MODEL = "claude-opus-5-5";
+const SIM_MODEL = process.env.SIM_MODEL || "claude-sonnet-5";
+const JUDGE_MODEL = process.env.JUDGE_MODEL || "claude-opus-5-5";
+const INTERVIEW_MODEL = process.env.INTERVIEW_MODEL || "claude-sonnet-5";
+
+// ---------------------------------------------------------------------------
+// Spend tracking — every call is metered, and the run stops before it can
+// pass BUDGET_USD. Prices are per million tokens and are an estimate (list
+// prices for the model family); cache writes bill at 1.25x input, reads 0.1x.
+// ---------------------------------------------------------------------------
+
+const PRICES: Record<string, { input: number; output: number }> = {
+  "claude-sonnet-5": { input: 3, output: 15 },
+  "claude-sonnet-5-5": { input: 3, output: 15 },
+  "claude-opus-5-5": { input: 5, output: 25 },
+  "claude-haiku-4-5-20251001": { input: 1, output: 5 },
+};
+const BUDGET_USD = Number(process.env.BUDGET_USD || "3");
+const spend = { usd: 0, byModel: {} as Record<string, { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; usd: number }> };
+
+function meter(model: string, u: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }) {
+  const price = PRICES[model] ?? { input: 5, output: 25 };
+  const usd =
+    (u.inputTokens * price.input + u.cacheWriteTokens * price.input * 1.25 + u.cacheReadTokens * price.input * 0.1 + u.outputTokens * price.output) / 1e6;
+  const m = (spend.byModel[model] ??= { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, usd: 0 });
+  m.calls++;
+  m.input += u.inputTokens;
+  m.output += u.outputTokens;
+  m.cacheRead += u.cacheReadTokens;
+  m.cacheWrite += u.cacheWriteTokens;
+  m.usd += usd;
+  spend.usd += usd;
+}
+
+function checkBudget() {
+  if (spend.usd > BUDGET_USD) throw new Error(`budget reached: $${spend.usd.toFixed(2)} of $${BUDGET_USD}`);
+}
+
+function meterResponse(model: string, res: Anthropic.Message) {
+  meter(model, {
+    inputTokens: res.usage.input_tokens,
+    outputTokens: res.usage.output_tokens,
+    cacheReadTokens: res.usage.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: res.usage.cache_creation_input_tokens ?? 0,
+  });
+}
 
 interface Truth {
   /** -100..100 for bipolar ids, 0..100 for magnitude-only ones; 0 = genuinely indifferent. */
@@ -70,6 +113,8 @@ interface Persona {
   storyCovers: string;
   /** Which of `truth.cities` they'd actually tap on the city picker (people don't always mark everything they feel). */
   pickerCities: Record<string, CitySentiment>;
+  /** "long" makes the simulated pilot write a several-paragraph story, covering most of what they care about. */
+  storyLength?: "long";
   truth: Truth;
 }
 
@@ -182,6 +227,38 @@ const PERSONAS: Persona[] = [
       ],
     },
   },
+  {
+    name: "thorough-planner",
+    isCommuter: true,
+    hasCrashPad: true,
+    storyLength: "long",
+    voice:
+      "Organized and articulate — writes in full paragraphs, explains the reasoning behind each preference, moderate jargon used naturally (DH, show time, backside, PBS), measured and pragmatic, occasionally wry about commuting. Answers questions directly, then adds a sentence of why.",
+    background:
+      "FO on the 767 in Memphis, 7 years at the company, commutes from Charlotte and keeps a crash pad in Memphis. Married; his wife teaches elementary school. Two kids, 6 and 9. His son swims and has meets on Wednesday evenings.",
+    storyCovers:
+      "His bidding order: days off first (aims for 15, will take 14, will not bid a 13-day-off line), then whether a trip lets him commute in the same day (late first-day shows) and get home the last day (early finish, likes a deadhead home at the end), then trip length (3-4 day trips mean fewer commutes), then layovers. Quiet hotel matters a lot (light sleeper, a hotel bar under the room ruins his rest), walkable food matters some, a gym is nice not essential. A trip or two of international is fine but not a month of Latin America backsides. He can do one early (0200-0500) show but two in a row wrecks him. Pay matters but he won't trade a day off for a few more hours. Hotel standby doesn't bother him, easy pay, as long as the hotel is decent. He'd work the trade board after awards to get a weekend back. Keeps duty periods at 14 or fewer — 16 is too many for a commuter. Wants days off in a couple of big blocks rather than scattered single days he can't get home on, and weekends with the kids count for more than weekdays. Tries to be home Wednesday evenings for his son's swim meets but it isn't a dealbreaker. Really wants Saturday October 10 off for his daughter's birthday party. Loves San Diego layovers; avoids Newark (the hotel is a dump) and Toluca.",
+    pickerCities: { SAN: "love", EWR: "avoid" },
+    truth: {
+      weights: {
+        daysOff: 70, tripLength: 40, international: -20, reportTime: 60, creditHours: -20, deadheadTolerance: 50,
+        hotelFood: 50, hotelGym: 30, hotelGrocery: 0, hotelQuiet: 80, hotelQuality: 50, circadianHealth: 60,
+        landings: 0, hotelStandby: 30, riskTolerance: 30, adminEffortAppetite: 40,
+      },
+      targets: { daysOff: { min: 14, ideal: 15 }, dutyPeriods: { max: 14 }, circadianTolerance: 1 },
+      cities: { SAN: "love", EWR: "avoid", TLC: "avoid" },
+      dealbreakers: ["Will not bid a line with fewer than 14 days off."],
+      implicit: { longestDaysOffBlockPerLine: 1, weekendDaysOffPerLine: 1 },
+      weekly: "Wed",
+      dates: ["2026-10-10"],
+      personal: [
+        "Commutes from Charlotte and keeps a crash pad in Memphis.",
+        "Wife is an elementary school teacher; two kids, 6 and 9.",
+        "Son's swim meets are Wednesday evenings — tries to be home, not a dealbreaker.",
+        "Daughter's birthday party is Saturday October 10 — really wants it off.",
+      ],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -234,11 +311,13 @@ async function callTool(
   toolName: string
 ): Promise<Record<string, unknown> | undefined> {
   for (let attempt = 0; attempt < 3; attempt++) {
+    checkBudget();
     const res = await client.messages.create({
       ...params,
       system: `${params.system ?? ""}\n\nAlways respond by calling the "${toolName}" tool — never with plain text.`,
       tool_choice: { type: "auto" },
     });
+    meterResponse(params.model, res);
     const use = res.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use" && c.name === toolName);
     if (use) return use.input as Record<string, unknown>;
   }
@@ -288,6 +367,7 @@ async function simAnswer(
 }
 
 async function simStory(client: Anthropic, persona: Persona): Promise<string> {
+  checkBudget();
   const res = await client.messages.create({
     model: SIM_MODEL,
     max_tokens: 3000,
@@ -295,10 +375,11 @@ async function simStory(client: Anthropic, persona: Persona): Promise<string> {
     messages: [
       {
         role: "user",
-        content: `The tool's first screen says: "Walk us through your whole bidding process, start to finish — every detail. The more you tell us, the better the rest of this goes." Write what you'd actually type into that box, in your own voice. Naturally you'd bring up: ${persona.storyCovers} Don't cover everything you care about — real people don't. Reply with only the text you'd type.`,
+        content: `The tool's first screen says: "Walk us through your whole bidding process, start to finish — every detail. The more you tell us, the better the rest of this goes." Write what you'd actually type into that box, in your own voice. Naturally you'd bring up: ${persona.storyCovers} ${persona.storyLength === "long" ? "You're the type who takes this seriously: write a long, thorough answer — several paragraphs, roughly 500-700 words, walking through your process in the order you actually think about it, with your reasons." : "Don't cover everything you care about — real people don't."} Reply with only the text you'd type.`,
       },
     ],
   });
+  meterResponse(SIM_MODEL, res);
   return res.content.map((c) => (c.type === "text" ? c.text : "")).join("").trim();
 }
 
@@ -436,7 +517,7 @@ async function judge(client: Anthropic, persona: Persona, story: string | null, 
 // One interview, end to end
 // ---------------------------------------------------------------------------
 
-async function runPersona(client: Anthropic, apiKey: string, pack: BidPack, persona: Persona, withStory: boolean, outDir: string) {
+async function runPersona(client: Anthropic, apiKey: string, pack: BidPack, persona: Persona, withStory: boolean, outDir: string, opts: { storyOnly: boolean; judge: boolean }) {
   const grounding = computeBidPackGroundingStats(pack);
   const ranges = getBidPackRanges(pack) as unknown as Record<string, [number, number]>;
   const cityCodes = rankLayoverCitiesByFrequency(pack).map((c) => c.code);
@@ -455,14 +536,26 @@ async function runPersona(client: Anthropic, apiKey: string, pack: BidPack, pers
     story = await simStory(client, persona);
     md.push(`## Bidding story\n\n${story}\n`);
     const t0 = Date.now();
-    const extraction = await runBiddingStoryExtraction(apiKey, { bidStoryText: story, grounding, base: pack.base, aircraft: pack.aircraft, isCommuter: null, cityCodes });
+    checkBudget();
+    const extraction = await runBiddingStoryExtraction(
+      apiKey,
+      { bidStoryText: story, grounding, base: pack.base, aircraft: pack.aircraft, isCommuter: null, cityCodes },
+      (u) => meter(INTERVIEW_MODEL, u)
+    );
     usage.ms += Date.now() - t0;
     if (!extraction.ok) throw new Error(`story extraction failed: ${extraction.error}`);
     storyFacts = applyProfileUpdates([], extraction.profileUpdates);
     storyCommuter = extraction.commuterStatus;
-    md.push(`## Extracted from story (${storyFacts.length})\n\n${storyFacts.map((f) => `- [${f.kind}${f.measurable ? ` ${JSON.stringify(f.measurable)}` : ""}${f.severity ? " DEALBREAKER" : ""}] ${f.statement}`).join("\n")}\n`);
+    md.push(`## Extracted from story (${storyFacts.length})\n\n${storyFacts.map((f) => `- [${f.kind}${f.measurable ? ` ${JSON.stringify(f.measurable)}` : ""} imp ${f.importance} conf ${f.confidence}${f.severity ? " DEALBREAKER" : ""}${f.recurringWeekday ? ` weekly:${f.recurringWeekday}` : ""}${f.specificDates ? ` dates:${f.specificDates.join(",")}` : ""}${f.cityReason ? ` cityReason:${JSON.stringify(f.cityReason)}` : ""}] ${f.statement}`).join("\n")}\n`);
     md.push(`Style phrases: ${JSON.stringify(extraction.styleSamplePhrases)} tags: ${JSON.stringify(extraction.styleTags)}${storyCommuter !== null ? ` commuter: ${storyCommuter}` : ""}\n`);
     log(`story: ${story.length} chars -> ${storyFacts.length} facts`);
+  }
+
+  if (opts.storyOnly) {
+    await flush();
+    const storyIds = new Set(storyFacts.flatMap((f) => (f.measurable && "key" in f.measurable ? [f.measurable.key] : f.measurable?.type === "implicit-weight" ? [f.measurable.variableId] : [])));
+    log(`story-only: ${storyFacts.length} facts, ids ${[...storyIds].join(",")}`);
+    return { persona: persona.name, storyOnly: true, storyChars: story?.length ?? 0, storyFacts: storyFacts.length, ids: [...storyIds], dealbreakers: storyFacts.filter((f) => f.severity).map((f) => f.statement), weekly: storyFacts.flatMap((f) => (f.recurringWeekday ? [f.recurringWeekday] : [])), dates: storyFacts.flatMap((f) => f.specificDates ?? []), commuter: storyCommuter };
   }
 
   // 2. City picker: the story's own picks prefill it, the pilot adds theirs on top.
@@ -482,7 +575,9 @@ async function runPersona(client: Anthropic, apiKey: string, pack: BidPack, pers
       bidStory: story ?? undefined,
     });
     const t0 = Date.now();
+    checkBudget();
     const result = await runInterviewTurn(apiKey, req, (u) => {
+      meter(INTERVIEW_MODEL, u);
       usage.turns++;
       usage.inputTokens += u.inputTokens;
       usage.outputTokens += u.outputTokens;
@@ -497,7 +592,11 @@ async function runPersona(client: Anthropic, apiKey: string, pack: BidPack, pers
     }
     facts = applyProfileUpdates(facts, result.turn.profileUpdates);
     const added = result.turn.profileUpdates.filter((u) => u.op !== "retire").map((u) => (u as { fact: PreferenceFact }).fact);
-    if (added.length) md.push(added.map((f) => `  - _${f.kind}${f.measurable ? ` ${JSON.stringify(f.measurable)} imp ${f.importance}` : ""}${f.severity ? " DEALBREAKER" : ""}: ${f.statement}_`).join("\n"));
+    const retired = result.turn.profileUpdates.filter((u) => u.op === "retire").length;
+    if (added.length) md.push(added.map((f) => `  - _${f.kind}${f.measurable ? ` ${JSON.stringify(f.measurable)} imp ${f.importance}` : ""}${f.severity ? " DEALBREAKER" : ""}${f.recurringWeekday ? ` weekly:${f.recurringWeekday}` : ""}${f.specificDates ? ` dates:${f.specificDates.join(",")}` : ""}: ${f.statement}_`).join("\n"));
+    if (retired) md.push(`  - _retired ${retired}_`);
+    if (result.turn.heard) md.push(`  > heard: ${result.turn.heard}`);
+    md.push(`  > reasoning (t${turnsUsed}, ${Math.round((Date.now() - t0) / 100) / 10}s, floor ${req.minTurnsBeforeWrap}, uncovered: ${req.uncoveredExplicitWeightIds.join(",") || "none"}, essentials: ${req.openEssentials.join(",") || "none"}): ${result.turn.reasoning ?? "-"}`);
     if (result.turn.action === "wrap_up" || !result.turn.question || turnsUsed >= HARD_CEILING_TURNS) {
       wrapped = result.turn.action === "wrap_up";
       md.push(`\n**${wrapped ? "Wrapped up" : "Stopped"} after ${turnsUsed} questions.**\n`);
@@ -505,7 +604,7 @@ async function runPersona(client: Anthropic, apiKey: string, pack: BidPack, pers
     }
     const q = result.turn.question;
     const answer = await simAnswer(client, persona, conversation, q, ranges);
-    const qLine = `Q${turnsUsed + 1} (${q.kind}${"boundTo" in q ? ` ${q.boundTo}` : ""}): ${q.prompt}${q.kind === "slider" ? ` [${q.lowLabel} | ${q.centerLabel} | ${q.highLabel}]` : ""}${q.kind === "choice" ? ` [${q.options.map((o) => o.label).join(" / ")}]` : ""}`;
+    const qLine = `Q${turnsUsed + 1} (${q.kind}${"boundTo" in q ? ` ${q.boundTo}` : ""}${q.topic ? ` · ${q.topic}` : ""}${"rangeRole" in q && q.rangeRole ? ` ${q.rangeRole}` : ""}): ${q.prompt}${q.kind === "slider" ? ` [${q.lowLabel} | ${q.centerLabel} | ${q.highLabel}]` : ""}${q.kind === "choice" ? ` [${q.options.map((o) => o.label).join(" / ")}]` : ""}`;
     const aLine = `A: ${formatAnswer(q, answer)}`;
     conversation.push(qLine, aLine);
     md.push(`\n**${qLine}**\n${aLine}`);
@@ -530,7 +629,7 @@ async function runPersona(client: Anthropic, apiKey: string, pack: BidPack, pers
       .filter((f) => f.kind === "qualitative")
       .map((f) => `${f.statement}${f.recurringWeekday ? ` [weekly: ${f.recurringWeekday}]` : ""}${f.specificDates ? ` [dates: ${f.specificDates.join(", ")}]` : ""}`),
   };
-  const grade = await judge(client, persona, story, conversation, profileSummary);
+  const grade = opts.judge ? await judge(client, persona, story, conversation, profileSummary) : { skipped: true, overall: null as number | null };
 
   const summary = {
     persona: persona.name,
@@ -578,6 +677,7 @@ async function main() {
   const args = process.argv.slice(2);
   const [packPath, outDir, ...rest] = args;
   const withStory = !rest.includes("--no-story");
+  const opts = { storyOnly: rest.includes("--story-only"), judge: !rest.includes("--no-judge") };
   const names = rest.filter((a) => !a.startsWith("--"));
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || !packPath || !outDir) throw new Error("usage: eval-adaptive-interview.ts <pack.json> <outDir> [persona...] [--no-story]");
@@ -585,8 +685,9 @@ async function main() {
   await mkdir(outDir, { recursive: true });
   const client = new Anthropic({ apiKey });
   const personas = names.length ? PERSONAS.filter((p) => names.includes(p.name)) : PERSONAS;
-  const results = await Promise.all(personas.map((p) => runPersona(client, apiKey, pack, p, withStory, outDir).catch((e) => ({ persona: p.name, error: String(e) }))));
-  await writeFile(path.join(outDir, `summary${withStory ? "" : "-nostory"}.json`), JSON.stringify(results, null, 1));
+  const results = await Promise.all(personas.map((p) => runPersona(client, apiKey, pack, p, withStory, outDir, opts).catch((e) => ({ persona: p.name, error: String(e) }))));
+  await writeFile(path.join(outDir, `summary${withStory ? "" : "-nostory"}${opts.storyOnly ? "-storyonly" : ""}.json`), JSON.stringify({ results, spend }, null, 1));
+  console.log(`SPEND (estimate): $${spend.usd.toFixed(3)}`, JSON.stringify(spend.byModel));
   console.log(JSON.stringify(results.map((r) => ("error" in r ? r : { ...r, grade: undefined, targets: undefined, cities: undefined })), null, 1));
 }
 

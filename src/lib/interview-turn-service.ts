@@ -1,11 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
-import { MIN_TURNS_BEFORE_WRAP, deterministicFactFromAnswer } from "@/lib/interview-engine";
+import { deterministicFactFromAnswer } from "@/lib/interview-engine";
+import { parseAirportCode } from "@/lib/interview-story";
+import { INTERVIEW_TOPIC_BACKLOG } from "@/lib/interview-topics";
 import { buildBiddingStoryPrompt, buildInterviewSystemPrompt } from "@/lib/interview-prompt";
 import { allKnownVariableDescriptors } from "@/lib/preference-classifier";
 import type {
   BiddingStoryRequestBody,
   ExplicitWeightKey,
+  InterviewAnswer,
   InterviewQuestion,
   PreferenceFact,
   PreferenceFactUpdate,
@@ -81,7 +84,7 @@ async function createToolCall(
   return response!;
 }
 
-const EXPLICIT_TARGET_KEYS: ExplicitTargetKey[] = ["daysOff", "creditHours", "dutyPeriods", "circadianTolerance"];
+const EXPLICIT_TARGET_KEYS: ExplicitTargetKey[] = ["daysOff", "creditHours", "dutyPeriods", "circadianTolerance", "tripLength"];
 
 /**
  * Built per-turn rather than a static const: below `MIN_TURNS_BEFORE_WRAP`,
@@ -112,10 +115,10 @@ function profileUpdatesSchemaProperty() {
           description: "Required for op 'add' or 'revise'.",
           properties: {
             id: { type: "string", description: "Required for op 'revise' — the id of one of the facts listed in currentFacts (below) being updated. Never invent an id you don't see there — if nothing in currentFacts actually needs correcting, use 'add' for a new fact instead of 'revise'." },
-            statement: { type: "string", description: "Plain-English, pilot-voice, finished copy." },
+            statement: { type: "string", description: "Shown to the pilot under \"In your words\": first person, their own key words, one sentence under 25 words, nothing they didn't say." },
             kind: { type: "string", enum: ["measurable", "qualitative"] },
             confidence: { type: "number", description: "0-1." },
-            importance: { type: "number", description: "0-1." },
+            importance: { type: "number", description: "0-1, how strongly THEY said it: exactly 0 doesn't matter, 0.2-0.35 mild lean, 0.4-0.6 clear preference, 0.7-0.85 strong, 0.9-1 top priority." },
             severity: {
               type: "string",
               enum: ["dealbreaker"],
@@ -141,7 +144,7 @@ function profileUpdatesSchemaProperty() {
                 rangeRole: {
                   type: "string",
                   enum: ["min", "ideal", "max"],
-                  description: "For 'explicit-target' only, and only when 'daysOff'/'dutyPeriods' — mirrors the question's own rangeRole. Omit for a plain single-number target (including creditHours, always).",
+                  description: "For 'explicit-target' only, and only when 'daysOff'/'dutyPeriods'/'tripLength' — mirrors the question's own rangeRole. Omit for a plain single-number target (including creditHours, always).",
                 },
                 variableId: { type: "string", description: "For 'implicit-weight'." },
                 code: { type: "string", description: "For 'city-sentiment' — a real city code from this bid pack." },
@@ -152,7 +155,7 @@ function profileUpdatesSchemaProperty() {
             cityReason: {
               type: "object",
               description:
-                "Only for a qualitative fact that's specifically the 'why' behind a city-sentiment love/avoid pick (never on a measurable fact). Lets this tie back to a real city and, when hotel-related, surface that city's real review summary — without you needing to name the city again in the statement text for the app to find it.",
+                "Only for a qualitative fact that records the pilot's OWN stated reason for loving or avoiding a city — never a reason you inferred or assumed; no reason given means no cityReason fact (never on a measurable fact). Lets this tie back to a real city and, when hotel-related, surface that city's real review summary — without you needing to name the city again in the statement text for the app to find it.",
               properties: {
                 code: { type: "string", description: "The real city code this reason is about — must match a city-sentiment fact already on file." },
                 category: { type: "string", enum: ["weather", "people", "hotel", "layover-length", "downtime", "other"] },
@@ -180,6 +183,9 @@ function profileUpdatesSchemaProperty() {
   } as const;
 }
 
+/** Every value a question's `topic` can take — one subject per question; see `InterviewQuestion.topic`. */
+export const QUESTION_TOPICS: string[] = [...INTERVIEW_TOPIC_BACKLOG.map((t) => t.id), "closing", "other"];
+
 export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
   return {
   name: "submit_interview_turn",
@@ -188,19 +194,42 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
     : "Submit this turn's decision: the next question to ask (wrapping up is not available yet — there's still real, required ground to cover), plus any updates to the pilot's profile learned from their last answer.",
   input_schema: {
     type: "object",
+    // Order matters: the model writes these top to bottom, so it reads the
+    // pilot's last answer (heard), records it (profileUpdates), and thinks
+    // (reasoning) before it ever writes the next question. Live, with the
+    // question first, whole answers went unrecorded while it raced ahead.
     properties: {
+      heard: {
+        type: "string",
+        description:
+          "First, before anything else: one short line (under 20 words) saying back what the pilot's LAST answer told you — the gist in your own plain words, in their register, never a quote and never a claim they didn't make. The pilot sees it above your next question, so it must be exactly right. Empty string only when there is no previous answer yet.",
+      },
+      profileUpdates: profileUpdatesSchemaProperty(),
+      reasoning: {
+        type: "string",
+        description: "Internal-only: why you chose this action. Never shown to the pilot.",
+      },
       action: canWrapUp ? { type: "string", enum: ["ask", "wrap_up"] } : { type: "string", enum: ["ask"] },
+      // Not nullable while wrapping isn't allowed: live, a model with every
+      // gate clear but the floor not yet reached sent `"question": null`
+      // twice in a row rather than finding one more thing worth asking.
       question: {
-        type: ["object", "null"],
-        description: "Required when action is 'ask'; null when action is 'wrap_up'.",
+        type: canWrapUp ? ["object", "null"] : "object",
+        description: canWrapUp ? "Required when action is 'ask'; null when action is 'wrap_up'." : "Required — wrapping up isn't available yet, so this is always a real question.",
         properties: {
           kind: { type: "string", enum: ["slider", "target-slider", "choice", "free-text"] },
-          prompt: { type: "string", description: "The question text itself, in pilot voice." },
+          topic: {
+            type: "string",
+            enum: QUESTION_TOPICS,
+            description:
+              "The ONE topic-backlog subject this question is about (\"closing\" for the final anything-I-missed check, \"other\" only if nothing fits). One question, one topic — if you find yourself wanting a second topic, that's the next question.",
+          },
+          prompt: { type: "string", description: "The question text itself, in pilot voice — one question, never two joined by \"and separately\"." },
           helpText: { type: "string", description: "Optional one-line context shown under the prompt." },
           boundTo: {
             type: "string",
             description:
-              "Required for kind 'slider' or 'target-slider'. For 'slider', must be one of the EXPLICIT-WEIGHT ids (never 'dutyPeriods', never an implicit id). For 'target-slider', must be one of the EXPLICIT-TARGET ids (daysOff, creditHours, departures, or circadianTolerance) — see the system prompt's catalog section for the exact lists.",
+              "Required for kind 'slider' or 'target-slider'. For 'slider', must be one of the EXPLICIT-WEIGHT ids (never 'dutyPeriods', never an implicit id). For 'target-slider', must be one of the EXPLICIT-TARGET ids (daysOff, creditHours, dutyPeriods, circadianTolerance, or tripLength) — see the system prompt's catalog section for the exact lists.",
           },
           lowLabel: { type: "string", description: "Required for kind 'slider'." },
           highLabel: { type: "string", description: "Required for kind 'slider'." },
@@ -211,7 +240,7 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
             type: "string",
             enum: ["min", "ideal", "max"],
             description:
-              "Only for kind 'target-slider' on 'daysOff' or 'dutyPeriods' when you're building a tolerance band (floor/ideal/ceiling) instead of one pinned number — see the system prompt's range-target guidance. Omit entirely for a plain single-number target-slider (including any 'creditHours' target-slider, which never gets range treatment).",
+              "Only for kind 'target-slider' on 'daysOff', 'dutyPeriods' or 'tripLength' when you're building a tolerance band (floor/ideal/ceiling) instead of one pinned number — see the system prompt's range-target guidance. Omit entirely for a plain single-number target-slider (including any 'creditHours' target-slider, which never gets range treatment).",
           },
           options: {
             type: "array",
@@ -224,12 +253,7 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
           },
           placeholder: { type: "string", description: "Optional, for kind 'free-text'." },
         },
-        required: ["kind", "prompt"],
-      },
-      profileUpdates: profileUpdatesSchemaProperty(),
-      reasoning: {
-        type: "string",
-        description: "Internal-only: why you chose this action. Never shown to the pilot.",
+        required: ["kind", "topic", "prompt"],
       },
     },
     // "question" is required at this top level even though it's legitimately
@@ -240,7 +264,7 @@ export function buildTurnTool(canWrapUp: boolean): Anthropic.Tool {
     // output token ceiling (well under budget every time it happened) but
     // from the field simply reading as skippable. Listing it here is a much
     // stronger signal than the field's own description alone.
-    required: ["action", "question", "profileUpdates"],
+    required: ["heard", "profileUpdates", "action", "question"],
   },
   };
 }
@@ -262,6 +286,8 @@ function buildUserContent(body: TurnRequestBody, extraNote?: string): Anthropic.
     // questions get WRITTEN (rule 9 in interview-prompt.ts), and as the
     // place to check before asking about something they already covered.
     bidStory: body.bidStory,
+    // Where a commuter commutes from — known, so never asked; a layover there is a night at home.
+    commuteFrom: body.commuteFrom,
   });
   const perTurn = JSON.stringify({
     transcript: body.transcript.map((t) => ({ question: t.question, answer: t.answer })),
@@ -282,6 +308,12 @@ function buildUserContent(body: TurnRequestBody, extraNote?: string): Anthropic.
     softCapTurns: body.softCapTurns,
     hardCeilingTurns: body.hardCeilingTurns,
     uncoveredExplicitWeightIds: body.uncoveredExplicitWeightIds,
+    minTurnsBeforeWrap: body.minTurnsBeforeWrap,
+    openEssentials: body.openEssentials,
+    closingAllowed: body.closingAllowed,
+    seniorityKnown: body.seniorityKnown,
+    // Which topics have already had a question, in order — so the next one doesn't circle back to a finished subject.
+    topicsAsked: body.transcript.map((t) => t.question.topic ?? "other"),
     // Returning-pilot signals — all absent for a first-time interview.
     // priorFactsChanged: facts the pilot themselves flagged as no longer
     // accurate, NOT added to currentFacts since they aren't current
@@ -313,7 +345,7 @@ function isExplicitTargetKey(key: unknown): key is ExplicitTargetKey {
 }
 
 /** Only "daysOff"/"dutyPeriods" ever get range treatment — a rangeRole on "creditHours" (or a garbage value) is silently dropped rather than rejecting the whole fact/question over it. */
-const RANGE_TARGET_KEYS = new Set<ExplicitTargetKey>(["daysOff", "dutyPeriods"]);
+const RANGE_TARGET_KEYS = new Set<ExplicitTargetKey>(["daysOff", "dutyPeriods", "tripLength"]);
 
 function parseRangeRole(key: ExplicitTargetKey, raw: unknown): "min" | "ideal" | "max" | undefined {
   if (!RANGE_TARGET_KEYS.has(key)) return undefined;
@@ -383,6 +415,7 @@ const TARGET_UNIT_LABELS: Record<ExplicitTargetKey, [string, string]> = {
   creditHours: ["hour", "hours"],
   dutyPeriods: ["duty period", "duty periods"],
   circadianTolerance: ["consecutive report", "consecutive reports"],
+  tripLength: ["day", "days"],
 };
 
 /**
@@ -402,13 +435,20 @@ function decodeIfJsonText(raw: unknown): unknown {
   }
 }
 
+/** A real question, not a stub — live, the model twice sent `{"kind":"slider","prompt":"placeholder"}` under schema pressure. */
+function isRealPrompt(prompt: string): boolean {
+  const text = prompt.trim();
+  return text.length >= 12 && !/^(placeholder|todo|tbd|question)\b/i.test(text);
+}
+
 export function parseQuestion(rawInput: unknown): InterviewQuestion | null {
   const raw = decodeIfJsonText(rawInput);
   if (!raw || typeof raw !== "object") return null;
   const q = raw as Record<string, unknown>;
-  if (typeof q.prompt !== "string" || !q.prompt.trim()) return null;
+  if (typeof q.prompt !== "string" || !isRealPrompt(q.prompt)) return null;
   const id = crypto.randomUUID();
   const helpText = typeof q.helpText === "string" ? q.helpText : undefined;
+  const topic = typeof q.topic === "string" && QUESTION_TOPICS.includes(q.topic) ? q.topic : "other";
 
   // The model occasionally mislabels a target-only id (dutyPeriods, or
   // daysOff/creditHours when it wants an exact number) as kind "slider"
@@ -425,6 +465,7 @@ export function parseQuestion(rawInput: unknown): InterviewQuestion | null {
       kind: "target-slider",
       prompt: q.prompt,
       helpText,
+      topic,
       boundTo: q.boundTo,
       unitSingular: typeof q.unitSingular === "string" ? q.unitSingular : fallbackSingular,
       unitPlural: typeof q.unitPlural === "string" ? q.unitPlural : fallbackPlural,
@@ -436,7 +477,7 @@ export function parseQuestion(rawInput: unknown): InterviewQuestion | null {
     if (typeof q.lowLabel !== "string" || typeof q.highLabel !== "string" || typeof q.centerLabel !== "string") {
       return null;
     }
-    return { id, kind: "slider", prompt: q.prompt, helpText, boundTo: q.boundTo, lowLabel: q.lowLabel, highLabel: q.highLabel, centerLabel: q.centerLabel };
+    return { id, kind: "slider", prompt: q.prompt, helpText, topic, boundTo: q.boundTo, lowLabel: q.lowLabel, highLabel: q.highLabel, centerLabel: q.centerLabel };
   }
   if (q.kind === "target-slider" && isExplicitTargetKey(q.boundTo)) {
     if (typeof q.unitSingular !== "string" || typeof q.unitPlural !== "string") return null;
@@ -445,6 +486,7 @@ export function parseQuestion(rawInput: unknown): InterviewQuestion | null {
       kind: "target-slider",
       prompt: q.prompt,
       helpText,
+      topic,
       boundTo: q.boundTo,
       unitSingular: q.unitSingular,
       unitPlural: q.unitPlural,
@@ -456,13 +498,16 @@ export function parseQuestion(rawInput: unknown): InterviewQuestion | null {
       .filter((o): o is { label: string; description?: string } => !!o && typeof o.label === "string")
       .map((o) => ({ label: o.label, description: typeof o.description === "string" ? o.description : undefined }));
     if (options.length < 2) return null;
-    return { id, kind: "choice", prompt: q.prompt, helpText, options };
+    return { id, kind: "choice", prompt: q.prompt, helpText, topic, options };
   }
   if (q.kind === "free-text") {
-    return { id, kind: "free-text", prompt: q.prompt, helpText, placeholder: typeof q.placeholder === "string" ? q.placeholder : undefined };
+    return { id, kind: "free-text", prompt: q.prompt, helpText, topic, placeholder: typeof q.placeholder === "string" ? q.placeholder : undefined };
   }
   return null;
 }
+
+/** Below this, an explicit-weight fact's importance means "doesn't matter" and is stored as exactly 0 — see its use in `parseProfileUpdates`. */
+export const INDIFFERENT_IMPORTANCE = 0.2;
 
 /** Individual bad profile updates are dropped rather than failing the whole turn — the question the pilot needs to keep going is the critical part of the response; losing one mis-shaped fact is low-stakes by comparison. */
 export function parseProfileUpdates(rawInput: unknown, turnIndex: number, answeredQuestionId: string | undefined): PreferenceFactUpdate[] {
@@ -510,13 +555,22 @@ export function parseProfileUpdates(rawInput: unknown, turnIndex: number, answer
           ? ("dealbreaker" as const)
           : undefined;
 
+      // An explicit preference read at under 0.2 importance is the model's
+      // way of writing "doesn't really matter" — and any value above 0 is
+      // shown to the pilot as a lean (an amenity as "matters to you," a
+      // slider nudged off center). Live-tested: "report time's not a big
+      // deal" came back as +20 toward late shows, "I don't eat hotel food
+      // much" as food mattering 15. Below this floor it's genuinely 0.
+      const rawImportance = Math.min(1, Math.max(0, f.importance));
+      const importance = measurable?.type === "explicit-weight" && rawImportance < INDIFFERENT_IMPORTANCE ? 0 : rawImportance;
+
       const fact: PreferenceFact = {
         id: u.op === "revise" && typeof f.id === "string" ? f.id : crypto.randomUUID(),
         statement: f.statement,
         kind: f.kind,
         measurable,
         confidence: Math.min(1, Math.max(0, f.confidence)),
-        importance: Math.min(1, Math.max(0, f.importance)),
+        importance,
         severity,
         source: answeredQuestionId
           ? { kind: "adaptive-question", questionId: answeredQuestionId }
@@ -586,18 +640,141 @@ async function requestTurnFromModel(
 
 /**
  * The tool schema can't express "question is required when action is 'ask'"
- * as a hard constraint (only the top-level action/profileUpdates are truly
- * required) — the model sometimes returns action "ask" with no question
- * object at all. Below `MIN_TURNS_BEFORE_WRAP` this must never be read as a
- * wrap-up: caught live, this exact gap silently ended a real pilot's
- * interview after only 5 turns even with `buildTurnTool`'s enum restriction
- * in place, because the restriction only ever stopped the model from
- * *choosing* "wrap_up" — it did nothing about "ask" with a missing question,
- * which reached the exact same dead end through the older, separate
- * null-question fallback below.
+ * as a hard constraint — the model sometimes returns action "ask" with no
+ * question object, or (live) a stub like `{"kind":"slider","prompt":"placeholder"}`.
+ * Before wrapping is allowed, that must never be read as a wrap-up: caught
+ * live, the gap once silently ended a real pilot's interview after 5 turns.
  */
 const MISSING_QUESTION_RETRY_NOTE =
-  "IMPORTANT: your previous response had action \"ask\" but no valid \"question\" object. Wrapping up is not available yet (either you're still below the minimum-turns floor, or real catalog coverage is still incomplete — see uncoveredExplicitWeightIds) — you must return action \"ask\" with a complete question object: \"prompt\" is always required, plus lowLabel/highLabel/centerLabel/boundTo for kind \"slider\", unitSingular/unitPlural/boundTo for kind \"target-slider\", or at least 2 \"options\" for kind \"choice\". A kind \"free-text\" question only ever needs \"prompt\" — use that if nothing else fits.";
+  "IMPORTANT: your previous response had action \"ask\" but no valid \"question\" object. Wrapping up is not available yet — you must return action \"ask\" with a complete, real question: \"topic\" and \"prompt\" are always required (a real question, never a placeholder), plus lowLabel/highLabel/centerLabel/boundTo for kind \"slider\", unitSingular/unitPlural/boundTo for kind \"target-slider\", or at least 2 \"options\" for kind \"choice\". A kind \"free-text\" question only ever needs topic and prompt — use that if nothing else fits.";
+
+/** Whether a new measurable fact says exactly what one already on file says — same binding, same direction/number/sentiment, same strength. */
+function restatesMeasurable(a: PreferenceFact, b: PreferenceFact): boolean {
+  const x = a.measurable;
+  const y = b.measurable;
+  if (!x || !y || x.type !== y.type || Math.abs(a.importance - b.importance) > 0.05 || a.severity !== b.severity) return false;
+  if (x.type === "explicit-weight" && y.type === "explicit-weight") return x.key === y.key && x.direction === y.direction;
+  if (x.type === "implicit-weight" && y.type === "implicit-weight") return x.variableId === y.variableId && x.direction === y.direction;
+  if (x.type === "explicit-target" && y.type === "explicit-target") return x.key === y.key && x.value === y.value && x.rangeRole === y.rangeRole;
+  if (x.type === "city-sentiment" && y.type === "city-sentiment") return x.code === y.code && x.sentiment === y.sentiment;
+  return false;
+}
+
+const sameText = (a: string, b: string) => a.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() === b.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * Drops "add" updates that only repeat what's already on file. Live, once
+ * told to record everything from each answer, the model began re-adding
+ * facts it already had — a Saturday commitment restated three turns
+ * running, one fact literally reading "Duplicate of the 14 duty-period
+ * ceiling fact." A real change (a new strength, a new number, a dealbreaker
+ * added or dropped) is never an exact restatement, so it always survives.
+ */
+export function dropRestatedFacts(updates: PreferenceFactUpdate[], existing: PreferenceFact[]): PreferenceFactUpdate[] {
+  return updates.filter((u) => {
+    if (u.op !== "add") return true;
+    const f = u.fact;
+    if (f.kind === "measurable") return !existing.some((e) => e.kind === "measurable" && restatesMeasurable(f, e));
+    return !existing.some(
+      (e) =>
+        e.kind === "qualitative" &&
+        e.severity === f.severity &&
+        e.recurringWeekday === f.recurringWeekday &&
+        (sameText(e.statement, f.statement) || (!!f.recurringWeekday && Math.abs(e.importance - f.importance) <= 0.05 && !f.specificDates && !e.specificDates))
+    );
+  });
+}
+
+/** An answer long enough that recording nothing from it means the extraction was skipped, not that the pilot said nothing. */
+const SUBSTANTIVE_ANSWER_CHARS = 80;
+
+const MISSED_EXTRACTION_RETRY_NOTE =
+  "IMPORTANT: the pilot's last answer said something real, and your previous response recorded nothing from it in profileUpdates. Read that answer again and record what it actually says — a measurable fact where it matches the catalog, a qualitative fact (in their words) where it doesn't, a \"revise\" where it changes something already in currentFacts. Only if it genuinely adds nothing new may profileUpdates stay empty.";
+
+/** The text a pilot actually wrote in their last answer — a free-text answer, or the note they added to a slider/number/choice. */
+function lastAnswerText(answer: InterviewAnswer | undefined): string {
+  if (!answer) return "";
+  if (answer.kind === "free-text") return answer.text;
+  return "elaboration" in answer && answer.elaboration ? answer.elaboration : "";
+}
+
+/**
+ * Merges the client-side reading of a slider/number answer with the model's
+ * own extraction. The pilot's own slider position is the truth about how
+ * strongly they feel — live, a pilot set risk tolerance at -30 and pay at
+ * -45 with a short note, and the model's reading of that note turned them
+ * into -70 and -80. So the exact answer is appended last (it wins, via
+ * `finalizeAdaptiveProfile`'s last-fact-per-key rule), unless the pilot's
+ * own note points the other way from the slider (the model, having read the
+ * note, disagreed on direction) — then the words win.
+ */
+export function mergeDeterministicFact(updates: PreferenceFactUpdate[], deterministic: PreferenceFact, hasElaboration: boolean): PreferenceFactUpdate[] {
+  const d = deterministic.measurable;
+  if (!d) return updates;
+  const modelFacts = updates.flatMap((u) => (u.op !== "retire" && u.fact.measurable?.type === d.type ? [u.fact] : []));
+
+  if (d.type === "explicit-target") {
+    // A number answer pins the value exactly; how much it matters comes from
+    // the model's reading of everything they've said about it (a flat 0.7
+    // would undercut "that's the whole game" at 0.95).
+    const reading = modelFacts.find(
+      (f) => f.measurable?.type === "explicit-target" && f.measurable.key === d.key && f.measurable.rangeRole === d.rangeRole
+    );
+    const fact = reading ? { ...deterministic, importance: Math.max(reading.importance, deterministic.importance), severity: reading.severity } : deterministic;
+    return [...updates, { op: "add", fact }];
+  }
+
+  if (d.type !== "explicit-weight") return [...updates, { op: "add", fact: deterministic }];
+  const sameKey = modelFacts.filter((f) => f.measurable?.type === "explicit-weight" && f.measurable.key === d.key);
+  // The pilot's own words point the other way from the slider: the words win.
+  if (hasElaboration && sameKey.some((f) => f.measurable?.type === "explicit-weight" && f.measurable.direction !== d.direction)) return updates;
+  // The slider sets the strength; a refusal the pilot put in words ("never") still makes it a dealbreaker.
+  const severity = sameKey.find((f) => f.severity)?.severity;
+  return [...updates, { op: "add", fact: severity ? { ...deterministic, severity } : deterministic }];
+}
+
+/** Words that mean the question is announcing an end it can't promise — rule 4 in the system prompt. */
+const COUNTDOWN = /\b(last (question|thing|one)|final (question|one)|one more)\b/i;
+/** Two asks joined into one question — rule 1. */
+const COMPOUND = /\band (separately|also|on the flip side)\b|\?[^?]+\?/i;
+
+/**
+ * One structured line per turn — retries, duplicates dropped, and the
+ * question-craft slips this test found (compound asks, countdown words,
+ * length) — so how the interview behaves with real pilots shows up in the
+ * server logs without paying for another simulated run. Contains no pilot
+ * words, only counts and flags.
+ */
+function logTurnMetrics(
+  req: TurnRequestBody,
+  action: "ask" | "wrap_up",
+  question: InterviewQuestion | null,
+  updates: PreferenceFactUpdate[],
+  heard: string | undefined,
+  m: { extractionRetry: boolean; questionRetry: boolean; fallbackQuestion: boolean; droppedRestated: number }
+) {
+  const prompt = question?.prompt ?? "";
+  console.log(
+    "[interview-turn] metrics",
+    JSON.stringify({
+      turn: req.turnsUsed,
+      action,
+      floor: req.minTurnsBeforeWrap,
+      uncovered: req.uncoveredExplicitWeightIds.length,
+      essentials: req.openEssentials.length,
+      kind: question?.kind,
+      topic: question?.topic,
+      words: prompt ? prompt.split(/\s+/).length : 0,
+      compound: COMPOUND.test(prompt),
+      countdown: COUNTDOWN.test(prompt),
+      added: updates.filter((u) => u.op === "add").length,
+      revised: updates.filter((u) => u.op === "revise").length,
+      dealbreakers: updates.filter((u) => u.op !== "retire" && u.fact.severity === "dealbreaker").length,
+      heard: !!heard,
+      ...m,
+    })
+  );
+}
 
 export async function runInterviewTurn(
   apiKey: string,
@@ -605,26 +782,40 @@ export async function runInterviewTurn(
   onUsage?: (usage: TurnUsage) => void
 ): Promise<InterviewTurnResult> {
   const client = new Anthropic({ apiKey });
-  // Structural, not just prose: below the floor, or with real catalog
-  // coverage still missing, "wrap_up" is dropped from the tool schema's own
-  // enum entirely (see buildTurnTool) so the model cannot select it no
-  // matter how the conversation reads — the hard ceiling is the one escape
-  // hatch, so a pilot who genuinely won't engage with a couple of ids can't
-  // trap the loop forever. Mirrors MIN_TURNS_BEFORE_WRAP's own reasoning:
-  // a soft "don't wrap up with gaps" instruction is a strong steer, not a
-  // guarantee — live testing showed the model treats prose guidance as
-  // negotiable in a way it structurally can't treat a missing enum value.
-  const pastFloor = req.turnsUsed >= MIN_TURNS_BEFORE_WRAP;
-  const hasFullCoverage = req.uncoveredExplicitWeightIds.length === 0;
-  const pastHardCeiling = req.turnsUsed >= req.hardCeilingTurns;
-  const canWrapUp = pastFloor && (hasFullCoverage || pastHardCeiling);
+  // Structural, not just prose: until the story-adjusted floor is reached
+  // AND every gate is clear (catalog coverage, the essential conversations),
+  // "wrap_up" is dropped from the tool schema's own enum (see buildTurnTool)
+  // so the model cannot select it no matter how the conversation reads. The
+  // soft cap is the escape hatch: a pilot who won't engage with a couple of
+  // ids, or a model that never tags its closing question, can't trap the
+  // loop until the hard ceiling.
+  const pastFloor = req.turnsUsed >= req.minTurnsBeforeWrap;
+  const gatesClear = req.uncoveredExplicitWeightIds.length === 0 && req.openEssentials.length === 0;
+  const pastSoftCap = req.turnsUsed >= req.softCapTurns;
+  const canWrapUp = pastFloor && (gatesClear || pastSoftCap);
   const lastTurn = req.transcript[req.transcript.length - 1];
   const answeredQuestionId = lastTurn?.question.id;
+  const answerText = lastAnswerText(lastTurn?.answer);
+
+  const metrics = { extractionRetry: false, questionRetry: false, fallbackQuestion: false, droppedRestated: 0 };
 
   try {
     let input = await requestTurnFromModel(client, req, canWrapUp, undefined, onUsage);
     if (!input) {
       return { ok: false, error: "Couldn't read the interview response." };
+    }
+
+    // A real answer that came back with nothing recorded from it is a
+    // skipped extraction, not an empty answer — live, whole answers went
+    // unrecorded for several turns at a time. One corrective retry.
+    if (
+      answerText.trim().length >= SUBSTANTIVE_ANSWER_CHARS &&
+      dropRestatedFacts(parseProfileUpdates(input.profileUpdates, req.turnsUsed, answeredQuestionId), req.facts).length === 0
+    ) {
+      console.warn("[interview-turn] substantive answer produced no updates, retrying once", { turnsUsed: req.turnsUsed });
+      metrics.extractionRetry = true;
+      const retryInput = await requestTurnFromModel(client, req, canWrapUp, MISSED_EXTRACTION_RETRY_NOTE, onUsage);
+      if (retryInput) input = retryInput;
     }
 
     // The tool schema itself excludes "wrap_up" from the enum when !canWrapUp
@@ -636,67 +827,69 @@ export async function runInterviewTurn(
         turnsUsed: req.turnsUsed,
         pastFloor,
         uncoveredCount: req.uncoveredExplicitWeightIds.length,
+        openEssentials: req.openEssentials,
       });
     }
     const action = input.action === "wrap_up" && canWrapUp ? "wrap_up" : "ask";
     let question = action === "ask" ? parseQuestion(input.question) : null;
 
-    // See MISSING_QUESTION_RETRY_NOTE's own doc comment — this is the fix for
-    // the live bug, not a defensive nicety: a malformed/missing question this
-    // early must never silently collapse into a wrap-up.
     if (action === "ask" && !question && !canWrapUp) {
-      console.warn("[interview-turn] ask action with no valid question below MIN_TURNS_BEFORE_WRAP, retrying once", { turnsUsed: req.turnsUsed, rawQuestion: JSON.stringify(input.question) });
+      console.warn("[interview-turn] ask action with no valid question before wrap-up is allowed, retrying once", { turnsUsed: req.turnsUsed, rawQuestion: JSON.stringify(input.question) });
+      metrics.questionRetry = true;
       const retryInput = await requestTurnFromModel(client, req, canWrapUp, MISSING_QUESTION_RETRY_NOTE, onUsage);
       if (retryInput) {
+        // Keep whatever the first response extracted if the retry didn't redo it.
+        if (parseProfileUpdates(retryInput.profileUpdates, req.turnsUsed, answeredQuestionId).length === 0) {
+          retryInput.profileUpdates = input.profileUpdates;
+        }
         input = retryInput;
         question = parseQuestion(input.question);
       }
     }
 
-    const profileUpdates = parseProfileUpdates(input.profileUpdates, req.turnsUsed, answeredQuestionId);
+    const parsedUpdates = parseProfileUpdates(input.profileUpdates, req.turnsUsed, answeredQuestionId);
+    let profileUpdates = dropRestatedFacts(parsedUpdates, req.facts);
+    metrics.droppedRestated = parsedUpdates.length - profileUpdates.length;
     const reasoning = typeof input.reasoning === "string" ? input.reasoning : undefined;
+    const heard = typeof input.heard === "string" && input.heard.trim() && lastTurn ? input.heard.trim() : undefined;
 
-    // Appended after the model's own extraction for this turn (never before
-    // it) so it wins any conflict for the same key — see
-    // `deterministicFactFromAnswer`'s own doc comment for why the model
-    // can't be trusted to correctly restate a number it was already handed.
-    // Skipped when the pilot added their own elaboration text: that's
-    // exactly the case where the raw value alone can be misleading (a
-    // slider answer the pilot's own words go on to contradict or qualify),
-    // so here the model's reading — which sees the elaboration too — is the
-    // one that should win, not a blind read of the number.
-    const elaboration = lastTurn && "elaboration" in lastTurn.answer ? lastTurn.answer.elaboration : undefined;
-    if (lastTurn && !elaboration) {
+    // The pilot's own slider/number answer, read exactly — see mergeDeterministicFact.
+    if (lastTurn) {
       const deterministicFact = deterministicFactFromAnswer(lastTurn.question, lastTurn.answer, req.turnsUsed);
-      if (deterministicFact) profileUpdates.push({ op: "add", fact: deterministicFact });
+      if (deterministicFact) {
+        const hasElaboration = "elaboration" in lastTurn.answer && !!lastTurn.answer.elaboration?.trim();
+        profileUpdates = mergeDeterministicFact(profileUpdates, deterministicFact, hasElaboration);
+      }
     }
 
     if (action === "wrap_up") {
-      return { ok: true, turn: { action: "wrap_up", question: null, profileUpdates, reasoning } };
+      logTurnMetrics(req, "wrap_up", null, profileUpdates, heard, metrics);
+      return { ok: true, turn: { action: "wrap_up", question: null, profileUpdates, reasoning, heard } };
     }
 
     if (!question) {
       if (!canWrapUp) {
         // The retry above also failed to produce a valid question — never
         // end the interview this early over a malformed response. A generic,
-        // always-valid free-text question keeps the loop going rather than
-        // silently wrapping up.
+        // always-valid free-text question keeps the loop going.
         question = {
           id: crypto.randomUUID(),
           kind: "free-text",
+          topic: "other",
           prompt: "What else about your ideal schedule should I know before I put together your ranking?",
         };
+        metrics.fallbackQuestion = true;
       } else {
-        // Past the floor, a model that couldn't produce a valid question is
-        // a safe signal it was genuinely ambivalent about asking anything
-        // further — caught live in Phase 6 transcript testing, almost always
-        // in the interview's later turns.
+        // Once wrapping is allowed, a model that couldn't produce a valid
+        // question was genuinely ambivalent about asking anything further.
         console.warn("[interview-turn] ask action with no valid question, treating as wrap_up", { turnsUsed: req.turnsUsed, rawQuestion: JSON.stringify(input.question) });
-        return { ok: true, turn: { action: "wrap_up", question: null, profileUpdates, reasoning } };
+        logTurnMetrics(req, "wrap_up", null, profileUpdates, heard, metrics);
+        return { ok: true, turn: { action: "wrap_up", question: null, profileUpdates, reasoning, heard } };
       }
     }
 
-    return { ok: true, turn: { action: "ask", question, profileUpdates, reasoning } };
+    logTurnMetrics(req, "ask", question, profileUpdates, heard, metrics);
+    return { ok: true, turn: { action: "ask", question, profileUpdates, reasoning, heard } };
   } catch (e) {
     console.error("[interview-turn] request failed", e);
     return { ok: false, error: "Couldn't reach the interview service." };
@@ -737,6 +930,10 @@ function buildStoryExtractionTool(): Anthropic.Tool {
           enum: ["commuter", "local", "unknown"],
           description: "Whether the story says the pilot commutes to this base from elsewhere, lives in base, or doesn't say.",
         },
+        commuteFrom: {
+          type: "string",
+          description: "For a commuter, the 3-letter airport code of the city they commute FROM, when the story says it (\"I commute from Charlotte\" -> \"CLT\", \"flying in from Denver\" -> \"DEN\"). Empty string when it isn't stated or they aren't a commuter — never guess.",
+        },
       },
       required: ["profileUpdates", "styleSamplePhrases", "styleTags", "commuterStatus"],
     },
@@ -759,7 +956,7 @@ function buildStoryUserMessage(req: BiddingStoryRequestBody): string {
 }
 
 export type BiddingStoryExtractionResult =
-  | { ok: true; profileUpdates: PreferenceFactUpdate[]; styleSamplePhrases: string[]; styleTags: string[]; commuterStatus: boolean | null }
+  | { ok: true; profileUpdates: PreferenceFactUpdate[]; styleSamplePhrases: string[]; styleTags: string[]; commuterStatus: boolean | null; commuteFrom: string | null }
   | { ok: false; error: string };
 
 /** Bounds so one adversarial or malformed response can't produce absurdly long stored style material. */
@@ -769,7 +966,11 @@ const MAX_STYLE_TAG_LENGTH = 40;
 /** A story this long always says something extractable — an empty result from one is a failed read, not an empty story. */
 const MIN_STORY_CHARS_EXPECTING_FACTS = 120;
 
-async function requestStoryExtraction(client: Anthropic, req: BiddingStoryRequestBody): Promise<Record<string, unknown> | null> {
+async function requestStoryExtraction(
+  client: Anthropic,
+  req: BiddingStoryRequestBody,
+  onUsage?: (usage: TurnUsage) => void
+): Promise<Record<string, unknown> | null> {
   const response = await createToolCall(client, {
     // A detailed, "every small detail" narrative can produce many more
     // extracted facts in one response than a single normal turn ever
@@ -785,14 +986,24 @@ async function requestStoryExtraction(client: Anthropic, req: BiddingStoryReques
     outputTokens: response.usage.output_tokens,
     stopReason: response.stop_reason,
   });
+  onUsage?.({
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
+  });
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
   return toolUse ? (toolUse.input as Record<string, unknown>) : null;
 }
 
-export async function runBiddingStoryExtraction(apiKey: string, req: BiddingStoryRequestBody): Promise<BiddingStoryExtractionResult> {
+export async function runBiddingStoryExtraction(
+  apiKey: string,
+  req: BiddingStoryRequestBody,
+  onUsage?: (usage: TurnUsage) => void
+): Promise<BiddingStoryExtractionResult> {
   const client = new Anthropic({ apiKey });
   try {
-    let input = await requestStoryExtraction(client, req);
+    let input = await requestStoryExtraction(client, req, onUsage);
     if (
       req.bidStoryText.trim().length >= MIN_STORY_CHARS_EXPECTING_FACTS &&
       parseProfileUpdates(input?.profileUpdates, 0, undefined).length === 0
@@ -801,7 +1012,7 @@ export async function runBiddingStoryExtraction(apiKey: string, req: BiddingStor
         storyChars: req.bidStoryText.length,
         rawType: typeof input?.profileUpdates,
       });
-      input = (await requestStoryExtraction(client, req)) ?? input;
+      input = (await requestStoryExtraction(client, req, onUsage)) ?? input;
     }
     if (!input) return { ok: false, error: "Couldn't read the extraction response." };
 
@@ -826,8 +1037,9 @@ export async function runBiddingStoryExtraction(apiKey: string, req: BiddingStor
       : [];
 
     const commuterStatus = input.commuterStatus === "commuter" ? true : input.commuterStatus === "local" ? false : null;
+    const commuteFrom = parseAirportCode(input.commuteFrom);
 
-    return { ok: true, profileUpdates, styleSamplePhrases, styleTags, commuterStatus };
+    return { ok: true, profileUpdates, styleSamplePhrases, styleTags, commuterStatus, commuteFrom };
   } catch (e) {
     console.error("[interview-bidding-story] request failed", e);
     return { ok: false, error: "Couldn't reach the interview service." };

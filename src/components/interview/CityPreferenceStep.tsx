@@ -17,11 +17,13 @@ interface CityPreferenceStepProps {
   eyebrow?: string;
   /** Cities the bidding story itself named, already marked — said out loud so the marks aren't a mystery. */
   fromStory?: string[];
+  /** The city a commuter commutes from, when it's a layover here — marked as loved, and said why. */
+  homeCity?: string;
 }
 
 const PROMPT = "Any layover cities you love or want to avoid?";
 
-export function CityPreferenceStep({ cities, preferences, onToggleCity, eyebrow, fromStory = [] }: CityPreferenceStepProps) {
+export function CityPreferenceStep({ cities, preferences, onToggleCity, eyebrow, fromStory = [], homeCity }: CityPreferenceStepProps) {
   return (
     <div>
       <QuestionPrompt
@@ -36,6 +38,12 @@ export function CityPreferenceStep({ cities, preferences, onToggleCity, eyebrow,
       />
 
       <RevealControls title={PROMPT} className="mt-6">
+        {homeCity && (
+          <p className="mb-3 rounded-lg border border-good/30 bg-good-soft/50 px-3 py-2 text-xs text-ink-muted">
+            <span className="font-medium text-good">{homeCity} is home:</span> marked as a favorite &mdash; a layover there is a
+            night at home. Tap it to change.
+          </p>
+        )}
         {fromStory.length > 0 && (
           <p className="mb-3 rounded-lg border border-accent/30 bg-accent-soft/50 px-3 py-2 text-xs text-ink-muted">
             <span className="font-medium text-accent">From your story:</span> {fromStory.join(", ")} already marked &mdash; tap to

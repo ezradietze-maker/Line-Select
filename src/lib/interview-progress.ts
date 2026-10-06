@@ -15,12 +15,11 @@ export interface InterviewProgress {
 }
 
 /**
- * Progress a pilot can trust. The old "question 2 of roughly 35" counted
- * against the soft cap even though the interview can't end before
- * MIN_TURNS_BEFORE_WRAP questions AND every dimension is covered — so it
- * overstated the length at the start and understated nothing. The real
- * remaining work is whichever is larger: the questions left to reach the
- * minimum, or one more question per still-uncovered topic.
+ * Progress a pilot can trust. The interview can't end before its
+ * story-adjusted minimum (`minTurnsBeforeWrap`), every dimension is covered,
+ * and the essential conversations have happened — so the real remaining work
+ * is whichever is larger: the questions left to reach the minimum, or one
+ * question per still-uncovered dimension plus one per open essential.
  */
 export function computeInterviewProgress(params: {
   turnsUsed: number;
@@ -30,10 +29,14 @@ export function computeInterviewProgress(params: {
   preStepTotal: number;
   /** False when the pilot's bid pack has no hotel standby, which drops that topic from the count. Defaults to true. */
   hasStandby?: boolean;
+  /** The story-adjusted floor (`minTurnsBeforeWrap`); defaults to the no-story floor. */
+  minTurns?: number;
+  /** Essential conversations still to have (`openEssentials`), each roughly one question. */
+  openEssentialsCount?: number;
 }): InterviewProgress {
-  const { turnsUsed, uncoveredCount, preStepsDone, preStepTotal, hasStandby = true } = params;
+  const { turnsUsed, uncoveredCount, preStepsDone, preStepTotal, hasStandby = true, minTurns = MIN_TURNS_BEFORE_WRAP, openEssentialsCount = 0 } = params;
   const topicsTotal = applicableExplicitWeightIds(hasStandby).length;
-  const questionsLeft = Math.max(MIN_TURNS_BEFORE_WRAP - turnsUsed, uncoveredCount, 1);
+  const questionsLeft = Math.max(minTurns - turnsUsed, uncoveredCount + openEssentialsCount, 1);
   const done = preStepsDone + turnsUsed;
   const total = preStepTotal + turnsUsed + questionsLeft;
   return {

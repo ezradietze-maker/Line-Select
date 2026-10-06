@@ -22,54 +22,75 @@ import type { CitySentiment, ExplicitTargetKey, PreferenceProfile, RangeTarget }
  */
 
 /**
- * Below this, "wrap_up" isn't even offered as a valid action — the turn
- * tool's own schema excludes it (see `interview-turn-service.ts`'s
- * `buildTurnTool`), so the model structurally cannot end the interview this
- * early no matter how it reads the conversation so far. Added after a real
- * live-usage failure: with only a soft-guidance floor ("treat early turns as
- * still exploring"), the model wrapped up after just 4 turns on a real
- * pilot's interview — nowhere near enough to touch a meaningful slice of the
- * 15-topic backlog. A model can misjudge or misread soft language; it can't
- * select an action that isn't in its tool's enum.
+ * Below this many questions, "wrap_up" isn't offered at all — the turn tool's
+ * own schema drops it (see `buildTurnTool`), because a model told it *may*
+ * stop treats that as *should* stop: live, a soft floor let it wrap after 4
+ * questions, then exactly at 8, then at 14 with half the catalog untouched.
  *
- * Set at 12, not lower originally: live re-testing after the first fix
- * (floor 8) showed the model reaches directly for wrap_up the instant it's
- * legally available — it stopped at exactly turnsUsed 8 both times, having
- * covered barely half the topic backlog. The model consistently treats
- * "allowed to stop" as "should stop" rather than as a floor with real
- * discretion above it, so the floor itself has to carry more of the weight
- * than the softer guidance further down in the prompt does.
- *
- * Raised to 22 after a further live run at 12 wrapped at turnsUsed 14 —
- * past the floor, but having touched only 6 of 15 explicit-weight ids and
- * skipped 6 of 15 topic-backlog areas entirely, on an engaged, elaborate
- * pilot answering every question with real detail. The floor alone was
- * still the dominant lever on how thorough a real interview actually runs,
- * regardless of how much prose the prompt spent on "don't stop early" —
- * paired with the new per-turn `uncoveredExplicitWeightIds` list (see
- * below), which gives the model a concrete, checkable gap rather than a
- * paragraph to remember to re-read.
+ * The floor is no longer what keeps the interview thorough, though — the
+ * coverage gate (`uncoveredExplicitWeightIds`) and the essential
+ * conversations (`openEssentials`) are. A fixed floor of 22 contradicted the
+ * story screen's own promise ("the more you give here, the fewer questions
+ * later"): live-tested, a pilot whose 700-word story covered 13 of 16
+ * dimensions still got 22 questions, the model's own reasoning saying
+ * "turnsUsed is only 12, below the 22 floor" while it re-asked a duty-period
+ * ceiling he'd already given. So the floor now drops one question for every
+ * dimension the story covered, never below `MIN_TURNS_FLOOR`.
  */
-export const MIN_TURNS_BEFORE_WRAP = 22;
+export const MIN_TURNS_BEFORE_WRAP = 16;
+/** The lowest the story-adjusted floor goes — a thorough story still leaves real follow-up worth asking. */
+export const MIN_TURNS_FLOOR = 10;
+
+/** The story-adjusted floor — see `MIN_TURNS_BEFORE_WRAP`. */
+export function minTurnsBeforeWrap(facts: PreferenceFact[]): number {
+  const fromStory = new Set<string>();
+  for (const f of facts) {
+    if (f.source.kind !== "seed-question" || f.source.questionKey !== "bidding-story" || !f.measurable) continue;
+    if (f.measurable.type === "explicit-weight" || f.measurable.type === "explicit-target") fromStory.add(f.measurable.key);
+  }
+  return Math.max(MIN_TURNS_FLOOR, MIN_TURNS_BEFORE_WRAP - fromStory.size);
+}
+
+/** Once the floor and every gate are met, the model may keep going while a question would still change the ranking — up to here, where it's told to wrap. */
+export const SOFT_CAP_TURNS = 28;
 /**
- * Between MIN_TURNS_BEFORE_WRAP and this, wrap_up is offered but the model
- * is told to keep going unless one more turn is clearly worth it; below
- * MIN_TURNS_BEFORE_WRAP it isn't offered at all (see above). Raised from
- * 18 alongside the same live finding that motivated the floor increase —
- * genuinely covering all 15 explicit-weight ids plus real depth on several
- * topic-backlog threads realistically takes turns in the high 20s/low 30s,
- * not high teens. Product numbers, not engineering ones — easy to retune.
+ * Enforced client-side, never model-side — the loop simply stops calling the
+ * turn route at this point regardless of what the last response asked for,
+ * so a rambling pilot can't make the interview run away.
  */
-export const SOFT_CAP_TURNS = 32;
+export const HARD_CEILING_TURNS = 36;
+
 /**
- * Enforced client-side, never model-side — the loop simply stops calling
- * the turn route at this point regardless of what the last response asked
- * for, per the hard requirement that a rambling pilot can't make the
- * interview run away no matter what the model itself judges. Raised from 28
- * alongside MIN_TURNS_BEFORE_WRAP/SOFT_CAP_TURNS so the ceiling still sits
- * meaningfully above the new soft cap rather than nearly coinciding with it.
+ * The conversations an interview has to have before it can wrap, beyond
+ * catalog coverage — each one a real gap a pilot would notice: never being
+ * asked about the dates that matter this month, a city they flagged with no
+ * why, a commuter never asked about the commute, no chance to say "you
+ * missed something." Satisfied by a question tagged with that topic (the
+ * model tags every question — see `InterviewQuestion.topic`), or by facts
+ * that already answer it.
  */
-export const HARD_CEILING_TURNS = 42;
+export function openEssentials(params: { transcript: InterviewTurnRecord[]; facts: PreferenceFact[]; isCommuter: boolean | null }): string[] {
+  const { transcript, facts, isCommuter } = params;
+  const asked = new Set(transcript.map((t) => t.question.topic).filter((t): t is string => !!t));
+  const open: string[] = [];
+
+  if (!asked.has("day-of-week-calendar")) open.push("day-of-week-calendar");
+
+  const hasTarget = (key: string) => facts.some((f) => f.measurable?.type === "explicit-target" && f.measurable.key === key);
+  if (!hasTarget("daysOff") && !asked.has("home-time")) open.push("home-time");
+  // How many times they report — one of the first numbers a pilot reads on a line.
+  if (!hasTarget("dutyPeriods") && !asked.has("duty-periods")) open.push("duty-periods");
+
+  const cityCodes = facts.flatMap((f) => (f.measurable?.type === "city-sentiment" ? [f.measurable.code] : []));
+  const reasoned = new Set(facts.flatMap((f) => (f.cityReason ? [f.cityReason.code] : [])));
+  if (cityCodes.some((c) => !reasoned.has(c)) && !asked.has("city-preferences")) open.push("city-preferences");
+
+  if (isCommuter && !asked.has("deadhead-commuter") && !asked.has("commute-logistics-detail")) open.push("commute-logistics-detail");
+
+  // Always last: once everything else is done, one open "anything I missed?" before wrapping.
+  if (!asked.has("closing")) open.push("closing");
+  return open;
+}
 
 /**
  * Every real, closed-catalog explicit-weight id — the single source of truth
@@ -128,27 +149,71 @@ export function buildTurnRequest(params: {
   lifeEvent?: string;
   contradictionFlag?: { newStatement: string; priorStatement: string };
   bidStory?: string;
+  seniorityKnown?: boolean;
+  commuteFrom?: string;
 }): TurnRequestBody {
+  const uncovered = uncoveredExplicitWeightIds(params.facts, packHasHotelStandby(params.grounding));
+  const floor = minTurnsBeforeWrap(params.facts);
+  const essentials = openEssentials(params);
   return {
     ...params,
     softCapTurns: SOFT_CAP_TURNS,
     hardCeilingTurns: HARD_CEILING_TURNS,
-    uncoveredExplicitWeightIds: uncoveredExplicitWeightIds(params.facts, packHasHotelStandby(params.grounding)),
+    uncoveredExplicitWeightIds: uncovered,
+    minTurnsBeforeWrap: floor,
+    openEssentials: essentials,
+    closingAllowed:
+      uncovered.length === 0 && essentials.every((e) => e === "closing") && essentials.includes("closing") && params.turnsUsed >= floor - 1,
   };
 }
 
-/** Applies the LLM's profile deltas to the running fact list — additive by default, but a later answer can revise or retire an earlier inference as the picture sharpens, not just append forever. */
+/**
+ * Whether two facts are about the same real thing, so the newer replaces the
+ * older instead of sitting beside it: the same measurable slot (key/variable/
+ * city, and for a range target the same role), the same weekly commitment,
+ * the same dates, or a qualitative fact restated word for word. Live, every
+ * one of these produced duplicates a pilot would see — a weekly commitment
+ * softened on one turn and restated on another kept both (and the old
+ * dealbreaker); "no standby, period" said twice became two dealbreaker
+ * banners on every standby line; a date stated firmly twice showed three
+ * times. Word-for-word matching is limited to qualitative facts: one
+ * sentence can legitimately back several measurable facts ("none of the
+ * food, gym or grocery stuff matters" is three bindings).
+ */
+function sameRealThing(a: PreferenceFact, b: PreferenceFact): boolean {
+  if (a.measurable && b.measurable) return bindingIdentityKey(a.measurable) === bindingIdentityKey(b.measurable);
+  if (a.measurable || b.measurable) return false;
+  if (a.recurringWeekday && a.recurringWeekday === b.recurringWeekday) return true;
+  if (a.specificDates && b.specificDates && sameDates(a.specificDates, b.specificDates)) return true;
+  return normalizedStatement(a.statement) === normalizedStatement(b.statement);
+}
+
+function sameDates(a: string[], b: string[]): boolean {
+  const x = [...a].sort();
+  const y = [...b].sort();
+  return x.length === y.length && x.every((d, i) => d === y[i]);
+}
+
+function normalizedStatement(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** Applies the LLM's profile deltas to the running fact list — additive by default, but a later answer can revise or retire an earlier inference as the picture sharpens, and a new fact about something already on file replaces it (see `sameRealThing`). */
 export function applyProfileUpdates(facts: PreferenceFact[], updates: PreferenceFactUpdate[]): PreferenceFact[] {
   let next = facts;
   for (const update of updates) {
-    if (update.op === "add") {
-      next = [...next, update.fact];
-    } else if (update.op === "revise") {
-      const idx = next.findIndex((f) => f.id === update.fact.id);
-      next = idx === -1 ? [...next, update.fact] : next.map((f, i) => (i === idx ? update.fact : f));
-    } else {
+    if (update.op === "retire") {
       next = next.filter((f) => f.id !== update.factId);
+      continue;
     }
+    const incoming = update.fact;
+    // A revise of a real id replaces that fact in place; anything else
+    // (an add, or a revise of an id the model invented) is appended — and
+    // either way, whatever else was about the same real thing goes.
+    const idx = update.op === "revise" ? next.findIndex((f) => f.id === incoming.id) : -1;
+    const others = next.filter((f, i) => i === idx || !sameRealThing(f, incoming));
+    const at = idx === -1 ? -1 : others.findIndex((f) => f.id === incoming.id);
+    next = at === -1 ? [...others, incoming] : others.map((f, i) => (i === at ? incoming : f));
   }
   return next;
 }
@@ -220,7 +285,7 @@ export function deterministicFactFromAnswer(
       question.rangeRole === "min" ? "floor" : question.rangeRole === "max" ? "ceiling" : "exact target";
     return {
       id: crypto.randomUUID(),
-      statement: `Pinned a ${roleLabel} of ${answer.value} on "${question.prompt}"`,
+      statement: `Pinned ${roleLabel === "exact target" ? "an" : "a"} ${roleLabel} of ${answer.value} on "${question.prompt}"`,
       kind: "measurable",
       measurable: { type: "explicit-target", key: question.boundTo, value: answer.value, rangeRole: question.rangeRole },
       confidence: 1,
@@ -416,6 +481,8 @@ export function finalizeAdaptiveProfile(params: {
   transcript: InterviewTurnRecord[];
   isCommuter: boolean | null;
   hasCrashPad: boolean | null;
+  /** Where a commuter commutes from (airport code), when they said. */
+  commuteFrom?: string | null;
   /** Entered at the start of the interview; a returning pilot who left it blank keeps the number from last cycle. */
   seniorityNumber?: number | null;
   cityPreferencesSeed?: Record<string, CitySentiment>;
@@ -430,6 +497,7 @@ export function finalizeAdaptiveProfile(params: {
   const cityPreferences: Record<string, CitySentiment> = { ...cityPreferencesSeed };
   const implicitWeights: Record<string, number> = {};
   const implicitConfidence: Record<string, number> = {};
+  const targetImportance: Partial<Record<ExplicitTargetKey, number>> = {};
 
   const cycleId = new Date().toISOString();
   const sortedFacts = [...facts].sort((a, b) => a.turnIndex - b.turnIndex);
@@ -462,6 +530,11 @@ export function finalizeAdaptiveProfile(params: {
         const existing = asRangeTarget(explicitTargets[binding.key]);
         explicitTargets[binding.key] = { ...existing, [binding.rangeRole]: binding.value };
       }
+      // How much the target matters, and how sure we are of it — the
+      // strongest statement about this target wins, so a floor said firmly
+      // isn't watered down by a later passing mention of the ideal.
+      targetImportance[binding.key] = Math.max(targetImportance[binding.key] ?? 0, fact.importance);
+      implicitConfidence[binding.key] = Math.max(implicitConfidence[binding.key] ?? 0, fact.confidence);
     } else if (binding.type === "implicit-weight") {
       implicitWeights[binding.variableId] = implicitWeightValue(binding.direction, fact.importance);
       implicitConfidence[binding.variableId] = Math.max(implicitConfidence[binding.variableId] ?? 0, fact.confidence);
@@ -475,7 +548,9 @@ export function finalizeAdaptiveProfile(params: {
     deepRoundCompleted: true,
     tradeoffAnswers: [],
     explicitTargets,
+    targetImportance,
     isCommuter,
+    commuteFrom: isCommuter ? params.commuteFrom ?? priorProfile?.commuteFrom ?? null : null,
     cityPreferences,
     hasCrashPad,
     seniorityNumber,

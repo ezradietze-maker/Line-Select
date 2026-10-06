@@ -7,6 +7,10 @@ import {
   detectContradiction,
   EXPLICIT_WEIGHT_IDS,
   finalizeAdaptiveProfile,
+  MIN_TURNS_BEFORE_WRAP,
+  MIN_TURNS_FLOOR,
+  minTurnsBeforeWrap,
+  openEssentials,
   uncoveredExplicitWeightIds,
 } from "@/lib/interview-engine";
 import { emptyWeights } from "@/lib/preference-logic";
@@ -546,5 +550,142 @@ describe("buildTurnRequest", () => {
   it("omits bidStory when the pilot skipped that question", () => {
     const body = buildTurnRequest(baseParams());
     expect(body.bidStory).toBeUndefined();
+  });
+});
+
+describe("minTurnsBeforeWrap", () => {
+  const storyFact = (key: "daysOff" | "tripLength" | "reportTime" | "hotelQuiet" | "creditHours" | "international" | "deadheadTolerance" | "hotelFood", i: number): PreferenceFact =>
+    fact({
+      id: `s${i}`,
+      measurable: { type: "explicit-weight", key, direction: 1 },
+      source: { kind: "seed-question", questionKey: "bidding-story" },
+      turnIndex: 0,
+    });
+
+  it("asks the full minimum when there was no story", () => {
+    expect(minTurnsBeforeWrap([])).toBe(MIN_TURNS_BEFORE_WRAP);
+  });
+
+  it("drops one question per dimension the story already covered", () => {
+    const facts = [storyFact("daysOff", 1), storyFact("tripLength", 2), storyFact("reportTime", 3)];
+    expect(minTurnsBeforeWrap(facts)).toBe(MIN_TURNS_BEFORE_WRAP - 3);
+  });
+
+  it("never drops below the floor, however thorough the story", () => {
+    const keys = ["daysOff", "tripLength", "reportTime", "hotelQuiet", "creditHours", "international", "deadheadTolerance", "hotelFood"] as const;
+    expect(minTurnsBeforeWrap(keys.map(storyFact))).toBe(MIN_TURNS_FLOOR);
+  });
+
+  it("counts only what came from the story, not answers in the loop", () => {
+    expect(minTurnsBeforeWrap([fact({ id: "a" }), fact({ id: "b", measurable: { type: "explicit-weight", key: "daysOff", direction: 1 } })])).toBe(MIN_TURNS_BEFORE_WRAP);
+  });
+});
+
+describe("openEssentials", () => {
+  const asked = (topic: string, i = 0): InterviewTurnRecord => ({
+    turnIndex: i,
+    question: { id: `q${i}`, kind: "free-text", prompt: "A real question here?", topic },
+    answer: { kind: "free-text", text: "An answer." },
+    profileFactIdsTouched: [],
+  });
+
+  it("starts with the calendar check, the days-off and duty-period numbers, and the closing question", () => {
+    expect(openEssentials({ transcript: [], facts: [], isCommuter: false })).toEqual(["day-of-week-calendar", "home-time", "duty-periods", "closing"]);
+  });
+
+  it("drops an essential once a question tagged with its topic has been asked", () => {
+    const open = openEssentials({ transcript: [asked("day-of-week-calendar"), asked("closing", 1)], facts: [], isCommuter: false });
+    expect(open).toEqual(["home-time", "duty-periods"]);
+  });
+
+  it("counts a days-off number already on file as the home-time conversation", () => {
+    const daysOff = fact({ measurable: { type: "explicit-target", key: "daysOff", value: 15 } });
+    expect(openEssentials({ transcript: [], facts: [daysOff], isCommuter: false })).not.toContain("home-time");
+  });
+
+  it("asks why only about a flagged city that has no reason yet", () => {
+    const loves = fact({ measurable: { type: "city-sentiment", code: "SAN", sentiment: "love" } });
+    expect(openEssentials({ transcript: [], facts: [loves], isCommuter: false })).toContain("city-preferences");
+    const why = fact({ id: "w", kind: "qualitative", measurable: undefined, statement: "Beach.", cityReason: { code: "SAN", category: "downtime" } });
+    expect(openEssentials({ transcript: [], facts: [loves, why], isCommuter: false })).not.toContain("city-preferences");
+  });
+
+  it("asks a commuter about the commute itself", () => {
+    expect(openEssentials({ transcript: [], facts: [], isCommuter: true })).toContain("commute-logistics-detail");
+    expect(openEssentials({ transcript: [asked("deadhead-commuter")], facts: [], isCommuter: true })).not.toContain("commute-logistics-detail");
+  });
+});
+
+describe("buildTurnRequest — gates", () => {
+  it("carries the story-adjusted minimum and the open essentials", () => {
+    const req = buildTurnRequest({ transcript: [], facts: [], grounding: FAKE_GROUNDING, base: "MEM", aircraft: "B767", isCommuter: false, turnsUsed: 0, seniorityKnown: true });
+    expect(req.minTurnsBeforeWrap).toBe(MIN_TURNS_BEFORE_WRAP);
+    expect(req.openEssentials).toContain("closing");
+    expect(req.seniorityKnown).toBe(true);
+  });
+});
+
+describe("finalizeAdaptiveProfile — how much a target matters", () => {
+  it("keeps the strongest stated importance and confidence of a pinned target", () => {
+    const floor = fact({ id: "a", measurable: { type: "explicit-target", key: "daysOff", value: 14, rangeRole: "min" }, importance: 0.95, confidence: 0.9 });
+    const ideal = fact({ id: "b", measurable: { type: "explicit-target", key: "daysOff", value: 15, rangeRole: "ideal" }, importance: 0.6, confidence: 0.7, turnIndex: 3 });
+    const profile = finalizeAdaptiveProfile({ facts: [floor, ideal], transcript: [], isCommuter: false, hasCrashPad: null });
+    expect(profile.explicitTargets.daysOff).toEqual({ min: 14, ideal: 15 });
+    expect(profile.targetImportance?.daysOff).toBe(0.95);
+    expect(profile.implicitConfidence?.daysOff).toBe(0.9);
+  });
+
+  it("carries a trip-length sweet spot as a range target", () => {
+    const sweet = fact({ measurable: { type: "explicit-target", key: "tripLength", value: 4, rangeRole: "ideal" } });
+    const limit = fact({ id: "l", measurable: { type: "explicit-target", key: "tripLength", value: 6, rangeRole: "max" }, turnIndex: 2 });
+    const profile = finalizeAdaptiveProfile({ facts: [sweet, limit], transcript: [], isCommuter: false, hasCrashPad: null });
+    expect(profile.explicitTargets.tripLength).toEqual({ ideal: 4, max: 6 });
+  });
+});
+
+describe("applyProfileUpdates — one weekday, one commitment", () => {
+  it("replaces an earlier commitment on the same weekday instead of keeping both", () => {
+    const hard = fact({ id: "sat", kind: "qualitative", measurable: undefined, statement: "Saturdays off, non-negotiable.", recurringWeekday: "Sat", severity: "dealbreaker" });
+    const softer = fact({ id: "sat2", kind: "qualitative", measurable: undefined, statement: "Saturdays off most weeks — I'd trade one.", recurringWeekday: "Sat" });
+    const result = applyProfileUpdates([hard], [{ op: "add", fact: softer }]);
+    expect(result).toHaveLength(1);
+    expect(result[0].severity).toBeUndefined();
+  });
+});
+
+describe("applyProfileUpdates — duplicates", () => {
+  const q = (id: string, statement: string, extra: Partial<PreferenceFact> = {}) =>
+    fact({ id, kind: "qualitative", measurable: undefined, statement, ...extra });
+
+  it("replaces a fact about the same dates rather than showing it twice", () => {
+    const story = q("a", "I really want Oct 10 off.", { specificDates: ["2026-10-10"] });
+    const firmer = q("b", "Oct 10 is a hard requirement.", { specificDates: ["2026-10-10"], severity: "dealbreaker" });
+    const result = applyProfileUpdates([story], [{ op: "add", fact: firmer }, { op: "add", fact: { ...firmer, id: "c" } }]);
+    expect(result).toHaveLength(1);
+    expect(result[0].severity).toBe("dealbreaker");
+  });
+
+  it("drops a qualitative fact restated word for word", () => {
+    const result = applyProfileUpdates([q("a", "Back-end deadheads are worse.")], [{ op: "add", fact: q("b", "Back-end deadheads are worse!") }]);
+    expect(result).toHaveLength(1);
+  });
+
+  it("keeps separate measurable facts that share one sentence", () => {
+    const none = "None of the food, gym or grocery stuff matters to me.";
+    const result = applyProfileUpdates(
+      [],
+      (["hotelFood", "hotelGym", "hotelGrocery"] as const).map((key) => ({
+        op: "add" as const,
+        fact: fact({ id: key, statement: none, importance: 0, measurable: { type: "explicit-weight", key, direction: 1 } }),
+      }))
+    );
+    expect(result).toHaveLength(3);
+  });
+});
+
+describe("buildTurnRequest — when the closing question may be asked", () => {
+  it("holds it back while there's still ground to cover", () => {
+    const req = buildTurnRequest({ transcript: [], facts: [], grounding: FAKE_GROUNDING, base: "MEM", aircraft: "B767", isCommuter: false, turnsUsed: 0 });
+    expect(req.closingAllowed).toBe(false);
   });
 });

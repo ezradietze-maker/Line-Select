@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { dateOfDayIndex, longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
+import { workingDayIndices } from "@/lib/line-month";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
 import { STANDBY_CREDIT_PER_DAY, tripStandbyDays } from "@/lib/standby";
 import type { BidPack } from "@/types/bidpack";
@@ -111,6 +112,30 @@ export function computeBidPackGroundingStats(bidPack: BidPack): BidPackGrounding
       ).filter((d) => d >= 6).length
     : 0;
 
+  // Which days each line keeps free, counted across the pack — see `linesFree` on the type.
+  let linesFree: BidPackGroundingStats["linesFree"] = null;
+  if (bidPack.bidPeriodStart) {
+    const start = DateTime.fromISO(bidPack.bidPeriodStart, { zone: "utc" });
+    const days = Array.from({ length: bidPack.bidPeriodDays }, (_, i) => start.plus({ days: i }));
+    const byWeekday: Record<string, number> = {};
+    const byDate: Record<string, number> = Object.fromEntries(days.map((d) => [d.toISODate()!, 0]));
+    let linesWithCalendar = 0;
+    for (const line of bidPack.lines) {
+      const working = workingDayIndices(line, bidPack.bidPeriodStart, bidPack.bidPeriodDays);
+      if (!working) continue;
+      linesWithCalendar++;
+      const worksWeekday = new Set<string>();
+      days.forEach((d, i) => {
+        if (working.has(i)) worksWeekday.add(d.toFormat("ccc"));
+        else byDate[d.toISODate()!]++;
+      });
+      for (const wd of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) {
+        byWeekday[wd] = (byWeekday[wd] ?? 0) + (worksWeekday.has(wd) ? 0 : 1);
+      }
+    }
+    if (linesWithCalendar > 0) linesFree = { linesWithCalendar, byWeekday, byDate };
+  }
+
   return {
     tripLength,
     reportTime,
@@ -131,5 +156,6 @@ export function computeBidPackGroundingStats(bidPack: BidPack): BidPackGrounding
       .map((c) => ({ code: c.code, trips: c.count })),
     daysOffBlock,
     weekendDaysOff: weekendSpread && bidPack.bidPeriodStart ? { ...weekendSpread, weekendDaysInPeriod } : null,
+    linesFree,
   };
 }

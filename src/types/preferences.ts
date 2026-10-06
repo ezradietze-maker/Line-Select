@@ -128,9 +128,11 @@ export type DeepSliderKey =
  * fits, but `scoring.ts`'s ordinary per-dimension loop never reads this key
  * — it's consumed directly by the circadianHealth computation instead, and
  * never receives range/floor-ceiling treatment (`RANGE_TARGET_KEYS` in
- * `interview-turn-service.ts` deliberately excludes it).
+ * `interview-turn-service.ts` deliberately excludes it). `tripLength` is a
+ * pinned average trip length in days — the sweet spot a pilot names ("3-4 day
+ * trips, 7 is too long"), which a plain longer/shorter lean can't express.
  */
-export type ExplicitTargetKey = "daysOff" | "creditHours" | "dutyPeriods" | "circadianTolerance";
+export type ExplicitTargetKey = "daysOff" | "creditHours" | "dutyPeriods" | "circadianTolerance" | "tripLength";
 
 /**
  * A tolerance band instead of one bare number — "the fewest I could live
@@ -175,6 +177,14 @@ export interface PreferenceProfile {
    */
   explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>>;
   /**
+   * How much each pinned target matters to this pilot (0-1), from the
+   * interview's own reading of how they said it. A target used to count at a
+   * flat 0.5 no matter what — so "days off is my first cut, 15 minimum"
+   * weighed less than a passing lean on trip length. Absent for older
+   * profiles and targets set on the Preferences screen, which keep 0.5.
+   */
+  targetImportance?: Partial<Record<ExplicitTargetKey, number>>;
+  /**
    * Whether the pilot commutes to base. Not a scored dimension on its own —
    * it raises the effective importance floor on reportTime and dutyPeriods
    * (an early/late report or an extra duty period is a much bigger deal when
@@ -182,6 +192,8 @@ export interface PreferenceProfile {
    * if they left those near neutral. `null` means not asked/skipped.
    */
   isCommuter: boolean | null;
+  /** Where a commuter commutes from, as an airport code — a layover there is a night at home. Absent when unknown or local. */
+  commuteFrom?: string | null;
   /**
    * Whether the pilot has a crash pad in domicile. Only meaningful (and only
    * asked) for a commuter — a locally based pilot doesn't need one. When a

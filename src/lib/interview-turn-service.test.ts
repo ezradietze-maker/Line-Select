@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildTurnTool, parseMeasurableBinding, parseProfileUpdates, parseQuestion, parseSpecificDates } from "@/lib/interview-turn-service";
+import { buildTurnTool, dropRestatedFacts, mergeDeterministicFact, parseMeasurableBinding, parseProfileUpdates, parseQuestion, parseSpecificDates } from "@/lib/interview-turn-service";
+import type { PreferenceFact, PreferenceFactUpdate } from "@/types/interview-session";
 
 /**
  * Regression coverage for a real live-usage failure: with only soft prompt
@@ -122,5 +123,134 @@ describe("parseProfileUpdates — calendar dealbreakers", () => {
   it("drops it from a plain qualitative fact with nothing a line could violate", () => {
     const [u] = parseProfileUpdates([{ op: "add", fact: base }], 0, undefined);
     expect(u.op === "add" && u.fact.severity).toBeUndefined();
+  });
+});
+
+describe("buildTurnTool — reading before asking", () => {
+  it("has the model say what it heard and record it before it writes the next question", () => {
+    const keys = Object.keys(buildTurnTool(true).input_schema.properties as object);
+    expect(keys.indexOf("heard")).toBeLessThan(keys.indexOf("question"));
+    expect(keys.indexOf("profileUpdates")).toBeLessThan(keys.indexOf("question"));
+  });
+
+  it("requires a topic on every question", () => {
+    const question = (buildTurnTool(true).input_schema.properties as Record<string, { required?: string[] }>).question;
+    expect(question.required).toContain("topic");
+  });
+});
+
+describe("parseQuestion — topic and stubs", () => {
+  it("keeps a real topic and labels anything else 'other'", () => {
+    expect(parseQuestion({ kind: "free-text", topic: "day-of-week-calendar", prompt: "Any dates you need off this month?" })?.topic).toBe("day-of-week-calendar");
+    expect(parseQuestion({ kind: "free-text", topic: "made-up", prompt: "Any dates you need off this month?" })?.topic).toBe("other");
+  });
+
+  it("rejects a placeholder the model sent instead of a question", () => {
+    expect(parseQuestion({ kind: "slider", prompt: "placeholder" })).toBeNull();
+    expect(parseQuestion({ kind: "free-text", prompt: "TBD" })).toBeNull();
+  });
+});
+
+describe("parseProfileUpdates — doesn't matter means 0", () => {
+  const update = (importance: number, type: "explicit-weight" | "implicit-weight") => [
+    {
+      op: "add",
+      fact: {
+        statement: "Report time's not a big deal.",
+        kind: "measurable",
+        confidence: 0.7,
+        importance,
+        measurable: type === "explicit-weight" ? { type, key: "reportTime", direction: 1 } : { type, variableId: "weekendDaysOffPerLine", direction: 1 },
+      },
+    },
+  ];
+
+  it("stores a near-zero explicit lean as exactly 0, so it isn't shown as a preference", () => {
+    const [u] = parseProfileUpdates(update(0.15, "explicit-weight"), 0, undefined);
+    expect(u.op !== "retire" && u.fact.importance).toBe(0);
+  });
+
+  it("leaves a real mild lean alone", () => {
+    const [u] = parseProfileUpdates(update(0.25, "explicit-weight"), 0, undefined);
+    expect(u.op !== "retire" && u.fact.importance).toBe(0.25);
+  });
+});
+
+describe("mergeDeterministicFact — the pilot's slider position wins", () => {
+  const slider = (direction: 1 | -1, importance: number): PreferenceFact => ({
+    id: "d",
+    statement: "Slider answer.",
+    kind: "measurable",
+    measurable: { type: "explicit-weight", key: "riskTolerance", direction },
+    confidence: 1,
+    importance,
+    source: { kind: "adaptive-question", questionId: "q" },
+    turnIndex: 4,
+  });
+  const modelReading = (direction: 1 | -1, importance: number): PreferenceFactUpdate => ({ op: "add", fact: { ...slider(direction, importance), id: "m" } });
+
+  it("records the exact slider answer last, over the model's inflated reading of the note", () => {
+    const merged = mergeDeterministicFact([modelReading(-1, 0.7)], slider(-1, 0.3), true);
+    const last = merged.at(-1);
+    expect(last?.op !== "retire" && last?.fact.importance).toBe(0.3);
+  });
+
+  it("lets the pilot's own words win when the note points the other way from the slider", () => {
+    const merged = mergeDeterministicFact([modelReading(1, 0.4)], slider(-1, 0.3), true);
+    expect(merged).toHaveLength(1);
+  });
+
+  it("records a bare slider answer even when the model extracted nothing", () => {
+    expect(mergeDeterministicFact([], slider(-1, 0.3), true)).toHaveLength(1);
+  });
+});
+
+describe("dropRestatedFacts", () => {
+  const base: PreferenceFact = {
+    id: "e",
+    statement: "14 duty periods is my ceiling.",
+    kind: "measurable",
+    measurable: { type: "explicit-target", key: "dutyPeriods", value: 14, rangeRole: "max" },
+    confidence: 0.9,
+    importance: 0.7,
+    source: { kind: "adaptive-question", questionId: "q" },
+    turnIndex: 2,
+  };
+
+  it("drops a fact that only repeats one already on file", () => {
+    const repeat: PreferenceFactUpdate = { op: "add", fact: { ...base, id: "n", statement: "Duplicate of the 14 duty-period ceiling fact." } };
+    expect(dropRestatedFacts([repeat], [base])).toHaveLength(0);
+  });
+
+  it("keeps a real change — a new number or a new strength", () => {
+    const newNumber: PreferenceFactUpdate = { op: "add", fact: { ...base, id: "n", measurable: { type: "explicit-target", key: "dutyPeriods", value: 13, rangeRole: "max" } } };
+    const stronger: PreferenceFactUpdate = { op: "add", fact: { ...base, id: "m", importance: 0.9 } };
+    expect(dropRestatedFacts([newNumber, stronger], [base])).toHaveLength(2);
+  });
+
+  it("drops a weekly commitment restated with the same weight, keeps one that turned into a dealbreaker", () => {
+    const sat: PreferenceFact = { ...base, kind: "qualitative", measurable: undefined, statement: "Saturdays off for softball.", recurringWeekday: "Sat", importance: 0.8 };
+    const restated: PreferenceFactUpdate = { op: "add", fact: { ...sat, id: "r", statement: "I need Saturdays off all season for softball." } };
+    const hardened: PreferenceFactUpdate = { op: "add", fact: { ...sat, id: "h", severity: "dealbreaker" } };
+    expect(dropRestatedFacts([restated, hardened], [sat]).map((u) => (u.op === "add" ? u.fact.id : ""))).toEqual(["h"]);
+  });
+});
+
+describe("mergeDeterministicFact — number answers", () => {
+  const target = (importance: number, rangeRole?: "min" | "ideal" | "max"): PreferenceFact => ({
+    id: "t",
+    statement: "16 days off.",
+    kind: "measurable",
+    measurable: { type: "explicit-target", key: "daysOff", value: 16, rangeRole },
+    confidence: 1,
+    importance,
+    source: { kind: "adaptive-question", questionId: "q" },
+    turnIndex: 2,
+  });
+
+  it("pins the exact number but keeps how strongly the pilot said it matters", () => {
+    const merged = mergeDeterministicFact([{ op: "add", fact: { ...target(0.95, "ideal"), id: "m" } }], target(0.7, "ideal"), false);
+    const last = merged.at(-1);
+    expect(last?.op !== "retire" && last?.fact.importance).toBe(0.95);
   });
 });
