@@ -180,7 +180,7 @@ export function PhoneNav({
                     onClick={() => go(item.target)}
                     aria-current={isActive ? "page" : undefined}
                     className={`flex flex-col items-center gap-2 rounded-xl border px-2 py-3.5 text-xs font-medium transition-colors ${
-                      isActive ? "border-accent/50 bg-accent-wash text-accent" : "border-hairline bg-canvas/40 text-ink-muted active:bg-canvas"
+                      isActive ? "border-accent/50 bg-accent-wash text-on-wash" : "border-hairline bg-canvas/40 text-ink-muted active:bg-canvas"
                     }`}
                   >
                     <span className="relative">

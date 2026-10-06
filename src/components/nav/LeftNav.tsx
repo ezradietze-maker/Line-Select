@@ -135,7 +135,7 @@ function NavList({
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => onGo(item.target)}
                 className={`${ROW} z-10 mb-0.5 disabled:cursor-not-allowed disabled:opacity-40 ${
-                  isActive ? "font-semibold text-accent" : "font-medium text-ink-muted hover:bg-black/[0.035] hover:text-ink"
+                  isActive ? "font-semibold text-on-wash" : "font-medium text-ink-muted hover:bg-black/[0.035] hover:text-ink"
                 }`}
               >
                 <RowIcon icon={item.icon} active={isActive} badge={item.target === "inbox" ? inboxUnreadCount : 0} />

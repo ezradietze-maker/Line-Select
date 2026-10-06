@@ -62,6 +62,7 @@ import {
 } from "@/lib/rank-learning";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
+import { useProgressiveCount } from "@/lib/use-progressive-count";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
@@ -344,6 +345,8 @@ export function ResultsView({
   if (pageState.key !== listKey) setPageState({ key: listKey, shown: PAGE_SIZE });
   const shown = pageState.key === listKey ? pageState.shown : PAGE_SIZE;
   const displayed = sorted.slice(0, shown);
+  // The cards themselves mount a few at a time, so the top of the list paints fast on a phone; `displayed` stays the page's real contents for counts and paging.
+  const mountedCount = useProgressiveCount(displayed.length);
 
   // Exports follow the pilot's own ranking (best match), among lines they haven't hidden — a sort-by-days-off view is for looking, not for what to bid.
   const exportable = useMemo(() => matching.filter((r) => !hiddenSet.has(r.line.id)), [matching, hiddenSet]);
@@ -664,7 +667,7 @@ export function ResultsView({
               {displayed.length === 0 ? (
                 <EmptyState compact description={emptyMessage} />
               ) : (
-                displayed.map((lineScore, index) => (
+                displayed.slice(0, mountedCount).map((lineScore, index) => (
                   <motion.div
                     key={lineScore.line.id}
                     layout={dragEnabled ? "position" : false}

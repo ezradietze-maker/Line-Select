@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion, type Variants } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { Button } from "@/components/ui/Button";
@@ -171,14 +171,10 @@ function Story() {
  */
 export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; onTrySample: () => void }) {
   const reduce = useReducedMotion();
-  const container: Variants = {
-    hidden: {},
-    show: { transition: { staggerChildren: reduce ? 0 : 0.09, delayChildren: reduce ? 0 : 0.1 } },
-  };
-  const item: Variants = {
-    hidden: { opacity: 0, y: reduce ? 0 : 18 },
-    show: { opacity: 1, y: 0, transition: { duration: reduce ? 0 : 0.7, ease: EASE.emphasized } },
-  };
+  // The hero rises in with CSS, not motion: CSS starts on first paint, from
+  // the server-rendered HTML, while a motion entrance would hold the
+  // headline at opacity 0 until the JavaScript arrived — on a phone, seconds.
+  const rise = (i: number) => ({ animationDelay: `${100 + i * 90}ms` });
 
   return (
     <div className="relative overflow-x-clip">
@@ -204,25 +200,25 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
           className="pointer-events-none absolute right-[-10%] top-[5%] -z-10 h-[70%] w-[70%] rounded-full opacity-70 blur-3xl"
           style={{ background: "radial-gradient(circle, var(--glow-soft), transparent 65%)" }}
         />
-        <motion.div variants={container} initial="hidden" animate="show" className="order-2 text-center lg:order-1 lg:text-left">
-          <motion.span
-            variants={item}
-            className="inline-block max-w-full text-balance rounded-2xl border border-hairline bg-surface/70 px-3 py-1 font-mono text-[11px] uppercase leading-relaxed tracking-[0.14em] text-ink-faint backdrop-blur-sm sm:rounded-full"
+        <div className="order-2 text-center lg:order-1 lg:text-left">
+          <span
+            style={rise(0)}
+            className="animate-hero-in inline-block max-w-full text-balance rounded-2xl border border-hairline bg-surface/70 px-3 py-1 font-mono text-[11px] uppercase leading-relaxed tracking-[0.14em] text-ink-faint backdrop-blur-sm sm:rounded-full"
           >
             Independent prototype &middot; not affiliated with FedEx
-          </motion.span>
-          <motion.h1
-            variants={item}
-            className="mt-6 font-display text-[2.6rem] font-semibold leading-[1.02] tracking-tight text-ink sm:text-6xl xl:text-7xl"
+          </span>
+          <h1
+            style={rise(1)}
+            className="animate-hero-in mt-6 font-display text-[2.6rem] font-semibold leading-[1.02] tracking-tight text-ink sm:text-6xl xl:text-7xl"
           >
             Find the line that actually fits{" "}
             <span className="text-glow text-accent">how you want to fly.</span>
-          </motion.h1>
-          <motion.p variants={item} className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-ink-muted lg:mx-0">
+          </h1>
+          <p style={rise(2)} className="animate-hero-in mx-auto mt-6 max-w-xl text-lg leading-relaxed text-ink-muted lg:mx-0">
             Upload your bid pack, tell it what matters, and every line gets scored against you &mdash; with a plain-English
             reason for each score, so you can trust the answer instead of re-checking it by hand.
-          </motion.p>
-          <motion.div variants={item} className="mt-9 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
+          </p>
+          <div style={rise(3)} className="animate-hero-in mt-9 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
             <Button onClick={onStart} className="glow-soft w-full px-7 py-3.5 text-base sm:w-auto">
               Upload your bid pack
             </Button>
@@ -233,11 +229,11 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
             >
               Try it with sample data
             </button>
-          </motion.div>
-          <motion.p variants={item} className="mt-4 text-xs text-ink-faint">
+          </div>
+          <p style={rise(4)} className="animate-hero-in mt-4 text-xs text-ink-faint">
             Parsed on our server, never stored there &mdash; only the extracted line data comes back to this device.
-          </motion.p>
-        </motion.div>
+          </p>
+        </div>
 
         <div className="order-1 mx-auto w-full max-w-[min(92vw,640px)] lg:order-2">
           <NightGlobe />

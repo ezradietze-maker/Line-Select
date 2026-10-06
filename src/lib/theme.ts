@@ -1,5 +1,24 @@
 import { RAIL_BOOTSTRAP } from "@/lib/rail-key";
 
+/**
+ * Marks `<html data-returning>` before first paint when this browser holds a
+ * saved bid pack — a returning pilot the landing page is about to redirect.
+ * The landing page renders in the server HTML for everyone else (so its
+ * headline paints immediately), and is hidden by CSS only for them, instead
+ * of flashing the pitch before the redirect. See `app/page.tsx`.
+ */
+const RETURNING_BOOTSTRAP = `
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('line-select:bidpack:') === 0) {
+        document.documentElement.setAttribute('data-returning', '');
+        break;
+      }
+    }
+  } catch (e) {}
+`;
+
 /** "night" is real cockpit red-light lighting (dimming everything to red to protect night vision), not just another dark variant — a pilot reaches for it specifically at night regardless of their light/dark/system preference otherwise, so it sits as its own mode rather than a toggle layered on "dark". */
 export type ThemeMode = "light" | "dark" | "night" | "system";
 
@@ -48,5 +67,6 @@ export const THEME_BOOTSTRAP_SCRIPT = `
     }
   } catch (e) {}
   ${RAIL_BOOTSTRAP}
+  ${RETURNING_BOOTSTRAP}
 })();
 `;

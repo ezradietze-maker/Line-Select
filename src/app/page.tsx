@@ -33,15 +33,32 @@ export default function RootPage() {
     if (target !== "/") router.replace(target);
   }, [ready, bidPack, profile, router]);
 
-  // Never a blank page while saved state loads (or while a returning pilot
-  // is being sent on to their resume point): the mark, breathing gently.
-  if (!ready || bidPack) {
-    return (
-      <div className="flex min-h-[70vh] items-center justify-center" role="status" aria-label="Loading Line Select">
-        <LogoMark className="skeleton-pulse h-16 w-16" detailed />
-      </div>
-    );
-  }
+  // A saved-pack marker from the pre-paint script can be stale (another
+  // account's pack on this browser): once state has loaded and there's no
+  // pack to resume, show the landing page after all.
+  useEffect(() => {
+    if (ready && !bidPack) document.documentElement.removeAttribute("data-returning");
+  }, [ready, bidPack]);
 
-  return <WelcomeScreen onStart={() => router.push("/upload")} onTrySample={handleTrySample} />;
+  const loader = (
+    <div className="flex min-h-[70vh] items-center justify-center" role="status" aria-label="Loading Line Select">
+      <LogoMark className="skeleton-pulse h-16 w-16" detailed />
+    </div>
+  );
+
+  // A returning pilot on their way to their resume point: the mark, breathing gently.
+  if (ready && bidPack) return loader;
+
+  // Everyone else gets the landing page in the server HTML, so the headline
+  // paints before any JavaScript runs. A returning pilot (marked before first
+  // paint by the bootstrap in lib/theme.ts) sees the mark instead while their
+  // saved state loads, rather than a flash of the pitch.
+  return (
+    <>
+      <div className="returning-only">{loader}</div>
+      <div className="landing-only">
+        <WelcomeScreen onStart={() => router.push("/upload")} onTrySample={handleTrySample} />
+      </div>
+    </>
+  );
 }

@@ -22,7 +22,7 @@
      just the lightest of the three. */
   --color-ink: #2e2013;
   --color-ink-muted: #70604b;
-  --color-ink-faint: #756652;
+  --color-ink-faint: #6e604d;
 
   /* Brand: deep coffee brown + warm caramel accent. Accent tuned to hold
      4.5:1 as text on accent-soft (the "Top pick" banner's own background),
@@ -30,9 +30,11 @@
   --color-brand: #4a3420;
   --color-brand-strong: #34240f;
   --color-brand-soft: #ece0c8;
-  --color-accent: #935621;
+  --color-accent: #905420;
   --color-accent-soft: #f1e2c4;
   --color-accent-wash: #e4c48c;
+  /* Accent text sitting on the accent wash (the active nav item) — adjusted from plain accent so it holds AA contrast on that tint. */
+  --color-on-wash: #79471b;
   /* Calendar views' own "Flying" segment color — defaults to brand, but is
      the one color a pilot can personalize (see calendar-theme.ts) without
      touching the rest of the app's palette. Set directly on documentElement
@@ -54,14 +56,14 @@
      independent of brand identity), each darkened just enough to hold 4.5:1
      against its own "-soft" background at the small sizes these render at
      (banners, badges) — they were a hair under AA before. */
-  --color-good: #2d785b;
+  --color-good: #296e54;
   --color-standby: #7b5ea7;
   --color-good-soft: #e1f0e7;
-  --color-warn: #9b571e;
+  --color-warn: #92521c;
   --color-warn-soft: #f6e8d7;
   /* NOTAM red: saturated and stamped, not a muted salmon — reserved strictly
      for warnings/alerts, never generic UI chrome. */
-  --color-danger: #bb382c;
+  --color-danger: #b2352a;
   --color-danger-soft: #f8e3de;
 
   --color-focus-ring: #4a3420;
@@ -131,6 +133,7 @@
     --color-accent: #d68a3e;
     --color-accent-soft: #3d2814;
     --color-accent-wash: #5c3f1e;
+    --color-on-wash: #e1aa72;
     --color-calendar-accent: var(--color-brand);
 
     --color-dispatch: #b39a72;
@@ -185,6 +188,7 @@
   --color-accent: #d68a3e;
   --color-accent-soft: #3d2814;
   --color-accent-wash: #5c3f1e;
+  --color-on-wash: #e1aa72;
   --color-calendar-accent: var(--color-brand);
 
   --color-dispatch: #b39a72;
@@ -242,12 +246,13 @@
   /* Darker than the focus ring/decorative red on purpose — this is the one
      spot white button text has to sit on top of it, and the brighter glow
      red failed contrast there. */
-  --color-brand: #d44040;
+  --color-brand: #d95757;
   --color-brand-strong: #b53535;
   --color-brand-soft: #2e0d0d;
   --color-accent: #ff7a3d;
   --color-accent-soft: #331008;
   --color-accent-wash: #4a160a;
+  --color-on-wash: var(--color-accent);
   --color-calendar-accent: var(--color-brand);
 
   --color-dispatch: #b16e6e;
@@ -299,6 +304,7 @@
   --color-accent: var(--color-accent);
   --color-accent-soft: var(--color-accent-soft);
   --color-accent-wash: var(--color-accent-wash);
+  --color-on-wash: var(--color-on-wash);
   --color-calendar-accent: var(--color-calendar-accent);
 
   --color-dispatch: var(--color-dispatch);
@@ -553,6 +559,11 @@ body {
   animation: rise-in 0.5s var(--ease-emphasized) both;
 }
 
+/* The landing hero's staggered entrance (each line sets its own delay). */
+.animate-hero-in {
+  animation: rise-in 0.7s var(--ease-emphasized) both;
+}
+
 @keyframes slide-in-left {
   from {
     transform: translateX(-100%);
@@ -630,6 +641,7 @@ body {
   }
   .animate-fade-in,
   .animate-rise-in,
+  .animate-hero-in,
   .animate-slide-in-left,
   .animate-sheet-up,
   .skeleton-pulse {
@@ -641,6 +653,59 @@ body {
   }
   .hover-lift {
     transition: none;
+  }
+}
+
+/* ---------- Touch targets ---------- */
+
+/*
+ * On a touch screen every control gets a hit area of at least 44 × 44 px,
+ * centred on it, without changing how it looks: an invisible ::after that
+ * grows past a small icon button, chip, or text link. In the base layer, so
+ * any explicit positioning utility (absolute, fixed, sticky) still wins.
+ */
+@layer base {
+  @media (pointer: coarse) {
+    :where(button, a[href], summary, [role="button"], [role="tab"], [role="radio"], [role="checkbox"], [role="switch"]):not(.no-touch-expand) {
+      position: relative;
+    }
+    :where(button, a[href], summary, [role="button"], [role="tab"], [role="radio"], [role="checkbox"], [role="switch"]):not(.no-touch-expand)::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      translate: -50% -50%;
+    }
+  }
+}
+
+/*
+ * Text fields and dropdowns on touch screens: 44 px tall, and 16 px text —
+ * below 16 px, iPhone Safari zooms the whole page in when a field is tapped
+ * and leaves it zoomed. Unlayered on purpose, so it beats `text-sm`.
+ */
+@media (pointer: coarse) {
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select {
+    min-height: 44px;
+  }
+}
+
+/* A slider's thumb is easy to see but its track is a 6 px sliver to put a thumb on — on touch screens the input itself is 44 px tall, the visible track stays 6 px. */
+@media (pointer: coarse) {
+  .line-slider {
+    height: 44px;
+    margin: -11px 0;
+    background-size: 100% 6px !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
   }
 }
 
@@ -699,6 +764,17 @@ body {
   .animate-toast-in {
     animation: none;
   }
+}
+
+/* The landing page vs. a returning pilot's loading mark — decided before first paint by <html data-returning> (lib/theme.ts). */
+.returning-only {
+  display: none;
+}
+[data-returning] .returning-only {
+  display: block;
+}
+[data-returning] .landing-only {
+  display: none;
 }
 
 /* ---------- App shell ---------- */
@@ -797,7 +873,7 @@ body {
   animation: vt-panel-out 170ms var(--ease-standard) both;
 }
 ::view-transition-new(.panel) {
-  animation: vt-panel-in 440ms var(--ease-emphasized) 90ms both;
+  animation: vt-panel-in 380ms var(--ease-emphasized) 70ms both;
 }
 
 /* The navigation is the fixed reference point: it never slides, and the panels slide underneath it. */

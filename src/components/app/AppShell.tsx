@@ -1,5 +1,6 @@
 "use client";
 
+import { MotionConfig } from "motion/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -84,9 +85,11 @@ function Chrome({ children }: { children: React.ReactNode }) {
     onOpenFeedback: () => setFeedbackOpen(true),
   };
 
-  // The landing and sign-in pages have no app frame to sketch, so a
-  // first-time visitor sees the mark rather than an app's loading skeleton.
-  if (!ready && !showSidebar) {
+  // The sign-in page has no app frame to sketch, so it shows the mark while
+  // saved state loads. The landing page renders straight away instead — its
+  // headline is the first thing a new visitor sees, so it can't wait on
+  // JavaScript (it handles returning pilots itself; see app/page.tsx).
+  if (!ready && !showSidebar && pathname !== "/") {
     return (
       <div className="flex min-h-[80vh] flex-1 items-center justify-center" role="status" aria-label="Loading Line Select">
         <LogoMark className="skeleton-pulse h-16 w-16" detailed />
@@ -94,7 +97,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!ready) {
+  if (!ready && pathname !== "/") {
     return (
       <div className={`app-shell flex min-h-full flex-col md:flex-row ${showSidebar ? "" : "no-nav"}`}>
         {showSidebar && (
@@ -187,7 +190,10 @@ function Chrome({ children }: { children: React.ReactNode }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AppStateProvider>
-      <Chrome>{children}</Chrome>
+      {/* A safety net under each component's own reduced-motion handling: any motion animation anywhere follows the pilot's system setting. */}
+      <MotionConfig reducedMotion="user">
+        <Chrome>{children}</Chrome>
+      </MotionConfig>
     </AppStateProvider>
   );
 }
