@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { Heading } from "@/components/ui/Heading";
+import { Notice } from "@/components/ui/Notice";
+import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { TextField } from "@/components/ui/TextField";
 import { sameBidPack } from "@/lib/inbox";
@@ -144,11 +146,19 @@ export function TradeBoardScreen({
 
   return (
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
-      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Trade Board</Heading>
-      <p className="mt-1.5 text-sm text-ink-muted">
-        Find other pilots interested in trading a trip &mdash; coordinate directly, since a real
-        trip trade only happens after bidding closes and nothing here finalizes one.
-      </p>
+      <PageHeader
+        eyebrow={packEyebrow(bidPack)}
+        title="Trade Board"
+        description={
+          <>
+            Find other pilots interested in trading a trip &mdash; coordinate directly, since a real trip trade only
+            happens after bidding closes and nothing here finalizes one.
+          </>
+        }
+        actions={
+          user && bidPack && !showPostForm ? <Button onClick={() => setShowPostForm(true)}>Post a trade offer</Button> : undefined
+        }
+      />
 
       <NonBindingDisclaimer />
 
@@ -159,12 +169,6 @@ export function TradeBoardScreen({
         </InfoBanner>
       )}
       {user && !bidPack && <InfoBanner>Upload your bid pack to post an offer or propose a trade.</InfoBanner>}
-
-      {user && bidPack && !showPostForm && (
-        <Button onClick={() => setShowPostForm(true)} className="mt-6">
-          Post a trade offer
-        </Button>
-      )}
 
       {showPostForm && bidPack && (
         <PostOfferForm
@@ -178,11 +182,11 @@ export function TradeBoardScreen({
       {actionError && <ErrorBanner className="mt-4">{actionError}</ErrorBanner>}
 
       {loading ? (
-        <SkeletonCards className="mt-8" />
+        <SkeletonCards shape="offer" className="mt-8" />
       ) : (
         <div className="mt-8 space-y-8">
           {needsResponse.length > 0 && (
-            <Section title="Needs your response">
+            <Section title="Needs your response" count={needsResponse.length}>
               {needsResponse.map((offer) => (
                 <OfferCard
                   key={offer.id}
@@ -197,7 +201,7 @@ export function TradeBoardScreen({
           )}
 
           {myActivity.length > 0 && (
-            <Section title="Your activity">
+            <Section title="Your activity" count={myActivity.length}>
               {myActivity.map((offer) => (
                 <OfferCard
                   key={offer.id}
@@ -215,7 +219,7 @@ export function TradeBoardScreen({
             </Section>
           )}
 
-          <Section title="Open offers from other pilots">
+          <Section title="Open offers from other pilots" count={openFromOthers.length}>
             {openFromOthers.length > SEARCH_THRESHOLD && (
               <TextField
                 label="Search by pilot, pairing, or city"
@@ -274,30 +278,30 @@ export function TradeBoardScreen({
 
 export function NonBindingDisclaimer() {
   return (
-    <div className="mt-4 rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
+    <Notice tone="warn" className="mt-6">
       <strong className="font-semibold">This board is not official.</strong> Agreeing to a
       trade here is not a real, legal schedule trade. Real trip trades have to go through
       FedEx&rsquo;s official scheduling process, after bidding closes &mdash; rest rules,
       qualifications, and currency all get checked there, and this app has no way to verify any
       of that. Use this board to find and coordinate with another pilot only.
-    </div>
+    </Notice>
   );
 }
 
 export function InfoBanner({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-4 rounded-lg border border-border bg-canvas px-4 py-3 text-sm text-ink-muted">
+    <Notice tone="info" className="mt-3">
       {children}
-    </div>
+    </Notice>
   );
 }
 
-export function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
   return (
-    <div>
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{title}</h2>
+    <section>
+      <SectionHeading count={count}>{title}</SectionHeading>
       <div className="mt-3 space-y-3">{children}</div>
-    </div>
+    </section>
   );
 }
 
@@ -368,21 +372,21 @@ export function OfferCard({
   const isMyResponse = offer.responderUserId === currentUserId;
 
   return (
-    <div className="hover-lift rounded-xl border border-border bg-surface p-5 shadow-elevated transition-shadow duration-150 hover:shadow-elevated-lg">
+    <div className="panel-glass hover-lift p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-ink">
+          <div className="font-display text-base font-semibold text-ink">
             {isMine ? "You" : offer.isDemo ? "Example pilot" : offer.offeringDisplayName} offering {offerTripName(offer.offeredTrip)}
             {offer.isDemo && (
               <span
                 title="No real pilot has posted an offer for this bid pack yet, so this is an example of what one looks like."
-                className="ml-2 rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-warn"
+                className="ml-2 inline-block rounded-full bg-warn-soft px-2 py-0.5 align-middle font-sans text-[11px] font-semibold uppercase tracking-wide text-warn"
               >
                 Example &mdash; not real
               </span>
             )}
           </div>
-          <div className="mt-1">
+          <div className="mt-1.5">
             <TripSnapshotStats trip={offer.offeredTrip} />
           </div>
         </div>
@@ -408,7 +412,7 @@ export function OfferCard({
       )}
 
       {offer.responderTrip && (
-        <div className="mt-3 rounded-lg border border-border bg-canvas p-3">
+        <div className="mt-3 rounded-lg border border-hairline bg-canvas/50 p-3">
           <div className="text-sm font-medium text-ink">
             {isMyResponse ? "You" : offer.responderDisplayName} proposed{" "}
             {offerTripName(offer.responderTrip)}
@@ -498,7 +502,7 @@ function PostOfferForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="mt-4 space-y-4 rounded-xl border border-border bg-surface p-5 shadow-elevated"
+      className="panel-glass glow-soft mt-6 space-y-4 p-5"
     >
       <div>
         <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="offer-trip">
@@ -578,7 +582,7 @@ function RespondForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-xl border border-brand/30 bg-brand-soft p-5"
+      className="panel-glass glow-soft p-5"
     >
       <div className="text-sm font-semibold text-ink">
         Propose a trade with {offer.offeringDisplayName}

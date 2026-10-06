@@ -50,6 +50,8 @@ interface GaugeProps {
   limit?: number;
   /** Readout text classes (size/weight); color comes from `tone.text`. */
   readoutClassName?: string;
+  /** Decimal places in the readout — 1 for a 4.3-of-5 hotel rating. */
+  decimals?: number;
 }
 
 /**
@@ -58,7 +60,7 @@ interface GaugeProps {
  * mid-change, and it starts from zero so a first appearance sweeps up to
  * its reading. Reduced motion: it simply shows the reading.
  */
-export function Gauge({ value, max = 100, size = 56, tone, label, limit, readoutClassName = "text-sm font-semibold" }: GaugeProps) {
+export function Gauge({ value, max = 100, size = 56, tone, label, limit, readoutClassName = "text-sm font-semibold", decimals = 0 }: GaugeProps) {
   const clamped = Math.min(max, Math.max(0, value));
 
   const cx = size / 2;
@@ -82,7 +84,7 @@ export function Gauge({ value, max = 100, size = 56, tone, label, limit, readout
   const trackPath = arcPath(cx, cy, radius);
   const arcLength = (radius * (GAUGE_SWEEP * Math.PI)) / 180;
   const dashOffset = useTransform(animated, (v) => arcLength * (1 - v / max));
-  const rounded = useTransform(animated, (v) => Math.round(v));
+  const rounded = useTransform(animated, (v) => v.toFixed(decimals));
 
   function tick(fraction: number, len: number, key: string, stroke: string, width: number) {
     const angle = GAUGE_START + fraction * GAUGE_SWEEP;

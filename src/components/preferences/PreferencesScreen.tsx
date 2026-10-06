@@ -6,6 +6,8 @@ import { TargetEditor } from "@/components/preferences/TargetEditor";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
+import { packEyebrow } from "@/components/ui/PageHeader";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { RangeSlider } from "@/components/ui/RangeSlider";
 import { Slider } from "@/components/ui/Slider";
 import {
@@ -171,8 +173,9 @@ export function PreferencesScreen({
     <div className="mx-auto w-full max-w-2xl animate-fade-in pb-24">
       <div className="flex flex-col gap-4">
         <div>
-          <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Your preferences</Heading>
-          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+          {bidPack && <div className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-accent">{packEyebrow(bidPack)}</div>}
+          <Heading as="h1" className={`text-3xl tracking-tight text-ink sm:text-4xl ${bidPack ? "mt-1.5" : ""}`}>Your preferences</Heading>
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
             <span>
               Last answered {completedDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
             </span>
@@ -202,8 +205,11 @@ export function PreferencesScreen({
       </div>
 
       {freshBidPack && (
-        <div className="mt-6 rounded-xl border border-brand/30 bg-brand-soft/60 p-5">
-          <div className="text-sm font-semibold text-ink">New bid pack loaded</div>
+        <div className="panel-glass glow-soft mt-6 p-5">
+          <div className="flex items-center gap-2 font-display text-lg font-semibold text-ink">
+            <span className="h-2 w-2 rounded-full bg-good shadow-[0_0_8px_var(--color-good)]" aria-hidden />
+            New bid pack loaded
+          </div>
           <p className="mt-1 text-sm leading-relaxed text-ink-muted">
             {bidPack.base} {bidPack.aircraft} {bidPack.seat} &middot; {bidPack.month} &middot; {bidPack.lines.length} lines.
             Your preferences from {completedDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })} carry forward &mdash;
@@ -229,8 +235,8 @@ export function PreferencesScreen({
         const parsed = parseSeniorityInput(shown);
         const position = parsed !== null ? resolveBidPosition(list, parsed) : null;
         return (
-          <section className="mt-6 rounded-xl border border-border bg-surface p-5 sm:p-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Your place in the bid</h2>
+          <section className="panel-glass mt-6 p-5 sm:p-6">
+            <SectionHeading>Your place in the bid</SectionHeading>
             <div className="mt-4 flex flex-wrap items-end gap-4">
               <div>
                 <label htmlFor="prefs-seniority" className="text-sm font-medium text-ink">Seniority number</label>
@@ -242,7 +248,7 @@ export function PreferencesScreen({
                   value={shown}
                   onChange={(e) => setSeniorityDraft(e.target.value.replace(/[^\d]/g, "").slice(0, 6))}
                   placeholder="e.g. 1234"
-                  className="mt-1.5 block w-40 rounded-lg border border-border bg-canvas px-3 py-2 font-mono text-base text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
+                  className="mt-1.5 block w-40 rounded-lg border border-hairline bg-canvas/60 px-3 py-2 font-mono text-base text-readout placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
                 />
               </div>
               <p className="max-w-sm text-sm text-ink-muted" aria-live="polite">
@@ -258,8 +264,8 @@ export function PreferencesScreen({
       })()}
 
       {SLIDER_GROUPS.map((group) => (
-        <section key={group.title} className="mt-6 rounded-xl border border-border bg-surface p-5 sm:p-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{group.title}</h2>
+        <section key={group.title} className="panel-glass mt-6 p-5 sm:p-6">
+          <SectionHeading>{group.title}</SectionHeading>
           <div className="mt-4 space-y-6">
             {group.keys.map((key) => {
               const config = sliderConfigs.get(key);
@@ -315,12 +321,13 @@ export function PreferencesScreen({
                       aria-pressed={on}
                       title={a.description}
                       onClick={() => setWeightsDraft((d) => ({ ...d, [a.key]: on ? 0 : HOTEL_AMENITY_WEIGHT }))}
-                      className={`rounded-full border-2 px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                      className={`press inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
                         on
-                          ? "border-brand bg-brand-soft text-brand"
-                          : "border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink"
+                          ? "border-accent/60 bg-accent-soft text-accent"
+                          : "border-hairline bg-canvas/40 text-ink-muted hover:border-border-strong hover:text-ink"
                       }`}
                     >
+                      <span aria-hidden className={`h-1.5 w-1.5 rounded-full transition-colors ${on ? "bg-accent shadow-[0_0_6px_var(--color-accent)]" : "bg-hairline"}`} />
                       {a.label}
                     </button>
                   );
@@ -331,9 +338,9 @@ export function PreferencesScreen({
         </section>
       ))}
 
-      <section className="mt-6 rounded-xl border border-border bg-surface p-5 sm:p-6">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Exact numbers</h2>
-        <p className="mt-1 text-xs text-ink-faint">
+      <section className="panel-glass mt-6 p-5 sm:p-6">
+        <SectionHeading>Exact numbers</SectionHeading>
+        <p className="mt-2 text-xs text-ink-faint">
           When you set one, it&rsquo;s used directly instead of the rough midpoint a slider implies.
         </p>
         <div className="mt-4 space-y-3">
@@ -363,17 +370,20 @@ export function PreferencesScreen({
         </div>
       </section>
 
-      <section className="mt-6 rounded-xl border border-border bg-surface p-5 sm:p-6">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Layover cities</h2>
+      <section className="panel-glass mt-6 p-5 sm:p-6">
+        <SectionHeading>Layover cities</SectionHeading>
         <div className="mt-3">
           <CityChips cities={cityCodes} sentiments={sentiments} onCycle={cycleCity} />
         </div>
       </section>
 
       {dirty && (
-        <div className="fixed inset-x-0 bottom-[var(--shell-bottom,0px)] z-20 border-t border-border bg-surface/95 px-4 py-3 shadow-elevated-lg backdrop-blur md:left-[var(--shell-left,15rem)]">
+        <div className="animate-toast-in fixed inset-x-0 bottom-[var(--shell-bottom,0px)] z-20 border-t border-accent/30 bg-panel px-4 py-3 shadow-elevated-lg md:left-[var(--shell-left,15rem)]">
           <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
-            <span className="text-sm text-ink-muted">You have unsaved changes.</span>
+            <span className="flex items-center gap-2 text-sm text-ink-muted">
+              <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent shadow-[0_0_8px_var(--color-accent)]" aria-hidden />
+              You have unsaved changes.
+            </span>
             <div className="flex gap-2">
               <Button variant="ghost" onClick={discard}>Discard</Button>
               <Button onClick={save}>Save changes</Button>

@@ -91,22 +91,24 @@ const POINTS: Point[] = [
   },
 ];
 
+/** The four things worth knowing, as waypoints down one route line. Also shown in the sidebar's "How this works" dialog. */
 export function HowItWorksContent() {
   return (
-    <div className="space-y-5">
+    <ul className="relative space-y-6">
+      <span aria-hidden className="absolute bottom-4 left-[17px] top-4 w-px bg-gradient-to-b from-accent/60 via-hairline to-transparent" />
       {POINTS.map((point) => (
-        <div key={point.title} className="flex gap-3">
-          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-soft text-brand">
+        <li key={point.title} className="relative flex gap-4">
+          <div className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/40 bg-panel text-accent shadow-[0_0_14px_-4px_var(--color-accent)]">
             {point.icon}
           </div>
-          <div>
-            <Heading as="h3" className="text-sm text-ink">
+          <div className="min-w-0 pt-1.5">
+            <Heading as="h3" className="text-base text-ink">
               {point.title}
             </Heading>
             <p className="mt-1 text-sm leading-relaxed text-ink-muted">{point.body}</p>
           </div>
-        </div>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }

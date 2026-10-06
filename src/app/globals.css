@@ -644,6 +644,63 @@ body {
   }
 }
 
+/* ---------- Micro-interactions ---------- */
+
+/* A button that physically presses: it sinks a pixel and its shadow goes inward, then springs back. */
+.press:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: inset 0 2px 4px hsl(var(--shadow-color) / 0.28);
+  transition-duration: 60ms;
+}
+
+/* The tick on a confirmed copy draws itself in. */
+.tick-draw {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: tick-draw 0.32s var(--ease-emphasized) 0.04s forwards;
+}
+@keyframes tick-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The empty-state radar scope's sweep. */
+.radar-sweep {
+  transform-origin: 24px 24px;
+  animation: radar-sweep 4.5s linear infinite;
+}
+@keyframes radar-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Toasts rise into the corner. `backwards`, so no transform lingers once they've landed. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+}
+.animate-toast-in {
+  animation: toast-in 0.34s var(--ease-emphasized) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .press:active:not(:disabled) {
+    transform: none;
+  }
+  .tick-draw {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .radar-sweep,
+  .animate-toast-in {
+    animation: none;
+  }
+}
+
 /* ---------- App shell ---------- */
 
 /*

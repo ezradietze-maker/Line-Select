@@ -77,10 +77,10 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-elevated sm:p-6">
+    <div className="panel-glass p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-ink">What pilots near you actually held</h2>
+          <h2 className="font-display text-xl font-semibold text-ink">What pilots near you actually held</h2>
           <p className="mt-1 text-sm leading-relaxed text-ink-muted">
             Real, self-reported outcomes for {bidPack.base} {bidPack.aircraft} {bidPack.seat} — no
             competitor has this data for FedEx specifically. Anonymous: your report shares only
@@ -112,7 +112,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
         </div>
       )}
 
-      <div className="mt-4 border-t border-border pt-4">
+      <div className="mt-4 border-t border-hairline pt-4">
         {submitted ? (
           <p className="text-sm text-good">Thanks — your report was added.</p>
         ) : !user ? (
@@ -176,8 +176,8 @@ export function AwardHistoryPanel({ bidPack, seniority, user }: AwardHistoryPane
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border bg-canvas px-3 py-2.5">
-      <div className="text-lg font-semibold text-ink">{value}</div>
+    <div className="rounded-lg border border-hairline bg-canvas/50 px-3 py-2.5">
+      <div className="font-mono text-lg font-semibold tabular-nums text-readout">{value}</div>
       <div className="text-xs text-ink-faint">{label}</div>
     </div>
   );

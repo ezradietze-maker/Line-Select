@@ -12,7 +12,7 @@ interface ToastStackProps {
   onClick: (id: string) => void;
 }
 
-/** A stack of transient notifications pinned to the bottom-right of the viewport. */
+/** A stack of transient notifications pinned to the bottom-right of the viewport (above the phone tab bar), each sliding up into place. */
 export function ToastStack({ toasts, onDismiss, onClick }: ToastStackProps) {
   if (toasts.length === 0) return null;
 
@@ -21,7 +21,7 @@ export function ToastStack({ toasts, onDismiss, onClick }: ToastStackProps) {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className="flex items-start gap-2 rounded-xl border border-border bg-surface-raised p-4 shadow-elevated-lg animate-fade-in"
+          className="animate-toast-in panel-glass flex items-start gap-2 p-4"
         >
           <button
             type="button"

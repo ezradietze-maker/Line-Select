@@ -5,7 +5,11 @@ import { AutoBidPanel } from "@/components/strategies/AutoBidPanel";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
+import { Notice } from "@/components/ui/Notice";
+import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TextField } from "@/components/ui/TextField";
 import { fetchAwardHistory, summarizeAwardHistory } from "@/lib/award-history";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
@@ -54,16 +58,12 @@ export function StrategiesScreen({
 }: StrategiesScreenProps) {
   if (!bidPack) {
     return (
-      <div className="mx-auto w-full max-w-md animate-fade-in text-center">
-        <Heading as="h1" className="text-xl text-ink sm:text-2xl">Upload a bid pack first</Heading>
-        <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-          Strategies are built from your bid pack&rsquo;s own real lines, so upload one before
-          Line Select can find your best moves.
-        </p>
-        <Button onClick={onGoToUpload} className="mt-6">
-          Upload bid pack
-        </Button>
-      </div>
+      <EmptyState
+        title="Upload a bid pack first"
+        description="Strategies are built from your bid pack’s own real lines, so upload one before Line Select can find your best moves."
+        actionLabel="Upload bid pack"
+        onAction={onGoToUpload}
+      />
     );
   }
 
@@ -159,7 +159,8 @@ function SeniorityForm({
 
   return (
     <div className="mx-auto w-full max-w-md animate-fade-in">
-      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Where do you rank?</Heading>
+      <div className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-accent">{packEyebrow(bidPack)}</div>
+      <Heading as="h1" className="mt-1.5 text-3xl tracking-tight text-ink sm:text-4xl">Where do you rank?</Heading>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
         Every strategy below is built from the real lines in your {bidPack.base} {bidPack.aircraft}{" "}
         {bidPack.seat} pack. Your seniority number just tells Line Select which of those moves are
@@ -168,7 +169,7 @@ function SeniorityForm({
       </p>
 
       <form
-        className="mt-6 space-y-4"
+        className="panel-glass mt-6 space-y-4 p-5"
         onSubmit={(e) => {
           e.preventDefault();
           if (valid) onSave({ rank: rankNum, totalPilots: totalNum });
@@ -197,9 +198,9 @@ function SeniorityForm({
         </Button>
       </form>
 
-      <div className="mt-8 border-t border-border pt-6">
-        <div className="text-sm font-medium text-ink">Don&rsquo;t know your exact numbers?</div>
-        <p className="mt-1 text-xs text-ink-muted">
+      <div className="mt-8">
+        <SectionHeading>Don&rsquo;t know your exact numbers?</SectionHeading>
+        <p className="mt-2 text-xs text-ink-muted">
           A rough idea is enough &mdash; pick where you sit and you&rsquo;ll get the same strategies.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -208,7 +209,7 @@ function SeniorityForm({
               key={band.id}
               type="button"
               onClick={() => onSave(band.input)}
-              className="rounded-lg border border-border-strong px-3 py-2.5 text-left transition-colors hover:border-brand hover:bg-brand-soft"
+              className="press rounded-lg border border-hairline bg-canvas/40 px-3 py-2.5 text-left transition-colors hover:border-accent/60 hover:bg-accent-soft/40"
             >
               <div className="text-sm font-medium text-ink">{band.label}</div>
               <div className="mt-0.5 text-xs text-ink-muted">{band.hint}</div>
@@ -296,68 +297,142 @@ function StrategyResults({
     });
   }
 
+  // Line plays (picks from this pack) and bonus moves (process tips with no lines) read as two different kinds of advice, so they get their own banks — each keeping the preference order it already had.
+  const linePlays = strategies.filter((st) => !st.isProcessTip);
+  const bonusMoves = strategies.filter((st) => st.isProcessTip);
+  const topPickId = profile && strategies[0] && !strategies[0].isProcessTip ? strategies[0].id : null;
+
+  function card(strategy: (typeof strategies)[number]) {
+    return (
+      <StrategyCard
+        key={strategy.id}
+        strategy={strategy}
+        topPick={strategy.id === topPickId}
+        reaction={profile?.strategyReactions?.[strategy.id] ?? null}
+        onReact={profile ? (reaction) => handleReaction(strategy.id, reaction) : undefined}
+      />
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Your strategies</Heading>
-          <p className="mt-1.5 text-sm text-ink-muted">
-            {fromProfile ? "Bid position" : "Seniority"} #{seniority.rank} of {seniority.totalPilots} in {bidPack.base}{" "}
-            {bidPack.aircraft} {bidPack.seat}
-            {strongCount > 0 && (
-              <>
-                {" "}
-                &mdash;{" "}
-                <span className="font-medium text-good">
-                  {strongCount} {strongCount === 1 ? "move" : "moves"} at strong odds
-                </span>
-              </>
-            )}
-          </p>
-        </div>
-        <Button variant="secondary" onClick={onEditSeniority}>
-          {fromProfile ? "Change seniority number" : "Update seniority"}
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow={packEyebrow(bidPack)}
+        title="Your strategies"
+        description={
+          profile
+            ? "Moves built from this pack’s real lines, ordered by what you told us — with an honest read on whether your seniority can hold each one."
+            : "Moves built from this pack’s real lines, with an honest read on whether your seniority can hold each one."
+        }
+        actions={
+          <Button variant="secondary" onClick={onEditSeniority}>
+            {fromProfile ? "Change seniority number" : "Update seniority"}
+          </Button>
+        }
+      >
+        <SeniorityStrip rank={seniority.rank} total={seniority.totalPilots} fromProfile={fromProfile} strongCount={strongCount} />
+      </PageHeader>
 
-      <p className="mt-4 rounded-lg border border-border-strong bg-canvas px-3.5 py-2.5 text-xs leading-relaxed text-ink-faint">
+      <Notice tone="note" className="mt-4 text-xs">
         Every strategy here works within FAR Part 117 duty and rest limits. &ldquo;Aggressive&rdquo;
         means legal and contractual leverage, never bent rest — that&rsquo;s not on the table
         regardless of how this board grows.
-      </p>
+      </Notice>
 
       {!profile && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/30 bg-brand-soft px-4 py-3.5">
-          <p className="text-sm leading-relaxed text-ink">
+        <Notice
+          tone="info"
+          className="mt-3"
+          action={<Button onClick={onStartInterview}>Take the interview</Button>}
+        >
+          <span className="text-ink">
             These are ranked by how rare each pattern is, not by what you&rsquo;d actually
             enjoy. Answer the preferences interview and Line Select will reorder them by how
             much you&rsquo;d personally prefer each one.
-          </p>
-          <Button onClick={onStartInterview} className="shrink-0">
-            Take the interview
-          </Button>
-        </div>
+          </span>
+        </Notice>
       )}
 
       <div className="mt-6">
         <AutoBidPanel entries={autoBid} onGoToResults={profile ? onGoToResults : undefined} />
       </div>
 
-      <div className="mt-6 space-y-4">
-        {strategies.map((strategy, i) => (
-          <StrategyCard
-            key={strategy.id}
-            strategy={strategy}
-            topPick={!!profile && i === 0 && !strategy.isProcessTip}
-            reaction={profile?.strategyReactions?.[strategy.id] ?? null}
-            onReact={profile ? (reaction) => handleReaction(strategy.id, reaction) : undefined}
-          />
-        ))}
-      </div>
+      <nav aria-label="Jump to a strategy" className="mt-8">
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+          {strategies.map((st) => (
+            <a
+              key={st.id}
+              href={`#strategy-${st.id}`}
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent/60 hover:text-accent ${
+                st.id === topPickId ? "border-accent/50 bg-accent-soft/60 text-accent" : "border-hairline text-ink-muted"
+              }`}
+            >
+              {st.name}
+              {st.lines.length > 0 && <span className="ml-1.5 font-mono text-ink-faint">{st.lines.length}</span>}
+            </a>
+          ))}
+        </div>
+      </nav>
 
-      <div className="mt-6">
+      {linePlays.length > 0 && (
+        <section className="mt-6">
+          <SectionHeading count={linePlays.length}>Line plays</SectionHeading>
+          <div className="mt-3 space-y-4">{linePlays.map(card)}</div>
+        </section>
+      )}
+
+      {bonusMoves.length > 0 && (
+        <section className="mt-10">
+          <SectionHeading count={bonusMoves.length}>Bonus moves</SectionHeading>
+          <p className="mt-2 text-xs text-ink-faint">Ways to work the process itself &mdash; no single line to bid.</p>
+          <div className="mt-3 space-y-4">{bonusMoves.map(card)}</div>
+        </section>
+      )}
+
+      <div className="mt-10">
         <AwardHistoryPanel bidPack={bidPack} seniority={seniority} user={user} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Where this pilot sits in the bid, as a strip of the whole seniority list
+ * with a lit marker — most senior on the left. Purely a picture of the
+ * number already shown; it adds no estimate of its own.
+ */
+function SeniorityStrip({ rank, total, fromProfile, strongCount }: { rank: number; total: number; fromProfile: boolean; strongCount: number }) {
+  const fraction = total > 1 ? Math.min(1, Math.max(0, (rank - 1) / (total - 1))) : 0;
+  return (
+    <div className="panel-glass mt-5 grid gap-4 p-4 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-6">
+      <div>
+        <div className="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+          <span>{fromProfile ? "Bid position" : "Seniority"}</span>
+          <span className="text-sm font-semibold normal-case tracking-normal tabular-nums text-readout">
+            #{rank} <span className="text-ink-faint">of {total}</span>
+          </span>
+        </div>
+        <div className="relative mt-2.5 h-2 rounded-full bg-hairline" role="img" aria-label={`Number ${rank} of ${total} in bid order`}>
+          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-good/50 via-accent/40 to-ink-faint/30" />
+          <div
+            className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_10px_var(--color-accent)]"
+            style={{ left: `calc(${fraction * 100}% - 2px)` }}
+          />
+        </div>
+        <div className="mt-1.5 flex justify-between text-[11px] text-ink-faint">
+          <span>Most senior</span>
+          <span>Most junior</span>
+        </div>
+      </div>
+      {strongCount > 0 && (
+        <div className="flex items-center gap-2 sm:border-l sm:border-hairline sm:pl-6">
+          <span className="h-2 w-2 rounded-full bg-good shadow-[0_0_8px_var(--color-good)]" aria-hidden />
+          <span className="text-sm">
+            <span className="font-mono font-semibold text-good">{strongCount}</span>{" "}
+            <span className="text-ink-muted">{strongCount === 1 ? "move" : "moves"} at strong odds</span>
+          </span>
+        </div>
+      )}
     </div>
   );
 }

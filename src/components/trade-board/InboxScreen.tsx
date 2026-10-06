@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Heading } from "@/components/ui/Heading";
+import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import {
   InfoBanner,
@@ -49,11 +49,16 @@ export function InboxScreen({ bidPack, user, onGoToTradeBoard }: InboxScreenProp
 
   return (
     <div className="mx-auto w-full max-w-3xl animate-fade-in">
-      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">Inbox</Heading>
-      <p className="mt-1.5 text-sm text-ink-muted">
-        Trades that need your response, pilots specifically after one of your posted trips, and
-        any of your trades that reached an agreement.
-      </p>
+      <PageHeader
+        eyebrow={packEyebrow(bidPack)}
+        title="Inbox"
+        description={
+          <>
+            Trades that need your response, pilots specifically after one of your posted trips, and any of your trades
+            that reached an agreement.
+          </>
+        }
+      />
 
       <NonBindingDisclaimer />
 
@@ -65,10 +70,10 @@ export function InboxScreen({ bidPack, user, onGoToTradeBoard }: InboxScreenProp
       {user && !bidPack && <InfoBanner>Upload your bid pack to use the Inbox.</InfoBanner>}
 
       {loading ? (
-        <SkeletonCards className="mt-8" />
+        <SkeletonCards shape="offer" className="mt-8" />
       ) : (
         <div className="mt-8 space-y-8">
-          <Section title="Needs your response">
+          <Section title="Needs your response" count={needsResponse.length}>
             {needsResponse.length === 0 ? (
               <EmptyState compact description="No proposals waiting on you right now." />
             ) : (
@@ -83,7 +88,7 @@ export function InboxScreen({ bidPack, user, onGoToTradeBoard }: InboxScreenProp
             )}
           </Section>
 
-          <Section title="Direct interest in your trips">
+          <Section title="Direct interest in your trips" count={directInterest.length}>
             {directInterest.length === 0 ? (
               <EmptyState
                 compact
@@ -101,7 +106,7 @@ export function InboxScreen({ bidPack, user, onGoToTradeBoard }: InboxScreenProp
             )}
           </Section>
 
-          <Section title="Accepted trades">
+          <Section title="Accepted trades" count={accepted.length}>
             {accepted.length === 0 ? (
               <EmptyState compact description="No agreed trades yet." />
             ) : (
