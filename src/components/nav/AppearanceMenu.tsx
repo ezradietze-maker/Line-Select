@@ -129,7 +129,7 @@ export function AppearanceMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-20 mt-2 w-52 animate-fade-in overflow-hidden rounded-lg border border-border bg-surface shadow-elevated-lg"
+          className="absolute right-0 top-full z-40 mt-2 w-52 rail-collapsed:left-0 rail-collapsed:right-auto animate-fade-in overflow-hidden rounded-lg border border-border bg-surface shadow-elevated-lg"
         >
           <div className="border-b border-border px-4 py-3">
             <div className="text-sm font-medium text-ink">Appearance</div>

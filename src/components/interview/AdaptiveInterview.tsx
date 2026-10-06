@@ -7,7 +7,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { FlightPathProgress } from "@/components/ui/FlightPathProgress";
 import { MicButton } from "@/components/ui/MicButton";
 import { NumberTicker } from "@/components/ui/NumberTicker";
-import { ScreenTransition } from "@/components/ui/ScreenTransition";
+import { StepTransition } from "@/components/ui/StepTransition";
 import { parseSeniorityInput, SeniorityStep } from "@/components/interview/SeniorityStep";
 import { BiddingStoryStep } from "@/components/interview/BiddingStoryStep";
 import { ChoiceStep, isTypingTarget } from "@/components/interview/ChoiceStep";
@@ -686,7 +686,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
             ? `q-${currentQuestion.id}`
             : phase;
 
-  // ScreenTransition drifts in from a direction, but there's no single
+  // StepTransition drifts in from a direction, but there's no single
   // "going forward" setPhase call to hook — forward moves happen from a
   // dozen different handlers, while `goBack` is the one and only path
   // backward. Rather than touch every forward call site, derive direction
@@ -975,9 +975,9 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
           </button>
         )}
         {error && phase !== "adaptive-question" && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-        <ScreenTransition screenKey={stepKey} direction={stepDirection}>
+        <StepTransition screenKey={stepKey} direction={stepDirection}>
           {content}
-        </ScreenTransition>
+        </StepTransition>
       </div>
 
       {canFinishEarly && (

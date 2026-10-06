@@ -1,47 +1,49 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
-import type { ReactNode } from "react";
-import { DURATION, EASE } from "@/lib/motion-tokens";
+import { ViewTransition, useLayoutEffect, type ReactNode } from "react";
 
-const DRIFT_PX = 24;
+/**
+ * Which way the panels move on a route change:
+ * - "forward" / "back": along the onboarding spine (upload → preferences → … → results) — sideways.
+ * - "down" / "up": between sidebar destinations, in rail order — the panel
+ *   stack moves vertically on a desktop, sideways under the phone's tab bar.
+ * - "fade": anything else (an info page, a jump with no meaningful order).
+ */
+export type NavDirection = "forward" | "back" | "down" | "up" | "fade";
 
 interface ScreenTransitionProps {
   screenKey: string;
-  /** 1 = moving forward along the onboarding spine, -1 = moving back,
-   * 0 = a lateral nav jump between unrelated screens (plain cross-fade,
-   * no horizontal drift). */
-  direction: 1 | -1 | 0;
+  direction: NavDirection;
   children: ReactNode;
 }
 
 /**
- * Enter-only: the incoming screen fades/drifts in on mount, the outgoing one
- * just unmounts instantly rather than getting a tracked exit animation.
- * This used to run both directions through `AnimatePresence` (coordinating
- * an exit-then-enter sequence), but that exit animation reliably failed to
- * ever report completion in this app's actual usage — verified live: every
- * screen change either hung indefinitely waiting for the old screen's exit
- * (with `mode="wait"`) or left the old and new screens permanently stacked
- * on top of each other (without it), regardless of `initial={false}`,
- * nesting, or which specific screen pair was involved. Root cause not fully
- * isolated (a `motion`/React 19 interaction is suspected, since neither
- * side's code looked wrong on its own) — flagged as a real regression worth
- * a dedicated follow-up rather than either shipping a broken transition or
- * silently declaring this fixed.
+ * The "panel slide" between screens: the outgoing screen slides out and
+ * fades while the incoming one slides in behind it, from the direction
+ * the pilot is moving.
+ *
+ * Built on React's `<ViewTransition>` (the browser's View Transitions API)
+ * rather than `motion`'s `AnimatePresence`. The old screen's exit used to
+ * hang or leave both screens stacked here, because a keeping-alive exit
+ * animation has to hold onto a page the App Router has already replaced. A
+ * view transition animates *snapshots* the browser takes of the old and new
+ * screen instead, so nothing has to be kept mounted and there's no exit to
+ * wait on. Browsers without the API simply swap screens instantly.
+ *
+ * Keyed by route, so each navigation is an exit + enter pair; updates
+ * within one screen (a Suspense reveal, a deferred filter) don't animate
+ * (`default="none"`). The direction lives on `<html data-nav-dir>`, which
+ * the transition's CSS in globals.css reads — the exiting screen's own
+ * props are from its last render, so they can't carry the new direction.
  */
 export function ScreenTransition({ screenKey, direction, children }: ScreenTransitionProps) {
-  const reduceMotion = useReducedMotion();
-  const drift = reduceMotion ? 0 : DRIFT_PX * direction;
+  useLayoutEffect(() => {
+    document.documentElement.dataset.navDir = direction;
+  }, [screenKey, direction]);
 
   return (
-    <motion.div
-      key={screenKey}
-      initial={{ opacity: 0, x: drift }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: reduceMotion ? 0 : DURATION.page, ease: EASE.standard }}
-    >
-      {children}
-    </motion.div>
+    <ViewTransition key={screenKey} enter="panel" exit="panel" default="none">
+      <div>{children}</div>
+    </ViewTransition>
   );
 }

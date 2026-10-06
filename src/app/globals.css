@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* The desktop sidebar folded down to its icon rail (`<html data-rail="collapsed">`, see lib/rail.ts). Desktop only — phones have no rail. */
+@custom-variant rail-collapsed {
+  @media (min-width: 48rem) {
+    &:where([data-rail="collapsed"] *) {
+      @slot;
+    }
+  }
+}
+
 :root {
   /* Base surfaces — warm beige/cream, never stark white */
   --color-canvas: #f1e8d8;
@@ -622,6 +631,7 @@ body {
   .animate-fade-in,
   .animate-rise-in,
   .animate-slide-in-left,
+  .animate-sheet-up,
   .skeleton-pulse {
     animation: none;
   }
@@ -631,5 +641,136 @@ body {
   }
   .hover-lift {
     transition: none;
+  }
+}
+
+/* ---------- App shell ---------- */
+
+/*
+ * How much room the navigation takes, for anything that has to clear it: the
+ * content column, a fixed save bar, the toast stack. Phones reserve the tab
+ * bar's height at the bottom; desktops reserve the rail's width on the left.
+ */
+.app-shell {
+  --shell-left: 0px;
+  --shell-bottom: calc(4rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 48rem) {
+  .app-shell {
+    --shell-left: 15rem;
+    --shell-bottom: 0px;
+  }
+  [data-rail="collapsed"] .app-shell {
+    --shell-left: 4.5rem;
+  }
+}
+.app-shell.no-nav {
+  --shell-left: 0px;
+  --shell-bottom: 0px;
+}
+
+/* The phone's "More" sheet. `backwards`, not `both`: once it's up, no transform lingers to trap a fixed-position modal opened from inside it. */
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.animate-sheet-up {
+  animation: sheet-up 0.32s var(--ease-emphasized) backwards;
+}
+
+/* ---------- Route transitions (ScreenTransition) ---------- */
+
+/*
+ * The panel slide. The outgoing screen leaves quickly and slightly blurred;
+ * the incoming one arrives a beat later from the direction of travel. The
+ * direction comes from <html data-nav-dir>: sideways along the onboarding
+ * spine, vertically between sidebar destinations on a desktop (the rail is
+ * a vertical stack of panels) and sideways on a phone (its tab bar is a row).
+ */
+:root {
+  --vt-in: 0 10px;
+  --vt-out: 0 -6px;
+}
+:root[data-nav-dir="forward"] {
+  --vt-in: 56px 0;
+  --vt-out: -40px 0;
+}
+:root[data-nav-dir="back"] {
+  --vt-in: -56px 0;
+  --vt-out: 40px 0;
+}
+:root[data-nav-dir="down"] {
+  --vt-in: 0 44px;
+  --vt-out: 0 -30px;
+}
+:root[data-nav-dir="up"] {
+  --vt-in: 0 -44px;
+  --vt-out: 0 30px;
+}
+@media (max-width: 47.99rem) {
+  :root[data-nav-dir="down"] {
+    --vt-in: 56px 0;
+    --vt-out: -40px 0;
+  }
+  :root[data-nav-dir="up"] {
+    --vt-in: -56px 0;
+    --vt-out: 40px 0;
+  }
+}
+
+@keyframes vt-panel-out {
+  to {
+    opacity: 0;
+    translate: var(--vt-out);
+    filter: blur(2px);
+  }
+}
+@keyframes vt-panel-in {
+  from {
+    opacity: 0;
+    translate: var(--vt-in);
+    filter: blur(3px);
+  }
+}
+::view-transition-old(.panel) {
+  animation: vt-panel-out 170ms var(--ease-standard) both;
+}
+::view-transition-new(.panel) {
+  animation: vt-panel-in 440ms var(--ease-emphasized) 90ms both;
+}
+
+/* The navigation is the fixed reference point: it never slides, and the panels slide underneath it. */
+::view-transition-group(app-rail),
+::view-transition-group(app-topbar),
+::view-transition-group(app-tabbar) {
+  animation: none;
+  z-index: 50;
+}
+::view-transition-old(app-rail),
+::view-transition-old(app-topbar),
+::view-transition-old(app-tabbar) {
+  display: none;
+}
+::view-transition-new(app-rail),
+::view-transition-new(app-topbar),
+::view-transition-new(app-tabbar) {
+  animation: none;
+}
+
+/* Clicks during the half-second slide reach the new screen instead of being swallowed by the overlay. */
+::view-transition {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
   }
 }

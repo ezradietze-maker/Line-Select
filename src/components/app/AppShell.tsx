@@ -5,10 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { FeedbackForm } from "@/components/feedback/FeedbackForm";
 import { LeftNav } from "@/components/nav/LeftNav";
+import { NAV_ITEMS } from "@/components/nav/nav-items";
+import { PhoneNav } from "@/components/nav/PhoneNav";
 import { LogoMark } from "@/components/ui/Logo";
 import { HowItWorksContent } from "@/components/results/HowItWorks";
 import { Modal } from "@/components/ui/Modal";
-import { ScreenTransition } from "@/components/ui/ScreenTransition";
+import { ScreenTransition, type NavDirection } from "@/components/ui/ScreenTransition";
 import { Spinner } from "@/components/ui/Spinner";
 import { ToastStack } from "@/components/ui/Toast";
 import { AppStateProvider, useAppState } from "@/lib/app-state";
@@ -16,18 +18,21 @@ import { navTargetForPath } from "@/lib/nav-target";
 
 const HIDDEN_SIDEBAR_PATHS = ["/", "/auth"];
 
-/** The linear onboarding spine — a route change between two entries here
- * gets a directional slide; a jump involving anything outside it (a
- * sidebar nav jump between results/strategies/trade-board/inbox/hotel-
- * ratings) falls back to a plain cross-fade, since there's no meaningful
- * "forward" or "back" between those. */
+/** The linear onboarding spine — a route change between two entries here slides sideways, forward or back. */
 const ROUTE_ORDER = ["/", "/auth", "/upload", "/preview", "/preferences", "/interview", "/confirm-preferences", "/results"];
 
-function getDirection(from: string, to: string): 1 | -1 | 0 {
+/** Spine first; then two sidebar destinations move the panel stack in rail order; anything else cross-fades. */
+function getDirection(from: string, to: string): NavDirection {
   const fromIndex = ROUTE_ORDER.indexOf(from);
   const toIndex = ROUTE_ORDER.indexOf(to);
-  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return 0;
-  return toIndex > fromIndex ? 1 : -1;
+  if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) return toIndex > fromIndex ? "forward" : "back";
+  const fromTarget = navTargetForPath(from);
+  const toTarget = navTargetForPath(to);
+  if (fromTarget && toTarget && fromTarget !== toTarget) {
+    const order = (t: string) => NAV_ITEMS.findIndex((item) => item.target === t);
+    return order(toTarget) > order(fromTarget) ? "down" : "up";
+  }
+  return "fade";
 }
 
 function Chrome({ children }: { children: React.ReactNode }) {
@@ -58,13 +63,26 @@ function Chrome({ children }: { children: React.ReactNode }) {
   // an effect, so the very first paint already carries the right direction
   // instead of flashing a stale one.
   const [renderedPath, setRenderedPath] = useState(pathname);
-  const [direction, setDirection] = useState<1 | -1 | 0>(0);
+  const [direction, setDirection] = useState<NavDirection>("fade");
   if (pathname !== renderedPath) {
     setDirection(getDirection(renderedPath, pathname));
     setRenderedPath(pathname);
   }
 
   const showSidebar = !HIDDEN_SIDEBAR_PATHS.includes(pathname);
+  const navProps = {
+    active: navTargetForPath(pathname),
+    hasProfile: !!profile,
+    hasBidPack: !!bidPack,
+    user,
+    inboxUnreadCount,
+    pack: bidPack ? { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month } : null,
+    onNavigate: (target: string) => router.push(`/${target}`),
+    onSignIn: () => router.push("/auth"),
+    onLogout: handleLogout,
+    onOpenHowItWorks: () => setHowItWorksOpen(true),
+    onOpenFeedback: () => setFeedbackOpen(true),
+  };
 
   // The landing and sign-in pages have no app frame to sketch, so a
   // first-time visitor sees the mark rather than an app's loading skeleton.
@@ -78,9 +96,9 @@ function Chrome({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return (
-      <div className="flex min-h-full flex-col md:flex-row">
+      <div className={`app-shell flex min-h-full flex-col md:flex-row ${showSidebar ? "" : "no-nav"}`}>
         {showSidebar && (
-          <div className="hidden shrink-0 border-r border-sidebar-border bg-sidebar md:block md:w-60">
+          <div className="hidden w-[var(--shell-left)] shrink-0 border-r border-sidebar-border bg-sidebar md:block">
             <div className="flex items-center gap-2.5 px-4 py-5">
               <div className="skeleton-pulse h-8 w-8 rounded-lg bg-border" aria-hidden />
               <div className="skeleton-pulse h-4 w-24 rounded bg-border" aria-hidden />
@@ -109,23 +127,15 @@ function Chrome({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className={`app-shell flex min-h-full flex-col ${showSidebar ? "" : "no-nav"}`}>
       {showSidebar && (
-        <LeftNav
-          active={navTargetForPath(pathname)}
-          hasProfile={!!profile}
-          hasBidPack={!!bidPack}
-          user={user}
-          inboxUnreadCount={inboxUnreadCount}
-          onNavigate={(target) => router.push(`/${target}`)}
-          onSignIn={() => router.push("/auth")}
-          onLogout={handleLogout}
-          onOpenHowItWorks={() => setHowItWorksOpen(true)}
-          onOpenFeedback={() => setFeedbackOpen(true)}
-        />
+        <>
+          <LeftNav {...navProps} />
+          <PhoneNav {...navProps} />
+        </>
       )}
 
-      <div className={`flex flex-1 flex-col ${showSidebar ? "md:pl-60" : ""}`}>
+      <div className="flex flex-1 flex-col pb-[var(--shell-bottom)] transition-[padding-left] duration-300 ease-[var(--ease-emphasized)] md:pl-[var(--shell-left)]">
         {/* The landing page is full-bleed — its hero and globe run edge to edge. */}
         <main className={pathname === "/" ? "flex flex-1 flex-col" : "flex flex-1 flex-col justify-center px-4 py-10 sm:py-16"}>
           {bidPackSaveFailed && (

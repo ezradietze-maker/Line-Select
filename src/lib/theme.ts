@@ -1,3 +1,5 @@
+import { RAIL_BOOTSTRAP } from "@/lib/rail-key";
+
 /** "night" is real cockpit red-light lighting (dimming everything to red to protect night vision), not just another dark variant — a pilot reaches for it specifically at night regardless of their light/dark/system preference otherwise, so it sits as its own mode rather than a toggle layered on "dark". */
 export type ThemeMode = "light" | "dark" | "night" | "system";
 
@@ -45,5 +47,6 @@ export const THEME_BOOTSTRAP_SCRIPT = `
       document.documentElement.setAttribute('data-theme', mode);
     }
   } catch (e) {}
+  ${RAIL_BOOTSTRAP}
 })();
 `;

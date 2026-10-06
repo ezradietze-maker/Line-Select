@@ -371,7 +371,7 @@ export function PreferencesScreen({
       </section>
 
       {dirty && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 px-4 py-3 shadow-elevated-lg backdrop-blur md:left-60">
+        <div className="fixed inset-x-0 bottom-[var(--shell-bottom,0px)] z-20 border-t border-border bg-surface/95 px-4 py-3 shadow-elevated-lg backdrop-blur md:left-[var(--shell-left,15rem)]">
           <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
             <span className="text-sm text-ink-muted">You have unsaved changes.</span>
             <div className="flex gap-2">
