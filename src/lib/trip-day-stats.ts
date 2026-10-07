@@ -30,6 +30,14 @@ export interface DayStats {
   restDay: boolean;
   /** Hotel standby on this day. */
   standby: boolean;
+  /**
+   * Each separate duty that touches this day, in order — a day can hold the
+   * end of last night's duty and the start of tonight's. `start` is null
+   * when the duty runs in from the day before, `end` null when it runs on
+   * into the next. Folding these into one "start–end" read the 23:20 pickup
+   * and the 06:13 landing of two different duties as one backwards window.
+   */
+  windows: { start: string | null; end: string | null }[];
 }
 
 const DUTY_KINDS = new Set<TimelineSegment["kind"]>(["ground", "flying", "deadhead", "connection", "standby"]);
@@ -70,7 +78,28 @@ export function dayStats(day: TimelineDay): DayStats {
   const flights = segs.filter((s) => s.kind === "flying" || s.kind === "deadhead");
   const ends = flights.filter((s) => !s.continuesToNextDay).map((s) => s.endMinuteOfDay);
   const dutyEnds = segs.filter((s) => (s.kind === "flying" || s.kind === "deadhead" || s.kind === "standby") && !s.continuesToNextDay).map((s) => s.endMinuteOfDay);
+  // Duties are separated by hotel time; ground, connections, flights and standby all belong to the duty around them.
+  const windows: DayStats["windows"] = [];
+  let block: TimelineSegment[] = [];
+  const close = () => {
+    if (block.length === 0) return;
+    const first = block[0];
+    const ending = block.filter((s) => s.kind !== "ground" && s.kind !== "connection");
+    const last = ending[ending.length - 1] ?? block[block.length - 1];
+    windows.push({
+      start: first.continuesFromPreviousDay ? null : clock(first.startMinuteOfDay),
+      end: last.continuesToNextDay || last.kind === "ground" ? null : clock(last.endMinuteOfDay),
+    });
+    block = [];
+  };
+  for (const seg of [...segs].sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay)) {
+    if (seg.kind === "layover") close();
+    else block.push(seg);
+  }
+  close();
+
   return {
+    windows,
     onDuty: starts.length ? clock(Math.min(...starts)) : null,
     lastIn: ends.length ? clock(Math.max(...ends)) : null,
     dutyEnd: dutyEnds.length ? clock(Math.max(...dutyEnds)) : null,

@@ -205,8 +205,9 @@ function SegmentText({ seg, cityPreferences }: { seg: TimelineSegment; cityPrefe
 /** The two-line read of one day above its column: when it starts and ends, and how much of it is flying. */
 function DayHeader({ day, stats, date }: { day: TimelineDay; stats: DayStats; date: { weekday: string; day: number } | null }) {
   const window =
-    stats.onDuty || stats.dutyEnd
-      ? `${stats.onDuty ?? (stats.continuesIn ? "··" : "")}–${stats.dutyEnd ?? (stats.continuesOut ? "··" : "")}`
+    // One window per duty: "08:00–14:00", or "–06:13 · 23:20–" when the day ends one duty and starts the next (a dash with no time means it runs over midnight).
+    stats.windows.some((w) => w.start || w.end)
+      ? stats.windows.map((w) => `${w.start ?? ""}–${w.end ?? ""}`).join(" · ")
       : stats.restDay
         ? "rest day"
         : stats.continuesIn || stats.continuesOut
@@ -774,8 +775,9 @@ function TripLegendInfo() {
                   Each column is one day, midnight at the top to midnight at the bottom. The header
                   gives the date, then <span className="font-mono text-ink">09:31–18:04</span>: when the
                   duty starts (report, or hotel pickup) and when it&rsquo;s done (the last flight blocks
-                  in, or hotel standby ends). Two dots
-                  mean the duty runs in from the day before or on into the next. Under it: that
+                  in, or hotel standby ends). A day that finishes one duty and starts another shows both,
+                  like <span className="font-mono text-ink">–06:13 · 23:20–</span>. A dash with no time
+                  means the duty runs in from the day before or on into the next. Under it: that
                   day&rsquo;s flying (block) time and landings.
                 </li>
                 <li>

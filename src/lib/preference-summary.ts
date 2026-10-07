@@ -95,7 +95,9 @@ interface RankedPreference {
  */
 export function rankPreferences(
   weights: PreferenceWeights,
-  explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>>
+  explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>>,
+  /** How much each pinned target matters, as the interview recorded it — without it a target only ranks as a middling 0.5, so a pilot's top priority stated as a number ("at least 15 days off") could miss the headline entirely. */
+  targetImportance: Partial<Record<ExplicitTargetKey, number>> = {}
 ): RankedPreference[] {
   const keys = (Object.keys(weights) as (keyof PreferenceWeights)[]).filter((k) => !NON_LINE_PREFERENCE_KEYS.has(k));
 
@@ -107,7 +109,7 @@ export function rankPreferences(
         ? explicitTargets[explicitKey]
         : undefined;
     const hasExplicit = explicitValue !== undefined;
-    const importance = Math.max(Math.min(1, Math.abs(weight) / 100), hasExplicit ? 0.5 : 0);
+    const importance = Math.max(Math.min(1, Math.abs(weight) / 100), hasExplicit ? Math.max(0.5, Math.min(1, targetImportance[explicitKey] ?? 0)) : 0);
 
     let phrase: string;
     if (hasExplicit) {
@@ -128,9 +130,10 @@ export function rankPreferences(
 /** "You care most about X, then Y, then Z." — the top-line summary sentence. */
 export function summarizePreferencesSentence(
   weights: PreferenceWeights,
-  explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>>
+  explicitTargets: Partial<Record<ExplicitTargetKey, number | RangeTarget>>,
+  targetImportance: Partial<Record<ExplicitTargetKey, number>> = {}
 ): string {
-  const phrases = rankPreferences(weights, explicitTargets)
+  const phrases = rankPreferences(weights, explicitTargets, targetImportance)
     .slice(0, 3)
     .map((r) => r.phrase);
 

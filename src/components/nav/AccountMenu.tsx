@@ -65,7 +65,7 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
         title={user.displayName}
         className="flex w-full items-center gap-2.5 rounded-full border border-sidebar-border bg-surface py-1.5 pl-1.5 pr-3 transition-colors hover:border-border-strong rail-collapsed:justify-center rail-collapsed:px-1.5"
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand font-mono text-xs font-semibold text-white">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand font-mono text-xs font-semibold text-on-brand">
           {initials(user.displayName)}
         </span>
         <span className="flex-1 truncate text-left text-sm font-medium text-ink rail-collapsed:sr-only">

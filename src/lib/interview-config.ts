@@ -335,6 +335,8 @@ export function formatExplicitTarget(config: TargetSliderQuestionConfig, value: 
     const idealPart = ideal !== undefined ? `, ideal ${config.formatValue(ideal)}` : "";
     return `${config.formatValue(min)}–${config.formatValue(max)} ${config.unitPlural}${idealPart}`;
   }
+  if (min !== undefined && ideal !== undefined) return `at least ${config.formatValue(min)}, ideally ${config.formatValue(ideal)} ${config.unitPlural}`;
+  if (max !== undefined && ideal !== undefined) return `ideally ${config.formatValue(ideal)}, up to ${config.formatValue(max)} ${config.unitPlural}`;
   if (min !== undefined) return `at least ${config.formatValue(min)} ${config.unitPlural}`;
   if (max !== undefined) return `up to ${config.formatValue(max)} ${config.unitPlural}`;
   if (ideal !== undefined) return `${config.formatValue(ideal)} ${config.unitPlural}`;

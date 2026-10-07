@@ -216,8 +216,12 @@ export function MonthLegend({ className = "" }: { className?: string }) {
 function DayNumbers({ day }: { day: DetailedDay }) {
   const st = dayStats({ dayNumber: day.tripDay ?? 1, segments: day.segments });
   const parts: string[] = [];
-  if (st.onDuty) parts.push(`on duty ${st.onDuty}`);
-  if (st.lastIn) parts.push(`last in ${st.lastIn}`);
+  // In time order, one phrase per duty — a day can finish last night's flying and start tonight's.
+  for (const w of st.windows) {
+    if (w.start && w.end) parts.push(`on duty ${w.start}–${w.end}`);
+    else if (w.end) parts.push(`lands ${w.end} from the night before`);
+    else if (w.start) parts.push(`on duty ${w.start}, through midnight`);
+  }
   if (st.blockMinutes > 0) parts.push(`${hm(st.blockMinutes)} block`);
   if (st.deadheadMinutes > 0) parts.push(`${hm(st.deadheadMinutes)} deadhead`);
   if (st.landings > 0) parts.push(`${st.landings} landing${st.landings === 1 ? "" : "s"}`);

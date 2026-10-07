@@ -59,7 +59,7 @@ function RowIcon({ icon: Icon, active, badge = 0 }: { icon: ComponentType<{ clas
     >
       <Icon className="h-[18px] w-[18px]" />
       {badge > 0 && (
-        <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-white">
+        <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-on-danger">
           {badge > 9 ? "9+" : badge}
         </span>
       )}

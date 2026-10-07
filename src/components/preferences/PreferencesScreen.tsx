@@ -99,7 +99,7 @@ export function PreferencesScreen({
     return (
       <EmptyState
         title="Upload a bid pack first"
-        description="Preferences are scored against a real bid pack, so upload one before setting them."
+        description="Your preferences and rankings are built from a real bid pack, so upload one to get started."
         actionLabel="Upload bid pack"
         onAction={onGoToUpload}
       />

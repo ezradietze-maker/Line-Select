@@ -153,7 +153,7 @@ export function AppearanceMenu() {
                     title={opt.title ?? opt.label}
                     onClick={() => chooseTheme(opt.mode)}
                     className={`flex flex-1 items-center justify-center rounded-full py-1.5 transition-colors ${
-                      mode === opt.mode ? "bg-brand text-white shadow-sm" : "text-ink-faint hover:text-ink"
+                      mode === opt.mode ? "bg-brand text-on-brand shadow-sm" : "text-ink-faint hover:text-ink"
                     }`}
                   >
                     {opt.icon}

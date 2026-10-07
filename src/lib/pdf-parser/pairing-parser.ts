@@ -1,4 +1,5 @@
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
+import { isDeadheadFlightNumber } from "@/lib/deadhead";
 import { isStandbyDutyCode } from "@/lib/standby";
 import type {
   LayoverDetail,
@@ -127,7 +128,7 @@ function isGroundDutyRow(code: string, afterCode: string | undefined): boolean {
  * 0% of "BH" legs. "DH" is dinner, hot.
  */
 function isDeadheadLeg(flightNumber: string, groundDuty: boolean): boolean {
-  return !groundDuty && !/^\d+$/.test(flightNumber);
+  return !groundDuty && isDeadheadFlightNumber(flightNumber);
 }
 
 /**

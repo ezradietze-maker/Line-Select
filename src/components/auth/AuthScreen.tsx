@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { RecoveryCodePanel } from "@/components/auth/RecoveryCodePanel";
 import { Button } from "@/components/ui/Button";
+import { LogoMark, Wordmark } from "@/components/ui/Logo";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { fetchEmailResetEnabled, login, requestResetEmail, resetPassword, signUp } from "@/lib/auth";
@@ -117,6 +118,11 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
 
   return (
     <div className="mx-auto w-full max-w-md animate-fade-in">
+      {/* This page has no sidebar, so the mark is the only thing saying where you are — and the way home. */}
+      <Link href="/" className="mx-auto mb-5 flex w-fit items-center gap-2.5" aria-label="Line Select home">
+        <LogoMark className="h-9 w-9" />
+        <Wordmark className="text-lg" />
+      </Link>
       <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
         {mode === "forgot" ? (
           <div className="mb-6">

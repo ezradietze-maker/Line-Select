@@ -37,7 +37,7 @@ import { useBidForecast } from "@/lib/forecast/use-bid-forecast";
 import { loadPreviousPeriodSnapshot, saveBidPeriodSnapshot, summarizeBidPeriodChange } from "@/lib/bid-period-history";
 import { assessProfileRichness } from "@/lib/interview-engine";
 import { computeFilterOptions } from "@/lib/line-filter-options";
-import { collectLayoverCities, EMPTY_FILTERS, lineMatchesFilters, type LineFilters } from "@/lib/line-filters";
+import { collectLayoverCities, EMPTY_FILTERS, filtersActive, lineMatchesFilters, type LineFilters } from "@/lib/line-filters";
 import { loadTopLinesSnapshot, saveTopLinesSnapshot } from "@/lib/line-history-storage";
 import { buildLineFactChips, lineFactsText } from "@/lib/line-summary";
 import { loadLineMarks, saveLineMarks } from "@/lib/line-marks-storage";
@@ -244,7 +244,7 @@ export function ResultsView({
   // is deliberately last cycle's snapshot, read once, not something that
   // should silently update mid-session as `ranked` (and the save effect
   // below) recomputes.
-  const [priorTopLines] = useState(() => loadTopLinesSnapshot(userId));
+  const [priorTopLines] = useState(() => loadTopLinesSnapshot(userId, bidPack.month));
 
   // Same "read once" posture as `priorTopLines` above, and for the same
   // reason — this is deliberately last bid period's own record, not
@@ -290,7 +290,7 @@ export function ResultsView({
   // from the moment they first landed here.
   useEffect(() => {
     if (!hotelsSettled) return;
-    saveTopLinesSnapshot(userId, ranked);
+    saveTopLinesSnapshot(userId, bidPack.month, ranked);
     saveBidPeriodSnapshot(userId, bidPack.month, ranked);
   }, [userId, ranked, hotelsSettled, bidPack.month]);
 
@@ -538,10 +538,10 @@ export function ResultsView({
 
       {!hotelsSettled ? (
         <div className="mt-6">
-          <p className="mb-3 flex items-center gap-2 text-sm text-ink-muted">
+          <div role="status" className="mb-3 flex items-center gap-2 text-sm text-ink-muted">
             <Spinner size="sm" />
             Checking layover hotel reviews so your ranking is right the first time&hellip;
-          </p>
+          </div>
           <SkeletonCards />
         </div>
       ) : (
@@ -665,7 +665,20 @@ export function ResultsView({
           >
             <div className="mt-3 space-y-3">
               {displayed.length === 0 ? (
-                <EmptyState compact description={emptyMessage} />
+                <EmptyState
+                  compact
+                  description={emptyMessage}
+                  {...(view !== "shortlist" && (filtersActive(filters) || search.trim() || hotelFilter)
+                    ? {
+                        actionLabel: "Clear filters and search",
+                        onAction: () => {
+                          setFilters(EMPTY_FILTERS);
+                          setSearch("");
+                          setHotelFilter(null);
+                        },
+                      }
+                    : {})}
+                />
               ) : (
                 displayed.slice(0, mountedCount).map((lineScore, index) => (
                   <motion.div

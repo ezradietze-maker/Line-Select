@@ -99,7 +99,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
 
   if (!ready && pathname !== "/") {
     return (
-      <div className={`app-shell flex min-h-full flex-col md:flex-row ${showSidebar ? "" : "no-nav"}`}>
+      <div className={`app-shell flex min-h-full flex-1 flex-col md:flex-row ${showSidebar ? "" : "no-nav"}`}>
         {showSidebar && (
           <div className="hidden w-[var(--shell-left)] shrink-0 border-r border-sidebar-border bg-sidebar md:block">
             <div className="flex items-center gap-2.5 px-4 py-5">
@@ -129,8 +129,11 @@ function Chrome({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // flex-1, not just min-h-full: the body is a flex column with only a
+  // min-height, so a percentage min-height here resolves to nothing — short
+  // pages left the footer floating mid-screen.
   return (
-    <div className={`app-shell flex min-h-full flex-col ${showSidebar ? "" : "no-nav"}`}>
+    <div className={`app-shell flex min-h-full flex-1 flex-col ${showSidebar ? "" : "no-nav"}`}>
       {showSidebar && (
         <>
           <LeftNav {...navProps} />

@@ -374,15 +374,26 @@ export function generateStrategies(
       Math.max(...bidPack.lines.map((l) => l.daysOff)),
     ];
     const score = (p: LineProfile) => safetyNetScore(p, creditRange, daysOffRange);
-    const candidates = [...profiles].sort((a, b) => score(b) - score(a)).slice(0, SAFETY_NET_COUNT);
+    // A floor has to be holdable: the best-balanced lines that this pilot's
+    // seniority actually clears, then ones within reach, and only if the pack
+    // has nothing else, the least contested lines of all. Taking the
+    // pack-wide best here would hand every pilot the most fought-over lines
+    // and call them a safety net.
+    const ranked = [...profiles]
+      .sort((a, b) => score(b) - score(a))
+      .map((p, i) => ({ p, pct: desirabilityPercentile(i + 1, total) }));
+    const clears = ranked.filter((r) => r.pct <= seniorityPct);
+    const inReach = ranked.filter((r) => r.pct > seniorityPct && r.pct <= seniorityPct + 0.15);
+    const candidates = [...clears, ...inReach, ...ranked.slice().reverse()]
+      .filter((r, i, all) => all.findIndex((x) => x.p === r.p) === i)
+      .slice(0, SAFETY_NET_COUNT);
 
-    const lines = candidates.map((p) => {
-      const position = rankPosition(profiles, p, score);
-      const feasibility = estimateFeasibility(desirabilityPercentile(position, total), seniorityPct, awardSummary);
+    const lines = candidates.map(({ p, pct }) => {
+      const feasibility = estimateFeasibility(pct, seniorityPct, awardSummary);
       return toRecommendation(
         p,
-        `${hours(p.line.totalCreditHours)} credit hours and ${p.line.daysOff} days off — strong on both`,
-        "No rare pattern to chase here, just a genuinely well-balanced line — the kind that's realistic to actually land.",
+        `${hours(p.line.totalCreditHours)} credit hours and ${p.line.daysOff} days off — the best balance within reach`,
+        "No rare pattern to chase here, just the most well-balanced line your seniority can realistically land.",
         feasibility
       );
     });
@@ -390,7 +401,7 @@ export function generateStrategies(
     strategies.push({
       id: "safety-net",
       name: "The Safety Net",
-      tagline: "The strongest ordinary line in the pack — your guaranteed floor.",
+      tagline: "The best-balanced line your seniority can realistically hold — your floor.",
       mechanism:
         "Every list needs entries that don't depend on being rare. These lines score well on both credit and days off without relying on an unusual pattern, so they're far less contested than the plays above — the picks that make sure your bid still lands somewhere good even if none of your reach picks come through.",
       benefits: [

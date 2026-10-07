@@ -6,9 +6,9 @@ import type { LineScore } from "@/lib/scoring";
  * historically preferred" (see `historicalConsistencyNote` in `scoring.ts`)
  * — separate from `PreferenceProfile`/`storage.ts` since this describes what
  * the pilot was SHOWN and favored, not what they said in an interview.
- * Overwritten every time results are computed for a completed profile, so
- * it always reflects the most recent cycle's top lines by the time a new
- * cycle's interview starts.
+ * Refreshed every time results are computed, tagged with its bid month so a
+ * later month can compare against it (and this month never compares against
+ * itself).
  */
 export interface LineSnapshot {
   lineNumber: string;
@@ -19,25 +19,44 @@ export interface LineSnapshot {
 
 const TOP_LINES_TO_KEEP = 3;
 
-function snapshotKey(userId: string | null): string {
-  return userId ? `line-select:top-lines:${userId}:v1` : "line-select:top-lines:guest:v1";
+/**
+ * Two months' worth: the bid month currently being worked on, and the one
+ * before it. Comparisons only ever read a different month than the one on
+ * screen — reading this month's own snapshot back would just say a line
+ * looks like itself.
+ */
+interface StoredHistory {
+  current: { month: string; lines: LineSnapshot[] };
+  previous: { month: string; lines: LineSnapshot[] } | null;
 }
 
-export function loadTopLinesSnapshot(userId: string | null): LineSnapshot[] | null {
+function snapshotKey(userId: string | null): string {
+  return userId ? `line-select:top-lines:${userId}:v2` : "line-select:top-lines:guest:v2";
+}
+
+function read(userId: string | null): StoredHistory | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(snapshotKey(userId));
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as LineSnapshot[]) : null;
+    const parsed = JSON.parse(raw) as StoredHistory;
+    return parsed && typeof parsed.current?.month === "string" && Array.isArray(parsed.current.lines) ? parsed : null;
   } catch {
     return null;
   }
 }
 
-export function saveTopLinesSnapshot(userId: string | null, lineScores: LineScore[]): void {
+/** The top lines from the most recent bid month that isn't `month` — null when there's no earlier month yet. */
+export function loadTopLinesSnapshot(userId: string | null, month: string): LineSnapshot[] | null {
+  const stored = read(userId);
+  if (!stored) return null;
+  if (stored.current.month !== month) return stored.current.lines;
+  return stored.previous && stored.previous.month !== month ? stored.previous.lines : null;
+}
+
+export function saveTopLinesSnapshot(userId: string | null, month: string, lineScores: LineScore[]): void {
   if (typeof window === "undefined") return;
-  const snapshot: LineSnapshot[] = [...lineScores]
+  const lines: LineSnapshot[] = [...lineScores]
     .sort((a, b) => b.score - a.score)
     .slice(0, TOP_LINES_TO_KEEP)
     .map((r) => ({
@@ -45,8 +64,11 @@ export function saveTopLinesSnapshot(userId: string | null, lineScores: LineScor
       score: r.score,
       dimensionValues: Object.fromEntries(r.dimensions.map((d) => [d.key, d.value])),
     }));
+  const stored = read(userId);
+  // A new month pushes the last one back to "previous"; the same month just refreshes itself.
+  const previous = stored && stored.current.month !== month ? stored.current : (stored?.previous ?? null);
   try {
-    window.localStorage.setItem(snapshotKey(userId), JSON.stringify(snapshot));
+    window.localStorage.setItem(snapshotKey(userId), JSON.stringify({ current: { month, lines }, previous } satisfies StoredHistory));
   } catch {
     // localStorage unavailable (private browsing, quota, etc.) - fail silently, same as storage.ts.
   }

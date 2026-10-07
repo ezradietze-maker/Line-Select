@@ -84,8 +84,10 @@ const POINTS: Point[] = [
         server sees: your interview answers (sent to an AI provider to write
         the next question), hotel names (looked up on Google), your
         seniority number and line ranking if you ask for a bid forecast
-        (numbers only, never the pack), and anything you post to the Trade
-        Board or send as feedback. The Privacy Policy has the full list.
+        (numbers only, never the pack), a numeric summary of your finished
+        interview (never your words) that helps it ask future pilots better
+        questions, and anything you post to the Trade Board or send as
+        feedback. The Privacy Policy has the full list.
       </>
     ),
   },

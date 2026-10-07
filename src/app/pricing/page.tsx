@@ -36,7 +36,7 @@ export default function PricingPage() {
         </div>
         <ul className="mt-4 space-y-2">
           {FREE_FEATURES.map((f) => (
-            <li key={f} className="flex gap-2 text-sm text-ink-muted">
+            <li key={f} className="flex gap-2 text-sm text-ink">
               <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
               {f}
             </li>

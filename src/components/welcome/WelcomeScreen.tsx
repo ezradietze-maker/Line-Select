@@ -235,7 +235,7 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
           </p>
         </div>
 
-        <div className="order-1 mx-auto w-full max-w-[min(92vw,640px)] lg:order-2">
+        <div className="order-1 mx-auto w-full max-w-[min(58vw,640px)] sm:max-w-[min(92vw,640px)] lg:order-2">
           <NightGlobe />
         </div>
 

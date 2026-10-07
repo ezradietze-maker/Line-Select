@@ -37,6 +37,28 @@ describe("a day's own numbers", () => {
     expect(sby).toMatchObject({ onDuty: "01:30", lastIn: null, dutyEnd: "13:00", standby: true, blockMinutes: 0 });
   });
 
+  it("keeps last night's duty and tonight's apart instead of one backwards window", () => {
+    // Lands 06:13 from an overnight duty, hotel all day, picked up 23:20 for a 23:50 deadhead.
+    const st = dayStats({
+      dayNumber: 2,
+      segments: [
+        seg("flying", 0, 373, { continuesFromPreviousDay: true, leg: leg(300) }),
+        seg("layover", 373, 1400),
+        seg("ground", 1400, 1430),
+        seg("deadhead", 1430, 1440, { continuesToNextDay: true, leg: { ...leg(90), deadhead: true } }),
+      ],
+    });
+    expect(st.windows).toEqual([
+      { start: null, end: "06:13" },
+      { start: "23:20", end: null },
+    ]);
+  });
+
+  it("gives an ordinary day a single window", () => {
+    const st = dayStats({ dayNumber: 2, segments: [seg("layover", 0, 330), seg("ground", 330, 420), seg("flying", 420, 577, { leg: leg(277) }), seg("layover", 577, 1440, { continuesToNextDay: true })] });
+    expect(st.windows).toEqual([{ start: "05:30", end: "09:37" }]);
+  });
+
   it("keeps deadheads out of block time", () => {
     const st = dayStats({ dayNumber: 1, segments: [seg("deadhead", 600, 722, { leg: { ...leg(122), deadhead: true } })] });
     expect(st.blockMinutes).toBe(0);

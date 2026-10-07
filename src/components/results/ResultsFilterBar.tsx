@@ -274,6 +274,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${
         active
           ? "border-brand bg-brand-soft text-brand"

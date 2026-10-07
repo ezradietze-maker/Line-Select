@@ -35,6 +35,11 @@
   --color-accent-wash: #e4c48c;
   /* Accent text sitting on the accent wash (the active nav item) — adjusted from plain accent so it holds AA contrast on that tint. */
   --color-on-wash: #79471b;
+  /* Text on a solid brand or danger fill (primary buttons, badges). White on
+     daylight's deep brown; the dark themes' brand is a light gold, so text on
+     it goes dark — white there measured 2.3:1. */
+  --color-on-brand: #fbf6ec;
+  --color-on-danger: #ffffff;
   /* Calendar views' own "Flying" segment color — defaults to brand, but is
      the one color a pilot can personalize (see calendar-theme.ts) without
      touching the rest of the app's palette. Set directly on documentElement
@@ -130,6 +135,8 @@
     --color-brand: #c9a468;
     --color-brand-strong: #e0c08a;
     --color-brand-soft: #3a2b18;
+    --color-on-brand: #1c150d;
+    --color-on-danger: #1c150d;
     --color-accent: #d68a3e;
     --color-accent-soft: #3d2814;
     --color-accent-wash: #5c3f1e;
@@ -185,6 +192,8 @@
   --color-brand: #c9a468;
   --color-brand-strong: #e0c08a;
   --color-brand-soft: #3a2b18;
+  --color-on-brand: #1c150d;
+  --color-on-danger: #1c150d;
   --color-accent: #d68a3e;
   --color-accent-soft: #3d2814;
   --color-accent-wash: #5c3f1e;
@@ -249,6 +258,9 @@
   --color-brand: #d95757;
   --color-brand-strong: #b53535;
   --color-brand-soft: #2e0d0d;
+  /* Dark text on the night reds — white would be the brightest thing on screen and cost night vision. */
+  --color-on-brand: #0d0404;
+  --color-on-danger: #0d0404;
   --color-accent: #ff7a3d;
   --color-accent-soft: #331008;
   --color-accent-wash: #4a160a;
@@ -263,7 +275,7 @@
   --color-sidebar-border: #3a0f0f;
 
   --color-good: #ce5c3b;
-  --color-standby: #b34d66;
+  --color-standby: #cc5c78;
   --color-good-soft: #241008;
   --color-warn: #ff6b1a;
   --color-warn-soft: #331507;
@@ -299,6 +311,8 @@
   --color-ink-faint: var(--color-ink-faint);
 
   --color-brand: var(--color-brand);
+  --color-on-brand: var(--color-on-brand);
+  --color-on-danger: var(--color-on-danger);
   --color-brand-strong: var(--color-brand-strong);
   --color-brand-soft: var(--color-brand-soft);
   --color-accent: var(--color-accent);

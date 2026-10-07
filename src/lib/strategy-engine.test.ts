@@ -46,6 +46,13 @@ describe("generateStrategies", () => {
     expect(safetyNet?.lines.length).toBeGreaterThan(0);
   });
 
+  it("makes the Safety Net lines a pilot's seniority can actually hold, not the pack's most contested ones", () => {
+    const middle: SeniorityInput = { rank: 100, totalPilots: 200 };
+    const safetyNet = generateStrategies(SAMPLE_BID_PACK, middle).find((s) => s.id === "safety-net")!;
+    expect(safetyNet.lines.length).toBeGreaterThan(0);
+    expect(safetyNet.lines.every((l) => l.feasibility !== "longshot")).toBe(true);
+  });
+
   it("never claims a Ghost Line pattern unless real flying is genuinely under half the paid day-rig rate", () => {
     // The sample pack's trips were hand-built for circadian-science testing,
     // not day-rig testing, so none of them are honestly "mostly standby" —

@@ -10,6 +10,7 @@ import { correctionEvents, isLearnablePack } from "@/lib/learning/corrections";
 import { postCorrections } from "@/lib/learning/learning-client";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/posthog-client";
+import { clearPendingProfile, loadPendingProfile, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
@@ -123,7 +124,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         user: currentUser,
         bidPack: savedBidPack,
         parseResult: null,
-        pendingProfile: null,
+        // A finished-but-unconfirmed interview survives a refresh on the confirmation screen.
+        pendingProfile: loadPendingProfile(currentUser?.id ?? null, savedBidPack?.id ?? null),
         seniority: savedSeniority,
         freshBidPack: false,
         bidPackSaveFailed: false,
@@ -301,6 +303,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // machinery, which a blanket clear here used to defeat on every single
     // confirm. `handleStartOver` is the deliberate, explicit reset instead.
     const saved = saveBidPack(user?.id ?? null, newBidPack);
+    clearPendingProfile(user?.id ?? null);
     setState((s) => ({
       ...s,
       bidPackSaveFailed: !saved,
@@ -321,6 +324,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   function handleInterviewComplete(newProfile: PreferenceProfile) {
     // Not saved yet — the pilot reviews (and can still adjust) the
     // summarized weights on the confirmation screen before this counts.
+    if (bidPack) savePendingProfile(user?.id ?? null, bidPack.id, newProfile);
     setState((s) => ({ ...s, pendingProfile: newProfile }));
     router.push("/confirm-preferences");
   }
@@ -332,6 +336,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // facts too — otherwise it would revert the next bid cycle.
     const confirmed = applyManualEdits(pendingProfile, { weights });
     reportCorrections(pendingProfile, confirmed);
+    clearPendingProfile(user?.id ?? null);
     setState((s) => ({ ...s, profile: confirmed, pendingProfile: null }));
     router.push("/results");
     captureUsageEvent("interview_completed");
@@ -371,6 +376,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   function handleStartInterview() {
     setInterviewKey((k) => k + 1);
+    clearPendingProfile(user?.id ?? null);
     setState((s) => ({ ...s, pendingProfile: null, freshBidPack: false }));
     router.push("/interview");
   }
@@ -381,6 +387,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   function handleStartOver() {
     clearBidPack(user?.id ?? null);
+    clearPendingProfile(user?.id ?? null);
     setInterviewKey((k) => k + 1);
     setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null, freshBidPack: false }));
     router.push("/");

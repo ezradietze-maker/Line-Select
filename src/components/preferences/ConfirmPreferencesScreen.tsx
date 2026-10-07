@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Heading } from "@/components/ui/Heading";
+import { RangeSlider } from "@/components/ui/RangeSlider";
 import { Slider } from "@/components/ui/Slider";
 import {
   ALL_TARGET_CONFIGS,
@@ -14,6 +15,7 @@ import {
   touchedSliderConfigs,
 } from "@/lib/interview-config";
 import { summarizePreferencesSentence } from "@/lib/preference-summary";
+import { MAGNITUDE_ONLY_KEYS } from "@/lib/rank-learning";
 import { weekdayPlural } from "@/lib/scoring";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
@@ -50,7 +52,7 @@ export function ConfirmPreferencesScreen({
   );
   const selectedAmenities = HOTEL_AMENITIES.filter((a) => weights[a.key] > 0);
 
-  const sentence = summarizePreferencesSentence(weights, profile.explicitTargets);
+  const sentence = summarizePreferencesSentence(weights, profile.explicitTargets, profile.targetImportance);
   const pinnedTargets = ALL_TARGET_CONFIGS.filter(
     (t) => profile.explicitTargets[t.key] !== undefined
   );
@@ -122,14 +124,29 @@ export function ConfirmPreferencesScreen({
           <div key={config.key}>
             <div className="text-sm font-medium text-ink">{config.question}</div>
             <div className="mt-2">
-              <Slider
-                value={weights[config.key]}
-                onChange={(v) => setWeights((w) => ({ ...w, [config.key]: v }))}
-                lowLabel={config.lowLabel}
-                highLabel={config.highLabel}
-                centerLabel={config.centerLabel}
-                ariaLabel={config.question}
-              />
+              {/* "How much does it matter" settings have no opposite side — one-way, as on the Preferences page. */}
+              {MAGNITUDE_ONLY_KEYS.has(config.key) ? (
+                <RangeSlider
+                  value={Math.max(0, weights[config.key])}
+                  min={0}
+                  max={100}
+                  step={5}
+                  onChange={(v) => setWeights((w) => ({ ...w, [config.key]: v }))}
+                  ariaLabel={config.question}
+                  formatValue={(v) => (v === 0 ? "Doesn't matter" : v < 45 ? "Matters a little" : v < 75 ? "Matters" : "Matters a lot")}
+                  minLabel={config.lowLabel}
+                  maxLabel={config.highLabel}
+                />
+              ) : (
+                <Slider
+                  value={weights[config.key]}
+                  onChange={(v) => setWeights((w) => ({ ...w, [config.key]: v }))}
+                  lowLabel={config.lowLabel}
+                  highLabel={config.highLabel}
+                  centerLabel={config.centerLabel}
+                  ariaLabel={config.question}
+                />
+              )}
             </div>
           </div>
         ))}

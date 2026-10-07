@@ -69,7 +69,7 @@ export function BidOrderExport({
         <button
           type="button"
           onClick={() => copy(entries.map((e) => e.lineScore.line.lineNumber).join("\n"), "plain")}
-          className="rounded-md bg-brand px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-strong"
+          className="rounded-md bg-brand px-3 py-2 text-sm font-medium text-on-brand transition-colors hover:bg-brand-strong"
         >
           {copied === "plain" ? "Copied" : "Copy line order"}
         </button>

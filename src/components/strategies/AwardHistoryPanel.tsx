@@ -107,8 +107,8 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
           <p className="mt-1 text-sm leading-relaxed text-ink-muted">
             Real, self-reported outcomes for {bidPack.base} {bidPack.aircraft} {bidPack.seat} — no
             competitor has this data for FedEx specifically. Other pilots only ever see a
-            seniority number and what was held, never your name. Your own reports also build
-            your private month-by-month record below.
+            seniority number and what was held, never your name. Signed in, your own reports
+            also build a private month-by-month record of what you&rsquo;ve held.
           </p>
         </div>
       </div>

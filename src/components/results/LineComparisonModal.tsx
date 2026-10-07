@@ -34,7 +34,8 @@ function formatHours(hours: number): string {
 function StatRow({ label, values }: { label: string; values: [string, string] }) {
   return (
     <>
-      <div className="text-ink-faint">{label}</div>
+      {/* On a phone the label takes its own row above the two values — three items in a two-column grid otherwise interleave labels and numbers. */}
+      <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">{label}</div>
       <div className="text-center font-mono text-ink">{values[0]}</div>
       <div className="text-center font-mono text-ink">{values[1]}</div>
     </>
@@ -64,7 +65,7 @@ export function LineComparisonModal({
         {lineScores.map((ls) => (
           <div key={ls.line.id} className="text-center font-semibold text-ink">
             #{ls.line.lineNumber}
-            <span className="ml-1 font-normal text-ink-faint">{ls.score}</span>
+            <span className="ml-1 font-normal text-ink-faint">{Math.round(ls.score)}</span>
           </div>
         ))}
       </div>
@@ -81,7 +82,7 @@ export function LineComparisonModal({
         />
         <StatRow label="Landings" values={[String(lineScores[0].line.totalLandings), String(lineScores[1].line.totalLandings)]} />
         <StatRow label="Duty periods" values={[String(lineDutyPeriods(lineScores[0].line)), String(lineDutyPeriods(lineScores[1].line))]} />
-        <div className="text-ink-faint">Worst trip&rsquo;s circadian read</div>
+        <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Worst trip&rsquo;s circadian read</div>
         {worstCircadianStars.map((stars, i) => (
           <div key={i} className="flex justify-center">
             {stars !== null ? (
@@ -91,7 +92,7 @@ export function LineComparisonModal({
             )}
           </div>
         ))}
-        <div className="text-ink-faint">Recovery across the month</div>
+        <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Recovery across the month</div>
         {lineScores.map((ls) => (
           <div key={ls.line.id} className={`text-center text-[11px] leading-tight ${ls.cumulativeCircadian?.hasCompoundingRisk ? "text-warn" : "text-ink-muted"}`}>
             {ls.cumulativeCircadian?.summary ?? "Not confirmable"}

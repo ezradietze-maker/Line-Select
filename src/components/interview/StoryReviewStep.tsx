@@ -65,11 +65,12 @@ const GROUPS: { id: ReturnType<typeof groupOf>; label: string }[] = [
  */
 export function StoryReviewStep({ facts, onRemove, onRestore, onConfirm, onEdit, eyebrow }: StoryReviewStepProps) {
   const reduce = useReducedMotion();
-  const [removed, setRemoved] = useState<PreferenceFact[]>([]);
+  // Each removal is the group of facts one card stood for, so Undo and the count match what the pilot tapped.
+  const [removed, setRemoved] = useState<PreferenceFact[][]>([]);
 
-  function remove(f: PreferenceFact) {
-    setRemoved((r) => [...r, f]);
-    onRemove(f.id);
+  function remove(group: PreferenceFact[]) {
+    setRemoved((r) => [...r, group]);
+    for (const f of group) onRemove(f.id);
   }
 
   let index = 0;
@@ -82,13 +83,24 @@ export function StoryReviewStep({ facts, onRemove, onRestore, onConfirm, onEdit,
       />
       <RevealControls title={TITLE} className="mt-6 space-y-6">
         {GROUPS.map((g) => {
-          const items = facts.filter((f) => groupOf(f) === g.id);
+          // One sentence can carry more than one number ("at least 15, ideally 16 or 17" is a
+          // floor and an aim) — it reads once, with both tags, rather than as a repeated card.
+          const items = Object.values(
+            facts
+              .filter((f) => groupOf(f) === g.id)
+              .reduce<Record<string, PreferenceFact[]>>((acc, f) => {
+                (acc[f.statement.trim().toLowerCase()] ??= []).push(f);
+                return acc;
+              }, {})
+          );
           if (items.length === 0) return null;
           return (
             <section key={g.id} aria-label={g.label}>
               <h3 className="mb-2 font-mono text-[10.5px] font-medium uppercase tracking-[0.18em] text-ink-faint">{g.label}</h3>
               <ul className="space-y-1.5">
-                {items.map((f) => {
+                {items.map((cluster) => {
+                  const f = cluster[0];
+                  const tags = [...new Set(cluster.flatMap(tagsFor))];
                   const delay = reduce ? 0 : Math.min(0.6, index++ * 0.04);
                   return (
                     <motion.li
@@ -102,9 +114,9 @@ export function StoryReviewStep({ facts, onRemove, onRestore, onConfirm, onEdit,
                     >
                       <div className="min-w-0 flex-1">
                         <p className={`text-sm leading-relaxed ${g.id === "not" ? "text-ink-muted" : "text-ink"}`}>{f.statement}</p>
-                        {tagsFor(f).length > 0 && (
+                        {tags.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1.5">
-                            {tagsFor(f).map((t) => (
+                            {tags.map((t) => (
                               <span key={t} className="rounded border border-hairline px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted">
                                 {t}
                               </span>
@@ -114,7 +126,7 @@ export function StoryReviewStep({ facts, onRemove, onRestore, onConfirm, onEdit,
                       </div>
                       <button
                         type="button"
-                        onClick={() => remove(f)}
+                        onClick={() => remove(cluster)}
                         aria-label={`Remove: ${f.statement}`}
                         title="Not right — take it off"
                         className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-black/[0.05] hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
@@ -137,7 +149,7 @@ export function StoryReviewStep({ facts, onRemove, onRestore, onConfirm, onEdit,
             <button
               type="button"
               onClick={() => {
-                onRestore(removed);
+                onRestore(removed.flat());
                 setRemoved([]);
               }}
               className="font-medium text-accent underline decoration-dotted underline-offset-4 hover:text-ink"

@@ -151,10 +151,12 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 17v-6m0 0l-2.5 2.5M12 11l2.5 2.5" />
               </svg>
             </div>
-            <p className="relative mt-5 font-display text-lg font-semibold text-ink">
+            {/* A phone has nothing to drag — it just picks the file. */}
+            <p className="relative mt-5 font-display text-lg font-semibold text-ink [@media(pointer:coarse)]:hidden">
               {dragActive ? "Release to load it" : "Drop your bid pack PDF here"}
             </p>
-            <p className="relative mt-1 text-sm text-ink-faint">or</p>
+            <p className="relative mt-5 hidden font-display text-lg font-semibold text-ink [@media(pointer:coarse)]:block">Pick your bid pack PDF</p>
+            <p className="relative mt-1 text-sm text-ink-faint [@media(pointer:coarse)]:hidden">or</p>
             <Button type="button" variant="secondary" className="relative mt-3" onClick={() => inputRef.current?.click()}>
               Choose a file
             </Button>

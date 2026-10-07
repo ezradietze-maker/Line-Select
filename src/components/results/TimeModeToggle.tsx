@@ -26,7 +26,7 @@ export function TimeModeToggle({ mode, onChange }: TimeModeToggleProps) {
           aria-checked={mode === opt.mode}
           onClick={() => onChange(opt.mode)}
           className={`rounded-full px-3 py-1 font-mono text-xs font-medium transition-colors ${
-            mode === opt.mode ? "bg-brand text-canvas" : "text-ink-faint hover:text-ink"
+            mode === opt.mode ? "bg-brand text-on-brand" : "text-ink-faint hover:text-ink"
           }`}
         >
           {opt.label}

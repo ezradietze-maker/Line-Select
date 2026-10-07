@@ -26,5 +26,8 @@ describe("navTargetForPath", () => {
     expect(navTargetForPath("/pricing")).toBeNull();
     expect(navTargetForPath("/privacy")).toBeNull();
     expect(navTargetForPath("/terms")).toBeNull();
+    expect(navTargetForPath("/auth")).toBeNull();
+    expect(navTargetForPath("/reset-password")).toBeNull();
+    expect(navTargetForPath("/some-future-page")).toBeNull();
   });
 });

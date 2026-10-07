@@ -849,7 +849,7 @@ function counterfactualPhraseForDimension(dim: DimensionScore, neededMatch: numb
     }
   }
   const label = isFixedDimensionKey(dim.key) ? humanizeKey(dim.key) : (IMPLICIT_LABELS.get(dim.key) ?? dim.key);
-  return `a meaningfully better ${label.toLowerCase()}`;
+  return `meaningfully better ${label.toLowerCase()}`;
 }
 
 /** Only worth stating when a single dimension's own real ceiling (match capped at 1) could plausibly close the gap — otherwise the claim "this one change would make it your top pick" would be false, since no single realistic change actually would. */

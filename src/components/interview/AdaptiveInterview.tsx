@@ -25,6 +25,7 @@ import { CommuterStep } from "@/components/interview/CommuterStep";
 import { FreeTextAnswerBox } from "@/components/interview/FreeTextAnswerBox";
 import { ReturningPilotCheckStep } from "@/components/interview/ReturningPilotCheckStep";
 import { SliderStep } from "@/components/interview/SliderStep";
+import { MAGNITUDE_ONLY_KEYS } from "@/lib/rank-learning";
 import { TargetSliderStep } from "@/components/interview/TargetSliderStep";
 import {
   HARD_CEILING_TURNS,
@@ -41,7 +42,7 @@ import {
   uncoveredExplicitWeightIds,
   type ContradictionFlag,
 } from "@/lib/interview-engine";
-import { clearDraft, loadDraft, saveDraft, type InterviewDraft } from "@/lib/interview-draft";
+import { clearDraft, loadDraft, loadStoryDraft, saveDraft, saveStoryDraft, type InterviewDraft } from "@/lib/interview-draft";
 import { computeBidPackGroundingStats } from "@/lib/interview-grounding";
 import { answerElaboration, describeAnswer, questionTopicLabel } from "@/lib/interview-display";
 import { computeInterviewProgress } from "@/lib/interview-progress";
@@ -308,7 +309,12 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   const firstPhase: Phase = hasSeniorityStep ? "seniority" : "bidding-story";
   const [phase, setPhase] = useState<Phase>(firstPhase);
   const [seniorityText, setSeniorityText] = useState(priorProfile?.seniorityNumber ? String(priorProfile.seniorityNumber) : "");
-  const [bidStoryText, setBidStoryText] = useState("");
+  const [bidStoryText, setBidStoryText] = useState(() => loadStoryDraft(userId, bidPack.id));
+  // Kept as it's typed (see saveStoryDraft) — the full draft only starts once the questions do.
+  useEffect(() => {
+    const t = setTimeout(() => saveStoryDraft(userId, bidPack.id, bidStoryText), 400);
+    return () => clearTimeout(t);
+  }, [userId, bidPack.id, bidStoryText]);
   const [bidStoryBusy, setBidStoryBusy] = useState(false);
   const [bidStoryError, setBidStoryError] = useState<string | null>(null);
   // A returning pilot starts from last cycle's answers — still shown, so a
@@ -1177,6 +1183,7 @@ function SliderStepInline({
   const [value, setValue] = useState(0);
   // A slider that's never been moved still reads as an answer (it sits at "no preference"), so say so — and label the button for what pressing it actually records.
   const [touched, setTouched] = useState(false);
+  const magnitudeOnly = (MAGNITUDE_ONLY_KEYS as ReadonlySet<string>).has(String(question.boundTo));
   const [elaboration, setElaboration] = useState("");
   return (
     <div>
@@ -1191,18 +1198,23 @@ function SliderStepInline({
           centerLabel: question.centerLabel,
         }}
         value={value}
+        magnitudeOnly={magnitudeOnly}
         onChange={(v) => {
           setTouched(true);
           setValue(v);
         }}
       />
       {!touched && (
-        <p className="mt-3 text-xs text-ink-muted">Not set yet &mdash; drag toward a side, or continue if you have no preference.</p>
+        <p className="mt-3 text-xs text-ink-muted">
+          {magnitudeOnly
+            ? "Not set yet — slide right if it matters, or continue if it doesn’t."
+            : "Not set yet — drag toward a side, or continue if you have no preference."}
+        </p>
       )}
       <ElaborationToggle value={elaboration} onChange={setElaboration} />
       <StepNav
         onNext={() => onSubmit(value, elaboration.trim() || undefined)}
-        nextLabel={touched ? "Next" : "No preference \u2014 next"}
+        nextLabel={touched ? "Next" : magnitudeOnly ? "Doesn\u2019t matter \u2014 next" : "No preference \u2014 next"}
       />
     </div>
   );

@@ -75,7 +75,41 @@ export function clearDraft(userId: string | null): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(draftKey(userId));
+    window.localStorage.removeItem(storyDraftKey(userId));
   } catch {
     // ignore
+  }
+}
+
+/**
+ * The bidding story as it's being written — saved on its own, because the
+ * full draft above only exists once the questions start, and a story can
+ * take minutes to write. A refresh, a locked phone or a switched app
+ * shouldn't cost a pilot what they've typed.
+ */
+function storyDraftKey(userId: string | null): string {
+  return `line-select:story-draft:${userId ?? "guest"}:v1`;
+}
+
+export function saveStoryDraft(userId: string | null, bidPackId: string, text: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (!text.trim()) window.localStorage.removeItem(storyDraftKey(userId));
+    else window.localStorage.setItem(storyDraftKey(userId), JSON.stringify({ bidPackId, text, savedAt: Date.now() }));
+  } catch {
+    // storage full or unavailable — typing still works, it just won't survive a refresh
+  }
+}
+
+export function loadStoryDraft(userId: string | null, bidPackId: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = window.localStorage.getItem(storyDraftKey(userId));
+    if (!raw) return "";
+    const d = JSON.parse(raw) as { bidPackId?: string; text?: string; savedAt?: number };
+    const fresh = typeof d.savedAt === "number" && Date.now() - d.savedAt <= DRAFT_MAX_AGE_MS;
+    return d.bidPackId === bidPackId && fresh && typeof d.text === "string" ? d.text : "";
+  } catch {
+    return "";
   }
 }
