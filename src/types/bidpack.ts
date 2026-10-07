@@ -47,6 +47,8 @@ export interface TripLeg {
    */
   depTimeZulu: string;
   arrTimeZulu: string;
+  /** A hotel the crew is put up in at this leg's arrival airport for a few hours before the next leg of the same duty — a day room, not an overnight layover. */
+  dayRoomHotel?: string;
 }
 
 /** A report-to-layover stretch of a trip: one or more legs, then (unless it's the trip's last) a real, printed-duration rest period. */
@@ -63,6 +65,9 @@ export interface TripDutyPeriod {
     transportToHotel: string | null;
     /** The same ride back to the airport before the next departure, from "Trans From:". */
     transportFromHotel: string | null;
+    /** "HHMM" hotel pickup for the next duty, as printed on the "Trans From:" line ("pickup @1045 (0545)") — the real start of the next duty. Absent when the line didn't print one. */
+    pickupTimeLocal?: string;
+    pickupTimeGmt?: string;
     /** Hours exactly as printed on the schedule — authoritative, not computed. */
     hours: number;
     startMinutes: number;

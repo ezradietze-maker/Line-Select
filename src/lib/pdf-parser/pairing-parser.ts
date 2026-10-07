@@ -52,11 +52,11 @@ const isNonEmptyRow = (r: string) => r.trim().length > 0 && !SEPARATOR_RE.test(r
 // stray "907/" glued onto the name.
 const HOTEL_RE = /^Hotel:\s*(.+?)\s*\(([A-Z]{3})\)/i;
 
-function extractHotelName(row: string): string | null {
+function extractHotel(row: string): { name: string; city: string } | null {
   const match = row.match(HOTEL_RE);
   if (!match) return null;
   const cleaned = match[1].replace(/\s*\d[\d\s\-()/]{5,}$/, "").trim();
-  return cleaned || null;
+  return cleaned ? { name: cleaned, city: match[2].toUpperCase() } : null;
 }
 
 // "Trans To: <company> (<city>), <phone>, pickup @<gmt> (<local>)" — the
@@ -69,13 +69,16 @@ function extractHotelName(row: string): string | null {
 // company name, which is always complete on the row that starts with
 // "Trans To:"/"Trans From:" itself, so a wrapped second row is simply
 // never matched and never needed here.
-const TRANSPORT_RE = /^Trans\s+(To|From):\s*(.+?)\s*\([A-Z]{3}\)/i;
+const TRANSPORT_RE = /^Trans\s+(To|From):\s*(.+?)\s*\(([A-Z]{3})\)/i;
 
-function extractTransport(row: string): { direction: "To" | "From"; company: string } | null {
+function extractTransport(row: string): { direction: "To" | "From"; company: string; city: string } | null {
   const match = row.match(TRANSPORT_RE);
   if (!match) return null;
-  return { direction: match[1] as "To" | "From", company: match[2].trim() };
+  return { direction: match[1] as "To" | "From", company: match[2].trim(), city: match[3].toUpperCase() };
 }
+
+// The pickup on a "Trans From:" line — on the same row, or on the wrapped row after it when the company name is long. Local time can carry a "*" (previous day).
+const PICKUP_RE = /pickup\s*@\s*(\d{4})\s*\(\s*\*?(\d{4})\s*\)/i;
 
 function timeToHours(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
@@ -337,6 +340,31 @@ const PAGE_TITLE_RE = /BID PACK PAIRING SCHEDULE/i;
  * trailing block of a page is held back, joined with the next page's leading
  * rows (its own page title excluded), and parsed as the single pairing it is.
  */
+/**
+ * Moves each layover's end — and the next duty's start — to the hotel
+ * pickup the pack actually prints. The printed layover length isn't
+ * measured from block-in to pickup (checked across every pack: block-in plus
+ * the printed length lands anywhere from 75 minutes before to 15 after the
+ * printed pickup), so without this the next duty would appear to start at
+ * the wrong time. The pickup is placed before the next leg's own departure,
+ * which is already fixed on the real clock; anything implausible (after
+ * the departure, more than 6 hours before it, or before the layover even
+ * starts) is ignored and the printed length stands.
+ */
+function anchorPickups(schedule: ScheduledDutyPeriod[]): void {
+  for (let i = 0; i < schedule.length - 1; i++) {
+    const layover = schedule[i].layover;
+    const nextLeg = schedule[i + 1].legs[0];
+    if (!layover?.pickupTimeGmt || !nextLeg) continue;
+    const lead = (((hhmmToMinutes(nextLeg.depTimeGmt) - hhmmToMinutes(layover.pickupTimeGmt)) % 1440) + 1440) % 1440;
+    const pickup = nextLeg.startMinutes - lead;
+    // A pickup at the departure time itself is real: the next "leg" is a ground ride (GT9999 CAB) and the pickup is that ride.
+    if (lead > 6 * 60 || pickup <= layover.startMinutes) continue;
+    layover.endMinutes = pickup;
+    schedule[i + 1].startMinutes = pickup;
+  }
+}
+
 export function parsePairingPages(
   pages: { rows: string[]; pageNumber: number }[],
   warnings: ParseWarning[]
@@ -417,19 +445,27 @@ export function parsePairingColumn(
     // Walked in printed order (not filtered to leg rows alone) so a "Hotel:"
     // line — which never matches the flight-leg pattern itself — can be
     // attached to whichever layover it immediately follows.
+    // A hotel line belongs to the layover only when it's in the layover's
+    // own city and no leg has flown since: a pairing can stop mid-duty at a
+    // day-room hotel (MIA → GUA, a few hours at a GUA hotel, GUA → SAP → MIA),
+    // and that hotel must never overwrite the overnight one.
     const legs: LegInfo[] = [];
     const layoverDetails: LayoverDetail[] = [];
+    let legsSinceLayover = 0;
     for (const row of contentRows) {
       const leg = tryParseLeg(row);
       if (leg) {
         legs.push(leg);
-        if (leg.layoverCity) layoverDetails.push({ city: leg.layoverCity, hotelName: null });
+        legsSinceLayover++;
+        if (leg.layoverCity) {
+          layoverDetails.push({ city: leg.layoverCity, hotelName: null });
+          legsSinceLayover = 0;
+        }
         continue;
       }
-      const hotelName = extractHotelName(row);
-      if (hotelName && layoverDetails.length > 0) {
-        layoverDetails[layoverDetails.length - 1].hotelName = hotelName;
-      }
+      const hotel = extractHotel(row);
+      const last = layoverDetails[layoverDetails.length - 1];
+      if (hotel && last && legsSinceLayover === 0 && hotel.city === last.city) last.hotelName = hotel.name;
     }
 
     if (legs.length === 0) {
@@ -467,10 +503,12 @@ export function parsePairingColumn(
       clock.seed(reportTimeGmt);
       let currentLegs: ScheduledLeg[] = [];
       let dutyStartMinutes = 0;
+      let awaitingPickup: NonNullable<ScheduledDutyPeriod["layover"]> | null = null;
 
       for (const row of contentRows) {
         const richLeg = tryParseRichLeg(row);
         if (richLeg) {
+          awaitingPickup = null;
           const startMinutes = clock.advance(richLeg.depGmt);
           const endMinutes = clock.advance(richLeg.arrGmt);
           currentLegs.push({
@@ -517,14 +555,36 @@ export function parsePairingColumn(
           continue;
         }
 
-        const hotelName = extractHotelName(row);
+        // Same rule as the summary pass above: the overnight layover takes a
+        // hotel/ride line only in its own city with nothing flown since;
+        // a hotel at a stop partway through a duty is that stop's day room.
         const lastDuty = schedule[schedule.length - 1];
-        if (hotelName && lastDuty?.layover) lastDuty.layover.hotelName = hotelName;
+        const layover = currentLegs.length === 0 ? lastDuty?.layover : null;
+        const hotel = extractHotel(row);
+        if (hotel) {
+          if (layover && hotel.city === layover.city) layover.hotelName = hotel.name;
+          else {
+            const stop = currentLegs[currentLegs.length - 1];
+            if (stop && stop.arrAirport === hotel.city) stop.dayRoomHotel = hotel.name;
+          }
+        }
 
         const transport = extractTransport(row);
-        if (transport && lastDuty?.layover) {
-          if (transport.direction === "To") lastDuty.layover.transportToHotel = transport.company;
-          else lastDuty.layover.transportFromHotel = transport.company;
+        if (transport && layover && transport.city === layover.city) {
+          if (transport.direction === "To") layover.transportToHotel = transport.company;
+          else {
+            layover.transportFromHotel = transport.company;
+            awaitingPickup = layover;
+          }
+        }
+        // The pickup time itself, wherever the "Trans From:" line put it.
+        if (awaitingPickup && !HOTEL_RE.test(row) && !(transport && transport.direction === "To")) {
+          const pickup = row.match(PICKUP_RE);
+          if (pickup) {
+            awaitingPickup.pickupTimeGmt = pickup[1];
+            awaitingPickup.pickupTimeLocal = pickup[2];
+            awaitingPickup = null;
+          }
         }
       }
 
@@ -536,6 +596,8 @@ export function parsePairingColumn(
           layover: null,
         });
       }
+
+      anchorPickups(schedule);
     }
 
     // Self-verifying, matching the house style: only trust the rich

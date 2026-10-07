@@ -239,3 +239,58 @@ describe("parsePairingPages", () => {
     expect(warnings).toHaveLength(1);
   });
 });
+
+describe("layover hotels, day rooms and pickups", () => {
+  // Real pairing 4001 (B767 MEM, Oct 2026): MIA overnight, then MIA → GUA
+  // with a few hours at a GUA hotel mid-duty, GUA → SAP → MIA, MIA overnight.
+  const rows = [
+    "4001 MO REPORT AT 1118 (0618) STANDARD CREW",
+    "EFFECTIVE SEPTEMBER 28 - OCTOBER 5",
+    "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+    "MO DL1624 JET MEM 1218(0718) ATL 1336(0936) 01:18 S",
+    "MO DL1332 JET ATL 1507(1107) MIA 1705(1305) 01:58 S 00:00 03:16 06:17 MIA 19:25",
+    "Trans To: BESPOKE TRANSPORTATION (MIA), +1-212-203-0706, pickup @1705 (1305)",
+    "Hotel: COURTYARD MIAMI COCONUT GROVE (MIA), +1-305-858-2500",
+    "Trans From: BESPOKE TRANSPORTATION (MIA), +1-212-203-0706, pickup @1230 (0830)",
+    "TU 5503 72 MIA 1400(1000) GUA 1633(1033) 02:33 BH",
+    "Trans To: BESPOKE TRANSPORTATION (GUA), +1-800-905-2103, pickup @1633 (1033)",
+    "Hotel: REAL INTERCONTINENTAL GUATEMALA (GUA), MAIN",
+    "Trans From: BESPOKE TRANSPORTATION (GUA), +1-800-905-2103, pickup @1902 (1302)",
+    "TU 5504 72 GUA 2047(1447) SAP 2146(1546) 00:59 DH",
+    "TU 5504 72 SAP 2316(1716) MIA 0129(2129) 02:13 05:45 07:30 12:59 MIA 35:01",
+    "Trans To: CAREY LIMOUSINE INDIANA, INC. (MIA),",
+    "+1-317-240-6190, pickup @0129 (*2129)",
+    "Hotel: COURTYARD MIAMI COCONUT GROVE (MIA), +1-305-858-2500",
+    "Trans From: CAREY LIMOUSINE INDIANA, INC. (MIA),",
+    "+1-317-240-6190, pickup @1230 (0830)",
+    "TH 5503 72 MIA 1400(1000) MEM 1633(1133) 02:33 02:33 03:30 04:03",
+    "LDGS: 4 BLOCK HRS: 08:18 CREDIT HRS: 20:00 T TAFB: 76:15",
+  ];
+
+  it("never lets a mid-duty stop's hotel overwrite the overnight layover's", () => {
+    const [pairing] = parsePairingColumn(rows, 176, []);
+    expect(pairing.layoverDetails.map((d) => d.hotelName)).toEqual(["COURTYARD MIAMI COCONUT GROVE", "COURTYARD MIAMI COCONUT GROVE"]);
+    expect(pairing.schedule.map((d) => d.layover?.hotelName ?? null)).toEqual(["COURTYARD MIAMI COCONUT GROVE", "COURTYARD MIAMI COCONUT GROVE", null]);
+    expect(pairing.schedule[0].layover?.transportFromHotel).toBe("BESPOKE TRANSPORTATION");
+  });
+
+  it("keeps the mid-duty hotel as that stop's day room", () => {
+    const [pairing] = parsePairingColumn(rows, 176, []);
+    const gua = pairing.schedule[1].legs.find((l) => l.arrAirport === "GUA");
+    expect(gua?.dayRoomHotel).toBe("REAL INTERCONTINENTAL GUATEMALA");
+    expect(pairing.schedule[1].legs.filter((l) => l.dayRoomHotel)).toHaveLength(1);
+  });
+
+  it("reads the printed pickup, on the same line or wrapped onto the next", () => {
+    const [pairing] = parsePairingColumn(rows, 176, []);
+    expect(pairing.schedule[0].layover).toMatchObject({ pickupTimeGmt: "1230", pickupTimeLocal: "0830" });
+    expect(pairing.schedule[1].layover).toMatchObject({ pickupTimeGmt: "1230", pickupTimeLocal: "0830", transportToHotel: "CAREY LIMOUSINE INDIANA, INC." });
+  });
+
+  it("starts the next duty at the printed pickup, 90 minutes before the 14:00Z departure", () => {
+    const [pairing] = parsePairingColumn(rows, 176, []);
+    const [first, second] = pairing.schedule;
+    expect(second.legs[0].startMinutes - second.startMinutes).toBe(90);
+    expect(first.layover?.endMinutes).toBe(second.startMinutes);
+  });
+});

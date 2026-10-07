@@ -43,6 +43,8 @@ export interface SegmentStay {
   hours: number;
   transportTo: string | null;
   transportFrom: string | null;
+  /** "HH:MM" pickup for the next duty as the bid pack prints it, in the mode's clock — null when it wasn't printed. */
+  pickupClock?: string | null;
 }
 
 export interface TimelineSegment {
@@ -187,10 +189,15 @@ function connectionSegments(duty: TripDutyPeriod, zuluAnchor: string): RawSegmen
     const prev = duty.legs[i];
     const next = duty.legs[i + 1];
     if (next.startMinutes <= prev.endMinutes) continue;
+    const hours = (next.startMinutes - prev.endMinutes) / 60;
     segments.push({
       kind: "connection",
-      label: "Connection",
-      detail: `${prev.arrAirport} ground time · ${formatDuration((next.startMinutes - prev.endMinutes) / 60)}`,
+      // A stop long enough that the pairing books a hotel for it — a day room, not a layover.
+      ...(prev.dayRoomHotel ? { stay: { city: prev.arrAirport, hotel: prev.dayRoomHotel, hours, transportTo: null, transportFrom: null } } : {}),
+      label: prev.dayRoomHotel ? `Day room · ${prev.dayRoomHotel}` : "Connection",
+      detail: prev.dayRoomHotel
+        ? `${prev.arrAirport} · ${formatDuration(hours)} on the ground, with a hotel room between legs of the same duty`
+        : `${prev.arrAirport} ground time · ${formatDuration(hours)}`,
       inlineStart: "",
       inlineEnd: "",
       startMinutes: prev.endMinutes,
@@ -273,7 +280,11 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegme
       const cityLabel = duty.layover.hotelName
         ? `${duty.layover.hotelName}`
         : duty.layover.city;
-      const pickedUpBy = duty.layover.transportToHotel ? ` · picked up by ${duty.layover.transportToHotel}` : "";
+      const pickedUpBy = !duty.layover.transportToHotel
+        ? ""
+        : duty.layover.hotelName && duty.layover.transportToHotel.toUpperCase() === duty.layover.hotelName.toUpperCase()
+          ? " · hotel shuttle"
+          : ` · picked up by ${duty.layover.transportToHotel}`;
       raw.push({
         kind: "layover",
         stay: {
@@ -282,6 +293,10 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegme
           hours: duty.layover.hours,
           transportTo: duty.layover.transportToHotel,
           transportFrom: duty.layover.transportFromHotel,
+          pickupClock: (() => {
+            const printed = mode === "zulu" ? duty.layover.pickupTimeGmt : duty.layover.pickupTimeLocal;
+            return printed ? formatHHMM(printed) : null;
+          })(),
         },
         label: cityLabel,
         detail: `${duty.layover.city} · ${formatDuration(duty.layover.hours)} at hotel${pickedUpBy}`,

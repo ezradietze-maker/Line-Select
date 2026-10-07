@@ -58,6 +58,8 @@ export interface ScheduledLeg {
   blockHours: number | null;
   startMinutes: number;
   endMinutes: number;
+  /** A hotel the crew is put up in at this leg's arrival airport for a few hours before the next leg of the same duty — a day room, not an overnight layover. */
+  dayRoomHotel?: string;
 }
 
 /** A report-to-layover stretch of a pairing: one or more legs, then (unless it's the pairing's last) a real, printed-duration rest period. */
@@ -74,6 +76,9 @@ export interface ScheduledDutyPeriod {
     transportToHotel: string | null;
     /** The same ride the other direction — hotel->airport, before the next departure — from the "Trans From:" line. */
     transportFromHotel: string | null;
+    /** "HHMM" hotel pickup for the next duty, as printed on the "Trans From:" line ("pickup @1045 (0545)") — the real start of the next duty. Absent when the line didn't print one. */
+    pickupTimeLocal?: string;
+    pickupTimeGmt?: string;
     /** Hours exactly as printed on the schedule (e.g. "LAX 28:43") — authoritative, not computed from the surrounding clock times. */
     hours: number;
     startMinutes: number;

@@ -165,7 +165,7 @@ function SegmentText({ seg, cityPreferences }: { seg: TimelineSegment; cityPrefe
   if (seg.kind === "layover" && seg.stay) {
     const stay = seg.stay;
     const head = seg.continuesFromPreviousDay ? `${stay.city} rest` : `${stay.city} · ${formatDuration(stay.hours)}`;
-    const pickup = seg.continuesToNextDay ? null : `pickup ${clock(seg.endMinuteOfDay)}`;
+    const pickup = seg.continuesToNextDay ? null : `pickup ${stay.pickupClock ?? clock(seg.endMinuteOfDay)}`;
     const rows: { text: string; tone: string }[] = [{ text: head, tone: "font-semibold" }];
     if (stay.hotel && lines >= 3) rows.push({ text: stay.hotel.toLowerCase(), tone: "capitalize text-ink-muted" });
     if (pickup && lines >= 2) rows.push({ text: pickup, tone: "text-ink-muted" });
@@ -177,6 +177,15 @@ function SegmentText({ seg, cityPreferences }: { seg: TimelineSegment; cityPrefe
         </span>
         {rows.length > 2 && <span className={`truncate font-sans text-[10px] ${rows[1].tone}`}>{rows[1].text}</span>}
         {rows.length > 1 && <span className={`truncate ${rows[rows.length - 1].tone}`}>{rows[rows.length - 1].text}</span>}
+      </div>
+    );
+  }
+
+  if (seg.kind === "connection" && seg.stay) {
+    return (
+      <div className="flex h-full flex-col justify-between overflow-hidden px-1 py-px font-mono text-[10px] leading-[12px]">
+        <span className="truncate font-semibold">{seg.stay.city} day room</span>
+        {lines >= 2 && <span className="truncate font-sans capitalize text-ink-muted">{seg.stay.hotel?.toLowerCase()}</span>}
       </div>
     );
   }
@@ -267,7 +276,7 @@ function DayColumn({
           <div
             key={i}
             title={SEGMENT_TOOLTIP_SUFFIX[seg.kind] ? `${seg.label} — ${seg.detail}\n${SEGMENT_TOOLTIP_SUFFIX[seg.kind]}` : `${seg.label} — ${seg.detail}`}
-            className={`absolute inset-x-0.5 ${segmentClass(seg.kind)} ${seg.continuesFromPreviousDay ? "" : "rounded-t-[3px]"} ${seg.continuesToNextDay ? "" : "rounded-b-[3px]"}`}
+            className={`absolute inset-x-0.5 ${seg.kind === "connection" && seg.stay ? "border-l-2 border-good/70 bg-good/10 text-ink" : segmentClass(seg.kind)} ${seg.continuesFromPreviousDay ? "" : "rounded-t-[3px]"} ${seg.continuesToNextDay ? "" : "rounded-b-[3px]"}`}
             style={{
               top: `${(seg.startMinuteOfDay / MINUTES_PER_DAY) * 100}%`,
               height: `${Math.max(0.8, (spanMinutes(seg) / MINUTES_PER_DAY) * 100)}%`,
@@ -402,8 +411,8 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
                 <tr className="border-t border-hairline bg-calendar-accent/[0.06]">
                   <td colSpan={6} className="px-2 py-1 font-sans text-[11px] text-ink-muted">
                     <span className="font-mono font-semibold text-readout">Duty {dutyIndex + 1}</span>
-                    {" · "}report {formatHHMM(duty.reportTimeLocal)}
-                    {mode === "zulu" ? " local" : ""}
+                    {" · "}
+                    {dutyStartLabel(duty, dutyIndex, mode, trip.schedule[dutyIndex - 1] ?? null)}
                     {flown.length > 0 && ` · ${flown.length} landing${flown.length === 1 ? "" : "s"} · ${hm(block)} block`}
                   </td>
                 </tr>
@@ -421,7 +430,7 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
                   }
                   const dep = mode === "zulu" ? [leg.depTimeGmt, leg.depTimeLocal] : [leg.depTimeLocal, leg.depTimeGmt];
                   const arr = mode === "zulu" ? [leg.arrTimeGmt, leg.arrTimeLocal] : [leg.arrTimeLocal, leg.arrTimeGmt];
-                  return (
+                  return [
                     <tr key={legIndex} className="border-t border-hairline/60">
                       <td className="whitespace-nowrap px-2 py-1">
                         <span className={leg.isDeadhead ? "text-ink-muted" : "font-semibold text-ink"}>{leg.flightNumber}</span>
@@ -438,8 +447,19 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
                       </td>
                       <td className="px-2 py-1 text-right text-ink">{leg.blockHours !== null ? hm(leg.blockHours * 60) : "—"}</td>
                       <td className="px-2 py-1 text-ink-muted">{equipmentLabel(leg.equipment, leg.isDeadhead)}</td>
-                    </tr>
-                  );
+                    </tr>,
+                    leg.dayRoomHotel && duty.legs[legIndex + 1] ? (
+                      <tr key={`${legIndex}-dayroom`} className="border-t border-hairline/60 bg-good/[0.04]">
+                        <td colSpan={6} className="px-2 py-1 font-sans text-ink-muted">
+                          <span className={LABEL}>Day room</span>{" "}
+                          <span className="font-mono font-semibold text-good">{leg.arrAirport}</span>{" "}
+                          <span className="font-mono text-readout">{hm(duty.legs[legIndex + 1].startMinutes - leg.endMinutes)}</span>{" "}
+                          <span className="capitalize text-ink">{leg.dayRoomHotel.toLowerCase()}</span>
+                          <span className="text-ink-faint"> · a hotel between legs, same duty</span>
+                        </td>
+                      </tr>
+                    ) : null,
+                  ];
                 })}
                 {duty.layover && (
                   <LayoverRow
@@ -461,6 +481,24 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
       </table>
     </div>
   );
+}
+
+/**
+ * When a duty starts, in the mode's clock. The first duty has a printed
+ * report time; every later one starts at the hotel pickup the pack prints
+ * on its "Trans From:" line (or, without one, where the previous layover's
+ * printed length ends) — never the first departure mislabeled "report".
+ */
+function dutyStartLabel(duty: Trip["schedule"][number], dutyIndex: number, mode: TimeMode, previous: Trip["schedule"][number] | null): string {
+  const printed = mode === "zulu" ? previous?.layover?.pickupTimeGmt : previous?.layover?.pickupTimeLocal;
+  if (dutyIndex > 0 && printed) return `hotel pickup ${formatHHMM(printed)}`;
+  const first = duty.legs[0];
+  if (!first) return "";
+  const dep = mode === "zulu" ? first.depTimeGmt : first.depTimeLocal;
+  const lead = first.startMinutes - duty.startMinutes;
+  const depMinutes = Number(dep.slice(0, 2)) * 60 + Number(dep.slice(2, 4));
+  const start = clock((((depMinutes - lead) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY);
+  return dutyIndex === 0 ? `report ${start}` : `hotel pickup ${start}`;
 }
 
 function LayoverRow({
@@ -500,7 +538,11 @@ function LayoverRow({
           {hotel.rating.toFixed(1)}
         </span>
       )}
-      {transport && <span className="capitalize text-ink-faint">· {transport.toLowerCase()}</span>}
+      {transport && (
+        <span className="capitalize text-ink-faint">
+          · {hotelName && transport.toUpperCase() === hotelName.toUpperCase() ? "hotel shuttle" : transport.toLowerCase()}
+        </span>
+      )}
       {canExpand && <ChevronDownIcon className={`h-2.5 w-2.5 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />}
     </>
   );
