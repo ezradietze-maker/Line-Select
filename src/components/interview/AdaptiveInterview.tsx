@@ -4,13 +4,12 @@ import { useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { FlightPathProgress } from "@/components/ui/FlightPathProgress";
 import { MicButton } from "@/components/ui/MicButton";
 import { NumberTicker } from "@/components/ui/NumberTicker";
 import { StepTransition } from "@/components/ui/StepTransition";
 import { parseSeniorityInput, SeniorityStep } from "@/components/interview/SeniorityStep";
 import { BiddingStoryStep } from "@/components/interview/BiddingStoryStep";
-import { ChoiceStep, isTypingTarget } from "@/components/interview/ChoiceStep";
+import { ChoiceStep } from "@/components/interview/ChoiceStep";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { StoryReviewStep } from "@/components/interview/StoryReviewStep";
 import { resolveBidPosition } from "@/lib/forecast/forecast";
@@ -20,7 +19,9 @@ import { buildInterviewOutcome } from "@/lib/learning/interview-outcome";
 import { isLearnablePack } from "@/lib/learning/corrections";
 import { fetchInterviewPlan, insightsFromPlan, postInterviewOutcome, type InterviewPlan } from "@/lib/learning/learning-client";
 import { ThinkingPanel, type LastExchange } from "@/components/interview/ThinkingPanel";
-import { CityPreferenceStep } from "@/components/interview/CityPreferenceStep";
+import { InterviewProgress, StepNav } from "@/components/interview/InterviewChrome";
+import { CityRatingStep } from "@/components/interview/CityRatingStep";
+import { effectiveCityScore, packCityFacts, sentimentFromRating } from "@/lib/city-ratings";
 import { CommuterStep } from "@/components/interview/CommuterStep";
 import { FreeTextAnswerBox } from "@/components/interview/FreeTextAnswerBox";
 import { ReturningPilotCheckStep } from "@/components/interview/ReturningPilotCheckStep";
@@ -47,7 +48,6 @@ import { computeBidPackGroundingStats } from "@/lib/interview-grounding";
 import { answerElaboration, describeAnswer, questionTopicLabel } from "@/lib/interview-display";
 import { computeInterviewProgress } from "@/lib/interview-progress";
 import { homeCityReasonFact, mergeStoryAndCityFacts, parseAirportCode, storyCitySentiments } from "@/lib/interview-story";
-import { cycleCitySentiment } from "@/lib/preference-logic";
 import { useDictation } from "@/lib/use-speech-to-text";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
@@ -59,7 +59,7 @@ import type {
   PreferenceFactUpdate,
   TurnResponse,
 } from "@/types/interview-session";
-import type { CitySentiment, PreferenceProfile } from "@/types/preferences";
+import type { CityRating, CityRatingScore, CitySentiment, PreferenceProfile } from "@/types/preferences";
 
 /**
  * A continuous conversation from the first real question to the last — not
@@ -67,9 +67,9 @@ import type { CitySentiment, PreferenceProfile } from "@/types/preferences";
  * happen before the turn loop starts, and both are widget-shaped tasks a
  * conversation would handle worse, not substantive preference-gathering:
  * commute status (`CommuterStep`, needed to correctly phrase several later
- * topics) and an initial city love/avoid pass (`CityPreferenceStep`, a
- * multi-select genuinely faster than naming cities one at a time in
- * free text). Both seed real facts into the loop's own starting context —
+ * topics) and a city-by-city rating pass (`CityRatingStep`: every
+ * layover city in the pack graded Avoid … Love, with reasons — genuinely
+ * faster than naming cities one at a time in free text). Both seed real facts into the loop's own starting context —
  * the city picks specifically so the model's very first turns can ask
  * *why* a flagged city is loved or avoided, per the interview topic
  * backlog (`interview-prompt.ts`) — rather than sitting in a side channel
@@ -166,68 +166,6 @@ function topPriorFacts(discoveredFacts: PreferenceFact[], limit: number): Prefer
       return b.importance * b.confidence - a.importance * a.confidence;
     })
     .slice(0, limit);
-}
-
-/**
- * The step's continue button — and Enter, anywhere on the page that isn't a
- * text box, presses it. Only one step is on screen at a time, so only one
- * of these is ever listening.
- */
-function StepNav({ onNext, nextLabel, disabled }: { onNext: () => void; nextLabel: string; disabled?: boolean }) {
-  const onNextRef = useRef(onNext);
-  useEffect(() => {
-    onNextRef.current = onNext;
-  });
-  useEffect(() => {
-    if (disabled) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
-      const target = e.target as HTMLElement | null;
-      // An answer option (a choice card, a number stop) with focus: Enter on
-      // the one already picked continues — that's what the on-screen hint
-      // promises right after clicking it — while Enter on another one just
-      // picks it, the way a radio button normally behaves.
-      if (target?.getAttribute("role") === "radio") {
-        if (target.getAttribute("aria-checked") !== "true") return;
-        e.preventDefault();
-        onNextRef.current();
-        return;
-      }
-      // Any other focused button handles its own Enter; a text box keeps Enter for typing.
-      if (isTypingTarget(target) || target?.tagName === "BUTTON" || target?.tagName === "A") return;
-      e.preventDefault();
-      onNextRef.current();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [disabled]);
-  return (
-    <div className="mt-10 flex items-center justify-end">
-      <Button onClick={onNext} disabled={disabled} className="sm:min-w-[9rem] sm:px-6">
-        {nextLabel}
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-5-5l5 5-5 5" />
-        </svg>
-      </Button>
-    </div>
-  );
-}
-
-/**
- * Progress drawn as the flight it is: from the brief to your ranking, the
- * aircraft moving along as you answer — with the honest readout underneath
- * (topics actually covered, a real estimate of time left).
- */
-function InterviewProgress({ fraction, left, right }: { fraction: number; left: string; right?: string }) {
-  return (
-    <div className="mb-6">
-      <FlightPathProgress fraction={fraction} label="Interview progress" waypoints={3} />
-      <div className="mt-1.5 flex items-center justify-between gap-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
-        <span className="whitespace-nowrap">{left}</span>
-        {right && <span className="whitespace-nowrap text-right">{right}</span>}
-      </div>
-    </div>
-  );
 }
 
 /** What the pilot needs back to undo an answer: the question they saw and the interview's state from just before they answered it. */
@@ -335,6 +273,9 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
   const [cityPreferences, setCityPreferences] = useState<Record<string, CitySentiment>>(() => ({
     ...(priorProfile?.cityPreferences ?? {}),
   }));
+  /** Graded city ratings with reasons (the city step); `cityPreferences` stays in step as the favorite/avoid summary today's scoring reads. */
+  const [cityRatings, setCityRatings] = useState<Record<string, CityRating>>(() => ({ ...(priorProfile?.cityRatings ?? {}) }));
+  const cityFacts = useMemo(() => packCityFacts(bidPack), [bidPack]);
   const [changedFactIds, setChangedFactIds] = useState<Set<string>>(new Set());
   const [lifeEvent, setLifeEvent] = useState("");
   const [pendingContradiction, setPendingContradiction] = useState<ContradictionFlag | null>(null);
@@ -434,6 +375,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     if (d.seniorityNumber) setSeniorityText(String(d.seniorityNumber));
     if (d.bidStoryText) setBidStoryText(d.bidStoryText);
     setCityPreferences(d.cityPreferences);
+    if (d.cityRatings) setCityRatings(d.cityRatings);
     setFacts(d.facts);
     setTranscript(d.transcript);
     setTurnsUsed(d.turnsUsed);
@@ -443,11 +385,44 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     setPhase("adaptive-question");
   }
 
+  /** Every city with a grade on the city step: the pilot's own ratings, plus any favorite/avoid mark (story, home, last cycle) they saw and left in place. */
+  function finalCityRatings(): Record<string, CityRating> {
+    const out: Record<string, CityRating> = {};
+    for (const c of cityFacts) {
+      const score = effectiveCityScore(c.code, cityRatings, cityPreferences);
+      if (score !== 0) out[c.code] = { ...cityRatings[c.code], score };
+    }
+    return out;
+  }
+
+  function rateCityAt(code: string, score: CityRatingScore | 0) {
+    setCityRatings((prev) => {
+      const next = { ...prev };
+      if (score === 0) delete next[code];
+      else next[code] = { ...prev[code], score };
+      return next;
+    });
+    setCityPreferences((prev) => {
+      const next = { ...prev };
+      const sentiment = sentimentFromRating(score);
+      if (sentiment) next[code] = sentiment;
+      else delete next[code];
+      return next;
+    });
+  }
+
+  function updateCityRating(code: string, patch: Partial<CityRating>) {
+    // Reasons and notes only show on a graded city; one graded only by an earlier mark takes that grade as its own.
+    const implied = effectiveCityScore(code, cityRatings, cityPreferences);
+    if (implied === 0) return;
+    setCityRatings((prev) => ({ ...prev, [code]: { ...prev[code], score: prev[code]?.score ?? implied, ...patch } }));
+  }
+
   function finish(finalFacts: PreferenceFact[], finalTranscript: InterviewTurnRecord[]) {
     if (finishingRef.current) return;
     finishingRef.current = true;
     clearDraft(userId);
-    const profile = finalizeAdaptiveProfile({
+    const finalized = finalizeAdaptiveProfile({
       facts: finalFacts,
       transcript: finalTranscript,
       isCommuter,
@@ -457,6 +432,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       cityPreferencesSeed: cityPreferences,
       priorProfile,
     });
+    const profile: PreferenceProfile = { ...finalized, cityRatings: finalCityRatings() };
     // What the fleet learns from this interview: where each answer landed and
     // how each question went — never the pilot's words (see InterviewOutcome).
     const plan = planRef.current;
@@ -750,12 +726,13 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       seniorityNumber: parseSeniorityInput(seniorityText),
       bidStoryText: bidStoryText.trim() || undefined,
       cityPreferences,
+      cityRatings,
       facts,
       transcript,
       turnsUsed,
       currentQuestion,
     });
-  }, [phase, currentQuestion, userId, bidPack.id, isCommuter, hasCrashPad, commuteFrom, seniorityText, bidStoryText, cityPreferences, facts, transcript, turnsUsed]);
+  }, [phase, currentQuestion, userId, bidPack.id, isCommuter, hasCrashPad, commuteFrom, seniorityText, bidStoryText, cityPreferences, cityRatings, facts, transcript, turnsUsed]);
 
   // After a resume there's no in-memory history, so Back is only offered from the very first question (to the pre-steps) or once new answers exist to undo — never in a way that would wipe resumed progress.
   const canGoBack =
@@ -945,10 +922,13 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
     if (phase === "cities") {
       return (
         <div>
-          <CityPreferenceStep
-            cities={allCities}
-            preferences={cityPreferences}
-            onToggleCity={(code) => setCityPreferences((prev) => cycleCitySentiment(prev, code))}
+          <CityRatingStep
+            cities={cityFacts}
+            ratings={cityRatings}
+            sentiments={cityPreferences}
+            onRate={rateCityAt}
+            onReasons={(code, reasons) => updateCityRating(code, { reasons })}
+            onNote={(code, note) => updateCityRating(code, { note })}
             eyebrow={preStepEyebrow("Layover cities")}
             fromStory={Object.entries(storyCitySentiments(storyFacts))
               .filter(([code, sentiment]) => cityPreferences[code] === sentiment && code !== homeCity)

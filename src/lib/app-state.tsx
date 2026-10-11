@@ -58,6 +58,8 @@ interface AppStateValue extends DataState {
   handleUploadDifferent: () => void;
   handleInterviewComplete: (newProfile: PreferenceProfile) => void;
   handleConfirmPreferences: (weights: PreferenceWeights) => void;
+  /** The story-driven interview reviews its own priorities before finishing, so its profile is saved as it comes. */
+  handleBrainInterviewComplete: (profile: PreferenceProfile) => void;
   handleUpdateProfile: (updated: PreferenceProfile) => void;
   handleSaveProfileEdits: (edits: ProfileEdits) => void;
   handleSaveSeniority: (input: SeniorityInput) => void;
@@ -348,6 +350,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  function handleBrainInterviewComplete(newProfile: PreferenceProfile) {
+    clearPendingProfile(user?.id ?? null);
+    setState((s) => ({ ...s, profile: newProfile, pendingProfile: null }));
+    router.push("/results");
+    captureUsageEvent("interview_completed");
+    const signedIn = !!user?.id;
+    saveProfileForUser(user?.id ?? null, newProfile).then((savedLocally) => {
+      if (!savedLocally && !signedIn) setState((s) => ({ ...s, profileSaveFailed: true }));
+    });
+  }
+
   function handleUpdateProfile(updated: PreferenceProfile) {
     setState((s) => ({ ...s, profile: updated }));
     const signedIn = !!user?.id;
@@ -497,6 +510,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     handleUploadDifferent,
     handleInterviewComplete,
     handleConfirmPreferences,
+    handleBrainInterviewComplete,
     handleUpdateProfile,
     handleSaveProfileEdits,
     handleSaveSeniority,

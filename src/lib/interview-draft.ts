@@ -1,5 +1,5 @@
 import type { InterviewQuestion, InterviewTurnRecord, PreferenceFact } from "@/types/interview-session";
-import type { CitySentiment } from "@/types/preferences";
+import type { CityRating, CitySentiment } from "@/types/preferences";
 
 /**
  * An interview is a dozen or more questions of a pilot's own words — losing it to a
@@ -21,6 +21,8 @@ export interface InterviewDraft {
   /** Absent on a draft saved before the bidding-story question existed, or when the pilot skipped it. */
   bidStoryText?: string;
   cityPreferences: Record<string, CitySentiment>;
+  /** The city step's graded ratings; absent on drafts saved before the step graded cities. */
+  cityRatings?: Record<string, CityRating>;
   facts: PreferenceFact[];
   transcript: InterviewTurnRecord[];
   turnsUsed: number;

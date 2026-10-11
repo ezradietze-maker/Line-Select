@@ -17,6 +17,8 @@ function profileKey(userId: string | null): string {
 function normalizeProfile(raw: Partial<PreferenceProfile>): PreferenceProfile {
   const parsed = migrateDeparturesToDutyPeriods(raw);
   return {
+    // Everything saved is kept (commuteFrom, targetImportance, cityRatings, strategyReactions …); only missing fields are filled below.
+    ...parsed,
     weights: { ...DEFAULT_WEIGHTS, ...parsed.weights },
     deepRoundCompleted: parsed.deepRoundCompleted ?? false,
     tradeoffAnswers: parsed.tradeoffAnswers ?? [],

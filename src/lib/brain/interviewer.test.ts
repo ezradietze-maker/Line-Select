@@ -1,0 +1,67 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const proposals: unknown[] = [];
+vi.mock("@/lib/brain/llm", () => ({
+  structuredCall: vi.fn(async () => ({ data: proposals.shift(), usage: { model: "m", inputTokens: 0, outputTokens: 0, costUsd: 0.01, ms: 5 } })),
+}));
+
+import { nextInterviewStep, type InterviewStepInput } from "@/lib/brain/interviewer";
+import type { PilotModel } from "@/types/pilot-model";
+
+const step = (over: Record<string, unknown>) => ({ settled: [], done: false, reason: "r", threadId: "", kind: "free-text", prompt: "", helpText: "", options: [], pairIndex: -1, ...over });
+const model: PilotModel = {
+  version: 2, home: null, criteria: [], notMeasurable: [], synopsis: "s",
+  threads: [
+    { id: "buffers", topic: "Commute buffer", why: "w", priority: 0.9, status: "open", criteria: [], timesAsked: 0 },
+    { id: "china", topic: "Other China cities", why: "w", priority: 0.5, status: "open", criteria: [], timesAsked: 0 },
+  ],
+};
+const input = (over: Partial<InterviewStepInput> = {}): InterviewStepInput => ({
+  packBrief: "brief", pilotContext: "ctx", model, turn: 3, maxTurns: 20,
+  exchanges: [{ turn: 0, question: "Walk us through how you bid.", answer: "Double deadheads, single legs." }, { turn: 1, question: "How many backup flights do you want?", answer: "Two." }],
+  threads: { buffers: { status: "settled", timesAsked: 1 }, china: { status: "open", timesAsked: 0 } },
+  linePairs: [{ index: 0, a: "1011", b: "1018", trade: "x|y", tension: "t", summaryA: "a", summaryB: "b" }],
+  ...over,
+});
+
+describe("the interviewer's guard rails", () => {
+  beforeEach(() => {
+    proposals.length = 0;
+  });
+
+  it("never re-asks a settled thread or a question already asked — it asks again for something new", async () => {
+    proposals.push(
+      step({ threadId: "buffers", prompt: "How much buffer do you want before a report?" }),
+      step({ threadId: "china", prompt: "How many backup flights do you want?" }),
+      step({ threadId: "china", prompt: "Do Shanghai and Shenzhen bother you as much as Guangzhou?" })
+    );
+    const r = await nextInterviewStep(input());
+    expect(r).toMatchObject({ done: false, threadId: "china", prompt: "Do Shanghai and Shenzhen bother you as much as Guangzhou?" });
+  });
+
+  it("accepts a line pair it was offered, never one it wasn't or one already compared", async () => {
+    proposals.push(step({ kind: "line-pair", pairIndex: 3, prompt: "Which?" }), step({ kind: "line-pair", pairIndex: 0, prompt: "Line 1011 or 1018?" }));
+    const r = await nextInterviewStep(input());
+    expect(r).toMatchObject({ done: false, kind: "line-pair", pair: { a: "1011", b: "1018" } });
+
+    proposals.push(step({ kind: "line-pair", pairIndex: 0, prompt: "Again?" }), step({ prompt: "Something else?" }));
+    const again = await nextInterviewStep(input({ exchanges: [...input().exchanges, { turn: 2, question: "Pick one [Line 1011 vs Line 1018: t]", answer: "1011" }] }));
+    expect(again).toMatchObject({ prompt: "Something else?" });
+  });
+
+  it("turns a choice with too few options into an open question, and stops at the turn limit or after three dead ends", async () => {
+    proposals.push(step({ kind: "choice", options: ["Only one"], prompt: "Pick?" }));
+    expect(await nextInterviewStep(input())).toMatchObject({ kind: "free-text" });
+
+    proposals.push(step({ prompt: "Anything?" }));
+    expect(await nextInterviewStep(input({ turn: 20 }))).toMatchObject({ done: true });
+
+    proposals.push(...[1, 2, 3].map(() => step({ threadId: "buffers", prompt: "Buffer again?" })));
+    expect(await nextInterviewStep(input())).toMatchObject({ done: true, reason: "No new question left to ask." });
+  });
+
+  it("only passes on settled ids for threads that exist", async () => {
+    proposals.push(step({ done: true, settled: ["china", "made-up"] }));
+    expect(await nextInterviewStep(input())).toMatchObject({ done: true, settled: ["china"] });
+  });
+});

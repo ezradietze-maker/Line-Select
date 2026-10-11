@@ -1,0 +1,260 @@
+<title>Bid Priorities Readback</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one readable column — a clearance read back line by line, each item confirmed or corrected in place. */
+:root {
+  --canvas: #f1e8d8; --surface: #fbf6ec; --border: #e0d2b3; --border-strong: #cdb98c;
+  --ink: #2e2013; --muted: #70604b; --brand: #4a3420; --on-brand: #fbf6ec;
+  --accent: #905420; --accent-soft: #f1e2c4; --good: #296e54; --good-soft: #e1f0e7;
+  --warn: #92521c; --warn-soft: #f6e8d7; --bad: #b2352a; --bad-soft: #f8e3de;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --canvas: #1c150d; --surface: #2c2115; --border: #42331e; --border-strong: #54402d;
+  --ink: #f2e8d8; --muted: #a8977c; --brand: #c9a468; --on-brand: #1c150d;
+  --accent: #d68a3e; --accent-soft: #3d2814; --good: #6cc49c; --good-soft: #17301f;
+  --warn: #e0a066; --warn-soft: #3a2614; --bad: #ef7d70; --bad-soft: #3d1c17; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --canvas: #1c150d; --surface: #2c2115; --border: #42331e; --border-strong: #54402d;
+  --ink: #f2e8d8; --muted: #a8977c; --brand: #c9a468; --on-brand: #1c150d;
+  --accent: #d68a3e; --accent-soft: #3d2814; --good: #6cc49c; --good-soft: #17301f;
+  --warn: #e0a066; --warn-soft: #3a2614; --bad: #ef7d70; --bad-soft: #3d1c17; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--canvas); color: var(--ink); font: 15px/1.55 var(--body); padding-block: 28px 64px; padding-inline: 16px; }
+main { max-width: 760px; margin: 0 auto; display: grid; gap: 34px; }
+h1, h2 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: 0.01em; }
+h1 { font-size: 2rem; line-height: 1.1; font-weight: 700; }
+h2 { font-size: 1.3rem; font-weight: 600; }
+p { margin: 0; }
+.eyebrow { font: 500 11px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+header { display: grid; gap: 12px; }
+section { display: grid; gap: 14px; }
+.intro { max-width: 62ch; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.synopsis { font-size: 1.02rem; }
+.prio-head { display: grid; grid-template-columns: 2.2rem 1fr auto; gap: 10px; align-items: baseline; }
+.prio-num { font: 600 1.1rem var(--display); color: var(--muted); }
+.prio-label { font-weight: 600; min-width: 0; }
+.share { font: 500 13px var(--mono); color: var(--accent); white-space: nowrap; }
+.bar { height: 4px; border-radius: 2px; background: var(--accent-soft); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+.detail { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font-size: 13.5px; }
+.detail dt { color: var(--muted); }
+.detail dd { margin: 0; min-width: 0; }
+.quote { font-style: italic; color: var(--muted); font-size: 13.5px; }
+.limit { color: var(--bad); font-weight: 600; font-size: 13.5px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 13px var(--body); padding: 6px 11px; border-radius: 999px; border: 1px solid var(--border-strong); background: transparent; color: var(--ink); cursor: pointer; }
+.chip:hover { border-color: var(--brand); }
+.chip:focus-visible, textarea:focus-visible, .btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.chip[aria-pressed="true"].good { background: var(--good-soft); border-color: var(--good); color: var(--good); }
+.chip[aria-pressed="true"].warn { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+.chip[aria-pressed="true"].bad { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+textarea { width: 100%; min-height: 2.6rem; resize: vertical; font: 14px/1.45 var(--body); color: var(--ink); background: var(--canvas); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.line-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.line-no { font: 700 1.25rem var(--display); }
+.line-rank { font: 500 12px var(--mono); color: var(--muted); }
+.line-stats { font: 13px var(--mono); color: var(--muted); }
+.trips { margin: 0; padding: 0; list-style: none; font: 13px/1.5 var(--mono); overflow-wrap: anywhere; display: grid; gap: 6px; }
+.trips details { border-left: 2px solid var(--border-strong); padding-left: 10px; }
+.trips summary { cursor: pointer; list-style: none; }
+.trips summary::-webkit-details-marker { display: none; }
+.trips summary::before { content: "▸ "; color: var(--accent); }
+.trips details[open] summary::before { content: "▾ "; }
+.duties { margin: 6px 0 2px; padding: 0; list-style: none; font-size: 12px; color: var(--muted); display: grid; gap: 3px; }
+.reasons { margin: 0; padding-left: 1.1rem; font-size: 13.5px; }
+ul.plain { margin: 0; padding-left: 1.1rem; display: grid; gap: 4px; }
+.send { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px; padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 8px; }
+.btn { font: 600 15px var(--body); padding: 11px 18px; border-radius: 8px; border: 0; background: var(--brand); color: var(--on-brand); cursor: pointer; justify-self: start; }
+.changes { border-color: var(--accent); }
+.tip { display: flex; gap: 8px; align-items: flex-start; max-width: 62ch; font-size: 14px; background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; }
+.tip-icon { color: var(--accent); flex: none; margin-top: 2px; }
+.status { font-size: 13.5px; color: var(--good); min-height: 1.2em; }
+#fallback { font: 12px/1.4 var(--mono); }
+@media (prefers-reduced-motion: no-preference) { .chip { transition: background-color .12s, border-color .12s; } }
+</style>
+
+<main>
+  <header>
+    <span class="eyebrow">Readback · <span id="pack"></span></span>
+    <h1>Here's what we heard. Is it right?</h1>
+    <p class="intro muted">We read your opening story and all <span id="answers"></span> of your answers, and turned them into the priorities below. They decide how every one of the <span id="lineCount"></span> lines in your pack is ranked. Mark anything that's off: the order, how much something counts, or how we're measuring it. It takes about ten minutes. When you're done, tap “Copy my answers” at the bottom and send them back.</p>
+    <div class="card changes" id="changes" hidden>
+      <h2 style="font-size:1.05rem">What changed since your corrections</h2>
+      <ul class="plain" id="changeList"></ul>
+    </div>
+    <p class="tip"><span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span><span>Rather talk than type? Tap any text box, then tap the microphone on your phone's keyboard and speak. On a computer, use your computer's dictation instead.</span></p>
+  </header>
+
+  <section aria-labelledby="s-summary">
+    <h2 id="s-summary">You, in a paragraph</h2>
+    <div class="card">
+      <p class="synopsis" id="synopsis"></p>
+      <p class="muted" id="home"></p>
+      <div class="chips" data-key="synopsis"></div>
+      <textarea id="note-synopsis" placeholder="What's off? Type or use your keyboard's mic (optional)" aria-label="Note on the summary"></textarea>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-prio">
+    <h2 id="s-prio">Your priorities, most important first</h2>
+    <p class="muted">“Share” is how much of a line's score each one drives. For each, tell us if it's right, should count more or less, or is wrong.</p>
+    <div id="priorities" style="display:grid;gap:12px"></div>
+  </section>
+
+  <section aria-labelledby="s-missing">
+    <h2 id="s-missing">Anything we missed?</h2>
+    <div class="card">
+      <p class="muted">Things you said that a bid pack can't show us. We keep them, but they don't move the ranking:</p>
+      <ul class="plain" id="notMeasurable"></ul>
+      <label for="note-missing" class="muted">Anything you care about that isn't on this page?</label>
+      <textarea id="note-missing" placeholder="Trips, layovers, commuting, dates… type or use your keyboard's mic"></textarea>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-q">
+    <h2 id="s-q">A few things we're still unsure about</h2>
+    <p class="muted">Answer any you like, in a sentence or two.</p>
+    <div id="questions" style="display:grid;gap:12px"></div>
+  </section>
+
+  <section aria-labelledby="s-top">
+    <h2 id="s-top">What this ranks at the top</h2>
+    <p class="muted">Our top 10 from your pack, with the main reasons. Tap a trip to see it duty by duty — every leg, deadhead, layover length and hotel. Would you bid them that high?</p>
+    <div id="top" style="display:grid;gap:12px"></div>
+  </section>
+
+  <section aria-labelledby="s-bottom">
+    <h2 id="s-bottom">And at the bottom</h2>
+    <p class="muted">The 5 lines this puts last. Would you really never bid them?</p>
+    <div id="bottom" style="display:grid;gap:12px"></div>
+  </section>
+
+  <div class="send">
+    <button class="btn" id="copy" type="button">Copy my answers</button>
+    <p class="status" id="status" role="status"></p>
+    <textarea id="fallback" hidden readonly aria-label="Your answers as text"></textarea>
+    <p class="muted" style="font-size:13px">Then paste them into a text or email back. Your choices are saved on this device as you go.</p>
+  </div>
+</main>
+
+<script>
+const DATA = /*__DATA__*/null;
+const STORE = "readback-v1";
+let state = {};
+try { state = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (e) { state = {}; }
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {} };
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+
+function chips(container, key, options) {
+  container.setAttribute("role", "group");
+  for (const [value, label, tone] of options) {
+    const b = el("button", "chip " + tone, label);
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(state[key] === value));
+    b.addEventListener("click", () => {
+      state[key] = state[key] === value ? undefined : value;
+      save();
+      container.querySelectorAll(".chip").forEach((c, i) => c.setAttribute("aria-pressed", String(state[key] === options[i][0])));
+    });
+    container.append(b);
+  }
+}
+function note(id, key) {
+  const t = document.getElementById(id) || el("textarea");
+  t.id = id;
+  t.value = state[key] || "";
+  t.addEventListener("input", () => { state[key] = t.value; save(); });
+  return t;
+}
+
+document.getElementById("pack").textContent = DATA.pack;
+if (DATA.intro) document.querySelector(".intro").textContent = DATA.intro;
+if (DATA.changes && DATA.changes.length) {
+  document.getElementById("changes").hidden = false;
+  DATA.changes.forEach((c) => document.getElementById("changeList").append(el("li", "", c)));
+}
+document.getElementById("answers").textContent = DATA.answers;
+document.getElementById("lineCount").textContent = DATA.lines;
+document.getElementById("synopsis").textContent = DATA.synopsis;
+document.getElementById("home").textContent = DATA.home;
+chips(document.querySelector('[data-key="synopsis"]'), "synopsis", [["right", "Sounds like me", "good"], ["partly", "Partly", "warn"], ["wrong", "Not really", "bad"]]);
+note("note-synopsis", "note:synopsis");
+note("note-missing", "note:missing");
+
+const PRIO_OPTIONS = [["right", "Right", "good"], ["more", "Should count more", "warn"], ["less", "Should count less", "warn"], ["measure", "Measured wrong", "bad"], ["no", "Doesn't matter to me", "bad"]];
+DATA.priorities.forEach((p, i) => {
+  const card = el("article", "card");
+  const head = el("div", "prio-head");
+  head.append(el("span", "prio-num mono", String(i + 1)), el("span", "prio-label", p.label), el("span", "share", p.share.toFixed(0) + "%"));
+  const bar = el("div", "bar"); const fill = el("i"); fill.style.width = Math.min(100, p.share * 2) + "%"; bar.append(fill);
+  const dl = el("dl", "detail");
+  dl.append(el("dt", "", "Measured as"), el("dd", "", p.measured), el("dt", "", "Scores"), el("dd", "", p.scores));
+  card.append(head, bar, dl);
+  if (p.dealbreaker) card.append(el("p", "limit", p.dealbreaker));
+  if (p.quote) card.append(el("p", "quote", "You said: “" + p.quote + "”"));
+  const c = el("div", "chips"); chips(c, "prio:" + p.id, PRIO_OPTIONS); card.append(c);
+  const t = note("note-prio-" + p.id, "note:prio:" + p.id); t.placeholder = "What's off? Type or use your keyboard's mic (optional)"; t.setAttribute("aria-label", "Note on " + p.label); card.append(t);
+  document.getElementById("priorities").append(card);
+});
+
+const nm = document.getElementById("notMeasurable");
+DATA.notMeasurable.forEach((s) => nm.append(el("li", "", s)));
+if (!DATA.notMeasurable.length) nm.append(el("li", "muted", "Nothing."));
+
+DATA.questions.forEach((q) => {
+  const card = el("div", "card");
+  const label = el("label", "", q.text); label.htmlFor = "note-q-" + q.id;
+  const t = note("note-q-" + q.id, "note:q:" + q.id); t.placeholder = "Your answer: type or use your keyboard's mic (optional)";
+  card.append(label, t);
+  document.getElementById("questions").append(card);
+});
+
+const LINE_OPTIONS = [["top", "Top of my bid", "good"], ["fine", "Fine, not top", "warn"], ["never", "Wouldn't bid it", "bad"]];
+function lineCard(l, where) {
+  const card = el("article", "card");
+  const head = el("div", "line-head");
+  head.append(el("span", "line-rank", "#" + l.rank), el("span", "line-no", "Line " + l.line), el("span", "line-stats", l.daysOff + " days off · " + l.credit + " credit"));
+  const trips = el("ul", "trips");
+  l.trips.forEach((t) => {
+    const li = el("li"); const d = el("details"); const sm = el("summary", "", t.head);
+    const ds = el("ul", "duties"); t.duties.forEach((x) => ds.append(el("li", "", x)));
+    d.append(sm, ds); li.append(d); trips.append(li);
+  });
+  const rs = el("ul", "reasons"); l.reasons.forEach((r) => rs.append(el("li", "", r)));
+  const c = el("div", "chips"); chips(c, "line:" + l.line, LINE_OPTIONS);
+  const t = note("note-line-" + l.line, "note:line:" + l.line); t.placeholder = "Why? Type or use your keyboard's mic (optional)"; t.setAttribute("aria-label", "Note on line " + l.line);
+  card.append(head, trips, rs, c, t);
+  document.getElementById(where).append(card);
+}
+DATA.top.forEach((l) => lineCard(l, "top"));
+DATA.bottom.forEach((l) => lineCard(l, "bottom"));
+
+function answersText() {
+  const out = ["READBACK — " + DATA.pack, ""];
+  const lab = (opts, v) => (opts.find((o) => o[0] === v) || [, "—"])[1];
+  out.push("Summary: " + lab([["right", "Sounds like me"], ["partly", "Partly"], ["wrong", "Not really"]], state.synopsis) + (state["note:synopsis"] ? " — " + state["note:synopsis"] : ""), "", "PRIORITIES");
+  DATA.priorities.forEach((p, i) => out.push((i + 1) + ". " + p.label + " (" + p.share.toFixed(0) + "%): " + lab(PRIO_OPTIONS, state["prio:" + p.id]) + (state["note:prio:" + p.id] ? " — " + state["note:prio:" + p.id] : "")));
+  if (state["note:missing"]) out.push("", "MISSED: " + state["note:missing"]);
+  const qs = DATA.questions.filter((q) => state["note:q:" + q.id]);
+  if (qs.length) { out.push("", "ANSWERS"); qs.forEach((q) => out.push("Q: " + q.text, "A: " + state["note:q:" + q.id])); }
+  out.push("", "LINES");
+  [...DATA.top, ...DATA.bottom].forEach((l) => out.push("#" + l.rank + " Line " + l.line + ": " + lab(LINE_OPTIONS, state["line:" + l.line]) + (state["note:line:" + l.line] ? " — " + state["note:line:" + l.line] : "")));
+  return out.join("\n");
+}
+document.getElementById("copy").addEventListener("click", () => {
+  const text = answersText();
+  const status = document.getElementById("status");
+  const fb = document.getElementById("fallback");
+  const showFallback = () => { fb.hidden = false; fb.value = text; fb.style.minHeight = "10rem"; fb.focus(); fb.select(); status.textContent = "Select all of the text above and copy it."; };
+  try {
+    navigator.clipboard.writeText(text).then(() => { status.textContent = "Copied. Paste it into a text or email."; fb.hidden = true; }, showFallback);
+  } catch (e) { showFallback(); }
+});
+</script>

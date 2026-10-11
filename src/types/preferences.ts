@@ -158,6 +158,19 @@ export interface TradeoffAnswer {
 
 export type CitySentiment = "love" | "avoid";
 
+/** How a pilot rates one layover city: −2 avoid, −1 not great, +1 like, +2 love. Neutral cities aren't stored. */
+export type CityRatingScore = -2 | -1 | 1 | 2;
+
+/** What makes a layover city good or bad for a pilot — the reasons they gave, beyond the bid pack's own numbers. */
+export type CityReasonTag = "food" | "hotel" | "bed" | "things-to-do" | "friends" | "shopping" | "hassle" | "weather";
+
+export interface CityRating {
+  score: CityRatingScore;
+  reasons?: CityReasonTag[];
+  /** In their own words. */
+  note?: string;
+}
+
 export interface PreferenceProfile {
   weights: PreferenceWeights;
   /** Whether the pilot completed the optional deeper round. */
@@ -215,6 +228,24 @@ export interface PreferenceProfile {
    * generic list. Drives the cityPreference scoring dimension.
    */
   cityPreferences: Record<string, CitySentiment>;
+  /**
+   * The graded city ratings from the interview's city step, with the pilot's reasons — finer than `cityPreferences`
+   * (which is derived from them: like/love → "love", not great/avoid → "avoid") and what the pilot brain reads.
+   * Absent on profiles from before the city step graded cities.
+   */
+  cityRatings?: Record<string, CityRating>;
+  /**
+   * The pilot brain's model of this pilot (see `types/pilot-model.ts`), built by the story-driven interview. When
+   * present it decides the ranking: every line is scored against it criterion by criterion (`lib/scoring-v2/`), and
+   * the older weight-based fields above only fill in what it doesn't cover. Absent for profiles from the older
+   * interview.
+   */
+  pilotModel?: import("./pilot-model").PilotModel;
+  /** The story-driven interview's own record: every question and answer in order, and every line-versus-line choice. */
+  brainInterview?: {
+    exchanges: { turn: number; question: string; answer: string }[];
+    choices: import("./pilot-model").LineChoice[];
+  };
   completedAt: string;
   /**
    * The implicit layer: per-pilot learned weight for every variable in the
