@@ -15,6 +15,7 @@ import { ThinkingPanel, type LastExchange } from "@/components/interview/Thinkin
 import { TopicSweepStep, uncoveredTopics } from "@/components/interview/TopicSweepStep";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { MicButton } from "@/components/ui/MicButton";
 import { StepTransition } from "@/components/ui/StepTransition";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
@@ -28,6 +29,7 @@ import { describeCityRatings, effectiveCityScore, packCityFacts, sentimentFromRa
 import { parseAirportCode } from "@/lib/interview-story";
 import { loadStoryDraft, saveStoryDraft } from "@/lib/interview-draft";
 import { prepareMetrics } from "@/lib/metrics/compute";
+import { useDictation } from "@/lib/use-speech-to-text";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel } from "@/types/pilot-model";
 import { DEFAULT_WEIGHTS, type CityRating, type CityRatingScore, type CitySentiment, type PreferenceProfile } from "@/types/preferences";
@@ -47,6 +49,8 @@ import { DEFAULT_WEIGHTS, type CityRating, type CityRatingScore, type CitySentim
 type Phase = "seniority" | "story" | "commuter" | "cities" | "reading" | "asking" | "question" | "sweep" | "building" | "review";
 
 const MAX_TURNS = 22;
+/** After the "anything else?" screen, at most this many follow-ups before the interview wraps up. */
+const AFTER_SWEEP = 3;
 /** Below this many answers the "that's enough" link stays hidden — the brain hasn't had a real chance yet. */
 const MIN_TURNS_TO_FINISH = 4;
 /** The brain re-reads the whole interview every this many answers (and once more at the end). */
@@ -81,6 +85,7 @@ interface DraftState {
   cityRatings: Record<string, CityRating>;
   cityPreferences: Record<string, CitySentiment>;
   sweepDone: boolean;
+  turnLimit?: number;
 }
 
 const draftKey = (userId: string | null, packId: string) => `line-select:brain-interview:${userId ?? "guest"}:${packId}:v1`;
@@ -96,6 +101,27 @@ function loadDraftState(userId: string | null, packId: string): DraftState | nul
   } catch {
     return null;
   }
+}
+
+/** The optional "why" under a multiple-choice answer — typed or dictated, like every other answer in the interview. */
+function ChoiceNote({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const dictation = useDictation(value, onChange);
+  return (
+    <div className="mt-4">
+      <div className="relative">
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={2}
+          placeholder="Want to explain? (optional)"
+          aria-label="Explain your answer"
+          className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
+        />
+        {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
+      </div>
+      {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
+    </div>
+  );
 }
 
 interface BrainInterviewProps {
@@ -122,7 +148,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [hasCrashPad, setHasCrashPad] = useState<boolean | null>(priorProfile?.hasCrashPad ?? null);
   const [cityRatings, setCityRatings] = useState<Record<string, CityRating>>(() => ({ ...(priorProfile?.cityRatings ?? {}) }));
   const [cityPreferences, setCityPreferences] = useState<Record<string, CitySentiment>>(() => ({ ...(priorProfile?.cityPreferences ?? {}) }));
-  const [fromStory, setFromStory] = useState<string[]>([]);
+  /** Cities the story itself rated, as the brain read it — shown as such on the city step until the pilot changes them. */
+  const [storySuggested, setStorySuggested] = useState<Record<string, CitySentiment>>({});
   const [homeCity, setHomeCity] = useState<string | null>(null);
   const cityFacts = useMemo(() => packCityFacts(bidPack), [bidPack]);
 
@@ -137,6 +164,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [turn, setTurn] = useState(0);
   const [history, setHistory] = useState<Snapshot[]>([]);
   const [sweepDone, setSweepDone] = useState(false);
+  /** The interview's question limit — lowered once the sweep is done, so it wraps up with a few follow-ups at most. */
+  const [turnLimit, setTurnLimit] = useState(MAX_TURNS);
+  const turnLimitRef = useRef(MAX_TURNS);
+  turnLimitRef.current = turnLimit;
   const [reviewModel, setReviewModel] = useState<PilotModel | null>(null);
   const [choiceSelection, setChoiceSelection] = useState<number | null>(null);
   const [choiceNote, setChoiceNote] = useState("");
@@ -202,21 +233,15 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       else if (c.params?.cities && (c.shape.kind === "more" || c.shape.kind === "less"))
         for (const code of c.params.cities) scores[code] ??= c.shape.kind === "more" ? 1 : -1;
     }
-    if (!Object.keys(scores).length) return;
-    const named: string[] = [];
-    setCityPreferences((prev) => {
-      const next = { ...prev };
-      for (const [code, v] of Object.entries(scores)) {
-        if (prev[code] || !cityFacts.some((c) => c.code === code)) continue;
-        const s = sentimentFromRating(v >= 0.5 ? 1 : v <= -0.5 ? -1 : 0);
-        if (s) {
-          next[code] = s;
-          named.push(code);
-        }
-      }
-      return next;
-    });
-    if (named.length) setFromStory((p) => [...new Set([...p, ...named])]);
+    const suggested: Record<string, CitySentiment> = {};
+    for (const [code, v] of Object.entries(scores)) {
+      const s = sentimentFromRating(v >= 0.5 ? 1 : v <= -0.5 ? -1 : 0);
+      if (s && cityFacts.some((c) => c.code === code)) suggested[code] = s;
+    }
+    if (!Object.keys(suggested).length) return;
+    setStorySuggested((p) => ({ ...suggested, ...p }));
+    // Only cities the pilot hasn't rated themselves.
+    setCityPreferences((prev) => ({ ...suggested, ...prev }));
   }
 
   function finalCityRatings(): Record<string, CityRating> {
@@ -264,7 +289,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     for (const e of all) for (const x of e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)) compared.add(`${x[1]}|${x[2]}`);
     const linePairs: LinePairCandidate[] = m ? pickLinePairs(bidPack, m, pm, compared, 3, tradesRef.current) : [];
     try {
-      const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), exchanges: all, model: m, threads: th, linePairs, turn: t, maxTurns: MAX_TURNS });
+      const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), exchanges: all, model: m, threads: th, linePairs, turn: t, maxTurns: turnLimitRef.current });
       const settledThreads = { ...th };
       for (const id of step.settled) settledThreads[id] = { ...(settledThreads[id] ?? { timesAsked: 0 }), status: "settled" };
       if (step.done) {
@@ -332,7 +357,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const all = [...exchanges, { turn: exchanges.length, question: "Anything else that matters when you bid? (Topics you hadn't raised.)", answer: [picked.length ? `These matter to me too: ${picked.join(", ")}.` : "", note].filter(Boolean).join(" ") }];
     setExchanges(all);
     // A follow-up or two on what they picked, then done.
-    await askNext(all, threads, choices, Math.max(turn, MAX_TURNS - 3), true);
+    const limit = Math.min(MAX_TURNS, turn + AFTER_SWEEP);
+    turnLimitRef.current = limit;
+    setTurnLimit(limit);
+    await askNext(all, threads, choices, turn, true);
   }
 
   async function finishInterview(all: InterviewExchange[], ch: LineChoice[]) {
@@ -391,11 +419,11 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   // Progress worth resuming: saved after every answer.
   useEffect(() => {
     if ((phase !== "question" && phase !== "sweep") || exchanges.length === 0) return;
-    const d: DraftState = { version: 1, savedAt: Date.now(), phase, exchanges, threads, choices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, seniorityText, cityRatings, cityPreferences, sweepDone };
+    const d: DraftState = { version: 1, savedAt: Date.now(), phase, exchanges, threads, choices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit };
     try {
       window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify(d));
     } catch {}
-  }, [phase, exchanges, threads, choices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, seniorityText, cityRatings, cityPreferences, sweepDone, userId, bidPack.id]);
+  }, [phase, exchanges, threads, choices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, userId, bidPack.id]);
 
   function resumeDraft(d: DraftState) {
     setExchanges(d.exchanges);
@@ -414,6 +442,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setCityRatings(d.cityRatings);
     setCityPreferences(d.cityPreferences);
     setSweepDone(d.sweepDone);
+    turnLimitRef.current = d.turnLimit ?? MAX_TURNS;
+    setTurnLimit(turnLimitRef.current);
     setResume(null);
     if (d.phase === "sweep") setPhase("sweep");
     else if (d.question) setPhase("question");
@@ -427,7 +457,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const stepIndex = Math.max(0, opening.indexOf(phase as (typeof opening)[number]) - (hasSeniorityStep ? 0 : 1));
   const eyebrow = (label: string) => `Step ${stepIndex + 1} of ${stepTotal} · ${label}`;
   const inOpening = (opening as readonly string[]).includes(phase);
-  const progress = inOpening ? (stepIndex / stepTotal) * 0.2 : phase === "review" ? 0.97 : phase === "building" || phase === "sweep" ? 0.9 : 0.2 + Math.min(0.65, (turn / MAX_TURNS) * 0.9);
+  const progress = inOpening ? (stepIndex / stepTotal) * 0.2 : phase === "review" ? 0.97 : phase === "building" || phase === "sweep" ? 0.9 : 0.2 + Math.min(0.65, (turn / turnLimit) * 0.9);
   const lastAnswer = exchanges.at(-1);
   const lastExchange: LastExchange | null = lastAnswer && lastAnswer.turn > 0 && !lastAnswer.question.startsWith("How do you feel about each layover") ? { question: lastAnswer.question.replace(/ \[Line .*\]$/, ""), answer: lastAnswer.answer } : null;
   const questionEyebrow = `Question ${turn + 1} · from your story`;
@@ -544,7 +574,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
               if (implied !== 0) setCityRatings((prev) => ({ ...prev, [code]: { ...prev[code], score: prev[code]?.score ?? implied, note } }));
             }}
             eyebrow={eyebrow("Layover cities")}
-            fromStory={fromStory.filter((c) => c !== homeCity)}
+            fromStory={Object.keys(storySuggested).filter((c) => c !== homeCity && !cityRatings[c] && cityPreferences[c] === storySuggested[c])}
             homeCity={homeCity && cityPreferences[homeCity] === "love" ? homeCity : undefined}
           />
           <StepNav onNext={() => void beginQuestions()} nextLabel="Continue" />
@@ -595,14 +625,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       if (q.kind === "choice" && q.options) {
         return (
           <ChoiceStep key={turn} prompt={q.prompt} helpText={q.helpText} eyebrow={questionEyebrow} options={q.options.map((label) => ({ label }))} selected={choiceSelection} onSelect={setChoiceSelection}>
-            <textarea
-              value={choiceNote}
-              onChange={(e) => setChoiceNote(e.target.value)}
-              rows={2}
-              placeholder="Want to explain? (optional)"
-              aria-label="Explain your answer"
-              className="mt-4 w-full rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
-            />
+            <ChoiceNote value={choiceNote} onChange={setChoiceNote} />
             <StepNav
               onNext={() => choiceSelection !== null && void answer(`${q.options![choiceSelection]}${choiceNote.trim() ? `. ${choiceNote.trim()}` : ""}`)}
               nextLabel="Next"
