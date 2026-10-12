@@ -4,6 +4,8 @@ import { dateOfDayIndex, longestDaysOffBlock, weekendDaysOff } from "@/lib/days-
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { isStandbyLeg, tripStandbyDays } from "@/lib/standby";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
+import { backupsToWork, earliestHome, flightsForTrip, realTravelForTrip, type FlightAnswers, type TripFlights } from "@/lib/flights/trip-travel";
+import { tripStartUtc } from "@/lib/flights/needs";
 import { DEFAULT_HOME_PARAMS, homeAwayForTrip, type HomeAway, type TravelTimeProvider } from "@/lib/metrics/home-travel";
 import { legDeepNightMinutes, nightsWorked, type LayoverFact, type Region, type TripFacts } from "@/lib/metrics/trip-facts";
 import type { Line } from "@/types/bidpack";
@@ -42,6 +44,8 @@ export interface MetricParams {
   homeAirports?: string[];
   /** Hours a commuter arrives at base ahead of a report. */
   commuteBufferHours?: number;
+  /** The fewest backup flights a commuter wants on the way to work. */
+  backupFlights?: number;
   /** Calendar dates ("2026-10-10"), for date-specific measurements. */
   dates?: string[];
   /** Days of the week, 1 = Monday … 7 = Sunday. */
@@ -55,8 +59,10 @@ export interface LineContext {
   bidPeriodDays: number;
   homeBaseOffsetMinutes: number | null;
   base: string;
-  /** Travel times between a pilot's home and trip cities — estimated from distance, or real schedules when connected. */
+  /** Travel times between a pilot's home and trip cities — estimated from distance. */
   travel?: TravelTimeProvider;
+  /** Real airline flights looked up for this pilot's trips (see `lib/flights/`), by need id; trips not looked up are estimated. */
+  flights?: FlightAnswers;
 }
 
 export interface MetricDef {
@@ -119,8 +125,23 @@ function homeAway(trips: TripFacts[], c: LineContext, p: MetricParams): HomeAway
     frontBufferHours: p.frontBufferHours ?? DEFAULT_HOME_PARAMS.frontBufferHours,
     backRestHours: p.backRestHours ?? DEFAULT_HOME_PARAMS.backRestHours,
   };
-  const out = flying(trips).map((f) => homeAwayForTrip(f, c.base, params, c.travel));
+  const out = flying(trips).map((f) => homeAwayForTrip(f, c.base, params, c.travel, realTravelForTrip(c.flights, c, f.trip)));
   return out.some((a) => a === null) ? null : (out as HomeAway[]);
+}
+
+/**
+ * Each flying trip's looked-up airline flights, or null unless every one of them was looked up — a line measured on
+ * some of its trips would look better or worse than it is.
+ */
+function tripFlights(trips: TripFacts[], c: LineContext): { f: TripFacts; t: TripFlights }[] | null {
+  if (!c.flights) return null;
+  const out: { f: TripFacts; t: TripFlights }[] = [];
+  for (const f of flying(trips)) {
+    const t = flightsForTrip(c.flights, f.trip);
+    if (!t) return null;
+    out.push({ f, t });
+  }
+  return out;
 }
 
 /** Hours a trip can realistically be shortened by deviating — arriving later on a front-end deadhead, or heading home sooner after the last operated leg — keeping the buffer and rest the pilot wants. */
@@ -234,6 +255,56 @@ export const METRICS: MetricDef[] = [
     params: ["homeAirports", "backRestHours"],
     defaults: { ...DEFAULT_HOME_PARAMS },
     line: (_l, trips, c, p) => homeAway(trips, c, p)?.filter((a) => a.end === "deviate").length ?? null,
+  },
+
+  // ---- Real airline flights, for commuters (only for lines whose trips were looked up) ----
+  {
+    id: "fewestBackupFlights",
+    label: "Fewest backup flights to a trip",
+    unit: "flights",
+    category: "commute",
+    description:
+      "Across the month's trips, the fewest real airline flights beyond the one you'd plan on that still get you to work in time — to base, or straight to where a trip's flying starts — from published schedules, with your buffers. Unknown for lines whose flights haven't been looked up.",
+    params: ["homeAirports", "commuteBufferHours", "frontBufferHours"],
+    line: (_l, trips, c) => {
+      const ts = tripFlights(trips, c);
+      const backups = ts?.map(({ t }) => backupsToWork(t)).filter((b): b is number => b !== null);
+      return backups?.length ? Math.min(...backups) : null;
+    },
+  },
+  {
+    id: "tripsShortOnBackups",
+    label: "Trips short on backup flights",
+    unit: "trips",
+    category: "commute",
+    description: "Trips where fewer real airline flights than the backups you want (n; your stated minimum by default, else 2) still get you to work in time. Unknown for lines whose flights haven't been looked up.",
+    params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "n"],
+    line: (_l, trips, c, p) => {
+      const ts = tripFlights(trips, c);
+      const want = p.n ?? p.backupFlights ?? 2;
+      return ts ? ts.filter(({ t }) => (backupsToWork(t) ?? Infinity) < want).length : null;
+    },
+  },
+  {
+    id: "longestTripHome",
+    label: "Longest wait to get home",
+    unit: "hours",
+    category: "commute",
+    description:
+      "The most hours, across the month's trips, from the end of the work (the last operated flight or standby) until the first real airline flight lands you home — from base, or straight from where the flying ends. Unknown for lines whose flights haven't been looked up.",
+    params: ["homeAirports", "backRestHours"],
+    line: (_l, trips, c) => {
+      const ts = tripFlights(trips, c);
+      if (!ts) return null;
+      const hours = ts.flatMap(({ f, t }) => {
+        const home = earliestHome(t);
+        const start = tripStartUtc(c, f.trip);
+        // Done once the last operated flight or standby is over — a deadhead back to base is part of the trip home.
+        const ends = [[...f.legs].reverse().find((l) => !l.deadhead)?.end, f.duties.flatMap((d) => d.standbyLegs).at(-1)?.end].filter((x): x is number => x !== undefined);
+        return home === null || start === null || !ends.length ? [] : [(home - (start + Math.max(...ends) * 60_000)) / 3_600_000];
+      });
+      return hours.length ? Math.max(0, ...hours) : null;
+    },
   },
 
   // ---- Calendar ----

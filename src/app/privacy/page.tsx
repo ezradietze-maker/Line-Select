@@ -60,7 +60,9 @@ export default function PrivacyPage() {
             The parsed bid pack and your line rankings are stored only in your own browser&rsquo;s
             local storage on your own device &mdash; they are never uploaded to, or stored on, our
             servers, whether or not you have an account. If you clear your browser data or switch
-            devices, that information is gone and you&rsquo;ll need to re-upload.
+            devices, that information is gone and you&rsquo;ll need to re-upload. (Looking up a
+            commuter&rsquo;s flights sends the bid pack&rsquo;s FedEx flight times along for that one
+            lookup, without storing them &mdash; Section 4.)
           </p>
           <p className="mt-3">
             Your interview answers and preference weights work differently if you create an
@@ -86,13 +88,23 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="4. Hotel Ratings uses a third-party mapping/places provider">
+        <Section title="4. Hotel ratings and commute flights use third-party data providers">
           <p>
             To show you ratings, amenities, and reviews for the actual hotel your bid pack assigns
             to a layover, we send that hotel&rsquo;s name and the relevant airport/city code to
             Google Places. The resulting rating, address, amenity, and review data is cached on our
             server for up to 30 days and shared across all pilots looking up the same hotel &mdash;
             it is not linked to your identity in any way.
+          </p>
+          <p className="mt-2">
+            If you commute, the Service looks up the real flights that get you to and from your trips.
+            Your browser sends our server the airports you fly from, the time windows around the trips
+            in your top lines, and the FedEx flights printed in your bid pack (for jumpseat options).
+            Our server asks AeroDataBox, a flight-schedule provider, for airport departure boards
+            &mdash; airport codes and dates only, nothing about you. Those boards are cached on our
+            server for up to six days and shared across pilots; your windows, airports and the bid
+            pack&rsquo;s flights are used for that lookup and not stored. The answers are kept on
+            your device for a few days.
           </p>
         </Section>
 

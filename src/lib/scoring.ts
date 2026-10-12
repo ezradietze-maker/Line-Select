@@ -23,6 +23,7 @@ import { weekdayFlyingPattern, workingDayIndices } from "@/lib/line-month";
 import { lineStandbyDays } from "@/lib/standby";
 import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import { applyPilotModel } from "@/lib/scoring-v2/adapter";
+import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { HotelAmenitySummary, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 import type { MeasurableBinding, PreferenceFact, WeekdayAbbreviation } from "@/types/interview-session";
@@ -1777,10 +1778,12 @@ export function rankLines(
   hotelQualityData: HotelQualityData = {},
   implicitValuesByLine: Record<string, Record<string, number>> = {},
   profileRichness?: ProfileRichness,
-  priorTopLines?: LineSnapshot[] | null
+  priorTopLines?: LineSnapshot[] | null,
+  flights?: FlightAnswers
 ): LineScore[] {
   const scored = scoreBidPack(bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines);
-  // A pilot interviewed by the pilot brain is ranked by their own model (see `scoring-v2/adapter.ts`).
-  if (profile.pilotModel) return applyPilotModel(scored, bidPack, profile.pilotModel);
+  // A pilot interviewed by the pilot brain is ranked by their own model (see `scoring-v2/adapter.ts`), with the real
+  // airline flights looked up for their trips when there are some.
+  if (profile.pilotModel) return applyPilotModel(scored, bidPack, profile.pilotModel, flights);
   return scored.sort((a, b) => b.score - a.score);
 }

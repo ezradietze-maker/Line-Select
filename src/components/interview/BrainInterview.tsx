@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { lookUpFlights } from "@/lib/flights/client";
 import { BiddingStoryStep } from "@/components/interview/BiddingStoryStep";
 import { CheckInStep } from "@/components/interview/CheckInStep";
 import { ChoiceStep } from "@/components/interview/ChoiceStep";
@@ -435,6 +436,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       setModel(fitted);
       setReviewModel(fitted);
       setPhase("review");
+      // A commuter's real airline flights for their top lines, looked up while they review — the results pick it up.
+      void lookUpFlights(bidPack, fitted);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't build your priorities.");
     }

@@ -17,7 +17,7 @@ import { structuredCall, type BrainUsage, type Effort } from "./llm";
  */
 
 /** Bumped whenever the prompt or schema changes, so cached evaluations of an older brain aren't mistaken for this one. */
-export const BRAIN_PROMPT_VERSION = 7;
+export const BRAIN_PROMPT_VERSION = 8;
 
 export interface InterviewExchange {
   /** 0 = the opening story. */
@@ -50,6 +50,7 @@ HOW TO BUILD THE MODEL
    - "minimize time in X" → layoverHoursInCities {cities:[X]}; "I love X layovers" → layoversInCities or layoverHoursInCities for those cities.
    - For a commuter, time-away-from-home measures (creditPerDayAwayFromHome, homeAwayHours, tripsJoinedFromHome, baseCommutesNeeded) beat paper ones (creditPerDayAway, tafbHours) whenever they talk about time away from HOME or commuting.
    - Trip shortening by deviating on deadheads → effectiveCreditPerDayAway / shortenableHours / tripsShortenableByADay, with their buffers in params.
+   - Backup flights on the commute, flights being full or scarce, getting stranded → fewestBackupFlights / tripsShortOnBackups (params.n = the backups they want); a stated minimum ("I need at least two backups") is a hardLimit. Long or awkward trips home after a trip → longestTripHome. These read real airline schedules for the pilot's best lines.
    - Specific dates they need off → requestedDatesWorked {dates:[...]} (real calendar dates in this bid period); a date they "need" or call "the one hard date" is a hardLimit {op:"max", value:0}.
    - Hotel standby: tripStandbyDays is standby at a layover city mid-trip; baseStandbyDays is standby sitting at base — a commuter who likes "hotel standby" on trips may feel very differently about days of standby at base. Bind to what they mean.
    - Sleep, night flying, "all-nighters", "the back side of the clock" → nightsWorked, longestNightStreak and deepNightHours, which count hotel standby that runs past midnight as night work too (a standby window to 02:30 keeps a pilot on a night schedule). redEyeLegs counts flying only. avgCircadianStars is a rough overall rating — never the only body-clock criterion for a pilot who talks about sleep.

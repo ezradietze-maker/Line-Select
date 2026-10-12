@@ -1,5 +1,6 @@
 import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
 import { measure, prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
+import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { TravelTimeProvider } from "@/lib/metrics/home-travel";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type PilotModel } from "@/types/pilot-model";
 import type { BidPack } from "@/types/bidpack";
@@ -103,11 +104,14 @@ function homeParams(model: PilotModel): MetricParams {
     ...(h.commuteBufferHours !== undefined ? { commuteBufferHours: h.commuteBufferHours } : {}),
     ...(h.frontBufferHours !== undefined ? { frontBufferHours: h.frontBufferHours } : {}),
     ...(h.backRestHours !== undefined ? { backRestHours: h.backRestHours } : {}),
+    ...(h.backupFlights !== undefined ? { backupFlights: h.backupFlights } : {}),
   };
 }
 
 export interface ScoreOptions {
   travel?: TravelTimeProvider;
+  /** Real airline flights looked up for this pilot's trips. */
+  flights?: FlightAnswers;
   pack?: PackMetrics;
   /**
    * How shortfalls combine. 1 = a plain weighted average, where enough small wins can buy back a big miss. Above 1, a
@@ -120,6 +124,7 @@ export interface ScoreOptions {
 export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreOptions = {}): V2LineScore[] {
   const pack = options.pack ?? prepareMetrics(bidPack);
   if (options.travel) pack.ctx.travel = options.travel;
+  if (options.flights) pack.ctx.flights = options.flights;
   const home = homeParams(model);
   const criteria = model.criteria.filter((c) => METRICS_BY_ID.has(c.metric));
 

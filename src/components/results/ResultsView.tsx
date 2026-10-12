@@ -31,6 +31,8 @@ import { MonthLegend } from "@/components/results/MiniLinePreview";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
+import { cachedFlightAnswers, lookUpFlights } from "@/lib/flights/client";
+import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { fetchAllHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { useBidForecast } from "@/lib/forecast/use-bid-forecast";
@@ -221,6 +223,35 @@ export function ResultsView({
     // changed.
   }, [bidPack, caresAboutHotel]);
 
+  // A commuter's real airline flights: kept on the device from an earlier lookup (usually started during the interview),
+  // or looked up now. Like hotel reviews, ones that land within a moment shape the first ranking; a lookup that takes
+  // longer is offered as an update rather than reshuffling the list under the pilot's eyes.
+  const pilotModel = profile.pilotModel;
+  const [flights, setFlights] = useState<FlightAnswers | null>(() => (typeof window === "undefined" ? null : cachedFlightAnswers(bidPack, pilotModel)));
+  const [flightsWaiting, setFlightsWaiting] = useState<FlightAnswers | null>(null);
+  const [flightsLooking, setFlightsLooking] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const mountedAt = Date.now();
+    // A different pack or pilot starts from what's kept for it.
+    const had = cachedFlightAnswers(bidPack, pilotModel);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFlights(had);
+    setFlightsWaiting(null);
+    setFlightsLooking(true);
+    lookUpFlights(bidPack, pilotModel).then((a) => {
+      if (cancelled) return;
+      setFlightsLooking(false);
+      if (!a) return;
+      if (had && Object.keys(a).length === Object.keys(had).length) return;
+      if (!had && Date.now() - mountedAt < HOTEL_WAIT_MS) setFlights(a);
+      else setFlightsWaiting(a);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bidPack, pilotModel]);
+
   // The list is held back until hotel data lands (or the wait runs out) so
   // the ranking a pilot starts reading is the ranking they keep — hotel
   // reviews move scores, and a top-3 that reshuffles a few seconds in reads
@@ -255,8 +286,8 @@ export function ResultsView({
   const [previousPeriodSnapshot] = useState(() => loadPreviousPeriodSnapshot(userId, bidPack.month));
 
   const ranked = useMemo(
-    () => rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines),
-    [bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines]
+    () => rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined),
+    [bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
   );
 
   const updateMarks = useCallback(
@@ -551,6 +582,29 @@ export function ResultsView({
         />
       )}
 
+      {flightsLooking && !flights && hotelsSettled && (
+        <div role="status" className="mt-4 flex items-center gap-2 text-sm text-ink-muted">
+          <Spinner size="sm" />
+          Looking up real airline flights for your top lines&hellip;
+        </div>
+      )}
+
+      {flightsWaiting && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent">
+          <span>Real commute flights for your top lines just came in &mdash; backups, and when you&rsquo;d really get home.</span>
+          <Button
+            variant="secondary"
+            className="!px-3 !py-1.5"
+            onClick={() => {
+              setFlights(flightsWaiting);
+              setFlightsWaiting(null);
+            }}
+          >
+            Update my ranking
+          </Button>
+        </div>
+      )}
+
       {hotelsArrivedLate && (
         <div className="mt-4 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent">
           Hotel reviews just finished loading &mdash; your ranking was updated to include them.
@@ -737,6 +791,7 @@ export function ResultsView({
                         draggable={dragEnabled}
                         forecast={forecastLines?.[lineScore.line.id] ?? null}
                         homeBase={bidPack.base}
+                        flights={flights}
                       />
                     </ErrorBoundary>
                   </motion.div>

@@ -1,4 +1,5 @@
 import { formatValue } from "@/lib/brain/describe";
+import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { METRICS_BY_ID, type MetricCategory } from "@/lib/metrics/catalog";
 import { SATISFACTION_CATEGORY_LABELS, type SatisfactionCategory } from "@/lib/satisfaction-categories";
 import type { LineScore } from "@/lib/scoring";
@@ -60,9 +61,9 @@ function categoriesFor(s: V2LineScore, fallback: LineScore["categoryScores"]): L
   return out;
 }
 
-export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: PilotModel): LineScore[] {
+export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: PilotModel, flights?: FlightAnswers): LineScore[] {
   if (model.criteria.length === 0) return scores;
-  const v2 = new Map(scorePackV2(bidPack, model).map((s) => [s.lineId, s]));
+  const v2 = new Map(scorePackV2(bidPack, model, { flights }).map((s) => [s.lineId, s]));
   return scores
     .map((ls) => {
       const s = v2.get(ls.line.id);

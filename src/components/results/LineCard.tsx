@@ -21,6 +21,7 @@ import { buildLineFactChips, type LineFactChip } from "@/lib/line-summary";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { topImplicitContributions } from "@/lib/rank-learning";
 import type { LineScore } from "@/lib/scoring";
+import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { LineForecast } from "@/lib/forecast/forecast";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -68,6 +69,8 @@ interface LineCardProps {
   forecast?: LineForecast | null;
   /** The bid pack's own home base code, e.g. "MEM" — the one fixed point every trip on this line starts and ends at, for the Route tab's map. */
   homeBase: string;
+  /** A commuter's looked-up airline flights, shown on the line's trips. */
+  flights?: FlightAnswers | null;
 }
 
 export const LineCard = memo(function LineCard({
@@ -88,6 +91,7 @@ export const LineCard = memo(function LineCard({
   draggable,
   forecast,
   homeBase,
+  flights,
 }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
@@ -346,7 +350,7 @@ export const LineCard = memo(function LineCard({
                     bid pack&rsquo;s own line totals.
                   </div>
                 ) : (
-                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={profile.cityPreferences} />
+                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={profile.cityPreferences} flights={flights} base={homeBase} />
                 ))}
 
               {activeTab === "breakdown" && (

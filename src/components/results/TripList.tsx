@@ -5,11 +5,14 @@ import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels
 import { CircadianInfo } from "@/components/results/CircadianInfo";
 import { CircadianStars } from "@/components/results/CircadianStars";
 import { TimeModeToggle } from "@/components/results/TimeModeToggle";
+import { TripCommuteFlights } from "@/components/results/TripCommuteFlights";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { tripDutyPeriods } from "@/lib/duty-periods";
+import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { fetchHotel } from "@/lib/hotel-client";
+import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import { loadTimeMode, saveTimeMode } from "@/lib/time-mode-storage";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import { clock, dayStats, equipmentLabel, hm, tripBlockMinutes, tripDayDate, tripRoute, type DayStats } from "@/lib/trip-day-stats";
@@ -839,9 +842,18 @@ interface TripListProps {
   bidPeriodStart?: string | null;
   /** The pilot's loved/avoided layover cities, marked on the route and the hotel stays. */
   cityPreferences?: Record<string, CitySentiment>;
+  /** A commuter's looked-up airline flights, shown on each trip that has some. */
+  flights?: FlightAnswers | null;
+  /** The bid pack's base — where the commute goes. */
+  base?: string;
 }
 
-export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences }: TripListProps) {
+function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: FlightAnswers; base: string }) {
+  const f = computeTripFacts(trip);
+  return <TripCommuteFlights answers={flights} trip={trip} base={base} frontCity={f.front?.city} backCity={f.back?.city} />;
+}
+
+export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [openItineraries, setOpenItineraries] = useState<Set<string>>(new Set());
@@ -925,6 +937,8 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
               />
 
               <TripInsights trip={trip} />
+
+              {flights && base && <TripCommuteFlightsFor trip={trip} flights={flights} base={base} />}
 
               {trip.schedule.length > 0 ? (
                 <div className="mt-2.5">

@@ -16,10 +16,10 @@ import type { TripFacts } from "@/lib/metrics/trip-facts";
  *   pilot wants. The pilot picks whichever gets him out later and home
  *   sooner.
  *
- * Travel time comes from a `TravelTimeProvider`: an estimate from real
- * airport distances until flight-schedule data is connected, then the real
- * schedules (latest flight that still arrives with backups, earliest flight
- * home).
+ * Travel time comes from a `TravelTimeProvider` — an estimate from real
+ * airport distances — except where real airline schedules have been looked
+ * up for the trip (`RealTravel`): then the last flight that still makes it,
+ * and the first flight home.
  */
 
 export interface TravelTimeProvider {
@@ -28,7 +28,7 @@ export interface TravelTimeProvider {
 }
 
 const EARTH_KM = 6371;
-function distanceKm(a: string, b: string): number | null {
+export function distanceKm(a: string, b: string): number | null {
   const pa = coordinatesForAirport(a);
   const pb = coordinatesForAirport(b);
   if (!pa || !pb) return null;
@@ -70,6 +70,19 @@ function bestTravel(provider: TravelTimeProvider, homes: string[], city: string,
   return hs.length ? Math.min(...hs) : null;
 }
 
+/**
+ * Real airline times for one trip, in minutes on the trip's own clock (0 = first report at base): the last departure
+ * from home that still makes it (to base, or straight to where the flying starts) and the first arrival home (from base,
+ * or from where the flying ends). Undefined = not looked up (estimate instead); null = looked up, and no airline flight
+ * makes it (a deviation that can't be done; to or from base, the estimate stands in — there's always the jumpseat).
+ */
+export interface RealTravel {
+  leaveBase?: number | null;
+  leaveDeviate?: number | null;
+  homeBase?: number | null;
+  homeDeviate?: number | null;
+}
+
 export interface HomeAway {
   /** Hours from leaving home to getting back, door to door (gate to gate). */
   awayHours: number;
@@ -79,7 +92,7 @@ export interface HomeAway {
 }
 
 /** Door-to-door hours away for one trip; null when the pilot's home or the trip's cities can't be placed. Minutes are on the trip's own clock (0 = first report at base). */
-export function homeAwayForTrip(f: TripFacts, base: string, params: HomeParams, provider: TravelTimeProvider = estimatedTravel): HomeAway | null {
+export function homeAwayForTrip(f: TripFacts, base: string, params: HomeParams, provider: TravelTimeProvider = estimatedTravel, real: RealTravel = {}): HomeAway | null {
   if (params.homeAirports.length === 0) return null;
   const lastLeg = f.legs[f.legs.length - 1];
   const tripEnd = lastLeg ? lastLeg.end : f.tafbHours * 60;
@@ -89,15 +102,15 @@ export function homeAwayForTrip(f: TripFacts, base: string, params: HomeParams, 
   if (toBase === null || fromBase === null) return null;
 
   // Leaving: commute to base for the report, or fly straight to where the flying starts.
-  const leaveViaBase = -(params.commuteBufferHours + toBase) * 60;
+  const leaveViaBase = real.leaveBase ?? -(params.commuteBufferHours + toBase) * 60;
   let leave = leaveViaBase;
   let start: HomeAway["start"] = "base";
   if (f.front && f.front.city && f.front.slackHours !== null && f.front.legs.length) {
     const t = bestTravel(provider, params.homeAirports, f.front.city, false);
-    if (t !== null) {
+    if (t !== null && real.leaveDeviate !== null) {
       // Must be there before the first operated leg — or before any standby ahead of it (see TripFacts.front).
       const needAt = f.front.legs[f.front.legs.length - 1].end + f.front.slackHours * 60;
-      const leaveDeviating = needAt - (params.frontBufferHours + t) * 60;
+      const leaveDeviating = real.leaveDeviate ?? needAt - (params.frontBufferHours + t) * 60;
       if (leaveDeviating > leave) {
         leave = leaveDeviating;
         start = "deviate";
@@ -106,14 +119,14 @@ export function homeAwayForTrip(f: TripFacts, base: string, params: HomeParams, 
   }
 
   // Coming home: the scheduled trip back to base then the commute, or straight home after the last operated leg.
-  let back = tripEnd + fromBase * 60;
+  let back = real.homeBase ?? tripEnd + fromBase * 60;
   let end: HomeAway["end"] = "base";
   if (f.back && f.back.city && f.back.slackHours !== null && f.back.legs.length) {
     const t = bestTravel(provider, params.homeAirports, f.back.city, true);
-    if (t !== null) {
+    if (t !== null && real.homeDeviate !== null) {
       // Free once the flying and any standby after it are done (see TripFacts.back).
       const freeAt = f.back.legs[0].start - f.back.slackHours * 60;
-      const homeDeviating = freeAt + (params.backRestHours + t) * 60;
+      const homeDeviating = real.homeDeviate ?? freeAt + (params.backRestHours + t) * 60;
       if (homeDeviating < back) {
         back = homeDeviating;
         end = "deviate";
