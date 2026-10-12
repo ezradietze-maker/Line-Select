@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "October 6, 2026";
+const LAST_UPDATED = "October 11, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -190,12 +190,23 @@ export default function PrivacyPage() {
             to what, and whether that value had been asked, read from your story, or assumed.
           </p>
           <p className="mt-3">
+            The story-driven interview stores a similar summary: the same group details, how many
+            questions and line-versus-line choices it took, which kinds of priorities you ended up with
+            and how much each counted (for example &ldquo;commutes to base &mdash; strongest&rdquo;),
+            your ratings of layover cities (the airport codes and how much you like each), and
+            whether you marked each priority right, more, less or not mattering at the end. It still
+            never contains your words, your seniority number or your dates.
+          </p>
+          <p className="mt-3">
             From these summaries, across many pilots and many months, the Service computes
             statistics: which questions pilots in a group answer almost the same way (so it can
             assume them, visibly, and let you change them instead of asking), where pilots differ
             (so it asks those well), the typical numbers in each group, and how accurate past
             forecasts were. These are counts and averages, not an AI language model, and none of
-            it ever shows another pilot what you answered. The demo bid pack is never learned from.
+            it ever shows another pilot what you answered. Once at least five pilots in a group have
+            taken the story-driven interview, those group averages (never any one pilot&rsquo;s) are
+            given to the AI as hints about what to ask pilots like you; the AI is told never to treat
+            them as facts about you. The demo bid pack is never learned from.
           </p>
         </Section>
 

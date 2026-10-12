@@ -244,7 +244,22 @@ export interface PreferenceProfile {
   /** The story-driven interview's own record: every question and answer in order, and every line-versus-line choice. */
   brainInterview?: {
     exchanges: { turn: number; question: string; answer: string }[];
+    /** Every line-versus-line choice: the interview's, then each one made by dragging lines on the results. */
     choices: import("./pilot-model").LineChoice[];
+    /**
+     * The model as the pilot confirmed it (their review applied, their city grades in), before any choice fitting.
+     * `pilotModel` is always this, fitted to all of `choices` — so every new choice or edit refits from what the
+     * pilot actually agreed to, instead of compounding on the last fit. Absent on profiles saved before it existed.
+     */
+    reviewedModel?: import("./pilot-model").PilotModel;
+    /**
+     * Priorities the pilot set by hand on their priorities page, by criterion id: how much each counts relative to
+     * their strongest (1 = top). Applied after choice fitting, so what the pilot says outright always wins over what
+     * their line choices suggest.
+     */
+    pins?: Record<string, number>;
+    /** The pack the interview was taken on; a later pack makes the next interview a check-in. */
+    packId?: string;
   };
   completedAt: string;
   /**

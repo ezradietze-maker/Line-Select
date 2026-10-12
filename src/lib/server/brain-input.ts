@@ -30,3 +30,10 @@ export function readModel(value: unknown): PilotModel | null {
   if (JSON.stringify(value).length > 200_000) return null;
   return value as unknown as PilotModel;
 }
+
+/** The pilot's group, for fleet notes — the same coarse facts every bid pack prints. */
+export function readCohort(value: unknown): { base: string; aircraft: string; seat: string; commute: "commuter" | "local" | "unknown" } | null {
+  if (!isJsonObject(value) || !isText(value.base, 5) || !isText(value.aircraft, 8) || !isText(value.seat, 4)) return null;
+  const commute = value.commute === "commuter" || value.commute === "local" ? value.commute : "unknown";
+  return { base: value.base, aircraft: value.aircraft, seat: value.seat, commute };
+}

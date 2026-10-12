@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { nextInterviewStep, type LinePairCandidate, type ThreadState } from "@/lib/brain/interviewer";
-import { MAX_CONTEXT, MAX_PACK_BRIEF, readExchanges, readModel } from "@/lib/server/brain-input";
+import { MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
+import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 
@@ -52,7 +53,8 @@ export async function POST(request: Request) {
   const maxTurns = Math.min(MAX_TURNS, typeof body.maxTurns === "number" ? body.maxTurns : MAX_TURNS);
 
   try {
-    const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), turn: body.turn, maxTurns });
+    const notes = await fleetNotesFor(readCohort(body.cohort));
+    const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), turn: body.turn, maxTurns, fleetNotes: notes });
     const { usage, ...rest } = step;
     if (usage) console.log("[brain-question]", { turn: body.turn, done: step.done, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json(rest);

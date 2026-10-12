@@ -7,12 +7,14 @@ import {
   type CalibrationPair,
   type ForecastPriorModel,
 } from "@/lib/learning/forecast-learning";
+import { computeBrainModel } from "@/lib/learning/brain-learning";
 import { backtestInterviewModel, computeInterviewModel, type InterviewModel } from "@/lib/learning/interview-learning";
 import {
   finishRun,
   loadActiveModel,
   loadCalibrationCases,
   loadCorrections,
+  loadBrainOutcomes,
   loadOutcomes,
   loadPackHistories,
   newDataSinceLastRun,
@@ -113,12 +115,27 @@ async function learnCalibration(now: Date) {
   return { kind: "forecast-calibration", version, promoted: promote, replaced: champion?.version ?? null, metrics };
 }
 
+/**
+ * What pilots in each group end up caring about in the story-driven interview, and how they correct the brain. A
+ * description of real answers rather than a prediction, so there's nothing to hold out and test — it's always the
+ * latest, and the brain only ever reads it as hints.
+ */
+async function learnBrainModel(now: Date) {
+  const outcomes = await loadBrainOutcomes();
+  if (outcomes.length === 0) return { kind: "brain", skipped: "no story-driven interviews yet" };
+  const version = versionStamp("b", now);
+  const model = computeBrainModel(outcomes, version, now);
+  const metrics = { interviews: outcomes.length, groups: Object.keys(model.levels).length };
+  await saveModel({ kind: "brain", version, payload: model, metrics, sampleSize: outcomes.length, active: true });
+  return { kind: "brain", version, promoted: true, metrics };
+}
+
 export async function runLearningCycle(trigger: string): Promise<Record<string, unknown> | null> {
   const runId = await startRun(trigger);
   if (!runId) return null;
   const now = new Date();
   const results: Record<string, unknown>[] = [];
-  for (const step of [learnInterviewModel, learnForecastPrior, learnCalibration]) {
+  for (const step of [learnInterviewModel, learnBrainModel, learnForecastPrior, learnCalibration]) {
     try {
       results.push(await step(now));
     } catch (e) {

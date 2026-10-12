@@ -133,6 +133,22 @@ export const PERSONAS: EvalPersona[] = [
     story: `Commute from Seattle. Fewest trips possible, every trip is two commute days. I need the trip to report late enough that I can come up same day, after noon-ish, or I lose a day. Same thing at the end, if I land in ANC after 10 at night there's no way home and I'm stuck in the crash pad. Big blocks of days off. Don't care about the Asia cities much. Not a fan of IND trips. Max credit is nice but secondary.`,
   },
   {
+    id: "mem-767cap-dfw-commuter",
+    pack: "OCT26-MEM-B767-CAP",
+    isCommuter: true,
+    commuteFrom: "DFW",
+    context: "B767 captain based in Memphis (MEM), commutes from Dallas–Fort Worth (DFW). Mid-seniority, about 11 years at FedEx.",
+    story: `I commute from Dallas so the first thing I look at is how a trip starts and ends. If the first report is before about ten in the morning I have to come in the night before and pay for a hotel, so I want late first-day reports. Same on the back end, if I'm released after 8 or 9 at night I'm stuck in Memphis another night. Fewer trips means fewer commutes so I'd rather have three longer trips than six short ones. Money matters to me right now, kid starting college, so I want 80 plus credit hours if I can get it. I love the Europe flying, Paris and Cologne and Liege, good food, easy layovers. I don't love the long Asia trips out of Anchorage, they wreck me. The domestic night sort turns are fine as long as they're not five nights in a row. That's about it.`,
+  },
+  {
+    id: "mem-777fo-junior-local",
+    pack: "OCT26-MEM-B777-FO",
+    isCommuter: false,
+    commuteFrom: null,
+    context: "B777 first officer based in Memphis (MEM), lives locally. Junior on the 777, single, no kids.",
+    story: `Junior FO, single, live ten minutes from the airport, so I'm in it for the flying and the money. Max credit. I like the long international trips, especially Asia, Hong Kong, Taipei, Singapore are awesome layovers, I'll take a 10 day trip all day long. Days off don't matter much, 12 or 13 is fine. I don't want reserve or standby lines if I can help it, I want real trips. I'd rather avoid the short domestic turns, they pay nothing and you're always at work.`,
+  },
+  {
     id: "mem-a300-captain-dates",
     pack: "OCT26-MEM-A300-CAP",
     isCommuter: true,

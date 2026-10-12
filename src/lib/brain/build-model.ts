@@ -17,7 +17,7 @@ import { structuredCall, type BrainUsage, type Effort } from "./llm";
  */
 
 /** Bumped whenever the prompt or schema changes, so cached evaluations of an older brain aren't mistaken for this one. */
-export const BRAIN_PROMPT_VERSION = 6;
+export const BRAIN_PROMPT_VERSION = 7;
 
 export interface InterviewExchange {
   /** 0 = the opening story. */
@@ -32,6 +32,8 @@ export interface BuildModelInput {
   pilotContext: string;
   exchanges: InterviewExchange[];
   prior?: PilotModel | null;
+  /** Anonymous patterns from other pilots in the same group (see `fleetNotes`), when there are enough of them. */
+  fleetNotes?: string | null;
   effort?: Effort;
   apiKey?: string;
   model?: string;
@@ -83,6 +85,8 @@ HOW TO BUILD THE MODEL
 9. synopsis: 2–4 sentences on who this pilot is as a bidder, in plain words — what they optimize, what they avoid, what they trade — addressed to them ("You…").
 
 Keep ids stable: if the previous model has a criterion for the same thing, reuse its id. Quote their own words as evidence, with dictation stutters and misheard words cleaned up so they'd recognize it as what they said.
+
+FLEET NOTES, when given, are anonymous patterns from other pilots in the same group. Use them only to choose threads worth asking about and to calibrate an ambiguous reading (if pilots like this often said the brain over-weighted something, be careful not to). Never add a criterion this pilot didn't express, and never let the notes outweigh their own words.
 
 The pilot reads labels, the synopsis and thread topics. Write them TO the pilot, in second person and plain words ("You'd rather sit hotel standby than fly multi-leg duties", "Pay per day away from home"), never "he/she/they" or "the pilot". Use their own words for things where you can, and pilot terms otherwise; never invented jargon. Thread topics are questions you would ask them directly.`;
 
@@ -356,6 +360,7 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
   const fresh = [
     `PILOT: ${input.pilotContext}`,
     input.prior ? `PREVIOUS MODEL (keep ids stable; re-judge everything against the full interview below):\n${JSON.stringify({ criteria: input.prior.criteria.map((c) => ({ id: c.id, label: c.label, metric: c.metric, relativeWeight: +c.weight.toFixed(2) })), threads: input.prior.threads.map((t) => ({ id: t.id, topic: t.topic, status: t.status, timesAsked: t.timesAsked })) })}` : "",
+    input.fleetNotes ? `FLEET NOTES — other pilots in the same group:\n${input.fleetNotes}` : "",
     `THE INTERVIEW SO FAR — everything the pilot has said:\n\n${renderExchanges(input.exchanges)}`,
     `Write the pilot's complete model now.`,
   ].filter(Boolean).join("\n\n");

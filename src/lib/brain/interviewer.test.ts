@@ -49,6 +49,12 @@ describe("the interviewer's guard rails", () => {
     expect(again).toMatchObject({ prompt: "Something else?" });
   });
 
+  it("never asks three line choices in a row", async () => {
+    const two = [...input().exchanges, { turn: 2, question: "A? [Line 1001 vs Line 1002: t]", answer: "1001" }, { turn: 3, question: "B? [Line 1003 vs Line 1004: t]", answer: "1004" }];
+    proposals.push(step({ kind: "line-pair", pairIndex: 0, prompt: "Line 1011 or 1018?" }), step({ prompt: "What makes a layover long for you?" }));
+    expect(await nextInterviewStep(input({ exchanges: two }))).toMatchObject({ kind: "free-text", prompt: "What makes a layover long for you?" });
+  });
+
   it("turns a choice with too few options into an open question, and stops at the turn limit or after three dead ends", async () => {
     proposals.push(step({ kind: "choice", options: ["Only one"], prompt: "Pick?" }));
     expect(await nextInterviewStep(input())).toMatchObject({ kind: "free-text" });

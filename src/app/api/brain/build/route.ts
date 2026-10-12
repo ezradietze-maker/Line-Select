@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildPilotModel } from "@/lib/brain/build-model";
-import { MAX_CONTEXT, MAX_PACK_BRIEF, readExchanges, readModel } from "@/lib/server/brain-input";
+import { MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
+import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 
@@ -33,7 +34,8 @@ export async function POST(request: Request) {
   const prior = body.prior === undefined || body.prior === null ? null : readModel(body.prior);
 
   try {
-    const r = await buildPilotModel({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, prior, effort: "high" });
+    const notes = await fleetNotesFor(readCohort(body.cohort));
+    const r = await buildPilotModel({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, prior, effort: "high", fleetNotes: notes });
     console.log("[brain-build]", { exchanges: exchanges.length, criteria: r.model.criteria.length, dropped: r.dropped.length, costUsd: +r.usage.costUsd.toFixed(3), ms: r.usage.ms });
     return NextResponse.json({ model: r.model, dropped: r.dropped });
   } catch (e) {

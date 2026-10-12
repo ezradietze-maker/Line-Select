@@ -60,6 +60,8 @@ import {
   type DimensionUpdate,
   type PairwiseJudgment,
 } from "@/lib/rank-learning";
+import { choicesFromDrag, describeChanges, withModel } from "@/lib/brain/profile-model";
+import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
 import { useProgressiveCount } from "@/lib/use-progressive-count";
@@ -370,6 +372,10 @@ export function ResultsView({
   const availableCities = useMemo(() => collectLayoverCities(bidPack.lines), [bidPack]);
   const filterOptions = useMemo(() => computeFilterOptions(bidPack.lines), [bidPack]);
 
+  // Measured once per pack, for refitting a pilot model to their drags without re-measuring every trip each time.
+  const hasPilotModel = !!profile.pilotModel;
+  const packMetrics = useMemo(() => (hasPilotModel ? prepareMetrics(bidPack) : null), [bidPack, hasPilotModel]);
+
   // Derived once from the bid pack's own printed times — see lib/circadian.ts.
   const homeBaseOffsetMinutes = useMemo(() => computeHomeBaseOffsetMinutes(bidPack), [bidPack]);
 
@@ -404,6 +410,22 @@ export function ResultsView({
     if (fromIndex === -1 || toIndex === -1) return;
 
     const judgments = buildJudgments(ranked, fromIndex, toIndex);
+
+    // A pilot ranked by their own model: the drag is a set of line choices, and their priorities refit to them.
+    if (profile.pilotModel) {
+      const passed = judgments.map((j) => ({ favored: j.favored.line.lineNumber, overtaken: j.overtaken.line.lineNumber }));
+      const choices = [...(profile.brainInterview?.choices ?? []), ...choicesFromDrag(passed)];
+      const { profile: next, changes } = withModel(profile, bidPack, { choices }, packMetrics ?? undefined);
+      onUpdateProfile(next);
+      const said = describeChanges(changes);
+      setLearnMessage(
+        said
+          ? `Got it — ${said}.`
+          : "Noted — but nothing you've told us explains that move yet. Tell us why under Your priorities, and it'll count."
+      );
+      return;
+    }
+
     const result = learnFromReorder(profile, implicitValuesByLine, judgments);
 
     if (result.updates.length === 0) {

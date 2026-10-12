@@ -17,14 +17,15 @@ function authorized(request: Request): boolean {
  */
 export async function GET(request: Request) {
   if (!authorized(request)) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  const [interview, prior, calibration, runs] = await Promise.all([
+  const [interview, brain, prior, calibration, runs] = await Promise.all([
     loadActiveModel("interview", { fresh: true }),
+    loadActiveModel("brain", { fresh: true }),
     loadActiveModel("forecast-prior", { fresh: true }),
     loadActiveModel("forecast-calibration", { fresh: true }),
     listRecentRuns(30),
   ]);
   const describe = (m: Awaited<ReturnType<typeof loadActiveModel>>) => (m ? { version: m.version, sampleSize: m.sampleSize, createdAt: m.createdAt, metrics: m.metrics } : null);
-  return NextResponse.json({ active: { interview: describe(interview), forecastPrior: describe(prior), forecastCalibration: describe(calibration) }, runs });
+  return NextResponse.json({ active: { interview: describe(interview), brain: describe(brain), forecastPrior: describe(prior), forecastCalibration: describe(calibration) }, runs });
 }
 
 /** Runs a learning cycle on demand. */

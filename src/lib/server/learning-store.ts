@@ -3,6 +3,7 @@ import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
 import { decodeRanking } from "@/lib/forecast/ranking-codec";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
 import type { InterviewOutcome } from "@/lib/learning/interview-outcome";
+import type { BrainOutcome } from "@/lib/learning/brain-learning";
 import type { HoldRecord } from "@/lib/learning/hold-history";
 import type { PackHistory, ReportedAward, StoredPrediction } from "@/lib/learning/forecast-learning";
 import { bidPercentile } from "@/lib/learning/cohort";
@@ -50,6 +51,23 @@ export async function saveInterviewOutcome(outcome: InterviewOutcome, pilotHash:
     seniorityBand: outcome.cohort.seniority,
     modelVersion: outcome.modelVersion,
     payload: outcome,
+  });
+}
+
+/** The story-driven interview's anonymous outcome (see `BrainOutcome`), kept in the same table, marked by its model version. */
+export const BRAIN_OUTCOME_VERSION = "brain";
+
+export async function saveBrainOutcome(outcome: BrainOutcome, pilotHash: string | null): Promise<void> {
+  await db.insert(interviewOutcomes).values({
+    pilotHash,
+    base: outcome.cohort.base,
+    aircraft: outcome.cohort.aircraft,
+    seat: outcome.cohort.seat,
+    month: outcome.month,
+    commute: outcome.cohort.commute,
+    seniorityBand: outcome.cohort.seniority,
+    modelVersion: BRAIN_OUTCOME_VERSION,
+    payload: outcome as unknown as InterviewOutcome,
   });
 }
 
@@ -165,6 +183,8 @@ export async function loadOutcomes(): Promise<DatedOutcome[]> {
   // (their latest), so nobody's answers outweigh everyone else's by retaking it.
   const seen = new Set<string>();
   const latest = rows.filter((r) => {
+    // The story-driven interview's outcomes have a different shape; they're learned from separately (`loadBrainOutcomes`).
+    if ((r.payload as { v?: number }).v === 2) return false;
     if (!r.pilotHash) return true;
     const key = `${r.pilotHash}|${r.payload.month}|${r.payload.cohort.base}|${r.payload.cohort.aircraft}|${r.payload.cohort.seat}`;
     if (seen.has(key)) return false;
@@ -172,6 +192,29 @@ export async function loadOutcomes(): Promise<DatedOutcome[]> {
     return true;
   });
   return latest.reverse().map((r) => ({ at: r.at, outcome: r.payload }));
+}
+
+export async function loadBrainOutcomes(): Promise<BrainOutcome[]> {
+  const rows = await db
+    .select({ payload: interviewOutcomes.payload, pilotHash: interviewOutcomes.pilotHash })
+    .from(interviewOutcomes)
+    .where(eq(interviewOutcomes.modelVersion, BRAIN_OUTCOME_VERSION))
+    .orderBy(desc(interviewOutcomes.createdAt))
+    .limit(MAX_OUTCOMES);
+  // One pilot's latest per month and pack, like the older interview's.
+  const seen = new Set<string>();
+  return rows
+    .map((r) => ({ o: r.payload as unknown as BrainOutcome, pilotHash: r.pilotHash }))
+    .filter(({ o, pilotHash }) => {
+      if (o.v !== 2) return false;
+      if (!pilotHash) return true;
+      const key = `${pilotHash}|${o.month}|${o.cohort.base}|${o.cohort.aircraft}|${o.cohort.seat}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(({ o }) => o)
+    .reverse();
 }
 
 export async function loadCorrections(): Promise<CorrectionEvent[]> {
@@ -247,7 +290,7 @@ export async function loadCalibrationCases(): Promise<DatedCalibrationCase[]> {
 // Models
 // ---------------------------------------------------------------------------
 
-export type ModelKind = "interview" | "forecast-prior" | "forecast-calibration";
+export type ModelKind = "interview" | "forecast-prior" | "forecast-calibration" | "brain";
 
 export interface StoredModel<T> {
   version: string;

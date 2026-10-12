@@ -46,6 +46,8 @@ export interface InterviewStepInput {
   /** Answers given so far after the opening steps. */
   turn: number;
   maxTurns: number;
+  /** Anonymous patterns from other pilots in the same group, when there are enough of them. */
+  fleetNotes?: string | null;
   apiKey?: string;
 }
 
@@ -77,6 +79,13 @@ QUESTION KINDS
 - free-text: the default. Open questions that let them explain.
 - choice: when 2–4 concrete options make it quicker to answer (they can still add a note). Options must be mutually exclusive and in their terms.
 - line-pair: when the open question is how they trade one priority against another, and one of the offered line pairs shows exactly that trade. Set pairIndex to that pair's index and write the prompt around the trade ("Line 1011 has your double deadhead but two two-leg duties; line 1018 is all single legs but you commute twice — which would you bid?"). Use line pairs often once the main priorities are known — a real choice teaches more than any description. Never offer the same pair twice.
+
+PACING
+- Vary the questions: never more than two line-pair questions in a row — a real choice is powerful, but a run of them feels like a quiz.
+- In a monthly check-in (see PILOT), start with whatever they said has changed or is new this month, then this pack's own tensions; don't re-cover what last month's interview settled unless this pack makes it newly relevant.
+
+FLEET NOTES
+When given, they're anonymous patterns from other pilots in the same group. A topic pilots like this often care about, that this pilot hasn't touched, can be worth one question — asked about them, never asserted ("A lot of commuters here care about…" is fine; "You care about…" is not).
 
 SETTLED
 List the ids of every thread their latest answer resolved (or made moot).
@@ -140,6 +149,8 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   const asked = new Set(input.exchanges.map((e) => norm(e.question)));
   if (asked.has(norm(step.prompt))) return "That exact question was already asked.";
   if (step.kind === "line-pair") {
+    const lastTwo = input.exchanges.slice(-2);
+    if (lastTwo.length === 2 && lastTwo.every((e) => / \[Line \d{3,5} vs Line \d{3,5}:/.test(e.question))) return "The last two questions were both line choices — ask something else this time.";
     const pair = input.linePairs.find((p) => p.index === step.pairIndex);
     if (!pair) return "That line pair index doesn't exist.";
     if (pairsUsed.has(`${pair.a}|${pair.b}`) || pairsUsed.has(`${pair.b}|${pair.a}`)) return "Those two lines were already compared.";
@@ -156,10 +167,11 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
   let fresh = [
     `PILOT: ${input.pilotContext}`,
     `THE BRAIN'S CURRENT MODEL OF THEM:\n${renderModel(input.model, input.threads)}`,
+    input.fleetNotes ? `FLEET NOTES — other pilots in the same group (hints only):\n${input.fleetNotes}` : "",
     `LINE PAIRS YOU MAY OFFER:\n${pairs}`,
     `THE INTERVIEW SO FAR (${input.turn} of at most ${input.maxTurns} questions answered):\n\n${conversation}`,
     `Choose the next question, or decide the interview is done.`,
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 
   let usage: BrainUsage | undefined;
   for (let attempt = 0; attempt < 3; attempt++) {

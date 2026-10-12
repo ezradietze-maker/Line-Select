@@ -25,6 +25,8 @@ export interface BrainRequestBase {
   packBrief: string;
   pilotContext: string;
   exchanges: InterviewExchange[];
+  /** The pilot's group, so the server can add what the fleet has learned about pilots like them. */
+  cohort?: { base: string; aircraft: string; seat: string; commute: "commuter" | "local" | "unknown" };
 }
 
 export async function requestModelBuild(body: BrainRequestBase & { prior: PilotModel | null }): Promise<PilotModel> {

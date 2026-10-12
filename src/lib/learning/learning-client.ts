@@ -1,3 +1,4 @@
+import type { BrainOutcome } from "@/lib/learning/brain-learning";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
 import type { Bucket, InterviewOutcome } from "@/lib/learning/interview-outcome";
 import type { HoldHistorySummary } from "@/lib/learning/hold-history";
@@ -48,6 +49,13 @@ export function fetchInterviewPlan(params: { base: string; aircraft: string; sea
 export function postInterviewOutcome(outcome: InterviewOutcome): void {
   void withTimeout(
     (signal) => fetch("/api/learning/interview-outcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(outcome), signal, keepalive: true }),
+    8000
+  );
+}
+
+export function postBrainOutcome(outcome: BrainOutcome): void {
+  void withTimeout(
+    (signal) => fetch("/api/learning/brain-outcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(outcome), signal, keepalive: true }),
     8000
   );
 }

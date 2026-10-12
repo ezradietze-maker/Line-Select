@@ -13,6 +13,7 @@ export default function PreferencesPage() {
     handleStartInterview,
     handleAcknowledgeFreshBidPack,
     handleSaveProfileEdits,
+    handleUpdateProfile,
   } = useAppState();
   return (
     <PreferencesScreen
@@ -26,6 +27,7 @@ export default function PreferencesPage() {
         router.push("/results");
       }}
       onSaveEdits={handleSaveProfileEdits}
+      onUpdateProfile={handleUpdateProfile}
     />
   );
 }

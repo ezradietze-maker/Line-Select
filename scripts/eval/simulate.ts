@@ -8,7 +8,7 @@
  *
  * Usage: npx tsx scripts/eval/simulate.ts <persona-id> [tag]
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expandBidPack } from "@/lib/bidpack-storage";
 import { buildPilotModel, type InterviewExchange } from "@/lib/brain/build-model";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
@@ -147,9 +147,12 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   const fit = fitWeightsToChoices(pack, finalBuilt, choices, pm);
   const order = rankPackV2(pack, fit.model, { pack: pm }).map((r) => r.lineNumber);
   const orderNoFit = rankPackV2(pack, finalBuilt, { pack: pm }).map((r) => r.lineNumber);
-  const judge: Judgment = JSON.parse(readFileSync(`.cache/eval/judge-${persona.id}.json`, "utf8"));
+  const judgeFile = `.cache/eval/judge-${persona.id}.json`;
   say(`\n=== ${persona.id} ${tag}: ${turn} questions, ${choices.length} line choices (fit ${fit.agreedBefore}→${fit.agreedAfter}), spend $${spend.toFixed(2)}, question latency median ${(qTimes.sort((a, b) => a - b)[Math.floor(qTimes.length / 2)] / 1000).toFixed(1)}s`);
-  say(`judge spearman: ${scorecard("", order, judge).spearman} (before choice fitting ${scorecard("", orderNoFit, judge).spearman})`);
+  if (existsSync(judgeFile)) {
+    const judge: Judgment = JSON.parse(readFileSync(judgeFile, "utf8"));
+    say(`judge spearman: ${scorecard("", order, judge).spearman} (before choice fitting ${scorecard("", orderNoFit, judge).spearman})`);
+  } else say("(no judge for this persona — see judge-sample.ts)");
   if (persona.lineLabels) say(`agreement with the pilot's own verdicts: ${pilotAgreement(order, persona.lineLabels).share} (before fitting ${pilotAgreement(orderNoFit, persona.lineLabels).share})`);
   say(`top 10: ${order.slice(0, 10).join(" ")}`);
   for (const c of [...fit.model.criteria].sort((a, b) => b.weight - a.weight)) say(`  ${c.weight.toFixed(2)} ${c.label} — ${c.metric}`);

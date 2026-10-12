@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CityChips } from "@/components/preferences/CityChips";
+import { PilotPrioritiesEditor } from "@/components/preferences/PilotPrioritiesEditor";
 import { TargetEditor } from "@/components/preferences/TargetEditor";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -43,6 +44,8 @@ interface PreferencesScreenProps {
   onStartInterview: () => void;
   onShowRankings?: () => void;
   onSaveEdits?: (edits: ProfileEdits) => void;
+  /** Saves a whole updated profile — how a pilot's own model is edited (see `PilotPrioritiesEditor`). */
+  onUpdateProfile?: (profile: PreferenceProfile) => void;
 }
 
 const SLIDER_GROUPS: { title: string; keys: (keyof PreferenceWeights)[] }[] = [
@@ -69,6 +72,7 @@ export function PreferencesScreen({
   onStartInterview,
   onShowRankings,
   onSaveEdits,
+  onUpdateProfile,
 }: PreferencesScreenProps) {
   const [weightsDraft, setWeightsDraft] = useState<Partial<PreferenceWeights>>({});
   const [targetsDraft, setTargetsDraft] = useState<Partial<Record<ExplicitTargetKey, number | RangeTarget | null>>>({});
@@ -224,10 +228,12 @@ export function PreferencesScreen({
         </div>
       )}
 
-      <p className="mt-6 text-sm leading-relaxed text-ink-muted">
-        Everything here is editable. Change a slider or a number and save &mdash; your rankings update right away, and
-        this is what carries forward to next month.
-      </p>
+      {!currentProfile.pilotModel && (
+        <p className="mt-6 text-sm leading-relaxed text-ink-muted">
+          Everything here is editable. Change a slider or a number and save &mdash; your rankings update right away, and
+          this is what carries forward to next month.
+        </p>
+      )}
 
       {bidPack?.seniorityList && bidPack.seniorityList.length > 0 && (() => {
         const list = bidPack.seniorityList;
@@ -263,6 +269,10 @@ export function PreferencesScreen({
         );
       })()}
 
+      {currentProfile.pilotModel && bidPack && onUpdateProfile ? (
+        <PilotPrioritiesEditor bidPack={bidPack} profile={currentProfile} onUpdate={onUpdateProfile} />
+      ) : (
+        <>
       {SLIDER_GROUPS.map((group) => (
         <section key={group.title} className="panel-glass mt-6 p-5 sm:p-6">
           <SectionHeading>{group.title}</SectionHeading>
@@ -378,6 +388,8 @@ export function PreferencesScreen({
           <CityChips cities={cityCodes} sentiments={sentiments} onCycle={cycleCity} />
         </div>
       </section>
+        </>
+      )}
 
       {dirty && (
         <div className="animate-toast-in fixed inset-x-0 bottom-[var(--shell-bottom,0px)] z-20 border-t border-accent/30 bg-panel px-4 py-3 shadow-elevated-lg md:left-[var(--shell-left,15rem)]">

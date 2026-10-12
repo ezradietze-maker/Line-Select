@@ -97,13 +97,14 @@ const SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export async function judgePack(opts: { pack: BidPack; pilotWords: string; pilotContext: string; cacheFile: string; seed?: number }): Promise<Judgment> {
+export async function judgePack(opts: { pack: BidPack; pilotWords: string; pilotContext: string; cacheFile: string; seed?: number; lines?: Line[] }): Promise<Judgment> {
   if (existsSync(opts.cacheFile)) return JSON.parse(readFileSync(opts.cacheFile, "utf8")) as Judgment;
-  const lines = shuffled(opts.pack.lines, opts.seed ?? 7);
+  // A big pack can be judged on a sample: fewer lines read more carefully, at a fraction of the cost.
+  const lines = shuffled(opts.lines ?? opts.pack.lines, opts.seed ?? 7);
   const body = lines.map((l) => renderLine(opts.pack, l)).join("\n\n");
   const user = [
     `PILOT CONTEXT: ${opts.pilotContext}`,
-    `BID PACK: ${opts.pack.month} ${opts.pack.base} ${opts.pack.aircraft} ${opts.pack.seat}, ${opts.pack.lines.length} lines. Times are local at each airport.`,
+    `BID PACK: ${opts.pack.month} ${opts.pack.base} ${opts.pack.aircraft} ${opts.pack.seat}, ${opts.pack.lines.length} lines${opts.lines ? ` — you are judging a sample of ${opts.lines.length} of them; tier them against each other` : ""}. Times are local at each airport.`,
     `THE PILOT, IN THEIR OWN WORDS:\n"""\n${opts.pilotWords}\n"""`,
     `Sort every line into tiers: A = the top of their bid, B = good, C = acceptable, D = poor, E = they would never bid it. Use A and E sparingly (roughly the top and bottom 10–15% each). Then list their 12 best lines in order.`,
     `THE LINES:\n\n${body}`,
