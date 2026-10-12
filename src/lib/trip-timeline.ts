@@ -1,6 +1,8 @@
 import { detectDateLineCrossing, localDayStart, localInstantToZulu, toLocalInstant, zuluDayLabel, type LocalInstant } from "@/lib/trip-clock";
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
+import { displayHotelName } from "@/lib/hotels/hotel-names";
+import { standbyPlace } from "@/lib/standby";
 import type { Trip, TripDutyPeriod, TripLeg } from "@/types/bidpack";
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -254,10 +256,11 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegme
     for (const leg of duty.legs) {
       if (leg.isStandby) {
         // On call at the hotel, not a flight: no flight number, no route, no block time — just where and when.
+        const place = standbyPlace(leg.flightNumber);
         raw.push({
           kind: "standby",
-          label: `Hotel standby · ${leg.depAirport}`,
-          detail: `${leg.depAirport} · on call at the hotel ${legInlineClock(leg, "dep", mode)} → ${legInlineClock(leg, "arr", mode)} · paid the standby credit, not flying`,
+          label: `${place === "airport" ? "Airport" : "Hotel"} standby · ${leg.depAirport}`,
+          detail: `${leg.depAirport} · on call at the ${place} ${legInlineClock(leg, "dep", mode)} → ${legInlineClock(leg, "arr", mode)} · paid, not flying`,
           inlineStart: `Standby ${leg.depAirport}`,
           inlineEnd: "",
           startMinutes: leg.startMinutes,
@@ -296,7 +299,7 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegme
       });
     }
     if (duty.layover) {
-      const cityLabel = duty.layover.hotelName ? `${duty.layover.hotelName}` : duty.layover.city;
+      const cityLabel = duty.layover.hotelName ? displayHotelName(duty.layover.hotelName) : duty.layover.city;
       const pickedUpBy = !duty.layover.transportToHotel
         ? ""
         : duty.layover.hotelName && duty.layover.transportToHotel.toUpperCase() === duty.layover.hotelName.toUpperCase()

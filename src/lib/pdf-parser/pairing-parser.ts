@@ -1,6 +1,6 @@
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { isDeadheadFlightNumber } from "@/lib/deadhead";
-import { isStandbyDutyCode } from "@/lib/standby";
+import { isStandbyDutyCode, standbyPlace } from "@/lib/standby";
 import type { LayoverDetail, LayoverVariant, ParsedPairing, ParseWarning, ScheduledDutyPeriod, ScheduledLeg } from "@/lib/pdf-parser/types";
 import type { ReportTime } from "@/types/bidpack";
 
@@ -488,7 +488,8 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
     const allCities = new Set([...legs.map((l) => l.depAirport), ...legs.map((l) => l.arrAirport)]);
     const international = Array.from(allCities).some(isInternationalCity);
     const deadheadLegs = legs.filter((l) => l.isDeadhead).length;
-    const standbyDays = legs.filter((l) => isStandbyDutyCode(l.flightNumber)).length;
+    // Days on call at a hotel; an hour or two of airport standby inside a duty isn't a standby day.
+    const standbyDays = legs.filter((l) => isStandbyDutyCode(l.flightNumber) && standbyPlace(l.flightNumber) === "hotel").length;
     const flightNumbers = legs.map((l) => l.flightNumber);
 
     const reportTimeGmt = headerMatch[3];

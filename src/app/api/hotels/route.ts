@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server";
 import { airportSearchName, citySearchName } from "@/lib/hotels/airport-names";
+import { isPlausibleMatch, pickBestMatch, readHotelName } from "@/lib/hotels/hotel-names";
 import { cacheKey, getCachedHotel, setCachedHotel } from "@/lib/server/hotel-cache";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
-import type {
-  HotelAmenityCategory,
-  HotelAmenitySummary,
-  HotelLookupResult,
-  HotelResult,
-  ReviewSentiment,
-  ReviewSummary,
-  ReviewThemeKey,
-} from "@/types/hotel";
+import type { HotelAmenityCategory, HotelAmenitySummary, HotelLookupResult, HotelResult, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 
 // Reads/writes the local hotel-cache file, which needs Node's fs module.
 /** Uncached Google Places lookups allowed per IP per hour. Raised deliberately to cover a full cold bid pack, accepting the extra Places spend. */
@@ -61,10 +54,7 @@ const MAX_NEARBY_RESULTS = 20;
  * place's own `types` array. Previously this was 4 separate calls, one per
  * category — same amenity signal, a quarter of the Places API quota per hotel.
  */
-export async function fetchAmenitySummary(
-  location: LatLng | null,
-  apiKey: string
-): Promise<HotelAmenitySummary | null> {
+export async function fetchAmenitySummary(location: LatLng | null, apiKey: string): Promise<HotelAmenitySummary | null> {
   if (!location) return null;
   const categories = Object.keys(AMENITY_TYPES) as HotelAmenityCategory[];
   const typeToCategory = new Map<string, HotelAmenityCategory>();
@@ -101,51 +91,6 @@ export async function fetchAmenitySummary(
   return counts as HotelAmenitySummary;
 }
 
-/** Words too generic to help tell one property from another. */
-const NAME_STOPWORDS = new Set([
-  "HOTEL",
-  "THE",
-  "AND",
-  "INTERNATIONAL",
-  "AIRPORT",
-  "INN",
-  "AT",
-  "BY",
-  "A",
-  "OF",
-  "RESORT",
-]);
-
-function significantWords(name: string): string[] {
-  return name
-    .toUpperCase()
-    .split(/[^A-Z0-9]+/)
-    .filter((w) => w.length >= 3 && !NAME_STOPWORDS.has(w));
-}
-
-/**
- * How many of the searched hotel's significant words appear in a candidate's
- * display name (a cheap proxy for "is this actually the same property"),
- * and how many of the candidate's own significant words are NOT accounted
- * for — a tiebreaker so "Clark Marriott Hotel" beats "The Lounge at Clark
- * Marriott Hotel" for a search of "CLARK MARRIOTT": both match on every
- * searched word, but the second candidate is a sub-venue inside the hotel,
- * evidenced by its extra, unmatched words.
- */
-function overlapScore(hotelName: string, candidateName: string): { matches: number; extras: number } {
-  const searchWords = significantWords(hotelName);
-  const candidateWords = significantWords(candidateName);
-  const matches = searchWords.filter((w) => candidateWords.includes(w)).length;
-  const extras = candidateWords.filter((w) => !searchWords.includes(w)).length;
-  return { matches, extras };
-}
-
-/** True if `a` is a better match than the current best `b` (more matched words, then fewer unmatched extras). */
-function isBetterMatch(a: { matches: number; extras: number }, b: { matches: number; extras: number }): boolean {
-  if (a.matches !== b.matches) return a.matches > b.matches;
-  return a.extras < b.extras;
-}
-
 async function searchPlaces(textQuery: string, apiKey: string): Promise<GooglePlace[]> {
   const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
@@ -155,7 +100,7 @@ async function searchPlaces(textQuery: string, apiKey: string): Promise<GooglePl
       "X-Goog-FieldMask":
         "places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.formattedAddress,places.googleMapsUri,places.location",
     },
-    body: JSON.stringify({ textQuery, maxResultCount: 3 }),
+    body: JSON.stringify({ textQuery, maxResultCount: 5 }),
   });
 
   if (!response.ok) {
@@ -181,16 +126,7 @@ async function fetchPlaceReviews(placeId: string, apiKey: string): Promise<Googl
   return data.reviews ?? [];
 }
 
-const REVIEW_THEME_KEYS = new Set<ReviewThemeKey>([
-  "quietness",
-  "cleanliness",
-  "service",
-  "sleepComfort",
-  "breakfast",
-  "safety",
-  "onSiteGym",
-  "walkability",
-]);
+const REVIEW_THEME_KEYS = new Set<ReviewThemeKey>(["quietness", "cleanliness", "service", "sleepComfort", "breakfast", "safety", "onSiteGym", "walkability"]);
 const REVIEW_SENTIMENTS = new Set<ReviewSentiment>(["positive", "mixed", "negative"]);
 
 const REVIEW_SUMMARY_SYSTEM_PROMPT = `You analyze hotel guest reviews for airline flight crew on work layovers. Given review excerpts for one hotel, identify what reviewers actually said about up to eight themes:
@@ -210,9 +146,7 @@ Also write a 1-2 sentence plain-language summary a busy pilot could read in five
 Respond with ONLY a JSON object in exactly this shape, no other text, no markdown fences:
 {"summary": "...", "themes": {"quietness": "positive"}}`;
 
-function parseReviewSummaryResponse(
-  text: string
-): { summary: string; themes: Partial<Record<ReviewThemeKey, ReviewSentiment>> } | null {
+function parseReviewSummaryResponse(text: string): { summary: string; themes: Partial<Record<ReviewThemeKey, ReviewSentiment>> } | null {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) return null;
   try {
@@ -238,12 +172,7 @@ function parseReviewSummaryResponse(
  * response) degrades to `null` rather than breaking the hotel result the
  * pilot actually asked for.
  */
-async function summarizeReviews(
-  hotelName: string,
-  placeId: string,
-  googleApiKey: string,
-  anthropicApiKey: string
-): Promise<ReviewSummary | null> {
+async function summarizeReviews(hotelName: string, placeId: string, googleApiKey: string, anthropicApiKey: string): Promise<ReviewSummary | null> {
   const reviews = await fetchPlaceReviews(placeId, googleApiKey);
   const excerpts = reviews.map((r) => r.text?.text?.trim()).filter((t): t is string => !!t);
   if (excerpts.length === 0) return null;
@@ -284,12 +213,7 @@ async function summarizeReviews(
   };
 }
 
-async function findHotelOnGoogle(
-  code: string,
-  hotelName: string,
-  apiKey: string,
-  anthropicApiKey: string | undefined
-): Promise<HotelResult | null> {
+async function findHotelOnGoogle(code: string, hotelName: string, apiKey: string, anthropicApiKey: string | undefined): Promise<HotelResult | null> {
   // The pairing schedule's own hotel name is often abbreviated (e.g. "HILTON
   // NRT" for the Hilton Tokyo Narita), and most crew hotels genuinely are
   // airport-adjacent — but several real assigned hotels are well-known
@@ -298,32 +222,32 @@ async function findHotelOnGoogle(
   // just ranking lower. Both queries run in parallel and the candidate whose
   // name best overlaps the searched hotel name wins, tie-breaking toward the
   // airport-anchored result since that's right far more often than not.
+  // Searched under its spelled-out name (the packs abbreviate: "DTREE S PARK", "INTERCON DT"), and only a match that's
+  // plausibly the same hotel in the right place counts — otherwise no rating at all rather than another hotel's.
+  const name = readHotelName(hotelName);
+  if (!name.assigned) return null;
   const [airportResults, cityResults] = await Promise.all([
-    searchPlaces(`${hotelName} hotel near ${airportSearchName(code)}`, apiKey),
-    searchPlaces(`${hotelName} hotel, ${citySearchName(code)}`, apiKey),
+    searchPlaces(`${name.search} hotel near ${airportSearchName(code)}`, apiKey),
+    searchPlaces(`${name.search} hotel, ${citySearchName(code)}`, apiKey),
   ]);
 
-  let best: GooglePlace | null = null;
-  let bestScore = { matches: -1, extras: Infinity };
-  for (const place of [...airportResults, ...cityResults]) {
-    const score = overlapScore(hotelName, place.displayName?.text ?? "");
-    if (isBetterMatch(score, bestScore)) {
-      bestScore = score;
-      best = place;
-    }
-  }
-  if (!best) best = airportResults[0] ?? cityResults[0] ?? null;
+  const best = pickBestMatch(
+    code,
+    hotelName,
+    [...airportResults, ...cityResults].map((place) => ({
+      ...place,
+      name: place.displayName?.text ?? "",
+      formattedAddress: place.formattedAddress ?? null,
+      location: place.location ?? null,
+    }))
+  );
   if (!best) return null;
 
-  const location = best.location
-    ? { latitude: best.location.latitude, longitude: best.location.longitude }
-    : null;
+  const location = best.location ? { latitude: best.location.latitude, longitude: best.location.longitude } : null;
 
   const [amenities, reviewSummary] = await Promise.all([
     fetchAmenitySummary(location, apiKey),
-    best.id && anthropicApiKey
-      ? summarizeReviews(hotelName, best.id, apiKey, anthropicApiKey).catch(() => null)
-      : Promise.resolve(null),
+    best.id && anthropicApiKey ? summarizeReviews(hotelName, best.id, apiKey, anthropicApiKey).catch(() => null) : Promise.resolve(null),
   ]);
 
   return {
@@ -352,7 +276,15 @@ export async function GET(request: Request) {
   }
 
   const key = cacheKey(code, hotelName);
-  const cached = await getCachedHotel(key);
+  // Not assigned yet ("TBA"): nothing to look up.
+  if (!readHotelName(hotelName).assigned) {
+    const result: HotelLookupResult = { code, hotelName, hotel: null, error: null };
+    return NextResponse.json(result);
+  }
+
+  // A cached match from before matches were checked (another city's hotel, another property) is looked up again.
+  const cachedRaw = await getCachedHotel(key);
+  const cached = cachedRaw && !isPlausibleMatch(code, hotelName, cachedRaw) ? undefined : cachedRaw;
   if (cached !== undefined) {
     const result: HotelLookupResult = { code, hotelName, hotel: cached, error: null };
     return NextResponse.json(result);

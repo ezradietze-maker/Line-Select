@@ -1,6 +1,6 @@
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { flyingSchedule } from "@/lib/standby";
-import type { Trip, TripDutyPeriod, TripLeg } from "@/types/bidpack";
+import type { Trip, TripLeg } from "@/types/bidpack";
 
 /**
  * Real, computed trip metrics beyond the original scoring dimensions — the
@@ -107,14 +107,6 @@ function layoverBucket(hours: number): LayoverBucket {
   return "extended";
 }
 
-/** The same gap the trip-timeline chart draws as "Ground" — report/hotel-pickup time before a duty's first departure — recomputed here as a plain number rather than a render-ready segment. */
-function groundGapHours(duty: TripDutyPeriod): number | null {
-  const firstLeg = duty.legs[0];
-  if (!firstLeg) return null;
-  const gap = firstLeg.startMinutes - duty.startMinutes;
-  return gap > 0 ? gap / 60 : 0;
-}
-
 export interface TripAnalytics {
   // ---- A. Report time & circadian dynamics ----
   redEyeDepartures: number;
@@ -199,7 +191,10 @@ export function computeTripAnalytics(trip: Trip): TripAnalytics {
   const backOfClockDepartures = allLegs.filter((l) => isBackOfClockLocal(l.depTimeLocal)).length;
 
   const reportHours = new Set(
-    duties.map((d) => d.legs[0]?.depTimeLocal).filter((t): t is string => !!t).map((t) => t.slice(0, 2))
+    duties
+      .map((d) => d.legs[0]?.depTimeLocal)
+      .filter((t): t is string => !!t)
+      .map((t) => t.slice(0, 2))
   );
 
   const timezoneDeltas = allLegs
@@ -226,10 +221,11 @@ export function computeTripAnalytics(trip: Trip): TripAnalytics {
 
   const lastDuty = duties[duties.length - 1];
   const lastLegOverall = lastDuty?.legs[lastDuty.legs.length - 1];
-  const reportToReleaseHours =
-    duties.length > 0 && lastLegOverall ? (lastLegOverall.endMinutes - duties[0].startMinutes) / 60 : null;
+  const reportToReleaseHours = duties.length > 0 && lastLegOverall ? (lastLegOverall.endMinutes - duties[0].startMinutes) / 60 : null;
 
   const blockValues = allLegs.map((l) => l.blockHours).filter((b): b is number => b !== null);
+  // Flying the pilot does: deadheads ride along and aren't flying, however long their printed block.
+  const operatedBlockHours = allLegs.filter((l) => !l.isDeadhead).reduce((a, l) => a + (l.blockHours ?? 0), 0);
   const totalBlockHours = blockValues.length > 0 ? blockValues.reduce((a, b) => a + b, 0) : null;
   const deadheadBlockValues = allLegs
     .filter((l) => l.isDeadhead)
@@ -237,13 +233,7 @@ export function computeTripAnalytics(trip: Trip): TripAnalytics {
     .filter((b): b is number => b !== null);
   const deadheadBlockHours = deadheadBlockValues.length > 0 ? deadheadBlockValues.reduce((a, b) => a + b, 0) : null;
 
-  const distinctAircraftTypes = Array.from(
-    new Set(
-      allLegs
-        .filter((l) => !l.isDeadhead && l.equipment && l.equipment !== "JET")
-        .map((l) => l.equipment)
-    )
-  );
+  const distinctAircraftTypes = Array.from(new Set(allLegs.filter((l) => !l.isDeadhead && l.equipment && l.equipment !== "JET").map((l) => l.equipment)));
 
   const turnTimes: number[] = [];
   for (const duty of duties) {
@@ -254,22 +244,17 @@ export function computeTripAnalytics(trip: Trip): TripAnalytics {
   }
 
   const layovers = duties.map((d) => d.layover).filter((l): l is NonNullable<typeof l> => !!l);
+  // Block-in to the hotel pickup for the next duty, as the pack prints it: the window at the hotel. (The printed layover
+  // length already ends at about the pickup — five minutes before it on a typical trip — so taking the pickup-to-departure
+  // ground time off it too counted that drive twice and read every layover an hour and more short.)
   const sleepOpportunities = duties
-    .map((d, i) => {
-      if (!d.layover) return null;
-      const nextDuty = duties[i + 1];
-      if (!nextDuty) return d.layover.hours;
-      const ground = groundGapHours(nextDuty);
-      return ground === null ? d.layover.hours : Math.max(0, d.layover.hours - ground);
-    })
+    .map((d) => (d.layover ? Math.max(0, (d.layover.endMinutes - d.layover.startMinutes) / 60) : null))
     .filter((h): h is number => h !== null);
 
   let backToBackRedEyeDuties = 0;
   for (let i = 0; i < duties.length - 1; i++) {
     const thisHasRedEye = duties[i].legs.some((l) => isRedEyeLocal(l.depTimeLocal) || isRedEyeLocal(l.arrTimeLocal));
-    const nextHasRedEye = duties[i + 1].legs.some(
-      (l) => isRedEyeLocal(l.depTimeLocal) || isRedEyeLocal(l.arrTimeLocal)
-    );
+    const nextHasRedEye = duties[i + 1].legs.some((l) => isRedEyeLocal(l.depTimeLocal) || isRedEyeLocal(l.arrTimeLocal));
     if (thisHasRedEye && nextHasRedEye) backToBackRedEyeDuties++;
   }
 
@@ -294,21 +279,14 @@ export function computeTripAnalytics(trip: Trip): TripAnalytics {
     backOfClockDepartures,
     distinctReportHours: reportHours.size,
     netTimezoneMinutes: hasTimezoneData ? timezoneDeltas.reduce((a, b) => a + b, 0) : null,
-    totalTimezoneCrossingMinutes: hasTimezoneData
-      ? timezoneDeltas.reduce((a, b) => a + Math.abs(b), 0)
-      : null,
-    maxSingleLegTimezoneDeltaMinutes: hasTimezoneData
-      ? Math.max(...timezoneDeltas.map((d) => Math.abs(d)))
-      : null,
+    totalTimezoneCrossingMinutes: hasTimezoneData ? timezoneDeltas.reduce((a, b) => a + Math.abs(b), 0) : null,
+    maxSingleLegTimezoneDeltaMinutes: hasTimezoneData ? Math.max(...timezoneDeltas.map((d) => Math.abs(d))) : null,
 
     dutyPeriodCount: duties.length,
     dutyLengthHours: minMaxAvg(dutyLengths),
     legsPerDuty: minMaxAvg(legsPerDuty),
     reportToReleaseHours,
-    dutyToBlockRatio:
-      totalBlockHours && totalBlockHours > 0 && dutyLengths.length > 0
-        ? dutyLengths.reduce((a, b) => a + b, 0) / totalBlockHours
-        : null,
+    dutyToBlockRatio: operatedBlockHours > 0 && dutyLengths.length > 0 ? dutyLengths.reduce((a, b) => a + b, 0) / operatedBlockHours : null,
 
     totalBlockHours,
     deadheadBlockHours,
@@ -323,8 +301,7 @@ export function computeTripAnalytics(trip: Trip): TripAnalytics {
     shortRestOvernights: layovers.filter((l) => l.hours < 12).length,
     longRestOvernights: layovers.filter((l) => l.hours > 24).length,
     avgLayoverHours: layovers.length > 0 ? layovers.reduce((a, b) => a + b.hours, 0) / layovers.length : null,
-    avgSleepOpportunityHours:
-      sleepOpportunities.length > 0 ? sleepOpportunities.reduce((a, b) => a + b, 0) / sleepOpportunities.length : null,
+    avgSleepOpportunityHours: sleepOpportunities.length > 0 ? sleepOpportunities.reduce((a, b) => a + b, 0) / sleepOpportunities.length : null,
     backToBackRedEyeDuties,
 
     hotelChains: trip.layoverDetails.map((d) => guessHotelChain(d.hotelName)),

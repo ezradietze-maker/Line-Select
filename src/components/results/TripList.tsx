@@ -12,6 +12,8 @@ import { computeCircadianAssessment } from "@/lib/circadian";
 import { tripDutyPeriods } from "@/lib/duty-periods";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { fetchHotel } from "@/lib/hotel-client";
+import { standbyPlace } from "@/lib/standby";
+import { displayHotelName } from "@/lib/hotels/hotel-names";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import { loadTimeMode, saveTimeMode } from "@/lib/time-mode-storage";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
@@ -174,7 +176,7 @@ function SegmentText({ seg, mode, cityPreferences }: { seg: TimelineSegment; mod
     const head = seg.continuesFromPreviousDay ? `${stay.city} rest` : `${stay.city} · ${formatDuration(stay.hours)}`;
     const pickup = seg.continuesToNextDay ? null : `pickup ${stay.pickupClock ?? seg.endClock ?? clock(seg.endMinuteOfDay)} ${tag}`;
     const rows: { text: string; tone: string }[] = [{ text: head, tone: "font-semibold" }];
-    if (stay.hotel && lines >= 3) rows.push({ text: stay.hotel.toLowerCase(), tone: "capitalize text-ink-muted" });
+    if (stay.hotel && lines >= 3) rows.push({ text: displayHotelName(stay.hotel).toLowerCase(), tone: "capitalize text-ink-muted" });
     if (pickup && lines >= 2) rows.push({ text: pickup, tone: "text-ink-muted" });
     return (
       <div className="flex h-full flex-col justify-between overflow-hidden px-1 py-px font-mono text-[10px] leading-[12px]">
@@ -192,7 +194,7 @@ function SegmentText({ seg, mode, cityPreferences }: { seg: TimelineSegment; mod
     return (
       <div className="flex h-full flex-col justify-between overflow-hidden px-1 py-px font-mono text-[10px] leading-[12px]">
         <span className="truncate font-semibold">{seg.stay.city} day room</span>
-        {lines >= 2 && <span className="truncate font-sans capitalize text-ink-muted">{seg.stay.hotel?.toLowerCase()}</span>}
+        {lines >= 2 && <span className="truncate font-sans capitalize text-ink-muted">{seg.stay.hotel ? displayHotelName(seg.stay.hotel).toLowerCase() : null}</span>}
       </div>
     );
   }
@@ -228,7 +230,7 @@ function DayHeader({ day, stats, date, mode }: { day: TimelineDay; stats: DaySta
     stats.blockMinutes > 0
       ? `${hm(stats.blockMinutes)} blk · ${stats.landings} ldg`
       : stats.standby
-        ? "hotel standby"
+        ? "standby"
         : stats.deadheadMinutes > 0
           ? `DH ${hm(stats.deadheadMinutes)}`
           : stats.restDay
@@ -355,7 +357,7 @@ function TripTimelineChart({
   cityPreferences?: Record<string, CitySentiment>;
 }) {
   if (days.length === 0) return null;
-  const hasStandby = trip.schedule.some((d) => d.legs.some((l) => l.isStandby));
+  const standbyPlaces = new Set(trip.schedule.flatMap((d) => d.legs.filter((l) => l.isStandby).map((l) => standbyPlace(l.flightNumber))));
   const hasDeadhead = trip.deadheadLegs > 0;
 
   return (
@@ -364,7 +366,8 @@ function TripTimelineChart({
         <LegendSwatch className="bg-calendar-accent" label="Flying" />
         {hasDeadhead && <LegendSwatch className="hatch-deadhead bg-calendar-accent/15 ring-1 ring-inset ring-calendar-accent/50" label="Deadhead" title="Riding along, not operating" />}
         <LegendSwatch className="border-l-2 border-good bg-good/15" label="Hotel" title={LAYOVER_TOOLTIP} />
-        {hasStandby && <LegendSwatch className="border-l-2 border-standby bg-standby/20" label="Hotel standby" title={STANDBY_TOOLTIP} />}
+        {standbyPlaces.has("hotel") && <LegendSwatch className="border-l-2 border-standby bg-standby/20" label="Hotel standby" title={STANDBY_TOOLTIP} />}
+        {standbyPlaces.has("airport") && <LegendSwatch className="border-l-2 border-standby bg-standby/20" label="Airport standby" title="On call at the airport for an hour or two inside a duty — paid, not flying." />}
         <LegendSwatch className="bg-accent/55" label="Report / ground" title={GROUND_TOOLTIP} />
         {mode === "local" && <LegendSwatch className="bg-ink/10" label="Body-clock low" title={WOCL_TOOLTIP} />}
       </div>
@@ -444,7 +447,7 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
                         <td className="px-2 py-1 text-ink">
                           {formatHHMM(mode === "zulu" ? leg.arrTimeGmt : leg.arrTimeLocal)} <span className="text-ink-faint">{zoneTag(mode)}</span>
                         </td>
-                        <td colSpan={2} className="px-2 py-1 font-sans text-ink-muted">on call at the hotel — paid, not flying</td>
+                        <td colSpan={2} className="px-2 py-1 font-sans text-ink-muted">on call at the {standbyPlace(leg.flightNumber)} — paid, not flying</td>
                       </tr>
                     );
                   }
@@ -474,7 +477,7 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
                           <span className={LABEL}>Day room</span>{" "}
                           <span className="font-mono font-semibold text-good">{leg.arrAirport}</span>{" "}
                           <span className="font-mono text-readout">{hm(duty.legs[legIndex + 1].startMinutes - leg.endMinutes)}</span>{" "}
-                          <span className="capitalize text-ink">{leg.dayRoomHotel.toLowerCase()}</span>
+                          <span className="capitalize text-ink">{displayHotelName(leg.dayRoomHotel).toLowerCase()}</span>
                           <span className="text-ink-faint"> · a hotel between legs, same duty</span>
                         </td>
                       </tr>
@@ -551,7 +554,7 @@ function LayoverRow({
     <>
       <span className="font-mono font-semibold text-good">{city}</span>
       <span className="font-mono text-readout">{formatDuration(hours)}</span>
-      {hotelName && <span className="capitalize text-ink">{hotelName.toLowerCase()}</span>}
+      {hotelName && <span className="capitalize text-ink">{displayHotelName(hotelName).toLowerCase()}</span>}
       {hotel?.rating != null && (
         <span className="inline-flex items-center gap-0.5 text-accent">
           <StarIcon className="h-2.5 w-2.5 fill-current" />
@@ -630,7 +633,7 @@ function TripInsights({ trip }: { trip: Trip }) {
     chips.push({
       label: "Avg sleep window",
       value: `${a.avgSleepOpportunityHours.toFixed(1)}h`,
-      title: "Layover time minus the real hotel-pickup/ground gap around it — closer to actual usable rest than the printed layover duration.",
+      title: "Block-in to the hotel pickup for the next duty, averaged over the trip's layovers — the real window at the hotel, from the pack's own printed pickup times.",
     });
   }
 
@@ -638,7 +641,7 @@ function TripInsights({ trip }: { trip: Trip }) {
     chips.push({
       label: "Duty ÷ flying",
       value: `${a.dutyToBlockRatio.toFixed(1)}×`,
-      title: "Total duty time divided by actual block time — higher means more of the day is ground time and connections than real flying.",
+      title: "Total duty time divided by the block you actually fly (deadheads don't count as flying) — higher means more of the day is ground time, connections and riding than flying.",
     });
   }
 
@@ -985,7 +988,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                         const content = (
                           <>
                             <span className="font-mono font-medium text-good">{layover.city}</span>
-                            <span className="capitalize">{layover.hotelName?.toLowerCase()}</span>
+                            <span className="capitalize">{layover.hotelName ? displayHotelName(layover.hotelName).toLowerCase() : null}</span>
                             {hotel?.rating != null && (
                               <span className="inline-flex items-center gap-0.5 text-accent">
                                 <StarIcon className="h-3 w-3 fill-current" />

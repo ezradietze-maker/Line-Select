@@ -172,7 +172,7 @@ function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">): string {
   if (d.dutyStart) parts.push(`duty starts ${d.dutyStart} (L)${d.dutyStartLocalDate ? ` ${localDay(d.dutyStartLocalDate)} local` : ""}`);
   if (d.landings > 0) parts.push(`${d.landings} landing${d.landings === 1 ? "" : "s"}`);
   if (d.hasDeadhead) parts.push("deadhead");
-  if (d.hasStandby) parts.push("hotel standby");
+  if (d.hasStandby) parts.push("standby");
   if (d.redEye) parts.push("red-eye");
   if (d.earlyReport) parts.push("early report");
   if (d.releaseTime) parts.push(`lands ${d.releaseTime} (L)${d.releaseLocalDate ? ` ${localDay(d.releaseLocalDate)} local` : ""}, trip ends`);
@@ -391,10 +391,12 @@ function summarize(line: Line, days: DetailedDay[], offRuns: number[], cityPrefe
     .map((d) => d.dutyStart)
     .filter((s): s is string => !!s)
     .sort();
-  const releases = days
-    .map((d) => d.releaseTime)
+  // Latest by the clock of the night: a landing just after midnight (00:35) is later than one at 23:41, and a trip
+  // landing onto a day off counts too.
+  const nightOrder = (c: string) => (clockMinutes(c) < RED_EYE_END_MIN ? clockMinutes(c) + 1440 : clockMinutes(c));
+  const releases = [...days.map((d) => d.releaseTime), ...days.map((d) => d.spill?.landsAt ?? null)]
     .filter((s): s is string => !!s)
-    .sort();
+    .sort((a, b) => nightOrder(a) - nightOrder(b));
 
   return {
     daysOff: off,

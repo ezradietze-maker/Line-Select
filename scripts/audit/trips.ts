@@ -23,6 +23,8 @@ import { tripReportUtc } from "@/lib/trip-anchor";
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { buildHomeDays, buildRawSegments, buildTimelineDays } from "@/lib/trip-timeline";
+import { computeTripAnalytics } from "@/lib/trip-analytics";
+import { dayStats, tripBlockMinutes } from "@/lib/trip-day-stats";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 const filter = process.argv[2] ?? "";
@@ -59,9 +61,15 @@ interface RawPairing {
   page: number;
   seq: string;
   legs: RawLeg[];
+  /** The printed report, local "HHMM". */
+  reportLocal: string;
+  /** The printed footer: LDGS, BLOCK HRS, CREDIT HRS, TAFB. */
+  footer: { landings: number; block: number; credit: number; tafb: number } | null;
 }
 
-const HEADER = /^(\d+)\s+((?:[A-Z]{2}\s+)*[A-Z]{2})\s+REPORT\s+AT\s+(\d{3,4})\s*\(/;
+const HEADER = /^(\d+)\s+((?:[A-Z]{2}\s+)*[A-Z]{2})\s+REPORT\s+AT\s+(\d{3,4})\s*\(\s*[*#]?(\d{3,4})/;
+const FOOTER_FIELDS = /^LDGS:\s*(\d+)\s+BLOCK\s*HRS:\s*(\d{1,3}:\d{2})\s+CREDIT\s*HRS:\s*(\d{1,3}:\d{2})\s*T?\s*TAFB:\s*(\d{1,4}:\d{2})/;
+const hrs = (s: string) => Number(s.split(":")[0]) + Number(s.split(":")[1]) / 60;
 const FOOTER = /^LDGS:/;
 const TIME = /^(\d{4})\([*#]?(\d{4})\)$/;
 
@@ -80,13 +88,15 @@ function readRaw(file: string): Map<string, RawPairing[]> {
     if (/BID PACK PAIRING SCHEDULE|^Produced on/.test(line)) continue;
     const h = HEADER.exec(line);
     if (h) {
-      cur = { page, seq: h[1], legs: [] };
+      cur = { page, seq: h[1], legs: [], reportLocal: h[4].padStart(4, "0"), footer: null };
       const key = `${page}|${h[1]}`;
       out.set(key, [...(out.get(key) ?? []), cur]);
       continue;
     }
     if (!cur) continue;
     if (FOOTER.test(line)) {
+      const f = FOOTER_FIELDS.exec(line);
+      if (f) cur.footer = { landings: Number(f[1]), block: hrs(f[2]), credit: hrs(f[3]), tafb: hrs(f[4]) };
       cur = null;
       continue;
     }
@@ -206,6 +216,39 @@ function checkTrip(tag: string, pack: BidPack, lineNo: string, trip: Trip, raw: 
             );
           bump("legs checked against the PDF");
         });
+      // The trip's summary, as its header shows it, against the pairing's printed header and footer.
+      if (src.footer) {
+        const f = src.footer;
+        const shown: [string, number, number][] = [
+          ["credit", trip.creditHours, f.credit * runs],
+          ["time away (TAFB)", trip.tafbHours, f.tafb * runs],
+          ["block", (tripBlockMinutes(trip) ?? 0) / 60, f.block * runs],
+        ];
+        for (const [what, app, pdf] of shown)
+          if (Math.abs(app - pdf) > 0.02) note(`trips whose ${what} differs from the PDF`, `${where}: app ${hoursStr(app)}, PDF ${hoursStr(pdf)}`);
+        const operated = src.legs.filter((l) => /^\d+$/.test(l.flight)).length * runs;
+        if (trip.landings !== operated)
+          note("trips whose landings differ from their operated legs", `${where}: app ${trip.landings}, operated legs ${operated}`);
+        if (f.landings * runs !== operated) bump("pairings whose printed LDGS isn't their operated legs (the app counts the legs)");
+        const cpd = computeTripAnalytics(trip).creditPerTafbHour;
+        if (cpd === null || Math.abs(cpd * 24 - (f.credit / f.tafb) * 24) > 0.05)
+          note(
+            "trips whose credit per day away is off",
+            `${where}: app ${cpd === null ? "—" : (cpd * 24).toFixed(2)}, PDF ${((f.credit / f.tafb) * 24).toFixed(2)}`
+          );
+        bump("trip summaries checked against the PDF");
+      }
+      // Report and last-in, as the trip's header reads them.
+      const view = buildTimelineDays(trip, "local");
+      const firstStats = view[0] ? dayStats(view[0]) : null;
+      const lastStats = view.length ? dayStats(view[view.length - 1]) : null;
+      const printedReport = `${src.reportLocal.slice(0, 2)}:${src.reportLocal.slice(2)}`;
+      if (firstStats?.onDuty !== printedReport)
+        note("trips whose shown report time isn't the printed one", `${where}: shows ${firstStats?.onDuty}, printed ${printedReport}`);
+      const lastLeg = src.legs.at(-1)!;
+      const printedIn = `${lastLeg.arrLocal.slice(0, 2)}:${lastLeg.arrLocal.slice(2)}`;
+      if (!lastLeg.flight.startsWith("ST") && lastStats?.lastIn !== printedIn)
+        note("trips whose shown last-in time isn't the printed one", `${where}: shows ${lastStats?.lastIn}, printed ${printedIn}`);
       // Layovers: after the right leg, right city, right length, with their hotels and rides.
       const appLayovers = trip.schedule.filter((d) => d.layover).map((d) => ({ afterLeg: d.legs.at(-1)!, layover: d.layover! }));
       const srcLayovers = src.legs.flatMap((s, i) => (s.layover ? [{ i, s }] : []));

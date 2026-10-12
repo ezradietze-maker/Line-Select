@@ -27,6 +27,20 @@ export function isStandbyDutyCode(flightNumber: string): boolean {
   return STANDBY_DUTY_CODE_RE.test(flightNumber);
 }
 
+/**
+ * Where a standby row has the pilot waiting. The packs print two codes: "STHOTL", a day on call at a layover hotel
+ * ("HSBY" on the line grid), and "STARPT", an hour or two on call at the airport inside a duty — right after landing,
+ * before the layover ("ASBY" on the grid). Only the hotel kind is a standby day.
+ */
+export function standbyPlace(flightNumber: string): "hotel" | "airport" {
+  return /^STA(RP|PT|IR)/.test(flightNumber) ? "airport" : "hotel";
+}
+
+/** A day on call at a layover hotel — what "standby days" count. */
+export function isHotelStandbyLeg(leg: { flightNumber: string; isStandby?: boolean }): boolean {
+  return isStandbyLeg(leg) && standbyPlace(leg.flightNumber) === "hotel";
+}
+
 /** A leg is standby when it's flagged so, or — on a trip saved before the flag existed — when its own flight-number field carries the standby duty code. */
 export function isStandbyLeg(leg: { flightNumber: string; isStandby?: boolean }): boolean {
   return leg.isStandby ?? isStandbyDutyCode(leg.flightNumber);
@@ -47,8 +61,9 @@ export function flyingSchedule(trip: Trip): Trip["schedule"] {
 export function backfillStandby(trip: Trip): Trip {
   if (trip.schedule.length === 0) return trip;
   const legs = trip.schedule.flatMap((d) => d.legs);
-  const days = legs.filter(isStandbyLeg).length;
-  if (days === 0 && legs.every((l) => l.isStandby !== undefined)) return trip;
+  // Hotel standby days only — a trip saved when airport standby was counted as a day is corrected here.
+  const days = legs.filter(isHotelStandbyLeg).length;
+  if (days === (trip.standbyDays ?? 0) && legs.every((l) => l.isStandby !== undefined)) return trip;
 
   const schedule = trip.schedule.map((duty) => ({
     ...duty,

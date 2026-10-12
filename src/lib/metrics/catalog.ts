@@ -2,7 +2,7 @@ import { DateTime } from "luxon";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { dateOfDayIndex, longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
 import { lineDutyPeriods } from "@/lib/duty-periods";
-import { isStandbyLeg, tripStandbyDays } from "@/lib/standby";
+import { isHotelStandbyLeg, tripStandbyDays } from "@/lib/standby";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import { backupsToWork, earliestHome, flightsForTrip, realTravelForTrip, type FlightAnswers, type TripFlights } from "@/lib/flights/trip-travel";
 import { tripStartUtc } from "@/lib/flights/needs";
@@ -89,7 +89,7 @@ const inCities = (l: LayoverFact, p: MetricParams) => !!p.cities?.includes(l.cit
 const cityScore = (city: string, p: MetricParams) => Math.max(-1, Math.min(1, p.cityScores?.[city] ?? 0));
 /** Standby days (one standby row each) at cities matching `where`. */
 const standbyDaysWhere = (trips: TripFacts[], where: (city: string) => boolean) =>
-  sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isStandbyLeg(l) && where(l.depAirport)).length));
+  sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l) && where(l.depAirport)).length));
 /** For "how late" measures, the night runs on until 06:00: an arrival before then belongs to the evening before. */
 const NIGHT_RUNS_UNTIL = 6 * 60;
 
@@ -733,7 +733,7 @@ export const METRICS: MetricDef[] = [
     category: "standby",
     description: "Hotel standby days, each worth 1 + the pilot's score for that city (−1 … +1): a standby day in a city they love counts 2, a neutral city 1, a city they avoid 0.",
     params: ["cityScores"],
-    line: (_l, trips, _ctx, p) => sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isStandbyLeg(l)).reduce((a, l) => a + Math.max(0, 1 + cityScore(l.depAirport, p)), 0))),
+    line: (_l, trips, _ctx, p) => sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l)).reduce((a, l) => a + Math.max(0, 1 + cityScore(l.depAirport, p)), 0))),
   },
   {
     id: "baseStandbyDays",
