@@ -15,7 +15,7 @@ import { fetchHotel } from "@/lib/hotel-client";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import { loadTimeMode, saveTimeMode } from "@/lib/time-mode-storage";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
-import { clock, dayStats, equipmentLabel, hm, tripBlockMinutes, tripDayDate, tripRoute, type DayStats } from "@/lib/trip-day-stats";
+import { clock, dateLabel, dayStats, equipmentLabel, hm, tripBlockMinutes, tripDayDate, tripRoute, type DayStats } from "@/lib/trip-day-stats";
 import { buildTimelineDays, type TimeMode, type TimelineDay, type TimelineSegment } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
@@ -139,15 +139,19 @@ function Sentiment({ sentiment }: { sentiment: CitySentiment | null | undefined 
  * squeezed — the full detail is always in the segment's tooltip and the
  * itinerary below.
  */
-function SegmentText({ seg, cityPreferences }: { seg: TimelineSegment; cityPreferences?: Record<string, CitySentiment> }) {
+/** "(L)" after a local clock time, "(Z)" after a Zulu one — so no time on the trip view is ever ambiguous. */
+const zoneTag = (mode: TimeMode) => (mode === "zulu" ? "(Z)" : "(L)");
+
+function SegmentText({ seg, mode, cityPreferences }: { seg: TimelineSegment; mode: TimeMode; cityPreferences?: Record<string, CitySentiment> }) {
+  const tag = zoneTag(mode);
   const minutes = spanMinutes(seg);
   const lines = Math.floor((minutes / 60) * HOUR_HEIGHT_PX / 12);
   if (lines < 1) return null;
 
   if ((seg.kind === "flying" || seg.kind === "deadhead") && seg.leg) {
     const leg = seg.leg;
-    const dep = seg.continuesFromPreviousDay ? null : `${leg.depClock} ${leg.dep}`;
-    const arr = seg.continuesToNextDay ? null : `${leg.arr} ${leg.arrClock}`;
+    const dep = seg.continuesFromPreviousDay ? null : `${leg.depClock} ${tag} ${leg.dep}`;
+    const arr = seg.continuesToNextDay ? null : `${leg.arr} ${leg.arrClock} ${tag}`;
     const route = `${leg.deadhead ? "DH " : ""}${leg.dep}–${leg.arr}`;
     const middle = `${leg.flightNumber}${leg.blockMinutes !== null ? ` · ${hm(leg.blockMinutes)}` : ""}`;
     let rows: (string | null)[];
@@ -168,7 +172,7 @@ function SegmentText({ seg, cityPreferences }: { seg: TimelineSegment; cityPrefe
   if (seg.kind === "layover" && seg.stay) {
     const stay = seg.stay;
     const head = seg.continuesFromPreviousDay ? `${stay.city} rest` : `${stay.city} · ${formatDuration(stay.hours)}`;
-    const pickup = seg.continuesToNextDay ? null : `pickup ${stay.pickupClock ?? clock(seg.endMinuteOfDay)}`;
+    const pickup = seg.continuesToNextDay ? null : `pickup ${stay.pickupClock ?? seg.endClock ?? clock(seg.endMinuteOfDay)} ${tag}`;
     const rows: { text: string; tone: string }[] = [{ text: head, tone: "font-semibold" }];
     if (stay.hotel && lines >= 3) rows.push({ text: stay.hotel.toLowerCase(), tone: "capitalize text-ink-muted" });
     if (pickup && lines >= 2) rows.push({ text: pickup, tone: "text-ink-muted" });
@@ -197,7 +201,11 @@ function SegmentText({ seg, cityPreferences }: { seg: TimelineSegment; cityPrefe
     return (
       <div className="flex h-full flex-col justify-between overflow-hidden px-1 py-px font-mono text-[10px] font-medium leading-[12px] text-standby">
         <span className="truncate">{seg.inlineStart || "Standby"}</span>
-        {lines >= 2 && !seg.continuesToNextDay && <span className="truncate text-ink-muted">until {clock(seg.endMinuteOfDay)}</span>}
+        {lines >= 2 && !seg.continuesToNextDay && (
+          <span className="truncate text-ink-muted">
+            until {seg.endClock ?? clock(seg.endMinuteOfDay)} {tag}
+          </span>
+        )}
       </div>
     );
   }
@@ -206,7 +214,7 @@ function SegmentText({ seg, cityPreferences }: { seg: TimelineSegment; cityPrefe
 }
 
 /** The two-line read of one day above its column: when it starts and ends, and how much of it is flying. */
-function DayHeader({ day, stats, date }: { day: TimelineDay; stats: DayStats; date: { weekday: string; day: number } | null }) {
+function DayHeader({ day, stats, date, mode }: { day: TimelineDay; stats: DayStats; date: { weekday: string; day: number } | null; mode: TimeMode }) {
   const window =
     // One window per duty: "08:00–14:00", or "–06:13 · 23:20–" when the day ends one duty and starts the next (a dash with no time means it runs over midnight).
     stats.windows.some((w) => w.start || w.end)
@@ -237,7 +245,10 @@ function DayHeader({ day, stats, date }: { day: TimelineDay; stats: DayStats; da
           </span>
         )}
       </div>
-      <div className={`truncate font-mono text-[10px] leading-none ${stats.restDay ? "text-good" : "text-ink"}`}>{window}</div>
+      <div className={`flex min-w-0 gap-0.5 font-mono text-[10px] leading-none ${stats.restDay ? "text-good" : "text-ink"}`}>
+        <span className="truncate">{window}</span>
+        {stats.windows.some((w) => w.start || w.end) && <span className="shrink-0 text-ink-faint">{zoneTag(mode)}</span>}
+      </div>
       <div className={`truncate font-mono text-[10px] leading-none ${stats.standby ? "text-standby" : "text-ink-faint"}`}>{work}</div>
     </div>
   );
@@ -263,7 +274,7 @@ function DayColumn({
   const stats = dayStats(day);
   return (
     <div className="min-w-[6.75rem] max-w-[13rem] flex-1 basis-0 sm:min-w-[5.75rem]">
-      <DayHeader day={day} stats={stats} date={date} />
+      <DayHeader day={day} stats={stats} date={date} mode={mode} />
       <div className="relative overflow-hidden rounded-b-md border border-hairline bg-canvas/70" style={{ height: CALENDAR_HEIGHT_PX }}>
         {mode === "local" && (
           <div
@@ -287,7 +298,7 @@ function DayColumn({
             }}
           >
             <DateLineChip badge={seg.dateLineBadge} />
-            <SegmentText seg={seg} cityPreferences={cityPreferences} />
+            <SegmentText seg={seg} mode={mode} cityPreferences={cityPreferences} />
           </div>
         ))}
       </div>
@@ -365,7 +376,7 @@ function TripTimelineChart({
               key={day.dayNumber}
               day={day}
               mode={mode}
-              date={mode === "local" ? tripDayDate(trip, bidPeriodStart, day.dayNumber) : null}
+              date={mode === "local" ? (day.date ? dateLabel(day.date) : tripDayDate(trip, bidPeriodStart, day.dayNumber)) : null}
               cityPreferences={cityPreferences}
             />
           ))}
@@ -393,6 +404,7 @@ interface ItineraryProps {
  */
 function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: ItineraryProps) {
   const clocks = mode === "zulu" ? "Z / L" : "L / Z";
+  const other: TimeMode = mode === "zulu" ? "local" : "zulu";
   return (
     <div className="mt-2 overflow-x-auto rounded-md border border-hairline">
       <table className="w-full min-w-[30rem] border-collapse text-[11px]">
@@ -426,8 +438,12 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
                       <tr key={legIndex} className="border-t border-hairline/60">
                         <td className="px-2 py-1 text-standby">SBY</td>
                         <td className="px-2 py-1 text-ink">{leg.depAirport}</td>
-                        <td className="px-2 py-1 text-ink">{formatHHMM(mode === "zulu" ? leg.depTimeGmt : leg.depTimeLocal)}</td>
-                        <td className="px-2 py-1 text-ink">{formatHHMM(mode === "zulu" ? leg.arrTimeGmt : leg.arrTimeLocal)}</td>
+                        <td className="px-2 py-1 text-ink">
+                          {formatHHMM(mode === "zulu" ? leg.depTimeGmt : leg.depTimeLocal)} <span className="text-ink-faint">{zoneTag(mode)}</span>
+                        </td>
+                        <td className="px-2 py-1 text-ink">
+                          {formatHHMM(mode === "zulu" ? leg.arrTimeGmt : leg.arrTimeLocal)} <span className="text-ink-faint">{zoneTag(mode)}</span>
+                        </td>
                         <td colSpan={2} className="px-2 py-1 font-sans text-ink-muted">on call at the hotel — paid, not flying</td>
                       </tr>
                     );
@@ -444,10 +460,10 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
                         {leg.depAirport}<span className="text-ink-faint">–</span>{leg.arrAirport}
                       </td>
                       <td className="whitespace-nowrap px-2 py-1 text-readout">
-                        {formatHHMM(dep[0])} <span className="text-ink-faint">{formatHHMM(dep[1])}</span>
+                        {formatHHMM(dep[0])} {zoneTag(mode)} <span className="text-ink-faint">{formatHHMM(dep[1])} {zoneTag(other)}</span>
                       </td>
                       <td className="whitespace-nowrap px-2 py-1 text-readout">
-                        {formatHHMM(arr[0])} <span className="text-ink-faint">{formatHHMM(arr[1])}</span>
+                        {formatHHMM(arr[0])} {zoneTag(mode)} <span className="text-ink-faint">{formatHHMM(arr[1])} {zoneTag(other)}</span>
                       </td>
                       <td className="px-2 py-1 text-right text-ink">{leg.blockHours !== null ? hm(leg.blockHours * 60) : "—"}</td>
                       <td className="px-2 py-1 text-ink-muted">{equipmentLabel(leg.equipment, leg.isDeadhead)}</td>
@@ -495,14 +511,14 @@ function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: Itinera
  */
 function dutyStartLabel(duty: Trip["schedule"][number], dutyIndex: number, mode: TimeMode, previous: Trip["schedule"][number] | null): string {
   const printed = mode === "zulu" ? previous?.layover?.pickupTimeGmt : previous?.layover?.pickupTimeLocal;
-  if (dutyIndex > 0 && printed) return `hotel pickup ${formatHHMM(printed)}`;
+  if (dutyIndex > 0 && printed) return `hotel pickup ${formatHHMM(printed)} ${zoneTag(mode)}`;
   const first = duty.legs[0];
   if (!first) return "";
   const dep = mode === "zulu" ? first.depTimeGmt : first.depTimeLocal;
   const lead = first.startMinutes - duty.startMinutes;
   const depMinutes = Number(dep.slice(0, 2)) * 60 + Number(dep.slice(2, 4));
   const start = clock((((depMinutes - lead) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY);
-  return dutyIndex === 0 ? `report ${start}` : `hotel pickup ${start}`;
+  return dutyIndex === 0 ? `report ${start} ${zoneTag(mode)}` : `hotel pickup ${start} ${zoneTag(mode)}`;
 }
 
 function LayoverRow({
@@ -694,8 +710,9 @@ function TripHeader({
   const duties = tripDutyPeriods(trip);
   const first = days[0] ? dayStats(days[0]) : null;
   const last = days.length ? dayStats(days[days.length - 1]) : null;
-  const startDate = mode === "local" ? tripDayDate(trip, bidPeriodStart, 1) : null;
-  const endDate = mode === "local" ? tripDayDate(trip, bidPeriodStart, days.length) : null;
+  // Each column's own real date — crossing the date line, the last column's date isn't simply the first plus the count.
+  const startDate = mode === "local" ? (days[0]?.date ? dateLabel(days[0].date) : tripDayDate(trip, bidPeriodStart, 1)) : null;
+  const endDate = mode === "local" ? (days.at(-1)?.date ? dateLabel(days.at(-1)!.date!) : tripDayDate(trip, bidPeriodStart, days.length)) : null;
   const stamp = (d: ReturnType<typeof tripDayDate>, n: number) => (d ? `${d.weekday} ${d.day}` : `day ${n}`);
   const zone = mode === "zulu" ? "Z" : "local";
 
@@ -735,8 +752,8 @@ function TripHeader({
       )}
 
       <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1.5 sm:grid-cols-6">
-        <Readout label="Report" value={first?.onDuty ?? REPORT_LABELS[trip.reportTime]} note={stamp(startDate, 1)} title={`${REPORT_LABELS[trip.reportTime]} report, ${zone}${startDate ? ` — ${startDate.weekday} ${startDate.day} ${startDate.month}` : ""}`} />
-        <Readout label="Last in" value={last?.lastIn ?? (block === null && trip.landings === 0 ? "no flying" : "—")} note={stamp(endDate, days.length)} title={`Last block-in of the trip, ${zone}${endDate ? ` — ${endDate.weekday} ${endDate.day} ${endDate.month}` : ""}`} />
+        <Readout label="Report" value={first?.onDuty ? `${first.onDuty} ${zoneTag(mode)}` : REPORT_LABELS[trip.reportTime]} note={stamp(startDate, 1)} title={`${REPORT_LABELS[trip.reportTime]} report, ${zone}${startDate ? ` — ${startDate.weekday} ${startDate.day} ${startDate.month}` : ""}`} />
+        <Readout label="Last in" value={last?.lastIn ? `${last.lastIn} ${zoneTag(mode)}` : block === null && trip.landings === 0 ? "no flying" : "—"} note={stamp(endDate, days.length)} title={`Last block-in of the trip, ${zone}${endDate ? ` — ${endDate.weekday} ${endDate.day} ${endDate.month}` : ""}`} />
         <Readout label="TAFB" value={hm(trip.tafbHours * 60)} title="Time away from base" />
         <Readout label="Block" value={block !== null ? hm(block) : trip.landings === 0 ? "none" : "—"} title="Operated flying time, deadheads excluded" />
         <Readout label="Duty · ldg" value={`${duties} · ${trip.landings}`} title="Duty periods (hotel standby days included) and landings" />

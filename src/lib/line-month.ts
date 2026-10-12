@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { buildLocalDaysWithMode, type TimeMode, type TimelineSegment } from "@/lib/trip-timeline";
+import { buildHomeDays, type TimeMode, type TimelineSegment } from "@/lib/trip-timeline";
 import type { Line, Trip } from "@/types/bidpack";
 
 export interface LineMonthDay {
@@ -22,6 +22,11 @@ export interface LineMonthDay {
   isTripEnd: boolean;
   /** The evening before a trip that reports just after midnight — the grid gives this day to that trip (it isn't a day off), but nothing flies on it, so it sits outside the trip's own numbered days. */
   isPreReport?: boolean;
+  /**
+   * A trip's tail that runs onto a day the grid doesn't give it — most often landing just after midnight on a day the
+   * bid pack still counts as off. Shown on that day rather than dropped.
+   */
+  spill?: { tripIndex: number; segments: TimelineSegment[] };
 }
 
 export interface LineMonthCalendar {
@@ -71,30 +76,23 @@ function synthesizeSpans(line: Line): Span[] {
 /**
  * Lays a whole line's trips out across the bid month as real calendar-day
  * columns, days off included — the data behind the mini month calendar.
- * Day-column *structure* always follows local-calendar day-splitting
- * (`buildLocalDaysWithMode`) regardless of `mode`, so the whole month's
- * shape stays stable when the Local/Zulu toggle is pressed; `mode` still
- * switches which clock is primary within each segment's own labels, same
- * as the full per-trip chart.
+ * Days are the base's own calendar days (`buildHomeDays`) — the calendar the
+ * line grid and its days off are counted on — so each trip's days line up
+ * with the grid's, whatever time zones the trip crosses, and nothing in a trip
+ * falls off the calendar; `mode` only switches which clock the pieces' own
+ * labels read in.
  */
-export function buildLineMonthCalendar(
-  line: Line,
-  bidPeriodStart: string | null,
-  bidPeriodDays: number,
-  mode: TimeMode
-): LineMonthCalendar {
+export function buildLineMonthCalendar(line: Line, bidPeriodStart: string | null, bidPeriodDays: number, mode: TimeMode): LineMonthCalendar {
   const placementIsReal = bidPeriodStart !== null && line.trips.every((t) => t.startDayIndex !== null);
 
-  const spans: Span[] = placementIsReal
-    ? line.trips.map((t, i) => ({ trip: t, tripIndex: i, start: t.startDayIndex! }))
-    : synthesizeSpans(line);
+  const spans: Span[] = placementIsReal ? line.trips.map((t, i) => ({ trip: t, tripIndex: i, start: t.startDayIndex! })) : synthesizeSpans(line);
 
   const totalDays = Math.max(bidPeriodDays, ...spans.map((s) => s.start + s.trip.days));
   const base = placementIsReal ? DateTime.fromISO(bidPeriodStart!, { zone: "utc" }) : null;
 
   const timelineBySpan = spans.map((span) => ({
     span,
-    timeline: buildLocalDaysWithMode(span.trip, mode),
+    timeline: buildHomeDays(span.trip, mode),
   }));
 
   // Which trip owns each day. When the line's own grid says which days are off
@@ -211,7 +209,8 @@ export function buildLineMonthCalendar(
     const entry = timelineBySpan.find(({ span }) => span.tripIndex === o)!;
     const f = footprint.get(o)!;
     const tripDayNumber = i - f.first + 1;
-    const timelineDay = entry.timeline.find((d) => d.dayNumber === tripDayNumber);
+    // The trip's own home-calendar day for this date: counted from the day it starts.
+    const timelineDay = entry.timeline.find((d) => d.dayNumber === i - entry.span.start + 1);
 
     days.push({
       dayIndex: i,
@@ -220,12 +219,25 @@ export function buildLineMonthCalendar(
       isOff: false,
       tripIndex: o,
       tripDayNumber,
-      tripDayCount: f.count,
+      // A trip that lands the day the next one starts still counts that day as one of its own (see `countSharedLastDays`).
+      tripDayCount: Math.max(f.count, entry.span.trip.days),
       hasSchedule: entry.span.trip.schedule.length > 0,
       segments: timelineDay?.segments ?? [],
       isTripStart: i === f.first,
-      isTripEnd: i === f.last,
+      // Ends here only if nothing of it runs on past this day — a trip landing the day the next one starts (or just
+      // after midnight on a day off) ends on that later day instead, shown there.
+      isTripEnd: i === f.last && entry.span.start + entry.timeline.length - 1 <= i,
     });
+  }
+
+  // Anything a trip does on a day the grid doesn't give it is still shown, on that day.
+  for (const { span, timeline } of timelineBySpan) {
+    for (const td of timeline) {
+      const i = span.start + td.dayNumber - 1;
+      const day = days[i];
+      if (!day || day.tripIndex === span.tripIndex || td.segments.length === 0) continue;
+      day.spill = { tripIndex: span.tripIndex, segments: td.segments };
+    }
   }
 
   return { days, placementIsReal };

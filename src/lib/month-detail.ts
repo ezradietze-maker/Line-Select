@@ -50,6 +50,10 @@ export interface DetailedDay {
   strip: StripSegment[];
   /** Local "HH:MM" the duty starts (report or hotel pickup) when a duty begins on this day. */
   dutyStart: string | null;
+  /** The local date of `dutyStart` when it isn't this calendar day — a Seoul pickup on Monday sits on Sunday's Anchorage calendar. */
+  dutyStartLocalDate: string | null;
+  /** The same for `releaseTime`. */
+  releaseLocalDate: string | null;
   /** Local "HH:MM" of the last landing on the day the trip ends. */
   releaseTime: string | null;
   /** Flights landed this day (deadheads and standby excluded). */
@@ -71,6 +75,8 @@ export interface DetailedDay {
   /** The evening before a trip that reports just after midnight: not a day off, but nothing flies on it. */
   preReportTime: string | null;
   segments: TimelineSegment[];
+  /** A trip's tail on a day the grid gives to something else — usually a landing just after midnight on a day the bid pack counts as off. */
+  spill: { tripNumber: string | null; segments: TimelineSegment[]; landsAt: string | null } | null;
   title: string;
 }
 
@@ -122,13 +128,17 @@ function restOf(detail: string): string | null {
   return detail.match(/·\s*([0-9]+h(?:[0-9]+m)?)\s+at hotel/)?.[1] ?? null;
 }
 
-/** Duty start = the earliest time anything that belongs to the duty (report, hotel pickup, first flight) begins on this day. */
-function dutyStartMinute(segments: TimelineSegment[]): number | null {
-  const starts = segments
-    .filter((s) => (s.kind === "ground" || s.kind === "flying" || s.kind === "deadhead") && !s.continuesFromPreviousDay)
-    .map((s) => s.startMinuteOfDay);
-  return starts.length > 0 ? Math.min(...starts) : null;
+/** Duty start = the first thing that belongs to a duty (report, hotel pickup, first flight) to begin on this day. */
+function dutyStartSegment(segments: TimelineSegment[]): TimelineSegment | null {
+  return (
+    segments
+      .filter((s) => (s.kind === "ground" || s.kind === "flying" || s.kind === "deadhead") && !s.continuesFromPreviousDay)
+      .sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay)[0] ?? null
+  );
 }
+
+/** Minutes past midnight of an "HH:MM" clock. */
+const clockMinutes = (c: string) => Number(c.slice(0, 2)) * 60 + Number(c.slice(3, 5));
 
 /**
  * A segment's own minute-of-day edges, made safe to draw. A long flight whose
@@ -143,23 +153,31 @@ export function toStripSegment(s: TimelineSegment): StripSegment {
   return { kind: s.kind, start, end };
 }
 
+/** "Mon Oct 5" for an ISO date. */
+function localDay(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  return `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()]} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
 function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">): string {
   const date = day.date && day.weekday ? `${day.weekday} ${day.date.slice(5)}` : `Day ${day.dayIndex + 1}`;
-  if (d.kind === "off") return `${date} — day off${d.offRun && d.offRun.length > 1 ? ` (day ${d.offRun.position} of ${d.offRun.length} off)` : ""}`;
+  if (d.kind === "off")
+    return `${date} — day off${d.offRun && d.offRun.length > 1 ? ` (day ${d.offRun.position} of ${d.offRun.length} off)` : ""}${d.spill ? `; trip ${d.spill.tripNumber ?? ""} finishes on it${d.spill.landsAt ? `, landing ${d.spill.landsAt} (L)` : ""}` : ""}`;
   if (d.preReportTime !== null) {
-    return `${date} — not a day off: trip ${d.tripNumber ?? (d.tripIndex ?? 0) + 1} reports at ${d.preReportTime} the next morning, so this evening goes to it`;
+    return `${date} — not a day off: trip ${d.tripNumber ?? (d.tripIndex ?? 0) + 1} reports at ${d.preReportTime} (L) the next morning, so this evening goes to it`;
   }
   if (d.tripIndex === null) return `${date} — on duty, continuing a trip from the previous bid period`;
   const parts = [`${date} — trip ${d.tripNumber ?? d.tripIndex + 1}, day ${d.tripDay} of ${d.tripDayCount}`];
   if (d.kind === "estimated") return `${parts[0]} (exact daily detail unavailable)`;
-  if (d.dutyStart) parts.push(`duty starts ${d.dutyStart}`);
+  if (d.dutyStart) parts.push(`duty starts ${d.dutyStart} (L)${d.dutyStartLocalDate ? ` ${localDay(d.dutyStartLocalDate)} local` : ""}`);
   if (d.landings > 0) parts.push(`${d.landings} landing${d.landings === 1 ? "" : "s"}`);
   if (d.hasDeadhead) parts.push("deadhead");
   if (d.hasStandby) parts.push("hotel standby");
   if (d.redEye) parts.push("red-eye");
   if (d.earlyReport) parts.push("early report");
-  if (d.releaseTime) parts.push(`lands ${d.releaseTime}, trip ends`);
+  if (d.releaseTime) parts.push(`lands ${d.releaseTime} (L)${d.releaseLocalDate ? ` ${localDay(d.releaseLocalDate)} local` : ""}, trip ends`);
   if (d.layoverCode) parts.push(`layover in ${d.layoverCode}${d.layoverRest ? ` (${d.layoverRest})` : ""}`);
+  if (d.spill) parts.push(`trip ${d.spill.tripNumber ?? ""} also finishes${d.spill.landsAt ? `, landing ${d.spill.landsAt} (L)` : ""}`);
   return parts.join(", ");
 }
 
@@ -200,14 +218,39 @@ export function buildDetailedMonth(
       segments: day.segments,
     };
 
+    const spill = day.spill
+      ? {
+          tripNumber: line.trips[day.spill.tripIndex]?.pairingNumber ?? null,
+          segments: day.spill.segments,
+          // Its last landing, on that airport's clock.
+          landsAt:
+            day.spill.segments
+              .filter((s) => (s.kind === "flying" || s.kind === "deadhead") && !s.continuesToNextDay)
+              .sort((a, b) => a.endMinuteOfDay - b.endMinuteOfDay)
+              .at(-1)?.endClock ?? null,
+        }
+      : null;
     if (day.isOff) {
       const run = runs.find((r) => day.dayIndex >= r.start && day.dayIndex < r.start + r.length)!;
       const d = {
         ...base,
+        spill,
         kind: "off" as const,
-        strip: [], dutyStart: null, releaseTime: null, landings: 0, hasDeadhead: false, hasStandby: false,
-        redEye: false, earlyReport: false, layoverCode: null, layoverHotel: null, layoverRest: null,
-        layoverInternational: false, citySentiment: null,
+        strip: spill ? spill.segments.map(toStripSegment) : [],
+        dutyStart: null,
+        dutyStartLocalDate: null,
+        releaseLocalDate: null,
+        releaseTime: null,
+        landings: 0,
+        hasDeadhead: false,
+        hasStandby: false,
+        redEye: false,
+        earlyReport: false,
+        layoverCode: null,
+        layoverHotel: null,
+        layoverRest: null,
+        layoverInternational: false,
+        citySentiment: null,
         offRun: { length: run.length, isFirst: day.dayIndex === run.start, position: day.dayIndex - run.start + 1 },
         preReportTime: null,
       };
@@ -218,10 +261,24 @@ export function buildDetailedMonth(
       const report = trip?.schedule[0]?.reportTimeLocal ?? null;
       const d = {
         ...base,
+        spill,
         kind: "trip" as const,
-        strip: [], dutyStart: null, releaseTime: null, landings: 0, hasDeadhead: false, hasStandby: false,
-        redEye: false, earlyReport: false, layoverCode: null, layoverHotel: null, layoverRest: null,
-        layoverInternational: false, citySentiment: null, offRun: null,
+        strip: [],
+        dutyStart: null,
+        dutyStartLocalDate: null,
+        releaseLocalDate: null,
+        releaseTime: null,
+        landings: 0,
+        hasDeadhead: false,
+        hasStandby: false,
+        redEye: false,
+        earlyReport: false,
+        layoverCode: null,
+        layoverHotel: null,
+        layoverRest: null,
+        layoverInternational: false,
+        citySentiment: null,
+        offRun: null,
         preReportTime: report ? `${report.slice(0, 2)}:${report.slice(2, 4)}` : "",
       };
       return { ...d, title: describeDay(day, d) };
@@ -230,17 +287,34 @@ export function buildDetailedMonth(
     if (!day.hasSchedule) {
       const d = {
         ...base,
+        spill,
         kind: "estimated" as const,
-        strip: [], dutyStart: null, releaseTime: null, landings: 0, hasDeadhead: false, hasStandby: false,
-        redEye: false, earlyReport: false, layoverCode: null, layoverHotel: null, layoverRest: null,
-        layoverInternational: false, citySentiment: null, offRun: null, preReportTime: null,
+        strip: [],
+        dutyStart: null,
+        dutyStartLocalDate: null,
+        releaseLocalDate: null,
+        releaseTime: null,
+        landings: 0,
+        hasDeadhead: false,
+        hasStandby: false,
+        redEye: false,
+        earlyReport: false,
+        layoverCode: null,
+        layoverHotel: null,
+        layoverRest: null,
+        layoverInternational: false,
+        citySentiment: null,
+        offRun: null,
+        preReportTime: null,
       };
       return { ...d, title: describeDay(day, d) };
     }
 
     const segs = day.segments;
     const flights = segs.filter((s) => s.kind === "flying" || s.kind === "deadhead");
-    const dutyStart = dutyStartMinute(segs);
+    const startSeg = dutyStartSegment(segs);
+    // Each read on the piece's own clock — local where it happens.
+    const dutyStart = startSeg ? (startSeg.startClock ?? hhmm(startSeg.startMinuteOfDay)) : null;
     const layover = segs.find((s) => s.kind === "layover" && !s.continuesFromPreviousDay);
     const layoverCode = layover ? cityOf(layover.inlineStart) : null;
     const hasStandby = segs.some((s) => s.kind === "standby");
@@ -250,22 +324,27 @@ export function buildDetailedMonth(
 
     const d = {
       ...base,
+      spill,
       kind: hasStandby && !flights.length ? ("standby" as const) : layoverCode ? ("layover" as const) : ("trip" as const),
-      strip: segs.map(toStripSegment),
-      dutyStart: dutyStart !== null ? hhmm(dutyStart) : null,
-      releaseTime: lastLanding ? hhmm(lastLanding.endMinuteOfDay) : null,
+      strip: [...segs, ...(spill?.segments ?? [])].map(toStripSegment),
+      dutyStart,
+      dutyStartLocalDate: startSeg?.startDate && day.date && startSeg.startDate !== day.date ? startSeg.startDate : null,
+      releaseTime: lastLanding ? (lastLanding.endClock ?? hhmm(lastLanding.endMinuteOfDay)) : null,
+      releaseLocalDate: lastLanding?.endDate && day.date && lastLanding.endDate !== day.date ? lastLanding.endDate : null,
       landings: segs.filter((s) => s.kind === "flying" && !s.continuesToNextDay).length,
       hasDeadhead: segs.some((s) => s.kind === "deadhead"),
       hasStandby,
-      redEye: flights.some(
-        (s) => (!s.continuesFromPreviousDay && s.startMinuteOfDay < RED_EYE_END_MIN) || (!s.continuesToNextDay && s.endMinuteOfDay <= RED_EYE_END_MIN && s.endMinuteOfDay > 0)
-      ),
-      earlyReport: dutyStart !== null && dutyStart >= WOCL_START_MIN && dutyStart < WOCL_END_MIN,
+      redEye: flights.some((s) => {
+        const dep = clockMinutes(s.startClock ?? hhmm(s.startMinuteOfDay));
+        const arr = clockMinutes(s.endClock ?? hhmm(s.endMinuteOfDay));
+        return (!s.continuesFromPreviousDay && dep < RED_EYE_END_MIN) || (!s.continuesToNextDay && arr <= RED_EYE_END_MIN && arr > 0);
+      }),
+      earlyReport: dutyStart !== null && clockMinutes(dutyStart) >= WOCL_START_MIN && clockMinutes(dutyStart) < WOCL_END_MIN,
       layoverCode,
       layoverHotel: layover && layover.label !== layoverCode ? layover.label : null,
       layoverRest: layover ? restOf(layover.detail) : null,
       layoverInternational: layoverCode ? isInternationalCity(layoverCode) : false,
-      citySentiment: layoverCode ? cityPreferences[layoverCode] ?? null : null,
+      citySentiment: layoverCode ? (cityPreferences[layoverCode] ?? null) : null,
       offRun: null,
       preReportTime: null,
     };
@@ -274,10 +353,19 @@ export function buildDetailedMonth(
 
   const firstWeekday = calendar.days[0]?.weekday ?? null;
   const startAt = firstWeekday ? WEEKDAY_ORDER.indexOf(firstWeekday) : -1;
-  const weekdayHeaders =
-    calendar.placementIsReal && startAt >= 0 ? Array.from({ length: 7 }, (_, i) => WEEKDAY_ORDER[(startAt + i) % 7]) : null;
+  const weekdayHeaders = calendar.placementIsReal && startAt >= 0 ? Array.from({ length: 7 }, (_, i) => WEEKDAY_ORDER[(startAt + i) % 7]) : null;
 
-  return { days, summary: summarize(line, days, runs.map((r) => r.length), cityPreferences), weekdayHeaders, placementIsReal: calendar.placementIsReal };
+  return {
+    days,
+    summary: summarize(
+      line,
+      days,
+      runs.map((r) => r.length),
+      cityPreferences
+    ),
+    weekdayHeaders,
+    placementIsReal: calendar.placementIsReal,
+  };
 }
 
 function summarize(line: Line, days: DetailedDay[], offRuns: number[], cityPreferences: Record<string, CitySentiment>): MonthSummary {
@@ -299,8 +387,14 @@ function summarize(line: Line, days: DetailedDay[], offRuns: number[], cityPrefe
     cityMap.set(d.layoverCode!, entry);
   }
 
-  const starts = days.map((d) => d.dutyStart).filter((s): s is string => !!s).sort();
-  const releases = days.map((d) => d.releaseTime).filter((s): s is string => !!s).sort();
+  const starts = days
+    .map((d) => d.dutyStart)
+    .filter((s): s is string => !!s)
+    .sort();
+  const releases = days
+    .map((d) => d.releaseTime)
+    .filter((s): s is string => !!s)
+    .sort();
 
   return {
     daysOff: off,

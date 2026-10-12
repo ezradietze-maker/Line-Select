@@ -72,7 +72,20 @@ export interface TripDutyPeriod {
     hours: number;
     startMinutes: number;
     endMinutes: number;
+    /** Every dated version of this layover's hotel and rides, when the pack prints more than one (see `LayoverVariant`); the fields above are the one for this trip's date. */
+    variants?: LayoverVariant[];
   } | null;
+}
+
+/** One dated version of a layover's hotel and rides — `from`/`to` are trip dates as GMT month-day numbers (1002 = Oct 2), as the pairing pages print them ("OCT 02 - 23 TRIP(S) ONLY"). */
+export interface LayoverVariant {
+  from: number;
+  to: number;
+  hotelName: string | null;
+  transportToHotel: string | null;
+  transportFromHotel: string | null;
+  pickupTimeLocal?: string;
+  pickupTimeGmt?: string;
 }
 
 export interface Trip {

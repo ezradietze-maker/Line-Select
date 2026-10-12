@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePairingColumn, parsePairingPages } from "@/lib/pdf-parser/pairing-parser";
+import { parseDateRange, parsePairingColumn, parsePairingPages } from "@/lib/pdf-parser/pairing-parser";
 import type { ParseWarning } from "@/lib/pdf-parser/types";
 
 // Row shapes below are copied verbatim (column-separated, not the raw
@@ -294,3 +294,40 @@ describe("layover hotels, day rooms and pickups", () => {
     expect(first.layover?.endMinutes).toBe(second.startMinutes);
   });
 });
+
+describe("a layover whose hotel changes with the trip's date", () => {
+  // Verbatim from the October 2026 A300 MEM pack, pairing 116.
+  const rows = [
+    "116 TU WE TH FR REPORT AT 0724 (0224) STANDARD CREW",
+    "EFFECTIVE SEPTEMBER 29 - OCTOBER 23",
+    "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+    "1 1433 55 MEM 0824(0324) ORF 1023(0623) 01:59 01:59 03:12 03:29 ORF 13:27",
+    "SEP 29 - OCT 01 TRIP(S) ONLY ----------------------------------",
+    "Trans To: BESPOKE TRANSPORTATION (ORF), +1-800-905-2103, pickup @1023 (0623)",
+    "Hotel: SHERATON NORFOLK WATERSIDE (ORF), +1-757-622-6664",
+    "Trans From: BESPOKE TRANSPORTATION (ORF), +1-800-905-2103, pickup @0000 (*2000)",
+    "OCT 02 - 23 TRIP(S) ONLY --------------------------------------",
+    "Trans To: BESPOKE TRANSPORTATION (ORF), +1-800-905-2103, pickup @1023 (0623)",
+    "Hotel: DELTA MARRIOTT CHESAPEAKE ORF (ORF), +1-757-523-1500",
+    "Trans From: BESPOKE TRANSPORTATION (ORF), +1-800-905-2103, pickup @2355 (1955)",
+    "*2 2338 55 ORF 0120(2120) MEM 0342(2242) 02:22 02:22 03:12 03:52",
+    "LDGS: 2 BLOCK HRS: 04:21 CREDIT HRS: 06:24 TAFB: 20:48",
+  ];
+
+  it("keeps each dated version, with its own hotel, rides and pickup", () => {
+    const [pairing] = parsePairingColumn(rows, 12, []);
+    const lay = pairing.schedule[0].layover!;
+    expect(lay.variants).toEqual([
+      { from: 929, to: 1001, hotelName: "SHERATON NORFOLK WATERSIDE", transportToHotel: "BESPOKE TRANSPORTATION", transportFromHotel: "BESPOKE TRANSPORTATION", pickupTimeGmt: "0000", pickupTimeLocal: "2000" },
+      { from: 1002, to: 1023, hotelName: "DELTA MARRIOTT CHESAPEAKE ORF", transportToHotel: "BESPOKE TRANSPORTATION", transportFromHotel: "BESPOKE TRANSPORTATION", pickupTimeGmt: "2355", pickupTimeLocal: "1955" },
+    ]);
+  });
+
+  it("reads the date headings the way the pack prints them", () => {
+    expect(parseDateRange("OCT 02 - 23 TRIP(S) ONLY ------")).toEqual({ from: 1002, to: 1023 });
+    expect(parseDateRange("SEP 29 - OCT 01 TRIP(S) ONLY")).toEqual({ from: 929, to: 1001 });
+    expect(parseDateRange("OCT 05 TRIP(S) ONLY -----")).toEqual({ from: 1005, to: 1005 });
+    expect(parseDateRange("Hotel: OMNI PVD (PVD)")).toBeNull();
+  });
+});
+

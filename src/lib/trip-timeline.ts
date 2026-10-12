@@ -1,11 +1,6 @@
-import {
-  detectDateLineCrossing,
-  localDayStart,
-  localInstantToZulu,
-  toLocalInstant,
-  zuluDayLabel,
-  type LocalInstant,
-} from "@/lib/trip-clock";
+import { detectDateLineCrossing, localDayStart, localInstantToZulu, toLocalInstant, zuluDayLabel, type LocalInstant } from "@/lib/trip-clock";
+import { DateTime } from "luxon";
+import { timezoneForAirport } from "@/lib/airport-timezones";
 import type { Trip, TripDutyPeriod, TripLeg } from "@/types/bidpack";
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -62,6 +57,12 @@ export interface TimelineSegment {
   /** 0-1440, already clipped to this day's row. */
   startMinuteOfDay: number;
   endMinuteOfDay: number;
+  /** "HH:MM" this piece starts and ends on its own airport's clock (local) or Zulu, per the mode — what every time printed about it reads, wherever the day view places it. */
+  startClock?: string;
+  endClock?: string;
+  /** The date ("YYYY-MM-DD") each of those clock times falls on, on the same clock. */
+  startDate?: string;
+  endDate?: string;
   /** True when this segment started on an earlier day — drawn with a flat (not rounded) leading edge, and vice versa for trailing. */
   continuesFromPreviousDay: boolean;
   continuesToNextDay: boolean;
@@ -72,6 +73,12 @@ export interface TimelineSegment {
 export interface TimelineDay {
   /** 1-indexed. */
   dayNumber: number;
+  /**
+   * The real calendar date ("YYYY-MM-DD") this column is, where its pieces happen (local mode, a trip with a real
+   * date). Not always the day after the column before: flying east across the date line, a pilot lives the same date
+   * twice — Thursday in Seoul, then Thursday again in Anchorage — and the columns say so.
+   */
+  date?: string;
   segments: TimelineSegment[];
   /**
    * The always-visible Zulu cross-reference for this local day column —
@@ -109,6 +116,23 @@ export interface RawSegment {
   /** Which airport's zone governs this segment's start/end respectively — the same airport for ground/connection/layover segments (single location throughout), but different for a flying/deadhead leg, which starts in one zone and ends in another. */
   startAirport: string;
   endAirport: string;
+  /** See `TimelineSegment.startClock`. */
+  startClock?: string;
+  endClock?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+/** The date of a real instant on an airport's own clock (local mode) or Zulu. */
+function dateOf(zuluISO: string, airport: string, mode: TimeMode): string {
+  const zone = mode === "zulu" ? "utc" : (timezoneForAirport(airport) ?? "utc");
+  return DateTime.fromISO(zuluISO, { zone: "utc" }).setZone(zone).toISODate()!;
+}
+
+/** "HH:MM" of a real instant on an airport's own clock (local mode) or Zulu. */
+function clockOf(zuluISO: string, airport: string, mode: TimeMode): string {
+  const zone = mode === "zulu" ? "utc" : (timezoneForAirport(airport) ?? "utc");
+  return DateTime.fromISO(zuluISO, { zone: "utc" }).setZone(zone).toFormat("HH:mm");
 }
 
 function legLabel(leg: TripLeg): string {
@@ -155,12 +179,7 @@ function legInlineClock(leg: TripLeg, endpoint: "dep" | "arr", mode: TimeMode): 
  * check-in for every duty after a layover — real time, just not split
  * further since no separate drop-off time is printed.
  */
-function groundSegment(
-  duty: TripDutyPeriod,
-  isFirstDuty: boolean,
-  previousLayover: TripDutyPeriod["layover"] | null,
-  zuluAnchor: string
-): RawSegment | null {
+function groundSegment(duty: TripDutyPeriod, isFirstDuty: boolean, previousLayover: TripDutyPeriod["layover"] | null, zuluAnchor: string): RawSegment | null {
   const firstLeg = duty.legs[0];
   if (!firstLeg || firstLeg.startMinutes <= duty.startMinutes) return null;
   const durationLabel = formatDuration((firstLeg.startMinutes - duty.startMinutes) / 60);
@@ -277,9 +296,7 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegme
       });
     }
     if (duty.layover) {
-      const cityLabel = duty.layover.hotelName
-        ? `${duty.layover.hotelName}`
-        : duty.layover.city;
+      const cityLabel = duty.layover.hotelName ? `${duty.layover.hotelName}` : duty.layover.city;
       const pickedUpBy = !duty.layover.transportToHotel
         ? ""
         : duty.layover.hotelName && duty.layover.transportToHotel.toUpperCase() === duty.layover.hotelName.toUpperCase()
@@ -312,6 +329,13 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegme
     }
   });
 
+  // Every piece's own clock times. A flight's are the pack's printed ones; the rest are read off the real instants.
+  for (const seg of raw) {
+    seg.startClock = seg.leg ? seg.leg.depClock : clockOf(seg.zuluStart, seg.startAirport, mode);
+    seg.endClock = seg.leg ? seg.leg.arrClock : clockOf(seg.zuluEnd, seg.endAirport, mode);
+    seg.startDate = dateOf(seg.zuluStart, seg.startAirport, mode);
+    seg.endDate = dateOf(seg.zuluEnd, seg.endAirport, mode);
+  }
   return raw;
 }
 
@@ -337,6 +361,10 @@ function toTimelineSegment(
     inlineEnd: continuesToNextDay ? "" : seg.inlineEnd,
     startMinuteOfDay: clippedStart,
     endMinuteOfDay: clippedEnd,
+    startClock: seg.startClock,
+    endClock: seg.endClock,
+    startDate: seg.startDate,
+    endDate: seg.endDate,
     continuesFromPreviousDay,
     continuesToNextDay,
     dateLineBadge,
@@ -403,7 +431,7 @@ function buildZuluDays(rawUnshifted: RawSegment[], clockOffset: number): Timelin
  * whose airport isn't in the timezone lookup table is dropped rather than
  * guessed at or rendered in the wrong place.
  */
-function buildLocalDays(raw: RawSegment[]): TimelineDay[] {
+function buildLocalDays(raw: RawSegment[], home?: string): TimelineDay[] {
   // Day 1 is normally the trip's very first segment's own local day — but an
   // unlisted airport (a new base, a new country the timezone table hasn't
   // caught up to yet) showing up first shouldn't blank the whole trip when
@@ -412,10 +440,13 @@ function buildLocalDays(raw: RawSegment[]): TimelineDay[] {
   // itself, not the entire calendar.
   let base: ReturnType<typeof localDayStart> = null;
   for (const seg of raw) {
-    base = localDayStart(seg.zuluStart, seg.startAirport);
+    base = localDayStart(seg.zuluStart, home ?? seg.startAirport);
     if (base) break;
   }
   if (!base) return [];
+  // On the home calendar, every piece is read on the base's clock: one zone, so days only ever run forward.
+  const startAt = (seg: RawSegment) => home ?? seg.startAirport;
+  const endAt = (seg: RawSegment) => home ?? seg.endAirport;
 
   interface Positioned {
     seg: RawSegment;
@@ -423,10 +454,26 @@ function buildLocalDays(raw: RawSegment[]): TimelineDay[] {
     end: LocalInstant;
   }
   const positioned: Positioned[] = [];
-  for (const seg of raw) {
-    const start = toLocalInstant(seg.zuluStart, seg.startAirport, base);
-    const end = toLocalInstant(seg.zuluEnd, seg.endAirport, base);
-    if (!start || !end) continue;
+  // In time order, and never back a day: a flight east across the date line lands on an earlier local date than it
+  // left (Seoul 08:40 Oct 9 → Anchorage 23:41 Oct 8), and the trip's own days can't run backwards — so from there on,
+  // pieces stay on the day the trip has reached, at their own local clock times, and the landing carries its "−1 day"
+  // note. Without this the flight belonged to no day at all and simply wasn't drawn.
+  let shift = 0;
+  let reached = 1;
+  for (const seg of [...raw].sort((a, b) => Date.parse(a.zuluStart) - Date.parse(b.zuluStart) || Date.parse(a.zuluEnd) - Date.parse(b.zuluEnd))) {
+    const s0 = toLocalInstant(seg.zuluStart, startAt(seg), base);
+    const e0 = toLocalInstant(seg.zuluEnd, endAt(seg), base);
+    if (!s0 || !e0) continue;
+    if (s0.dayIndex + shift < reached) shift = reached - s0.dayIndex;
+    const start = { ...s0, dayIndex: s0.dayIndex + shift };
+    let end = { ...e0, dayIndex: e0.dayIndex + shift };
+    if (end.dayIndex < start.dayIndex || (end.dayIndex === start.dayIndex && end.minuteOfDay < start.minuteOfDay)) {
+      // The landing's clock reads earlier than the takeoff's on the same day: it runs on into the next one.
+      const bump = start.dayIndex - end.dayIndex + (end.minuteOfDay < start.minuteOfDay ? 1 : 0);
+      end = { ...end, dayIndex: end.dayIndex + bump };
+      shift += bump;
+    }
+    reached = Math.max(reached, end.dayIndex);
     positioned.push({ seg, start, end });
   }
   if (positioned.length === 0) return [];
@@ -452,18 +499,22 @@ function buildLocalDays(raw: RawSegment[]): TimelineDay[] {
       // either), but a stable, deterministic one.
       if (!openingAirport) openingAirport = seg.startAirport;
 
-      const isLastFragment = end.dayIndex === d && (seg.kind === "flying" || seg.kind === "deadhead");
-      const badge = isLastFragment
-        ? (detectDateLineCrossing(seg.zuluStart, seg.zuluEnd, seg.startAirport, seg.endAirport) ?? undefined)
-        : undefined;
+      const isLastFragment = !home && end.dayIndex === d && (seg.kind === "flying" || seg.kind === "deadhead");
+      const badge = isLastFragment ? (detectDateLineCrossing(seg.zuluStart, seg.zuluEnd, seg.startAirport, seg.endAirport) ?? undefined) : undefined;
 
-      segments.push(
-        toTimelineSegment(seg, clippedStart, clippedEnd, continuesFromPreviousDay, continuesToNextDay, badge)
-      );
+      segments.push(toTimelineSegment(seg, clippedStart, clippedEnd, continuesFromPreviousDay, continuesToNextDay, badge));
     }
 
-    const zuluRulerLabel = openingAirport ? buildRulerLabel(d, openingAirport, base) : undefined;
-    days.push({ dayNumber: d, segments, zuluRulerLabel });
+    const zuluRulerLabel = openingAirport && !home ? buildRulerLabel(d, openingAirport, base) : undefined;
+    // The column's real date: where its first piece is, that piece's own local date on this column.
+    const opener = positioned.find(({ start, end }) => start.dayIndex <= d && end.dayIndex >= d);
+    let date: string | undefined;
+    if (opener) {
+      const zone = timezoneForAirport(startAt(opener.seg));
+      const localStart = zone ? DateTime.fromISO(opener.seg.zuluStart, { zone: "utc" }).setZone(zone) : null;
+      date = localStart?.plus({ days: d - opener.start.dayIndex }).toISODate() ?? undefined;
+    }
+    days.push({ dayNumber: d, segments, zuluRulerLabel, ...(date ? { date } : {}) });
   }
 
   return days;
@@ -508,6 +559,22 @@ export function buildTimelineDays(trip: Trip, mode: TimeMode = "local"): Timelin
  * always-local-anchored view, not the toggle-dependent badge behavior the
  * full per-trip chart has in its own Local mode.
  */
+/**
+ * Day columns on the base's own calendar — the one the bid pack's line grid
+ * and its days off are counted on. Every piece sits on the base's date and
+ * clock (so a Seoul layover's morning is part of the Anchorage day it falls
+ * in, and a trip's days match the grid's), while every time printed about a
+ * piece is still its own airport's local time (or Zulu, per `mode`). The
+ * month calendar is laid out this way; the trip's own chart, which shows each
+ * place's local day as the pilot lives it, uses `buildTimelineDays`.
+ */
+export function buildHomeDays(trip: Trip, mode: TimeMode): TimelineDay[] {
+  const raw = buildRawSegments(trip, mode);
+  const home = trip.schedule[0]?.legs[0]?.depAirport;
+  if (raw.length === 0 || !home) return [];
+  return buildLocalDays(raw, home);
+}
+
 export function buildLocalDaysWithMode(trip: Trip, mode: TimeMode): TimelineDay[] {
   const raw = buildRawSegments(trip, mode);
   if (raw.length === 0) return [];

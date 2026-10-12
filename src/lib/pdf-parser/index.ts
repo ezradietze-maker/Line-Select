@@ -234,7 +234,10 @@ export async function parseBidPackPdf(
       bidPeriodDays: 28,
       bidPeriodStart: meta.bidPeriodStart,
       lines: seatResults.map((r) =>
-        buildLine(r.summary, r.pairings, meta.month, placementsBySeat[seat]?.get(r.summary.lineNumber), offDaysBySeat[seat]?.get(r.summary.lineNumber))
+        buildLine(r.summary, r.pairings, meta.month, placementsBySeat[seat]?.get(r.summary.lineNumber), offDaysBySeat[seat]?.get(r.summary.lineNumber), {
+          bidPeriodStart: meta.bidPeriodStart,
+          base: meta.base,
+        })
       ),
       reserveLines: reserveLinesBySeat[seat],
       info: infoBySeat?.[seat],

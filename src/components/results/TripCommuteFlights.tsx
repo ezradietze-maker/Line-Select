@@ -14,7 +14,7 @@ import type { Trip } from "@/types/bidpack";
 
 function at(ms: number, airport: string | undefined): string {
   const zone = (airport && timezoneForAirport(airport)) || "UTC";
-  return DateTime.fromMillis(ms, { zone }).toFormat("ccc LLL d, HH:mm");
+  return `${DateTime.fromMillis(ms, { zone }).toFormat("ccc LLL d, HH:mm")} (L)`;
 }
 
 const route = (it: ScheduledFlight[]) => [it[0].from, ...it.map((f) => f.to)].join("–");

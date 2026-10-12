@@ -2,6 +2,7 @@ import { monthAnchorZulu } from "@/lib/pdf-parser/build-bidpack";
 import { tripDutyPeriods } from "@/lib/duty-periods";
 import { backfillDeadheads } from "@/lib/deadhead";
 import { backfillStandby } from "@/lib/standby";
+import { anchorTripToItsDate } from "@/lib/trip-anchor";
 import type { BidPack, Trip, TripDutyPeriod } from "@/types/bidpack";
 
 function bidPackKey(userId: string | null): string {
@@ -28,6 +29,17 @@ function backfillZuluFields(trip: Trip, bidPackMonth: string): Trip {
 }
 
 /**
+ * Pins a saved trip to its own real date. Packs saved before trips were
+ * anchored that way carry an anchor on the 1st of the month, which draws a
+ * trip on the far side of a daylight-saving change an hour off its printed
+ * local times (see `trip-anchor.ts`); re-anchoring here fixes them without a
+ * re-upload. A merged run of one-day trips keeps its days' spacing.
+ */
+function anchorStored(pack: BidPack, trip: Trip): Trip {
+  return pack.base ? anchorTripToItsDate(pack, trip) : trip;
+}
+
+/**
  * Backfills fields that didn't exist yet when a bid pack was saved (same
  * reasoning as `normalizeProfile` in storage.ts) — a bid pack saved by an
  * older version of the app shouldn't crash the newer one just because a
@@ -39,7 +51,7 @@ function normalizeBidPack(parsed: BidPack): BidPack {
     lines: parsed.lines.map((line) => {
       const trips = line.trips.map(
         (trip): Trip =>
-          backfillDeadheads(backfillStandby(backfillZuluFields(
+          anchorStored(parsed, backfillDeadheads(backfillStandby(backfillZuluFields(
             {
               ...trip,
               layoverDetails: trip.layoverDetails ?? [],
@@ -51,7 +63,7 @@ function normalizeBidPack(parsed: BidPack): BidPack {
               dutyPeriods: trip.dutyPeriods ?? (trip.layoverDetails?.length ?? 0) + 1,
             },
             parsed.month
-          )))
+          ))))
       );
       return {
         ...line,
@@ -80,10 +92,12 @@ interface CompactPack extends Omit<BidPack, "lines"> {
   lines: (Omit<BidPack["lines"][number], "trips"> & { trips: { ref: string; startDayIndex: number | null }[] })[];
 }
 
-function withoutDerivedZulu(trip: Trip): Trip {
-  if (!trip.zuluAnchor) return trip;
+/** A trip without what loading rebuilds: each leg's instants, and — for a trip the grid dated — its anchor, which comes back from its date (see `anchorStored`), so every run of a pairing is stored once. */
+function withoutDerivedZulu(trip: Trip, dated = false): Trip {
+  if (!trip.zuluAnchor && !dated) return trip;
   return {
     ...trip,
+    ...(dated ? { zuluAnchor: "" } : {}),
     schedule: trip.schedule.map((duty) => ({
       ...duty,
       legs: duty.legs.map((leg) => {
@@ -102,11 +116,12 @@ export function compactBidPack(pack: BidPack): CompactPack {
     ...line,
     trips: line.trips.map((trip, i) => {
       const { startDayIndex, ...rest } = trip;
-      // Same id, different content would be a parser bug — keep such a trip inline under its own key rather than losing data.
+      const stored = withoutDerivedZulu({ ...rest, startDayIndex: null }, startDayIndex !== null && !!pack.bidPeriodStart && !!pack.base);
+      // Same id, different content (a layover whose hotel changes with the trip's date) is kept under its own key rather than losing data.
       let key = trip.id;
       const existing = tripTable[key];
-      if (existing && JSON.stringify(existing) !== JSON.stringify(withoutDerivedZulu({ ...rest, startDayIndex: null }))) key = `${trip.id}#${line.id}#${i}`;
-      tripTable[key] ??= withoutDerivedZulu({ ...rest, startDayIndex: null });
+      if (existing && JSON.stringify(existing) !== JSON.stringify(stored)) key = `${trip.id}#${line.id}#${i}`;
+      tripTable[key] ??= stored;
       return { ref: key, startDayIndex };
     }),
   }));
@@ -128,6 +143,11 @@ export function expandBidPack(stored: BidPack | CompactPack): BidPack {
       trips: line.trips.map(({ ref, startDayIndex }) => ({ ...tripTable[ref], startDayIndex })),
     })),
   } as BidPack;
+}
+
+/** A stored pack exactly as the app loads it (expanded, with every left-out field rebuilt) — for scripts working outside the browser. */
+export function restoreBidPack(stored: BidPack | CompactPack): BidPack {
+  return normalizeBidPack(expandBidPack(stored));
 }
 
 /** Returns false when the browser refused the write (storage full or unavailable), so the caller can tell the pilot their pack won't survive a refresh. */

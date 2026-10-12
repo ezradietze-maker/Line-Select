@@ -66,18 +66,19 @@ function span(s: TimelineSegment): number {
  * counts on the day it departs, the way a pairing lists it.
  */
 function legMinutes(segs: TimelineSegment[], kind: "flying" | "deadhead"): number {
-  return segs
-    .filter((s) => s.kind === kind && !s.continuesFromPreviousDay)
-    .reduce((a, s) => a + (s.leg?.blockMinutes ?? span(s)), 0);
+  return segs.filter((s) => s.kind === kind && !s.continuesFromPreviousDay).reduce((a, s) => a + (s.leg?.blockMinutes ?? span(s)), 0);
 }
 
 export function dayStats(day: TimelineDay): DayStats {
   const segs = day.segments;
   const duty = segs.filter((s) => DUTY_KINDS.has(s.kind));
-  const starts = duty.filter((s) => !s.continuesFromPreviousDay).map((s) => s.startMinuteOfDay);
+  // Earliest and latest by where they sit on the day; read on each piece's own clock.
+  const byStart = (xs: TimelineSegment[]) => [...xs].sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay);
+  const byEnd = (xs: TimelineSegment[]) => [...xs].sort((a, b) => a.endMinuteOfDay - b.endMinuteOfDay);
+  const firstStart = byStart(duty.filter((s) => !s.continuesFromPreviousDay))[0];
   const flights = segs.filter((s) => s.kind === "flying" || s.kind === "deadhead");
-  const ends = flights.filter((s) => !s.continuesToNextDay).map((s) => s.endMinuteOfDay);
-  const dutyEnds = segs.filter((s) => (s.kind === "flying" || s.kind === "deadhead" || s.kind === "standby") && !s.continuesToNextDay).map((s) => s.endMinuteOfDay);
+  const lastFlight = byEnd(flights.filter((s) => !s.continuesToNextDay)).at(-1);
+  const lastDuty = byEnd(segs.filter((s) => (s.kind === "flying" || s.kind === "deadhead" || s.kind === "standby") && !s.continuesToNextDay)).at(-1);
   // Duties are separated by hotel time; ground, connections, flights and standby all belong to the duty around them.
   const windows: DayStats["windows"] = [];
   let block: TimelineSegment[] = [];
@@ -87,8 +88,8 @@ export function dayStats(day: TimelineDay): DayStats {
     const ending = block.filter((s) => s.kind !== "ground" && s.kind !== "connection");
     const last = ending[ending.length - 1] ?? block[block.length - 1];
     windows.push({
-      start: first.continuesFromPreviousDay ? null : clock(first.startMinuteOfDay),
-      end: last.continuesToNextDay || last.kind === "ground" ? null : clock(last.endMinuteOfDay),
+      start: first.continuesFromPreviousDay ? null : (first.startClock ?? clock(first.startMinuteOfDay)),
+      end: last.continuesToNextDay || last.kind === "ground" ? null : (last.endClock ?? clock(last.endMinuteOfDay)),
     });
     block = [];
   };
@@ -100,9 +101,9 @@ export function dayStats(day: TimelineDay): DayStats {
 
   return {
     windows,
-    onDuty: starts.length ? clock(Math.min(...starts)) : null,
-    lastIn: ends.length ? clock(Math.max(...ends)) : null,
-    dutyEnd: dutyEnds.length ? clock(Math.max(...dutyEnds)) : null,
+    onDuty: firstStart ? (firstStart.startClock ?? clock(firstStart.startMinuteOfDay)) : null,
+    lastIn: lastFlight ? (lastFlight.endClock ?? clock(lastFlight.endMinuteOfDay)) : null,
+    dutyEnd: lastDuty ? (lastDuty.endClock ?? clock(lastDuty.endMinuteOfDay)) : null,
     blockMinutes: legMinutes(segs, "flying"),
     deadheadMinutes: legMinutes(segs, "deadhead"),
     landings: segs.filter((s) => s.kind === "flying" && !s.continuesToNextDay).length,
@@ -146,6 +147,13 @@ export function tripDayDate(trip: Trip, bidPeriodStart: string | null, dayNumber
   const d = new Date(`${bidPeriodStart}T12:00:00Z`);
   if (Number.isNaN(d.getTime())) return null;
   d.setUTCDate(d.getUTCDate() + trip.startDayIndex + dayNumber - 1);
+  return { weekday: WEEKDAYS[d.getUTCDay()], day: d.getUTCDate(), month: MONTHS[d.getUTCMonth()] };
+}
+
+/** A calendar date ("2026-10-09") as the trip view labels it. */
+export function dateLabel(iso: string): { weekday: string; day: number; month: string } | null {
+  const d = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
   return { weekday: WEEKDAYS[d.getUTCDay()], day: d.getUTCDate(), month: MONTHS[d.getUTCMonth()] };
 }
 

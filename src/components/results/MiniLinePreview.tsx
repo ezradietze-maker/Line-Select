@@ -121,9 +121,15 @@ function Cell({
       </span>
 
       {isOff ? (
-        <span className="text-[10px] font-medium leading-tight">
-          {day.offRun && day.offRun.length > 1 && day.offRun.isFirst ? `${day.offRun.length} off` : ""}
-        </span>
+        <>
+          <span className="text-[10px] font-medium leading-tight">
+            {day.offRun && day.offRun.length > 1 && day.offRun.isFirst ? `${day.offRun.length} off` : ""}
+          </span>
+          {/* A trip landing just after midnight on a day the bid pack counts off: shown, not dropped. */}
+          {day.spill?.landsAt && (
+            <span className="whitespace-nowrap font-mono text-[10px] leading-tight text-ink-muted">→{day.spill.landsAt}</span>
+          )}
+        </>
       ) : (
         <>
           {/* On a phone the cell is too narrow for the trip number beside the date, so it sits on its own line where the times go on wider screens. */}
@@ -213,21 +219,56 @@ export function MonthLegend({ className = "" }: { className?: string }) {
 }
 
 /** The day's own numbers in one line — the same read the expanded card's trip chart puts above this day's column. */
+/** "Mon Oct 5" for an ISO date. */
+function shortDate(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).replace(",", "");
+}
+
 function DayNumbers({ day }: { day: DetailedDay }) {
   const st = dayStats({ dayNumber: day.tripDay ?? 1, segments: day.segments });
   const parts: string[] = [];
   // In time order, one phrase per duty — a day can finish last night's flying and start tonight's.
   for (const w of st.windows) {
-    if (w.start && w.end) parts.push(`on duty ${w.start}–${w.end}`);
-    else if (w.end) parts.push(`lands ${w.end} from the night before`);
-    else if (w.start) parts.push(`on duty ${w.start}, through midnight`);
+    if (w.start && w.end) parts.push(`on duty ${w.start}–${w.end} (L)`);
+    else if (w.end) parts.push(`lands ${w.end} (L) from the night before`);
+    else if (w.start) parts.push(`on duty ${w.start} (L), through midnight`);
   }
   if (st.blockMinutes > 0) parts.push(`${hm(st.blockMinutes)} block`);
   if (st.deadheadMinutes > 0) parts.push(`${hm(st.deadheadMinutes)} deadhead`);
   if (st.landings > 0) parts.push(`${st.landings} landing${st.landings === 1 ? "" : "s"}`);
   if (st.restDay) parts.push("a full day at the hotel");
+  // A time overseas can fall on another local date than this home-calendar day: say which.
+  if (day.dutyStartLocalDate) parts.push(`duty starts ${shortDate(day.dutyStartLocalDate)} local`);
+  if (day.releaseLocalDate) parts.push(`lands ${shortDate(day.releaseLocalDate)} local`);
   if (parts.length === 0) return null;
   return <p className="mt-1 font-mono text-[11px] text-readout">{parts.join(" · ")}</p>;
+}
+
+/** A trip's tail on a day the grid gives to something else: the end of one trip on the day the next one starts, or a landing just after midnight on a day off. */
+function SpillList({ spill, offDay }: { spill: NonNullable<DetailedDay["spill"]>; offDay: boolean }) {
+  return (
+    <div className="mt-1.5">
+      <p>
+        {offDay
+          ? `Trip ${spill.tripNumber ? `#${spill.tripNumber} ` : ""}finishes on this day${spill.landsAt ? `, landing ${spill.landsAt} (L)` : ""} — the bid pack still counts it as a day off.`
+          : `Trip ${spill.tripNumber ? `#${spill.tripNumber} ` : ""}also finishes on this day${spill.landsAt ? `, landing ${spill.landsAt} (L)` : ""}:`}
+      </p>
+      <ul className="mt-1 space-y-1">
+        {spill.segments
+          .filter((s) => s.kind !== "connection")
+          .map((s, i) => (
+            <li key={i} className="flex gap-2">
+              <span className={`mt-1 h-2 w-2 shrink-0 rounded-sm ${STRIP_CLASS[s.kind]}`} />
+              <span>
+                <span className="font-medium text-ink">{s.label}</span>
+                {s.detail ? <span> — {s.detail}</span> : null}
+              </span>
+            </li>
+          ))}
+      </ul>
+    </div>
+  );
 }
 
 function DayDetail({ day }: { day: DetailedDay }) {
@@ -244,14 +285,17 @@ function DayDetail({ day }: { day: DetailedDay }) {
         )}
       </div>
       {day.kind === "off" ? (
-        <p className="mt-1">
-          A day off
-          {day.offRun && day.offRun.length > 1 ? ` — day ${day.offRun.position} of ${day.offRun.length} in a row.` : " — a single day, on either side of a trip."}
-        </p>
+        <>
+          <p className="mt-1">
+            A day off
+            {day.offRun && day.offRun.length > 1 ? ` — day ${day.offRun.position} of ${day.offRun.length} in a row.` : " — a single day, on either side of a trip."}
+          </p>
+          {day.spill && <SpillList spill={day.spill} offDay />}
+        </>
       ) : day.preReportTime !== null ? (
         <p className="mt-1">
           Not a day off: {day.tripNumber ? `trip #${day.tripNumber}` : "the next trip"} reports
-          {day.preReportTime ? ` at ${day.preReportTime}` : ""} the next morning, so the bid pack gives this evening to it.
+          {day.preReportTime ? ` at ${day.preReportTime} (L)` : ""} the next morning, so the bid pack gives this evening to it.
         </p>
       ) : (
         <>
@@ -262,6 +306,8 @@ function DayDetail({ day }: { day: DetailedDay }) {
           {day.kind !== "estimated" && <DayNumbers day={day} />}
           {day.kind === "estimated" ? (
             <p className="mt-1">Exact daily detail isn&rsquo;t available for this line.</p>
+          ) : day.segments.length === 0 ? (
+            <p className="mt-1">Nothing is scheduled on this day — the bid pack keeps it with the trip rather than counting it as a day off.</p>
           ) : (
             <ul className="mt-1.5 space-y-1">
               {day.segments
@@ -278,6 +324,7 @@ function DayDetail({ day }: { day: DetailedDay }) {
                 ))}
             </ul>
           )}
+          {day.spill && <SpillList spill={day.spill} offDay={false} />}
           {(day.redEye || day.earlyReport || day.layoverInternational || day.citySentiment) && (
             <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
               {day.redEye && <span className="text-accent">Red-eye: a flight departs or lands between midnight and 5am.</span>}
@@ -314,8 +361,8 @@ function Summary({ s, line }: { s: MonthSummary; line: Line }) {
       <SummaryItem label="Trips" value={`${line.trips.length} · longest ${s.longestTripDays}d`} />
       <SummaryItem label="Days off in a row" value={`${fmtRuns(s.offRuns)}`} />
       <SummaryItem label="Weekends off" value={s.weekendsTotal > 0 ? `${s.weekendsOff} of ${s.weekendsTotal}` : "—"} />
-      <SummaryItem label="Earliest duty start" value={s.earliestDutyStart ?? "—"} tone={s.earlyReportDays > 0 ? "text-warn" : ""} />
-      <SummaryItem label="Latest landing" value={s.latestRelease ?? "—"} />
+      <SummaryItem label="Earliest duty start" value={s.earliestDutyStart ? `${s.earliestDutyStart} (L)` : "—"} tone={s.earlyReportDays > 0 ? "text-warn" : ""} />
+      <SummaryItem label="Latest landing" value={s.latestRelease ? `${s.latestRelease} (L)` : "—"} />
       <SummaryItem label="Block hours" value={line.totalBlockHours ? hm(line.totalBlockHours * 60) : "—"} />
       <SummaryItem label="Red-eye days" value={String(s.redEyeDays)} tone={s.redEyeDays > 0 ? "text-accent" : ""} />
       <SummaryItem label="Early reports" value={String(s.earlyReportDays)} tone={s.earlyReportDays > 0 ? "text-warn" : ""} />

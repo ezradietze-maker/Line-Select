@@ -1,7 +1,6 @@
-import { DateTime } from "luxon";
-import { timezoneForAirport } from "@/lib/airport-timezones";
 import { distanceKm } from "@/lib/metrics/home-travel";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
+import { tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /**
@@ -84,26 +83,9 @@ function lookbackFor(from: string[], to: string[]): number {
   return far ? LONG_HAUL_LOOKBACK_MS : LOOKBACK_MS;
 }
 
-/**
- * The trip's first report as a real instant: the trip's calendar date in the bid period (from the line's own
- * calendar) at the printed report time, in the base's time zone. (A trip's stored clock anchor can belong to an
- * earlier run of the same pairing, so it isn't used for dates.)
- */
+/** The trip's first report as a real instant (see `trip-anchor.ts`). */
 export function tripStartUtc(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Trip): number | null {
-  if (!bidPack.bidPeriodStart || trip.startDayIndex === null || !trip.schedule[0]) return null;
-  const zone = timezoneForAirport(bidPack.base);
-  const hhmm = trip.schedule[0].reportTimeLocal;
-  if (!zone || !/^\d{4}$/.test(hhmm)) return null;
-  const day = DateTime.fromISO(bidPack.bidPeriodStart, { zone }).plus({
-    days: trip.startDayIndex,
-  });
-  const at = day.set({
-    hour: Number(hhmm.slice(0, 2)),
-    minute: Number(hhmm.slice(2, 4)),
-    second: 0,
-    millisecond: 0,
-  });
-  return at.isValid ? at.toMillis() : null;
+  return tripReportUtc(bidPack, trip);
 }
 
 /** One run of a pairing: the same pairing flown on different dates in a month shares an id but not its flights. */

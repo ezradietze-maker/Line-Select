@@ -2,7 +2,9 @@ import { DateTime } from "luxon";
 import { tripDutyPeriods } from "@/lib/duty-periods";
 import type { DayPlacement } from "@/lib/pdf-parser/line-grid-days";
 import type { ParsedLineSummary, ParsedPairing } from "@/lib/pdf-parser/types";
-import { buildTimelineDays } from "@/lib/trip-timeline";
+import { anchorPickups } from "@/lib/pdf-parser/pairing-parser";
+import { anchorTripAt, tripReportUtc } from "@/lib/trip-anchor";
+import { buildHomeDays, buildTimelineDays } from "@/lib/trip-timeline";
 import type { Line, Trip, TripDutyPeriod } from "@/types/bidpack";
 
 function round2(n: number): number {
@@ -10,8 +12,18 @@ function round2(n: number): number {
 }
 
 const MONTH_ABBREV: Record<string, number> = {
-  JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
-  JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12,
+  JAN: 1,
+  FEB: 2,
+  MAR: 3,
+  APR: 4,
+  MAY: 5,
+  JUN: 6,
+  JUL: 7,
+  AUG: 8,
+  SEP: 9,
+  OCT: 10,
+  NOV: 11,
+  DEC: 12,
 };
 
 /** No trip in a bid pack is real for a month this generic is intended to signal — used only when `bidPackMonth` itself couldn't be parsed, so there's genuinely nothing real to anchor to. */
@@ -219,14 +231,13 @@ function applyDayPlacements(trips: Trip[], placements: DayPlacement[] | undefine
  * A leg's `startMinutes`/`endMinutes` are elapsed minutes since ITS OWN
  * trip's report (t=0) — see `TripLeg`'s own doc comment — so re-anchoring a
  * later occurrence onto the first occurrence's `zuluAnchor` means shifting
- * every minute-based field on it forward by a whole number of days, not
+ * every minute-based field on it forward by the real time between the two reports, not
  * just recomputing the Zulu timestamps in isolation (those are derived FROM
  * the minutes, so both must move together or they go inconsistent with
  * each other the moment anything re-derives one from the other).
  */
-function shiftScheduleByDays(schedule: TripDutyPeriod[], dayOffset: number, anchor: string): TripDutyPeriod[] {
-  if (dayOffset === 0) return schedule;
-  const shift = dayOffset * 1440;
+function shiftScheduleByMinutes(schedule: TripDutyPeriod[], shift: number, anchor: string): TripDutyPeriod[] {
+  if (shift === 0) return schedule;
   return schedule.map((duty) => ({
     ...duty,
     startMinutes: duty.startMinutes + shift,
@@ -237,9 +248,7 @@ function shiftScheduleByDays(schedule: TripDutyPeriod[], dayOffset: number, anch
       depTimeZulu: zuluAt(anchor, leg.startMinutes + shift),
       arrTimeZulu: zuluAt(anchor, leg.endMinutes + shift),
     })),
-    layover: duty.layover
-      ? { ...duty.layover, startMinutes: duty.layover.startMinutes + shift, endMinutes: duty.layover.endMinutes + shift }
-      : null,
+    layover: duty.layover ? { ...duty.layover, startMinutes: duty.layover.startMinutes + shift, endMinutes: duty.layover.endMinutes + shift } : null,
   }));
 }
 
@@ -258,13 +267,14 @@ function mergeConsecutiveOneDayTrips(run: Trip[]): Trip {
     dutyPeriods: run.reduce((s, t) => s + (t.dutyPeriods ?? 1), 0),
     // Preserve "not tracked" (undefined) rather than promoting it to a real 0
     // when every occurrence in the run predates standby tracking.
-    standbyDays: standbyValues.every((v) => v === undefined)
-      ? undefined
-      : standbyValues.reduce<number>((s, v) => s + (v ?? 0), 0),
+    standbyDays: standbyValues.every((v) => v === undefined) ? undefined : standbyValues.reduce<number>((s, v) => s + (v ?? 0), 0),
     international: run.some((t) => t.international),
     layoverCities: run.flatMap((t) => t.layoverCities),
     layoverDetails: run.flatMap((t) => t.layoverDetails),
-    schedule: run.flatMap((trip, i) => shiftScheduleByDays(trip.schedule, i, first.zuluAnchor)),
+    // Each day's report sits as far after the first's as it really does — a day apart, give or take a clock change.
+    schedule: run.flatMap((trip, i) =>
+      shiftScheduleByMinutes(trip.schedule, Math.round((Date.parse(trip.zuluAnchor) - Date.parse(first.zuluAnchor)) / 60_000) || i * 1440, first.zuluAnchor)
+    ),
   };
 }
 
@@ -308,23 +318,91 @@ function consolidateRepeatedSingleDayTrips(trips: Trip[]): Trip[] {
   return result;
 }
 
+/** A trip's date as the pairing pages print dates (GMT month-day, 1002 = Oct 2): the day its first report falls on in GMT. */
+function tripGmtMonthDay(reportUtcMs: number): number {
+  const d = new Date(reportUtcMs);
+  return (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+}
+
+const inRange = (d: number, from: number, to: number) => (from <= to ? d >= from && d <= to : d >= from || d <= to);
+
+/**
+ * Gives each layover the hotel, rides and pickup the pack prints for this
+ * trip's own date — some layovers change hotels partway through the month
+ * ("SEP 29 - OCT 01 TRIP(S) ONLY" one hotel, "OCT 02 - 23" another) — and
+ * places the next duty's start at that version's pickup.
+ */
+export function resolveLayoverVariants(trip: Trip, reportUtcMs: number): Trip {
+  if (!trip.schedule.some((d) => d.layover?.variants?.length)) return trip;
+  const date = tripGmtMonthDay(reportUtcMs);
+  const schedule: TripDutyPeriod[] = trip.schedule.map((d) => ({ ...d, layover: d.layover ? { ...d.layover } : null }));
+  schedule.forEach((duty, i) => {
+    const lay = duty.layover;
+    const v = lay?.variants?.find((x) => inRange(date, x.from, x.to));
+    if (!lay || !v) return;
+    lay.hotelName = v.hotelName;
+    lay.transportToHotel = v.transportToHotel;
+    lay.transportFromHotel = v.transportFromHotel;
+    lay.pickupTimeGmt = v.pickupTimeGmt;
+    lay.pickupTimeLocal = v.pickupTimeLocal;
+    // Back to the printed length, then onto this version's pickup.
+    lay.endMinutes = lay.startMinutes + Math.round(lay.hours * 60);
+    if (schedule[i + 1]) schedule[i + 1].startMinutes = lay.endMinutes;
+  });
+  anchorPickups(schedule);
+  // The trip's list of layovers carries the same hotels.
+  const hotels = schedule.filter((d) => d.layover).map((d) => d.layover!.hotelName);
+  const layoverDetails = trip.layoverDetails.map((l, k) =>
+    hotels[k] !== undefined && trip.layoverDetails.length === hotels.length ? { ...l, hotelName: hotels[k] } : l
+  );
+  return { ...trip, schedule, layoverDetails };
+}
+
+/** Once the grid has dated a trip: its dated hotels, and its anchor on its own real date (see `trip-anchor.ts`). */
+function settleOnItsDate(trip: Trip, bidPack: { bidPeriodStart: string | null; base: string }): Trip {
+  const at = tripReportUtc(bidPack, trip);
+  if (at === null) return trip;
+  const settled = anchorTripAt(resolveLayoverVariants(trip, at), at);
+  // Its length in days on the base's own calendar — the one the grid counts — not in the local dates it passes through,
+  // which a trip across the date line lives one more of.
+  const homeDays = buildHomeDays(settled, "local").length;
+  return homeDays > 0 ? { ...settled, days: homeDays } : settled;
+}
+
+/**
+ * Back to back: the next trip starts the day this one lands (home at 12:33, out again at 15:40). The grid gives that
+ * day to the next trip, but this one still spans it — a two-day trip with a night away is not a one-day trip. (A night
+ * turn landing after midnight has no night away: the bid pack calls it a one-day trip, and so does this.)
+ */
+function countSharedLastDays(trips: Trip[]): Trip[] {
+  if (trips.some((t) => t.startDayIndex === null)) return trips;
+  return trips.map((trip) => {
+    const end = trip.startDayIndex! + trip.days;
+    const next = trips.find((t) => t.startDayIndex === end);
+    const nightAway = trip.schedule.some((d) => d.layover && !d.legs.every((l) => l.isStandby));
+    const reaches = trip.startDayIndex! + buildHomeDays(trip, "local").length - 1 >= end;
+    return next && nightAway && reaches ? { ...trip, days: trip.days + 1 } : trip;
+  });
+}
+
 export function buildLine(
   summary: ParsedLineSummary,
   matchedPairings: ParsedPairing[] | null,
   bidPackMonth: string,
   dayPlacements?: DayPlacement[],
   /** The grid's own "---" (no trip) days for this line — kept only when they add up to its printed days off. */
-  gridDays?: { offDays: number[]; dayCount: number }
+  gridDays?: { offDays: number[]; dayCount: number },
+  /** The pack's first day and base, for pinning each dated trip to its real date. */
+  pack?: { bidPeriodStart: string | null; base: string }
 ): Line {
-  const rawTrips = matchedPairings
-    ? matchedPairings.map((p) => pairingToTrip(p, bidPackMonth))
-    : [buildEstimatedTrip(summary, bidPackMonth)];
+  const rawTrips = matchedPairings ? matchedPairings.map((p) => pairingToTrip(p, bidPackMonth)) : [buildEstimatedTrip(summary, bidPackMonth)];
 
   applyDayPlacements(rawTrips, dayPlacements);
+  if (pack) rawTrips.forEach((t, i) => (rawTrips[i] = settleOnItsDate(t, pack)));
   const gridOffDays = gridDays && gridDays.offDays.length === summary.daysOff ? gridDays.offDays : undefined;
   if (gridOffDays) applyGridFootprints(rawTrips, gridOffDays, gridDays!.dayCount);
 
-  const trips = consolidateRepeatedSingleDayTrips(rawTrips);
+  const trips = countSharedLastDays(consolidateRepeatedSingleDayTrips(rawTrips));
 
   return {
     id: `line-${summary.lineNumber}`,

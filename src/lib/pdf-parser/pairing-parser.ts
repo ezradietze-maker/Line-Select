@@ -1,13 +1,7 @@
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { isDeadheadFlightNumber } from "@/lib/deadhead";
 import { isStandbyDutyCode } from "@/lib/standby";
-import type {
-  LayoverDetail,
-  ParsedPairing,
-  ParseWarning,
-  ScheduledDutyPeriod,
-  ScheduledLeg,
-} from "@/lib/pdf-parser/types";
+import type { LayoverDetail, LayoverVariant, ParsedPairing, ParseWarning, ScheduledDutyPeriod, ScheduledLeg } from "@/lib/pdf-parser/types";
 import type { ReportTime } from "@/types/bidpack";
 
 // The pairing schedule prints every clock time as "GMT(LOCAL)" — confirmed
@@ -16,12 +10,10 @@ import type { ReportTime } from "@/types/bidpack";
 // legend, "(hhmm) - Local Military Time" — the parenthesized value is local,
 // the bare one in front of it is GMT. The header's report time uses the same
 // convention, so group 3 (bare) is GMT and group 4 (parenthesized) is local.
-const HEADER_RE =
-  /^(\d+)\s+((?:[A-Z]{2}\s+)*[A-Z]{2})\s+REPORT\s+AT\s+(\d{3,4})\s*\(\s*[*#]?(\d{3,4})\s*\)\s*(.*)$/i;
+const HEADER_RE = /^(\d+)\s+((?:[A-Z]{2}\s+)*[A-Z]{2})\s+REPORT\s+AT\s+(\d{3,4})\s*\(\s*[*#]?(\d{3,4})\s*\)\s*(.*)$/i;
 const EFFECTIVE_RE = /^EFFECTIVE\s+(.+)$/i;
 const COLUMN_HEADER_RE = /^DAY\s+FLIGHT\s+EQP\s+DEPARTS\s+ARRIVES/i;
-const FOOTER_RE =
-  /^LDGS:\s*(\d+)\s+BLOCK\s*HRS:\s*(\d{1,3}:\d{2})\s+CREDIT\s*HRS:\s*(\d{1,3}:\d{2})\s*T?\s*TAFB:\s*(\d{1,4}:\d{2})\s*$/i;
+const FOOTER_RE = /^LDGS:\s*(\d+)\s+BLOCK\s*HRS:\s*(\d{1,3}:\d{2})\s+CREDIT\s*HRS:\s*(\d{1,3}:\d{2})\s*T?\s*TAFB:\s*(\d{1,4}:\d{2})\s*$/i;
 // Weekday letters are usually present ("01TU") but are occasionally dropped
 // by the source PDF for single-day pairings, leaving a bare date ("1"). We
 // don't rely on the letters for anything beyond distinct-day counting, so
@@ -76,6 +68,22 @@ function extractTransport(row: string): { direction: "To" | "From"; company: str
   const match = row.match(TRANSPORT_RE);
   if (!match) return null;
   return { direction: match[1] as "To" | "From", company: match[2].trim(), city: match[3].toUpperCase() };
+}
+
+// "OCT 02 - 23 TRIP(S) ONLY ----", "SEP 29 - OCT 01 TRIP(S) ONLY", "OCT 05 TRIP(S) ONLY": the hotel and ride lines that
+// follow apply only to trips on those dates (GMT dates, the same calendar the pairing's EFFECTIVE line uses).
+const DATE_RANGE_RE = /^([A-Z]{3})\s+(\d{1,2})(?:\s*-\s*(?:([A-Z]{3})\s+)?(\d{1,2}))?\s+TRIP\(S\)\s+ONLY/i;
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+/** The trip dates a "TRIP(S) ONLY" heading covers, as month-day numbers (1002 = Oct 2); null if it doesn't read as one. */
+export function parseDateRange(row: string): { from: number; to: number } | null {
+  const m = row.trim().match(DATE_RANGE_RE);
+  if (!m) return null;
+  const month = MONTHS.indexOf(m[1].toUpperCase()) + 1;
+  const toMonth = m[3] ? MONTHS.indexOf(m[3].toUpperCase()) + 1 : month;
+  if (month === 0 || toMonth === 0) return null;
+  const from = month * 100 + Number(m[2]);
+  return { from, to: m[4] ? toMonth * 100 + Number(m[4]) : from };
 }
 
 // The pickup on a "Trans From:" line — on the same row, or on the wrapped row after it when the company name is long. Local time can carry a "*" (previous day).
@@ -352,7 +360,13 @@ const PAGE_TITLE_RE = /BID PACK PAIRING SCHEDULE/i;
  * the departure, more than 6 hours before it, or before the layover even
  * starts) is ignored and the printed length stands.
  */
-function anchorPickups(schedule: ScheduledDutyPeriod[]): void {
+export function anchorPickups(
+  schedule: {
+    startMinutes: number;
+    legs: { depTimeGmt: string; startMinutes: number }[];
+    layover: { pickupTimeGmt?: string; startMinutes: number; endMinutes: number } | null;
+  }[]
+): void {
   for (let i = 0; i < schedule.length - 1; i++) {
     const layover = schedule[i].layover;
     const nextLeg = schedule[i + 1].legs[0];
@@ -366,10 +380,7 @@ function anchorPickups(schedule: ScheduledDutyPeriod[]): void {
   }
 }
 
-export function parsePairingPages(
-  pages: { rows: string[]; pageNumber: number }[],
-  warnings: ParseWarning[]
-): ParsedPairing[] {
+export function parsePairingPages(pages: { rows: string[]; pageNumber: number }[], warnings: ParseWarning[]): ParsedPairing[] {
   const pairings: ParsedPairing[] = [];
   let carry: { rows: string[]; pageNumber: number } | null = null;
 
@@ -405,11 +416,7 @@ export function parsePairingPages(
   return pairings;
 }
 
-export function parsePairingColumn(
-  rows: string[],
-  pageNumber: number,
-  warnings: ParseWarning[]
-): ParsedPairing[] {
+export function parsePairingColumn(rows: string[], pageNumber: number, warnings: ParseWarning[]): ParsedPairing[] {
   const blocks = splitIntoBlocks(rows.filter(isNonEmptyRow));
   const pairings: ParsedPairing[] = [];
 
@@ -439,9 +446,7 @@ export function parsePairingColumn(
     const effectiveRow = block.rows.find((r) => EFFECTIVE_RE.test(r));
     const effectiveText = effectiveRow?.match(EFFECTIVE_RE)?.[1]?.trim() ?? "";
 
-    const contentRows = block.rows.filter(
-      (r) => !HEADER_RE.test(r) && !EFFECTIVE_RE.test(r) && !COLUMN_HEADER_RE.test(r) && !FOOTER_RE.test(r)
-    );
+    const contentRows = block.rows.filter((r) => !HEADER_RE.test(r) && !EFFECTIVE_RE.test(r) && !COLUMN_HEADER_RE.test(r) && !FOOTER_RE.test(r));
 
     // Walked in printed order (not filtered to leg rows alone) so a "Hotel:"
     // line — which never matches the flight-leg pattern itself — can be
@@ -480,10 +485,7 @@ export function parsePairingColumn(
 
     const distinctDays = new Set(legs.map((l) => l.dayLetters));
     const layoverCities = Array.from(new Set(layoverDetails.map((d) => d.city)));
-    const allCities = new Set([
-      ...legs.map((l) => l.depAirport),
-      ...legs.map((l) => l.arrAirport),
-    ]);
+    const allCities = new Set([...legs.map((l) => l.depAirport), ...legs.map((l) => l.arrAirport)]);
     const international = Array.from(allCities).some(isInternationalCity);
     const deadheadLegs = legs.filter((l) => l.isDeadhead).length;
     const standbyDays = legs.filter((l) => isStandbyDutyCode(l.flightNumber)).length;
@@ -504,12 +506,16 @@ export function parsePairingColumn(
       clock.seed(reportTimeGmt);
       let currentLegs: ScheduledLeg[] = [];
       let dutyStartMinutes = 0;
-      let awaitingPickup: NonNullable<ScheduledDutyPeriod["layover"]> | null = null;
+      // Where a "Trans From:" pickup time goes once it's read: the layover, and the dated version too when there is one.
+      let awaitingPickup: { pickupTimeGmt?: string; pickupTimeLocal?: string }[] | null = null;
+      // The dated version of the current layover the following hotel and ride lines belong to, if the pack splits them by date.
+      let variant: LayoverVariant | null = null;
 
       for (const row of contentRows) {
         const richLeg = tryParseRichLeg(row);
         if (richLeg) {
           awaitingPickup = null;
+          variant = null;
           const startMinutes = clock.advance(richLeg.depGmt);
           const endMinutes = clock.advance(richLeg.arrGmt);
           currentLegs.push({
@@ -561,29 +567,45 @@ export function parsePairingColumn(
         // a hotel at a stop partway through a duty is that stop's day room.
         const lastDuty = schedule[schedule.length - 1];
         const layover = currentLegs.length === 0 ? lastDuty?.layover : null;
+        const dated = layover ? parseDateRange(row) : null;
+        if (layover && dated) {
+          variant = { ...dated, hotelName: null, transportToHotel: null, transportFromHotel: null };
+          (layover.variants ??= []).push(variant);
+          awaitingPickup = null;
+          continue;
+        }
+        // Lines under a date heading fill that dated version; the layover itself shows the latest one until a trip's date picks.
+        const target = variant ?? layover;
         const hotel = extractHotel(row);
         if (hotel) {
-          if (layover && hotel.city === layover.city) layover.hotelName = hotel.name;
-          else {
+          if (layover && target && hotel.city === layover.city) {
+            target.hotelName = hotel.name;
+            if (variant) layover.hotelName = hotel.name;
+          } else {
             const stop = currentLegs[currentLegs.length - 1];
             if (stop && stop.arrAirport === hotel.city) stop.dayRoomHotel = hotel.name;
           }
         }
 
         const transport = extractTransport(row);
-        if (transport && layover && transport.city === layover.city) {
-          if (transport.direction === "To") layover.transportToHotel = transport.company;
-          else {
-            layover.transportFromHotel = transport.company;
-            awaitingPickup = layover;
+        if (transport && layover && target && transport.city === layover.city) {
+          if (transport.direction === "To") {
+            target.transportToHotel = transport.company;
+            if (variant) layover.transportToHotel = transport.company;
+          } else {
+            target.transportFromHotel = transport.company;
+            if (variant) layover.transportFromHotel = transport.company;
+            awaitingPickup = variant ? [variant, layover] : [layover];
           }
         }
         // The pickup time itself, wherever the "Trans From:" line put it.
         if (awaitingPickup && !HOTEL_RE.test(row) && !(transport && transport.direction === "To")) {
           const pickup = row.match(PICKUP_RE);
           if (pickup) {
-            awaitingPickup.pickupTimeGmt = pickup[1];
-            awaitingPickup.pickupTimeLocal = pickup[2];
+            for (const t of awaitingPickup) {
+              t.pickupTimeGmt = pickup[1];
+              t.pickupTimeLocal = pickup[2];
+            }
             awaitingPickup = null;
           }
         }
