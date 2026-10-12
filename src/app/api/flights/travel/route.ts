@@ -28,6 +28,13 @@ function readNeeds(value: unknown): TravelNeed[] | null {
     )
       return null;
     if (n.arriveBy !== undefined && typeof n.arriveBy !== "number") return null;
+    let groundMs: Record<string, number> | undefined;
+    if (n.groundMs !== undefined) {
+      if (!isJsonObject(n.groundMs)) return null;
+      const entries = Object.entries(n.groundMs);
+      if (entries.length > 4 || !entries.every(([k, v]) => code(k) && typeof v === "number" && v >= 0 && v <= 6 * 3600_000)) return null;
+      groundMs = Object.fromEntries(entries) as Record<string, number>;
+    }
     out.push({
       id: n.id,
       tripId: n.tripId,
@@ -37,6 +44,7 @@ function readNeeds(value: unknown): TravelNeed[] | null {
       departAfter: n.departAfter,
       departBefore: n.departBefore,
       ...(typeof n.arriveBy === "number" ? { arriveBy: n.arriveBy } : {}),
+      ...(groundMs ? { groundMs } : {}),
     });
   }
   return out;

@@ -56,14 +56,14 @@ function Getting({ label, a, to }: { label: string; a: TravelAnswer; to: string 
       {a.best && (
         <span className="text-ink-muted">
           {" "}
-          &middot; quickest {route(a.best)} ({flights(a.best)})
+          &middot; quickest {route(a.best)} ({flights(a.best)}){a.best.at(-1)!.to !== to && `, then drive to ${to}`}
         </span>
       )}
     </Row>
   );
 }
 
-function Going({ label, a }: { label: string; a: TravelAnswer }) {
+function Going({ label, a, from }: { label: string; a: TravelAnswer; from?: string }) {
   if (a.options === 0 || a.firstArrival === null)
     return (
       <Row label={label} warn>
@@ -79,7 +79,13 @@ function Going({ label, a }: { label: string; a: TravelAnswer }) {
         &middot; {a.options} way{a.options === 1 ? "" : "s"} home
       </span>
       <Jumpseats a={a} />
-      {a.best && <span className="text-ink-muted"> &middot; quickest {route(a.best)} ({flights(a.best)})</span>}
+      {a.best && (
+        <span className="text-ink-muted">
+          {" "}
+          &middot; quickest {from && a.best[0].from !== from && `drive to ${a.best[0].from}, then `}
+          {route(a.best)} ({flights(a.best)})
+        </span>
+      )}
     </Row>
   );
 }
@@ -106,7 +112,7 @@ export function TripCommuteFlights({
         {t.toBase && <Getting label={`To ${base}`} a={t.toBase} to={base} />}
         {t.deviateOut && frontCity && <Getting label={`Straight to ${frontCity}`} a={t.deviateOut} to={frontCity} />}
         {t.homeFromBase && <Going label={`Home from ${base}`} a={t.homeFromBase} />}
-        {t.deviateHome && backCity && <Going label={`Home from ${backCity}`} a={t.deviateHome} />}
+        {t.deviateHome && backCity && <Going label={`Home from ${backCity}`} a={t.deviateHome} from={backCity} />}
       </ul>
     </div>
   );

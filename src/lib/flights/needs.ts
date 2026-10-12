@@ -28,6 +28,37 @@ export interface TravelNeed {
   departAfter: number;
   /** The end of the window: departures after this don't count. */
   departBefore: number;
+  /** Drive time (ms) between a FedEx-only field and an airline airport standing in for it (see `GROUND_ALTERNATES`). */
+  groundMs?: Record<string, number>;
+}
+
+/**
+ * FedEx fields with little or no airline service, and the airline airports a pilot would fly instead, driving the
+ * rest. The field itself stays in the list for any flights it does have.
+ */
+export const GROUND_ALTERNATES: Record<string, string[]> = {
+  AFW: ["DFW", "DAL"],
+  BFM: ["MOB"],
+  DOV: ["PHL", "BWI"],
+  FNT: ["DTW"],
+  LCK: ["CMH"],
+  LGG: ["BRU"],
+  RMS: ["FRA"],
+  SWF: ["EWR", "LGA"],
+  TLC: ["MEX"],
+  YMX: ["YUL"],
+};
+
+/** Half an hour to get going, then the road at 70 km/h. */
+function driveMs(a: string, b: string): number {
+  return (30 + ((distanceKm(a, b) ?? 100) / 70) * 60) * 60_000;
+}
+
+/** A city and its airline stand-ins, with the drive to each. */
+function withAlternates(city: string): { airports: string[]; groundMs?: Record<string, number> } {
+  const alts = GROUND_ALTERNATES[city];
+  if (!alts) return { airports: [city] };
+  return { airports: [city, ...alts], groundMs: Object.fromEntries(alts.map((a) => [a, driveMs(city, a)])) };
 }
 
 export interface TravelParams {
@@ -108,15 +139,16 @@ export function travelNeedsForTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "ba
   });
   const firstFlying = f.legs.find((l) => !l.deadhead);
   if (f.front?.city && firstFlying) {
-    const frontCity = f.front.city;
+    const front = withAlternates(f.front.city);
     const arriveBy = at(firstFlying.start) - p.frontBufferHours * HOUR;
     add({
       kind: "deviateOut",
       from: home,
-      to: [frontCity],
+      to: front.airports,
       arriveBy,
-      departAfter: arriveBy - lookbackFor(home, [frontCity]),
+      departAfter: arriveBy - lookbackFor(home, front.airports),
       departBefore: arriveBy,
+      ...(front.groundMs ? { groundMs: front.groundMs } : {}),
     });
   }
 
@@ -135,12 +167,14 @@ export function travelNeedsForTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "ba
   });
   if (f.back?.city && lastFlying) {
     const departAfter = at(Math.max(lastFlying.end, lastStandby?.end ?? 0)) + p.backRestHours * HOUR;
+    const back = withAlternates(f.back.city);
     add({
       kind: "deviateHome",
-      from: [f.back.city],
+      from: back.airports,
       to: home,
       departAfter,
-      departBefore: departAfter + lookbackFor([f.back.city], home),
+      departBefore: departAfter + lookbackFor(back.airports, home),
+      ...(back.groundMs ? { groundMs: back.groundMs } : {}),
     });
   }
   return needs;
