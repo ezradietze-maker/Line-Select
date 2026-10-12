@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { pairingToTrip, resolveLayoverVariants } from "@/lib/pdf-parser/build-bidpack";
 import { parsePairingColumn } from "@/lib/pdf-parser/pairing-parser";
+import { buildDetailedMonth } from "@/lib/month-detail";
 import { anchorTripToItsDate, tripReportUtc } from "@/lib/trip-anchor";
 import { buildHomeDays, buildRawSegments, buildTimelineDays } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
@@ -72,6 +73,22 @@ describe("a trip home across the date line", () => {
     // Seoul is a day ahead: the trip's Asian days are Oct 4–9 there.
     expect(dates.at(-1)).toBe("2026-10-09");
     for (let i = 1; i < dates.length; i++) expect(dates[i] >= dates[i - 1]).toBe(true);
+  });
+
+  it("lists each day's flying on the month calendar the way a pilot reads it", () => {
+    const line = { id: "l", lineNumber: "1012", trips: [trip], daysOff: 22, totalCreditHours: 35.85, totalTafbHours: 134.43, totalLandings: 5, totalDepartures: 5 };
+    const days = buildDetailedMonth(line, start, 28).days;
+    // Oct 3: report, out to Seoul, a night there.
+    // It lands 13:15 Seoul time — still Oct 3 on Anchorage's calendar.
+    expect(days[5].flights).toEqual([{ kind: "flying", from: "ANC", to: "ICN", dep: "10:45", arr: "13:15" }]);
+    expect(days[5].layoverCode).toBe("ICN");
+    // Oct 5 (Anchorage's calendar): Seoul to Osaka to Xiamen.
+    expect(days[7].flights.map((f) => `${f.dep} ${f.from}→${f.to}`)).toEqual(["18:25 ICN→KIX", "21:55 KIX→XMN"]);
+    // Oct 6: a whole day in Xiamen.
+    expect(days[8].flights).toEqual([]);
+    expect(days[8].restCity).toBe("XMN");
+    // Oct 8: home, landing 23:41 local.
+    expect(days[10].flights.at(-1)).toEqual({ kind: "flying", from: "ICN", to: "ANC", dep: "08:40", arr: "23:41" });
   });
 
   it("fits the base's own calendar the grid counts: Oct 3 to Oct 8, six days", () => {

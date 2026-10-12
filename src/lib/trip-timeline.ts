@@ -65,6 +65,9 @@ export interface TimelineSegment {
   /** The date ("YYYY-MM-DD") each of those clock times falls on, on the same clock. */
   startDate?: string;
   endDate?: string;
+  /** Where the piece starts and ends (the same airport for anything but a flight). */
+  startAirport?: string;
+  endAirport?: string;
   /** True when this segment started on an earlier day — drawn with a flat (not rounded) leading edge, and vice versa for trailing. */
   continuesFromPreviousDay: boolean;
   continuesToNextDay: boolean;
@@ -368,6 +371,8 @@ function toTimelineSegment(
     endClock: seg.endClock,
     startDate: seg.startDate,
     endDate: seg.endDate,
+    startAirport: seg.startAirport,
+    endAirport: seg.endAirport,
     continuesFromPreviousDay,
     continuesToNextDay,
     dateLineBadge,

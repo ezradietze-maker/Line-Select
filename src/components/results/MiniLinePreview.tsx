@@ -2,9 +2,9 @@
 
 import { useInView } from "motion/react";
 import { memo, useMemo, useRef, useState } from "react";
-import { BedIcon, MoonIcon, PlaneIcon, SunriseIcon } from "@/components/ui/icons";
+import { BedIcon, MoonIcon, SunriseIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/Modal";
-import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthSummary, type StripSegment } from "@/lib/month-detail";
+import { buildDetailedMonth, type DayFlight, type DetailedDay, type DetailedMonth, type MonthSummary, type StripSegment } from "@/lib/month-detail";
 import { dayStats, equipmentLabel, hm } from "@/lib/trip-day-stats";
 import type { TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
@@ -33,7 +33,7 @@ const STRIP_CLASS: Record<TimelineSegmentKind, string> = {
 
 function Strip({ segments }: { segments: StripSegment[] }) {
   return (
-    <div className="relative h-1 w-full overflow-hidden rounded-full bg-ink/10" aria-hidden>
+    <div className="relative h-1.5 w-full shrink-0 overflow-hidden rounded-full bg-ink/10" aria-hidden>
       {segments.map((s, i) => (
         <span
           key={i}
@@ -47,7 +47,7 @@ function Strip({ segments }: { segments: StripSegment[] }) {
 
 function cellClass(day: DetailedDay, selected: boolean): string {
   const base =
-    "relative flex min-h-[3.25rem] flex-col justify-between gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[4.5rem]";
+    "@container relative flex min-h-[4.75rem] min-w-0 flex-col justify-between gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
   const ring = selected ? " ring-2 ring-brand ring-offset-1 ring-offset-surface" : "";
   switch (day.kind) {
     case "off":
@@ -84,6 +84,50 @@ function TripRail({ joinLeft, joinRight, standby }: { joinLeft: boolean; joinRig
   );
 }
 
+/** How many of a day's flights a cell lists before "+N more" (tap the day for all of them). */
+const MAX_FLIGHT_LINES = 3;
+
+/** "27h40m" → "27h": the layover's length at a glance. */
+const shortRest = (rest: string) => rest.replace(/h\d+m$/, "h");
+
+/**
+ * One line of a day's flying, as a pilot reads it: local departure, then where to — "10:45 →ICN"; a deadhead marked
+ * DH; standby SBY and where; a flight from the night before landing this morning "↓ANC 07:41". In a narrow cell only
+ * the destination fits; the times come in once the cell itself is wide enough (a container query — on a desktop card
+ * the calendar sits beside the line's stats, so its cells can be narrower than on a phone).
+ */
+function FlightLine({ f }: { f: DayFlight }) {
+  const base = "flex min-w-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-[10px] leading-tight";
+  if (f.kind === "standby")
+    return (
+      <span className={`${base} font-semibold text-standby`}>
+        SBY<span className="hidden font-normal @min-[4.75rem]:inline">{f.dep}</span>
+        {/* In the narrowest cells the city is the layover line just below. */}
+        <span className="hidden truncate @min-[3.25rem]:inline">{f.from}</span>
+      </span>
+    );
+  if (f.kind === "lands")
+    return (
+      <span className={`${base} text-ink`}>
+        ↓<span className="font-semibold">{f.to}</span>
+        <span className="hidden text-ink-muted @min-[4.75rem]:inline">{f.arr}</span>
+      </span>
+    );
+  const dh = f.kind === "deadhead";
+  return (
+    <span className={`${base} ${dh ? "text-ink-muted" : "text-ink"}`} title={`${dh ? "Deadhead " : ""}${f.from}–${f.to}${f.dep ? ` ${f.dep}` : ""}${f.arr ? `–${f.arr}` : ""} (L)`}>
+      {dh && <span className="rounded-sm bg-ink/10 px-px text-[9px] font-semibold">DH</span>}
+      <span className="hidden @min-[4.75rem]:inline">{f.dep}</span>
+      <span className={dh ? "" : "font-semibold"}>
+        {/* Wide enough, the whole route: "ANC→ICN". */}
+        <span className="hidden font-normal @min-[7rem]:inline">{f.from}</span>
+        <span className={dh ? "hidden @min-[4.75rem]:inline" : ""}>→</span>
+        {f.to}
+      </span>
+    </span>
+  );
+}
+
 function Cell({
   day,
   selected,
@@ -116,7 +160,7 @@ function Cell({
       <span className="flex items-start justify-between gap-0.5">
         <span className={`text-[11px] tabular-nums ${isOff ? "" : "font-semibold"}`}>{day.label}</span>
         {day.isTripStart && day.tripNumber && (
-          <span className="hidden rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar sm:inline">#{day.tripNumber}</span>
+          <span className="hidden rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar @min-[4.75rem]:inline">#{day.tripNumber}</span>
         )}
       </span>
 
@@ -126,41 +170,51 @@ function Cell({
             {day.offRun && day.offRun.length > 1 && day.offRun.isFirst ? `${day.offRun.length} off` : ""}
           </span>
           {/* A trip landing just after midnight on a day the bid pack counts off: shown, not dropped. */}
-          {day.spill?.landsAt && (
-            <span className="whitespace-nowrap font-mono text-[10px] leading-tight text-ink-muted">→{day.spill.landsAt}</span>
-          )}
+          <span className="flex min-w-0 flex-col overflow-hidden">
+            {day.flights.map((f, i) => (
+              <FlightLine key={i} f={f} />
+            ))}
+          </span>
         </>
       ) : (
         <>
-          {/* On a phone the cell is too narrow for the trip number beside the date, so it sits on its own line where the times go on wider screens. */}
-          {day.isTripStart && day.tripNumber && (
-            <span className="font-mono text-[10px] font-semibold leading-tight text-ink sm:hidden">#{day.tripNumber}</span>
-          )}
-          <span className="hidden whitespace-nowrap font-mono text-[10px] leading-tight text-ink-muted sm:block">
-            {day.releaseTime ? `→${day.releaseTime}` : day.dutyStart ? `R${day.dutyStart}` : " "}
+          {/* On a phone the cell is too narrow for the trip number beside the date, so it sits on its own line. */}
+          {day.isTripStart && day.tripNumber && <span className="font-mono text-[10px] font-semibold leading-tight text-ink @min-[4.75rem]:hidden">#{day.tripNumber}</span>}
+          <span className="flex min-w-0 flex-1 flex-col gap-px overflow-hidden">
+            {day.isTripStart && day.dutyStart && (
+              <span className="hidden whitespace-nowrap font-mono text-[10px] leading-tight text-ink-muted @min-[4.75rem]:block">Rpt {day.dutyStart}</span>
+            )}
+            {day.flights.slice(0, MAX_FLIGHT_LINES).map((f, i) => (
+              <FlightLine key={i} f={f} />
+            ))}
+            {day.flights.length > MAX_FLIGHT_LINES && (
+              <span className="font-mono text-[10px] leading-tight text-ink-muted">+{day.flights.length - MAX_FLIGHT_LINES} more</span>
+            )}
           </span>
-          <span className="flex items-center gap-0.5 text-[11px] font-semibold tracking-tight">
+          <span className="flex min-w-0 items-center gap-0.5 overflow-hidden text-[11px] font-semibold tracking-tight">
             {day.layoverCode ? (
               <>
+                <BedIcon className="hidden h-2.5 w-2.5 shrink-0 text-good @min-[4.75rem]:block" />
                 <span className={`text-good ${day.layoverInternational ? "underline decoration-dotted underline-offset-2" : ""}`}>{day.layoverCode}</span>
+                {day.layoverRest && <span className="hidden font-mono text-[10px] font-normal text-good @min-[4.75rem]:inline">{shortRest(day.layoverRest)}</span>}
                 <SentimentMark sentiment={day.citySentiment} />
               </>
-            ) : day.hasStandby ? (
-              <span className="text-[10px] font-medium text-standby">standby</span>
-            ) : (
-              <span className="text-[10px] font-normal text-ink-muted">{day.hasDeadhead && day.landings === 0 ? "DH" : " "}</span>
-            )}
-          </span>
-          <span className="hidden items-center gap-1 text-[10px] leading-none text-ink-muted sm:flex">
-            {day.landings > 0 && (
-              <span className="inline-flex items-center gap-px" title={`${day.landings} landing${day.landings === 1 ? "" : "s"}`}>
-                <PlaneIcon className="h-2.5 w-2.5" />
-                {day.landings}
+            ) : day.restCity ? (
+              <>
+                <BedIcon className="h-2.5 w-2.5 shrink-0 text-good/80" />
+                <span className="text-good/80">{day.restCity}</span>
+                <span className="hidden text-[10px] font-normal text-good/80 @min-[4.75rem]:inline">rest</span>
+              </>
+            ) : day.isTripEnd && day.releaseTime ? (
+              <span className="whitespace-nowrap font-mono text-[10px] font-medium text-ink">
+                <span className="@min-[4.75rem]:hidden">↓{day.releaseTime}</span>
+                <span className="hidden @min-[4.75rem]:inline">home {day.releaseTime}</span>
               </span>
-            )}
-            {day.hasStandby && <span className="font-semibold uppercase tracking-tight text-standby">sby</span>}
-            {day.redEye && <MoonIcon className="h-2.5 w-2.5 text-accent" />}
-            {day.earlyReport && <SunriseIcon className="h-2.5 w-2.5 text-warn" />}
+            ) : null}
+            <span className="ml-auto flex items-center gap-0.5">
+              {day.redEye && <MoonIcon className="h-2.5 w-2.5 text-accent" />}
+              {day.earlyReport && <SunriseIcon className="h-2.5 w-2.5 text-warn" />}
+            </span>
           </span>
           <Strip segments={day.strip} />
         </>
@@ -189,11 +243,13 @@ function MonthKeyInfo() {
         <Modal title="Month calendar key" onClose={() => setOpen(false)}>
           <ul className="space-y-3 text-sm leading-relaxed text-ink-muted">
             <li><span className="font-medium text-ink">Shaded days joined by a bar.</span> One trip, from the day it reports to the day it ends. The tag on its first day (<span className="font-mono">#60</span>) is the trip&rsquo;s number in your bid pack.</li>
-            <li><span className="font-medium text-ink">Green code.</span> A night in a layover hotel, and the city. A <span className="text-good">♥</span> is a city you love, a <span className="text-danger">✕</span> one you avoid, and a dotted underline marks an international city.</li>
+            <li><span className="font-medium text-ink">Hearts and crosses.</span> A <span className="text-good">♥</span> by a layover city is one you love, a <span className="text-danger">✕</span> one you avoid, and a dotted underline marks an international city.</li>
             <li><span className="font-medium text-ink">Violet day.</span> Hotel standby &mdash; on call at the hotel, paid, not flying.</li>
             <li><span className="font-medium text-ink">Dashed empty day.</span> A day off. A run of days off is labeled on its first day (&ldquo;4 off&rdquo;), and weekends are shaded.</li>
-            <li><span className="font-medium text-ink">R05:20 / →18:04.</span> When the duty starts that day, and (with the arrow) when your last flight lands on the day the trip ends.</li>
-            <li><span className="font-medium text-ink">Plane and number.</span> Landings that day. <span className="font-medium text-ink">Moon:</span> a flight departs or lands between midnight and 5am. <span className="font-medium text-ink">Sun:</span> the duty starts between 2 and 6am, when your body clock is at its lowest.</li>
+            <li><span className="font-medium text-ink">Flight lines.</span> Every flight that day, in order: when it leaves and where it&rsquo;s going (<span className="font-mono">10:45 →ICN</span>). <span className="font-mono">DH</span> is a deadhead, <span className="font-mono">SBY</span> standby and where, and <span className="font-mono">↓ANC 07:41</span> a flight from the night before landing that morning. On a phone only the destinations fit &mdash; tap the day for the times. Every time is local (L).</li>
+            <li><span className="font-medium text-ink">Rpt 09:45 / home 23:41.</span> When the trip reports on its first day, and when you&rsquo;re back on its last.</li>
+            <li><span className="font-medium text-ink">Green code and hours.</span> Where you sleep that night and how long the layover is (<span className="font-mono">ICN 27h</span>). <span className="font-mono">KIX rest</span> is a whole day at the hotel, nothing flown.</li>
+            <li><span className="font-medium text-ink">Moon:</span> a flight departs or lands between midnight and 5am. <span className="font-medium text-ink">Sun:</span> the duty starts between 2 and 6am, when your body clock is at its lowest.</li>
             <li><span className="font-medium text-ink">Thin bar along the bottom.</span> The day&rsquo;s 24 hours &mdash; the solid trip color is flying, hatched is deadhead, violet is standby, green is hotel time, amber is report and ground time.</li>
             <li><span className="font-medium text-ink">Tap any day</span> for its duty start, last block-in, block time and landings, and every flight, aircraft, hotel and rest on it. The hour-by-hour chart for each trip is under &ldquo;Details&rdquo;.</li>
           </ul>
@@ -208,7 +264,9 @@ export function MonthLegend({ className = "" }: { className?: string }) {
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted ${className}`}>
       <LegendItem swatch="bg-calendar-accent/25 border-t-2 border-calendar-accent" label="Trip" />
-      <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px] font-semibold text-good">ANC</span>Layover night</span>
+      <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px] font-semibold">10:45 →ICN</span>Flight, local time</span>
+      <span className="inline-flex items-center gap-1"><span className="rounded-sm bg-ink/10 px-px font-mono text-[10px] font-semibold">DH</span>Deadhead</span>
+      <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px] font-semibold text-good">ICN 27h</span>Layover</span>
       <LegendItem swatch="bg-standby/25 border-t-2 border-standby" label="Hotel standby" />
       <LegendItem swatch="border border-dashed border-border-strong" label="Day off" />
       <span className="inline-flex items-center gap-1"><MoonIcon className="h-3 w-3 text-accent" />Red-eye</span>

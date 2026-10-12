@@ -263,7 +263,8 @@ export const LineCard = memo(function LineCard({
 
           {!lineScore.estimated && <TripNumberStrip trips={line.trips} />}
 
-          <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_25rem] lg:items-start">
+          {/* The month calendar takes the card's full width: each day lists its flights, and they need the room to read. */}
+          <div className="mt-3 grid gap-4">
             <div>
               <ul className="flex flex-wrap gap-1.5" aria-label="Key facts for this line">
                 {chips.map((chip, i) => (

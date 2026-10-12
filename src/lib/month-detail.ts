@@ -30,6 +30,21 @@ export interface StripSegment {
 
 export type DetailedDayKind = "off" | "trip" | "layover" | "standby" | "estimated";
 
+/**
+ * One line of a calendar day, as a pilot reads a day of flying: a flight (or deadhead) leaving that day — from, to,
+ * local departure and, if it lands the same day, arrival; standby, where and when; or a flight from the night before
+ * landing that morning.
+ */
+export interface DayFlight {
+  kind: "flying" | "deadhead" | "standby" | "lands";
+  from: string;
+  to: string;
+  /** Local "HH:MM" — departure (or the start of standby); absent for a landing carried from the night before. */
+  dep?: string;
+  /** Local "HH:MM" it lands (or standby ends) — absent when it runs on past midnight. */
+  arr?: string;
+}
+
 export interface DetailedDay {
   dayIndex: number;
   /** Day of the month ("28", "1") when real dates are known, else the bid-period day number. */
@@ -75,6 +90,10 @@ export interface DetailedDay {
   /** The evening before a trip that reports just after midnight: not a day off, but nothing flies on it. */
   preReportTime: string | null;
   segments: TimelineSegment[];
+  /** The day's flying, standby and landings, in order — what the calendar cell lists. */
+  flights: DayFlight[];
+  /** A whole day at a layover hotel, nothing flown: the city. */
+  restCity: string | null;
   /** A trip's tail on a day the grid gives to something else — usually a landing just after midnight on a day the bid pack counts as off. */
   spill: { tripNumber: string | null; segments: TimelineSegment[]; landsAt: string | null } | null;
   title: string;
@@ -135,6 +154,22 @@ function dutyStartSegment(segments: TimelineSegment[]): TimelineSegment | null {
       .filter((s) => (s.kind === "ground" || s.kind === "flying" || s.kind === "deadhead") && !s.continuesFromPreviousDay)
       .sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay)[0] ?? null
   );
+}
+
+/** The day's flights, standby and morning landings, in the order they happen. */
+export function dayFlights(segments: TimelineSegment[]): DayFlight[] {
+  return [...segments]
+    .sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay)
+    .flatMap((s): DayFlight[] => {
+      if (s.kind === "standby") {
+        if (s.continuesFromPreviousDay) return [];
+        const at = s.startAirport ?? "";
+        return [{ kind: "standby", from: at, to: at, dep: s.startClock, ...(s.continuesToNextDay ? {} : { arr: s.endClock }) }];
+      }
+      if ((s.kind !== "flying" && s.kind !== "deadhead") || !s.leg) return [];
+      if (s.continuesFromPreviousDay) return s.continuesToNextDay ? [] : [{ kind: "lands", from: s.leg.dep, to: s.leg.arr, arr: s.leg.arrClock }];
+      return [{ kind: s.kind, from: s.leg.dep, to: s.leg.arr, dep: s.leg.depClock, ...(s.continuesToNextDay ? {} : { arr: s.leg.arrClock }) }];
+    });
 }
 
 /** Minutes past midnight of an "HH:MM" clock. */
@@ -236,6 +271,8 @@ export function buildDetailedMonth(
         ...base,
         spill,
         kind: "off" as const,
+        flights: spill ? dayFlights(spill.segments) : [],
+        restCity: null,
         strip: spill ? spill.segments.map(toStripSegment) : [],
         dutyStart: null,
         dutyStartLocalDate: null,
@@ -263,6 +300,8 @@ export function buildDetailedMonth(
         ...base,
         spill,
         kind: "trip" as const,
+        flights: [],
+        restCity: null,
         strip: [],
         dutyStart: null,
         dutyStartLocalDate: null,
@@ -289,6 +328,8 @@ export function buildDetailedMonth(
         ...base,
         spill,
         kind: "estimated" as const,
+        flights: [],
+        restCity: null,
         strip: [],
         dutyStart: null,
         dutyStartLocalDate: null,
@@ -326,6 +367,13 @@ export function buildDetailedMonth(
       ...base,
       spill,
       kind: hasStandby && !flights.length ? ("standby" as const) : layoverCode ? ("layover" as const) : ("trip" as const),
+      // In the order they happen: the end of another trip that morning, then this day's own.
+      flights: dayFlights([...(spill?.segments ?? []), ...segs]),
+      // A day with nothing flown, spent at a layover hotel: the city (the hotel pickup for tonight's flight may fall on it).
+      restCity:
+        !segs.some((x) => x.kind === "flying" || x.kind === "deadhead" || x.kind === "standby") && segs.some((x) => x.kind === "layover")
+          ? ([...segs].filter((x) => x.kind === "layover").sort((a, b) => b.endMinuteOfDay - b.startMinuteOfDay - (a.endMinuteOfDay - a.startMinuteOfDay))[0].stay?.city ?? null)
+          : null,
       strip: [...segs, ...(spill?.segments ?? [])].map(toStripSegment),
       dutyStart,
       dutyStartLocalDate: startSeg?.startDate && day.date && startSeg.startDate !== day.date ? startSeg.startDate : null,
