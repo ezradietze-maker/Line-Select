@@ -3,14 +3,16 @@
 import { MotionConfig } from "motion/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FeedbackForm } from "@/components/feedback/FeedbackForm";
 import { LeftNav } from "@/components/nav/LeftNav";
-import { NAV_ITEMS } from "@/components/nav/nav-items";
+import { NAV_ITEMS, type NavTarget } from "@/components/nav/nav-items";
 import { PhoneNav } from "@/components/nav/PhoneNav";
 import { LogoMark } from "@/components/ui/Logo";
 import { HowItWorksContent } from "@/components/results/HowItWorks";
 import { Modal } from "@/components/ui/Modal";
+import { BackToTop } from "@/components/ui/BackToTop";
+import { CommandPalette } from "@/components/ui/CommandPalette";
 import { ScreenTransition, type NavDirection } from "@/components/ui/ScreenTransition";
 import { Spinner } from "@/components/ui/Spinner";
 import { ToastStack } from "@/components/ui/Toast";
@@ -56,6 +58,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
   } = useAppState();
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Tracks which route the transition direction was last computed against,
   // so a route change can derive its slide direction from ROUTE_ORDER before
@@ -70,19 +73,55 @@ function Chrome({ children }: { children: React.ReactNode }) {
     setRenderedPath(pathname);
   }
 
+  // The nav answers the tap at once: the tapped destination lights up while
+  // its screen loads, instead of the old one staying lit until the route
+  // commits (which read as the tap not registering). Tied to the path it was
+  // tapped from, so it lapses by itself once the route changes.
+  const [pendingNav, setPendingNav] = useState<{ target: NavTarget; from: string } | null>(null);
+  const pendingTarget = pendingNav && pendingNav.from === pathname ? pendingNav.target : null;
+
+  // Every destination's code and payload are fetched ahead, the way a <Link>
+  // would — the nav is buttons, so nothing prefetched them, and each first
+  // visit waited on the network before anything moved.
+  useEffect(() => {
+    for (const item of NAV_ITEMS) router.prefetch(`/${item.target}`);
+  }, [router]);
+
   const showSidebar = !HIDDEN_SIDEBAR_PATHS.includes(pathname);
+
+  // ⌘K / Ctrl+K anywhere in the app, or "/" when not typing, opens the palette.
+  useEffect(() => {
+    if (!showSidebar) return;
+    function onKey(e: KeyboardEvent) {
+      const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
+      if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey) && !e.altKey) {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      } else if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showSidebar]);
+
   const navProps = {
-    active: navTargetForPath(pathname),
+    active: pendingTarget ?? navTargetForPath(pathname),
     hasProfile: !!profile,
     hasBidPack: !!bidPack,
     user,
     inboxUnreadCount,
     pack: bidPack ? { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month } : null,
-    onNavigate: (target: string) => router.push(`/${target}`),
+    onNavigate: (target: NavTarget) => {
+      if (`/${target}` !== pathname) setPendingNav({ target, from: pathname });
+      router.push(`/${target}`);
+    },
     onSignIn: () => router.push("/auth"),
     onLogout: handleLogout,
     onOpenHowItWorks: () => setHowItWorksOpen(true),
     onOpenFeedback: () => setFeedbackOpen(true),
+    onOpenPalette: () => setPaletteOpen(true),
   };
 
   // The sign-in page has no app frame to sketch, so it shows the mark while
@@ -113,7 +152,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         )}
-        <main className="flex flex-1 items-start justify-center px-4 py-10 sm:py-16">
+        <main className="flex flex-1 items-start justify-center px-4 py-10 sm:py-14">
           <div className="w-full max-w-3xl space-y-4">
             <div className="flex items-center gap-2.5 text-sm text-ink-faint">
               <Spinner size="sm" />
@@ -143,7 +182,9 @@ function Chrome({ children }: { children: React.ReactNode }) {
 
       <div className="flex flex-1 flex-col pb-[var(--shell-bottom)] transition-[padding-left] duration-300 ease-[var(--ease-emphasized)] md:pl-[var(--shell-left)]">
         {/* The landing page is full-bleed — its hero and globe run edge to edge. */}
-        <main className={pathname === "/" ? "flex flex-1 flex-col" : "flex flex-1 flex-col justify-center px-4 py-10 sm:py-16"}>
+        {/* Screens sit at the top, not centered: centered, a short screen and a long one put the title at different
+            heights, and every move between them jumped. */}
+        <main className={pathname === "/" ? "flex flex-1 flex-col" : "flex flex-1 flex-col px-4 py-10 sm:py-14"}>
           {bidPackSaveFailed && (
             <div role="alert" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
               <span>
@@ -184,6 +225,20 @@ function Chrome({ children }: { children: React.ReactNode }) {
           <FeedbackForm page={pathname} onClose={() => setFeedbackOpen(false)} />
         </Modal>
       )}
+
+      {showSidebar && <BackToTop />}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        lines={bidPack?.lines ?? null}
+        hasProfile={!!profile}
+        hasBidPack={!!bidPack}
+        onNavigate={navProps.onNavigate}
+        onOpenLine={(lineNumber) => router.push(`/results?line=${encodeURIComponent(lineNumber)}`, { scroll: false })}
+        onOpenHowItWorks={() => setHowItWorksOpen(true)}
+        onOpenFeedback={() => setFeedbackOpen(true)}
+      />
 
       <ToastStack toasts={toasts} onDismiss={handleDismissToast} onClick={handleToastClick} />
     </div>

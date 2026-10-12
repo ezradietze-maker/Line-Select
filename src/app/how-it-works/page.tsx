@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 
 export default function HowItWorksPage() {
   return (
-    <div className="mx-auto w-full max-w-2xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <PageHeader
         eyebrow="Line Select"
         title="How this works"

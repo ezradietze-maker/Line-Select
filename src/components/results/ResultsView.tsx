@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -33,7 +33,7 @@ import { ScoreRing } from "@/components/results/ScoreRing";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { cachedFlightAnswers, lookUpFlights } from "@/lib/flights/client";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
-import { fetchAllHotelQualityData } from "@/lib/hotel-client";
+import { fetchAllHotelQualityData, settledHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { useBidForecast } from "@/lib/forecast/use-bid-forecast";
 import { loadPreviousPeriodSnapshot, saveBidPeriodSnapshot, summarizeBidPeriodChange } from "@/lib/bid-period-history";
@@ -149,6 +149,9 @@ interface ResultsViewProps {
   userId: string | null;
   /** Arrived from a Hotel Ratings card — start with the list narrowed to lines that stay at this hotel. */
   initialHotelFilter?: HotelFilter | null;
+  /** A line number to bring into view and light up (from the ⌘K palette) — handed back through `onFocusHandled` once done. */
+  focusLine?: string | null;
+  onFocusHandled?: () => void;
 }
 
 export function ResultsView({
@@ -160,10 +163,12 @@ export function ResultsView({
   onUpdateProfile,
   userId,
   initialHotelFilter = null,
+  focusLine = null,
+  onFocusHandled,
 }: ResultsViewProps) {
   const [confirmingStartOver, setConfirmingStartOver] = useState(false);
-  const [hotelQualityData, setHotelQualityData] = useState<HotelQualityData>({});
-  const [hotelDone, setHotelDone] = useState(false);
+  const [hotelQualityData, setHotelQualityData] = useState<HotelQualityData>(() => settledHotelQualityData(bidPack) ?? {});
+  const [hotelDone, setHotelDone] = useState(() => !!settledHotelQualityData(bidPack));
   const [hotelTimedOut, setHotelTimedOut] = useState(false);
   const [learnMessage, setLearnMessage] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -200,9 +205,16 @@ export function ResultsView({
 
   useEffect(() => {
     if (!caresAboutHotel) return;
+    // Already looked up this visit: the state started from it.
+    const known = settledHotelQualityData(bidPack);
+    if (known) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHotelQualityData(known);
+      setHotelDone(true);
+      return;
+    }
     let cancelled = false;
-    // Deliberately reset here: a different pack (or a returning visit) must wait for its own hotel data, not inherit "done" from the last one.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Deliberately reset here: a different pack must wait for its own hotel data, not inherit "done" from the last one.
     setHotelDone(false);
     setHotelTimedOut(false);
     fetchAllHotelQualityData(bidPack).then((data) => {
@@ -381,6 +393,46 @@ export function ResultsView({
   // The cards themselves mount a few at a time, so the top of the list paints fast on a phone; `displayed` stays the page's real contents for counts and paging.
   const mountedCount = useProgressiveCount(displayed.length);
 
+  // A line asked for by number: make sure it's listed (clearing whatever filter or view hides it, and paging far enough
+  // down), wait for its card to mount, then scroll to it and light it up.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  // The ask already answered, while the address catches up — so more cards mounting doesn't scroll back to it.
+  const focusDone = useRef<string | null>(null);
+  const focusTarget = focusLine && hotelsSettled ? ranked.find((r) => r.line.lineNumber === focusLine) ?? null : null;
+  const focusIndex = focusTarget ? sorted.indexOf(focusTarget) : -1;
+  useEffect(() => {
+    if (!focusLine) focusDone.current = null;
+    if (!focusLine || !hotelsSettled || focusDone.current === focusLine) return;
+    if (!focusTarget) {
+      onFocusHandled?.();
+      return;
+    }
+    if (focusIndex === -1) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFilters(EMPTY_FILTERS);
+      setSearch("");
+      setHotelFilter(null);
+      setView("all");
+      if (hiddenSet.has(focusTarget.line.id)) setShowHidden(true);
+      return;
+    }
+    if (focusIndex >= shown) {
+      setPageState({ key: listKey, shown: focusIndex + 1 });
+      return;
+    }
+    const el = document.getElementById(`line-${focusTarget.line.id}`);
+    if (!el) return; // still mounting — runs again as more cards mount
+    el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    setFlashId(focusTarget.line.id);
+    focusDone.current = focusLine;
+    onFocusHandled?.();
+  }, [focusLine, hotelsSettled, focusTarget, focusIndex, shown, listKey, mountedCount, hiddenSet, reduceMotion, onFocusHandled]);
+  useEffect(() => {
+    if (!flashId) return;
+    const timer = setTimeout(() => setFlashId(null), 2400);
+    return () => clearTimeout(timer);
+  }, [flashId]);
+
   // Exports follow the pilot's own ranking (best match), among lines they haven't hidden — a sort-by-days-off view is for looking, not for what to bid.
   const exportable = useMemo(() => matching.filter((r) => !hiddenSet.has(r.line.id)), [matching, hiddenSet]);
   const bidOrderEntries = useMemo<BidOrderEntry[]>(
@@ -507,7 +559,7 @@ export function ResultsView({
           : "No lines match the current filters. Try clearing one or two.";
 
   return (
-    <div className="mx-auto w-full max-w-3xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <div className="flex items-start justify-between gap-3 sm:items-end">
         <div className="min-w-0">
           <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">
@@ -644,7 +696,7 @@ export function ResultsView({
                 inputMode="numeric"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Find a line number"
+                placeholder="Line #"
                 aria-label="Find a line by number"
                 className="w-full rounded-md border border-hairline bg-canvas/50 px-3 py-2 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-faint focus:border-accent focus:outline-none"
               />
@@ -759,6 +811,8 @@ export function ResultsView({
                 displayed.slice(0, mountedCount).map((lineScore, index) => (
                   <motion.div
                     key={lineScore.line.id}
+                    id={`line-${lineScore.line.id}`}
+                    className={`scroll-mt-20 md:scroll-mt-6 ${flashId === lineScore.line.id ? "line-flash" : ""}`}
                     layout={dragEnabled ? "position" : false}
                     initial={reduceMotion ? false : { opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}

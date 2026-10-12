@@ -5,6 +5,7 @@ import { AccountMenu } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { FeedbackIcon, InfoIcon, type NavProps } from "@/components/nav/LeftNav";
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
+import { SearchIcon } from "@/components/ui/icons";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
 
 /** The four destinations a pilot reaches for every month get a tab of their own; the crew tools share "More". */
@@ -49,6 +50,7 @@ export function PhoneNav({
   onLogout,
   onOpenHowItWorks,
   onOpenFeedback,
+  onOpenPalette,
 }: NavProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -91,6 +93,14 @@ export function PhoneNav({
               {pack.base} &middot; <span className="text-accent">{pack.month}</span>
             </span>
           )}
+          <button
+            type="button"
+            onClick={onOpenPalette}
+            aria-label="Jump to a line or screen"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-hairline text-ink-muted transition-colors active:text-ink"
+          >
+            <SearchIcon className="h-[17px] w-[17px]" />
+          </button>
           <AppearanceMenu />
         </div>
       </header>

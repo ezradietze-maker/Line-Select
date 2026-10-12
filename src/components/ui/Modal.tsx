@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Heading } from "@/components/ui/Heading";
 
 interface ModalProps {
@@ -38,7 +39,9 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
     };
   }, []);
 
-  return (
+  // Rendered at the end of <body>, not where it's used: a screen is its own layer (its entrance animation makes one),
+  // and a dialog drawn inside it sat under the phone's top bar and tab bar however high its z-index.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 px-4 py-10 backdrop-blur-[2px] sm:items-center">
       <button
         type="button"
@@ -70,6 +73,7 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
         </div>
         <div className="max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -34,7 +34,17 @@ export function fetchHotel(code: string, hotelName: string): Promise<HotelLookup
  * — `"<city>|<hotel name>"`, matching `layoverDetails` verbatim rather than
  * a case-normalized form, so a lookup there can't silently miss.
  */
+// The finished set per pack, so coming back to the rankings later in the visit starts from it — no wait, no skeleton.
+const settled = new WeakMap<BidPack, HotelQualityData>();
+
+/** This pack's hotel data if it was already looked up during this visit. */
+export function settledHotelQualityData(bidPack: BidPack): HotelQualityData | undefined {
+  return settled.get(bidPack);
+}
+
 export async function fetchAllHotelQualityData(bidPack: BidPack): Promise<HotelQualityData> {
+  const done = settled.get(bidPack);
+  if (done) return done;
   const pairs = new Map<string, { code: string; hotelName: string }>();
   for (const line of bidPack.lines) {
     for (const trip of line.trips) {
@@ -61,5 +71,6 @@ export async function fetchAllHotelQualityData(bidPack: BidPack): Promise<HotelQ
       data[key] = { amenities: hotel.amenities, reviewSummary: hotel.reviewSummary, rating: hotel.rating };
     }
   }
+  settled.set(bidPack, data);
   return data;
 }

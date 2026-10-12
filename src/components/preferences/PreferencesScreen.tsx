@@ -174,7 +174,7 @@ export function PreferencesScreen({
   const sentiments: Record<string, CitySentiment | null> = Object.fromEntries(cityCodes.map((c) => [c, sentimentOf(c)]));
 
   return (
-    <div className="mx-auto w-full max-w-2xl animate-fade-in pb-24">
+    <div className="mx-auto w-full max-w-3xl pb-24">
       <div className="flex flex-col gap-4">
         <div>
           {bidPack && <div className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-accent">{packEyebrow(bidPack)}</div>}
@@ -392,8 +392,8 @@ export function PreferencesScreen({
       )}
 
       {dirty && (
-        <div className="animate-toast-in fixed inset-x-0 bottom-[var(--shell-bottom,0px)] z-20 border-t border-accent/30 bg-panel px-4 py-3 shadow-elevated-lg md:left-[var(--shell-left,15rem)]">
-          <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
+        <div data-bottom-bar className="animate-toast-in fixed inset-x-0 bottom-[var(--shell-bottom,0px)] z-20 border-t border-accent/30 bg-panel px-4 py-3 shadow-elevated-lg md:left-[var(--shell-left,15rem)]">
+          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
             <span className="flex items-center gap-2 text-sm text-ink-muted">
               <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent shadow-[0_0_8px_var(--color-accent)]" aria-hidden />
               You have unsaved changes.

@@ -20,7 +20,7 @@ export default function PricingPage() {
   const { user, bidPack, handleTrySample } = useAppState();
 
   return (
-    <div className="mx-auto w-full max-w-2xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <Heading as="h1" className="text-2xl text-ink sm:text-3xl">
         Pricing
       </Heading>

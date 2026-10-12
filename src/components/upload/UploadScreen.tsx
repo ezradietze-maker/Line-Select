@@ -108,7 +108,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Step 1 &middot; Load</div>
       <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">
         Load your bid pack
@@ -250,7 +250,7 @@ function AlreadyUploaded({
   const period = formatPeriod(bidPack.bidPeriodStart, bidPack.bidPeriodDays);
 
   return (
-    <div className="mx-auto w-full max-w-2xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Flight plan loaded</div>
       <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">
         Your bid pack

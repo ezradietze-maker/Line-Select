@@ -67,7 +67,7 @@ export function EmptyState({
   }
 
   return (
-    <div className={`mx-auto w-full max-w-md animate-fade-in text-center ${className}`}>
+    <div className={`mx-auto w-full max-w-md text-center ${className}`}>
       <div className="mb-5 flex justify-center text-ink-faint">{icon ?? <ScopeIcon className="h-16 w-16" />}</div>
       {title && <Heading as="h1" className="text-2xl text-ink sm:text-3xl">{title}</Heading>}
       <p className={`text-sm leading-relaxed text-ink-muted ${title ? "mt-2" : ""}`}>{description}</p>

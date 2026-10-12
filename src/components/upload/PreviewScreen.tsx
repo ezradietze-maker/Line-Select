@@ -32,7 +32,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
 
   if (result.errors.length > 0) {
     return (
-      <div className="mx-auto w-full max-w-xl animate-fade-in">
+      <div className="mx-auto w-full max-w-3xl">
         <Heading as="h1" className="text-2xl text-ink sm:text-3xl">
           We couldn&rsquo;t read this bid pack
         </Heading>
@@ -62,7 +62,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
   ).length;
 
   return (
-    <div className="mx-auto w-full max-w-2xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Step 1 &middot; Confirm</div>
       <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">Does this look right?</Heading>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">

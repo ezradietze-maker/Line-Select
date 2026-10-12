@@ -245,7 +245,8 @@ export function ResultsFilterBar({
 
           {availableCities.length > 0 && (
             <FilterRow label="Layover city">
-              <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
+              {/* Every city on show: a scroll box inside the panel cut a row of chips in half. */}
+              <div className="flex flex-wrap gap-1.5">
                 {availableCities.map((city) => (
                   <Chip key={city} active={filters.cities.has(city)} onClick={() => toggleCity(city)}>
                     {city}

@@ -639,9 +639,10 @@ body {
   opacity: 0;
 }
 
+/* Quick enough that a pilot scrolling past never sees an empty month: the whole grid is in place in about half a second. */
 .cal-grid.is-revealed > * {
-  animation: cell-in 0.42s var(--ease-emphasized) both;
-  animation-delay: calc(var(--i, 0) * 14ms);
+  animation: cell-in 0.3s var(--ease-emphasized) both;
+  animation-delay: calc(var(--i, 0) * 6ms);
 }
 
 /* A score breakdown bar filling to its value as it appears. */
@@ -673,8 +674,13 @@ body {
   .animate-hero-in,
   .animate-slide-in-left,
   .animate-sheet-up,
+  .animate-palette-in,
+  .line-flash,
   .skeleton-pulse {
     animation: none;
+  }
+  .nav-progress {
+    display: none;
   }
   .line-slider::-webkit-slider-thumb,
   .line-slider::-moz-range-thumb {
@@ -844,43 +850,120 @@ body {
   animation: sheet-up 0.32s var(--ease-emphasized) backwards;
 }
 
+/* ---------- Command palette, route progress, line flash ---------- */
+
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+}
+.animate-palette-in {
+  animation: palette-in 0.18s var(--ease-emphasized) backwards;
+}
+
+/*
+ * The thin bar along the top while a tapped screen loads: it creeps toward
+ * the end and never quite arrives, so a slow network still shows something
+ * happening — and it's only shown at all after a short beat, so a screen
+ * that's already prefetched never flickers it.
+ */
+@keyframes nav-progress {
+  0% {
+    transform: scaleX(0);
+  }
+  40% {
+    transform: scaleX(0.55);
+  }
+  100% {
+    transform: scaleX(0.9);
+  }
+}
+@keyframes nav-progress-show {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.nav-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 70;
+  height: 2px;
+  pointer-events: none;
+  transform-origin: left;
+  background: var(--color-accent);
+  box-shadow: 0 0 8px var(--color-accent);
+  animation:
+    nav-progress-show 0.15s 0.12s both,
+    nav-progress 2.4s cubic-bezier(0.1, 0.7, 0.2, 1) 0.12s both;
+}
+
+/* Clear of a screen's own bar along the bottom (Preferences' "unsaved changes"). */
+body:has([data-bottom-bar]) .back-to-top {
+  bottom: calc(var(--shell-bottom) + 5.5rem);
+}
+
+/* The line a pilot jumped to: a ring that glows, then fades, so the eye lands on it after the scroll. */
+@keyframes line-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 2px var(--color-accent), 0 0 24px -4px var(--color-accent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent, 0 0 24px -4px transparent;
+  }
+}
+.line-flash {
+  border-radius: 0.875rem;
+  animation: line-flash 2.2s var(--ease-standard) both;
+}
+
 /* ---------- Route transitions (ScreenTransition) ---------- */
 
 /*
- * The panel slide. The outgoing screen leaves quickly and slightly blurred;
- * the incoming one arrives a beat later from the direction of travel. The
- * direction comes from <html data-nav-dir>: sideways along the onboarding
- * spine, vertically between sidebar destinations on a desktop (the rail is
- * a vertical stack of panels) and sideways on a phone (its tab bar is a row).
+ * The panel slide. The outgoing screen clears out first — quickly, a short
+ * step toward where it's going — and only then does the incoming one arrive
+ * from the direction of travel, so the two are never on screen together
+ * (overlapping, two half-faded pages read as a glitch, not a transition).
+ * The direction comes from <html data-nav-dir>: sideways along the
+ * onboarding spine, vertically between sidebar destinations on a desktop
+ * (the rail is a vertical stack of panels) and sideways on a phone (its tab
+ * bar is a row). No blur: on a full-page snapshot it costs frames and
+ * smears text.
  */
 :root {
-  --vt-in: 0 10px;
-  --vt-out: 0 -6px;
+  --vt-in: 0 8px;
+  --vt-out: 0 -4px;
+  --vt-out-ms: 110ms;
+  --vt-in-ms: 260ms;
 }
 :root[data-nav-dir="forward"] {
-  --vt-in: 56px 0;
-  --vt-out: -40px 0;
+  --vt-in: 28px 0;
+  --vt-out: -16px 0;
 }
 :root[data-nav-dir="back"] {
-  --vt-in: -56px 0;
-  --vt-out: 40px 0;
+  --vt-in: -28px 0;
+  --vt-out: 16px 0;
 }
 :root[data-nav-dir="down"] {
-  --vt-in: 0 44px;
-  --vt-out: 0 -30px;
+  --vt-in: 0 22px;
+  --vt-out: 0 -12px;
 }
 :root[data-nav-dir="up"] {
-  --vt-in: 0 -44px;
-  --vt-out: 0 30px;
+  --vt-in: 0 -22px;
+  --vt-out: 0 12px;
 }
 @media (max-width: 47.99rem) {
   :root[data-nav-dir="down"] {
-    --vt-in: 56px 0;
-    --vt-out: -40px 0;
+    --vt-in: 28px 0;
+    --vt-out: -16px 0;
   }
   :root[data-nav-dir="up"] {
-    --vt-in: -56px 0;
-    --vt-out: 40px 0;
+    --vt-in: -28px 0;
+    --vt-out: 16px 0;
   }
 }
 
@@ -888,21 +971,32 @@ body {
   to {
     opacity: 0;
     translate: var(--vt-out);
-    filter: blur(2px);
   }
 }
 @keyframes vt-panel-in {
   from {
     opacity: 0;
     translate: var(--vt-in);
-    filter: blur(3px);
   }
 }
 ::view-transition-old(.panel) {
-  animation: vt-panel-out 170ms var(--ease-standard) both;
+  animation: vt-panel-out var(--vt-out-ms) var(--ease-standard) both;
 }
 ::view-transition-new(.panel) {
-  animation: vt-panel-in 380ms var(--ease-emphasized) 70ms both;
+  animation: vt-panel-in var(--vt-in-ms) var(--ease-emphasized) var(--vt-out-ms) both;
+}
+
+/*
+ * Everything outside the panel (the page background, the footer) swaps at
+ * once rather than cross-fading: a fading copy of the old footer drifting
+ * over the new screen was half of the "two pages at once" look.
+ */
+::view-transition-old(root) {
+  animation: none;
+  display: none;
+}
+::view-transition-new(root) {
+  animation: none;
 }
 
 /* The navigation is the fixed reference point: it never slides, and the panels slide underneath it. */

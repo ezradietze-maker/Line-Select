@@ -45,7 +45,7 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-md animate-fade-in">
+    <div className="mx-auto w-full max-w-md">
       <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
         <h1 className="text-lg font-semibold text-ink">Choose a new password</h1>
         {!token ? (

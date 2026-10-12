@@ -160,7 +160,7 @@ function HotelRatingsList({
   const visible = sorted.slice(0, shown);
 
   return (
-    <div className="mx-auto w-full max-w-3xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Hotel Ratings"

@@ -479,7 +479,8 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   // .cal-grid in globals.css) — not before, so a long list doesn't spend its
   // animation on cards nobody has reached yet.
   const gridRef = useRef<HTMLDivElement>(null);
-  const revealed = useInView(gridRef, { once: true, margin: "0px 0px -8% 0px" });
+  // Starts just before it scrolls on screen, so the build is under way by the time it's seen.
+  const revealed = useInView(gridRef, { once: true, margin: "0px 0px 10% 0px" });
 
   if (line.trips.length === 0) return null;
   const selectedDay = selected !== null ? month.days[selected] : null;

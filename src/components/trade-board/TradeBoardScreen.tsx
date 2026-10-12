@@ -145,7 +145,7 @@ export function TradeBoardScreen({
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Trade Board"

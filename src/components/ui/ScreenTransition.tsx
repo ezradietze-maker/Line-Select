@@ -1,6 +1,6 @@
 "use client";
 
-import { ViewTransition, useLayoutEffect, type ReactNode } from "react";
+import { ViewTransition, useLayoutEffect, useState, type ReactNode } from "react";
 
 /**
  * Which way the panels move on a route change:
@@ -37,13 +37,19 @@ interface ScreenTransitionProps {
  * props are from its last render, so they can't carry the new direction.
  */
 export function ScreenTransition({ screenKey, direction, children }: ScreenTransitionProps) {
+  // The first screen after a load has no transition to bring it in, so it fades in on its own; every later one
+  // arrives through the view transition only (fading it as well made a double fade).
+  const [firstKey] = useState(screenKey);
+  const [moved, setMoved] = useState(false);
+  if (!moved && screenKey !== firstKey) setMoved(true);
+
   useLayoutEffect(() => {
     document.documentElement.dataset.navDir = direction;
   }, [screenKey, direction]);
 
   return (
     <ViewTransition key={screenKey} enter="panel" exit="panel" default="none">
-      <div>{children}</div>
+      <div className={moved ? undefined : "animate-fade-in"}>{children}</div>
     </ViewTransition>
   );
 }

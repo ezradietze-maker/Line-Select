@@ -25,6 +25,7 @@ const URGENCY_TEXT: Record<Urgency, string> = {
 function Tile({
   id,
   label,
+  shortLabel,
   value,
   hint,
   valueClass = "text-readout",
@@ -34,6 +35,8 @@ function Tile({
 }: {
   id: TileId;
   label: string;
+  /** What a phone's narrow tile says instead. */
+  shortLabel?: string;
   value: ReactNode;
   hint: ReactNode;
   valueClass?: string;
@@ -47,16 +50,25 @@ function Tile({
       onClick={onToggle}
       aria-expanded={open}
       aria-controls={`status-drawer-${id}`}
-      className={`group min-w-0 rounded-xl border px-3.5 py-3 text-left transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] ${
+      className={`group min-w-0 rounded-xl border px-2.5 py-2.5 text-left sm:px-3.5 sm:py-3 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] ${
         open ? "border-accent/60 bg-accent-soft/50" : "border-hairline bg-canvas/40 hover:border-border-strong hover:bg-canvas/70"
       }`}
     >
-      <div className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
-        <span className="truncate">{label}</span>
+      <div className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-faint sm:tracking-[0.16em]">
+        <span className="truncate">
+          {shortLabel ? (
+            <>
+              <span className="sm:hidden">{shortLabel}</span>
+              <span className="hidden sm:inline">{label}</span>
+            </>
+          ) : (
+            label
+          )}
+        </span>
         {pulse && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-danger shadow-[0_0_6px_var(--color-danger)]" aria-hidden />}
       </div>
-      <div className={`mt-1 truncate font-mono text-xl font-semibold tabular-nums ${valueClass}`}>{value}</div>
-      <div className="mt-0.5 truncate text-xs text-ink-muted group-hover:text-ink">{hint}</div>
+      <div className={`mt-1 truncate font-mono text-lg font-semibold sm:text-xl tabular-nums ${valueClass}`}>{value}</div>
+      <div className="mt-0.5 line-clamp-2 text-xs text-ink-muted group-hover:text-ink sm:line-clamp-none sm:truncate">{hint}</div>
     </button>
   );
 }
@@ -110,34 +122,36 @@ export function ResultsStatusPanel({
 
   return (
     <section aria-label="Bid status" className="panel-glass mt-5 p-3 sm:p-4">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
-        {deadline.loaded && (
-          <Tile
-            id="deadline"
-            label="Bid closes"
-            open={open === "deadline"}
-            onToggle={() => toggle("deadline")}
-            valueClass={urgency ? URGENCY_TEXT[urgency] : "text-ink-faint"}
-            pulse={urgency === "imminent"}
-            value={
-              time ? (
-                <>
-                  {time.main}
-                  {time.seconds && <span className="text-[0.75em] opacity-70">:{time.seconds}</span>}
-                </>
-              ) : urgency === "closed" ? (
-                "Closed"
-              ) : (
-                "—"
-              )
-            }
-            hint={deadline.deadline ? (urgency === "closed" ? "Set a new one" : "Change") : "Set a live countdown"}
-          />
-        )}
+      {/* Tiles share each row evenly — three across even on a phone — and the deadline's is there from the first frame
+          (it reads its saved time a moment later): popping in after the screen arrived shoved everything below it. */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
+        <Tile
+          id="deadline"
+          label="Bid closes"
+          shortLabel="Closes"
+          open={open === "deadline"}
+          onToggle={() => toggle("deadline")}
+          valueClass={urgency ? URGENCY_TEXT[urgency] : "text-ink-faint"}
+          pulse={urgency === "imminent"}
+          value={
+            time ? (
+              <>
+                {time.main}
+                {time.seconds && <span className="text-[0.75em] opacity-70">:{time.seconds}</span>}
+              </>
+            ) : urgency === "closed" ? (
+              "Closed"
+            ) : (
+              "—"
+            )
+          }
+          hint={!deadline.loaded ? "\u00a0" : deadline.deadline ? (urgency === "closed" ? "Set a new one" : "Change") : "Set a live countdown"}
+        />
         {f.hasList && (
           <Tile
             id="chances"
             label="Your chances"
+            shortLabel="Chances"
             open={open === "chances"}
             onToggle={() => toggle("chances")}
             value={!profile.seniorityNumber ? "—" : f.forecast ? f.realisticCount : f.failed ? "—" : "…"}
@@ -148,6 +162,7 @@ export function ResultsStatusPanel({
         <Tile
           id="profile"
           label="Your profile"
+          shortLabel="Profile"
           open={open === "profile"}
           onToggle={() => toggle("profile")}
           value={depth}

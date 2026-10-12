@@ -7,7 +7,7 @@ interface ComingSoonProps {
 
 export function ComingSoon({ icon, title, description, children }: ComingSoonProps) {
   return (
-    <div className="mx-auto w-full max-w-lg animate-fade-in text-center">
+    <div className="mx-auto w-full max-w-lg text-center">
       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-soft text-brand">
         {icon}
       </div>

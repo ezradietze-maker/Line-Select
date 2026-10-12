@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState, type ComponentType, type ReactNode }
 import { AccountMenu } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
-import { ChevronLeftIcon } from "@/components/ui/icons";
+import { ChevronLeftIcon, SearchIcon } from "@/components/ui/icons";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
 import { setRailCollapsed, useRailCollapsed } from "@/lib/rail";
 import type { UserAccount } from "@/types/auth";
@@ -32,6 +32,7 @@ export interface NavProps {
   onLogout: () => void;
   onOpenHowItWorks: () => void;
   onOpenFeedback: () => void;
+  onOpenPalette: () => void;
 }
 
 /** The name a collapsed rail shows beside an icon on hover — the label itself is still there for screen readers. */
@@ -186,6 +187,7 @@ export function LeftNav({
   onLogout,
   onOpenHowItWorks,
   onOpenFeedback,
+  onOpenPalette,
 }: NavProps) {
   const collapsed = useRailCollapsed();
 
@@ -225,6 +227,20 @@ export function LeftNav({
           </div>
         </div>
       )}
+
+      <div className="px-3 pt-3">
+        <button
+          type="button"
+          onClick={onOpenPalette}
+          aria-keyshortcuts="Meta+K Control+K"
+          className={`${ROW} border border-hairline bg-canvas/30 !py-2 font-medium text-ink-faint hover:border-border-strong hover:text-ink-muted rail-collapsed:border-transparent rail-collapsed:bg-transparent`}
+        >
+          <RowIcon icon={SearchIcon} active={false} />
+          <span className="flex-1 rail-collapsed:sr-only">Jump to line…</span>
+          <kbd className="rounded border border-hairline px-1.5 font-mono text-[10px] text-ink-faint rail-collapsed:hidden">⌘K</kbd>
+          <RailTip>Jump to line (⌘K)</RailTip>
+        </button>
+      </div>
 
       <nav aria-label="Destinations" className="flex-1 px-3 pt-3">
         <NavList active={active} hasProfile={hasProfile} hasBidPack={hasBidPack} inboxUnreadCount={inboxUnreadCount} onGo={onNavigate} />

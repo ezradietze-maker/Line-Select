@@ -278,3 +278,20 @@ export function BedIcon({ className = base }: IconProps) {
     </svg>
   );
 }
+
+export function SearchIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="11" cy="11" r="7" />
+      <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
+    </svg>
+  );
+}
+
+export function ArrowUpIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" />
+    </svg>
+  );
+}

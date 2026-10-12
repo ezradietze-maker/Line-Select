@@ -48,7 +48,7 @@ export function InboxScreen({ bidPack, user, onGoToTradeBoard }: InboxScreenProp
   const { needsResponse, directInterest, accepted } = computeInboxSections(visibleOffers, user?.id);
 
   return (
-    <div className="mx-auto w-full max-w-3xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Inbox"

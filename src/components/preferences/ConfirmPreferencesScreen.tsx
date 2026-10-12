@@ -79,7 +79,7 @@ export function ConfirmPreferencesScreen({
   );
 
   return (
-    <div className="mx-auto w-full max-w-2xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Here&rsquo;s what we heard</span>
         {profile.isCommuter !== null && (

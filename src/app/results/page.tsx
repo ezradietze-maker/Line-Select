@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect } from "react";
+import { Suspense, useCallback, useEffect } from "react";
 import { PreferencesScreen } from "@/components/preferences/PreferencesScreen";
 import { ResultsView } from "@/components/results/ResultsView";
 import { useAppState } from "@/lib/app-state";
@@ -23,6 +23,14 @@ function ResultsPageContent() {
     useAppState();
   const showingResults = !!(profile && bidPack);
 
+  // Once the asked-for line is in view, drop it from the address — asking for the same line again then still works.
+  const clearFocusLine = useCallback(() => {
+    const rest = new URLSearchParams(window.location.search);
+    rest.delete("line");
+    const query = rest.toString();
+    router.replace(query ? `/results?${query}` : "/results", { scroll: false });
+  }, [router]);
+
   useEffect(() => {
     // Looking at rankings is the answer to "same preferences as last month?" — clear the prompt so it doesn't linger on Preferences.
     if (showingResults) handleAcknowledgeFreshBidPack();
@@ -39,6 +47,8 @@ function ResultsPageContent() {
         onUpdateProfile={handleUpdateProfile}
         userId={user?.id ?? null}
         initialHotelFilter={parseHotelFilter(searchParams)}
+        focusLine={searchParams.get("line")}
+        onFocusHandled={clearFocusLine}
       />
     );
   }

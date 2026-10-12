@@ -1,3 +1,4 @@
+import { lineStandbyDays } from "@/lib/standby";
 import type { AwardHistorySummary } from "@/lib/award-history";
 import { PHRASES } from "@/lib/preference-summary";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
@@ -267,7 +268,10 @@ export function generateStrategies(
       const block = p.realFlyingHours ?? 0;
       return toRecommendation(
         p,
-        `${hours(p.line.totalCreditHours)} credit hours from just ${hours(block)} hours of real flying`,
+        // A line that's all hotel standby flies nothing at all — say what it is rather than "just 0.0 hours of flying".
+        block === 0 && lineStandbyDays(p.line) > 0
+          ? `${hours(p.line.totalCreditHours)} credit hours, all of it hotel standby — no flying`
+          : `${hours(p.line.totalCreditHours)} credit hours from just ${hours(block)} hours of real flying`,
         `Away ${hours(p.line.totalTafbHours / 24)} days total, credited at ~${hours(
           p.dayRigHoursPerDay ?? 0
         )} hrs/day — most of that time is standby or deadhead, not stick time.`,

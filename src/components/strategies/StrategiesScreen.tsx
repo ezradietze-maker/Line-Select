@@ -158,10 +158,10 @@ function SeniorityForm({
     totalNum >= rankNum;
 
   return (
-    <div className="mx-auto w-full max-w-md animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <div className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-accent">{packEyebrow(bidPack)}</div>
       <Heading as="h1" className="mt-1.5 text-3xl tracking-tight text-ink sm:text-4xl">Where do you rank?</Heading>
-      <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-muted">
         Every strategy below is built from the real lines in your {bidPack.base} {bidPack.aircraft}{" "}
         {bidPack.seat} pack. Your seniority number just tells Line Select which of those moves are
         realistic for you versus a reach — nothing here reads your name or employee number, and
@@ -169,7 +169,7 @@ function SeniorityForm({
       </p>
 
       <form
-        className="panel-glass mt-6 space-y-4 p-5"
+        className="panel-glass mt-6 max-w-md space-y-4 p-5"
         onSubmit={(e) => {
           e.preventDefault();
           if (valid) onSave({ rank: rankNum, totalPilots: totalNum });
@@ -316,7 +316,7 @@ function StrategyResults({
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl animate-fade-in">
+    <div className="mx-auto w-full max-w-3xl">
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Your strategies"
