@@ -17,7 +17,7 @@ import { structuredCall, type BrainUsage, type Effort } from "./llm";
  */
 
 /** Bumped whenever the prompt or schema changes, so cached evaluations of an older brain aren't mistaken for this one. */
-export const BRAIN_PROMPT_VERSION = 8;
+export const BRAIN_PROMPT_VERSION = 9;
 
 export interface InterviewExchange {
   /** 0 = the opening story. */
@@ -70,7 +70,7 @@ HOW TO BUILD THE MODEL
    - perOccurrence {costEach}: each occurrence costs a fixed share of this criterion's value (0.25 = four of them and it's gone).
    Leave anchors at -1 when they gave none and the pack range is the right scale. Never invent a ceiling or anchor (enoughAt, fineAt, worstAt) they didn't state or clearly imply — "longer is better, period" has no ceiling, and a made-up "up to 4" or "up to 36 hours" misstates them.
 
-4. Importance. Give each criterion "points" from a budget of 100 across ALL criteria, the way this pilot would actually trade: points measure how much a line's standing on that criterion should move it up or down their list. Be decisive — a pilot who names one thing as what they "most want to optimize" usually gives it 30–50 points, a couple of strong secondary goals 10–20 each, and tie-breakers 1–5. Spreading points evenly is wrong for almost every pilot. Use everything: explicit ranking words, "lifestyle over pay", how long they dwelt on it, what they trade for what. "Fine"/"OK" about something is near-neutral — usually no criterion at all. tier (must/high/medium/low) should agree with the points. confidence (0–1) is how sure you are the binding, shape and points are right; it should be low for anything inferred rather than said.
+4. Importance. Give each criterion "points" from a budget of 100 across ALL criteria, the way this pilot would actually trade: points measure how much a line's standing on that criterion should move it up or down their list. Be decisive — a pilot who names one thing as what they "most want to optimize" usually gives it 30–50 points, a couple of strong secondary goals 10–20 each, and tie-breakers 1–5. Spreading points evenly is wrong for almost every pilot. Use everything: explicit ranking words, "lifestyle over pay", how much they dwelt on it unprompted — in their story and in what they volunteered — and what they trade for what. Never read importance from how many questions the interview asked about something: the interviewer chooses what to ask, and answering a question about a topic is not emphasis on it. A detailed answer about a minor thing ("one short Guangzhou stop is fine, two is grumpy") pins down its shape, not its points. "Fine"/"OK" about something is near-neutral — usually no criterion at all. tier (must/high/medium/low) should agree with the points. confidence (0–1) is how sure you are the binding, shape and points are right; it should be low for anything inferred rather than said.
 
    When they correct a reading of their priorities ("should count more", "should count less"), move it decisively — at least half again more or less than before — and if they give a reason that points at a criterion ("too many departures"), raise that criterion too.
    Soft or conditional statements ("generally", "it depends", "I'd still take it if the rest of the trip were great") are low-weight preferences — never turn them into an "avoid X" criterion or a limit. When a pilot says lifestyle matters more than pay, the pay criterion's points must stay below the combined points of their lifestyle criteria, even if they call a pay number the one they'd optimize.

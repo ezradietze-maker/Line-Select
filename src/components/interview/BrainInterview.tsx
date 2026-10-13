@@ -23,8 +23,10 @@ import type { InterviewExchange } from "@/lib/brain/build-model";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { requestModelBuild, requestNextStep, type StepResponse } from "@/lib/brain/client";
 import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
-import type { LinePairCandidate, ThreadState } from "@/lib/brain/interviewer";
+import { SWEEP_QUESTION, type LinePairCandidate, type ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
+import { topLines, topShift } from "@/lib/brain/ranking-shift";
+import { applyPriorityPick, priorityOrderQuestion, priorityOrderTranscript } from "@/lib/brain/priority-order";
 import { pilotContextFor } from "@/lib/brain/context";
 import { applyPins } from "@/lib/brain/profile-model";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
@@ -200,6 +202,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   modelRef.current = model;
   const tradesRef = useRef<string[]>([]);
   tradesRef.current = pastTrades;
+  // How many of the pilot's top-10 lines each re-read changed — the interviewer wraps up once answers stop moving it.
+  const topRef = useRef<string[] | null>(null);
+  const shiftsRef = useRef<number[]>([]);
 
   // The pack brief and measurements are worked out once, the first time they're needed.
   const briefRef = useRef<string | null>(null);
@@ -233,6 +238,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         if (upTo >= builtUpTo.current) {
           builtUpTo.current = upTo;
           const rated = applyCityRatings(m, finalCityRatings());
+          const top = topLines(bidPack, rated, pm);
+          if (topRef.current) shiftsRef.current = [...shiftsRef.current, topShift(topRef.current, top)];
+          topRef.current = top;
           setModel(rated);
           // New threads start open; ones the interview already worked on keep their state.
           setThreads((prev) => {
@@ -319,6 +327,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setExchanges([]);
     setModel(null);
     modelRef.current = null;
+    topRef.current = null;
+    shiftsRef.current = [];
     setPhase("story");
   }
 
@@ -347,9 +357,19 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const m = modelRef.current;
     const compared = new Set(ch.map((c) => `${c.preferred}|${c.other}`));
     for (const e of all) for (const x of e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)) compared.add(`${x[1]}|${x[2]}`);
+    // The first question, asked the same way for everyone: which of their top priorities they'd give up last — in
+    // their words, before any line choice can reorder them (see lib/brain/priority-order.ts).
+    const priority = t === 0 && !checkIn ? priorityOrderQuestion(m) : null;
+    if (priority) {
+      setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: priority.prompt, helpText: priority.helpText, options: priority.options, priorityIds: priority.criterionIds, transcript: priorityOrderTranscript(priority) });
+      setChoiceSelection(null);
+      setChoiceNote("");
+      setPhase("question");
+      return;
+    }
     const linePairs: LinePairCandidate[] = m ? pickLinePairs(bidPack, m, pm, compared, 3, tradesRef.current) : [];
     try {
-      const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, model: m, threads: th, linePairs, turn: t, maxTurns: turnLimitRef.current });
+      const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, model: m, threads: th, linePairs, turn: t, maxTurns: turnLimitRef.current, rankingShifts: shiftsRef.current });
       const settledThreads = { ...th };
       for (const id of step.settled) settledThreads[id] = { ...(settledThreads[id] ?? { timesAsked: 0 }), status: "settled" };
       if (step.done) {
@@ -365,7 +385,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       setChoiceNote("");
       setPhase("question");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't get the next question.");
+      setError(e instanceof Error ? e.message : "Couldn’t get the next question.");
       setPhase("question");
     }
   }
@@ -373,7 +393,13 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   async function answer(text: string, choice: LineChoice | null = null) {
     if (!question) return;
     setHistory((h) => [...h, { exchanges, threads, choices, pastTrades, question, turn }]);
-    const asked = question.kind === "line-pair" && question.pair ? `${question.prompt} [Line ${question.pair.a} vs Line ${question.pair.b}: ${question.pair.tension}]` : question.prompt;
+    const asked = question.kind === "line-pair" && question.pair ? `${question.prompt} [Line ${question.pair.a} vs Line ${question.pair.b}: ${question.pair.tension}]` : (question.transcript ?? question.prompt);
+    // Their priority pick counts at once, so the next questions and line choices already work from it.
+    if (question.priorityIds && choiceSelection !== null && modelRef.current) {
+      const picked = applyPriorityPick(modelRef.current, question.priorityIds[choiceSelection] ?? null);
+      modelRef.current = picked;
+      setModel(picked);
+    }
     const all = [...exchanges, { turn: exchanges.length, question: asked, answer: text }];
     const ch = choice ? [...choices, choice] : choices;
     const nextTurn = turn + 1;
@@ -414,7 +440,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       void finishInterview(exchanges, choices);
       return;
     }
-    const all = [...exchanges, { turn: exchanges.length, question: "Anything else that matters when you bid? (Topics you hadn't raised.)", answer: [picked.length ? `These matter to me too: ${picked.join(", ")}.` : "", note].filter(Boolean).join(" ") }];
+    const all = [...exchanges, { turn: exchanges.length, question: SWEEP_QUESTION, answer: [picked.length ? `These matter to me too: ${picked.join(", ")}.` : "", note].filter(Boolean).join(" ") }];
     setExchanges(all);
     // A follow-up or two on what they picked, then done.
     const limit = Math.min(MAX_TURNS, turn + AFTER_SWEEP);
@@ -439,7 +465,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       // A commuter's real airline flights for their top lines, looked up while they review — the results pick it up.
       void lookUpFlights(bidPack, fitted);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't build your priorities.");
+      setError(e instanceof Error ? e.message : "Couldn’t build your priorities.");
     }
   }
 
@@ -679,7 +705,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (phase === "building") {
       return (
         <div>
-          <ThinkingPanel briefing="Reading everything you've said one last time and turning it into your priorities — about a minute." />
+          <ThinkingPanel briefing="Reading everything you’ve said one last time and turning it into your priorities — about a minute." />
           {error && (
             <div className="mt-4 flex justify-center">
               <Button onClick={() => void finishInterview(exchanges, choices)}>Try again</Button>
@@ -699,34 +725,42 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         );
       }
       const q = question;
+      // What it took from their last answer, said the way a colleague would before asking the next thing.
+      const ack = q.ack ? <p className="animate-fade-in mb-4 text-[15px] leading-relaxed text-ink-muted">{q.ack}</p> : null;
       if (q.kind === "line-pair" && q.pair) {
         return (
-          <LinePairStep
-            key={`${q.pair.a}-${q.pair.b}-${turn}`}
-            prompt={q.prompt}
-            helpText={q.helpText}
-            eyebrow={questionEyebrow}
-            pair={q.pair}
-            bidPack={bidPack}
-            onAnswer={(choice, text) => answer(text, choice)}
-            onSkip={() => void answer("(skipped)")}
-          />
+          <div key={`${q.pair.a}-${q.pair.b}-${turn}`}>
+            {ack}
+            <LinePairStep
+              prompt={q.prompt}
+              helpText={q.helpText}
+              eyebrow={questionEyebrow}
+              pair={q.pair}
+              bidPack={bidPack}
+              onAnswer={(choice, text) => answer(text, choice)}
+              onSkip={() => void answer("(skipped)")}
+            />
+          </div>
         );
       }
       if (q.kind === "choice" && q.options) {
         return (
-          <ChoiceStep key={turn} prompt={q.prompt} helpText={q.helpText} eyebrow={questionEyebrow} options={q.options.map((label) => ({ label }))} selected={choiceSelection} onSelect={setChoiceSelection}>
-            <ChoiceNote value={choiceNote} onChange={setChoiceNote} />
-            <StepNav
-              onNext={() => choiceSelection !== null && void answer(`${q.options![choiceSelection]}${choiceNote.trim() ? `. ${choiceNote.trim()}` : ""}`)}
-              nextLabel="Next"
-              disabled={choiceSelection === null}
-            />
-          </ChoiceStep>
+          <div key={turn}>
+            {ack}
+            <ChoiceStep prompt={q.prompt} helpText={q.helpText} eyebrow={questionEyebrow} options={q.options.map((label) => ({ label }))} selected={choiceSelection} onSelect={setChoiceSelection}>
+              <ChoiceNote value={choiceNote} onChange={setChoiceNote} />
+              <StepNav
+                onNext={() => choiceSelection !== null && void answer(`${q.options![choiceSelection]}${choiceNote.trim() ? `. ${choiceNote.trim()}` : ""}`)}
+                nextLabel="Next"
+                disabled={choiceSelection === null}
+              />
+            </ChoiceStep>
+          </div>
         );
       }
       return (
         <div key={turn}>
+          {ack}
           <QuestionPrompt eyebrow={questionEyebrow} title={q.prompt} help={q.helpText} />
           <RevealControls title={q.prompt} className="mt-8">
             <FreeTextAnswerBox onSubmit={(text) => answer(text)} onSkip={() => void answer("(skipped)")} />

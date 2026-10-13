@@ -21,6 +21,13 @@ describe("fitting weights to a pilot's line choices", () => {
     expect(r.changes.map((c) => c.criterionId).sort()).toEqual(["credit", "off"]);
   });
 
+  it("lets a couple of close calls only nudge the weights", () => {
+    const r = fitWeightsToChoices(pack, model, [{ preferred: "A", other: "B", strength: "slightly" }]);
+    const w = Object.fromEntries(r.model.criteria.map((c) => [c.id, c.weight]));
+    // One close call allows about a sixth of the full swing: credit stays the bigger priority.
+    expect(w.credit).toBeGreaterThan(w.off);
+  });
+
   it("leaves a model alone when it already agrees, and never moves a weight more than 3× from the interview's", () => {
     expect(fitWeightsToChoices(pack, model, [{ preferred: "B", other: "A", strength: "strongly" }]).changes).toEqual([]);
     const r = fitWeightsToChoices(pack, { ...model, criteria: [crit("credit", "creditHours", 1), crit("off", "daysOff", 0.05)] }, [

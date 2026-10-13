@@ -14,10 +14,22 @@ import type { LineChoice, PilotModel } from "@/types/pilot-model";
  * other — up when the chosen line won it, down when it lost it. A few passes
  * settle it. No criterion moves more than `MAX_FACTOR` either way from where
  * the interview put it, so a handful of choices sharpen the model rather than
- * overturn everything the pilot said.
+ * overturn everything the pilot said — and with only a choice or two, much
+ * less: a single close call can be made for reasons the two lines' headline
+ * trade doesn't show (a pilot passing on a one-commute line because its one
+ * trip is 14 days long), and on its own it mustn't cut a priority they've
+ * stated over and over to a third.
  */
 
 const MAX_FACTOR = 3;
+/**
+ * How much evidence lets a criterion move the full `MAX_FACTOR`; less allows proportionally less. An easy call
+ * ("strongly") counts three times a close one — a close call is mostly the pilot shrugging between two near-equal lines.
+ * Tuned on the ex-pilot's real verdicts (scripts/eval/fit-holdout.ts): from four choices up it fits exactly as freely as
+ * with no limit, and two close calls can no longer cut a stated priority to a third.
+ */
+const FULL_FREEDOM_AT = 6;
+const EVIDENCE = { strongly: 3, slightly: 1 } as const;
 const PASSES = 6;
 const RATE = 0.9;
 /** How clearly the model must prefer the chosen line before a choice counts as matched, in score points. */
@@ -45,6 +57,8 @@ export function fitWeightsToChoices(
   if (usable.length === 0 || model.criteria.length === 0) return { model, changes: [], agreedBefore, agreedAfter: agreedBefore };
 
   const original = new Map(model.criteria.map((c) => [c.id, c.weight]));
+  const evidence = usable.reduce((sum, c) => sum + EVIDENCE[c.strength], 0);
+  const maxFactor = 1 + (MAX_FACTOR - 1) * Math.min(1, evidence / FULL_FREEDOM_AT);
   let current = model;
   for (let pass = 0; pass < PASSES; pass++) {
     const byLine = new Map(scorePackV2(bidPack, current, { pack }).map((s) => [s.lineNumber, s]));
@@ -67,7 +81,7 @@ export function fitWeightsToChoices(
     const criteria = current.criteria.map((c) => {
       const f = Math.exp(RATE * (factor.get(c.id) ?? 0));
       const base = original.get(c.id) ?? c.weight;
-      const next = Math.min(base * MAX_FACTOR, Math.max(base / MAX_FACTOR, c.weight * f));
+      const next = Math.min(base * maxFactor, Math.max(base / maxFactor, c.weight * f));
       return { ...c, weight: next };
     });
     // Weights stay relative to the strongest priority, as everywhere else.

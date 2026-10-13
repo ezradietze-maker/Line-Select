@@ -13,8 +13,10 @@ import { expandBidPack } from "@/lib/bidpack-storage";
 import { buildPilotModel, type InterviewExchange } from "@/lib/brain/build-model";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
-import { nextInterviewStep, type ThreadState } from "@/lib/brain/interviewer";
+import { nextInterviewStep, SWEEP_QUESTION, type ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
+import { topLines, topShift } from "@/lib/brain/ranking-shift";
+import { applyPriorityPick, priorityOrderQuestion, priorityOrderTranscript } from "@/lib/brain/priority-order";
 import { lineSummary } from "@/lib/brain/line-text";
 import { structuredCall } from "@/lib/brain/llm";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
@@ -80,17 +82,38 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
 
   let model = await build(null);
   let builtAt = exchanges.length;
+  // How much each re-read moved the top 10 — the interviewer's cue that answers have stopped changing anything.
+  let top = topLines(pack, model, pm);
+  const shifts: number[] = [];
   const threads: Record<string, ThreadState> = Object.fromEntries(model.threads.map((t) => [t.id, { status: t.status, timesAsked: 0 }]));
   const choices: LineChoice[] = [];
   const pastTrades: string[] = [];
+  /** Per question, for the quality report (scripts/eval/interview-quality.ts). */
+  const asked: { kind: string; words: number; ack: string; pair?: { a: string; b: string; trade: string; strength?: string } }[] = [];
   let turn = 0;
   let swept = false;
   const qTimes: number[] = [];
 
+  // First, as in the app: which of their top priorities they'd give up last, in words, before any line choice.
+  const priority = priorityOrderQuestion(model);
+  if (priority) {
+    const pick = await sim<{ pick: string; note: string }>(
+      `Question: ${priority.prompt}\n(${priority.helpText})\nPick one, and optionally add a short note.`,
+      { type: "object", additionalProperties: false, required: ["pick", "note"], properties: { pick: { type: "string", enum: priority.options }, note: { type: "string" } } }
+    );
+    const i = priority.options.indexOf(pick.pick);
+    model = applyPriorityPick(model, priority.criterionIds[i] ?? null);
+    const answerText = `${pick.pick}${pick.note.trim() ? `. ${pick.note.trim()}` : ""}`;
+    say(`\nQ${turn + 1} [priority order] ${priority.prompt}\n   options: ${priority.options.join(" / ")}\nA: ${answerText}`);
+    asked.push({ kind: "choice", words: priority.prompt.split(/\s+/).length, ack: "" });
+    exchanges = [...exchanges, { turn: exchanges.length, question: priorityOrderTranscript(priority), answer: answerText }];
+    turn++;
+  }
+
   for (;;) {
     const compared = new Set(choices.map((c) => `${c.preferred}|${c.other}`));
     const pairs = pickLinePairs(pack, model, pm, compared, 3, pastTrades);
-    const step = await nextInterviewStep({ packBrief: brief, pilotContext: context, exchanges, model, threads, linePairs: pairs, turn, maxTurns: MAX_TURNS });
+    const step = await nextInterviewStep({ packBrief: brief, pilotContext: context, exchanges, model, threads, linePairs: pairs, turn, maxTurns: MAX_TURNS, rankingShifts: shifts });
     spend += step.usage?.costUsd ?? 0;
     qTimes.push(step.usage?.ms ?? 0);
     for (const id of step.settled) threads[id] = { ...(threads[id] ?? { timesAsked: 0 }), status: "settled" };
@@ -105,13 +128,16 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
       );
       say(`SWEEP: picked [${s.picked.join(", ")}] ${s.note}`);
       if (!s.picked.length && !s.note.trim()) break;
-      exchanges = [...exchanges, { turn: exchanges.length, question: "Anything else that matters when you bid? (Topics you hadn't raised.)", answer: [s.picked.length ? `These matter to me too: ${s.picked.join(", ")}.` : "", s.note].filter(Boolean).join(" ") }];
+      exchanges = [...exchanges, { turn: exchanges.length, question: SWEEP_QUESTION, answer: [s.picked.length ? `These matter to me too: ${s.picked.join(", ")}.` : "", s.note].filter(Boolean).join(" ") }];
       turn = Math.max(turn, MAX_TURNS - 3);
       continue;
     }
     if (step.threadId) threads[step.threadId] = { status: threads[step.threadId]?.status ?? "open", timesAsked: (threads[step.threadId]?.timesAsked ?? 0) + 1 };
     say(`\nQ${turn + 1} [${step.kind}${step.threadId ? ` · ${step.threadId}` : ""}] ${step.prompt}${step.options ? `\n   options: ${step.options.join(" / ")}` : ""}`);
-    let asked = step.prompt;
+    const entry: (typeof asked)[number] = { kind: step.kind, words: step.prompt.split(/\s+/).filter(Boolean).length, ack: (step as { ack?: string }).ack ?? "" };
+    if (entry.ack) say(`   (ack) ${entry.ack}`);
+    asked.push(entry);
+    let askedText = step.prompt;
     let answerText: string;
     if (step.kind === "line-pair" && step.pair) {
       const p = step.pair;
@@ -121,7 +147,10 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
         `Question: ${step.prompt}\n\nOption A — Line ${p.a}: ${lineSummary(pack, pack.lines.find((l) => l.lineNumber === p.a)!)}\n\nOption B — Line ${p.b}: ${lineSummary(pack, pack.lines.find((l) => l.lineNumber === p.b)!)}\n\nWhich would you bid higher? Say how strongly, and why in a sentence.`,
         { type: "object", additionalProperties: false, required: ["pick", "strength", "why"], properties: { pick: { type: "string", enum: ["a", "b", "tie"] }, strength: { type: "string", enum: ["slightly", "strongly"] }, why: { type: "string" } } }
       );
-      asked = `${step.prompt} [Line ${p.a} vs Line ${p.b}: ${p.tension}]`;
+      askedText = `${step.prompt} [Line ${p.a} vs Line ${p.b}: ${p.tension}]`;
+      // The trade by what's actually measured, whatever the criteria happen to be called this read.
+      const byMetric = p.trade.split("|").map((id) => model.criteria.find((c) => c.id === id)?.metric ?? id).sort().join("|");
+      entry.pair = { a: p.a, b: p.b, trade: byMetric, strength: pick.pick === "tie" ? "tie" : pick.strength };
       if (pick.pick === "tie") answerText = `Couldn't choose between line ${p.a} and line ${p.b} — about the same to me. Why: ${pick.why}`;
       else {
         const preferred = pick.pick === "a" ? p.a : p.b;
@@ -134,11 +163,15 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
       answerText = a.answer;
     }
     say(`A: ${answerText}`);
-    exchanges = [...exchanges, { turn: exchanges.length, question: asked, answer: answerText }];
+    exchanges = [...exchanges, { turn: exchanges.length, question: askedText, answer: answerText }];
     turn++;
     if (exchanges.length - builtAt >= 3) {
       model = await build(model);
       builtAt = exchanges.length;
+      const nextTop = topLines(pack, model, pm);
+      shifts.push(topShift(top, nextTop));
+      top = nextTop;
+      say(`  [top-10 change: ${shifts.at(-1)}]`);
       for (const t of model.threads) threads[t.id] ??= { status: t.status, timesAsked: t.timesAsked };
     }
   }
@@ -158,5 +191,8 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   for (const c of [...fit.model.criteria].sort((a, b) => b.weight - a.weight)) say(`  ${c.weight.toFixed(2)} ${c.label} — ${c.metric}`);
   mkdirSync(".cache/eval/sim", { recursive: true });
   writeFileSync(`.cache/eval/sim/${persona.id}-${tag}.txt`, log.join("\n"));
-  writeFileSync(`.cache/eval/sim/${persona.id}-${tag}.json`, JSON.stringify({ exchanges, choices, model: fit.model }, null, 2));
+  const result: Record<string, unknown> = { exchanges, choices, model: fit.model, preFit: finalBuilt, asked, spend, order, shifts };
+  if (existsSync(judgeFile)) result.judgeSpearman = scorecard("", order, JSON.parse(readFileSync(judgeFile, "utf8"))).spearman;
+  if (persona.lineLabels) result.pilotAgreement = pilotAgreement(order, persona.lineLabels).share;
+  writeFileSync(`.cache/eval/sim/${persona.id}-${tag}.json`, JSON.stringify(result, null, 2));
 })();

@@ -51,10 +51,13 @@ export async function POST(request: Request) {
   }
   const model = body.model === null || body.model === undefined ? null : readModel(body.model);
   const maxTurns = Math.min(MAX_TURNS, typeof body.maxTurns === "number" ? body.maxTurns : MAX_TURNS);
+  const rankingShifts = Array.isArray(body.rankingShifts)
+    ? body.rankingShifts.filter((n): n is number => typeof n === "number" && Number.isFinite(n)).slice(-20).map((n) => Math.max(0, Math.min(50, Math.round(n))))
+    : [];
 
   try {
     const notes = await fleetNotesFor(readCohort(body.cohort));
-    const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), turn: body.turn, maxTurns, fleetNotes: notes });
+    const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), turn: body.turn, maxTurns, fleetNotes: notes, rankingShifts });
     const { usage, ...rest } = step;
     if (usage) console.log("[brain-question]", { turn: body.turn, done: step.done, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json(rest);
