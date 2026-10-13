@@ -38,6 +38,8 @@ interface StrategiesScreenProps {
   user: UserAccount | null;
   onSaveSeniority: (input: SeniorityInput) => void;
   onGoToUpload: () => void;
+  /** Loads the built-in sample pack, for a pilot without one to hand. */
+  onTrySample?: () => void;
   onGoToResults: () => void;
   onStartInterview: () => void;
   onUpdateProfile: (profile: PreferenceProfile) => void;
@@ -52,6 +54,7 @@ export function StrategiesScreen({
   user,
   onSaveSeniority,
   onGoToUpload,
+  onTrySample,
   onGoToResults,
   onStartInterview,
   onUpdateProfile,
@@ -63,6 +66,8 @@ export function StrategiesScreen({
         description="Strategies are built from your bid pack’s own real lines, so upload one before Line Select can find your best moves."
         actionLabel="Upload bid pack"
         onAction={onGoToUpload}
+        secondaryLabel={onTrySample ? "Or try it with sample data" : undefined}
+        onSecondary={onTrySample}
       />
     );
   }

@@ -49,3 +49,6 @@ scripts/transcript-*.md
 
 # Working plan for the pilot-brain rebuild: it quotes a real pilot collaborator and his preferences, so it stays local.
 /docs/plans/pilot-brain-v2.md
+
+# Local-only test data staged for browser checks
+/public/_tmp/

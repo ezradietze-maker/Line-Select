@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { Heading } from "@/components/ui/Heading";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useAppState } from "@/lib/app-state";
 
 const FREE_FEATURES = [
@@ -21,13 +21,16 @@ export default function PricingPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <Heading as="h1" className="text-2xl text-ink sm:text-3xl">
-        Pricing
-      </Heading>
-      <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-        Line Select is free today. Everything below is real, not a trial — there&rsquo;s no
-        feature here held back for a future paid tier.
-      </p>
+      <PageHeader
+        eyebrow="Line Select"
+        title="Pricing"
+        description={
+          <>
+            Line Select is free today. Everything below is real, not a trial &mdash; there&rsquo;s no feature here held
+            back for a future paid tier.
+          </>
+        }
+      />
 
       <div className="mt-6 rounded-xl border border-brand/30 bg-brand-soft p-5 sm:p-6">
         <div className="flex items-baseline justify-between">

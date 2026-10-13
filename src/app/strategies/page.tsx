@@ -7,7 +7,7 @@ import { deriveSeniorityInput } from "@/lib/seniority-derive";
 
 export default function StrategiesPage() {
   const router = useRouter();
-  const { bidPack, seniority, profile, user, handleSaveSeniority, handleStartInterview, handleUpdateProfile } =
+  const { bidPack, seniority, profile, user, handleSaveSeniority, handleStartInterview, handleUpdateProfile, handleTrySample } =
     useAppState();
   // Already known from the pack's seniority list and the pilot's own number — no need to ask a second time.
   const derived = deriveSeniorityInput(bidPack, profile);
@@ -21,6 +21,7 @@ export default function StrategiesPage() {
       user={user}
       onSaveSeniority={handleSaveSeniority}
       onGoToUpload={() => router.push("/upload")}
+      onTrySample={handleTrySample}
       onGoToResults={() => router.push("/results")}
       onStartInterview={handleStartInterview}
       onUpdateProfile={handleUpdateProfile}

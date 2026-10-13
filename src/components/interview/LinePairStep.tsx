@@ -74,7 +74,7 @@ export function LinePairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
   const options: { pick: Pick; label: string }[] = [
     { pick: { side: "a", strength: "strongly" }, label: `${pair.a}, easily` },
     { pick: { side: "a", strength: "slightly" }, label: `${pair.a}, just` },
-    { pick: { side: "tie" }, label: "Can't choose" },
+    { pick: { side: "tie" }, label: "Can’t choose" },
     { pick: { side: "b", strength: "slightly" }, label: `${pair.b}, just` },
     { pick: { side: "b", strength: "strongly" }, label: `${pair.b}, easily` },
   ];

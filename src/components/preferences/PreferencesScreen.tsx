@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CityChips } from "@/components/preferences/CityChips";
 import { PilotPrioritiesEditor } from "@/components/preferences/PilotPrioritiesEditor";
 import { TargetEditor } from "@/components/preferences/TargetEditor";
@@ -35,12 +35,24 @@ import type {
   RangeTarget,
 } from "@/types/preferences";
 
+interface Drafts {
+  weights: Partial<PreferenceWeights>;
+  targets: Partial<Record<ExplicitTargetKey, number | RangeTarget | null>>;
+  cities: Record<string, CitySentiment | null>;
+  seniority: string | null;
+}
+
+/** Unsaved edits, by the profile they were made against — a saved profile is a new object, so they lapse with it. */
+const keptDrafts = new WeakMap<PreferenceProfile, Drafts>();
+
 interface PreferencesScreenProps {
   bidPack: BidPack | null;
   profile: PreferenceProfile | null;
   /** True right after a new bid pack was confirmed — shows the "same preferences as last time?" prompt instead of leaving a returning pilot with only "Retake the interview". */
   freshBidPack?: boolean;
   onGoToUpload: () => void;
+  /** Loads the built-in sample pack, for a pilot without one to hand. */
+  onTrySample?: () => void;
   onStartInterview: () => void;
   onShowRankings?: () => void;
   onSaveEdits?: (edits: ProfileEdits) => void;
@@ -69,16 +81,33 @@ export function PreferencesScreen({
   profile,
   freshBidPack = false,
   onGoToUpload,
+  onTrySample,
   onStartInterview,
   onShowRankings,
   onSaveEdits,
   onUpdateProfile,
 }: PreferencesScreenProps) {
-  const [weightsDraft, setWeightsDraft] = useState<Partial<PreferenceWeights>>({});
-  const [targetsDraft, setTargetsDraft] = useState<Partial<Record<ExplicitTargetKey, number | RangeTarget | null>>>({});
-  const [citiesDraft, setCitiesDraft] = useState<Record<string, CitySentiment | null>>({});
+  // Unsaved edits outlive a trip to another screen: they're kept against the profile they were made to, and come
+  // back (with the "unsaved changes" bar) on return — leaving to check the rankings used to throw them away.
+  const kept = profile ? keptDrafts.get(profile) : undefined;
+  const [weightsDraft, setWeightsDraft] = useState<Partial<PreferenceWeights>>(kept?.weights ?? {});
+  const [targetsDraft, setTargetsDraft] = useState<Partial<Record<ExplicitTargetKey, number | RangeTarget | null>>>(kept?.targets ?? {});
+  const [citiesDraft, setCitiesDraft] = useState<Record<string, CitySentiment | null>>(kept?.cities ?? {});
   /** The seniority number as typed; null until the pilot touches the field. */
-  const [seniorityDraft, setSeniorityDraft] = useState<string | null>(null);
+  const [seniorityDraft, setSeniorityDraft] = useState<string | null>(kept?.seniority ?? null);
+  const latestDrafts = useRef<Drafts>({ weights: weightsDraft, targets: targetsDraft, cities: citiesDraft, seniority: seniorityDraft });
+  useEffect(() => {
+    latestDrafts.current = { weights: weightsDraft, targets: targetsDraft, cities: citiesDraft, seniority: seniorityDraft };
+  }, [weightsDraft, targetsDraft, citiesDraft, seniorityDraft]);
+  useEffect(() => {
+    if (!profile) return;
+    return () => {
+      const d = latestDrafts.current;
+      const any = Object.keys(d.weights).length || Object.keys(d.targets).length || Object.keys(d.cities).length || d.seniority !== null;
+      if (any) keptDrafts.set(profile, d);
+      else keptDrafts.delete(profile);
+    };
+  }, [profile]);
 
   const edits: ProfileEdits = useMemo(
     () => ({
@@ -90,6 +119,14 @@ export function PreferencesScreen({
     [weightsDraft, targetsDraft, citiesDraft, seniorityDraft]
   );
   const dirty = profile ? hasEdits(profile, edits) : false;
+
+  // Closing the tab or reloading with edits unsaved asks first.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   const cityCodes = useMemo(() => {
     const fromPack = bidPack ? rankLayoverCitiesByFrequency(bidPack).map((c) => c.code) : [];
@@ -106,6 +143,8 @@ export function PreferencesScreen({
         description="Your preferences and rankings are built from a real bid pack, so upload one to get started."
         actionLabel="Upload bid pack"
         onAction={onGoToUpload}
+        secondaryLabel={onTrySample ? "Or try it with sample data" : undefined}
+        onSecondary={onTrySample}
       />
     );
   }
@@ -113,7 +152,7 @@ export function PreferencesScreen({
   if (!profile) {
     return (
       <EmptyState
-        title="You haven't set your preferences yet"
+        title="You haven’t set your preferences yet"
         description="Answer a few questions about what you care about, and Line Select will rank every line in your bid pack against it."
         actionLabel="Start the interview"
         onAction={onStartInterview}
@@ -202,7 +241,16 @@ export function PreferencesScreen({
         </div>
         {!freshBidPack && (
           <div className="flex gap-2">
-            {onShowRankings && <Button onClick={onShowRankings}>See my rankings</Button>}
+            {onShowRankings && (
+              <Button
+                onClick={() => {
+                  if (dirty) save();
+                  onShowRankings();
+                }}
+              >
+                {dirty ? "Save & see rankings" : "See my rankings"}
+              </Button>
+            )}
             <Button variant="secondary" onClick={onStartInterview}>Retake the interview</Button>
           </div>
         )}

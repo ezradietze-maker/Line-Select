@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { NAV_ITEMS, disabledReason, type NavTarget } from "@/components/nav/nav-items";
 import { SearchIcon } from "@/components/ui/icons";
+import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { setStoredTheme, type ThemeMode } from "@/lib/theme";
 import type { Line } from "@/types/bidpack";
 
@@ -14,6 +15,8 @@ interface Command {
   /** Extra words it answers to. */
   keywords?: string;
   icon?: ComponentType<{ className?: string }>;
+  /** A line's place in the pilot's ranking and its score, when the rankings have been worked out this visit. */
+  standing?: { rank: number; score: number };
   run: () => void;
 }
 
@@ -21,6 +24,7 @@ interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   lines: Line[] | null;
+  bidPackId: string | null;
   hasProfile: boolean;
   hasBidPack: boolean;
   onNavigate: (target: NavTarget) => void;
@@ -50,7 +54,7 @@ const MAX_LINES = 8;
  * reading a line number off a crew-room sheet gets to it in two keystrokes
  * instead of scrolling a list of three hundred.
  */
-export function CommandPalette({ open, onClose, lines, hasProfile, hasBidPack, onNavigate, onOpenLine, onOpenHowItWorks, onOpenFeedback }: CommandPaletteProps) {
+export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, hasBidPack, onNavigate, onOpenLine, onOpenHowItWorks, onOpenFeedback }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -93,6 +97,8 @@ export function CommandPalette({ open, onClose, lines, hasProfile, hasBidPack, o
     return [...pages, ...themes, ...help];
   }, [hasProfile, hasBidPack, onClose, onNavigate, onOpenHowItWorks, onOpenFeedback]);
 
+  // Read fresh each render: the rankings may have been worked out since the palette was last shown.
+  const ranking = open && bidPackId ? rankingSnapshotFor(bidPackId) : null;
   const results = useMemo<Command[]>(() => {
     const q = query.trim().toLowerCase();
     const digits = q.replace(/^line\s*/, "").replace(/\D/g, "");
@@ -107,6 +113,7 @@ export function CommandPalette({ open, onClose, lines, hasProfile, hasBidPack, o
               id: `line-${l.id}`,
               group: "Lines",
               label: `Line ${l.lineNumber}`,
+              standing: ranking?.byLineId.get(l.id),
               hint: `${formatHours(l.totalCreditHours)} credit · ${l.daysOff} days off · ${l.trips.length} trip${l.trips.length === 1 ? "" : "s"}`,
               run: () => {
                 onClose();
@@ -120,7 +127,7 @@ export function CommandPalette({ open, onClose, lines, hasProfile, hasBidPack, o
       return words.every((w) => hay.includes(w));
     });
     return [...lineHits, ...rest];
-  }, [query, lines, hasProfile, commands, onClose, onOpenLine]);
+  }, [query, lines, ranking, hasProfile, commands, onClose, onOpenLine]);
 
   const active = Math.min(cursor, Math.max(0, results.length - 1));
 
@@ -179,13 +186,14 @@ export function CommandPalette({ open, onClose, lines, hasProfile, hasBidPack, o
             }}
             placeholder={hasProfile && lines ? "Type a line number, or where to go…" : "Where to go…"}
             aria-label="Search"
+            data-no-ring
             aria-controls="palette-results"
             aria-activedescendant={results[active] ? `palette-${results[active].id}` : undefined}
             className="h-12 w-full bg-transparent text-[15px] text-ink placeholder:text-ink-faint focus:outline-none"
           />
           <kbd className="hidden shrink-0 rounded border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-ink-faint sm:block">esc</kbd>
         </div>
-        <div ref={listRef} id="palette-results" role="listbox" className="max-h-[min(60vh,26rem)] overflow-y-auto p-1.5">
+        <div ref={listRef} id="palette-results" role="listbox" aria-label="Results" className="max-h-[min(60vh,26rem)] overflow-y-auto p-1.5">
           {results.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-ink-faint">
               {/^\d+$/.test(query.trim()) ? `No line ${query.trim()} in this bid pack.` : "Nothing matches that."}
@@ -210,10 +218,21 @@ export function CommandPalette({ open, onClose, lines, hasProfile, hasBidPack, o
                       i === active ? "bg-accent-wash text-on-wash" : "text-ink-muted"
                     }`}
                   >
-                    {Icon ? <Icon className="h-4 w-4 shrink-0" /> : <span className="h-4 w-4 shrink-0" aria-hidden />}
+                    {Icon ? (
+                      <Icon className="h-4 w-4 shrink-0" />
+                    ) : c.standing ? (
+                      <span className={`w-9 shrink-0 font-mono text-[11px] tabular-nums ${i === active ? "text-on-wash" : "text-ink-faint"}`}>#{c.standing.rank}</span>
+                    ) : (
+                      <span className="h-4 w-4 shrink-0" aria-hidden />
+                    )}
                     <span className={`min-w-0 flex-1 truncate ${c.group === "Lines" ? "font-mono font-semibold" : "font-medium"}`}>{c.label}</span>
-                    {c.hint && <span className="hidden shrink-0 font-mono text-[11px] tabular-nums text-ink-faint sm:block">{c.hint}</span>}
-                    {i === active && <span className="shrink-0 font-mono text-[11px] text-ink-faint" aria-hidden>↵</span>}
+                    {c.standing && (
+                      <span className="shrink-0 rounded-md border border-hairline px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums" title="Score">
+                        {Math.round(c.standing.score)}
+                      </span>
+                    )}
+                    {c.hint && <span className={`hidden shrink-0 font-mono text-[11px] tabular-nums sm:block ${i === active ? "text-on-wash" : "text-ink-faint"}`}>{c.hint}</span>}
+                    {i === active && <span className="shrink-0 font-mono text-[11px] text-on-wash" aria-hidden>↵</span>}
                   </button>
                 </div>
               );

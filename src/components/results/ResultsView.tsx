@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
@@ -26,7 +27,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { LineCard } from "@/components/results/LineCard";
-import { LineComparisonModal } from "@/components/results/LineComparisonModal";
 import { MonthLegend } from "@/components/results/MiniLinePreview";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
@@ -67,8 +67,18 @@ import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
 import { useProgressiveCount } from "@/lib/use-progressive-count";
+import { setRankingSnapshot } from "@/lib/ranking-snapshot";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
+
+const LineComparisonModal = dynamic(() => import("@/components/results/LineComparisonModal").then((m) => m.LineComparisonModal));
+
+/** The pieces a card only shows when opened, fetched while the pilot is still reading the list, so opening one never waits. */
+function warmUpDetails() {
+  void import("@/components/results/TripList");
+  void import("@/components/results/RouteMap");
+  void import("@/components/results/LineComparisonModal");
+}
 
 /** 0-1: below this, the model already basically expected the outcome — update quietly. Above it, the drag contradicted what the model currently believes, which is worth surfacing. */
 const SURPRISE_THRESHOLD = 0.55;
@@ -172,6 +182,9 @@ export function ResultsView({
   const [hotelTimedOut, setHotelTimedOut] = useState(false);
   const [learnMessage, setLearnMessage] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Cards animate into their new places after a drag-to-swap — but tracking every card's layout costs a measurement
+  // pass per card as the list mounts, so it's switched on only once a pilot actually starts dragging.
+  const [layoutArmed, setLayoutArmed] = useState(false);
   const [promptJudgment, setPromptJudgment] = useState<PairwiseJudgment | null>(null);
   const [promptCount, setPromptCount] = useState(0);
   const [askedPairIds, setAskedPairIds] = useState<Set<string>>(new Set());
@@ -348,6 +361,10 @@ export function ResultsView({
   // shows its true position in the full ranking, not a renumbered index into
   // whatever subset currently matches the filters.
   const rankById = useMemo(() => new Map(ranked.map((r, i) => [r.line.id, i + 1] as const)), [ranked]);
+  useEffect(() => {
+    if (!hotelsSettled) return;
+    setRankingSnapshot({ bidPackId: bidPack.id, byLineId: new Map(ranked.map((r, i) => [r.line.id, { rank: i + 1, score: r.score }])) });
+  }, [ranked, hotelsSettled, bidPack.id]);
 
   // The pilot's chance at every line, given where their seniority number puts them in bid order — held until the ranking has settled, since it's a forecast of *this* ranking.
   const rankingLineIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
@@ -391,7 +408,18 @@ export function ResultsView({
   const shown = pageState.key === listKey ? pageState.shown : PAGE_SIZE;
   const displayed = sorted.slice(0, shown);
   // The cards themselves mount a few at a time, so the top of the list paints fast on a phone; `displayed` stays the page's real contents for counts and paging.
-  const mountedCount = useProgressiveCount(displayed.length);
+  // A phone shows one card at a time, so it paints the first two and builds the rest in idle time.
+  const [firstBatch] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? 2 : 6));
+  const mountedCount = useProgressiveCount(displayed.length, 6, firstBatch);
+
+  useEffect(() => {
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(warmUpDetails, { timeout: 3000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(warmUpDetails, 1500);
+    return () => window.clearTimeout(id);
+  }, []);
 
   // A line asked for by number: make sure it's listed (clearing whatever filter or view hides it, and paging far enough
   // down), wait for its card to mount, then scroll to it and light it up.
@@ -427,6 +455,38 @@ export function ResultsView({
     focusDone.current = focusLine;
     onFocusHandled?.();
   }, [focusLine, hotelsSettled, focusTarget, focusIndex, shown, listKey, mountedCount, hiddenSet, reduceMotion, onFocusHandled]);
+  // Keys for working down the list at a desk: j / k move between lines, s shortlists, c compares, ? shows the keys.
+  const [keyIndex, setKeyIndex] = useState<number | null>(null);
+  const [showKeys, setShowKeys] = useState(false);
+  const keyedId = keyIndex !== null ? displayed[Math.min(keyIndex, mountedCount - 1)]?.line.id ?? null : null;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      const t = e.target;
+      if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      const count = Math.min(displayed.length, mountedCount);
+      if (!count) return;
+      if (e.key === "j" || e.key === "k") {
+        e.preventDefault();
+        const next = keyIndex === null ? 0 : Math.max(0, Math.min(count - 1, keyIndex + (e.key === "j" ? 1 : -1)));
+        setKeyIndex(next);
+        document.getElementById(`line-${displayed[next].line.id}`)?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      } else if (e.key === "s" && keyedId) {
+        updateMarks((m) => toggleStar(m, keyedId));
+      } else if (e.key === "c" && keyedId) {
+        toggleCompare(keyedId);
+      } else if (e.key === "?") {
+        setShowKeys((v) => !v);
+      } else if (e.key === "Escape") {
+        setKeyIndex(null);
+        setShowKeys(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   useEffect(() => {
     if (!flashId) return;
     const timer = setTimeout(() => setFlashId(null), 2400);
@@ -480,6 +540,7 @@ export function ResultsView({
   const dragEnabled = sortMode === "match";
 
   function handleDragStart(event: DragStartEvent) {
+    setLayoutArmed(true);
     setActiveId(String(event.active.id));
   }
 
@@ -573,7 +634,7 @@ export function ResultsView({
             {sortMode === "match" ? <span className="hidden sm:inline"> &middot; best match first</span> : null}
           </p>
         </div>
-        <Button variant="secondary" onClick={onEditPreferences} className="shrink-0 px-3 sm:px-4">
+        <Button variant="secondary" onClick={onEditPreferences} className="shrink-0 px-3 sm:px-4 print:hidden">
           <span className="sm:hidden">Edit</span>
           <span className="hidden sm:inline">Edit preferences</span>
         </Button>
@@ -689,7 +750,7 @@ export function ResultsView({
               </button>
             </div>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2 print:hidden">
             <div className="relative min-w-[9rem] flex-1 sm:max-w-[14rem]">
               <input
                 type="search"
@@ -749,7 +810,7 @@ export function ResultsView({
           </div>
 
           {/* A small staggered beat behind the header above — the page reads as "header settles, then controls, then the list below" instead of everything landing in one flat instant. */}
-          <div className="animate-rise-in" style={{ animationDelay: "60ms" }}>
+          <div className="animate-rise-in print:hidden" style={{ animationDelay: "60ms" }}>
             <ResultsFilterBar
               filters={filters}
               onChange={setFilters}
@@ -760,7 +821,7 @@ export function ResultsView({
             />
           </div>
 
-          <div className="animate-rise-in" style={{ animationDelay: "120ms" }}>
+          <div className="animate-rise-in print:hidden" style={{ animationDelay: "120ms" }}>
             <BidOrderExport
               entries={bidOrderEntries}
               shortlistEntries={shortlistEntries}
@@ -770,10 +831,27 @@ export function ResultsView({
 
           <MonthLegend className="mt-3" />
 
+          {showKeys && (
+            <div role="note" className="mt-3 hidden flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-hairline bg-canvas/40 px-3 py-2 font-mono text-[11px] text-ink-muted sm:flex print:hidden">
+              {[
+                ["j / k", "next / previous line"],
+                ["s", "shortlist"],
+                ["c", "compare"],
+                ["⌘K", "jump to a line"],
+                ["esc", "clear"],
+              ].map(([k, what]) => (
+                <span key={k}>
+                  <kbd className="rounded border border-hairline bg-surface px-1.5 py-0.5 text-ink">{k}</kbd> {what}
+                </span>
+              ))}
+            </div>
+          )}
+
           {dragEnabled && (
-            <p className="mt-2 hidden text-xs text-ink-faint sm:block">
+            <p className="mt-2 hidden text-xs text-ink-faint sm:block print:hidden">
               Ranked something wrong? Drag a line by its handle onto another to swap &mdash; each swap teaches Line
-              Select what you actually care about.
+              Select what you actually care about. Press <kbd className="rounded border border-hairline px-1 font-mono">?</kbd> for
+              keyboard shortcuts.
             </p>
           )}
 
@@ -812,8 +890,8 @@ export function ResultsView({
                   <motion.div
                     key={lineScore.line.id}
                     id={`line-${lineScore.line.id}`}
-                    className={`scroll-mt-20 md:scroll-mt-6 ${flashId === lineScore.line.id ? "line-flash" : ""}`}
-                    layout={dragEnabled ? "position" : false}
+                    className={`scroll-mt-20 md:scroll-mt-6 ${flashId === lineScore.line.id ? "line-flash" : ""} ${keyedId === lineScore.line.id ? "line-keyed" : ""}`}
+                    layout={dragEnabled && layoutArmed ? "position" : false}
                     initial={reduceMotion ? false : { opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={
@@ -861,7 +939,7 @@ export function ResultsView({
                 Showing {displayed.length} of {sorted.length} lines
                 {view === "all" && sortMode === "match" ? " — the best matches first" : ""}.
               </p>
-              <div className="flex flex-wrap justify-center gap-2">
+              <div className="flex flex-wrap justify-center gap-2 print:hidden">
                 <Button
                   variant="secondary"
                   onClick={() => setPageState({ key: listKey, shown: nextVisibleCount(shown, sorted.length) })}
@@ -885,6 +963,30 @@ export function ResultsView({
             </button>
           )}
         </>
+      )}
+
+      {compareLineScores.length === 1 && (
+        <div
+          role="status"
+          data-bottom-bar
+          className="animate-toast-in fixed bottom-[calc(var(--shell-bottom)+1rem)] left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-full border border-accent/40 bg-surface/95 py-2 pl-4 pr-2 text-sm text-ink shadow-elevated-lg backdrop-blur md:left-[calc(50%+var(--shell-left)/2)] print:hidden"
+        >
+          <span>
+            <span className="font-semibold">Line {compareLineScores[0].line.lineNumber}</span>
+            <span className="text-ink-muted">
+              {" "}
+              picked &mdash; <span className="sm:hidden">pick one more</span>
+              <span className="hidden sm:inline">choose another to compare</span>
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setCompareIds([])}
+            className="rounded-full px-3 py-1 text-ink-muted transition-colors hover:bg-black/[0.05] hover:text-ink"
+          >
+            Cancel
+          </button>
+        </div>
       )}
 
       {compareLineScores.length === 2 && (

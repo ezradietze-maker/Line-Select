@@ -194,8 +194,11 @@ function localDay(iso: string): string {
   return `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()]} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">): string {
-  const date = day.date && day.weekday ? `${day.weekday} ${day.date.slice(5)}` : `Day ${day.dayIndex + 1}`;
+  // "Fri Oct 2", the way a pilot says it — not "Fri 10-02".
+  const date = day.date && day.weekday ? `${day.weekday} ${MONTHS[Number(day.date.slice(5, 7)) - 1]} ${Number(day.date.slice(8, 10))}` : `Day ${day.dayIndex + 1}`;
   if (d.kind === "off")
     return `${date} — day off${d.offRun && d.offRun.length > 1 ? ` (day ${d.offRun.position} of ${d.offRun.length} off)` : ""}${d.spill ? `; trip ${d.spill.tripNumber ?? ""} finishes on it${d.spill.landsAt ? `, landing ${d.spill.landsAt} (L)` : ""}` : ""}`;
   if (d.preReportTime !== null) {

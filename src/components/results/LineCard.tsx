@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { memo, useMemo, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -11,10 +12,8 @@ import { MatchBar } from "@/components/results/MatchBar";
 import { ForecastChip } from "@/components/results/ForecastBanner";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { RecurringCommitmentBanner } from "@/components/results/RecurringCommitmentBanner";
-import { RouteMap } from "@/components/results/RouteMap";
 import { TripNumberStrip } from "@/components/results/TripNumberStrip";
 import { ScoreRing } from "@/components/results/ScoreRing";
-import { TripList } from "@/components/results/TripList";
 import { ChevronDownIcon, GripIcon, StarIcon } from "@/components/ui/icons";
 import { Tabs } from "@/components/ui/Tabs";
 import { buildLineFactChips, type LineFactChip } from "@/lib/line-summary";
@@ -24,6 +23,15 @@ import type { LineScore } from "@/lib/scoring";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { LineForecast } from "@/lib/forecast/forecast";
 import type { PreferenceProfile } from "@/types/preferences";
+
+// Shown only once a card's details are opened — loaded then (and warmed up in idle time by ResultsView), not with the
+// list itself.
+const TripList = dynamic(() => import("@/components/results/TripList").then((m) => m.TripList), {
+  loading: () => <div className="skeleton-pulse h-40 rounded-lg bg-border/60" aria-hidden />,
+});
+const RouteMap = dynamic(() => import("@/components/results/RouteMap").then((m) => m.RouteMap), {
+  loading: () => <div className="skeleton-pulse aspect-[16/9] rounded-lg bg-border/60" aria-hidden />,
+});
 
 /**
  * The expanded detail view used to be one continuous scroll (trip schedule
@@ -148,8 +156,8 @@ export const LineCard = memo(function LineCard({
       aria-label="Drag onto another line to swap ranks — teaches the app your preferences"
       className={
         wide
-          ? "flex shrink-0 touch-none cursor-grab items-center justify-center border-r border-hairline px-2.5 text-ink-faint transition-colors hover:bg-accent-soft/40 hover:text-accent active:cursor-grabbing"
-          : "flex h-9 w-9 shrink-0 touch-none cursor-grab items-center justify-center rounded-md text-ink-faint hover:text-ink active:cursor-grabbing"
+          ? "flex shrink-0 touch-none cursor-grab items-center justify-center border-r print:hidden border-hairline px-2.5 text-ink-faint transition-colors hover:bg-accent-soft/40 hover:text-accent active:cursor-grabbing"
+          : "flex h-9 w-9 shrink-0 touch-none cursor-grab print:hidden items-center justify-center rounded-md text-ink-faint hover:text-ink active:cursor-grabbing"
       }
     >
       <GripIcon className="h-4 w-4" />
@@ -158,7 +166,7 @@ export const LineCard = memo(function LineCard({
 
   if (hidden) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-hairline bg-canvas/30 px-4 py-2.5 text-sm text-ink-faint">
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-hairline bg-canvas/30 px-4 py-2.5 text-sm text-ink-faint print:hidden">
         <span>
           Line {line.lineNumber} <span className="text-ink-faint">&middot; hidden</span>
         </span>
@@ -206,7 +214,7 @@ export const LineCard = memo(function LineCard({
                   <span className="font-mono text-xs font-semibold text-ink-faint">#{rank}</span>
                   <span className="font-display text-xl font-semibold tracking-tight text-ink">Line {line.lineNumber}</span>
                 </div>
-                <div className="-my-1.5 -mr-1.5 flex shrink-0 items-center gap-0.5">
+                <div className="-my-1.5 -mr-1.5 flex shrink-0 items-center gap-0.5 print:hidden">
                   {!wide && grip}
                   <button
                     type="button"
@@ -283,7 +291,7 @@ export const LineCard = memo(function LineCard({
                 <button
                   type="button"
                   onClick={onToggleCompare}
-                  className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  className={`inline-flex items-center rounded-md print:hidden border px-3 py-1.5 text-sm font-medium transition-colors ${
                     isComparing
                       ? "border-accent bg-accent-soft text-accent"
                       : "border-hairline text-ink-muted hover:border-border-strong hover:text-ink"
@@ -295,7 +303,7 @@ export const LineCard = memo(function LineCard({
                   type="button"
                   onClick={() => setExpanded((e) => !e)}
                   aria-expanded={expanded}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-hairline px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-border-strong hover:text-ink"
+                  className="inline-flex items-center gap-1.5 rounded-md border print:hidden border-hairline px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-border-strong hover:text-ink"
                 >
                   {expanded ? "Hide details" : "Details"}
                   <ChevronDownIcon className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />

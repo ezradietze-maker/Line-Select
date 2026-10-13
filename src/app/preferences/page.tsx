@@ -14,6 +14,7 @@ export default function PreferencesPage() {
     handleAcknowledgeFreshBidPack,
     handleSaveProfileEdits,
     handleUpdateProfile,
+    handleTrySample,
   } = useAppState();
   return (
     <PreferencesScreen
@@ -21,6 +22,7 @@ export default function PreferencesPage() {
       profile={profile}
       freshBidPack={freshBidPack}
       onGoToUpload={() => router.push("/upload")}
+      onTrySample={handleTrySample}
       onStartInterview={handleStartInterview}
       onShowRankings={() => {
         handleAcknowledgeFreshBidPack();

@@ -11,7 +11,7 @@ const VERDICTS: { v: PriorityVerdict; label: string; tone: string }[] = [
   { v: "right", label: "Right", tone: "border-good bg-good-soft text-good" },
   { v: "more", label: "Count more", tone: "border-warn bg-warn-soft text-warn" },
   { v: "less", label: "Count less", tone: "border-warn bg-warn-soft text-warn" },
-  { v: "drop", label: "Doesn't matter", tone: "border-danger bg-danger-soft text-danger" },
+  { v: "drop", label: "Doesn’t matter", tone: "border-danger bg-danger-soft text-danger" },
 ];
 
 interface PriorityReviewStepProps {

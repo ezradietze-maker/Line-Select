@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { getCurrentUser, logout as logoutAccount } from "@/lib/auth";
+import { checkSession, logout as logoutAccount } from "@/lib/auth";
 import { clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
 import { generateFakeOffer } from "@/lib/fake-trade-offers";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
@@ -12,7 +12,6 @@ import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/posthog-client";
 import { clearPendingProfile, loadPendingProfile, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
-import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
 import { clearProfileForUser, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
@@ -22,6 +21,51 @@ import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 import type { TradeOffer } from "@/types/trade";
 import type { ToastItem } from "@/components/ui/Toast";
+
+/**
+ * Whether this device was signed in when the app last checked — not a credential (the session cookie is), just a
+ * hint for whether a fresh load can show the guest's own data before the session check answers.
+ */
+const SIGNED_IN_HINT_KEY = "line-select:signed-in-hint:v1";
+
+function readSignedInHint(): boolean {
+  try {
+    const hint = window.localStorage.getItem(SIGNED_IN_HINT_KEY);
+    if (hint !== null) return hint === "1";
+    // No hint yet (first load since it existed): a device holding an account's own saved pack or profile may well
+    // still be signed in, so it waits for the session check rather than briefly showing — and routing on — guest data.
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i) ?? "";
+      if (/^line-select:(bidpack|preference-profile):/.test(key) && !key.includes(":guest:")) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function writeSignedInHint(user: UserAccount | null): void {
+  try {
+    window.localStorage.setItem(SIGNED_IN_HINT_KEY, user ? "1" : "0");
+    if (user) window.localStorage.setItem(LAST_USER_KEY, JSON.stringify(user));
+    else window.localStorage.removeItem(LAST_USER_KEY);
+  } catch {
+    // private mode — every load just waits on the session check, as before
+  }
+}
+
+/** The account this device was last signed in to — stood in for when the session check can't reach the server. */
+const LAST_USER_KEY = "line-select:last-user:v1";
+
+function readLastUser(): UserAccount | null {
+  try {
+    const raw = window.localStorage.getItem(LAST_USER_KEY);
+    const user = raw ? (JSON.parse(raw) as UserAccount) : null;
+    return user && typeof user.id === "string" ? user : null;
+  } catch {
+    return null;
+  }
+}
 
 interface DataState {
   ready: boolean;
@@ -105,6 +149,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const realOffersRef = useRef<TradeOffer[]>([]);
   const knownNotifiableIdsRef = useRef<Set<string> | null>(null);
+  const onTradeBoard = usePathname() === "/trade-board";
+  /** Which pack (and pilot) the current example offer was made for. */
+  const demoOfferKey = useRef<string | null>(null);
   const pathnameRef = useRef<string>("/");
   if (typeof window !== "undefined") pathnameRef.current = window.location.pathname;
 
@@ -113,26 +160,41 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // resolve the initial profile/bidPack/user — can't happen during render
     // since it would mismatch the server-rendered "not ready yet" state.
     let cancelled = false;
-    async function bootstrap() {
-      const currentUser = await getCurrentUser();
-      if (cancelled) return;
-      if (currentUser) identifyPilot(currentUser.id);
+    const stateFor = async (currentUser: UserAccount | null): Promise<DataState> => {
       const savedBidPack = loadBidPack(currentUser?.id ?? null);
-      const savedProfile = await loadProfileForUser(currentUser?.id ?? null);
-      const savedSeniority = loadSeniority(currentUser?.id ?? null);
-      setState({
+      return {
         ready: true,
-        profile: savedProfile,
+        profile: await loadProfileForUser(currentUser?.id ?? null),
         user: currentUser,
         bidPack: savedBidPack,
         parseResult: null,
         // A finished-but-unconfirmed interview survives a refresh on the confirmation screen.
         pendingProfile: loadPendingProfile(currentUser?.id ?? null, savedBidPack?.id ?? null),
-        seniority: savedSeniority,
+        seniority: loadSeniority(currentUser?.id ?? null),
         freshBidPack: false,
         bidPackSaveFailed: false,
         profileSaveFailed: false,
-      });
+      };
+    };
+    async function bootstrap() {
+      // A device that wasn't signed in last time is almost certainly a guest now, and a guest's pack and profile are
+      // all on this device — so show them straight away instead of waiting on the session check (which takes a second
+      // or more when the server is cold). If the check then finds an account after all, its data replaces them.
+      const assumedGuest = !readSignedInHint();
+      if (assumedGuest) {
+        const guest = await stateFor(null);
+        if (!cancelled) setState(guest);
+      }
+      const session = await checkSession();
+      if (cancelled) return;
+      // No answer from the server (no signal): carry on as the account this device was last signed in to, rather than
+      // dropping a signed-in pilot to an empty guest view until the connection comes back.
+      const currentUser = session.reachable ? session.user : readLastUser();
+      if (session.reachable) writeSignedInHint(currentUser);
+      if (currentUser) identifyPilot(currentUser.id);
+      if (assumedGuest && !currentUser) return;
+      const resolved = await stateFor(currentUser);
+      if (!cancelled) setState(resolved);
     }
     bootstrap();
     return () => {
@@ -146,25 +208,35 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // using the board. Never touches the server. Cleared entirely once
     // there's no bid pack to build fake offers from.
     if (!bidPack) {
+      demoOfferKey.current = null;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDemoOffer(null);
       return;
     }
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-    function rotate() {
+    function rotate(again: boolean) {
       if (!bidPack) return;
       const myOpen = user
         ? realOffersRef.current.find((o) => o.offeringUserId === user.id && o.status === "open")
         : undefined;
       setDemoOffer(generateFakeOffer(bidPack, myOpen?.offeredTrip.pairingNumber ?? null));
-      timeoutId = setTimeout(rotate, 15000 + Math.random() * 5000);
+      if (again) timeoutId = setTimeout(() => rotate(true), 15000 + Math.random() * 5000);
     }
 
-    rotate();
+    // It keeps rotating only while the Trade Board is open: every rotation re-renders everything that reads app
+    // state, and on the rankings that was a whole list of cards redrawn every fifteen seconds for nothing on screen.
+    // Arriving on the board keeps the offer already made for this pack (no swap mid-transition) and starts the clock.
+    const packKey = `${bidPack.base}|${bidPack.aircraft}|${bidPack.seat}|${bidPack.month}|${user?.id ?? ""}`;
+    if (demoOfferKey.current !== packKey) {
+      demoOfferKey.current = packKey;
+      rotate(onTradeBoard);
+    } else if (onTradeBoard) {
+      timeoutId = setTimeout(() => rotate(true), 15000 + Math.random() * 5000);
+    }
     return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bidPack?.base, bidPack?.aircraft, bidPack?.seat, bidPack?.month, user?.id]);
+  }, [bidPack?.base, bidPack?.aircraft, bidPack?.seat, bidPack?.month, user?.id, onTradeBoard]);
 
   useEffect(() => {
     // Polls real trade offers (independent of the demo rotation above) so
@@ -176,9 +248,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
     let cancelled = false;
+    let last = "";
     async function poll() {
+      // Not while the tab is in the background, and no state change when nothing changed — an unchanged poll used to
+      // re-render the whole app every ten seconds.
+      if (document.visibilityState === "hidden") return;
       const data = await fetchTradeOffers();
-      if (!cancelled) setRealOffers(data);
+      const signature = JSON.stringify(data);
+      if (cancelled || signature === last) return;
+      last = signature;
+      setRealOffers(data);
     }
     poll();
     const intervalId = setInterval(poll, 10000);
@@ -292,7 +371,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function handleTrySample() {
-    handleBidPackConfirmed(SAMPLE_BID_PACK);
+    // Fetched when asked for, not shipped on every screen.
+    void import("@/lib/sample-bidpack").then(({ SAMPLE_BID_PACK }) => handleBidPackConfirmed(SAMPLE_BID_PACK));
   }
 
   function handleBidPackConfirmed(newBidPack: BidPack) {
@@ -429,6 +509,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleAuthenticated(newUser: UserAccount) {
+    writeSignedInHint(newUser);
     identifyPilot(newUser.id);
     let theirBidPack = loadBidPack(newUser.id);
     let theirProfile = await loadProfileForUser(newUser.id);
@@ -479,6 +560,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   async function handleLogout() {
     await logoutAccount();
+    writeSignedInHint(null);
     resetPilotIdentity();
     const guestBidPack = loadBidPack(null);
     const guestProfile = await loadProfileForUser(null);

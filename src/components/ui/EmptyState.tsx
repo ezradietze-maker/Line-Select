@@ -8,6 +8,9 @@ interface EmptyStateProps {
   description: ReactNode;
   actionLabel?: string;
   onAction?: () => void;
+  /** A quieter second way forward, shown as a link under the main action. */
+  secondaryLabel?: string;
+  onSecondary?: () => void;
   /** Compact renders a small slot for a state nested inside a list or
    * panel. The default renders a larger centered treatment for a state
    * that fills the whole screen. */
@@ -48,6 +51,8 @@ export function EmptyState({
   description,
   actionLabel,
   onAction,
+  secondaryLabel,
+  onSecondary,
   compact = false,
   className = "",
 }: EmptyStateProps) {
@@ -69,12 +74,23 @@ export function EmptyState({
   return (
     <div className={`mx-auto w-full max-w-md text-center ${className}`}>
       <div className="mb-5 flex justify-center text-ink-faint">{icon ?? <ScopeIcon className="h-16 w-16" />}</div>
-      {title && <Heading as="h1" className="text-2xl text-ink sm:text-3xl">{title}</Heading>}
-      <p className={`text-sm leading-relaxed text-ink-muted ${title ? "mt-2" : ""}`}>{description}</p>
+      {title && <Heading as="h1" className="text-balance text-2xl text-ink sm:text-3xl">{title}</Heading>}
+      <p className={`text-pretty text-sm leading-relaxed text-ink-muted ${title ? "mt-2" : ""}`}>{description}</p>
       {actionLabel && onAction && (
         <Button onClick={onAction} className="mt-6">
           {actionLabel}
         </Button>
+      )}
+      {secondaryLabel && onSecondary && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={onSecondary}
+            className="text-sm text-ink-muted underline decoration-dotted underline-offset-4 transition-colors hover:text-ink"
+          >
+            {secondaryLabel}
+          </button>
+        </div>
       )}
     </div>
   );

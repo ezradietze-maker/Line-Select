@@ -201,9 +201,9 @@ function Cell({
               </>
             ) : day.restCity ? (
               <>
-                <BedIcon className="h-2.5 w-2.5 shrink-0 text-good/80" />
-                <span className="text-good/80">{day.restCity}</span>
-                <span className="hidden text-[10px] font-normal text-good/80 @min-[4.75rem]:inline">rest</span>
+                <BedIcon className="h-2.5 w-2.5 shrink-0 text-good" />
+                <span className="font-medium text-good">{day.restCity}</span>
+                <span className="hidden text-[10px] font-normal text-good @min-[4.75rem]:inline">rest</span>
               </>
             ) : day.isTripEnd && day.releaseTime ? (
               <span className="whitespace-nowrap font-mono text-[10px] font-medium text-ink">
@@ -236,7 +236,7 @@ function MonthKeyInfo() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="text-xs font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink">
+      <button type="button" onClick={() => setOpen(true)} className="text-xs font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink print:hidden">
         What do these mean?
       </button>
       {open && (
@@ -510,7 +510,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
         </div>
       </div>
 
-      {selectedDay ? <DayDetail day={selectedDay} /> : <p className="mt-1.5 text-[11px] text-ink-faint">Tap a day for everything on it.</p>}
+      {selectedDay ? <DayDetail day={selectedDay} /> : <p className="mt-1.5 text-[11px] text-ink-faint print:hidden">Tap a day for everything on it.</p>}
 
       <Summary s={month.summary} line={line} />
 

@@ -9,6 +9,8 @@ import { RAIL_BOOTSTRAP } from "@/lib/rail-key";
  */
 const RETURNING_BOOTSTRAP = `
   try {
+    // "/?welcome" always shows the landing page, even to a returning pilot.
+    if (location.pathname === '/' && /[?&]welcome(=|&|$)/.test(location.search)) throw 0;
     for (var i = 0; i < localStorage.length; i++) {
       var k = localStorage.key(i);
       if (k && k.indexOf('line-select:bidpack:') === 0) {

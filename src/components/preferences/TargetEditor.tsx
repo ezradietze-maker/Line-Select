@@ -6,9 +6,9 @@ import { buildTarget, setTargetRole, targetParts, type TargetRole } from "@/lib/
 import type { RangeTarget } from "@/types/preferences";
 
 const ROLE_LABELS: Record<TargetRole, { title: string; add: string }> = {
-  min: { title: "Lowest I'd accept", add: "Set a lowest I'd accept" },
+  min: { title: "Lowest I’d accept", add: "Set a lowest I’d accept" },
   ideal: { title: "Ideal", add: "Set an ideal" },
-  max: { title: "Most I'd want", add: "Set a most I'd want" },
+  max: { title: "Most I’d want", add: "Set a most I’d want" },
 };
 
 interface TargetEditorProps {

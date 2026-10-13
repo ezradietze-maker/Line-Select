@@ -165,13 +165,13 @@ export function estimateFeasibility(
   if (margin >= -0.15) {
     return {
       tier: "possible",
-      note: "Within real reach at your number — rank it high, but don't build your whole list around it.",
+      note: "Within real reach at your number — rank it high, but don’t build your whole list around it.",
       source: "heuristic",
     };
   }
   return {
     tier: "longshot",
-    note: "A genuine reach at your current number this bid period — still worth ranking first if you want it, just don't let it be your only real option.",
+    note: "A genuine reach at your current number this bid period — still worth ranking first if you want it, just don’t let it be your only real option.",
     source: "heuristic",
   };
 }
@@ -284,7 +284,7 @@ export function generateStrategies(
       name: "The Ghost Line",
       tagline: "Maximum pay, minimum flying — the day-rig floor working in your favor.",
       mechanism:
-        "Credit is guaranteed by how many calendar days you're away, not by how much you actually fly. Once a trip's length locks in its pay, extra flying on top of that doesn't earn anything extra — so the highest-value version of any trip length is the one with the least real block time in it. This line's trips are exactly that: heavy on paid standby and deadhead, light on the yoke.",
+        "Credit is guaranteed by how many calendar days you’re away, not by how much you actually fly. Once a trip’s length locks in its pay, extra flying on top of that doesn’t earn anything extra — so the highest-value version of any trip length is the one with the least real block time in it. This line’s trips are exactly that: heavy on paid standby and deadhead, light on the yoke.",
       benefits: [
         "Full credit for the trip length, with a fraction of the workload",
         "Less time actually on the flight deck means less fatigue over the bid period",
@@ -309,7 +309,7 @@ export function generateStrategies(
       const feasibility = estimateFeasibility(desirabilityPercentile(position, total), seniorityPct, awardSummary);
       return toRecommendation(
         p,
-        `One trip covers ${Math.round(p.maxTripCreditShare * 100)}% of this line's ${hours(
+        `One trip covers ${Math.round(p.maxTripCreditShare * 100)}% of this line’s ${hours(
           p.line.totalCreditHours
         )}-hour credit total`,
         `${p.line.daysOff} days off, almost entirely in one uninterrupted block once the trip releases.`,
@@ -322,7 +322,7 @@ export function generateStrategies(
       name: "The One-And-Done",
       tagline: "Bid the single trip that nearly clears your whole month by itself.",
       mechanism:
-        "A handful of trips in most packs are long enough that one of them alone covers most of a full line's credit requirement. Holding a line built around one of those means the rest of your bid period needs almost nothing else — one sustained trip, then a long, uninterrupted stretch of real days off, instead of your month chopped into several shorter outings.",
+        "A handful of trips in most packs are long enough that one of them alone covers most of a full line’s credit requirement. Holding a line built around one of those means the rest of your bid period needs almost nothing else — one sustained trip, then a long, uninterrupted stretch of real days off, instead of your month chopped into several shorter outings.",
       benefits: [
         "One continuous block of days off instead of several fragmented ones",
         "Only one report/release cycle to plan your life around all month",
@@ -357,7 +357,7 @@ export function generateStrategies(
       name: "The Metronome",
       tagline: "Trade a little pay ceiling for a schedule you can actually plan a life around.",
       mechanism:
-        "A line built from several short, similar trips instead of one long one repeats the same rhythm most weeks — same rough report time, same trip length, often the same layover. It won't out-earn the highest day-rig lines, but it's the most predictable pattern a bid pack offers, which is its own kind of leverage once you're bidding for a stable routine over raw credit.",
+        "A line built from several short, similar trips instead of one long one repeats the same rhythm most weeks — same rough report time, same trip length, often the same layover. It won’t out-earn the highest day-rig lines, but it’s the most predictable pattern a bid pack offers, which is its own kind of leverage once you’re bidding for a stable routine over raw credit.",
       benefits: [
         "The same weekly pattern makes commuting and family scheduling far easier",
         "No single trip is long enough to be badly disrupted by weather or maintenance",
@@ -407,7 +407,7 @@ export function generateStrategies(
       name: "The Safety Net",
       tagline: "The best-balanced line your seniority can realistically hold — your floor.",
       mechanism:
-        "Every list needs entries that don't depend on being rare. These lines score well on both credit and days off without relying on an unusual pattern, so they're far less contested than the plays above — the picks that make sure your bid still lands somewhere good even if none of your reach picks come through.",
+        "Every list needs entries that don’t depend on being rare. These lines score well on both credit and days off without relying on an unusual pattern, so they’re far less contested than the plays above — the picks that make sure your bid still lands somewhere good even if none of your reach picks come through.",
       benefits: [
         "Realistic at a much wider range of seniority numbers",
         "Balances pay and time off without betting on a single rare trip",
@@ -433,7 +433,7 @@ export function generateStrategies(
       counts.b > 0 ? `${counts.b} run RB` : null,
     ].filter((s): s is string => s !== null);
     const unknownNote =
-      counts.unknown > 0 ? `, and ${counts.unknown} whose type wasn't clear from the printed grid` : "";
+      counts.unknown > 0 ? `, and ${counts.unknown} whose type wasn’t clear from the printed grid` : "";
 
     const rlg = bidPack.info?.rlgHours ?? null;
     const lowLineCredit = bidPack.info?.lowLineCreditHours ?? null;
@@ -443,24 +443,24 @@ export function generateStrategies(
         : "";
 
     const benefits = [
-      "Identical guaranteed pay across every reserve type on this pack's own numbers",
-      "Your pack's own legend calls out R as the only explicitly 24-hour type — RA/RB are named separately, which usually means a narrower call window for the same floor pay (the exact hours aren't printed on the grid itself, so confirm locally)",
+      "Identical guaranteed pay across every reserve type on this pack’s own numbers",
+      "Your pack’s own legend calls out R as the only explicitly 24-hour type — RA/RB are named separately, which usually means a narrower call window for the same floor pay (the exact hours aren’t printed on the grid itself, so confirm locally)",
     ];
     if (rlg !== null && lowLineCredit !== null && rlg > lowLineCredit) {
       benefits.push(
         `This bid period, that guarantee (${hours(rlg)} hrs) is actually higher than the lowest-paying awarded regular line (${hours(
           lowLineCredit
-        )} hrs) — reserve isn't automatically the losing seat this month.`
+        )} hrs) — reserve isn’t automatically the losing seat this month.`
       );
     }
 
     strategies.push({
       id: "reserve-ladder",
       name: "The Reserve Ladder",
-      tagline: "If you're going to hold reserve, hold the lightest version of it that pays the same.",
+      tagline: "If you’re going to hold reserve, hold the lightest version of it that pays the same.",
       mechanism: `This pack has ${bidPack.reserveLines.length} reserve lines this bid period: ${typeBreakdown.join(
         ", "
-      )}${unknownNote}.${rlgSentence} If you end up on reserve at all, there's real reason to prefer whichever of RA/RB is available over 24-Hour R — the guarantee doesn't change, only how much of your day is locked to the phone.`,
+      )}${unknownNote}.${rlgSentence} If you end up on reserve at all, there’s real reason to prefer whichever of RA/RB is available over 24-Hour R — the guarantee doesn’t change, only how much of your day is locked to the phone.`,
       benefits,
       lines: [],
       isProcessTip: true,
@@ -473,9 +473,9 @@ export function generateStrategies(
     name: "The Vacation Vault",
     tagline: "Bank vacation into one long block and skip the bid fight for that stretch entirely.",
     mechanism:
-      "Vacation entitlement usually isn't capped at one week per pick — a pilot with enough accrued balance can bid several consecutive weeks together as one continuous block, sometimes long enough to swallow an entire bid period. A block that overlaps a bid month's boundary means you're drawing vacation pay through it instead of competing for a line at all — no trip to fly, no reserve to sit, nothing to rank. Line Select can't point you at a specific slot here: doing that would mean reading other pilots' names and vacation weeks off your pack's own roster pages, which this app deliberately never parses. Check your own accrued vacation balance and bid the longest continuous stretch you can actually use.",
+      "Vacation entitlement usually isn’t capped at one week per pick — a pilot with enough accrued balance can bid several consecutive weeks together as one continuous block, sometimes long enough to swallow an entire bid period. A block that overlaps a bid month’s boundary means you’re drawing vacation pay through it instead of competing for a line at all — no trip to fly, no reserve to sit, nothing to rank. Line Select can’t point you at a specific slot here: doing that would mean reading other pilots' names and vacation weeks off your pack’s own roster pages, which this app deliberately never parses. Check your own accrued vacation balance and bid the longest continuous stretch you can actually use.",
     benefits: [
-      "A guaranteed, paid outcome that doesn't depend on winning anything in the bid",
+      "A guaranteed, paid outcome that doesn’t depend on winning anything in the bid",
       "One long block beats several short ones for actually feeling like time off",
       "Timed right, it removes an entire bid period from the competition altogether",
     ],
@@ -489,7 +489,7 @@ export function generateStrategies(
     name: "The Re-Bid Chain",
     tagline: "Your seniority wins more than once if you use every round of the process.",
     mechanism:
-      "Most seniority-ordered bid systems don't stop at the first award — a conflict-resolution pass, a view/add window, and an open-time or secondary-line release each follow, and every one of them is still processed in seniority order. Treat your primary bid as a placeholder, not your final answer: by the time the later windows open, you can see exactly what got shaken loose by conflicts above and below you, and your seniority wins there exactly as it did the first time.",
+      "Most seniority-ordered bid systems don’t stop at the first award — a conflict-resolution pass, a view/add window, and an open-time or secondary-line release each follow, and every one of them is still processed in seniority order. Treat your primary bid as a placeholder, not your final answer: by the time the later windows open, you can see exactly what got shaken loose by conflicts above and below you, and your seniority wins there exactly as it did the first time.",
     benefits: [
       "A second, third, and fourth chance at the exact same pool, with better information each time",
       "No downside to ranking your true favorite first — seniority bidding never penalizes aiming high",
@@ -505,11 +505,11 @@ export function generateStrategies(
     name: "Reserve Avoidance",
     tagline: "Bid a wide enough spread that a gap in your primary picks never defaults you onto reserve.",
     mechanism:
-      "Distinct from the Reserve Ladder above (which is about what to do once you're already on reserve) — this is about not landing there in the first place. The Re-Bid Chain's own logic already establishes that a seniority-ordered award runs through several rounds, not just one; the exposure to reserve mostly comes from a bid list that's too narrow to survive a conflict in an early round, not from bad luck. Ranking a deliberately wide spread of realistically-feasible lines — not just your top few reaches — means a conflict anywhere above you is far more likely to fall through to something you actually ranked, rather than to nothing at all. Works entirely within FAR Part 117 duty and rest limits — this is about bid-list construction, never about what a line itself is legally allowed to require.",
+      "Distinct from the Reserve Ladder above (which is about what to do once you’re already on reserve) — this is about not landing there in the first place. The Re-Bid Chain’s own logic already establishes that a seniority-ordered award runs through several rounds, not just one; the exposure to reserve mostly comes from a bid list that’s too narrow to survive a conflict in an early round, not from bad luck. Ranking a deliberately wide spread of realistically-feasible lines — not just your top few reaches — means a conflict anywhere above you is far more likely to fall through to something you actually ranked, rather than to nothing at all. Works entirely within FAR Part 117 duty and rest limits — this is about bid-list construction, never about what a line itself is legally allowed to require.",
     benefits: [
       "A conflict in an early round is far less likely to leave you with no ranked line left to fall to",
       "No cost to ranking widely — seniority bidding never penalizes a long list",
-      "Turns the Re-Bid Chain's own multi-round logic into a deliberate defensive strategy, not just an opportunistic one",
+      "Turns the Re-Bid Chain’s own multi-round logic into a deliberate defensive strategy, not just an opportunistic one",
     ],
     lines: [],
     isProcessTip: true,
@@ -522,7 +522,7 @@ export function generateStrategies(
     name: "Trip Trading",
     tagline: "Reconstruct your ideal month after award by trading trips with other pilots.",
     mechanism:
-      "No single awarded line usually matches everything a pilot wants — but most seniority-ordered schedules allow real, pilot-to-pilot trip-for-trip trades after award, typically subject to qualification and seniority checks Line Select has no visibility into. Rather than treat your awarded line as final, treat it as a starting point: trading away a trip that doesn't fit for one that does can close much of the gap between what you were awarded and what you actually wanted, without re-entering the bid process at all. This is genuinely more effort than bidding once and waiting — it's the right move mainly for a pilot who said they'd actually put in that work, not a passive default. Trading itself never touches duty or rest limits — every trip involved is already a real, FAR Part 117-compliant pairing on someone's own awarded line.",
+      "No single awarded line usually matches everything a pilot wants — but most seniority-ordered schedules allow real, pilot-to-pilot trip-for-trip trades after award, typically subject to qualification and seniority checks Line Select has no visibility into. Rather than treat your awarded line as final, treat it as a starting point: trading away a trip that doesn’t fit for one that does can close much of the gap between what you were awarded and what you actually wanted, without re-entering the bid process at all. This is genuinely more effort than bidding once and waiting — it’s the right move mainly for a pilot who said they’d actually put in that work, not a passive default. Trading itself never touches duty or rest limits — every trip involved is already a real, FAR Part 117-compliant pairing on someone’s own awarded line.",
     benefits: [
       "Can close the gap between an awarded line and an ideal one without waiting for the next bid period",
       "Works even for a pilot who bid conservatively and got a safe but unexciting line",
@@ -539,11 +539,11 @@ export function generateStrategies(
     name: "Grievance & Slide Paperwork",
     tagline: "A missed or misapplied entitlement is a real lever most pilots never pull.",
     mechanism:
-      "When a specific contractual entitlement is missed or misapplied in an award — a guarantee, a protected day, a bid-process rule not followed correctly — a formal grievance or a schedule-slide request is a real, underused avenue, not a last resort. Line Select has no visibility into any pilot's actual grievance history or the exact contract language that would apply to a specific situation, so this is deliberately general: know that this process exists and is worth using when something genuinely was missed, rather than assuming an award mistake just has to stand. Like everything else here, this is about enforcing what you're actually entitled to — never a route to something outside FAR Part 117 duty/rest limits or outside the contract itself.",
+      "When a specific contractual entitlement is missed or misapplied in an award — a guarantee, a protected day, a bid-process rule not followed correctly — a formal grievance or a schedule-slide request is a real, underused avenue, not a last resort. Line Select has no visibility into any pilot’s actual grievance history or the exact contract language that would apply to a specific situation, so this is deliberately general: know that this process exists and is worth using when something genuinely was missed, rather than assuming an award mistake just has to stand. Like everything else here, this is about enforcing what you’re actually entitled to — never a route to something outside FAR Part 117 duty/rest limits or outside the contract itself.",
     benefits: [
       "A real process, not a hypothetical one — most contracts specifically provide for this",
       "Worth knowing about even if rarely needed, since the cost of raising a legitimate miss is low",
-      "The natural fit for a pilot who said they'd actually do the paperwork for a better outcome",
+      "The natural fit for a pilot who said they’d actually do the paperwork for a better outcome",
     ],
     lines: [],
     isProcessTip: true,

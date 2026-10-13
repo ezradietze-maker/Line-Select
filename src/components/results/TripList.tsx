@@ -54,13 +54,13 @@ function formatDuration(hours: number): string {
 }
 
 const LAYOVER_TOOLTIP =
-  "Layover / hotel — real time from block-in to hotel pickup for the next departure. Not exactly when you'll sleep, since that's down to you and the jet lag.";
+  "Layover / hotel — real time from block-in to hotel pickup for the next departure. Not exactly when you’ll sleep, since that’s down to you and the jet lag.";
 
 const STANDBY_TOOLTIP =
-  "Hotel standby — you sit on call at the layover hotel for the day. It pays the guaranteed standby credit, but no flight is flown unless you're called out.";
+  "Hotel standby — you sit on call at the layover hotel for the day. It pays the guaranteed standby credit, but no flight is flown unless you’re called out.";
 
 const GROUND_TOOLTIP =
-  "On the ground before departure — report/check-in at trip start, or hotel-to-airport transport plus check-in after a layover. Not split further since the bid pack doesn't print a separate drop-off time.";
+  "On the ground before departure — report/check-in at trip start, or hotel-to-airport transport plus check-in after a layover. Not split further since the bid pack doesn’t print a separate drop-off time.";
 
 const CONNECTION_TOOLTIP =
   "Ground time between two flights in the same duty period — too short to be a layover, just deplane, walk, and board the next one.";
@@ -305,7 +305,7 @@ function DayColumn({
         ))}
       </div>
       {day.zuluRulerLabel && (
-        <div className="mt-0.5 truncate text-center font-mono text-[10px] leading-tight text-ink-faint" title="This local day's own boundaries, read in Zulu — so you can cross-check without switching the toggle.">
+        <div className="mt-0.5 truncate text-center font-mono text-[10px] leading-tight text-ink-faint" title="This local day’s own boundaries, read in Zulu — so you can cross-check without switching the toggle.">
           {day.zuluRulerLabel}
         </div>
       )}
@@ -615,7 +615,7 @@ function TripInsights({ trip }: { trip: Trip }) {
     chips.push({
       label: "Credit per day away",
       value: `${(a.creditPerTafbHour * 24).toFixed(1)}h`,
-      title: "Credit hours earned per 24 hours away from base — this trip's own pay-per-day-away rate, independent of how long the trip runs.",
+      title: "Credit hours earned per 24 hours away from base — this trip’s own pay-per-day-away rate, independent of how long the trip runs.",
     });
   }
 
@@ -633,7 +633,7 @@ function TripInsights({ trip }: { trip: Trip }) {
     chips.push({
       label: "Avg sleep window",
       value: `${a.avgSleepOpportunityHours.toFixed(1)}h`,
-      title: "Block-in to the hotel pickup for the next duty, averaged over the trip's layovers — the real window at the hotel, from the pack's own printed pickup times.",
+      title: "Block-in to the hotel pickup for the next duty, averaged over the trip’s layovers — the real window at the hotel, from the pack’s own printed pickup times.",
     });
   }
 
@@ -641,7 +641,7 @@ function TripInsights({ trip }: { trip: Trip }) {
     chips.push({
       label: "Duty ÷ flying",
       value: `${a.dutyToBlockRatio.toFixed(1)}×`,
-      title: "Total duty time divided by the block you actually fly (deadheads don't count as flying) — higher means more of the day is ground time, connections and riding than flying.",
+      title: "Total duty time divided by the block you actually fly (deadheads don’t count as flying) — higher means more of the day is ground time, connections and riding than flying.",
     });
   }
 

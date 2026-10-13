@@ -33,6 +33,8 @@ export default function RootError({ error, reset }: { error: Error & { digest?: 
           pack usually clears it.
         </p>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-center">
+          {/* A full page load on purpose: after a crash, a fresh start beats client-side navigation inside broken state. */}
+          {/* eslint-disable-next-line @next/next/no-location-assign-relative-destination */}
           <Button variant="secondary" onClick={() => (window.location.href = "/")}>
             Back to start
           </Button>

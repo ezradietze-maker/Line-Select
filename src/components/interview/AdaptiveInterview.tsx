@@ -486,7 +486,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        setBidStoryError(body?.error ?? "Couldn't read that just now — you can try again, or skip and answer as you go instead.");
+        setBidStoryError(body?.error ?? "Couldn’t read that just now — you can try again, or skip and answer as you go instead.");
         return;
       }
       const { profileUpdates, commuterStatus, commuteFrom: storyCommuteFrom } = (await res.json()) as {
@@ -512,7 +512,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       if (extracted.length > 0) setStoryReview(true);
       else setPhase("commuter");
     } catch {
-      setBidStoryError("Couldn't reach the interview service. Check your connection and try again, or skip for now.");
+      setBidStoryError("Couldn’t reach the interview service. Check your connection and try again, or skip for now.");
     } finally {
       setBidStoryBusy(false);
     }
@@ -593,7 +593,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        failTurn(body?.error ?? "Couldn't reach the interview service. Try again.");
+        failTurn(body?.error ?? "Couldn’t reach the interview service. Try again.");
         return;
       }
       const turn = (await res.json()) as TurnResponse;
@@ -629,7 +629,7 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
       setChoiceElaboration("");
       setPhase("adaptive-question");
     } catch {
-      failTurn("Couldn't reach the interview service. Check your connection and try again.");
+      failTurn("Couldn’t reach the interview service. Check your connection and try again.");
     }
   }
 
@@ -1133,8 +1133,8 @@ export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = 
           {richness && richness.level !== "thorough" && (
             <p className="mb-2 text-xs text-ink-faint">
               {richness.level === "thin"
-                ? "Your profile's still on the thinner side — a few more questions would meaningfully sharpen your ranking."
-                : "A couple more questions here would sharpen your ranking further, if you've got the time."}
+                ? "Your profile’s still on the thinner side — a few more questions would meaningfully sharpen your ranking."
+                : "A couple more questions here would sharpen your ranking further, if you’ve got the time."}
             </p>
           )}
           <button

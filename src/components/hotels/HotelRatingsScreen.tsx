@@ -347,7 +347,21 @@ function HotelCard({
 
           <div className="mt-2.5 font-mono text-[11.5px] leading-relaxed text-ink-muted">
             <span className="text-ink-faint">Lines </span>
-            {shownLines.join(" · ")}
+            {/* With rankings to show, each number opens that line there. */}
+            {profile
+              ? shownLines.map((n, i) => (
+                  <span key={n}>
+                    {i > 0 && " · "}
+                    <Link
+                      href={`/results?line=${encodeURIComponent(n)}`}
+                      title={`Open line ${n} on your rankings`}
+                      className="underline decoration-hairline decoration-dotted underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
+                    >
+                      {n}
+                    </Link>
+                  </span>
+                ))
+              : shownLines.join(" · ")}
             {extra > 0 && (
               <>
                 {" "}

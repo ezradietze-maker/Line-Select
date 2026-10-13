@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "October 11, 2026";
+const LAST_UPDATED = "October 12, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -70,6 +70,11 @@ export default function PrivacyPage() {
             so they follow you to a new device or browser instead of being lost &mdash; the same
             reasoning as Trade Board and Inbox below. If you use the Service only as a guest, your
             preferences stay local-only, the same as your bid pack.
+          </p>
+          <p className="mt-3">
+            When you&rsquo;re signed in, your browser also keeps a copy of your account&rsquo;s basic
+            details (its ID, email and display name) on your device, so the app can keep showing your own
+            data if you reload with no connection &mdash; on a layover, say. Signing out removes it.
           </p>
         </Section>
 
@@ -273,7 +278,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="14. What we don't do">
+        <Section title="14. What we don’t do">
           <ul className="list-disc space-y-1.5 pl-5">
             <li>We don&rsquo;t sell or rent your personal information to anyone.</li>
             <li>
@@ -314,7 +319,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="16. Children's privacy">
+        <Section title="16. Children’s privacy">
           <p>
             The Service is intended for working airline pilots and is not directed at, or intended
             for use by, anyone under 18. We don&rsquo;t knowingly collect information from anyone

@@ -135,10 +135,10 @@ describe("generateStrategies", () => {
     expect(ladder!.mechanism).toContain("2 run 24-Hour (R) reserve");
     expect(ladder!.mechanism).toContain("1 run RA");
     expect(ladder!.mechanism).toContain("1 run RB");
-    expect(ladder!.mechanism).toContain("1 whose type wasn't clear");
+    expect(ladder!.mechanism).toContain("1 whose type wasn’t clear");
     expect(ladder!.mechanism).toContain("75.8 hours");
     // RLG (75.75) genuinely beats Low Line Credit (70.68) here, so the floor insight should surface.
-    expect(ladder!.benefits.some((b) => b.includes("isn't automatically the losing seat"))).toBe(true);
+    expect(ladder!.benefits.some((b) => b.includes("isn’t automatically the losing seat"))).toBe(true);
   });
 
   it("omits the Reserve Ladder's floor-guarantee claim when RLG doesn't actually beat Low Line Credit", () => {
@@ -158,7 +158,7 @@ describe("generateStrategies", () => {
     };
     const strategies = generateStrategies(bidPackWithReserve, SENIOR);
     const ladder = strategies.find((s) => s.id === "reserve-ladder");
-    expect(ladder!.benefits.some((b) => b.includes("isn't automatically the losing seat"))).toBe(false);
+    expect(ladder!.benefits.some((b) => b.includes("isn’t automatically the losing seat"))).toBe(false);
   });
 });
 

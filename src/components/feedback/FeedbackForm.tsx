@@ -6,9 +6,9 @@ import { submitFeedback } from "@/lib/feedback-client";
 import type { FeedbackCategory } from "@/types/feedback";
 
 const CATEGORIES: { value: FeedbackCategory; label: string }[] = [
-  { value: "bug", label: "Something's broken" },
+  { value: "bug", label: "Something’s broken" },
   { value: "idea", label: "I have an idea" },
-  { value: "confusing", label: "Something's confusing" },
+  { value: "confusing", label: "Something’s confusing" },
   { value: "other", label: "Something else" },
 ];
 

@@ -52,7 +52,7 @@ const POINTS: Point[] = [
         <path strokeLinecap="round" d="M12 8v4m0 3.5h.01" />
       </svg>
     ),
-    title: "What this isn't",
+    title: "What this isn’t",
     body: (
       <>
         <strong className="text-ink">
@@ -94,7 +94,7 @@ const POINTS: Point[] = [
 ];
 
 /** The four things worth knowing, as waypoints down one route line. Also shown in the sidebar's "How this works" dialog. */
-export function HowItWorksContent() {
+export function HowItWorksContent({ headingLevel = "h3" }: { headingLevel?: "h2" | "h3" } = {}) {
   return (
     <ul className="relative space-y-6">
       <span aria-hidden className="absolute bottom-4 left-[17px] top-4 w-px bg-gradient-to-b from-accent/60 via-hairline to-transparent" />
@@ -104,7 +104,7 @@ export function HowItWorksContent() {
             {point.icon}
           </div>
           <div className="min-w-0 pt-1.5">
-            <Heading as="h3" className="text-base text-ink">
+            <Heading as={headingLevel} className="text-base text-ink">
               {point.title}
             </Heading>
             <p className="mt-1 text-sm leading-relaxed text-ink-muted">{point.body}</p>

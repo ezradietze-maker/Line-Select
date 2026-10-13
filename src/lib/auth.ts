@@ -107,13 +107,17 @@ export async function logout(): Promise<void> {
   }
 }
 
-export async function getCurrentUser(): Promise<UserAccount | null> {
+/**
+ * The signed-in account, and whether the server could be asked at all — no signal on a layover is not the same
+ * answer as "signed out", and the app keeps a pilot's own data on screen for the first.
+ */
+export async function checkSession(): Promise<{ user: UserAccount | null; reachable: boolean }> {
   try {
     const res = await fetch("/api/auth/session", { credentials: "same-origin" });
-    if (!res.ok) return null;
+    if (!res.ok) return { user: null, reachable: res.status < 500 };
     const data = await res.json();
-    return (data.user as UserAccount | null) ?? null;
+    return { user: (data.user as UserAccount | null) ?? null, reachable: true };
   } catch {
-    return null;
+    return { user: null, reachable: false };
   }
 }

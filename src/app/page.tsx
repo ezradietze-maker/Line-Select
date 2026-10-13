@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LogoMark } from "@/components/ui/Logo";
 import { WelcomeScreen } from "@/components/welcome/WelcomeScreen";
 import { landingPathFor, useAppState } from "@/lib/app-state";
@@ -24,14 +24,17 @@ export default function RootPage() {
   // again here raced that navigation and dropped a returning pilot straight
   // onto Results, skipping the "same preferences as last time?" prompt.
   const hadBidPackOnArrival = useRef<boolean | null>(null);
+  // "/?welcome" shows the landing page to anyone, a returning pilot included — no bounce to their resume point.
+  // (Only read once state has loaded, so the server's render and the first client render still match.)
+  const [welcomeAsked] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("welcome"));
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || welcomeAsked) return;
     if (hadBidPackOnArrival.current === null) hadBidPackOnArrival.current = !!bidPack;
     if (!hadBidPackOnArrival.current || !bidPack) return;
     const target = landingPathFor(bidPack, profile);
     if (target !== "/") router.replace(target);
-  }, [ready, bidPack, profile, router]);
+  }, [ready, bidPack, profile, router, welcomeAsked]);
 
   // A saved-pack marker from the pre-paint script can be stale (another
   // account's pack on this browser): once state has loaded and there's no
@@ -47,7 +50,7 @@ export default function RootPage() {
   );
 
   // A returning pilot on their way to their resume point: the mark, breathing gently.
-  if (ready && bidPack) return loader;
+  if (ready && bidPack && !welcomeAsked) return loader;
 
   // Everyone else gets the landing page in the server HTML, so the headline
   // paints before any JavaScript runs. A returning pilot (marked before first

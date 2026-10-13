@@ -1,15 +1,14 @@
 "use client";
 
 import { MotionConfig } from "motion/react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { FeedbackForm } from "@/components/feedback/FeedbackForm";
 import { LeftNav } from "@/components/nav/LeftNav";
-import { NAV_ITEMS, type NavTarget } from "@/components/nav/nav-items";
+import { NAV_ITEMS, disabledReason, type NavTarget } from "@/components/nav/nav-items";
 import { PhoneNav } from "@/components/nav/PhoneNav";
 import { LogoMark } from "@/components/ui/Logo";
-import { HowItWorksContent } from "@/components/results/HowItWorks";
 import { Modal } from "@/components/ui/Modal";
 import { BackToTop } from "@/components/ui/BackToTop";
 import { CommandPalette } from "@/components/ui/CommandPalette";
@@ -18,6 +17,10 @@ import { Spinner } from "@/components/ui/Spinner";
 import { ToastStack } from "@/components/ui/Toast";
 import { AppStateProvider, useAppState } from "@/lib/app-state";
 import { navTargetForPath } from "@/lib/nav-target";
+
+// Only ever shown in a dialog someone opens — fetched then, not shipped with every screen.
+const FeedbackForm = dynamic(() => import("@/components/feedback/FeedbackForm").then((m) => m.FeedbackForm));
+const HowItWorksContent = dynamic(() => import("@/components/results/HowItWorks").then((m) => m.HowItWorksContent));
 
 const HIDDEN_SIDEBAR_PATHS = ["/", "/auth"];
 
@@ -36,6 +39,15 @@ function getDirection(from: string, to: string): NavDirection {
     return order(toTarget) > order(fromTarget) ? "down" : "up";
   }
   return "fade";
+}
+
+/**
+ * What the nav lights for the current screen. A destination that isn't open yet shows something else in its place —
+ * Rankings without a profile is the Preferences screen — so that's what's lit, never a greyed-out item.
+ */
+function litTarget(target: NavTarget | null, hasProfile: boolean, hasBidPack: boolean): NavTarget | null {
+  if (!target || !disabledReason(target, hasProfile, hasBidPack)) return target;
+  return target === "results" ? "preferences" : null;
 }
 
 function Chrome({ children }: { children: React.ReactNode }) {
@@ -107,7 +119,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
   }, [showSidebar]);
 
   const navProps = {
-    active: pendingTarget ?? navTargetForPath(pathname),
+    active: pendingTarget ?? litTarget(navTargetForPath(pathname), !!profile, !!bidPack),
     hasProfile: !!profile,
     hasBidPack: !!bidPack,
     user,
@@ -232,6 +244,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         lines={bidPack?.lines ?? null}
+        bidPackId={bidPack?.id ?? null}
         hasProfile={!!profile}
         hasBidPack={!!bidPack}
         onNavigate={navProps.onNavigate}

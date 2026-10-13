@@ -19,7 +19,7 @@ export default function ResultsPage() {
 function ResultsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { bidPack, profile, user, handleStartOver, handleStartInterview, handleUpdateProfile, handleAcknowledgeFreshBidPack } =
+  const { bidPack, profile, user, handleStartOver, handleStartInterview, handleUpdateProfile, handleAcknowledgeFreshBidPack, handleTrySample } =
     useAppState();
   const showingResults = !!(profile && bidPack);
 
@@ -60,6 +60,7 @@ function ResultsPageContent() {
       bidPack={bidPack}
       profile={profile}
       onGoToUpload={() => router.push("/upload")}
+      onTrySample={handleTrySample}
       onStartInterview={handleStartInterview}
     />
   );

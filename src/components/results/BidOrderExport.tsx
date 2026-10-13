@@ -112,6 +112,14 @@ export function BidOrderExport({
         >
           Add top pick to calendar
         </button>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          title="Prints the lines listed below, with their calendars — the controls are left off the page."
+          className={`${secondary} hidden sm:inline-flex`}
+        >
+          Print
+        </button>
       </div>
       <p className="mt-2 hidden text-xs leading-relaxed text-ink-faint sm:block">
         Line Select doesn&rsquo;t submit anything &mdash; copy your order, then enter it in your actual bid.

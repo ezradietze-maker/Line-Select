@@ -29,9 +29,13 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Line Select — Bid Line Matching for FedEx Pilots",
+  // Each screen names its own tab ("My Rankings · Line Select") — see the small layout.tsx beside each page.
+  title: { default: "Line Select — Bid Line Matching for FedEx Pilots", template: "%s · Line Select" },
   description:
     "An independent prototype that ranks FedEx pilot bid lines against your stated preferences. Not affiliated with or endorsed by FedEx.",
+  // A shared link shows the big card from app/opengraph-image.tsx.
+  openGraph: { siteName: "Line Select", type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 // The phone's browser bar matches the page behind it — the sidebar's color in

@@ -51,7 +51,7 @@ export function TopicSweepStep({ topics, eyebrow, onContinue }: TopicSweepStepPr
       <QuestionPrompt
         eyebrow={eyebrow}
         title={title}
-        help="You haven't brought these up. Tap any that matter to you — skip the ones that don't."
+        help="You haven’t brought these up. Tap any that matter to you — skip the ones that don’t."
       />
       <RevealControls title={title} className="mt-6">
         <div className="flex flex-wrap gap-2" role="group" aria-label="Topics that matter">

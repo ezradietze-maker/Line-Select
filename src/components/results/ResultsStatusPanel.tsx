@@ -121,7 +121,7 @@ export function ResultsStatusPanel({
     confidenceLevel === "thorough" ? "Thorough" : confidenceLevel === "moderate" ? "Moderate" : confidenceLevel === "thin" ? "Short" : profile.deepRoundCompleted ? "Deep" : "Set";
 
   return (
-    <section aria-label="Bid status" className="panel-glass mt-5 p-3 sm:p-4">
+    <section aria-label="Bid status" className="panel-glass mt-5 p-3 sm:p-4 print:hidden">
       {/* Tiles share each row evenly — three across even on a phone — and the deadline's is there from the first frame
           (it reads its saved time a moment later): popping in after the screen arrived shoved everything below it. */}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">

@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = { title: "Page not found" };
 
 /**
  * A wrong or outdated link — shown inside the app's own shell (sidebar and

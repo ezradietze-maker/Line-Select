@@ -61,7 +61,8 @@
      independent of brand identity), each darkened just enough to hold 4.5:1
      against its own "-soft" background at the small sizes these render at
      (banners, badges) — they were a hair under AA before. */
-  --color-good: #296e54;
+  /* Dark enough for small text on a trip day's shaded calendar cell (4.8:1), not only on the page. */
+  --color-good: #25664d;
   --color-standby: #7b5ea7;
   --color-good-soft: #e1f0e7;
   --color-warn: #92521c;
@@ -367,6 +368,21 @@
 @layer base {
   * {
     border-color: var(--color-border);
+  }
+  /*
+   * Every text field, menu and text box shows the app's focus ring when it has the keyboard — most of them only
+   * changed their border color, too faint to find at a glance. (Utility classes still win where a field sets its own.)
+   */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([data-no-ring]):focus-visible,
+  select:focus-visible,
+  textarea:not([data-no-ring]):focus-visible {
+    box-shadow: 0 0 0 2px var(--color-focus-ring);
+  }
+  /* Headings break into even lines instead of leaving one word stranded on the last. */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
 }
 
@@ -901,6 +917,12 @@ body {
     nav-progress 2.4s cubic-bezier(0.1, 0.7, 0.2, 1) 0.12s both;
 }
 
+/* The line the j / k keys are on. */
+.line-keyed {
+  border-radius: 0.875rem;
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
 /* Clear of a screen's own bar along the bottom (Preferences' "unsaved changes"). */
 body:has([data-bottom-bar]) .back-to-top {
   bottom: calc(var(--shell-bottom) + 5.5rem);
@@ -1028,5 +1050,58 @@ body:has([data-bottom-bar]) .back-to-top {
   ::view-transition-group(*) {
     animation-duration: 0s !important;
     animation-delay: 0s !important;
+  }
+}
+
+/* ---------- Print ---------- */
+
+/*
+ * A printed rankings list (or any screen) is the content alone: no rail, tab
+ * bar, footer or floating buttons, black on white, no entrance animations
+ * left half-played, and a line card never split across two sheets.
+ */
+@media print {
+  :root,
+  .app-shell,
+  [data-rail] .app-shell {
+    --shell-left: 0px !important;
+    --shell-bottom: 0px !important;
+  }
+  aside[aria-label="Main"],
+  nav[aria-label="Main"],
+  header[style*="app-topbar"],
+  footer,
+  .back-to-top,
+  .nav-progress {
+    display: none !important;
+  }
+  html,
+  body,
+  .app-shell {
+    background: #fff !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .cal-grid > * {
+    opacity: 1 !important;
+  }
+  .panel-glass,
+  [id^="line-"] {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+  [id^="line-"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  @page {
+    margin: 12mm;
   }
 }
