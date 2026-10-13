@@ -14,6 +14,8 @@ export type NavDirection = "forward" | "back" | "down" | "up" | "fade";
 interface ScreenTransitionProps {
   screenKey: string;
   direction: NavDirection;
+  /** Layout classes for the screen's own box (the whole screen, footer included, transitions as one). */
+  className?: string;
   children: ReactNode;
 }
 
@@ -36,7 +38,7 @@ interface ScreenTransitionProps {
  * the transition's CSS in globals.css reads — the exiting screen's own
  * props are from its last render, so they can't carry the new direction.
  */
-export function ScreenTransition({ screenKey, direction, children }: ScreenTransitionProps) {
+export function ScreenTransition({ screenKey, direction, className = "", children }: ScreenTransitionProps) {
   // The first screen after a load has no transition to bring it in, so it fades in on its own; every later one
   // arrives through the view transition only (fading it as well made a double fade).
   const [firstKey] = useState(screenKey);
@@ -49,7 +51,7 @@ export function ScreenTransition({ screenKey, direction, children }: ScreenTrans
 
   return (
     <ViewTransition key={screenKey} enter="panel" exit="panel" default="none">
-      <div className={moved ? undefined : "animate-fade-in"}>{children}</div>
+      <div className={`${className} ${moved ? "" : "animate-fade-in"}`.trim()}>{children}</div>
     </ViewTransition>
   );
 }

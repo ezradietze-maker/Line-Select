@@ -1001,11 +1001,24 @@ body:has([data-bottom-bar]) .back-to-top {
     translate: var(--vt-in);
   }
 }
-::view-transition-old(.panel) {
+/*
+ * Every screen's snapshots — matched with the universal selector, not the
+ * `.panel` view-transition class: Safari before 18.2 (and older Chromium)
+ * supports view transitions but not that class selector, drops the whole rule,
+ * and falls back to its default — the old and new screen cross-fading at the
+ * same time, i.e. two pages on top of each other. The screen is the only thing
+ * in the app that transitions; the named groups below (the nav, the page
+ * behind) are more specific and keep their own rules.
+ */
+::view-transition-old(*) {
   animation: vt-panel-out var(--vt-out-ms) var(--ease-standard) both;
 }
-::view-transition-new(.panel) {
+::view-transition-new(*) {
   animation: vt-panel-in var(--vt-in-ms) var(--ease-emphasized) var(--vt-out-ms) both;
+}
+/* Snapshots move with their group's animation, if any; an exit/enter pair has no geometry to morph. */
+::view-transition-group(*) {
+  animation-duration: 0s;
 }
 
 /*
