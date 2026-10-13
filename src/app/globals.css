@@ -1016,9 +1016,9 @@ body:has([data-bottom-bar]) .back-to-top {
 ::view-transition-new(*) {
   animation: vt-panel-in var(--vt-in-ms) var(--ease-emphasized) var(--vt-out-ms) both;
 }
-/* Snapshots move with their group's animation, if any; an exit/enter pair has no geometry to morph. */
+/* The screens share one group (app-screen): it takes the new screen's size at once rather than morphing between the two. */
 ::view-transition-group(*) {
-  animation-duration: 0s;
+  animation: none;
 }
 
 /*

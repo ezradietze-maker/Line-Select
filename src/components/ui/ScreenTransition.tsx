@@ -49,8 +49,11 @@ export function ScreenTransition({ screenKey, direction, className = "", childre
     document.documentElement.dataset.navDir = direction;
   }, [screenKey, direction]);
 
+  // One fixed name for every screen, so a route change is the outgoing and incoming screen sharing it (an old and a new
+  // image under one name). With React's generated per-screen names, Safari pairs them up wrong from the second
+  // navigation on and shows the incoming screen at full strength while the outgoing one is still fading over it.
   return (
-    <ViewTransition key={screenKey} enter="panel" exit="panel" default="none">
+    <ViewTransition key={screenKey} name="app-screen" share="panel" enter="panel" exit="panel" default="none">
       <div className={`${className} ${moved ? "" : "animate-fade-in"}`.trim()}>{children}</div>
     </ViewTransition>
   );
