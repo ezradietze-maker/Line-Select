@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 
+/** Comfortably past the end of a page transition (110ms out + 260ms in, globals.css, after the new screen renders). */
+const SETTLE_MS = 700;
+
 /**
  * How many of `target` items to actually mount right now: the first `first`
  * (by default `step`) straight away, then another `step` each time the browser is idle, until
@@ -21,9 +24,11 @@ export function useProgressiveCount(target: number, step = 6, first = step): num
       const id = window.requestIdleCallback(next, { timeout: 200 });
       return () => window.cancelIdleCallback(id);
     }
-    const id = window.setTimeout(next, 16);
+    // No idle callback (Safari): the first top-up waits out the page transition — cards past the first batch are below
+    // the fold anyway, and mounting them mid-fade dropped Safari to ~15fps — then the rest follow a frame apart.
+    const id = window.setTimeout(next, count <= first ? SETTLE_MS : 16);
     return () => window.clearTimeout(id);
-  }, [count, target, step]);
+  }, [count, target, step, first]);
 
   return Math.min(count, target);
 }

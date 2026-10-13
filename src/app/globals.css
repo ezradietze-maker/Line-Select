@@ -1002,13 +1002,14 @@ body:has([data-bottom-bar]) .back-to-top {
   }
 }
 /*
- * Every screen's snapshots — matched with the universal selector, not the
- * `.panel` view-transition class: Safari before 18.2 (and older Chromium)
- * supports view transitions but not that class selector, drops the whole rule,
- * and falls back to its default — the old and new screen cross-fading at the
- * same time, i.e. two pages on top of each other. The screen is the only thing
- * in the app that transitions; the named groups below (the nav, the page
- * behind) are more specific and keep their own rules.
+ * What animates is the page snapshot (root) — only what's in the window, so
+ * it costs the same on the 56-line rankings page as on a short one. Naming the
+ * whole screen instead snapshots it top to bottom: Safari then moved a
+ * page-tall image every frame and fell to ~10fps, and paired the screens'
+ * names wrongly from the second navigation on (two pages at once). Matched
+ * with the universal selector rather than a view-transition class, which
+ * Safari before 18.2 doesn't support. The named groups below (the nav) are
+ * more specific and keep their own rules.
  */
 ::view-transition-old(*) {
   animation: vt-panel-out var(--vt-out-ms) var(--ease-standard) both;
@@ -1016,21 +1017,26 @@ body:has([data-bottom-bar]) .back-to-top {
 ::view-transition-new(*) {
   animation: vt-panel-in var(--vt-in-ms) var(--ease-emphasized) var(--vt-out-ms) both;
 }
-/* The screens share one group (app-screen): it takes the new screen's size at once rather than morphing between the two. */
-::view-transition-group(*) {
-  animation: none;
-}
-
 /*
- * Everything outside the panel (the page background, the footer) swaps at
- * once rather than cross-fading: a fading copy of the old footer drifting
- * over the new screen was half of the "two pages at once" look.
+ * React skips the page snapshot when everything that changed is inside a
+ * <ViewTransition> (here: always, after the first navigation) — it names the
+ * root "none", hides the root group and shrinks the overlay to nothing, so the
+ * new page would appear at once under the fading old one. The screen
+ * boundaries name nothing on purpose (see ScreenTransition), so the page
+ * snapshot is the transition: keep it.
  */
-::view-transition-old(root) {
-  animation: none;
-  display: none;
+:root {
+  view-transition-name: root !important;
 }
-::view-transition-new(root) {
+::view-transition-group(root) {
+  opacity: 1 !important;
+}
+::view-transition {
+  width: auto !important;
+  height: auto !important;
+}
+/* Nothing morphs between the two pages' geometry. */
+::view-transition-group(*) {
   animation: none;
 }
 
