@@ -13,7 +13,7 @@ function tooltipFor(a: CircadianAssessment): string {
   const parts = [
     a.summary,
     `Time-zone shift: ${a.timezoneShiftHours === 0 ? "none" : `${Math.abs(a.timezoneShiftHours)}h ${a.timezoneShiftHours > 0 ? "eastward" : "westward"}`}`,
-    `Report times in the 2-6am circadian low: ${a.wocEncroachments}`,
+    `Duty periods in the 2-6am circadian low: ${a.wocEncroachments}`,
     `Layovers under the 10hr rest floor: ${a.shortRestCount}`,
   ];
   return parts.join("\n");

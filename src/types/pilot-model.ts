@@ -84,6 +84,8 @@ export interface PilotModel {
   notMeasurable: { statement: string; why: string }[];
   /** A short running summary of who this pilot is — the interview's memory. */
   synopsis: string;
+  /** How many interview exchanges this reading was built from — the next reading builds on it and knows what's new. */
+  readUpTo?: number;
 }
 
 export const TIER_WEIGHT: Record<CriterionTier, number> = { must: 1, high: 0.7, medium: 0.4, low: 0.15 };
@@ -96,5 +98,10 @@ export interface LineChoice {
   other: string;
   /** "Strongly" when they said it was an easy call; "slightly" when it was close. */
   strength: "slightly" | "strongly";
+  /**
+   * The pilot put the line there themselves (a drag on their results), rather than answering a question — counted in
+   * full however far it is from the model's view, where a close call in the interview is capped (see `fit-choices.ts`).
+   */
+  direct?: boolean;
   why?: string;
 }

@@ -21,12 +21,12 @@ interface Asked {
   kind: string;
   words: number;
   ack: string;
-  pair?: { a: string; b: string; trade: string; strength?: string };
+  pair?: { a: string; b: string; trade: string; strength?: string; variables?: number };
 }
 
 const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "—");
 
-console.log(["persona", "tag", "Qs", "line choices", "near-ties", "repeat trades", "max line shown", "avg words", "acks", "pilot agree", "judge", "spend"].join("\t"));
+console.log(["persona", "tag", "Qs", "open Qs", "line choices", "vars/choice", "bid checks", "near-ties", "repeat trades", "max line shown", "avg words", "acks", "pilot agree", "judge", "spend"].join("\t"));
 for (const persona of PERSONAS)
   for (const tag of tags) {
     const file = `.cache/eval/sim/${persona}-${tag}.json`;
@@ -46,7 +46,10 @@ for (const persona of PERSONAS)
         persona,
         tag,
         asked.length,
+        asked.filter((a) => a.kind === "free-text" || a.kind === "choice" || a.kind === "dealbreaker").length,
         `${pairs.length} (${pct(pairs.length, asked.length)})`,
+        pairs.length ? (pairs.reduce((s, a) => s + (a.pair!.variables ?? 2), 0) / pairs.length).toFixed(1) : "—",
+        asked.filter((a) => a.kind === "bid-check").length,
         `${nearTies}/${pairs.length}`,
         repeats,
         Math.max(0, ...lineCounts.values()),

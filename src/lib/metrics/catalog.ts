@@ -1,13 +1,13 @@
 import { DateTime } from "luxon";
 import { computeCircadianAssessment } from "@/lib/circadian";
-import { dateOfDayIndex, longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
+import { dateOfDayIndex, longestDaysOffBlock, singleDaysOff, weekendDaysOff } from "@/lib/days-off-pattern";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { isHotelStandbyLeg, tripStandbyDays } from "@/lib/standby";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import { backupsToWork, earliestHome, flightsForTrip, realTravelForTrip, type FlightAnswers, type TripFlights } from "@/lib/flights/trip-travel";
 import { tripStartUtc } from "@/lib/flights/needs";
 import { DEFAULT_HOME_PARAMS, homeAwayForTrip, type HomeAway, type TravelTimeProvider } from "@/lib/metrics/home-travel";
-import { legDeepNightMinutes, nightsWorked, type LayoverFact, type Region, type TripFacts } from "@/lib/metrics/trip-facts";
+import { legDeepNightMinutes, nightsWorked, type LayoverFact, type LegFact, type Region, type TripFacts } from "@/lib/metrics/trip-facts";
 import type { Line } from "@/types/bidpack";
 
 /**
@@ -52,6 +52,8 @@ export interface MetricParams {
   weekdays?: number[];
   /** How much the pilot likes each layover city, −1 (hates it) … +1 (loves it); cities left out are neutral. */
   cityScores?: Record<string, number>;
+  /** The pack's base — filled in when a line is measured, not set by the brain. */
+  base?: string;
 }
 
 export interface LineContext {
@@ -79,6 +81,30 @@ export interface MetricDef {
   line?: (line: Line, trips: TripFacts[], ctx: LineContext, p: MetricParams) => number | null;
 }
 
+/** Minutes of a stretch starting at `start` (minutes after local midnight) that fall between 06:00 and 22:00. */
+function dayMinutes(start: number, minutes: number): number {
+  let total = 0;
+  for (let day = -1440; day <= 2880; day += 1440) total += Math.max(0, Math.min(start + minutes, 22 * 60 + day) - Math.max(start, 6 * 60 + day));
+  return total;
+}
+/** A duty is an all-nighter when its flying spans at least this much of the small hours (00:00–05:00). */
+const ALL_NIGHTER_MINUTES = 3 * 60;
+
+/** Whether a duty's flying, first operated departure to last arrival, spans most of the night on the local clock. */
+function isAllNighter(d: { legs: LegFact[] }): boolean {
+  const flown = d.legs.filter((l) => !l.deadhead);
+  const first = flown[0];
+  const last = flown[flown.length - 1];
+  if (!first || !last || first.depLocalMinute === null) return false;
+  // The whole stretch as one leg: on the clock it departs on, and the clock it lands on.
+  return legDeepNightMinutes({ ...first, end: last.end, arrLocalMinute: last.arrLocalMinute }) >= ALL_NIGHTER_MINUTES;
+}
+/** A layover with less local night than this is one a pilot can't really sleep on (see `daytimeLayovers`). */
+const DAYTIME_LAYOVER_NIGHT_HOURS = 4;
+/** Flying this much of the local small hours makes a leg (or duty) a red-eye — a leg just into or out of the night isn't. */
+const RED_EYE_MINUTES = 60;
+/** A trip ends on a red-eye when its last leg flies through the night and lands in this window (local). */
+const RED_EYE_FINISH_LANDS = [3 * 60, 7 * 60] as const;
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const mean = (xs: number[]) => (xs.length ? sum(xs) / xs.length : null);
 const flying = (trips: TripFacts[]) => trips.filter((t) => t.trip.schedule.length > 0);
@@ -86,7 +112,12 @@ const allLayovers = (trips: TripFacts[]) => trips.flatMap((t) => t.layovers);
 /** Rates per day away compare whole trips to whole trips — the line's printed totals stop at the bid period's edge while a trip running into next month doesn't. */
 const tripCredit = (trips: TripFacts[]) => sum(flying(trips).map((f) => f.creditHours));
 const inCities = (l: LayoverFact, p: MetricParams) => !!p.cities?.includes(l.city);
-const cityScore = (city: string, p: MetricParams) => Math.max(-1, Math.min(1, p.cityScores?.[city] ?? 0));
+/**
+ * How much the pilot likes a city, −1 … +1. Their own base counts as neutral: time there isn't a layover somewhere — a
+ * pilot who lives there is home, and a commuter's time at base is what the commute and base-standby measures are for.
+ * Counted as a layover city, a month of hotel standby at base read as hundreds of hours "in a place you avoid".
+ */
+const cityScore = (city: string, p: MetricParams) => (city === p.base ? 0 : Math.max(-1, Math.min(1, p.cityScores?.[city] ?? 0)));
 /** Standby days (one standby row each) at cities matching `where`. */
 const standbyDaysWhere = (trips: TripFacts[], where: (city: string) => boolean) =>
   sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l) && where(l.depAirport)).length));
@@ -310,6 +341,14 @@ export const METRICS: MetricDef[] = [
   // ---- Calendar ----
   { id: "daysOff", label: "Days off", unit: "days", category: "calendar", description: "Days off in the bid period.", line: (l) => l.daysOff },
   { id: "longestDaysOffBlock", label: "Longest stretch of days off", unit: "days", category: "calendar", description: "The longest run of consecutive days off.", line: (l) => longestDaysOffBlock(l) },
+  {
+    id: "singleDaysOff",
+    label: "Single days off",
+    unit: "days",
+    category: "calendar",
+    description: "Days off standing alone between two working days — scattered singles instead of real blocks ('a single day off between trips is useless'). Days off in runs of two or more don't count.",
+    line: (l, _t, c) => singleDaysOff(l, c.bidPeriodDays),
+  },
   {
     id: "requestedDatesWorked",
     label: "Wanted dates not off",
@@ -537,6 +576,15 @@ export const METRICS: MetricDef[] = [
     trip: { measure: (f) => f.layovers.filter((l) => (l.localNightHours ?? 0) >= 6.5).length, aggregate: "sum" },
   },
   {
+    id: "daytimeLayovers",
+    label: "Layovers with no real night",
+    unit: "layovers",
+    category: "layover",
+    description:
+      "Layovers with under 4 hours of local night (22:00–07:00) — the 'arrive at 6 am, leave at 8 pm' layover a pilot can't really sleep on, however long it is.",
+    trip: { measure: (f) => f.layovers.filter((l) => (l.localNightHours ?? 0) < DAYTIME_LAYOVER_NIGHT_HOURS).length, aggregate: "sum" },
+  },
+  {
     id: "avgLayoverNightHours",
     label: "Night hours per layover",
     unit: "hours",
@@ -641,15 +689,15 @@ export const METRICS: MetricDef[] = [
     label: "Red-eye legs",
     unit: "legs",
     category: "body",
-    description: "Operated legs flying any part of the local small hours (00:00–05:00) — including one that takes off before midnight and lands after 05:00.",
-    trip: { measure: (f) => f.operatedLegs.filter((l) => legDeepNightMinutes(l) > 0).length, aggregate: "sum" },
+    description: "Operated legs flying through the night: at least an hour of the local small hours (00:00–05:00) — a leg in just after midnight, or out just before five, isn't one.",
+    trip: { measure: (f) => f.operatedLegs.filter((l) => legDeepNightMinutes(l) >= RED_EYE_MINUTES).length, aggregate: "sum" },
   },
   {
     id: "nightsWorked",
     label: "Nights worked",
     unit: "nights",
     category: "body",
-    description: "Nights with at least half an hour of the small hours (00:00–05:00 on the home-base clock) spent on operated flying or hotel standby — standby through the night keeps a pilot on a night schedule as surely as flying does.",
+    description: "Nights with at least half an hour of the small hours (00:00–05:00, on the home-base clock or the local one) spent on operated flying or hotel standby — standby through the night keeps a pilot on a night schedule as surely as flying does.",
     line: (_l, trips) => nightsOfLine(trips)?.length ?? null,
   },
   {
@@ -679,12 +727,74 @@ export const METRICS: MetricDef[] = [
     trip: { measure: (f) => f.duties.reduce((a, d) => a + d.deepNightMinutes, 0) / 60, aggregate: "sum" },
   },
   {
+    id: "dayFlyingShare",
+    label: "Share of flying in the daytime",
+    unit: "share",
+    category: "body",
+    description: "Share of operated flying between 06:00 and 22:00 local — how much of a line is a day schedule (day turns, afternoon sorts) rather than night flying.",
+    line: (_l, trips) => {
+      let day = 0;
+      let all = 0;
+      for (const f of trips)
+        for (const leg of f.operatedLegs) {
+          if (leg.depLocalMinute === null) continue;
+          const minutes = Math.max(0, leg.end - leg.start);
+          all += minutes;
+          day += dayMinutes(leg.depLocalMinute, minutes);
+        }
+      return all ? day / all : null;
+    },
+  },
+  {
+    id: "redEyeFinishes",
+    label: "Trips that end on a red-eye",
+    unit: "trips",
+    category: "body",
+    description:
+      "Trips whose last operated leg flies through the night and lands at dawn (03:00–07:00 local, after at least an hour of the small hours) — finishing a trip on an all-nighter ('the 5 am red-eye into base'). A late leg that's in by 01:30 doesn't count.",
+    trip: {
+      measure: (f) => {
+        const last = f.operatedLegs[f.operatedLegs.length - 1];
+        if (!last || last.arrLocalMinute === null) return 0;
+        return last.arrLocalMinute >= RED_EYE_FINISH_LANDS[0] && last.arrLocalMinute <= RED_EYE_FINISH_LANDS[1] && legDeepNightMinutes(last) >= RED_EYE_MINUTES ? 1 : 0;
+      },
+      aggregate: "sum",
+    },
+  },
+  {
+    id: "allNighterStreak",
+    label: "Most all-nighters in a row",
+    unit: "duties",
+    category: "body",
+    description:
+      "The longest run of consecutive all-nighter duties on a trip — duties whose flying spans at least 3 of the 5 small hours (00:00–05:00 local). 'Two all-nighters in a row is my limit.' Early launches and late arrivals don't count.",
+    trip: {
+      measure: (f) => {
+        let best = 0;
+        let run = 0;
+        for (const d of f.duties.filter((x) => x.operatedLegs > 0)) {
+          run = isAllNighter(d) ? run + 1 : 0;
+          best = Math.max(best, run);
+        }
+        return best;
+      },
+      aggregate: "max",
+    },
+  },
+  {
     id: "backToBackRedEyes",
     label: "Back-to-back red-eye duties",
     unit: "duties",
     category: "body",
-    description: "Consecutive duties that each include a red-eye.",
-    trip: { measure: (f) => computeTripAnalytics(f.trip).backToBackRedEyeDuties, aggregate: "sum" },
+    description:
+      "Consecutive all-nighter duties: duties whose flying runs, first departure to last arrival, across at least 3 of the 5 small hours (00:00–05:00 local) — back-to-back all-nighters. A late leg in at 01:30, or an early launch at 04:15, isn't one.",
+    trip: {
+      measure: (f) => {
+        const allNighter = f.duties.filter((d) => d.operatedLegs > 0).map(isAllNighter);
+        return allNighter.slice(1).filter((r, i) => r && allNighter[i]).length;
+      },
+      aggregate: "sum",
+    },
   },
   {
     id: "timezoneHoursCrossed",

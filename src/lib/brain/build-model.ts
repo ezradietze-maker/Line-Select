@@ -17,7 +17,7 @@ import { structuredCall, type BrainUsage, type Effort } from "./llm";
  */
 
 /** Bumped whenever the prompt or schema changes, so cached evaluations of an older brain aren't mistaken for this one. */
-export const BRAIN_PROMPT_VERSION = 9;
+export const BRAIN_PROMPT_VERSION = 15;
 
 export interface InterviewExchange {
   /** 0 = the opening story. */
@@ -53,10 +53,15 @@ HOW TO BUILD THE MODEL
    - Backup flights on the commute, flights being full or scarce, getting stranded → fewestBackupFlights / tripsShortOnBackups (params.n = the backups they want); a stated minimum ("I need at least two backups") is a hardLimit. Long or awkward trips home after a trip → longestTripHome. These read real airline schedules for the pilot's best lines.
    - Specific dates they need off → requestedDatesWorked {dates:[...]} (real calendar dates in this bid period); a date they "need" or call "the one hard date" is a hardLimit {op:"max", value:0}.
    - Hotel standby: tripStandbyDays is standby at a layover city mid-trip; baseStandbyDays is standby sitting at base — a commuter who likes "hotel standby" on trips may feel very differently about days of standby at base. Bind to what they mean.
-   - Sleep, night flying, "all-nighters", "the back side of the clock" → nightsWorked, longestNightStreak and deepNightHours, which count hotel standby that runs past midnight as night work too (a standby window to 02:30 keeps a pilot on a night schedule). redEyeLegs counts flying only. avgCircadianStars is a rough overall rating — never the only body-clock criterion for a pilot who talks about sleep.
+   - Finishing trips on a red-eye ("the 5 am red-eye home", "ending a trip with an all-nighter", "I'm worthless the first day home") → redEyeFinishes — it's the trip's last leg they mean, not every night of flying: a short night turn that's home by 00:30 isn't it.
+   - Layovers they can't sleep on ("arrive at 6 am and leave at 8 pm is worthless", "I need the night in the hotel") → daytimeLayovers (less) — the count of those layovers; avgLayoverNightHours averages them away behind a few good ones.
+   - "I'd rather be on a day schedule", "day turns", "afternoon sorts" → dayFlyingShare (more) — what they want more of, alongside whatever night measure fits what they want less of.
+   - "Early sign-ins are fine" means early reports and early launches are not night work to them — don't bind nightsWorked or longestNightStreak to their night complaints unless they mean flying through the night.
+   - All-nighters — duties that fly through the night — "two all-nighters in a row is my limit", "back to back all-nighters" → allNighterStreak (put their limit on this one) and backToBackRedEyes for how many. Don't put an all-nighter limit on longestNightStreak or nightsWorked: those count every night with any small-hours work, early launches included.
+   - Sleep, night flying in general, "the back side of the clock" → nightsWorked, longestNightStreak and deepNightHours, which count hotel standby that runs past midnight as night work too (a standby window to 02:30 keeps a pilot on a night schedule). redEyeLegs counts flying only. avgCircadianStars is a rough overall rating — never the only body-clock criterion for a pilot who talks about sleep.
    - A standing weekly commitment ("home Wednesday nights", "Saturdays are soccer") → weekdaysOff {weekdays:[...]}; weekends alone → weekendDaysOff.
    - A stated limit ("two in a row is my absolute limit", "nothing over 12 hours, period") is a hardLimit at that number, plus a shape that prefers staying well under it.
-   - How they feel about layover cities → ONE graded cityScores list (−1 hates … +1 loves). An ordered list of favorites gets descending scores (e.g. 1.0, 0.9, 0.8 …, never below 0.3 for a city they called a favorite); "fine"/"OK" ≈ 0.2; "not my favorite" ≈ −0.3; "hard to avoid, but I minimize it" ≈ −0.5; "X sucks", "never" ≈ −1. A statement about a group ("I can't stand any of the cities in that country") goes on every city of that group in this pack — except where they said something more specific about one city ("that hub is hard to avoid; the less time there the better"), which sets that city's score instead. Use it in layoverValue — location and length together, the main layover criterion for any pilot with city feelings — and in standbyDaysByCity when they like standby. Don't also bind layoversInCities/layoverHoursInCities for the same feelings.
+   - How they feel about layover cities → ONE graded cityScores list (−1 hates … +1 loves). An ordered list of favorites gets descending scores (e.g. 1.0, 0.9, 0.8 …, never below 0.3 for a city they called a favorite); "fine"/"OK" ≈ 0.2; "not my favorite" ≈ −0.3; "hard to avoid, but I minimize it" ≈ −0.5; "X sucks", "never" ≈ −1. A statement about a group ("I can't stand any of the cities in that country") goes on every city of that group in this pack — except where they said something more specific about one city ("that hub is hard to avoid; the less time there the better"), which sets that city's score instead. Use it in layoverValue — location and length together, the main layover criterion for any pilot with city feelings — and in standbyDaysByCity when they like standby. Don't also bind layoversInCities/layoverHoursInCities for the same feelings — not even when they talk about "stops" in a city they dislike as well as time there: a disliked city is already counted, hour by hour, in its grade, and a second criterion counts it twice.
    - "Longer layovers are better" → longLayoverHours (no ceiling), not avgLayoverHours.
    - "Single-leg duties", "two legs is nearly twice the work" → extraLegs; a strong dislike of 3+ leg duties → dutiesWithManyLegs {n:3} as well.
    - A layover in a commuter's home city is a night at home — when the pack has those, layoversInCities {cities: their home airports} is usually worth a criterion.
@@ -68,16 +73,22 @@ HOW TO BUILD THE MODEL
    - target {ideal, tolerance}: a sweet spot (e.g. ~15 days off, ±2).
    - range {min?, max?}: anything inside is fine.
    - perOccurrence {costEach}: each occurrence costs a fixed share of this criterion's value (0.25 = four of them and it's gone).
-   Leave anchors at -1 when they gave none and the pack range is the right scale. Never invent a ceiling or anchor (enoughAt, fineAt, worstAt) they didn't state or clearly imply — "longer is better, period" has no ceiling, and a made-up "up to 4" or "up to 36 hours" misstates them.
+   Leave anchors at -1 when they gave none and the pack range is the right scale. Never invent a ceiling or anchor (enoughAt, fineAt, worstAt) they didn't state or clearly imply — "longer is better, period" has no ceiling, and a made-up "up to 4" or "up to 36 hours" misstates them. One reading that does clearly imply a ceiling: days off "in a couple of big chunks instead of scattered singles" — set against single days off — is about having real blocks, not one ever-longer stretch: longestDaysOffBlock with enoughAt at the size they call a real block (5 when they gave none). "Big blocks of days off" with nothing set against it, and a commuter's blocks (fewer trips to base), are longer-is-better with no ceiling.
+   Read anchor words for what they mean. "Starts to hurt / starts to bother me / that's where I notice it" at N is where value STARTS falling — fineAt (for less) — not where it's as bad as it gets. worstAt is only for "as bad as it gets", "too many", "I'd hardly bid it" at a number. Never set worstAt at or just past a "starts to hurt" number: every line past worstAt scores about the same, so 6 and 10 commutes would nearly tie. With only a "starts to hurt" number, set fineAt there and leave worstAt at -1 (the pack's range carries it from there).
+   A trade statement is not an anchor: "I wouldn't go from 2 commutes to 6 just for more pay" says how two priorities trade, not that 6 is as bad as it gets — it's evidence for points, not for worstAt.
+   A "Bid check" answer is the most direct anchor there is: "Lower — near the bottom" (or "Low") about a line whose weak spot is a value V says V is close to as bad as it gets for them — put worstAt at about V (never well below it), and raise the criterion's points if it had few. "About right" or "Yes" at V says V isn't that bad — don't put worstAt at or below V.
 
 4. Importance. Give each criterion "points" from a budget of 100 across ALL criteria, the way this pilot would actually trade: points measure how much a line's standing on that criterion should move it up or down their list. Be decisive — a pilot who names one thing as what they "most want to optimize" usually gives it 30–50 points, a couple of strong secondary goals 10–20 each, and tie-breakers 1–5. Spreading points evenly is wrong for almost every pilot. Use everything: explicit ranking words, "lifestyle over pay", how much they dwelt on it unprompted — in their story and in what they volunteered — and what they trade for what. Never read importance from how many questions the interview asked about something: the interviewer chooses what to ask, and answering a question about a topic is not emphasis on it. A detailed answer about a minor thing ("one short Guangzhou stop is fine, two is grumpy") pins down its shape, not its points. "Fine"/"OK" about something is near-neutral — usually no criterion at all. tier (must/high/medium/low) should agree with the points. confidence (0–1) is how sure you are the binding, shape and points are right; it should be low for anything inferred rather than said.
 
    When they correct a reading of their priorities ("should count more", "should count less"), move it decisively — at least half again more or less than before — and if they give a reason that points at a criterion ("too many departures"), raise that criterion too.
    Soft or conditional statements ("generally", "it depends", "I'd still take it if the rest of the trip were great") are low-weight preferences — never turn them into an "avoid X" criterion or a limit. When a pilot says lifestyle matters more than pay, the pay criterion's points must stay below the combined points of their lifestyle criteria, even if they call a pay number the one they'd optimize.
 
-5. hardLimit only for things they say they will not bid (a dealbreaker) — never for strong preferences.
+5. hardLimit only for things they say they will not bid (a dealbreaker) — never for strong preferences. The "Dealbreakers" question asks exactly this: each limit they give there with a number ("more than three commutes and I won't bid it", "nothing over 6 days") is a hardLimit on the criterion that measures it — create that criterion if there isn't one, with a shape that also prefers staying well under the limit. "Nothing rules a line out" means no hardLimits from that answer; "I'd rather not" or "it depends" is a preference, not a limit. Their Dealbreakers answer is their own list of what's absolute: when it says nothing else is ("nothing else is an absolute", "I can bend on the rest"), a number they give later for something else — even "I wouldn't go below about 77" or "I'd probably pass on 71" — is the bad end of its shape (worstAt), not a hardLimit, unless they then say outright they would never bid it ("that line is out", "I won't bid it"). Hedged numbers ("about", "probably", "give or take") are never limits. A "Bid check" asks whether a line near the top of their ranking belongs there, naming its weak spot: "Never" with that weak spot as the reason is a dealbreaker at about that value (a hardLimit just below it); "Low" or "Somewhere in the middle" means that weak spot counts for clearly more than the model had it; "Yes" means the model's trade-off was right.
 
 6. home: airports they fly from (home first, then alternates they named), whether they commute, and any buffers they stated or clearly implied (hours at base before a report, hours before an operated leg when deviating, rest before deadheading home, minimum backup flights). Use -1 when unsaid.
+
+UPDATING A PREVIOUS READING
+When YOUR PREVIOUS READING is given, the interview has continued since you wrote it; the turns marked NEW are the ones you haven't read yet. Start from that reading and update it with what the new answers say. Keep every criterion's binding, parameters, shape, anchors, limit and points as they were unless something the pilot said — in a new turn, or an earlier one you now see differently — gives a concrete reason to change it. Don't re-derive what's settled from scratch, and don't let numbers drift: an answer about one thing is not a reason to re-weigh another. When a new answer does bear on something, change it decisively and say why in that criterion's reasoning, naming the turn.
 
 7. threads: what the interview should explore next — the open questions whose answers would change their ranking the most. Each must come from something THEY said or from a real tension in THIS pack (e.g. "Sydney trips here also carry three-leg duties — which wins?"), never a generic checklist topic. priority 0–1 = how much the answer could reorder their top lines. Mark a thread settled once they have clearly answered it; do not reopen settled ground.
 
@@ -343,10 +354,36 @@ export function parsePilotModel(raw: RawModel, prior?: PilotModel | null): { mod
   };
 }
 
-function renderExchanges(exchanges: InterviewExchange[]): string {
+/** The interview as the brain reads it; turns its previous reading hadn't seen are marked NEW. */
+function renderExchanges(exchanges: InterviewExchange[], readUpTo?: number): string {
   return exchanges
-    .map((e) => (e.turn === 0 ? `[turn 0 — opening story]\nQ: ${e.question}\nA: ${e.answer}` : `[turn ${e.turn}]\nQ: ${e.question}\nA: ${e.answer}`))
+    .map((e, i) => {
+      const fresh = readUpTo !== undefined && i >= readUpTo ? " — NEW" : "";
+      return e.turn === 0 ? `[turn 0 — opening story${fresh}]\nQ: ${e.question}\nA: ${e.answer}` : `[turn ${e.turn}${fresh}]\nQ: ${e.question}\nA: ${e.answer}`;
+    })
     .join("\n\n");
+}
+
+/** The brain's previous reading in full — bindings, shapes, anchors, limits and points — so the next one can build on it. */
+function renderPrior(prior: PilotModel): string {
+  const total = prior.criteria.reduce((s, c) => s + c.weight, 0) || 1;
+  return JSON.stringify({
+    home: prior.home,
+    criteria: prior.criteria.map((c) => ({
+      id: c.id,
+      label: c.label,
+      metric: c.metric,
+      ...(c.params ? { params: c.params } : {}),
+      shape: c.shape,
+      tier: c.tier,
+      points: Math.round((c.weight / total) * 100),
+      confidence: +c.confidence.toFixed(2),
+      ...(c.hardLimit ? { hardLimit: c.hardLimit } : {}),
+      evidenceTurns: [...new Set(c.evidence.map((e) => e.turn))],
+    })),
+    threads: prior.threads.map((t) => ({ id: t.id, topic: t.topic, status: t.status, timesAsked: t.timesAsked })),
+    notMeasurable: prior.notMeasurable.map((n) => n.statement),
+  });
 }
 
 export interface BuildModelResult {
@@ -360,9 +397,9 @@ export interface BuildModelResult {
 export async function buildPilotModel(input: BuildModelInput): Promise<BuildModelResult> {
   const fresh = [
     `PILOT: ${input.pilotContext}`,
-    input.prior ? `PREVIOUS MODEL (keep ids stable; re-judge everything against the full interview below):\n${JSON.stringify({ criteria: input.prior.criteria.map((c) => ({ id: c.id, label: c.label, metric: c.metric, relativeWeight: +c.weight.toFixed(2) })), threads: input.prior.threads.map((t) => ({ id: t.id, topic: t.topic, status: t.status, timesAsked: t.timesAsked })) })}` : "",
+    input.prior ? `YOUR PREVIOUS READING${input.prior.readUpTo ? ` (of turns 0–${input.prior.readUpTo - 1})` : ""} — update it, don't start over:\n${renderPrior(input.prior)}` : "",
     input.fleetNotes ? `FLEET NOTES — other pilots in the same group:\n${input.fleetNotes}` : "",
-    `THE INTERVIEW SO FAR — everything the pilot has said:\n\n${renderExchanges(input.exchanges)}`,
+    `THE INTERVIEW SO FAR — everything the pilot has said:\n\n${renderExchanges(input.exchanges, input.prior?.readUpTo)}`,
     `Write the pilot's complete model now.`,
   ].filter(Boolean).join("\n\n");
 
@@ -374,7 +411,9 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
     schema: SCHEMA as unknown as Record<string, unknown>,
     effort: input.effort ?? "high",
   });
-  const { model, dropped } = parsePilotModel(data, input.prior);
+  const parsed = parsePilotModel(data, input.prior);
+  const model: PilotModel = { ...parsed.model, readUpTo: input.exchanges.length };
+  const dropped = parsed.dropped;
   const reasoning = Object.fromEntries(data.criteria.map((c) => [c.id, c.reasoning]));
   return { model, reasoning, dropped, usage };
 }

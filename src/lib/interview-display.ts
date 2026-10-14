@@ -65,20 +65,64 @@ export function answerElaboration(a: InterviewAnswer): string | undefined {
 }
 
 /**
- * The topics a bidding story visibly touches, by plain keyword — only to
- * encourage a pilot ("you've covered days off and layovers; anything about
- * pay?"), never as extraction. The real reading is the AI's job.
+ * The areas a bidding story visibly touches, by plain keyword — only to
+ * encourage a pilot to cover more ground ("you've covered days off and
+ * layovers; anything about deadheads?"), never as extraction. The real
+ * reading is the AI's job. Fine-grained on purpose: "trips" alone says little;
+ * how long they are, how many legs a day, and when they report each say
+ * something different about how a pilot bids.
  */
 export const STORY_TOPICS: { id: string; label: string; pattern: RegExp }[] = [
-  { id: "days-off", label: "Days off", pattern: /\b(days? off|time off|home time|off days?|block of days|weekends?)\b/i },
-  { id: "trips", label: "Trip length", pattern: /\b(trips?|turns?|day trips?|\d-days?|long haul|short haul|pairings?)\b/i },
-  { id: "layovers", label: "Layovers", pattern: /\b(layovers?|hotels?|overnights?|cities|city|[A-Z]{3} layover)\b/i },
-  { id: "pay", label: "Pay & credit", pattern: /\b(pay|credit|money|hours|overtime|premium|green slip|max(?:imi[sz]e)?)\b/i },
-  { id: "schedule", label: "Report times", pattern: /\b(report|show times?|shows?|early|late|red-?eyes?|back side|back of the clock|sleep|rest|circadian)\b/i },
-  { id: "commute", label: "Commute", pattern: /\b(commut\w*|crash ?pad|deadhead\w*|local|live (?:in|near))\b/i },
-  { id: "life", label: "Life outside work", pattern: /\b(kids?|daughter|son|wife|husband|partner|family|softball|soccer|school|church|class|birthday|wedding|anniversary|appointment)\b/i },
+  { id: "priorities", label: "What matters most", pattern: /\b(most important|matters? (?:most|more)|priorit\w*|care (?:more|most|about)|lifestyle|quality of life|number one|first thing|top of my list|optimi[sz]e|above all)\b/i },
+  { id: "days-off", label: "Days off", pattern: /\b(days? off|time off|home time|off days?|days at home)\b/i },
+  { id: "blocks", label: "Blocks, weekends & dates", pattern: /\b(blocks? of|in a row|back[- ]to[- ]back|weekends?|saturdays?|sundays?|holidays?|christmas|thanksgiving|birthdays?|anniversary|specific dates?|dates? off)\b/i },
+  { id: "trips", label: "Trip length", pattern: /\b(trips?|turns?|day trips?|\d[- ]days?|tafb|time away|pairings?)\b/i },
+  { id: "legs", label: "Legs & duty days", pattern: /\b(legs?|duty (?:periods?|days?|time)|block (?:hours|time)|flying time|long duty|short duty)\b/i },
+  { id: "times", label: "Report & release times", pattern: /\b(report\w*|show times?|release\w*|start times?|early (?:starts?|mornings?|shows?)|late (?:nights?|finish\w*|arrivals?))\b/i },
+  { id: "body-clock", label: "Sleep & body clock", pattern: /\b(sleep\w*|rest|circadian|body clock|red-?eyes?|back side|night (?:flying|flights?|shifts?)|all-nighters?|fatigue\w*|tired|jet ?lag)\b/i },
+  { id: "cities", label: "Layover cities", pattern: /\b(cities|city|destinations?|favou?rite (?:layovers?|places?|stops?)|layovers? (?:in|at)|[A-Z]{3} layovers?)\b/i },
+  { id: "layovers", label: "Layover length & hotels", pattern: /\b(\d+[- ]?(?:hour|hr)s?(?: layovers?)?|long(?:er)? layovers?|short(?:er)? layovers?|layover (?:length|time)|hotels?|downtime|overnights?)\b/i },
+  { id: "pay", label: "Pay & credit", pattern: /\b(pay|credit|money|overtime|premium|green slip|per diem|earn\w*|make more)\b/i },
+  { id: "commute", label: "Commute", pattern: /\b(commut\w*|crash ?pad|jumpseat\w*|home airport|live (?:in|near)|getting to base)\b/i },
+  { id: "deadheads", label: "Deadheads & backups", pattern: /\b(dead ?heads?|deadheading|deviat\w*|backup flights?|backups|positive space)\b/i },
+  { id: "reserve", label: "Reserve & standby", pattern: /\b(reserve|standbys?|on call|r-?days?)\b/i },
+  { id: "flying", label: "Where you fly", pattern: /\b(international|domestic|asia\w*|europe\w*|pacific|atlantic|overseas|ocean\w*|polar|china|japan|korea|australia|latin america|south america|middle east)\b/i },
+  { id: "life", label: "Life outside work", pattern: /\b(kids?|daughter|son|wife|husband|partner|family|softball|soccer|school|church|class|wedding|appointment|vacation|hobby|hobbies)\b/i },
 ];
 
 export function storyTopicsMentioned(text: string): Set<string> {
   return new Set(STORY_TOPICS.filter((t) => t.pattern.test(text)).map((t) => t.id));
+}
+
+/** How long a story has to be, in words, before its length alone counts in full. */
+const FULL_LENGTH_WORDS = 800;
+/** How many of the areas above count as full coverage — nobody needs all of them. */
+const FULL_BREADTH = 12;
+/** Full credit for breadth takes at least this many words: covering an area means saying something about it. */
+const BREADTH_NEEDS_WORDS = 500;
+
+export interface StoryDepth {
+  /** 0 = nothing yet, 5 = plenty. */
+  level: 0 | 1 | 2 | 3 | 4 | 5;
+  label: string;
+  words: number;
+  areas: number;
+}
+
+/**
+ * How much a bidding story gives the interview to work with — by length and by how many areas it covers, together. A
+ * long story about one thing, or a list of topics with nothing said about any, isn't much to go on either way. Fills
+ * slowly on purpose: the stories that rank best are a page or so — several paragraphs, most of these areas.
+ */
+export function storyDepth(text: string): StoryDepth {
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const areas = storyTopicsMentioned(text).size;
+  if (words === 0) return { level: 0, label: "", words, areas };
+  // Breadth counts only as far as the length backs it up — a word or two on each of ten topics isn't ten topics covered.
+  const length = Math.min(1, words / FULL_LENGTH_WORDS);
+  const breadth = Math.min(1, areas / FULL_BREADTH, words / BREADTH_NEEDS_WORDS);
+  const score = 0.55 * length + 0.45 * breadth;
+  const level = score < 0.15 ? 1 : score < 0.35 ? 2 : score < 0.55 ? 3 : score < 0.75 ? 4 : 5;
+  const label = ["", "Just getting started", "A start — keep going", "Getting there", "Good detail", "Plenty to work with"][level];
+  return { level, label, words, areas };
 }

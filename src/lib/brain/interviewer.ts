@@ -23,15 +23,26 @@ export interface ThreadState {
   timesAsked: number;
 }
 
+/** One thing the pilot cares about that two lines differ on, in real numbers. */
+export interface LinePairDifference {
+  label: string;
+  metric: string;
+  a: string;
+  b: string;
+  better: "a" | "b";
+}
+
 /** Two real lines from the pack that pull this pilot's priorities against each other — offered to the interviewer, which may ask the pilot to choose. */
 export interface LinePairCandidate {
   index: number;
   a: string;
   b: string;
-  /** Which two criteria the pair pits against each other (sorted ids) — so the same trade isn't asked over and over. */
+  /** The headline trade (each line's strongest point, by metric, sorted) — so the same trade isn't asked over and over. */
   trade: string;
-  /** What each line wins on, in real numbers. */
+  /** What each line is better on, in real numbers. */
   tension: string;
+  /** Every difference the pilot is shown (3–5), each line winning some. Older saved interviews have none. */
+  differences?: LinePairDifference[];
   summaryA: string;
   summaryB: string;
 }
@@ -73,6 +84,8 @@ export type InterviewStep =
       priorityIds?: string[];
       /** How the question goes into the transcript when it differs from the prompt (e.g. with its options). */
       transcript?: string;
+      /** For a bid check: the line asked about and the line its verdict is recorded against (see `bid-check.ts`). */
+      bidCheck?: { line: string; alt: string; kind?: "top" | "middle" };
       usage?: BrainUsage;
     };
 
@@ -85,19 +98,22 @@ WHAT MAKES A GOOD QUESTION
 - It comes from them: one of the open threads (prefer the highest priority one), or something in their latest answer worth one follow-up. Quote or echo their own words. Never ask a generic checklist question about a topic they haven't raised — topics they never mentioned are covered later on a separate screen.
 - It is grounded in their pack: use the real cities, numbers and lines in the pack brief ("Sydney only shows up on 4 lines here, and two of them…").
 - It moves the ranking: ask about trade-offs, thresholds and how much something matters relative to their other priorities — not trivia, not things a bid pack can't show, not things they already answered.
+- Prefer open questions that let them tell you what they want, in their own words — including things the brain hasn't modelled yet. Most of the interview should be these.
 - It is short (one or two sentences), plain, and in pilot terms (deadhead, layover, duty period, report, block, credit, TAFB, secondary line, jumpseat). Match their tone.
 - Never re-ask a settled thread or a question already asked in any wording. If an answer was vague, at most one follow-up on that thread, then move on.
 - Never follow a line choice with a made-up version of the same trade ("if a line had more weekends but a 4-day trip…") — their real choice already answered it.
-- Numbers: when a priority's number is still fuzzy AND pinning it would change their ranking ("not too much credit", "a real block of days off"), one question asking for the number is worth it — in their terms ("How many days in a row before it feels like a real block?"). Once they've given a number, don't ask about it again.
+- Numbers: when a priority's number is still fuzzy AND pinning it would change their ranking ("not too much credit", "a real block of days off"), one question asking for the number is worth it — in their terms ("How many days in a row before it feels like a real block?"). For something they want less of, ask for both ends in that one question: where it starts to cost them, and where a line becomes one they'd hardly bid ("How many commutes before it starts to bother you — and how many before you'd hardly bid the line?"). One number alone gets read as both. Once they've given the numbers, don't ask about them again. Don't ask where a line becomes one they wouldn't bid at all ("too low to bid it") — the Dealbreakers question covers what's absolute, and asking again turns a preference into a rule.
 - Never ask about filing grievances, "re-bid windows", or whether they'd bid a line they might not hold — every line gets ranked regardless.
 
 QUESTION KINDS
 - free-text: the default. Open questions that let them explain.
 - choice: when 2–4 concrete options make it quicker to answer (they can still add a note). Options must be mutually exclusive and in their terms.
-- line-pair: when the open question is how they trade one priority against another, and one of the offered line pairs shows exactly that trade. Set pairIndex to that pair's index. The pilot sees both lines in full right under the question, so the prompt names only the trade, in a sentence of at most 25 words ("Your double deadhead, or all single-leg duties — 1011 or 1018?"). Once their main priorities are known, aim for about one question in three to be a line choice — a real choice teaches the ranking more than any description, and a handful of them sharpens it a lot — but never more: they're a tool, not the format. Never offer the same pair twice.
+- line-pair: when one of the offered line pairs would show how they weigh several of their priorities against each other. Set pairIndex to that pair's index. Each pair differs on 3–5 things they care about (listed with real numbers), each line winning some; the pilot sees both lines in full and that list of differences right under the question. The prompt names the two or three differences that matter most to them, in their terms, and asks which they'd bid higher — at most 40 words ("2031 pays more and keeps you to two commutes; 2044 has the weekends and the beach layovers. Which goes higher on your bid?"). A real choice teaches the ranking more than any description, but it's a tool, not the format: about one question in four, never more than one in three. Never offer the same pair twice.
 
 PACING
 - Never two line-pair questions in a row — a run of them feels like a quiz. Mix in their own words.
+- After a line choice, if what tipped it isn't clear from their answer and it would change the ranking, one open follow-up on why is worth asking.
+- A "Bid check" question asks whether a line near the top of their ranking really belongs there. If they say it doesn't and didn't say why, ask once what rules it out.
 - In a monthly check-in (see PILOT), start with whatever they said has changed or is new this month, then this pack's own tensions; don't re-cover what last month's interview settled unless this pack makes it newly relevant.
 
 FLEET NOTES
@@ -106,8 +122,11 @@ When given, they're anonymous patterns from other pilots in the same group. A to
 SETTLED
 List the ids of every thread their latest answer resolved (or made moot).
 
+BE THOROUGH
+There is no target number of questions. A pilot who told a long, detailed story has a lot to pin down, and the interview takes the time to do it. For every criterion that matters to them (weight 0.3 or more) you want to know how it ranks against their other priorities, any number that defines it ("a real block" = how many days), and where it stops mattering. Criteria marked "not yet probed" are known only from their opening story — get to each of them before finishing, with a question or a line choice.
+
 DONE
-Set done when no open thread would still change their ranking meaningfully, when their last answers stopped adding anything new, or when they've answered maxTurns questions. RANKING STABILITY (below) tells you how many of their top-10 lines each re-read changed: once the last two re-reads each changed one line or none, the interview has learned what it can — finish unless a high-priority thread is still wide open. Don't drag it out; don't stop while an important trade-off is still unknown.`;
+Set done only when every important criterion has been probed, no open thread would still change their ranking meaningfully, and their last answers stopped adding anything new — or when they've answered maxTurns questions. RANKING STABILITY (below) tells you how many of their top-10 lines each re-read changed; a stable top 10 is one signal, not the whole answer — with important criteria still unprobed there's more to learn. Don't stop while an important trade-off is still unknown.`;
 
 const SCHEMA = {
   type: "object",
@@ -140,11 +159,11 @@ interface RawStep {
   pairIndex: number;
 }
 
-function renderModel(model: PilotModel | null, threads: Record<string, ThreadState>): string {
+function renderModel(model: PilotModel | null, threads: Record<string, ThreadState>, openingCount: number): string {
   if (!model) return "(The brain hasn't read them yet — start from their own words below.)";
   const crit = [...model.criteria]
     .sort((a, b) => b.weight - a.weight)
-    .map((c) => `- ${c.label} [${c.metric}] weight ${c.weight.toFixed(2)}, confidence ${c.confidence.toFixed(2)}`)
+    .map((c) => `- ${c.label} [${c.metric}] weight ${c.weight.toFixed(2)}, confidence ${c.confidence.toFixed(2)}${isProbed(c, openingCount) ? "" : " — not yet probed"}`)
     .join("\n");
   const open = model.threads
     .map((t) => ({ ...t, ...threads[t.id] }))
@@ -157,7 +176,28 @@ function renderModel(model: PilotModel | null, threads: Record<string, ThreadSta
 
 /** How a line-choice question is recorded in the transcript ("… [Line 1011 vs Line 1018: …]"). */
 const LINE_PAIR_QUESTION = / \[Line \d{3,5} vs Line \d{3,5}:/;
-const MAX_PAIR_SHARE = 0.4;
+/** Line choices are at most about a third of the interview — open questions are where the pilot gets to say what they want. */
+const MAX_PAIR_SHARE = 0.34;
+
+/** Criteria that matter enough that the interview should ask about them before it ends. */
+const IMPORTANT_WEIGHT = 0.4;
+
+/**
+ * Whether anything the pilot said after the opening steps (story, commute, cities) bears on this criterion — a question
+ * or line choice has touched it, rather than the brain having only the story to go on.
+ */
+export function isProbed(c: PilotModel["criteria"][number], openingCount: number): boolean {
+  return c.evidence.some((e) => e.turn >= openingCount);
+}
+
+/** How many exchanges came before the first interview question — the opening steps (and, in a check-in, last month's). */
+const openingCountOf = (input: Pick<InterviewStepInput, "exchanges" | "turn">) => Math.max(0, input.exchanges.length - input.turn);
+
+/** Important criteria the interview has only from the opening story. */
+export function unprobedCriteria(input: Pick<InterviewStepInput, "exchanges" | "turn" | "model">): PilotModel["criteria"] {
+  const opening = openingCountOf(input);
+  return (input.model?.criteria ?? []).filter((c) => c.weight >= IMPORTANT_WEIGHT && !isProbed(c, opening));
+}
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
 
@@ -189,19 +229,28 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
 /** The "anything else?" screen's question, as the transcript records it — both the app and the simulator use it. */
 export const SWEEP_QUESTION = "Anything else that matters when you bid? (Topics you hadn't raised.)";
 
-/** Questions before a settled ranking may end the interview on its own. */
-const MIN_TURNS_BEFORE_SETTLED_STOP = 12;
+/**
+ * Questions before a settled ranking may end the interview on its own: more for a pilot with more that matters to them —
+ * a long story with a dozen priorities needs more questions than a short one with four. Not a target; the interviewer
+ * usually goes on past it.
+ */
+export function minTurnsFor(model: PilotModel | null): number {
+  const important = (model?.criteria ?? []).filter((c) => c.weight >= 0.3).length;
+  return Math.max(12, Math.min(28, 4 + 2 * important));
+}
 
 /**
  * The answers have stopped moving the ranking: the last two re-reads each changed at most one of the pilot's top-10
- * lines, and nothing important is still wide open. More questions from here cost the pilot time and teach little.
+ * lines, every important criterion has been asked about, and nothing important is still wide open. More questions
+ * from here cost the pilot time and teach little.
  */
 export function rankingHasSettled(input: Pick<InterviewStepInput, "turn" | "rankingShifts" | "model" | "threads" | "exchanges">): boolean {
   const shifts = input.rankingShifts ?? [];
   // Right after the "anything else?" screen they may have just raised something new — it gets its follow-ups first.
   if (input.exchanges.at(-1)?.question === SWEEP_QUESTION) return false;
-  if (input.turn < MIN_TURNS_BEFORE_SETTLED_STOP || shifts.length < 2 || shifts.slice(-2).some((n) => n > 1)) return false;
-  const importantOpen = (input.model?.threads ?? []).some((t) => (input.threads[t.id]?.status ?? t.status) === "open" && t.priority >= 0.6);
+  if (input.turn < minTurnsFor(input.model) || shifts.length < 2 || shifts.slice(-2).some((n) => n > 1)) return false;
+  if (unprobedCriteria(input).length > 0) return false;
+  const importantOpen = (input.model?.threads ?? []).some((t) => (input.threads[t.id]?.status ?? t.status) === "open" && t.priority >= 0.5);
   return !importantOpen;
 }
 
@@ -210,11 +259,16 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
   const conversation = input.exchanges.map((e) => `[${e.turn}] Q: ${e.question}\nA: ${e.answer}`).join("\n\n");
   const pairsUsed = new Set(input.exchanges.flatMap((e) => [...e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)].map((m) => `${m[1]}|${m[2]}`)));
   const pairs = input.linePairs.length
-    ? input.linePairs.map((p) => `#${p.index}: Line ${p.a} vs Line ${p.b} — ${p.tension}\n   ${p.a}: ${p.summaryA}\n   ${p.b}: ${p.summaryB}`).join("\n")
+    ? input.linePairs
+        .map((p) => {
+          const diffs = p.differences?.length ? `\n   differences: ${p.differences.map((d) => `${d.label} ${d.a} vs ${d.b} (better: ${d.better === "a" ? p.a : p.b})`).join("; ")}` : "";
+          return `#${p.index}: Line ${p.a} vs Line ${p.b} — ${p.tension}${diffs}\n   ${p.a}: ${p.summaryA}\n   ${p.b}: ${p.summaryB}`;
+        })
+        .join("\n")
     : "(none offered this turn)";
   let fresh = [
     `PILOT: ${input.pilotContext}`,
-    `THE BRAIN'S CURRENT MODEL OF THEM:\n${renderModel(input.model, input.threads)}`,
+    `THE BRAIN'S CURRENT MODEL OF THEM:\n${renderModel(input.model, input.threads, openingCountOf(input))}`,
     input.fleetNotes ? `FLEET NOTES — other pilots in the same group (hints only):\n${input.fleetNotes}` : "",
     `LINE PAIRS YOU MAY OFFER:\n${pairs}`,
     input.rankingShifts?.length ? `RANKING STABILITY — top-10 lines changed by each re-read, oldest first: ${input.rankingShifts.join(", ")}` : "",

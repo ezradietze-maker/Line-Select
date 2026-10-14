@@ -59,7 +59,7 @@ function aggregate(values: number[], how: Aggregation): number | null {
 
 /** One measurement for one line, in its real unit — null when the pack has nothing real to measure it from (an estimated line, a trip with no schedule). */
 export function measureLine(def: MetricDef, line: Line, pack: PackMetrics, params: MetricParams = {}): number | null {
-  const p = { ...def.defaults, ...params };
+  const p = { ...def.defaults, ...params, base: pack.ctx.base };
   const trips = pack.factsByLine.get(line.id) ?? [];
   if (def.line) return def.line(line, trips, pack.ctx, p);
   if (!def.trip) return null;

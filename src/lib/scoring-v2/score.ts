@@ -23,6 +23,10 @@ import type { BidPack } from "@/types/bidpack";
  */
 
 export const HARD_LIMIT_CAP = 0.35;
+/** A hard limit that would rule out more than this share of the pack's lines doesn't cap (see `scorePackV2`)… */
+export const MAX_SHARE_RULED_OUT = 0.45;
+/** …unless it's one a pilot means literally whatever it rules out. */
+const LITERAL_LIMITS = new Set(["requestedDatesWorked"]);
 
 /**
  * Shortfalls combine as a weighted root-mean-square: chosen on the eval panel (Oct 2026), where it beat a plain average
@@ -30,6 +34,9 @@ export const HARD_LIMIT_CAP = 0.35;
  * instead of being rescued by small wins elsewhere.
  */
 export const SHORTFALL_POWER = 2;
+
+/** How fast utility keeps falling past the bad end of a scale (see `utilityOf`). 0.25: best on the Oct 13 2026 traces (70 brain reads) and the eval panel; 0 = it stops at zero. */
+export const BEYOND_BAD = 0.25;
 
 export interface CriterionResult {
   criterionId: string;
@@ -62,17 +69,28 @@ function quantile(sorted: number[], q: number): number {
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
-export function utilityOf(value: number, shape: CriterionShape, spread: { lo: number; hi: number }): number {
+/** However far past the bad end a line is, its utility goes no lower than this. */
+const UTILITY_FLOOR = -0.5;
+
+/**
+ * `beyondBad`: past the bad end of a "more"/"less" scale, how fast utility keeps falling, as a share of the slope inside
+ * it — so a line with 10 commutes still scores below one with 7 when 6 is "as bad as it gets", instead of the two tying.
+ */
+export function utilityOf(value: number, shape: CriterionShape, spread: { lo: number; hi: number }, beyondBad = 0): number {
   switch (shape.kind) {
     case "more": {
       const lo = spread.lo;
       const hi = shape.enoughAt ?? spread.hi;
-      return hi - lo < 1e-9 ? (value >= hi ? 1 : 0.5) : clamp01((value - lo) / (hi - lo));
+      if (hi - lo < 1e-9) return value >= hi ? 1 : 0.5;
+      const u = (value - lo) / (hi - lo);
+      return u < 0 ? Math.max(UTILITY_FLOOR, u * beyondBad) : Math.min(1, u);
     }
     case "less": {
       const best = shape.fineAt ?? spread.lo;
       const worst = shape.worstAt ?? spread.hi;
-      return worst - best < 1e-9 ? (value <= best ? 1 : 0.5) : clamp01((worst - value) / (worst - best));
+      if (worst - best < 1e-9) return value <= best ? 1 : 0.5;
+      const u = (worst - value) / (worst - best);
+      return u < 0 ? Math.max(UTILITY_FLOOR, u * beyondBad) : Math.min(1, u);
     }
     case "target": {
       const tol = Math.max(1e-6, shape.tolerance);
@@ -119,6 +137,8 @@ export interface ScoreOptions {
    * priority no matter what else it has. Defaults to `SHORTFALL_POWER`.
    */
   power?: number;
+  /** See `utilityOf`. Defaults to `BEYOND_BAD`. */
+  beyondBad?: number;
 }
 
 export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreOptions = {}): V2LineScore[] {
@@ -142,8 +162,20 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
   });
   const weights = criteria.map(criterionWeight);
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
-  const utilities = criteria.map((c, ci) => values[ci].map((v) => (v === null ? 0.5 : utilityOf(v, c.shape, spreads[ci]))));
+  const beyond = options.beyondBad ?? BEYOND_BAD;
+  const utilities = criteria.map((c, ci) => values[ci].map((v) => (v === null ? 0.5 : utilityOf(v, c.shape, spreads[ci], beyond))));
   const meanUtility = utilities.map((us) => us.reduce((a, b) => a + b, 0) / Math.max(1, us.length));
+  // A dealbreaker that rules out most of the pack is usually misread or bound to the wrong measure ("not two all-nighters
+  // in a row" as a cap on every night worked capped two-thirds of a pack, its best lines included): it still counts
+  // through its criterion's weight, it just stops capping. Dates a pilot must have off are the exception — those really
+  // can rule out most lines, and the pilot means it.
+  const enforced = criteria.map((c, ci) => {
+    if (!c.hardLimit) return false;
+    if (LITERAL_LIMITS.has(c.metric)) return true;
+    const measured = values[ci].filter((v): v is number => v !== null);
+    const broken = measured.filter((v) => (c.hardLimit!.op === "max" ? v > c.hardLimit!.value : v < c.hardLimit!.value)).length;
+    return measured.length === 0 || broken / measured.length <= MAX_SHARE_RULED_OUT;
+  });
 
   return bidPack.lines.map((line, li) => {
     const results: CriterionResult[] = criteria.map((c, ci) => {
@@ -169,7 +201,7 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
 
     const violations = criteria.flatMap((c, ci) => {
       const v = values[ci][li];
-      if (!c.hardLimit || v === null) return [];
+      if (!c.hardLimit || v === null || !enforced[ci]) return [];
       const broken = c.hardLimit.op === "max" ? v > c.hardLimit.value : v < c.hardLimit.value;
       return broken ? [{ criterionId: c.id, label: c.label, value: v, limit: c.hardLimit.value, op: c.hardLimit.op }] : [];
     });

@@ -37,8 +37,9 @@ function LineDetail({ bidPack, lineNumber, label, selected }: { bidPack: BidPack
         {line.daysOff} days off · {line.totalCreditHours.toFixed(1)} credit · {line.trips.length} {line.trips.length === 1 ? "trip" : "trips"}
       </p>
       <ul className="mt-3 space-y-2">
-        {line.trips.map((t) => (
-          <li key={t.id}>
+        {/* The same pairing can be flown twice in a month, so its id alone isn't a unique key. */}
+        {line.trips.map((t, i) => (
+          <li key={`${t.id}-${i}`}>
             <details className="group border-l-2 border-border-strong pl-2.5">
               <summary className="cursor-pointer list-none font-mono text-xs leading-relaxed text-ink [overflow-wrap:anywhere] marker:hidden">
                 <span className="text-accent group-open:hidden" aria-hidden>▸ </span>
@@ -55,6 +56,50 @@ function LineDetail({ bidPack, lineNumber, label, selected }: { bidPack: BidPack
         ))}
       </ul>
     </section>
+  );
+}
+
+/** How the two lines differ on the things the pilot has said matter — the better side of each row marked. */
+function Differences({ pair }: { pair: LinePairCandidate }) {
+  const rows = pair.differences ?? [];
+  if (!rows.length) return null;
+  const cell = (on: boolean) => `px-3 py-2 text-right font-mono text-xs tabular-nums ${on ? "font-semibold text-accent" : "text-ink-muted"}`;
+  return (
+    <div className="mb-4 overflow-hidden rounded-xl border border-hairline">
+      <table className="w-full text-left">
+        <caption className="sr-only">How Line {pair.a} and Line {pair.b} differ on what you&rsquo;ve told us</caption>
+        <thead>
+          <tr className="border-b border-hairline bg-canvas/60">
+            <th scope="col" className="px-3 py-2 font-mono text-[10.5px] font-normal uppercase tracking-[0.14em] text-ink-faint">
+              Where they differ
+            </th>
+            <th scope="col" className="px-3 py-2 text-right font-mono text-[10.5px] font-normal uppercase tracking-[0.14em] text-ink-faint">
+              {pair.a}
+            </th>
+            <th scope="col" className="px-3 py-2 text-right font-mono text-[10.5px] font-normal uppercase tracking-[0.14em] text-ink-faint">
+              {pair.b}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((d) => (
+            <tr key={d.label} className="border-b border-hairline last:border-0">
+              <th scope="row" className="px-3 py-2 text-sm font-normal text-ink">
+                {d.label}
+              </th>
+              <td className={cell(d.better === "a")}>
+                {d.better === "a" && <span className="sr-only">better: </span>}
+                {d.a}
+              </td>
+              <td className={cell(d.better === "b")}>
+                {d.better === "b" && <span className="sr-only">better: </span>}
+                {d.b}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -103,6 +148,7 @@ export function LinePairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
     <div>
       <QuestionPrompt eyebrow={eyebrow} title={prompt} help={helpText ?? "Tap a trip to see it duty by duty."} />
       <RevealControls title={prompt} className="mt-6">
+        <Differences pair={pair} />
         <div className="grid gap-3 sm:grid-cols-2">
           <LineDetail bidPack={bidPack} lineNumber={pair.a} label="Option A" selected={pick?.side === "a"} />
           <LineDetail bidPack={bidPack} lineNumber={pair.b} label="Option B" selected={pick?.side === "b"} />
@@ -133,7 +179,7 @@ export function LinePairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
             value={why}
             onChange={(e) => setWhy(e.target.value)}
             rows={2}
-            placeholder="What decided it? (optional)"
+            placeholder={pair.differences?.length ? "Which of those differences decided it — or something else? (optional)" : "What decided it? (optional)"}
             aria-label="What decided it"
             className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
           />

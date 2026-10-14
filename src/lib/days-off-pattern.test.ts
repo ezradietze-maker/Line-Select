@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateOfDayIndex, longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
+import { dateOfDayIndex, longestDaysOffBlock, singleDaysOff, weekendDaysOff } from "@/lib/days-off-pattern";
 import type { Line } from "@/types/bidpack";
 
 const START = "2026-09-28"; // a Monday, so days 5/6, 12/13, 19/20, 26/27 are the weekends
@@ -21,6 +21,18 @@ describe("longestDaysOffBlock", () => {
   });
   it("is 0 for a line with no days off at all", () => {
     expect(longestDaysOffBlock(line([]))).toBe(0);
+  });
+});
+
+describe("singleDaysOff", () => {
+  it("counts days off standing alone between working days, not days in a run", () => {
+    expect(singleDaysOff(line([3, 7, 8, 9, 12, 20]), 28)).toBe(3);
+  });
+  it("doesn't count a lone day off on the first or last day of the period — it may join the next month's", () => {
+    expect(singleDaysOff(line([0, 14, 27]), 28)).toBe(1);
+  });
+  it("is null without the grid's own day-off marks", () => {
+    expect(singleDaysOff(line(undefined), 28)).toBeNull();
   });
 });
 

@@ -5,7 +5,7 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
 import { MicButton } from "@/components/ui/MicButton";
-import { STORY_TOPICS, storyTopicsMentioned } from "@/lib/interview-display";
+import { STORY_TOPICS, storyDepth, storyTopicsMentioned } from "@/lib/interview-display";
 import { useDictation } from "@/lib/use-speech-to-text";
 
 interface BiddingStoryStepProps {
@@ -21,14 +21,6 @@ interface BiddingStoryStepProps {
 
 const TITLE = "Walk us through your whole bidding process, start to finish.";
 
-/** How much there is to work with, in three honest steps — by word count, not a grade. */
-function depthOf(words: number): { level: 0 | 1 | 2 | 3; label: string } {
-  if (words === 0) return { level: 0, label: "" };
-  if (words < 40) return { level: 1, label: "A start" };
-  if (words < 120) return { level: 2, label: "Good detail" };
-  return { level: 3, label: "Plenty to work with" };
-}
-
 /**
  * The one open-ended question the rest of the interview is built around —
  * asked right after seniority, before commute status or anything else.
@@ -39,16 +31,17 @@ function depthOf(words: number): { level: 0 | 1 | 2 | 3; label: string } {
  * scratch, and the pilot's own words here keep shaping how every later
  * question gets phrased for the rest of this interview.
  *
- * The topic chips under the box light up as the story touches each area,
- * by plain keyword — encouragement to cover more ground, not extraction.
+ * The area chips under the box light up as the story touches each one, by
+ * plain keyword — encouragement to cover more ground, not extraction — and
+ * the meter beside them fills by length and breadth together, slowly: the
+ * stories that rank best run a page or so (see `storyDepth`).
  */
 export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, error, maxLength, eyebrow }: BiddingStoryStepProps) {
   const reduce = useReducedMotion();
   const remaining = maxLength - value.length;
   const dictation = useDictation(value, (next) => onChange(next.slice(0, maxLength)));
   const mentioned = useMemo(() => storyTopicsMentioned(value), [value]);
-  const words = value.trim() ? value.trim().split(/\s+/).length : 0;
-  const depth = depthOf(words);
+  const depth = storyDepth(value);
   const area = useRef<HTMLTextAreaElement>(null);
 
   // Grows with the story, so a long answer reads as a page rather than a scroll box.
@@ -66,9 +59,10 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
         title={TITLE}
         help={
           <>
-            What do you actually look for, in whatever order you think about it &mdash; days off, trips, layovers, pay, your
-            commute, your life outside the schedule. Write it the way you&rsquo;d explain it to another pilot.{" "}
-            <span className="font-medium text-accent">The more you give here, the fewer questions later.</span>
+            What do you actually look for, in whatever order you think about it &mdash; days off, trips, legs, report times,
+            layovers, pay, your commute, deadheads, your life outside the schedule &mdash; and what you&rsquo;d trade for what.
+            Write it the way you&rsquo;d explain it to another pilot.{" "}
+            <span className="font-medium text-accent">A page or so is not too much: everything here sharpens your ranking.</span>
           </>
         }
       />
@@ -99,38 +93,37 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <ul className="flex flex-wrap gap-1.5" aria-label="Topics your story touches so far">
-            {STORY_TOPICS.map((t) => {
-              const on = mentioned.has(t.id);
-              return (
-                <li
-                  key={t.id}
-                  className={`rounded-full border px-2.5 py-0.5 text-xs transition-all duration-300 ${
-                    on ? "border-accent/50 bg-accent-soft text-accent" : "border-hairline text-ink-faint"
-                  }`}
-                >
-                  {on && <span aria-hidden>✓ </span>}
-                  {t.label}
-                  <span className="sr-only">{on ? " — mentioned" : " — not yet"}</span>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="flex items-center gap-2.5" aria-live="polite">
-            {depth.level > 0 && (
-              <>
-                <span className="flex gap-0.5" aria-hidden>
-                  {[1, 2, 3].map((n) => (
-                    <span key={n} className={`h-1.5 w-4 rounded-full transition-colors duration-300 ${n <= depth.level ? "bg-accent" : "bg-border-strong"}`} />
-                  ))}
-                </span>
-                <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">{depth.label}</span>
-              </>
-            )}
-            {remaining < 500 && <span className="font-mono text-[10.5px] text-ink-faint">{remaining.toLocaleString()} left</span>}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" aria-live="polite">
+          <div className="flex items-center gap-2.5">
+            <span className="flex gap-0.5" aria-hidden>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <span key={n} className={`h-1.5 w-5 rounded-full transition-colors duration-500 ${n <= depth.level ? "bg-accent" : "bg-border-strong"}`} />
+              ))}
+            </span>
+            <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">{depth.label || "Your story"}</span>
           </div>
+          <span className="font-mono text-[10.5px] text-ink-faint">
+            {depth.areas} of {STORY_TOPICS.length} areas
+            {remaining < 500 && <> · {remaining.toLocaleString()} characters left</>}
+          </span>
         </div>
+        <ul className="mt-2.5 flex flex-wrap gap-1.5" aria-label="Areas your story covers so far">
+          {STORY_TOPICS.map((t) => {
+            const on = mentioned.has(t.id);
+            return (
+              <li
+                key={t.id}
+                className={`rounded-full border px-2.5 py-0.5 text-xs transition-all duration-300 ${
+                  on ? "border-accent/50 bg-accent-soft text-accent" : "border-hairline text-ink-faint"
+                }`}
+              >
+                {on && <span aria-hidden>✓ </span>}
+                {t.label}
+                <span className="sr-only">{on ? " — covered" : " — not yet"}</span>
+              </li>
+            );
+          })}
+        </ul>
         {dictation.error && <p className="mt-2 text-xs text-danger">{dictation.error}</p>}
         {error && <p className="mt-3 text-sm text-danger">{error}</p>}
 

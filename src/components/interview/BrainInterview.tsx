@@ -23,7 +23,9 @@ import type { InterviewExchange } from "@/lib/brain/build-model";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { requestModelBuild, requestNextStep, type StepResponse } from "@/lib/brain/client";
 import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
-import { SWEEP_QUESTION, type LinePairCandidate, type ThreadState } from "@/lib/brain/interviewer";
+import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
+import { askedDealbreakers, dealbreakerQuestion } from "@/lib/brain/dealbreakers";
+import { minTurnsFor, SWEEP_QUESTION, type LinePairCandidate, type ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
 import { topLines, topShift } from "@/lib/brain/ranking-shift";
 import { applyPriorityPick, priorityOrderQuestion, priorityOrderTranscript } from "@/lib/brain/priority-order";
@@ -62,9 +64,13 @@ type Phase = "seniority" | "checkin" | "story" | "commuter" | "cities" | "readin
 /** A monthly check-in asks at most this many questions about what's new. */
 const CHECK_IN_TURNS = 5;
 
-const MAX_TURNS = 22;
+/**
+ * A safety net, not a target: the interviewer decides when it has learned enough (see `rankingHasSettled` and the
+ * interviewer's own judgment), and a pilot with a long, detailed story gets more questions than one with a short one.
+ */
+const MAX_TURNS = 40;
 /** After the "anything else?" screen, at most this many follow-ups before the interview wraps up. */
-const AFTER_SWEEP = 3;
+const AFTER_SWEEP = 5;
 /** Below this many answers the "that's enough" link stays hidden — the brain hasn't had a real chance yet. */
 const MIN_TURNS_TO_FINISH = 4;
 /** The brain re-reads the whole interview every this many answers (and once more at the end). */
@@ -367,6 +373,14 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       setPhase("question");
       return;
     }
+    // Then, also asked the same way for everyone: anything that rules a line out, whatever else it has — a weight can't
+    // say "never", and enough pay always buys a weight back (see lib/brain/dealbreakers.ts).
+    if (!checkIn && !askedDealbreakers(all)) {
+      const q = dealbreakerQuestion(bidPack, m, pm);
+      setQuestion({ done: false, settled: [], threadId: null, kind: "free-text", prompt: q.prompt, helpText: q.helpText, transcript: q.transcript });
+      setPhase("question");
+      return;
+    }
     const linePairs: LinePairCandidate[] = m ? pickLinePairs(bidPack, m, pm, compared, 3, tradesRef.current) : [];
     try {
       const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, model: m, threads: th, linePairs, turn: t, maxTurns: turnLimitRef.current, rankingShifts: shiftsRef.current });
@@ -374,6 +388,16 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       for (const id of step.settled) settledThreads[id] = { ...(settledThreads[id] ?? { timesAsked: 0 }), status: "settled" };
       if (step.done) {
         setThreads(settledThreads);
+        // Before wrapping up: is a line near the top of their list one they'd really bid there? (lib/brain/bid-check.ts)
+        const checked = checkedLines(all);
+        const check = !checkIn && m && checked.length < MAX_BID_CHECKS ? bidCheckQuestion(bidPack, m, ch, pm, checked, checkedKinds(all), checkedWeakSpots(all)) : null;
+        if (check) {
+          setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: check.prompt, helpText: check.helpText, options: check.options, transcript: check.transcript, bidCheck: { line: check.line, alt: check.alt, kind: check.kind } });
+          setChoiceSelection(null);
+          setChoiceNote("");
+          setPhase("question");
+          return;
+        }
         if (!swept && uncoveredTopics(m).length > 0) setPhase("sweep");
         else void finishInterview(all, ch);
         return;
@@ -401,7 +425,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       setModel(picked);
     }
     const all = [...exchanges, { turn: exchanges.length, question: asked, answer: text }];
-    const ch = choice ? [...choices, choice] : choices;
+    // A bid check's verdict is a line choice too: the line it asked about against the best one below it without its weak spot.
+    const verdict = question.bidCheck && choiceSelection !== null ? bidCheckChoice(question.bidCheck, choiceSelection, choiceNote) : null;
+    const ch = choice ? [...choices, choice] : verdict ? [...choices, verdict] : choices;
     const nextTurn = turn + 1;
     if (question.kind === "line-pair" && question.pair?.trade) {
       tradesRef.current = [...pastTrades, question.pair.trade];
@@ -571,7 +597,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const stepIndex = Math.max(0, opening.indexOf(phase as (typeof opening)[number]) - (hasSeniorityStep ? 0 : 1));
   const eyebrow = (label: string) => `Step ${stepIndex + 1} of ${stepTotal} · ${label}`;
   const inOpening = (opening as readonly string[]).includes(phase);
-  const progress = inOpening ? (stepIndex / stepTotal) * 0.2 : phase === "review" ? 0.97 : phase === "building" || phase === "sweep" ? 0.9 : 0.2 + Math.min(0.65, (turn / turnLimit) * 0.9);
+  // No fixed length to measure against: the bar runs toward about how many questions this pilot's priorities call for,
+  // and keeps a little room ahead while the interview is still going.
+  const expectedTurns = Math.min(turnLimit, Math.max(minTurnsFor(model) + 4, turn + 3));
+  const progress = inOpening ? (stepIndex / stepTotal) * 0.2 : phase === "review" ? 0.97 : phase === "building" || phase === "sweep" ? 0.9 : 0.2 + Math.min(0.65, (turn / expectedTurns) * 0.7);
   const lastAnswer = exchanges.at(-1);
   const lastExchange: LastExchange | null = lastAnswer && lastAnswer.turn > 0 && !lastAnswer.question.startsWith("How do you feel about each layover") ? { question: lastAnswer.question.replace(/ \[Line .*\]$/, ""), answer: lastAnswer.answer } : null;
   const questionEyebrow = `Question ${turn + 1} · from your story`;
@@ -777,7 +806,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <InterviewProgress fraction={progress} left={inOpening ? "Getting started" : phase === "review" ? "Your priorities" : `${turn} answered`} right={inOpening ? (checkIn ? "About 3–5 min" : "About 15–20 min") : phase === "review" ? "Last step" : checkIn ? "Monthly check-in" : "Story-driven"} />
+      <InterviewProgress fraction={progress} left={inOpening ? "Getting started" : phase === "review" ? "Your priorities" : `${turn} answered`} right={inOpening ? (checkIn ? "About 3–5 min" : "About 20–30 min") : phase === "review" ? "Last step" : checkIn ? "Monthly check-in" : "Story-driven"} />
 
       {resume && inOpening && (
         <div className="panel-glass glow-soft mb-5 p-5">

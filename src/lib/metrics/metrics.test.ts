@@ -178,8 +178,10 @@ describe("dates and standby", () => {
     expect(measure("hotelStandbyDays", standbyLine, p)).toBe(5);
     expect(measure("tripStandbyDays", standbyLine, p)).toBe(2);
     expect(measure("baseStandbyDays", standbyLine, p)).toBe(3);
-    // Standby valued by city: worthless in a hated CAN, 1.5 a day in a liked-enough ANC.
-    expect(measure("standbyDaysByCity", standbyLine, p, { cityScores: { CAN: -1, ANC: 0.5 } })).toBe(4.5);
+    // Standby valued by city: worthless in a hated CAN; at base (ANC) it's neutral, a day a day, whatever ANC is graded —
+    // time at base isn't a layover anywhere.
+    expect(measure("standbyDaysByCity", standbyLine, p, { cityScores: { CAN: -1, ANC: 0.5 } })).toBe(3);
+    expect(measure("standbyDaysByCity", standbyLine, p, { cityScores: { CAN: 1 } })).toBe(7);
   });
 });
 
@@ -200,6 +202,57 @@ describe("night work", () => {
     const p = prepareMetrics({ ...pack, lines: [l] } as BidPack);
     expect(measure("nightsWorked", l, p)).toBe(3);
     expect(measure("longestNightStreak", l, p)).toBe(3);
+  });
+
+  it("counts the small hours on the local clock as well as the base's", () => {
+    // Report at base at 18:00 (base clock). Legs leaving at 03:00 local: two hours behind base (05:00 base, out west) or
+    // five (08:00 base, Honolulu) — either way it's the middle of the night where the pilot is. Daytime legs don't count.
+    const early = (start: number, depLocal: string, arrLocal: string) => ({ reportTimeLocal: "1800", startMinutes: start, legs: [leg("9", "OAK", "SAN", start, start + 80, { depTimeLocal: depLocal, arrTimeLocal: arrLocal })], layover: null });
+    // Starts at 05:00 / 08:00 base on days 1, 2 and 3 (trip minutes are from the 18:00 report).
+    const west: Trip = { ...trip, id: "w", schedule: [early(660, "0300", "0420"), early(2100, "0300", "0420"), early(3540, "0300", "0420")] };
+    const hawaii: Trip = { ...trip, id: "h", schedule: [early(840, "0300", "0420"), early(2280, "0300", "0420"), early(3720, "0300", "0420")] };
+    const daytime: Trip = { ...trip, id: "d", schedule: [early(840, "1000", "1120"), early(2280, "1000", "1120"), early(3720, "1000", "1120")] };
+    for (const [t, nights] of [[west, 3], [hawaii, 3], [daytime, 0]] as const) {
+      const l: Line = { ...line, trips: [t] };
+      expect(measure("nightsWorked", l, prepareMetrics({ ...pack, lines: [l] } as BidPack))).toBe(nights);
+    }
+  });
+
+  it("counts trips that end on a dawn red-eye, not ones in just after midnight", () => {
+    const last = (dep: string, arr: string, start: number, end: number) => ({ reportTimeLocal: "2100", startMinutes: start, legs: [leg("7", "DFW", "MEM", start, end, { depTimeLocal: dep, arrTimeLocal: arr })], layover: null });
+    const dawn: Trip = { ...trip, id: "dawn", schedule: [last("0200", "0520", 0, 200)] };
+    const lateEvening: Trip = { ...trip, id: "late", schedule: [last("2239", "0139", 0, 120)] };
+    const l: Line = { ...line, trips: [dawn, lateEvening] };
+    expect(measure("redEyeFinishes", l, prepareMetrics({ ...pack, lines: [l] } as BidPack))).toBe(1);
+  });
+
+  it("counts all-nighters by how much of the night a duty spans — not early launches or late arrivals", () => {
+    const duty = (start: number, legs: [string, string, number, number][]) => ({ reportTimeLocal: "2100", startMinutes: start, legs: legs.map(([dep, arr, a, b]) => leg("6", "BOS", "EWR", a, b, { depTimeLocal: dep, arrTimeLocal: arr })), layover: null });
+    // Three nights in a row: out 22:35, back in at 05:06 — two short legs, but the duty spans the whole night.
+    const allNight = (start: number) => duty(start, [["2235", "2347", start, start + 72], ["0408", "0506", start + 333, start + 391]]);
+    const early = (start: number) => duty(start, [["0415", "0534", start, start + 79]]);
+    const t: Trip = { ...trip, id: "an", schedule: [allNight(0), allNight(1440), allNight(2880), early(4320)] };
+    const l: Line = { ...line, trips: [t] };
+    const p = prepareMetrics({ ...pack, lines: [l] } as BidPack);
+    expect(measure("allNighterStreak", l, p)).toBe(3);
+    expect(measure("backToBackRedEyes", l, p)).toBe(2);
+  });
+
+  it("counts layovers with no real night in them", () => {
+    // A layover arriving 06:00 and leaving 20:00 local (14 h, 1 h of night) and one arriving 21:00 and leaving 09:00.
+    const day = (start: number, arrLocal: string, hours: number) => ({ reportTimeLocal: "0400", startMinutes: start, legs: [leg("8", "MEM", "OAK", start, start + 60, { arrTimeLocal: arrLocal })], layover: { city: "OAK", hotelName: null, transportToHotel: null, transportFromHotel: null, hours, startMinutes: start + 60, endMinutes: start + 60 + hours * 60 } });
+    const t: Trip = { ...trip, id: "l", schedule: [day(0, "0600", 14), day(2000, "2100", 12), { reportTimeLocal: "1000", startMinutes: 4000, legs: [leg("9", "OAK", "MEM", 4000, 4100)], layover: null }] };
+    const l: Line = { ...line, trips: [t] };
+    const p = prepareMetrics({ ...pack, lines: [l] } as BidPack);
+    expect(measure("daytimeLayovers", l, p)).toBe(1);
+  });
+
+  it("measures how much of the flying is in the daytime", () => {
+    const fly = (dep: string, arr: string, start: number, end: number) => ({ reportTimeLocal: "0800", startMinutes: start, legs: [leg("5", "MEM", "IND", start, end, { depTimeLocal: dep, arrTimeLocal: arr })], layover: null });
+    // Two hours from 10:00 (all day), two hours from 23:00 (all night).
+    const t: Trip = { ...trip, id: "d", schedule: [fly("1000", "1200", 0, 120), fly("2300", "0100", 1440, 1560)] };
+    const l: Line = { ...line, trips: [t] };
+    expect(measure("dayFlyingShare", l, prepareMetrics({ ...pack, lines: [l] } as BidPack))).toBeCloseTo(0.5, 5);
   });
 
   it("treats overnight standby as night work, and finds the longest run of nights", () => {

@@ -152,24 +152,41 @@ const NIGHT_TO = 5 * 60; // 05:00
 export const NIGHT_WORKED_MINUTES = 30;
 
 /**
- * The nights of a trip a pilot spends working, on the clock of the base the trip starts from — the clock a body keeps
- * at home. Night k is the small hours, 00:00–05:00, of the trip's day k — the hours a body has to be asleep for; an
- * evening that runs to 23:30 still sleeps the night. A night is worked when operated flying or hotel standby fills at
- * least half an hour of it, so a nightly shuttle (out at 02:00, back just before midnight, out again at 01:00) counts
- * every night, even though each night is split across two duty periods.
+ * The nights of a trip a pilot spends working. Night k is the small hours, 00:00–05:00, of the trip's day k — the
+ * hours a body has to be asleep for; an evening that runs to 23:30 still sleeps the night. A night is worked when
+ * operated flying or hotel standby fills at least half an hour of it, so a nightly shuttle (out at 02:00, back just
+ * before midnight, out again at 01:00) counts every night, even though each night is split across two duty periods.
+ *
+ * The small hours on either clock: the base's (the one a body keeps at home) or the one where the pilot is. A week of
+ * 03:00 departures out of Oakland is a week of all-nighters for a Memphis pilot even though it's 05:00 in Memphis — on
+ * the base clock alone that line counted one night worked. Counting the local clock wherever the pilot is (rather than
+ * only within a few hours of home) matched how pilots judge it best on the eval panel (Oct 13 2026: the body-clock
+ * pilot +0.05–0.08 Spearman, nobody worse).
  */
 export function nightsWorked(f: TripFacts): number[] {
   const report = f.duties[0]?.reportLocalMinute;
   if (report === null || report === undefined) return [];
-  const intervals = f.duties.flatMap((d) => [...d.legs.filter((l) => !l.deadhead), ...d.standbyLegs]).map((l) => [report + l.start, report + l.end]);
+  const legs = f.duties.flatMap((d) => [...d.legs.filter((l) => !l.deadhead), ...d.standbyLegs]);
   const minutes = new Map<number, number>();
-  for (const [a, b] of intervals) {
+  const count = (a: number, b: number, into: Map<number, number>) => {
     for (let k = Math.floor((a - NIGHT_FROM) / 1440); k * 1440 + NIGHT_FROM < b; k++) {
       const lo = Math.max(a, k * 1440 + NIGHT_FROM);
       const hi = Math.min(b, k * 1440 + NIGHT_TO);
-      if (hi > lo) minutes.set(k, (minutes.get(k) ?? 0) + (hi - lo));
+      if (hi > lo) into.set(k, (into.get(k) ?? 0) + (hi - lo));
+    }
+  };
+  const local = new Map<number, number>();
+  for (const l of legs) {
+    const a = report + l.start;
+    const b = report + l.end;
+    count(a, b, minutes);
+    // The same leg on the local clock where it departs: the base clock shifted by however far local time is from it.
+    if (l.depLocalMinute !== null) {
+      const offset = ((((l.depLocalMinute - (a % 1440)) % 1440) + 1440 + 720) % 1440) - 720;
+      if (offset !== 0) count(a + offset, b + offset, local);
     }
   }
+  for (const [k, m] of local) minutes.set(k, Math.max(minutes.get(k) ?? 0, m));
   return [...minutes].filter(([, m]) => m >= NIGHT_WORKED_MINUTES).map(([k]) => k).sort((x, y) => x - y);
 }
 

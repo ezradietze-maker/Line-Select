@@ -18,6 +18,9 @@ import { scorecard, type Scorecard } from "./metrics";
 import { PERSONAS } from "./personas";
 
 const VARIANTS: { name: string; model?: (m: PilotModel) => PilotModel; options?: ScoreOptions }[] = [
+  { name: "beyond-bad 0.25", options: { beyondBad: 0.25 } },
+  { name: "beyond-bad 0.5", options: { beyondBad: 0.5 } },
+  { name: "beyond-bad 1", options: { beyondBad: 1 } },
   { name: "plain average", options: { power: 1 } },
   { name: "default (power 2)" },
   { name: "power 1.5", options: { power: 1.5 } },

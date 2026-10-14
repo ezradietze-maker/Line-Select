@@ -18,7 +18,7 @@ const profile: PreferenceProfile = {
 describe("keeping the pilot model current after the interview", () => {
   it("turns a drag into choices that refit from the confirmed base, not from the last fit", () => {
     const choices = choicesFromDrag([{ favored: "A", overtaken: "B" }]);
-    expect(choices).toEqual([{ preferred: "A", other: "B", strength: "slightly" }]);
+    expect(choices).toEqual([{ preferred: "A", other: "B", strength: "slightly", direct: true }]);
     const once = withModel(profile, pack, { choices });
     const w = (p: PreferenceProfile, id: string) => p.pilotModel!.criteria.find((c) => c.id === id)!.weight;
     expect(w(once.profile, "off")).toBeGreaterThan(0.3 * 1.01);

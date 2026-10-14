@@ -73,7 +73,7 @@ export function withModel(
 
 /** A drag on the results: the moved line was put above (or below) each line it passed — one choice per line passed. */
 export function choicesFromDrag(passed: { favored: string; overtaken: string }[]): LineChoice[] {
-  return passed.map((p) => ({ preferred: p.favored, other: p.overtaken, strength: "slightly" as const }));
+  return passed.map((p) => ({ preferred: p.favored, other: p.overtaken, strength: "slightly" as const, direct: true }));
 }
 
 /** "Counting more: …; less: …" — what a change did to the pilot's priorities, in a sentence. */

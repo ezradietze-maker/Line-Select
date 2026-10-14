@@ -42,7 +42,7 @@ export interface CircadianAssessment {
   stars: 1 | 2 | 3 | 4 | 5;
   /** Signed hours vs. home base, using the shorter way around the globe. Positive = eastward/phase-advance (harder), negative = westward/phase-delay (easier). */
   timezoneShiftHours: number;
-  /** Duty periods whose report time falls in the 02:00-05:59 Window of Circadian Low. */
+  /** Duty periods that report in, or fly through, the 02:00-05:59 Window of Circadian Low. */
   wocEncroachments: number;
   /** Layovers under the FAA Part 117 10-hour rest floor. */
   shortRestCount: number;
@@ -52,6 +52,8 @@ export interface CircadianAssessment {
 
 const WOCL_START_MIN = 2 * 60;
 const WOCL_END_MIN = 6 * 60;
+/** A duty that flies at least this much of the WOCL encroaches on it, wherever its report time falls. */
+const WOCL_FLOWN_MINUTES = 30;
 const SHORT_REST_FLOOR_HOURS = 10;
 const SEVERE_REST_FLOOR_HOURS = 8;
 /** Aviation fatigue guidance commonly puts eastward (phase-advance) recovery at roughly 1.5x the westward (phase-delay) rate. */
@@ -125,12 +127,35 @@ function formatShift(hours: number): string {
  * matters and where this app draws the line on what it will and won't
  * infer).
  */
+/** Minutes of a leg's flying inside the WOCL, on the local clock it departs on. */
+function legWoclMinutes(depLocal: string, minutes: number): number {
+  const start = hhmmToMinutes(depLocal);
+  let total = 0;
+  for (const day of [-1440, 0, 1440]) {
+    const lo = Math.max(start, WOCL_START_MIN + day);
+    const hi = Math.min(start + minutes, WOCL_END_MIN + day);
+    if (hi > lo) total += hi - lo;
+  }
+  return total;
+}
+
+/**
+ * A duty encroaches on the Window of Circadian Low when it reports inside it — or flies through it: FAA Part 117
+ * treats a duty that infringes on the WOCL at all as the fatigue risk, and a 21:30 report that flies until 05:00 is the
+ * hardest duty there is, not an easy one.
+ */
+function encroachesWocl(duty: Trip["schedule"][number]): boolean {
+  const reportMin = hhmmToMinutes(duty.reportTimeLocal);
+  if (reportMin >= WOCL_START_MIN && reportMin < WOCL_END_MIN) return true;
+  const flown = duty.legs.filter((l) => !l.isDeadhead).reduce((a, l) => a + legWoclMinutes(l.depTimeLocal, Math.max(0, l.endMinutes - l.startMinutes)), 0);
+  return flown >= WOCL_FLOWN_MINUTES;
+}
+
 function longestConsecutiveWocStreak(trip: Trip): number {
   let longest = 0;
   let current = 0;
   for (const duty of flyingSchedule(trip)) {
-    const reportMin = hhmmToMinutes(duty.reportTimeLocal);
-    if (reportMin >= WOCL_START_MIN && reportMin < WOCL_END_MIN) {
+    if (encroachesWocl(duty)) {
       current++;
       longest = Math.max(longest, current);
     } else {
@@ -190,10 +215,7 @@ export function computeCircadianAssessment(
   const tzPenalty = shiftPenalty(effectiveShift);
 
   let wocEncroachments = 0;
-  for (const duty of flyingSchedule(trip)) {
-    const reportMin = hhmmToMinutes(duty.reportTimeLocal);
-    if (reportMin >= WOCL_START_MIN && reportMin < WOCL_END_MIN) wocEncroachments++;
-  }
+  for (const duty of flyingSchedule(trip)) if (encroachesWocl(duty)) wocEncroachments++;
   const wocStreak = longestConsecutiveWocStreak(trip);
   const wocPenalty = personalizedWocPenalty(wocEncroachments, wocStreak, consecutiveTolerance);
 
@@ -224,8 +246,8 @@ export function computeCircadianAssessment(
     }.`;
   } else if (wocPenalty >= restPenalty) {
     summary = exceedsPersonalTolerance
-      ? `Biggest factor: ${wocStreak} consecutive report times inside the 2-6am window — beyond the ${consecutiveTolerance} in a row you said you can handle.`
-      : `Biggest factor: ${wocEncroachments} report time${wocEncroachments > 1 ? "s" : ""} inside the 2-6am window when the body's alertness is naturally lowest.`;
+      ? `Biggest factor: ${wocStreak} duty periods in a row in the 2-6am window — beyond the ${consecutiveTolerance} in a row you said you can handle.`
+      : `Biggest factor: ${wocEncroachments} duty period${wocEncroachments > 1 ? "s" : ""} reporting in or flying through the 2-6am window, when the body's alertness is naturally lowest.`;
   } else {
     summary = `Biggest factor: ${shortRestCount} layover${shortRestCount > 1 ? "s" : ""} under the 10-hour rest floor needed for a real 8 hours of sleep.`;
   }

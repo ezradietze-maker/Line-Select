@@ -22,6 +22,16 @@ export function longestDaysOffBlock(line: Line): number | null {
   return longest;
 }
 
+/**
+ * Days off that stand alone between two working days — "a single day off between trips is useless to me". A lone
+ * day off on the first or last day of the period doesn't count: it may join days off in the next or last month.
+ */
+export function singleDaysOff(line: Line, periodDays: number): number | null {
+  if (line.estimated || !line.gridOffDays) return null;
+  const off = new Set(line.gridOffDays);
+  return [...off].filter((d) => d > 0 && d < periodDays - 1 && !off.has(d - 1) && !off.has(d + 1)).length;
+}
+
 /** Saturdays and Sundays this line has off — needs the bid period's real first date to know which days those are. */
 export function weekendDaysOff(line: Line, bidPeriodStart: string | null): number | null {
   if (line.estimated || !line.gridOffDays || !bidPeriodStart) return null;

@@ -64,7 +64,7 @@ const followUps = realFollowUps();
 /** His answers to the readback of the brain's model (Oct 10 2026): corrections, answers to its questions, and verdicts on 15 lines. */
 const READBACK = ".cache/eval/expilot-readback.json";
 const readback = existsSync(READBACK)
-  ? (JSON.parse(readFileSync(READBACK, "utf8")) as { lineLabels: Record<string, "top" | "fine" | "never">; exchanges: { question: string; answer: string }[] })
+  ? (JSON.parse(readFileSync(READBACK, "utf8")) as { lineLabels: Record<string, "top" | "fine" | "never">; lineNotes?: Record<string, string>; exchanges: { question: string; answer: string }[] })
   : null;
 
 export const PERSONAS: EvalPersona[] = [
@@ -91,7 +91,17 @@ export const PERSONAS: EvalPersona[] = [
                       commuteFrom: expilot.commuteFrom,
                       context: `${expilot.context} This is his real interview — his opening story, every follow-up he answered, then his corrections when the system read his priorities back to him.`,
                       story: expilot.story,
-                      followUps: [...followUps, ...readback.exchanges.map((e, i) => ({ turn: followUps.length + 1 + i, question: e.question, answer: e.answer }))],
+                      followUps: [
+                        ...followUps,
+                        ...readback.exchanges.map((e, i) => ({ turn: followUps.length + 1 + i, question: e.question, answer: e.answer })),
+                        // Why he said he'd never bid the lines he rejected, in his own words — without which line numbers, so his
+                        // verdicts stay a test the simulated pilot can't see.
+                        ...[...new Set(Object.entries(readback.lineNotes ?? {}).filter(([l]) => readback.lineLabels[l] === "never").map(([, n]) => n))].map((n, i) => ({
+                          turn: followUps.length + readback.exchanges.length + 1 + i,
+                          question: "Readback: you marked some lines as ones you'd never bid. What rules them out?",
+                          answer: n,
+                        })),
+                      ],
                       lineLabels: readback.lineLabels,
                     },
                   ]

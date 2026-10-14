@@ -1,5 +1,5 @@
 import { prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
-import { scorePackV2 } from "@/lib/scoring-v2/score";
+import { criterionWeight, scorePackV2 } from "@/lib/scoring-v2/score";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel } from "@/types/pilot-model";
 
@@ -9,31 +9,39 @@ import type { LineChoice, PilotModel } from "@/types/pilot-model";
  * thing for another — the part words get wrong most often (a pilot can call
  * commuting "important" and still not weigh it heavily enough).
  *
- * For every choice the model gets wrong (or calls too close), each criterion
- * moves in proportion to how much better the chosen line did on it than the
- * other — up when the chosen line won it, down when it lost it. A few passes
- * settle it. No criterion moves more than `MAX_FACTOR` either way from where
- * the interview put it, so a handful of choices sharpen the model rather than
- * overturn everything the pilot said — and with only a choice or two, much
- * less: a single close call can be made for reasons the two lines' headline
- * trade doesn't show (a pilot passing on a one-commute line because its one
- * trip is 14 days long), and on its own it mustn't cut a priority they've
- * stated over and over to a third.
+ * Each choice is a soft constraint on the two lines' score gap: the line they
+ * picked should come out ahead — clearly for "easily", only just for "just".
+ * An "easily" pulls harder the further the model is from agreeing with it; a
+ * "just" pulls at most a fixed amount, so a close call far from everything
+ * else the pilot said barely moves anything — it's most likely a reason the
+ * two lines' differences don't show.
+ * Every weight is pulled back toward where the interview put it, so moving one
+ * far takes several choices pointing the same way. A single close call can be
+ * made for reasons the lines' headline differences don't show, and on its own
+ * it mustn't cut a priority the pilot stated over and over — on a replayed
+ * interview (Oct 13 2026) one "just" between two lines that differed on five
+ * things cut a priority the pilot had stated repeatedly to a third, the most
+ * it could move. No weight moves more than `MAX_FACTOR` either way.
+ *
+ * A line's score is 100·(1 − √S), S = Σ wᵢ(1 − uᵢ)² / Σ wᵢ, and the utilities
+ * don't depend on the weights, so they're measured once and the fit searches
+ * over (log) weights directly.
+ *
+ * Tuned on a real pilot's verdicts (held out) and every simulated
+ * interview: it learns from real choices almost as fast as the old
+ * fit-until-it-agrees approach, and loses much less to noisy ones.
  */
 
 const MAX_FACTOR = 3;
-/**
- * How much evidence lets a criterion move the full `MAX_FACTOR`; less allows proportionally less. An easy call
- * ("strongly") counts three times a close one — a close call is mostly the pilot shrugging between two near-equal lines.
- * Tuned on the ex-pilot's real verdicts (scripts/eval/fit-holdout.ts): from four choices up it fits exactly as freely as
- * with no limit, and two close calls can no longer cut a stated priority to a third.
- */
-const FULL_FREEDOM_AT = 6;
-const EVIDENCE = { strongly: 3, slightly: 1 } as const;
-const PASSES = 6;
-const RATE = 0.9;
-/** How clearly the model must prefer the chosen line before a choice counts as matched, in score points. */
-const MARGIN = { slightly: 0.5, strongly: 4 } as const;
+/** How hard weights are pulled back to the interview's: the penalty per criterion on (log of how far it moved)². */
+const PULL_BACK = 0.5;
+/** Score points over which a choice's constraint goes from mostly met to mostly missed. */
+const TEMPERATURE = 3;
+/** A close call the pilot made directly (dragging a line past another) pulls like an easy call, at this share. */
+const DIRECT_CLOSE_CALL = 0.35;
+/** The score gap each kind of choice asks for. */
+const MARGIN = { strongly: 4, slightly: 0.5 } as const;
+const MAX_STEPS = 300;
 
 export interface WeightChange {
   criterionId: string;
@@ -42,6 +50,8 @@ export interface WeightChange {
   to: number;
 }
 
+const softplus = (x: number) => (x > 30 ? x : Math.log1p(Math.exp(x)));
+
 export function fitWeightsToChoices(
   bidPack: BidPack,
   model: PilotModel,
@@ -49,51 +59,75 @@ export function fitWeightsToChoices(
   pack: PackMetrics = prepareMetrics(bidPack)
 ): { model: PilotModel; changes: WeightChange[]; agreedBefore: number; agreedAfter: number } {
   const usable = choices.filter((c) => c.preferred !== c.other);
+  const scored = new Map(scorePackV2(bidPack, model, { pack }).map((s) => [s.lineNumber, s]));
   const agreement = (m: PilotModel) => {
-    const byLine = new Map(scorePackV2(bidPack, m, { pack }).map((s) => [s.lineNumber, s]));
-    return usable.filter((c) => (byLine.get(c.preferred)?.score ?? 0) > (byLine.get(c.other)?.score ?? 0)).length;
+    const byLine = new Map(scorePackV2(bidPack, m, { pack }).map((s) => [s.lineNumber, s.score]));
+    return usable.filter((c) => (byLine.get(c.preferred) ?? 0) > (byLine.get(c.other) ?? 0)).length;
   };
-  const agreedBefore = agreement(model);
-  if (usable.length === 0 || model.criteria.length === 0) return { model, changes: [], agreedBefore, agreedAfter: agreedBefore };
+  const agreedBefore = usable.filter((c) => (scored.get(c.preferred)?.score ?? 0) > (scored.get(c.other)?.score ?? 0)).length;
+  const pairs = usable.filter((c) => scored.has(c.preferred) && scored.has(c.other));
+  if (pairs.length === 0 || model.criteria.length === 0) return { model, changes: [], agreedBefore, agreedAfter: agreedBefore };
 
-  const original = new Map(model.criteria.map((c) => [c.id, c.weight]));
-  const evidence = usable.reduce((sum, c) => sum + EVIDENCE[c.strength], 0);
-  const maxFactor = 1 + (MAX_FACTOR - 1) * Math.min(1, evidence / FULL_FREEDOM_AT);
-  let current = model;
-  for (let pass = 0; pass < PASSES; pass++) {
-    const byLine = new Map(scorePackV2(bidPack, current, { pack }).map((s) => [s.lineNumber, s]));
-    const factor = new Map<string, number>();
-    let missed = 0;
-    for (const c of usable) {
-      const a = byLine.get(c.preferred);
-      const b = byLine.get(c.other);
-      if (!a || !b) continue;
-      if (a.score - b.score >= MARGIN[c.strength]) continue;
-      missed++;
-      const push = c.strength === "strongly" ? 1 : 0.5;
-      for (const ra of a.results) {
-        const rb = b.results.find((r) => r.criterionId === ra.criterionId);
-        if (!rb || ra.value === null || rb.value === null) continue;
-        factor.set(ra.criterionId, (factor.get(ra.criterionId) ?? 0) + push * (ra.utility - rb.utility));
-      }
-    }
-    if (missed === 0) break;
-    const criteria = current.criteria.map((c) => {
-      const f = Math.exp(RATE * (factor.get(c.id) ?? 0));
-      const base = original.get(c.id) ?? c.weight;
-      const next = Math.min(base * maxFactor, Math.max(base / maxFactor, c.weight * f));
-      return { ...c, weight: next };
+  // Each line's shortfall² on every criterion, and whether it was measured (unmeasured counts half, as in scoring).
+  const ids = model.criteria.map((c) => c.id);
+  const base = model.criteria.map(criterionWeight);
+  const shortfalls = (line: string) => {
+    const s = scored.get(line)!;
+    return ids.map((id) => {
+      const r = s.results.find((x) => x.criterionId === id);
+      return r ? { sf: (1 - r.utility) ** 2, half: r.value === null } : { sf: 0, half: true };
     });
-    // Weights stay relative to the strongest priority, as everywhere else.
-    const top = Math.max(...criteria.map((c) => c.weight)) || 1;
-    current = { ...current, criteria: criteria.map((c) => ({ ...c, weight: c.weight / top })) };
+  };
+  const data = pairs.map((c) => ({ c, a: shortfalls(c.preferred), b: shortfalls(c.other) }));
+  const scoreOf = (d: { sf: number; half: boolean }[], w: number[]) => {
+    let num = 0;
+    let den = 0;
+    for (let i = 0; i < d.length; i++) {
+      const wi = d[i].half ? w[i] / 2 : w[i];
+      num += wi * d[i].sf;
+      den += wi;
+    }
+    return 100 * (1 - Math.sqrt(num / (den || 1)));
+  };
+  const loss = (theta: number[]) => {
+    const w = base.map((b, i) => b * Math.exp(theta[i]));
+    let total = 0;
+    for (const { c, a, b } of data) {
+      const miss = -(scoreOf(a, w) - scoreOf(b, w) - MARGIN[c.strength]) / TEMPERATURE;
+      total += c.strength === "strongly" ? softplus(miss) : c.direct ? DIRECT_CLOSE_CALL * softplus(miss) : 1 / (1 + Math.exp(-miss));
+    }
+    return total + PULL_BACK * theta.reduce((s, t) => s + t * t, 0);
+  };
+
+  // Gradient descent on the log-weights, with a step that grows while it helps and shrinks when it doesn't.
+  const cap = Math.log(MAX_FACTOR);
+  let theta = ids.map(() => 0);
+  let current = loss(theta);
+  let step = 0.2;
+  for (let i = 0; i < MAX_STEPS && step > 1e-4; i++) {
+    const grad = theta.map((_, k) => {
+      const nudged = [...theta];
+      nudged[k] += 1e-4;
+      return (loss(nudged) - current) / 1e-4;
+    });
+    const next = theta.map((t, k) => Math.max(-cap, Math.min(cap, t - step * grad[k])));
+    const value = loss(next);
+    if (value < current) {
+      theta = next;
+      current = value;
+      step *= 1.2;
+    } else step *= 0.5;
   }
 
-  const agreedAfter = agreement(current);
-  // Only keep the fit if it actually explains the choices better.
+  // Weights stay relative to the strongest priority, as everywhere else.
+  const raw = model.criteria.map((c, i) => c.weight * Math.exp(theta[i]));
+  const top = Math.max(...raw) || 1;
+  const fitted: PilotModel = { ...model, criteria: model.criteria.map((c, i) => ({ ...c, weight: raw[i] / top })) };
+  const agreedAfter = agreement(fitted);
+  // Only keep the fit if it explains the choices at least as well.
   if (agreedAfter < agreedBefore) return { model, changes: [], agreedBefore, agreedAfter: agreedBefore };
-  const changes = current.criteria
-    .map((c) => ({ criterionId: c.id, label: c.label, from: model.criteria.find((x) => x.id === c.id)!.weight, to: c.weight }))
+  const changes = fitted.criteria
+    .map((c, i) => ({ criterionId: c.id, label: c.label, from: model.criteria[i].weight, to: c.weight }))
     .filter((x) => Math.abs(x.to - x.from) >= 0.02);
-  return { model: current, changes, agreedBefore, agreedAfter };
+  return { model: fitted, changes, agreedBefore, agreedAfter };
 }

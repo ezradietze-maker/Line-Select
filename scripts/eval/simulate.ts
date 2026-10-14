@@ -11,7 +11,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expandBidPack } from "@/lib/bidpack-storage";
 import { buildPilotModel, type InterviewExchange } from "@/lib/brain/build-model";
+import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
+import { dealbreakerQuestion } from "@/lib/brain/dealbreakers";
 import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
 import { nextInterviewStep, SWEEP_QUESTION, type ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
@@ -30,7 +32,9 @@ import type { Judgment } from "./judge";
 import { pilotAgreement, scorecard } from "./metrics";
 import { pilotWordsOf, PERSONAS } from "./personas";
 
-const MAX_TURNS = 22;
+const MAX_TURNS = 40;
+/** As in the app: after the "anything else?" screen, at most this many follow-ups. */
+const AFTER_SWEEP = 5;
 const SIM_MODEL = "claude-sonnet-5-5";
 
 const persona = PERSONAS.find((p) => p.id === process.argv[2])!;
@@ -89,7 +93,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   const choices: LineChoice[] = [];
   const pastTrades: string[] = [];
   /** Per question, for the quality report (scripts/eval/interview-quality.ts). */
-  const asked: { kind: string; words: number; ack: string; pair?: { a: string; b: string; trade: string; strength?: string } }[] = [];
+  const asked: { kind: string; words: number; ack: string; pair?: { a: string; b: string; trade: string; strength?: string; variables?: number } }[] = [];
   let turn = 0;
   let swept = false;
   const qTimes: number[] = [];
@@ -110,15 +114,45 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
     turn++;
   }
 
+  // Then, as in the app: anything that rules a line out.
+  {
+    const q = dealbreakerQuestion(pack, model, pm);
+    const a = await sim<{ answer: string }>(`Question: ${q.prompt}\n(${q.helpText})`, { type: "object", additionalProperties: false, required: ["answer"], properties: { answer: { type: "string" } } });
+    say(`\nQ${turn + 1} [dealbreakers] ${q.prompt}\n   (${q.helpText})\nA: ${a.answer}`);
+    asked.push({ kind: "dealbreaker", words: q.prompt.split(/\s+/).length, ack: "" });
+    exchanges = [...exchanges, { turn: exchanges.length, question: q.transcript, answer: a.answer }];
+    turn++;
+  }
+
+  let limit = MAX_TURNS;
   for (;;) {
     const compared = new Set(choices.map((c) => `${c.preferred}|${c.other}`));
     const pairs = pickLinePairs(pack, model, pm, compared, 3, pastTrades);
-    const step = await nextInterviewStep({ packBrief: brief, pilotContext: context, exchanges, model, threads, linePairs: pairs, turn, maxTurns: MAX_TURNS, rankingShifts: shifts });
+    const step = await nextInterviewStep({ packBrief: brief, pilotContext: context, exchanges, model, threads, linePairs: pairs, turn, maxTurns: limit, rankingShifts: shifts });
     spend += step.usage?.costUsd ?? 0;
     qTimes.push(step.usage?.ms ?? 0);
     for (const id of step.settled) threads[id] = { ...(threads[id] ?? { timesAsked: 0 }), status: "settled" };
     if (step.done) {
       say(`\n— interviewer: done (${step.reason})`);
+      // As in the app: before wrapping up, is a line near the top one they'd really bid there?
+      const checked = checkedLines(exchanges);
+      const check = checked.length < MAX_BID_CHECKS ? bidCheckQuestion(pack, model, choices, pm, checked, checkedKinds(exchanges), checkedWeakSpots(exchanges)) : null;
+      if (check) {
+        const lineText = (n: string) => lineSummary(pack, pack.lines.find((l) => l.lineNumber === n)!);
+        const pick = await sim<{ pick: string; note: string }>(
+          `Question: ${check.prompt}\n(${check.helpText})\n\nLine ${check.line}: ${lineText(check.line)}\n\nPick one, and optionally add a short note on why.`,
+          { type: "object", additionalProperties: false, required: ["pick", "note"], properties: { pick: { type: "string", enum: check.options }, note: { type: "string" } } }
+        );
+        const i = check.options.indexOf(pick.pick);
+        const verdict = bidCheckChoice(check, i, pick.note);
+        if (verdict) choices.push(verdict);
+        const answerText = `${pick.pick}${pick.note.trim() ? `. ${pick.note.trim()}` : ""}`;
+        say(`\nQ${turn + 1} [${check.kind} check · #${check.rank} ${check.line} vs ${check.alt}] ${check.prompt}\nA: ${answerText}`);
+        asked.push({ kind: "bid-check", words: check.prompt.split(/\s+/).length, ack: "" });
+        exchanges = [...exchanges, { turn: exchanges.length, question: check.transcript, answer: answerText }];
+        turn++;
+        continue;
+      }
       const topics = uncoveredTopics(model);
       if (swept || topics.length === 0) break;
       swept = true;
@@ -129,7 +163,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
       say(`SWEEP: picked [${s.picked.join(", ")}] ${s.note}`);
       if (!s.picked.length && !s.note.trim()) break;
       exchanges = [...exchanges, { turn: exchanges.length, question: SWEEP_QUESTION, answer: [s.picked.length ? `These matter to me too: ${s.picked.join(", ")}.` : "", s.note].filter(Boolean).join(" ") }];
-      turn = Math.max(turn, MAX_TURNS - 3);
+      limit = Math.min(MAX_TURNS, turn + AFTER_SWEEP);
       continue;
     }
     if (step.threadId) threads[step.threadId] = { status: threads[step.threadId]?.status ?? "open", timesAsked: (threads[step.threadId]?.timesAsked ?? 0) + 1 };
@@ -143,14 +177,14 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
       const p = step.pair;
       pastTrades.push(p.trade);
       say(`   pair: ${p.tension}`);
+      // What the app shows above the two lines: where they differ on what this pilot has said matters.
+      const table = p.differences?.length ? `\n\nWhere they differ:\n${p.differences.map((d) => `- ${d.label}: Line ${p.a} ${d.a}, Line ${p.b} ${d.b}`).join("\n")}` : "";
       const pick = await sim<{ pick: "a" | "b" | "tie"; strength: "slightly" | "strongly"; why: string }>(
-        `Question: ${step.prompt}\n\nOption A — Line ${p.a}: ${lineSummary(pack, pack.lines.find((l) => l.lineNumber === p.a)!)}\n\nOption B — Line ${p.b}: ${lineSummary(pack, pack.lines.find((l) => l.lineNumber === p.b)!)}\n\nWhich would you bid higher? Say how strongly, and why in a sentence.`,
+        `Question: ${step.prompt}${table}\n\nOption A — Line ${p.a}: ${lineSummary(pack, pack.lines.find((l) => l.lineNumber === p.a)!)}\n\nOption B — Line ${p.b}: ${lineSummary(pack, pack.lines.find((l) => l.lineNumber === p.b)!)}\n\nWhich would you bid higher? Say how strongly, and why in a sentence.`,
         { type: "object", additionalProperties: false, required: ["pick", "strength", "why"], properties: { pick: { type: "string", enum: ["a", "b", "tie"] }, strength: { type: "string", enum: ["slightly", "strongly"] }, why: { type: "string" } } }
       );
       askedText = `${step.prompt} [Line ${p.a} vs Line ${p.b}: ${p.tension}]`;
-      // The trade by what's actually measured, whatever the criteria happen to be called this read.
-      const byMetric = p.trade.split("|").map((id) => model.criteria.find((c) => c.id === id)?.metric ?? id).sort().join("|");
-      entry.pair = { a: p.a, b: p.b, trade: byMetric, strength: pick.pick === "tie" ? "tie" : pick.strength };
+      entry.pair = { a: p.a, b: p.b, trade: p.trade, strength: pick.pick === "tie" ? "tie" : pick.strength, variables: p.differences?.length ?? 2 };
       if (pick.pick === "tie") answerText = `Couldn't choose between line ${p.a} and line ${p.b} — about the same to me. Why: ${pick.why}`;
       else {
         const preferred = pick.pick === "a" ? p.a : p.b;

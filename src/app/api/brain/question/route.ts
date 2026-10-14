@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { nextInterviewStep, type LinePairCandidate, type ThreadState } from "@/lib/brain/interviewer";
+import { nextInterviewStep, type LinePairCandidate, type LinePairDifference, type ThreadState } from "@/lib/brain/interviewer";
 import { MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText } from "@/lib/server/json-body";
@@ -8,8 +8,8 @@ import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate
 export const runtime = "nodejs";
 export const maxDuration = 90;
 
-/** Hard ceiling on interview length, whatever the client asks for. */
-const MAX_TURNS = 30;
+/** Hard ceiling on interview length, whatever the client asks for — a safety net, not a target. */
+const MAX_TURNS = 40;
 
 function readThreads(value: unknown): Record<string, ThreadState> {
   if (!isJsonObject(value)) return {};
@@ -27,8 +27,26 @@ function readPairs(value: unknown): LinePairCandidate[] {
   return value
     .slice(0, 5)
     .filter((p): p is Record<string, unknown> => isJsonObject(p))
-    .filter((p) => typeof p.index === "number" && isText(p.a, 10) && isText(p.b, 10) && isText(p.tension, 600) && isText(p.summaryA, 2000) && isText(p.summaryB, 2000))
-    .map((p) => ({ index: p.index as number, a: p.a as string, b: p.b as string, trade: typeof p.trade === "string" ? p.trade.slice(0, 200) : "", tension: p.tension as string, summaryA: p.summaryA as string, summaryB: p.summaryB as string }));
+    .filter((p) => typeof p.index === "number" && isText(p.a, 10) && isText(p.b, 10) && isText(p.tension, 1200) && isText(p.summaryA, 2000) && isText(p.summaryB, 2000))
+    .map((p) => ({
+      index: p.index as number,
+      a: p.a as string,
+      b: p.b as string,
+      trade: typeof p.trade === "string" ? p.trade.slice(0, 200) : "",
+      tension: p.tension as string,
+      differences: readDifferences(p.differences),
+      summaryA: p.summaryA as string,
+      summaryB: p.summaryB as string,
+    }));
+}
+
+function readDifferences(value: unknown): LinePairDifference[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, 6)
+    .filter((d): d is Record<string, unknown> => isJsonObject(d))
+    .filter((d) => isText(d.label, 120) && isText(d.metric, 60) && isText(d.a, 80) && isText(d.b, 80) && (d.better === "a" || d.better === "b"))
+    .map((d) => ({ label: d.label as string, metric: d.metric as string, a: d.a as string, b: d.b as string, better: d.better as "a" | "b" }));
 }
 
 /** The interviewer's next move: one question drawn from the pilot's own threads, or "done". See `nextInterviewStep`. */
