@@ -179,7 +179,7 @@ export function LinePairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
             value={why}
             onChange={(e) => setWhy(e.target.value)}
             rows={2}
-            placeholder={pair.differences?.length ? "Which of those differences decided it — or something else? (optional)" : "What decided it? (optional)"}
+            placeholder={pair.differences?.length ? "Which difference decided it? (optional)" : "What decided it? (optional)"}
             aria-label="What decided it"
             className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
           />

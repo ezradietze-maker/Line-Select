@@ -77,6 +77,12 @@ const MIN_TURNS_TO_FINISH = 4;
 const REBUILD_EVERY = 3;
 const MAX_STORY = 12000;
 const OPENING_QUESTION = "Walk us through your whole bidding process, start to finish, in your own words.";
+/**
+ * When they leave the city screen as it is. Not "no strong feelings": their story may have rated cities that the
+ * screen didn't show yet (the story is still being read while they get there), and the interviewer would then ask
+ * about a contradiction they never made.
+ */
+const NO_CITY_RATINGS = "(Didn't rate any cities on the city screen. What I said about cities in my story still stands.)";
 
 interface Snapshot {
   exchanges: InterviewExchange[];
@@ -85,6 +91,9 @@ interface Snapshot {
   pastTrades: string[];
   question: Extract<StepResponse, { done: false }>;
   turn: number;
+  /** The model as it stood before this answer, and how much of the interview it had read. */
+  model: PilotModel | null;
+  builtUpTo: number;
 }
 
 interface DraftState {
@@ -204,6 +213,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   // The brain's background reads: one in flight at a time, the newest result wins.
   const buildRef = useRef<{ promise: Promise<PilotModel | null>; upTo: number } | null>(null);
   const builtUpTo = useRef(0);
+  /** Bumped whenever answers are taken back (Back, or a rewritten story): a read already under way is then out of date. */
+  const generation = useRef(0);
+  /** The story the current reads started from — sending a different one starts the reading over. */
+  const readStory = useRef<string | null>(null);
   const modelRef = useRef<PilotModel | null>(null);
   modelRef.current = model;
   const tradesRef = useRef<string[]>([]);
@@ -239,14 +252,19 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   function startBuild(all: InterviewExchange[]): Promise<PilotModel | null> {
     if (buildRef.current && buildRef.current.upTo >= all.length) return buildRef.current.promise;
     const upTo = all.length;
-    const promise = requestModelBuild({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, prior: modelRef.current })
+    const gen = generation.current;
+    const promise: Promise<PilotModel | null> = requestModelBuild({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, prior: modelRef.current })
       .then((m) => {
+        // Read from answers the pilot has since taken back: drop it.
+        if (gen !== generation.current) return null;
         if (upTo >= builtUpTo.current) {
           builtUpTo.current = upTo;
           const rated = applyCityRatings(m, finalCityRatings());
           const top = topLines(bidPack, rated, pm);
           if (topRef.current) shiftsRef.current = [...shiftsRef.current, topShift(topRef.current, top)];
           topRef.current = top;
+          // Straight into the ref, not only state: whoever awaited this read asks the next question before React re-renders.
+          modelRef.current = rated;
           setModel(rated);
           // New threads start open; ones the interview already worked on keep their state.
           setThreads((prev) => {
@@ -261,7 +279,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       })
       .catch(() => null)
       .finally(() => {
-        if (buildRef.current?.upTo === upTo) buildRef.current = null;
+        if (buildRef.current?.promise === promise) buildRef.current = null;
       });
     buildRef.current = { promise, upTo };
     return promise;
@@ -295,12 +313,40 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     return out;
   }
 
+  /** Forgets every read so far — the story they're sending isn't the one those reads were of. */
+  function restartReading() {
+    generation.current += 1;
+    buildRef.current = null;
+    builtUpTo.current = 0;
+    modelRef.current = null;
+    setModel(null);
+    setThreads({});
+    topRef.current = null;
+    shiftsRef.current = [];
+    // Cities the old story rated that the pilot left as suggested go with it.
+    setCityPreferences((prev) => {
+      const next = { ...prev };
+      for (const [code, s] of Object.entries(storySuggested)) if (next[code] === s && !cityRatings[code]) delete next[code];
+      return next;
+    });
+    setStorySuggested({});
+  }
+
   function submitStory() {
     const text = storyText.trim();
     if (!text) return;
+    if (readStory.current !== null && readStory.current !== text) restartReading();
+    readStory.current = text;
     const first = [{ turn: 0, question: OPENING_QUESTION, answer: text }];
     setExchanges(first);
     void startBuild(first);
+    setPhase("commuter");
+  }
+
+  function skipStory() {
+    if (readStory.current !== null) restartReading();
+    readStory.current = null;
+    setExchanges([]);
     setPhase("commuter");
   }
 
@@ -317,7 +363,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
   /** Check-in: this pack's city grades join the record, the brain re-reads everything against the new pack, then a few questions about what's new. */
   async function beginCheckInQuestions() {
-    const all = [...exchanges, { turn: exchanges.length, question: `This month's pack (${bidPack.month}): how do you feel about each layover city?`, answer: describeCityRatings(finalCityRatings()) || "No strong feelings about any city." }];
+    const all = [...exchanges, { turn: exchanges.length, question: `This month's pack (${bidPack.month}): how do you feel about each layover city?`, answer: describeCityRatings(finalCityRatings()) || NO_CITY_RATINGS }];
     setExchanges(all);
     setSweepDone(true);
     turnLimitRef.current = CHECK_IN_TURNS;
@@ -346,7 +392,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const opening: InterviewExchange[] = [
       ...base,
       { turn: base.length, question: "Do you commute to base, or live locally?", answer: isCommuter === true ? `I commute in${home ? ` from ${home}` : ""}.${hasCrashPad === false ? " No crash pad." : hasCrashPad ? " I have a crash pad." : ""}` : isCommuter === false ? "I live locally." : "(skipped)" },
-      { turn: base.length + 1, question: "How do you feel about each layover city in your pack?", answer: ratingsText || "No strong feelings about any city." },
+      { turn: base.length + 1, question: "How do you feel about each layover city in your pack?", answer: ratingsText || NO_CITY_RATINGS },
     ];
     setExchanges(opening);
     setPhase("reading");
@@ -410,13 +456,15 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       setPhase("question");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t get the next question.");
+      // Not the question they just answered: answering it again would record it twice. "Try again" asks for the next one.
+      setQuestion(null);
       setPhase("question");
     }
   }
 
   async function answer(text: string, choice: LineChoice | null = null) {
     if (!question) return;
-    setHistory((h) => [...h, { exchanges, threads, choices, pastTrades, question, turn }]);
+    setHistory((h) => [...h, { exchanges, threads, choices, pastTrades, question, turn, model: modelRef.current, builtUpTo: builtUpTo.current }]);
     const asked = question.kind === "line-pair" && question.pair ? `${question.prompt} [Line ${question.pair.a} vs Line ${question.pair.b}: ${question.pair.tension}]` : (question.transcript ?? question.prompt);
     // Their priority pick counts at once, so the next questions and line choices already work from it.
     if (question.priorityIds && choiceSelection !== null && modelRef.current) {
@@ -454,6 +502,12 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     tradesRef.current = last.pastTrades;
     setQuestion(last.question);
     setTurn(last.turn);
+    // What the brain made of the answer they took back goes too, including a read still under way.
+    generation.current += 1;
+    buildRef.current = null;
+    modelRef.current = last.model;
+    setModel(last.model);
+    builtUpTo.current = last.builtUpTo;
     setChoiceSelection(null);
     setChoiceNote("");
     setError(null);
@@ -572,6 +626,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setPastTrades(d.pastTrades ?? []);
     tradesRef.current = d.pastTrades ?? [];
     setModel(d.model);
+    modelRef.current = d.model;
     builtUpTo.current = d.model ? d.exchanges.length : 0;
     setQuestion(d.question);
     setTurn(d.turn);
@@ -624,10 +679,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
           value={storyText}
           onChange={setStoryText}
           onSubmit={submitStory}
-          onSkip={() => {
-            setExchanges([]);
-            setPhase("commuter");
-          }}
+          onSkip={skipStory}
           busy={false}
           error={null}
           maxLength={MAX_STORY}
