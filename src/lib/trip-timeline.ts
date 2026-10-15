@@ -1,3 +1,4 @@
+import type { LayoverSleepPlan, SleepKind } from "@/lib/sleep-plan";
 import { detectDateLineCrossing, localDayStart, localInstantToZulu, toLocalInstant, zuluDayLabel, type LocalInstant } from "@/lib/trip-clock";
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
@@ -9,7 +10,16 @@ const MINUTES_PER_DAY = 24 * 60;
 
 export type TimeMode = "zulu" | "local";
 
-export type TimelineSegmentKind = "flying" | "deadhead" | "standby" | "layover" | "ground" | "connection";
+export type TimelineSegmentKind = "flying" | "deadhead" | "standby" | "layover" | "ground" | "connection" | "sleep";
+
+/** A suggested sleep on a layover (see `lib/sleep-plan.ts`) — drawn over the hotel time, never counted as duty. */
+export interface SegmentSleep {
+  kind: SleepKind;
+  title: string;
+  why: string;
+  /** How easily sleep comes in it, 0–1. */
+  ease: number;
+}
 
 export interface DateLineBadge {
   /** Signed day delta the destination's timezone added (positive) or removed (negative) beyond what the leg's real duration alone would suggest; never zero (see `detectDateLineCrossing`). */
@@ -48,6 +58,7 @@ export interface TimelineSegment {
   kind: TimelineSegmentKind;
   leg?: SegmentLeg;
   stay?: SegmentStay;
+  sleep?: SegmentSleep;
   /** Short label for the segment, e.g. "6053 · PEN → CAN" or "White Swan". */
   label: string;
   /** One line of specifics, e.g. "21:15 → 01:19 local · 4h04m block" or "Guangzhou · 25h36m at hotel". */
@@ -78,6 +89,8 @@ export interface TimelineSegment {
 export interface TimelineDay {
   /** 1-indexed. */
   dayNumber: number;
+  /** Suggested sleep on this day (see `buildTimelineDays`) — never part of `segments`, so nothing counts it as duty. */
+  sleep?: TimelineSegment[];
   /**
    * The real calendar date ("YYYY-MM-DD") this column is, where its pieces happen (local mode, a trip with a real
    * date). Not always the day after the column before: flying east across the date line, a pilot lives the same date
@@ -109,6 +122,7 @@ export interface RawSegment {
   kind: TimelineSegmentKind;
   leg?: SegmentLeg;
   stay?: SegmentStay;
+  sleep?: SegmentSleep;
   label: string;
   detail: string;
   inlineStart: string;
@@ -246,7 +260,7 @@ function minutesToZulu(anchorISO: string, minutes: number): string {
  * chart, exposed here undivided for anything that wants the trip's whole
  * shape as one continuous span (e.g. a compact single-bar preview).
  */
-export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegment[] {
+export function buildRawSegments(trip: Trip, mode: TimeMode = "local", sleepPlans: LayoverSleepPlan[] = []): RawSegment[] {
   if (trip.schedule.length === 0) return [];
 
   const raw: RawSegment[] = [];
@@ -335,6 +349,24 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local"): RawSegme
     }
   });
 
+  // Suggested sleep, in the layover's own city — placed and clocked exactly like the hotel time it sits in.
+  for (const plan of sleepPlans)
+    for (const b of plan.blocks)
+      raw.push({
+        kind: "sleep",
+        sleep: { kind: b.kind, title: b.title, why: b.why, ease: b.ease },
+        label: b.title,
+        detail: b.why,
+        inlineStart: "",
+        inlineEnd: "",
+        startMinutes: b.start,
+        endMinutes: b.end,
+        zuluStart: minutesToZulu(trip.zuluAnchor, b.start),
+        zuluEnd: minutesToZulu(trip.zuluAnchor, b.end),
+        startAirport: plan.city,
+        endAirport: plan.city,
+      });
+
   // Every piece's own clock times. A flight's are the pack's printed ones; the rest are read off the real instants.
   for (const seg of raw) {
     seg.startClock = seg.leg ? seg.leg.depClock : clockOf(seg.zuluStart, seg.startAirport, mode);
@@ -357,6 +389,7 @@ function toTimelineSegment(
     kind: seg.kind,
     ...(seg.leg ? { leg: seg.leg } : {}),
     ...(seg.stay ? { stay: seg.stay } : {}),
+    ...(seg.sleep ? { sleep: seg.sleep } : {}),
     label: seg.label,
     detail: seg.detail,
     // A fragment split across midnight only shows the real edge label that
@@ -460,6 +493,8 @@ function buildLocalDays(raw: RawSegment[], home?: string): TimelineDay[] {
     seg: RawSegment;
     start: LocalInstant;
     end: LocalInstant;
+    /** Days added to its own local date to keep the trip's days running forward (see below). */
+    shift: number;
   }
   const positioned: Positioned[] = [];
   // In time order, and never back a day: a flight east across the date line lands on an earlier local date than it
@@ -468,7 +503,8 @@ function buildLocalDays(raw: RawSegment[], home?: string): TimelineDay[] {
   // note. Without this the flight belonged to no day at all and simply wasn't drawn.
   let shift = 0;
   let reached = 1;
-  for (const seg of [...raw].sort((a, b) => Date.parse(a.zuluStart) - Date.parse(b.zuluStart) || Date.parse(a.zuluEnd) - Date.parse(b.zuluEnd))) {
+  const sleep = raw.filter((x) => x.kind === "sleep");
+  for (const seg of [...raw].filter((x) => x.kind !== "sleep").sort((a, b) => Date.parse(a.zuluStart) - Date.parse(b.zuluStart) || Date.parse(a.zuluEnd) - Date.parse(b.zuluEnd))) {
     const s0 = toLocalInstant(seg.zuluStart, startAt(seg), base);
     const e0 = toLocalInstant(seg.zuluEnd, endAt(seg), base);
     if (!s0 || !e0) continue;
@@ -482,9 +518,19 @@ function buildLocalDays(raw: RawSegment[], home?: string): TimelineDay[] {
       shift += bump;
     }
     reached = Math.max(reached, end.dayIndex);
-    positioned.push({ seg, start, end });
+    positioned.push({ seg, start, end, shift });
   }
   if (positioned.length === 0) return [];
+  // Suggested sleep sits inside a hotel stay, so it can't take part in the walk above (it would read as time running
+  // backwards and push the rest of the trip a day on): it goes on the days its stay is on, by the same shift.
+  for (const seg of sleep) {
+    const at = Date.parse(seg.zuluStart);
+    const host = positioned.find((p) => p.seg.kind === "layover" && Date.parse(p.seg.zuluStart) <= at && at < Date.parse(p.seg.zuluEnd));
+    const s0 = toLocalInstant(seg.zuluStart, startAt(seg), base);
+    const e0 = toLocalInstant(seg.zuluEnd, endAt(seg), base);
+    if (!host || !s0 || !e0) continue;
+    positioned.push({ seg, start: { ...s0, dayIndex: s0.dayIndex + host.shift }, end: { ...e0, dayIndex: e0.dayIndex + host.shift }, shift: host.shift });
+  }
 
   const totalDays = Math.max(1, ...positioned.map((p) => p.end.dayIndex));
   const days: TimelineDay[] = [];
@@ -547,10 +593,12 @@ function buildRulerLabel(dayIndex: number, airportCode: string, base: NonNullabl
  * mode) becomes two fragments, one on each day, marked so the UI can draw
  * them as one continuous bar rather than two separate ones.
  */
-export function buildTimelineDays(trip: Trip, mode: TimeMode = "local"): TimelineDay[] {
-  const raw = buildRawSegments(trip, mode);
+/** The trip's day columns; with `sleepPlans`, each day also carries its suggested sleep (`TimelineDay.sleep`), kept apart from the duty. */
+export function buildTimelineDays(trip: Trip, mode: TimeMode = "local", sleepPlans: LayoverSleepPlan[] = []): TimelineDay[] {
+  const raw = buildRawSegments(trip, mode, sleepPlans);
   if (raw.length === 0) return [];
-  return mode === "local" ? buildLocalDays(raw) : buildZuluDays(raw, zuluClockOffset(trip));
+  const days = mode === "local" ? buildLocalDays(raw) : buildZuluDays(raw, zuluClockOffset(trip));
+  return days.map((d) => ({ ...d, segments: d.segments.filter((x) => x.kind !== "sleep"), sleep: d.segments.filter((x) => x.kind === "sleep") }));
 }
 
 /**

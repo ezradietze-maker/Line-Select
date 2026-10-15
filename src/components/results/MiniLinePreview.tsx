@@ -29,6 +29,7 @@ const STRIP_CLASS: Record<TimelineSegmentKind, string> = {
   layover: "bg-good/70",
   ground: "bg-accent/70",
   connection: "bg-border-strong",
+  sleep: "bg-sleep",
 };
 
 function Strip({ segments }: { segments: StripSegment[] }) {

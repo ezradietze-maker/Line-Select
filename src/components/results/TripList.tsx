@@ -1,12 +1,14 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
 import { CircadianInfo } from "@/components/results/CircadianInfo";
 import { CircadianStars } from "@/components/results/CircadianStars";
 import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { TripCommuteFlights } from "@/components/results/TripCommuteFlights";
-import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
+import { ChevronDownIcon, MoonIcon, StarIcon } from "@/components/ui/icons";
+import { RestPlan, SleepOverlay } from "@/components/results/SleepPlan";
+import { planTripSleep, type LayoverSleepPlan } from "@/lib/sleep-plan";
 import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { tripDutyPeriods } from "@/lib/duty-periods";
@@ -30,6 +32,8 @@ const REPORT_LABELS: Record<Trip["reportTime"], string> = {
 };
 
 const MINUTES_PER_DAY = 24 * 60;
+/** Whether the pilot has turned the suggested-sleep overlay off on the trip charts. */
+const SLEEP_OVERLAY_KEY = "line-select:sleep-overlay:v1";
 /** Pixels per hour in the calendar grid — 24 * 13 = 312px tall, compact enough to keep a long trip's day columns from needing a huge scroll, tall enough that a 30-45min segment still gets a few readable pixels. */
 const HOUR_HEIGHT_PX = 13;
 const CALENDAR_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
@@ -97,6 +101,8 @@ function segmentClass(kind: TimelineSegment["kind"]): string {
       return "bg-accent/55";
     case "connection":
       return "bg-border-strong/50";
+    case "sleep":
+      return "";
   }
 }
 
@@ -303,6 +309,7 @@ function DayColumn({
             <SegmentText seg={seg} mode={mode} cityPreferences={cityPreferences} />
           </div>
         ))}
+        {day.sleep && day.sleep.length > 0 && <SleepOverlay segments={day.sleep} hourHeightPx={HOUR_HEIGHT_PX} />}
       </div>
       {day.zuluRulerLabel && (
         <div className="mt-0.5 truncate text-center font-mono text-[10px] leading-tight text-ink-faint" title="This local day’s own boundaries, read in Zulu — so you can cross-check without switching the toggle.">
@@ -370,6 +377,7 @@ function TripTimelineChart({
         {standbyPlaces.has("airport") && <LegendSwatch className="border-l-2 border-standby bg-standby/20" label="Airport standby" title="On call at the airport for an hour or two inside a duty — paid, not flying." />}
         <LegendSwatch className="bg-accent/55" label="Report / ground" title={GROUND_TOOLTIP} />
         {mode === "local" && <LegendSwatch className="bg-ink/10" label="Body-clock low" title={WOCL_TOOLTIP} />}
+        {days.some((d) => d.sleep?.length) && <LegendSwatch className="bg-sleep" label="Suggested sleep" title="When to sleep on each layover, from your body clock and the trip's real times — see the trip's rest plan below." />}
       </div>
       <div className="mt-1.5 flex overflow-x-auto pb-1">
         <HourGutter mode={mode} />
@@ -881,11 +889,26 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
   // pilot's stored choice once mounted — reading localStorage during render
   // would mismatch the server's HTML.
   const [mode, setMode] = useState<TimeMode>("local");
+  /** The suggested sleep drawn over each layover on the charts — on unless the pilot has turned it off. */
+  const [showSleep, setShowSleep] = useState(true);
+  const sleepPlans = useMemo(() => trips.map((t) => planTripSleep(t, homeBaseOffsetMinutes)), [trips, homeBaseOffsetMinutes]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMode(loadTimeMode());
+    try {
+      if (window.localStorage.getItem(SLEEP_OVERLAY_KEY) === "off") setShowSleep(false);
+    } catch {}
   }, []);
+
+  function toggleSleep() {
+    setShowSleep((on) => {
+      try {
+        window.localStorage.setItem(SLEEP_OVERLAY_KEY, on ? "off" : "on");
+      } catch {}
+      return !on;
+    });
+  }
 
   function handleModeChange(next: TimeMode) {
     setMode(next);
@@ -932,7 +955,20 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <TimeModeToggle mode={mode} onChange={handleModeChange} />
+        <div className="flex items-center gap-2">
+          <TimeModeToggle mode={mode} onChange={handleModeChange} />
+          {sleepPlans.some((p) => p.length > 0) && (
+            <button
+              type="button"
+              onClick={toggleSleep}
+              aria-pressed={showSleep}
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${showSleep ? "border-sleep bg-sleep text-canvas" : "border-border text-ink-muted hover:text-ink"}`}
+            >
+              <MoonIcon className="h-3 w-3" />
+              Sleep plan
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <TripLegendInfo />
           <CircadianInfo />
@@ -944,7 +980,8 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
           // several times in one month legitimately appears more than once
           // in this line's `trips` array.
           const key = `${trip.id}-${tripIndex}`;
-          const days = buildTimelineDays(trip, mode);
+          const plans: LayoverSleepPlan[] = sleepPlans[tripIndex] ?? [];
+          const days = buildTimelineDays(trip, mode, showSleep ? plans : []);
           return (
             <li key={key} className="rounded-[var(--radius-panel)] border border-hairline bg-surface/60 p-3 shadow-[inset_0_1px_0_var(--panel-highlight)]">
               <TripHeader
@@ -975,6 +1012,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                   {openItineraries.has(key) && (
                     <Itinerary trip={trip} mode={mode} ratings={ratings} expandedKey={expandedKey} onToggleExpand={handleToggleExpand} />
                   )}
+                  <RestPlan plans={plans} />
                 </div>
               ) : (
                 trip.layoverDetails.some((d) => d.hotelName) && (

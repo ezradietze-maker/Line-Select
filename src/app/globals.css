@@ -64,6 +64,9 @@
   /* Dark enough for small text on a trip day's shaded calendar cell (4.8:1), not only on the page. */
   --color-good: #25664d;
   --color-standby: #7b5ea7;
+  /* Night blue: a suggested sleep on a layover (see lib/sleep-plan.ts). */
+  --color-sleep: #33427a;
+  --color-sleep-soft: #dde2f2;
   --color-good-soft: #e1f0e7;
   --color-warn: #92521c;
   --color-warn-soft: #f6e8d7;
@@ -153,6 +156,8 @@
 
     --color-good: #5cb98d;
     --color-standby: #a48bd0;
+    --color-sleep: #93a4e6;
+    --color-sleep-soft: #1d2238;
     --color-good-soft: #16281f;
     --color-warn: #d99a52;
     --color-warn-soft: #2c2114;
@@ -210,6 +215,8 @@
 
   --color-good: #5cb98d;
   --color-standby: #a48bd0;
+  --color-sleep: #93a4e6;
+  --color-sleep-soft: #1d2238;
   --color-good-soft: #16281f;
   --color-warn: #d99a52;
   --color-warn-soft: #2c2114;
@@ -277,6 +284,8 @@
 
   --color-good: #ce5c3b;
   --color-standby: #cc5c78;
+  --color-sleep: #c46a86;
+  --color-sleep-soft: #2a0f17;
   --color-good-soft: #241008;
   --color-warn: #ff6b1a;
   --color-warn-soft: #331507;
@@ -331,6 +340,8 @@
 
   --color-good: var(--color-good);
   --color-standby: var(--color-standby);
+  --color-sleep: var(--color-sleep);
+  --color-sleep-soft: var(--color-sleep-soft);
   --color-good-soft: var(--color-good-soft);
   --color-warn: var(--color-warn);
   --color-warn-soft: var(--color-warn-soft);
