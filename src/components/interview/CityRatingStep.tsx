@@ -140,6 +140,33 @@ function CityRow({
 }
 
 /**
+ * Every grade given so far, by city name, best first — a last look before moving on. Neighbouring cards are easy to
+ * mix up (El Paso sits right above Newark in a Memphis pack), and a grade on the wrong card silently scores the wrong
+ * city; spelled out by name, "Dislike: El Paso" stands out to a pilot who meant Newark.
+ */
+function RatedSummary({ cities, scoreOf }: { cities: CityFacts[]; scoreOf: (code: string) => CityRatingScore | 0 }) {
+  const groups = [...CITY_RATING_STEPS]
+    .filter((s) => s.score !== 0)
+    .sort((a, b) => b.score - a.score)
+    .map((s) => ({ ...s, names: cities.filter((c) => scoreOf(c.code) === s.score).map((c) => airportCityName(c.code) ?? c.code) }))
+    .filter((g) => g.names.length > 0);
+  if (!groups.length) return null;
+  return (
+    <div className="mt-4 rounded-lg border border-border bg-surface-raised px-3 py-2.5" aria-label="Your city ratings">
+      <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">Your ratings — check they&rsquo;re on the right cities</p>
+      <dl className="mt-1.5 space-y-1 text-sm">
+        {groups.map((g) => (
+          <div key={g.score} className="flex gap-2">
+            <dt className={`w-14 shrink-0 font-medium ${g.score > 0 ? "text-good" : g.score === -1 ? "text-warn" : "text-danger"}`}>{g.label}</dt>
+            <dd className="text-ink">{g.names.join(", ")}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+/**
  * The interview's city step: every layover city in the pilot's own pack,
  * each with what the pack really holds there (how many trips, how long the
  * layovers run, which hotel), graded Avoid … Love, with the reasons behind
@@ -213,6 +240,7 @@ export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons,
             />
           ))}
         </ul>
+        <RatedSummary cities={cities} scoreOf={scoreOf} />
       </RevealControls>
 
       {cities.length === 0 && (

@@ -30,6 +30,7 @@ import { LineCard } from "@/components/results/LineCard";
 import { MonthLegend } from "@/components/results/MiniLinePreview";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
+import { cityMarks } from "@/lib/city-ratings";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { cachedFlightAnswers, lookUpFlights } from "@/lib/flights/client";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
@@ -995,7 +996,7 @@ export function ResultsView({
           homeBaseOffsetMinutes={homeBaseOffsetMinutes}
           bidPeriodStart={bidPack.bidPeriodStart}
           bidPeriodDays={bidPack.bidPeriodDays}
-          cityPreferences={profile.cityPreferences}
+          cityPreferences={cityMarks(profile.cityRatings, profile.cityPreferences)}
           onClose={() => setCompareIds([])}
         />
       )}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDetailedMonth, toStripSegment } from "@/lib/month-detail";
+import { buildDetailedMonth, dayRoute, toStripSegment } from "@/lib/month-detail";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { lineStandbyDays } from "@/lib/standby";
@@ -157,5 +157,44 @@ describe("calendar drawn from the grid's own off days", () => {
   it("falls back to laying trips out by their own length when the pack has no grid off days", () => {
     const m = buildDetailedMonth(placed("9001", [4]), START, 28);
     expect(m.days.filter((d) => d.kind !== "off")).toHaveLength(placed("9001", [4]).trips[0].days);
+  });
+});
+
+describe("the day's route and the trip's landing", () => {
+  const leg = (dep: string, arr: string, start: number, opts: Partial<TimelineSegment> = {}, deadhead = false) =>
+    ({ kind: deadhead ? "deadhead" : "flying", startMinuteOfDay: start, endMinuteOfDay: start + 120, leg: { dep, arr }, ...opts }) as unknown as TimelineSegment;
+
+  it("prints the day's cities in order, joining hops and marking deadheads, the way the bid pack does", () => {
+    const route = dayRoute([leg("PHX", "SEA", 600, {}, true), leg("MEM", "PHX", 450, {}, true), leg("SEA", "LAX", 1200)]);
+    expect(route).toEqual([
+      { city: "MEM", viaDeadhead: false },
+      { city: "PHX", viaDeadhead: true },
+      { city: "SEA", viaDeadhead: true },
+      { city: "LAX", viaDeadhead: false },
+    ]);
+  });
+
+  it("leaves out a flight that left the night before — it belongs to that day", () => {
+    expect(dayRoute([leg("LAX", "MEM", 0, { continuesFromPreviousDay: true }), leg("MEM", "IAH", 210)])).toEqual([
+      { city: "MEM", viaDeadhead: false },
+      { city: "IAH", viaDeadhead: false },
+    ]);
+  });
+
+  it("gives every trip day a route and every trip's last day a landing", () => {
+    const m = buildDetailedMonth(placed("9006", [2, 10]), START, 28);
+    const tripDays = m.days.filter((d) => d.kind !== "off" && d.kind !== "estimated");
+    expect(tripDays.some((d) => d.route.length > 1)).toBe(true);
+    const lastDays = m.days.filter((d, i) => d.tripIndex !== null && d.kind !== "off" && m.days[i + 1]?.tripIndex !== d.tripIndex);
+    for (const d of lastDays) expect(d.finish?.city).toMatch(/^[A-Z]{3}$/);
+  });
+});
+
+describe("chained trips", () => {
+  it("joins a trip that reports within hours of the last one landing at the same base, and counts the run as one departure", () => {
+    const m = buildDetailedMonth(placed("9006", [2, 10]), START, 28);
+    // Two trips a week apart: no chain, two departures.
+    expect(m.days.some((d) => d.chain)).toBe(false);
+    expect(m.summary.departures).toBe(2);
   });
 });

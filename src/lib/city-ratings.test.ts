@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cityScoresFromRatings, describeCityRatings, effectiveCityScore, packCityFacts, rateCity, sentimentFromRating } from "@/lib/city-ratings";
+import { cityMarks, cityScoresFromRatings, describeCityRatings, effectiveCityScore, packCityFacts, rateCity, sentimentFromRating } from "@/lib/city-ratings";
 import type { BidPack } from "@/types/bidpack";
 
 describe("city ratings", () => {
@@ -39,5 +39,16 @@ describe("city ratings", () => {
     expect(facts.map((f) => f.code)).toEqual(["HNL", "CAN"]);
     expect(facts[0]).toMatchObject({ trips: 2, lines: 2, medianHours: 48, minHours: 30, maxHours: 48, hotel: "Hilton" });
     expect(facts[1]).toMatchObject({ trips: 1, lines: 2 });
+  });
+});
+
+describe("cityMarks", () => {
+  it("keeps like apart from love, and dislike apart from avoid", () => {
+    const marks = cityMarks({ HNL: { score: 2 }, DFW: { score: 1 }, EWR: { score: -1 }, CAN: { score: -2 } }, {});
+    expect(marks).toEqual({ HNL: "love", DFW: "like", EWR: "dislike", CAN: "avoid" });
+  });
+
+  it("lets an older favorite/avoid mark stand only where the pilot gave no grade", () => {
+    expect(cityMarks({ DFW: { score: 1 } }, { DFW: "love", SYD: "love" })).toEqual({ DFW: "like", SYD: "love" });
   });
 });

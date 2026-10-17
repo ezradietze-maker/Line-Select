@@ -4,7 +4,7 @@ import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
 import type { TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
-import type { CitySentiment } from "@/types/preferences";
+import type { CityMark } from "@/types/preferences";
 
 /**
  * The detailed month calendar: the same grid `month-grid.ts` draws, with
@@ -20,6 +20,12 @@ import type { CitySentiment } from "@/types/preferences";
 const WOCL_START_MIN = 2 * 60;
 const WOCL_END_MIN = 6 * 60;
 const RED_EYE_END_MIN = 5 * 60;
+/**
+ * Trips this close together at base are drawn as one departure: a pilot who lives elsewhere flies them back to back
+ * without going home ("that combination of trips is a single departure"). In the October MD-11 pack, chained trips
+ * turn in under 3 hours and every real gap is two days or more, so 12 hours sits well clear of both.
+ */
+export const CHAIN_MAX_MINUTES = 12 * 60;
 
 export interface StripSegment {
   kind: TimelineSegmentKind;
@@ -43,6 +49,31 @@ export interface DayFlight {
   dep?: string;
   /** Local "HH:MM" it lands (or standby ends) — absent when it runs on past midnight. */
   arr?: string;
+}
+
+/** One stop on a day's route: a city, and whether the hop that reached it was a deadhead. The first stop has no hop. */
+export interface RouteStop {
+  city: string;
+  viaDeadhead: boolean;
+}
+
+/** Where and when a trip's flying ends, on the trip's own last day — a landing after midnight is still this trip's. */
+export interface TripFinish {
+  city: string;
+  time: string;
+  /** Lands after midnight, on the next calendar day. */
+  nextDay: boolean;
+}
+
+/** A trip that reports within hours of the last one landing at the same base: flown together, one departure from home. */
+export interface TripChain {
+  /** The trip it turns out of. */
+  fromTripNumber: string | null;
+  city: string;
+  /** Minutes on the ground between landing and reporting again. */
+  turnMinutes: number;
+  landed: string;
+  reports: string;
 }
 
 export interface DetailedDay {
@@ -84,14 +115,20 @@ export interface DetailedDay {
   /** "12h30m", as the segment prints it. */
   layoverRest: string | null;
   layoverInternational: boolean;
-  citySentiment: CitySentiment | null;
+  citySentiment: CityMark | null;
   /** For a day off: the length of the run of days off this one belongs to, and whether it opens it. */
   offRun: { length: number; isFirst: boolean; position: number } | null;
   /** The evening before a trip that reports just after midnight: not a day off, but nothing flies on it. */
   preReportTime: string | null;
   segments: TimelineSegment[];
-  /** The day's flying, standby and landings, in order — what the calendar cell lists. */
+  /** The day's flying, standby and landings, in order — what the day detail lists. */
   flights: DayFlight[];
+  /** The day's own flying as the bid pack prints it — city to city, deadheads marked ("MEM dh PHX dh SEA"). Empty on a day with none. */
+  route: RouteStop[];
+  /** On a trip's last day: where and when its flying ends. */
+  finish: TripFinish | null;
+  /** On the first day of a trip that turns straight out of the one before it at base — one departure from home. */
+  chain: TripChain | null;
   /** A whole day at a layover hotel, nothing flown: the city. */
   restCity: string | null;
   /** A trip's tail on a day the grid gives to something else — usually a landing just after midnight on a day the bid pack counts as off. */
@@ -100,6 +137,8 @@ export interface DetailedDay {
 }
 
 export interface MonthSummary {
+  /** Trips flown back to back at base count once: how many times the pilot leaves home. */
+  departures: number;
   /** Days off as this calendar draws them. */
   daysOff: number;
   /** Days off as the bid pack itself prints them for the line — usually the same, occasionally a day different at the edge of a trip. */
@@ -120,7 +159,7 @@ export interface MonthSummary {
   layoverNights: number;
   internationalLayoverNights: number;
   /** Each distinct layover city, with how the pilot feels about it. */
-  cities: { code: string; nights: number; sentiment: CitySentiment | null; international: boolean }[];
+  cities: { code: string; nights: number; sentiment: CityMark | null; international: boolean }[];
   longestTripDays: number;
 }
 
@@ -170,6 +209,17 @@ export function dayFlights(segments: TimelineSegment[]): DayFlight[] {
       if (s.continuesFromPreviousDay) return s.continuesToNextDay ? [] : [{ kind: "lands", from: s.leg.dep, to: s.leg.arr, arr: s.leg.arrClock }];
       return [{ kind: s.kind, from: s.leg.dep, to: s.leg.arr, dep: s.leg.depClock, ...(s.continuesToNextDay ? {} : { arr: s.leg.arrClock }) }];
     });
+}
+
+/** The day's own hops, city to city, in the order flown: a flight that left the night before belongs to that day, not this one. */
+export function dayRoute(segments: TimelineSegment[]): RouteStop[] {
+  const stops: RouteStop[] = [];
+  for (const s of [...segments].sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay)) {
+    if ((s.kind !== "flying" && s.kind !== "deadhead") || !s.leg || s.continuesFromPreviousDay) continue;
+    if (stops.at(-1)?.city !== s.leg.dep) stops.push({ city: s.leg.dep, viaDeadhead: false });
+    stops.push({ city: s.leg.arr, viaDeadhead: s.kind === "deadhead" });
+  }
+  return stops;
 }
 
 /** Minutes past midnight of an "HH:MM" clock. */
@@ -223,7 +273,7 @@ export function buildDetailedMonth(
   line: Line,
   bidPeriodStart: string | null,
   bidPeriodDays: number,
-  cityPreferences: Record<string, CitySentiment> = {}
+  cityPreferences: Record<string, CityMark> = {}
 ): DetailedMonth {
   const calendar = buildLineMonthCalendar(line, bidPeriodStart, bidPeriodDays, "local");
 
@@ -275,6 +325,9 @@ export function buildDetailedMonth(
         spill,
         kind: "off" as const,
         flights: spill ? dayFlights(spill.segments) : [],
+        route: [],
+        finish: null,
+        chain: null,
         restCity: null,
         strip: spill ? spill.segments.map(toStripSegment) : [],
         dutyStart: null,
@@ -304,6 +357,9 @@ export function buildDetailedMonth(
         spill,
         kind: "trip" as const,
         flights: [],
+        route: [],
+        finish: null,
+        chain: null,
         restCity: null,
         strip: [],
         dutyStart: null,
@@ -332,6 +388,9 @@ export function buildDetailedMonth(
         spill,
         kind: "estimated" as const,
         flights: [],
+        route: [],
+        finish: null,
+        chain: null,
         restCity: null,
         strip: [],
         dutyStart: null,
@@ -372,6 +431,9 @@ export function buildDetailedMonth(
       kind: hasStandby && !flights.length ? ("standby" as const) : layoverCode ? ("layover" as const) : ("trip" as const),
       // In the order they happen: the end of another trip that morning, then this day's own.
       flights: dayFlights([...(spill?.segments ?? []), ...segs]),
+      route: dayRoute(segs),
+      chain: null,
+      finish: lastLanding?.leg ? { city: lastLanding.leg.arr, time: lastLanding.endClock ?? hhmm(lastLanding.endMinuteOfDay), nextDay: false } : null,
       // A day with nothing flown, spent at a layover hotel: the city (the hotel pickup for tonight's flight may fall on it).
       restCity:
         !segs.some((x) => x.kind === "flying" || x.kind === "deadhead" || x.kind === "standby") && segs.some((x) => x.kind === "layover")
@@ -402,6 +464,31 @@ export function buildDetailedMonth(
     return { ...d, title: describeDay(day, d) };
   });
 
+  // A trip's last flight landing after midnight lands on the next calendar day (a day off, or the next trip's first);
+  // the trip's own last day says so, the way the bid pack keeps a trip to its own days.
+  days.forEach((d, i) => {
+    if (d.finish || d.kind === "off" || d.tripIndex === null) return;
+    const next = calendar.days[i + 1];
+    // The trip's last day in the grid — the calendar marks the end on the day it lands, which here is the next one.
+    if (next?.tripIndex === d.tripIndex) return;
+    if (!next?.spill || next.spill.tripIndex !== d.tripIndex) return;
+    const landing = next.spill.segments
+      .filter((s) => (s.kind === "flying" || s.kind === "deadhead") && !s.continuesToNextDay && s.leg)
+      .sort((a, b) => a.endMinuteOfDay - b.endMinuteOfDay)
+      .at(-1);
+    if (landing?.leg) d.finish = { city: landing.leg.arr, time: landing.endClock ?? hhmm(landing.endMinuteOfDay), nextDay: true };
+  });
+
+  // A trip reporting within hours of the last one landing at the same base turns straight out of it.
+  days.forEach((d, i) => {
+    const prev = days[i - 1];
+    if (!d.isTripStart || !d.dutyStart || d.tripIndex === null || !prev?.finish || prev.tripIndex === null || prev.tripIndex === d.tripIndex) return;
+    if (d.route[0]?.city !== prev.finish.city) return;
+    const turn = i * 1440 + clockMinutes(d.dutyStart) - ((i - 1) * 1440 + clockMinutes(prev.finish.time) + (prev.finish.nextDay ? 1440 : 0));
+    if (turn < 0 || turn > CHAIN_MAX_MINUTES) return;
+    d.chain = { fromTripNumber: prev.tripNumber ?? line.trips[prev.tripIndex]?.pairingNumber ?? null, city: prev.finish.city, turnMinutes: turn, landed: prev.finish.time, reports: d.dutyStart };
+  });
+
   const firstWeekday = calendar.days[0]?.weekday ?? null;
   const startAt = firstWeekday ? WEEKDAY_ORDER.indexOf(firstWeekday) : -1;
   const weekdayHeaders = calendar.placementIsReal && startAt >= 0 ? Array.from({ length: 7 }, (_, i) => WEEKDAY_ORDER[(startAt + i) % 7]) : null;
@@ -419,7 +506,7 @@ export function buildDetailedMonth(
   };
 }
 
-function summarize(line: Line, days: DetailedDay[], offRuns: number[], cityPreferences: Record<string, CitySentiment>): MonthSummary {
+function summarize(line: Line, days: DetailedDay[], offRuns: number[], cityPreferences: Record<string, CityMark>): MonthSummary {
   const off = days.filter((d) => d.kind === "off").length;
 
   let weekendsOff = 0;
@@ -450,6 +537,7 @@ function summarize(line: Line, days: DetailedDay[], offRuns: number[], cityPrefe
     .sort((a, b) => nightOrder(a) - nightOrder(b));
 
   return {
+    departures: line.trips.length - days.filter((d) => d.chain).length,
     daysOff: off,
     printedDaysOff: line.daysOff,
     offRuns,

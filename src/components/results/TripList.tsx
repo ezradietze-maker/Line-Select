@@ -23,7 +23,8 @@ import { clock, dateLabel, dayStats, equipmentLabel, hm, tripBlockMinutes, tripD
 import { buildTimelineDays, type TimeMode, type TimelineDay, type TimelineSegment } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
-import type { CitySentiment } from "@/types/preferences";
+import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
+import type { CityMark } from "@/types/preferences";
 
 const REPORT_LABELS: Record<Trip["reportTime"], string> = {
   early: "Early",
@@ -132,11 +133,6 @@ function DateLineChip({ badge }: { badge: TimelineSegment["dateLineBadge"] }) {
   );
 }
 
-function Sentiment({ sentiment }: { sentiment: CitySentiment | null | undefined }) {
-  if (sentiment === "love") return <span className="text-good" aria-label="a city you love">♥</span>;
-  if (sentiment === "avoid") return <span className="text-danger" aria-label="a city you avoid">✕</span>;
-  return null;
-}
 
 /**
  * What prints on a segment, as much as its height carries. A flight of a
@@ -150,7 +146,7 @@ function Sentiment({ sentiment }: { sentiment: CitySentiment | null | undefined 
 /** "(L)" after a local clock time, "(Z)" after a Zulu one — so no time on the trip view is ever ambiguous. */
 const zoneTag = (mode: TimeMode) => (mode === "zulu" ? "(Z)" : "(L)");
 
-function SegmentText({ seg, mode, cityPreferences }: { seg: TimelineSegment; mode: TimeMode; cityPreferences?: Record<string, CitySentiment> }) {
+function SegmentText({ seg, mode, cityPreferences }: { seg: TimelineSegment; mode: TimeMode; cityPreferences?: Record<string, CityMark> }) {
   const tag = zoneTag(mode);
   const minutes = spanMinutes(seg);
   const lines = Math.floor((minutes / 60) * HOUR_HEIGHT_PX / 12);
@@ -188,7 +184,7 @@ function SegmentText({ seg, mode, cityPreferences }: { seg: TimelineSegment; mod
       <div className="flex h-full flex-col justify-between overflow-hidden px-1 py-px font-mono text-[10px] leading-[12px]">
         <span className={`flex min-w-0 items-center gap-0.5 ${rows[0].tone}`}>
           <span className="truncate">{rows[0].text}</span>
-          <Sentiment sentiment={cityPreferences?.[stay.city]} />
+          <CityMarkGlyph mark={cityPreferences?.[stay.city]} />
         </span>
         {rows.length > 2 && <span className={`truncate font-sans text-[10px] ${rows[1].tone}`}>{rows[1].text}</span>}
         {rows.length > 1 && <span className={`truncate ${rows[rows.length - 1].tone}`}>{rows[rows.length - 1].text}</span>}
@@ -277,7 +273,7 @@ function DayColumn({
   day: TimelineDay;
   mode: TimeMode;
   date: { weekday: string; day: number } | null;
-  cityPreferences?: Record<string, CitySentiment>;
+  cityPreferences?: Record<string, CityMark>;
 }) {
   const stats = dayStats(day);
   return (
@@ -361,7 +357,7 @@ function TripTimelineChart({
   days: TimelineDay[];
   mode: TimeMode;
   bidPeriodStart: string | null;
-  cityPreferences?: Record<string, CitySentiment>;
+  cityPreferences?: Record<string, CityMark>;
 }) {
   if (days.length === 0) return null;
   const standbyPlaces = new Set(trip.schedule.flatMap((d) => d.legs.filter((l) => l.isStandby).map((l) => standbyPlace(l.flightNumber))));
@@ -712,7 +708,7 @@ function TripHeader({
   mode: TimeMode;
   bidPeriodStart: string | null;
   homeBaseOffsetMinutes: number | null;
-  cityPreferences?: Record<string, CitySentiment>;
+  cityPreferences?: Record<string, CityMark>;
 }) {
   const circadian = computeCircadianAssessment(trip, homeBaseOffsetMinutes);
   const route = tripRoute(trip);
@@ -754,7 +750,7 @@ function TripHeader({
                 {i > 0 && <span className="text-ink-faint/70">›</span>}
                 <span className={isLayover ? "font-semibold text-good" : i === 0 || i === route.length - 1 ? "text-ink" : "text-ink-muted"}>
                   {code}
-                  {isLayover && <Sentiment sentiment={cityPreferences?.[code]} />}
+                  {isLayover && <CityMarkGlyph mark={cityPreferences?.[code]} />}
                 </span>
               </Fragment>
             );
@@ -869,7 +865,7 @@ interface TripListProps {
   /** The bid period's first real day, so each trip day can show its date. */
   bidPeriodStart?: string | null;
   /** The pilot's loved/avoided layover cities, marked on the route and the hotel stays. */
-  cityPreferences?: Record<string, CitySentiment>;
+  cityPreferences?: Record<string, CityMark>;
   /** A commuter's looked-up airline flights, shown on each trip that has some. */
   flights?: FlightAnswers | null;
   /** The bid pack's base — where the commute goes. */

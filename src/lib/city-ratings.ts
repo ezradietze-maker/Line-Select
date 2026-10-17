@@ -1,5 +1,5 @@
 import type { BidPack } from "@/types/bidpack";
-import type { CityRating, CityRatingScore, CityReasonTag, CitySentiment } from "@/types/preferences";
+import type { CityMark, CityRating, CityRatingScore, CityReasonTag, CitySentiment } from "@/types/preferences";
 
 /**
  * Graded layover-city ratings: the interview's city step, where a pilot says
@@ -60,6 +60,24 @@ export function rateCity(
     nextSentiments[code] = sentimentFromRating(score)!;
   }
   return { ratings: nextRatings, sentiments: nextSentiments };
+}
+
+/**
+ * Every marked city, four ways — what the calendar, trips and card chips show. Built from the pilot's own grades, so a
+ * city they like isn't drawn as one they love; an older favorite/avoid mark (story, last cycle) stands where they gave
+ * no grade.
+ */
+export function cityMarks(ratings: Record<string, CityRating> | undefined, sentiments: Record<string, CitySentiment> = {}): Record<string, CityMark> {
+  const marks: Record<string, CityMark> = {};
+  for (const [code, s] of Object.entries(sentiments)) marks[code] = s;
+  for (const [code, r] of Object.entries(ratings ?? {})) {
+    if (r.score >= 2) marks[code] = "love";
+    else if (r.score === 1) marks[code] = "like";
+    else if (r.score === -1) marks[code] = "dislike";
+    else if (r.score <= -2) marks[code] = "avoid";
+    else delete marks[code];
+  }
+  return marks;
 }
 
 /** −1 … +1 per city, the scale the pilot brain's layover measures use. */

@@ -6,7 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import type { LineScore } from "@/lib/scoring";
-import type { CitySentiment } from "@/types/preferences";
+import type { CityMark } from "@/types/preferences";
 
 /**
  * Two lines' month calendars side by side, instead of holding one in memory
@@ -21,7 +21,7 @@ interface LineComparisonModalProps {
   bidPeriodStart: string | null;
   bidPeriodDays: number;
   /** The pilot's loved/avoided layover cities, so each calendar can say how they feel about a layover. */
-  cityPreferences?: Record<string, CitySentiment>;
+  cityPreferences?: Record<string, CityMark>;
   onClose: () => void;
 }
 

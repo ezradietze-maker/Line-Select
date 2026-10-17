@@ -157,6 +157,8 @@ export interface TradeoffAnswer {
 }
 
 export type CitySentiment = "love" | "avoid";
+/** How a city is marked wherever a layover is shown: the pilot's own grade, four ways (neutral shows nothing). */
+export type CityMark = "love" | "like" | "dislike" | "avoid";
 
 /** How a pilot rates one layover city: −2 avoid, −1 not great, +1 like, +2 love. Neutral cities aren't stored. */
 export type CityRatingScore = -2 | -1 | 1 | 2;

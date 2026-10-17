@@ -16,6 +16,7 @@ import { TripNumberStrip } from "@/components/results/TripNumberStrip";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { ChevronDownIcon, GripIcon, StarIcon } from "@/components/ui/icons";
 import { Tabs } from "@/components/ui/Tabs";
+import { cityMarks } from "@/lib/city-ratings";
 import { buildLineFactChips, type LineFactChip } from "@/lib/line-summary";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { topImplicitContributions } from "@/lib/rank-learning";
@@ -143,6 +144,7 @@ export const LineCard = memo(function LineCard({
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
 
   const chips = useMemo(() => buildLineFactChips(line, profile), [line, profile]);
+  const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences), [profile.cityRatings, profile.cityPreferences]);
   // On a phone a full-height grip column costs a real slice of the card's
   // width, so the (single) drag handle moves up into the header row instead.
   const wide = useMediaQuery("(min-width: 640px)");
@@ -318,7 +320,7 @@ export const LineCard = memo(function LineCard({
                 bidPeriodStart={bidPeriodStart}
                 bidPeriodDays={bidPeriodDays}
                 showLegend={false}
-                cityPreferences={profile.cityPreferences}
+                cityPreferences={marks}
               />
             )}
           </div>
@@ -359,7 +361,7 @@ export const LineCard = memo(function LineCard({
                     bid pack&rsquo;s own line totals.
                   </div>
                 ) : (
-                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={profile.cityPreferences} flights={flights} base={homeBase} />
+                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} />
                 ))}
 
               {activeTab === "breakdown" && (

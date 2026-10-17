@@ -29,7 +29,7 @@ function profile(over: Partial<PreferenceProfile> = {}): PreferenceProfile {
 describe("buildLineFactChips", () => {
   it("shows the real numbers with no comparison when the pilot pinned nothing", () => {
     const chips = buildLineFactChips(line(), profile());
-    expect(chips.map((c) => c.main)).toEqual(["15 days off", "8 duty periods", "8 departures", "83:52 credit"]);
+    expect(chips.map((c) => c.main)).toEqual(["15 days off", "8 duty periods", "8 takeoffs", "83:52 credit"]);
     expect(chips.every((c) => c.tone === "neutral" && c.note === "")).toBe(true);
   });
 

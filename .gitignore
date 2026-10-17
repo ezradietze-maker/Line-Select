@@ -52,3 +52,6 @@ scripts/transcript-*.md
 
 # Local-only test data staged for browser checks
 /public/_tmp/
+
+# Real pilots' own words and notes — kept on this machine, never in the public repo.
+/private/

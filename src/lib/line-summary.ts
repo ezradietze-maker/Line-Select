@@ -1,3 +1,4 @@
+import { cityMarks } from "@/lib/city-ratings";
 import { formatHoursValue } from "@/lib/interview-config";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
@@ -57,8 +58,9 @@ export function buildLineFactChips(line: Line, profile: PreferenceProfile): Line
   const dutyPeriodCount = lineDutyPeriods(line);
   const dutyPeriods = compareToTarget(dutyPeriodCount, targetParts(profile.explicitTargets.dutyPeriods), DUTY_PERIODS_TOLERANCE, int);
   chips.push({ main: `${dutyPeriodCount} duty period${dutyPeriodCount === 1 ? "" : "s"}`, ...dutyPeriods });
-  // Takeoffs — always the same number as the line's landings — shown for reference; nothing to compare it against.
-  chips.push({ main: `${line.totalDepartures} departure${line.totalDepartures === 1 ? "" : "s"}`, note: "", tone: "neutral" });
+  // Takeoffs — always the same number as the line's landings — shown for reference; nothing to compare it against. Called
+  // takeoffs, not "departures": to a commuter a departure is leaving home for a run of trips, a different thing entirely.
+  chips.push({ main: `${line.totalDepartures} takeoff${line.totalDepartures === 1 ? "" : "s"}`, note: "", tone: "neutral" });
 
   const credit = compareToTarget(line.totalCreditHours, targetParts(profile.explicitTargets.creditHours), CREDIT_TOLERANCE_HOURS, formatHoursValue);
   chips.push({ main: `${formatHoursValue(line.totalCreditHours)} credit`, ...credit });
@@ -74,10 +76,14 @@ export function buildLineFactChips(line: Line, profile: PreferenceProfile): Line
   }
 
   const lineCities = Array.from(new Set(line.trips.flatMap((t) => t.layoverCities)));
-  const loved = lineCities.filter((c) => profile.cityPreferences[c] === "love");
-  const avoided = lineCities.filter((c) => profile.cityPreferences[c] === "avoid");
+  // The pilot's own grades, four ways: a city they only like isn't called a favorite.
+  const marks = cityMarks(profile.cityRatings, profile.cityPreferences);
+  const loved = lineCities.filter((c) => marks[c] === "love");
+  const liked = lineCities.filter((c) => marks[c] === "like");
+  const disliked = lineCities.filter((c) => marks[c] === "dislike" || marks[c] === "avoid");
   for (const code of loved.slice(0, 3)) chips.push({ main: `♥ ${code}`, note: "a favorite", tone: "good" });
-  for (const code of avoided.slice(0, 3)) chips.push({ main: `✕ ${code}`, note: "one you avoid", tone: "warn" });
+  for (const code of liked.slice(0, Math.max(0, 3 - loved.length))) chips.push({ main: `♡ ${code}`, note: "one you like", tone: "good" });
+  for (const code of disliked.slice(0, 3)) chips.push({ main: `✕ ${code}`, note: marks[code] === "avoid" ? "one you avoid" : "one you dislike", tone: "warn" });
 
   return chips;
 }
