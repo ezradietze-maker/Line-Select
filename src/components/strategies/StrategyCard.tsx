@@ -1,18 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { FeasibilityTier, Strategy, StrategyLineRecommendation } from "@/types/strategy";
+import type { FeasibilityTier, Strategy, StrategyFit, StrategyLineRecommendation } from "@/types/strategy";
 
-function VerificationBadge({ verification }: { verification: Strategy["verification"] }) {
-  if (verification !== "pending-contract") return null;
-  return (
-    <span
-      className="inline-flex shrink-0 items-center rounded-full border border-warn/30 bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn"
-      title="This mechanism depends on specific contract/PBS language this app hasn't confirmed yet — built ahead of that confirmation on purpose, but not the same confidence level as a strategy read straight from your own bid pack's printed numbers."
-    >
-      Pending contract verification
-    </span>
-  );
+const FIT_STYLE: Record<StrategyFit, { label: string; cls: string }> = {
+  now: { label: "For you this month", cls: "border-good/30 bg-good-soft text-good" },
+  maybe: { label: "Depends on the month", cls: "border-accent/30 bg-accent-soft text-accent" },
+  later: { label: "Worth knowing", cls: "border-border-strong text-ink-faint" },
+};
+
+function FitBadge({ fit }: { fit: StrategyFit }) {
+  const f = FIT_STYLE[fit];
+  return <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium ${f.cls}`}>{f.label}</span>;
 }
 
 function ScoreContextLine({ scoreContext }: { scoreContext: StrategyLineRecommendation["scoreContext"] }) {
@@ -42,8 +41,8 @@ const FEASIBILITY_STYLE: Record<FeasibilityTier, string> = {
 };
 
 const FEASIBILITY_LABEL: Record<FeasibilityTier, string> = {
-  strong: "Strong odds",
-  possible: "Possible",
+  strong: "Likely open",
+  possible: "Maybe open",
   longshot: "Long shot",
 };
 
@@ -87,7 +86,7 @@ function LineRecommendationRow({ rec }: { rec: StrategyLineRecommendation }) {
         <span className="rounded border border-hairline px-1.5 py-0.5">{(rec.totalTafbHours / 24).toFixed(1)} days away</span>
       </div>
       <ScoreContextLine scoreContext={rec.scoreContext} />
-      <p className="mt-2 text-xs italic leading-relaxed text-ink-faint">{rec.feasibilityNote}</p>
+      {rec.feasibilityNote && <p className="mt-2 text-xs italic leading-relaxed text-ink-faint">{rec.feasibilityNote}</p>}
     </div>
   );
 }
@@ -161,40 +160,30 @@ export function StrategyCard({
       <div className="p-5 sm:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="font-display text-xl font-semibold tracking-tight text-ink">{strategy.name}</h3>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <VerificationBadge verification={strategy.verification} />
-          </div>
+          <FitBadge fit={strategy.fit} />
         </div>
         <p className="mt-1 text-sm font-medium text-accent">{strategy.tagline}</p>
-        {strategy.preferenceMatch && strategy.preferenceMatch.length > 0 && (
-          <p className="mt-2 text-xs leading-relaxed text-ink-muted">
-            <span className="font-medium text-ink">From your interview:</span>{" "}
-            {strategy.preferenceMatch.join(" and ")}.
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={() => setShowHow((v) => !v)}
-          aria-expanded={showHow}
-          className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-ink-muted hover:text-ink"
-        >
-          {showHow ? "Hide how this works" : "How this works"}
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={`h-3.5 w-3.5 transition-transform ${showHow ? "rotate-180" : ""}`} aria-hidden>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
-          </svg>
-        </button>
-        {showHow && (
-          <div className="animate-fade-in mt-3 border-l-2 border-hairline pl-4">
-            <p className="text-sm leading-relaxed text-ink-muted">{strategy.mechanism}</p>
-            <ul className="mt-3 space-y-1.5">
-              {strategy.benefits.map((b) => (
-                <li key={b} className="flex gap-2 text-sm text-ink-muted">
-                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-accent" aria-hidden />
-                  {b}
-                </li>
-              ))}
-            </ul>
-          </div>
+        <p className="mt-2 text-sm leading-relaxed text-ink-muted">{strategy.fitReason}</p>
+
+        <h4 className="mt-4 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Your move</h4>
+        <ol className="mt-1.5 space-y-1.5">
+          {strategy.steps.map((step, i) => (
+            <li key={i} className="flex gap-2.5 text-sm leading-relaxed text-ink">
+              <span className="mt-px font-mono text-xs font-semibold text-accent">{i + 1}</span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+
+        {strategy.facts.length > 0 && (
+          <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-1.5 rounded-lg border border-hairline bg-canvas/40 px-3.5 py-2.5 sm:grid-cols-2">
+            {strategy.facts.map((f) => (
+              <div key={f.label} className="flex items-baseline justify-between gap-3 text-xs">
+                <dt className="text-ink-muted">{f.label}</dt>
+                <dd className={`shrink-0 font-mono font-semibold ${f.tone === "good" ? "text-good" : f.tone === "warn" ? "text-warn" : "text-readout"}`}>{f.value}</dd>
+              </div>
+            ))}
+          </dl>
         )}
 
         {strategy.lines.length > 0 && (
@@ -205,11 +194,26 @@ export function StrategyCard({
           </div>
         )}
 
-        {!strategy.isProcessTip && strategy.lines.length === 0 && (
-          <p className="mt-4 text-sm text-ink-faint">
-            No line in this bid pack clears this pattern strongly enough to recommend — nothing
-            here rises to a real edge this month.
-          </p>
+        <p className="mt-4 rounded-lg border border-warn/25 bg-warn-soft/50 px-3 py-2 text-xs leading-relaxed text-ink-muted">
+          <span className="font-semibold text-warn">May not match FedEx rules · </span>
+          {strategy.risk}
+        </p>
+
+        <button
+          type="button"
+          onClick={() => setShowHow((v) => !v)}
+          aria-expanded={showHow}
+          className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-ink-muted hover:text-ink"
+        >
+          {showHow ? "Hide why this works" : "Why this works"}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={`h-3.5 w-3.5 transition-transform ${showHow ? "rotate-180" : ""}`} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+        {showHow && (
+          <div className="animate-fade-in mt-3 border-l-2 border-hairline pl-4">
+            <p className="text-sm leading-relaxed text-ink-muted">{strategy.mechanism}</p>
+          </div>
         )}
 
         {onReact && <ReactionButtons reaction={reaction} onReact={onReact} />}

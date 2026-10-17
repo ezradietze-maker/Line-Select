@@ -223,6 +223,10 @@ export interface BidPackInfo {
   totalRegularLines: number | null;
   totalReserveLines: number | null;
   totalSecondaryLines: number | null;
+  /** When open time is released to this seat, local base time, from the pack's own bid calendar ("19:15") — captains a couple of hours before first officers. */
+  openTimeRelease?: string | null;
+  /** The pack's "Reserve Report Status" ("R-1.5"), as printed. */
+  reserveReportStatus?: string | null;
 }
 
 /**
@@ -235,6 +239,28 @@ export interface SeniorityEntry {
   bidNumber: number;
   /** The pilot's system seniority number (lower = more senior). */
   seniority: number;
+  /**
+   * The list's status column reads PAY: paid this month without bidding a line. In every pack read so far, the pilots
+   * without it match the pack's regular + secondary + reserve lines exactly, so they're the only ones competing for them.
+   */
+  pay?: boolean;
+  /** Vacation this pilot holds in or around the bid month, from the pack's own vacation schedule — dates and days only. */
+  vacations?: VacationPeriod[];
+}
+
+/** One vacation block, as the pack's vacation schedule prints it (Zulu). */
+export interface VacationPeriod {
+  /** ISO date-time, Zulu. */
+  from: string;
+  to: string;
+  days: number;
+}
+
+/** A flight the pack lists as a sweep aircraft: one systems can reroute. */
+export interface SweepFlight {
+  flightNumber: string;
+  /** Departure city the listing gives it. */
+  from: string;
 }
 
 export interface BidPack {
@@ -262,4 +288,6 @@ export interface BidPack {
   info?: BidPackInfo;
   /** Every pilot bidding this seat, in bid order — numbers only. Absent when the PDF had no readable Bid Seniority List. */
   seniorityList?: SeniorityEntry[];
+  /** Flights the pack's Sweep Aircraft page says may be rerouted. */
+  sweepFlights?: SweepFlight[];
 }

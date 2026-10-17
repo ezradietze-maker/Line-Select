@@ -11,6 +11,7 @@ import { parsePairingPages } from "@/lib/pdf-parser/pairing-parser";
 import { classifyPage } from "@/lib/pdf-parser/page-classifier";
 import { extractReserveLineSeat, parseReserveLineGridRows } from "@/lib/pdf-parser/reserve-line-parser";
 import { extractSeniorityListSeat, parseSeniorityListRows, validateSeniorityList } from "@/lib/pdf-parser/seniority-list-parser";
+import { extractVacationScheduleSeat, parseSweepFlightRows, parseVacationScheduleRows } from "@/lib/pdf-parser/vacation-schedule-parser";
 import {
   extractPage,
   extractTwoColumnRows,
@@ -28,7 +29,7 @@ import type {
   ParsedPairing,
   ParseWarning,
 } from "@/lib/pdf-parser/types";
-import type { BidPack, BidPackInfo, ReserveLine, Seat, SeniorityEntry } from "@/types/bidpack";
+import type { BidPack, BidPackInfo, ReserveLine, Seat, SeniorityEntry, SweepFlight, VacationPeriod } from "@/types/bidpack";
 
 export { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 export type { ParseBidPackResult, ParseProgress } from "@/lib/pdf-parser/types";
@@ -190,12 +191,28 @@ export async function parseBidPackPdf(
   const reserveLinesBySeat: Partial<Record<Seat, ReserveLine[]>> = {};
   let infoBySeat: Partial<Record<Seat, BidPackInfo>> | null = null;
   const seniorityBySeat: Partial<Record<Seat, SeniorityEntry[]>> = {};
+  const vacationsBySeat: Partial<Record<Seat, Map<number, VacationPeriod[]>>> = {};
+  const sweepFlights: SweepFlight[] = [];
 
   for (let i = 0; i < pages.length; i++) {
     const kind = pageClassifications[i].kind;
-    if (kind !== "reserve-line-grid" && kind !== "info-page" && kind !== "seniority-list") continue;
+    if (kind !== "reserve-line-grid" && kind !== "info-page" && kind !== "seniority-list" && kind !== "vacation-schedule" && kind !== "sweep-flights") continue;
     const page = pages[i];
     const rows = groupIntoRows(page.items);
+
+    if (kind === "vacation-schedule") {
+      const seat = extractVacationScheduleSeat(rows.slice(0, 6));
+      if (!seat) continue;
+      const bySeniority = vacationsBySeat[seat] ?? new Map<number, VacationPeriod[]>();
+      for (const v of parseVacationScheduleRows(rows)) bySeniority.set(v.seniority, [...(bySeniority.get(v.seniority) ?? []), v.period]);
+      vacationsBySeat[seat] = bySeniority;
+      continue;
+    }
+
+    if (kind === "sweep-flights") {
+      for (const f of parseSweepFlightRows(rows)) if (!sweepFlights.some((x) => x.flightNumber === f.flightNumber && x.from === f.from)) sweepFlights.push(f);
+      continue;
+    }
 
     if (kind === "seniority-list") {
       const seat = extractSeniorityListSeat(rows.slice(0, 8));
@@ -213,6 +230,14 @@ export async function parseBidPackPdf(
       infoBySeat = parseInfoPage(rows, page.pageNumber, warnings);
     }
   }
+
+  // The cover page's bid calendar says when open time goes out to each seat ("OT Release CAP 1915 LBT F/O 2115 LBT").
+  const coverText = pages[0] ? groupIntoRows(pages[0].items).join(" ") : "";
+  const otRelease = (seat: Seat) => {
+    const m = coverText.match(seat === "CAP" ? /CAP\s+(\d{2})(\d{2})\s+LBT/ : /F\s*\/\s*O\s+(\d{2})(\d{2})\s+LBT/);
+    return m ? `${m[1]}:${m[2]}` : null;
+  };
+  if (infoBySeat) for (const seat of ["CAP", "FO"] as const) if (infoBySeat[seat]) infoBySeat[seat] = { ...infoBySeat[seat]!, openTimeRelease: otRelease(seat) };
 
   const linesWithIncompleteTrips: { lineNumber: string; seat: "CAP" | "FO" }[] = [];
   const bidPacksBySeat: Partial<Record<"CAP" | "FO", BidPack>> = {};
@@ -241,7 +266,8 @@ export async function parseBidPackPdf(
       ),
       reserveLines: reserveLinesBySeat[seat],
       info: infoBySeat?.[seat],
-      seniorityList: validateSeniorityList(seniorityBySeat[seat] ?? [], seat, warnings) ?? undefined,
+      seniorityList: withVacations(validateSeniorityList(seniorityBySeat[seat] ?? [], seat, warnings), vacationsBySeat[seat]),
+      ...(sweepFlights.length ? { sweepFlights } : {}),
     };
   }
 
@@ -274,4 +300,14 @@ function emptyResult(
     errors,
     looksLikeScannedPdf: false,
   };
+}
+
+/** Each pilot's vacation blocks, matched to the seniority list by seniority number (the only key the two pages share that's kept). */
+function withVacations(list: SeniorityEntry[] | null, vacations: Map<number, VacationPeriod[]> | undefined): SeniorityEntry[] | undefined {
+  if (!list) return undefined;
+  if (!vacations?.size) return list;
+  return list.map((e) => {
+    const v = vacations.get(e.seniority);
+    return v ? { ...e, vacations: v } : e;
+  });
 }

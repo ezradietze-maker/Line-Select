@@ -131,6 +131,9 @@ export interface FeatureForecastInput {
   calibrate?: (p: number) => number;
 }
 
+/** With the PAY flags known, how often a pilot still passes on a regular line (bidding reserve by choice, say). */
+const KNOWN_ROSTER_DROPOUT = 0.03;
+
 export function forecastFromFeatures(input: FeatureForecastInput): BidForecast {
   return forecastWithCore(input).forecast;
 }
@@ -139,6 +142,9 @@ export function forecastFromFeatures(input: FeatureForecastInput): BidForecast {
 export function forecastWithCore(input: FeatureForecastInput): { forecast: BidForecast; core: ForecastCore } {
   const { features, seniorityList: list } = input;
   const position = resolveBidPosition(list, input.seniorityNumber);
+  // The list's PAY flags say exactly who isn't bidding a line this month; with them, the guessed dropout shrinks to the
+  // few who might still pass (choosing reserve, say).
+  const notBidding = new Set(list.filter((e) => e.pay).map((e) => e.bidNumber));
   const core: ForecastCore = simulateBid({
     features,
     totalPilots: list.length,
@@ -147,8 +153,9 @@ export function forecastWithCore(input: FeatureForecastInput): { forecast: BidFo
     known: input.known,
     simulations: input.simulations ?? DEFAULT_SIMULATIONS,
     seed: hashString(`${input.packKey}|${input.seniorityNumber}`),
-    dropoutRate: input.dropoutRate,
+    dropoutRate: notBidding.size ? Math.min(input.dropoutRate, KNOWN_ROSTER_DROPOUT) : input.dropoutRate,
     learnedPrior: input.learnedPrior,
+    ...(notBidding.size ? { notBidding } : {}),
   });
   const calibrate = input.calibrate ?? ((p: number) => p);
 

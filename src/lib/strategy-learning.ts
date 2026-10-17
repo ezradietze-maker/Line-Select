@@ -20,17 +20,18 @@ import type { StrategyId } from "@/types/strategy";
  * circumstance, not a stated preference").
  */
 const STRATEGY_TRAIT_HINTS: Partial<Record<StrategyId, { key: "riskTolerance" | "adminEffortAppetite"; favorsHigh: boolean }[]>> = {
-  "ghost-line": [{ key: "riskTolerance", favorsHigh: true }],
-  "mega-trip": [{ key: "riskTolerance", favorsHigh: true }],
-  "recurring-turn": [{ key: "riskTolerance", favorsHigh: false }],
-  "safety-net": [{ key: "riskTolerance", favorsHigh: false }],
-  "re-bid-chain": [{ key: "adminEffortAppetite", favorsHigh: true }],
-  "reserve-avoidance": [{ key: "adminEffortAppetite", favorsHigh: true }],
-  "trip-trading": [
+  // Working the later windows for a line is effort, and betting on one over reserve is a risk.
+  "secondary-play": [
     { key: "adminEffortAppetite", favorsHigh: true },
     { key: "riskTolerance", favorsHigh: true },
   ],
-  "grievance-slide": [{ key: "adminEffortAppetite", favorsHigh: true }],
+  // Ranking the lines likely to be left over is the safe play.
+  leftovers: [{ key: "riskTolerance", favorsHigh: false }],
+  "reserve-pays-more": [{ key: "riskTolerance", favorsHigh: true }],
+  "vacation-overlap": [{ key: "adminEffortAppetite", favorsHigh: true }],
+  "carry-over": [{ key: "adminEffortAppetite", favorsHigh: true }],
+  "sweep-flights": [{ key: "riskTolerance", favorsHigh: true }],
+  "after-award": [{ key: "adminEffortAppetite", favorsHigh: true }],
 };
 
 /** Out of -100..100 — a single reaction moves a trait a real but modest amount, shrinking as confidence in that trait builds (see `effectiveStep`), never a full override. */

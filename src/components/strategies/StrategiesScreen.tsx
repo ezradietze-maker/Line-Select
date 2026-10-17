@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AutoBidPanel } from "@/components/strategies/AutoBidPanel";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { Button } from "@/components/ui/Button";
@@ -14,19 +13,14 @@ import { TextField } from "@/components/ui/TextField";
 import { fetchAwardHistory, summarizeAwardHistory } from "@/lib/award-history";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { rankLines } from "@/lib/scoring";
-import {
-  attachScoreContext,
-  buildAutoBid,
-  generateStrategies,
-  rankStrategiesByPreference,
-} from "@/lib/strategy-engine";
+import { attachScoreContext, computeStanding, generateStrategies, rankStrategiesByPreference, type Standing } from "@/lib/strategy-engine";
 import { SENIORITY_BANDS } from "@/lib/seniority-bands";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
 import type { AwardHistoryRecord } from "@/types/award-history";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { PreferenceProfile } from "@/types/preferences";
-import type { SeniorityInput, StrategyId } from "@/types/strategy";
+import type { SeniorityInput, Strategy, StrategyId } from "@/types/strategy";
 
 interface StrategiesScreenProps {
   bidPack: BidPack | null;
@@ -233,7 +227,6 @@ function StrategyResults({
   user,
   onEditSeniority,
   fromProfile,
-  onGoToResults,
   onStartInterview,
   onUpdateProfile,
 }: {
@@ -283,14 +276,11 @@ function StrategyResults({
   );
 
   const strategies = useMemo(() => {
-    const generated = generateStrategies(bidPack, seniority, awardSummary);
-    const preferenceRanked = rankStrategiesByPreference(generated, profile?.weights ?? null);
+    const generated = generateStrategies(bidPack, seniority, awardSummary, { lineScores: ranked, isCommuter: profile?.isCommuter ?? null });
+    const preferenceRanked = rankStrategiesByPreference(generated);
     return attachScoreContext(preferenceRanked, ranked);
   }, [bidPack, seniority, profile, ranked, awardSummary]);
-  const autoBid = useMemo(() => buildAutoBid(strategies), [strategies]);
-  const strongCount = strategies.filter((s) =>
-    s.lines.some((l) => l.feasibility === "strong")
-  ).length;
+  const standing = useMemo(() => computeStanding(bidPack, seniority), [bidPack, seniority]);
 
   function handleReaction(strategyId: StrategyId, reaction: "used" | "dismissed") {
     if (!profile) return;
@@ -303,10 +293,12 @@ function StrategyResults({
     });
   }
 
-  // Line plays (picks from this pack) and bonus moves (process tips with no lines) read as two different kinds of advice, so they get their own banks — each keeping the preference order it already had.
-  const linePlays = strategies.filter((st) => !st.isProcessTip);
-  const bonusMoves = strategies.filter((st) => st.isProcessTip);
-  const topPickId = profile && strategies[0] && !strategies[0].isProcessTip ? strategies[0].id : null;
+  const groups: { fit: Strategy["fit"]; title: string; note: string }[] = [
+    { fit: "now", title: "For you this month", note: "Moves that apply at your number on this bid." },
+    { fit: "maybe", title: "Depends on the month", note: "They apply in some months, or if the pilots above you bid differently." },
+    { fit: "later", title: "Worth knowing", note: "For when your number moves, or a month with vacation." },
+  ];
+  const topPickId = null;
 
   function card(strategy: (typeof strategies)[number]) {
     return (
@@ -326,9 +318,7 @@ function StrategyResults({
         eyebrow={packEyebrow(bidPack)}
         title="Your strategies"
         description={
-          profile
-            ? "Moves built from this pack’s real lines, ordered by what you told us — with an honest read on whether your seniority can hold each one."
-            : "Moves built from this pack’s real lines, with an honest read on whether your seniority can hold each one."
+          "Real bidding moves for where your seniority actually lands this month — read from your pack's seniority list, line counts, reserve guarantee and vacation schedule."
         }
         actions={
           <Button variant="secondary" onClick={onEditSeniority}>
@@ -336,13 +326,16 @@ function StrategyResults({
           </Button>
         }
       >
-        <SeniorityStrip rank={seniority.rank} total={seniority.totalPilots} fromProfile={fromProfile} strongCount={strongCount} />
+        <StandingPanel standing={standing} />
       </PageHeader>
 
-      <Notice tone="note" className="mt-4 text-xs">
-        Every strategy here works within FAR Part 117 duty and rest limits. &ldquo;Aggressive&rdquo;
-        means legal and contractual leverage, never bent rest — that&rsquo;s not on the table
-        regardless of how this board grows.
+      <Notice tone="warn" className="mt-4 text-xs">
+        <span className="text-ink">
+          <span className="font-semibold">Not FedEx&rsquo;s rules, and not a sure thing.</span> These moves are read from your bid pack&rsquo;s own
+          numbers &mdash; the seniority list, line counts, reserve guarantee and vacation schedule &mdash; not from the contract or crew
+          scheduling. Some may run into FedEx or ALPA rules, and none is a guaranteed way to bid. Check anything you rely on with your
+          PSIT bid rep before the bid closes.
+        </span>
       </Notice>
 
       {!profile && (
@@ -352,16 +345,11 @@ function StrategyResults({
           action={<Button onClick={onStartInterview}>Take the interview</Button>}
         >
           <span className="text-ink">
-            These are ranked by how rare each pattern is, not by what you&rsquo;d actually
-            enjoy. Answer the preferences interview and Line Select will reorder them by how
-            much you&rsquo;d personally prefer each one.
+            The moves already fit your number. Answer the interview and the lines inside them will be ordered by what you&rsquo;d actually
+            want.
           </span>
         </Notice>
       )}
-
-      <div className="mt-6">
-        <AutoBidPanel entries={autoBid} onGoToResults={profile ? onGoToResults : undefined} />
-      </div>
 
       <nav aria-label="Jump to a strategy" className="mt-8">
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
@@ -380,20 +368,17 @@ function StrategyResults({
         </div>
       </nav>
 
-      {linePlays.length > 0 && (
-        <section className="mt-6">
-          <SectionHeading count={linePlays.length}>Line plays</SectionHeading>
-          <div className="mt-3 space-y-4">{linePlays.map(card)}</div>
-        </section>
-      )}
-
-      {bonusMoves.length > 0 && (
-        <section className="mt-10">
-          <SectionHeading count={bonusMoves.length}>Bonus moves</SectionHeading>
-          <p className="mt-2 text-xs text-ink-faint">Ways to work the process itself &mdash; no single line to bid.</p>
-          <div className="mt-3 space-y-4">{bonusMoves.map(card)}</div>
-        </section>
-      )}
+      {groups.map((g) => {
+        const items = strategies.filter((st) => st.fit === g.fit);
+        if (!items.length) return null;
+        return (
+          <section key={g.fit} className="mt-8">
+            <SectionHeading count={items.length}>{g.title}</SectionHeading>
+            <p className="mt-2 text-xs text-ink-faint">{g.note}</p>
+            <div className="mt-3 space-y-4">{items.map(card)}</div>
+          </section>
+        );
+      })}
 
       <div className="mt-10">
         <AwardHistoryPanel bidPack={bidPack} seniority={seniority} user={user} rankedLineIds={rankedLineIds} />
@@ -403,41 +388,69 @@ function StrategyResults({
 }
 
 /**
- * Where this pilot sits in the bid, as a strip of the whole seniority list
- * with a lit marker — most senior on the left. Purely a picture of the
- * number already shown; it adds no estimate of its own.
+ * Where the pilot really stands this month: their printed number, the pilots above them who aren't bidding a line, and
+ * their place among those who are — drawn against the pack's own regular, secondary and reserve lines.
  */
-function SeniorityStrip({ rank, total, fromProfile, strongCount }: { rank: number; total: number; fromProfile: boolean; strongCount: number }) {
-  const fraction = total > 1 ? Math.min(1, Math.max(0, (rank - 1) / (total - 1))) : 0;
+function StandingPanel({ standing: st }: { standing: Standing }) {
+  const total = st.regular + st.secondary + st.reserve;
+  const position = st.effective ?? st.printedBidNumber;
+  const at = total > 0 ? Math.min(1, Math.max(0, (position - 0.5) / total)) : 0;
+  const bands = [
+    { label: "Regular", n: st.regular, cls: "bg-good/55" },
+    { label: "Secondary", n: st.secondary, cls: "bg-accent/45" },
+    { label: "Reserve", n: st.reserve, cls: "bg-standby/40" },
+  ].filter((b) => b.n > 0);
+  const bandWord = st.band === "regular" ? "a regular line" : st.band === "secondary" ? "a secondary line" : "reserve";
   return (
-    <div className="panel-glass mt-5 grid gap-4 p-4 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-6">
-      <div>
-        <div className="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
-          <span>{fromProfile ? "Bid position" : "Seniority"}</span>
-          <span className="text-sm font-semibold normal-case tracking-normal tabular-nums text-readout">
-            #{rank} <span className="text-ink-faint">of {total}</span>
-          </span>
+    <div className="panel-glass mt-5 p-4 sm:p-5">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">On the printed list</p>
+          <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-ink">
+            #{st.printedBidNumber} <span className="text-sm font-normal text-ink-faint">of {st.listSize}</span>
+          </p>
         </div>
-        <div className="relative mt-2.5 h-2 rounded-full bg-hairline" role="img" aria-label={`Number ${rank} of ${total} in bid order`}>
-          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-good/50 via-accent/40 to-ink-faint/30" />
-          <div
-            className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_10px_var(--color-accent)]"
-            style={{ left: `calc(${fraction * 100}% - 2px)` }}
-          />
-        </div>
-        <div className="mt-1.5 flex justify-between text-[11px] text-ink-faint">
-          <span>Most senior</span>
-          <span>Most junior</span>
-        </div>
+        {st.payAhead !== null && (
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Above you, not bidding a line</p>
+            <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-good">{st.payAhead}</p>
+          </div>
+        )}
+        {st.effective !== null && (
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Your real place</p>
+            <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-accent">
+              #{st.effective} <span className="text-sm font-normal text-ink-faint">of {st.bidders} bidding</span>
+            </p>
+          </div>
+        )}
       </div>
-      {strongCount > 0 && (
-        <div className="flex items-center gap-2 sm:border-l sm:border-hairline sm:pl-6">
-          <span className="h-2 w-2 rounded-full bg-good shadow-[0_0_8px_var(--color-good)]" aria-hidden />
-          <span className="text-sm">
-            <span className="font-mono font-semibold text-good">{strongCount}</span>{" "}
-            <span className="text-ink-muted">{strongCount === 1 ? "move" : "moves"} at strong odds</span>
-          </span>
-        </div>
+      {total > 0 && (
+        <>
+          <div className="relative mt-4 flex h-2.5 overflow-hidden rounded-full" role="img" aria-label={`Place ${position} of ${total}: ${bandWord} on the numbers`}>
+            {bands.map((b) => (
+              <div key={b.label} className={b.cls} style={{ width: `${(b.n / total) * 100}%` }} />
+            ))}
+          </div>
+          <div className="relative h-0">
+            <div className="absolute -top-[15px] h-5 w-1 -translate-x-1/2 rounded-full bg-ink shadow-[0_0_8px_var(--color-accent)]" style={{ left: `${at * 100}%` }} />
+          </div>
+          <div className="mt-1.5 flex text-[11px] text-ink-faint">
+            {bands.map((b) => (
+              <span key={b.label} style={{ width: `${(b.n / total) * 100}%` }} className="truncate">
+                {b.label} · {b.n}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-sm text-ink">
+            On the numbers, your place lands on <span className="font-semibold">{bandWord}</span> this month
+            {st.band === "regular" ? ` — ${st.marginToRegular} inside the cutoff.` : st.band === "secondary" ? ` — ${-st.marginToRegular} past the last regular line.` : "."}
+            {st.vacationDays > 0 && <span className="text-ink-muted"> You have {st.vacationDays} vacation days in it.</span>}
+          </p>
+        </>
+      )}
+      {st.effective === null && (
+        <p className="mt-2 text-xs text-ink-faint">Re-upload your bid pack to read who on the list isn&rsquo;t bidding a line this month &mdash; it sharpens your real place.</p>
       )}
     </div>
   );

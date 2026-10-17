@@ -46,7 +46,7 @@ export async function fetchForecast(input: ForecastRequestInput): Promise<Foreca
         lineIds: features.lineIds,
         lineNumbers: features.lineNumbers,
         features: round4(features.values),
-        seniorityList: list.map((e) => [e.bidNumber, e.seniority]),
+        seniorityList: list.map((e) => (e.pay ? [e.bidNumber, e.seniority, 1] : [e.bidNumber, e.seniority])),
         regularLines: bidPack.lines.length,
         dropoutRate: estimateDropoutRate(bidPack, list.length),
         seniorityNumber: input.seniorityNumber,

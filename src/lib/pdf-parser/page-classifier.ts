@@ -39,10 +39,18 @@ export function classifyPage(pageNumber: number, headerRows: string[]): PageClas
     return { pageNumber, kind: "seniority-list", reason: "matched 'Bid Seniority List' header" };
   }
 
-  const personalDataPatterns: { pattern: RegExp; label: string }[] = [
-    { pattern: /Vacation\s+Schedule\s+by\s+Week/i, label: "Vacation Schedule by Week" },
-    { pattern: /Training\s+List/i, label: "Training List" },
-  ];
+  // Like the seniority list: only numeric columns are read (seniority number, days, dates — see
+  // vacation-schedule-parser.ts), so a pilot can see their own vacation against the month and the strategies can
+  // work around it. Names and employee numbers are matched to find a row and never kept.
+  if (/Vacation\s+Schedule\s+by\s+Week/i.test(header)) {
+    return { pageNumber, kind: "vacation-schedule", reason: "matched 'Vacation Schedule by Week' header" };
+  }
+
+  if (/Sweep\s+Aircraft/i.test(header)) {
+    return { pageNumber, kind: "sweep-flights", reason: "matched 'Sweep Aircraft' header" };
+  }
+
+  const personalDataPatterns: { pattern: RegExp; label: string }[] = [{ pattern: /Training\s+List/i, label: "Training List" }];
   for (const { pattern, label } of personalDataPatterns) {
     if (pattern.test(header)) {
       return { pageNumber, kind: "ignored-personal-data", reason: `matched "${label}" header` };
@@ -61,6 +69,8 @@ export function summarizeClassifications(
     "reserve-line-grid": 0,
     "info-page": 0,
     "seniority-list": 0,
+    "vacation-schedule": 0,
+    "sweep-flights": 0,
     "ignored-personal-data": 0,
     "ignored-other": 0,
   };

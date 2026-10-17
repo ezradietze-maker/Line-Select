@@ -15,16 +15,28 @@ export interface SeniorityInput {
 }
 
 export type StrategyId =
-  | "ghost-line"
-  | "mega-trip"
-  | "recurring-turn"
-  | "safety-net"
-  | "re-bid-chain"
-  | "reserve-ladder"
-  | "vacation-vault"
-  | "reserve-avoidance"
-  | "trip-trading"
-  | "grievance-slide";
+  | "true-number"
+  | "leftovers"
+  | "secondary-play"
+  | "reserve-pays-more"
+  | "vacation-overlap"
+  | "carry-over"
+  | "sweep-flights"
+  | "after-award";
+
+/**
+ * How much a move applies to this pilot this month, from where their seniority actually lands: "now" is a move to make
+ * on this bid, "maybe" one that applies in some months or at the edge of their band, "later" one worth knowing for when
+ * their number moves.
+ */
+export type StrategyFit = "now" | "maybe" | "later";
+
+/** A number from the pilot's own pack that the move stands on. */
+export interface StrategyFact {
+  label: string;
+  value: string;
+  tone?: "good" | "warn";
+}
 
 /**
  * "grounded" = computed straight from this pilot's own parsed bid pack data,
@@ -79,6 +91,15 @@ export interface Strategy {
   benefits: string[];
   /** Empty for a process/timing strategy that isn't tied to specific lines. */
   lines: StrategyLineRecommendation[];
+  fit: StrategyFit;
+  /** Why it fits (or doesn't) this pilot this month, in a sentence. */
+  fitReason: string;
+  /** The move itself, step by step, in this pilot's numbers. */
+  steps: string[];
+  /** The pack's own numbers behind it. */
+  facts: StrategyFact[];
+  /** What can go wrong, and where it may run into FedEx's rules or the contract. */
+  risk: string;
   /** True for strategies (like the re-bid chain) that are general bidding-process advice rather than a read of this specific pack's lines. */
   isProcessTip?: boolean;
   /** Absent means "grounded" (the original seven strategies) — see `StrategyVerification`'s own doc comment. */

@@ -34,6 +34,7 @@ describe("parseInfoPage", () => {
       totalRegularLines: 98,
       totalReserveLines: 35,
       totalSecondaryLines: 54,
+      reserveReportStatus: "R-3.0",
     });
     expect(result?.FO).toEqual({
       rlgHours: 76.25,
@@ -44,7 +45,17 @@ describe("parseInfoPage", () => {
       totalRegularLines: 118,
       totalReserveLines: 26,
       totalSecondaryLines: 43,
+      reserveReportStatus: "R-3.0",
     });
+  });
+
+  it("adds a second group of lines printed in its own number range to the total", () => {
+    const rows = REAL_ROWS.map((r) =>
+      r === "Total # Regular Lines: CAP 98" ? "Total # Regular Lines: CAP 316 27 (1001 - 1027)" : r === "F/O 118" ? "F/O 301 23 (2001 - 2023)" : r
+    );
+    const result = parseInfoPage(rows, 3, []);
+    expect(result?.CAP?.totalRegularLines).toBe(343);
+    expect(result?.FO?.totalRegularLines).toBe(324);
   });
 
   it("returns null and records a warning when none of the key fields match the expected layout", () => {

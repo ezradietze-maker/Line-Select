@@ -56,11 +56,11 @@ export async function POST(request: Request) {
   if (!isStringArray(lineIds, MAX_LINES) || !isStringArray(lineNumbers, MAX_LINES) || lineIds.length !== lineNumbers.length) return NextResponse.json({ error: "Malformed lines." }, { status: 400 });
   const L = lineIds.length;
   if (!Array.isArray(features) || features.length !== L * FEATURE_COUNT || !features.every((x) => isFiniteNumber(x) && Math.abs(x) < 50)) return NextResponse.json({ error: "Malformed line features." }, { status: 400 });
-  if (!Array.isArray(seniorityList) || seniorityList.length === 0 || seniorityList.length > MAX_PILOTS || !seniorityList.every((e) => Array.isArray(e) && e.length === 2 && Number.isInteger(e[0]) && Number.isInteger(e[1]))) return NextResponse.json({ error: "Malformed seniority list." }, { status: 400 });
+  if (!Array.isArray(seniorityList) || seniorityList.length === 0 || seniorityList.length > MAX_PILOTS || !seniorityList.every((e) => Array.isArray(e) && (e.length === 2 || (e.length === 3 && (e[2] === 0 || e[2] === 1))) && Number.isInteger(e[0]) && Number.isInteger(e[1]))) return NextResponse.json({ error: "Malformed seniority list." }, { status: 400 });
   if (!Number.isInteger(seniorityNumber) || (seniorityNumber as number) < 1 || (seniorityNumber as number) > 999999) return NextResponse.json({ error: "Enter a valid seniority number." }, { status: 400 });
   if (!Array.isArray(ranking) || ranking.length === 0 || ranking.length > L || !ranking.every((i) => Number.isInteger(i) && i >= 0 && i < L)) return NextResponse.json({ error: "Malformed ranking." }, { status: 400 });
 
-  const list = (seniorityList as number[][]).map(([bidNumber, seniority]) => ({ bidNumber, seniority }));
+  const list = (seniorityList as number[][]).map(([bidNumber, seniority, pay]) => ({ bidNumber, seniority, ...(pay === 1 ? { pay: true } : {}) }));
   const lineFeatures: LineFeatures = { lineIds, lineNumbers, values: Float64Array.from(features as number[]), lineCount: L };
   const seniority = seniorityNumber as number;
 

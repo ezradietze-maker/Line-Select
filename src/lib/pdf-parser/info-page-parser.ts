@@ -20,10 +20,13 @@ function findPairedValues(rows: string[], labelPattern: RegExp): [string, string
 function findSeatCounts(rows: string[], labelPattern: RegExp): [number, number] | null {
   const idx = rows.findIndex((r) => labelPattern.test(r));
   if (idx === -1) return null;
-  const cap = rows[idx].match(/CAP\s+(\d+)/i);
-  const fo = rows[idx + 1]?.match(/F\s*\/?\s*O\s+(\d+)/i);
-  if (!cap || !fo) return null;
-  return [Number(cap[1]), Number(fo[1])];
+  // A second group some packs print beside the first, numbered in its own range ("CAP 316 27 (1001 - 1027)"), is
+  // more lines of the same kind and counts toward the total.
+  const count = (m: RegExpMatchArray | null | undefined) => (m ? Number(m[1]) + (m[2] && m[3] ? Number(m[2]) : 0) : null);
+  const cap = count(rows[idx].match(/CAP\s+(\d+)(?:\s+(\d+)\s*(\(\s*\d+\s*-\s*\d+\s*\)))?/i));
+  const fo = count(rows[idx + 1]?.match(/F\s*\/?\s*O\s+(\d+)(?:\s+(\d+)\s*(\(\s*\d+\s*-\s*\d+\s*\)))?/i));
+  if (cap === null || fo === null) return null;
+  return [cap, fo];
 }
 
 /**
@@ -46,6 +49,7 @@ export function parseInfoPage(
   const regularLines = findSeatCounts(rows, /Total\s*#\s*Regular Lines:/i);
   const reserveLines = findSeatCounts(rows, /Total\s*#\s*Reserve Lines:/i);
   const secondaryLines = findSeatCounts(rows, /Total\s*#\s*Secondary Lines:/i);
+  const reportStatus = rows.join(" ").match(/Reserve\s+Report\s+Status:\s*(R-?[\d.]+)/i)?.[1] ?? null;
 
   if (!rlg && !rDay && !low && !high) {
     warnings.push({
@@ -62,6 +66,7 @@ export function parseInfoPage(
     highLineCreditHours: high ? timeToHours(high[seatIndex]) : null,
     averageDaysOff: avgDaysOff ? Number(avgDaysOff[seatIndex]) : null,
     totalRegularLines: regularLines ? regularLines[seatIndex] : null,
+    reserveReportStatus: reportStatus,
     totalReserveLines: reserveLines ? reserveLines[seatIndex] : null,
     totalSecondaryLines: secondaryLines ? secondaryLines[seatIndex] : null,
   });

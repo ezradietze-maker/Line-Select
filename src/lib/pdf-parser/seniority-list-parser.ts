@@ -32,12 +32,19 @@ export function extractSeniorityListSeat(headerRows: string[]): Seat | null {
   return null;
 }
 
+/** The status column's PAY: paid this month without bidding a line. Whole word, so a name like "Payne" never matches. */
+const PAY_RE = /(?:^|[\s(])PAY\b/;
+
 export function parseSeniorityListRows(rows: string[]): SeniorityEntry[] {
   const entries: SeniorityEntry[] = [];
   for (const row of rows) {
-    for (const m of row.matchAll(ENTRY_RE)) {
-      entries.push({ bidNumber: Number(m[1]), seniority: Number(m[2]) });
-    }
+    const matches = [...row.matchAll(ENTRY_RE)];
+    matches.forEach((m, i) => {
+      // The pilot's own columns run from this entry to the next one on the row. Only whether they hold the PAY status
+      // is kept — the name in between is read past, never stored.
+      const own = row.slice((m.index ?? 0) + m[0].length, matches[i + 1]?.index ?? row.length);
+      entries.push({ bidNumber: Number(m[1]), seniority: Number(m[2]), ...(PAY_RE.test(own) ? { pay: true } : {}) });
+    });
   }
   return entries;
 }
@@ -56,6 +63,7 @@ export function validateSeniorityList(
 ): SeniorityEntry[] | null {
   if (entries.length === 0) return null;
   const byBid = new Map<number, number>();
+  const payBids = new Set(entries.filter((e) => e.pay).map((e) => e.bidNumber));
   for (const e of entries) {
     if (byBid.has(e.bidNumber) && byBid.get(e.bidNumber) !== e.seniority) {
       warnings.push({ pageNumber: 0, message: `The ${seat} seniority list repeats a bid position with different numbers, so it was ignored.` });
@@ -74,5 +82,5 @@ export function validateSeniorityList(
     });
     return null;
   }
-  return sorted.map(([bidNumber, seniority]) => ({ bidNumber, seniority }));
+  return sorted.map(([bidNumber, seniority]) => ({ bidNumber, seniority, ...(payBids.has(bidNumber) ? { pay: true } : {}) }));
 }

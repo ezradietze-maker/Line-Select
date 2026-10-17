@@ -1,366 +1,124 @@
 import { describe, expect, it } from "vitest";
+import { attachScoreContext, computeStanding, generateStrategies } from "@/lib/strategy-engine";
+import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { buildProfile, emptyWeights } from "@/lib/preference-logic";
 import { rankLines } from "@/lib/scoring";
-import {
-  attachScoreContext,
-  buildAutoBid,
-  estimateFeasibility,
-  generateStrategies,
-  rankStrategiesByPreference,
-} from "@/lib/strategy-engine";
-import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
-import type { AwardHistorySummary } from "@/lib/award-history";
-import type { SeniorityInput, Strategy } from "@/types/strategy";
+import type { BidPack, SeniorityEntry } from "@/types/bidpack";
 
-function awardSummary(overrides: Partial<AwardHistorySummary>): AwardHistorySummary {
-  return { totalReports: 10, nearbyCount: 10, avgDaysOff: 18, avgCreditHours: 80, lineRate: 0.5, ...overrides };
+/**
+ * A pack shaped like the real ones: 30 pilots on the list, 10 of them marked PAY, and the 20 who bid matching the pack's
+ * regular + secondary + reserve lines exactly — the relationship every real pack read so far holds to.
+ */
+const REGULAR = SAMPLE_BID_PACK.lines.length;
+const SECONDARY = 4;
+const RESERVE = 20 - REGULAR - SECONDARY;
+const PAY_BIDS = new Set([2, 3, 5, 8, 11, 13, 17, 21, 25, 29]);
+
+function pack(extra: Partial<BidPack> = {}, vacationFor?: number): BidPack {
+  const list: SeniorityEntry[] = Array.from({ length: 30 }, (_, i) => ({
+    bidNumber: i + 1,
+    seniority: (i + 1) * 10,
+    ...(PAY_BIDS.has(i + 1) ? { pay: true } : {}),
+    ...(vacationFor === i + 1 ? { vacations: [{ from: "2026-09-30T06:30:00Z", to: "2026-10-07T06:29:00Z", days: 7 }] } : {}),
+  }));
+  const lowest = Math.min(...SAMPLE_BID_PACK.lines.map((l) => l.totalCreditHours));
+  return {
+    ...SAMPLE_BID_PACK,
+    bidPeriodStart: SAMPLE_BID_PACK.bidPeriodStart ?? "2026-09-28",
+    seniorityList: list,
+    info: {
+      rlgHours: lowest + 1,
+      rDayValueHours: 4.5,
+      lowLineCreditHours: lowest,
+      highLineCreditHours: lowest + 10,
+      averageDaysOff: 15,
+      totalRegularLines: REGULAR,
+      totalSecondaryLines: SECONDARY,
+      totalReserveLines: RESERVE,
+      reserveReportStatus: "R-1.5",
+      openTimeRelease: "19:15",
+    },
+    ...extra,
+  };
 }
 
-const SENIOR: SeniorityInput = { rank: 1, totalPilots: 200 };
-const JUNIOR: SeniorityInput = { rank: 199, totalPilots: 200 };
+const at = (bid: number) => ({ rank: bid, totalPilots: 30 });
+
+describe("computeStanding", () => {
+  it("counts only the pilots above who aren't marked PAY", () => {
+    const st = computeStanding(pack(), at(12));
+    expect(st.payAhead).toBe(5); // 2, 3, 5, 8, 11
+    expect(st.effective).toBe(7);
+    expect(st.bidders).toBe(20);
+  });
+
+  it("places the real number against the pack's regular, secondary and reserve lines", () => {
+    const p = pack();
+    // Bid #s whose effective place lands just past each cutoff.
+    const bidAt = (effective: number) => p.seniorityList!.filter((e) => !e.pay)[effective - 1].bidNumber;
+    expect(computeStanding(p, at(bidAt(REGULAR))).band).toBe("regular");
+    expect(computeStanding(p, at(bidAt(REGULAR + 1))).band).toBe("secondary");
+    expect(computeStanding(p, at(bidAt(REGULAR + SECONDARY + 1))).band).toBe("reserve");
+    expect(computeStanding(p, at(bidAt(REGULAR + 1))).marginToRegular).toBe(-1);
+  });
+
+  it("finds the pilot's own vacation in the bid month", () => {
+    const st = computeStanding(pack({}, 12), at(12));
+    expect(st.vacationDays).toBeGreaterThan(0);
+  });
+
+  it("falls back to the printed number when the list has no PAY flags", () => {
+    const p = pack({ seniorityList: pack().seniorityList!.map(({ bidNumber, seniority }) => ({ bidNumber, seniority })) });
+    const st = computeStanding(p, at(12));
+    expect(st.effective).toBeNull();
+    expect(st.payAhead).toBeNull();
+  });
+});
 
 describe("generateStrategies", () => {
-  it("returns every strategy without throwing, each with real (non-empty) explanatory text", () => {
-    // SAMPLE_BID_PACK carries its own (fictional) reserveLines/info, so
-    // Reserve Ladder is expected here too — the sample walkthrough should
-    // show the same seven strategies a real bid pack with reserve data does.
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    expect(strategies.map((s) => s.id)).toContain("reserve-ladder");
-    expect(strategies).toHaveLength(10);
-    for (const s of strategies) {
-      expect(s.name.length).toBeGreaterThan(0);
-      expect(s.mechanism.length).toBeGreaterThan(0);
-      expect(s.benefits.length).toBeGreaterThan(0);
+  it("puts the moves that apply this month first, starting with the pilot's real number", () => {
+    const moves = generateStrategies(pack(), at(12));
+    expect(moves[0].id).toBe("true-number");
+    const order = { now: 0, maybe: 1, later: 2 };
+    for (let i = 1; i < moves.length; i++) expect(order[moves[i].fit]).toBeGreaterThanOrEqual(order[moves[i - 1].fit]);
+    for (const m of moves) {
+      expect(m.steps.length).toBeGreaterThan(0);
+      expect(m.risk.length).toBeGreaterThan(0);
     }
   });
 
-  it("honestly omits the Reserve Ladder when a bid pack has no reserve line data at all", () => {
-    const withoutReserveData = { ...SAMPLE_BID_PACK, reserveLines: undefined, info: undefined };
-    const strategies = generateStrategies(withoutReserveData, SENIOR);
-    expect(strategies.map((s) => s.id)).not.toContain("reserve-ladder");
+  it("makes the secondary-line move the one for a pilot past the regular cutoff", () => {
+    const p = pack();
+    const bid = p.seniorityList!.filter((e) => !e.pay)[REGULAR].bidNumber;
+    const secondary = generateStrategies(p, at(bid)).find((m) => m.id === "secondary-play")!;
+    expect(secondary.fit).toBe("now");
   });
 
-  it("always finds a Safety Net candidate, since every real bid pack has *some* line to fall back on", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const safetyNet = strategies.find((s) => s.id === "safety-net");
-    expect(safetyNet?.lines.length).toBeGreaterThan(0);
+  it("lists the regular lines that pay less than the reserve guarantee", () => {
+    const reserve = generateStrategies(pack(), at(12)).find((m) => m.id === "reserve-pays-more")!;
+    const rlg = pack().info!.rlgHours!;
+    expect(reserve.lines.length).toBeGreaterThan(0);
+    for (const l of reserve.lines) expect(l.totalCreditHours).toBeLessThan(rlg);
   });
 
-  it("makes the Safety Net lines a pilot's seniority can actually hold, not the pack's most contested ones", () => {
-    const middle: SeniorityInput = { rank: 100, totalPilots: 200 };
-    const safetyNet = generateStrategies(SAMPLE_BID_PACK, middle).find((s) => s.id === "safety-net")!;
-    expect(safetyNet.lines.length).toBeGreaterThan(0);
-    expect(safetyNet.lines.every((l) => l.feasibility !== "longshot")).toBe(true);
+  it("applies the vacation move only to a pilot the pack shows on vacation", () => {
+    expect(generateStrategies(pack({}, 12), at(12)).find((m) => m.id === "vacation-overlap")!.fit).toBe("now");
+    expect(generateStrategies(pack(), at(12)).find((m) => m.id === "vacation-overlap")!.fit).toBe("later");
   });
 
-  it("never claims a Ghost Line pattern unless real flying is genuinely under half the paid day-rig rate", () => {
-    // The sample pack's trips were hand-built for circadian-science testing,
-    // not day-rig testing, so none of them are honestly "mostly standby" —
-    // this line stays empty rather than crowning whichever of the six is
-    // merely the least-bad option (the bug this test guards against).
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const ghost = strategies.find((s) => s.id === "ghost-line")!;
-    for (const rec of ghost.lines) {
-      const line = SAMPLE_BID_PACK.lines.find((l) => l.lineNumber === rec.lineNumber)!;
-      const dayRigHoursPerDay = line.totalCreditHours / (line.totalTafbHours / 24);
-      // headline reads "<credit> credit hours from just <block> hours of real flying"
-      const block = Number(rec.headline.match(/just ([\d.]+) hours/)?.[1]);
-      expect(block).toBeLessThanOrEqual(dayRigHoursPerDay * 0.5 * (line.totalTafbHours / 24));
-    }
-  });
-
-  it("never recommends a line number that doesn't exist in the bid pack", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const realLineNumbers = new Set(SAMPLE_BID_PACK.lines.map((l) => l.lineNumber));
-    for (const s of strategies) {
-      for (const rec of s.lines) {
-        expect(realLineNumbers.has(rec.lineNumber)).toBe(true);
-      }
-    }
-  });
-
-  it("gives the most senior pilot at least as good a feasibility tier as the most junior on the same top pick", () => {
-    const seniorStrategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const juniorStrategies = generateStrategies(SAMPLE_BID_PACK, JUNIOR);
-    const tierRank = { strong: 2, possible: 1, longshot: 0 };
-
-    for (const seniorStrategy of seniorStrategies) {
-      const juniorStrategy = juniorStrategies.find((s) => s.id === seniorStrategy.id)!;
-      for (let i = 0; i < seniorStrategy.lines.length; i++) {
-        const seniorTier = tierRank[seniorStrategy.lines[i].feasibility];
-        const juniorTier = tierRank[juniorStrategy.lines[i].feasibility];
-        expect(seniorTier).toBeGreaterThanOrEqual(juniorTier);
-      }
-    }
-  });
-
-  it("the process-tip strategy carries no fabricated line recommendations", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const reBid = strategies.find((s) => s.id === "re-bid-chain");
-    expect(reBid?.isProcessTip).toBe(true);
-    expect(reBid?.lines).toHaveLength(0);
-  });
-
-  it("always includes the Vacation Vault as a generic, line-free tip that never claims to read anyone's actual vacation slot", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const vault = strategies.find((s) => s.id === "vacation-vault");
-    expect(vault?.isProcessTip).toBe(true);
-    expect(vault?.lines).toHaveLength(0);
-  });
-
-  it("includes the Reserve Ladder with an accurate type breakdown once the bid pack's own Reserve Lines grid is present", () => {
-    const bidPackWithReserve = {
-      ...SAMPLE_BID_PACK,
-      reserveLines: [
-        { lineNumber: "7001", reserveType: "24hr" as const },
-        { lineNumber: "7002", reserveType: "24hr" as const },
-        { lineNumber: "7006", reserveType: "a" as const },
-        { lineNumber: "7022", reserveType: "b" as const },
-        { lineNumber: "7099", reserveType: null },
-      ],
-      info: {
-        rlgHours: 75.75,
-        rDayValueHours: 5.05,
-        lowLineCreditHours: 70.68,
-        highLineCreditHours: 83.35,
-        averageDaysOff: 14.2,
-        totalRegularLines: 98,
-        totalReserveLines: 5,
-        totalSecondaryLines: 54,
-      },
-    };
-    const strategies = generateStrategies(bidPackWithReserve, SENIOR);
-    const ladder = strategies.find((s) => s.id === "reserve-ladder");
-    expect(ladder).toBeDefined();
-    expect(ladder!.mechanism).toContain("2 run 24-Hour (R) reserve");
-    expect(ladder!.mechanism).toContain("1 run RA");
-    expect(ladder!.mechanism).toContain("1 run RB");
-    expect(ladder!.mechanism).toContain("1 whose type wasn’t clear");
-    expect(ladder!.mechanism).toContain("75.8 hours");
-    // RLG (75.75) genuinely beats Low Line Credit (70.68) here, so the floor insight should surface.
-    expect(ladder!.benefits.some((b) => b.includes("isn’t automatically the losing seat"))).toBe(true);
-  });
-
-  it("omits the Reserve Ladder's floor-guarantee claim when RLG doesn't actually beat Low Line Credit", () => {
-    const bidPackWithReserve = {
-      ...SAMPLE_BID_PACK,
-      reserveLines: [{ lineNumber: "7001", reserveType: "24hr" as const }],
-      info: {
-        rlgHours: 60,
-        rDayValueHours: 5,
-        lowLineCreditHours: 70,
-        highLineCreditHours: 83,
-        averageDaysOff: 14,
-        totalRegularLines: 98,
-        totalReserveLines: 1,
-        totalSecondaryLines: 54,
-      },
-    };
-    const strategies = generateStrategies(bidPackWithReserve, SENIOR);
-    const ladder = strategies.find((s) => s.id === "reserve-ladder");
-    expect(ladder!.benefits.some((b) => b.includes("isn’t automatically the losing seat"))).toBe(false);
-  });
-});
-
-describe("estimateFeasibility", () => {
-  it("calls it strong when seniority percentile meets or beats the line's desirability percentile", () => {
-    expect(estimateFeasibility(0.9, 0.95).tier).toBe("strong");
-    expect(estimateFeasibility(0.5, 0.5).tier).toBe("strong");
-  });
-
-  it("calls it a longshot when seniority falls well short of how rare the pattern is", () => {
-    expect(estimateFeasibility(0.95, 0.2).tier).toBe("longshot");
-  });
-
-  it("tags the heuristic result as such when no award-history data is supplied", () => {
-    expect(estimateFeasibility(0.9, 0.95).source).toBe("heuristic");
-    expect(estimateFeasibility(0.9, 0.95, null).source).toBe("heuristic");
-  });
-
-  it("ignores an award summary with too few nearby reports and falls back to the heuristic", () => {
-    const result = estimateFeasibility(0.95, 0.2, awardSummary({ nearbyCount: 2, lineRate: 0.9 }));
-    expect(result.source).toBe("heuristic");
-    expect(result.tier).toBe("longshot");
-  });
-
-  it("ignores an award summary with a null lineRate (not enough nearby reports) even with a high nearbyCount", () => {
-    const result = estimateFeasibility(0.95, 0.2, awardSummary({ nearbyCount: 10, lineRate: null }));
-    expect(result.source).toBe("heuristic");
-  });
-
-  it("grounds the tier in real data once there's enough of it, overriding what the heuristic alone would say", () => {
-    // Heuristic alone would call this a longshot (seniority far below desirability) —
-    // real reports showing most nearby pilots held a line should override that.
-    const result = estimateFeasibility(0.95, 0.2, awardSummary({ nearbyCount: 5, lineRate: 0.8 }));
-    expect(result.source).toBe("award-history");
-    expect(result.tier).toBe("strong");
-    expect(result.note).toContain("80%");
-  });
-
-  it("grounds a mixed real track record as possible, not strong", () => {
-    const result = estimateFeasibility(0.9, 0.95, awardSummary({ nearbyCount: 5, lineRate: 0.5 }));
-    expect(result.source).toBe("award-history");
-    expect(result.tier).toBe("possible");
-  });
-
-  it("grounds a poor real track record as a longshot even if the heuristic alone would call it strong", () => {
-    const result = estimateFeasibility(0.9, 0.95, awardSummary({ nearbyCount: 5, lineRate: 0.1 }));
-    expect(result.source).toBe("award-history");
-    expect(result.tier).toBe("longshot");
-  });
-});
-
-describe("rankStrategiesByPreference", () => {
-  it("leaves the order untouched when there's no profile to rank against", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const ranked = rankStrategiesByPreference(strategies, null);
-    expect(ranked.map((s) => s.id)).toEqual(strategies.map((s) => s.id));
-  });
-
-  it("puts the Ghost Line first for a pilot who weighted credit and deadhead tolerance heavily, and names those reasons", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const weights = { ...emptyWeights(), creditHours: 90, deadheadTolerance: 90 };
-    const ranked = rankStrategiesByPreference(strategies, weights);
-    const lineStrategies = ranked.filter((s) => !s.isProcessTip);
-    expect(lineStrategies[0].id).toBe("ghost-line");
-    expect(lineStrategies[0].preferenceMatch?.length).toBeGreaterThan(0);
-  });
-
-  it("puts the Metronome ahead of the One-And-Done for a pilot who leans hard toward short trips", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const weights = { ...emptyWeights(), tripLength: -90 };
-    const ranked = rankStrategiesByPreference(strategies, weights);
-    const recurringIndex = ranked.findIndex((s) => s.id === "recurring-turn");
-    const megaIndex = ranked.findIndex((s) => s.id === "mega-trip");
-    expect(recurringIndex).toBeLessThan(megaIndex);
-  });
-
-  it("always sorts Reserve Ladder to the end and never gives it a preferenceMatch — whether it applies depends on circumstance, not a stated preference", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const weights = { ...emptyWeights(), creditHours: 90 };
-    const ranked = rankStrategiesByPreference(strategies, weights);
-    expect(ranked[ranked.length - 1].id).toBe("reserve-ladder");
-    expect(ranked.find((s) => s.id === "reserve-ladder")?.preferenceMatch).toBeUndefined();
-  });
-
-  it("now preference-ranks the process-tip strategies that reflect adminEffortAppetite/riskTolerance, unlike before those traits existed", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const weights = { ...emptyWeights(), adminEffortAppetite: 80 };
-    const ranked = rankStrategiesByPreference(strategies, weights);
-    const reBidChain = ranked.find((s) => s.id === "re-bid-chain");
-    expect(reBidChain?.preferenceMatch).toEqual(
-      expect.arrayContaining([expect.stringContaining("effort")])
-    );
-    // Still sorts ahead of Reserve Ladder, which has no trait mapping at all.
-    expect(ranked.findIndex((s) => s.id === "re-bid-chain")).toBeLessThan(
-      ranked.findIndex((s) => s.id === "reserve-ladder")
-    );
-  });
-
-  it("ranks the Vacation Vault ahead of strategies unrelated to days off for a pilot who weighted daysOff heavily", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const weights = { ...emptyWeights(), daysOff: 90 };
-    const ranked = rankStrategiesByPreference(strategies, weights);
-    const vaultIndex = ranked.findIndex((s) => s.id === "vacation-vault");
-    const ghostIndex = ranked.findIndex((s) => s.id === "ghost-line");
-    expect(vaultIndex).toBeLessThan(ghostIndex);
-  });
-
-  it("leaves a strategy with no meaningfully-weighted factors ranked but without invented reasons", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const ranked = rankStrategiesByPreference(strategies, emptyWeights());
-    for (const s of ranked.filter((s) => !s.isProcessTip)) {
-      expect(s.preferenceMatch).toEqual([]);
-    }
-  });
-});
-
-describe("buildAutoBid", () => {
-  it("produces a sequentially ranked list with no duplicate line numbers", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const autoBid = buildAutoBid(strategies);
-    expect(autoBid.length).toBeGreaterThan(0);
-    const lineNumbers = autoBid.map((e) => e.lineNumber);
-    expect(new Set(lineNumbers).size).toBe(lineNumbers.length);
-    autoBid.forEach((entry, i) => expect(entry.rank).toBe(i + 1));
+  it("leaves out the sweep move when no line flies a sweep aircraft", () => {
+    const moves = generateStrategies(pack({ sweepFlights: [{ flightNumber: "9999", from: "ZZZ" }] }), at(12));
+    expect(moves.some((m) => m.id === "sweep-flights")).toBe(false);
   });
 });
 
 describe("attachScoreContext", () => {
-  function findRecommendation(strategies: Strategy[], lineNumber: string) {
-    for (const s of strategies) {
-      const rec = s.lines.find((l) => l.lineNumber === lineNumber);
-      if (rec) return rec;
-    }
-    return undefined;
-  }
-
-  it("leaves every recommendation's scoreContext null when no line scores are supplied", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const result = attachScoreContext(strategies, null);
-    for (const s of result) {
-      for (const rec of s.lines) {
-        expect(rec.scoreContext).toBeNull();
-      }
-    }
-  });
-
-  it("attaches a real score and a zero delta to the pack's own top-scoring line when it's also a strategy pick", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const ranked = rankLines(SAMPLE_BID_PACK, buildProfile(emptyWeights(), false, []));
-    const topLine = ranked[0];
-
-    // Force the top-scoring line into a recommendation list so this test doesn't depend on which archetype it happens to qualify for.
-    const withForcedPick = strategies.map((s, i) =>
-      i === 0 ? { ...s, lines: [{ ...s.lines[0], lineNumber: topLine.line.lineNumber }] } : s
-    );
-    const result = attachScoreContext(withForcedPick, ranked);
-    const rec = findRecommendation(result, topLine.line.lineNumber);
-    expect(rec?.scoreContext).toEqual({ score: topLine.score, deltaFromTopPick: 0 });
-  });
-
-  it("computes a negative delta for a line scoring below the current top pick", () => {
-    const strategies = generateStrategies(SAMPLE_BID_PACK, SENIOR);
-    const ranked = rankLines(SAMPLE_BID_PACK, buildProfile(emptyWeights(), false, []));
-    const notTop = ranked[ranked.length - 1];
-
-    const withForcedPick = strategies.map((s, i) =>
-      i === 0 ? { ...s, lines: [{ ...s.lines[0], lineNumber: notTop.line.lineNumber }] } : s
-    );
-    const result = attachScoreContext(withForcedPick, ranked);
-    const rec = findRecommendation(result, notTop.line.lineNumber);
-    expect(rec?.scoreContext?.score).toBe(notTop.score);
-    if (notTop.score < ranked[0].score) {
-      expect(rec?.scoreContext?.deltaFromTopPick).toBeLessThan(0);
-    }
-  });
-
-  it("leaves scoreContext null for a recommended line that isn't in the supplied line scores at all", () => {
-    const strategies: Strategy[] = [
-      {
-        id: "ghost-line",
-        name: "Test",
-        tagline: "",
-        mechanism: "",
-        benefits: [],
-        lines: [
-          {
-            lineNumber: "not-a-real-line",
-            headline: "",
-            detail: "",
-            daysOff: 0,
-            totalCreditHours: 0,
-            totalTafbHours: 0,
-            feasibility: "possible",
-            feasibilityNote: "",
-            feasibilitySource: "heuristic",
-            scoreContext: null,
-          },
-        ],
-      },
-    ];
-    const ranked = rankLines(SAMPLE_BID_PACK, buildProfile(emptyWeights(), false, []));
-    const result = attachScoreContext(strategies, ranked);
-    expect(result[0].lines[0].scoreContext).toBeNull();
+  it("ties a move's lines to the pilot's own scores, against their top pick", () => {
+    const p = pack();
+    const profile = buildProfile(emptyWeights(), false, []);
+    const ranked = rankLines(p, profile);
+    const moves = attachScoreContext(generateStrategies(p, at(12)), ranked);
+    const withLines = moves.find((m) => m.lines.length > 0)!;
+    expect(withLines.lines[0].scoreContext).not.toBeNull();
   });
 });

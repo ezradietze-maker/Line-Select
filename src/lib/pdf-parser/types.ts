@@ -7,7 +7,9 @@ export type PageKind =
   | "reserve-line-grid"
   | "info-page"
   | "seniority-list" // Bid Seniority List — only the bid-order and seniority numbers are read, never a name or employee number
-  | "ignored-personal-data" // vacation / training rosters — never parsed
+  | "vacation-schedule" // Vacation Schedule by Week — only seniority number, days and dates are read, never a name or employee number
+  | "sweep-flights" // Sweep Aircraft — flight numbers and departure cities
+  | "ignored-personal-data" // training rosters — never parsed
   | "ignored-other"; // cover, TOC, sweep flights, etc.
 
 export interface PageClassification {

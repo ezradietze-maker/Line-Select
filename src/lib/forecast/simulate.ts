@@ -33,6 +33,8 @@ export interface ForecastParams {
   dropoutRate?: number;
   /** Starting beliefs learned from past months at this seat, when there are any. */
   learnedPrior?: LearnedPrior | null;
+  /** Bid numbers the list marks PAY — paid this month without bidding a line, so they take nothing. */
+  notBidding?: ReadonlySet<number>;
 }
 
 export interface ForecastCore {
@@ -63,6 +65,7 @@ export function simulateBid(params: ForecastParams): ForecastCore {
   const K = FEATURE_COUNT;
   const F = features.values;
   const pilotsAhead = Math.max(0, Math.min(myBidNumber - 1, totalPilots));
+  const notBidding = params.notBidding;
 
   const knownByBid = new Map<number, number[]>();
   for (const k of params.known) if (k.bidNumber < myBidNumber) knownByBid.set(k.bidNumber, k.ranking);
@@ -109,6 +112,7 @@ export function simulateBid(params: ForecastParams): ForecastCore {
     };
 
     for (let bid = 1; bid <= pilotsAhead && openCount > 0; bid++) {
+      if (notBidding?.has(bid)) continue;
       const known = knownByBid.get(bid);
       if (known) {
         for (const line of known) {
@@ -184,7 +188,8 @@ export function simulateBid(params: ForecastParams): ForecastCore {
     pNoLine: noLine / S,
     awardedRank: gotOne > 0 ? { p10: percentile(0.1), p50: percentile(0.5), p90: percentile(0.9) } : null,
     pTop,
-    pilotsAhead,
+    // Only pilots who actually bid a line this month count as ahead.
+    pilotsAhead: notBidding ? pilotsAhead - [...notBidding].filter((b) => b <= pilotsAhead).length : pilotsAhead,
     knownAhead: knownByBid.size,
     simulations: S,
   };

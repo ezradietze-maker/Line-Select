@@ -24,6 +24,16 @@ describe("seniority list parsing", () => {
     ]);
   });
 
+  it("keeps whether each pilot's status reads PAY, and nothing else of that column", () => {
+    const entries = parseSeniorityListRows(["1 3 66911 DOE, JANE PAY 38 107 218662 PAYNE, RICHARD Q", "2 11 96885 SMITH, ALEX (PAY No 39 113 219507 JONES, PAT"]);
+    expect(entries).toEqual([
+      { bidNumber: 1, seniority: 3, pay: true },
+      { bidNumber: 38, seniority: 107 },
+      { bidNumber: 2, seniority: 11, pay: true },
+      { bidNumber: 39, seniority: 113 },
+    ]);
+  });
+
   it("never carries a name or an employee number through", () => {
     const entries = parseSeniorityListRows(["1 3 66911 DOE, JANE 38 107 218662 ROE, RICHARD"]);
     const serialized = JSON.stringify(entries);

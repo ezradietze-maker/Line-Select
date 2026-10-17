@@ -86,6 +86,16 @@ describe("forecastBid", () => {
     expect(typical(3 * 25)).toBeLessThan(typical(3 * 50));
   });
 
+  it("skips the pilots the list marks PAY: they take no line, so fewer pilots are really ahead", () => {
+    const plain = syntheticPack(30, 60);
+    const withPay: BidPack = { ...plain, seniorityList: plain.seniorityList!.map((e) => (e.bidNumber <= 20 ? { ...e, pay: true } : e)) };
+    const seniority = 3 * 25; // bid #25
+    const a = forecastBid({ bidPack: plain, seniorityNumber: seniority, myRanking: idsBestFirst(plain), simulations: 200 })!;
+    const b = forecastBid({ bidPack: withPay, seniorityNumber: seniority, myRanking: idsBestFirst(withPay), simulations: 200 })!;
+    expect(b.pilotsAhead).toBe(4);
+    expect(b.lines["line-1029"].pAvailable).toBeGreaterThan(a.lines["line-1029"].pAvailable);
+  });
+
   it("says no regular line when more pilots bid ahead than there are lines", () => {
     const pack = syntheticPack(20, 200);
     const f = forecastBid({ bidPack: pack, seniorityNumber: 3 * 150, myRanking: idsBestFirst(pack), simulations: 100 })!;
