@@ -86,6 +86,9 @@ export interface RealTravel {
 export interface HomeAway {
   /** Hours from leaving home to getting back, door to door (gate to gate). */
   awayHours: number;
+  /** When he leaves home and gets back, in minutes on the trip's own clock (0 = first report at base; leaving is usually negative). */
+  leaveMinute: number;
+  backMinute: number;
   /** How each end was handled — for explanations. */
   start: "base" | "deviate";
   end: "base" | "deviate";
@@ -134,5 +137,5 @@ export function homeAwayForTrip(f: TripFacts, base: string, params: HomeParams, 
     }
   }
 
-  return { awayHours: Math.max(0, back - leave) / 60, start, end };
+  return { awayHours: Math.max(0, back - leave) / 60, leaveMinute: leave, backMinute: back, start, end };
 }

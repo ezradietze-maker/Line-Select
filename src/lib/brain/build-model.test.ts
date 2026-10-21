@@ -25,6 +25,11 @@ describe("parsePilotModel", () => {
     expect(model.home).toEqual({ airports: ["SAN", "LAX"], commuter: true, frontBufferHours: 12, backupFlights: 2 });
   });
 
+  it("counts a commuter's trips and commutes in departures, whatever the reading bound them to", () => {
+    const { model } = parsePilotModel(raw([crit({ id: "trips", metric: "tripCount" }), crit({ id: "memphis", metric: "baseCommutesNeeded" })]));
+    expect(model.criteria.map((c) => [c.id, c.metric])).toEqual([["trips", "homeDepartures"], ["memphis", "departureCommutes"]]);
+  });
+
   it("drops what can't be measured instead of guessing", () => {
     const { model, dropped } = parsePilotModel(
       raw([

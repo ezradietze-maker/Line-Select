@@ -1,3 +1,5 @@
+import { modelToDepartures, withHomeFacts } from "@/lib/brain/model-upgrade";
+import type { PilotModel } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
 
 /**
@@ -38,4 +40,24 @@ export function migrateDeparturesToDutyPeriods<T extends Partial<PreferenceProfi
     ...(facts ? { discoveredFacts: facts } : {}),
     ...(transcript ? { interviewTranscript: transcript } : {}),
   };
+}
+
+/**
+ * A saved interview model moves onto departures when it's loaded (see `modelToDepartures`): the working model and the
+ * one the pilot confirmed, which every refit starts from. Nothing is lost — the priorities keep their words and weights.
+ */
+export function migrateModelsToDepartures<T extends Partial<PreferenceProfile>>(profile: T): T {
+  const bi = profile.brainInterview;
+  // The crash pad answer from the interview's commute step rides along, for the nights at base it saves.
+  const upgrade = (m: PilotModel) => withHomeFacts(modelToDepartures(m), { hasCrashPad: profile.hasCrashPad });
+  return {
+    ...profile,
+    ...(profile.pilotModel ? { pilotModel: upgrade(profile.pilotModel) } : {}),
+    ...(bi?.reviewedModel ? { brainInterview: { ...bi, reviewedModel: upgrade(bi.reviewedModel) } } : {}),
+  };
+}
+
+/** Every upgrade a saved profile needs, oldest first. */
+export function migrateProfile<T extends Partial<PreferenceProfile>>(profile: T): T {
+  return migrateModelsToDepartures(migrateDeparturesToDutyPeriods(profile));
 }

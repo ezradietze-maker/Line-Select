@@ -17,6 +17,7 @@ import { ScoreRing } from "@/components/results/ScoreRing";
 import { ChevronDownIcon, GripIcon, StarIcon } from "@/components/ui/icons";
 import { Tabs } from "@/components/ui/Tabs";
 import { cityMarks } from "@/lib/city-ratings";
+import { monthDepartureOptions } from "@/lib/month-detail";
 import { buildLineFactChips, type LineFactChip } from "@/lib/line-summary";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { topImplicitContributions } from "@/lib/rank-learning";
@@ -145,6 +146,7 @@ export const LineCard = memo(function LineCard({
 
   const chips = useMemo(() => buildLineFactChips(line, profile), [line, profile]);
   const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences), [profile.cityRatings, profile.cityPreferences]);
+  const departureOptions = useMemo(() => monthDepartureOptions(homeBase, profile, flights), [homeBase, profile, flights]);
   // On a phone a full-height grip column costs a real slice of the card's
   // width, so the (single) drag handle moves up into the header row instead.
   const wide = useMediaQuery("(min-width: 640px)");
@@ -321,6 +323,7 @@ export const LineCard = memo(function LineCard({
                 bidPeriodDays={bidPeriodDays}
                 showLegend={false}
                 cityPreferences={marks}
+                departureOptions={departureOptions}
               />
             )}
           </div>

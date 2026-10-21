@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDetailedMonth, dayRoute, toStripSegment } from "@/lib/month-detail";
+import { groupDepartures } from "@/lib/metrics/departures";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { lineStandbyDays } from "@/lib/standby";
@@ -191,6 +192,36 @@ describe("the day's route and the trip's landing", () => {
 });
 
 describe("chained trips", () => {
+  it("joins trips into exactly the departures the scores count, when the base and home are known", () => {
+    for (const homeAirports of [["SAN"], []]) {
+      const l = placed("9006", [2, 3]);
+      const options = { base: SAMPLE_BID_PACK.base, homeAirports };
+      const m = buildDetailedMonth(l, START, 28, {}, options);
+      expect(m.summary.departures).toBe(groupDepartures(l.trips, { bidPeriodStart: START, base: SAMPLE_BID_PACK.base }, options).length);
+      expect(m.days.filter((d) => d.chain).length).toBe(l.trips.length - m.summary.departures);
+    }
+  });
+
+  it("adds up a commuter's base commutes and nights, says why on the day, and leaves them out for a pilot at base", () => {
+    const l = placed("9006", [2, 3]);
+    const ctx = { bidPeriodStart: START, base: SAMPLE_BID_PACK.base };
+    const options = { base: SAMPLE_BID_PACK.base, homeAirports: ["SAN"] };
+    const deps = groupDepartures(l.trips, ctx, options);
+    const m = buildDetailedMonth(l, START, 28, {}, options);
+    expect(m.summary.base).toEqual({
+      code: SAMPLE_BID_PACK.base,
+      commutes: deps.reduce((n, d) => n + d.baseCommutes, 0),
+      nights: deps.reduce((n, d) => n + d.baseNights.reduce((a, b) => a + b.nights, 0), 0),
+      jumpseatIns: deps.reduce((n, d) => n + d.jumpseatIns, 0),
+    });
+    const noted = m.days.filter((d) => d.baseNote);
+    expect(noted.length > 0).toBe(deps.some((d) => d.baseNights.length > 0 || d.jumpseatIns > 0));
+    for (const d of noted) expect(d.title).toContain(SAMPLE_BID_PACK.base);
+    const local = buildDetailedMonth(l, START, 28, {}, { base: SAMPLE_BID_PACK.base, homeAirports: [] });
+    expect(local.summary.base).toBeNull();
+    expect(local.days.some((d) => d.baseNote)).toBe(false);
+  });
+
   it("joins a trip that reports within hours of the last one landing at the same base, and counts the run as one departure", () => {
     const m = buildDetailedMonth(placed("9006", [2, 10]), START, 28);
     // Two trips a week apart: no chain, two departures.

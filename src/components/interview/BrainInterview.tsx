@@ -21,6 +21,7 @@ import { MicButton } from "@/components/ui/MicButton";
 import { StepTransition } from "@/components/ui/StepTransition";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
+import { withHomeFacts } from "@/lib/brain/model-upgrade";
 import { requestModelBuild, requestNextStep, type StepResponse } from "@/lib/brain/client";
 import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
 import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
@@ -535,7 +536,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     try {
       if (buildRef.current) await buildRef.current.promise;
       const built = await requestModelBuild({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, prior: modelRef.current });
-      const rated = applyCityRatings(built, finalCityRatings());
+      const rated = withHomeFacts(applyCityRatings(built, finalCityRatings()), { hasCrashPad });
       // Priorities the pilot set by hand on their priorities page still hold — shown that way in the review.
       const fitted = applyPins(fitWeightsToChoices(bidPack, rated, ch, pm).model, priorProfile?.brainInterview?.pins ?? {});
       setRatedModel(rated);

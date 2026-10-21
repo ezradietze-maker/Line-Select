@@ -1,5 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { restoreBidPack } from "@/lib/bidpack-storage";
+import { applyCityRatings } from "@/lib/brain/city-ratings";
+import { modelToDepartures } from "@/lib/brain/model-upgrade";
+import { migrateProfile } from "@/lib/profile-migration";
 import { rankPackV2, type V2LineScore } from "@/lib/scoring-v2/score";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -13,15 +16,17 @@ import type { PilotModel } from "@/types/pilot-model";
  *
  *   npx tsx scripts/eval/expilot-benchmark.ts [--pack <pack.json>] [--model <profile-or-model.json>] [--answers <answers.json>]
  *
- * `--model` takes a saved profile (its reviewed interview model) or a bare PilotModel. Without `--answers`, only the
- * line choices he made in the interview are checked.
+ * `--model` takes a saved profile or a bare PilotModel. A profile is read the way the app loads it (saved models move
+ * onto departures) and scored on the model he confirmed with his own city grades applied; a bare model is moved onto
+ * departures the same way. Without `--answers`, only the line choices he made in the interview are checked.
  */
 
 const DIR = "private/ex-pilot";
 const DEFAULTS = {
   pack: `${DIR}/interview-export-2026-10-15/mem-md11-cap-oct26-pack.json`,
-  // His saved profile with the city step put right: on the day, a grade meant for Newark landed on El Paso.
-  model: `${DIR}/interview-export-2026-10-15/profile-corrected.json`,
+  // His saved profile with the city step put right (on the day, a grade meant for Newark landed on El Paso), and the
+  // cities he graded later, in his Oct 21 answers.
+  model: `${DIR}/benchmark-oct26/profile-oct21.json`,
   answers: `${DIR}/benchmark-oct26/answers.json`,
 };
 
@@ -30,6 +35,8 @@ interface Answers {
   piles: { top: string[]; fine: string[]; onlyIfHadTo: string[]; bottom: string[] };
   /** Line choices from the interview itself: [the line he bid higher, the other one]. */
   choices?: [string, string][];
+  /** His whole sample in his order, best first, when he ordered all of it. */
+  fullOrder?: string[];
 }
 
 /** The two line choices he made in the Oct 15 interview, both "easily". */
@@ -45,9 +52,11 @@ function arg(name: string): string | undefined {
 
 function loadModel(path: string): PilotModel {
   const raw = JSON.parse(readFileSync(path, "utf8"));
-  const model = raw.brainInterview?.reviewedModel ?? raw.pilotModel ?? raw;
+  if (Array.isArray(raw?.criteria)) return modelToDepartures(raw as PilotModel);
+  const profile = migrateProfile(raw);
+  const model = profile.brainInterview?.reviewedModel ?? profile.pilotModel;
   if (!Array.isArray(model?.criteria)) throw new Error(`${path} holds no pilot model.`);
-  return model as PilotModel;
+  return applyCityRatings(model, profile.cityRatings);
 }
 
 /** Every ordered pair his sort implies: across piles, and within his ordered top pile. [better, worse]. */
@@ -107,6 +116,19 @@ function why(a: V2LineScore, b: V2LineScore): string {
   const results = check(pairsFromSort(answers));
   const agree = results.filter((c) => c.agrees).length;
   console.log(`\nHis sort: ${agree} of ${results.length} pairs the same way round (${((100 * agree) / results.length).toFixed(1)}%)`);
+
+  if (answers.fullOrder?.length) {
+    // Every pair of his full order, not just across piles — and how far each line sits from where he put it.
+    const order = answers.fullOrder;
+    const full = check(order.flatMap((u, i) => order.slice(i + 1).map((l) => [u, l] as [string, string])));
+    const fullAgree = full.filter((c) => c.agrees).length;
+    const byApp = [...order].sort((a, b) => get(a).rank - get(b).rank);
+    const n = order.length;
+    const d2 = order.reduce((s, line, i) => s + (byApp.indexOf(line) - i) ** 2, 0);
+    const rho = 1 - (6 * d2) / (n * (n * n - 1));
+    console.log(`His full order: ${fullAgree} of ${full.length} pairs the same way round (${((100 * fullAgree) / full.length).toFixed(1)}%), rank correlation ${rho.toFixed(2)}`);
+    console.log(`  His place → the app's: ${order.map((line, i) => `${line} ${i + 1}→${byApp.indexOf(line) + 1}`).join(" · ")}`);
+  }
 
   const sample = [...answers.piles.top, ...answers.piles.fine, ...answers.piles.onlyIfHadTo, ...answers.piles.bottom];
   const appOrder = [...sample].sort((a, b) => get(a).rank - get(b).rank);

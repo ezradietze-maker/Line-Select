@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import type { LineScore } from "@/lib/scoring";
+import type { MonthDepartureOptions } from "@/lib/month-detail";
 import type { CityMark } from "@/types/preferences";
 
 /**
@@ -22,6 +23,7 @@ interface LineComparisonModalProps {
   bidPeriodDays: number;
   /** The pilot's loved/avoided layover cities, so each calendar can say how they feel about a layover. */
   cityPreferences?: Record<string, CityMark>;
+  departureOptions?: MonthDepartureOptions;
   onClose: () => void;
 }
 
@@ -48,6 +50,7 @@ export function LineComparisonModal({
   bidPeriodStart,
   bidPeriodDays,
   cityPreferences,
+  departureOptions,
   onClose,
 }: LineComparisonModalProps) {
   const worstCircadianStars = lineScores.map((ls) => {
@@ -115,6 +118,7 @@ export function LineComparisonModal({
                 bidPeriodStart={bidPeriodStart}
                 bidPeriodDays={bidPeriodDays}
                 cityPreferences={cityPreferences}
+                departureOptions={departureOptions}
               />
             </div>
           )

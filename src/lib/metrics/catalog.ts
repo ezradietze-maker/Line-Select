@@ -6,6 +6,7 @@ import { isHotelStandbyLeg, tripStandbyDays } from "@/lib/standby";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import { backupsToWork, earliestHome, flightsForTrip, realTravelForTrip, type FlightAnswers, type TripFlights } from "@/lib/flights/trip-travel";
 import { tripStartUtc } from "@/lib/flights/needs";
+import { groupDepartures, type Departure } from "@/lib/metrics/departures";
 import { DEFAULT_HOME_PARAMS, homeAwayForTrip, type HomeAway, type TravelTimeProvider } from "@/lib/metrics/home-travel";
 import { legDeepNightMinutes, nightsWorked, type LayoverFact, type LegFact, type Region, type TripFacts } from "@/lib/metrics/trip-facts";
 import type { Line } from "@/types/bidpack";
@@ -46,6 +47,10 @@ export interface MetricParams {
   commuteBufferHours?: number;
   /** The fewest backup flights a commuter wants on the way to work. */
   backupFlights?: number;
+  /** Hours at home a commuter needs between two trips before he'd go home at all — under it, the trips are one departure. */
+  minHomeHours?: number;
+  /** A crash pad at base: nights there cost a commuter nothing extra. */
+  hasCrashPad?: boolean;
   /** Calendar dates ("2026-10-10"), for date-specific measurements. */
   dates?: string[];
   /** Days of the week, 1 = Monday … 7 = Sunday. */
@@ -158,6 +163,41 @@ function homeAway(trips: TripFacts[], c: LineContext, p: MetricParams): HomeAway
   };
   const out = flying(trips).map((f) => homeAwayForTrip(f, c.base, params, c.travel, realTravelForTrip(c.flights, c, f.trip)));
   return out.some((a) => a === null) ? null : (out as HomeAway[]);
+}
+
+/**
+ * A line's departures depend only on its trips, the pilot's home settings and the flights looked up for them, so they're
+ * worked out once per line and shared — by the three departure measures, and by every re-score while choices are fitted.
+ */
+const departuresCache = new WeakMap<TripFacts[], { travel?: TravelTimeProvider; flights?: FlightAnswers; byKey: Map<string, Departure[]> }>();
+
+/** The line's trips grouped into departures, with the pilot's own home and buffers (see `metrics/departures.ts`). */
+function departuresOf(trips: TripFacts[], c: LineContext, p: MetricParams): Departure[] {
+  let entry = departuresCache.get(trips);
+  if (!entry || entry.travel !== c.travel || entry.flights !== c.flights) {
+    entry = { travel: c.travel, flights: c.flights, byKey: new Map() };
+    departuresCache.set(trips, entry);
+  }
+  const key = JSON.stringify([c.base, c.bidPeriodStart, p.homeAirports, p.commuteBufferHours, p.frontBufferHours, p.backRestHours, p.minHomeHours, p.hasCrashPad]);
+  const known = entry.byKey.get(key);
+  if (known) return known;
+  const departures = groupDepartures(
+    trips.map((f) => f.trip),
+    { bidPeriodStart: c.bidPeriodStart, base: c.base },
+    {
+      homeAirports: p.homeAirports,
+      commuteBufferHours: p.commuteBufferHours,
+      frontBufferHours: p.frontBufferHours,
+      backRestHours: p.backRestHours,
+      minHomeHours: p.minHomeHours,
+      hasCrashPad: p.hasCrashPad,
+      travel: c.travel,
+      flights: c.flights,
+      facts: new Map(trips.map((f) => [f.trip, f])),
+    }
+  );
+  entry.byKey.set(key, departures);
+  return departures;
 }
 
 /**
@@ -377,7 +417,37 @@ export const METRICS: MetricDef[] = [
     },
   },
   { id: "weekendDaysOff", label: "Weekend days off", unit: "days", category: "calendar", description: "Saturdays and Sundays off.", line: (l, _t, c) => weekendDaysOff(l, c.bidPeriodStart) },
-  { id: "tripCount", label: "Trips", unit: "trips", category: "calendar", description: "Number of trips in the month.", line: (l) => l.trips.length },
+  { id: "tripCount", label: "Trips", unit: "trips", category: "calendar", description: "Number of trips in the month. For a pilot who lives at base; a commuter's are counted in homeDepartures.", line: (l) => l.trips.length },
+  {
+    id: "homeDepartures",
+    label: "Departures",
+    unit: "departures",
+    category: "calendar",
+    description:
+      "How many times the pilot leaves home to fly — trips flown without going home in between count once (a \"series of trips\" or \"trip sequence\"). For a commuter, two trips are one departure unless there would be at least minHomeHours (default 24) at home between them, counted door to door: deadheading home from where one trip's flying ends, or commuting home from base, then back out for the next. For a pilot who lives at base, only trips that turn within a few hours at base are joined.",
+    params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
+    line: (_l, trips, c, p) => departuresOf(trips, c, p).length,
+  },
+  {
+    id: "departureCommutes",
+    label: "Commutes to or from base, by departure",
+    unit: "commutes",
+    category: "commute",
+    description:
+      "Commutes to or from base the month really takes, counted per departure (trips flown without going home count once): 0–2 each, none at an end that starts or finishes on a deadhead the pilot can join from or leave for home. A pilot who lives at base has none.",
+    params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
+    line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((s, d) => s + d.baseCommutes, 0),
+  },
+  {
+    id: "baseHotelNights",
+    label: "Nights at base",
+    unit: "nights",
+    category: "commute",
+    description:
+      "Nights a commuter without a crash pad spends at base: the night before a report too early to commute in that morning (unless the first duty is short enough to jumpseat in the evening before and nap at the hub), nights waiting at base between trips of one departure, and the night after a release too late to get home.",
+    params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours", "hasCrashPad"],
+    line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((s, d) => s + d.baseNights.reduce((a, b) => a + b.nights, 0), 0),
+  },
   { id: "avgTripDays", label: "Average trip length", unit: "days", category: "calendar", description: "Average trip length in days.", trip: { measure: (f) => f.trip.days, aggregate: "mean" } },
   { id: "longestTripDays", label: "Longest trip", unit: "days", category: "calendar", description: "Length of the longest trip.", trip: { measure: (f) => f.trip.days, aggregate: "max" } },
 
@@ -478,7 +548,7 @@ export const METRICS: MetricDef[] = [
     label: "Commutes to or from base",
     unit: "commutes",
     category: "commute",
-    description: "Trip ends where the pilot must be at base for operated flying — each one is a commute for someone who lives elsewhere.",
+    description: "Trip ends where the pilot must be at base for operated flying, counted trip by trip — even between trips flown back to back without going home. A commuter's real commutes are departureCommutes.",
     trip: { measure: (f) => (f.noFlying ? 2 : (f.front ? 0 : 1) + (f.back ? 0 : 1)), aggregate: "sum" },
   },
   {

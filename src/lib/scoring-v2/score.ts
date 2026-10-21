@@ -69,6 +69,20 @@ function quantile(sorted: number[], q: number): number {
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
+/**
+ * The scale a criterion is scored on where the pilot gave no anchor: the good end is the real best measured — exactly
+ * where a top priority has to tell things apart — while the bad end stops at the 5% mark, so one terrible outlier can't
+ * squash everything else together.
+ */
+export function spreadOf(values: (number | null)[], shape: CriterionShape): { lo: number; hi: number } {
+  const sorted = values.filter((v): v is number => v !== null).sort((a, b) => a - b);
+  const min = sorted[0] ?? 0;
+  const max = sorted[sorted.length - 1] ?? 0;
+  if (shape.kind === "less") return { lo: min, hi: quantile(sorted, 0.95) };
+  if (shape.kind === "more") return { lo: quantile(sorted, 0.05), hi: max };
+  return { lo: quantile(sorted, 0.05), hi: quantile(sorted, 0.95) };
+}
+
 /** However far past the bad end a line is, its utility goes no lower than this. */
 const UTILITY_FLOOR = -0.5;
 
@@ -114,7 +128,7 @@ export function criterionWeight(c: Criterion): number {
 }
 
 /** The pilot's home settings, passed to every measurement that needs them. */
-function homeParams(model: PilotModel): MetricParams {
+export function homeParams(model: PilotModel): MetricParams {
   const h = model.home;
   if (!h) return {};
   return {
@@ -123,6 +137,8 @@ function homeParams(model: PilotModel): MetricParams {
     ...(h.frontBufferHours !== undefined ? { frontBufferHours: h.frontBufferHours } : {}),
     ...(h.backRestHours !== undefined ? { backRestHours: h.backRestHours } : {}),
     ...(h.backupFlights !== undefined ? { backupFlights: h.backupFlights } : {}),
+    ...(h.minHomeHours !== undefined ? { minHomeHours: h.minHomeHours } : {}),
+    ...(h.hasCrashPad !== undefined ? { hasCrashPad: h.hasCrashPad } : {}),
   };
 }
 
@@ -150,16 +166,7 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
 
   // Measure every criterion on every line once.
   const values = criteria.map((c) => bidPack.lines.map((l) => measure(c.metric, l, pack, { ...home, ...c.params })));
-  // The good end of the scale is the pack's real best — that's exactly where a top priority has to tell lines apart — while
-  // the bad end stops at the 5% mark so one terrible outlier can't squash everyone else together.
-  const spreads = criteria.map((c, ci) => {
-    const sorted = values[ci].filter((v): v is number => v !== null).sort((a, b) => a - b);
-    const min = sorted[0] ?? 0;
-    const max = sorted[sorted.length - 1] ?? 0;
-    if (c.shape.kind === "less") return { lo: min, hi: quantile(sorted, 0.95) };
-    if (c.shape.kind === "more") return { lo: quantile(sorted, 0.05), hi: max };
-    return { lo: quantile(sorted, 0.05), hi: quantile(sorted, 0.95) };
-  });
+  const spreads = criteria.map((c, ci) => spreadOf(values[ci], c.shape));
   const weights = criteria.map(criterionWeight);
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
   const beyond = options.beyondBad ?? BEYOND_BAD;

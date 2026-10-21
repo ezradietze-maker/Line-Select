@@ -31,6 +31,7 @@ import { MonthLegend } from "@/components/results/MiniLinePreview";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { cityMarks } from "@/lib/city-ratings";
+import { monthDepartureOptions } from "@/lib/month-detail";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { cachedFlightAnswers, lookUpFlights } from "@/lib/flights/client";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
@@ -997,6 +998,7 @@ export function ResultsView({
           bidPeriodStart={bidPack.bidPeriodStart}
           bidPeriodDays={bidPack.bidPeriodDays}
           cityPreferences={cityMarks(profile.cityRatings, profile.cityPreferences)}
+          departureOptions={monthDepartureOptions(bidPack.base, profile, flights)}
           onClose={() => setCompareIds([])}
         />
       )}

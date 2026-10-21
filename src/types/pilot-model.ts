@@ -73,6 +73,10 @@ export interface PilotHome {
   backRestHours?: number;
   /** Minimum backup flights he wants when deviating. */
   backupFlights?: number;
+  /** Hours at home that make going home between two trips worth it; under it, trips flown around the gap are one departure (default 24). */
+  minHomeHours?: number;
+  /** A crash pad or apartment at base: nights there cost him nothing extra. */
+  hasCrashPad?: boolean;
 }
 
 export interface PilotModel {

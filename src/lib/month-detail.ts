@@ -1,10 +1,12 @@
 import { buildLineMonthCalendar, type LineMonthDay } from "@/lib/line-month";
+import { groupDepartures, type DepartureOptions } from "@/lib/metrics/departures";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
 import type { TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
-import type { CityMark } from "@/types/preferences";
+import type { CityMark, PreferenceProfile } from "@/types/preferences";
+import type { FlightAnswers } from "@/lib/flights/trip-travel";
 
 /**
  * The detailed month calendar: the same grid `month-grid.ts` draws, with
@@ -129,6 +131,8 @@ export interface DetailedDay {
   finish: TripFinish | null;
   /** On the first day of a trip that turns straight out of the one before it at base — one departure from home. */
   chain: TripChain | null;
+  /** What this day means for a commuter at base: a hotel night before an early show, a jumpseat in instead, nights waiting between trips, or a night after a late release. */
+  baseNote?: string;
   /** A whole day at a layover hotel, nothing flown: the city. */
   restCity: string | null;
   /** A trip's tail on a day the grid gives to something else — usually a landing just after midnight on a day the bid pack counts as off. */
@@ -139,6 +143,8 @@ export interface DetailedDay {
 export interface MonthSummary {
   /** Trips flown back to back at base count once: how many times the pilot leaves home. */
   departures: number;
+  /** For a commuter: commutes to and from base and nights spent there (null for a pilot who lives at base). */
+  base?: { code: string; commutes: number; nights: number; jumpseatIns: number } | null;
   /** Days off as this calendar draws them. */
   daysOff: number;
   /** Days off as the bid pack itself prints them for the line — usually the same, occasionally a day different at the edge of a trip. */
@@ -269,11 +275,27 @@ function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">): string {
   return parts.join(", ");
 }
 
+/** Where the pilot lives and the pack's base, so the calendar joins trips into the same departures the scores count. */
+export interface MonthDepartureOptions extends DepartureOptions {
+  base: string;
+}
+
+/** The calendar's departure options from what the pilot told the interview: a commuter's home airport, or none (lives at base). */
+export function monthDepartureOptions(
+  base: string,
+  profile: Pick<PreferenceProfile, "isCommuter" | "commuteFrom" | "hasCrashPad"> | null | undefined,
+  flights?: FlightAnswers | null
+): MonthDepartureOptions {
+  const home = profile?.isCommuter && profile.commuteFrom ? [profile.commuteFrom] : [];
+  return { base, homeAirports: home, hasCrashPad: profile?.hasCrashPad ?? null, ...(flights ? { flights } : {}) };
+}
+
 export function buildDetailedMonth(
   line: Line,
   bidPeriodStart: string | null,
   bidPeriodDays: number,
-  cityPreferences: Record<string, CityMark> = {}
+  cityPreferences: Record<string, CityMark> = {},
+  departureOptions?: MonthDepartureOptions
 ): DetailedMonth {
   const calendar = buildLineMonthCalendar(line, bidPeriodStart, bidPeriodDays, "local");
 
@@ -479,8 +501,70 @@ export function buildDetailedMonth(
     if (landing?.leg) d.finish = { city: landing.leg.arr, time: landing.endClock ?? hhmm(landing.endMinuteOfDay), nextDay: true };
   });
 
-  // A trip reporting within hours of the last one landing at the same base turns straight out of it.
-  days.forEach((d, i) => {
+  // Trips flown as one departure are joined. With the base known, that's the same grouping the scores count (his rule:
+  // two trips are one departure unless he'd get 24 hours at home between them); without it, a trip reporting within a
+  // few hours of the last one landing at the same base turns straight out of it.
+  let departureCount: number | null = null;
+  let summaryBase: MonthSummary["base"] = null;
+  if (departureOptions) {
+    const deps = groupDepartures(line.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions);
+    departureCount = deps.length;
+    const indexOf = new Map(line.trips.map((t, i) => [t, i] as const));
+    const link = new Map<number, { prev: number; turnHours: number }>();
+    for (const dep of deps) dep.trips.forEach((t, k) => k > 0 && link.set(indexOf.get(t)!, { prev: indexOf.get(dep.trips[k - 1])!, turnHours: dep.turnHours[k - 1] }));
+    // What each departure means at base for a commuter, said on the day it happens.
+    const code = departureOptions.base;
+    const firstDayOf = (trip: number) => days.find((x) => x.tripIndex === trip && x.isTripStart);
+    const lastDayOf = (trip: number) => days.filter((x) => x.tripIndex === trip && x.kind !== "off").at(-1);
+    const nightsWord = (n: number) => `${n} night${n === 1 ? "" : "s"}`;
+    const note = (day: DetailedDay | undefined, text: string) => {
+      if (!day) return;
+      day.baseNote = day.baseNote ? `${day.baseNote} ${text}` : text;
+      day.title = `${day.title}; ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+    };
+    for (const dep of deps) {
+      const first = indexOf.get(dep.trips[0])!;
+      const last = indexOf.get(dep.trips[dep.trips.length - 1])!;
+      const startDay = firstDayOf(first);
+      if (dep.jumpseatIns > 0)
+        note(startDay, `Shows at ${startDay?.dutyStart ?? "an early hour"} in ${code}, too early to commute in that morning — but the first duty is short, so this is a jumpseat in on the evening flight the night before, with a nap at the hub, rather than a hotel.`);
+      for (const b of dep.baseNights) {
+        if (b.reason === "before")
+          note(startDay, `Shows at ${startDay?.dutyStart ?? "an early hour"} in ${code} — too early to commute in that morning, and the duty is long, so a night in a ${code} hotel before it.`);
+        if (b.reason === "between") {
+          const k = dep.trips.findIndex((t) => t.pairingNumber === b.tripNumber);
+          const day = k > 0 ? firstDayOf(indexOf.get(dep.trips[k])!) : undefined;
+          note(day, `${nightsWord(b.nights)} in a ${code} hotel waiting for this trip — not long enough at home to be worth the trip back.`);
+        }
+        if (b.reason === "after") {
+          const day = lastDayOf(last);
+          note(day, `Back in ${code}${day?.finish ? ` at ${day.finish.time}` : ""} — too late to get home that night, so a night in ${code}.`);
+        }
+      }
+    }
+    summaryBase = departureOptions.homeAirports?.some((a) => a && a !== code)
+      ? {
+          code,
+          commutes: deps.reduce((n, d) => n + d.baseCommutes, 0),
+          nights: deps.reduce((n, d) => n + d.baseNights.reduce((a, b) => a + b.nights, 0), 0),
+          jumpseatIns: deps.reduce((n, d) => n + d.jumpseatIns, 0),
+        }
+      : null;
+
+    days.forEach((d) => {
+      if (!d.isTripStart || d.tripIndex === null) return;
+      const l = link.get(d.tripIndex);
+      if (!l) return;
+      const prevLast = days.filter((x) => x.tripIndex === l.prev && x.kind !== "off").at(-1);
+      d.chain = {
+        fromTripNumber: line.trips[l.prev]?.pairingNumber ?? null,
+        city: prevLast?.finish?.city ?? d.route[0]?.city ?? departureOptions.base,
+        turnMinutes: Math.max(0, Math.round(l.turnHours * 60)),
+        landed: prevLast?.finish?.time ?? "",
+        reports: d.dutyStart ?? "",
+      };
+    });
+  } else days.forEach((d, i) => {
     const prev = days[i - 1];
     if (!d.isTripStart || !d.dutyStart || d.tripIndex === null || !prev?.finish || prev.tripIndex === null || prev.tripIndex === d.tripIndex) return;
     if (d.route[0]?.city !== prev.finish.city) return;
@@ -498,6 +582,8 @@ export function buildDetailedMonth(
     summary: summarize(
       line,
       days,
+      departureCount,
+      summaryBase,
       runs.map((r) => r.length),
       cityPreferences
     ),
@@ -506,7 +592,7 @@ export function buildDetailedMonth(
   };
 }
 
-function summarize(line: Line, days: DetailedDay[], offRuns: number[], cityPreferences: Record<string, CityMark>): MonthSummary {
+function summarize(line: Line, days: DetailedDay[], departureCount: number | null, base: MonthSummary["base"], offRuns: number[], cityPreferences: Record<string, CityMark>): MonthSummary {
   const off = days.filter((d) => d.kind === "off").length;
 
   let weekendsOff = 0;
@@ -537,7 +623,8 @@ function summarize(line: Line, days: DetailedDay[], offRuns: number[], cityPrefe
     .sort((a, b) => nightOrder(a) - nightOrder(b));
 
   return {
-    departures: line.trips.length - days.filter((d) => d.chain).length,
+    departures: departureCount ?? line.trips.length - days.filter((d) => d.chain).length,
+    base,
     daysOff: off,
     printedDaysOff: line.daysOff,
     offRuns,

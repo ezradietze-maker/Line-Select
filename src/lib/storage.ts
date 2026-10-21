@@ -1,5 +1,5 @@
 import { clearServerProfile, fetchServerProfile, saveServerProfile } from "@/lib/preference-profile-client";
-import { migrateDeparturesToDutyPeriods } from "@/lib/profile-migration";
+import { migrateProfile } from "@/lib/profile-migration";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
 
 const GUEST_KEY = "line-select:preference-profile:guest:v1";
@@ -15,7 +15,7 @@ function profileKey(userId: string | null): string {
  * treats anything unanswered as "no preference" / "not asked".
  */
 function normalizeProfile(raw: Partial<PreferenceProfile>): PreferenceProfile {
-  const parsed = migrateDeparturesToDutyPeriods(raw);
+  const parsed = migrateProfile(raw);
   return {
     // Everything saved is kept (commuteFrom, targetImportance, cityRatings, strategyReactions …); only missing fields are filled below.
     ...parsed,

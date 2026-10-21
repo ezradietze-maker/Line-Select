@@ -2,6 +2,7 @@ import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
 import type { Region } from "@/lib/metrics/trip-facts";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type CriterionTier, type PilotModel, type PilotThread } from "@/types/pilot-model";
 import { structuredCall, type BrainUsage, type Effort } from "./llm";
+import { modelToDepartures } from "./model-upgrade";
 
 /**
  * The pilot brain's core step: read everything a pilot has said — the
@@ -17,7 +18,7 @@ import { structuredCall, type BrainUsage, type Effort } from "./llm";
  */
 
 /** Bumped whenever the prompt or schema changes, so cached evaluations of an older brain aren't mistaken for this one. */
-export const BRAIN_PROMPT_VERSION = 15;
+export const BRAIN_PROMPT_VERSION = 17;
 
 export interface InterviewExchange {
   /** 0 = the opening story. */
@@ -48,7 +49,9 @@ HOW TO BUILD THE MODEL
 2. One criterion per distinct thing they care about that a bid pack can show. Bind each to the metric that measures it most directly AS THEY MEAN IT, with parameters (cities, legs threshold, hours window). Prefer the specific measurement over a proxy:
    - "avoid three-leg duties" → dutiesWithManyLegs {n:3}, not avgLegsPerDuty.
    - "minimize time in X" → layoverHoursInCities {cities:[X]}; "I love X layovers" → layoversInCities or layoverHoursInCities for those cities.
-   - For a commuter, time-away-from-home measures (creditPerDayAwayFromHome, homeAwayHours, tripsJoinedFromHome, baseCommutesNeeded) beat paper ones (creditPerDayAway, tafbHours) whenever they talk about time away from HOME or commuting.
+   - For a commuter, time-away-from-home measures (creditPerDayAwayFromHome, homeAwayHours, tripsJoinedFromHome, departureCommutes) beat paper ones (creditPerDayAway, tafbHours) whenever they talk about time away from HOME or commuting.
+   - For a commuter, trips flown back to back without going home in between are one departure ("a series of trips", "a trip sequence"), and one pair of commutes. So bind "few trips / few departures / time at home between trips" to homeDepartures and "getting to and from base" to departureCommutes — tripCount and baseCommutesNeeded count every trip separately and are for a pilot who lives at base. This changes only what's counted: give them the points and anchors their words call for, as you would the trip count and commutes. Trips joined straight from home on a deadhead (tripsJoinedFromHome) stay their own priority when they value them — less work and less stress than flying out of base, not only a commute saved.
+   - Hotel nights at base — the cost and hassle of a hotel at base, having to go in the night before an early show — → baseHotelNights (less). It's usually a light cost next to a whole extra departure; give it few points unless they dwell on it. A pilot with a crash pad at base has none (the PILOT line says).
    - Trip shortening by deviating on deadheads → effectiveCreditPerDayAway / shortenableHours / tripsShortenableByADay, with their buffers in params.
    - Backup flights on the commute, flights being full or scarce, getting stranded → fewestBackupFlights / tripsShortOnBackups (params.n = the backups they want); a stated minimum ("I need at least two backups") is a hardLimit. Long or awkward trips home after a trip → longestTripHome. These read real airline schedules for the pilot's best lines.
    - Specific dates they need off → requestedDatesWorked {dates:[...]} (real calendar dates in this bid period); a date they "need" or call "the one hard date" is a hardLimit {op:"max", value:0}.
@@ -334,7 +337,8 @@ export function parsePilotModel(raw: RawModel, prior?: PilotModel | null): { mod
   const priorAsked = new Map((prior?.threads ?? []).map((t) => [t.id, t.timesAsked]));
   return {
     dropped,
-    model: {
+    // A commuter's trip count and trip-end commutes mean departures, whatever the reading bound them to.
+    model: modelToDepartures({
       version: 2,
       home: h.airports.length || h.commuter !== "unknown"
         ? {
@@ -350,7 +354,7 @@ export function parsePilotModel(raw: RawModel, prior?: PilotModel | null): { mod
       threads: raw.threads.map((t) => ({ ...t, priority: clamp01(t.priority), criteria: t.criteria.filter((c) => seen.has(c)), timesAsked: priorAsked.get(t.id) ?? 0 })),
       notMeasurable: raw.notMeasurable,
       synopsis: raw.synopsis,
-    },
+    }),
   };
 }
 

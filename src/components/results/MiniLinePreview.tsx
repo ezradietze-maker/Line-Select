@@ -4,7 +4,7 @@ import { useInView } from "motion/react";
 import { memo, useMemo, useRef, useState } from "react";
 import { BedIcon, MoonIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/Modal";
-import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthSummary, type RouteStop, type TripFinish } from "@/lib/month-detail";
+import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthDepartureOptions, type MonthSummary, type RouteStop, type TripFinish } from "@/lib/month-detail";
 import { dayStats, equipmentLabel, hm } from "@/lib/trip-day-stats";
 import type { TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
@@ -72,6 +72,17 @@ const shortRest = (rest: string) => rest.replace(/h\d+m$/, "h");
 
 /** 107 → "1h47": time on the ground between two chained trips. */
 const turnLabel = (m: number) => `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
+
+/** Turns this short are a straight turn at base; longer, the pilot is sitting at base between trips because home is too far to be worth it. */
+const STRAIGHT_TURN_MINUTES = 6 * 60;
+
+/** What joining two trips means for this pilot, in a sentence. */
+function chainSentence(c: NonNullable<DetailedDay["chain"]>): string {
+  const times = c.landed && c.reports ? `: lands ${c.city} ${c.landed}, reports again ${c.reports} (L)` : "";
+  return c.turnMinutes < STRAIGHT_TURN_MINUTES
+    ? `Turns straight out of trip #${c.fromTripNumber ?? ""}${times} — ${turnLabel(c.turnMinutes)} on the ground, so the two are flown as one departure from home.`
+    : `Follows trip #${c.fromTripNumber ?? ""} after ${turnLabel(c.turnMinutes)} in ${c.city}${times}. That's not long enough to get home and have 24 hours there, so the two are one departure — and the time between is spent in ${c.city}.`;
+}
 
 /** "17.8" credit hours → "17:47", the way the bid pack prints a trip's credit under its number. */
 const creditClock = (h: number) => hm(Math.round(h * 60));
@@ -188,7 +199,7 @@ function Cell({
           {day.isTripStart && day.tripNumber && <span className="font-mono text-[10px] font-semibold leading-tight text-ink @min-[4.75rem]:hidden">#{day.tripNumber}</span>}
           <span className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
             {day.chain ? (
-              <span className="hidden whitespace-nowrap font-mono text-[10px] leading-tight text-calendar-accent @min-[4.75rem]:block" title={`Turns straight out of trip #${day.chain.fromTripNumber ?? ""}: lands ${day.chain.landed}, reports ${day.chain.reports} (L) — one departure from home`}>
+              <span className="hidden whitespace-nowrap font-mono text-[10px] leading-tight text-calendar-accent @min-[4.75rem]:block" title={chainSentence(day.chain)}>
                 ↪ {turnLabel(day.chain.turnMinutes)} in {day.chain.city}
               </span>
             ) : (
@@ -241,7 +252,7 @@ function MonthKeyInfo() {
         <Modal title="Month calendar key" onClose={() => setOpen(false)}>
           <ul className="space-y-3 text-sm leading-relaxed text-ink-muted">
             <li><span className="font-medium text-ink">Each week reads like a line in the bid pack.</span> Shaded days joined by a bar are one trip. Its first day carries the trip&rsquo;s number and credit (<span className="font-mono">#111 17:47</span>) and when it reports (<span className="font-mono">Rpt 06:30</span>, in amber when it&rsquo;s between 2 and 6am).</li>
-            <li><span className="font-medium text-ink">Trips joined into one bar.</span> A trip that reports within hours of the last one landing at base (<span className="font-mono">↪ 1h47 in MEM</span>) &mdash; flown back to back without going home, so the run counts as one departure.</li>
+            <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be 24 hours at home between them, counting the trip home and back (<span className="font-mono">↪ 1h47 in MEM</span> is a straight turn; <span className="font-mono">↪ 38h18 in MEM</span> is a day and a half waiting in Memphis). For a pilot who lives at base, only trips that turn within a few hours.</li>
             <li><span className="font-medium text-ink">The cities.</span> Each day&rsquo;s flying, city to city: a dash is flown (<span className="font-mono">MEM–SEA</span>), <span className="font-mono">dh</span> a deadhead (<span className="font-mono">MEM dh PHX</span>).</li>
             <li><span className="font-medium text-ink">Green city.</span> Where you sleep and how long the layover is (<span className="font-mono">SEA 15h</span>). <span className="font-mono">KIX rest</span> is a whole day at the hotel with nothing flown. <span className="text-good">♥</span> is a city you love, <span className="text-good">♡</span> one you like, an amber <span className="text-warn">✕</span> one you dislike and a red <span className="text-danger">✕</span> one you avoid, and a dotted underline marks an international city.</li>
             <li><span className="font-medium text-ink">↘ MEM 19:05.</span> Where and when the trip lands, on its last day. <span className="font-mono">+1</span> means just after midnight &mdash; the bid pack still counts the next day as off.</li>
@@ -356,12 +367,8 @@ function DayDetail({ day }: { day: DetailedDay }) {
         </p>
       ) : (
         <>
-          {day.chain && (
-            <p className="mt-1 text-ink">
-              Turns straight out of trip #{day.chain.fromTripNumber}: lands {day.chain.city} {day.chain.landed}, reports again {day.chain.reports} (L) &mdash;{" "}
-              {turnLabel(day.chain.turnMinutes)} on the ground, so the two are flown as one departure from home.
-            </p>
-          )}
+          {day.chain && <p className="mt-1 text-ink">{chainSentence(day.chain)}</p>}
+          {day.baseNote && <p className="mt-1 text-ink">{day.baseNote}</p>}
           <p className="mt-1">
             {day.tripNumber ? `Trip #${day.tripNumber}` : "Trip"}, day {day.tripDay} of {day.tripDayCount}
             {day.tripCreditHours !== null ? ` · ${hm(day.tripCreditHours * 60)} credit for the trip` : ""}.
@@ -430,6 +437,13 @@ function Summary({ s, line }: { s: MonthSummary; line: Line }) {
       <SummaryItem label="Red-eye days" value={String(s.redEyeDays)} tone={s.redEyeDays > 0 ? "text-accent" : ""} />
       <SummaryItem label="Early reports" value={String(s.earlyReportDays)} tone={s.earlyReportDays > 0 ? "text-warn" : ""} />
       <SummaryItem label="Hotel standby" value={s.standbyDays > 0 ? `${s.standbyDays} day${s.standbyDays === 1 ? "" : "s"}` : "none"} tone={s.standbyDays > 0 ? "text-standby" : ""} />
+      {s.base && (
+        <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
+          <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">Commuting · </span>
+          {s.base.commutes} {s.base.code} commute{s.base.commutes === 1 ? "" : "s"} · {s.base.nights === 0 ? `no nights in ${s.base.code}` : `${s.base.nights} night${s.base.nights === 1 ? "" : "s"} in ${s.base.code}`}
+          {s.base.jumpseatIns > 0 ? ` · ${s.base.jumpseatIns} jumpseat-in${s.base.jumpseatIns === 1 ? "" : "s"}` : ""}
+        </p>
+      )}
       {s.daysOff !== s.printedDaysOff && (
         <p className="col-span-2 text-[11px] leading-snug text-ink-faint sm:col-span-3">
           The bid pack prints {s.printedDaysOff} days off for this line; the calendar draws {s.daysOff} from the trips&rsquo; dates, so a day at either end of a trip can differ.
@@ -466,6 +480,8 @@ interface MiniLinePreviewProps {
   showLegend?: boolean;
   /** The pilot's own loved/avoided layover cities, so a layover day can say how they feel about it. */
   cityPreferences?: Record<string, CityMark>;
+  /** The base and where the pilot lives, so trips are joined into the same departures the scores count. */
+  departureOptions?: MonthDepartureOptions;
 }
 
 export const MiniLinePreview = memo(function MiniLinePreview({
@@ -474,10 +490,11 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   bidPeriodDays,
   showLegend = true,
   cityPreferences,
+  departureOptions,
 }: MiniLinePreviewProps) {
   const month: DetailedMonth = useMemo(
-    () => buildDetailedMonth(line, bidPeriodStart, bidPeriodDays, cityPreferences),
-    [line, bidPeriodStart, bidPeriodDays, cityPreferences]
+    () => buildDetailedMonth(line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions),
+    [line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions]
   );
   const [selected, setSelected] = useState<number | null>(null);
   // The month lays itself out the first time it scrolls into view (see

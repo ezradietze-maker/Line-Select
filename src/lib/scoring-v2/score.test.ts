@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { prepareMetrics } from "@/lib/metrics/compute";
-import { HARD_LIMIT_CAP, scorePackV2, utilityOf } from "@/lib/scoring-v2/score";
+import { HARD_LIMIT_CAP, homeParams, scorePackV2, utilityOf } from "@/lib/scoring-v2/score";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 
@@ -45,5 +45,12 @@ describe("scoring v2", () => {
     const m = model([crit({ id: "d", metric: "requestedDatesWorked", params: { dates: ["2026-10-10"] }, shape: { kind: "less", fineAt: 0 }, hardLimit: { op: "max", value: 0 } })]);
     const s = new Map(scorePackV2(pack(lines), m, { pack: prepareMetrics(pack(lines)) }).map((x) => [x.lineNumber, x.violations.length]));
     expect([...s.values()]).toEqual([0, 1, 1, 1]);
+  });
+});
+
+describe("homeParams", () => {
+  it("passes the pilot's hours-at-home rule and crash pad to every measure that reads them", () => {
+    const home = { airports: ["SAN"], commuter: true, minHomeHours: 48, hasCrashPad: true };
+    expect(homeParams({ version: 2, home, criteria: [], threads: [], notMeasurable: [], synopsis: "" })).toEqual({ homeAirports: ["SAN"], minHomeHours: 48, hasCrashPad: true });
   });
 });
