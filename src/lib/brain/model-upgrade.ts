@@ -24,9 +24,13 @@ export function modelToDepartures(model: PilotModel | null | undefined): PilotMo
 
 /**
  * What the interview's commute step learned that the brain's reading doesn't carry: whether the pilot keeps a crash pad
- * at base (nights there then cost nothing — see `baseHotelNights`). The pilot's own answer wins over anything already set.
+ * at base (nights there then cost nothing — see `baseHotelNights`), and how many hours at home make going home between
+ * trips worth it (under that, the trips are one departure). The pilot's own answers win over anything already set.
  */
-export function withHomeFacts(model: PilotModel, facts: { hasCrashPad?: boolean | null }): PilotModel {
-  if (!model.home || facts.hasCrashPad === null || facts.hasCrashPad === undefined || model.home.hasCrashPad === facts.hasCrashPad) return model;
-  return { ...model, home: { ...model.home, hasCrashPad: facts.hasCrashPad } };
+export function withHomeFacts(model: PilotModel, facts: { hasCrashPad?: boolean | null; minHomeHours?: number | null }): PilotModel {
+  if (!model.home) return model;
+  const home = { ...model.home };
+  if (facts.hasCrashPad !== null && facts.hasCrashPad !== undefined) home.hasCrashPad = facts.hasCrashPad;
+  if (facts.minHomeHours !== null && facts.minHomeHours !== undefined && facts.minHomeHours > 0) home.minHomeHours = facts.minHomeHours;
+  return home.hasCrashPad === model.home.hasCrashPad && home.minHomeHours === model.home.minHomeHours ? model : { ...model, home };
 }

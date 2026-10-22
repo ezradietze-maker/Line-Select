@@ -55,3 +55,6 @@ scripts/transcript-*.md
 
 # Real pilots' own words and notes — kept on this machine, never in the public repo.
 /private/
+
+# Personal Claude Code settings (not shared)
+.claude/settings.local.json

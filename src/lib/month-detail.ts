@@ -283,11 +283,11 @@ export interface MonthDepartureOptions extends DepartureOptions {
 /** The calendar's departure options from what the pilot told the interview: a commuter's home airport, or none (lives at base). */
 export function monthDepartureOptions(
   base: string,
-  profile: Pick<PreferenceProfile, "isCommuter" | "commuteFrom" | "hasCrashPad"> | null | undefined,
+  profile: Pick<PreferenceProfile, "isCommuter" | "commuteFrom" | "hasCrashPad" | "minHomeHours"> | null | undefined,
   flights?: FlightAnswers | null
 ): MonthDepartureOptions {
   const home = profile?.isCommuter && profile.commuteFrom ? [profile.commuteFrom] : [];
-  return { base, homeAirports: home, hasCrashPad: profile?.hasCrashPad ?? null, ...(flights ? { flights } : {}) };
+  return { base, homeAirports: home, hasCrashPad: profile?.hasCrashPad ?? null, ...(profile?.minHomeHours ? { minHomeHours: profile.minHomeHours } : {}), ...(flights ? { flights } : {}) };
 }
 
 export function buildDetailedMonth(

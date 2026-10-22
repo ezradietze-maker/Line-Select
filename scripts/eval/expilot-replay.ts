@@ -3,6 +3,7 @@ import { restoreBidPack } from "@/lib/bidpack-storage";
 import { BRAIN_PROMPT_VERSION, buildPilotModel } from "@/lib/brain/build-model";
 import { pilotContextFor } from "@/lib/brain/context";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
+import { minHomeHoursSentence } from "@/components/interview/MinHomeHoursPicker";
 import { describeCityRatings } from "@/lib/city-ratings";
 import { migrateProfile } from "@/lib/profile-migration";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -31,14 +32,19 @@ const arg = (name: string) => {
   const profilePath = arg("profile") ?? `${DIR}/benchmark-oct26/profile-oct21.json`;
   const pack = restoreBidPack(JSON.parse(readFileSync(arg("pack") ?? `${DIR}/interview-export-2026-10-15/mem-md11-cap-oct26-pack.json`, "utf8")));
   const profile = migrateProfile(JSON.parse(readFileSync(profilePath, "utf8")) as PreferenceProfile);
+  // His answers as the interview now records them: the commute step with his hours-at-home answer, the city step as his grades stand.
   const exchanges = (profile.brainInterview?.exchanges ?? []).map((e) =>
-    /layover city/i.test(e.question) && profile.cityRatings ? { ...e, answer: describeCityRatings(profile.cityRatings) } : e
+    /layover city/i.test(e.question) && profile.cityRatings
+      ? { ...e, answer: describeCityRatings(profile.cityRatings) }
+      : /commute to base/i.test(e.question) && profile.minHomeHours && !e.answer.includes("at home")
+        ? { ...e, answer: e.answer + minHomeHoursSentence(profile.minHomeHours) }
+        : e
   );
   if (!exchanges.length) throw new Error(`${profilePath} holds no interview.`);
 
   const r = await buildPilotModel({
     packBrief: buildPackBrief(pack),
-    pilotContext: pilotContextFor(pack, { isCommuter: profile.isCommuter, commuteFrom: profile.commuteFrom, hasCrashPad: profile.hasCrashPad }),
+    pilotContext: pilotContextFor(pack, { isCommuter: profile.isCommuter, commuteFrom: profile.commuteFrom, hasCrashPad: profile.hasCrashPad, minHomeHours: profile.minHomeHours }),
     exchanges,
     effort: "high",
   });

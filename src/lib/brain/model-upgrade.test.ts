@@ -38,15 +38,23 @@ describe("withHomeFacts", () => {
     expect(withHomeFacts(m, { hasCrashPad: true }).home?.hasCrashPad).toBe(true);
     expect(withHomeFacts(m, { hasCrashPad: null })).toBe(m);
   });
+
+  it("takes the hours at home worth going home for, and leaves the default when it wasn't asked", () => {
+    const m = model(true, []);
+    expect(withHomeFacts(m, { minHomeHours: 48 }).home?.minHomeHours).toBe(48);
+    expect(withHomeFacts(m, { minHomeHours: null })).toBe(m);
+    expect(withHomeFacts(withHomeFacts(m, { minHomeHours: 48 }), { minHomeHours: 12 }).home?.minHomeHours).toBe(12);
+  });
 });
 
 describe("migrateProfile", () => {
   it("upgrades both the working model and the one the pilot confirmed when a saved profile loads", () => {
     const saved = model(true, [crit("trips", "tripCount")]);
-    const profile = { hasCrashPad: false, pilotModel: saved, brainInterview: { exchanges: [], choices: [], reviewedModel: saved } } as unknown as PreferenceProfile;
+    const profile = { hasCrashPad: false, minHomeHours: 36, pilotModel: saved, brainInterview: { exchanges: [], choices: [], reviewedModel: saved } } as unknown as PreferenceProfile;
     const loaded = migrateProfile(profile);
     expect(loaded.pilotModel?.criteria[0].metric).toBe("homeDepartures");
     expect(loaded.brainInterview?.reviewedModel?.criteria[0].metric).toBe("homeDepartures");
     expect(loaded.pilotModel?.home?.hasCrashPad).toBe(false);
+    expect(loaded.brainInterview?.reviewedModel?.home?.minHomeHours).toBe(36);
   });
 });

@@ -24,6 +24,7 @@ import { topImplicitContributions } from "@/lib/rank-learning";
 import type { LineScore } from "@/lib/scoring";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { LineForecast } from "@/lib/forecast/forecast";
+import type { TripScore } from "@/lib/scoring-v2/trip-score";
 import type { PreferenceProfile } from "@/types/preferences";
 
 // Shown only once a card's details are opened — loaded then (and warmed up in idle time by ResultsView), not with the
@@ -81,6 +82,8 @@ interface LineCardProps {
   homeBase: string;
   /** A commuter's looked-up airline flights, shown on the line's trips. */
   flights?: FlightAnswers | null;
+  /** Every trip's own score for this pilot (see `lib/scoring-v2/trip-score.ts`), shown on its trips. */
+  tripScores?: Map<string, TripScore> | null;
 }
 
 export const LineCard = memo(function LineCard({
@@ -102,6 +105,7 @@ export const LineCard = memo(function LineCard({
   forecast,
   homeBase,
   flights,
+  tripScores,
 }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
@@ -364,7 +368,7 @@ export const LineCard = memo(function LineCard({
                     bid pack&rsquo;s own line totals.
                   </div>
                 ) : (
-                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} />
+                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} />
                 ))}
 
               {activeTab === "breakdown" && (

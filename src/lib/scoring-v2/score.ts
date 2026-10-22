@@ -1,4 +1,4 @@
-import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
+import { METRICS_BY_ID, type MetricDef, type MetricParams } from "@/lib/metrics/catalog";
 import { measure, prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { TravelTimeProvider } from "@/lib/metrics/home-travel";
@@ -72,13 +72,13 @@ const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 /**
  * The scale a criterion is scored on where the pilot gave no anchor: the good end is the real best measured — exactly
  * where a top priority has to tell things apart — while the bad end stops at the 5% mark, so one terrible outlier can't
- * squash everything else together.
+ * squash everything else together (or, for a measure marked `badEndAtWorst`, at the pack's worst line).
  */
-export function spreadOf(values: (number | null)[], shape: CriterionShape): { lo: number; hi: number } {
+export function spreadOf(values: (number | null)[], shape: CriterionShape, def?: Pick<MetricDef, "badEndAtWorst">): { lo: number; hi: number } {
   const sorted = values.filter((v): v is number => v !== null).sort((a, b) => a - b);
   const min = sorted[0] ?? 0;
   const max = sorted[sorted.length - 1] ?? 0;
-  if (shape.kind === "less") return { lo: min, hi: quantile(sorted, 0.95) };
+  if (shape.kind === "less") return { lo: min, hi: def?.badEndAtWorst ? max : quantile(sorted, 0.95) };
   if (shape.kind === "more") return { lo: quantile(sorted, 0.05), hi: max };
   return { lo: quantile(sorted, 0.05), hi: quantile(sorted, 0.95) };
 }
@@ -166,7 +166,7 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
 
   // Measure every criterion on every line once.
   const values = criteria.map((c) => bidPack.lines.map((l) => measure(c.metric, l, pack, { ...home, ...c.params })));
-  const spreads = criteria.map((c, ci) => spreadOf(values[ci], c.shape));
+  const spreads = criteria.map((c, ci) => spreadOf(values[ci], c.shape, METRICS_BY_ID.get(c.metric)));
   const weights = criteria.map(criterionWeight);
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
   const beyond = options.beyondBad ?? BEYOND_BAD;

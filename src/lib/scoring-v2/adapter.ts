@@ -3,7 +3,8 @@ import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { METRICS_BY_ID, type MetricCategory } from "@/lib/metrics/catalog";
 import { SATISFACTION_CATEGORY_LABELS, type SatisfactionCategory } from "@/lib/satisfaction-categories";
 import type { LineScore } from "@/lib/scoring";
-import { scorePackV2, type CriterionResult, type V2LineScore } from "@/lib/scoring-v2/score";
+import { type CriterionResult, type V2LineScore } from "@/lib/scoring-v2/score";
+import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -63,7 +64,8 @@ function categoriesFor(s: V2LineScore, fallback: LineScore["categoryScores"]): L
 
 export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: PilotModel, flights?: FlightAnswers): LineScore[] {
   if (model.criteria.length === 0) return scores;
-  const v2 = new Map(scorePackV2(bidPack, model, { flights }).map((s) => [s.lineId, s]));
+  // Once the pilot has graded trips, each line leans on its own trips' scores (see `TRIP_LEAN`).
+  const v2 = new Map(rankLinesWithTrips(bidPack, model, { flights }).map((s) => [s.lineId, s]));
   return scores
     .map((ls) => {
       const s = v2.get(ls.line.id);

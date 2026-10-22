@@ -3,7 +3,7 @@ import { jumpseatFlights } from "@/lib/flights/jumpseat";
 import { travelNeedsForPack, type TravelNeed, type TravelParams } from "@/lib/flights/needs";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { DEFAULT_HOME_PARAMS } from "@/lib/metrics/home-travel";
-import { rankPackV2 } from "@/lib/scoring-v2/score";
+import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -77,7 +77,7 @@ export function cachedFlightAnswers(bidPack: BidPack, model: PilotModel | undefi
 /** The trips' travel worth looking up: the pilot's best lines by their own model, skipping anything already in the past. */
 export function needsToLookUp(bidPack: BidPack, model: PilotModel, p: TravelParams, now = Date.now()): TravelNeed[] {
   const lineIds = new Set(
-    rankPackV2(bidPack, model)
+    rankLinesWithTrips(bidPack, model)
       .slice(0, LINES_LOOKED_UP)
       .map((s) => s.lineId)
   );

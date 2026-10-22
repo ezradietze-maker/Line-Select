@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { prepareMetrics } from "@/lib/metrics/compute";
-import { HARD_LIMIT_CAP, homeParams, scorePackV2, utilityOf } from "@/lib/scoring-v2/score";
+import { HARD_LIMIT_CAP, homeParams, scorePackV2, spreadOf, utilityOf } from "@/lib/scoring-v2/score";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 
@@ -52,5 +52,14 @@ describe("homeParams", () => {
   it("passes the pilot's hours-at-home rule and crash pad to every measure that reads them", () => {
     const home = { airports: ["SAN"], commuter: true, minHomeHours: 48, hasCrashPad: true };
     expect(homeParams({ version: 2, home, criteria: [], threads: [], notMeasurable: [], synopsis: "" })).toEqual({ homeAirports: ["SAN"], minHomeHours: 48, hasCrashPad: true });
+  });
+});
+
+describe("spreadOf", () => {
+  it("puts the bad end of a few-valued count like departures at the pack's worst line, not the 5% mark", () => {
+    // Departures across a month: mostly 3 and 4, a few 2s and one 5.
+    const values = [2, 2, ...Array(20).fill(3), ...Array(20).fill(4), 5];
+    expect(spreadOf(values, { kind: "less" })).toEqual({ lo: 2, hi: 4 });
+    expect(spreadOf(values, { kind: "less" }, { badEndAtWorst: true })).toEqual({ lo: 2, hi: 5 });
   });
 });

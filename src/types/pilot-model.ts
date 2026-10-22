@@ -90,6 +90,11 @@ export interface PilotModel {
   synopsis: string;
   /** How many interview exchanges this reading was built from — the next reading builds on it and knows what's new. */
   readUpTo?: number;
+  /**
+   * How much more or less each criterion counts on a single trip than on a line, by criterion id (1 = the same) —
+   * learned from the pilot's own trip choices (see `fitTripWeights`). Lines never read it.
+   */
+  tripWeights?: Record<string, number>;
 }
 
 export const TIER_WEIGHT: Record<CriterionTier, number> = { must: 1, high: 0.7, medium: 0.4, low: 0.15 };
@@ -107,5 +112,13 @@ export interface LineChoice {
    * full however far it is from the model's view, where a close call in the interview is capped (see `fit-choices.ts`).
    */
   direct?: boolean;
+  why?: string;
+}
+
+/** A trip-versus-trip choice from the interview: which of two real trips the pilot would rather fly. Trips by `tripKey`. */
+export interface TripChoice {
+  preferred: string;
+  other: string;
+  strength: "slightly" | "strongly";
   why?: string;
 }

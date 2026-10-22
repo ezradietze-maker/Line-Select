@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDetailedMonth, dayRoute, toStripSegment } from "@/lib/month-detail";
+import { buildDetailedMonth, dayRoute, monthDepartureOptions, toStripSegment } from "@/lib/month-detail";
 import { groupDepartures } from "@/lib/metrics/departures";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
@@ -188,6 +188,14 @@ describe("the day's route and the trip's landing", () => {
     expect(tripDays.some((d) => d.route.length > 1)).toBe(true);
     const lastDays = m.days.filter((d, i) => d.tripIndex !== null && d.kind !== "off" && m.days[i + 1]?.tripIndex !== d.tripIndex);
     for (const d of lastDays) expect(d.finish?.city).toMatch(/^[A-Z]{3}$/);
+  });
+});
+
+describe("monthDepartureOptions", () => {
+  it("joins trips with the pilot's own hours-at-home rule", () => {
+    const o = monthDepartureOptions("MEM", { isCommuter: true, commuteFrom: "SAN", hasCrashPad: false, minHomeHours: 48 });
+    expect(o).toMatchObject({ base: "MEM", homeAirports: ["SAN"], hasCrashPad: false, minHomeHours: 48 });
+    expect(monthDepartureOptions("MEM", { isCommuter: false, commuteFrom: null, hasCrashPad: null }).minHomeHours).toBeUndefined();
   });
 });
 

@@ -7,9 +7,11 @@ import { CheckInStep } from "@/components/interview/CheckInStep";
 import { ChoiceStep } from "@/components/interview/ChoiceStep";
 import { CityRatingStep } from "@/components/interview/CityRatingStep";
 import { CommuterStep } from "@/components/interview/CommuterStep";
+import { MinHomeHoursPicker, minHomeHoursSentence } from "@/components/interview/MinHomeHoursPicker";
 import { FreeTextAnswerBox } from "@/components/interview/FreeTextAnswerBox";
 import { InterviewProgress, StepNav } from "@/components/interview/InterviewChrome";
 import { LinePairStep } from "@/components/interview/LinePairStep";
+import { TripSortStep } from "@/components/interview/TripSortStep";
 import { PriorityReviewStep } from "@/components/interview/PriorityReviewStep";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { parseSeniorityInput, SeniorityStep } from "@/components/interview/SeniorityStep";
@@ -23,7 +25,8 @@ import type { InterviewExchange } from "@/lib/brain/build-model";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { withHomeFacts } from "@/lib/brain/model-upgrade";
 import { requestModelBuild, requestNextStep, type StepResponse } from "@/lib/brain/client";
-import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
+import { fitTripWeights, fitWeightsToChoices } from "@/lib/brain/fit-choices";
+import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tripGradesAnswer, tripGradesTranscript, wantsAnotherScreen, type TripGradeScreen } from "@/lib/brain/trip-sort";
 import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
 import { askedDealbreakers, dealbreakerQuestion } from "@/lib/brain/dealbreakers";
 import { minTurnsFor, SWEEP_QUESTION, type LinePairCandidate, type ThreadState } from "@/lib/brain/interviewer";
@@ -45,7 +48,7 @@ import { loadStoryDraft, saveStoryDraft } from "@/lib/interview-draft";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { useDictation } from "@/lib/use-speech-to-text";
 import type { BidPack } from "@/types/bidpack";
-import type { LineChoice, PilotModel } from "@/types/pilot-model";
+import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
 import { DEFAULT_WEIGHTS, type CityRating, type CityRatingScore, type CitySentiment, type PreferenceProfile } from "@/types/preferences";
 
 /**
@@ -89,6 +92,7 @@ interface Snapshot {
   exchanges: InterviewExchange[];
   threads: Record<string, ThreadState>;
   choices: LineChoice[];
+  tripChoices: TripChoice[];
   pastTrades: string[];
   question: Extract<StepResponse, { done: false }>;
   turn: number;
@@ -104,6 +108,7 @@ interface DraftState {
   exchanges: InterviewExchange[];
   threads: Record<string, ThreadState>;
   choices: LineChoice[];
+  tripChoices?: TripChoice[];
   pastTrades?: string[];
   model: PilotModel | null;
   question: Extract<StepResponse, { done: false }> | null;
@@ -111,6 +116,7 @@ interface DraftState {
   isCommuter: boolean | null;
   commuteFrom: string;
   hasCrashPad: boolean | null;
+  minHomeHours?: number | null;
   seniorityText: string;
   cityRatings: Record<string, CityRating>;
   cityPreferences: Record<string, CitySentiment>;
@@ -183,6 +189,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [isCommuter, setIsCommuter] = useState<boolean | null>(priorProfile?.isCommuter ?? null);
   const [commuteFrom, setCommuteFrom] = useState(priorProfile?.commuteFrom ?? "");
   const [hasCrashPad, setHasCrashPad] = useState<boolean | null>(priorProfile?.hasCrashPad ?? null);
+  /** Hours at home that make going home between trips worth it — under it, the trips around the gap are one departure. */
+  const [minHomeHours, setMinHomeHours] = useState<number | null>(priorProfile?.minHomeHours ?? null);
   const [cityRatings, setCityRatings] = useState<Record<string, CityRating>>(() => ({ ...(priorProfile?.cityRatings ?? {}) }));
   const [cityPreferences, setCityPreferences] = useState<Record<string, CitySentiment>>(() => ({ ...(priorProfile?.cityPreferences ?? {}) }));
   /** Cities the story itself rated, as the brain read it — shown as such on the city step until the pilot changes them. */
@@ -194,6 +202,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [exchanges, setExchanges] = useState<InterviewExchange[]>(() => (checkIn && lastTime ? lastTime.exchanges : []));
   const [threads, setThreads] = useState<Record<string, ThreadState>>({});
   const [choices, setChoices] = useState<LineChoice[]>([]);
+  /** Their trip grades, as choices between trips — tunes how each priority counts on a single trip (`fitTripWeights`). */
+  const [tripChoices, setTripChoices] = useState<TripChoice[]>([]);
   /** The trade behind every line pair already put to the pilot, so no trade is asked about more than twice. */
   const [pastTrades, setPastTrades] = useState<string[]>([]);
   const [model, setModel] = useState<PilotModel | null>(() => (checkIn ? (priorProfile?.brainInterview?.reviewedModel ?? priorProfile?.pilotModel ?? null) : null));
@@ -221,6 +231,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const modelRef = useRef<PilotModel | null>(null);
   modelRef.current = model;
   const tradesRef = useRef<string[]>([]);
+  /** The trip grades so far, kept in step with `tripChoices` for the next question, which can't wait for a render. */
+  const tripRef = useRef<TripChoice[]>([]);
   tradesRef.current = pastTrades;
   // How many of the pilot's top-10 lines each re-read changed — the interviewer wraps up once answers stop moving it.
   const topRef = useRef<string[] | null>(null);
@@ -235,7 +247,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [resume, setResume] = useState<DraftState | null>(() => (typeof window === "undefined" ? null : loadDraftState(userId, bidPack.id)));
 
   const pilotContext = () =>
-    pilotContextFor(bidPack, { isCommuter, commuteFrom, hasCrashPad }) +
+    pilotContextFor(bidPack, { isCommuter, commuteFrom, hasCrashPad, minHomeHours: isCommuter ? minHomeHours : null }) +
     (checkIn ? " This is a monthly check-in: the earlier part of the interview is from last month, on a different bid pack — its line numbers don't exist in this pack; everything else they said still stands unless they say it changed." : "");
 
   const cohort = () => ({ base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, commute: commuteGroupOf(isCommuter) });
@@ -392,7 +404,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const base = exchanges.filter((e) => e.turn === 0);
     const opening: InterviewExchange[] = [
       ...base,
-      { turn: base.length, question: "Do you commute to base, or live locally?", answer: isCommuter === true ? `I commute in${home ? ` from ${home}` : ""}.${hasCrashPad === false ? " No crash pad." : hasCrashPad ? " I have a crash pad." : ""}` : isCommuter === false ? "I live locally." : "(skipped)" },
+      { turn: base.length, question: "Do you commute to base, or live locally?", answer: isCommuter === true ? `I commute in${home ? ` from ${home}` : ""}.${hasCrashPad === false ? " No crash pad." : hasCrashPad ? " I have a crash pad." : ""}${minHomeHoursSentence(minHomeHours)}` : isCommuter === false ? "I live locally." : "(skipped)" },
       { turn: base.length + 1, question: "How do you feel about each layover city in your pack?", answer: ratingsText || NO_CITY_RATINGS },
     ];
     setExchanges(opening);
@@ -435,7 +447,15 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       for (const id of step.settled) settledThreads[id] = { ...(settledThreads[id] ?? { timesAsked: 0 }), status: "settled" };
       if (step.done) {
         setThreads(settledThreads);
-        // Before wrapping up: is a line near the top of their list one they'd really bid there? (lib/brain/bid-check.ts)
+        // Before wrapping up: how would they feel about flying a screen of real trips? (lib/brain/trip-sort.ts)
+        const tripScreen = !checkIn && m ? nextTripScreen(all, m) : null;
+        if (tripScreen) {
+          const asked = tripGradesTranscript(tripScreen);
+          setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: asked, transcript: asked, tripScreen });
+          setPhase("question");
+          return;
+        }
+        // Then: is a line near the top of their list one they'd really bid there? (lib/brain/bid-check.ts)
         const checked = checkedLines(all);
         const check = !checkIn && m && checked.length < MAX_BID_CHECKS ? bidCheckQuestion(bidPack, m, ch, pm, checked, checkedKinds(all), checkedWeakSpots(all)) : null;
         if (check) {
@@ -463,9 +483,32 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     }
   }
 
-  async function answer(text: string, choice: LineChoice | null = null) {
+  /**
+   * The next screen of trips to grade, or none: two screens, then a third only if the last one surprised the model —
+   * worked out from the transcript and the grades, so going back or resuming lands on the same answer.
+   */
+  function nextTripScreen(all: InterviewExchange[], m: PilotModel): TripGradeScreen | null {
+    const shown = askedTripScreens(all);
+    const graded = tripRef.current;
+    const withGrades = (cs: TripChoice[]): PilotModel => ({ ...m, tripWeights: fitTripWeights(bidPack, m, cs, pm).tripWeights });
+    let foreseen: number | null = null;
+    const last = shown.at(-1);
+    if (last) {
+      const onLast = new Set(last);
+      const lastScreen = graded.filter((c) => onLast.has(c.preferred) && onLast.has(c.other));
+      foreseen = shareForeseen(bidPack, withGrades(graded.filter((c) => !lastScreen.includes(c))), pm, lastScreen);
+    }
+    if (!wantsAnotherScreen(shown.length, foreseen)) return null;
+    return pickTripScreen(bidPack, withGrades(graded), pm, shown);
+  }
+
+  async function answer(text: string, choice: LineChoice | null = null, tripGraded: TripChoice[] = []) {
     if (!question) return;
-    setHistory((h) => [...h, { exchanges, threads, choices, pastTrades, question, turn, model: modelRef.current, builtUpTo: builtUpTo.current }]);
+    setHistory((h) => [...h, { exchanges, threads, choices, tripChoices, pastTrades, question, turn, model: modelRef.current, builtUpTo: builtUpTo.current }]);
+    if (tripGraded.length) {
+      tripRef.current = [...tripRef.current, ...tripGraded];
+      setTripChoices(tripRef.current);
+    }
     const asked = question.kind === "line-pair" && question.pair ? `${question.prompt} [Line ${question.pair.a} vs Line ${question.pair.b}: ${question.pair.tension}]` : (question.transcript ?? question.prompt);
     // Their priority pick counts at once, so the next questions and line choices already work from it.
     if (question.priorityIds && choiceSelection !== null && modelRef.current) {
@@ -478,8 +521,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const verdict = question.bidCheck && choiceSelection !== null ? bidCheckChoice(question.bidCheck, choiceSelection, choiceNote) : null;
     const ch = choice ? [...choices, choice] : verdict ? [...choices, verdict] : choices;
     const nextTurn = turn + 1;
-    if (question.kind === "line-pair" && question.pair?.trade) {
-      tradesRef.current = [...pastTrades, question.pair.trade];
+    const trade = question.kind === "line-pair" ? question.pair?.trade : undefined;
+    if (trade) {
+      tradesRef.current = [...pastTrades, trade];
       setPastTrades(tradesRef.current);
     }
     let th = threads;
@@ -499,6 +543,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setExchanges(last.exchanges);
     setThreads(last.threads);
     setChoices(last.choices);
+    setTripChoices(last.tripChoices);
+    tripRef.current = last.tripChoices;
     setPastTrades(last.pastTrades);
     tradesRef.current = last.pastTrades;
     setQuestion(last.question);
@@ -536,9 +582,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     try {
       if (buildRef.current) await buildRef.current.promise;
       const built = await requestModelBuild({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, prior: modelRef.current });
-      const rated = withHomeFacts(applyCityRatings(built, finalCityRatings()), { hasCrashPad });
+      const rated = withHomeFacts(applyCityRatings(built, finalCityRatings()), { hasCrashPad, minHomeHours: isCommuter ? minHomeHours : null });
       // Priorities the pilot set by hand on their priorities page still hold — shown that way in the review.
-      const fitted = applyPins(fitWeightsToChoices(bidPack, rated, ch, pm).model, priorProfile?.brainInterview?.pins ?? {});
+      const lineFitted = applyPins(fitWeightsToChoices(bidPack, rated, ch, pm).model, priorProfile?.brainInterview?.pins ?? {});
+      const fitted: PilotModel = { ...lineFitted, tripWeights: fitTripWeights(bidPack, lineFitted, tripChoices, pm).tripWeights };
       setRatedModel(rated);
       setModel(fitted);
       setReviewModel(fitted);
@@ -555,7 +602,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     // The pilot's verdicts land on the model before fitting, so later choices and edits refit from what they confirmed.
     const reviewed = applyPriorityReview(ratedModel, verdicts);
     const pins = priorProfile?.brainInterview?.pins ?? {};
-    const finalModel = applyPins(fitWeightsToChoices(bidPack, reviewed, choices, pm).model, pins);
+    const lineModel = applyPins(fitWeightsToChoices(bidPack, reviewed, choices, pm).model, pins);
+    const finalModel: PilotModel = { ...lineModel, tripWeights: fitTripWeights(bidPack, lineModel, tripChoices, pm).tripWeights };
     const ratings = finalCityRatings();
     const prefs: Record<string, CitySentiment> = {};
     for (const [code, r] of Object.entries(ratings)) {
@@ -573,6 +621,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       isCommuter,
       commuteFrom: parseAirportCode(commuteFrom),
       hasCrashPad,
+      ...(isCommuter && minHomeHours ? { minHomeHours } : {}),
       seniorityNumber: parseSeniorityInput(seniorityText),
       cityPreferences: prefs,
       cityRatings: ratings,
@@ -582,7 +631,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       discoveredFacts: [],
       interviewTranscript: [],
       pilotModel: finalModel,
-      brainInterview: { exchanges, choices, reviewedModel: reviewed, packId: bidPack.id, ...(Object.keys(pins).length ? { pins } : {}) },
+      brainInterview: { exchanges, choices, ...(tripChoices.length ? { tripChoices } : {}), reviewedModel: reviewed, packId: bidPack.id, ...(Object.keys(pins).length ? { pins } : {}) },
     };
     try {
       window.localStorage.removeItem(draftKey(userId, bidPack.id));
@@ -614,16 +663,18 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   // Progress worth resuming: saved after every answer.
   useEffect(() => {
     if ((phase !== "question" && phase !== "sweep") || exchanges.length === 0) return;
-    const d: DraftState = { version: 1, savedAt: Date.now(), phase, exchanges, threads, choices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit };
+    const d: DraftState = { version: 1, savedAt: Date.now(), phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit };
     try {
       window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify(d));
     } catch {}
-  }, [phase, exchanges, threads, choices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, userId, bidPack.id]);
+  }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, userId, bidPack.id]);
 
   function resumeDraft(d: DraftState) {
     setExchanges(d.exchanges);
     setThreads(d.threads);
     setChoices(d.choices);
+    setTripChoices(d.tripChoices ?? []);
+    tripRef.current = d.tripChoices ?? [];
     setPastTrades(d.pastTrades ?? []);
     tradesRef.current = d.pastTrades ?? [];
     setModel(d.model);
@@ -634,6 +685,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setIsCommuter(d.isCommuter);
     setCommuteFrom(d.commuteFrom);
     setHasCrashPad(d.hasCrashPad);
+    setMinHomeHours(d.minHomeHours ?? null);
     setSeniorityText(d.seniorityText);
     setCityRatings(d.cityRatings);
     setCityPreferences(d.cityPreferences);
@@ -658,7 +710,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const expectedTurns = Math.min(turnLimit, Math.max(minTurnsFor(model) + 4, turn + 3));
   const progress = inOpening ? (stepIndex / stepTotal) * 0.2 : phase === "review" ? 0.97 : phase === "building" || phase === "sweep" ? 0.9 : 0.2 + Math.min(0.65, (turn / expectedTurns) * 0.7);
   const lastAnswer = exchanges.at(-1);
-  const lastExchange: LastExchange | null = lastAnswer && lastAnswer.turn > 0 && !lastAnswer.question.startsWith("How do you feel about each layover") ? { question: lastAnswer.question.replace(/ \[Line .*\]$/, ""), answer: lastAnswer.answer } : null;
+  const lastExchange: LastExchange | null = lastAnswer && lastAnswer.turn > 0 && !lastAnswer.question.startsWith("How do you feel about each layover") ? { question: lastAnswer.question.replace(/ \[(Line|Trip) .*\]$/, ""), answer: lastAnswer.answer } : null;
   const questionEyebrow = `Question ${turn + 1} · from your story`;
 
   const content = (() => {
@@ -724,6 +776,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
                     {label}
                   </button>
                 ))}
+              </div>
+              <div className="mt-5">
+                <MinHomeHoursPicker value={minHomeHours} onChange={setMinHomeHours} base={bidPack.base} id="brain-min-home" />
               </div>
             </div>
           )}
@@ -809,6 +864,22 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       const q = question;
       // What it took from their last answer, said the way a colleague would before asking the next thing.
       const ack = q.ack ? <p className="animate-fade-in mb-4 text-[15px] leading-relaxed text-ink-muted">{q.ack}</p> : null;
+      if (q.tripScreen) {
+        const ts = q.tripScreen;
+        return (
+          <div key={`${ts.keys.join("|")}-${turn}`}>
+            {ack}
+            <TripSortStep
+              eyebrow={questionEyebrow}
+              screen={ts}
+              bidPack={bidPack}
+              index={askedTripScreens(exchanges).length}
+              onAnswer={(grades, why) => answer(tripGradesAnswer(ts, grades, why), null, choicesFromGrades(grades, why))}
+              onSkip={() => void answer("(skipped)")}
+            />
+          </div>
+        );
+      }
       if (q.kind === "line-pair" && q.pair) {
         return (
           <div key={`${q.pair.a}-${q.pair.b}-${turn}`}>

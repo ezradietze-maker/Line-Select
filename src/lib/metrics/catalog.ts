@@ -84,6 +84,12 @@ export interface MetricDef {
   defaults?: MetricParams;
   trip?: { measure: (f: TripFacts, p: MetricParams) => number | null; aggregate: Aggregation };
   line?: (line: Line, trips: TripFacts[], ctx: LineContext, p: MetricParams) => number | null;
+  /**
+   * For a "less is better" priority with no worst point given, the bad end of the scale is the pack's worst line rather
+   * than the 5% mark. For counts with only a few values across a month — departures run 2 to 5 — the 5% mark is a step
+   * from the best, so a single extra departure would cost half the priority.
+   */
+  badEndAtWorst?: boolean;
 }
 
 /** Minutes of a stretch starting at `start` (minutes after local midnight) that fall between 06:00 and 22:00. */
@@ -426,6 +432,7 @@ export const METRICS: MetricDef[] = [
     description:
       "How many times the pilot leaves home to fly — trips flown without going home in between count once (a \"series of trips\" or \"trip sequence\"). For a commuter, two trips are one departure unless there would be at least minHomeHours (default 24) at home between them, counted door to door: deadheading home from where one trip's flying ends, or commuting home from base, then back out for the next. For a pilot who lives at base, only trips that turn within a few hours at base are joined.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
+    badEndAtWorst: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).length,
   },
   {
@@ -436,6 +443,7 @@ export const METRICS: MetricDef[] = [
     description:
       "Commutes to or from base the month really takes, counted per departure (trips flown without going home count once): 0–2 each, none at an end that starts or finishes on a deadhead the pilot can join from or leave for home. A pilot who lives at base has none.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
+    badEndAtWorst: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((s, d) => s + d.baseCommutes, 0),
   },
   {
@@ -446,6 +454,7 @@ export const METRICS: MetricDef[] = [
     description:
       "Nights a commuter without a crash pad spends at base: the night before a report too early to commute in that morning (unless the first duty is short enough to jumpseat in the evening before and nap at the hub), nights waiting at base between trips of one departure, and the night after a release too late to get home.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours", "hasCrashPad"],
+    badEndAtWorst: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((s, d) => s + d.baseNights.reduce((a, b) => a + b.nights, 0), 0),
   },
   { id: "avgTripDays", label: "Average trip length", unit: "days", category: "calendar", description: "Average trip length in days.", trip: { measure: (f) => f.trip.days, aggregate: "mean" } },

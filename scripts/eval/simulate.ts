@@ -14,7 +14,9 @@ import { buildPilotModel, type InterviewExchange } from "@/lib/brain/build-model
 import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { dealbreakerQuestion } from "@/lib/brain/dealbreakers";
-import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
+import { fitTripWeights, fitWeightsToChoices } from "@/lib/brain/fit-choices";
+import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tripGradesAnswer, tripGradesTranscript, tripText, TRIP_GRADES, wantsAnotherScreen, type TripGrade } from "@/lib/brain/trip-sort";
+import { rankLinesWithTrips, tripKey } from "@/lib/scoring-v2/trip-score";
 import { nextInterviewStep, SWEEP_QUESTION, type ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
 import { topLines, topShift } from "@/lib/brain/ranking-shift";
@@ -27,7 +29,7 @@ import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankPackV2 } from "@/lib/scoring-v2/score";
 import { SWEEP_TOPICS, uncoveredTopics } from "@/components/interview/TopicSweepStep";
 import type { CityRating, CityRatingScore } from "@/types/preferences";
-import type { LineChoice, PilotModel } from "@/types/pilot-model";
+import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
 import type { Judgment } from "./judge";
 import { pilotAgreement, scorecard } from "./metrics";
 import { pilotWordsOf, PERSONAS } from "./personas";
@@ -59,6 +61,10 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   const pack = expandBidPack(JSON.parse(readFileSync(`.cache/packs/${persona.pack}.json`, "utf8")));
   const pm = prepareMetrics(pack);
   const brief = buildPackBrief(pack, pm);
+  // Trips the trip graders graded (scripts/eval/trip-judge.ts): never shown on a trip-grade screen.
+  const judgedTrips = new Set<string>(
+    [1, 2, 3].map((n) => `.cache/eval/trip-judge-${persona.id}-s${n}.json`).filter(existsSync).flatMap((f) => Object.values(JSON.parse(readFileSync(f, "utf8")).labels as Record<string, string>))
+  );
   const home = persona.commuteFrom;
   const context = `${pack.aircraft} ${pack.seat === "CAP" ? "captain" : "first officer"} based in ${pack.base} (${pack.month} bid pack, ${pack.lines.length} lines). ${persona.isCommuter ? `Commutes to base${home ? ` from ${home}` : ""}.` : "Lives in base."} FedEx lets pilots deviate from a scheduled deadhead and ride a different airline flight on their own to the same city.`;
 
@@ -91,6 +97,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   const shifts: number[] = [];
   const threads: Record<string, ThreadState> = Object.fromEntries(model.threads.map((t) => [t.id, { status: t.status, timesAsked: 0 }]));
   const choices: LineChoice[] = [];
+  const tripChoices: TripChoice[] = [];
   const pastTrades: string[] = [];
   /** Per question, for the quality report (scripts/eval/interview-quality.ts). */
   const asked: { kind: string; words: number; ack: string; pair?: { a: string; b: string; trade: string; strength?: string; variables?: number } }[] = [];
@@ -134,6 +141,41 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
     for (const id of step.settled) threads[id] = { ...(threads[id] ?? { timesAsked: 0 }), status: "settled" };
     if (step.done) {
       say(`\n— interviewer: done (${step.reason})`);
+      // As in the app: before wrapping up, how would they feel about flying a screen of real trips? Two screens, a third
+      // only if the second surprised the model. The trip graders' own trips are never shown, so a fit can't learn their
+      // answers by heart.
+      const shownScreens = askedTripScreens(exchanges);
+      const withGrades = (cs: TripChoice[]): PilotModel => ({ ...model, tripWeights: fitTripWeights(pack, model, cs, pm).tripWeights });
+      const lastScreen = shownScreens.at(-1);
+      const onLast = new Set(lastScreen ?? []);
+      const lastGraded = tripChoices.filter((c) => onLast.has(c.preferred) && onLast.has(c.other));
+      const foreseen = lastScreen ? shareForeseen(pack, withGrades(tripChoices.filter((c) => !lastGraded.includes(c))), pm, lastGraded) : null;
+      const screen = wantsAnotherScreen(shownScreens.length, foreseen) ? pickTripScreen(pack, withGrades(tripChoices), pm, shownScreens, { exclude: judgedTrips }) : null;
+      if (screen) {
+        const byKey = new Map(pack.lines.flatMap((l) => l.trips).map((t) => [tripKey(t), t]));
+        const letters = screen.keys.map((_, i) => String.fromCharCode(65 + i));
+        const g = await sim<{ grades: { trip: string; grade: TripGrade }[]; why: string }>(
+          `Question: here are ${screen.keys.length} real trips from your pack. Grade each one the way you'd feel about flying it in your month — the way you'd size them up on a trade board: love, good, fine, poor, or trade away. Just these trips, not the lines they're on.\n\n${screen.keys.map((k, i) => `Trip ${letters[i]} — ${screen.labels[k]}:\n${tripText(pack, byKey.get(k)!)}`).join("\n\n")}\n\nGrade every trip (by its letter), and say in a sentence or two what decided it.`,
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["grades", "why"],
+            properties: {
+              grades: { type: "array", items: { type: "object", additionalProperties: false, required: ["trip", "grade"], properties: { trip: { type: "string", enum: letters }, grade: { type: "string", enum: [...TRIP_GRADES] } } } },
+              why: { type: "string" },
+            },
+          }
+        );
+        const grades: Record<string, TripGrade> = {};
+        for (const x of g.grades) if (letters.includes(x.trip)) grades[screen.keys[letters.indexOf(x.trip)]] = x.grade;
+        tripChoices.push(...choicesFromGrades(grades, g.why));
+        const answerText = tripGradesAnswer(screen, grades, g.why);
+        say(`\nQ${turn + 1} [trip grades, screen ${shownScreens.length + 1}${foreseen !== null ? `, last screen foreseen ${Math.round(foreseen * 100)}%` : ""}]\nA: ${answerText}`);
+        asked.push({ kind: "trip-grades", words: 12, ack: "" });
+        exchanges = [...exchanges, { turn: exchanges.length, question: tripGradesTranscript(screen), answer: answerText }];
+        turn++;
+        continue;
+      }
       // As in the app: before wrapping up, is a line near the top one they'd really bid there?
       const checked = checkedLines(exchanges);
       const check = checked.length < MAX_BID_CHECKS ? bidCheckQuestion(pack, model, choices, pm, checked, checkedKinds(exchanges), checkedWeakSpots(exchanges)) : null;
@@ -211,8 +253,12 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   }
 
   const finalBuilt = await build(model);
-  const fit = fitWeightsToChoices(pack, finalBuilt, choices, pm);
-  const order = rankPackV2(pack, fit.model, { pack: pm }).map((r) => r.lineNumber);
+  const lineFit = fitWeightsToChoices(pack, finalBuilt, choices, pm);
+  const tripFit = fitTripWeights(pack, lineFit.model, tripChoices, pm);
+  const fit = { ...lineFit, model: { ...lineFit.model, tripWeights: tripFit.tripWeights } };
+  say(`trip grades: ${tripChoices.length} comparisons (trip fit ${tripFit.agreedBefore}→${tripFit.agreedAfter})`);
+  // As the results rank them: once trips are graded, each line leans on its own trips' scores.
+  const order = rankLinesWithTrips(pack, fit.model, { pack: pm }).map((r) => r.lineNumber);
   const orderNoFit = rankPackV2(pack, finalBuilt, { pack: pm }).map((r) => r.lineNumber);
   const judgeFile = `.cache/eval/judge-${persona.id}.json`;
   say(`\n=== ${persona.id} ${tag}: ${turn} questions, ${choices.length} line choices (fit ${fit.agreedBefore}→${fit.agreedAfter}), spend $${spend.toFixed(2)}, question latency median ${(qTimes.sort((a, b) => a - b)[Math.floor(qTimes.length / 2)] / 1000).toFixed(1)}s`);
@@ -225,7 +271,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   for (const c of [...fit.model.criteria].sort((a, b) => b.weight - a.weight)) say(`  ${c.weight.toFixed(2)} ${c.label} — ${c.metric}`);
   mkdirSync(".cache/eval/sim", { recursive: true });
   writeFileSync(`.cache/eval/sim/${persona.id}-${tag}.txt`, log.join("\n"));
-  const result: Record<string, unknown> = { exchanges, choices, model: fit.model, preFit: finalBuilt, asked, spend, order, shifts };
+  const result: Record<string, unknown> = { exchanges, choices, tripChoices, model: fit.model, preFit: finalBuilt, asked, spend, order, shifts };
   if (existsSync(judgeFile)) result.judgeSpearman = scorecard("", order, JSON.parse(readFileSync(judgeFile, "utf8"))).spearman;
   if (persona.lineLabels) result.pilotAgreement = pilotAgreement(order, persona.lineLabels).share;
   writeFileSync(`.cache/eval/sim/${persona.id}-${tag}.json`, JSON.stringify(result, null, 2));

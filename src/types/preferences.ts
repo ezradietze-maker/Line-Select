@@ -218,6 +218,12 @@ export interface PreferenceProfile {
    */
   hasCrashPad: boolean | null;
   /**
+   * For a commuter: how many hours at home, door to door, make it worth going home between two trips — under it, they
+   * stay at base and the trips around the gap are one departure (see `metrics/departures.ts`). Asked with the crash
+   * pad; absent or null means not asked, and the default (24) applies.
+   */
+  minHomeHours?: number | null;
+  /**
    * The pilot's own system seniority number, as they entered it at the start
    * of the interview (or on the Preferences page) — how the forecast knows
    * where in the bid order they sit. `null`/absent means not given. Never a
@@ -248,6 +254,8 @@ export interface PreferenceProfile {
     exchanges: { turn: number; question: string; answer: string }[];
     /** Every line-versus-line choice: the interview's, then each one made by dragging lines on the results. */
     choices: import("./pilot-model").LineChoice[];
+    /** Every trip-versus-trip choice from the interview — what tunes how each priority counts on a single trip. */
+    tripChoices?: import("./pilot-model").TripChoice[];
     /**
      * The model as the pilot confirmed it (their review applied, their city grades in), before any choice fitting.
      * `pilotModel` is always this, fitted to all of `choices` — so every new choice or edit refits from what the

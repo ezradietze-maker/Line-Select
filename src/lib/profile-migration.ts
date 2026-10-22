@@ -48,8 +48,8 @@ export function migrateDeparturesToDutyPeriods<T extends Partial<PreferenceProfi
  */
 export function migrateModelsToDepartures<T extends Partial<PreferenceProfile>>(profile: T): T {
   const bi = profile.brainInterview;
-  // The crash pad answer from the interview's commute step rides along, for the nights at base it saves.
-  const upgrade = (m: PilotModel) => withHomeFacts(modelToDepartures(m), { hasCrashPad: profile.hasCrashPad });
+  // The commute step's answers ride along: the crash pad (nights at base it saves) and the hours at home worth going home for.
+  const upgrade = (m: PilotModel) => withHomeFacts(modelToDepartures(m), { hasCrashPad: profile.hasCrashPad, minHomeHours: profile.minHomeHours });
   return {
     ...profile,
     ...(profile.pilotModel ? { pilotModel: upgrade(profile.pilotModel) } : {}),

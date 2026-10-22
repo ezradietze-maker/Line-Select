@@ -7,8 +7,10 @@ import { CircadianStars } from "@/components/results/CircadianStars";
 import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { TripCommuteFlights } from "@/components/results/TripCommuteFlights";
 import { ChevronDownIcon, MoonIcon, StarIcon } from "@/components/ui/icons";
+import { TripScorePanel } from "@/components/results/TripScorePanel";
 import { RestPlan, SleepOverlay } from "@/components/results/SleepPlan";
 import { planTripSleep, type LayoverSleepPlan } from "@/lib/sleep-plan";
+import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
 import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { tripDutyPeriods } from "@/lib/duty-periods";
@@ -870,6 +872,8 @@ interface TripListProps {
   flights?: FlightAnswers | null;
   /** The bid pack's base — where the commute goes. */
   base?: string;
+  /** Each trip's own score for this pilot, by `tripKey` (see `lib/scoring-v2/trip-score.ts`); absent before an interview. */
+  tripScores?: Map<string, TripScore> | null;
 }
 
 function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: FlightAnswers; base: string }) {
@@ -877,7 +881,7 @@ function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: F
   return <TripCommuteFlights answers={flights} trip={trip} base={base} frontCity={f.front?.city} backCity={f.back?.city} />;
 }
 
-export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base }: TripListProps) {
+export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [openItineraries, setOpenItineraries] = useState<Set<string>>(new Set());
@@ -978,6 +982,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
           const key = `${trip.id}-${tripIndex}`;
           const plans: LayoverSleepPlan[] = sleepPlans[tripIndex] ?? [];
           const days = buildTimelineDays(trip, mode, showSleep ? plans : []);
+          const tripScore = tripScores?.get(tripKey(trip));
           return (
             <li key={key} className="rounded-[var(--radius-panel)] border border-hairline bg-surface/60 p-3 shadow-[inset_0_1px_0_var(--panel-highlight)]">
               <TripHeader
@@ -988,6 +993,8 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                 homeBaseOffsetMinutes={homeBaseOffsetMinutes}
                 cityPreferences={cityPreferences}
               />
+
+              {tripScore && <TripScorePanel score={tripScore} />}
 
               <TripInsights trip={trip} />
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { MinHomeHoursPicker } from "@/components/interview/MinHomeHoursPicker";
 import { CityChips } from "@/components/preferences/CityChips";
 import { PilotPrioritiesEditor } from "@/components/preferences/PilotPrioritiesEditor";
 import { TargetEditor } from "@/components/preferences/TargetEditor";
@@ -22,7 +23,9 @@ import {
 } from "@/lib/interview-config";
 import { parseSeniorityInput } from "@/components/interview/SeniorityStep";
 import { resolveBidPosition } from "@/lib/forecast/forecast";
+import { DEFAULT_MIN_HOME_HOURS } from "@/lib/metrics/departures";
 import { hasEdits, type ProfileEdits } from "@/lib/profile-edits";
+import { migrateModelsToDepartures } from "@/lib/profile-migration";
 import { MAGNITUDE_ONLY_KEYS } from "@/lib/rank-learning";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
 import { packHasStandby } from "@/lib/standby";
@@ -316,6 +319,21 @@ export function PreferencesScreen({
           </section>
         );
       })()}
+
+      {currentProfile.isCommuter === true && currentProfile.pilotModel && bidPack && onUpdateProfile && (
+        <section className="panel-glass mt-6 p-5 sm:p-6">
+          <SectionHeading>Time at home</SectionHeading>
+          <div className="mt-3">
+            <MinHomeHoursPicker
+              id="prefs-min-home"
+              base={bidPack.base}
+              value={currentProfile.minHomeHours ?? DEFAULT_MIN_HOME_HOURS}
+              // Your rankings count departures with the new number right away.
+              onChange={(minHomeHours) => onUpdateProfile(migrateModelsToDepartures({ ...currentProfile, minHomeHours }))}
+            />
+          </div>
+        </section>
+      )}
 
       {currentProfile.pilotModel && bidPack && onUpdateProfile ? (
         <PilotPrioritiesEditor bidPack={bidPack} profile={currentProfile} onUpdate={onUpdateProfile} />

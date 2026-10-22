@@ -1,9 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { restoreBidPack } from "@/lib/bidpack-storage";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
+import { fitTripWeights } from "@/lib/brain/fit-choices";
 import { modelToDepartures } from "@/lib/brain/model-upgrade";
 import { migrateProfile } from "@/lib/profile-migration";
-import { rankPackV2, type V2LineScore } from "@/lib/scoring-v2/score";
+import { type V2LineScore } from "@/lib/scoring-v2/score";
+import { rankLinesWithTrips, tripKey } from "@/lib/scoring-v2/trip-score";
 import type { PilotModel } from "@/types/pilot-model";
 
 /**
@@ -19,6 +21,8 @@ import type { PilotModel } from "@/types/pilot-model";
  * `--model` takes a saved profile or a bare PilotModel. A profile is read the way the app loads it (saved models move
  * onto departures) and scored on the model he confirmed with his own city grades applied; a bare model is moved onto
  * departures the same way. Without `--answers`, only the line choices he made in the interview are checked.
+ * `--trip-picks` takes his five real trip picks (Oct 21) as his trip answers, the way trip grades would come in, so his
+ * lines are ranked with them (`rankLinesWithTrips`).
  */
 
 const DIR = "private/ex-pilot";
@@ -37,6 +41,8 @@ interface Answers {
   choices?: [string, string][];
   /** His whole sample in his order, best first, when he ordered all of it. */
   fullOrder?: string[];
+  /** His trip picks, by pairing number: [the trip he picked, the other one], by pair. */
+  tripPicks?: Record<string, [string, string]>;
 }
 
 /** The two line choices he made in the Oct 15 interview, both "easily". */
@@ -90,7 +96,15 @@ function why(a: V2LineScore, b: V2LineScore): string {
   for (const p of [packPath, modelPath]) if (!existsSync(p)) throw new Error(`${p} isn't on this machine (it lives in the private folder).`);
 
   const pack = restoreBidPack(JSON.parse(readFileSync(packPath, "utf8")));
-  const ranked = rankPackV2(pack, loadModel(modelPath));
+  const answers: Answers | null = existsSync(answersPath) ? JSON.parse(readFileSync(answersPath, "utf8")) : null;
+  let model = loadModel(modelPath);
+  if (process.argv.includes("--trip-picks") && answers?.tripPicks) {
+    // His words on each pair: C was "a somewhat tough call", the rest clear.
+    const trip = (n: string) => pack.lines.flatMap((l) => l.trips).find((t) => t.pairingNumber === n)!;
+    const picks = Object.entries(answers.tripPicks).map(([pair, [a, b]]) => ({ preferred: tripKey(trip(a)), other: tripKey(trip(b)), strength: pair === "C" ? ("slightly" as const) : ("strongly" as const) }));
+    model = { ...model, tripWeights: fitTripWeights(pack, model, picks).tripWeights };
+  }
+  const ranked = rankLinesWithTrips(pack, model);
   const byLine = new Map(ranked.map((r, i) => [r.lineNumber, { r, rank: i + 1 }]));
   const get = (n: string) => {
     const x = byLine.get(n);
@@ -101,7 +115,6 @@ function why(a: V2LineScore, b: V2LineScore): string {
 
   console.log(`${pack.id} · ${ranked.length} lines · model from ${modelPath}\n`);
 
-  const answers: Answers | null = existsSync(answersPath) ? JSON.parse(readFileSync(answersPath, "utf8")) : null;
   console.log("Interview line choices");
   for (const c of check([...INTERVIEW_CHOICES, ...(answers?.choices ?? [])])) {
     console.log(`  ${c.agrees ? "agrees  " : "DISAGREES"} ${c.better.r.lineNumber} (#${c.better.rank}, ${c.better.r.score}) over ${c.worse.r.lineNumber} (#${c.worse.rank}, ${c.worse.r.score})`);

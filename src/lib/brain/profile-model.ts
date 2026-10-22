@@ -1,8 +1,8 @@
 import { applyCityRatings } from "@/lib/brain/city-ratings";
-import { fitWeightsToChoices, type WeightChange } from "@/lib/brain/fit-choices";
+import { fitTripWeights, fitWeightsToChoices, type WeightChange } from "@/lib/brain/fit-choices";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
-import type { LineChoice, PilotModel } from "@/types/pilot-model";
+import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
 
 /**
@@ -18,18 +18,24 @@ export function baseModelOf(profile: PreferenceProfile): PilotModel | null {
   return profile.brainInterview?.reviewedModel ?? profile.pilotModel ?? null;
 }
 
-/** The pilot model for a confirmed base: city grades in, fitted to every choice, then the pilot's own settings on top. */
+/**
+ * The pilot model for a confirmed base: city grades in, fitted to every line choice, then the pilot's own settings on
+ * top, then how each priority counts on a single trip, fitted to their trip choices.
+ */
 export function deriveModel(
   bidPack: BidPack,
   base: PilotModel,
   profile: Pick<PreferenceProfile, "cityRatings">,
   choices: LineChoice[],
   pack?: PackMetrics,
-  pins: Record<string, number> = {}
+  pins: Record<string, number> = {},
+  tripChoices: TripChoice[] = []
 ): { model: PilotModel; changes: WeightChange[] } {
   const rated = applyCityRatings(base, profile.cityRatings);
   const fit = fitWeightsToChoices(bidPack, rated, choices, pack);
-  return { model: applyPins(fit.model, pins), changes: fit.changes };
+  const lineModel = applyPins(fit.model, pins);
+  const tripWeights = tripChoices.length ? fitTripWeights(bidPack, lineModel, tripChoices, pack).tripWeights : undefined;
+  return { model: { ...lineModel, tripWeights }, changes: fit.changes };
 }
 
 /** A pinned priority counts exactly what the pilot set, relative to their strongest unpinned one ("Top" ties it). */
@@ -57,7 +63,7 @@ export function withModel(
   // Changes are reported against the model the pilot was looking at a moment ago.
   const before = profile.pilotModel ?? base;
   const pins = update.pins ?? profile.brainInterview?.pins ?? {};
-  const { model } = deriveModel(bidPack, base, next, choices, pack, pins);
+  const { model } = deriveModel(bidPack, base, next, choices, pack, pins, profile.brainInterview?.tripChoices ?? []);
   const changes = model.criteria
     .map((c) => ({ criterionId: c.id, label: c.label, from: before.criteria.find((x) => x.id === c.id)?.weight ?? 0, to: c.weight }))
     .filter((x) => Math.abs(x.to - x.from) >= 0.03);

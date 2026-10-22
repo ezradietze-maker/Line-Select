@@ -86,6 +86,8 @@ export type InterviewStep =
       transcript?: string;
       /** For a bid check: the line asked about and the line its verdict is recorded against (see `bid-check.ts`). */
       bidCheck?: { line: string; alt: string; kind?: "top" | "middle" };
+      /** For trip grades: the trips to grade (see `trip-sort.ts`). */
+      tripScreen?: import("./trip-sort").TripGradeScreen;
       usage?: BrainUsage;
     };
 

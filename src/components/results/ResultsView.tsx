@@ -35,6 +35,7 @@ import { monthDepartureOptions } from "@/lib/month-detail";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { cachedFlightAnswers, lookUpFlights } from "@/lib/flights/client";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
+import { scoreTripsV2 } from "@/lib/scoring-v2/trip-score";
 import { fetchAllHotelQualityData, settledHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { useBidForecast } from "@/lib/forecast/use-bid-forecast";
@@ -316,6 +317,8 @@ export function ResultsView({
     () => rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined),
     [bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
   );
+  // Every trip's own score, from the same priorities that rank the lines — shown on each trip in a line's trip list.
+  const tripScores = useMemo(() => (pilotModel ? scoreTripsV2(bidPack, pilotModel, { flights: flights ?? undefined }) : null), [bidPack, pilotModel, flights]);
 
   const updateMarks = useCallback(
     (fn: (m: LineMarks) => LineMarks) => {
@@ -926,6 +929,7 @@ export function ResultsView({
                         forecast={forecastLines?.[lineScore.line.id] ?? null}
                         homeBase={bidPack.base}
                         flights={flights}
+                        tripScores={tripScores}
                       />
                     </ErrorBoundary>
                   </motion.div>
