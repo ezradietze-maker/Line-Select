@@ -237,3 +237,29 @@ describe("chained trips", () => {
     expect(m.summary.departures).toBe(2);
   });
 });
+
+describe("time at home on the calendar", () => {
+  it("says how long the pilot is home between departures, on the day they get home, and counts the short stays", () => {
+    // Two trips a week apart: one stay at home between them.
+    const l = placed("9006", [2, 10]);
+    const m = buildDetailedMonth(l, START, 28, {}, { base: SAMPLE_BID_PACK.base, homeAirports: [] });
+    const home = m.summary.home!;
+    expect(home.between).toHaveLength(1);
+    expect(home.between[0].nights).toBeGreaterThanOrEqual(3);
+    expect(home.shortGaps).toBe(0);
+    const noted = m.days.filter((d) => d.homeNote);
+    expect(noted).toHaveLength(1);
+    expect(noted[0].homeNote).toMatch(/^Home for \d+h — \d+ nights in your own bed before leaving again/);
+    expect(noted[0].homeNote).not.toMatch(/short of a real break/);
+    // The same stay is short for a pilot who needs more nights at home than it gives.
+    const strict = buildDetailedMonth(l, START, 28, {}, { base: SAMPLE_BID_PACK.base, homeAirports: [], minBreakNights: home.between[0].nights + 1 });
+    expect(strict.summary.home!.shortGaps).toBe(1);
+    expect(strict.days.find((d) => d.homeNote)!.homeNote).toMatch(/short of a real break/);
+  });
+
+  it("takes the pilot's own number for a real break from their reading", () => {
+    const profile = { isCommuter: true, commuteFrom: "SAN", hasCrashPad: false, brainInterview: { reviewedModel: { home: { airports: ["SAN"], commuter: true, minBreakNights: 4 } } } } as never;
+    expect(monthDepartureOptions("MEM", profile).minBreakNights).toBe(4);
+    expect(monthDepartureOptions("MEM", { isCommuter: false, commuteFrom: null, hasCrashPad: null }).minBreakNights).toBeUndefined();
+  });
+});

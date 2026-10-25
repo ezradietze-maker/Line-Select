@@ -11,7 +11,7 @@ import type { Criterion, CriterionShape, PilotModel } from "@/types/pilot-model"
 const clock = (m: number) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, "0")}:${String(Math.round(m % 60)).padStart(2, "0")}`;
 const round = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
-const SINGULAR: Record<string, string> = { duties: "duty", hours: "hour", days: "day", trips: "trip", legs: "leg", layovers: "layover", commutes: "commute", landings: "landing", nights: "night", flights: "flight", departures: "departure", "hub turns": "hub turn" };
+const SINGULAR: Record<string, string> = { duties: "duty", hours: "hour", days: "day", trips: "trip", legs: "leg", layovers: "layover", commutes: "commute", landings: "landing", nights: "night", flights: "flight", departures: "departure", "hub turns": "hub turn", gaps: "gap" };
 
 /** A value in its metric's unit, the way a pilot reads it. */
 export function formatValue(value: number, def: Pick<MetricDef, "unit">): string {

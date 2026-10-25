@@ -358,6 +358,7 @@ function DayDetail({ day }: { day: DetailedDay }) {
             A day off
             {day.offRun && day.offRun.length > 1 ? ` — day ${day.offRun.position} of ${day.offRun.length} in a row.` : " — a single day, on either side of a trip."}
           </p>
+          {day.homeNote && <p className="mt-1 text-ink">{day.homeNote}</p>}
           {day.spill && <SpillList spill={day.spill} offDay />}
         </>
       ) : day.preReportTime !== null ? (
@@ -370,6 +371,7 @@ function DayDetail({ day }: { day: DetailedDay }) {
           {day.chain && <p className="mt-1 text-ink">{chainSentence(day.chain)}</p>}
           {day.baseNote && <p className="mt-1 text-ink">{day.baseNote}</p>}
           {day.hubNote && <p className="mt-1 text-ink">{day.hubNote}</p>}
+          {day.homeNote && <p className="mt-1 text-ink">{day.homeNote}</p>}
           <p className="mt-1">
             {day.tripNumber ? `Trip #${day.tripNumber}` : "Trip"}, day {day.tripDay} of {day.tripDayCount}
             {day.tripCreditHours !== null ? ` · ${hm(day.tripCreditHours * 60)} credit for the trip` : ""}.
@@ -443,6 +445,18 @@ function Summary({ s, line }: { s: MonthSummary; line: Line }) {
           <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">Commuting · </span>
           {s.base.commutes} {s.base.code} commute{s.base.commutes === 1 ? "" : "s"} · {s.base.nights === 0 ? `no nights in ${s.base.code}` : `${s.base.nights} night${s.base.nights === 1 ? "" : "s"} in ${s.base.code}`}
           {s.base.jumpseatIns > 0 ? ` · ${s.base.jumpseatIns} jumpseat-in${s.base.jumpseatIns === 1 ? "" : "s"}` : ""}
+        </p>
+      )}
+      {s.home && (
+        <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
+          <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">At home · </span>
+          {s.home.between.length ? `${s.home.between.map((b) => `${Math.round(b.hours)}h`).join(", ")} between departures · ` : ""}
+          {s.home.nightsHome} night{s.home.nightsHome === 1 ? "" : "s"} in your own bed
+          {s.home.shortGaps > 0 ? (
+            <span className="text-warn">{` · ${s.home.shortGaps} short stay${s.home.shortGaps === 1 ? "" : "s"} (under ${s.home.minBreakNights} nights)`}</span>
+          ) : (
+            ""
+          )}
         </p>
       )}
       {s.hubTurns && (

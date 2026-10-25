@@ -69,6 +69,9 @@ export interface Departure {
   /** When he leaves home and gets back (ms, UTC) — null for a pilot who lives at base, or when a trip couldn't be placed. */
   leaveHome: number | null;
   backHome: number | null;
+  /** The first report at base and the last block-in (ms, UTC) — null when a trip couldn't be placed. */
+  reportAt: number | null;
+  releaseAt: number | null;
   /** How it starts and ends: commuting through base, or deviating on a deadhead from or to home. Null without a home. */
   start: "base" | "deviate" | null;
   end: "base" | "deviate" | null;
@@ -191,6 +194,8 @@ export function groupDepartures(trips: Trip[], ctx: Pick<BidPack, "bidPeriodStar
       trips: g.map((p) => p.trip),
       leaveHome: first.leave,
       backHome: last.back,
+      reportAt: first.start,
+      releaseAt: last.end,
       start: first.startHow,
       end: last.endHow,
       creditHours: g.reduce((s, p) => s + p.trip.creditHours, 0),
@@ -208,6 +213,6 @@ export function groupDepartures(trips: Trip[], ctx: Pick<BidPack, "bidPeriodStar
   }
   return [
     ...departures,
-    ...unplaced.map((trip) => ({ trips: [trip], leaveHome: null, backHome: null, start: null, end: null, creditHours: trip.creditHours, turnHours: [], homeHoursAfter: null, baseCommutes: 0, baseNights: [], jumpseatIns: 0 })),
+    ...unplaced.map((trip) => ({ trips: [trip], leaveHome: null, backHome: null, reportAt: null, releaseAt: null, start: null, end: null, creditHours: trip.creditHours, turnHours: [], homeHoursAfter: null, baseCommutes: 0, baseNights: [], jumpseatIns: 0 })),
   ];
 }

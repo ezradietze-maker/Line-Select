@@ -139,6 +139,7 @@ export function homeParams(model: PilotModel): MetricParams {
     ...(h.backupFlights !== undefined ? { backupFlights: h.backupFlights } : {}),
     ...(h.minHomeHours !== undefined ? { minHomeHours: h.minHomeHours } : {}),
     ...(h.hasCrashPad !== undefined ? { hasCrashPad: h.hasCrashPad } : {}),
+    ...(h.minBreakNights !== undefined ? { minBreakNights: h.minBreakNights } : {}),
   };
 }
 

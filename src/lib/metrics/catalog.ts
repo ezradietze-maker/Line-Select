@@ -8,6 +8,7 @@ import { backupsToWork, earliestHome, flightsForTrip, realTravelForTrip, type Fl
 import { tripStartUtc } from "@/lib/flights/needs";
 import { groupDepartures, type Departure } from "@/lib/metrics/departures";
 import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metrics/hub-turns";
+import { DEFAULT_MIN_BREAK_NIGHTS, homeStretches, summarizeHomeTime, type HomeStretch, type HomeTime } from "@/lib/metrics/home-stretches";
 import { DEFAULT_HOME_PARAMS, homeAwayForTrip, type HomeAway, type TravelTimeProvider } from "@/lib/metrics/home-travel";
 import { legDeepNightMinutes, nightsWorked, type LayoverFact, type LegFact, type Region, type TripFacts } from "@/lib/metrics/trip-facts";
 import type { Line } from "@/types/bidpack";
@@ -52,6 +53,8 @@ export interface MetricParams {
   minHomeHours?: number;
   /** A crash pad at base: nights there cost a commuter nothing extra. */
   hasCrashPad?: boolean;
+  /** Nights at home that make a stretch a real break, for this pilot (see `metrics/home-stretches.ts`). */
+  minBreakNights?: number;
   /** Calendar dates ("2026-10-10"), for date-specific measurements. */
   dates?: string[];
   /** Days of the week, 1 = Monday … 7 = Sunday. */
@@ -205,6 +208,22 @@ function departuresOf(trips: TripFacts[], c: LineContext, p: MetricParams): Depa
   );
   entry.byKey.set(key, departures);
   return departures;
+}
+
+/** A line's stretches at home, worked out once per set of departures (see `metrics/home-stretches.ts`). */
+const homeStretchCache = new WeakMap<Departure[], HomeStretch[] | null>();
+/**
+ * Time at home over the line's month, door to door: its stretches and nights at home, with a real break at the pilot's
+ * own number of nights (`n` on the criterion, else their stated one, else 3). Null when the month can't be placed.
+ */
+function homeTimeOf(trips: TripFacts[], c: LineContext, p: MetricParams): HomeTime | null {
+  const departures = departuresOf(trips, c, p);
+  let stretches = homeStretchCache.get(departures);
+  if (stretches === undefined) {
+    stretches = homeStretches(departures, { bidPeriodStart: c.bidPeriodStart, bidPeriodDays: c.bidPeriodDays, base: c.base }, p.homeAirports);
+    homeStretchCache.set(departures, stretches);
+  }
+  return stretches ? summarizeHomeTime(stretches, p.n ?? p.minBreakNights ?? DEFAULT_MIN_BREAK_NIGHTS) : null;
 }
 
 /** A line's hub turns (see `metrics/hub-turns.ts`), worked out once per line and shared by the hub-turn measures. */
@@ -445,6 +464,45 @@ export const METRICS: MetricDef[] = [
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
     badEndAtWorst: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).length,
+  },
+  {
+    id: "shortHomeGaps",
+    label: "Short stretches at home",
+    unit: "gaps",
+    category: "calendar",
+    description:
+      "Stretches at home between two departures too short to feel like a real break — fewer than n nights in the pilot's own bed (default 3, or the number they gave). Counted door to door: a day off spent commuting home, or getting in at dawn, isn't time at home. A month chopped into many short stays at home feels like no time off at all, whatever its days off say.",
+    params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours", "n"],
+    badEndAtWorst: true,
+    line: (_l, trips, c, p) => homeTimeOf(trips, c, p)?.shortGaps ?? null,
+  },
+  {
+    id: "realBreakNights",
+    label: "Nights at home in real breaks",
+    unit: "nights",
+    category: "calendar",
+    description:
+      "Nights in the pilot's own bed during stretches at home long enough to be a real break (n nights or more, default 3), door to door. For a commuter, the honest measure of real time off — calendar days off count commute days as home.",
+    params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours", "n"],
+    line: (_l, trips, c, p) => homeTimeOf(trips, c, p)?.breakNights ?? null,
+  },
+  {
+    id: "nightsHome",
+    label: "Nights in your own bed",
+    unit: "nights",
+    category: "calendar",
+    description: "Nights spent at home in the bid period, door to door — every night not away on a trip, commuting, or at base.",
+    params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
+    line: (_l, trips, c, p) => homeTimeOf(trips, c, p)?.nightsHome ?? null,
+  },
+  {
+    id: "longestHomeStretch",
+    label: "Longest stretch at home",
+    unit: "nights",
+    category: "calendar",
+    description: "The longest stretch at home in the month, in nights in the pilot's own bed, door to door — the commuter's version of the longest run of days off.",
+    params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
+    line: (_l, trips, c, p) => homeTimeOf(trips, c, p)?.longestNights ?? null,
   },
   {
     id: "departureCommutes",

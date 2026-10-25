@@ -18,7 +18,7 @@ export interface InterviewTurn {
   answer: string;
 }
 
-type FactKind = "hours" | "days" | "yesNo";
+type FactKind = "hours" | "nights" | "yesNo";
 interface FactDef {
   id: string;
   kind: FactKind;
@@ -33,11 +33,16 @@ export const PILOT_FACTS = [
     ask: "For a commuter: the hours at home that make going home between two trips worth it, door to door (\"I only go home if I'll be there at least a day\"). Under that, they'd stay at base or in the hotel.",
   },
   { id: "hasCrashPad", kind: "yesNo", ask: "Keeps a crash pad, apartment or place of their own at base, so a night there costs them nothing extra." },
+  {
+    id: "minBreakNights",
+    kind: "nights",
+    ask: "How many days or nights at home in a row it takes before time at home between trips feels like a real break (\"I need at least three days home to feel like I've had a break\"). Days and nights count the same.",
+  },
 ] as const satisfies readonly FactDef[];
 
 export type PilotFactId = (typeof PILOT_FACTS)[number]["id"];
 export interface PilotFacts {
-  /** Only the facts the pilot gave; hours and days as numbers, yes/no as booleans. */
+  /** Only the facts the pilot gave; hours and nights as numbers, yes/no as booleans. */
   values: Partial<Record<PilotFactId, number | boolean>>;
   /** Their own words for each fact read, so it can be checked. */
   evidence: { fact: string; quote: string; turn: number }[];
@@ -71,7 +76,7 @@ export function parsePilotFacts(raw: Record<string, unknown>): PilotFacts {
     const v = raw[f.id];
     if (f.kind === "yesNo") {
       if (v === "yes" || v === "no") values[f.id as PilotFactId] = v === "yes";
-    } else if (typeof v === "number" && Number.isFinite(v) && v > 0 && v <= (f.kind === "hours" ? 240 : 31)) values[f.id as PilotFactId] = v;
+    } else if (typeof v === "number" && Number.isFinite(v) && v > 0 && v <= (f.kind === "hours" ? 240 : 31)) values[f.id as PilotFactId] = f.kind === "nights" ? Math.round(v) : v;
   }
   const ids = new Set<string>(Object.keys(values));
   const evidence = Array.isArray(raw.evidence)
@@ -103,5 +108,6 @@ export function applyPilotFacts(model: PilotModel, facts: PilotFacts): PilotMode
   const home = { ...model.home };
   if (typeof facts.values.minHomeHours === "number") home.minHomeHours = facts.values.minHomeHours;
   if (typeof facts.values.hasCrashPad === "boolean") home.hasCrashPad = facts.values.hasCrashPad;
+  if (typeof facts.values.minBreakNights === "number") home.minBreakNights = facts.values.minBreakNights;
   return { ...model, home, facts };
 }

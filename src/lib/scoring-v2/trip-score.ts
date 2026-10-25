@@ -114,6 +114,10 @@ const LINE_METRIC_READING: Record<string, TripReading> = {
   // How a line strings its trips together.
   daysOff: "none",
   longestDaysOffBlock: "none",
+  shortHomeGaps: "none",
+  realBreakNights: "none",
+  nightsHome: "none",
+  longestHomeStretch: "none",
   singleDaysOff: "none",
 };
 

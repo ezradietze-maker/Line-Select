@@ -77,6 +77,8 @@ export interface PilotHome {
   minHomeHours?: number;
   /** A crash pad or apartment at base: nights there cost him nothing extra. */
   hasCrashPad?: boolean;
+  /** Nights at home that make a stretch between trips a real break (default 3). */
+  minBreakNights?: number;
 }
 
 export interface PilotModel {

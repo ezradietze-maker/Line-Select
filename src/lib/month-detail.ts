@@ -3,6 +3,7 @@ import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { groupDepartures, type DepartureOptions } from "@/lib/metrics/departures";
 import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metrics/hub-turns";
+import { DEFAULT_MIN_BREAK_NIGHTS, homeStretches, summarizeHomeTime } from "@/lib/metrics/home-stretches";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
@@ -138,6 +139,8 @@ export interface DetailedDay {
   baseNote?: string;
   /** The hub turns flown on this day's duty, in words: "Night hub turn at IND: in 00:59, out 03:35 (2h36 through the sort)". */
   hubNote?: string;
+  /** On the day the pilot gets home from a departure: how long they're home before the next, door to door. */
+  homeNote?: string;
   /** A whole day at a layover hotel, nothing flown: the city. */
   restCity: string | null;
   /** A trip's tail on a day the grid gives to something else — usually a landing just after midnight on a day the bid pack counts as off. */
@@ -152,6 +155,12 @@ export interface MonthSummary {
   base?: { code: string; commutes: number; nights: number; jumpseatIns: number } | null;
   /** The line's hub turns (see `metrics/hub-turns.ts`); null when the base isn't known or there are none. */
   hubTurns?: HubTurnSummary | null;
+  /**
+   * Time at home, door to door (see `metrics/home-stretches.ts`): each stay at home between departures in hours and
+   * nights, nights at home in the month, and the stays too short to be a real break. Null without the base, or when the
+   * month can't be placed.
+   */
+  home?: { between: { hours: number; nights: number }[]; nightsHome: number; shortGaps: number; minBreakNights: number } | null;
   /** Days off as this calendar draws them. */
   daysOff: number;
   /** Days off as the bid pack itself prints them for the line — usually the same, occasionally a day different at the edge of a trip. */
@@ -285,16 +294,27 @@ function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">): string {
 /** Where the pilot lives and the pack's base, so the calendar joins trips into the same departures the scores count. */
 export interface MonthDepartureOptions extends DepartureOptions {
   base: string;
+  /** Nights at home that make a real break, for this pilot (default 3). */
+  minBreakNights?: number;
 }
 
 /** The calendar's departure options from what the pilot told the interview: a commuter's home airport, or none (lives at base). */
 export function monthDepartureOptions(
   base: string,
-  profile: Pick<PreferenceProfile, "isCommuter" | "commuteFrom" | "hasCrashPad" | "minHomeHours"> | null | undefined,
+  profile: (Pick<PreferenceProfile, "isCommuter" | "commuteFrom" | "hasCrashPad" | "minHomeHours"> & Partial<Pick<PreferenceProfile, "brainInterview">>) | null | undefined,
   flights?: FlightAnswers | null
 ): MonthDepartureOptions {
   const home = profile?.isCommuter && profile.commuteFrom ? [profile.commuteFrom] : [];
-  return { base, homeAirports: home, hasCrashPad: profile?.hasCrashPad ?? null, ...(profile?.minHomeHours ? { minHomeHours: profile.minHomeHours } : {}), ...(flights ? { flights } : {}) };
+  // What makes a real break, as the pilot said it (read from their words beside the brain's reading).
+  const minBreakNights = profile?.brainInterview?.reviewedModel?.home?.minBreakNights;
+  return {
+    base,
+    homeAirports: home,
+    hasCrashPad: profile?.hasCrashPad ?? null,
+    ...(profile?.minHomeHours ? { minHomeHours: profile.minHomeHours } : {}),
+    ...(minBreakNights ? { minBreakNights } : {}),
+    ...(flights ? { flights } : {}),
+  };
 }
 
 export function buildDetailedMonth(
@@ -514,6 +534,7 @@ export function buildDetailedMonth(
   let departureCount: number | null = null;
   let summaryBase: MonthSummary["base"] = null;
   let summaryHubs: HubTurnSummary | null = null;
+  let summaryHome: MonthSummary["home"] = null;
   if (departureOptions) {
     const deps = groupDepartures(line.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions);
     departureCount = deps.length;
@@ -565,6 +586,27 @@ export function buildDetailedMonth(
       day.hubNote = day.hubNote ? `${day.hubNote} ${text}` : text;
       day.title = `${day.title}; ${text.charAt(0).toLowerCase()}${text.slice(1, -1)}`;
     }
+    // Time at home between departures, door to door, said on the day the pilot gets home.
+    const stretches = homeStretches(deps, { bidPeriodStart, bidPeriodDays, base: code }, departureOptions.homeAirports);
+    if (stretches) {
+      const minBreak = departureOptions.minBreakNights ?? DEFAULT_MIN_BREAK_NIGHTS;
+      const t = summarizeHomeTime(stretches, minBreak);
+      const between = stretches.filter((x) => x.edge === null);
+      summaryHome = { between: between.map((x) => ({ hours: x.hours, nights: x.nights })), nightsHome: t.nightsHome, shortGaps: t.shortGaps, minBreakNights: minBreak };
+      const homes = (departureOptions.homeAirports ?? []).filter((a) => a && a !== code);
+      const homeZone = timezoneForAirport(homes[0] ?? code) ?? timezoneForAirport(code) ?? "UTC";
+      for (const x of between) {
+        const date = DateTime.fromMillis(x.from, { zone: homeZone }).toISODate();
+        const index = date && bidPeriodStart ? Math.round(DateTime.fromISO(date).diff(DateTime.fromISO(bidPeriodStart), "days").days) : -1;
+        const day = days.find((d) => d.dayIndex === index);
+        if (!day) continue;
+        const leaves = DateTime.fromMillis(x.to, { zone: homeZone }).toFormat("ccc HH:mm");
+        const short = x.nights < minBreak;
+        const text = `Home for ${Math.round(x.hours)}h — ${x.nights} night${x.nights === 1 ? "" : "s"} in your own bed before leaving again ${leaves}${homes.length ? " (home time)" : ""}${short ? ", short of a real break" : ""}.`;
+        day.homeNote = text;
+        day.title = `${day.title}; ${text.charAt(0).toLowerCase()}${text.slice(1, -1)}`;
+      }
+    }
     summaryBase = departureOptions.homeAirports?.some((a) => a && a !== code)
       ? {
           code,
@@ -608,6 +650,7 @@ export function buildDetailedMonth(
       departureCount,
       summaryBase,
       summaryHubs,
+      summaryHome,
       runs.map((r) => r.length),
       cityPreferences
     ),
@@ -616,7 +659,16 @@ export function buildDetailedMonth(
   };
 }
 
-function summarize(line: Line, days: DetailedDay[], departureCount: number | null, base: MonthSummary["base"], hubTurns: HubTurnSummary | null, offRuns: number[], cityPreferences: Record<string, CityMark>): MonthSummary {
+function summarize(
+  line: Line,
+  days: DetailedDay[],
+  departureCount: number | null,
+  base: MonthSummary["base"],
+  hubTurns: HubTurnSummary | null,
+  home: MonthSummary["home"],
+  offRuns: number[],
+  cityPreferences: Record<string, CityMark>
+): MonthSummary {
   const off = days.filter((d) => d.kind === "off").length;
 
   let weekendsOff = 0;
@@ -650,6 +702,7 @@ function summarize(line: Line, days: DetailedDay[], departureCount: number | nul
     departures: departureCount ?? line.trips.length - days.filter((d) => d.chain).length,
     base,
     hubTurns,
+    home,
     daysOff: off,
     printedDaysOff: line.daysOff,
     offRuns,
