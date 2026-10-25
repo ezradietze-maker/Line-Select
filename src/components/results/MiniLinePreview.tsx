@@ -1,10 +1,11 @@
 "use client";
 
 import { useInView } from "motion/react";
-import { memo, useMemo, useRef, useState } from "react";
-import { BedIcon, MoonIcon } from "@/components/ui/icons";
+import { memo, useMemo, useState } from "react";
+import { BedIcon } from "@/components/ui/icons";
+import { LegBars, useMeasuredWidth } from "@/components/results/LegBars";
 import { Modal } from "@/components/ui/Modal";
-import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthDepartureOptions, type MonthSummary, type RouteStop, type TripFinish } from "@/lib/month-detail";
+import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthDepartureOptions, type MonthSummary, type TripFinish } from "@/lib/month-detail";
 import { dayStats, equipmentLabel, hm } from "@/lib/trip-day-stats";
 import type { TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
@@ -13,13 +14,14 @@ import type { CityMark } from "@/types/preferences";
 
 /**
  * The whole bid month for one line, as much of it as a card can carry: each
- * day shows its trip's own number, when the duty starts (and when the trip
- * ends), a 24-hour strip of what the day is made of, its landings, red-eyes
- * and early reports, and the layover city — marked with how the pilot feels
- * about it. Tapping a day opens everything the bid pack says about it below
+ * day shows its trip's own number and credit, when the duty starts (and when
+ * the trip ends), its flights drawn as the ex-pilot drew them in his paper
+ * organizer — a line per leg, to scale and placed by the time of day, the
+ * cities under its ends (`LegBars`) — and the layover city, marked with how
+ * the pilot feels about it. Tapping a day opens everything the bid pack says about it below
  * the grid; a strip under it sums the month up in the terms the interview
  * asks about (days off and how they fall, standby, report times, cities…).
- * The hour-by-hour chart per trip still lives in the expanded card.
+ * Each trip, day by day in the same picture, is in the expanded card.
  */
 
 /** The same palette as the trip chart in the expanded card, so a day's strip and its column there read as one thing. */
@@ -87,23 +89,6 @@ function chainSentence(c: NonNullable<DetailedDay["chain"]>): string {
 /** "17.8" credit hours → "17:47", the way the bid pack prints a trip's credit under its number. */
 const creditClock = (h: number) => hm(Math.round(h * 60));
 
-/**
- * The day's flying the way the bid pack prints it: the cities, in order, flown hops joined by a dash and deadheads by
- * "dh" ("MEM dh PHX dh SEA", "IND–DFW–IND"). Each hop stays whole when the line wraps.
- */
-function Route({ stops }: { stops: RouteStop[] }) {
-  return (
-    <span className="flex min-w-0 flex-wrap items-baseline font-mono text-[10px] leading-tight">
-      {stops.map((s, i) => (
-        <span key={i} className="whitespace-nowrap">
-          {i > 0 && (s.viaDeadhead ? <span className="mx-[3px] text-[9px] italic text-ink-faint">dh</span> : <span className="text-ink-faint">–</span>)}
-          <span className={s.viaDeadhead ? "text-ink-muted" : "font-semibold text-ink"}>{s.city}</span>
-        </span>
-      ))}
-    </span>
-  );
-}
-
 /** Where the night is spent: the layover city and how long, marked with how the pilot feels about it. */
 function Sleep({ day }: { day: DetailedDay }) {
   const city = day.layoverCode ?? day.restCity;
@@ -135,9 +120,10 @@ function Finish({ finish }: { finish: TripFinish }) {
 }
 
 /**
- * One day of the month, laid out like a day column of the bid pack's own line: the trip's number and credit on its
- * first day, the day's cities, where the night is spent, and where the trip lands on its last day. Times stay out of
- * the way — the report on the first day and the landing on the last; tap the day for every flight and time.
+ * One day of the month: the trip's number and credit on its first day and when it reports, the day's flights as bars
+ * with their cities, where the night is spent, and where the trip lands on its last day. Times stay out of the way —
+ * the report and the landing; tap the day for every flight and time. Too narrow for the cities (a phone), the bars
+ * alone.
  */
 function Cell({
   day,
@@ -146,6 +132,7 @@ function Cell({
   index,
   joinLeft,
   joinRight,
+  barWidth,
 }: {
   day: DetailedDay;
   selected: boolean;
@@ -153,9 +140,16 @@ function Cell({
   index: number;
   joinLeft: boolean;
   joinRight: boolean;
+  /** The width the day's bars are drawn at. */
+  barWidth: number;
 }) {
   const isOff = day.kind === "off";
   const standby = day.flights.find((f) => f.kind === "standby");
+  // The end of another trip that morning (a landing just after midnight), then this day's own.
+  const pieces = [...(day.spill?.segments ?? []), ...(isOff ? [] : day.segments)];
+  const bars = pieces.some((s) => s.kind === "flying" || s.kind === "deadhead" || s.kind === "standby") ? (
+    <LegBars segments={pieces} variant="cell" widthPx={barWidth} />
+  ) : null;
   return (
     <button
       type="button"
@@ -166,14 +160,9 @@ function Cell({
       className={cellClass(day, selected)}
       style={{ "--i": index } as React.CSSProperties}
     >
-      {/* A red-eye day is genuinely darker, not just icon-flagged — a faint tonal wash rather than a new hue, so it stays inside the warm palette. */}
-      {!isOff && day.redEye && <span aria-hidden className="absolute inset-0 -z-10 rounded-md bg-ink/10" />}
       {!isOff && day.tripIndex !== null && day.kind !== "estimated" && <TripRail joinLeft={joinLeft} joinRight={joinRight} standby={day.kind === "standby"} />}
       <span className="flex items-start justify-between gap-0.5">
-        <span className={`inline-flex items-center gap-0.5 text-[11px] tabular-nums ${isOff ? "" : "font-semibold"}`}>
-          {day.label}
-          {!isOff && day.redEye && <MoonIcon className="h-2.5 w-2.5 shrink-0 text-accent" aria-label="red-eye" />}
-        </span>
+        <span className={`text-[11px] tabular-nums ${isOff ? "" : "font-semibold"}`}>{day.label}</span>
         {day.isTripStart && day.tripNumber && (
           <span className="hidden whitespace-nowrap rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar @min-[4.75rem]:inline">
             #{day.tripNumber}
@@ -183,6 +172,8 @@ function Cell({
       </span>
 
       {isOff ? (
+        <>
+        {bars}
         <span className="text-[10px] font-medium leading-tight">
           {day.offRun && day.offRun.length > 1 && day.offRun.isFirst ? (
             <>
@@ -193,14 +184,16 @@ function Cell({
             ""
           )}
         </span>
+        </>
       ) : (
         <>
           {/* On a phone the cell is too narrow for the trip number beside the date, so it sits on its own line. */}
           {day.isTripStart && day.tripNumber && <span className="font-mono text-[10px] font-semibold leading-tight text-ink @min-[4.75rem]:hidden">#{day.tripNumber}</span>}
           <span className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
             {day.chain ? (
-              <span className="hidden whitespace-nowrap font-mono text-[10px] leading-tight text-calendar-accent @min-[4.75rem]:block" title={chainSentence(day.chain)}>
-                ↪ {turnLabel(day.chain.turnMinutes)} in {day.chain.city}
+              <span className="hidden whitespace-nowrap font-mono text-[10px] leading-tight @min-[4.75rem]:block" title={chainSentence(day.chain)}>
+                <span className={day.earlyReport ? "font-semibold text-warn" : "text-ink-muted"}>Rpt {day.chain.reports || day.dutyStart}</span>
+                <span className="hidden text-calendar-accent @min-[8.5rem]:inline"> · {turnLabel(day.chain.turnMinutes)} turn</span>
               </span>
             ) : (
               day.isTripStart &&
@@ -211,11 +204,7 @@ function Cell({
               )
             )}
             {day.preReportTime !== null && <span className="hidden text-[10px] leading-tight text-ink-muted @min-[4.75rem]:block">reports next morning</span>}
-            {day.route.length > 0 && (
-              <span className="hidden @min-[4.75rem]:block">
-                <Route stops={day.route} />
-              </span>
-            )}
+            {bars}
             {standby && (
               <span className="whitespace-nowrap font-mono text-[10px] font-semibold text-standby">
                 SBY<span className="hidden @min-[3.25rem]:inline"> {standby.from}</span>
@@ -252,13 +241,12 @@ function MonthKeyInfo() {
         <Modal title="Month calendar key" onClose={() => setOpen(false)}>
           <ul className="space-y-3 text-sm leading-relaxed text-ink-muted">
             <li><span className="font-medium text-ink">Each week reads like a line in the bid pack.</span> Shaded days joined by a bar are one trip. Its first day carries the trip&rsquo;s number and credit (<span className="font-mono">#111 17:47</span>) and when it reports (<span className="font-mono">Rpt 06:30</span>, in amber when it&rsquo;s between 2 and 6am).</li>
-            <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be 24 hours at home between them, counting the trip home and back (<span className="font-mono">↪ 1h47 in MEM</span> is a straight turn; <span className="font-mono">↪ 38h18 in MEM</span> is a day and a half waiting in Memphis). For a pilot who lives at base, only trips that turn within a few hours.</li>
-            <li><span className="font-medium text-ink">The cities.</span> Each day&rsquo;s flying, city to city: a dash is flown (<span className="font-mono">MEM–SEA</span>), <span className="font-mono">dh</span> a deadhead (<span className="font-mono">MEM dh PHX</span>).</li>
+            <li><span className="font-medium text-ink">The lines in each day.</span> Each flight is a line with a tick at each end, as long as the flight and placed by the time of day &mdash; midnight at the left edge, midnight at the right, on the base&rsquo;s clock. The cities are written under the ends; where two legs meet, the city between them is written once. A dashed line is a deadhead. A flight still in the air at midnight runs off the right edge (▸) and on into the next day. The faint band under the lines is the time on duty, report to release, so a long wait between two short flights shows. Small ticks mark 6am, noon and 6pm.</li>
+            <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be 24 hours at home between them, counting the trip home and back (<span className="font-mono">Rpt 02:30 · 1h47 turn</span> is a straight turn at base). For a pilot who lives at base, only trips that turn within a few hours.</li>
             <li><span className="font-medium text-ink">Green city.</span> Where you sleep and how long the layover is (<span className="font-mono">SEA 15h</span>). <span className="font-mono">KIX rest</span> is a whole day at the hotel with nothing flown. <span className="text-good">♥</span> is a city you love, <span className="text-good">♡</span> one you like, an amber <span className="text-warn">✕</span> one you dislike and a red <span className="text-danger">✕</span> one you avoid, and a dotted underline marks an international city.</li>
             <li><span className="font-medium text-ink">↘ MEM 19:05.</span> Where and when the trip lands, on its last day. <span className="font-mono">+1</span> means just after midnight &mdash; the bid pack still counts the next day as off.</li>
             <li><span className="font-medium text-ink">Violet day.</span> Hotel standby (<span className="font-mono">SBY</span>) &mdash; on call at the hotel, paid, not flying.</li>
             <li><span className="font-medium text-ink">Dashed empty day.</span> A day off; a run of them is labeled on its first day (&ldquo;4 days off&rdquo;).</li>
-            <li><span className="font-medium text-ink">Moon and a darker day.</span> A flight departs or lands between midnight and 5am.</li>
             <li><span className="font-medium text-ink">Tap any day</span> for every flight with its times and aircraft, the hotel and rest, block time and landings. Every time is local (L). The hour-by-hour chart for each trip is under &ldquo;Details&rdquo;.</li>
           </ul>
         </Modal>
@@ -267,20 +255,31 @@ function MonthKeyInfo() {
   );
 }
 
+/** A leg as the calendar draws it, for the legend: a line with a tick at each end — dashed for a deadhead. */
+export function LegSample({ deadhead = false }: { deadhead?: boolean }) {
+  const tone = deadhead ? "bg-ink-muted" : "bg-ink";
+  return (
+    <span aria-hidden className="relative inline-block h-2.5 w-6 shrink-0 align-middle">
+      <span className={`absolute left-0 top-0 h-full w-[1.5px] ${tone}`} />
+      <span className={`absolute inset-x-0 top-1/2 -mt-px ${deadhead ? "border-t-2 border-dashed border-ink-muted" : "h-0.5 bg-ink"}`} />
+      <span className={`absolute right-0 top-0 h-full w-[1.5px] ${tone}`} />
+    </span>
+  );
+}
+
 /** The key to every month grid on the page — shown once above a list of them rather than under each one, and under each one only where a grid stands alone (the comparison view). */
 export function MonthLegend({ className = "" }: { className?: string }) {
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted ${className}`}>
       <span className="inline-flex items-center gap-1"><span className="rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar">#111 17:47</span>Trip and its credit</span>
-      <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px]"><span className="font-semibold">MEM</span><span className="text-ink-faint">–</span><span className="font-semibold">SEA</span></span>Flown</span>
-      <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px]"><span className="font-semibold">MEM</span><span className="px-px text-[9px] text-ink-faint">dh</span><span className="text-ink-muted">PHX</span></span>Deadhead</span>
-      <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px] text-calendar-accent">↪ 1h47 in MEM</span>Turns into the next trip</span>
+      <span className="inline-flex items-center gap-1.5"><LegSample />Flight, to scale, midnight to midnight</span>
+      <span className="inline-flex items-center gap-1.5"><LegSample deadhead />Deadhead</span>
+      <span className="inline-flex items-center gap-1"><span className="h-1.5 w-5 rounded-[2px] bg-calendar-accent/20" />On duty</span>
       <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px] font-semibold text-good">SEA 15h</span>Where you sleep</span>
       <span className="inline-flex items-center gap-1"><span className="text-good">♥</span>love <span className="text-good">♡</span>like <span className="text-warn">✕</span>dislike</span>
       <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px]"><span className="text-ink-faint">↘</span><span className="font-semibold">MEM</span> 00:56<span className="text-[9px] text-ink-muted">+1</span></span>Lands</span>
       <LegendItem swatch="bg-standby/25 border-t-2 border-standby" label="Hotel standby" />
       <LegendItem swatch="border border-dashed border-border-strong" label="Day off" />
-      <span className="inline-flex items-center gap-1"><MoonIcon className="h-3 w-3 text-accent" />Red-eye</span>
       <MonthKeyInfo />
     </div>
   );
@@ -512,6 +511,8 @@ interface MiniLinePreviewProps {
   cityPreferences?: Record<string, CityMark>;
   /** The base and where the pilot lives, so trips are joined into the same departures the scores count. */
   departureOptions?: MonthDepartureOptions;
+  /** Just the month (the interview's line cards): no summary or legend under it. */
+  compact?: boolean;
 }
 
 export const MiniLinePreview = memo(function MiniLinePreview({
@@ -521,6 +522,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   showLegend = true,
   cityPreferences,
   departureOptions,
+  compact = false,
 }: MiniLinePreviewProps) {
   const month: DetailedMonth = useMemo(
     () => buildDetailedMonth(line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions),
@@ -530,9 +532,11 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   // The month lays itself out the first time it scrolls into view (see
   // .cal-grid in globals.css) — not before, so a long list doesn't spend its
   // animation on cards nobody has reached yet.
-  const gridRef = useRef<HTMLDivElement>(null);
+  const [gridRef, gridWidth] = useMeasuredWidth<HTMLDivElement>(560);
   // Starts just before it scrolls on screen, so the build is under way by the time it's seen.
   const revealed = useInView(gridRef, { once: true, margin: "0px 0px 10% 0px" });
+  // Seven days and six gaps across the grid, less each day's own padding.
+  const barWidth = Math.max(0, (gridWidth - 6 * 4) / 7 - 8);
 
   if (line.trips.length === 0) return null;
   const selectedDay = selected !== null ? month.days[selected] : null;
@@ -556,6 +560,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
               joinLeft={i % 7 !== 0 && (day.chain !== null || (!day.isTripStart && month.days[i - 1]?.tripIndex === day.tripIndex && month.days[i - 1]?.kind !== "off"))}
               joinRight={i % 7 !== 6 && (month.days[i + 1]?.chain != null || (!day.isTripEnd && month.days[i + 1]?.tripIndex === day.tripIndex && month.days[i + 1]?.kind !== "off"))}
               selected={selected === day.dayIndex}
+              barWidth={barWidth}
               onSelect={() => setSelected((cur) => (cur === day.dayIndex ? null : day.dayIndex))}
             />
           ))}
@@ -564,9 +569,9 @@ export const MiniLinePreview = memo(function MiniLinePreview({
 
       {selectedDay ? <DayDetail day={selectedDay} /> : <p className="mt-1.5 text-[11px] text-ink-faint print:hidden">Tap a day for everything on it.</p>}
 
-      <Summary s={month.summary} line={line} />
+      {!compact && <Summary s={month.summary} line={line} />}
 
-      {showLegend && <MonthLegend className="mt-2" />}
+      {showLegend && !compact && <MonthLegend className="mt-2" />}
 
       {!month.placementIsReal && (
         <p className="mt-1.5 text-xs text-ink-faint">

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
 import { MicButton } from "@/components/ui/MicButton";
-import { tripDuties, tripHeadline } from "@/lib/brain/line-text";
+import { TripFold } from "@/components/interview/TripGlance";
+import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import type { LinePairCandidate } from "@/lib/brain/interviewer";
 import { useDictation } from "@/lib/use-speech-to-text";
 import type { BidPack } from "@/types/bidpack";
@@ -36,22 +37,14 @@ function LineDetail({ bidPack, lineNumber, label, selected }: { bidPack: BidPack
       <p className="font-mono text-xs text-ink-muted">
         {line.daysOff} days off · {line.totalCreditHours.toFixed(1)} credit · {line.trips.length} {line.trips.length === 1 ? "trip" : "trips"}
       </p>
+      <div className="mt-3">
+        <MiniLinePreview line={line} bidPeriodStart={bidPack.bidPeriodStart} bidPeriodDays={bidPack.bidPeriodDays} compact />
+      </div>
       <ul className="mt-3 space-y-2">
         {/* The same pairing can be flown twice in a month, so its id alone isn't a unique key. */}
         {line.trips.map((t, i) => (
           <li key={`${t.id}-${i}`}>
-            <details className="group border-l-2 border-border-strong pl-2.5">
-              <summary className="cursor-pointer list-none font-mono text-xs leading-relaxed text-ink [overflow-wrap:anywhere] marker:hidden">
-                <span className="text-accent group-open:hidden" aria-hidden>▸ </span>
-                <span className="hidden text-accent group-open:inline" aria-hidden>▾ </span>
-                {tripHeadline(bidPack, t)}
-              </summary>
-              <ul className="mt-1.5 space-y-1 font-mono text-[11px] leading-relaxed text-ink-muted [overflow-wrap:anywhere]">
-                {tripDuties(t).map((d, i) => (
-                  <li key={i}>{d}</li>
-                ))}
-              </ul>
-            </details>
+            <TripFold bidPack={bidPack} trip={t} />
           </li>
         ))}
       </ul>
@@ -146,7 +139,7 @@ export function LinePairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
 
   return (
     <div>
-      <QuestionPrompt eyebrow={eyebrow} title={prompt} help={helpText ?? "Tap a trip to see it duty by duty."} />
+      <QuestionPrompt eyebrow={eyebrow} title={prompt} help={helpText ?? "Tap a day for everything on it, or a trip to see it day by day."} />
       <RevealControls title={prompt} className="mt-6">
         <Differences pair={pair} />
         <div className="grid gap-3 sm:grid-cols-2">

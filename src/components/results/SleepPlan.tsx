@@ -4,11 +4,9 @@ import { useState } from "react";
 import { BedIcon, ChevronDownIcon, MoonIcon, SunriseIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/Modal";
 import type { LayoverSleepPlan, SleepBlock } from "@/lib/sleep-plan";
-import type { TimelineSegment } from "@/lib/trip-timeline";
 
 /**
- * The suggested sleep on every layover (see `lib/sleep-plan.ts`): drawn over the hotel time on the trip chart, and laid
- * out layover by layover in a "Rest plan" — each stay as a ribbon from hotel to wake-up, shaded by how easily the
+ * The suggested sleep on every layover (see `lib/sleep-plan.ts`), laid out layover by layover in a "Rest plan" — each stay as a ribbon from hotel to wake-up, shaded by how easily the
  * pilot's body can sleep at each hour, with the suggested sleeps on it and why each one is there.
  */
 
@@ -27,37 +25,6 @@ const hoursOf = (min: number) => {
   const m = Math.round(min % 60);
   return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
 };
-
-/** The day's suggested sleep, over the hotel time in a trip-chart day column. */
-export function SleepOverlay({ segments, hourHeightPx }: { segments: TimelineSegment[]; hourHeightPx: number }) {
-  return (
-    <>
-      {segments.map((seg, i) => {
-        if (!seg.sleep) return null;
-        const minutes = Math.max(0, seg.endMinuteOfDay - seg.startMinuteOfDay);
-        const px = (minutes / 60) * hourHeightPx;
-        const nap = isNap(seg.sleep.kind);
-        const times = seg.startClock && seg.endClock ? `${seg.startClock}–${seg.endClock}` : "";
-        return (
-          <div
-            key={i}
-            title={`${seg.sleep.title}${times ? ` · ${times}` : ""}\n${seg.sleep.why}`}
-            className={`absolute left-2 right-1.5 z-[1] flex flex-col items-center justify-center overflow-hidden px-0.5 text-center leading-tight ${blockClass(seg.sleep.kind)} ${seg.continuesFromPreviousDay ? "" : "rounded-t-md"} ${seg.continuesToNextDay ? "" : "rounded-b-md"}`}
-            style={{ top: `${(seg.startMinuteOfDay / MINUTES_PER_DAY) * 100}%`, height: `${(minutes / MINUTES_PER_DAY) * 100}%` }}
-          >
-            {px >= 14 && (
-              <span className="inline-flex items-center gap-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wide">
-                <MoonIcon className="h-2.5 w-2.5 shrink-0" />
-                {px >= 22 && (nap ? "Nap" : seg.sleep.kind === "recovery" ? "Rest" : "Sleep")}
-              </span>
-            )}
-            {px >= 36 && times && !seg.continuesFromPreviousDay && !seg.continuesToNextDay && <span className="font-mono text-[9px] opacity-85">{times}</span>}
-          </div>
-        );
-      })}
-    </>
-  );
-}
 
 /** The local clock at a trip minute, given the plan's own arrival time and clock. */
 function localMinute(plan: LayoverSleepPlan, at: number): number {

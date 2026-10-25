@@ -6,15 +6,15 @@ import { CircadianInfo } from "@/components/results/CircadianInfo";
 import { CircadianStars } from "@/components/results/CircadianStars";
 import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { TripCommuteFlights } from "@/components/results/TripCommuteFlights";
-import { ChevronDownIcon, MoonIcon, StarIcon } from "@/components/ui/icons";
+import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { TripScorePanel } from "@/components/results/TripScorePanel";
-import { RestPlan, SleepOverlay } from "@/components/results/SleepPlan";
+import { RestPlan } from "@/components/results/SleepPlan";
+import { TripPicture, tripPictureDays } from "@/components/results/TripPicture";
 import { planTripSleep, type LayoverSleepPlan } from "@/lib/sleep-plan";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
 import { hubTurnsOf, summarizeHubTurns } from "@/lib/metrics/hub-turns";
 import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
-import { tripDutyPeriods } from "@/lib/duty-periods";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { fetchHotel } from "@/lib/hotel-client";
 import { standbyPlace } from "@/lib/standby";
@@ -22,11 +22,10 @@ import { displayHotelName } from "@/lib/hotels/hotel-names";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import { loadTimeMode, saveTimeMode } from "@/lib/time-mode-storage";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
-import { clock, dateLabel, dayStats, equipmentLabel, hm, tripBlockMinutes, tripDayDate, tripRoute, type DayStats } from "@/lib/trip-day-stats";
-import { buildTimelineDays, type TimeMode, type TimelineDay, type TimelineSegment } from "@/lib/trip-timeline";
+import { clock, dateLabel, dayStats, equipmentLabel, hm, tripBlockMinutes, tripDayDate } from "@/lib/trip-day-stats";
+import { type TimeMode, type TimelineDay } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
-import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
 import type { CityMark } from "@/types/preferences";
 
 const REPORT_LABELS: Record<Trip["reportTime"], string> = {
@@ -36,18 +35,8 @@ const REPORT_LABELS: Record<Trip["reportTime"], string> = {
 };
 
 const MINUTES_PER_DAY = 24 * 60;
-/** Whether the pilot has turned the suggested-sleep overlay off on the trip charts. */
-const SLEEP_OVERLAY_KEY = "line-select:sleep-overlay:v1";
-/** Pixels per hour in the calendar grid — 24 * 13 = 312px tall, compact enough to keep a long trip's day columns from needing a huge scroll, tall enough that a 30-45min segment still gets a few readable pixels. */
-const HOUR_HEIGHT_PX = 13;
-const CALENDAR_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
-/** Height of each day column's header (date + that day's duty numbers) — shared with the hour gutter's spacer so the hours line up. */
-const DAY_HEADER_PX = 46;
-/** Hours labeled in the shared time gutter — every 3h reads cleanly without crowding 9px text. */
-const GUTTER_HOURS = [0, 3, 6, 9, 12, 15, 18, 21];
-/** The body clock's low point, as the circadian score and early-report flag define it (see `circadian.ts`). */
-const WOCL_START = 2 * 60;
-const WOCL_END = 6 * 60;
+/** "(L)" after a local clock time, "(Z)" after a Zulu one — so no time on the trip view is ever ambiguous. */
+const zoneTag = (mode: TimeMode) => (mode === "zulu" ? "(Z)" : "(L)");
 
 const LABEL = "font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint";
 
@@ -66,335 +55,6 @@ const LAYOVER_TOOLTIP =
 
 const STANDBY_TOOLTIP =
   "Hotel standby — you sit on call at the layover hotel for the day. It pays the guaranteed standby credit, but no flight is flown unless you’re called out.";
-
-const GROUND_TOOLTIP =
-  "On the ground before departure — report/check-in at trip start, or hotel-to-airport transport plus check-in after a layover. Not split further since the bid pack doesn’t print a separate drop-off time.";
-
-const CONNECTION_TOOLTIP =
-  "Ground time between two flights in the same duty period — too short to be a layover, just deplane, walk, and board the next one.";
-
-const WOCL_TOOLTIP = "02:00–06:00 local — the window your body clock is at its lowest. Flying or reporting inside it is what the circadian stars weigh most.";
-
-function LegendSwatch({ className, label, title }: { className: string; label: string; title?: string }) {
-  return (
-    <span className="inline-flex items-center gap-1" title={title}>
-      <span className={`h-2.5 w-3.5 shrink-0 rounded-[3px] ${className}`} />
-      {label}
-    </span>
-  );
-}
-
-/**
- * Every segment kind in the site's own palette: flying is the calendar's
- * solid color (the one a pilot can personalize), a deadhead the same color
- * hatched, hotel time a quiet green wash with a green edge, standby the same
- * in violet, and ground time a thin amber band — so a day reads as "the
- * flying" first and everything else second.
- */
-function segmentClass(kind: TimelineSegment["kind"]): string {
-  switch (kind) {
-    case "flying":
-      return "bg-calendar-accent text-on-calendar shadow-[inset_0_1px_0_rgb(255_255_255/0.18)]";
-    case "deadhead":
-      return "hatch-deadhead bg-calendar-accent/15 text-ink ring-1 ring-inset ring-calendar-accent/50";
-    case "layover":
-      return "bg-good/15 text-ink border-l-2 border-good";
-    case "standby":
-      return "bg-standby/20 text-ink border-l-2 border-standby";
-    case "ground":
-      return "bg-accent/55";
-    case "connection":
-      return "bg-border-strong/50";
-    case "sleep":
-      return "";
-  }
-}
-
-const SEGMENT_TOOLTIP_SUFFIX: Partial<Record<TimelineSegment["kind"], string>> = {
-  layover: LAYOVER_TOOLTIP,
-  ground: GROUND_TOOLTIP,
-  connection: CONNECTION_TOOLTIP,
-  standby: STANDBY_TOOLTIP,
-};
-
-/** A segment's drawn length on its day; a fragment whose clock end reads earlier than its start runs to midnight. */
-function spanMinutes(seg: TimelineSegment): number {
-  const end = seg.endMinuteOfDay < seg.startMinuteOfDay ? MINUTES_PER_DAY : seg.endMinuteOfDay;
-  return end - seg.startMinuteOfDay;
-}
-
-/** "+1"/"-1" chip flagging a date-line crossing on the fragment that actually lands — hover/tap reads the one-line explanation. */
-function DateLineChip({ badge }: { badge: TimelineSegment["dateLineBadge"] }) {
-  if (!badge) return null;
-  return (
-    <span
-      title={badge.explanation}
-      className="absolute -top-1.5 -right-1 z-10 rounded-full border border-warn/40 bg-warn-soft px-1 font-mono text-[10px] font-semibold leading-tight text-warn"
-    >
-      {badge.delta > 0 ? `+${badge.delta}d` : `${badge.delta}d`}
-    </span>
-  );
-}
-
-
-/**
- * What prints on a segment, as much as its height carries. A flight of a
- * couple of hours gets its departure at the top edge, arrival at the bottom
- * and the flight number and block time between; a short hop gets its route
- * on one line. A hotel stay gets its city and rest, then the hotel, then the
- * pickup time on the day it ends. Lines that don't fit are dropped, never
- * squeezed — the full detail is always in the segment's tooltip and the
- * itinerary below.
- */
-/** "(L)" after a local clock time, "(Z)" after a Zulu one — so no time on the trip view is ever ambiguous. */
-const zoneTag = (mode: TimeMode) => (mode === "zulu" ? "(Z)" : "(L)");
-
-function SegmentText({ seg, mode, cityPreferences }: { seg: TimelineSegment; mode: TimeMode; cityPreferences?: Record<string, CityMark> }) {
-  const tag = zoneTag(mode);
-  const minutes = spanMinutes(seg);
-  const lines = Math.floor((minutes / 60) * HOUR_HEIGHT_PX / 12);
-  if (lines < 1) return null;
-
-  if ((seg.kind === "flying" || seg.kind === "deadhead") && seg.leg) {
-    const leg = seg.leg;
-    const dep = seg.continuesFromPreviousDay ? null : `${leg.depClock} ${tag} ${leg.dep}`;
-    const arr = seg.continuesToNextDay ? null : `${leg.arr} ${leg.arrClock} ${tag}`;
-    const route = `${leg.deadhead ? "DH " : ""}${leg.dep}–${leg.arr}`;
-    const middle = `${leg.flightNumber}${leg.blockMinutes !== null ? ` · ${hm(leg.blockMinutes)}` : ""}`;
-    let rows: (string | null)[];
-    if (lines >= 3) rows = [dep ?? route, middle, arr];
-    else if (lines === 2) rows = dep && arr ? [dep, arr] : [dep ?? route, arr ?? middle];
-    else rows = [route];
-    return (
-      <div className="flex h-full flex-col justify-between overflow-hidden px-1 py-px font-mono text-[10px] font-medium leading-[12px]">
-        {rows.map((r, i) => (
-          <span key={i} className={`truncate ${i === rows.length - 1 && rows.length > 1 ? "text-right" : ""} ${i === 1 && rows.length === 3 ? "opacity-75" : ""}`}>
-            {r ?? ""}
-          </span>
-        ))}
-      </div>
-    );
-  }
-
-  if (seg.kind === "layover" && seg.stay) {
-    const stay = seg.stay;
-    const head = seg.continuesFromPreviousDay ? `${stay.city} rest` : `${stay.city} · ${formatDuration(stay.hours)}`;
-    const pickup = seg.continuesToNextDay ? null : `pickup ${stay.pickupClock ?? seg.endClock ?? clock(seg.endMinuteOfDay)} ${tag}`;
-    const rows: { text: string; tone: string }[] = [{ text: head, tone: "font-semibold" }];
-    if (stay.hotel && lines >= 3) rows.push({ text: displayHotelName(stay.hotel).toLowerCase(), tone: "capitalize text-ink-muted" });
-    if (pickup && lines >= 2) rows.push({ text: pickup, tone: "text-ink-muted" });
-    return (
-      <div className="flex h-full flex-col justify-between overflow-hidden px-1 py-px font-mono text-[10px] leading-[12px]">
-        <span className={`flex min-w-0 items-center gap-0.5 ${rows[0].tone}`}>
-          <span className="truncate">{rows[0].text}</span>
-          <CityMarkGlyph mark={cityPreferences?.[stay.city]} />
-        </span>
-        {rows.length > 2 && <span className={`truncate font-sans text-[10px] ${rows[1].tone}`}>{rows[1].text}</span>}
-        {rows.length > 1 && <span className={`truncate ${rows[rows.length - 1].tone}`}>{rows[rows.length - 1].text}</span>}
-      </div>
-    );
-  }
-
-  if (seg.kind === "connection" && seg.stay) {
-    return (
-      <div className="flex h-full flex-col justify-between overflow-hidden px-1 py-px font-mono text-[10px] leading-[12px]">
-        <span className="truncate font-semibold">{seg.stay.city} day room</span>
-        {lines >= 2 && <span className="truncate font-sans capitalize text-ink-muted">{seg.stay.hotel ? displayHotelName(seg.stay.hotel).toLowerCase() : null}</span>}
-      </div>
-    );
-  }
-
-  if (seg.kind === "standby") {
-    return (
-      <div className="flex h-full flex-col justify-between overflow-hidden px-1 py-px font-mono text-[10px] font-medium leading-[12px] text-standby">
-        <span className="truncate">{seg.inlineStart || "Standby"}</span>
-        {lines >= 2 && !seg.continuesToNextDay && (
-          <span className="truncate text-ink-muted">
-            until {seg.endClock ?? clock(seg.endMinuteOfDay)} {tag}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  return null;
-}
-
-/** The two-line read of one day above its column: when it starts and ends, and how much of it is flying. */
-function DayHeader({ day, stats, date, mode }: { day: TimelineDay; stats: DayStats; date: { weekday: string; day: number } | null; mode: TimeMode }) {
-  const window =
-    // One window per duty: "08:00–14:00", or "–06:13 · 23:20–" when the day ends one duty and starts the next (a dash with no time means it runs over midnight).
-    stats.windows.some((w) => w.start || w.end)
-      ? stats.windows.map((w) => `${w.start ?? ""}–${w.end ?? ""}`).join(" · ")
-      : stats.restDay
-        ? "rest day"
-        : stats.continuesIn || stats.continuesOut
-          ? "in flight"
-          : "—";
-  const work =
-    stats.blockMinutes > 0
-      ? `${hm(stats.blockMinutes)} blk · ${stats.landings} ldg`
-      : stats.standby
-        ? "standby"
-        : stats.deadheadMinutes > 0
-          ? `DH ${hm(stats.deadheadMinutes)}`
-          : stats.restDay
-            ? "no duty"
-            : "";
-  const isWeekend = date?.weekday === "Sat" || date?.weekday === "Sun";
-  return (
-    <div className="flex flex-col justify-between rounded-t-md border border-b-0 border-hairline bg-surface-raised/70 px-1 py-1" style={{ height: DAY_HEADER_PX }}>
-      <div className="flex items-baseline justify-between gap-1 font-mono text-[10px] leading-none">
-        <span className="font-semibold text-readout">D{day.dayNumber}</span>
-        {date && (
-          <span className={isWeekend ? "text-accent" : "text-ink-muted"}>
-            {date.weekday} {date.day}
-          </span>
-        )}
-      </div>
-      <div className={`flex min-w-0 gap-0.5 font-mono text-[10px] leading-none ${stats.restDay ? "text-good" : "text-ink"}`}>
-        <span className="truncate">{window}</span>
-        {stats.windows.some((w) => w.start || w.end) && <span className="shrink-0 text-ink-faint">{zoneTag(mode)}</span>}
-      </div>
-      <div className={`truncate font-mono text-[10px] leading-none ${stats.standby ? "text-standby" : "text-ink-faint"}`}>{work}</div>
-    </div>
-  );
-}
-
-/**
- * One calendar day as a real vertical column — midnight at the top, midnight
- * at the bottom, exactly like a week view in any calendar app. Columns share
- * the panel's width, so a short trip gets wide columns with every label on
- * them and a long one stays on screen with the essentials.
- */
-function DayColumn({
-  day,
-  mode,
-  date,
-  cityPreferences,
-}: {
-  day: TimelineDay;
-  mode: TimeMode;
-  date: { weekday: string; day: number } | null;
-  cityPreferences?: Record<string, CityMark>;
-}) {
-  const stats = dayStats(day);
-  return (
-    <div className="min-w-[6.75rem] max-w-[13rem] flex-1 basis-0 sm:min-w-[5.75rem]">
-      <DayHeader day={day} stats={stats} date={date} mode={mode} />
-      <div className="relative overflow-hidden rounded-b-md border border-hairline bg-canvas/70" style={{ height: CALENDAR_HEIGHT_PX }}>
-        {mode === "local" && (
-          <div
-            className="absolute inset-x-0 bg-ink/[0.05]"
-            style={{ top: `${(WOCL_START / MINUTES_PER_DAY) * 100}%`, height: `${((WOCL_END - WOCL_START) / MINUTES_PER_DAY) * 100}%` }}
-            title={WOCL_TOOLTIP}
-            aria-hidden
-          />
-        )}
-        {GUTTER_HOURS.slice(1).map((h) => (
-          <div key={h} className={`absolute inset-x-0 h-px ${h === 12 ? "bg-border-strong/40" : "bg-hairline"}`} style={{ top: `${(h / 24) * 100}%` }} aria-hidden />
-        ))}
-        {day.segments.map((seg, i) => (
-          <div
-            key={i}
-            title={SEGMENT_TOOLTIP_SUFFIX[seg.kind] ? `${seg.label} — ${seg.detail}\n${SEGMENT_TOOLTIP_SUFFIX[seg.kind]}` : `${seg.label} — ${seg.detail}`}
-            className={`absolute inset-x-0.5 ${seg.kind === "connection" && seg.stay ? "border-l-2 border-good/70 bg-good/10 text-ink" : segmentClass(seg.kind)} ${seg.continuesFromPreviousDay ? "" : "rounded-t-[3px]"} ${seg.continuesToNextDay ? "" : "rounded-b-[3px]"}`}
-            style={{
-              top: `${(seg.startMinuteOfDay / MINUTES_PER_DAY) * 100}%`,
-              height: `${Math.max(0.8, (spanMinutes(seg) / MINUTES_PER_DAY) * 100)}%`,
-            }}
-          >
-            <DateLineChip badge={seg.dateLineBadge} />
-            <SegmentText seg={seg} mode={mode} cityPreferences={cityPreferences} />
-          </div>
-        ))}
-        {day.sleep && day.sleep.length > 0 && <SleepOverlay segments={day.sleep} hourHeightPx={HOUR_HEIGHT_PX} />}
-      </div>
-      {day.zuluRulerLabel && (
-        <div className="mt-0.5 truncate text-center font-mono text-[10px] leading-tight text-ink-faint" title="This local day’s own boundaries, read in Zulu — so you can cross-check without switching the toggle.">
-          {day.zuluRulerLabel}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** The shared left-hand hour gutter every day column lines up against. */
-function HourGutter({ mode }: { mode: TimeMode }) {
-  return (
-    <div className="sticky left-0 z-10 w-7 shrink-0 bg-surface pr-1">
-      <div style={{ height: DAY_HEADER_PX }} aria-hidden />
-      <div className="relative" style={{ height: CALENDAR_HEIGHT_PX }}>
-        {GUTTER_HOURS.map((h) => (
-          <div
-            key={h}
-            className={`absolute right-0 font-mono text-[10px] leading-none text-ink-faint ${h === 0 ? "" : "-translate-y-1/2"}`}
-            style={{ top: `${(h / 24) * 100}%` }}
-          >
-            {String(h).padStart(2, "0")}
-          </div>
-        ))}
-        <div className="absolute right-0 bottom-0 font-mono text-[9px] leading-none text-ink-faint/70">{mode === "zulu" ? "Z" : "L"}</div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * The visual schedule — a real calendar week view: one column per day,
- * midnight-to-midnight top-to-bottom, so a long international trip reads
- * the way a pilot thinks about it ("day 3 starts with a long layover, day 4
- * is the long leg home"). Real, printed clock times drive every segment's
- * position; nothing here is estimated. `mode` decides whether day columns
- * (and every clock printed on them) follow Zulu or local calendar days —
- * see trip-timeline.ts for why those aren't the same grid.
- */
-function TripTimelineChart({
-  trip,
-  days,
-  mode,
-  bidPeriodStart,
-  cityPreferences,
-}: {
-  trip: Trip;
-  days: TimelineDay[];
-  mode: TimeMode;
-  bidPeriodStart: string | null;
-  cityPreferences?: Record<string, CityMark>;
-}) {
-  if (days.length === 0) return null;
-  const standbyPlaces = new Set(trip.schedule.flatMap((d) => d.legs.filter((l) => l.isStandby).map((l) => standbyPlace(l.flightNumber))));
-  const hasDeadhead = trip.deadheadLegs > 0;
-
-  return (
-    <div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-ink-muted">
-        <LegendSwatch className="bg-calendar-accent" label="Flying" />
-        {hasDeadhead && <LegendSwatch className="hatch-deadhead bg-calendar-accent/15 ring-1 ring-inset ring-calendar-accent/50" label="Deadhead" title="Riding along, not operating" />}
-        <LegendSwatch className="border-l-2 border-good bg-good/15" label="Hotel" title={LAYOVER_TOOLTIP} />
-        {standbyPlaces.has("hotel") && <LegendSwatch className="border-l-2 border-standby bg-standby/20" label="Hotel standby" title={STANDBY_TOOLTIP} />}
-        {standbyPlaces.has("airport") && <LegendSwatch className="border-l-2 border-standby bg-standby/20" label="Airport standby" title="On call at the airport for an hour or two inside a duty — paid, not flying." />}
-        <LegendSwatch className="bg-accent/55" label="Report / ground" title={GROUND_TOOLTIP} />
-        {mode === "local" && <LegendSwatch className="bg-ink/10" label="Body-clock low" title={WOCL_TOOLTIP} />}
-        {days.some((d) => d.sleep?.length) && <LegendSwatch className="bg-sleep" label="Suggested sleep" title="When to sleep on each layover, from your body clock and the trip's real times — see the trip's rest plan below." />}
-      </div>
-      <div className="mt-1.5 flex overflow-x-auto pb-1">
-        <HourGutter mode={mode} />
-        <div className="flex min-w-0 flex-1 gap-1 pl-1">
-          {days.map((day) => (
-            <DayColumn
-              key={day.dayNumber}
-              day={day}
-              mode={mode}
-              date={mode === "local" ? (day.date ? dateLabel(day.date) : tripDayDate(trip, bidPeriodStart, day.dayNumber)) : null}
-              cityPreferences={cityPreferences}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 interface ItineraryProps {
   trip: Trip;
@@ -714,20 +374,15 @@ function TripHeader({
   mode,
   bidPeriodStart,
   homeBaseOffsetMinutes,
-  cityPreferences,
 }: {
   trip: Trip;
   days: TimelineDay[];
   mode: TimeMode;
   bidPeriodStart: string | null;
   homeBaseOffsetMinutes: number | null;
-  cityPreferences?: Record<string, CityMark>;
 }) {
   const circadian = computeCircadianAssessment(trip, homeBaseOffsetMinutes);
-  const route = tripRoute(trip);
-  const layovers = new Set(trip.schedule.flatMap((d) => (d.layover ? [d.layover.city] : [])));
   const block = tripBlockMinutes(trip);
-  const duties = tripDutyPeriods(trip);
   const first = days[0] ? dayStats(days[0]) : null;
   const last = days.length ? dayStats(days[days.length - 1]) : null;
   // Each column's own real date — crossing the date line, the last column's date isn't simply the first plus the count.
@@ -739,50 +394,23 @@ function TripHeader({
   return (
     <div>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        {trip.pairingNumber !== null && (
-          <span className="rounded-md border border-calendar-accent/40 bg-calendar-accent/10 px-1.5 py-0.5 font-mono text-sm font-semibold text-readout" title="Trip number in the bid pack">
-            #{trip.pairingNumber}
-          </span>
-        )}
+        {/* The same oval the calendar puts on a trip's first day: its number and credit. */}
+        <span className="rounded-full bg-calendar-accent px-2 py-0.5 font-mono text-sm font-semibold text-on-calendar" title="Trip number and credit in the bid pack">
+          {trip.pairingNumber !== null ? `#${trip.pairingNumber} ` : ""}
+          <span className="font-normal opacity-85">{hm(trip.creditHours * 60)}</span>
+        </span>
         <span className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-ink">{trip.days}-day</span>
         {trip.international && (
           <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">Intl</span>
         )}
         <CircadianStars assessment={circadian} size="sm" />
-        <span className="ml-auto font-mono text-sm font-semibold text-readout">
-          {hm(trip.creditHours * 60)} <span className="text-[10px] font-normal uppercase tracking-[0.14em] text-ink-faint">credit</span>
-        </span>
       </div>
 
-      {route.length > 0 && (
-        <div className="mt-1 flex flex-wrap items-center gap-x-1 font-mono text-xs" aria-label={`Route: ${route.join(", ")}`}>
-          {route.map((code, i) => {
-            const isLayover = layovers.has(code) && i > 0 && i < route.length - 1;
-            return (
-              <Fragment key={i}>
-                {i > 0 && <span className="text-ink-faint/70">›</span>}
-                <span className={isLayover ? "font-semibold text-good" : i === 0 || i === route.length - 1 ? "text-ink" : "text-ink-muted"}>
-                  {code}
-                  {isLayover && <CityMarkGlyph mark={cityPreferences?.[code]} />}
-                </span>
-              </Fragment>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1.5 sm:grid-cols-6">
+      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-4">
         <Readout label="Report" value={first?.onDuty ? `${first.onDuty} ${zoneTag(mode)}` : REPORT_LABELS[trip.reportTime]} note={stamp(startDate, 1)} title={`${REPORT_LABELS[trip.reportTime]} report, ${zone}${startDate ? ` — ${startDate.weekday} ${startDate.day} ${startDate.month}` : ""}`} />
         <Readout label="Last in" value={last?.lastIn ? `${last.lastIn} ${zoneTag(mode)}` : block === null && trip.landings === 0 ? "no flying" : "—"} note={stamp(endDate, days.length)} title={`Last block-in of the trip, ${zone}${endDate ? ` — ${endDate.weekday} ${endDate.day} ${endDate.month}` : ""}`} />
         <Readout label="TAFB" value={hm(trip.tafbHours * 60)} title="Time away from base" />
         <Readout label="Block" value={block !== null ? hm(block) : trip.landings === 0 ? "none" : "—"} title="Operated flying time, deadheads excluded" />
-        <Readout label="Duty · ldg" value={`${duties} · ${trip.landings}`} title="Duty periods (hotel standby days included) and landings" />
-        <Readout
-          label={(trip.standbyDays ?? 0) > 0 ? "Standby · DH" : "Deadhead"}
-          value={(trip.standbyDays ?? 0) > 0 ? `${trip.standbyDays}d · ${trip.deadheadLegs}` : trip.deadheadLegs > 0 ? `${trip.deadheadLegs} leg${trip.deadheadLegs > 1 ? "s" : ""}` : "none"}
-          tone={(trip.standbyDays ?? 0) > 0 ? "text-standby" : "text-readout"}
-          title="Hotel standby days, and legs ridden as a passenger"
-        />
       </div>
     </div>
   );
@@ -812,42 +440,24 @@ function TripLegendInfo() {
               <div className="font-medium text-ink">Reading a day</div>
               <ul className="mt-1.5 space-y-2">
                 <li>
-                  Each column is one day, midnight at the top to midnight at the bottom. The header
-                  gives the date, then <span className="font-mono text-ink">09:31–18:04</span>: when the
-                  duty starts (report, or hotel pickup) and when it&rsquo;s done (the last flight blocks
-                  in, or hotel standby ends). A day that finishes one duty and starts another shows both,
-                  like <span className="font-mono text-ink">–06:13 · 23:20–</span>. A dash with no time
-                  means the duty runs in from the day before or on into the next. Under it: that
-                  day&rsquo;s flying (block) time and landings.
+                  Each row is one day, midnight at the left to midnight at the right, on the base&rsquo;s clock &mdash; the
+                  same days as the month calendar. Under the date, <span className="font-mono text-ink">Rpt 06:30</span> is
+                  when that day&rsquo;s duty starts (report, or hotel pickup).
                 </li>
                 <li>
-                  On a flight: departure time and airport at the top, arrival at the bottom, the flight
-                  number and block time between. Short flights show just the route.
+                  Each flight is a line with a tick at each end, as long as the flight. The cities are under its ends and
+                  its times over them, local where it happens as the bid pack prints them (or Zulu, with the toggle). A
+                  dashed line is a deadhead, riding along. A flight still in the air at midnight runs off the right edge
+                  (▸) and on into the next row.
                 </li>
-                <li>
-                  On a hotel stay: the city and the layover&rsquo;s full length, the hotel, and the
-                  pickup time for the next duty.
-                </li>
-                <li>
-                  The shaded band from 02:00 to 06:00 (Local only) is your body clock&rsquo;s low
-                  point &mdash; flying or reporting inside it is what the circadian stars weigh most.
-                </li>
-              </ul>
-            </div>
-            <div>
-              <div className="font-medium text-ink">Colors</div>
-              <ul className="mt-1.5 space-y-2">
-                <li><span className="font-medium text-ink">Solid.</span> Flying, wheels up to wheels down.</li>
-                <li><span className="font-medium text-ink">Hatched.</span> Deadhead &mdash; riding along, not operating.</li>
-                <li><span className="font-medium text-ink">Green edge.</span> {LAYOVER_TOOLTIP}</li>
-                <li><span className="font-medium text-ink">Violet edge.</span> {STANDBY_TOOLTIP}</li>
-                <li><span className="font-medium text-ink">Amber band.</span> {GROUND_TOOLTIP} Thin gray bands are connections: {CONNECTION_TOOLTIP.toLowerCase()}</li>
+                <li>The faint band under the flying is the time on duty, report to release &mdash; a long band with little flying in it is a long wait, like a hub turn.</li>
+                <li><span className="font-medium text-ink">Green line.</span> {LAYOVER_TOOLTIP} The city and the layover&rsquo;s full length are written on it, with the hotel.</li>
+                <li><span className="font-medium text-ink">Violet band.</span> {STANDBY_TOOLTIP}</li>
               </ul>
             </div>
             <div>
               <div className="font-medium text-ink">The trip&rsquo;s numbers</div>
               <ul className="mt-1.5 space-y-2">
-                <li><span className="font-medium text-ink">Route.</span> Every stop in order; layover cities are in green (with ♥ or ✕ if you love or avoid them).</li>
                 <li><span className="font-medium text-ink">TAFB.</span> Time away from base. <span className="font-medium text-ink">Block.</span> Flying you operate, deadheads excluded.</li>
                 <li><span className="font-medium text-ink">Credit per day away.</span> Credit earned per 24 hours away from base.</li>
                 <li><span className="font-medium text-ink">Time zones.</span> Total time-zone distance crossed, and which way the trip nets out.</li>
@@ -859,8 +469,6 @@ function TripLegendInfo() {
             <div>
               <div className="font-medium text-ink">Other marks</div>
               <ul className="mt-1.5 space-y-2">
-                <li><span className="font-medium text-ink">+1d / -1d.</span> A flight crossing the date line &mdash; tap the badge for the details.</li>
-                <li><span className="font-medium text-ink">Label under a column.</span> That local day&rsquo;s boundaries read in Zulu, to cross-check without switching the toggle.</li>
                 <li><span className="font-medium text-ink">Itinerary.</span> Every leg as a table: the main clock first, the other one beside it in gray; &ldquo;airline&rdquo; means a deadhead on another carrier, &ldquo;ground&rdquo; a car or cab.</li>
               </ul>
             </div>
@@ -900,26 +508,12 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
   // pilot's stored choice once mounted — reading localStorage during render
   // would mismatch the server's HTML.
   const [mode, setMode] = useState<TimeMode>("local");
-  /** The suggested sleep drawn over each layover on the charts — on unless the pilot has turned it off. */
-  const [showSleep, setShowSleep] = useState(true);
   const sleepPlans = useMemo(() => trips.map((t) => planTripSleep(t, homeBaseOffsetMinutes)), [trips, homeBaseOffsetMinutes]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMode(loadTimeMode());
-    try {
-      if (window.localStorage.getItem(SLEEP_OVERLAY_KEY) === "off") setShowSleep(false);
-    } catch {}
   }, []);
-
-  function toggleSleep() {
-    setShowSleep((on) => {
-      try {
-        window.localStorage.setItem(SLEEP_OVERLAY_KEY, on ? "off" : "on");
-      } catch {}
-      return !on;
-    });
-  }
 
   function handleModeChange(next: TimeMode) {
     setMode(next);
@@ -968,17 +562,6 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <TimeModeToggle mode={mode} onChange={handleModeChange} />
-          {sleepPlans.some((p) => p.length > 0) && (
-            <button
-              type="button"
-              onClick={toggleSleep}
-              aria-pressed={showSleep}
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${showSleep ? "border-sleep bg-sleep text-canvas" : "border-border text-ink-muted hover:text-ink"}`}
-            >
-              <MoonIcon className="h-3 w-3" />
-              Sleep plan
-            </button>
-          )}
         </div>
         <div className="flex items-center gap-3">
           <TripLegendInfo />
@@ -992,7 +575,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
           // in this line's `trips` array.
           const key = `${trip.id}-${tripIndex}`;
           const plans: LayoverSleepPlan[] = sleepPlans[tripIndex] ?? [];
-          const days = buildTimelineDays(trip, mode, showSleep ? plans : []);
+          const days = tripPictureDays(trip, mode);
           const tripScore = tripScores?.get(tripKey(trip));
           return (
             <li key={key} className="rounded-[var(--radius-panel)] border border-hairline bg-surface/60 p-3 shadow-[inset_0_1px_0_var(--panel-highlight)]">
@@ -1002,18 +585,11 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                 mode={mode}
                 bidPeriodStart={bidPeriodStart}
                 homeBaseOffsetMinutes={homeBaseOffsetMinutes}
-                cityPreferences={cityPreferences}
               />
-
-              {tripScore && <TripScorePanel score={tripScore} />}
-
-              <TripInsights trip={trip} bidPeriodStart={bidPeriodStart} base={base} />
-
-              {flights && base && <TripCommuteFlightsFor trip={trip} flights={flights} base={base} />}
 
               {trip.schedule.length > 0 ? (
                 <div className="mt-2.5">
-                  <TripTimelineChart trip={trip} days={days} mode={mode} bidPeriodStart={bidPeriodStart} cityPreferences={cityPreferences} />
+                  <TripPicture trip={trip} mode={mode} bidPeriodStart={bidPeriodStart} cityPreferences={cityPreferences} />
                   <button
                     type="button"
                     onClick={() => toggleItinerary(key)}
@@ -1026,6 +602,10 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                   {openItineraries.has(key) && (
                     <Itinerary trip={trip} mode={mode} ratings={ratings} expandedKey={expandedKey} onToggleExpand={handleToggleExpand} />
                   )}
+                  {/* The picture first; what the trip means for this pilot after it. */}
+                  {tripScore && <TripScorePanel score={tripScore} />}
+                  <TripInsights trip={trip} bidPeriodStart={bidPeriodStart} base={base} />
+                  {flights && base && <TripCommuteFlightsFor trip={trip} flights={flights} base={base} />}
                   <RestPlan plans={plans} />
                 </div>
               ) : (
@@ -1070,6 +650,14 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                       })}
                   </div>
                 )
+              )}
+
+              {trip.schedule.length === 0 && (
+                <>
+                  {tripScore && <TripScorePanel score={tripScore} />}
+                  <TripInsights trip={trip} bidPeriodStart={bidPeriodStart} base={base} />
+                  {flights && base && <TripCommuteFlightsFor trip={trip} flights={flights} base={base} />}
+                </>
               )}
 
               {trip.schedule.length === 0 &&

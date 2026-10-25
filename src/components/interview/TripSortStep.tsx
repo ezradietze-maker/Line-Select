@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { TripGlance } from "@/components/interview/TripGlance";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
-import { ChevronDownIcon } from "@/components/ui/icons";
 import { MicButton } from "@/components/ui/MicButton";
-import { tripDuties, tripHeadline } from "@/lib/brain/line-text";
 import { TRIP_GRADES, type TripGrade, type TripGradeScreen } from "@/lib/brain/trip-sort";
 import { tripKey } from "@/lib/scoring-v2/trip-score";
 import { useDictation } from "@/lib/use-speech-to-text";
@@ -27,33 +26,15 @@ const GRADE_LABEL: Record<TripGrade, string> = { love: "Love it", good: "Good", 
 const MIN_GRADED = 4;
 
 function TripCard({ bidPack, trip, label, grade, onGrade }: { bidPack: BidPack; trip: Trip; label: string; grade: TripGrade | undefined; onGrade: (g: TripGrade) => void }) {
-  const [open, setOpen] = useState(false);
   const id = `trip-${tripKey(trip).replace(/[^a-z0-9]/gi, "-")}`;
   return (
     <li className={`rounded-xl border p-3.5 transition-colors ${grade ? "border-brand/50 bg-brand-soft/30" : "border-border bg-surface"}`}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p id={`${id}-label`} className="font-display text-lg font-semibold text-ink">
-          {label}
-        </p>
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          aria-controls={`${id}-duties`}
-          className="inline-flex items-center gap-1 text-xs text-ink-faint hover:text-ink-muted"
-        >
-          {open ? "Hide duties" : "Show duties"}
-          <ChevronDownIcon className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
-        </button>
+      <p id={`${id}-label`} className="font-display text-lg font-semibold text-ink">
+        {label}
+      </p>
+      <div className="mt-1">
+        <TripGlance bidPack={bidPack} trip={trip} labelBg={grade ? "bg-brand-soft" : "bg-surface"} />
       </div>
-      <p className="mt-1 font-mono text-xs leading-relaxed text-ink-muted [overflow-wrap:anywhere]">{tripHeadline(bidPack, trip)}</p>
-      {open && (
-        <ul id={`${id}-duties`} className="mt-2.5 space-y-1 border-l-2 border-border-strong pl-2.5 font-mono text-[11px] leading-relaxed text-ink-muted [overflow-wrap:anywhere]">
-          {tripDuties(trip).map((d, i) => (
-            <li key={i}>{d}</li>
-          ))}
-        </ul>
-      )}
       <div className="mt-3 flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={`${id}-label`}>
         {TRIP_GRADES.map((g) => (
           <button
