@@ -44,6 +44,14 @@ describe("time at home", () => {
     expect(summarizeHomeTime(t.stretches, 2).shortGaps).toBe(0);
   });
 
+  it("keeps a stay whole when the next departure leaves after the month ends — a five-week line's", () => {
+    const ds = [dep({ leaveHome: sd("2026-10-12T04:30"), backHome: sd("2026-10-16T16:00") }), dep({ leaveHome: sd("2026-10-26T04:33"), backHome: sd("2026-10-30T20:00") })];
+    const s = homeStretches(ds, ctx, ["SAN"])!;
+    expect(s.map((x) => x.edge)).toEqual(["start", null]);
+    expect(s[1].to).toBe(sd("2026-10-26T04:33")); // not cut at the month's end
+    expect(s[1].nights).toBe(10);
+  });
+
   it("gives a pilot who lives at base the time between release and the next report, less the drive", () => {
     const ds = [dep({ reportAt: mem("2026-10-05T08:00"), releaseAt: mem("2026-10-07T17:00") }), dep({ reportAt: mem("2026-10-09T08:00"), releaseAt: mem("2026-10-10T17:00") })];
     const s = homeStretches(ds, ctx, [])!;

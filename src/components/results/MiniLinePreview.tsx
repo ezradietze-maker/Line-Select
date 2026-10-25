@@ -447,6 +447,12 @@ function Summary({ s, line }: { s: MonthSummary; line: Line }) {
           {s.base.jumpseatIns > 0 ? ` · ${s.base.jumpseatIns} jumpseat-in${s.base.jumpseatIns === 1 ? "" : "s"}` : ""}
         </p>
       )}
+      {s.pastMonthEnd && (
+        <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
+          <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">Five-week line · </span>
+          flies {s.pastMonthEnd.days} day{s.pastMonthEnd.days === 1 ? "" : "s"} past the bid month, to {s.pastMonthEnd.lastLanding} · departures judged over the longer month
+        </p>
+      )}
       {s.home && (
         <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
           <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">At home · </span>

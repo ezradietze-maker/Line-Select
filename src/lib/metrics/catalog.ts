@@ -94,6 +94,11 @@ export interface MetricDef {
    * from the best, so a single extra departure would cost half the priority.
    */
   badEndAtWorst?: boolean;
+  /**
+   * A count that adds up over the line's trips, carry-over included — compared at the month length the pilot's numbers
+   * are for, so a five-week line isn't held to a four-week line's numbers (see `metrics/line-length.ts`).
+   */
+  perMonth?: boolean;
 }
 
 /** Minutes of a stretch starting at `start` (minutes after local midnight) that fall between 06:00 and 22:00. */
@@ -453,7 +458,7 @@ export const METRICS: MetricDef[] = [
     },
   },
   { id: "weekendDaysOff", label: "Weekend days off", unit: "days", category: "calendar", description: "Saturdays and Sundays off.", line: (l, _t, c) => weekendDaysOff(l, c.bidPeriodStart) },
-  { id: "tripCount", label: "Trips", unit: "trips", category: "calendar", description: "Number of trips in the month. For a pilot who lives at base; a commuter's are counted in homeDepartures.", line: (l) => l.trips.length },
+  { id: "tripCount", label: "Trips", unit: "trips", category: "calendar", description: "Number of trips in the month. For a pilot who lives at base; a commuter's are counted in homeDepartures.", perMonth: true, line: (l) => l.trips.length },
   {
     id: "homeDepartures",
     label: "Departures",
@@ -463,6 +468,7 @@ export const METRICS: MetricDef[] = [
       "How many times the pilot leaves home to fly — trips flown without going home in between count once (a \"series of trips\" or \"trip sequence\"). For a commuter, two trips are one departure unless there would be at least minHomeHours (default 24) at home between them, counted door to door: deadheading home from where one trip's flying ends, or commuting home from base, then back out for the next. For a pilot who lives at base, only trips that turn within a few hours at base are joined.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
     badEndAtWorst: true,
+    perMonth: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).length,
   },
   {

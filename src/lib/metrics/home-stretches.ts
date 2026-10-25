@@ -16,9 +16,9 @@ import type { BidPack } from "@/types/bidpack";
  * A short gap is a stretch between two departures that falls short of one.
  *
  * A commuter's stretches come from the departures' door-to-door times (`metrics/departures.ts`). A pilot who lives at
- * base leaves home a little before each report and gets back a little after the last block-in. Stretches that run into
- * the month before or after count only their part inside this bid period, and never as short gaps — the rest of them
- * isn't in this pack.
+ * base leaves home a little before each report and gets back a little after the last block-in. The stays before the
+ * line's first departure and after its last count only their part inside this bid period, and never as short gaps — the
+ * rest of them isn't in this pack. A stay between two of its departures is known whole, even past the month's end.
  */
 
 /** Nights at home that make a stretch a real break, unless the pilot says otherwise. */
@@ -32,7 +32,7 @@ const NIGHT_HOUR = 2;
 const HOUR = 3_600_000;
 
 export interface HomeStretch {
-  /** Walking in the door, and leaving again (ms, UTC), clipped to the bid period. */
+  /** Walking in the door, and leaving again (ms, UTC); a month-edge stay is clipped to the bid period. */
   from: number;
   to: number;
   hours: number;
@@ -85,16 +85,18 @@ export function homeStretches(departures: Departure[], ctx: Pick<BidPack, "bidPe
   away.sort((a, b) => a.leave - b.leave);
 
   const stretches: HomeStretch[] = [];
+  // A stay between two of the line's own departures is known whole, even when the next one leaves after the bid month
+  // ends (a five-week line); only the stays before the first departure and after the last run into months not here.
   const add = (from: number, to: number, edge: HomeStretch["edge"]) => {
-    const a = Math.max(from, periodStart);
-    const b = Math.min(to, periodEnd);
+    const a = edge === "start" ? Math.max(from, periodStart) : from;
+    const b = edge === "end" ? Math.min(to, periodEnd) : to;
     if (b <= a) return;
     stretches.push({ from: a, to: b, hours: (b - a) / HOUR, nights: nightsBetween(a, b, zone), edge });
   };
   if (!away.length) add(periodStart, periodEnd, "start");
   else {
     add(periodStart, away[0].leave, "start");
-    for (let i = 0; i + 1 < away.length; i++) add(away[i].back, away[i + 1].leave, away[i + 1].leave > periodEnd ? "end" : null);
+    for (let i = 0; i + 1 < away.length; i++) add(away[i].back, away[i + 1].leave, null);
     add(away[away.length - 1].back, periodEnd, "end");
   }
   return stretches;

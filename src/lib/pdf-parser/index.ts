@@ -183,6 +183,7 @@ export async function parseBidPackPdf(
     aircraft: pairingMeta?.aircraft ?? lineGridMeta?.aircraft ?? "UNKNOWN",
     seat: lineGridMeta?.seat ?? "CAP",
     bidPeriodStart: lineGridMeta?.bidPeriodStart ?? null,
+    bidPeriodDays: lineGridMeta?.bidPeriodDays ?? null,
   };
 
   // Pass 3: reserve line grid + info page — both purely numeric/summary
@@ -256,7 +257,8 @@ export async function parseBidPackPdf(
       base: meta.base,
       aircraft: meta.aircraft,
       seat,
-      bidPeriodDays: 28,
+      // The pack's own printed dates; a four-week bid month when it didn't print them (the line pages always have so far).
+      bidPeriodDays: meta.bidPeriodDays ?? 28,
       bidPeriodStart: meta.bidPeriodStart,
       lines: seatResults.map((r) =>
         buildLine(r.summary, r.pairings, meta.month, placementsBySeat[seat]?.get(r.summary.lineNumber), offDaysBySeat[seat]?.get(r.summary.lineNumber), {

@@ -1,5 +1,6 @@
 import { METRICS_BY_ID, type MetricDef, type MetricParams } from "@/lib/metrics/catalog";
 import { measure, prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
+import { perMonthFactor } from "@/lib/metrics/line-length";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { TravelTimeProvider } from "@/lib/metrics/home-travel";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type PilotModel } from "@/types/pilot-model";
@@ -165,13 +166,16 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
   const home = homeParams(model);
   const criteria = model.criteria.filter((c) => METRICS_BY_ID.has(c.metric));
 
-  // Measure every criterion on every line once.
+  // Measure every criterion on every line once. A count over a five-week line's trips is judged over the bid month, as
+  // a four-week line's is (`values` stay as measured, for showing; `judged` is what's scored).
   const values = criteria.map((c) => bidPack.lines.map((l) => measure(c.metric, l, pack, { ...home, ...c.params })));
-  const spreads = criteria.map((c, ci) => spreadOf(values[ci], c.shape, METRICS_BY_ID.get(c.metric)));
+  const factors = bidPack.lines.map((l) => perMonthFactor(l, bidPack));
+  const judged = criteria.map((c, ci) => (METRICS_BY_ID.get(c.metric)?.perMonth ? values[ci].map((v, li) => (v === null ? null : v * factors[li])) : values[ci]));
+  const spreads = criteria.map((c, ci) => spreadOf(judged[ci], c.shape, METRICS_BY_ID.get(c.metric)));
   const weights = criteria.map(criterionWeight);
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
   const beyond = options.beyondBad ?? BEYOND_BAD;
-  const utilities = criteria.map((c, ci) => values[ci].map((v) => (v === null ? 0.5 : utilityOf(v, c.shape, spreads[ci], beyond))));
+  const utilities = criteria.map((c, ci) => judged[ci].map((v) => (v === null ? 0.5 : utilityOf(v, c.shape, spreads[ci], beyond))));
   const meanUtility = utilities.map((us) => us.reduce((a, b) => a + b, 0) / Math.max(1, us.length));
   // A dealbreaker that rules out most of the pack is usually misread or bound to the wrong measure ("not two all-nighters
   // in a row" as a cap on every night worked capped two-thirds of a pack, its best lines included): it still counts
@@ -180,7 +184,7 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
   const enforced = criteria.map((c, ci) => {
     if (!c.hardLimit) return false;
     if (LITERAL_LIMITS.has(c.metric)) return true;
-    const measured = values[ci].filter((v): v is number => v !== null);
+    const measured = judged[ci].filter((v): v is number => v !== null);
     const broken = measured.filter((v) => (c.hardLimit!.op === "max" ? v > c.hardLimit!.value : v < c.hardLimit!.value)).length;
     return measured.length === 0 || broken / measured.length <= MAX_SHARE_RULED_OUT;
   });
@@ -208,10 +212,12 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
     const uncapped = (1 - shortfall) * 100;
 
     const violations = criteria.flatMap((c, ci) => {
-      const v = values[ci][li];
+      const v = judged[ci][li];
       if (!c.hardLimit || v === null || !enforced[ci]) return [];
       const broken = c.hardLimit.op === "max" ? v > c.hardLimit.value : v < c.hardLimit.value;
-      return broken ? [{ criterionId: c.id, label: c.label, value: v, limit: c.hardLimit.value, op: c.hardLimit.op }] : [];
+      // Said in the line's own terms: a five-week line's count, against the limit for a line that long.
+      const scale = values[ci][li]! === 0 || v === 0 ? 1 : values[ci][li]! / v;
+      return broken ? [{ criterionId: c.id, label: c.label, value: values[ci][li]!, limit: c.hardLimit.value * scale, op: c.hardLimit.op }] : [];
     });
     const score = violations.length ? uncapped * HARD_LIMIT_CAP : uncapped;
 

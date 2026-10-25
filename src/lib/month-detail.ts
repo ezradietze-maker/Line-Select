@@ -4,6 +4,7 @@ import { timezoneForAirport } from "@/lib/airport-timezones";
 import { groupDepartures, type DepartureOptions } from "@/lib/metrics/departures";
 import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metrics/hub-turns";
 import { DEFAULT_MIN_BREAK_NIGHTS, homeStretches, summarizeHomeTime } from "@/lib/metrics/home-stretches";
+import { lineLengthDays } from "@/lib/metrics/line-length";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
@@ -161,6 +162,12 @@ export interface MonthSummary {
    * month can't be placed.
    */
   home?: { between: { hours: number; nights: number }[]; nightsHome: number; shortGaps: number; minBreakNights: number } | null;
+  /**
+   * A five-week line: its last trip flies past the end of the bid month (carry-over). How many days past, and the last
+   * landing on the base's clock ("Fri Oct 30"). Its departures are judged over that longer month. Null for a line that
+   * stays inside the month, or without the base.
+   */
+  pastMonthEnd?: { days: number; lastLanding: string } | null;
   /** Days off as this calendar draws them. */
   daysOff: number;
   /** Days off as the bid pack itself prints them for the line — usually the same, occasionally a day different at the edge of a trip. */
@@ -535,6 +542,15 @@ export function buildDetailedMonth(
   let summaryBase: MonthSummary["base"] = null;
   let summaryHubs: HubTurnSummary | null = null;
   let summaryHome: MonthSummary["home"] = null;
+  let pastMonthEnd: MonthSummary["pastMonthEnd"] = null;
+  if (departureOptions && bidPeriodStart) {
+    const length = lineLengthDays(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base });
+    if (length > bidPeriodDays) {
+      const zone = timezoneForAirport(departureOptions.base) ?? "UTC";
+      const last = DateTime.fromISO(bidPeriodStart, { zone }).plus({ milliseconds: length * 86_400_000 });
+      pastMonthEnd = { days: Math.ceil(length - bidPeriodDays), lastLanding: last.toFormat("ccc LLL d") };
+    }
+  }
   if (departureOptions) {
     const deps = groupDepartures(line.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions);
     departureCount = deps.length;
@@ -651,6 +667,7 @@ export function buildDetailedMonth(
       summaryBase,
       summaryHubs,
       summaryHome,
+      pastMonthEnd,
       runs.map((r) => r.length),
       cityPreferences
     ),
@@ -666,6 +683,7 @@ function summarize(
   base: MonthSummary["base"],
   hubTurns: HubTurnSummary | null,
   home: MonthSummary["home"],
+  pastMonthEnd: MonthSummary["pastMonthEnd"],
   offRuns: number[],
   cityPreferences: Record<string, CityMark>
 ): MonthSummary {
@@ -703,6 +721,7 @@ function summarize(
     base,
     hubTurns,
     home,
+    pastMonthEnd,
     daysOff: off,
     printedDaysOff: line.daysOff,
     offRuns,

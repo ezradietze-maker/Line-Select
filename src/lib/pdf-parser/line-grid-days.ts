@@ -1,7 +1,7 @@
 import { splitDayTokens, splitIntoLineBlocks } from "@/lib/pdf-parser/line-grid-parser";
 
 const LINE_RE = /LINE\s+(\d+)/;
-const DATE_RANGE_RE = /\((\d{4}-\d{2}-\d{2})\s*-\s*\d{4}-\d{2}-\d{2}\)/;
+const DATE_RANGE_RE = /\((\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})\)/;
 
 export interface DayPlacement {
   pairingNumber: string;
@@ -18,6 +18,17 @@ export interface DayPlacement {
 export function extractBidPeriodStart(headerText: string): string | null {
   const m = headerText.match(DATE_RANGE_RE);
   return m ? m[1] : null;
+}
+
+/**
+ * The bid period's length in days, from the same header's own printed first and last days — "OCT (2026-09-28 -
+ * 2026-10-25)" is 28 days. Null when the header doesn't print a sane range.
+ */
+export function extractBidPeriodDays(headerText: string): number | null {
+  const m = headerText.match(DATE_RANGE_RE);
+  if (!m) return null;
+  const days = Math.round((Date.parse(`${m[2]}T00:00:00Z`) - Date.parse(`${m[1]}T00:00:00Z`)) / 86_400_000) + 1;
+  return Number.isFinite(days) && days >= 7 && days <= 42 ? days : null;
 }
 
 /**

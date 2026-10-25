@@ -162,6 +162,8 @@ export interface BidPackMeta {
   seat: "CAP" | "FO";
   /** See `BidPack.bidPeriodStart`. Null when the line-grid header didn't match the expected date-range format. */
   bidPeriodStart: string | null;
+  /** The bid period's length, from the line-grid header's own printed dates (28 for a four-week bid month); null when it didn't print them. */
+  bidPeriodDays: number | null;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { extractBidPeriodStart } from "@/lib/pdf-parser/line-grid-days";
+import { extractBidPeriodDays, extractBidPeriodStart } from "@/lib/pdf-parser/line-grid-days";
 import type { BidPackMeta } from "@/lib/pdf-parser/types";
 
 const MONTH_ABBREV: Record<string, string> = {
@@ -24,5 +24,5 @@ export function extractMetaFromLineGridHeader(header: string): Partial<BidPackMe
   if (!m) return null;
   const seatText = m[3].toUpperCase().replace(/\s+/g, "");
   const seat = seatText.includes("F") ? "FO" : "CAP";
-  return { aircraft: m[1], base: m[2], seat, bidPeriodStart: extractBidPeriodStart(header) };
+  return { aircraft: m[1], base: m[2], seat, bidPeriodStart: extractBidPeriodStart(header), bidPeriodDays: extractBidPeriodDays(header) };
 }
