@@ -20,6 +20,7 @@ import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tri
 import { rankLinesWithTrips, tripKey } from "@/lib/scoring-v2/trip-score";
 import { nextInterviewStep, SWEEP_QUESTION, type ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
+import { pickQuestionExamples } from "@/lib/brain/question-examples";
 import { topLines, topShift } from "@/lib/brain/ranking-shift";
 import { applyPriorityPick, priorityOrderQuestion, priorityOrderTranscript } from "@/lib/brain/priority-order";
 import { lineSummary } from "@/lib/brain/line-text";
@@ -101,7 +102,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   const tripChoices: TripChoice[] = [];
   const pastTrades: string[] = [];
   /** Per question, for the quality report (scripts/eval/interview-quality.ts). */
-  const asked: { kind: string; words: number; ack: string; pair?: { a: string; b: string; trade: string; strength?: string; variables?: number } }[] = [];
+  const asked: { kind: string; words: number; ack: string; examples?: number; pair?: { a: string; b: string; trade: string; strength?: string; variables?: number } }[] = [];
   let turn = 0;
   let swept = false;
   const qTimes: number[] = [];
@@ -146,10 +147,13 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   }
 
   let limit = MAX_TURNS;
+  const packNumbers = { lines: pack.lines.map((l) => l.lineNumber), trips: [...new Set(pack.lines.flatMap((l) => l.trips.map((t) => t.pairingNumber ?? t.id)))] };
   for (;;) {
     const compared = new Set(choices.map((c) => `${c.preferred}|${c.other}`));
     const pairs = pickLinePairs(pack, model, pm, compared, 3, pastTrades);
-    const step = await nextInterviewStep({ packBrief: brief, pilotContext: context, exchanges, model, threads, linePairs: pairs, turn, maxTurns: limit, rankingShifts: shifts });
+    // As in the app: real lines and trips at both ends of their main priorities, for the question to show.
+    const examples = pickQuestionExamples(pack, model, pm);
+    const step = await nextInterviewStep({ packBrief: brief, pilotContext: context, exchanges, model, threads, linePairs: pairs, examples, packNumbers, turn, maxTurns: limit, rankingShifts: shifts });
     spend += step.usage?.costUsd ?? 0;
     qTimes.push(step.usage?.ms ?? 0);
     for (const id of step.settled) threads[id] = { ...(threads[id] ?? { timesAsked: 0 }), status: "settled" };
@@ -223,11 +227,12 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
       continue;
     }
     if (step.threadId) threads[step.threadId] = { status: threads[step.threadId]?.status ?? "open", timesAsked: (threads[step.threadId]?.timesAsked ?? 0) + 1 };
-    say(`\nQ${turn + 1} [${step.kind}${step.threadId ? ` · ${step.threadId}` : ""}] ${step.prompt}${step.options ? `\n   options: ${step.options.join(" / ")}` : ""}`);
-    const entry: (typeof asked)[number] = { kind: step.kind, words: step.prompt.split(/\s+/).filter(Boolean).length, ack: (step as { ack?: string }).ack ?? "" };
+    say(`\nQ${turn + 1} [${step.kind}${step.threadId ? ` · ${step.threadId}` : ""}] ${step.prompt}${step.options ? `\n   options: ${step.options.join(" / ")}` : ""}${step.examples?.length ? `\n   shown: ${step.examples.map((e) => `${e.title} — ${e.fact}`).join("; ")}` : ""}`);
+    const entry: (typeof asked)[number] = { kind: step.kind, words: step.prompt.split(/\s+/).filter(Boolean).length, ack: (step as { ack?: string }).ack ?? "", examples: step.examples?.length ?? 0 };
     if (entry.ack) say(`   (ack) ${entry.ack}`);
     asked.push(entry);
-    let askedText = step.prompt;
+    // As the app records it: the question, and the examples it showed.
+    let askedText = step.transcript ?? step.prompt;
     let answerText: string;
     if (step.kind === "line-pair" && step.pair) {
       const p = step.pair;
@@ -249,7 +254,21 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
         answerText = `I'd bid line ${preferred} over line ${other} (${pick.strength === "strongly" ? "easily" : "just"}). Why: ${pick.why}`;
       }
     } else {
-      const a = await sim<{ answer: string }>(`Question${step.options ? ` (options: ${step.options.join(" / ")} — pick one, then add a sentence if you like)` : ""}: ${step.prompt}${step.helpText ? `\n(${step.helpText})` : ""}`, { type: "object", additionalProperties: false, required: ["answer"], properties: { answer: { type: "string" } } });
+      // What the app shows under the question: each example line in full, or the trip with its duties.
+      const shown = (step.examples ?? [])
+        .map((e) => {
+          if (e.kind === "line") {
+            const line = pack.lines.find((l) => l.lineNumber === e.ref);
+            return line ? `${e.title}${e.rank ? ` (#${e.rank} on your list)` : ""} — ${e.fact}\n${lineSummary(pack, line)}` : "";
+          }
+          const trip = pack.lines.flatMap((l) => l.trips).find((t) => tripKey(t) === e.ref);
+          return trip ? `${e.title} — ${e.fact}\n${tripText(pack, trip)}` : "";
+        })
+        .filter(Boolean);
+      const a = await sim<{ answer: string }>(
+        `Question${step.options ? ` (options: ${step.options.join(" / ")} — pick one, then add a sentence if you like)` : ""}: ${step.prompt}${step.helpText ? `\n(${step.helpText})` : ""}${shown.length ? `\n\nShown on screen with the question:\n\n${shown.join("\n\n")}` : ""}`,
+        { type: "object", additionalProperties: false, required: ["answer"], properties: { answer: { type: "string" } } }
+      );
       answerText = a.answer;
     }
     say(`A: ${answerText}`);

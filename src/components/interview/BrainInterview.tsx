@@ -32,6 +32,8 @@ import { askedDealbreakers, dealbreakerQuestion } from "@/lib/brain/dealbreakers
 import { nextHubTurnQuestion } from "@/lib/brain/hub-turn-question";
 import { minTurnsFor, SWEEP_QUESTION, type LinePairCandidate, type ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
+import { pickQuestionExamples } from "@/lib/brain/question-examples";
+import { QuestionExamples } from "@/components/interview/QuestionExamples";
 import { topLines, topShift } from "@/lib/brain/ranking-shift";
 import { applyPriorityPick, priorityOrderQuestion, priorityOrderTranscript } from "@/lib/brain/priority-order";
 import { pilotContextFor } from "@/lib/brain/context";
@@ -242,6 +244,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   // The pack brief and measurements are worked out once, the first time they're needed.
   const briefRef = useRef<string | null>(null);
   const pm = useMemo(() => prepareMetrics(bidPack), [bidPack]);
+  // The pack's real line and trip numbers: a question may only name these.
+  const packNumbers = useMemo(() => ({ lines: bidPack.lines.map((l) => l.lineNumber), trips: [...new Set(bidPack.lines.flatMap((l) => l.trips.map((t) => t.pairingNumber ?? t.id)))] }), [bidPack]);
   const packBrief = () => (briefRef.current ??= buildPackBrief(bidPack, pm));
 
   // The interview only renders once the bid pack has loaded from this device, so local storage is always there to read.
@@ -452,8 +456,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       return;
     }
     const linePairs: LinePairCandidate[] = m ? pickLinePairs(bidPack, m, pm, compared, 3, tradesRef.current) : [];
+    // Real lines and trips at both ends of their main priorities, for the question to show.
+    const examples = m ? pickQuestionExamples(bidPack, m, pm) : [];
     try {
-      const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, model: m, threads: th, linePairs, turn: t, maxTurns: turnLimitRef.current, rankingShifts: shiftsRef.current });
+      const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, model: m, threads: th, linePairs, examples, packNumbers, turn: t, maxTurns: turnLimitRef.current, rankingShifts: shiftsRef.current });
       const settledThreads = { ...th };
       for (const id of step.settled) settledThreads[id] = { ...(settledThreads[id] ?? { timesAsked: 0 }), status: "settled" };
       if (step.done) {
@@ -911,7 +917,15 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         return (
           <div key={turn}>
             {ack}
-            <ChoiceStep prompt={q.prompt} helpText={q.helpText} eyebrow={questionEyebrow} options={q.options.map((label) => ({ label }))} selected={choiceSelection} onSelect={setChoiceSelection}>
+            <ChoiceStep
+              prompt={q.prompt}
+              helpText={q.helpText}
+              eyebrow={questionEyebrow}
+              options={q.options.map((label) => ({ label }))}
+              selected={choiceSelection}
+              onSelect={setChoiceSelection}
+              lead={q.examples?.length ? <QuestionExamples examples={q.examples} bidPack={bidPack} /> : null}
+            >
               <ChoiceNote value={choiceNote} onChange={setChoiceNote} />
               <StepNav
                 onNext={() => choiceSelection !== null && void answer(`${q.options![choiceSelection]}${choiceNote.trim() ? `. ${choiceNote.trim()}` : ""}`)}
@@ -927,6 +941,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
           {ack}
           <QuestionPrompt eyebrow={questionEyebrow} title={q.prompt} help={q.helpText} />
           <RevealControls title={q.prompt} className="mt-8">
+            {q.examples?.length ? <QuestionExamples examples={q.examples} bidPack={bidPack} className="mb-4" /> : null}
             <FreeTextAnswerBox onSubmit={(text) => answer(text)} onSkip={() => void answer("(skipped)")} />
           </RevealControls>
         </div>

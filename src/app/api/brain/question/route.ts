@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { nextInterviewStep, type LinePairCandidate, type LinePairDifference, type ThreadState } from "@/lib/brain/interviewer";
+import type { QuestionExample } from "@/lib/brain/question-examples";
 import { MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText } from "@/lib/server/json-body";
@@ -40,6 +41,32 @@ function readPairs(value: unknown): LinePairCandidate[] {
     }));
 }
 
+/** The real lines and trips the client offers to show with a question (see `question-examples.ts`). */
+function readExamples(value: unknown): QuestionExample[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, 30)
+    .filter((e): e is Record<string, unknown> => isJsonObject(e))
+    .filter((e) => isText(e.id, 8) && (e.kind === "line" || e.kind === "trip") && isText(e.ref, 40) && isText(e.title, 80) && isText(e.fact, 300) && isText(e.summary, 400))
+    .map((e) => ({
+      id: e.id as string,
+      kind: e.kind as "line" | "trip",
+      ref: e.ref as string,
+      title: e.title as string,
+      fact: e.fact as string,
+      summary: e.summary as string,
+      ...(typeof e.rank === "number" && Number.isFinite(e.rank) ? { rank: Math.round(e.rank) } : {}),
+      ...(isText(e.criterionId, 80) ? { criterionId: e.criterionId as string } : {}),
+    }));
+}
+
+/** The pack's line and trip numbers, so a question can't name one that doesn't exist; undefined when not sent. */
+function readPackNumbers(value: unknown): { lines: string[]; trips: string[] } | undefined {
+  if (!isJsonObject(value) || !Array.isArray(value.lines) || !Array.isArray(value.trips)) return undefined;
+  const nums = (xs: unknown[]) => xs.slice(0, 2000).filter((x): x is string => typeof x === "string" && /^\d{1,5}$/.test(x));
+  return { lines: nums(value.lines), trips: nums(value.trips) };
+}
+
 function readDifferences(value: unknown): LinePairDifference[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -75,7 +102,7 @@ export async function POST(request: Request) {
 
   try {
     const notes = await fleetNotesFor(readCohort(body.cohort));
-    const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), turn: body.turn, maxTurns, fleetNotes: notes, rankingShifts });
+    const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), examples: readExamples(body.examples), packNumbers: readPackNumbers(body.packNumbers), turn: body.turn, maxTurns, fleetNotes: notes, rankingShifts });
     const { usage, ...rest } = step;
     if (usage) console.log("[brain-question]", { turn: body.turn, done: step.done, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json(rest);

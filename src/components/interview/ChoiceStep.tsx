@@ -12,6 +12,8 @@ interface ChoiceStepProps {
   onSelect: (index: number) => void;
   /** Rendered under the options — the optional "want to explain why?" box and the Next button. */
   children?: React.ReactNode;
+  /** Rendered above the options — the real lines or trips the question is about. */
+  lead?: React.ReactNode;
 }
 
 /** True when a keystroke belongs to a text field rather than the page. */
@@ -26,7 +28,7 @@ export function isTypingTarget(target: EventTarget | null): boolean {
  * number picks it — quick for a pilot who'd rather not reach for the mouse —
  * except while they're typing in a text box.
  */
-export function ChoiceStep({ prompt, helpText, eyebrow, options, selected, onSelect, children }: ChoiceStepProps) {
+export function ChoiceStep({ prompt, helpText, eyebrow, options, selected, onSelect, children, lead }: ChoiceStepProps) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return;
@@ -44,7 +46,8 @@ export function ChoiceStep({ prompt, helpText, eyebrow, options, selected, onSel
     <div>
       <QuestionPrompt eyebrow={eyebrow} title={prompt} help={helpText} />
       <RevealControls title={prompt}>
-        <div role="radiogroup" aria-label={prompt} className={`mt-8 grid gap-3 ${options.length > 2 ? "sm:grid-cols-2" : ""}`}>
+        {lead ? <div className="mt-8">{lead}</div> : null}
+        <div role="radiogroup" aria-label={prompt} className={`${lead ? "mt-4" : "mt-8"} grid gap-3 ${options.length > 2 ? "sm:grid-cols-2" : ""}`}>
           {options.map((opt, i) => {
             const isSelected = selected === i;
             return (

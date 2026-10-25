@@ -1,6 +1,7 @@
 import type { PilotModel } from "@/types/pilot-model";
 import type { InterviewExchange } from "./build-model";
 import { structuredCall, type BrainUsage } from "./llm";
+import { examplesTranscript, type QuestionExample } from "./question-examples";
 
 /**
  * The interviewer: given everything a pilot has said and the brain's current
@@ -54,6 +55,10 @@ export interface InterviewStepInput {
   model: PilotModel | null;
   threads: Record<string, ThreadState>;
   linePairs: LinePairCandidate[];
+  /** Real lines and trips from their pack at both ends of their main priorities, to show with a question (see `question-examples.ts`). */
+  examples?: QuestionExample[];
+  /** Line and trip numbers in their pack, so a question can't name one that doesn't exist. */
+  packNumbers?: { lines: string[]; trips: string[] };
   /** Answers given so far after the opening steps. */
   turn: number;
   maxTurns: number;
@@ -80,6 +85,8 @@ export type InterviewStep =
       helpText?: string;
       options?: string[];
       pair?: LinePairCandidate;
+      /** The real lines and trips shown with the question. */
+      examples?: QuestionExample[];
       /** For the fixed priority-order question: the criterion behind each option (see `priority-order.ts`). */
       priorityIds?: string[];
       /** How the question goes into the transcript when it differs from the prompt (e.g. with its options). */
@@ -99,6 +106,9 @@ You're a line pilot who has bid for years, talking to a colleague — not a surv
 WHAT MAKES A GOOD QUESTION
 - It comes from them: one of the open threads (prefer the highest priority one), or something in their latest answer worth one follow-up. Quote or echo their own words. Never ask a generic checklist question about a topic they haven't raised — topics they never mentioned are covered later on a separate screen.
 - It is grounded in their pack: use the real cities, numbers and lines in the pack brief ("Sydney only shows up on 4 lines here, and two of them…").
+- It shows them, not asks them to imagine. Pilots answer real lines far better than generic questions about what they'd trade. Every question about one of their priorities shows one or two of the EXAMPLES YOU MAY SHOW (set examples to their ids): real lines or trips from their own pack at the two ends of the one thing you're asking about — what more and less of it look like — with their figure. Name them in the question with that figure, briefly ("2031 gets you two departures; 2044 takes four — where does it start to cost you?"). Take them from the group of the priority the question is about — never attach another priority's example because it names a line you mention. Prefer lines near the top of their list. Leave examples empty only for a line-pair question (the pair is the example) or when no example shows what you're asking.
+- Never ask them to price one priority in another ("how many extra commutes would that layover be worth?", "how much layover would you give up for an easy commute?") — pilots can't answer that in general, only between real lines. To learn how two priorities trade, offer a line pair that pulls them apart; if none is offered, ask about something else.
+- Never invent a line or trip, and never describe a made-up one ("a line with a Honolulu trip and a week of hub turns"). Name only lines and trips from the examples, the line pairs, or what they've already been shown. If no real line shows a trade, don't ask it.
 - It moves the ranking: ask about trade-offs, thresholds and how much something matters relative to their other priorities — not trivia, not things a bid pack can't show, not things they already answered.
 - Prefer open questions that let them tell you what they want, in their own words — including things the brain hasn't modelled yet. Most of the interview should be these.
 - It is short (one or two sentences), plain, and in pilot terms (deadhead, layover, duty period, report, block, credit, TAFB, secondary line, jumpseat). Match their tone.
@@ -133,7 +143,7 @@ Set done only when every important criterion has been probed, no open thread wou
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["settled", "done", "reason", "threadId", "kind", "ack", "prompt", "helpText", "options", "pairIndex"],
+  required: ["settled", "done", "reason", "threadId", "kind", "ack", "prompt", "helpText", "options", "pairIndex", "examples"],
   properties: {
     settled: { type: "array", items: { type: "string" }, description: "Thread ids the latest answer resolved." },
     done: { type: "boolean" },
@@ -145,6 +155,7 @@ const SCHEMA = {
     helpText: { type: "string", description: "Optional one-line hint under the question; empty for none." },
     options: { type: "array", items: { type: "string" }, description: "2–4 options for a choice question; empty otherwise." },
     pairIndex: { type: "integer", description: "The offered line pair for a line-pair question; -1 otherwise." },
+    examples: { type: "array", items: { type: "string" }, description: "1–2 ids from EXAMPLES YOU MAY SHOW, shown with the question; empty for a line-pair question." },
   },
 } as const;
 
@@ -159,6 +170,7 @@ interface RawStep {
   helpText: string;
   options: string[];
   pairIndex: number;
+  examples: string[];
 }
 
 function renderModel(model: PilotModel | null, threads: Record<string, ThreadState>, openingCount: number): string {
@@ -203,10 +215,55 @@ export function unprobedCriteria(input: Pick<InterviewStepInput, "exchanges" | "
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
 
-/** Why a proposed question can't be asked, if it can't. */
-function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<string>): string | null {
+/** The offered examples, grouped under the priority each shows: "Few departures:\n  E4: Line 1004 (#12 on their list) — 2 departures · …". */
+function renderExamples(examples: QuestionExample[]): string {
+  if (!examples.length) return "(none this turn)";
+  const groups = new Map<string, QuestionExample[]>();
+  for (const e of examples) groups.set(e.fact.split(": ")[0], [...(groups.get(e.fact.split(": ")[0]) ?? []), e]);
+  return [...groups]
+    .map(([what, es]) => `${what}:\n${es.map((e) => `  ${e.id}: ${e.title}${e.rank ? ` (#${e.rank} on their list)` : ""} — ${e.fact.slice(what.length + 2)} · ${e.summary}`).join("\n")}`)
+    .join("\n");
+}
+
+/** A question about a made-up line or trip ("if a line instead had…", "say a trip…", "imagine a line…"). */
+const HYPOTHETICAL = /\b(?:if|what if|say|imagine|suppose)\s+(?:a|another|some|the)?\s*(?:line|trip)\s+(?:instead\s+)?(?:had|has|were|was|with|that|came|paid|gave)\b|\bimagine\b|\bsuppose\b|\bhypothetical/i;
+
+/** Line numbers a question names (four-digit numbers), and trip numbers ("trip 93", "Trip #93", "trips 93 and 98"). */
+function namedNumbers(text: string): { lines: string[]; trips: string[] } {
+  const lines = [...text.matchAll(/\b(\d{4})\b/g)].map((m) => m[1]);
+  const trips = [...text.matchAll(/\btrips?\s+#?\s*(\d{1,4})(?:\s*(?:,|and|&)\s*#?\s*(\d{1,4}))*/gi)].flatMap((m) => [...m[0].matchAll(/\d{1,4}/g)].map((x) => x[0]));
+  return { lines, trips };
+}
+/** A four-digit number that could be a clock time ("0430", "1755") rather than a line. */
+const couldBeTime = (n: string) => Number(n.slice(0, 2)) < 24 && Number(n.slice(2)) < 60;
+/** Or a year ("2026"). */
+const couldBeYear = (n: string) => /^20\d\d$/.test(n);
+
+/** Why a proposed question can't be asked, if it can't. `attempt` counts proposals this turn (0 = the first). */
+function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<string>, attempt = 0): string | null {
   if (step.done) return null;
   if (!step.prompt.trim()) return "The question was empty.";
+  // Only real lines and trips: a number that names nothing in their pack is an invented one.
+  if (input.packNumbers) {
+    const named = namedNumbers(`${step.prompt} ${step.helpText}`);
+    const lines = new Set(input.packNumbers.lines);
+    const trips = new Set(input.packNumbers.trips);
+    const fakeLine = named.lines.find((n) => !lines.has(n) && !couldBeTime(n) && !couldBeYear(n));
+    if (fakeLine) return `There's no line ${fakeLine} in their pack — name only real lines, from the examples or line pairs.`;
+    const fakeTrip = named.trips.find((n) => !trips.has(n));
+    if (fakeTrip) return `There's no trip ${fakeTrip} in their pack — name only real trips, from the examples.`;
+  }
+  const offered = new Set((input.examples ?? []).map((e) => e.id));
+  const unknown = (step.examples ?? []).find((id) => !offered.has(id));
+  if (unknown) return `There's no example ${unknown} — use the ids in EXAMPLES YOU MAY SHOW.`;
+  // The examples show the one priority the question is about, at its two ends — never a line picked for another reason.
+  const priorities = new Set((step.examples ?? []).map((id) => (input.examples ?? []).find((e) => e.id === id)?.fact.split(": ")[0]));
+  if (priorities.size > 1) return "Both examples have to show the same priority — the one your question is about — at its two ends. Pick them from one group.";
+  if (step.kind !== "line-pair" && HYPOTHETICAL.test(`${step.prompt} ${step.helpText}`))
+    return "That describes a made-up line or trip. Ask about the real lines or trips in the examples, or offer a line pair.";
+  // Show, don't ask in the abstract — once: a question no example fits may still go without one.
+  if (attempt === 0 && step.kind !== "line-pair" && !(step.examples ?? []).length && offered.size)
+    return "Show one or two of the EXAMPLES YOU MAY SHOW with this question (set examples and name them with their figure) — or, if none shows what you're asking, ask it again as it is.";
   const t = step.threadId ? input.threads[step.threadId] : undefined;
   if (t && t.status !== "open") return `Thread ${step.threadId} is ${t.status} — don't ask about it again.`;
   if (t && t.timesAsked >= 2) return `Thread ${step.threadId} has already been asked twice — move on.`;
@@ -273,6 +330,7 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
     `THE BRAIN'S CURRENT MODEL OF THEM:\n${renderModel(input.model, input.threads, openingCountOf(input))}`,
     input.fleetNotes ? `FLEET NOTES — other pilots in the same group (hints only):\n${input.fleetNotes}` : "",
     `LINE PAIRS YOU MAY OFFER:\n${pairs}`,
+    `EXAMPLES YOU MAY SHOW — real lines and trips from their pack at the two ends of each priority, grouped by priority. Show examples from the group of the priority your question is about:\n${renderExamples(input.examples ?? [])}`,
     input.rankingShifts?.length ? `RANKING STABILITY — top-10 lines changed by each re-read, oldest first: ${input.rankingShifts.join(", ")}` : "",
     `THE INTERVIEW SO FAR (${input.turn} of at most ${input.maxTurns} questions answered):\n\n${conversation}`,
     `Choose the next question, or decide the interview is done.`,
@@ -286,7 +344,7 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
     const known = new Set(Object.keys(input.threads));
     const settled = step.settled.filter((id) => known.has(id) || input.model?.threads.some((t) => t.id === id));
     if (step.done || input.turn >= input.maxTurns) return { done: true, reason: step.reason, settled, usage };
-    const why = rejection(step, input, pairsUsed);
+    const why = rejection(step, input, pairsUsed, attempt);
     if (why) {
       fresh += `\n\nYour last proposal can't be used: ${why} Choose a different question.`;
       continue;
@@ -294,6 +352,7 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
     const pair = step.kind === "line-pair" ? input.linePairs.find((p) => p.index === step.pairIndex) : undefined;
     const options = step.options.map((o) => o.trim()).filter(Boolean).slice(0, 4);
     const kind = step.kind === "choice" && options.length < 2 ? "free-text" : step.kind;
+    const shown = kind === "line-pair" ? [] : [...new Set(step.examples ?? [])].slice(0, 2).flatMap((id) => (input.examples ?? []).filter((e) => e.id === id));
     return {
       done: false,
       settled,
@@ -304,6 +363,8 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
       ...(step.helpText.trim() ? { helpText: step.helpText.trim() } : {}),
       ...(kind === "choice" ? { options } : {}),
       ...(pair ? { pair } : {}),
+      // The examples go into the transcript after the question (and its options), so the brain reads what was shown.
+      ...(shown.length ? { examples: shown, transcript: `${step.prompt.trim()}${examplesTranscript(shown)}` } : {}),
       usage,
     };
   }

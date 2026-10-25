@@ -37,7 +37,16 @@ export async function requestModelBuild(body: BrainRequestBase & { prior: PilotM
 export type StepResponse = Omit<Extract<InterviewStep, { done: false }>, "usage"> | Omit<Extract<InterviewStep, { done: true }>, "usage">;
 
 export async function requestNextStep(
-  body: BrainRequestBase & { model: PilotModel | null; threads: Record<string, ThreadState>; linePairs: LinePairCandidate[]; turn: number; maxTurns: number; rankingShifts?: number[] }
+  body: BrainRequestBase & {
+    model: PilotModel | null;
+    threads: Record<string, ThreadState>;
+    linePairs: LinePairCandidate[];
+    examples?: import("./question-examples").QuestionExample[];
+    packNumbers?: { lines: string[]; trips: string[] };
+    turn: number;
+    maxTurns: number;
+    rankingShifts?: number[];
+  }
 ): Promise<StepResponse> {
   return post<StepResponse>("/api/brain/question", body, 85_000);
 }
