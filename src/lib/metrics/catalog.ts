@@ -7,6 +7,7 @@ import { computeTripAnalytics } from "@/lib/trip-analytics";
 import { backupsToWork, earliestHome, flightsForTrip, realTravelForTrip, type FlightAnswers, type TripFlights } from "@/lib/flights/trip-travel";
 import { tripStartUtc } from "@/lib/flights/needs";
 import { groupDepartures, type Departure } from "@/lib/metrics/departures";
+import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metrics/hub-turns";
 import { DEFAULT_HOME_PARAMS, homeAwayForTrip, type HomeAway, type TravelTimeProvider } from "@/lib/metrics/home-travel";
 import { legDeepNightMinutes, nightsWorked, type LayoverFact, type LegFact, type Region, type TripFacts } from "@/lib/metrics/trip-facts";
 import type { Line } from "@/types/bidpack";
@@ -204,6 +205,16 @@ function departuresOf(trips: TripFacts[], c: LineContext, p: MetricParams): Depa
   );
   entry.byKey.set(key, departures);
   return departures;
+}
+
+/** A line's hub turns (see `metrics/hub-turns.ts`), worked out once per line and shared by the hub-turn measures. */
+const hubTurnCache = new WeakMap<TripFacts[], HubTurnSummary>();
+function hubTurnsOfLine(trips: TripFacts[], c: LineContext): HubTurnSummary {
+  const known = hubTurnCache.get(trips);
+  if (known) return known;
+  const s = summarizeHubTurns(hubTurnsOf(trips.map((f) => f.trip), { bidPeriodStart: c.bidPeriodStart, base: c.base }));
+  hubTurnCache.set(trips, s);
+  return s;
 }
 
 /**
@@ -778,6 +789,58 @@ export const METRICS: MetricDef[] = [
     category: "body",
     description: "Nights with at least half an hour of the small hours (00:00–05:00, on the home-base clock or the local one) spent on operated flying or hotel standby — standby through the night keeps a pilot on a night schedule as surely as flying does.",
     line: (_l, trips) => nightsOfLine(trips)?.length ?? null,
+  },
+  {
+    id: "nightHubTurnRuns",
+    label: "Weeks of night hub turns",
+    unit: "hub turns",
+    category: "body",
+    description:
+      "Night hub turns that come three or more nights in a row — a week of flying into a sort hub in the evening, sitting through the sort and flying back out before dawn. The back-of-the-clock work pilots call onerous, where one now and then is fine. For a pilot who talks about hub turning, use this rather than the general night measures.",
+    badEndAtWorst: true,
+    line: (_l, trips, c) => hubTurnsOfLine(trips, c).inWeeks,
+  },
+  {
+    id: "longestHubTurnRun",
+    label: "Most night hub turns in a row",
+    unit: "nights",
+    category: "body",
+    description: "The longest run of consecutive nights with a night hub turn — for a pilot who gives a limit ('two nights of hub turning in a row is fine').",
+    badEndAtWorst: true,
+    line: (_l, trips, c) => hubTurnsOfLine(trips, c).longestRun,
+  },
+  {
+    id: "nightHubTurns",
+    label: "Night hub turns",
+    unit: "hub turns",
+    category: "body",
+    description: "Every hub turn whose sit at the sort hub runs through the small hours (00:00–05:00 local), however they fall.",
+    line: (_l, trips, c) => hubTurnsOfLine(trips, c).night,
+  },
+  {
+    id: "restHotelHubTurns",
+    label: "Hub turns with a crew-rest hotel",
+    unit: "hub turns",
+    category: "duty",
+    description:
+      "Hub turns with a sit long enough (about 4 hours or more) that the crew gets a short airport hotel for a nap before the outbound leg. Some pilots like the nap; others find the leg after it feels like a whole extra duty period and would rather have a shorter sit. Direction as they say.",
+    line: (_l, trips, c) => hubTurnsOfLine(trips, c).withRestHotel,
+  },
+  {
+    id: "dayHubTurns",
+    label: "Day hub turns",
+    unit: "hub turns",
+    category: "duty",
+    description: "Hub turns by day: flying into a sort hub (base included) and sitting several hours on the ground before flying back out, without a night at a hotel.",
+    line: (_l, trips, c) => hubTurnsOfLine(trips, c).day,
+  },
+  {
+    id: "hubTurns",
+    label: "Hub turns",
+    unit: "hub turns",
+    category: "duty",
+    description: "Every hub turn: a leg into a sort hub (MEM, IND, OAK, EWR, AFW, GSO, ANC, CDG, CAN), a sit through the sort, then a leg back out. Only for a pilot who minds hub turns as such — most mind the night weeks, not the occasional one.",
+    line: (_l, trips, c) => hubTurnsOfLine(trips, c).all,
   },
   {
     id: "longestNightStreak",

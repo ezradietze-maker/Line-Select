@@ -1,3 +1,4 @@
+import { SORT_HUBS } from "@/lib/metrics/hub-turns";
 import type { Trip } from "@/types/bidpack";
 
 /**
@@ -22,6 +23,10 @@ import type { Trip } from "@/types/bidpack";
  *   fatigue of flying through the body-clock night.
  * - **After an all-nighter**, a recovery sleep on arrival plus a main sleep in the body-clock night ("anchor sleep",
  *   Minors & Waterhouse) beats one long daytime sleep, which the body clock cuts short.
+ * - **When you fall asleep sets how long you sleep** (Åkerstedt & Gillberg's displaced-sleep studies): in at dawn after
+ *   a night of flying, sleep now — a sleep put off to midday runs short — and nobody is planned to stay up past a long
+ *   day waiting for an easier hour.
+ * - **A crew-rest hotel on a hub sit is a nap**, and it's counted: the hours awake run from waking up there.
  *
  * Assumptions, said plainly: before a trip the pilot keeps a normal day at home (asleep about 23:00–07:00 base time);
  * the body clock shifts only during layovers (a duty's light and wakefulness are too irregular to count); a pilot is in
@@ -52,6 +57,23 @@ const DAYTIME_CORE = 4 * CYCLE;
 const HIGH_PRESSURE_HOURS = 16;
 /** Never plan a pilot past this many hours awake before their first sleep of a layover. */
 const MAX_AWAKE_HOURS = 18;
+/**
+ * Staying up costs: past `HIGH_PRESSURE_HOURS` awake, each more hour of waiting for an easier time to sleep is worth
+ * this much ease — so a pilot in at dawn after a night of flying sleeps now, not after four more hours up waiting for
+ * the afternoon dip.
+ */
+const WAIT_COST_PER_HOUR = 0.05;
+/**
+ * How long a sleep lasts depends most on the body-clock time you fall asleep (Åkerstedt & Gillberg's displaced-sleep
+ * studies: a morning sleep after a night awake runs long, one started near midday runs short), so a sleep's first hour
+ * counts this much extra in where it's placed.
+ */
+const ONSET_WEIGHT = 0.1;
+/** A recovery sleep this long before the main sleep still leaves enough awake time for the main sleep to come. */
+const RECOVERY_GAP_HOURS = 3;
+/** On a crew-rest hotel stay at a sort hub: to the room after block-in, and back down for the van before the next leg. */
+const DAY_ROOM_IN = 30;
+const DAY_ROOM_OUT = 60;
 /** How fast the body clock shifts, minutes per day of layover: advancing (flying east) and delaying (west). */
 const ADVANCE_PER_DAY = 60;
 const DELAY_PER_DAY = 90;
@@ -94,6 +116,8 @@ export interface LayoverSleepPlan {
   quality: "good" | "short" | "poor";
   /** One line: "Nap 08:40–11:40 · Sleep 22:30–06:15". */
   summary: string;
+  /** The nap on the duty before this layover, when it has a crew-rest hotel on a hub sit — counted in hours awake. */
+  dutyNap?: DutyNap;
   /** The body clock here, in words: "Your body clock is 3 h behind local time — it's 05:10 to your body when you get in." */
   bodyClockNote: string;
   /** Hotel arrival and wake-up on the city's clock. */
@@ -101,6 +125,18 @@ export interface LayoverSleepPlan {
   wakeByLocal: string;
   /** How easily the body could sleep through the stay, every 15 minutes from arrival to wake-up (body clock alone), for drawing it. */
   ribbon: { at: number; ease: number }[];
+}
+
+export interface DutyNap {
+  /** The hub, and the hotel the pack prints for the sit. */
+  city: string;
+  hotel: string;
+  /** Trip minutes, and on the hub's clock. */
+  start: number;
+  end: number;
+  startLocal: string;
+  endLocal: string;
+  why: string;
 }
 
 const mod = (x: number, m = DAY) => ((x % m) + m) % m;
@@ -187,13 +223,18 @@ function easeOf(ctx: Context, s: number, e: number): number {
   return n ? sum / n : 0;
 }
 
-/** The best place for a sleep of `length` in [from, to]: where it comes most easily. */
-function bestBlock(ctx: Context, from: number, to: number, length: number): { start: number; ease: number } | null {
+/**
+ * The best place for a sleep of `length` in [from, to]: where it comes most easily, less what waiting for it costs
+ * (`cost`, by start), and — for a main sleep, `onset` — falling asleep counting extra. `score` is what placed it; `ease`
+ * is the sleep's own.
+ */
+function bestBlock(ctx: Context, from: number, to: number, length: number, cost?: (start: number) => number, onset = false): { start: number; ease: number; score: number } | null {
   if (to - from < length) return null;
-  let best: { start: number; ease: number } | null = null;
+  let best: { start: number; ease: number; score: number } | null = null;
   for (let s = from; s + length <= to; s += 15) {
     const ease = easeOf(ctx, s, s + length);
-    if (!best || ease > best.ease + 1e-6) best = { start: s, ease };
+    const score = ease + (onset ? ONSET_WEIGHT * easeOf(ctx, s, s + Math.min(60, length)) : 0) - (cost?.(s) ?? 0);
+    if (!best || score > best.score + 1e-6) best = { start: s, ease, score };
   }
   return best;
 }
@@ -225,6 +266,39 @@ function pickupMinute(pickupLocal: string | undefined, report: number, localOff:
   return before <= 4 * 60 ? report - before : null;
 }
 
+/**
+ * The nap on a duty's crew-rest hotel stay: on a long sit at a sort hub the contract gives a short airport hotel, which
+ * the pack prints on the leg in. Up to the room after block-in, back down an hour before the next leg; whole cycles
+ * when there's room for one, else a power nap. Null when the duty has no such stay.
+ */
+function dutyNapOf(duty: Trip["schedule"][number], zOff: number): DutyNap | null {
+  const legs = duty.legs.filter((l) => !l.isStandby);
+  for (let i = 0; i + 1 < legs.length; i++) {
+    const inbound = legs[i];
+    if (!inbound.dayRoomHotel) continue;
+    const start = inbound.endMinutes + DAY_ROOM_IN;
+    const avail = legs[i + 1].startMinutes - DAY_ROOM_OUT - start;
+    if (avail < 25) continue;
+    const len = avail >= CYCLE ? Math.floor(avail / CYCLE) * CYCLE : Math.min(30, avail);
+    const off = offsetOf(inbound.arrTimeLocal, inbound.arrTimeGmt) ?? 0;
+    const local = (m: number) => clockText(m + zOff + off);
+    const where = SORT_HUBS.includes(inbound.arrAirport) ? `through the ${inbound.arrAirport} sort` : `on the ${inbound.arrAirport} sit`;
+    return {
+      city: inbound.arrAirport,
+      hotel: inbound.dayRoomHotel,
+      start,
+      end: start + len,
+      startLocal: local(start),
+      endLocal: local(start + len),
+      why:
+        len >= CYCLE
+          ? `The crew-rest hotel ${where}: ${len / CYCLE} full sleep ${len === CYCLE ? "cycle" : "cycles"} (${hoursText(len)}) leaves time to wake up properly before the van.`
+          : `The crew-rest hotel ${where}: room for a 20–30 minute nap before the van.`,
+    };
+  }
+  return null;
+}
+
 export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null): LayoverSleepPlan[] {
   if (!trip.schedule.length) return [];
   const zOff = zuluOffset(trip);
@@ -236,6 +310,9 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
   const plans: LayoverSleepPlan[] = [];
 
   trip.schedule.forEach((duty, i) => {
+    // A nap on the duty's crew-rest hotel stay resets the hours awake.
+    const dutyNap = dutyNapOf(duty, zOff);
+    if (dutyNap && dutyNap.end > lastWake) lastWake = dutyNap.end;
     const lay = duty.layover;
     const next = trip.schedule[i + 1];
     if (!lay || !next) return;
@@ -257,7 +334,8 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
     const nextDutyEnd = next.legs.at(-1)?.endMinutes ?? report;
     const local = (m: number) => clockText(m + zOff + localOff);
     const blocks = planLayover(ctx, from, wakeBy, awakeMin / 60, report, nextDutyEnd).map((b) => ({ ...b, startLocal: local(b.start), endLocal: local(b.end) }));
-    const total = blocks.reduce((a, b) => a + (b.end - b.start), 0);
+    // The nap on the hub sit counts toward the rest the pilot gets between duties.
+    const total = blocks.reduce((a, b) => a + (b.end - b.start), 0) + (dutyNap ? dutyNap.end - dutyNap.start : 0);
     const ribbon: { at: number; ease: number }[] = [];
     for (let m = inHotel; m <= wakeBy; m += 15) ribbon.push({ at: m, ease: sleepPropensity(m + zOff + ctx.bodyAt(m)) });
     const behind = Math.round((mod(localOff - ctx.bodyAt(inHotel) + 720) - 720) / 60);
@@ -276,6 +354,7 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
       inHotelLocal: local(inHotel),
       wakeByLocal: local(wakeBy),
       ribbon,
+      ...(dutyNap ? { dutyNap } : {}),
       bodyClockNote:
         Math.abs(behind) < 1
           ? `Your body clock is on local time here — it's ${local(inHotel)} to your body too.`
@@ -309,20 +388,25 @@ function planLayover(ctx: Context, from: number, wakeBy: number, awakeHours: num
   const mains: { start: number; end: number; ease: number }[] = [];
   const free: [number, number][] = [[from, wakeBy]];
   for (let guard = 0; guard < 4 && free.length; guard++) {
-    let pick: { start: number; end: number; ease: number; slot: number } | null = null;
+    let pick: { start: number; end: number; ease: number; score: number; slot: number } | null = null;
+    // The first sleep comes after the hours already awake: waiting past a long day for an easier hour costs.
+    // Past `MAX_AWAKE_HOURS` a recovery sleep comes first anyway, so the cost stops growing there.
+    const cost = mains.length ? undefined : (s: number) => WAIT_COST_PER_HOUR * Math.max(0, Math.min(MAX_AWAKE_HOURS, awakeHours + (s - from) / 60) - HIGH_PRESSURE_HOURS);
     free.forEach(([s, e], slot) => {
       let len = Math.min(FULL_SLEEP, e - s);
       if (len >= FULL_SLEEP && e - s >= 11 * 60) {
+        // Whether a full sleep can land in the body's night at all — a question of the clock, not of waiting.
         const night = bestBlock(ctx, s, e, len);
         if (night && bodyNightMinutes(ctx, night.start, night.start + len) < 4 * 60) len = DAYTIME_CORE;
       }
       // A first main sleep can go anywhere it fits; later ones only into a stretch that really covers the body's night.
       if (len < 4.5 * 60 || (mains.length > 0 && bodyNightMinutes(ctx, s, e) < 4 * 60)) return;
-      const b = bestBlock(ctx, s, e, len);
-      if (b && (!pick || b.ease > pick.ease)) pick = { start: b.start, end: b.start + len, ease: b.ease, slot };
+      // Past a long day awake sleep comes wherever it's put, so when it starts only matters to a pilot not yet that tired.
+      const b = bestBlock(ctx, s, e, len, cost, awakeHours < HIGH_PRESSURE_HOURS);
+      if (b && (!pick || b.score > pick.score)) pick = { start: b.start, end: b.start + len, ease: b.ease, score: b.score, slot };
     });
     if (!pick) break;
-    const { start, end, ease, slot } = pick as { start: number; end: number; ease: number; slot: number };
+    const { start, end, ease, slot } = pick as { start: number; end: number; ease: number; score: number; slot: number };
     mains.push({ start, end, ease });
     const [s, e] = free[slot];
     // Keep a few awake hours either side, so the next sleep has pressure behind it.
@@ -352,7 +436,7 @@ function planLayover(ctx: Context, from: number, wakeBy: number, awakeHours: num
     const wanted = awakeHours >= 20 ? 3 : awakeHours >= HIGH_PRESSURE_HOURS ? 2 : 1;
     for (let cycles = wanted; cycles >= 1; cycles--) {
       const len = cycles * CYCLE;
-      if (from + len > firstMain.start - 4 * 60) continue;
+      if (from + len > firstMain.start - RECOVERY_GAP_HOURS * 60) continue;
       blocks.unshift({
         kind: "recovery",
         start: from,

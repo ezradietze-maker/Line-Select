@@ -34,3 +34,43 @@ export function withHomeFacts(model: PilotModel, facts: { hasCrashPad?: boolean 
   if (facts.minHomeHours !== null && facts.minHomeHours !== undefined && facts.minHomeHours > 0) home.minHomeHours = facts.minHomeHours;
   return home.hasCrashPad === model.home.hasCrashPad && home.minHomeHours === model.home.minHomeHours ? model : { ...model, home };
 }
+
+/**
+ * A commuter's pay "after shortening trips" is pay per day away from HOME: that measure already counts the deviated
+ * deadheads they'd take from home, and the commute when they can't. Earlier brains bound it to
+ * `effectiveCreditPerDayAway`, which shortens trips but counts time from base — it leaves the commute out, and ranked a
+ * simulated commuter's lines far off his own (Oct 2026: 0.62 vs 0.77 with only that one measure swapped).
+ *
+ * The priority moves to `creditPerDayAwayFromHome` with its weight and parameters; its anchors were in from-base hours
+ * per day, a different scale, so the shape restarts at "more is better" and a hard limit set on that scale is let go. When the model already weighs pay from home, the
+ * two were the same priority read twice, and their weights join on the one measure. Only for a commuter whose home is
+ * known — the home measure needs it.
+ */
+export function modelToHomePay(model: PilotModel): PilotModel;
+export function modelToHomePay(model: PilotModel | null | undefined): PilotModel | null | undefined;
+export function modelToHomePay(model: PilotModel | null | undefined): PilotModel | null | undefined {
+  if (!model?.home?.commuter || !model.home.airports.length) return model;
+  const moving = model.criteria.filter((c) => c.metric === "effectiveCreditPerDayAway");
+  if (!moving.length) return model;
+  const home = model.criteria.find((c) => c.metric === "creditPerDayAwayFromHome");
+  if (home) {
+    const weight = home.weight + moving.reduce((s, c) => s + c.weight, 0);
+    return { ...model, criteria: model.criteria.filter((c) => !moving.includes(c)).map((c) => (c === home ? { ...c, weight } : c)) };
+  }
+  return { ...model, criteria: model.criteria.map((c) => (moving.includes(c) ? { ...c, metric: "creditPerDayAwayFromHome", shape: { kind: "more" }, hardLimit: undefined } : c)) };
+}
+
+/**
+ * A priority about weeks of night hub turns that an earlier brain could only bind to the general night streak (the
+ * ex-pilot's weeks of back-to-back night hub turning, read as `longestNightStreak`) moves to the hub-turn
+ * measure it meant — recognized by its label or the pilot's own words naming hub turns. Same weight; the shape restarts
+ * at "none is best", since the streak's anchors were in nights in a row. On his own sort (Oct 2026) the move took his
+ * readings from 95.2% to 96.6%.
+ */
+export function modelToHubTurns(model: PilotModel): PilotModel;
+export function modelToHubTurns(model: PilotModel | null | undefined): PilotModel | null | undefined;
+export function modelToHubTurns(model: PilotModel | null | undefined): PilotModel | null | undefined {
+  const aboutHubTurns = (c: PilotModel["criteria"][number]) => c.metric === "longestNightStreak" && [c.label, ...c.evidence.map((e) => e.quote)].some((t) => /hub[- ]?turn/i.test(t));
+  if (!model || !model.criteria.some(aboutHubTurns) || model.criteria.some((c) => c.metric === "nightHubTurnRuns")) return model;
+  return { ...model, criteria: model.criteria.map((c) => (aboutHubTurns(c) ? { ...c, metric: "nightHubTurnRuns", shape: { kind: "less", fineAt: 0 } } : c)) };
+}

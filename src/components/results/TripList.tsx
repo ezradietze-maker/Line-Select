@@ -11,6 +11,7 @@ import { TripScorePanel } from "@/components/results/TripScorePanel";
 import { RestPlan, SleepOverlay } from "@/components/results/SleepPlan";
 import { planTripSleep, type LayoverSleepPlan } from "@/lib/sleep-plan";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
+import { hubTurnsOf, summarizeHubTurns } from "@/lib/metrics/hub-turns";
 import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import { tripDutyPeriods } from "@/lib/duty-periods";
@@ -613,9 +614,19 @@ interface InsightChip {
  * "worth mentioning" bar, so a plain, unremarkable trip shows nothing rather
  * than a row of zeros.
  */
-function TripInsights({ trip }: { trip: Trip }) {
+function TripInsights({ trip, bidPeriodStart, base }: { trip: Trip; bidPeriodStart: string | null; base?: string }) {
   const a = computeTripAnalytics(trip);
   const chips: InsightChip[] = [];
+
+  // Hub turns by name, the way pilots talk about them (lib/metrics/hub-turns.ts).
+  const hubs = bidPeriodStart && base ? summarizeHubTurns(hubTurnsOf([trip], { bidPeriodStart, base })) : null;
+  if (hubs?.all) {
+    chips.push({
+      label: "Hub turns",
+      value: `×${hubs.all} · ${hubs.hubs.join(", ")}${hubs.night === hubs.all ? ", nights" : hubs.night ? `, ${hubs.night} at night` : ", by day"}${hubs.withRestHotel ? " · crew-rest hotel" : ""}`,
+      title: "Flying into a sort hub, sitting while the packages are sorted, then flying back out. A night hub turn sits through the small hours; on long sits the crew gets a short airport hotel for a nap.",
+    });
+  }
 
   if (a.creditPerTafbHour !== null) {
     chips.push({
@@ -996,7 +1007,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
 
               {tripScore && <TripScorePanel score={tripScore} />}
 
-              <TripInsights trip={trip} />
+              <TripInsights trip={trip} bidPeriodStart={bidPeriodStart} base={base} />
 
               {flights && base && <TripCommuteFlightsFor trip={trip} flights={flights} base={base} />}
 

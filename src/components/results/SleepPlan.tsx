@@ -138,6 +138,17 @@ function LayoverPlan({ plan }: { plan: LayoverSleepPlan }) {
       <p className="mt-1 text-xs text-ink-muted">{plan.bodyClockNote}</p>
       {plan.blocks.length > 0 ? <Ribbon plan={plan} /> : <p className="mt-2 text-xs text-warn">Too short to plan any real sleep here — rest with your eyes closed if you can.</p>}
       <ul className="mt-2.5 space-y-1.5">
+        {plan.dutyNap && (
+          <li className="text-xs leading-relaxed">
+            <span className="font-mono font-semibold text-sleep">
+              {plan.dutyNap.startLocal}–{plan.dutyNap.endLocal}
+            </span>{" "}
+            <span className="font-medium text-ink">
+              Nap at the {plan.dutyNap.hotel}, {plan.dutyNap.city}
+            </span>{" "}
+            <span className="text-ink-muted">— {plan.dutyNap.why}</span>
+          </li>
+        )}
         {plan.blocks.map((b, i) => (
           <li key={i} className="text-xs leading-relaxed">
             <span className="font-mono font-semibold text-sleep">
@@ -193,6 +204,11 @@ export function SleepScienceInfo() {
                 <span className="font-medium text-ink">After an all-nighter, sleep twice.</span> A recovery sleep on arrival plus a main sleep in your body&rsquo;s night beats one long daytime sleep, which
                 your body clock cuts short — so daytime main sleeps are planned as four cycles with a nap before you go.{" "}
                 <span className="text-ink-faint">(Minors &amp; Waterhouse&rsquo;s anchor sleep; Åkerstedt&rsquo;s shift-work studies.)</span>
+              </li>
+              <li>
+                <span className="font-medium text-ink">When you fall asleep sets how long you sleep.</span> In at dawn after a night of flying, sleep straight away — a sleep put off until midday runs
+                short. A crew-rest hotel on a hub sit counts as a nap, and your hours awake run from it.{" "}
+                <span className="text-ink-faint">(Åkerstedt &amp; Gillberg&rsquo;s displaced-sleep studies.)</span>
               </li>
             </ul>
             <div className="rounded-lg border border-border bg-canvas p-3 text-xs">

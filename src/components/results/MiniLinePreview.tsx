@@ -369,6 +369,7 @@ function DayDetail({ day }: { day: DetailedDay }) {
         <>
           {day.chain && <p className="mt-1 text-ink">{chainSentence(day.chain)}</p>}
           {day.baseNote && <p className="mt-1 text-ink">{day.baseNote}</p>}
+          {day.hubNote && <p className="mt-1 text-ink">{day.hubNote}</p>}
           <p className="mt-1">
             {day.tripNumber ? `Trip #${day.tripNumber}` : "Trip"}, day {day.tripDay} of {day.tripDayCount}
             {day.tripCreditHours !== null ? ` · ${hm(day.tripCreditHours * 60)} credit for the trip` : ""}.
@@ -442,6 +443,15 @@ function Summary({ s, line }: { s: MonthSummary; line: Line }) {
           <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">Commuting · </span>
           {s.base.commutes} {s.base.code} commute{s.base.commutes === 1 ? "" : "s"} · {s.base.nights === 0 ? `no nights in ${s.base.code}` : `${s.base.nights} night${s.base.nights === 1 ? "" : "s"} in ${s.base.code}`}
           {s.base.jumpseatIns > 0 ? ` · ${s.base.jumpseatIns} jumpseat-in${s.base.jumpseatIns === 1 ? "" : "s"}` : ""}
+        </p>
+      )}
+      {s.hubTurns && (
+        <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
+          <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">Hub turns · </span>
+          {s.hubTurns.all} at {s.hubTurns.hubs.join(", ")}
+          {s.hubTurns.night ? ` · ${s.hubTurns.night === s.hubTurns.all ? "all" : s.hubTurns.night} at night` : " · by day"}
+          {s.hubTurns.longestRun > 1 ? ` · up to ${s.hubTurns.longestRun} nights in a row` : ""}
+          {s.hubTurns.withRestHotel ? ` · ${s.hubTurns.withRestHotel} with a crew-rest hotel` : ""}
         </p>
       )}
       {s.daysOff !== s.printedDaysOff && (

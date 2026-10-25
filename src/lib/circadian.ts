@@ -151,12 +151,21 @@ function encroachesWocl(duty: Trip["schedule"][number]): boolean {
   return flown >= WOCL_FLOWN_MINUTES;
 }
 
+/**
+ * Two night duties are nights in a row when the second starts within this many hours of the first — the next night,
+ * with only a hotel day between. A long-haul trip with a day or more off between its night legs gives a recovery sleep
+ * each time, so its nights don't stack (Oct 2026: counting those as a streak sank long-haul trips graders rated highly).
+ */
+const NIGHTS_IN_A_ROW_WITHIN_HOURS = 30;
+
 function longestConsecutiveWocStreak(trip: Trip): number {
   let longest = 0;
   let current = 0;
+  let lastStart = -Infinity;
   for (const duty of flyingSchedule(trip)) {
     if (encroachesWocl(duty)) {
-      current++;
+      current = duty.startMinutes - lastStart <= NIGHTS_IN_A_ROW_WITHIN_HOURS * 60 ? current + 1 : 1;
+      lastStart = duty.startMinutes;
       longest = Math.max(longest, current);
     } else {
       current = 0;
@@ -166,8 +175,18 @@ function longestConsecutiveWocStreak(trip: Trip): number {
 }
 
 /**
- * `Math.min(wocEncroachments, 3)` (unchanged) when no pilot tolerance is
- * known — the same generic default this scoring has always used. Once a
+ * Night duties in a row stack: with no recovery sleep between them, sleep debt grows each night, so a week of night
+ * hub turns is much harder than its count suggests (the ex-pilot: four nights of it in a row is hard going, two weeks
+ * back to back wrecks the body clock). Past this many nights in a row, each more night adds
+ * `NIGHT_IN_A_ROW_PENALTY` — three in a row stays "some issues" (3 stars), four is "rough" (2), five is 1 star. (Oct
+ * 2026: his sort 96.0% → 96.7% on lines alone across 16 readings of his interview, the simulated pilots unchanged.)
+ */
+const FREE_NIGHTS_IN_A_ROW = 2;
+const NIGHT_IN_A_ROW_PENALTY = 3;
+
+/**
+ * `Math.min(wocEncroachments, 3)`, plus the cost of nights in a row past
+ * the second, when no pilot tolerance is known. Once a
  * pilot has actually stated how many consecutive early/late reports they
  * can handle before it wears on them (the report-time-circadian interview
  * topic, captured as `explicitTargets.circadianTolerance`), the penalty is
@@ -184,12 +203,13 @@ function personalizedWocPenalty(
   consecutiveTolerance: number | null | undefined
 ): number {
   if (consecutiveTolerance === null || consecutiveTolerance === undefined) {
-    return Math.min(wocEncroachments, 3);
+    return Math.min(wocEncroachments, 3) + NIGHT_IN_A_ROW_PENALTY * Math.max(0, streak - FREE_NIGHTS_IN_A_ROW);
   }
   if (wocEncroachments === 0) return 0;
   const withinTolerance = Math.min(streak, consecutiveTolerance);
   const overTolerance = Math.max(0, streak - consecutiveTolerance);
-  return Math.min(3, withinTolerance * 0.5) + overTolerance * 2;
+  // Past their own stated limit, each night costs more than a night past the generic one: they told us where it is.
+  return Math.min(3, withinTolerance * 0.5) + overTolerance * (NIGHT_IN_A_ROW_PENALTY + 1);
 }
 
 /** Null when the trip has no verified schedule (estimated line, or reconciliation failed) or the bid pack's home-base offset couldn't be derived — same honesty policy as the rest of the app: no real data in, no score out. */

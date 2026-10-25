@@ -1,5 +1,8 @@
 import { buildLineMonthCalendar, type LineMonthDay } from "@/lib/line-month";
+import { DateTime } from "luxon";
+import { timezoneForAirport } from "@/lib/airport-timezones";
 import { groupDepartures, type DepartureOptions } from "@/lib/metrics/departures";
+import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metrics/hub-turns";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
@@ -133,6 +136,8 @@ export interface DetailedDay {
   chain: TripChain | null;
   /** What this day means for a commuter at base: a hotel night before an early show, a jumpseat in instead, nights waiting between trips, or a night after a late release. */
   baseNote?: string;
+  /** The hub turns flown on this day's duty, in words: "Night hub turn at IND: in 00:59, out 03:35 (2h36 through the sort)". */
+  hubNote?: string;
   /** A whole day at a layover hotel, nothing flown: the city. */
   restCity: string | null;
   /** A trip's tail on a day the grid gives to something else — usually a landing just after midnight on a day the bid pack counts as off. */
@@ -145,6 +150,8 @@ export interface MonthSummary {
   departures: number;
   /** For a commuter: commutes to and from base and nights spent there (null for a pilot who lives at base). */
   base?: { code: string; commutes: number; nights: number; jumpseatIns: number } | null;
+  /** The line's hub turns (see `metrics/hub-turns.ts`); null when the base isn't known or there are none. */
+  hubTurns?: HubTurnSummary | null;
   /** Days off as this calendar draws them. */
   daysOff: number;
   /** Days off as the bid pack itself prints them for the line — usually the same, occasionally a day different at the edge of a trip. */
@@ -506,6 +513,7 @@ export function buildDetailedMonth(
   // few hours of the last one landing at the same base turns straight out of it.
   let departureCount: number | null = null;
   let summaryBase: MonthSummary["base"] = null;
+  let summaryHubs: HubTurnSummary | null = null;
   if (departureOptions) {
     const deps = groupDepartures(line.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions);
     departureCount = deps.length;
@@ -541,6 +549,21 @@ export function buildDetailedMonth(
           note(day, `Back in ${code}${day?.finish ? ` at ${day.finish.time}` : ""} — too late to get home that night, so a night in ${code}.`);
         }
       }
+    }
+    // Hub turns, said on the day the duty they're part of started: a night one on the evening before the sort.
+    const turns = bidPeriodStart ? hubTurnsOf(line.trips, { bidPeriodStart, base: code }) : [];
+    summaryHubs = turns.length ? summarizeHubTurns(turns) : null;
+    for (const h of turns) {
+      const zone = timezoneForAirport(h.hub) ?? "UTC";
+      const local = (ms: number) => DateTime.fromMillis(ms, { zone }).toFormat("HH:mm");
+      const date = h.night ? h.nightOf : DateTime.fromMillis(h.arrive, { zone }).toISODate();
+      const index = date && bidPeriodStart ? Math.round(DateTime.fromISO(date).diff(DateTime.fromISO(bidPeriodStart), "days").days) : -1;
+      const day = days.find((d) => d.dayIndex === index && d.kind !== "off") ?? days.find((d) => d.dayIndex === index);
+      if (!day) continue;
+      const sit = `${Math.floor(h.sitHours)}h${String(Math.round((h.sitHours % 1) * 60)).padStart(2, "0")}`;
+      const text = `${h.night ? "Night hub turn" : "Hub turn"} at ${h.hub}: in ${local(h.arrive)}, out ${local(h.depart)} (${sit} through the sort${h.restHotel ? `, with a nap at the ${h.restHotel}` : ""}).`;
+      day.hubNote = day.hubNote ? `${day.hubNote} ${text}` : text;
+      day.title = `${day.title}; ${text.charAt(0).toLowerCase()}${text.slice(1, -1)}`;
     }
     summaryBase = departureOptions.homeAirports?.some((a) => a && a !== code)
       ? {
@@ -584,6 +607,7 @@ export function buildDetailedMonth(
       days,
       departureCount,
       summaryBase,
+      summaryHubs,
       runs.map((r) => r.length),
       cityPreferences
     ),
@@ -592,7 +616,7 @@ export function buildDetailedMonth(
   };
 }
 
-function summarize(line: Line, days: DetailedDay[], departureCount: number | null, base: MonthSummary["base"], offRuns: number[], cityPreferences: Record<string, CityMark>): MonthSummary {
+function summarize(line: Line, days: DetailedDay[], departureCount: number | null, base: MonthSummary["base"], hubTurns: HubTurnSummary | null, offRuns: number[], cityPreferences: Record<string, CityMark>): MonthSummary {
   const off = days.filter((d) => d.kind === "off").length;
 
   let weekendsOff = 0;
@@ -625,6 +649,7 @@ function summarize(line: Line, days: DetailedDay[], departureCount: number | nul
   return {
     departures: departureCount ?? line.trips.length - days.filter((d) => d.chain).length,
     base,
+    hubTurns,
     daysOff: off,
     printedDaysOff: line.daysOff,
     offRuns,

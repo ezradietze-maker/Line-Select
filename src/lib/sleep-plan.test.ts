@@ -76,6 +76,32 @@ describe("sleep plan", () => {
     expect(plan.blocks[0].end).toBe(plan.wakeBy);
   });
 
+  it("counts the crew-rest hotel nap on a night hub turn, and sleeps on arrival after it rather than waiting for the afternoon", () => {
+    const EDT = -4 * H;
+    // Two nights of PHL → IND 22:05–00:01 (crew-rest hotel through the sort), IND → PHL 04:20–05:58; a day in PHL between.
+    const night = (d: number) => {
+      const inbound = { ...leg("PHL", "IND", d + 125, d + 241, EDT, EDT), dayRoomHotel: "DELTA BY MARRIOTT" } as TripLeg;
+      return { reportTimeLocal: "", startMinutes: d + 65, legs: [inbound, leg("IND", "PHL", d + 500, d + 598, EDT, EDT)] };
+    };
+    const n1 = night(0);
+    const n2 = night(1440);
+    const t = {
+      ...trip(n1.legs[1], n2.legs[1]),
+      schedule: [
+        { ...n1, layover: { city: "PHL", hotelName: null, transportToHotel: null, transportFromHotel: null, hours: (n2.startMinutes - 598) / 60, startMinutes: 598, endMinutes: n2.startMinutes } },
+        { ...n2, layover: null },
+      ],
+    } as unknown as Trip;
+    const [plan] = planTripSleep(t, EDT);
+    expect(plan.dutyNap).toMatchObject({ city: "IND", hotel: "DELTA BY MARRIOTT", startLocal: "00:31", endLocal: "02:01" });
+    expect(plan.dutyNap!.why).toMatch(/through the IND sort/);
+    expect(plan.awakeHours).toBeCloseTo((598 + 45 - 361) / 60, 5); // up since the nap, not since the evening
+    const first = plan.blocks[0];
+    expect(first.kind).toBe("sleep");
+    expect(first.start - plan.inHotel).toBeLessThanOrEqual(30); // straight to bed in the morning, not after the afternoon dip
+    expect(plan.totalSleepHours).toBeCloseTo(plan.blocks.reduce((a, b) => a + b.end - b.start, 90) / 60, 5);
+  });
+
   it("follows a body still on home time across the Pacific", () => {
     // Anchorage (UTC−8) to Osaka (UTC+9), landing 23:00 Osaka; home 40 hours later.
     const ANC = -8 * H;

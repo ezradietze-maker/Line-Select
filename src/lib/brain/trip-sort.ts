@@ -2,6 +2,7 @@ import { tripDateLabel, tripDuties, tripHeadline } from "@/lib/brain/line-text";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { scoreTripsV2, tripKey } from "@/lib/scoring-v2/trip-score";
+import { hubTurnsOf, summarizeHubTurns } from "@/lib/metrics/hub-turns";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { PilotModel, TripChoice } from "@/types/pilot-model";
 
@@ -161,6 +162,13 @@ export function pickTripScreen(bidPack: BidPack, model: PilotModel, pack: PackMe
       .sort((a, b) => b.v - a.v)[0];
     if (!next) break;
     chosen.push(next.t);
+  }
+  // The first screen gets a week of night hub turns when the pilot's best lines fly one, so their own grade says how much
+  // it counts — the kind of trip the ex-pilot called onerous, and one a model can't weigh from words alone.
+  const weekOfNights = (t: Trip) => summarizeHubTurns(hubTurnsOf([t], bidPack)).inWeeks > 0;
+  if (!shown.length && chosen.length >= 3 && !chosen.some(weekOfNights)) {
+    const hubTrip = trips.filter((t) => !chosen.includes(t) && weekOfNights(t)).sort((a, b) => chosen.reduce((s, c) => s + value(b, c), 0) - chosen.reduce((s, c) => s + value(a, c), 0))[0];
+    if (hubTrip) chosen[chosen.length - 1] = hubTrip;
   }
   // Shown in date order, the way a pilot reads a month.
   chosen.sort((a, b) => (a.startDayIndex ?? 0) - (b.startDayIndex ?? 0));

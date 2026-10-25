@@ -14,6 +14,7 @@ import { buildPilotModel, type InterviewExchange } from "@/lib/brain/build-model
 import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { dealbreakerQuestion } from "@/lib/brain/dealbreakers";
+import { nextHubTurnQuestion } from "@/lib/brain/hub-turn-question";
 import { fitTripWeights, fitWeightsToChoices } from "@/lib/brain/fit-choices";
 import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tripGradesAnswer, tripGradesTranscript, tripText, TRIP_GRADES, wantsAnotherScreen, type TripGrade } from "@/lib/brain/trip-sort";
 import { rankLinesWithTrips, tripKey } from "@/lib/scoring-v2/trip-score";
@@ -128,6 +129,19 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
     say(`\nQ${turn + 1} [dealbreakers] ${q.prompt}\n   (${q.helpText})\nA: ${a.answer}`);
     asked.push({ kind: "dealbreaker", words: q.prompt.split(/\s+/).length, ack: "" });
     exchanges = [...exchanges, { turn: exchanges.length, question: q.transcript, answer: a.answer }];
+    turn++;
+  }
+
+  // Then, as in the app: hub turning by name with a real trip from the pack, and the crew-rest hotel when there are some.
+  for (let hub = nextHubTurnQuestion(pack, model, pm, exchanges); hub; hub = nextHubTurnQuestion(pack, model, pm, exchanges)) {
+    const pick = await sim<{ pick: string; note: string }>(
+      `Question: ${hub.prompt}\n(${hub.helpText})\nPick one, and optionally add a short note.`,
+      { type: "object", additionalProperties: false, required: ["pick", "note"], properties: { pick: { type: "string", enum: hub.options }, note: { type: "string" } } }
+    );
+    const answerText = `${pick.pick}${pick.note.trim() ? `. ${pick.note.trim()}` : ""}`;
+    say(`\nQ${turn + 1} [hub turns] ${hub.prompt}\n   (${hub.helpText})\nA: ${answerText}`);
+    asked.push({ kind: "choice", words: hub.prompt.split(/\s+/).length, ack: "" });
+    exchanges = [...exchanges, { turn: exchanges.length, question: hub.transcript, answer: answerText }];
     turn++;
   }
 

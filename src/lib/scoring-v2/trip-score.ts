@@ -52,6 +52,16 @@ import type { Criterion, CriterionShape, PilotModel } from "@/types/pilot-model"
 
 export type TripReading = "asIs" | "count" | "dates" | "none";
 
+/**
+ * On one trip, joining it from home on a deadhead and the commute that saves are one fact read twice. Lines weigh both
+ * in full (over a month they part ways); on a trip, joining from home keeps this share of its weight when commutes are
+ * weighed too — what it adds beyond the commute saved. Counted twice, a double-deadhead trip outran four nights of hub
+ * turns against the ex-pilot's own pick (Oct 2026: his trip picks 121 → 125 of 125 over 25 readings of his interview,
+ * with his sort, the simulated pilots and the trip bench unchanged).
+ */
+const JOINED_BEYOND_COMMUTE = 0.25;
+const COMMUTE_MEASURES = new Set(["departureCommutes", "baseCommutesNeeded"]);
+
 /** How each line-level measurement reads on one trip. Trip-level ones follow their aggregation (see `tripReadingOf`). */
 const LINE_METRIC_READING: Record<string, TripReading> = {
   // Rates, shares, averages and extremes: the trip's own value is in the line's units.
@@ -82,6 +92,13 @@ const LINE_METRIC_READING: Record<string, TripReading> = {
   tripCount: "count",
   // A trip on its own is one departure; its commutes and nights at base are its own, as if flown alone.
   homeDepartures: "count",
+  // A trip's own hub turns; a week of night hub turns inside one trip counts as on a line.
+  nightHubTurnRuns: "count",
+  nightHubTurns: "count",
+  restHotelHubTurns: "count",
+  dayHubTurns: "count",
+  hubTurns: "count",
+  longestHubTurnRun: "asIs",
   departureCommutes: "count",
   baseHotelNights: "count",
   dutyPeriods: "count",
@@ -282,8 +299,10 @@ export function scoreTripsV2(bidPack: BidPack, model: PilotModel, options: Score
   const values = measured.map((ms) => ms.map((m) => m?.value ?? null));
   const shapes = scored.map(({ c, ci }, k) => (tripReadingOf(defs[ci]) === "count" ? countShapeForTrips(c, bidPack, pack, home, values[k]) : c.shape));
   const spreads = scored.map((_, k) => spreadOf(values[k], shapes[k]));
-  // On a trip, each priority counts as on a line, times what the pilot's own trip choices taught (see `fitTripWeights`).
-  const weights = scored.map(({ c }) => criterionWeight(c) * (model.tripWeights?.[c.id] ?? 1));
+  // On a trip, each priority counts as on a line, times what the pilot's own trip choices taught (see `fitTripWeights`) —
+  // and joining from home only for what it adds beyond the commute it saves, when commutes count too.
+  const weighsCommutes = scored.some(({ c }) => COMMUTE_MEASURES.has(c.metric));
+  const weights = scored.map(({ c }) => criterionWeight(c) * (model.tripWeights?.[c.id] ?? 1) * (weighsCommutes && c.metric === "tripsJoinedFromHome" ? JOINED_BEYOND_COMMUTE : 1));
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
   const beyond = options.beyondBad ?? BEYOND_BAD;
   const utilities = scored.map((_, k) => values[k].map((v) => (v === null ? 0.5 : utilityOf(v, shapes[k], spreads[k], beyond))));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelToDepartures, withHomeFacts } from "@/lib/brain/model-upgrade";
+import { modelToDepartures, modelToHomePay, withHomeFacts } from "@/lib/brain/model-upgrade";
 import { migrateProfile } from "@/lib/profile-migration";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -29,6 +29,31 @@ describe("modelToDepartures", () => {
     const once = modelToDepartures(model(true, [crit("trips", "tripCount")]));
     expect(modelToDepartures(once)).toBe(once);
     expect(modelToDepartures(null)).toBeNull();
+  });
+});
+
+describe("modelToHomePay", () => {
+  it("moves a commuter's pay after shortening trips onto pay from home, with its weight and params, its anchors and limit let go", () => {
+    const eff = crit("pay", "effectiveCreditPerDayAway", { shape: { kind: "more", enoughAt: 9 }, hardLimit: { op: "min", value: 7 }, params: { frontBufferHours: 10 } });
+    const legs = crit("legs", "dutiesWithManyLegs");
+    const up = modelToHomePay(model(true, [eff, legs]));
+    expect(up.criteria).toEqual([{ ...eff, metric: "creditPerDayAwayFromHome", shape: { kind: "more" }, hardLimit: undefined }, legs]);
+  });
+
+  it("joins the weights when pay from home is already there — the same priority read twice", () => {
+    const home = crit("homePay", "creditPerDayAwayFromHome", { shape: { kind: "more" }, weight: 0.3 });
+    const up = modelToHomePay(model(true, [home, crit("pay", "effectiveCreditPerDayAway", { weight: 0.2 })]));
+    expect(up.criteria).toHaveLength(1);
+    expect(up.criteria[0]).toMatchObject({ id: "homePay", metric: "creditPerDayAwayFromHome" });
+    expect(up.criteria[0].weight).toBeCloseTo(0.5, 10);
+  });
+
+  it("leaves a pilot who lives at base on pay from base, and is safe to run again", () => {
+    const local = model(false, [crit("pay", "effectiveCreditPerDayAway")]);
+    expect(modelToHomePay(local)).toBe(local);
+    const once = modelToHomePay(model(true, [crit("pay", "effectiveCreditPerDayAway")]));
+    expect(modelToHomePay(once)).toBe(once);
+    expect(modelToHomePay(null)).toBeNull();
   });
 });
 

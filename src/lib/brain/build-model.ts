@@ -2,7 +2,7 @@ import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
 import type { Region } from "@/lib/metrics/trip-facts";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type CriterionTier, type PilotModel, type PilotThread } from "@/types/pilot-model";
 import { structuredCall, type BrainUsage, type Effort } from "./llm";
-import { modelToDepartures } from "./model-upgrade";
+import { modelToDepartures, modelToHomePay, modelToHubTurns } from "./model-upgrade";
 
 /**
  * The pilot brain's core step: read everything a pilot has said — the
@@ -18,7 +18,7 @@ import { modelToDepartures } from "./model-upgrade";
  */
 
 /** Bumped whenever the prompt or schema changes, so cached evaluations of an older brain aren't mistaken for this one. */
-export const BRAIN_PROMPT_VERSION = 18;
+export const BRAIN_PROMPT_VERSION = 20;
 
 export interface InterviewExchange {
   /** 0 = the opening story. */
@@ -52,7 +52,7 @@ HOW TO BUILD THE MODEL
    - For a commuter, time-away-from-home measures (creditPerDayAwayFromHome, homeAwayHours, tripsJoinedFromHome, departureCommutes) beat paper ones (creditPerDayAway, tafbHours) whenever they talk about time away from HOME or commuting.
    - For a commuter, trips flown back to back without going home in between are one departure ("a series of trips", "a trip sequence"), and one pair of commutes. So bind "few trips / few departures / time at home between trips" to homeDepartures and "getting to and from base" to departureCommutes — tripCount and baseCommutesNeeded count every trip separately and are for a pilot who lives at base. This changes only what's counted: give them the points and anchors their words call for, as you would the trip count and commutes. Departures already use the hours at home they said make going home worth it (their commute answer) — don't add a criterion for that number. Trips joined straight from home on a deadhead (tripsJoinedFromHome) stay their own priority when they value them — less work and less stress than flying out of base, not only a commute saved.
    - Hotel nights at base — the cost and hassle of a hotel at base, having to go in the night before an early show — → baseHotelNights (less). It's usually a light cost next to a whole extra departure; give it few points unless they dwell on it. A pilot with a crash pad at base has none (the PILOT line says).
-   - Trip shortening by deviating on deadheads → effectiveCreditPerDayAway / shortenableHours / tripsShortenableByADay, with their buffers in params.
+   - Trip shortening by deviating on deadheads → shortenableHours / tripsShortenableByADay, with their buffers in params. Pay counted after shortening trips: for a commuter that is creditPerDayAwayFromHome — it already counts the deadheads they'd deviate onto from home, and the commute when they can't; effectiveCreditPerDayAway counts from base and leaves the commute out, so it's for a pilot who lives at base.
    - Backup flights on the commute, flights being full or scarce, getting stranded → fewestBackupFlights / tripsShortOnBackups (params.n = the backups they want); a stated minimum ("I need at least two backups") is a hardLimit. Long or awkward trips home after a trip → longestTripHome. These read real airline schedules for the pilot's best lines.
    - Specific dates they need off → requestedDatesWorked {dates:[...]} (real calendar dates in this bid period); a date they "need" or call "the one hard date" is a hardLimit {op:"max", value:0}.
    - Hotel standby: tripStandbyDays is standby at a layover city mid-trip; baseStandbyDays is standby sitting at base — a commuter who likes "hotel standby" on trips may feel very differently about days of standby at base. Bind to what they mean.
@@ -61,6 +61,7 @@ HOW TO BUILD THE MODEL
    - "I'd rather be on a day schedule", "day turns", "afternoon sorts" → dayFlyingShare (more) — what they want more of, alongside whatever night measure fits what they want less of.
    - "Early sign-ins are fine" means early reports and early launches are not night work to them — don't bind nightsWorked or longestNightStreak to their night complaints unless they mean flying through the night.
    - All-nighters — duties that fly through the night — "two all-nighters in a row is my limit", "back to back all-nighters" → allNighterStreak (put their limit on this one) and backToBackRedEyes for how many. Don't put an all-nighter limit on longestNightStreak or nightsWorked: those count every night with any small-hours work, early launches included.
+   - Hub turning — flying into a sort hub, sitting while the packages are sorted, then flying back out to an outstation ("hub turns", "night hub turning", "sitting in Indy through the sort") → the hub-turn measures, not the general night ones. A week or more of night hub turns ("four nights of hub turning", "two weeks of back-to-back night hub turns") → nightHubTurnRuns (less); a limit on nights in a row → longestHubTurnRun; the short airport hotel for a nap on long hub sits (crew-rest hotel) → restHotelHubTurns, the way they feel about it (some like the nap, some would rather have a shorter sit); long daytime sits at a hub → dayHubTurns. One hub turn now and then is fine for most pilots: bind hubTurns only for a pilot who minds hub turns as such.
    - Sleep, night flying in general, "the back side of the clock" → nightsWorked, longestNightStreak and deepNightHours, which count hotel standby that runs past midnight as night work too (a standby window to 02:30 keeps a pilot on a night schedule). redEyeLegs counts flying only. avgCircadianStars is a rough overall rating — never the only body-clock criterion for a pilot who talks about sleep.
    - A standing weekly commitment ("home Wednesday nights", "Saturdays are soccer") → weekdaysOff {weekdays:[...]}; weekends alone → weekendDaysOff.
    - A stated limit ("two in a row is my absolute limit", "nothing over 12 hours, period") is a hardLimit at that number, plus a shape that prefers staying well under it.
@@ -337,8 +338,9 @@ export function parsePilotModel(raw: RawModel, prior?: PilotModel | null): { mod
   const priorAsked = new Map((prior?.threads ?? []).map((t) => [t.id, t.timesAsked]));
   return {
     dropped,
-    // A commuter's trip count and trip-end commutes mean departures, whatever the reading bound them to.
-    model: modelToDepartures({
+    // A commuter's trip count and trip-end commutes mean departures, and their pay after shortening trips is pay from home,
+    // whatever the reading bound them to.
+    model: modelToHomePay(modelToHubTurns(modelToDepartures({
       version: 2,
       home: h.airports.length || h.commuter !== "unknown"
         ? {
@@ -354,7 +356,7 @@ export function parsePilotModel(raw: RawModel, prior?: PilotModel | null): { mod
       threads: raw.threads.map((t) => ({ ...t, priority: clamp01(t.priority), criteria: t.criteria.filter((c) => seen.has(c)), timesAsked: priorAsked.get(t.id) ?? 0 })),
       notMeasurable: raw.notMeasurable,
       synopsis: raw.synopsis,
-    }),
+    }))),
   };
 }
 

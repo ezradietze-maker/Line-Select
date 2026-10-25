@@ -203,6 +203,18 @@ describe("computeCircadianAssessment — personalized consecutive-WOCL tolerance
     expect(result.stars).toBe(4); // penalty 2 -> "<=3" bucket
   });
 
+  it("stacks night duties flown night after night: four in a row is rough, three is some issues", () => {
+    expect(computeCircadianAssessment(woclStreakTrip(3), -300)!.stars).toBe(3);
+    expect(computeCircadianAssessment(woclStreakTrip(4), -300)!.stars).toBe(2);
+    expect(computeCircadianAssessment(woclStreakTrip(5), -300)!.stars).toBe(1);
+  });
+
+  it("doesn't stack night duties with a day or more off between them — each gets a recovery sleep", () => {
+    const spaced = woclStreakTrip(4);
+    spaced.schedule.forEach((d, i) => (d.startMinutes = i * 2 * 1440));
+    expect(computeCircadianAssessment(spaced, -300)!.stars).toBe(4); // the four nights' count alone, capped at three: as before
+  });
+
   it("scores a WOCL streak comfortably within a stated tolerance more gently than the generic default", () => {
     const generic = computeCircadianAssessment(woclStreakTrip(2), -300)!;
     const tolerant = computeCircadianAssessment(woclStreakTrip(2), -300, 3)!;

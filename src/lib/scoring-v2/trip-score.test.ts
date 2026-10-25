@@ -109,6 +109,16 @@ describe("trip scores", () => {
     expect(s.get(tripKey(d1))!.score).toBeGreaterThan(s.get(tripKey(n("A", 8)))!.score);
   });
 
+  it("counts joining a trip from home once on a trip, alongside the commute it saves", () => {
+    const joined = crit({ id: "joined", metric: "tripsJoinedFromHome", shape: { kind: "more" } });
+    const weightOf = (m: PilotModel) => score(m, SHORT).results.find((r) => r.criterionId === "joined")!.weight;
+    const alone = weightOf(model([joined]));
+    // With commutes weighed too, it keeps only a quarter of its weight on a trip: what it adds beyond the commute saved.
+    expect(weightOf(model([joined, crit({ metric: "departureCommutes", shape: { kind: "less" } })]))).toBeCloseTo(alone * 0.25, 10);
+    expect(weightOf(model([joined, crit({ metric: "baseCommutesNeeded", shape: { kind: "less" } })]))).toBeCloseTo(alone * 0.25, 10);
+    expect(weightOf(model([joined, crit({ metric: "layoverValue" })]))).toBeCloseTo(alone, 10);
+  });
+
   it("never caps a trip for a monthly limit it can't break on its own", () => {
     const m = model([crit({ metric: "baseCommutesNeeded", shape: { kind: "less", fineAt: 3, worstAt: 5 }, hardLimit: { op: "max", value: 5 } })]);
     expect(score(m, SHORT).violations).toEqual([]);

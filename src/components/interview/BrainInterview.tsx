@@ -29,6 +29,7 @@ import { fitTripWeights, fitWeightsToChoices } from "@/lib/brain/fit-choices";
 import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tripGradesAnswer, tripGradesTranscript, wantsAnotherScreen, type TripGradeScreen } from "@/lib/brain/trip-sort";
 import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
 import { askedDealbreakers, dealbreakerQuestion } from "@/lib/brain/dealbreakers";
+import { nextHubTurnQuestion } from "@/lib/brain/hub-turn-question";
 import { minTurnsFor, SWEEP_QUESTION, type LinePairCandidate, type ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
 import { topLines, topShift } from "@/lib/brain/ranking-shift";
@@ -437,6 +438,16 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (!checkIn && !askedDealbreakers(all)) {
       const q = dealbreakerQuestion(bidPack, m, pm);
       setQuestion({ done: false, settled: [], threadId: null, kind: "free-text", prompt: q.prompt, helpText: q.helpText, transcript: q.transcript });
+      setPhase("question");
+      return;
+    }
+    // Then hub turning, by name, with a real trip from their pack — asked whenever the pack has night hub turns, and
+    // the crew-rest hotel when it has those long sits (lib/brain/hub-turn-question.ts).
+    const hub = !checkIn ? nextHubTurnQuestion(bidPack, m, pm, all) : null;
+    if (hub) {
+      setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: hub.prompt, helpText: hub.helpText, options: hub.options, transcript: hub.transcript });
+      setChoiceSelection(null);
+      setChoiceNote("");
       setPhase("question");
       return;
     }
