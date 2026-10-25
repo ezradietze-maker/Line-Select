@@ -95,6 +95,11 @@ export interface PilotModel {
    * learned from the pilot's own trip choices (see `fitTripWeights`). Lines never read it.
    */
   tripWeights?: Record<string, number>;
+  /**
+   * Facts about the pilot read from their words by a second call beside the brain's (see `readPilotFacts`): the
+   * values given, by fact id, and their own words for each.
+   */
+  facts?: { values: Record<string, number | boolean>; evidence: { fact: string; quote: string; turn: number }[] };
 }
 
 export const TIER_WEIGHT: Record<CriterionTier, number> = { must: 1, high: 0.7, medium: 0.4, low: 0.15 };

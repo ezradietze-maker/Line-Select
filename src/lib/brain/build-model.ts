@@ -3,6 +3,7 @@ import type { Region } from "@/lib/metrics/trip-facts";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type CriterionTier, type PilotModel, type PilotThread } from "@/types/pilot-model";
 import { structuredCall, type BrainUsage, type Effort } from "./llm";
 import { modelToDepartures, modelToHomePay, modelToHubTurns } from "./model-upgrade";
+import { applyPilotFacts, readPilotFacts, type PilotFacts } from "./pilot-facts";
 
 /**
  * The pilot brain's core step: read everything a pilot has said — the
@@ -397,7 +398,10 @@ export interface BuildModelResult {
   /** Per-criterion one-line reasoning, for logs and the transparency page. */
   reasoning: Record<string, string>;
   dropped: string[];
+  /** Both calls together: the brain's reading and the facts read beside it. */
   usage: BrainUsage;
+  /** The facts read beside the brain (see `readPilotFacts`); null when that call failed — the reading stands without them. */
+  facts: PilotFacts | null;
 }
 
 export async function buildPilotModel(input: BuildModelInput): Promise<BuildModelResult> {
@@ -409,17 +413,25 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
     `Write the pilot's complete model now.`,
   ].filter(Boolean).join("\n\n");
 
-  const { data, usage } = await structuredCall<RawModel>({
-    apiKey: input.apiKey,
-    model: input.model,
-    system: SYSTEM,
-    user: { cached: input.packBrief, fresh },
-    schema: SCHEMA as unknown as Record<string, unknown>,
-    effort: input.effort ?? "high",
-  });
+  // The facts the brain's format has no room for, read beside it — never holding up or failing the reading itself.
+  const [{ data, usage }, factsRead] = await Promise.all([
+    structuredCall<RawModel>({
+      apiKey: input.apiKey,
+      model: input.model,
+      system: SYSTEM,
+      user: { cached: input.packBrief, fresh },
+      schema: SCHEMA as unknown as Record<string, unknown>,
+      effort: input.effort ?? "high",
+    }),
+    readPilotFacts({ pilotContext: input.pilotContext, exchanges: input.exchanges, apiKey: input.apiKey, model: input.model }).catch(() => null),
+  ]);
   const parsed = parsePilotModel(data, input.prior);
-  const model: PilotModel = { ...parsed.model, readUpTo: input.exchanges.length };
+  const read: PilotModel = { ...parsed.model, readUpTo: input.exchanges.length };
+  const model = factsRead ? applyPilotFacts(read, factsRead.facts) : read;
   const dropped = parsed.dropped;
   const reasoning = Object.fromEntries(data.criteria.map((c) => [c.id, c.reasoning]));
-  return { model, reasoning, dropped, usage };
+  const both: BrainUsage = factsRead
+    ? { ...usage, inputTokens: usage.inputTokens + factsRead.usage.inputTokens, outputTokens: usage.outputTokens + factsRead.usage.outputTokens, costUsd: usage.costUsd + factsRead.usage.costUsd, ms: Math.max(usage.ms, factsRead.usage.ms) }
+    : usage;
+  return { model, reasoning, dropped, usage: both, facts: factsRead?.facts ?? null };
 }
