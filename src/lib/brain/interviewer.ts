@@ -1,7 +1,7 @@
 import type { PilotModel } from "@/types/pilot-model";
 import type { InterviewExchange } from "./build-model";
 import { structuredCall, type BrainUsage } from "./llm";
-import { avoidedPhrases, insteadOf, pilotWordsForPrompt } from "./pilot-words";
+import { avoidedPhrases, insteadOf, inventedLimit, pilotWordsForPrompt } from "./pilot-words";
 import { examplesTranscript, type QuestionExample } from "./question-examples";
 
 /**
@@ -102,7 +102,7 @@ export type InterviewStep =
 const SYSTEM = `You are interviewing a FedEx pilot about how they bid their monthly lines, on behalf of a bidding assistant. A separate "brain" has read everything they've said and keeps a model of them: criteria (what they care about, each measured on their real bid pack, with a weight) and threads (open questions whose answers would change their ranking). You choose the ONE next question — or decide the interview is done.
 
 SOUND LIKE A PILOT, NOT A FORM
-You're a line pilot who has bid for years, talking to a colleague — not a survey. Before each question, write ack: one short line (at most 14 words) that takes in what they just said, in their terms, like you'd say it across the crew room ("Saturdays over Sundays — got it." / "So the 9-day block wins when it's a real block."). No praise ("Great answer", "Thanks for sharing"), no "I understand", no repeating their whole answer. Leave ack empty for the very first question. Vary how questions open — never start two in a row the same way, and don't fall into a template ("Line X has…, line Y has…, which would you bid?" every time).
+You're a line pilot who has bid for years, talking to a colleague — not a survey. Before each question, write ack: one short line (at most 14 words) that takes in what they just said, in their terms, like you'd say it across the crew room ("Saturdays over Sundays — got it." / "So the 9-day block wins when it's a real block."). No praise ("Great answer", "Thanks for sharing"), no "I understand", no repeating their whole answer. Never put a rule in their mouth: say firm, hard no, cap, never, out, rules it out or dealbreaker only when their answer did. "Ideally no more than two" is a preference ("Two or fewer, ideally — got it"), not "a firm cap"; "I'd hardly bid it" is not "it's out"; "the closest thing to a dealbreaker" stays that. Leave ack empty for the very first question. Vary how questions open — never start two in a row the same way, and don't fall into a template ("Line X has…, line Y has…, which would you bid?" every time).
 
 WHAT MAKES A GOOD QUESTION
 - It comes from them: one of the open threads (prefer the highest priority one), or something in their latest answer worth one follow-up. Quote or echo their own words. Never ask a generic checklist question about a topic they haven't raised — topics they never mentioned are covered later on a separate screen.
@@ -274,6 +274,10 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   const madeUp = avoidedPhrases([step.ack, step.prompt, step.helpText, ...(step.options ?? [])].join(" "), theirs)[0];
   // Never on the last try: a wording slip mustn't end the interview.
   if (madeUp && attempt < 2) return `“${madeUp}” isn't how a pilot says it — say ${insteadOf(madeUp)}, in a plain sentence.`;
+  // A reply that turns what they said into a rule they didn't give goes back once to be said as they said it; after that
+  // it's dropped rather than asked again (see `nextInterviewStep`).
+  const invented = attempt === 0 ? inventedLimit(step.ack ?? "", input.exchanges.at(-1)?.answer ?? "") : null;
+  if (invented) return `Your reply says “${invented}”, but their answer stated no limit — say what they said as the preference it is, in their terms.`;
   if (step.kind !== "line-pair" && HYPOTHETICAL.test(`${step.prompt} ${step.helpText}`))
     return "That describes a made-up line or trip. Ask about the real lines or trips in the examples, or offer a line pair.";
   // Show, don't ask in the abstract — once: a question no example fits may still go without one.
@@ -373,7 +377,8 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
       settled,
       threadId: step.threadId || null,
       kind,
-      ...((step.ack ?? "").trim() && input.turn > 0 ? { ack: step.ack.trim() } : {}),
+      // A reply still stating a limit they didn't give is left out: better no reply than a rule they never set.
+      ...((step.ack ?? "").trim() && input.turn > 0 && !inventedLimit(step.ack, input.exchanges.at(-1)?.answer ?? "") ? { ack: step.ack.trim() } : {}),
       prompt: step.prompt.trim(),
       ...(step.helpText.trim() ? { helpText: step.helpText.trim() } : {}),
       ...(kind === "choice" ? { options } : {}),

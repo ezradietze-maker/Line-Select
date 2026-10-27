@@ -11,11 +11,13 @@
  * - accuracy: agreement with the pilot's own verdicts, and the judge's Spearman
  * - made-up words: phrases no pilot says ("joins from", "layover value" — see `lib/brain/pilot-words.ts`) in the
  *   questions, replies, the brain's priority names, its summary and its thread topics; listed under the table
+ * - invented limits: replies that turn what the pilot said into a rule they didn't give ("That's a firm cap"), read from
+ *   the run's transcript; listed under the table
  *
  * Usage: npx tsx scripts/eval/interview-quality.ts <tag> [<tag> …]   (e.g. base after)
  */
 import { existsSync, readFileSync } from "node:fs";
-import { avoidedPhrases } from "@/lib/brain/pilot-words";
+import { avoidedPhrases, inventedLimit } from "@/lib/brain/pilot-words";
 
 const PERSONAS = ["expilot-readback", "ind-local-family", "mem-757-bodyclock"];
 const tags = process.argv.slice(2);
@@ -29,8 +31,9 @@ interface Asked {
 
 const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "—");
 
-console.log(["persona", "tag", "Qs", "open Qs", "line choices", "vars/choice", "bid checks", "near-ties", "repeat trades", "max line shown", "avg words", "acks", "made-up words", "pilot agree", "judge", "spend"].join("\t"));
+console.log(["persona", "tag", "Qs", "open Qs", "line choices", "vars/choice", "bid checks", "near-ties", "repeat trades", "max line shown", "avg words", "acks", "made-up words", "invented limits", "pilot agree", "judge", "spend"].join("\t"));
 const madeUpFound: string[] = [];
+const limitsFound: string[] = [];
 for (const persona of PERSONAS)
   for (const tag of tags) {
     const file = `.cache/eval/sim/${persona}-${tag}.json`;
@@ -54,6 +57,17 @@ for (const persona of PERSONAS)
     ];
     const madeUp = said.flatMap((t) => avoidedPhrases(t, theirs).map((x) => `${persona}-${tag}: “${x}” in “${t.slice(0, 120)}”`));
     madeUpFound.push(...madeUp);
+    // Each reply against the answer before it, as the transcript lays them out.
+    const log = existsSync(file.replace(/\.json$/, ".txt")) ? readFileSync(file.replace(/\.json$/, ".txt"), "utf8").split("\n") : [];
+    let answer = "";
+    const invented: string[] = [];
+    for (const l of log) {
+      if (l.startsWith("A:")) answer = l.slice(2);
+      const ack = l.match(/^\s*\(ack\)\s*(.*)$/)?.[1];
+      const x = ack ? inventedLimit(ack, answer) : null;
+      if (x) invented.push(`${persona}-${tag}: “${x}” in “${ack}”`);
+    }
+    limitsFound.push(...invented);
     const asked = r.asked ?? [];
     const pairs = asked.filter((a) => a.pair);
     const nearTies = pairs.filter((a) => a.pair!.strength !== "strongly").length;
@@ -78,6 +92,7 @@ for (const persona of PERSONAS)
         avgWords.toFixed(0),
         `${asked.filter((a) => a.ack.trim()).length}/${asked.length}`,
         madeUp.length,
+        invented.length,
         r.pilotAgreement ?? "—",
         r.judgeSpearman ?? "—",
         r.spend !== undefined ? `$${r.spend.toFixed(2)}` : "—",
@@ -85,3 +100,4 @@ for (const persona of PERSONAS)
     );
   }
 if (madeUpFound.length) console.log(`\nMade-up words:\n${madeUpFound.join("\n")}`);
+if (limitsFound.length) console.log(`\nInvented limits:\n${limitsFound.join("\n")}`);

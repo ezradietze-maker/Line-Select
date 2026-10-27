@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatValue } from "@/lib/brain/describe";
-import { avoidedPhrases, insteadOf, pilotWordsForPrompt } from "@/lib/brain/pilot-words";
+import { avoidedPhrases, insteadOf, inventedLimit, pilotWordsForPrompt, statesALimit } from "@/lib/brain/pilot-words";
 import { METRICS } from "@/lib/metrics/catalog";
 
 describe("pilot words", () => {
@@ -32,5 +32,27 @@ describe("pilot words", () => {
     const text = pilotWordsForPrompt();
     expect(text).toMatch(/front-end deadhead/);
     expect(text).toMatch(/Never say .*layover value/);
+  });
+});
+
+describe("limits", () => {
+  it("tells a stated limit from a preference, and a denied one from neither", () => {
+    expect(statesALimit("Two in a row is my absolute limit, I won't bid three.")).toBe(true);
+    expect(statesALimit("One backup is about my floor.")).toBe(true);
+    expect(statesALimit("I wouldn't rule anything out — ideally not more than two.")).toBe(false);
+    expect(statesALimit("Nothing's an absolute; not really a hard cutoff on most things.")).toBe(false);
+    expect(statesALimit("Three or four and I'd hardly bid it.")).toBe(false);
+  });
+
+  it("finds a limit a reply invents, and only then", () => {
+    const pref = "Lots of commutes give a line a very low score — ideally not more than two.";
+    expect(inventedLimit("That's a firm cap on Memphis.", pref)).toBe("firm");
+    expect(inventedLimit("CAN standby never — got it.", "Standby in Anchorage is fine.")).toBe("never");
+    expect(inventedLimit("Low 70s is out — got it.", "Probably around 76 or 77.")).toBe("is out");
+    expect(inventedLimit("Two or fewer, ideally — got it.", pref)).toBeNull();
+    expect(inventedLimit("The closest thing to a dealbreaker — got it.", pref)).toBeNull();
+    expect(inventedLimit("Hotel standby wrecks it because you never know when the call comes.", "About right.")).toBeNull();
+    expect(inventedLimit("So Hawaii isn't off the table.", "Night flying is what I steer away from.")).toBeNull();
+    expect(inventedLimit("Worth knowing how firm that is.", "Church on Wednesdays.")).toBeNull();
   });
 });

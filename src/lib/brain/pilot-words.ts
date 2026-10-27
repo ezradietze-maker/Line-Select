@@ -66,3 +66,35 @@ export function pilotWordsForPrompt(): string {
   const avoided = ['"joins from", "trips you can join"', '"layover value"', '"weighted hours"', '"utility", "criterion", "metric"'].join(", ");
   return `${terms}\nNever say ${avoided} — made-up words no pilot uses. A trip doesn't "join from" a city: it starts with a front-end deadhead from there. Say what the layovers are like ("time in cities you like"), not their "value".`;
 }
+
+/**
+ * Words that state a limit — a line ruled out, not a preference. A reply that says one puts a rule in the pilot's mouth
+ * unless they said one: the ex-pilot answered the Dealbreakers question by saying he ranks lines rather than filtering
+ * them out and wouldn't rule anything out, ideally no more than about two Memphis commutes — and the reply was "That's a
+ * firm cap on Memphis" (Oct 2026). He noticed.
+ */
+const LIMIT_WORDS = /\b(?:firm|hard (?:no|line|limit|cap|cutoff|stop|number)|caps?|never(?=\s+(?:bid|take|fly|do|more|over|under|below|again|any|a|an|one|two|three|four|five)\b|\s*(?:[—–.,;!]|$))|rules? (?:\w+ ){0,2}out|ruled out|dealbreakers?|deal-breakers?|non-negotiable|absolute(?:ly)?|walk(?:s|ed)? away|you walk|off the table|(?:is|are|it's|that's) out|no way (?=I\b|I'd|I'm|would|am)|no-go)\b/i;
+/** How a pilot says they won't bid something — their own limit, in their own words. */
+const STATED_LIMIT = /\b(?:firm|hard (?:no|line|limit|cap|cutoff|stop|number)|caps?|never(?=\s+(?:bid|take|fly|do|more|over|under|below|again|any|a|an|one|two|three|four|five)\b|\s*(?:[—–.,;!]|$))|rules? (?:\w+ ){0,2}out|rule (?:it|that|them) out|dealbreakers?|deal-breakers?|non-negotiable|absolute(?:ly)?|my (?:limit|max(?:imum)?|floor|ceiling)|(?:the|a) (?:limit|max(?:imum)?)\b|at most|won't (?:bid|take|fly|do)|wouldn't (?:bid|take|fly)|will not bid|(?:is|are|it's|that's) out|off my list|throw (?:it |that |them )?out|no matter (?:how|what)|(?:is|it's|that's) a no|dead to me|pass on|walk away|no way (?=I\b|I'd|I'm|would|am)|no-go)\b/i;
+/** A limit word that's denied ("I wouldn't rule anything out", "nothing's an absolute", "not a dealbreaker") states no limit. */
+const DENIED = /\b(?:not|no|nothing(?:'s| is)?|isn't|aren't|wasn't|don't|doesn't|didn't|wouldn't|won't|can't|never)\b[^.,;!?]{0,40}?\b(?:rule|absolute|hard|firm|caps?|limit|dealbreakers?|deal-breakers?|cutoff|max(?:imum)?|off the table)\w*(?:\s+(?:anything|it|that|them|a line|lines))?(?:\s+out)?|\bhow (?:firm|hard|absolute)\b/gi;
+
+/** A limit only come near ("the closest thing to a dealbreaker", "almost a hard no") is no limit either. */
+const HEDGED = /\b(?:closest thing to|close to|closer to|nearly|almost|near|borderline)\s+(?:a |an |the )?(?:dealbreaker|deal-breaker|hard no|hard line|limit|cap)\b/gi;
+
+/** The limit words a text states, denials ("not a dealbreaker") and hedges left out. */
+export function limitWordsIn(text: string): string[] {
+  const m = text.replace(DENIED, " ").replace(HEDGED, " ").match(LIMIT_WORDS);
+  return m ? [m[0]] : [];
+}
+
+/** Whether a pilot's answer states a limit of their own, as against a preference ("ideally no more than two"). */
+export function statesALimit(answer: string): boolean {
+  return STATED_LIMIT.test(answer.replace(DENIED, " "));
+}
+
+/** A reply that states a limit the pilot's answer didn't: the limit word it invented, or null. */
+export function inventedLimit(reply: string, answer: string): string | null {
+  const found = limitWordsIn(reply)[0];
+  return found && !statesALimit(answer) ? found : null;
+}

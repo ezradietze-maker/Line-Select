@@ -149,6 +149,47 @@ describe("pilot words", () => {
   });
 });
 
+describe("replies never invent a limit", () => {
+  beforeEach(() => {
+    proposals.length = 0;
+  });
+  // The ex-pilot's Dealbreakers answer, in brief: he ranks rather than filters, rules nothing out, and would ideally commute
+  // to base no more than about twice. The reply he got was "That's a firm cap on Memphis".
+  const ranksNotFilters = input({
+    exchanges: [
+      { turn: 0, question: "Walk us through how you bid.", answer: "Layovers first, then commutes." },
+      { turn: 1, question: "Dealbreakers: Is there anything that rules a line out for you?", answer: "I rank lines rather than filter them out, so I wouldn't rule anything out as such. Lots of departures or commutes to Memphis give a line a very low score — ideally not more than two." },
+    ],
+  });
+
+  it("sends back a reply that turns a preference into a rule, and takes it said as a preference", async () => {
+    proposals.push(
+      step({ threadId: "china", ack: "That's a firm cap on Memphis.", prompt: "Where does a third commute start to cost you?" }),
+      step({ threadId: "china", ack: "Two or fewer Memphis commutes, ideally — got it.", prompt: "Where does a third commute start to cost you?" })
+    );
+    expect(await nextInterviewStep(ranksNotFilters)).toMatchObject({ done: false, ack: "Two or fewer Memphis commutes, ideally — got it." });
+  });
+
+  it("drops the reply rather than asking again when it still invents one", async () => {
+    proposals.push(
+      step({ threadId: "china", ack: "That's a firm cap on Memphis.", prompt: "Where does a third commute start to cost you?" }),
+      step({ threadId: "china", ack: "Memphis commutes are a hard limit at two.", prompt: "Where does a third commute start to cost you?" })
+    );
+    const r = await nextInterviewStep(ranksNotFilters);
+    expect(r).toMatchObject({ done: false, prompt: "Where does a third commute start to cost you?" });
+    if (r.done) throw new Error("expected a question");
+    expect(r.ack).toBeUndefined();
+  });
+
+  it("keeps a limit the pilot did state, and a denial of one", async () => {
+    const stated = input({ exchanges: [{ turn: 0, question: "Dealbreakers?", answer: "Two all-nighters in a row is my absolute limit — I won't bid three, no matter what." }] });
+    proposals.push(step({ threadId: "china", ack: "Three in a row is the hard no — got it.", prompt: "How about spread out?" }));
+    expect(await nextInterviewStep(stated)).toMatchObject({ ack: "Three in a row is the hard no — got it." });
+    proposals.push(step({ threadId: "china", ack: "Commutes cost you, but nothing's a dealbreaker — got it.", prompt: "How about spread out?" }));
+    expect(await nextInterviewStep(ranksNotFilters)).toMatchObject({ ack: "Commutes cost you, but nothing's a dealbreaker — got it." });
+  });
+});
+
 describe("real examples with every question", () => {
   const examples = [
     { id: "E1", kind: "line" as const, ref: "1004", title: "Line 1004", fact: "2 departures", priority: "Few departures", criterionId: "deps", summary: "2 trips", rank: 12 },
