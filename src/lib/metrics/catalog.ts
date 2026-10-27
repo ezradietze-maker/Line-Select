@@ -76,6 +76,16 @@ export interface LineContext {
   flights?: FlightAnswers;
 }
 
+/**
+ * Commutes, departures, trips and nights at base: below the number a pilot calls fine, half the priority still rides on
+ * fewer (`MetricDef.belowFine`). Set on a free sweep (Oct 2026) of every saved reading: the ex-pilot's sort on his 32 v21
+ * readings 97.03 → 97.76% (with his trip picks 97.05 → 97.51%, full order 85.5 → 86.4%), on 20 v22 readings 97.86 →
+ * 98.09%; the simulated ex-pilot 0.806 → 0.820 on 28 saved readings (0.777 → 0.790 with trips); the two simulated pilots
+ * who live at base unchanged; trip picks all kept. 0.6 scored the same, 0.7 lost a trip pick. Every other priority keeps
+ * its flat "fine": a gentler 0.2 on all of them helped most pilots on saved readings but dipped one on its trips.
+ */
+const BELOW_FINE_COUNTS = 0.5;
+
 export interface MetricDef {
   id: string;
   label: string;
@@ -99,6 +109,12 @@ export interface MetricDef {
    * are for, so a five-week line isn't held to a four-week line's numbers (see `metrics/line-length.ts`).
    */
   perMonth?: boolean;
+  /**
+   * For a "less" priority with a number that's fine ("two commutes is fine"): how much of the priority still rides on
+   * going below it, 0–1. Fine isn't indifferent — a pilot who says two commutes is fine still takes the line with none
+   * (two double deadheads) over the line with two. See `utilityOf`.
+   */
+  belowFine?: number;
 }
 
 /** Minutes of a stretch starting at `start` (minutes after local midnight) that fall between 06:00 and 22:00. */
@@ -458,7 +474,7 @@ export const METRICS: MetricDef[] = [
     },
   },
   { id: "weekendDaysOff", label: "Weekend days off", unit: "days", category: "calendar", description: "Saturdays and Sundays off.", line: (l, _t, c) => weekendDaysOff(l, c.bidPeriodStart) },
-  { id: "tripCount", label: "Trips", unit: "trips", category: "calendar", description: "Number of trips in the month. For a pilot who lives at base; a commuter's are counted in homeDepartures.", perMonth: true, line: (l) => l.trips.length },
+  { id: "tripCount", label: "Trips", unit: "trips", category: "calendar", description: "Number of trips in the month. For a pilot who lives at base; a commuter's are counted in homeDepartures.", perMonth: true, belowFine: BELOW_FINE_COUNTS, line: (l) => l.trips.length },
   {
     id: "homeDepartures",
     label: "Departures",
@@ -470,6 +486,7 @@ export const METRICS: MetricDef[] = [
     badEndAtWorst: true,
     perMonth: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).length,
+    belowFine: BELOW_FINE_COUNTS,
   },
   {
     id: "shortHomeGaps",
@@ -520,6 +537,7 @@ export const METRICS: MetricDef[] = [
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
     badEndAtWorst: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((s, d) => s + d.baseCommutes, 0),
+    belowFine: BELOW_FINE_COUNTS,
   },
   {
     id: "baseHotelNights",
@@ -531,6 +549,7 @@ export const METRICS: MetricDef[] = [
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours", "hasCrashPad"],
     badEndAtWorst: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((s, d) => s + d.baseNights.reduce((a, b) => a + b.nights, 0), 0),
+    belowFine: BELOW_FINE_COUNTS,
   },
   { id: "avgTripDays", label: "Average trip length", unit: "days", category: "calendar", description: "Average trip length in days.", trip: { measure: (f) => f.trip.days, aggregate: "mean" } },
   { id: "longestTripDays", label: "Longest trip", unit: "days", category: "calendar", description: "Length of the longest trip.", trip: { measure: (f) => f.trip.days, aggregate: "max" } },
@@ -634,6 +653,7 @@ export const METRICS: MetricDef[] = [
     category: "commute",
     description: "Trip ends where the pilot must be at base for operated flying, counted trip by trip — even between trips flown back to back without going home. A commuter's real commutes are departureCommutes.",
     trip: { measure: (f) => (f.noFlying ? 2 : (f.front ? 0 : 1) + (f.back ? 0 : 1)), aggregate: "sum" },
+    belowFine: BELOW_FINE_COUNTS,
   },
   {
     id: "midTripDeadheads",

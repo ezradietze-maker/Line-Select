@@ -314,7 +314,7 @@ export function scoreTripsV2(bidPack: BidPack, model: PilotModel, options: TripS
   const weights = scored.map(({ c }) => criterionWeight(c) * (model.tripWeights?.[c.id] ?? 1) * (weighsCommutes && c.metric === "tripsJoinedFromHome" ? JOINED_BEYOND_COMMUTE : 1));
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
   const beyond = options.beyondBad ?? BEYOND_BAD;
-  const utilities = scored.map((_, k) => values[k].map((v) => (v === null ? 0.5 : utilityOf(v, shapes[k], spreads[k], beyond))));
+  const utilities = scored.map((_, k) => values[k].map((v) => (v === null ? 0.5 : utilityOf(v, shapes[k], spreads[k], beyond, defs[scored[k].ci].belowFine))));
   const meanUtility = utilities.map((us) => us.reduce((a, b) => a + b, 0) / Math.max(1, us.length));
   // A dealbreaker caps a trip only when the trip can break it by itself — its own length, its worst duty, a date — and,
   // as for lines, not when it would rule out most of the pack's trips (then it's misread, and its weight still counts).

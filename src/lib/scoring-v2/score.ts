@@ -90,8 +90,19 @@ const UTILITY_FLOOR = -0.5;
 /**
  * `beyondBad`: past the bad end of a "more"/"less" scale, how fast utility keeps falling, as a share of the slope inside
  * it — so a line with 10 commutes still scores below one with 7 when 6 is "as bad as it gets", instead of the two tying.
+ * `belowFine` (a measure's `MetricDef.belowFine`): for a "less" shape with a number that's fine, the share of the
+ * priority that still rides on going below it — the pack's best line scores 1, the fine number 1 − belowFine, and from
+ * there the scale runs down to the bad end as before.
  */
-export function utilityOf(value: number, shape: CriterionShape, spread: { lo: number; hi: number }, beyondBad = 0): number {
+export function utilityOf(value: number, shape: CriterionShape, spread: { lo: number; hi: number }, beyondBad = 0, belowFine = 0): number {
+  if (belowFine > 0 && shape.kind === "less" && shape.fineAt !== undefined && shape.fineAt > spread.lo) {
+    const fine = shape.fineAt;
+    const worst = shape.worstAt ?? spread.hi;
+    if (value <= fine) return 1 - belowFine + belowFine * Math.min(1, (fine - value) / (fine - spread.lo));
+    if (worst - fine < 1e-9) return 0.5;
+    const u = (1 - belowFine) * ((worst - value) / (worst - fine));
+    return u < 0 ? Math.max(UTILITY_FLOOR, u * beyondBad) : u;
+  }
   switch (shape.kind) {
     case "more": {
       const lo = spread.lo;
@@ -175,7 +186,7 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
   const weights = criteria.map(criterionWeight);
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
   const beyond = options.beyondBad ?? BEYOND_BAD;
-  const utilities = criteria.map((c, ci) => judged[ci].map((v) => (v === null ? 0.5 : utilityOf(v, c.shape, spreads[ci], beyond))));
+  const utilities = criteria.map((c, ci) => judged[ci].map((v) => (v === null ? 0.5 : utilityOf(v, c.shape, spreads[ci], beyond, METRICS_BY_ID.get(c.metric)?.belowFine))));
   const meanUtility = utilities.map((us) => us.reduce((a, b) => a + b, 0) / Math.max(1, us.length));
   // A dealbreaker that rules out most of the pack is usually misread or bound to the wrong measure ("not two all-nighters
   // in a row" as a cap on every night worked capped two-thirds of a pack, its best lines included): it still counts

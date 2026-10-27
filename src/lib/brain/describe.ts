@@ -195,12 +195,14 @@ function describeParams(p: MetricParams | undefined): string {
 export function describeShape(shape: CriterionShape, def: ValueDef): string {
   const v = (n: number) => formatValue(n, def);
   const ideal = (n: number) => (n === 0 && !MEASURED_UNITS.has(def.unit) ? "none" : v(n));
+  // A count where fewer still counts below the fine number (`MetricDef.belowFine`): "fine", not "ideal".
+  const fine = (n: number) => (def.id && METRICS_BY_ID.get(def.id)?.belowFine && n > 0 ? `${v(n)} is fine, fewer is better still` : `${ideal(n)} is ideal`);
   switch (shape.kind) {
     case "more":
       return shape.enoughAt !== undefined ? `More is better, up to ${v(shape.enoughAt)}` : "More is better";
     case "less":
-      if (shape.fineAt !== undefined && shape.worstAt !== undefined) return `Less is better: ${ideal(shape.fineAt)} is ideal, ${v(shape.worstAt)} or more is as bad as it gets`;
-      if (shape.fineAt !== undefined) return `Less is better: ${ideal(shape.fineAt)} is ideal`;
+      if (shape.fineAt !== undefined && shape.worstAt !== undefined) return `Less is better: ${fine(shape.fineAt)}; ${v(shape.worstAt)} or more is as bad as it gets`;
+      if (shape.fineAt !== undefined) return `Less is better: ${fine(shape.fineAt)}`;
       return "Less is better";
     case "target":
       return `Best around ${v(shape.ideal)} (give or take ${amountOf(shape.tolerance, def)})`;

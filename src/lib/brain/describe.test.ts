@@ -35,6 +35,7 @@ describe("saying the model back in plain words", () => {
 
   it("describes each shape in real units", () => {
     expect(describeShape({ kind: "less", fineAt: 0 }, { unit: "duties" })).toBe("Less is better: none is ideal");
+    expect(describeShape({ kind: "less", fineAt: 2, worstAt: 5 }, { id: "departureCommutes", unit: "commutes" })).toBe("Less is better: 2 commutes is fine, fewer is better still; 5 commutes or more is as bad as it gets");
     expect(describeShape({ kind: "target", ideal: 15, tolerance: 2 }, { unit: "days" })).toBe("Best around 15 days (give or take 2 days)");
     expect(describeShape({ kind: "range", min: 540 }, { unit: "minute of day" })).toBe("At least 09:00");
     expect(describeShape({ kind: "perOccurrence", costEach: 0.25 }, { unit: "duties" })).toBe("Each one costs about 25% of this priority");

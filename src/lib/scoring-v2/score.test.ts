@@ -63,3 +63,18 @@ describe("spreadOf", () => {
     expect(spreadOf(values, { kind: "less" }, { badEndAtWorst: true })).toEqual({ lo: 2, hi: 5 });
   });
 });
+
+describe("below a fine number", () => {
+  it("still prefers fewer, where the measure says so, and leaves the rest of the scale as it was", () => {
+    const shape = { kind: "less", fineAt: 2, worstAt: 6 } as const;
+    const spread = { lo: 0, hi: 8 };
+    expect(utilityOf(0, shape, spread, 0, 0.5)).toBe(1);
+    expect(utilityOf(1, shape, spread, 0, 0.5)).toBe(0.75);
+    expect(utilityOf(2, shape, spread, 0, 0.5)).toBe(0.5);
+    expect(utilityOf(4, shape, spread, 0, 0.5)).toBe(0.25);
+    expect(utilityOf(6, shape, spread, 0, 0.5)).toBe(0);
+    // Without it, everything up to the fine number is as good as it gets.
+    expect(utilityOf(0, shape, spread)).toBe(1);
+    expect(utilityOf(2, shape, spread)).toBe(1);
+  });
+});
