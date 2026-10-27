@@ -34,7 +34,8 @@ import type { CityRating, CityRatingScore } from "@/types/preferences";
 import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
 import type { Judgment } from "./judge";
 import { pilotAgreement, scorecard } from "./metrics";
-import { pilotWordsOf, PERSONAS } from "./personas";
+import { pilotWordsOf, PERSONAS, simPilotContext } from "./personas";
+import { spearman } from "./trip-scorecard";
 
 const MAX_TURNS = 40;
 /** As in the app: after the "anything else?" screen, at most this many follow-ups. */
@@ -44,6 +45,8 @@ const SIM_MODEL = "claude-sonnet-5-5";
 const persona = PERSONAS.find((p) => p.id === process.argv[2])!;
 const tag = process.argv[3] ?? "run1";
 let spend = 0;
+/** Where it went: the brain's reads, the interviewer's turns, the simulated pilot's answers. */
+const spendBy = { brain: 0, interviewer: 0, pilot: 0 };
 const log: string[] = [];
 const say = (s: string) => {
   log.push(s);
@@ -55,6 +58,7 @@ const SIM_SYSTEM = `You are role-playing a real FedEx pilot taking an interview 
 async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T> {
   const r = await structuredCall<T>({ model: SIM_MODEL, system: SIM_SYSTEM, user: { cached: `TRUTH SHEET:\n${pilotWordsOf(persona)}`, fresh }, schema, effort: "low", maxTokens: 3000 });
   spend += r.usage.costUsd;
+  spendBy.pilot += r.usage.costUsd;
   return r.data;
 }
 
@@ -68,7 +72,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
     [1, 2, 3].map((n) => `.cache/eval/trip-judge-${persona.id}-s${n}.json`).filter(existsSync).flatMap((f) => Object.values(JSON.parse(readFileSync(f, "utf8")).labels as Record<string, string>))
   );
   const home = persona.commuteFrom;
-  const context = `${pack.aircraft} ${pack.seat === "CAP" ? "captain" : "first officer"} based in ${pack.base} (${pack.month} bid pack, ${pack.lines.length} lines). ${persona.isCommuter ? `Commutes to base${home ? ` from ${home}` : ""}.` : "Lives in base."} FedEx lets pilots deviate from a scheduled deadhead and ride a different airline flight on their own to the same city.`;
+  const context = simPilotContext(persona, pack);
 
   // The city step: the pilot rates the pack's cities.
   const cities = packCityFacts(pack);
@@ -88,6 +92,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   const build = async (prior: PilotModel | null) => {
     const r = await buildPilotModel({ packBrief: brief, pilotContext: context, exchanges, prior, model: "claude-sonnet-5-5", effort: "high" });
     spend += r.usage.costUsd;
+    spendBy.brain += r.usage.costUsd;
     say(`  [brain read ${exchanges.length} exchanges: ${r.model.criteria.length} criteria, ${r.model.threads.filter((t) => t.status === "open").length} open threads, ${(r.usage.ms / 1000).toFixed(0)}s, $${r.usage.costUsd.toFixed(3)}]`);
     return applyCityRatings(r.model, ratings);
   };
@@ -105,6 +110,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   const asked: { kind: string; words: number; ack: string; examples?: number; pair?: { a: string; b: string; trade: string; strength?: string; variables?: number } }[] = [];
   let turn = 0;
   let swept = false;
+  const steps: { input: Record<string, unknown>; asked: { ack: string; prompt: string; kind: string } | null }[] = [];
   const qTimes: number[] = [];
 
   // First, as in the app: which of their top priorities they'd give up last, in words, before any line choice.
@@ -153,8 +159,12 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
     const pairs = pickLinePairs(pack, model, pm, compared, 3, pastTrades);
     // As in the app: real lines and trips at both ends of their main priorities, for the question to show.
     const examples = pickQuestionExamples(pack, model, pm);
-    const step = await nextInterviewStep({ packBrief: brief, pilotContext: context, exchanges, model, threads, linePairs: pairs, examples, packNumbers, turn, maxTurns: limit, rankingShifts: shifts });
+    const stepInput = { pilotContext: context, exchanges, model, threads: structuredClone(threads), linePairs: pairs, examples, packNumbers, turn, maxTurns: limit, rankingShifts: [...shifts] };
+    const step = await nextInterviewStep({ packBrief: brief, ...stepInput });
+    // Each turn's input, for re-asking the interviewer alone later (scripts/eval/interviewer-replay.ts).
+    steps.push({ input: stepInput, asked: step.done ? null : { ack: step.ack ?? "", prompt: step.prompt, kind: step.kind } });
     spend += step.usage?.costUsd ?? 0;
+    spendBy.interviewer += step.usage?.costUsd ?? 0;
     qTimes.push(step.usage?.ms ?? 0);
     for (const id of step.settled) threads[id] = { ...(threads[id] ?? { timesAsked: 0 }), status: "settled" };
     if (step.done) {
@@ -294,18 +304,28 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   const order = rankLinesWithTrips(pack, fit.model, { pack: pm }).map((r) => r.lineNumber);
   const orderNoFit = rankPackV2(pack, finalBuilt, { pack: pm }).map((r) => r.lineNumber);
   const judgeFile = `.cache/eval/judge-${persona.id}.json`;
-  say(`\n=== ${persona.id} ${tag}: ${turn} questions, ${choices.length} line choices (fit ${fit.agreedBefore}→${fit.agreedAfter}), spend $${spend.toFixed(2)}, question latency median ${(qTimes.sort((a, b) => a - b)[Math.floor(qTimes.length / 2)] / 1000).toFixed(1)}s`);
+  say(`\n=== ${persona.id} ${tag}: ${turn} questions, ${choices.length} line choices (fit ${fit.agreedBefore}→${fit.agreedAfter}), spend $${spend.toFixed(2)} (brain $${spendBy.brain.toFixed(2)}, interviewer $${spendBy.interviewer.toFixed(2)}, pilot $${spendBy.pilot.toFixed(2)}), question latency median ${(qTimes.sort((a, b) => a - b)[Math.floor(qTimes.length / 2)] / 1000).toFixed(1)}s`);
   if (existsSync(judgeFile)) {
     const judge: Judgment = JSON.parse(readFileSync(judgeFile, "utf8"));
     say(`judge spearman: ${scorecard("", order, judge).spearman} (before choice fitting ${scorecard("", orderNoFit, judge).spearman})`);
   } else say("(no judge for this persona — see judge-sample.ts)");
+  // The panel judge (three judge runs averaged) is steadier than one judge's tiers; both are printed.
+  const panelFile = `.cache/eval/judge-${persona.id}-consensus.json`;
+  const panel = existsSync(panelFile) ? (JSON.parse(readFileSync(panelFile, "utf8")) as { mean: Record<string, number> }) : null;
+  const panelRho = (o: string[]) => {
+    const rows = o.map((l, i) => ({ l, i })).filter((x) => panel!.mean[x.l] !== undefined);
+    return spearman(rows.map((x) => -x.i), rows.map((x) => panel!.mean[x.l])).toFixed(3);
+  };
+  if (panel) say(`panel judge spearman: ${panelRho(order)} (before choice fitting ${panelRho(orderNoFit)})`);
   if (persona.lineLabels) say(`agreement with the pilot's own verdicts: ${pilotAgreement(order, persona.lineLabels).share} (before fitting ${pilotAgreement(orderNoFit, persona.lineLabels).share})`);
   say(`top 10: ${order.slice(0, 10).join(" ")}`);
   for (const c of [...fit.model.criteria].sort((a, b) => b.weight - a.weight)) say(`  ${c.weight.toFixed(2)} ${c.label} — ${c.metric}`);
   mkdirSync(".cache/eval/sim", { recursive: true });
   writeFileSync(`.cache/eval/sim/${persona.id}-${tag}.txt`, log.join("\n"));
-  const result: Record<string, unknown> = { exchanges, choices, tripChoices, model: fit.model, preFit: finalBuilt, asked, spend, order, shifts };
+  const result: Record<string, unknown> = { exchanges, choices, tripChoices, model: fit.model, preFit: finalBuilt, asked, spend, spendBy, order, shifts };
   if (existsSync(judgeFile)) result.judgeSpearman = scorecard("", order, JSON.parse(readFileSync(judgeFile, "utf8"))).spearman;
   if (persona.lineLabels) result.pilotAgreement = pilotAgreement(order, persona.lineLabels).share;
+  if (panel) result.panelSpearman = Number(panelRho(order));
   writeFileSync(`.cache/eval/sim/${persona.id}-${tag}.json`, JSON.stringify(result, null, 2));
+  writeFileSync(`.cache/eval/sim/${persona.id}-${tag}.steps.json`, JSON.stringify(steps));
 })();

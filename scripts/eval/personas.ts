@@ -26,6 +26,12 @@ export interface EvalPersona {
   lineLabels?: Record<string, "top" | "fine" | "never">;
 }
 
+/** What the interview knows about a simulated pilot before they answer anything — the app's pilot context, for their pack. */
+export function simPilotContext(p: Pick<EvalPersona, "isCommuter" | "commuteFrom">, pack: { aircraft: string; seat: string; base: string; month: string; lines: unknown[] }): string {
+  const home = p.commuteFrom;
+  return `${pack.aircraft} ${pack.seat === "CAP" ? "captain" : "first officer"} based in ${pack.base} (${pack.month} bid pack, ${pack.lines.length} lines). ${p.isCommuter ? `Commutes to base${home ? ` from ${home}` : ""}.` : "Lives in base."} FedEx lets pilots deviate from a scheduled deadhead and ride a different airline flight on their own to the same city.`;
+}
+
 export const OPENING_QUESTION = "Walk us through how you bid, start to finish, in your own words.";
 
 /** Everything the pilot said: the story as turn 0, then any follow-up answers. */

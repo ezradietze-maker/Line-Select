@@ -27,14 +27,14 @@ export interface BrainUsage {
   ms: number;
 }
 
-function costOf(model: string, u: Anthropic.Beta.BetaUsage): number {
+export function costOf(model: string, u: Anthropic.Beta.BetaUsage): number {
   const p = PRICES[model] ?? PRICES["claude-fable-5-1"];
   const cacheWrite = u.cache_creation_input_tokens ?? 0;
   const cacheRead = u.cache_read_input_tokens ?? 0;
   return (u.input_tokens * p.in + cacheWrite * p.in * 1.25 + cacheRead * p.cacheRead + u.output_tokens * p.out) / 1e6;
 }
 
-export async function structuredCall<T>(opts: {
+export interface StructuredCallOptions {
   apiKey?: string;
   model?: string;
   system: string;
@@ -43,28 +43,50 @@ export async function structuredCall<T>(opts: {
   schema: Record<string, unknown>;
   effort?: Effort;
   maxTokens?: number;
-}): Promise<{ data: T; usage: BrainUsage }> {
+}
+
+/** The request a structured call sends — one place, so a call routed elsewhere (see `routeStructuredCalls`) sends exactly the same. */
+export function structuredParams(opts: StructuredCallOptions, extra: { cacheFresh?: boolean } = {}) {
   const model = opts.model ?? BRAIN_MODEL;
-  const client = new Anthropic(opts.apiKey ? { apiKey: opts.apiKey } : {});
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (opts.user.cached) content.push({ type: "text", text: opts.user.cached, cache_control: { type: "ephemeral" } });
-  content.push({ type: "text", text: opts.user.fresh });
-
-  const started = Date.now();
-  const params = {
+  content.push({ type: "text", text: opts.user.fresh, ...(extra.cacheFresh ? { cache_control: { type: "ephemeral" as const } } : {}) });
+  return {
     model,
     max_tokens: opts.maxTokens ?? 32000,
     system: opts.system,
-    messages: [{ role: "user", content }],
+    messages: [{ role: "user" as const, content }],
     output_config: { effort: opts.effort ?? "high", format: { type: "json_schema", schema: opts.schema } },
     ...(model.startsWith("claude-fable") ? { betas: ["server-side-fallback-2026-06-01"], fallbacks: [{ model: "claude-opus-4-8" }] } : {}),
   };
-  const res = await client.beta.messages.stream(params as unknown as Anthropic.Beta.MessageCreateParamsStreaming).finalMessage();
+}
+
+/** A structured call's answer, from the model's reply — shared with routed calls. */
+export function structuredResult<T>(res: Pick<Anthropic.Beta.BetaMessage, "stop_reason" | "content" | "model" | "usage">, ms: number, priceFactor = 1): { data: T; usage: BrainUsage } {
   if (res.stop_reason === "refusal") throw new Error("brain call declined");
   if (res.stop_reason === "max_tokens") throw new Error("brain call ran out of room");
   const text = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
   return {
     data: JSON.parse(text) as T,
-    usage: { model: res.model, inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens, costUsd: costOf(res.model, res.usage), ms: Date.now() - started },
+    usage: { model: res.model, inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens, costUsd: costOf(res.model, res.usage) * priceFactor, ms },
   };
+}
+
+type Caller = <T>(opts: StructuredCallOptions) => Promise<{ data: T; usage: BrainUsage }>;
+let routed: Caller | null = null;
+
+/**
+ * Sends every structured call somewhere else until called with null — for the evaluation scripts, which run the same
+ * brain, facts and interviewer code through the Batches API at half price (`scripts/eval/batch.ts`). The app never sets it.
+ */
+export function routeStructuredCalls(caller: Caller | null): void {
+  routed = caller;
+}
+
+export async function structuredCall<T>(opts: StructuredCallOptions): Promise<{ data: T; usage: BrainUsage }> {
+  if (routed) return routed<T>(opts);
+  const client = new Anthropic(opts.apiKey ? { apiKey: opts.apiKey } : {});
+  const started = Date.now();
+  const res = await client.beta.messages.stream(structuredParams(opts) as unknown as Anthropic.Beta.MessageCreateParamsStreaming).finalMessage();
+  return structuredResult<T>(res, Date.now() - started);
 }

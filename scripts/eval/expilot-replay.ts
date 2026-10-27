@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { restoreBidPack } from "@/lib/bidpack-storage";
 import { BRAIN_PROMPT_VERSION, buildPilotModel } from "@/lib/brain/build-model";
+import { batched } from "./batch";
 import { pilotContextFor } from "@/lib/brain/context";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
 import { minHomeHoursSentence } from "@/components/interview/MinHomeHoursPicker";
@@ -14,9 +15,13 @@ import type { PreferenceProfile } from "@/types/preferences";
  * confirmed, so `expilot-benchmark.ts --model <out>` scores it exactly as it scores his own.
  *
  * His city answer is put as his grades now stand (the city step's mix-up corrected, his Oct 21 answers added), since
- * those are what the app reads beside the interview. One brain call — about $0.50 at high effort.
+ * those are what the app reads beside the interview. One read is about $0.15–0.20 at high effort.
  *
- *   npx tsx scripts/eval/expilot-replay.ts <tag> [--profile <profile.json>] [--pack <pack.json>]
+ * Several reads (`--reads N`, saved as <tag>-1 … <tag>-N) go together: with `--batch`, through the Message Batches API
+ * at half price, the interview cached between them (`scripts/eval/batch.ts`); without it, the first read runs alone so
+ * the rest read its cache instead of each paying to write it.
+ *
+ *   npx tsx scripts/eval/expilot-replay.ts <tag> [--reads N] [--batch] [--profile <profile.json>] [--pack <pack.json>]
  */
 
 const DIR = "private/ex-pilot";
@@ -42,19 +47,38 @@ const arg = (name: string) => {
   );
   if (!exchanges.length) throw new Error(`${profilePath} holds no interview.`);
 
-  const r = await buildPilotModel({
+  const input = {
     packBrief: buildPackBrief(pack),
     pilotContext: pilotContextFor(pack, { isCommuter: profile.isCommuter, commuteFrom: profile.commuteFrom, hasCrashPad: profile.hasCrashPad, minHomeHours: profile.minHomeHours }),
     exchanges,
-    effort: "high",
-  });
-  const out = `${DIR}/benchmark-oct26/replay-v${BRAIN_PROMPT_VERSION}-${tag}.json`;
-  writeFileSync(out, JSON.stringify({ ...profile, brainInterview: { ...profile.brainInterview, reviewedModel: r.model }, replay: { brainVersion: BRAIN_PROMPT_VERSION, reasoning: r.reasoning, dropped: r.dropped, usage: r.usage } }, null, 1));
+    effort: "high" as const,
+  };
+  const reads = Math.max(1, Number(arg("reads") ?? 1));
+  const tags = reads === 1 ? [tag] : Array.from({ length: reads }, (_, i) => `${tag}-${i + 1}`);
 
-  const total = r.model.criteria.reduce((s, c) => s + c.weight, 0) || 1;
-  console.log(`Brain v${BRAIN_PROMPT_VERSION} · ${r.usage.model} · $${r.usage.costUsd.toFixed(2)} · ${Math.round(r.usage.ms / 1000)}s → ${out}`);
-  console.log(`Home: ${JSON.stringify(r.model.home)}`);
-  for (const c of [...r.model.criteria].sort((a, b) => b.weight - a.weight))
-    console.log(`  ${String(Math.round((100 * c.weight) / total)).padStart(3)}  ${c.metric.padEnd(26)} ${JSON.stringify(c.shape)}${c.hardLimit ? ` limit ${c.hardLimit.op} ${c.hardLimit.value}` : ""} — ${c.label}`);
-  if (r.dropped.length) console.log(`Dropped: ${r.dropped.join(", ")}`);
+  const readOnce = async (t: string) => {
+    const r = await buildPilotModel(input);
+    const out = `${DIR}/benchmark-oct26/replay-v${BRAIN_PROMPT_VERSION}-${t}.json`;
+    writeFileSync(out, JSON.stringify({ ...profile, brainInterview: { ...profile.brainInterview, reviewedModel: r.model }, replay: { brainVersion: BRAIN_PROMPT_VERSION, reasoning: r.reasoning, dropped: r.dropped, usage: r.usage } }, null, 1));
+    console.log(`Brain v${BRAIN_PROMPT_VERSION} · ${r.usage.model} · $${r.usage.costUsd.toFixed(3)} → ${out}`);
+    if (reads === 1) {
+      const total = r.model.criteria.reduce((sum, c) => sum + c.weight, 0) || 1;
+      console.log(`Home: ${JSON.stringify(r.model.home)}`);
+      for (const c of [...r.model.criteria].sort((a, b) => b.weight - a.weight))
+        console.log(`  ${String(Math.round((100 * c.weight) / total)).padStart(3)}  ${c.metric.padEnd(26)} ${JSON.stringify(c.shape)}${c.hardLimit ? ` limit ${c.hardLimit.op} ${c.hardLimit.value}` : ""} — ${c.label}`);
+      if (r.dropped.length) console.log(`Dropped: ${r.dropped.join(", ")}`);
+    }
+    return r.usage.costUsd;
+  };
+
+  if (process.argv.includes("--batch")) {
+    const { results, spend, rounds } = await batched(tags.map((t) => () => readOnce(t)), { cacheFresh: true });
+    const failed = results.filter((x) => x.status === "rejected").length;
+    console.log(`${tags.length - failed} of ${tags.length} reads in ${rounds} batch round${rounds === 1 ? "" : "s"} · $${spend.toFixed(2)}${failed ? ` · ${failed} failed` : ""}`);
+  } else {
+    // The first read writes the cache; the rest, started together after it, read it.
+    let spend = await readOnce(tags[0]);
+    spend += (await Promise.all(tags.slice(1).map(readOnce))).reduce((a, b) => a + b, 0);
+    console.log(`${tags.length} read${tags.length === 1 ? "" : "s"} · $${spend.toFixed(2)}`);
+  }
 })();
