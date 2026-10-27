@@ -318,7 +318,7 @@ export function ResultsView({
     [bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
   );
   // Every trip's own score, from the same priorities that rank the lines — shown on each trip in a line's trip list.
-  const tripScores = useMemo(() => (pilotModel ? scoreTripsV2(bidPack, pilotModel, { flights: flights ?? undefined }) : null), [bidPack, pilotModel, flights]);
+  const tripScores = useMemo(() => (pilotModel ? scoreTripsV2(bidPack, pilotModel, { flights: flights ?? undefined, onLineScale: true }) : null), [bidPack, pilotModel, flights]);
 
   const updateMarks = useCallback(
     (fn: (m: LineMarks) => LineMarks) => {

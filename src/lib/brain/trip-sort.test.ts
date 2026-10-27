@@ -84,8 +84,8 @@ describe("lines with their trips", () => {
     const leaned = new Map(rankLinesWithTrips(pack, graded, { pack: pm }).map((s) => [s.lineId, s.score]));
     const base = new Map(scorePackV2(pack, graded, { pack: pm }).map((s) => [s.lineId, s.score]));
     expect([...leaned].some(([id, v]) => Math.abs(v - base.get(id)!) > 0.05)).toBe(true);
-    // A small adjustment, not a different ranking: lessons are partial and the lean is light.
-    for (const [id, v] of leaned) expect(Math.abs(v - base.get(id)!)).toBeLessThan(15);
-    expect(TRIP_LEAN).toBeLessThan(0.2);
+    // An adjustment, not a different ranking: lessons are partial and the lean on the worst trip is a quarter.
+    for (const [id, v] of leaned) expect(Math.abs(v - base.get(id)!)).toBeLessThan(25);
+    expect(TRIP_LEAN).toBeLessThanOrEqual(0.3);
   });
 });

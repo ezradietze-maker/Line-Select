@@ -264,11 +264,16 @@ function measureTrip(def: MetricDef, inst: Instance, pack: PackMetrics, p: Metri
   return { value: raw, raw };
 }
 
+export interface TripScoreOptions extends ScoreOptions {
+  /** Put the scores on the line scale (see `tripsOnLineScale`) — for showing them beside line scores. */
+  onLineScale?: boolean;
+}
+
 /**
  * Every trip in the pack, scored for this pilot, by `tripKey`. Trips with no real schedule (an estimated line's) have no
  * entry. Pass the same `pack` and `flights` the line ranking uses.
  */
-export function scoreTripsV2(bidPack: BidPack, model: PilotModel, options: ScoreOptions = {}): Map<string, TripScore> {
+export function scoreTripsV2(bidPack: BidPack, model: PilotModel, options: TripScoreOptions = {}): Map<string, TripScore> {
   const pack = options.pack ?? prepareMetrics(bidPack);
   if (options.travel) pack.ctx.travel = options.travel;
   if (options.flights) pack.ctx.flights = options.flights;
@@ -354,6 +359,83 @@ export function scoreTripsV2(bidPack: BidPack, model: PilotModel, options: Score
     const score = Math.max(0, violations.length ? uncapped * HARD_LIMIT_CAP : uncapped);
     out.set(t.key, { key: t.key, score: Math.round(score * 10) / 10, uncapped, results, notApplicable, violations });
   });
+  return options.onLineScale ? tripsOnLineScale(bidPack, model, out, { ...options, pack }) : out;
+}
+
+/** Fewer lines with trips than this, and there's too little to tell the two scales apart: trip scores stay as they are. */
+const MIN_LINES_FOR_SCALE = 6;
+/** Past the pack's own range, a point on a trip is worth this many points on a line — the two spreads' ratio, held to a sane range. */
+const TAIL_SLOPE = { min: 0.5, max: 2 };
+
+/** A line's trips, day-weighted: how its trips score on average, the way a line leans on them. */
+function tripMeanOf(line: Line, trips: Map<string, TripScore>): number | null {
+  const ts = line.trips.flatMap((t) => {
+    const x = trips.get(tripKey(t));
+    return x ? [{ v: x.uncapped, days: Math.max(1, t.days) }] : [];
+  });
+  if (!ts.length) return null;
+  return ts.reduce((a, t) => a + t.v * t.days, 0) / ts.reduce((a, t) => a + t.days, 0);
+}
+
+/**
+ * The line scale for one pilot's trips: the line whose trips average the most gets the best line's score, the next the
+ * next, and so on through their pack — so a trip scored 70 is as good, for them, as a line scored 70.
+ *
+ * Trip scores come out on their own scale: each priority runs from the pack's worst trip to its best, and the best trip
+ * is far more extreme than the best line (a line averages its trips), so a good trip reads as middling. On the
+ * ex-pilot's readings (Oct 2026) a line's trips tracked its score closely — correlation 0.86, slope about 1 — but sat
+ * 11–14 points below it, on every line: his top line 73 with trips of 71 and 55. For simulated pilots on other packs the
+ * gap ran from +13 to −17 points, with slopes 0.56–1.33, so the scale is drawn from each pilot's own lines rather than
+ * set once.
+ *
+ * Matched rank for rank rather than by a straight-line fit: on the simulated pilots a fitted line squeezed the top (their
+ * best lines sat 7–18 points above their own trips); matched, their top five lines are 0–6 points from their trips' average,
+ * and the ex-pilot's within a point (line 1003: 73, trips 77 and 67). What's left is what a single trip can't show —
+ * days off and how they fall. Trips keep their order: this is only the scale they're read on, and only what's shown
+ * uses it — the trip-grade fit, the picker and a line's lean on its worst trip read the trips' own scale (leaning on
+ * this one instead was no better on his sort or the simulated pilots).
+ */
+export function lineScaleForTrips(bidPack: BidPack, model: PilotModel, trips: Map<string, TripScore>, options: ScoreOptions = {}): ((uncapped: number) => number) | null {
+  // The line scores the pilot sees, their lean on these trips included.
+  const lines = rankLinesWithTrips(bidPack, model, options);
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const s of lines) {
+    const line = bidPack.lines.find((l) => l.id === s.lineId);
+    const x = line ? tripMeanOf(line, trips) : null;
+    if (x === null) continue;
+    xs.push(x);
+    ys.push(s.uncapped);
+  }
+  if (xs.length < MIN_LINES_FOR_SCALE) return null;
+  const spread = (vs: number[]) => {
+    const m = vs.reduce((a, b) => a + b, 0) / vs.length;
+    return Math.sqrt(vs.reduce((a, v) => a + (v - m) ** 2, 0) / vs.length);
+  };
+  const sx = spread(xs);
+  const tail = sx < 1e-6 ? 1 : Math.min(TAIL_SLOPE.max, Math.max(TAIL_SLOPE.min, spread(ys) / sx));
+  xs.sort((a, b) => a - b);
+  ys.sort((a, b) => a - b);
+  const last = xs.length - 1;
+  return (v) => {
+    if (v <= xs[0]) return ys[0] + (v - xs[0]) * tail;
+    if (v >= xs[last]) return ys[last] + (v - xs[last]) * tail;
+    const k = xs.findIndex((x) => x >= v);
+    const [x0, x1] = [xs[k - 1], xs[k]];
+    return x1 - x0 < 1e-9 ? ys[k] : ys[k - 1] + ((v - x0) / (x1 - x0)) * (ys[k] - ys[k - 1]);
+  };
+}
+
+/** Trip scores read on the line scale (see `lineScaleForTrips`): same order, same reasons, comparable to line scores. */
+export function tripsOnLineScale(bidPack: BidPack, model: PilotModel, trips: Map<string, TripScore>, options: ScoreOptions = {}): Map<string, TripScore> {
+  const toLine = lineScaleForTrips(bidPack, model, trips, options);
+  if (!toLine) return trips;
+  const out = new Map<string, TripScore>();
+  for (const [key, t] of trips) {
+    const uncapped = Math.min(100, Math.max(0, toLine(t.uncapped)));
+    const score = t.violations.length ? uncapped * HARD_LIMIT_CAP : uncapped;
+    out.set(key, { ...t, score: Math.round(score * 10) / 10, uncapped });
+  }
   return out;
 }
 
@@ -380,17 +462,21 @@ export function tripValueText(r: TripCriterionResult): string | null {
  *
  * - What the trip grades taught carries over to the line weights in part (`TRIP_LESSONS` of each trip factor, on a log
  *   scale): a pilot whose grades say red-eye finishes count for more on a trip probably minds them on a line too.
- * - Each line's score leans on how good its own trips are for them (`TRIP_LEAN`), so a line built from trips they'd
- *   trade away can't sit at the top on its totals alone.
+ * - Each line's score leans on its worst trip for them (`TRIP_LEAN`): one trip they'd trade away spoils a month, and a
+ *   line can't sit at the top on its totals while carrying it.
  *
- * Set on the ex-pilot's own sort first (Oct 22 2026, with his five real trip picks, across his five readings): no lean
- * 95.2%, 5% 95.8%, 15% 96.1% (full order 83.4%, its best), 20% 96.3% (full order 83.2%), 25% 96.1% — 15–20% is one
- * plateau, and 15% costs a simulated commuter less (line agreement 0.820 → 0.808; 20%: 0.799), while helping a
- * simulated local pilot (0.925 → 0.938) and leaving another flat. Before a pilot has graded trips, leaning on them
- * only made lines worse — trip scores are then just the line weights read trip by trip.
+ * Set Oct 26 2026 on a free sweep (lean weight, trip scale, how a line's trips are summed, lessons), checked on the
+ * ex-pilot's sort with his five real trip picks across 32 readings and on nine simulated pilots against their judges.
+ * Leaning on the average trip only made lines worse the more it counted — 15%: his sort 96.90%, 35%: 96.70%, 65%:
+ * 95.33%, simulated pilots 0.831 → 0.822 → 0.792 — the average trip mostly repeats what the line's own score already
+ * says. The worst trip adds what the line's score can't see: 25% on it, with lessons at 0.5, takes his sort to 97.16%
+ * (full order 84.3% → 85.6%) and the simulated pilots to 0.842, each of the three equal or better (0.749/0.905/0.839 →
+ * 0.776/0.913/0.839). 15–30% is one plateau. Before a pilot has graded trips, leaning on the worst trip helps his full
+ * order too but costs a simulated pilot at any weight that matters (0.836 → 0.831 at 10%), so lines stand alone until
+ * then.
  */
-export const TRIP_LESSONS = 0.25;
-export const TRIP_LEAN = 0.15;
+export const TRIP_LESSONS = 0.5;
+export const TRIP_LEAN = 0.25;
 
 /** The pilot's lines with their trip grades taken into account (see `TRIP_LESSONS`, `TRIP_LEAN`), best first. */
 export function rankLinesWithTrips(bidPack: BidPack, model: PilotModel, options: ScoreOptions = {}): V2LineScore[] {
@@ -399,17 +485,16 @@ export function rankLinesWithTrips(bidPack: BidPack, model: PilotModel, options:
   if (!tw || !Object.keys(tw).length) return scorePackV2(bidPack, model, { ...options, pack }).sort((a, b) => b.score - a.score || a.lineNumber.localeCompare(b.lineNumber));
   const taught: PilotModel = { ...model, tripWeights: undefined, criteria: model.criteria.map((c) => ({ ...c, weight: c.weight * (tw[c.id] ?? 1) ** TRIP_LESSONS })) };
   const lines = scorePackV2(bidPack, taught, { ...options, pack });
-  const trips = scoreTripsV2(bidPack, model, { ...options, pack });
+  // Its trips on their own scale: the lean was set on it (see `lineScaleForTrips`).
+  const trips = scoreTripsV2(bidPack, model, { ...options, pack, onLineScale: false });
   for (const s of lines) {
     const line = bidPack.lines.find((l) => l.id === s.lineId);
     const ts = (line?.trips ?? []).flatMap((t) => {
       const x = trips.get(tripKey(t));
-      return x ? [{ score: x.score, days: Math.max(1, t.days) }] : [];
+      return x ? [x.score] : [];
     });
     if (!ts.length) continue;
-    const days = ts.reduce((a, t) => a + t.days, 0);
-    const tripMean = ts.reduce((a, t) => a + t.score * t.days, 0) / days;
-    s.uncapped = (1 - TRIP_LEAN) * s.uncapped + TRIP_LEAN * tripMean;
+    s.uncapped = (1 - TRIP_LEAN) * s.uncapped + TRIP_LEAN * Math.min(...ts);
     s.score = Math.round((s.violations.length ? s.uncapped * HARD_LIMIT_CAP : s.uncapped) * 10) / 10;
   }
   return lines.sort((a, b) => b.score - a.score || a.lineNumber.localeCompare(b.lineNumber));

@@ -64,7 +64,7 @@ function categoriesFor(s: V2LineScore, fallback: LineScore["categoryScores"]): L
 
 export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: PilotModel, flights?: FlightAnswers): LineScore[] {
   if (model.criteria.length === 0) return scores;
-  // Once the pilot has graded trips, each line leans on its own trips' scores (see `TRIP_LEAN`).
+  // Once the pilot has graded trips, each line leans on its worst trip's score (see `TRIP_LEAN`).
   const v2 = new Map(rankLinesWithTrips(bidPack, model, { flights }).map((s) => [s.lineId, s]));
   return scores
     .map((ls) => {

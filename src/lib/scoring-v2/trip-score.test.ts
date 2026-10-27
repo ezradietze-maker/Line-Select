@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { METRICS } from "@/lib/metrics/catalog";
-import { scoreTripsV2, tripKey, tripReadingOf, tripValueText } from "@/lib/scoring-v2/trip-score";
+import { rankLinesWithTrips, scoreTripsV2, tripKey, tripReadingOf, tripValueText } from "@/lib/scoring-v2/trip-score";
 import type { BidPack, Line, Trip, TripLeg } from "@/types/bidpack";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 
@@ -164,5 +164,39 @@ describe("trip scores", () => {
     const withRepeat = { ...pack, lines: [...lines, again] } as BidPack;
     const m = model([crit({ metric: "avgTripDays", shape: { kind: "less" } })]);
     expect(scoreTripsV2(withRepeat, m).size).toBe(4);
+  });
+});
+
+describe("trip scores on the line scale", () => {
+  // Eight lines, each two trips; the pay on each trip rises with the line, so trips and lines agree on the order but
+  // each line's best trip pays more than any line averages.
+  const paid = (id: string, days: number, start: number, perDay: number) => ({ ...trip(id, days, start), creditHours: perDay * days, tafbHours: days * 24 }) as Trip;
+  const eight = Array.from({ length: 8 }, (_, k) => {
+    const a = paid(`A${k}`, 2, 1, 3 + k);
+    const b = paid(`B${k}`, 3, 10, 5 + k);
+    return { id: `${k}`, lineNumber: `${k}`, trips: [a, b], daysOff: 14, totalCreditHours: a.creditHours + b.creditHours, totalTafbHours: (a.days + b.days) * 24, totalLandings: 5, totalDepartures: 5 } as unknown as Line;
+  });
+  const bigPack = { ...pack, lines: eight } as BidPack;
+  const m = model([crit({ metric: "creditPerDayAway", shape: { kind: "more" } })]);
+
+  it("keeps the trips' order, and puts a line's trips around the line's own score", () => {
+    const raw = scoreTripsV2(bigPack, m);
+    const scaled = scoreTripsV2(bigPack, m, { onLineScale: true });
+    const keys = [...raw.keys()];
+    const byRaw = [...keys].sort((x, y) => raw.get(x)!.uncapped - raw.get(y)!.uncapped);
+    const byScaled = [...keys].sort((x, y) => scaled.get(x)!.uncapped - scaled.get(y)!.uncapped);
+    expect(byScaled).toEqual(byRaw);
+    // A line mid-pack, clear of the 100 a trip's score can't pass.
+    const mid = rankLinesWithTrips(bigPack, m)[3];
+    const line = eight.find((l) => l.id === mid.lineId)!;
+    const mean = (scores: Map<string, { uncapped: number }>) => (line.trips[0].days * scores.get(tripKey(line.trips[0]))!.uncapped + line.trips[1].days * scores.get(tripKey(line.trips[1]))!.uncapped) / 5;
+    expect(Math.abs(mean(scaled) - mid.uncapped)).toBeLessThan(Math.abs(mean(raw) - mid.uncapped));
+    expect(Math.abs(mean(scaled) - mid.uncapped)).toBeLessThan(3);
+  });
+
+  it("leaves a pack too small to tell the scales apart as it is", () => {
+    const raw = scoreTripsV2(pack, m);
+    const scaled = scoreTripsV2(pack, m, { onLineScale: true });
+    for (const [k, t] of raw) expect(scaled.get(k)!.score).toBe(t.score);
   });
 });
