@@ -7,7 +7,7 @@ describe("pilot words", () => {
   it("finds the phrases the app made up", () => {
     expect(avoidedPhrases("Say a trip joins from LAX or the Pacific")).toEqual(["joins from"]);
     expect(avoidedPhrases("How much of your layover value would you give up?")).toEqual(["layover value"]);
-    expect(avoidedPhrases("Trips you can join from San Diego")).toHaveLength(2);
+    expect(avoidedPhrases("Trips you can join from Denver")).toHaveLength(2);
     expect(insteadOf("joins from")).toMatch(/front-end deadhead/);
   });
 

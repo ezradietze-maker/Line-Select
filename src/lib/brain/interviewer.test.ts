@@ -138,9 +138,9 @@ describe("pilot words", () => {
   });
 
   it("lets the pilot's own words through", async () => {
-    const own = input({ exchanges: [{ turn: 0, question: "Walk us through how you bid.", answer: "I like trips I can join from San Diego." }] });
-    proposals.push(step({ threadId: "china", prompt: "You like trips you can join from San Diego — how many a month?" }));
-    expect(await nextInterviewStep(own)).toMatchObject({ done: false, prompt: "You like trips you can join from San Diego — how many a month?" });
+    const own = input({ exchanges: [{ turn: 0, question: "Walk us through how you bid.", answer: "I like trips I can join from Denver." }] });
+    proposals.push(step({ threadId: "china", prompt: "You like trips you can join from Denver — how many a month?" }));
+    expect(await nextInterviewStep(own)).toMatchObject({ done: false, prompt: "You like trips you can join from Denver — how many a month?" });
   });
 
   it("never lets a wording slip end the interview", async () => {

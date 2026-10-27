@@ -111,7 +111,7 @@ The pilot reads labels, the synopsis and thread topics. Write them TO the pilot,
 
 PILOT TERMS — only for how you word labels, the synopsis and thread topics, never for which measure a priority binds to (the measure rules above decide that). For whatever they didn't name in their own words:
 ${pilotWordsForPrompt()}
-A label names the one thing they want, the way they'd say it: "Front-end deadheads from San Diego", "Few departures", "Time in cities you love" — short, about the thing itself, never a made-up phrase.`;
+A label names the one thing they want, the way they'd say it: "Front-end deadheads from Denver", "Few departures", "Time in cities you love" — short, about the thing itself, never a made-up phrase.`;
 
 /** Every metric is non-negative, so -1 marks "not given" — the API limits how many nullable fields a schema can have. */
 const num = { type: "number", description: "-1 when not given" };
