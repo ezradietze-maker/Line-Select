@@ -57,6 +57,7 @@ function readExamples(value: unknown): QuestionExample[] {
       summary: e.summary as string,
       ...(typeof e.rank === "number" && Number.isFinite(e.rank) ? { rank: Math.round(e.rank) } : {}),
       ...(isText(e.criterionId, 80) ? { criterionId: e.criterionId as string } : {}),
+      ...(isText(e.priority, 200) ? { priority: e.priority as string } : {}),
     }));
 }
 

@@ -227,7 +227,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
       continue;
     }
     if (step.threadId) threads[step.threadId] = { status: threads[step.threadId]?.status ?? "open", timesAsked: (threads[step.threadId]?.timesAsked ?? 0) + 1 };
-    say(`\nQ${turn + 1} [${step.kind}${step.threadId ? ` · ${step.threadId}` : ""}] ${step.prompt}${step.options ? `\n   options: ${step.options.join(" / ")}` : ""}${step.examples?.length ? `\n   shown: ${step.examples.map((e) => `${e.title} — ${e.fact}`).join("; ")}` : ""}`);
+    say(`\nQ${turn + 1} [${step.kind}${step.threadId ? ` · ${step.threadId}` : ""}] ${step.prompt}${step.options ? `\n   options: ${step.options.join(" / ")}` : ""}${step.examples?.length ? `\n   shown: ${step.examples.map((e) => `${e.title} — ${e.fact}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}` : ""}`);
     const entry: (typeof asked)[number] = { kind: step.kind, words: step.prompt.split(/\s+/).filter(Boolean).length, ack: (step as { ack?: string }).ack ?? "", examples: step.examples?.length ?? 0 };
     if (entry.ack) say(`   (ack) ${entry.ack}`);
     asked.push(entry);

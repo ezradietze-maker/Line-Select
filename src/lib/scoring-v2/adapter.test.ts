@@ -28,11 +28,11 @@ describe("ranking by the pilot model", () => {
   it("orders, scores and explains every line from the model when there is one", () => {
     const ranked = rankLines(pack, { ...profile, pilotModel: model });
     expect(ranked.map((s) => s.line.lineNumber)).toEqual(["1001", "1003", "1002"]);
-    expect(ranked[0].explanation).toMatch(/^Strong for you on Days off \(18 days\)/);
-    expect(ranked[0].contributors[0].label).toBe("Days off (18 days)");
+    expect(ranked[0].explanation).toMatch(/^Strong for you: 18 days off/);
+    expect(ranked[0].contributors[0].label).toBe("18 days off");
     expect(ranked[0].counterfactual).toBeNull();
     // 85 credit breaks the stated limit of 80.
-    expect(ranked[2].violatedDealbreakers.at(-1)).toMatchObject({ label: "Less credit", detail: "85 hours — your limit is at most 80 hours" });
+    expect(ranked[2].violatedDealbreakers.at(-1)).toMatchObject({ label: "Less credit", detail: "85 credit hours — your limit is at most 80 credit hours" });
     expect(ranked[0].categoryScores.timeAndHomeLife.score).toBe(100);
   });
 });

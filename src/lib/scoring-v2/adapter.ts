@@ -32,17 +32,18 @@ const CATEGORY_OF: Record<MetricCategory, SatisfactionCategory> = {
 /** Contributions smaller than this (in score points) aren't worth naming as a reason. */
 const NOTABLE = 0.3;
 
+/** What a line has on one priority, said so it reads on its own ("18 days off", "4 long duty days"); its name when unmeasured. */
 function valueText(r: CriterionResult): string {
   const def = METRICS_BY_ID.get(r.metric);
-  return r.value === null || !def ? r.label : `${r.label} (${formatValue(r.value, def)})`;
+  return r.value === null || !def ? r.label : formatValue(r.value, def);
 }
 
 function explanationFor(s: V2LineScore): string {
   const ups = s.results.filter((r) => r.contribution >= NOTABLE).sort((a, b) => b.contribution - a.contribution).slice(0, 2);
   const downs = s.results.filter((r) => r.contribution <= -NOTABLE).sort((a, b) => a.contribution - b.contribution).slice(0, 1);
   const parts: string[] = [];
-  if (ups.length) parts.push(`Strong for you on ${ups.map(valueText).join(" and ")}.`);
-  if (downs.length) parts.push(`Weaker on ${valueText(downs[0])}.`);
+  if (ups.length) parts.push(`Strong for you: ${ups.map(valueText).join(" and ")}.`);
+  if (downs.length) parts.push(`Weaker: ${valueText(downs[0])}.`);
   return parts.join(" ") || "About average for you on everything you care about.";
 }
 

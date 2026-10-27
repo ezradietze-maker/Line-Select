@@ -38,7 +38,7 @@ describe("what the fleet learns from the story-driven interview", () => {
     expect(resolved.level).toBe("pack:ANC|B777|CAP|commuter");
     const notes = fleetNotes(resolved)!;
     expect(notes).toMatch(/From 5 commuting pilots in this same base, fleet and seat/);
-    expect(notes).toMatch(/Commutes to or from base \[baseCommutesNeeded\] — 100% of them, typical weight 1\.00, a dealbreaker for 100%/);
+    expect(notes).toMatch(/Commutes to or from base, trip by trip \[baseCommutesNeeded\] — 100% of them, typical weight 1\.00, a dealbreaker for 100%/);
     expect(notes).toMatch(/Credit per day away from home: 100% said it should count less/);
     expect(notes).toMatch(/HNL liked \(avg 1\.0, 5 pilots\); CAN disliked/);
     // A local first officer elsewhere borrows from the whole fleet once it's big enough.

@@ -27,8 +27,10 @@ export interface QuestionExample {
   ref: string;
   /** "Line 1016", "Trip #10 · Oct 4". */
   title: string;
-  /** The priority it shows, in the pilot's terms, and the line's or trip's figure on it: "Few departures: 5 departures". */
+  /** The line's or trip's figure on the priority, said so it reads on its own: "5 departures", "2 commutes on this trip". */
   fact: string;
+  /** The priority it shows, as their reading names it ("Few departures"). */
+  priority?: string;
   /** The priority's id in their reading — a question's examples all show one priority. */
   criterionId?: string;
   /** The line or trip in brief, for the interviewer and the transcript. */
@@ -83,7 +85,7 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
       const byUtility = [...pool].sort((a, b) => at(a)!.utility - at(b)!.utility || rankOf.get(a.lineNumber)! - rankOf.get(b.lineNumber)!);
       for (const r of [byUtility[byUtility.length - 1], byUtility[0]]) {
         const line = lineOf.get(r.lineNumber)!;
-        add({ kind: "line", ref: line.lineNumber, title: `Line ${line.lineNumber}`, fact: `${c.label}: ${formatValue(at(r)!.value!, def)}`, criterionId: c.id, summary: lineBrief(line), rank: rankOf.get(line.lineNumber) });
+        add({ kind: "line", ref: line.lineNumber, title: `Line ${line.lineNumber}`, fact: formatValue(at(r)!.value!, def), priority: c.label, criterionId: c.id, summary: lineBrief(line), rank: rankOf.get(line.lineNumber) });
       }
     }
     // A trip that shows it, where one trip can: the trip from their best lines that does worst on it.
@@ -98,14 +100,14 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
         const worst = shown.sort((a, b) => a.r!.utility - b.r!.utility)[0];
         const trip: Trip | undefined = tripOf.get(worst.t.key);
         const value = tripValueText(worst.r!);
-        if (trip && value) add({ kind: "trip", ref: worst.t.key, title: tripLabel(bidPack, trip), fact: `${c.label}: ${value}`, criterionId: c.id, summary: tripHeadline(bidPack, trip) });
+        if (trip && value) add({ kind: "trip", ref: worst.t.key, title: tripLabel(bidPack, trip), fact: value, priority: c.label, criterionId: c.id, summary: tripHeadline(bidPack, trip) });
       }
     }
   }
   return out;
 }
 
-/** How the examples go into the transcript after the question, so the brain reads what the pilot was shown. */
-export function examplesTranscript(examples: Pick<QuestionExample, "title" | "fact">[]): string {
-  return examples.length ? ` (Examples shown: ${examples.map((e) => `${e.title} — ${e.fact}`).join("; ")}.)` : "";
+/** How the examples go into the transcript after the question, so the brain reads what the pilot was shown, and for which priority. */
+export function examplesTranscript(examples: Pick<QuestionExample, "title" | "fact" | "priority">[]): string {
+  return examples.length ? ` (Examples shown: ${examples.map((e) => `${e.title} — ${e.fact}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}.)` : "";
 }

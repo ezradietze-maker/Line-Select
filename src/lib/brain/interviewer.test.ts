@@ -114,11 +114,46 @@ describe("rankingHasSettled", () => {
   });
 });
 
+describe("pilot words", () => {
+  beforeEach(() => {
+    proposals.length = 0;
+  });
+
+  it("sends back a question in made-up words, and takes it said the way a pilot says it", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "Say a trip joins from LAX and the layovers are ordinary — how much of your layover value would you give up?" }),
+      step({ threadId: "china", prompt: "How much do the trips that start with a deadhead to LAX count for you?" })
+    );
+    const r = await nextInterviewStep(input());
+    expect(r).toMatchObject({ done: false, prompt: "How much do the trips that start with a deadhead to LAX count for you?" });
+  });
+
+  it("checks the reply and the options too", async () => {
+    proposals.push(
+      step({ threadId: "china", ack: "Layover value matters — got it.", prompt: "Which matters more?", kind: "choice", options: ["Trips you can join from SAN", "Layovers"] }),
+      step({ threadId: "china", ack: "Layovers matter — got it.", prompt: "Which matters more?", kind: "choice", options: ["Front-end deadheads from SAN", "Layovers"] })
+    );
+    const r = await nextInterviewStep(input());
+    expect(r).toMatchObject({ done: false, ack: "Layovers matter — got it.", options: ["Front-end deadheads from SAN", "Layovers"] });
+  });
+
+  it("lets the pilot's own words through", async () => {
+    const own = input({ exchanges: [{ turn: 0, question: "Walk us through how you bid.", answer: "I like trips I can join from San Diego." }] });
+    proposals.push(step({ threadId: "china", prompt: "You like trips you can join from San Diego — how many a month?" }));
+    expect(await nextInterviewStep(own)).toMatchObject({ done: false, prompt: "You like trips you can join from San Diego — how many a month?" });
+  });
+
+  it("never lets a wording slip end the interview", async () => {
+    proposals.push(...[0, 1, 2].map(() => step({ threadId: "china", prompt: "How much layover value would you give up?" })));
+    expect(await nextInterviewStep(input())).toMatchObject({ done: false, prompt: "How much layover value would you give up?" });
+  });
+});
+
 describe("real examples with every question", () => {
   const examples = [
-    { id: "E1", kind: "line" as const, ref: "1004", title: "Line 1004", fact: "Few departures: 2 departures", summary: "2 trips", rank: 12 },
-    { id: "E2", kind: "line" as const, ref: "1008", title: "Line 1008", fact: "Few departures: 4 departures", summary: "4 trips", rank: 20 },
-    { id: "E3", kind: "trip" as const, ref: "88@1", title: "Trip #88 · Sep 29", fact: "Avoid commutes: 2 commutes on this trip", summary: "MEM → ONT → MEM" },
+    { id: "E1", kind: "line" as const, ref: "1004", title: "Line 1004", fact: "2 departures", priority: "Few departures", criterionId: "deps", summary: "2 trips", rank: 12 },
+    { id: "E2", kind: "line" as const, ref: "1008", title: "Line 1008", fact: "4 departures", priority: "Few departures", criterionId: "deps", summary: "4 trips", rank: 20 },
+    { id: "E3", kind: "trip" as const, ref: "88@1", title: "Trip #88 · Sep 29", fact: "2 commutes on this trip", priority: "Avoid commutes", criterionId: "commutes", summary: "MEM → ONT → MEM" },
   ];
   const packNumbers = { lines: ["1004", "1008", "1011", "1018"], trips: ["88", "93"] };
   beforeEach(() => {
@@ -130,7 +165,7 @@ describe("real examples with every question", () => {
     const r = await nextInterviewStep(input({ examples, packNumbers }));
     expect(r).toMatchObject({ done: false, examples: [examples[0], examples[1]] });
     if (r.done) throw new Error("expected a question");
-    expect(r.transcript).toBe("1004 gets you two departures; 1008 takes four. Where does it start to cost you? (Examples shown: Line 1004 — Few departures: 2 departures; Line 1008 — Few departures: 4 departures.)");
+    expect(r.transcript).toBe("1004 gets you two departures; 1008 takes four. Where does it start to cost you? (Examples shown: Line 1004 — 2 departures (Few departures); Line 1008 — 4 departures (Few departures).)");
   });
 
   it("asks once for examples when a question comes without them, then lets a question no example fits go as it is", async () => {

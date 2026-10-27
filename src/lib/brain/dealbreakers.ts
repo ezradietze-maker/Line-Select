@@ -1,4 +1,4 @@
-import { formatValue } from "@/lib/brain/describe";
+import { formatRange } from "@/lib/brain/describe";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
@@ -29,8 +29,8 @@ export interface DealbreakerQuestion {
   transcript: string;
 }
 
-/** The pack's range on each of the pilot's top priorities that can have a limit — "Commutes to base: 1–8 here". */
-function rangesFor(bidPack: BidPack, model: PilotModel, pack: PackMetrics): string[] {
+/** The pack's range on each of the pilot's top priorities that can have a limit — "1 to 8 commutes". */
+function rangesFor(bidPack: BidPack, model: PilotModel, pack: PackMetrics): { label: string; range: string }[] {
   const scored = scorePackV2(bidPack, model, { pack });
   if (!scored.length) return [];
   return [...model.criteria]
@@ -43,7 +43,7 @@ function rangesFor(bidPack: BidPack, model: PilotModel, pack: PackMetrics): stri
       const lo = Math.min(...values);
       const hi = Math.max(...values);
       if (lo === hi) return [];
-      return [`${c.label}: ${formatValue(lo, def)} to ${formatValue(hi, def)}`];
+      return [{ label: c.label, range: formatRange(lo, hi, def) }];
     })
     .slice(0, SHOWN);
 }
@@ -51,10 +51,17 @@ function rangesFor(bidPack: BidPack, model: PilotModel, pack: PackMetrics): stri
 export function dealbreakerQuestion(bidPack: BidPack, model: PilotModel | null, pack: PackMetrics): DealbreakerQuestion {
   const ranges = model ? rangesFor(bidPack, model, pack) : [];
   const prompt = "Is there anything that rules a line out for you, no matter how good the rest of it is?";
+  // Each range says what it counts ("1 to 8 commutes"), so the pilot reads them as a sentence; the brain gets which
+  // priority each belongs to.
   const helpText = ranges.length
-    ? `Give the number if there is one. In this pack — ${ranges.join(" · ")}. "Nothing's an absolute" is a fine answer too.`
-    : `Give the number if there is one — more than a few commutes, a trip over so many days, a report before a certain hour. "Nothing's an absolute" is a fine answer too.`;
-  return { prompt, helpText, transcript: `${DEALBREAKER_LEAD} ${prompt}${ranges.length ? ` (This pack: ${ranges.join("; ")}.)` : ""}` };
+    ? `Give the number if there is one. This pack's lines run ${listed(ranges.map((r) => r.range))}. "Nothing's an absolute" is a fine answer too.`
+    : `Give the number if there is one — more than a few commutes, a trip over so many days, a show time before a certain hour. "Nothing's an absolute" is a fine answer too.`;
+  return { prompt, helpText, transcript: `${DEALBREAKER_LEAD} ${prompt}${ranges.length ? ` (This pack: ${ranges.map((r) => `${r.label}: ${r.range}`).join("; ")}.)` : ""}` };
+}
+
+/** "a, b and c". */
+function listed(xs: string[]): string {
+  return xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 }
 
 /** Whether the interview has already asked it. */

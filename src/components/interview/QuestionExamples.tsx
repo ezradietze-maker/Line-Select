@@ -6,14 +6,15 @@ import type { QuestionExample } from "@/lib/brain/question-examples";
 import { tripKey } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
 
-/** "Few departures: 2 departures" → the priority, and the figure that goes with it. */
-function splitFact(fact: string): { what: string; figure: string } {
-  const i = fact.indexOf(": ");
-  return i < 0 ? { what: "", figure: fact } : { what: fact.slice(0, i), figure: fact.slice(i + 2) };
+/** The priority and the figure that goes with it ("Few departures", "2 departures"); an older example has both in its fact. */
+function splitFact(example: QuestionExample): { what: string; figure: string } {
+  if (example.priority !== undefined) return { what: example.priority, figure: example.fact };
+  const i = example.fact.indexOf(": ");
+  return i < 0 ? { what: "", figure: example.fact } : { what: example.fact.slice(0, i), figure: example.fact.slice(i + 2) };
 }
 
 function ExampleCard({ example, bidPack }: { example: QuestionExample; bidPack: BidPack }) {
-  const { what, figure } = splitFact(example.fact);
+  const { what, figure } = splitFact(example);
   const line = example.kind === "line" ? bidPack.lines.find((l) => l.lineNumber === example.ref) : undefined;
   const trip = example.kind === "trip" ? bidPack.lines.flatMap((l) => l.trips).find((t) => tripKey(t) === example.ref) : undefined;
   if (!line && !trip) return null;
@@ -21,10 +22,9 @@ function ExampleCard({ example, bidPack }: { example: QuestionExample; bidPack: 
     <section className="min-w-0 rounded-xl border border-border bg-surface p-3.5" aria-label={example.title}>
       {example.rank ? <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">#{example.rank} on your list</p> : null}
       <p className="font-display text-lg font-semibold text-ink">{example.title}</p>
-      <p className="mt-0.5 text-sm leading-snug">
-        {what ? <span className="text-ink-muted">{what}: </span> : null}
-        <span className="font-semibold text-accent">{figure}</span>
-      </p>
+      {/* The figure says what it counts ("4 long duty days"); the priority it's shown for sits above it. */}
+      {what ? <p className="mt-0.5 text-xs leading-snug text-ink-muted">{what}</p> : null}
+      <p className="text-sm font-semibold leading-snug text-accent">{figure}</p>
       {line ? (
         <>
           <p className="mt-1 font-mono text-xs text-ink-muted">

@@ -136,7 +136,7 @@ describe("trip scores", () => {
     const midweek = score(m, MIDWEEK);
     expect(midweek.score).toBeGreaterThan(weekend.score);
     expect(tripValueText(weekend.results[0])).toBe("works 2 weekend days");
-    expect(tripValueText(midweek.results[0])).toBe("no weekend days");
+    expect(tripValueText(midweek.results[0])).toBe("no weekend days worked");
   });
 
   it("holds a trip that works a date they must have off to their dealbreaker", () => {

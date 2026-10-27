@@ -4,6 +4,7 @@ import { TIER_WEIGHT, type Criterion, type CriterionShape, type CriterionTier, t
 import { structuredCall, type BrainUsage, type Effort } from "./llm";
 import { modelToDepartures, modelToHomePay, modelToHubTurns } from "./model-upgrade";
 import { applyPilotFacts, readPilotFacts, type PilotFacts } from "./pilot-facts";
+import { pilotWordsForPrompt } from "./pilot-words";
 
 /**
  * The pilot brain's core step: read everything a pilot has said — the
@@ -19,7 +20,7 @@ import { applyPilotFacts, readPilotFacts, type PilotFacts } from "./pilot-facts"
  */
 
 /** Bumped whenever the prompt or schema changes, so cached evaluations of an older brain aren't mistaken for this one. */
-export const BRAIN_PROMPT_VERSION = 21;
+export const BRAIN_PROMPT_VERSION = 22;
 
 export interface InterviewExchange {
   /** 0 = the opening story. */
@@ -106,7 +107,11 @@ Keep ids stable: if the previous model has a criterion for the same thing, reuse
 
 FLEET NOTES, when given, are anonymous patterns from other pilots in the same group. Use them only to choose threads worth asking about and to calibrate an ambiguous reading (if pilots like this often said the brain over-weighted something, be careful not to). Never add a criterion this pilot didn't express, and never let the notes outweigh their own words.
 
-The pilot reads labels, the synopsis and thread topics. Write them TO the pilot, in second person and plain words ("You'd rather sit hotel standby than fly multi-leg duties", "Pay per day away from home"), never "he/she/they" or "the pilot". Use their own words for things where you can, and pilot terms otherwise; never invented jargon. Thread topics are questions you would ask them directly.`;
+The pilot reads labels, the synopsis and thread topics. Write them TO the pilot, in second person and plain words ("You'd rather sit hotel standby than fly multi-leg duties", "Pay per day away from home"), never "he/she/they" or "the pilot". Use their own words for things where you can, and pilot terms otherwise; never invented jargon. Thread topics are questions you would ask them directly.
+
+PILOT TERMS — only for how you word labels, the synopsis and thread topics, never for which measure a priority binds to (the measure rules above decide that). For whatever they didn't name in their own words:
+${pilotWordsForPrompt()}
+A label names the one thing they want, the way they'd say it: "Front-end deadheads from San Diego", "Few departures", "Time in cities you love" — short, about the thing itself, never a made-up phrase.`;
 
 /** Every metric is non-negative, so -1 marks "not given" — the API limits how many nullable fields a schema can have. */
 const num = { type: "number", description: "-1 when not given" };

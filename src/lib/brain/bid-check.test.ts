@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bidCheckChoice, bidCheckQuestion, checkedLines } from "@/lib/brain/bid-check";
+import { bidCheckChoice, bidCheckQuestion, checkedLines, checkedWeakSpots } from "@/lib/brain/bid-check";
 import { askedDealbreakers, dealbreakerQuestion } from "@/lib/brain/dealbreakers";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import type { BidPack, Line } from "@/types/bidpack";
@@ -29,7 +29,9 @@ describe("bid check", () => {
     const alt = pack.lines.find((l) => l.lineNumber === q.alt)!;
     expect(alt.totalLandings).toBeLessThan(15);
     expect(q.rank).toBeLessThanOrEqual(3);
-    expect(q.prompt).toContain("“Fewer landings”");
+    expect(q.prompt).toContain("But it also has 27 landings.");
+    expect(q.transcript).toContain("[weak spot: “Fewer landings”]");
+    expect(checkedWeakSpots([{ question: q.transcript }])).toEqual(["Fewer landings"]);
     expect(q.prompt).toContain("27 landings");
     expect(q.options).toHaveLength(4);
   });
@@ -61,8 +63,8 @@ describe("bid check", () => {
 describe("dealbreaker question", () => {
   it("shows the pack's range on the pilot's top priorities", () => {
     const q = dealbreakerQuestion(pack, model, prepareMetrics(pack));
-    expect(q.helpText).toContain("Credit: 60 hours to 98 hours");
-    expect(q.helpText).toContain("Fewer landings: 8 landings to 35 landings");
+    expect(q.helpText).toContain("This pack's lines run 60 to 98 credit hours and 8 to 35 landings.");
+    expect(q.transcript).toContain("Credit: 60 to 98 credit hours; Fewer landings: 8 to 35 landings");
     expect(askedDealbreakers([{ question: q.transcript }])).toBe(true);
     expect(askedDealbreakers([{ question: q.prompt }])).toBe(false);
   });

@@ -1,6 +1,7 @@
 import type { PilotModel } from "@/types/pilot-model";
 import type { InterviewExchange } from "./build-model";
 import { structuredCall, type BrainUsage } from "./llm";
+import { avoidedPhrases, insteadOf, pilotWordsForPrompt } from "./pilot-words";
 import { examplesTranscript, type QuestionExample } from "./question-examples";
 
 /**
@@ -111,11 +112,16 @@ WHAT MAKES A GOOD QUESTION
 - Never invent a line or trip, and never describe a made-up one ("a line with a Honolulu trip and a week of hub turns"). Name only lines and trips from the examples, the line pairs, or what they've already been shown. If no real line shows a trade, don't ask it.
 - It moves the ranking: ask about trade-offs, thresholds and how much something matters relative to their other priorities — not trivia, not things a bid pack can't show, not things they already answered.
 - Prefer open questions that let them tell you what they want, in their own words — including things the brain hasn't modelled yet. Most of the interview should be these.
-- It is short (one or two sentences), plain, and in pilot terms (deadhead, layover, duty period, report, block, credit, TAFB, secondary line, jumpseat). Match their tone.
+- It is short (one or two sentences), plain, and in pilot terms (PILOT WORDS below). Match their tone.
 - Never re-ask a settled thread or a question already asked in any wording. If an answer was vague, at most one follow-up on that thread, then move on.
 - Never follow a line choice with a made-up version of the same trade ("if a line had more weekends but a 4-day trip…") — their real choice already answered it.
 - Numbers: when a priority's number is still fuzzy AND pinning it would change their ranking ("not too much credit", "a real block of days off"), one question asking for the number is worth it — in their terms ("How many days in a row before it feels like a real block?"). For something they want less of, ask for both ends in that one question: where it starts to cost them, and where a line becomes one they'd hardly bid ("How many commutes before it starts to bother you — and how many before you'd hardly bid the line?"). One number alone gets read as both. Once they've given the numbers, don't ask about them again. Don't ask where a line becomes one they wouldn't bid at all ("too low to bid it") — the Dealbreakers question covers what's absolute, and asking again turns a preference into a rule.
 - Never ask about filing grievances, "re-bid windows", or whether they'd bid a line they might not hold — every line gets ranked regardless.
+
+PILOT WORDS
+Say things the way a pilot says them. Their own words come first — if they call it a sign-in, say sign-in. Otherwise:
+${pilotWordsForPrompt()}
+Write as you'd say it out loud: whole, plain sentences, never a label and a number glued together. An example's figure already says what it counts ("1 commute", "4 long duty days", "40% of the flying in daytime") — fold it into the sentence ("1008 takes one commute; 1032 takes five"), never "Fewer commutes: 1 commute". The same for the names of their priorities: they're written as wishes ("Avoid duty days over 12 hours"), so talk about the thing itself ("long duty days"), not the wish. A trip that saves the commute, the way a pilot puts it: "a trip that starts with a deadhead to LAX or somewhere in the Pacific, so you can skip Memphis and shorten it".
 
 QUESTION KINDS
 - free-text: the default. Open questions that let them explain.
@@ -215,13 +221,16 @@ export function unprobedCriteria(input: Pick<InterviewStepInput, "exchanges" | "
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
 
+/** Which priority an example shows — its id, or for an older client the name its fact opens with ("Few departures: 2 departures"). */
+const priorityOf = (e: Pick<QuestionExample, "criterionId" | "priority" | "fact">) => e.criterionId ?? e.priority ?? e.fact.split(": ")[0];
+
 /** The offered examples, grouped under the priority each shows: "Few departures:\n  E4: Line 1004 (#12 on their list) — 2 departures · …". */
 function renderExamples(examples: QuestionExample[]): string {
   if (!examples.length) return "(none this turn)";
   const groups = new Map<string, QuestionExample[]>();
-  for (const e of examples) groups.set(e.fact.split(": ")[0], [...(groups.get(e.fact.split(": ")[0]) ?? []), e]);
-  return [...groups]
-    .map(([what, es]) => `${what}:\n${es.map((e) => `  ${e.id}: ${e.title}${e.rank ? ` (#${e.rank} on their list)` : ""} — ${e.fact.slice(what.length + 2)} · ${e.summary}`).join("\n")}`)
+  for (const e of examples) groups.set(priorityOf(e), [...(groups.get(priorityOf(e)) ?? []), e]);
+  return [...groups.values()]
+    .map((es) => `${es[0].priority ?? "Priority"}:\n${es.map((e) => `  ${e.id}: ${e.title}${e.rank ? ` (#${e.rank} on their list)` : ""} — ${e.fact} · ${e.summary}`).join("\n")}`)
     .join("\n");
 }
 
@@ -257,8 +266,14 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   const unknown = (step.examples ?? []).find((id) => !offered.has(id));
   if (unknown) return `There's no example ${unknown} — use the ids in EXAMPLES YOU MAY SHOW.`;
   // The examples show the one priority the question is about, at its two ends — never a line picked for another reason.
-  const priorities = new Set((step.examples ?? []).map((id) => (input.examples ?? []).find((e) => e.id === id)?.fact.split(": ")[0]));
+  const priorities = new Set((step.examples ?? []).map((id) => { const e = (input.examples ?? []).find((x) => x.id === id); return e ? priorityOf(e) : id; }));
   if (priorities.size > 1) return "Both examples have to show the same priority — the one your question is about — at its two ends. Pick them from one group.";
+  // Pilot words only — a phrase the app made up ("joins from LAX", "layover value") goes back to be said properly,
+  // unless the pilot used it themselves.
+  const theirs = input.exchanges.map((e) => e.answer).join(" ");
+  const madeUp = avoidedPhrases([step.ack, step.prompt, step.helpText, ...(step.options ?? [])].join(" "), theirs)[0];
+  // Never on the last try: a wording slip mustn't end the interview.
+  if (madeUp && attempt < 2) return `“${madeUp}” isn't how a pilot says it — say ${insteadOf(madeUp)}, in a plain sentence.`;
   if (step.kind !== "line-pair" && HYPOTHETICAL.test(`${step.prompt} ${step.helpText}`))
     return "That describes a made-up line or trip. Ask about the real lines or trips in the examples, or offer a line pair.";
   // Show, don't ask in the abstract — once: a question no example fits may still go without one.

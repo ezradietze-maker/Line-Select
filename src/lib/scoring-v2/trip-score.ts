@@ -445,16 +445,14 @@ export function tripValueText(r: TripCriterionResult): string | null {
   if (!def || r.raw === null) return null;
   if (r.reading === "dates") {
     const n = Math.round(r.raw);
-    if (r.metric === "weekendDaysOff") return n === 0 ? "no weekend days" : `works ${n} weekend ${n === 1 ? "day" : "days"}`;
+    if (r.metric === "weekendDaysOff") return n === 0 ? "no weekend days worked" : `works ${n} weekend ${n === 1 ? "day" : "days"}`;
     if (r.metric === "weekdaysOff") return n === 0 ? "keeps your days free" : `works ${n} of your days`;
     return n === 0 ? "keeps your dates free" : `works ${n} of your dates`;
   }
-  if (r.metric === "earliestBaseReport") return `reports at base ${formatValue(r.raw, def)}`;
-  if (r.metric === "latestBaseRelease") return `back at base ${formatValue(r.raw, def)}`;
   // Something a trip either is or isn't (ends on a red-eye, can be shortened by a day): yes or no.
   if (r.reading === "count" && def.unit === "trips") return r.raw >= 1 ? "yes" : "no";
   // A count sits next to a label that may carry a monthly number ("credit 76 or more"): say whose number this is.
-  return r.reading === "count" && def.unit !== "weighted hours" ? `${formatValue(r.raw, def)} on this trip` : formatValue(r.raw, def);
+  return r.reading === "count" && def.unit !== "weighted hours" ? `${formatValue(r.raw, def, true)} on this trip` : formatValue(r.raw, def, true);
 }
 
 /**

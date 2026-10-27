@@ -284,7 +284,7 @@ function TripInsights({ trip, bidPeriodStart, base }: { trip: Trip; bidPeriodSta
     chips.push({
       label: "Hub turns",
       value: `×${hubs.all} · ${hubs.hubs.join(", ")}${hubs.night === hubs.all ? ", nights" : hubs.night ? `, ${hubs.night} at night` : ", by day"}${hubs.withRestHotel ? " · crew-rest hotel" : ""}`,
-      title: "Flying into a sort hub, sitting while the packages are sorted, then flying back out. A night hub turn sits through the small hours; on long sits the crew gets a short airport hotel for a nap.",
+      title: "Flying into a sort hub, sitting while the packages are sorted, then flying back out. A night hub turn sits through the small hours; on long sits the crew gets a crew-rest hotel, a short airport stay for a nap.",
     });
   }
 

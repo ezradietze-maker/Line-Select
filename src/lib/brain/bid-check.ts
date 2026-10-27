@@ -65,6 +65,9 @@ export interface BidCheckQuestion {
   transcript: string;
 }
 
+/** "a and b". */
+const listed = (xs: string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
 const v = (r: CriterionResult) => {
   const def = METRICS_BY_ID.get(r.metric);
   return r.value === null || !def ? "—" : formatValue(r.value, def);
@@ -140,12 +143,13 @@ export function bidCheckQuestion(
     .filter((r) => r.criterionId !== pick.weak.criterionId && r.value !== null && r.utility >= 0.7 && important.has(r.criterionId))
     .sort((a, b) => b.weight * b.utility - a.weight * a.utility)
     .slice(0, 2);
-  const good = strengths.length ? `it does well on ${strengths.map((r) => `“${r.label}” (${v(r)})`).join(" and ")}` : "most of it fits what you've told us";
+  // Each value says what it counts ("2 departures", "4 long duty days"), so the line is described the way a pilot would.
+  const good = strengths.length ? `${listed(strengths.map(v))}, which fits what you've told us` : "most of it fits what you've told us";
   const options = pick.kind === "top" ? [...BID_CHECK_OPTIONS] : [...MIDDLE_CHECK_OPTIONS];
   const prompt =
     pick.kind === "top"
-      ? `Line ${line.lineNumber} is #${pick.i + 1} on your list right now — ${good}. But on “${pick.weak.label}” it has ${v(pick.weak)}. Would you actually bid it that high?`
-      : `Line ${line.lineNumber} is #${pick.i + 1} of ${ranked.length} on your list right now — ${good}. But on “${pick.weak.label}” it has ${v(pick.weak)}, among the worst in this pack. Is #${pick.i + 1} about right for it?`;
+      ? `Line ${line.lineNumber} is #${pick.i + 1} on your list right now — ${good}. But it also has ${v(pick.weak)}. Would you actually bid it that high?`
+      : `Line ${line.lineNumber} is #${pick.i + 1} of ${ranked.length} on your list right now — ${good}. But it also has ${v(pick.weak)}, among the worst in this pack. Is #${pick.i + 1} about right for it?`;
   return {
     kind: pick.kind,
     line: line.lineNumber,
@@ -154,7 +158,8 @@ export function bidCheckQuestion(
     prompt,
     helpText: "Tell us if that's the reason — or something else about it is.",
     options,
-    transcript: `${BID_CHECK_LEAD} ${prompt} (options: ${options.join(" / ")})`,
+    // The priority it asks about, by name, for the brain and for `checkedWeakSpots` — the question itself says only the value.
+    transcript: `${BID_CHECK_LEAD} ${prompt} [weak spot: “${pick.weak.label}”] (options: ${options.join(" / ")})`,
   };
 }
 
@@ -181,7 +186,8 @@ export function checkedKinds(exchanges: { question: string }[]): BidCheckKind[] 
 
 /** The weak spots the interview has already asked about, by label. */
 export function checkedWeakSpots(exchanges: { question: string }[]): string[] {
-  return exchanges.flatMap((e) => (e.question.startsWith(BID_CHECK_LEAD) ? [e.question.match(/But on “([^”]+)”/)?.[1] ?? ""] : [])).filter(Boolean);
+  // "[weak spot: “…”]"; interviews saved before Oct 2026 named it in the question ("But on “…” it has").
+  return exchanges.flatMap((e) => (e.question.startsWith(BID_CHECK_LEAD) ? [(e.question.match(/\[weak spot: “([^”]+)”\]/) ?? e.question.match(/But on “([^”]+)”/))?.[1] ?? ""] : [])).filter(Boolean);
 }
 
 /** Lines the interview has already asked about. */

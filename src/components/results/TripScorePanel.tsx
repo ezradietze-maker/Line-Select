@@ -8,9 +8,10 @@ import { tripValueText, type TripCriterionResult, type TripScore } from "@/lib/s
 /** Pulls smaller than this (score points) aren't worth naming in the one-line summary. */
 const NOTABLE = 0.5;
 
+/** What the trip has on a priority, said so it reads on its own ("2 commutes on this trip"); the priority's name where it's a yes or no. */
 const named = (r: TripCriterionResult) => {
   const v = tripValueText(r);
-  return v ? `${r.label} (${v})` : r.label;
+  return v && v !== "yes" && v !== "no" ? v : r.label;
 };
 
 function summary(s: TripScore): string {
@@ -18,8 +19,8 @@ function summary(s: TripScore): string {
   const ups = s.results.filter((r) => r.contribution >= NOTABLE).sort((a, b) => b.contribution - a.contribution).slice(0, 2);
   const down = s.results.filter((r) => r.contribution <= -NOTABLE).sort((a, b) => a.contribution - b.contribution)[0];
   const parts: string[] = [];
-  if (ups.length) parts.push(`Strong for you on ${ups.map(named).join(" and ")}.`);
-  if (down) parts.push(`Weaker on ${named(down)}.`);
+  if (ups.length) parts.push(`Strong for you: ${ups.map(named).join(" and ")}.`);
+  if (down) parts.push(`Weaker: ${named(down)}.`);
   return parts.join(" ") || "About average for you on everything you care about.";
 }
 

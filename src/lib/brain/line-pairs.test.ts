@@ -14,8 +14,8 @@ describe("picking line pairs to put to the pilot", () => {
   it("pairs close lines that win on different priorities, never one that simply dominates", () => {
     const pairs = pickLinePairs(pack, model, prepareMetrics(pack), new Set());
     expect(pairs.map((p) => [p.a, p.b].sort().join("-"))).toEqual(["1-2"]);
-    expect(pairs[0].tension).toContain("is better on Days off (18 days vs 14 days)");
-    expect(pairs[0].tension).toContain("is better on Credit (85 hours vs 70 hours)");
+    expect(pairs[0].tension).toContain("is better on Days off (18 days off vs 14 days off)");
+    expect(pairs[0].tension).toContain("is better on Credit (85 credit hours vs 70 credit hours)");
   });
 
   it("with more priorities, picks pairs that differ on several at once, each line winning some", () => {

@@ -13,7 +13,8 @@ describe("examples for the interview's questions", () => {
   it("offers real lines at both ends of each priority, with the pilot's own figure", () => {
     const ex = pickQuestionExamples(SAMPLE_BID_PACK, model([crit("Days off", "daysOff"), crit("Credit", "creditHours", { weight: 0.5 })]), pm);
     const lines = new Set(SAMPLE_BID_PACK.lines.map((l) => l.lineNumber));
-    const daysOff = ex.filter((e) => e.fact.startsWith("Days off:"));
+    const daysOff = ex.filter((e) => e.priority === "Days off");
+    expect(daysOff.every((e) => /^\d+ days off$/.test(e.fact))).toBe(true);
     expect(daysOff).toHaveLength(2);
     expect(daysOff.every((e) => e.kind === "line" && lines.has(e.ref) && e.title === `Line ${e.ref}`)).toBe(true);
     const days = daysOff.map((e) => SAMPLE_BID_PACK.lines.find((l) => l.lineNumber === e.ref)!.daysOff);
@@ -29,7 +30,7 @@ describe("examples for the interview's questions", () => {
 
   it("offers nothing without priorities, and says what was shown in the transcript", () => {
     expect(pickQuestionExamples(SAMPLE_BID_PACK, model([]), pm)).toEqual([]);
-    expect(examplesTranscript([{ title: "Line 1004", fact: "Departures: 2" }])).toBe(" (Examples shown: Line 1004 — Departures: 2.)");
+    expect(examplesTranscript([{ title: "Line 1004", fact: "2 departures", priority: "Few departures" }])).toBe(" (Examples shown: Line 1004 — 2 departures (Few departures).)");
     expect(examplesTranscript([])).toBe("");
   });
 });
