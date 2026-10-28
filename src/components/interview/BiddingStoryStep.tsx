@@ -45,9 +45,9 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
   const depth = storyDepth(value);
   const area = useRef<HTMLTextAreaElement>(null);
 
-  // Grows with the story, so a long answer reads as a page rather than a scroll box — up to most of the screen, past
-  // which it scrolls inside so Continue stays in reach; follows the words while dictating.
-  useGrowingTextarea(area, value, { minPx: 224, following: dictation.listening });
+  // Grows with the story, however long, so it reads as a page: the page is the one scroll — a scroll box inside it
+  // caught the wheel and the finger, and kept Continue out of reach. Follows the words while dictating.
+  useGrowingTextarea(area, value, { minPx: 224, following: dictation.listening, maxShare: null });
 
   return (
     <div>
