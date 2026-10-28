@@ -127,6 +127,11 @@ export function useAppState(): AppStateValue {
   return ctx;
 }
 
+/** The loaded bid pack, for a widget that works with or without one and may sit outside the app (a test page). */
+export function useBidPackIfAny(): BidPack | null {
+  return useContext(AppStateContext)?.bidPack ?? null;
+}
+
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [state, setState] = useState<DataState>({

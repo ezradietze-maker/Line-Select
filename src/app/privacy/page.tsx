@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "October 12, 2026";
+const LAST_UPDATED = "October 28, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -93,7 +93,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="4. Hotel ratings and commute flights use third-party data providers">
+        <Section title="4. Hotel ratings, commute flights and dictation use third-party providers">
           <p>
             To show you ratings, amenities, and reviews for the actual hotel your bid pack assigns
             to a layover, we send that hotel&rsquo;s name and the relevant airport/city code to
@@ -110,6 +110,18 @@ export default function PrivacyPage() {
             server for up to six days and shared across pilots; your windows, airports and the bid
             pack&rsquo;s flights are used for that lookup and not stored. The answers are kept on
             your device for a few days.
+          </p>
+          <p className="mt-2">
+            If you tap the microphone to dictate an answer, the sound from your microphone is sent
+            straight from your browser to AssemblyAI, a speech-to-text provider, which sends the words
+            back as you speak. Along with it goes a list of words to listen for: pilot terms and the
+            airports, base and aircraft in your bid pack &mdash; nothing about you. The sound never
+            passes through our server and we don&rsquo;t record or store it; the only thing kept is the
+            text that lands in your answer, like anything you type. AssemblyAI handles the audio under
+            its own terms and data-retention policy. The microphone only listens while it&rsquo;s on,
+            switches itself off after a quiet spell, and you can always type instead. If AssemblyAI
+            can&rsquo;t be reached, your browser&rsquo;s own speech recognition is used, which may send
+            the audio to your browser&rsquo;s maker (Apple or Google) under their terms.
           </p>
         </Section>
 
