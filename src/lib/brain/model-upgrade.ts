@@ -74,3 +74,23 @@ export function modelToHubTurns(model: PilotModel | null | undefined): PilotMode
   if (!model || !model.criteria.some(aboutHubTurns) || model.criteria.some((c) => c.metric === "nightHubTurnRuns")) return model;
   return { ...model, criteria: model.criteria.map((c) => (aboutHubTurns(c) ? { ...c, metric: "nightHubTurnRuns", shape: { kind: "less", fineAt: 0 } } : c)) };
 }
+
+/** "Trips you can join from home": an earlier brain's made-up phrase (see `AVOIDED` in pilot-words.ts). Pilots catch a deadhead. */
+const JOIN_FROM = /\b(you can|you could|that you can|to) (actually |easily )?join (straight |right )?from\b/gi;
+
+/**
+ * The words an earlier brain wrote into a saved model — its summary and its priorities' names — in a pilot's terms
+ * ("deadheads you can catch from home", not "join from home"). The ex-pilot pointed out the made-up phrase (Oct 2026);
+ * the brain no longer writes it, but models saved before then still showed it. The pilot's own quoted words are left as
+ * they said them.
+ */
+export function modelInPilotWords(model: PilotModel): PilotModel;
+export function modelInPilotWords(model: PilotModel | null | undefined): PilotModel | null | undefined;
+export function modelInPilotWords(model: PilotModel | null | undefined): PilotModel | null | undefined {
+  if (!model) return model;
+  const fix = (s: string) => s.replace(JOIN_FROM, (_, lead: string, adv: string | undefined, how: string | undefined) => `${lead} ${adv ?? ""}catch ${how ?? ""}from`);
+  const synopsis = model.synopsis ? fix(model.synopsis) : model.synopsis;
+  const changed = synopsis !== model.synopsis || model.criteria.some((c) => fix(c.label) !== c.label);
+  if (!changed) return model;
+  return { ...model, synopsis, criteria: model.criteria.map((c) => ({ ...c, label: fix(c.label) })) };
+}

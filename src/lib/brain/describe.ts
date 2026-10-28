@@ -133,7 +133,7 @@ function numberOf(value: number, def: Pick<MetricDef, "unit">): string {
 function readsOf(def: ValueDef, oneTrip = false): [string, string, string?] {
   const own = def.id ? ((oneTrip ? ONE_TRIP_READS[def.id] : undefined) ?? READS[def.id]) : undefined;
   if (own) return typeof own === "string" ? [own, own] : own;
-  if (def.unit === "hours/day") return ["{n} credit hrs/day", "{n} credit hrs/day"];
+  if (def.unit === "hours/day") return ["{n} credit hours a day", "{n} credit hours a day"];
   if (def.unit === "minute of day" || def.unit === "share" || def.unit.startsWith("stars")) return ["{n}", "{n}"];
   return [`{n} ${SINGULAR[def.unit] ?? def.unit}`, `{n} ${def.unit}`];
 }
@@ -157,7 +157,7 @@ function withArticle(text: string): string {
   return text.replace(/\ba (?=(?:8|11|18)(?:[^\d.]|$)|8\d)/g, "an ");
 }
 
-/** A spread of values, said once: "0 to 3 extra legs", "2★ to 4.3★ on the body clock", "4.9 to 9.5 credit hrs/day". */
+/** A spread of values, said once: "0 to 3 extra legs", "2★ to 4.3★ on the body clock", "4.9 to 9.5 credit hours a day". */
 export function formatRange(lo: number, hi: number, def: ValueDef): string {
   if (lo === hi || def.unit === "weighted hours") return lo === hi ? formatValue(lo, def) : `${formatValue(lo, def)} to ${formatValue(hi, def)}`;
   const spread = `${numberOf(lo, def)} to ${numberOf(hi, def)}`;
@@ -167,7 +167,7 @@ export function formatRange(lo: number, hi: number, def: ValueDef): string {
 /** A bare amount in the measure's unit, for a tolerance or a step: "2 days", "1.5 hours". */
 function amountOf(value: number, def: Pick<MetricDef, "unit">): string {
   if (def.unit === "share" || def.unit === "minute of day" || def.unit.startsWith("stars") || def.unit === "weighted hours") return numberOf(value, def);
-  if (def.unit === "hours/day") return `${round(value)} credit hrs/day`;
+  if (def.unit === "hours/day") return `${round(value)} credit hours a day`;
   return `${round(value)} ${value === 1 ? (SINGULAR[def.unit] ?? def.unit) : def.unit}`;
 }
 
@@ -186,7 +186,8 @@ function describeParams(p: MetricParams | undefined): string {
   if (p.dates?.length) parts.push(p.dates.join(", "));
   if (p.weekdays?.length) parts.push(p.weekdays.map((d) => ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][d - 1]).join(", "));
   if (p.n !== undefined) parts.push(`${p.n}+ legs`);
-  if (p.minHours !== undefined || p.maxHours !== undefined) parts.push(`${p.minHours ?? 0}–${p.maxHours ?? "∞"} h`);
+  if (p.minHours !== undefined || p.maxHours !== undefined)
+    parts.push(p.maxHours === undefined ? `${p.minHours} h or more` : p.minHours === undefined || p.minHours === 0 ? `up to ${p.maxHours} h` : `${p.minHours}–${p.maxHours} h`);
   if (p.frontBufferHours !== undefined) parts.push(`${p.frontBufferHours} h before flying`);
   if (p.backRestHours !== undefined) parts.push(`${p.backRestHours} h rest before heading home`);
   return parts.length ? ` (${parts.join("; ")})` : "";

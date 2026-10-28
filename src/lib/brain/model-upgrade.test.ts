@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelToDepartures, modelToHomePay, withHomeFacts } from "@/lib/brain/model-upgrade";
+import { modelInPilotWords, modelToDepartures, modelToHomePay, withHomeFacts } from "@/lib/brain/model-upgrade";
 import { migrateProfile } from "@/lib/profile-migration";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -81,5 +81,22 @@ describe("migrateProfile", () => {
     expect(loaded.brainInterview?.reviewedModel?.criteria[0].metric).toBe("homeDepartures");
     expect(loaded.pilotModel?.home?.hasCrashPad).toBe(false);
     expect(loaded.brainInterview?.reviewedModel?.home?.minHomeHours).toBe(36);
+  });
+});
+
+describe("modelInPilotWords", () => {
+  it("says a deadhead is caught from home, not joined, in the summary and the priorities' names", () => {
+    const join = crit("dh", "tripsJoinedFromHome", { label: "Trips you can join straight from home (West Coast or Pacific deadheads)", evidence: [{ quote: "trips I can join from home", turn: 1 }] });
+    const m = { ...model(true, [join]), synopsis: "You want West Coast deadheads you can join from home and shorten." };
+    const up = modelInPilotWords(m);
+    expect(up.synopsis).toBe("You want West Coast deadheads you can catch from home and shorten.");
+    expect(up.criteria[0].label).toBe("Trips you can catch straight from home (West Coast or Pacific deadheads)");
+    // Their own words stay theirs.
+    expect(up.criteria[0].evidence[0].quote).toBe("trips I can join from home");
+  });
+
+  it("leaves a model already in pilot words as it is", () => {
+    const m = { ...model(true, [crit("dh", "tripsJoinedFromHome", { label: "Trips that start with a deadhead from home" })]), synopsis: "Few departures." };
+    expect(modelInPilotWords(m)).toBe(m);
   });
 });

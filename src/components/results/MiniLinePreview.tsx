@@ -420,7 +420,7 @@ function SummaryItem({ label, value, tone = "" }: { label: string; value: string
   return (
     <div className="min-w-0">
       <dt className="truncate text-[10px] uppercase tracking-wide text-ink-faint">{label}</dt>
-      <dd className={`truncate font-mono text-xs font-medium ${tone || "text-readout"}`}>{value}</dd>
+      <dd className={`break-words font-mono text-xs font-medium ${tone || "text-readout"}`}>{value}</dd>
     </div>
   );
 }

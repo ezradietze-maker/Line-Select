@@ -27,7 +27,7 @@ describe("saying the model back in plain words", () => {
     expect(formatValue(-10, { id: "layoverValue", unit: "weighted hours" })).toBe("10 hours more in cities you avoid than in ones you like");
     expect(formatRange(0, 4, { id: "allNighterStreak", unit: "duties" })).toBe("0 to 4 all-nighters in a row");
     expect(formatRange(2, 4.3, { id: "avgCircadianStars", unit: "stars (1–5, 5 easiest)" })).toBe("2★ to 4.3★ on the body clock");
-    expect(formatRange(4.9, 9.5, { id: "creditPerDayAway", unit: "hours/day" })).toBe("4.9 to 9.5 credit hrs/day");
+    expect(formatRange(4.9, 9.5, { id: "creditPerDayAway", unit: "hours/day" })).toBe("4.9 to 9.5 credit hours a day");
     expect(formatRange(3, 13, { id: "longestTripDays", unit: "days" })).toBe("longest trips of 3 to 13 days");
     expect(formatValue(1, { id: "avgLayoverNightHours", unit: "hours" })).toBe("1 night hour a layover");
     expect(formatValue(1, { id: "blockHours", unit: "hours" })).toBe("1 block hour");
