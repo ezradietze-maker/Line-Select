@@ -1,8 +1,7 @@
 "use client";
 
 import { QuestionPrompt } from "@/components/interview/QuestionPrompt";
-import { MicButton } from "@/components/ui/MicButton";
-import { useDictation } from "@/lib/use-speech-to-text";
+import { NoteBox } from "@/components/ui/NoteBox";
 import type { PreferenceFact } from "@/types/interview-session";
 
 /**
@@ -37,7 +36,6 @@ export function ReturningPilotCheckStep({
   onLifeEventChange,
 }: ReturningPilotCheckStepProps) {
   const shownLifeEvent = LIFE_EVENT_QUICK_TAGS.includes(lifeEvent) ? "" : lifeEvent;
-  const dictation = useDictation(shownLifeEvent, onLifeEventChange);
   return (
     <div>
       <QuestionPrompt
@@ -118,19 +116,7 @@ export function ReturningPilotCheckStep({
             </button>
           ))}
         </div>
-        <div className="relative mt-3">
-          <textarea
-            value={shownLifeEvent}
-            onChange={(e) => onLifeEventChange(e.target.value)}
-            placeholder="Or describe it in your own words…"
-            rows={2}
-            className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
-          />
-          {dictation.supported && (
-            <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />
-          )}
-        </div>
-        {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
+        <NoteBox value={shownLifeEvent} onChange={onLifeEventChange} placeholder="Or describe it in your own words…" ariaLabel="Describe it in your own words" className="mt-3" />
       </div>
     </div>
   );

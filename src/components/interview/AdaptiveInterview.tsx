@@ -4,7 +4,7 @@ import { useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { MicButton } from "@/components/ui/MicButton";
+import { NoteBox } from "@/components/ui/NoteBox";
 import { NumberTicker } from "@/components/ui/NumberTicker";
 import { StepTransition } from "@/components/ui/StepTransition";
 import { parseSeniorityInput, SeniorityStep } from "@/components/interview/SeniorityStep";
@@ -48,7 +48,6 @@ import { computeBidPackGroundingStats } from "@/lib/interview-grounding";
 import { answerElaboration, describeAnswer, questionTopicLabel } from "@/lib/interview-display";
 import { computeInterviewProgress } from "@/lib/interview-progress";
 import { homeCityReasonFact, mergeStoryAndCityFacts, parseAirportCode, storyCitySentiments } from "@/lib/interview-story";
-import { useDictation } from "@/lib/use-speech-to-text";
 import { getBidPackRanges, rankLayoverCitiesByFrequency } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
 import type {
@@ -192,7 +191,6 @@ function isCitySentimentFact(f: PreferenceFact): boolean {
  */
 function ElaborationToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [expanded, setExpanded] = useState(value.length > 0);
-  const dictation = useDictation(value, onChange);
   if (!expanded) {
     return (
       <button
@@ -204,23 +202,7 @@ function ElaborationToggle({ value, onChange }: { value: string; onChange: (v: s
       </button>
     );
   }
-  return (
-    <div className="mt-4">
-      <div className="relative">
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Optional — anything about this answer worth knowing"
-          rows={2}
-          className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
-        />
-        {dictation.supported && (
-          <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />
-        )}
-      </div>
-      {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
-    </div>
-  );
+  return <NoteBox value={value} onChange={onChange} placeholder="Optional — anything about this answer worth knowing" ariaLabel="Explain your answer" className="mt-4" />;
 }
 
 export function AdaptiveInterview({ bidPack, onComplete, priorProfile, userId = null }: AdaptiveInterviewProps) {

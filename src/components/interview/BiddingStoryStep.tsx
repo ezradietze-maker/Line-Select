@@ -1,12 +1,13 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
 import { MicButton } from "@/components/ui/MicButton";
 import { STORY_TOPICS, storyDepth, storyTopicsMentioned } from "@/lib/interview-display";
 import { useDictation } from "@/lib/use-speech-to-text";
+import { useGrowingTextarea } from "@/lib/use-growing-textarea";
 
 interface BiddingStoryStepProps {
   value: string;
@@ -44,13 +45,9 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
   const depth = storyDepth(value);
   const area = useRef<HTMLTextAreaElement>(null);
 
-  // Grows with the story, so a long answer reads as a page rather than a scroll box.
-  useLayoutEffect(() => {
-    const el = area.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 224), 448)}px`;
-  }, [value]);
+  // Grows with the story, so a long answer reads as a page rather than a scroll box — up to most of the screen, past
+  // which it scrolls inside so Continue stays in reach; follows the words while dictating.
+  useGrowingTextarea(area, value, { minPx: 224, following: dictation.listening });
 
   return (
     <div>

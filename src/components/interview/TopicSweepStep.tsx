@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
-import { MicButton } from "@/components/ui/MicButton";
-import { useDictation } from "@/lib/use-speech-to-text";
+import { NoteBox } from "@/components/ui/NoteBox";
 import type { PilotModel } from "@/types/pilot-model";
 
 /**
@@ -44,7 +43,6 @@ interface TopicSweepStepProps {
 export function TopicSweepStep({ topics, eyebrow, onContinue }: TopicSweepStepProps) {
   const [picked, setPicked] = useState<string[]>([]);
   const [note, setNote] = useState("");
-  const dictation = useDictation(note, setNote);
   const title = "Anything else that matters when you bid?";
   return (
     <div>
@@ -70,17 +68,7 @@ export function TopicSweepStep({ topics, eyebrow, onContinue }: TopicSweepStepPr
             );
           })}
         </div>
-        <div className="relative mt-4">
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={2}
-            placeholder="Anything else — in your own words (optional)"
-            aria-label="Anything else"
-            className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
-          />
-          {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
-        </div>
+        <NoteBox value={note} onChange={setNote} placeholder="Anything else — in your own words (optional)" ariaLabel="Anything else" className="mt-4" />
         <div className="mt-4 flex justify-end">
           <Button type="button" onClick={() => onContinue(picked, note.trim())} className="sm:px-6">
             {picked.length || note.trim() ? "Continue" : "Nothing else — build my priorities"}

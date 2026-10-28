@@ -19,7 +19,7 @@ import { ThinkingPanel, type LastExchange } from "@/components/interview/Thinkin
 import { TopicSweepStep, uncoveredTopics } from "@/components/interview/TopicSweepStep";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { MicButton } from "@/components/ui/MicButton";
+import { NoteBox } from "@/components/ui/NoteBox";
 import { StepTransition } from "@/components/ui/StepTransition";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
@@ -49,7 +49,6 @@ import { postBrainOutcome } from "@/lib/learning/learning-client";
 import { parseAirportCode } from "@/lib/interview-story";
 import { loadStoryDraft, saveStoryDraft } from "@/lib/interview-draft";
 import { prepareMetrics } from "@/lib/metrics/compute";
-import { useDictation } from "@/lib/use-speech-to-text";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
 import { DEFAULT_WEIGHTS, type CityRating, type CityRatingScore, type CitySentiment, type PreferenceProfile } from "@/types/preferences";
@@ -144,23 +143,7 @@ function loadDraftState(userId: string | null, packId: string): DraftState | nul
 
 /** The optional "why" under a multiple-choice answer — typed or dictated, like every other answer in the interview. */
 function ChoiceNote({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const dictation = useDictation(value, onChange);
-  return (
-    <div className="mt-4">
-      <div className="relative">
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={2}
-          placeholder="Want to explain? (optional)"
-          aria-label="Explain your answer"
-          className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
-        />
-        {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
-      </div>
-      {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
-    </div>
-  );
+  return <NoteBox value={value} onChange={onChange} placeholder="Want to explain? (optional)" ariaLabel="Explain your answer" className="mt-4" />;
 }
 
 interface BrainInterviewProps {

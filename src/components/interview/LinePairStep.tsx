@@ -3,11 +3,10 @@
 import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
-import { MicButton } from "@/components/ui/MicButton";
+import { NoteBox } from "@/components/ui/NoteBox";
 import { TripFold } from "@/components/interview/TripGlance";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import type { LinePairCandidate } from "@/lib/brain/interviewer";
-import { useDictation } from "@/lib/use-speech-to-text";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice } from "@/types/pilot-model";
 
@@ -107,7 +106,6 @@ export function LinePairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
   const [why, setWhy] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dictation = useDictation(why, setWhy);
 
   const options: { pick: Pick; label: string }[] = [
     { pick: { side: "a", strength: "strongly" }, label: `${pair.a}, easily` },
@@ -167,18 +165,13 @@ export function LinePairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
           })}
         </div>
 
-        <div className="relative mt-4">
-          <textarea
-            value={why}
-            onChange={(e) => setWhy(e.target.value)}
-            rows={2}
-            placeholder={pair.differences?.length ? "Which difference decided it? (optional)" : "What decided it? (optional)"}
-            aria-label="What decided it"
-            className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
-          />
-          {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
-        </div>
-        {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
+        <NoteBox
+          value={why}
+          onChange={setWhy}
+          placeholder={pair.differences?.length ? "Which difference decided it? (optional)" : "What decided it? (optional)"}
+          ariaLabel="What decided it"
+          className="mt-4"
+        />
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
         <div className="mt-4 flex items-center justify-between gap-3">

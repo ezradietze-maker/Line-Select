@@ -1,9 +1,10 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { MicButton } from "@/components/ui/MicButton";
 import { useDictation } from "@/lib/use-speech-to-text";
+import { useGrowingTextarea } from "@/lib/use-growing-textarea";
 
 interface FreeTextAnswerBoxProps {
   placeholder?: string;
@@ -26,13 +27,8 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
   const dictation = useDictation(text, setText);
   const area = useRef<HTMLTextAreaElement>(null);
 
-  // Grow to fit the answer, up to a sensible height, then scroll.
-  useLayoutEffect(() => {
-    const el = area.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
-  }, [text]);
+  // Grows with the answer up to most of the screen, then scrolls; follows the words while dictating.
+  useGrowingTextarea(area, text, { following: dictation.listening });
 
   async function handleSubmit() {
     const trimmed = text.trim();

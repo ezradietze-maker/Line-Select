@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { NoteBox } from "@/components/ui/NoteBox";
 import { Button } from "@/components/ui/Button";
 import { submitFeedback } from "@/lib/feedback-client";
 import type { FeedbackCategory } from "@/types/feedback";
@@ -82,17 +83,15 @@ export function FeedbackForm({ page, onClose }: FeedbackFormProps) {
         <label htmlFor="feedback-message" className="mb-1.5 block text-sm font-medium text-ink">
           What&rsquo;s on your mind?
         </label>
-        <textarea
+        {/* Grows with the message and takes dictation, like every answer box in the app — what's wrong, in their own words. */}
+        <NoteBox
           id="feedback-message"
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={setMessage}
           rows={5}
           maxLength={4000}
-          placeholder="The more specific, the more useful — what were you doing, what did you expect, what happened instead?"
-          aria-invalid={!!error}
-          className={`w-full resize-none rounded-md border bg-surface px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-brand/40 ${
-            error ? "border-danger" : "border-border-strong"
-          }`}
+          placeholder="The more specific, the more useful — what were you doing, what did you expect, what happened instead? (or tap the mic and say it)"
+          invalid={!!error}
         />
       </div>
 

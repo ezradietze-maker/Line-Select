@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { CityRatingStep } from "@/components/interview/CityRatingStep";
 import { Button } from "@/components/ui/Button";
-import { MicButton } from "@/components/ui/MicButton";
+import { NoteBox } from "@/components/ui/NoteBox";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { requestModelBuild } from "@/lib/brain/client";
 import { pilotContextFor } from "@/lib/brain/context";
@@ -13,7 +13,6 @@ import { baseModelOf, describeChanges, withModel } from "@/lib/brain/profile-mod
 import { packCityFacts, sentimentFromRating } from "@/lib/city-ratings";
 import { commuteGroupOf } from "@/lib/learning/cohort";
 import { prepareMetrics } from "@/lib/metrics/compute";
-import { useDictation } from "@/lib/use-speech-to-text";
 import type { BidPack } from "@/types/bidpack";
 import type { Criterion } from "@/types/pilot-model";
 import type { CityRating, CityRatingScore, CitySentiment, PreferenceProfile } from "@/types/preferences";
@@ -51,22 +50,16 @@ interface PilotPrioritiesEditorProps {
 
 function AddSomething({ onSubmit, busy }: { onSubmit: (text: string) => void; busy: boolean }) {
   const [text, setText] = useState("");
-  const dictation = useDictation(text, setText);
   return (
     <div>
-      <div className="relative">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={3}
-          disabled={busy}
-          placeholder="Something we missed, or something that's changed — in your own words."
-          aria-label="Something new about how you bid"
-          className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none disabled:opacity-60"
-        />
-        {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
-      </div>
-      {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
+      <NoteBox
+        value={text}
+        onChange={setText}
+        rows={3}
+        disabled={busy}
+        placeholder="Something we missed, or something that's changed — in your own words."
+        ariaLabel="Something new about how you bid"
+      />
       <div className="mt-2 flex justify-end">
         <Button
           type="button"

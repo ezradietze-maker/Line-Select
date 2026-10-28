@@ -863,6 +863,12 @@ body {
   --shell-left: 0px;
   --shell-bottom: 0px;
 }
+/* Scrolling something into view (a focused box, a growing answer, its button) stops above the phone's tab bar, not under it. */
+@media (max-width: 47.99rem) {
+  html:has(nav[aria-label="Main"]) {
+    scroll-padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
 
 /* The phone's "More" sheet. `backwards`, not `both`: once it's up, no transform lingers to trap a fixed-position modal opened from inside it. */
 @keyframes sheet-up {

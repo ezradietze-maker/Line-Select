@@ -3,31 +3,18 @@
 import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
-import { MicButton } from "@/components/ui/MicButton";
+import { NoteBox } from "@/components/ui/NoteBox";
 import { describeModel } from "@/lib/brain/describe";
-import { useDictation } from "@/lib/use-speech-to-text";
 import type { PilotModel } from "@/types/pilot-model";
 
 function Box({ id, label, hint, value, onChange }: { id: string; label: string; hint: string; value: string; onChange: (v: string) => void }) {
-  const dictation = useDictation(value, onChange);
   return (
     <div>
       <label htmlFor={id} className="text-sm font-medium text-ink">
         {label}
       </label>
       <p className="mb-2 text-xs text-ink-muted">{hint}</p>
-      <div className="relative">
-        <textarea
-          id={id}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={2}
-          placeholder="Optional — type or tap the mic"
-          className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
-        />
-        {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
-      </div>
-      {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
+      <NoteBox id={id} value={value} onChange={onChange} placeholder="Optional — type or tap the mic" />
     </div>
   );
 }

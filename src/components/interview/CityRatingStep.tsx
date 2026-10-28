@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
-import { MicButton } from "@/components/ui/MicButton";
+import { NoteBox } from "@/components/ui/NoteBox";
 import { airportCityName } from "@/lib/airport-city-names";
 import { CITY_RATING_STEPS, CITY_REASONS, effectiveCityScore, type CityFacts } from "@/lib/city-ratings";
-import { useDictation } from "@/lib/use-speech-to-text";
 import type { CityRating, CityRatingScore, CityReasonTag, CitySentiment } from "@/types/preferences";
 
 /** Search box only appears once the list is long enough that scanning it by eye stops being practical. */
@@ -41,22 +40,8 @@ const GRADE_STYLE: Record<number, string> = {
 const hrs = (h: number) => `${Math.round(h)}h`;
 
 function CityNote({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
-  const dictation = useDictation(value, onChange);
   return (
-    <div>
-      <div className="relative">
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Anything else? Favorite restaurant, the bed, friends there… (optional)"
-          aria-label={label}
-          rows={2}
-          className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
-        />
-        {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
-      </div>
-      {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
-    </div>
+    <NoteBox value={value} onChange={onChange} placeholder="Anything else? Favorite restaurant, the bed, friends there… (optional)" ariaLabel={label} />
   );
 }
 

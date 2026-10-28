@@ -4,10 +4,9 @@ import { useState } from "react";
 import { TripGlance } from "@/components/interview/TripGlance";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
-import { MicButton } from "@/components/ui/MicButton";
+import { NoteBox } from "@/components/ui/NoteBox";
 import { TRIP_GRADES, type TripGrade, type TripGradeScreen } from "@/lib/brain/trip-sort";
 import { tripKey } from "@/lib/scoring-v2/trip-score";
-import { useDictation } from "@/lib/use-speech-to-text";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 interface TripSortStepProps {
@@ -65,7 +64,6 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
   const [why, setWhy] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dictation = useDictation(why, setWhy);
   const trips = new Map(bidPack.lines.flatMap((l) => l.trips).map((t) => [tripKey(t), t]));
   const graded = Object.keys(grades).length;
   const title = "How would you feel about flying each of these trips?";
@@ -97,18 +95,7 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
           })}
         </ul>
 
-        <div className="relative mt-4">
-          <textarea
-            value={why}
-            onChange={(e) => setWhy(e.target.value)}
-            rows={2}
-            placeholder="What decided your grades? (optional)"
-            aria-label="What decided your grades"
-            className="w-full rounded-lg border border-border bg-canvas px-3 py-2 pr-11 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
-          />
-          {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
-        </div>
-        {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
+        <NoteBox value={why} onChange={setWhy} placeholder="What decided your grades? (optional)" ariaLabel="What decided your grades" className="mt-4" />
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
         <div className="mt-4 flex items-center justify-between gap-3">

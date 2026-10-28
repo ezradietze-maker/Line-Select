@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { NoteBox } from "@/components/ui/NoteBox";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -533,14 +534,7 @@ function PostOfferForm({
         <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="offer-note">
           Note (optional)
         </label>
-        <textarea
-          id="offer-note"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={2}
-          placeholder="Anything else worth mentioning"
-          className="w-full rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40"
-        />
+        <NoteBox id="offer-note" value={note} onChange={setNote} placeholder="Anything else worth mentioning" />
       </div>
 
       <div className="flex gap-2">
