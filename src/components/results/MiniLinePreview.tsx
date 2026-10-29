@@ -6,6 +6,7 @@ import { BedIcon } from "@/components/ui/icons";
 import { CalendarDayBars } from "@/components/results/CalendarDayBars";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { CreditHours, Zone } from "@/components/results/TripMarks";
+import { ColorKey } from "@/components/results/ColorKey";
 import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { useTimeMode } from "@/lib/time-mode-storage";
 import { labeledStayPieces } from "@/lib/leg-bars";
@@ -269,19 +270,11 @@ function MonthKeyInfo() {
   );
 }
 
-/** A leg as the calendar draws it, for the legend: a bold line with a tick at each end — blue, or magenta for a deadhead. */
-export function LegSample({ deadhead = false }: { deadhead?: boolean }) {
-  const tone = deadhead ? "bg-deadhead" : "bg-leg";
-  return (
-    <span aria-hidden className="relative inline-block h-2.5 w-6 shrink-0 align-middle">
-      <span className={`absolute left-0 top-0 h-full w-[2px] rounded-full ${tone}`} />
-      <span className={`absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 ${tone}`} />
-      <span className={`absolute right-0 top-0 h-full w-[2px] rounded-full ${tone}`} />
-    </span>
-  );
-}
-
-/** The key to every month grid on the page — shown once above a list of them rather than under each one, and under each one only where a grid stands alone (the comparison view). */
+/**
+ * The key to every month grid on the page — shown once above a list of them rather than under each one, and under each
+ * one only where a grid stands alone (the comparison view). The colors are keyed right above each grid (`ColorKey`);
+ * this keeps the marks that aren't colors.
+ */
 export function MonthLegend({ className = "" }: { className?: string }) {
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted ${className}`}>
@@ -296,18 +289,14 @@ export function MonthLegend({ className = "" }: { className?: string }) {
           Rpt 06:30
           <Zone />
         </span>
-        Report (L local, Z Zulu)
+        L local, Z Zulu
       </span>
-      <span className="inline-flex items-center gap-1.5"><LegSample />Flight, to scale, midnight to midnight</span>
-      <span className="inline-flex items-center gap-1.5"><LegSample deadhead />Deadhead</span>
       <span className="inline-flex items-center gap-1">
-        <span className="inline-flex flex-col items-start gap-0.5">
-          <span aria-hidden className="h-[3px] w-full rounded-full bg-layover" />
-          <span className="font-mono text-[10px] font-semibold leading-none text-layover"><span className="font-normal">L/O </span>SEA<span className="font-normal"> 16h</span></span>
+        <span className="font-mono text-[10px] font-semibold leading-none text-layover">
+          <span className="font-normal">L/O </span>SEA<span className="font-normal"> 16h</span>
         </span>
         Layover, to the hour
       </span>
-      <span className="inline-flex items-center gap-1"><span className="h-1.5 w-5 rounded-[2px] bg-calendar-accent/20" />On duty</span>
       <span className="inline-flex items-center gap-1"><span className="text-good">♥</span>love <span className="text-good">♡</span>like <span className="text-warn">✕</span>dislike</span>
       <span className="inline-flex items-center gap-1">
         <span className="font-mono text-[11px]">
@@ -317,7 +306,6 @@ export function MonthLegend({ className = "" }: { className?: string }) {
         </span>
         Trip ends
       </span>
-      <LegendItem swatch="bg-standby/25 border-t-2 border-standby" label="Hotel standby" />
       <LegendItem swatch="border border-dashed border-border-strong" label="Day off" />
       <MonthKeyInfo />
     </div>
@@ -601,6 +589,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
           <TimeModeToggle mode={mode} onChange={setMode} />
         </div>
       )}
+      {!compact && <ColorKey variant="calendar" className="mb-1.5" />}
       <div role="group" aria-label={`Bid month at a glance${mode === "zulu" ? ", in Zulu" : ""}. ${month.summary.daysOff} days off, ${month.summary.dutyPeriods} duty periods.`}>
         {month.weekdayHeaders && (
           <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-ink-faint" aria-hidden>

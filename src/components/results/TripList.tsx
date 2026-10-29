@@ -12,6 +12,7 @@ import { RestPlan } from "@/components/results/SleepPlan";
 import { TripPicture, tripPictureDays } from "@/components/results/TripPicture";
 import { TripDayDetail } from "@/components/results/TripDayDetail";
 import { CreditHours } from "@/components/results/TripMarks";
+import { ColorKey } from "@/components/results/ColorKey";
 import { planTripSleep, type LayoverSleepPlan } from "@/lib/sleep-plan";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
 import { hubTurnsOf, summarizeHubTurns } from "@/lib/metrics/hub-turns";
@@ -393,6 +394,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
 
               {trip.schedule.length > 0 ? (
                 <div className="mt-2.5">
+                  <ColorKey variant="trip" className="mb-2" />
                   <TripPicture
                     trip={trip}
                     mode={mode}

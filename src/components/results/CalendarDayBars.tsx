@@ -120,9 +120,39 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
       {bars.duty.map((d, i) => (
         <span key={`d${i}`} className="absolute rounded-[2px] bg-calendar-accent/20" style={{ left: x(d.start), width: x(d.end) - x(d.start), top: mid - size.duty / 2, height: size.duty }} />
       ))}
-      {bars.standby.map((d, i) => (
-        <span key={`s${i}`} className="absolute rounded-[2px] bg-standby/45" style={{ left: x(d.start), width: x(d.end) - x(d.start), top: mid - size.duty / 2, height: size.duty }} />
-      ))}
+      {/* Hotel standby: a solid violet line where the flying would be, running on into the next day as a flight does. */}
+      {bars.standby.map((d, i) => {
+        const runsIn = d.start <= 0;
+        const runsOn = d.end >= DAY;
+        const left = x(d.start) - (runsIn ? bleed : 0);
+        return (
+          <span
+            key={`s${i}`}
+            className={`absolute bg-standby ${runsIn ? "" : "rounded-l-full"} ${runsOn ? "" : "rounded-r-full"}`}
+            style={{ left, width: Math.max(2, x(d.end) + (runsOn ? bleed : 0) - left), top: mid - size.bar / 2, height: size.bar }}
+            title="Hotel standby"
+          />
+        );
+      })}
+      {/* A crew-rest hotel during a long sit at a hub: a gold line under the flying, as a layover is green. */}
+      {bars.rests.map((r, i) => {
+        const left = x(r.start);
+        const w = Math.max(2, x(r.end) - left);
+        const text = `Rest ${Math.round(r.hours)}h`;
+        const half = (text.length * LABEL_CHAR_PX) / 2;
+        const center = Math.min(Math.max(left + w / 2, half - bleed), width + bleed - half);
+        const clear = w >= half && !stayWords.some((sw) => !sw.up && Math.abs(sw.center - center) < half + 30);
+        return (
+          <span key={`r${i}`}>
+            <span className="absolute rounded-full bg-rest" style={{ left, width: w, top: laneTop, height: size.lane }} title={`Rest hotel at ${r.city}, ${Math.round(r.hours)}h`} />
+            {clear && (
+              <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-[10px] font-semibold leading-none text-rest" style={{ left: center, top: wordsTop, height: size.line }}>
+                {text}
+              </span>
+            )}
+          </span>
+        );
+      })}
       {bars.stays.map((s, i) => {
           const runsIn = s.start <= 0;
           const runsOn = s.end >= DAY;
