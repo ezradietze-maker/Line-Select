@@ -10,6 +10,8 @@ import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { TripScorePanel } from "@/components/results/TripScorePanel";
 import { RestPlan } from "@/components/results/SleepPlan";
 import { TripPicture, tripPictureDays } from "@/components/results/TripPicture";
+import { TripDayDetail } from "@/components/results/TripDayDetail";
+import { CreditHours } from "@/components/results/TripMarks";
 import { planTripSleep, type LayoverSleepPlan } from "@/lib/sleep-plan";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
 import { hubTurnsOf, summarizeHubTurns } from "@/lib/metrics/hub-turns";
@@ -17,12 +19,11 @@ import { Modal } from "@/components/ui/Modal";
 import { computeCircadianAssessment } from "@/lib/circadian";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { fetchHotel } from "@/lib/hotel-client";
-import { standbyPlace } from "@/lib/standby";
 import { displayHotelName } from "@/lib/hotels/hotel-names";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import { loadTimeMode, saveTimeMode } from "@/lib/time-mode-storage";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
-import { clock, dateLabel, dayStats, equipmentLabel, hm, tripBlockMinutes, tripDayDate } from "@/lib/trip-day-stats";
+import { dateLabel, dayStats, hm, tripBlockMinutes, tripDayDate, tripDeadheadBlockMinutes } from "@/lib/trip-day-stats";
 import { type TimeMode, type TimelineDay } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
@@ -34,232 +35,16 @@ const REPORT_LABELS: Record<Trip["reportTime"], string> = {
   evening: "Evening",
 };
 
-const MINUTES_PER_DAY = 24 * 60;
 /** "(L)" after a local clock time, "(Z)" after a Zulu one — so no time on the trip view is ever ambiguous. */
 const zoneTag = (mode: TimeMode) => (mode === "zulu" ? "(Z)" : "(L)");
 
 const LABEL = "font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint";
-
-function formatHHMM(hhmm: string): string {
-  return `${hhmm.slice(0, 2)}:${hhmm.slice(2, 4)}`;
-}
-
-function formatDuration(hours: number): string {
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
-  return m > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
-}
 
 const LAYOVER_TOOLTIP =
   "Layover / hotel — real time from block-in to hotel pickup for the next departure. Not exactly when you’ll sleep, since that’s down to you and the jet lag.";
 
 const STANDBY_TOOLTIP =
   "Hotel standby — you sit on call at the layover hotel for the day. It pays the guaranteed standby credit, but no flight is flown unless you’re called out.";
-
-interface ItineraryProps {
-  trip: Trip;
-  mode: TimeMode;
-  ratings: Record<string, HotelResult | null>;
-  expandedKey: string | null;
-  onToggleExpand: (key: string) => void;
-}
-
-/**
- * The precise, textual counterpart to the chart above — every leg in an
- * aligned table, grouped by duty period, with the other clock system beside
- * each time. Both clocks always come from the bid pack's own printed HHMM
- * pair (`depTimeLocal`/`depTimeGmt`), never `leg.depTimeZulu` — that field
- * is anchored to an arbitrary reference instant purely for internally-
- * consistent day-math (see `Trip.zuluAnchor`).
- */
-function Itinerary({ trip, mode, ratings, expandedKey, onToggleExpand }: ItineraryProps) {
-  const clocks = mode === "zulu" ? "Z / L" : "L / Z";
-  const other: TimeMode = mode === "zulu" ? "local" : "zulu";
-  return (
-    <div className="mt-2 overflow-x-auto rounded-md border border-hairline">
-      <table className="w-full min-w-[30rem] border-collapse text-[11px]">
-        <thead>
-          <tr className={`${LABEL} bg-surface-raised/70 text-left`}>
-            <th className="px-2 py-1 font-normal">Flight</th>
-            <th className="px-2 py-1 font-normal">Route</th>
-            <th className="px-2 py-1 font-normal">Out · {clocks}</th>
-            <th className="px-2 py-1 font-normal">In · {clocks}</th>
-            <th className="px-2 py-1 text-right font-normal">Block</th>
-            <th className="px-2 py-1 font-normal">Equip</th>
-          </tr>
-        </thead>
-        <tbody className="font-mono">
-          {trip.schedule.map((duty, dutyIndex) => {
-            const flown = duty.legs.filter((l) => !l.isDeadhead && !l.isStandby);
-            const block = flown.reduce((a, l) => a + (l.blockHours ?? 0) * 60, 0);
-            return (
-              <Fragment key={dutyIndex}>
-                <tr className="border-t border-hairline bg-calendar-accent/[0.06]">
-                  <td colSpan={6} className="px-2 py-1 font-sans text-[11px] text-ink-muted">
-                    <span className="font-mono font-semibold text-readout">Duty {dutyIndex + 1}</span>
-                    {" · "}
-                    {dutyStartLabel(duty, dutyIndex, mode, trip.schedule[dutyIndex - 1] ?? null)}
-                    {flown.length > 0 && ` · ${flown.length} landing${flown.length === 1 ? "" : "s"} · ${hm(block)} block`}
-                  </td>
-                </tr>
-                {duty.legs.map((leg, legIndex) => {
-                  if (leg.isStandby) {
-                    return (
-                      <tr key={legIndex} className="border-t border-hairline/60">
-                        <td className="px-2 py-1 text-standby">SBY</td>
-                        <td className="px-2 py-1 text-ink">{leg.depAirport}</td>
-                        <td className="px-2 py-1 text-ink">
-                          {formatHHMM(mode === "zulu" ? leg.depTimeGmt : leg.depTimeLocal)} <span className="text-ink-faint">{zoneTag(mode)}</span>
-                        </td>
-                        <td className="px-2 py-1 text-ink">
-                          {formatHHMM(mode === "zulu" ? leg.arrTimeGmt : leg.arrTimeLocal)} <span className="text-ink-faint">{zoneTag(mode)}</span>
-                        </td>
-                        <td colSpan={2} className="px-2 py-1 font-sans text-ink-muted">on call at the {standbyPlace(leg.flightNumber)} — paid, not flying</td>
-                      </tr>
-                    );
-                  }
-                  const dep = mode === "zulu" ? [leg.depTimeGmt, leg.depTimeLocal] : [leg.depTimeLocal, leg.depTimeGmt];
-                  const arr = mode === "zulu" ? [leg.arrTimeGmt, leg.arrTimeLocal] : [leg.arrTimeLocal, leg.arrTimeGmt];
-                  return [
-                    <tr key={legIndex} className="border-t border-hairline/60">
-                      <td className="whitespace-nowrap px-2 py-1">
-                        <span className={leg.isDeadhead ? "text-ink-muted" : "font-semibold text-ink"}>{leg.flightNumber}</span>
-                        {leg.isDeadhead && <span className="ml-1 rounded bg-calendar-accent/15 px-1 text-[10px] text-ink-muted">DH</span>}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-1 text-ink">
-                        {leg.depAirport}<span className="text-ink-faint">–</span>{leg.arrAirport}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-1 text-readout">
-                        {formatHHMM(dep[0])} {zoneTag(mode)} <span className="text-ink-faint">{formatHHMM(dep[1])} {zoneTag(other)}</span>
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-1 text-readout">
-                        {formatHHMM(arr[0])} {zoneTag(mode)} <span className="text-ink-faint">{formatHHMM(arr[1])} {zoneTag(other)}</span>
-                      </td>
-                      <td className="px-2 py-1 text-right text-ink">{leg.blockHours !== null ? hm(leg.blockHours * 60) : "—"}</td>
-                      <td className="px-2 py-1 text-ink-muted">{equipmentLabel(leg.equipment, leg.isDeadhead)}</td>
-                    </tr>,
-                    leg.dayRoomHotel && duty.legs[legIndex + 1] ? (
-                      <tr key={`${legIndex}-dayroom`} className="border-t border-hairline/60 bg-good/[0.04]">
-                        <td colSpan={6} className="px-2 py-1 font-sans text-ink-muted">
-                          <span className={LABEL}>Day room</span>{" "}
-                          <span className="font-mono font-semibold text-good">{leg.arrAirport}</span>{" "}
-                          <span className="font-mono text-readout">{hm(duty.legs[legIndex + 1].startMinutes - leg.endMinutes)}</span>{" "}
-                          <span className="capitalize text-ink">{displayHotelName(leg.dayRoomHotel).toLowerCase()}</span>
-                          <span className="text-ink-faint"> · a hotel between legs, same duty</span>
-                        </td>
-                      </tr>
-                    ) : null,
-                  ];
-                })}
-                {duty.layover && (
-                  <LayoverRow
-                    tripId={trip.id}
-                    dutyIndex={dutyIndex}
-                    city={duty.layover.city}
-                    hotelName={duty.layover.hotelName}
-                    hours={duty.layover.hours}
-                    transport={duty.layover.transportToHotel}
-                    ratings={ratings}
-                    expandedKey={expandedKey}
-                    onToggleExpand={onToggleExpand}
-                  />
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/**
- * When a duty starts, in the mode's clock. The first duty has a printed
- * report time; every later one starts at the hotel pickup the pack prints
- * on its "Trans From:" line (or, without one, where the previous layover's
- * printed length ends) — never the first departure mislabeled "report".
- */
-function dutyStartLabel(duty: Trip["schedule"][number], dutyIndex: number, mode: TimeMode, previous: Trip["schedule"][number] | null): string {
-  const printed = mode === "zulu" ? previous?.layover?.pickupTimeGmt : previous?.layover?.pickupTimeLocal;
-  if (dutyIndex > 0 && printed) return `hotel pickup ${formatHHMM(printed)} ${zoneTag(mode)}`;
-  const first = duty.legs[0];
-  if (!first) return "";
-  const dep = mode === "zulu" ? first.depTimeGmt : first.depTimeLocal;
-  const lead = first.startMinutes - duty.startMinutes;
-  const depMinutes = Number(dep.slice(0, 2)) * 60 + Number(dep.slice(2, 4));
-  const start = clock((((depMinutes - lead) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY);
-  return dutyIndex === 0 ? `report ${start} ${zoneTag(mode)}` : `hotel pickup ${start} ${zoneTag(mode)}`;
-}
-
-function LayoverRow({
-  tripId,
-  dutyIndex,
-  city,
-  hotelName,
-  hours,
-  transport,
-  ratings,
-  expandedKey,
-  onToggleExpand,
-}: {
-  tripId: string;
-  dutyIndex: number;
-  city: string;
-  hotelName: string | null;
-  hours: number;
-  transport: string | null;
-  ratings: Record<string, HotelResult | null>;
-  expandedKey: string | null;
-  onToggleExpand: (key: string) => void;
-}) {
-  const hotel = hotelName ? ratings[`${city}|${hotelName}`] : undefined;
-  const detailKey = `${tripId}-${dutyIndex}`;
-  const canExpand = !!hotel && hasHotelQualityDetails(hotel);
-  const expanded = expandedKey === detailKey;
-
-  const content = (
-    <>
-      <span className="font-mono font-semibold text-good">{city}</span>
-      <span className="font-mono text-readout">{formatDuration(hours)}</span>
-      {hotelName && <span className="capitalize text-ink">{displayHotelName(hotelName).toLowerCase()}</span>}
-      {hotel?.rating != null && (
-        <span className="inline-flex items-center gap-0.5 text-accent">
-          <StarIcon className="h-2.5 w-2.5 fill-current" />
-          {hotel.rating.toFixed(1)}
-        </span>
-      )}
-      {transport && (
-        <span className="capitalize text-ink-faint">
-          · {hotelName && transport.toUpperCase() === hotelName.toUpperCase() ? "hotel shuttle" : transport.toLowerCase()}
-        </span>
-      )}
-      {canExpand && <ChevronDownIcon className={`h-2.5 w-2.5 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />}
-    </>
-  );
-
-  return (
-    <tr className="border-t border-hairline/60 bg-good/[0.06]">
-      <td colSpan={6} className="px-2 py-1 font-sans">
-        {canExpand ? (
-          <button type="button" onClick={() => onToggleExpand(detailKey)} className="flex flex-wrap items-center gap-x-1.5 text-left hover:text-ink" aria-expanded={expanded}>
-            <span className={LABEL}>Hotel</span>
-            {content}
-          </button>
-        ) : (
-          <div className="flex flex-wrap items-center gap-x-1.5">
-            <span className={LABEL}>Hotel</span>
-            {content}
-          </div>
-        )}
-        {expanded && hotel && (
-          <div className="mt-1.5 rounded-lg border border-hairline bg-surface p-2.5">
-            <HotelQualityDetails hotel={hotel} />
-          </div>
-        )}
-      </td>
-    </tr>
-  );
-}
 
 interface InsightChip {
   label: string;
@@ -374,15 +159,19 @@ function TripHeader({
   mode,
   bidPeriodStart,
   homeBaseOffsetMinutes,
+  carryOverCreditHours,
 }: {
   trip: Trip;
   days: TimelineDay[];
   mode: TimeMode;
   bidPeriodStart: string | null;
   homeBaseOffsetMinutes: number | null;
+  /** Credit this trip carries into next month, as the line prints it — on the trip that runs past the month's end. */
+  carryOverCreditHours?: number;
 }) {
   const circadian = computeCircadianAssessment(trip, homeBaseOffsetMinutes);
   const block = tripBlockMinutes(trip);
+  const deadhead = tripDeadheadBlockMinutes(trip);
   const first = days[0] ? dayStats(days[0]) : null;
   const last = days.length ? dayStats(days[days.length - 1]) : null;
   // Each column's own real date — crossing the date line, the last column's date isn't simply the first plus the count.
@@ -397,7 +186,7 @@ function TripHeader({
         {/* The same oval the calendar puts on a trip's first day: its number and credit. */}
         <span className="rounded-full bg-calendar-accent px-2 py-0.5 font-mono text-sm font-semibold text-on-calendar" title="Trip number and credit in the bid pack">
           {trip.pairingNumber !== null ? `#${trip.pairingNumber} ` : ""}
-          <span className="font-normal opacity-85">{hm(trip.creditHours * 60)}</span>
+          <CreditHours hours={trip.creditHours} className="font-normal opacity-85" />
         </span>
         <span className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-ink">{trip.days}-day</span>
         {trip.international && (
@@ -410,7 +199,11 @@ function TripHeader({
         <Readout label="Report" value={first?.onDuty ? `${first.onDuty} ${zoneTag(mode)}` : REPORT_LABELS[trip.reportTime]} note={stamp(startDate, 1)} title={`${REPORT_LABELS[trip.reportTime]} report, ${zone}${startDate ? ` — ${startDate.weekday} ${startDate.day} ${startDate.month}` : ""}`} />
         <Readout label="Last in" value={last?.lastIn ? `${last.lastIn} ${zoneTag(mode)}` : block === null && trip.landings === 0 ? "no flying" : "—"} note={stamp(endDate, days.length)} title={`Last block-in of the trip, ${zone}${endDate ? ` — ${endDate.weekday} ${endDate.day} ${endDate.month}` : ""}`} />
         <Readout label="TAFB" value={hm(trip.tafbHours * 60)} title="Time away from base" />
-        <Readout label="Block" value={block !== null ? hm(block) : trip.landings === 0 ? "none" : "—"} title="Operated flying time, deadheads excluded" />
+        <Readout label="Operating block" value={block !== null ? hm(block) : trip.landings === 0 ? "none" : "—"} />
+        <Readout label="DH block" value={deadhead > 0 ? hm(deadhead) : "none"} tone={deadhead > 0 ? "text-deadhead" : "text-readout"} />
+        <Readout label="Duty periods" value={String(trip.dutyPeriods ?? trip.schedule.length)} />
+        <Readout label="Landings" value={String(trip.landings)} />
+        {carryOverCreditHours ? <Readout label="C/O CH" value={hm(carryOverCreditHours * 60)} title="Credit hours this trip carries over into next month, as the bid pack prints it" /> : null}
       </div>
     </div>
   );
@@ -441,24 +234,39 @@ function TripLegendInfo() {
               <ul className="mt-1.5 space-y-2">
                 <li>
                   Each row is one day, midnight at the left to midnight at the right, on the base&rsquo;s clock &mdash; the
-                  same days as the month calendar. Under the date, <span className="font-mono text-ink">Rpt 06:30</span> is
-                  when that day&rsquo;s duty starts (report, or hotel pickup).
+                  same days as the month calendar, every day the same height. Under the date,{" "}
+                  <span className="font-mono font-semibold text-report">Rpt 13:47L</span> is when the trip reports, and{" "}
+                  <span className="font-mono font-semibold text-gt">P/U 02:15L</span> the hotel pickup that starts a later
+                  duty. L is local, Z Zulu.
                 </li>
                 <li>
-                  Each flight is a line with a tick at each end, as long as the flight. The cities are under its ends and
-                  its times over them, local where it happens as the bid pack prints them (or Zulu, with the toggle). A
-                  dashed line is a deadhead, riding along. A flight still in the air at midnight runs off the right edge
-                  (▸) and on into the next row.
+                  Each flight is a <span className="font-medium text-leg">blue</span> line with a tick at each end, as long as the flight, its times over its
+                  ends, its cities and flight number under it. A <span className="font-medium text-deadhead">magenta</span> line is a deadhead, riding
+                  along; <span className="font-mono">CAB</span> a ride between airports by road. A <span className="font-medium text-standby">violet</span> bar
+                  is hotel standby ({STANDBY_TOOLTIP.split(" — ")[1]}). A flight still in the air at midnight runs off the right edge and on into the next row.
                 </li>
                 <li>The faint band under the flying is the time on duty, report to release &mdash; a long band with little flying in it is a long wait, like a hub turn.</li>
-                <li><span className="font-medium text-ink">Green line.</span> {LAYOVER_TOOLTIP} The city and the layover&rsquo;s full length are written on it, with the hotel.</li>
-                <li><span className="font-medium text-ink">Violet band.</span> {STANDBY_TOOLTIP}</li>
+                <li>
+                  <span className="font-medium text-layover">Green line.</span> {LAYOVER_TOOLTIP} It runs under the flying, with the city, the layover&rsquo;s
+                  length to the hour and the hotel (<span className="font-mono font-semibold text-layover">L/O SEA 16h</span>). The{" "}
+                  <span className="font-medium text-gt">cyan</span> marks at its ends are the hotel van (GT): from the airport after landing, and back at the
+                  pickup. A <span className="font-medium text-rest">gold</span> line is a crew-rest hotel during a long sit at a hub, inside the same duty.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Tap any day</span> for everything the pairing says about it: each duty&rsquo;s report or pickup,
+                  duty and block time; every leg&rsquo;s flight number, aircraft, both clocks, block and meal; and the hotel and both rides, each phone a
+                  tap away. &ldquo;Open every day&rdquo; shows the whole trip at once.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Meals</span> are written out from the pack&rsquo;s codes: S snack, DS dinner snack, BS breakfast
+                  snack, DH dinner hot, BH breakfast hot.
+                </li>
               </ul>
             </div>
             <div>
               <div className="font-medium text-ink">The trip&rsquo;s numbers</div>
               <ul className="mt-1.5 space-y-2">
-                <li><span className="font-medium text-ink">TAFB.</span> Time away from base. <span className="font-medium text-ink">Block.</span> Flying you operate, deadheads excluded.</li>
+                <li><span className="font-medium text-ink">TAFB.</span> Time away from base. <span className="font-medium text-ink">C/O CH.</span> Credit hours the trip carries over into next month, as the bid pack prints it.</li>
                 <li><span className="font-medium text-ink">Credit per day away.</span> Credit earned per 24 hours away from base.</li>
                 <li><span className="font-medium text-ink">Time zones.</span> Total time-zone distance crossed, and which way the trip nets out.</li>
                 <li><span className="font-medium text-ink">Avg sleep window.</span> Layover time minus the pickup/ground gap around it &mdash; closer to usable rest than the printed layover.</li>
@@ -469,7 +277,7 @@ function TripLegendInfo() {
             <div>
               <div className="font-medium text-ink">Other marks</div>
               <ul className="mt-1.5 space-y-2">
-                <li><span className="font-medium text-ink">Itinerary.</span> Every leg as a table: the main clock first, the other one beside it in gray; &ldquo;airline&rdquo; means a deadhead on another carrier, &ldquo;ground&rdquo; a car or cab.</li>
+                <li><span className="font-medium text-ink">In a day&rsquo;s details.</span> Each time on the main clock first, the other one beside it in gray; &ldquo;airline&rdquo; means a deadhead on another carrier.</li>
               </ul>
             </div>
           </div>
@@ -493,6 +301,8 @@ interface TripListProps {
   base?: string;
   /** Each trip's own score for this pilot, by `tripKey` (see `lib/scoring-v2/trip-score.ts`); absent before an interview. */
   tripScores?: Map<string, TripScore> | null;
+  /** The line's credit carried into next month (`Line.carryOverCreditHours`) — shown on its last trip, the one that carries it. */
+  carryOverCreditHours?: number;
 }
 
 function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: FlightAnswers; base: string }) {
@@ -500,10 +310,9 @@ function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: F
   return <TripCommuteFlights answers={flights} trip={trip} base={base} frontCity={f.front?.city} backCity={f.back?.city} />;
 }
 
-export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores }: TripListProps) {
+export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores, carryOverCreditHours }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  const [openItineraries, setOpenItineraries] = useState<Set<string>>(new Set());
   // Starts at the same fixed default the server renders, then syncs to the
   // pilot's stored choice once mounted — reading localStorage during render
   // would mismatch the server's HTML.
@@ -544,17 +353,11 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
     };
   }, [trips]);
 
+  // The line's last trip — the one that runs past the month's end and carries its credit into the next.
+  const lastTrip = trips.reduce((best, t, i) => ((t.startDayIndex ?? i) >= (trips[best].startDayIndex ?? best) ? i : best), 0);
+
   function handleToggleExpand(key: string) {
     setExpandedKey((k) => (k === key ? null : key));
-  }
-
-  function toggleItinerary(key: string) {
-    setOpenItineraries((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
   }
 
   return (
@@ -585,23 +388,18 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                 mode={mode}
                 bidPeriodStart={bidPeriodStart}
                 homeBaseOffsetMinutes={homeBaseOffsetMinutes}
+                carryOverCreditHours={tripIndex === lastTrip ? carryOverCreditHours : undefined}
               />
 
               {trip.schedule.length > 0 ? (
                 <div className="mt-2.5">
-                  <TripPicture trip={trip} mode={mode} bidPeriodStart={bidPeriodStart} cityPreferences={cityPreferences} />
-                  <button
-                    type="button"
-                    onClick={() => toggleItinerary(key)}
-                    className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-ink-muted hover:text-ink"
-                    aria-expanded={openItineraries.has(key)}
-                  >
-                    {openItineraries.has(key) ? "Hide" : "Show"} every leg &mdash; times, flights, aircraft, hotels
-                    <ChevronDownIcon className={`h-2.5 w-2.5 shrink-0 transition-transform ${openItineraries.has(key) ? "rotate-180" : ""}`} />
-                  </button>
-                  {openItineraries.has(key) && (
-                    <Itinerary trip={trip} mode={mode} ratings={ratings} expandedKey={expandedKey} onToggleExpand={handleToggleExpand} />
-                  )}
+                  <TripPicture
+                    trip={trip}
+                    mode={mode}
+                    bidPeriodStart={bidPeriodStart}
+                    cityPreferences={cityPreferences}
+                    dayDetail={(day) => <TripDayDetail trip={trip} day={day} mode={mode} ratings={ratings} />}
+                  />
                   {/* The picture first; what the trip means for this pilot after it. */}
                   {tripScore && <TripScorePanel score={tripScore} />}
                   <TripInsights trip={trip} bidPeriodStart={bidPeriodStart} base={base} />

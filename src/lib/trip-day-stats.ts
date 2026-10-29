@@ -134,6 +134,16 @@ export function tripBlockMinutes(trip: Trip): number | null {
   return Math.round(legs.reduce((a, l) => a + (l.blockHours ?? 0) * 60, 0));
 }
 
+/** Minutes deadheaded on airline flights across the trip — a cab between airports isn't block. */
+export function tripDeadheadBlockMinutes(trip: Trip): number {
+  return Math.round(
+    trip.schedule
+      .flatMap((d) => d.legs)
+      .filter((l) => l.isDeadhead && !l.isStandby && l.equipment !== "CAB")
+      .reduce((a, l) => a + (l.blockHours ?? 0) * 60, 0)
+  );
+}
+
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 

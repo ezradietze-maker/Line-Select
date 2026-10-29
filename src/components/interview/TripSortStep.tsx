@@ -32,7 +32,7 @@ function TripCard({ bidPack, trip, label, grade, onGrade }: { bidPack: BidPack; 
         {label}
       </p>
       <div className="mt-1">
-        <TripGlance bidPack={bidPack} trip={trip} labelBg={grade ? "bg-brand-soft" : "bg-surface"} />
+        <TripGlance bidPack={bidPack} trip={trip} />
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={`${id}-label`}>
         {TRIP_GRADES.map((g) => (

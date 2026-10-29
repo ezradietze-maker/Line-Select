@@ -82,6 +82,10 @@
   --color-deadhead: #ae1d6d;
   --color-layover: #026b48;
   --color-report: #ad380a;
+  /* The trip's own picture adds two: the hotel van at each end of a layover (GT), and a crew-rest hotel during a long
+     sit at a hub (a day room). */
+  --color-gt: #0e7490;
+  --color-rest: #9a5a00;
 
   --color-focus-ring: #4a3420;
 
@@ -176,6 +180,8 @@
     --color-deadhead: #f475b5;
     --color-layover: #3ad49b;
     --color-report: #ff8d45;
+    --color-gt: #38d0f0;
+    --color-rest: #fbbf24;
 
     --color-focus-ring: #c9a468;
     --shadow-color: 35 25% 2%;
@@ -240,6 +246,8 @@
   --color-deadhead: #f475b5;
   --color-layover: #3ad49b;
   --color-report: #ff8d45;
+  --color-gt: #38d0f0;
+  --color-rest: #fbbf24;
 
   --color-focus-ring: #c9a468;
   --shadow-color: 35 25% 2%;
@@ -315,6 +323,8 @@
   --color-deadhead: #e0608f;
   --color-layover: #ce5c3b;
   --color-report: #ff8a2a;
+  --color-gt: #e89a7a;
+  --color-rest: #ffb35c;
 
   --color-focus-ring: #ff4d4d;
   --shadow-color: 0 70% 2%;
@@ -375,6 +385,8 @@
   --color-deadhead: var(--color-deadhead);
   --color-layover: var(--color-layover);
   --color-report: var(--color-report);
+  --color-gt: var(--color-gt);
+  --color-rest: var(--color-rest);
 
   --color-panel: var(--color-panel);
   --color-readout: var(--color-readout);

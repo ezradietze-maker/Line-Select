@@ -56,6 +56,8 @@ export interface SegmentStay {
 
 export interface TimelineSegment {
   kind: TimelineSegmentKind;
+  /** Which of the trip's duty periods it belongs to (`trip.schedule` index) — a layover to the duty it follows. */
+  dutyIndex?: number;
   leg?: SegmentLeg;
   stay?: SegmentStay;
   sleep?: SegmentSleep;
@@ -120,6 +122,8 @@ function formatDuration(hours: number): string {
 
 export interface RawSegment {
   kind: TimelineSegmentKind;
+  /** Which of the trip's duty periods it belongs to (`trip.schedule` index) — a layover to the duty it follows. */
+  dutyIndex?: number;
   leg?: SegmentLeg;
   stay?: SegmentStay;
   sleep?: SegmentSleep;
@@ -265,6 +269,7 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local", sleepPlan
 
   const raw: RawSegment[] = [];
   trip.schedule.forEach((duty, dutyIndex) => {
+    const from = raw.length;
     const previousLayover = dutyIndex > 0 ? trip.schedule[dutyIndex - 1].layover : null;
     const ground = groundSegment(duty, dutyIndex === 0, previousLayover, trip.zuluAnchor);
     if (ground) raw.push(ground);
@@ -347,6 +352,7 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local", sleepPlan
         endAirport: duty.layover.city,
       });
     }
+    for (const seg of raw.slice(from)) seg.dutyIndex = dutyIndex;
   });
 
   // Suggested sleep, in the layover's own city — placed and clocked exactly like the hotel time it sits in.
@@ -387,6 +393,7 @@ function toTimelineSegment(
 ): TimelineSegment {
   return {
     kind: seg.kind,
+    ...(seg.dutyIndex !== undefined ? { dutyIndex: seg.dutyIndex } : {}),
     ...(seg.leg ? { leg: seg.leg } : {}),
     ...(seg.stay ? { stay: seg.stay } : {}),
     ...(seg.sleep ? { sleep: seg.sleep } : {}),

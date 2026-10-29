@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { dayBars, type BarLabel } from "@/lib/leg-bars";
+import { dayBars, LABEL_CHAR_PX, type BarLabel, type DayBars } from "@/lib/leg-bars";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
 import type { CityMark } from "@/types/preferences";
 
 const DAY = 24 * 60;
-const pct = (m: number) => `${(m / DAY) * 100}%`;
 
 /** The width an element is drawn at, kept up to date — one observer per grid or trip, not per day. */
 export function useMeasuredWidth<T extends HTMLElement>(initial: number): [React.RefObject<T | null>, number] {
@@ -25,51 +24,12 @@ export function useMeasuredWidth<T extends HTMLElement>(initial: number): [React
   return [ref, width];
 }
 
-type Variant = "cell" | "row";
-
-const SIZES: Record<Variant, { track: number; tick: number; duty: number; line: number; labelPx: number }> = {
-  // A month-calendar day: room for three-letter cities, not for times.
-  cell: { track: 12, tick: 8, duty: 6, line: 11, labelPx: 22 },
-  // A trip's day row: wide enough for each leg's times above its ends.
-  row: { track: 18, tick: 11, duty: 8, line: 12, labelPx: 36 },
-};
-
-/** Labels are centered under their tick, nudged in at the day's edges so they stay inside it (`half`: half a label's width, in minutes). */
-function Labels({ labels, top, line, tone, half }: { labels: BarLabel[]; top: (row: 0 | 1) => number; line: number; tone: string; half: number }) {
-  return (
-    <>
-      {labels.map((l, i) => (
-        <span
-          key={i}
-          className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[10px] leading-none ${tone}`}
-          style={{ left: pct(Math.min(Math.max(l.at, half), DAY - half)), top: top(l.row), height: line }}
-        >
-          {l.text}
-        </span>
-      ))}
-    </>
-  );
-}
-
-interface LegBarsProps {
-  segments: TimelineSegment[];
-  variant: Variant;
-  /** Width it's drawn at, measured by the parent (`useMeasuredWidth`) — decides where labels fit. */
-  widthPx: number;
-  /** Print each leg's times over its ends (trip rows). */
-  times?: boolean;
-  /** Draw the hotel stays as a quiet line, with the city and how long on its longest piece (trip rows). */
-  stays?: boolean;
-  /** Which hotel-stay pieces carry their words (`labeledStayPieces`); by default each stay's first piece. */
-  stayLabeled?: (s: TimelineSegment) => boolean;
-  cityPreferences?: Record<string, CityMark>;
-  /** Behind a stay's words, so they sit cleanly over its line — the surface the row is drawn on. */
-  labelBg?: string;
-  /** Under a width this narrow, the cities don't fit: bars only. */
-  minLabelWidth?: number;
-  /** The words on a stay, in place of "SEA 15h48 ♥" — handed the pilot's mark for the city to place. */
-  formatStay?: (stay: { city: string; hours: number; hotel: string | null }, mark: ReactNode) => ReactNode;
-}
+/** A trip's day row: wide enough for each leg's times over its ends. */
+const SIZE = { track: 14, tick: 12, bar: 4, duty: 9, lane: 4, line: 12, labelPx: 36 };
+/** How wide the hotel van is drawn at each end of a layover — a mark, not to scale: the pack doesn't print the ride's length. */
+const GT_PX = 12;
+/** The gap between the van and the layover line, so the two read as separate things. */
+const GT_GAP = 3;
 
 /** "15.8" hours → "15h48". */
 export function stayHours(hours: number): string {
@@ -77,73 +37,195 @@ export function stayHours(hours: number): string {
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
 }
 
+/** How many lines of times and of cities a day needs, and whether it has a layover or rest-hotel line. */
+export interface RowShape {
+  timeRows: number;
+  cityRows: number;
+  lane: boolean;
+}
+
+const rowsOf = (labels: BarLabel[]) => (labels.some((l) => l.row === 1) ? 2 : labels.length ? 1 : 0);
+const minGapAt = (widthPx: number) => (SIZE.labelPx * DAY) / Math.max(widthPx, 1);
+
+/** One day's needs at this width — a trip draws every day at the most any of its days needs, so all stand the same height. */
+export function rowShape(segments: TimelineSegment[], widthPx: number): RowShape {
+  const bars = dayBars(segments, minGapAt(widthPx));
+  return { timeRows: rowsOf(bars.times), cityRows: rowsOf(bars.cities), lane: bars.stays.length > 0 || bars.rests.length > 0 };
+}
+
+export function largestShape(shapes: RowShape[]): RowShape {
+  return {
+    timeRows: Math.max(0, ...shapes.map((s) => s.timeRows)),
+    cityRows: Math.max(0, ...shapes.map((s) => s.cityRows)),
+    lane: shapes.some((s) => s.lane),
+  };
+}
+
+/** Labels centered on their tick, nudged in at the day's edges so they stay inside it. */
+function Labels({ labels, top, tone, width }: { labels: BarLabel[]; top: (row: 0 | 1) => number; tone: string; width: number }) {
+  return (
+    <>
+      {labels.map((l, i) => {
+        const half = (l.text.length * LABEL_CHAR_PX) / 2;
+        const x = Math.min(Math.max((l.at / DAY) * width, half), width - half);
+        return (
+          <span
+            key={i}
+            className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[10px] leading-none ${l.deadhead ? "font-semibold text-deadhead" : tone}`}
+            style={{ left: x, top: top(l.row), height: SIZE.line }}
+          >
+            {l.text}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+/** Where each label sits, in px, left to right — to keep a flight number off the cities beside it. */
+function spans(labels: BarLabel[], row: 0 | 1, width: number): [number, number][] {
+  return labels
+    .filter((l) => l.row === row)
+    .map((l) => {
+      const half = (l.text.length * LABEL_CHAR_PX) / 2;
+      const x = Math.min(Math.max((l.at / DAY) * width, half), width - half);
+      return [x - half, x + half];
+    });
+}
+
 /**
- * One day's flying as bars on a midnight-to-midnight track (see `lib/leg-bars.ts`): a line with ticks for each leg,
- * dashed for a deadhead, a faint band under the time on duty (so a hub turn's wait reads as duty with little flying),
- * and the cities under the ends of the legs. Nothing else: the ex-pilot's own organizer had only the lines.
+ * Each leg's flight number under the middle of its bar ("1875", "CAB" for a ride by road), and "HSTBY" under hotel
+ * standby — wherever the bar is long enough to hold it clear of the cities at its ends. The rest are a tap away.
  */
-export function LegBars({ segments, variant, widthPx, times = false, stays = false, stayLabeled, cityPreferences, labelBg = "bg-surface", minLabelWidth = 60, formatStay }: LegBarsProps) {
-  const size = SIZES[variant];
+function middleWords(bars: DayBars, width: number, taken: [number, number][]): { x: number; text: string; tone: string }[] {
+  const x = (m: number) => (m / DAY) * width;
+  const items = [
+    ...bars.legs.map((l) => ({ start: l.start, end: l.end, text: l.cab ? "CAB" : l.flightNumber, tone: l.deadhead ? "text-deadhead" : "text-leg" })),
+    ...bars.standby.map((s) => ({ start: s.start, end: s.end, text: "HSTBY", tone: "text-standby" })),
+  ];
+  const out: { x: number; text: string; tone: string }[] = [];
+  for (const it of items) {
+    const w = it.text.length * LABEL_CHAR_PX;
+    const mid = (x(it.start) + x(it.end)) / 2;
+    const span: [number, number] = [mid - w / 2 - 3, mid + w / 2 + 3];
+    if (x(it.end) - x(it.start) < w + 4 || span[0] < 0 || span[1] > width) continue;
+    if (taken.some(([a, b]) => span[0] < b && a < span[1])) continue;
+    taken.push(span);
+    out.push({ x: mid, text: it.text, tone: it.tone });
+  }
+  return out;
+}
+
+interface LegBarsProps {
+  segments: TimelineSegment[];
+  /** Width it's drawn at, measured by the parent (`useMeasuredWidth`) — decides where labels fit. */
+  widthPx: number;
+  /** The rows to keep, whether used or not — the most any day of the trip needs (`largestShape`). */
+  shape: RowShape;
+  /** Which hotel-stay pieces carry their words (`labeledStayPieces`); by default each stay's first piece. */
+  stayLabeled?: (s: TimelineSegment) => boolean;
+  cityPreferences?: Record<string, CityMark>;
+  /** The words on a layover, in place of "L/O SEA 16h ♥" — handed the pilot's mark for the city to place. */
+  formatStay?: (stay: { city: string; hours: number; hotel: string | null }, mark: ReactNode) => ReactNode;
+}
+
+/**
+ * One day of a trip as the ex-pilot reads it, each thing in its own color: a bold line with ticks for each leg —
+ * blue flown, magenta deadheaded — its times over its ends and its cities under them, its flight number under the
+ * middle; hotel standby a violet bar; a faint band under the time on duty (so a hub turn's wait reads as duty with
+ * little flying). Under that, the layover: a green line from landing to the next pickup, the hotel van (GT) a cyan
+ * mark at each end, the city, its length and the hotel on it; a crew-rest hotel at a hub a gold line of its own.
+ */
+export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences, formatStay }: LegBarsProps) {
   const width = Math.max(widthPx, 1);
-  const showCities = width >= minLabelWidth;
-  const minGap = (size.labelPx * DAY) / width;
-  const bars = dayBars(segments, minGap, stayLabeled);
-  const timeRows = times ? (bars.times.some((t) => t.row === 1) ? 2 : bars.times.length ? 1 : 0) : 0;
-  const cityRows = showCities ? (bars.cities.some((c) => c.row === 1) ? 2 : bars.cities.length ? 1 : 0) : 0;
-  const trackTop = timeRows * size.line + (timeRows ? 2 : 0);
-  const mid = trackTop + size.track / 2;
-  const height = trackTop + size.track + (cityRows ? 2 + cityRows * size.line : 0);
+  const x = (m: number) => (m / DAY) * width;
+  const bars = dayBars(segments, minGapAt(width), stayLabeled);
+  const { timeRows, cityRows, lane } = shape;
+  const trackTop = timeRows * SIZE.line + (timeRows ? 2 : 0);
+  const mid = trackTop + SIZE.track / 2;
+  const citiesTop = trackTop + SIZE.track + 2;
+  const laneTop = citiesTop + Math.max(cityRows, 1) * SIZE.line + 3;
+  const wordsTop = laneTop + SIZE.lane + 3;
+  const height = lane ? wordsTop + SIZE.line : citiesTop + Math.max(cityRows, 1) * SIZE.line;
+  const cityTop = (row: 0 | 1) => citiesTop + row * SIZE.line;
+  const middle = middleWords(bars, width, spans(bars.cities, 0, width));
 
   return (
     <div className="relative w-full" style={{ height }} aria-hidden>
       {[6, 12, 18].map((h) => (
-        <span key={h} className="absolute w-px bg-ink/20" style={{ left: pct(h * 60), top: trackTop + size.track - 3, height: 3 }} />
+        <span key={h} className="absolute w-px bg-ink/20" style={{ left: x(h * 60), top: trackTop + SIZE.track - 3, height: 3 }} />
       ))}
       {bars.duty.map((d, i) => (
-        <span key={`d${i}`} className="absolute rounded-[2px] bg-calendar-accent/20" style={{ left: pct(d.start), width: pct(d.end - d.start), top: mid - size.duty / 2, height: size.duty }} />
+        <span key={`d${i}`} className="absolute rounded-[2px] bg-calendar-accent/20" style={{ left: x(d.start), width: x(d.end) - x(d.start), top: mid - SIZE.duty / 2, height: SIZE.duty }} />
       ))}
       {bars.standby.map((d, i) => (
-        <span key={`s${i}`} className="absolute rounded-[2px] bg-standby/45" style={{ left: pct(d.start), width: pct(d.end - d.start), top: mid - size.duty / 2, height: size.duty }} />
+        <span key={`s${i}`} className="absolute rounded-full bg-standby" style={{ left: x(d.start), width: Math.max(2, x(d.end) - x(d.start)), top: mid - SIZE.bar / 2, height: SIZE.bar }} />
       ))}
-      {stays &&
-        bars.stays.map((s, i) => (
-          <span key={`h${i}`}>
-            <span className="absolute bg-good/50" style={{ left: pct(s.start), width: pct(s.end - s.start), top: mid - 1, height: 2 }} />
-            {s.labeled && (
-              <span
-                className="absolute flex min-w-0 items-center overflow-hidden"
-                style={{ left: `calc(${pct(s.start)} + 6px)`, maxWidth: `calc(${pct(s.end - s.start)} - 10px)`, top: mid - 7, height: 14 }}
-              >
-                <span className={`flex min-w-0 items-center gap-0.5 truncate px-1 font-mono text-[10px] font-semibold leading-none text-good ${labelBg}`}>
+      {bars.legs.map((l, i) => {
+        const tone = l.deadhead ? "bg-deadhead" : "bg-leg";
+        return (
+          <span key={`l${i}`}>
+            <span className={`absolute ${tone}`} style={{ left: x(l.start), width: Math.max(2, x(l.end) - x(l.start)), top: mid - SIZE.bar / 2, height: SIZE.bar }} />
+            {l.from && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ left: x(l.start), top: mid - SIZE.tick / 2, height: SIZE.tick }} />}
+            {l.to && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ left: x(l.end) - 2, top: mid - SIZE.tick / 2, height: SIZE.tick }} />}
+          </span>
+        );
+      })}
+      {timeRows > 0 && <Labels labels={bars.times} top={(row) => (timeRows === 2 && row === 0 ? SIZE.line : 0)} tone="text-ink-muted" width={width} />}
+      <Labels labels={bars.cities} top={cityTop} tone="font-semibold text-ink" width={width} />
+      {middle.map((m, i) => (
+        <span key={`m${i}`} className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[10px] leading-none ${m.tone}`} style={{ left: m.x, top: cityTop(0), height: SIZE.line }}>
+          {m.text}
+        </span>
+      ))}
+
+      {lane &&
+        bars.stays.map((s, i) => {
+          // The van from the airport right after landing, then the hotel, then the van back at the pickup — three
+          // pieces with a gap between each, so both rides show on every layover.
+          const gtIn = s.runsIn ? null : Math.min(x(s.start), width - GT_PX);
+          const gtOut = s.runsOn ? null : Math.min(x(s.end) + GT_GAP, width - GT_PX);
+          const left = gtIn === null ? x(s.start) : gtIn + GT_PX + GT_GAP;
+          const right = gtOut === null ? x(s.end) : gtOut - GT_GAP;
+          return (
+            <span key={`h${i}`}>
+              <span className={`absolute bg-layover ${s.runsIn ? "" : "rounded-l-full"} ${s.runsOn ? "" : "rounded-r-full"}`} style={{ left, width: Math.max(2, right - left), top: laneTop, height: SIZE.lane }} />
+              {gtIn !== null && <span className="absolute rounded-full bg-gt" style={{ left: gtIn, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT in — airport to hotel" />}
+              {gtOut !== null && <span className="absolute rounded-full bg-gt" style={{ left: gtOut, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT out — hotel pickup" />}
+              {s.labeled && (
+                <span
+                  className="absolute flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap font-mono text-[10px] font-semibold leading-none text-layover"
+                  style={{ left: left + (s.runsIn ? 0 : GT_PX + 2), maxWidth: width - left - (s.runsIn ? 0 : GT_PX + 2), top: wordsTop, height: SIZE.line }}
+                >
                   {formatStay ? (
                     formatStay(s, <CityMarkGlyph mark={cityPreferences?.[s.city]} />)
                   ) : (
                     <>
-                      {s.city} {stayHours(s.hours)}
+                      L/O {s.city} {Math.round(s.hours)}h
                       <CityMarkGlyph mark={cityPreferences?.[s.city]} />
                     </>
                   )}
                 </span>
+              )}
+            </span>
+          );
+        })}
+      {lane &&
+        bars.rests.map((r, i) => {
+          const left = x(r.start);
+          const w = Math.max(2, x(r.end) - left);
+          const text = `Rest HTL ${r.city} ${stayHours(r.hours)}`;
+          const half = (text.length * LABEL_CHAR_PX) / 2;
+          const center = Math.min(Math.max(left + w / 2, half), width - half);
+          return (
+            <span key={`r${i}`}>
+              <span className="absolute rounded-full bg-rest" style={{ left, width: w, top: laneTop, height: SIZE.lane }} />
+              <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-[10px] font-semibold leading-none text-rest" style={{ left: center, top: wordsTop, height: SIZE.line }}>
+                {text}
               </span>
-            )}
-          </span>
-        ))}
-      {bars.legs.map((l, i) => (
-        <span key={`l${i}`}>
-          <span
-            className={`absolute ${l.deadhead ? "border-t-2 border-dashed border-ink-muted" : "bg-ink"}`}
-            style={{ left: pct(l.start), width: `max(2px, ${pct(l.end - l.start)})`, top: mid - 1, height: l.deadhead ? 0 : 2 }}
-          />
-          {l.from && <span className={`absolute w-[1.5px] ${l.deadhead ? "bg-ink-muted" : "bg-ink"}`} style={{ left: pct(l.start), top: mid - size.tick / 2, height: size.tick }} />}
-          {l.to ? (
-            <span className={`absolute w-[1.5px] ${l.deadhead ? "bg-ink-muted" : "bg-ink"}`} style={{ left: `calc(${pct(l.end)} - 1.5px)`, top: mid - size.tick / 2, height: size.tick }} />
-          ) : (
-            <span className="absolute h-0 w-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-ink" style={{ left: `calc(${pct(l.end)} - 5px)`, top: mid - 4 }} />
-          )}
-        </span>
-      ))}
-      {times && <Labels labels={bars.times} top={(row) => (timeRows === 2 && row === 0 ? size.line : 0)} line={size.line} tone="text-ink-muted" half={minGap / 2} />}
-      {showCities && <Labels labels={bars.cities} top={(row) => trackTop + size.track + 2 + row * size.line} line={size.line} tone="font-semibold text-ink" half={minGap / 2} />}
+            </span>
+          );
+        })}
     </div>
   );
 }

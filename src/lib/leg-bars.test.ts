@@ -32,7 +32,7 @@ function stay(city: string, start: number, end: number, extra: Partial<TimelineS
 describe("dayBars", () => {
   it("draws each leg where it flies, with the times it prints", () => {
     const bars = dayBars([leg("MEM", "SEA", 3 * H, 7.5 * H, { startClock: "03:00", endClock: "05:35" })], 60);
-    expect(bars.legs).toEqual([{ start: 180, end: 450, from: "MEM", to: "SEA", deadhead: false, depClock: "03:00", arrClock: "05:35" }]);
+    expect(bars.legs).toEqual([{ start: 180, end: 450, from: "MEM", to: "SEA", deadhead: false, depClock: "03:00", arrClock: "05:35", flightNumber: "1", cab: false }]);
     expect(bars.cities.map((c) => c.text)).toEqual(["MEM", "SEA"]);
     expect(bars.times.map((t) => t.text)).toEqual(["03:00", "05:35"]);
   });
@@ -130,5 +130,21 @@ describe("layover words", () => {
     expect(fitLayoverLabel("OAK", 28, 30)).toMatchObject({ prefix: false, hours: false });
     // Room for the pilot's mark after it counts too.
     expect(fitLayoverLabel("OAK", 28, "L/O OAK 28h".length * LABEL_CHAR_PX + 4, 10)).toMatchObject({ prefix: false });
+  });
+});
+
+describe("layover ends and rest hotels", () => {
+  it("knows whether a layover begins and ends on the day, for the van at each end", () => {
+    const night = dayBars([stay("OAK", 18 * H, 24 * H, { continuesToNextDay: true })], 60);
+    expect(night.stays[0]).toMatchObject({ runsIn: false, runsOn: true });
+    const morning = dayBars([stay("OAK", 0, 9 * H, { continuesFromPreviousDay: true })], 60);
+    expect(morning.stays[0]).toMatchObject({ runsIn: true, runsOn: false });
+  });
+
+  it("draws a crew-rest hotel between two legs of one duty as a rest, not a layover", () => {
+    const rest = piece("connection", 3 * H, 8 * H, { stay: { city: "IND", hotel: "Hyatt", hours: 5, transportTo: null, transportFrom: null } });
+    const bars = dayBars([leg("MEM", "IND", 1 * H, 3 * H), rest, leg("IND", "MEM", 8 * H, 10 * H)], 60);
+    expect(bars.rests).toEqual([{ start: 180, end: 480, city: "IND", hours: 5, hotel: "Hyatt" }]);
+    expect(bars.stays).toEqual([]);
   });
 });

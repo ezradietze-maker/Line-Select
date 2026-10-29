@@ -1,8 +1,8 @@
 "use client";
 
 import { TripPicture } from "@/components/results/TripPicture";
+import { CreditHours } from "@/components/results/TripMarks";
 import { tripDateLabel, tripDuties, tripHeadline } from "@/lib/brain/line-text";
-import { hm } from "@/lib/trip-day-stats";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /** The trip's oval — its number and credit, as the calendar marks a trip's first day — then when and how long. */
@@ -12,7 +12,7 @@ function TripTag({ bidPack, trip }: { bidPack: Pick<BidPack, "bidPeriodStart">; 
     <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-muted">
       <span className="rounded-full bg-calendar-accent px-1.5 py-px font-mono text-[11px] font-semibold text-on-calendar">
         {trip.pairingNumber !== null ? `#${trip.pairingNumber} ` : ""}
-        <span className="font-normal opacity-85">{hm(trip.creditHours * 60)}</span>
+        <CreditHours hours={trip.creditHours} className="font-normal opacity-85" />
       </span>
       <span className="font-mono">{[date, `${trip.days}-day`].filter(Boolean).join(" · ")}</span>
     </span>
@@ -23,12 +23,12 @@ function TripTag({ bidPack, trip }: { bidPack: Pick<BidPack, "bidPeriodStart">; 
  * A trip as the interview shows it: the same picture as the results, one row per day — so a pilot sizes it up from
  * how it looks, as they would a trip on a trade board, with the duties as text a tap away.
  */
-export function TripGlance({ bidPack, trip, labelBg = "bg-surface", tag = true }: { bidPack: BidPack; trip: Trip; labelBg?: string; tag?: boolean }) {
+export function TripGlance({ bidPack, trip, tag = true }: { bidPack: BidPack; trip: Trip; tag?: boolean }) {
   return (
     <div className="min-w-0">
       {tag && <TripTag bidPack={bidPack} trip={trip} />}
       <div className={tag ? "mt-2" : ""}>
-        <TripPicture trip={trip} bidPeriodStart={bidPack.bidPeriodStart} compact labelBg={labelBg} />
+        <TripPicture trip={trip} bidPeriodStart={bidPack.bidPeriodStart} compact />
       </div>
       <details className="group mt-1">
         <summary className="cursor-pointer list-none text-[11px] text-ink-faint marker:hidden hover:text-ink-muted">

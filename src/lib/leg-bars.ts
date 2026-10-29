@@ -26,6 +26,9 @@ export interface BarLeg {
   /** "HH:MM" it leaves and lands, on each airport's own clock (or Zulu), as the bid pack prints them. */
   depClock: string | null;
   arrClock: string | null;
+  flightNumber: string;
+  /** A ride between airports by road ("GT9999 CAB"), not a flight. */
+  cab: boolean;
 }
 
 export interface BarSpan {
@@ -40,6 +43,16 @@ export interface BarStay extends BarSpan {
   hotel: string | null;
   /** The stay's piece that carries its words — one per stay, on the day it's longest. */
   labeled: boolean;
+  /** The stay began the day before (its landing isn't on this day), or runs on into the next (its pickup isn't). */
+  runsIn: boolean;
+  runsOn: boolean;
+}
+
+/** A crew-rest hotel during a long sit between two legs of the same duty — at a hub, through the sort. */
+export interface BarRest extends BarSpan {
+  city: string;
+  hours: number;
+  hotel: string | null;
 }
 
 export interface BarLabel {
@@ -58,6 +71,7 @@ export interface DayBars {
   duty: BarSpan[];
   standby: (BarSpan & { place: string })[];
   stays: BarStay[];
+  rests: BarRest[];
   cities: BarLabel[];
   times: BarLabel[];
 }
@@ -114,6 +128,8 @@ export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled
       deadhead: s.kind === "deadhead",
       depClock: s.continuesFromPreviousDay ? null : (s.startClock ?? s.leg!.depClock),
       arrClock: s.continuesToNextDay ? null : (s.endClock ?? s.leg!.arrClock),
+      flightNumber: s.leg!.flightNumber,
+      cab: s.leg!.equipment === "CAB",
     }));
 
   const cityPoints: { at: number; text: string; deadhead: boolean }[] = [];
@@ -136,7 +152,19 @@ export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled
     standby: ordered.filter((s) => s.kind === "standby").map((s) => ({ start: s.startMinuteOfDay, end: endOf(s), place: s.startAirport ?? s.inlineStart ?? "" })),
     stays: ordered
       .filter((s) => s.kind === "layover" && s.stay)
-      .map((s) => ({ start: s.startMinuteOfDay, end: endOf(s), city: s.stay!.city, hours: s.stay!.hours, hotel: s.stay!.hotel, labeled: stayLabeled(s) })),
+      .map((s) => ({
+        start: s.startMinuteOfDay,
+        end: endOf(s),
+        city: s.stay!.city,
+        hours: s.stay!.hours,
+        hotel: s.stay!.hotel,
+        labeled: stayLabeled(s),
+        runsIn: s.continuesFromPreviousDay,
+        runsOn: s.continuesToNextDay,
+      })),
+    rests: ordered
+      .filter((s) => s.kind === "connection" && s.stay)
+      .map((s) => ({ start: s.startMinuteOfDay, end: endOf(s), city: s.stay!.city, hours: s.stay!.hours, hotel: s.stay!.hotel })),
     cities: stagger(cityPoints, minGap),
     times: stagger(timePoints, minGap),
   };
