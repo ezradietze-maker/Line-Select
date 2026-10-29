@@ -49,6 +49,16 @@ export function ColorKey({ variant, className = "" }: { variant: "calendar" | "t
         />
       )}
       <Item swatch={<Line tone="bg-rest" />} label="Rest hotel at a hub" />
+      {!trip && (
+        <Item
+          swatch={
+            <svg aria-hidden width="20" height="10" className="shrink-0 overflow-visible text-dateline">
+              <line x1="1" y1="2" x2="19" y2="8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+            </svg>
+          }
+          label="Date line crossing"
+        />
+      )}
       <Item swatch={<Line tone="bg-standby" />} label="Hotel standby" />
       <Item swatch={<span aria-hidden className="inline-block h-1.5 w-5 shrink-0 rounded-[2px] bg-calendar-accent/20" />} label="On duty, on the ground" />
       <Item swatch={<span className="font-mono text-[10px] font-semibold text-report">Rpt</span>} label="Report" />

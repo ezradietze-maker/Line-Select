@@ -1,4 +1,5 @@
-import type { TimelineSegment } from "@/lib/trip-timeline";
+import { dateLineCrossing, type DateLineDirection } from "@/lib/date-line";
+import type { DateLineBack, TimelineSegment } from "@/lib/trip-timeline";
 
 /**
  * A day of flying drawn the way the ex-pilot drew his lines in his paper organizer: each leg a line with a tick at each
@@ -29,6 +30,10 @@ export interface BarLeg {
   flightNumber: string;
   /** A ride between airports by road ("GT9999 CAB"), not a flight. */
   cab: boolean;
+  /** It crosses the international date line, and which way (see `lib/date-line.ts`). */
+  dateLine: DateLineDirection | null;
+  /** Drawn back from its takeoff to its landing — east across the date line on the month calendar (`end` < `start`). */
+  back?: DateLineBack;
 }
 
 export interface BarSpan {
@@ -46,6 +51,9 @@ export interface BarStay extends BarSpan {
   /** The stay began the day before (its landing isn't on this day), or runs on into the next (its pickup isn't). */
   runsIn: boolean;
   runsOn: boolean;
+  /** A date lived a second time, after an eastbound date-line flight — and whether it runs on into a date lived once. */
+  secondPass?: boolean;
+  rejoins?: boolean;
 }
 
 /** A crew-rest hotel during a long sit between two legs of the same duty — at a hub, through the sort. */
@@ -87,7 +95,7 @@ const DUTY_JOIN_MINUTES = 5;
 
 function dutySpans(segs: TimelineSegment[]): BarSpan[] {
   const spans: BarSpan[] = [];
-  for (const s of segs.filter((x) => DUTY_KINDS.has(x.kind)).sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay)) {
+  for (const s of segs.filter((x) => DUTY_KINDS.has(x.kind) && !x.dateLineBack).sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay)) {
     const last = spans.at(-1);
     if (last && s.startMinuteOfDay <= last.end + DUTY_JOIN_MINUTES) last.end = Math.max(last.end, endOf(s));
     else spans.push({ start: s.startMinuteOfDay, end: endOf(s) });
@@ -122,7 +130,8 @@ export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled
     .filter((s) => (s.kind === "flying" || s.kind === "deadhead") && s.leg)
     .map((s) => ({
       start: s.startMinuteOfDay,
-      end: endOf(s),
+      end: s.dateLineBack ? s.endMinuteOfDay : endOf(s),
+      ...(s.dateLineBack ? { back: s.dateLineBack } : {}),
       from: s.continuesFromPreviousDay ? null : s.leg!.dep,
       to: s.continuesToNextDay ? null : s.leg!.arr,
       deadhead: s.kind === "deadhead",
@@ -130,6 +139,7 @@ export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled
       arrClock: s.continuesToNextDay ? null : (s.endClock ?? s.leg!.arrClock),
       flightNumber: s.leg!.flightNumber,
       cab: s.leg!.equipment === "CAB",
+      dateLine: dateLineCrossing(s.leg!.dep, s.leg!.arr),
     }));
 
   const cityPoints: { at: number; text: string; deadhead: boolean }[] = [];
@@ -161,6 +171,7 @@ export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled
         labeled: stayLabeled(s),
         runsIn: s.continuesFromPreviousDay,
         runsOn: s.continuesToNextDay,
+        ...(s.secondPass ? { secondPass: true, rejoins: !!s.rejoins } : {}),
       })),
     rests: ordered
       .filter((s) => s.kind === "connection" && s.stay)

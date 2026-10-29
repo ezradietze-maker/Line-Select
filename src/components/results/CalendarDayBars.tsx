@@ -91,20 +91,40 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
   const trackTop = citiesTop + cityRows * size.line + (cityRows ? 1 : 0);
   const mid = trackTop + size.track / 2;
   const laneTop = trackTop + size.track + 1;
-  const wordsTop = laneTop + size.lane + 2;
+  // A second layover line just under the first: a date lived twice, after a flight east across the date line.
+  const lane2Top = laneTop + size.lane + 2;
+  const wordsTop = lane2Top + size.lane + 2;
   const height = wordsTop + size.line;
 
   // Each labeled layover's words, and where they go: under its line, or up top when they don't fit their piece and
   // the top line is free.
   const stayWords: { s: (typeof bars.stays)[number]; up: boolean; center: number; words: ReactNode }[] = [];
-  for (const s of bars.stays.filter((st) => st.labeled)) {
+  // Left to right, so two layovers on one day (a short one, then the night's) never print on top of each other: a label
+  // that would run into the one before it says less, or moves up to the top line when that's free.
+  let lastRight = -Infinity;
+  for (const s of bars.stays.filter((st) => st.labeled).sort((a, b) => a.start - b.start)) {
     const piece = x(s.end) - x(s.start);
-    const fit = fitLayoverLabel(s.city, s.hours, width + 2 * bleed, cityPreferences?.[s.city] ? MARK_PX : 0);
-    const up = top == null && !stayWords.some((w) => w.up) && fit.widthPx > piece + 4;
-    const half = fit.widthPx / 2;
-    const center = Math.min(Math.max((x(s.start) + x(s.end)) / 2, half - bleed), width + bleed - half);
-    const mark = <CityMarkGlyph mark={cityPreferences?.[s.city]} />;
-    stayWords.push({ s, up, center, words: <LayoverWords city={s.city} hours={s.hours} prefix={fit.prefix} withHours={fit.hours} international={!!internationalCities?.has(s.city)} mark={mark} /> });
+    const mark = cityPreferences?.[s.city] ? MARK_PX : 0;
+    const mid = (x(s.start) + x(s.end)) / 2;
+    const place = (w: number) => Math.min(Math.max(mid, w / 2 - bleed), width + bleed - w / 2);
+    let fit = fitLayoverLabel(s.city, s.hours, width + 2 * bleed, mark);
+    let center = place(fit.widthPx);
+    if (center - fit.widthPx / 2 < lastRight + 4) {
+      // Only the room to the right of the last label: shorter words, nudged clear of it.
+      const room = width + bleed - (lastRight + 4);
+      fit = fitLayoverLabel(s.city, s.hours, room, mark);
+      center = Math.max(place(fit.widthPx), lastRight + 4 + fit.widthPx / 2);
+    }
+    const crowded = center - fit.widthPx / 2 < lastRight + 4 || center + fit.widthPx / 2 > width + bleed + 1;
+    const up = top == null && !stayWords.some((w) => w.up) && (fit.widthPx > piece + 4 || crowded);
+    if (crowded && !up) continue;
+    if (!up) lastRight = center + fit.widthPx / 2;
+    stayWords.push({
+      s,
+      up,
+      center,
+      words: <LayoverWords city={s.city} hours={s.hours} prefix={fit.prefix} withHours={fit.hours} international={!!internationalCities?.has(s.city)} mark={<CityMarkGlyph mark={cityPreferences?.[s.city]} />} />,
+    });
   }
 
   return (
@@ -157,6 +177,18 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
           const runsIn = s.start <= 0;
           const runsOn = s.end >= DAY;
           const left = x(s.start) - (runsIn ? bleed : 0);
+          if (s.secondPass) {
+            // The second time through the date, on its own line; back up to the usual line where the date is new.
+            const y2 = lane2Top + size.lane / 2;
+            const y1 = laneTop + size.lane / 2;
+            const right = x(s.end) + (runsOn ? bleed : 0);
+            const points = s.rejoins ? `${left},${y2} ${Math.max(left, width - 8)},${y2} ${width + bleed},${y1}` : `${left},${y2} ${right},${y2}`;
+            return (
+              <svg key={`h${i}`} className="absolute left-0 top-0 overflow-visible text-layover" width={width} height={height} aria-hidden>
+                <polyline points={points} fill="none" stroke="currentColor" strokeWidth={size.lane} strokeLinecap={runsIn ? "butt" : "round"} strokeLinejoin="round" />
+              </svg>
+            );
+          }
           return (
             <span
               key={`h${i}`}
@@ -176,10 +208,50 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
         </span>
       ))}
       {bars.legs.map((l, i) => {
-        const tone = l.deadhead ? "bg-deadhead" : "bg-leg";
+        const east = l.dateLine === "east";
+        const tone = east ? "bg-dateline" : l.deadhead ? "bg-deadhead" : "bg-leg";
         const runsIn = l.from === null;
         const runsOn = l.to === null;
         const left = x(l.start) - (runsIn ? bleed : 0);
+        // East across the date line, the pilot lands on the same date they left (the ex-pilot's sketch: depart the
+        // 10th, land the 10th, the layover on from there): the flight comes down from the flying to the layover line
+        // in the date-line color, and the layover carries on from where it lands.
+        if (l.back) {
+          // East across the date line, his way: from the takeoff back to the landing on its own local clock — earlier the
+          // same date, or late the date before — then down onto the date's second layover line.
+          const yTop = mid;
+          const yBot = lane2Top + size.lane / 2;
+          const yEdge = yTop + (yBot - yTop) * l.back.edgeFraction;
+          const [x0, y0, x1, y1] =
+            l.back.part === "whole"
+              ? [x(l.start), yTop, x(l.end), yBot]
+              : l.back.part === "departure"
+                ? [x(l.start), yTop, -bleed, yEdge]
+                : [width + bleed, yEdge, x(l.end), yBot];
+          return (
+            <span key={`l${i}`} title="Crosses the date line eastbound — lands on the same date it left, or the one before">
+              <svg className="absolute left-0 top-0 overflow-visible text-dateline" width={width} height={height} aria-hidden>
+                <line x1={x0} y1={y0} x2={x1} y2={y1} stroke="currentColor" strokeWidth={size.bar} strokeLinecap="round" />
+                {l.back.part !== "departure" && <circle cx={x1} cy={y1} r={2.5} fill="currentColor" />}
+              </svg>
+              {l.back.part !== "arrival" && <span className="absolute w-[2px] rounded-full bg-dateline" style={{ left: x(l.start) - 1, top: mid - size.tick / 2, height: size.tick }} />}
+            </span>
+          );
+        }
+        if (east && !runsOn) {
+          const x0 = runsIn ? -bleed : x(l.start);
+          const x1 = Math.max(x0 + 2, x(l.end));
+          const y1 = laneTop + size.lane / 2;
+          return (
+            <span key={`l${i}`} title="Crosses the date line eastbound — lands on the same date it left">
+              <svg className="absolute left-0 top-0 overflow-visible text-dateline" width={width} height={height} aria-hidden>
+                <line x1={x0} y1={mid} x2={x1} y2={y1} stroke="currentColor" strokeWidth={size.bar} strokeLinecap="round" />
+                <circle cx={x1} cy={y1} r={2.5} fill="currentColor" />
+              </svg>
+              {!runsIn && <span className="absolute w-[2px] rounded-full bg-dateline" style={{ left: x(l.start), top: mid - size.tick / 2, height: size.tick }} />}
+            </span>
+          );
+        }
         return (
           <span key={`l${i}`}>
             <span className={`absolute ${tone}`} style={{ left, width: Math.max(2, x(l.end) + (runsOn ? bleed : 0) - left), top: mid - size.bar / 2, height: size.bar }} />

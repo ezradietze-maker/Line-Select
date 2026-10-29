@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
-import { buildHomeDays, buildZuluCalendarDays, type TimeMode, type TimelineDay, type TimelineSegment } from "@/lib/trip-timeline";
+import { dateLineCrossing } from "@/lib/date-line";
+import { buildDateLineDays, buildHomeDays, buildZuluCalendarDays, type TimeMode, type TimelineDay, type TimelineSegment } from "@/lib/trip-timeline";
 import type { Line, Trip } from "@/types/bidpack";
 
 export interface LineMonthDay {
@@ -84,6 +85,9 @@ function synthesizeSpans(line: Line): Span[] {
  * evening report at a US base is already the next day in Zulu), and a day is
  * off when no trip touches it — the bid pack's own days off are counted on the
  * base's calendar, so they don't apply.
+ *
+ * A trip that crosses the date line eastbound is laid out on local dates and clocks instead (`buildDateLineDays`), the
+ * way the ex-pilot draws one: the flight runs back to the date it lands on, and the layover carries on from there.
  */
 export function buildLineMonthCalendar(line: Line, bidPeriodStart: string | null, bidPeriodDays: number, mode: TimeMode): LineMonthCalendar {
   const placementIsReal = bidPeriodStart !== null && line.trips.every((t) => t.startDayIndex !== null);
@@ -91,8 +95,12 @@ export function buildLineMonthCalendar(line: Line, bidPeriodStart: string | null
   const spans: Span[] = placementIsReal ? line.trips.map((t, i) => ({ trip: t, tripIndex: i, start: t.startDayIndex! })) : synthesizeSpans(line);
 
   const zulu = mode === "zulu";
+  const crossesEast = (t: Trip) => t.schedule.some((d) => d.legs.some((l) => dateLineCrossing(l.depAirport, l.arrAirport) === "east"));
   const timelineBySpan: { span: Span; timeline: TimelineDay[] }[] = spans.map((span) => {
-    if (!zulu) return { span, timeline: buildHomeDays(span.trip, mode) };
+    if (!zulu) {
+      const local = crossesEast(span.trip) ? buildDateLineDays(span.trip) : [];
+      return { span, timeline: local.length ? local : buildHomeDays(span.trip, mode) };
+    }
     // Its first Zulu day is its first base day moved by however far apart the two dates are when it reports.
     const timeline = buildZuluCalendarDays(span.trip);
     const homeFirst = buildHomeDays(span.trip, "local")[0]?.date;

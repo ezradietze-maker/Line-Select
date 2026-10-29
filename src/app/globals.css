@@ -86,6 +86,8 @@
      sit at a hub (a day room). */
   --color-gt: #0e7490;
   --color-rest: #9a5a00;
+  /* A flight across the international date line, on the month calendar. */
+  --color-dateline: #d11f1f;
 
   --color-focus-ring: #4a3420;
 
@@ -182,6 +184,7 @@
     --color-report: #ff8d45;
     --color-gt: #38d0f0;
     --color-rest: #fbbf24;
+    --color-dateline: #ff6464;
 
     --color-focus-ring: #c9a468;
     --shadow-color: 35 25% 2%;
@@ -248,6 +251,7 @@
   --color-report: #ff8d45;
   --color-gt: #38d0f0;
   --color-rest: #fbbf24;
+  --color-dateline: #ff6464;
 
   --color-focus-ring: #c9a468;
   --shadow-color: 35 25% 2%;
@@ -325,6 +329,7 @@
   --color-report: #ff8a2a;
   --color-gt: #e89a7a;
   --color-rest: #ffb35c;
+  --color-dateline: #ffd9b0;
 
   --color-focus-ring: #ff4d4d;
   --shadow-color: 0 70% 2%;
@@ -387,6 +392,7 @@
   --color-report: var(--color-report);
   --color-gt: var(--color-gt);
   --color-rest: var(--color-rest);
+  --color-dateline: var(--color-dateline);
 
   --color-panel: var(--color-panel);
   --color-readout: var(--color-readout);

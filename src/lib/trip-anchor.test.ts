@@ -75,20 +75,23 @@ describe("a trip home across the date line", () => {
     for (let i = 1; i < dates.length; i++) expect(dates[i] >= dates[i - 1]).toBe(true);
   });
 
-  it("lists each day's flying on the month calendar the way a pilot reads it", () => {
+  it("lists each day's flying on the month calendar on local dates, as the ex-pilot reads a trip across the date line", () => {
     const line = { id: "l", lineNumber: "1012", trips: [trip], daysOff: 22, totalCreditHours: 35.85, totalTafbHours: 134.43, totalLandings: 5, totalDepartures: 5 };
     const days = buildDetailedMonth(line, start, 28).days;
-    // Oct 3: report, out to Seoul, a night there.
-    // It lands 13:15 Seoul time — still Oct 3 on Anchorage's calendar.
-    expect(days[5].flights).toEqual([{ kind: "flying", from: "ANC", to: "ICN", dep: "10:45", arr: "13:15" }]);
-    expect(days[5].layoverCode).toBe("ICN");
-    // Oct 5 (Anchorage's calendar): Seoul to Osaka to Xiamen.
+    // Oct 3: report, out to Seoul — landing there 13:15 on Oct 4, Seoul's date.
+    expect(days[5].flights).toEqual([{ kind: "flying", from: "ANC", to: "ICN", dep: "10:45" }]);
+    expect(days[6].flights).toEqual([{ kind: "lands", from: "ANC", to: "ICN", arr: "13:15" }]);
+    expect(days[6].layoverCode).toBe("ICN");
+    // Oct 5: Seoul to Osaka to Xiamen.
     expect(days[7].flights.map((f) => `${f.dep} ${f.from}→${f.to}`)).toEqual(["18:25 ICN→KIX", "21:55 KIX→XMN"]);
-    // Oct 6: a whole day in Xiamen.
-    expect(days[8].flights).toEqual([]);
-    expect(days[8].restCity).toBe("XMN");
-    // Oct 8: home, landing 23:41 local.
-    expect(days[10].flights.at(-1)).toEqual({ kind: "flying", from: "ICN", to: "ANC", dep: "08:40", arr: "23:41" });
+    // Oct 7: a whole day in Xiamen.
+    expect(days[9].flights).toEqual([]);
+    expect(days[9].restCity).toBe("XMN");
+    // Home east across the date line: it leaves Seoul 08:40 on Oct 9 and lands in Anchorage 23:41 on Oct 8 — drawn
+    // running back from its takeoff on the 9th to its landing on the 8th.
+    expect(days[10].flights.at(-1)).toEqual({ kind: "lands", from: "ICN", to: "ANC", arr: "23:41" });
+    expect(days[10].segments.find((s) => s.dateLineBack)?.dateLineBack?.part).toBe("arrival");
+    expect(days[11].segments.find((s) => s.dateLineBack)).toMatchObject({ startClock: "08:40", dateLineBack: { part: "departure" } });
   });
 
   it("fits the base's own calendar the grid counts: Oct 3 to Oct 8, six days", () => {
