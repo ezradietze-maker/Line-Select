@@ -1,5 +1,5 @@
 import type { LayoverSleepPlan, SleepKind } from "@/lib/sleep-plan";
-import { detectDateLineCrossing, localDayStart, localInstantToZulu, toLocalInstant, zuluDayLabel, type LocalInstant } from "@/lib/trip-clock";
+import { detectDateLineCrossing, localDayStart, localInstantToZulu, toLocalInstant, ZULU_CLOCK, zoneForClock, zuluDayLabel, type LocalInstant } from "@/lib/trip-clock";
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { displayHotelName } from "@/lib/hotels/hotel-names";
@@ -564,7 +564,7 @@ function buildLocalDays(raw: RawSegment[], home?: string): TimelineDay[] {
     const opener = positioned.find(({ start, end }) => start.dayIndex <= d && end.dayIndex >= d);
     let date: string | undefined;
     if (opener) {
-      const zone = timezoneForAirport(startAt(opener.seg));
+      const zone = zoneForClock(startAt(opener.seg));
       const localStart = zone ? DateTime.fromISO(opener.seg.zuluStart, { zone: "utc" }).setZone(zone) : null;
       date = localStart?.plus({ days: d - opener.start.dayIndex }).toISODate() ?? undefined;
     }
@@ -629,6 +629,16 @@ export function buildHomeDays(trip: Trip, mode: TimeMode): TimelineDay[] {
   const home = trip.schedule[0]?.legs[0]?.depAirport;
   if (raw.length === 0 || !home) return [];
   return buildLocalDays(raw, home);
+}
+
+/**
+ * The month calendar's Zulu days: the same as `buildHomeDays`, but every piece placed on the Zulu clock and its Zulu
+ * date, midnight Z to midnight Z, its times printed in Zulu. Each day's `date` is its Zulu date.
+ */
+export function buildZuluCalendarDays(trip: Trip): TimelineDay[] {
+  const raw = buildRawSegments(trip, "zulu");
+  if (raw.length === 0) return [];
+  return buildLocalDays(raw, ZULU_CLOCK);
 }
 
 export function buildLocalDaysWithMode(trip: Trip, mode: TimeMode): TimelineDay[] {

@@ -6,11 +6,13 @@ import { BedIcon } from "@/components/ui/icons";
 import { CalendarDayBars } from "@/components/results/CalendarDayBars";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { CreditHours, Zone } from "@/components/results/TripMarks";
+import { TimeModeToggle } from "@/components/results/TimeModeToggle";
+import { useTimeMode } from "@/lib/time-mode-storage";
 import { labeledStayPieces } from "@/lib/leg-bars";
 import { Modal } from "@/components/ui/Modal";
 import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthDepartureOptions, type MonthSummary, type TripFinish } from "@/lib/month-detail";
 import { dayStats, equipmentLabel, hm } from "@/lib/trip-day-stats";
-import type { TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
+import type { TimeMode, TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
 import type { CityMark } from "@/types/preferences";
@@ -83,42 +85,45 @@ const turnLabel = (m: number) => `${Math.floor(m / 60)}h${String(m % 60).padStar
 /** Turns this short are a straight turn at base; longer, the pilot is sitting at base between trips because home is too far to be worth it. */
 const STRAIGHT_TURN_MINUTES = 6 * 60;
 
+/** "L" or "Z", for a time written in a sentence. */
+const clockOf = (mode: TimeMode) => (mode === "zulu" ? "Z" : "L");
+
 /** What joining two trips means for this pilot, in a sentence. */
-function chainSentence(c: NonNullable<DetailedDay["chain"]>): string {
-  const times = c.landed && c.reports ? `: lands ${c.city} ${c.landed}, reports again ${c.reports} (L)` : "";
+function chainSentence(c: NonNullable<DetailedDay["chain"]>, mode: TimeMode = "local"): string {
+  const times = c.landed && c.reports ? `: lands ${c.city} ${c.landed}, reports again ${c.reports} (${clockOf(mode)})` : "";
   return c.turnMinutes < STRAIGHT_TURN_MINUTES
     ? `Turns straight out of trip #${c.fromTripNumber ?? ""}${times} — ${turnLabel(c.turnMinutes)} on the ground, so the two are flown as one departure from home.`
     : `Follows trip #${c.fromTripNumber ?? ""} after ${turnLabel(c.turnMinutes)} in ${c.city}${times}. That's not long enough to get home and have 24 hours there, so the two are one departure — and the time between is spent in ${c.city}.`;
 }
 
 /** When the trip reports, in the report color. A trip turned straight out of the one before also says how long it sits at base in between. */
-function Report({ day }: { day: DetailedDay }) {
+function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
   const time = day.chain ? day.chain.reports || day.dutyStart : day.isTripStart ? day.dutyStart : null;
   if (!time) return null;
   return (
     <>
       <span
         className="whitespace-nowrap font-mono text-[9px] font-semibold leading-none text-report @min-[4.75rem]:text-[10px]"
-        title={`Reports ${time} local${day.earlyReport ? " — between 2 and 6am" : ""}`}
+        title={`Reports ${time} ${mode === "zulu" ? "Zulu" : "local"}${day.earlyReport ? " — between 2 and 6am local" : ""}`}
       >
         <span className="hidden @min-[4.75rem]:inline">Rpt </span>
         {time}
-        <Zone />
+        <Zone mode={mode} />
       </span>
-      {day.chain && <span className="hidden whitespace-nowrap font-mono text-[10px] text-ink-muted @min-[8.5rem]:inline" title={chainSentence(day.chain)}>&nbsp;· {turnLabel(day.chain.turnMinutes)} turn</span>}
+      {day.chain && <span className="hidden whitespace-nowrap font-mono text-[10px] text-ink-muted @min-[8.5rem]:inline" title={chainSentence(day.chain, mode)}>&nbsp;· {turnLabel(day.chain.turnMinutes)} turn</span>}
     </>
   );
 }
 
 /** Where and when the trip ends, on its own last day — "END MEM 23:59L", "+1" when that's after midnight. */
-function End({ finish }: { finish: TripFinish }) {
+function End({ finish, mode }: { finish: TripFinish; mode: TimeMode }) {
   return (
-    <span className="flex min-w-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-[9px] leading-none text-ink @min-[4.75rem]:text-[10px]" title={`Trip ends: lands ${finish.city} ${finish.time} (L)${finish.nextDay ? ", just after midnight" : ""}`}>
+    <span className="flex min-w-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-[9px] leading-none text-ink @min-[4.75rem]:text-[10px]" title={`Trip ends: lands ${finish.city} ${finish.time} (${clockOf(mode)})${finish.nextDay ? ", just after midnight" : ""}`}>
       <span className="text-[8.5px] font-semibold tracking-wide text-ink-muted">END</span>
       <span className="font-semibold">{finish.city}</span>
       <span className="hidden @min-[4.75rem]:inline">
         {finish.time}
-        <Zone />
+        <Zone mode={mode} />
       </span>
       {finish.nextDay && <span className="text-[8.5px] text-ink-muted">+1</span>}
     </span>
@@ -145,6 +150,7 @@ function Cell({
   stayLabeled,
   internationalCities,
   cityPreferences,
+  mode,
 }: {
   day: DetailedDay;
   selected: boolean;
@@ -157,12 +163,13 @@ function Cell({
   stayLabeled: (s: TimelineSegment) => boolean;
   internationalCities: ReadonlySet<string>;
   cityPreferences?: Record<string, CityMark>;
+  mode: TimeMode;
 }) {
   const isOff = day.kind === "off";
   const standby = day.flights.find((f) => f.kind === "standby");
   // The end of another trip that morning (a landing just after midnight), then this day's own.
   const pieces = [...(day.spill?.segments ?? []), ...(isOff ? [] : day.segments)];
-  const report = isOff ? null : <Report day={day} />;
+  const report = isOff ? null : <Report day={day} mode={mode} />;
   const drawn = pieces.some((s) => DRAWN.has(s.kind));
   return (
     <button
@@ -221,7 +228,7 @@ function Cell({
             <span className="hidden @min-[4.75rem]:inline"> days</span> off
           </span>
         )}
-        {!isOff && day.finish && <End finish={day.finish} />}
+        {!isOff && day.finish && <End finish={day.finish} mode={mode} />}
       </span>
     </button>
   );
@@ -253,7 +260,8 @@ function MonthKeyInfo() {
             <li><span className="font-medium text-ink">END MEM 19:05L.</span> Where and when the trip ends, on its last day. <span className="font-mono">+1</span> means just after midnight &mdash; the bid pack still counts the next day as off.</li>
             <li><span className="font-medium text-ink">Violet day.</span> Hotel standby (<span className="font-mono">SBY</span>) &mdash; on call at the hotel, paid, not flying.</li>
             <li><span className="font-medium text-ink">Dashed empty day.</span> A day off; a run of them is labeled on its first day (&ldquo;4 days off&rdquo;).</li>
-            <li><span className="font-medium text-ink">Tap any day</span> for every flight with its times and aircraft, the hotel and rest, block time and landings. Every time is local (L). The hour-by-hour chart for each trip is under &ldquo;Details&rdquo;.</li>
+            <li><span className="font-medium text-ink">Tap any day</span> for every flight with its times and aircraft, the hotel and rest, block time and landings. The hour-by-hour chart for each trip is under &ldquo;Details&rdquo;.</li>
+            <li><span className="font-medium text-ink">Local or Zulu.</span> The switch over the calendar picks the clock. Local: each day is the base&rsquo;s own calendar day, the one the bid pack counts days off on, and every time is local where it happens (L). Zulu: each day runs midnight to midnight Z and every time is Zulu (Z), so a trip can sit a day later than it does in Local &mdash; an evening report at a US base is already tomorrow in Zulu. The numbers under the calendar are the line&rsquo;s own month either way.</li>
           </ul>
         </Modal>
       )}
@@ -323,14 +331,15 @@ function shortDate(iso: string): string {
   return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).replace(",", "");
 }
 
-function DayNumbers({ day }: { day: DetailedDay }) {
+function DayNumbers({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
+  const c = clockOf(mode);
   const st = dayStats({ dayNumber: day.tripDay ?? 1, segments: day.segments });
   const parts: string[] = [];
   // In time order, one phrase per duty — a day can finish last night's flying and start tonight's.
   for (const w of st.windows) {
-    if (w.start && w.end) parts.push(`on duty ${w.start}–${w.end} (L)`);
-    else if (w.end) parts.push(`lands ${w.end} (L) from the night before`);
-    else if (w.start) parts.push(`on duty ${w.start} (L), through midnight`);
+    if (w.start && w.end) parts.push(`on duty ${w.start}–${w.end} (${c})`);
+    else if (w.end) parts.push(`lands ${w.end} (${c}) from the night before`);
+    else if (w.start) parts.push(`on duty ${w.start} (${c}), through midnight`);
   }
   if (st.blockMinutes > 0) parts.push(`${hm(st.blockMinutes)} block`);
   if (st.deadheadMinutes > 0) parts.push(`${hm(st.deadheadMinutes)} deadhead`);
@@ -344,13 +353,14 @@ function DayNumbers({ day }: { day: DetailedDay }) {
 }
 
 /** A trip's tail on a day the grid gives to something else: the end of one trip on the day the next one starts, or a landing just after midnight on a day off. */
-function SpillList({ spill, offDay }: { spill: NonNullable<DetailedDay["spill"]>; offDay: boolean }) {
+function SpillList({ spill, offDay, mode }: { spill: NonNullable<DetailedDay["spill"]>; offDay: boolean; mode: TimeMode }) {
+  const c = clockOf(mode);
   return (
     <div className="mt-1.5">
       <p>
         {offDay
-          ? `Trip ${spill.tripNumber ? `#${spill.tripNumber} ` : ""}finishes on this day${spill.landsAt ? `, landing ${spill.landsAt} (L)` : ""} — the bid pack still counts it as a day off.`
-          : `Trip ${spill.tripNumber ? `#${spill.tripNumber} ` : ""}also finishes on this day${spill.landsAt ? `, landing ${spill.landsAt} (L)` : ""}:`}
+          ? `Trip ${spill.tripNumber ? `#${spill.tripNumber} ` : ""}finishes on this day${spill.landsAt ? `, landing ${spill.landsAt} (${c})` : ""} — the bid pack still counts it as a day off.`
+          : `Trip ${spill.tripNumber ? `#${spill.tripNumber} ` : ""}also finishes on this day${spill.landsAt ? `, landing ${spill.landsAt} (${c})` : ""}:`}
       </p>
       <ul className="mt-1 space-y-1">
         {spill.segments
@@ -369,7 +379,7 @@ function SpillList({ spill, offDay }: { spill: NonNullable<DetailedDay["spill"]>
   );
 }
 
-function DayDetail({ day }: { day: DetailedDay }) {
+function DayDetail({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
   return (
     <div className="mt-2 rounded-lg border border-hairline bg-canvas/70 p-3 text-xs leading-relaxed text-ink-muted" aria-live="polite">
       <div className="flex items-center gap-1.5 font-medium text-ink">
@@ -389,16 +399,16 @@ function DayDetail({ day }: { day: DetailedDay }) {
             {day.offRun && day.offRun.length > 1 ? ` — day ${day.offRun.position} of ${day.offRun.length} in a row.` : " — a single day, on either side of a trip."}
           </p>
           {day.homeNote && <p className="mt-1 text-ink">{day.homeNote}</p>}
-          {day.spill && <SpillList spill={day.spill} offDay />}
+          {day.spill && <SpillList spill={day.spill} offDay mode={mode} />}
         </>
       ) : day.preReportTime !== null ? (
         <p className="mt-1">
           Not a day off: {day.tripNumber ? `trip #${day.tripNumber}` : "the next trip"} reports
-          {day.preReportTime ? ` at ${day.preReportTime} (L)` : ""} the next morning, so the bid pack gives this evening to it.
+          {day.preReportTime ? ` at ${day.preReportTime} (${clockOf(mode)})` : ""} the next morning, so the bid pack gives this evening to it.
         </p>
       ) : (
         <>
-          {day.chain && <p className="mt-1 text-ink">{chainSentence(day.chain)}</p>}
+          {day.chain && <p className="mt-1 text-ink">{chainSentence(day.chain, mode)}</p>}
           {day.baseNote && <p className="mt-1 text-ink">{day.baseNote}</p>}
           {day.hubNote && <p className="mt-1 text-ink">{day.hubNote}</p>}
           {day.homeNote && <p className="mt-1 text-ink">{day.homeNote}</p>}
@@ -406,7 +416,7 @@ function DayDetail({ day }: { day: DetailedDay }) {
             {day.tripNumber ? `Trip #${day.tripNumber}` : "Trip"}, day {day.tripDay} of {day.tripDayCount}
             {day.tripCreditHours !== null ? ` · ${hm(day.tripCreditHours * 60)} credit for the trip` : ""}.
           </p>
-          {day.kind !== "estimated" && <DayNumbers day={day} />}
+          {day.kind !== "estimated" && <DayNumbers day={day} mode={mode} />}
           {day.kind === "estimated" ? (
             <p className="mt-1">Exact daily detail isn&rsquo;t available for this line.</p>
           ) : day.segments.length === 0 ? (
@@ -427,11 +437,11 @@ function DayDetail({ day }: { day: DetailedDay }) {
                 ))}
             </ul>
           )}
-          {day.spill && <SpillList spill={day.spill} offDay={false} />}
+          {day.spill && <SpillList spill={day.spill} offDay={false} mode={mode} />}
           {(day.redEye || day.earlyReport || day.layoverInternational || day.citySentiment) && (
             <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
               {day.redEye && <span className="text-accent">Red-eye: a flight departs or lands between midnight and 5am.</span>}
-              {day.earlyReport && <span className="text-warn">Early report: duty starts in the 2–6am window.</span>}
+              {day.earlyReport && <span className="text-warn">Early report: duty starts in the 2–6am window{mode === "zulu" ? ", local time" : ""}.</span>}
               {day.layoverInternational && <span>International layover.</span>}
               {day.citySentiment === "love" && <span className="text-good">{day.layoverCode} is a city you love.</span>}
               {day.citySentiment === "avoid" && <span className="text-danger">{day.layoverCode} is a city you avoid.</span>}
@@ -555,9 +565,12 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   departureOptions,
   compact = false,
 }: MiniLinePreviewProps) {
+  const [chosenMode, setMode] = useTimeMode();
+  // The interview's small line cards stay on the base's calendar.
+  const mode: TimeMode = compact ? "local" : chosenMode;
   const month: DetailedMonth = useMemo(
-    () => buildDetailedMonth(line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions),
-    [line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions]
+    () => buildDetailedMonth(line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions, mode),
+    [line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions, mode]
   );
   const [selected, setSelected] = useState<number | null>(null);
   // The month lays itself out the first time it scrolls into view (see
@@ -580,7 +593,15 @@ export const MiniLinePreview = memo(function MiniLinePreview({
 
   return (
     <div>
-      <div role="group" aria-label={`Bid month at a glance. ${month.summary.daysOff} days off, ${month.summary.dutyPeriods} duty periods.`}>
+      {!compact && (
+        <div className="mb-1.5 flex items-center justify-between gap-2 print:hidden">
+          <span className="min-w-0 text-[11px] leading-tight text-ink-faint">
+            {mode === "zulu" ? "Zulu days, midnight to midnight Z · times Z" : `${departureOptions?.base ? `${departureOptions.base}'s` : "The base's"} calendar days · times local`}
+          </span>
+          <TimeModeToggle mode={mode} onChange={setMode} />
+        </div>
+      )}
+      <div role="group" aria-label={`Bid month at a glance${mode === "zulu" ? ", in Zulu" : ""}. ${month.summary.daysOff} days off, ${month.summary.dutyPeriods} duty periods.`}>
         {month.weekdayHeaders && (
           <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-ink-faint" aria-hidden>
             {month.weekdayHeaders.map((d) => (
@@ -601,13 +622,14 @@ export const MiniLinePreview = memo(function MiniLinePreview({
               stayLabeled={stayLabeled}
               internationalCities={internationalCities}
               cityPreferences={cityPreferences}
+              mode={mode}
               onSelect={() => setSelected((cur) => (cur === day.dayIndex ? null : day.dayIndex))}
             />
           ))}
         </div>
       </div>
 
-      {selectedDay ? <DayDetail day={selectedDay} /> : <p className="mt-1.5 text-[11px] text-ink-faint print:hidden">Tap a day for everything on it.</p>}
+      {selectedDay ? <DayDetail day={selectedDay} mode={mode} /> : <p className="mt-1.5 text-[11px] text-ink-faint print:hidden">Tap a day for everything on it.</p>}
 
       {!compact && <Summary s={month.summary} line={line} />}
 

@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { buildHomeDays, type TimeMode, type TimelineSegment } from "@/lib/trip-timeline";
+import { buildHomeDays, buildZuluCalendarDays, type TimeMode, type TimelineDay, type TimelineSegment } from "@/lib/trip-timeline";
 import type { Line, Trip } from "@/types/bidpack";
 
 export interface LineMonthDay {
@@ -79,28 +79,38 @@ function synthesizeSpans(line: Line): Span[] {
  * Days are the base's own calendar days (`buildHomeDays`) — the calendar the
  * line grid and its days off are counted on — so each trip's days line up
  * with the grid's, whatever time zones the trip crosses, and nothing in a trip
- * falls off the calendar; `mode` only switches which clock the pieces' own
- * labels read in.
+ * falls off the calendar. In Zulu (`mode`) the days are Zulu days instead,
+ * midnight Z to midnight Z: each trip moves to the Zulu dates it flies on (an
+ * evening report at a US base is already the next day in Zulu), and a day is
+ * off when no trip touches it — the bid pack's own days off are counted on the
+ * base's calendar, so they don't apply.
  */
 export function buildLineMonthCalendar(line: Line, bidPeriodStart: string | null, bidPeriodDays: number, mode: TimeMode): LineMonthCalendar {
   const placementIsReal = bidPeriodStart !== null && line.trips.every((t) => t.startDayIndex !== null);
 
   const spans: Span[] = placementIsReal ? line.trips.map((t, i) => ({ trip: t, tripIndex: i, start: t.startDayIndex! })) : synthesizeSpans(line);
 
-  const totalDays = Math.max(bidPeriodDays, ...spans.map((s) => s.start + s.trip.days));
+  const zulu = mode === "zulu";
+  const timelineBySpan: { span: Span; timeline: TimelineDay[] }[] = spans.map((span) => {
+    if (!zulu) return { span, timeline: buildHomeDays(span.trip, mode) };
+    // Its first Zulu day is its first base day moved by however far apart the two dates are when it reports.
+    const timeline = buildZuluCalendarDays(span.trip);
+    const homeFirst = buildHomeDays(span.trip, "local")[0]?.date;
+    const zuluFirst = timeline[0]?.date;
+    const shift = homeFirst && zuluFirst ? Math.round(DateTime.fromISO(zuluFirst).diff(DateTime.fromISO(homeFirst), "days").days) : 0;
+    return { span: { ...span, start: span.start + shift }, timeline };
+  });
+  /** How many days a trip covers on this calendar. */
+  const lengthOf = (e: (typeof timelineBySpan)[number]) => (zulu ? Math.max(1, e.timeline.length) : e.span.trip.days);
+  const totalDays = Math.max(bidPeriodDays, ...timelineBySpan.map((e) => e.span.start + lengthOf(e)));
   const base = placementIsReal ? DateTime.fromISO(bidPeriodStart!, { zone: "utc" }) : null;
-
-  const timelineBySpan = spans.map((span) => ({
-    span,
-    timeline: buildHomeDays(span.trip, mode),
-  }));
 
   // Which trip owns each day. When the line's own grid says which days are off
   // ("---"), that's the truth: every other day belongs to whichever trip most
   // recently started (a blank cell continues it), so days off and each trip's
   // footprint match the bid pack exactly. Without it, fall back to laying each
   // trip out from its start for its own day count.
-  const gridOff = placementIsReal && line.gridOffDays ? new Set(line.gridOffDays) : null;
+  const gridOff = placementIsReal && line.gridOffDays && !zulu ? new Set(line.gridOffDays) : null;
   const owner: (number | "off" | null)[] = new Array(totalDays).fill(null);
   const preReport = new Set<number>();
   if (gridOff) {
@@ -131,7 +141,7 @@ export function buildLineMonthCalendar(line: Line, bidPeriodStart: string | null
     }
   } else {
     for (let i = 0; i < totalDays; i++) {
-      const entry = timelineBySpan.find(({ span }) => i >= span.start && i < span.start + span.trip.days);
+      const entry = timelineBySpan.find((e) => i >= e.span.start && i < e.span.start + lengthOf(e));
       owner[i] = entry ? entry.span.tripIndex : "off";
     }
   }

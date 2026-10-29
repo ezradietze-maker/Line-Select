@@ -8,7 +8,7 @@ import { lineLengthDays } from "@/lib/metrics/line-length";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
-import type { TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
+import type { TimeMode, TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
 import type { CityMark, PreferenceProfile } from "@/types/preferences";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
@@ -194,6 +194,9 @@ export interface MonthSummary {
 
 export interface DetailedMonth {
   days: DetailedDay[];
+  /** Whose clock the days and every time on them are on: "L" local (the base's calendar), "Z" Zulu. */
+  clock: "L" | "Z";
+  /** The line's own month, counted on the base's calendar whichever clock the days are drawn on. */
   summary: MonthSummary;
   weekdayHeaders: string[] | null;
   placementIsReal: boolean;
@@ -275,26 +278,26 @@ function localDay(iso: string): string {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">): string {
+function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">, clock: "L" | "Z" = "L"): string {
   // "Fri Oct 2", the way a pilot says it — not "Fri 10-02".
   const date = day.date && day.weekday ? `${day.weekday} ${MONTHS[Number(day.date.slice(5, 7)) - 1]} ${Number(day.date.slice(8, 10))}` : `Day ${day.dayIndex + 1}`;
   if (d.kind === "off")
-    return `${date} — day off${d.offRun && d.offRun.length > 1 ? ` (day ${d.offRun.position} of ${d.offRun.length} off)` : ""}${d.spill ? `; trip ${d.spill.tripNumber ?? ""} finishes on it${d.spill.landsAt ? `, landing ${d.spill.landsAt} (L)` : ""}` : ""}`;
+    return `${date} — day off${d.offRun && d.offRun.length > 1 ? ` (day ${d.offRun.position} of ${d.offRun.length} off)` : ""}${d.spill ? `; trip ${d.spill.tripNumber ?? ""} finishes on it${d.spill.landsAt ? `, landing ${d.spill.landsAt} (${clock})` : ""}` : ""}`;
   if (d.preReportTime !== null) {
-    return `${date} — not a day off: trip ${d.tripNumber ?? (d.tripIndex ?? 0) + 1} reports at ${d.preReportTime} (L) the next morning, so this evening goes to it`;
+    return `${date} — not a day off: trip ${d.tripNumber ?? (d.tripIndex ?? 0) + 1} reports at ${d.preReportTime} (${clock}) the next morning, so this evening goes to it`;
   }
   if (d.tripIndex === null) return `${date} — on duty, continuing a trip from the previous bid period`;
   const parts = [`${date} — trip ${d.tripNumber ?? d.tripIndex + 1}, day ${d.tripDay} of ${d.tripDayCount}`];
   if (d.kind === "estimated") return `${parts[0]} (exact daily detail unavailable)`;
-  if (d.dutyStart) parts.push(`duty starts ${d.dutyStart} (L)${d.dutyStartLocalDate ? ` ${localDay(d.dutyStartLocalDate)} local` : ""}`);
+  if (d.dutyStart) parts.push(`duty starts ${d.dutyStart} (${clock})${d.dutyStartLocalDate ? ` ${localDay(d.dutyStartLocalDate)} local` : ""}`);
   if (d.landings > 0) parts.push(`${d.landings} landing${d.landings === 1 ? "" : "s"}`);
   if (d.hasDeadhead) parts.push("deadhead");
   if (d.hasStandby) parts.push("standby");
   if (d.redEye) parts.push("red-eye");
   if (d.earlyReport) parts.push("early report");
-  if (d.releaseTime) parts.push(`lands ${d.releaseTime} (L)${d.releaseLocalDate ? ` ${localDay(d.releaseLocalDate)} local` : ""}, trip ends`);
+  if (d.releaseTime) parts.push(`lands ${d.releaseTime} (${clock})${d.releaseLocalDate ? ` ${localDay(d.releaseLocalDate)} local` : ""}, trip ends`);
   if (d.layoverCode) parts.push(`layover in ${d.layoverCode}${d.layoverRest ? ` (${d.layoverRest})` : ""}`);
-  if (d.spill) parts.push(`trip ${d.spill.tripNumber ?? ""} also finishes${d.spill.landsAt ? `, landing ${d.spill.landsAt} (L)` : ""}`);
+  if (d.spill) parts.push(`trip ${d.spill.tripNumber ?? ""} also finishes${d.spill.landsAt ? `, landing ${d.spill.landsAt} (${clock})` : ""}`);
   return parts.join(", ");
 }
 
@@ -329,9 +332,16 @@ export function buildDetailedMonth(
   bidPeriodStart: string | null,
   bidPeriodDays: number,
   cityPreferences: Record<string, CityMark> = {},
-  departureOptions?: MonthDepartureOptions
+  departureOptions?: MonthDepartureOptions,
+  /** Zulu: the days are Zulu days and every time is Zulu (see `buildLineMonthCalendar`); the summary stays the line's own. */
+  mode: TimeMode = "local"
 ): DetailedMonth {
-  const calendar = buildLineMonthCalendar(line, bidPeriodStart, bidPeriodDays, "local");
+  const calendar = buildLineMonthCalendar(line, bidPeriodStart, bidPeriodDays, mode);
+  const clock = mode === "zulu" ? "Z" : "L";
+  // In Zulu, the month as the base counts it: its summary, and which trips report early — a body-clock matter, on the
+  // clock the pilot lives on, not Zulu's.
+  const local = mode === "zulu" ? buildDetailedMonth(line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions) : null;
+  const earlyReportTrips = new Set(local?.days.filter((d) => d.isTripStart && d.earlyReport && d.tripIndex !== null).map((d) => d.tripIndex!) ?? []);
 
   // Runs of consecutive days off — "how the days off fall" is one of the first things the interview asks.
   const runs: { start: number; length: number }[] = [];
@@ -403,7 +413,7 @@ export function buildDetailedMonth(
         offRun: { length: run.length, isFirst: day.dayIndex === run.start, position: day.dayIndex - run.start + 1 },
         preReportTime: null,
       };
-      return { ...d, title: describeDay(day, d) };
+      return { ...d, title: describeDay(day, d, clock) };
     }
 
     if (day.isPreReport) {
@@ -435,7 +445,7 @@ export function buildDetailedMonth(
         offRun: null,
         preReportTime: report ? `${report.slice(0, 2)}:${report.slice(2, 4)}` : "",
       };
-      return { ...d, title: describeDay(day, d) };
+      return { ...d, title: describeDay(day, d, clock) };
     }
 
     if (!day.hasSchedule) {
@@ -466,7 +476,7 @@ export function buildDetailedMonth(
         offRun: null,
         preReportTime: null,
       };
-      return { ...d, title: describeDay(day, d) };
+      return { ...d, title: describeDay(day, d, clock) };
     }
 
     const segs = day.segments;
@@ -503,12 +513,15 @@ export function buildDetailedMonth(
       landings: segs.filter((s) => s.kind === "flying" && !s.continuesToNextDay).length,
       hasDeadhead: segs.some((s) => s.kind === "deadhead"),
       hasStandby,
-      redEye: flights.some((s) => {
+      // Red-eyes are flying through the body's night, on the clock the pilot lives on — not something Zulu days show.
+      redEye: !local && flights.some((s) => {
         const dep = clockMinutes(s.startClock ?? hhmm(s.startMinuteOfDay));
         const arr = clockMinutes(s.endClock ?? hhmm(s.endMinuteOfDay));
         return (!s.continuesFromPreviousDay && dep < RED_EYE_END_MIN) || (!s.continuesToNextDay && arr <= RED_EYE_END_MIN && arr > 0);
       }),
-      earlyReport: dutyStart !== null && clockMinutes(dutyStart) >= WOCL_START_MIN && clockMinutes(dutyStart) < WOCL_END_MIN,
+      earlyReport: local
+        ? day.isTripStart && tripIndex !== null && earlyReportTrips.has(tripIndex)
+        : dutyStart !== null && clockMinutes(dutyStart) >= WOCL_START_MIN && clockMinutes(dutyStart) < WOCL_END_MIN,
       layoverCode,
       layoverHotel: layover && layover.label !== layoverCode ? layover.label : null,
       layoverRest: layover ? restOf(layover.detail) : null,
@@ -517,7 +530,7 @@ export function buildDetailedMonth(
       offRun: null,
       preReportTime: null,
     };
-    return { ...d, title: describeDay(day, d) };
+    return { ...d, title: describeDay(day, d, clock) };
   });
 
   // A trip's last flight landing after midnight lands on the next calendar day (a day off, or the next trip's first);
@@ -660,7 +673,8 @@ export function buildDetailedMonth(
 
   return {
     days,
-    summary: summarize(
+    clock,
+    summary: local ? local.summary : summarize(
       line,
       days,
       departureCount,

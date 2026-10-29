@@ -79,3 +79,32 @@ describe("buildLineMonthCalendar — pre-report days", () => {
     expect(cal.days[0].tripIndex).toBeNull();
   });
 });
+
+describe("buildLineMonthCalendar — Zulu days", () => {
+  const minutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(2, 4));
+
+  it("puts each flight on its Zulu date and clock, and the trip on the Zulu days it flies", () => {
+    const l = withGrid("9001", [4], Array.from({ length: 28 }, (_, i) => i).filter((i) => i < 4 || i >= 4 + line("9001").trips[0].days));
+    const local = buildLineMonthCalendar(l, START, 28, "local");
+    const zulu = buildLineMonthCalendar(l, START, 28, "zulu");
+    const firstLeg = l.trips[0].schedule[0].legs[0];
+
+    const zuluStart = zulu.days.find((d) => d.isTripStart)!;
+    const localStart = local.days.find((d) => d.isTripStart)!;
+    // A US base is behind Zulu: the trip starts the same Zulu date or the next, never earlier.
+    expect(zuluStart.dayIndex - localStart.dayIndex).toBeGreaterThanOrEqual(0);
+    expect(zuluStart.dayIndex - localStart.dayIndex).toBeLessThanOrEqual(1);
+
+    const flown = zulu.days.flatMap((d) => d.segments.filter((s) => s.leg?.flightNumber === firstLeg.flightNumber && !s.continuesFromPreviousDay).map((s) => ({ d, s })));
+    expect(flown.length).toBe(1);
+    // On the Zulu clock: the leg's own Zulu instant's time of day.
+    expect(flown[0].s.startMinuteOfDay).toBe(minutes(firstLeg.depTimeZulu.slice(11, 16).replace(":", "")));
+  });
+
+  it("counts a day off wherever no trip touches the Zulu day, not by the bid pack's base-calendar grid", () => {
+    const l = withGrid("9001", [4], Array.from({ length: 28 }, (_, i) => i));
+    const zulu = buildLineMonthCalendar(l, START, 28, "zulu");
+    expect(zulu.days.some((d) => d.tripIndex === 0 && d.segments.length > 0)).toBe(true);
+    expect(zulu.days.filter((d) => !d.isOff).every((d) => d.tripIndex === 0)).toBe(true);
+  });
+});

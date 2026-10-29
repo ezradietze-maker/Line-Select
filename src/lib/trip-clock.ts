@@ -35,16 +35,24 @@ export interface LocalInstant {
   zone: string;
 }
 
+/** Stands in for an airport when the clock wanted is Zulu itself — the month calendar's Zulu days (`buildZuluCalendarDays`). */
+export const ZULU_CLOCK = "ZULU";
+
+/** The time zone a clock is read in: an airport's own, or UTC for `ZULU_CLOCK`. */
+export function zoneForClock(code: string): string | null {
+  return code === ZULU_CLOCK ? "UTC" : timezoneForAirport(code);
+}
+
 /** The local midnight an instant falls on at a given airport — the reference point every other `toLocalInstant` call for the same trip is measured against for day-index numbering. Null when the airport's zone isn't in the lookup table. */
 export function localDayStart(zuluISO: string, airportCode: string): DateTime | null {
-  const zone = timezoneForAirport(airportCode);
+  const zone = zoneForClock(airportCode);
   if (!zone) return null;
   return DateTime.fromISO(zuluISO, { zone: "utc" }).setZone(zone).startOf("day");
 }
 
 /** Converts a real Zulu instant to local wall-clock time at `airportCode`, day-indexed relative to `base` (see `localDayStart`). Null when the airport's zone isn't known — never guessed. */
 export function toLocalInstant(zuluISO: string, airportCode: string, base: DateTime): LocalInstant | null {
-  const zone = timezoneForAirport(airportCode);
+  const zone = zoneForClock(airportCode);
   if (!zone) return null;
   const local = DateTime.fromISO(zuluISO, { zone: "utc" }).setZone(zone);
   return {
