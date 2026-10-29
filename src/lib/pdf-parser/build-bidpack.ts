@@ -341,8 +341,11 @@ export function resolveLayoverVariants(trip: Trip, reportUtcMs: number): Trip {
     const v = lay?.variants?.find((x) => inRange(date, x.from, x.to));
     if (!lay || !v) return;
     lay.hotelName = v.hotelName;
+    lay.hotelPhone = v.hotelPhone;
     lay.transportToHotel = v.transportToHotel;
+    lay.transportToPhone = v.transportToPhone;
     lay.transportFromHotel = v.transportFromHotel;
+    lay.transportFromPhone = v.transportFromPhone;
     lay.pickupTimeGmt = v.pickupTimeGmt;
     lay.pickupTimeLocal = v.pickupTimeLocal;
     // Back to the printed length, then onto this version's pickup.

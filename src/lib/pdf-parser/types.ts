@@ -62,6 +62,15 @@ export interface ScheduledLeg {
   endMinutes: number;
   /** A hotel the crew is put up in at this leg's arrival airport for a few hours before the next leg of the same duty — a day room, not an overnight layover. */
   dayRoomHotel?: string;
+  /** The MEAL column as printed ("S", "DH/BH", "BSI"…) — absent when the column is blank. See `lib/meals.ts`. */
+  meal?: string;
+}
+
+/** A duty's own totals, as the pairing prints them on its last row: BLOCK, CREDIT and DUTY, in hours. */
+export interface DutyTotals {
+  blockHours: number;
+  creditHours: number;
+  dutyHours: number;
 }
 
 /** A report-to-layover stretch of a pairing: one or more legs, then (unless it's the pairing's last) a real, printed-duration rest period. */
@@ -70,14 +79,21 @@ export interface ScheduledDutyPeriod {
   reportTimeLocal: string;
   startMinutes: number;
   legs: ScheduledLeg[];
+  /** The duty's printed BLOCK, CREDIT and DUTY — absent on a pack parsed before they were kept. */
+  totals?: DutyTotals;
   /** Null for the pairing's final duty period, which ends the trip rather than laying over. */
   layover: {
     city: string;
     hotelName: string | null;
+    /** The hotel's phone, as printed on its "Hotel:" line. */
+    hotelPhone?: string;
     /** Ground-transport company for the airport->hotel ride right after landing, e.g. "BESPOKE TRANSPORTATION" — printed on the pairing's own "Trans To:" line. Null when that line wasn't found (e.g. an older parse, or the row didn't match). */
     transportToHotel: string | null;
     /** The same ride the other direction — hotel->airport, before the next departure — from the "Trans From:" line. */
     transportFromHotel: string | null;
+    /** Each ride's phone, as printed on its line (or the wrapped line after it). */
+    transportToPhone?: string;
+    transportFromPhone?: string;
     /** "HHMM" hotel pickup for the next duty, as printed on the "Trans From:" line ("pickup @1045 (0545)") — the real start of the next duty. Absent when the line didn't print one. */
     pickupTimeLocal?: string;
     pickupTimeGmt?: string;
@@ -95,8 +111,11 @@ export interface LayoverVariant {
   from: number;
   to: number;
   hotelName: string | null;
+  hotelPhone?: string;
   transportToHotel: string | null;
   transportFromHotel: string | null;
+  transportToPhone?: string;
+  transportFromPhone?: string;
   pickupTimeLocal?: string;
   pickupTimeGmt?: string;
 }

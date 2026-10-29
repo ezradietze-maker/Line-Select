@@ -49,22 +49,38 @@ export interface TripLeg {
   arrTimeZulu: string;
   /** A hotel the crew is put up in at this leg's arrival airport for a few hours before the next leg of the same duty — a day room, not an overnight layover. */
   dayRoomHotel?: string;
+  /** The MEAL column as printed ("S", "DH/BH", "BSI"…) — absent when it's blank or the pack was parsed before meals were kept. See `lib/meals.ts`. */
+  meal?: string;
 }
 
 /** A report-to-layover stretch of a trip: one or more legs, then (unless it's the trip's last) a real, printed-duration rest period. */
+/** A duty's own totals as the pairing prints them on its last row, in hours. */
+export interface DutyTotals {
+  blockHours: number;
+  creditHours: number;
+  dutyHours: number;
+}
+
 export interface TripDutyPeriod {
   /** "HHMM", local time as printed. */
   reportTimeLocal: string;
   startMinutes: number;
   legs: TripLeg[];
+  /** The duty's printed BLOCK, CREDIT and DUTY — absent on a pack parsed before they were kept. */
+  totals?: DutyTotals;
   /** Null for the trip's final duty period, which ends the trip rather than laying over. */
   layover: {
     city: string;
     hotelName: string | null;
+    /** The hotel's phone, as printed on its "Hotel:" line. */
+    hotelPhone?: string;
     /** Ground-transport company for the airport->hotel ride right after landing, from the pairing's own "Trans To:" line. Null when not printed or not found. */
     transportToHotel: string | null;
     /** The same ride back to the airport before the next departure, from "Trans From:". */
     transportFromHotel: string | null;
+    /** Each ride's phone, as printed. */
+    transportToPhone?: string;
+    transportFromPhone?: string;
     /** "HHMM" hotel pickup for the next duty, as printed on the "Trans From:" line ("pickup @1045 (0545)") — the real start of the next duty. Absent when the line didn't print one. */
     pickupTimeLocal?: string;
     pickupTimeGmt?: string;
@@ -82,8 +98,11 @@ export interface LayoverVariant {
   from: number;
   to: number;
   hotelName: string | null;
+  hotelPhone?: string;
   transportToHotel: string | null;
   transportFromHotel: string | null;
+  transportToPhone?: string;
+  transportFromPhone?: string;
   pickupTimeLocal?: string;
   pickupTimeGmt?: string;
 }

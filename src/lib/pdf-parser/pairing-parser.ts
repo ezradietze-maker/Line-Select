@@ -1,7 +1,7 @@
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { isDeadheadFlightNumber } from "@/lib/deadhead";
 import { isStandbyDutyCode, standbyPlace } from "@/lib/standby";
-import type { LayoverDetail, LayoverVariant, ParsedPairing, ParseWarning, ScheduledDutyPeriod, ScheduledLeg } from "@/lib/pdf-parser/types";
+import type { DutyTotals, LayoverDetail, LayoverVariant, ParsedPairing, ParseWarning, ScheduledDutyPeriod, ScheduledLeg } from "@/lib/pdf-parser/types";
 import type { ReportTime } from "@/types/bidpack";
 
 // The pairing schedule prints every clock time as "GMT(LOCAL)" — confirmed
@@ -48,7 +48,7 @@ const HOTEL_RE = /^Hotel:\s*(.+?)\s*\(([A-Z]{3})\)/i;
 function extractHotel(row: string): { name: string; city: string } | null {
   const match = row.match(HOTEL_RE);
   if (!match) return null;
-  const cleaned = match[1].replace(/\s*\d[\d\s\-()/]{5,}$/, "").trim();
+  const cleaned = match[1].replace(/\s*\+?\d[\d\s\-()/]{5,}$/, "").trim();
   return cleaned ? { name: cleaned, city: match[2].toUpperCase() } : null;
 }
 
@@ -68,6 +68,34 @@ function extractTransport(row: string): { direction: "To" | "From"; company: str
   const match = row.match(TRANSPORT_RE);
   if (!match) return null;
   return { direction: match[1] as "To" | "From", company: match[2].trim(), city: match[3].toUpperCase() };
+}
+
+// A phone number as the pack prints them: "+1-510-652-8777", "+33 1 49 19 77 77", "+32.4.234.8888", "925-469-5925",
+// "011-81-476-33-1121", or a run of digits glued on ("5102859232").
+const PHONE_RE = /^\+?\d[\d\s\-./()]{5,}\d$/;
+
+/**
+ * The phone on a hotel or ride line: what follows its "(CITY)", up to the pickup — "(ANC), +1-907-…, pickup @…". A
+ * line that ends right after the city ("(OAK),") has its phone on the next row (`wrapped`); a hotel can instead have
+ * its number glued into the name ("4PTS PLEASANTON 925-469-5925 (OAK)").
+ */
+function phoneOnLine(row: string, re: RegExp): { phone: string | null; wrapped: boolean } {
+  const match = row.match(re);
+  if (!match) return { phone: null, wrapped: false };
+  const rest = row.slice((match.index ?? 0) + match[0].length).replace(/^\s*,?\s*/, "");
+  const before = rest.split(/,?\s*pickup\b/i)[0].replace(/,\s*$/, "").trim();
+  if (PHONE_RE.test(before)) return { phone: before, wrapped: false };
+  if (rest === "") {
+    const inName = match[1].match(/(\+?\d[\d\s\-./()]{5,}\d)\s*$/)?.[1];
+    return { phone: inName && PHONE_RE.test(inName.trim()) ? inName.trim() : null, wrapped: !inName };
+  }
+  return { phone: null, wrapped: false };
+}
+
+/** The phone at the start of a ride line's wrapped second row: "+1-510-536-3009, pickup @0738 (0038)". */
+function phoneOnWrappedRow(row: string): string | null {
+  const first = row.trim().split(",")[0].trim();
+  return PHONE_RE.test(first) ? first : null;
 }
 
 // "OCT 02 - 23 TRIP(S) ONLY ----", "SEP 29 - OCT 01 TRIP(S) ONLY", "OCT 05 TRIP(S) ONLY": the hotel and ride lines that
@@ -187,6 +215,9 @@ function tryParseLeg(row: string): LegInfo | null {
   return { dayLetters: dayMatch[1], flightNumber, depAirport, arrAirport, isDeadhead, layoverCity };
 }
 
+/** A MEAL column entry — "S", "BS", "DH/BH", "BSI", "NOCAT"… — never a time, which is what follows when it's blank. */
+const MEAL_RE = /^[A-Z]{1,5}(?:\/[A-Z]{1,5})?$/;
+
 const TIME_PAIR_CAPTURE_RE = /^(\d{4})\([*#]?(\d{4})\)$/;
 
 /** Splits a "GMT(LOCAL)" token, e.g. "1940(1240)", into its two clock readings. */
@@ -248,6 +279,10 @@ interface RichLegMatch {
   blockHours: number | null;
   isDeadhead: boolean;
   layover: { city: string; hours: number } | null;
+  /** The MEAL column, when printed. */
+  meal: string | null;
+  /** The duty's BLOCK, CREDIT and DUTY, printed on its last row. */
+  totals: DutyTotals | null;
 }
 
 /**
@@ -292,6 +327,13 @@ function tryParseRichLeg(row: string): RichLegMatch | null {
   const rest = tokens.slice(base + 5);
   const isDeadhead = isDeadheadLeg(flightNumber, groundDuty);
   const layover = findLayover(rest);
+  // After BLOCK: the MEAL column (when printed), then — on a duty's last row — its BLOCK, CREDIT and DUTY.
+  const meal = rest[0] && MEAL_RE.test(rest[0]) ? rest[0] : null;
+  const afterMeal = meal ? rest.slice(1) : rest;
+  const totals =
+    afterMeal.length >= 3 && afterMeal.slice(0, 3).every((t) => HHMM_RE.test(t))
+      ? { blockHours: timeToHours(afterMeal[0]), creditHours: timeToHours(afterMeal[1]), dutyHours: timeToHours(afterMeal[2]) }
+      : null;
 
   return {
     flightNumber,
@@ -307,6 +349,8 @@ function tryParseRichLeg(row: string): RichLegMatch | null {
     blockHours,
     isDeadhead,
     layover,
+    meal,
+    totals,
   };
 }
 
@@ -506,7 +550,10 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
       const clock = new RunningClock();
       clock.seed(reportTimeGmt);
       let currentLegs: ScheduledLeg[] = [];
+      let currentTotals: DutyTotals | null = null;
       let dutyStartMinutes = 0;
+      // A hotel or ride line whose phone wrapped onto the next row: where to put it when it comes.
+      let awaitingPhone: ((phone: string) => void) | null = null;
       // Where a "Trans From:" pickup time goes once it's read: the layover, and the dated version too when there is one.
       let awaitingPickup: { pickupTimeGmt?: string; pickupTimeLocal?: string }[] | null = null;
       // The dated version of the current layover the following hotel and ride lines belong to, if the pack splits them by date.
@@ -516,7 +563,9 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
         const richLeg = tryParseRichLeg(row);
         if (richLeg) {
           awaitingPickup = null;
+          awaitingPhone = null;
           variant = null;
+          if (richLeg.totals) currentTotals = richLeg.totals;
           const startMinutes = clock.advance(richLeg.depGmt);
           const endMinutes = clock.advance(richLeg.arrGmt);
           currentLegs.push({
@@ -533,6 +582,7 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
             blockHours: richLeg.blockHours,
             startMinutes,
             endMinutes,
+            ...(richLeg.meal ? { meal: richLeg.meal } : {}),
           });
 
           if (richLeg.layover) {
@@ -547,6 +597,7 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
               reportTimeLocal: schedule.length === 0 ? reportTimeLocal : currentLegs[0].depTimeLocal,
               startMinutes: dutyStartMinutes,
               legs: currentLegs,
+              ...(currentTotals ? { totals: currentTotals } : {}),
               layover: {
                 city: richLeg.layover.city,
                 hotelName: null,
@@ -558,6 +609,7 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
               },
             });
             currentLegs = [];
+            currentTotals = null;
             dutyStartMinutes = layoverEnd;
           }
           continue;
@@ -577,11 +629,24 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
         }
         // Lines under a date heading fill that dated version; the layover itself shows the latest one until a trip's date picks.
         const target = variant ?? layover;
+        // The second row of a ride (or hotel) line whose phone didn't fit on the first.
+        if (awaitingPhone && !HOTEL_RE.test(row) && !TRANSPORT_RE.test(row)) {
+          const phone = phoneOnWrappedRow(row);
+          if (phone) awaitingPhone(phone);
+          awaitingPhone = null;
+        }
         const hotel = extractHotel(row);
         if (hotel) {
           if (layover && target && hotel.city === layover.city) {
             target.hotelName = hotel.name;
             if (variant) layover.hotelName = hotel.name;
+            const { phone, wrapped } = phoneOnLine(row, HOTEL_RE);
+            const put = (p: string) => {
+              target.hotelPhone = p;
+              if (variant) layover.hotelPhone = p;
+            };
+            if (phone) put(phone);
+            awaitingPhone = wrapped ? put : null;
           } else {
             const stop = currentLegs[currentLegs.length - 1];
             if (stop && stop.arrAirport === hotel.city) stop.dayRoomHotel = hotel.name;
@@ -590,6 +655,11 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
 
         const transport = extractTransport(row);
         if (transport && layover && target && transport.city === layover.city) {
+          const key = transport.direction === "To" ? "transportToPhone" : "transportFromPhone";
+          const put = (p: string) => {
+            target[key] = p;
+            if (variant) layover[key] = p;
+          };
           if (transport.direction === "To") {
             target.transportToHotel = transport.company;
             if (variant) layover.transportToHotel = transport.company;
@@ -598,6 +668,9 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
             if (variant) layover.transportFromHotel = transport.company;
             awaitingPickup = variant ? [variant, layover] : [layover];
           }
+          const { phone, wrapped } = phoneOnLine(row, TRANSPORT_RE);
+          if (phone) put(phone);
+          awaitingPhone = wrapped ? put : null;
         }
         // The pickup time itself, wherever the "Trans From:" line put it.
         if (awaitingPickup && !HOTEL_RE.test(row) && !(transport && transport.direction === "To")) {
@@ -617,6 +690,7 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
           reportTimeLocal: schedule.length === 0 ? reportTimeLocal : currentLegs[0].depTimeLocal,
           startMinutes: dutyStartMinutes,
           legs: currentLegs,
+          ...(currentTotals ? { totals: currentTotals } : {}),
           layover: null,
         });
       }

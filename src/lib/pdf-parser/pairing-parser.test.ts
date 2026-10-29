@@ -288,6 +288,28 @@ describe("layover hotels, day rooms and pickups", () => {
     expect(pairing.schedule[1].layover).toMatchObject({ pickupTimeGmt: "1230", pickupTimeLocal: "0830", transportToHotel: "CAREY LIMOUSINE INDIANA, INC." });
   });
 
+  it("keeps each leg's meal, and each duty's printed block, credit and duty", () => {
+    const [pairing] = parsePairingColumn(rows, 176, []);
+    expect(pairing.schedule.flatMap((d) => d.legs.map((l) => l.meal ?? null))).toEqual(["S", "S", "BH", "DH", null, null]);
+    expect(pairing.schedule.map((d) => d.totals)).toEqual([
+      { blockHours: 0, creditHours: 3 + 16 / 60, dutyHours: 6 + 17 / 60 },
+      { blockHours: 5.75, creditHours: 7.5, dutyHours: 12 + 59 / 60 },
+      { blockHours: 2 + 33 / 60, creditHours: 3.5, dutyHours: 4 + 3 / 60 },
+    ]);
+  });
+
+  it("reads the hotel's and each ride's phone, on the same line or wrapped onto the next", () => {
+    const [pairing] = parsePairingColumn(rows, 176, []);
+    expect(pairing.schedule[0].layover).toMatchObject({ hotelPhone: "+1-305-858-2500", transportToPhone: "+1-212-203-0706", transportFromPhone: "+1-212-203-0706" });
+    expect(pairing.schedule[1].layover).toMatchObject({ transportToPhone: "+1-317-240-6190", transportFromPhone: "+1-317-240-6190" });
+  });
+
+  it("finds a hotel phone printed inside the name, and keeps it out of the name", () => {
+    const glued = rows.map((r) => (r === "Hotel: COURTYARD MIAMI COCONUT GROVE (MIA), +1-305-858-2500" ? "Hotel: COURTYARD MIAMI 305-858-2500 (MIA)" : r));
+    const [pairing] = parsePairingColumn(glued, 176, []);
+    expect(pairing.schedule[0].layover).toMatchObject({ hotelName: "COURTYARD MIAMI", hotelPhone: "305-858-2500" });
+  });
+
   it("starts the next duty at the printed pickup, 90 minutes before the 14:00Z departure", () => {
     const [pairing] = parsePairingColumn(rows, 176, []);
     const [first, second] = pairing.schedule;
@@ -319,8 +341,8 @@ describe("a layover whose hotel changes with the trip's date", () => {
     const [pairing] = parsePairingColumn(rows, 12, []);
     const lay = pairing.schedule[0].layover!;
     expect(lay.variants).toEqual([
-      { from: 929, to: 1001, hotelName: "SHERATON NORFOLK WATERSIDE", transportToHotel: "BESPOKE TRANSPORTATION", transportFromHotel: "BESPOKE TRANSPORTATION", pickupTimeGmt: "0000", pickupTimeLocal: "2000" },
-      { from: 1002, to: 1023, hotelName: "DELTA MARRIOTT CHESAPEAKE ORF", transportToHotel: "BESPOKE TRANSPORTATION", transportFromHotel: "BESPOKE TRANSPORTATION", pickupTimeGmt: "2355", pickupTimeLocal: "1955" },
+      { from: 929, to: 1001, hotelName: "SHERATON NORFOLK WATERSIDE", hotelPhone: "+1-757-622-6664", transportToHotel: "BESPOKE TRANSPORTATION", transportToPhone: "+1-800-905-2103", transportFromHotel: "BESPOKE TRANSPORTATION", transportFromPhone: "+1-800-905-2103", pickupTimeGmt: "0000", pickupTimeLocal: "2000" },
+      { from: 1002, to: 1023, hotelName: "DELTA MARRIOTT CHESAPEAKE ORF", hotelPhone: "+1-757-523-1500", transportToHotel: "BESPOKE TRANSPORTATION", transportToPhone: "+1-800-905-2103", transportFromHotel: "BESPOKE TRANSPORTATION", transportFromPhone: "+1-800-905-2103", pickupTimeGmt: "2355", pickupTimeLocal: "1955" },
     ]);
   });
 
