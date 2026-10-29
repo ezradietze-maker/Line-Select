@@ -3,33 +3,38 @@
 import { useInView } from "motion/react";
 import { memo, useMemo, useState } from "react";
 import { BedIcon } from "@/components/ui/icons";
-import { LegBars, useMeasuredWidth } from "@/components/results/LegBars";
+import { CalendarDayBars } from "@/components/results/CalendarDayBars";
+import { useMeasuredWidth } from "@/components/results/LegBars";
+import { CreditHours, Zone } from "@/components/results/TripMarks";
+import { labeledStayPieces } from "@/lib/leg-bars";
 import { Modal } from "@/components/ui/Modal";
 import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthDepartureOptions, type MonthSummary, type TripFinish } from "@/lib/month-detail";
 import { dayStats, equipmentLabel, hm } from "@/lib/trip-day-stats";
-import type { TimelineSegmentKind } from "@/lib/trip-timeline";
+import type { TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
 import type { CityMark } from "@/types/preferences";
 
 /**
- * The whole bid month for one line, as much of it as a card can carry: each
- * day shows its trip's own number and credit, when the duty starts (and when
- * the trip ends), its flights drawn as the ex-pilot drew them in his paper
- * organizer — a line per leg, to scale and placed by the time of day, the
- * cities under its ends (`LegBars`) — and the layover city, marked with how
- * the pilot feels about it. Tapping a day opens everything the bid pack says about it below
- * the grid; a strip under it sums the month up in the terms the interview
- * asks about (days off and how they fall, standby, report times, cities…).
- * Each trip, day by day in the same picture, is in the expanded card.
+ * The whole bid month for one line, as much of it as a card can carry, laid
+ * out the way the ex-pilot sketched it: each day shows its trip's own number
+ * and credit hours, when it reports, its flights drawn as he drew them in his
+ * paper organizer — a bold line per leg, to scale and placed by the time of
+ * day, the cities over its ends (`CalendarDayBars`) — each layover a line of its own
+ * under the flying with its city and length, and where and when the trip ends.
+ * One vivid color each for a flight, a deadhead, a layover and a report time.
+ * Tapping a day opens everything the bid pack says about it below the grid; a
+ * strip under it sums the month up in the terms the interview asks about
+ * (days off and how they fall, standby, report times, cities…). Each trip, day
+ * by day in the same picture, is in the expanded card.
  */
 
-/** The same palette as the trip chart in the expanded card, so a day's strip and its column there read as one thing. */
+/** The calendar's own colors, so a day's list below the grid reads as the same things as its picture. */
 const STRIP_CLASS: Record<TimelineSegmentKind, string> = {
-  flying: "bg-calendar-accent",
-  deadhead: "hatch-deadhead bg-calendar-accent/30",
+  flying: "bg-leg",
+  deadhead: "bg-deadhead",
   standby: "bg-standby",
-  layover: "bg-good/70",
+  layover: "bg-layover",
   ground: "bg-accent/70",
   connection: "bg-border-strong",
   sleep: "bg-sleep",
@@ -37,7 +42,7 @@ const STRIP_CLASS: Record<TimelineSegmentKind, string> = {
 
 function cellClass(day: DetailedDay, selected: boolean): string {
   const base =
-    "@container relative flex min-h-[4.75rem] min-w-0 flex-col justify-between gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
+    "@container relative flex min-h-[4.75rem] min-w-0 flex-col gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
   const ring = selected ? " ring-2 ring-brand ring-offset-1 ring-offset-surface" : "";
   switch (day.kind) {
     case "off":
@@ -69,8 +74,8 @@ function TripRail({ joinLeft, joinRight, standby }: { joinLeft: boolean; joinRig
   );
 }
 
-/** "27h40m" → "27h": the layover's length at a glance. */
-const shortRest = (rest: string) => rest.replace(/h\d+m$/, "h");
+/** A day's padding and half the gap to the next: how far a line at midnight runs on, to meet the next day's. */
+const CELL_BLEED = 6;
 
 /** 107 → "1h47": time on the ground between two chained trips. */
 const turnLabel = (m: number) => `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
@@ -86,44 +91,48 @@ function chainSentence(c: NonNullable<DetailedDay["chain"]>): string {
     : `Follows trip #${c.fromTripNumber ?? ""} after ${turnLabel(c.turnMinutes)} in ${c.city}${times}. That's not long enough to get home and have 24 hours there, so the two are one departure — and the time between is spent in ${c.city}.`;
 }
 
-/** "17.8" credit hours → "17:47", the way the bid pack prints a trip's credit under its number. */
-const creditClock = (h: number) => hm(Math.round(h * 60));
-
-/** Where the night is spent: the layover city and how long, marked with how the pilot feels about it. */
-function Sleep({ day }: { day: DetailedDay }) {
-  const city = day.layoverCode ?? day.restCity;
-  if (!city) return null;
+/** When the trip reports, in the report color. A trip turned straight out of the one before also says how long it sits at base in between. */
+function Report({ day }: { day: DetailedDay }) {
+  const time = day.chain ? day.chain.reports || day.dutyStart : day.isTripStart ? day.dutyStart : null;
+  if (!time) return null;
   return (
-    <span className="flex min-w-0 items-center gap-0.5 whitespace-nowrap text-[11px] font-semibold tracking-tight text-good">
-      <BedIcon className="hidden h-2.5 w-2.5 shrink-0 @min-[4.75rem]:block" />
-      <span className={day.layoverInternational ? "underline decoration-dotted underline-offset-2" : ""}>{city}</span>
-      {day.layoverRest ? (
-        <span className="hidden font-mono text-[10px] font-normal @min-[4.75rem]:inline">{shortRest(day.layoverRest)}</span>
-      ) : (
-        !day.layoverCode && <span className="hidden text-[10px] font-normal @min-[4.75rem]:inline">rest</span>
-      )}
-      <CityMarkGlyph mark={day.citySentiment} />
-    </span>
+    <>
+      <span
+        className="whitespace-nowrap font-mono text-[9px] font-semibold leading-none text-report @min-[4.75rem]:text-[10px]"
+        title={`Reports ${time} local${day.earlyReport ? " — between 2 and 6am" : ""}`}
+      >
+        <span className="hidden @min-[4.75rem]:inline">Rpt </span>
+        {time}
+        <Zone />
+      </span>
+      {day.chain && <span className="hidden whitespace-nowrap font-mono text-[10px] text-ink-muted @min-[8.5rem]:inline" title={chainSentence(day.chain)}>&nbsp;· {turnLabel(day.chain.turnMinutes)} turn</span>}
+    </>
   );
 }
 
-/** Where and when the trip lands, on its own last day — "MEM 00:56 +1" when that's after midnight. */
-function Finish({ finish }: { finish: TripFinish }) {
+/** Where and when the trip ends, on its own last day — "END MEM 23:59L", "+1" when that's after midnight. */
+function End({ finish }: { finish: TripFinish }) {
   return (
-    <span className="flex min-w-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-[10px] text-ink" title={`Lands ${finish.city} ${finish.time} (L)${finish.nextDay ? ", just after midnight" : ""}`}>
-      <span aria-hidden className="text-ink-faint">↘</span>
+    <span className="flex min-w-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-[9px] leading-none text-ink @min-[4.75rem]:text-[10px]" title={`Trip ends: lands ${finish.city} ${finish.time} (L)${finish.nextDay ? ", just after midnight" : ""}`}>
+      <span className="text-[8.5px] font-semibold tracking-wide text-ink-muted">END</span>
       <span className="font-semibold">{finish.city}</span>
-      <span className="hidden @min-[4.75rem]:inline">{finish.time}</span>
+      <span className="hidden @min-[4.75rem]:inline">
+        {finish.time}
+        <Zone />
+      </span>
       {finish.nextDay && <span className="text-[8.5px] text-ink-muted">+1</span>}
     </span>
   );
 }
 
+/** What the picture draws on a day: flying, standby or a layover. */
+const DRAWN = new Set<TimelineSegmentKind>(["flying", "deadhead", "standby", "layover"]);
+
 /**
- * One day of the month: the trip's number and credit on its first day and when it reports, the day's flights as bars
- * with their cities, where the night is spent, and where the trip lands on its last day. Times stay out of the way —
- * the report and the landing; tap the day for every flight and time. Too narrow for the cities (a phone), the bars
- * alone.
+ * One day of the month, top to bottom at the same heights on every day — so a week's bars line up and a flight or a
+ * layover past midnight meets itself in the next day: the date and the trip's oval, the report, the day's flying and
+ * layovers (`CalendarDayBars`), and where the trip ends on its last day. Tap the day for every flight and time. Too narrow for
+ * the cities (a phone), the bars and the layover's city alone.
  */
 function Cell({
   day,
@@ -133,6 +142,9 @@ function Cell({
   joinLeft,
   joinRight,
   barWidth,
+  stayLabeled,
+  internationalCities,
+  cityPreferences,
 }: {
   day: DetailedDay;
   selected: boolean;
@@ -142,14 +154,16 @@ function Cell({
   joinRight: boolean;
   /** The width the day's bars are drawn at. */
   barWidth: number;
+  stayLabeled: (s: TimelineSegment) => boolean;
+  internationalCities: ReadonlySet<string>;
+  cityPreferences?: Record<string, CityMark>;
 }) {
   const isOff = day.kind === "off";
   const standby = day.flights.find((f) => f.kind === "standby");
   // The end of another trip that morning (a landing just after midnight), then this day's own.
   const pieces = [...(day.spill?.segments ?? []), ...(isOff ? [] : day.segments)];
-  const bars = pieces.some((s) => s.kind === "flying" || s.kind === "deadhead" || s.kind === "standby") ? (
-    <LegBars segments={pieces} variant="cell" widthPx={barWidth} />
-  ) : null;
+  const report = isOff ? null : <Report day={day} />;
+  const drawn = pieces.some((s) => DRAWN.has(s.kind));
   return (
     <button
       type="button"
@@ -161,62 +175,54 @@ function Cell({
       style={{ "--i": index } as React.CSSProperties}
     >
       {!isOff && day.tripIndex !== null && day.kind !== "estimated" && <TripRail joinLeft={joinLeft} joinRight={joinRight} standby={day.kind === "standby"} />}
-      <span className="flex items-start justify-between gap-0.5">
+      <span className="flex h-3 items-center justify-between gap-0.5">
         <span className={`text-[11px] tabular-nums ${isOff ? "" : "font-semibold"}`}>{day.label}</span>
         {day.isTripStart && day.tripNumber && (
-          <span className="hidden whitespace-nowrap rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar @min-[4.75rem]:inline">
-            #{day.tripNumber}
-            {day.tripCreditHours !== null && <span className="hidden font-normal opacity-80 @min-[5rem]:inline"> {creditClock(day.tripCreditHours)}</span>}
-          </span>
+          <>
+            <span className="hidden whitespace-nowrap rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar @min-[4.75rem]:inline" title={day.tripCreditHours !== null ? `Trip #${day.tripNumber}, ${hm(day.tripCreditHours * 60)} credit hours` : undefined}>
+              #{day.tripNumber}
+              {day.tripCreditHours !== null && (
+                <span className="hidden @min-[5.25rem]:inline">
+                  {" "}
+                  <CreditHours hours={day.tripCreditHours} className="font-normal opacity-85" />
+                </span>
+              )}
+            </span>
+            {/* On a phone the oval won't fit beside the date: the number alone. */}
+            <span className="font-mono text-[9px] font-semibold text-ink @min-[4.75rem]:hidden">#{day.tripNumber}</span>
+          </>
         )}
       </span>
 
-      {isOff ? (
-        <>
-        {bars}
-        <span className="text-[10px] font-medium leading-tight">
-          {day.offRun && day.offRun.length > 1 && day.offRun.isFirst ? (
-            <>
-              {day.offRun.length}
-              <span className="hidden @min-[4.75rem]:inline"> days</span> off
-            </>
-          ) : (
-            ""
-          )}
-        </span>
-        </>
+      {drawn ? (
+        <CalendarDayBars
+          segments={pieces}
+          widthPx={barWidth}
+          stayLabeled={stayLabeled}
+          cityPreferences={cityPreferences}
+          internationalCities={internationalCities}
+          top={report}
+          bleed={CELL_BLEED}
+        />
       ) : (
-        <>
-          {/* On a phone the cell is too narrow for the trip number beside the date, so it sits on its own line. */}
-          {day.isTripStart && day.tripNumber && <span className="font-mono text-[10px] font-semibold leading-tight text-ink @min-[4.75rem]:hidden">#{day.tripNumber}</span>}
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
-            {day.chain ? (
-              <span className="hidden whitespace-nowrap font-mono text-[10px] leading-tight @min-[4.75rem]:block" title={chainSentence(day.chain)}>
-                <span className={day.earlyReport ? "font-semibold text-warn" : "text-ink-muted"}>Rpt {day.chain.reports || day.dutyStart}</span>
-                <span className="hidden text-calendar-accent @min-[8.5rem]:inline"> · {turnLabel(day.chain.turnMinutes)} turn</span>
-              </span>
-            ) : (
-              day.isTripStart &&
-              day.dutyStart && (
-                <span className={`hidden whitespace-nowrap font-mono text-[10px] leading-tight @min-[4.75rem]:block ${day.earlyReport ? "font-semibold text-warn" : "text-ink-muted"}`}>
-                  Rpt {day.dutyStart}
-                </span>
-              )
-            )}
-            {day.preReportTime !== null && <span className="hidden text-[10px] leading-tight text-ink-muted @min-[4.75rem]:block">reports next morning</span>}
-            {bars}
-            {standby && (
-              <span className="whitespace-nowrap font-mono text-[10px] font-semibold text-standby">
-                SBY<span className="hidden @min-[3.25rem]:inline"> {standby.from}</span>
-              </span>
-            )}
-          </span>
-          <span className="flex min-w-0 flex-col gap-px">
-            <Sleep day={day} />
-            {day.finish && <Finish finish={day.finish} />}
-          </span>
-        </>
+        !isOff && <span className="flex h-[11px] items-center overflow-hidden">{report}</span>
       )}
+      {day.preReportTime !== null && <span className="hidden text-[10px] leading-tight text-ink-muted @min-[4.75rem]:block">reports next morning</span>}
+
+      <span className="mt-auto flex min-w-0 flex-col gap-px">
+        {standby && (
+          <span className="whitespace-nowrap font-mono text-[10px] font-semibold text-standby">
+            SBY<span className="hidden @min-[3.25rem]:inline"> {standby.from}</span>
+          </span>
+        )}
+        {isOff && day.offRun && day.offRun.length > 1 && day.offRun.isFirst && (
+          <span className="text-[10px] font-medium leading-tight">
+            {day.offRun.length}
+            <span className="hidden @min-[4.75rem]:inline"> days</span> off
+          </span>
+        )}
+        {!isOff && day.finish && <End finish={day.finish} />}
+      </span>
     </button>
   );
 }
@@ -240,11 +246,11 @@ function MonthKeyInfo() {
       {open && (
         <Modal title="Month calendar key" onClose={() => setOpen(false)}>
           <ul className="space-y-3 text-sm leading-relaxed text-ink-muted">
-            <li><span className="font-medium text-ink">Each week reads like a line in the bid pack.</span> Shaded days joined by a bar are one trip. Its first day carries the trip&rsquo;s number and credit (<span className="font-mono">#111 17:47</span>) and when it reports (<span className="font-mono">Rpt 06:30</span>, in amber when it&rsquo;s between 2 and 6am).</li>
-            <li><span className="font-medium text-ink">The lines in each day.</span> Each flight is a line with a tick at each end, as long as the flight and placed by the time of day &mdash; midnight at the left edge, midnight at the right, on the base&rsquo;s clock. The cities are written under the ends; where two legs meet, the city between them is written once. A dashed line is a deadhead. A flight still in the air at midnight runs off the right edge (▸) and on into the next day. The faint band under the lines is the time on duty, report to release, so a long wait between two short flights shows. Small ticks mark 6am, noon and 6pm.</li>
-            <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be 24 hours at home between them, counting the trip home and back (<span className="font-mono">Rpt 02:30 · 1h47 turn</span> is a straight turn at base). For a pilot who lives at base, only trips that turn within a few hours.</li>
-            <li><span className="font-medium text-ink">Green city.</span> Where you sleep and how long the layover is (<span className="font-mono">SEA 15h</span>). <span className="font-mono">KIX rest</span> is a whole day at the hotel with nothing flown. <span className="text-good">♥</span> is a city you love, <span className="text-good">♡</span> one you like, an amber <span className="text-warn">✕</span> one you dislike and a red <span className="text-danger">✕</span> one you avoid, and a dotted underline marks an international city.</li>
-            <li><span className="font-medium text-ink">↘ MEM 19:05.</span> Where and when the trip lands, on its last day. <span className="font-mono">+1</span> means just after midnight &mdash; the bid pack still counts the next day as off.</li>
+            <li><span className="font-medium text-ink">Each week reads like a line in the bid pack.</span> Shaded days joined by a bar across the top are one trip. Its first day carries the trip&rsquo;s number and credit hours (<span className="font-mono">#111 17:47CH</span>) and when it reports, in orange (<span className="font-mono font-semibold text-report">Rpt 06:30L</span>). L is local time, Z Zulu.</li>
+            <li><span className="font-medium text-ink">The lines in each day.</span> Each flight is a <span className="font-medium text-leg">blue</span> line with a tick at each end, as long as the flight and placed by the time of day &mdash; midnight at the left edge, midnight at the right, on the base&rsquo;s clock. A <span className="font-medium text-deadhead">magenta</span> line is a deadhead, riding along. The cities are written over the ends; where two legs meet, the city between them is written once. A flight still in the air at midnight runs off the right edge and on into the next day. The faint band behind the lines is the time on duty, report to release, so a long wait between two short flights shows. Small ticks mark 6am, noon and 6pm.</li>
+            <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be 24 hours at home between them, counting the trip home and back (<span className="font-mono">Rpt 02:30L · 1h47 turn</span> is a straight turn at base). For a pilot who lives at base, only trips that turn within a few hours.</li>
+            <li><span className="font-medium text-ink">Green line.</span> A layover, from landing to the next show, under the flying, with the city and its length to the hour (<span className="font-mono font-semibold text-layover">L/O SEA 16h</span>) &mdash; on its longest day, or at the top of the day when it&rsquo;s too short for the words. <span className="text-good">♥</span> is a city you love, <span className="text-good">♡</span> one you like, an amber <span className="text-warn">✕</span> one you dislike and a red <span className="text-danger">✕</span> one you avoid, and a dotted underline marks an international city.</li>
+            <li><span className="font-medium text-ink">END MEM 19:05L.</span> Where and when the trip ends, on its last day. <span className="font-mono">+1</span> means just after midnight &mdash; the bid pack still counts the next day as off.</li>
             <li><span className="font-medium text-ink">Violet day.</span> Hotel standby (<span className="font-mono">SBY</span>) &mdash; on call at the hotel, paid, not flying.</li>
             <li><span className="font-medium text-ink">Dashed empty day.</span> A day off; a run of them is labeled on its first day (&ldquo;4 days off&rdquo;).</li>
             <li><span className="font-medium text-ink">Tap any day</span> for every flight with its times and aircraft, the hotel and rest, block time and landings. Every time is local (L). The hour-by-hour chart for each trip is under &ldquo;Details&rdquo;.</li>
@@ -255,14 +261,14 @@ function MonthKeyInfo() {
   );
 }
 
-/** A leg as the calendar draws it, for the legend: a line with a tick at each end — dashed for a deadhead. */
+/** A leg as the calendar draws it, for the legend: a bold line with a tick at each end — blue, or magenta for a deadhead. */
 export function LegSample({ deadhead = false }: { deadhead?: boolean }) {
-  const tone = deadhead ? "bg-ink-muted" : "bg-ink";
+  const tone = deadhead ? "bg-deadhead" : "bg-leg";
   return (
     <span aria-hidden className="relative inline-block h-2.5 w-6 shrink-0 align-middle">
-      <span className={`absolute left-0 top-0 h-full w-[1.5px] ${tone}`} />
-      <span className={`absolute inset-x-0 top-1/2 -mt-px ${deadhead ? "border-t-2 border-dashed border-ink-muted" : "h-0.5 bg-ink"}`} />
-      <span className={`absolute right-0 top-0 h-full w-[1.5px] ${tone}`} />
+      <span className={`absolute left-0 top-0 h-full w-[2px] rounded-full ${tone}`} />
+      <span className={`absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 ${tone}`} />
+      <span className={`absolute right-0 top-0 h-full w-[2px] rounded-full ${tone}`} />
     </span>
   );
 }
@@ -271,13 +277,38 @@ export function LegSample({ deadhead = false }: { deadhead?: boolean }) {
 export function MonthLegend({ className = "" }: { className?: string }) {
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted ${className}`}>
-      <span className="inline-flex items-center gap-1"><span className="rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar">#111 17:47</span>Trip and its credit</span>
+      <span className="inline-flex items-center gap-1">
+        <span className="rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar">
+          #111 <CreditHours hours={17.78} className="font-normal opacity-85" />
+        </span>
+        Trip and its credit hours
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <span className="font-mono text-[11px] font-semibold text-report">
+          Rpt 06:30
+          <Zone />
+        </span>
+        Report (L local, Z Zulu)
+      </span>
       <span className="inline-flex items-center gap-1.5"><LegSample />Flight, to scale, midnight to midnight</span>
       <span className="inline-flex items-center gap-1.5"><LegSample deadhead />Deadhead</span>
+      <span className="inline-flex items-center gap-1">
+        <span className="inline-flex flex-col items-start gap-0.5">
+          <span aria-hidden className="h-[3px] w-full rounded-full bg-layover" />
+          <span className="font-mono text-[10px] font-semibold leading-none text-layover"><span className="font-normal">L/O </span>SEA<span className="font-normal"> 16h</span></span>
+        </span>
+        Layover, to the hour
+      </span>
       <span className="inline-flex items-center gap-1"><span className="h-1.5 w-5 rounded-[2px] bg-calendar-accent/20" />On duty</span>
-      <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px] font-semibold text-good">SEA 15h</span>Where you sleep</span>
       <span className="inline-flex items-center gap-1"><span className="text-good">♥</span>love <span className="text-good">♡</span>like <span className="text-warn">✕</span>dislike</span>
-      <span className="inline-flex items-center gap-1"><span className="font-mono text-[11px]"><span className="text-ink-faint">↘</span><span className="font-semibold">MEM</span> 00:56<span className="text-[9px] text-ink-muted">+1</span></span>Lands</span>
+      <span className="inline-flex items-center gap-1">
+        <span className="font-mono text-[11px]">
+          <span className="text-[9px] font-semibold text-ink-muted">END </span>
+          <span className="font-semibold">MEM</span> 19:05
+          <Zone />
+        </span>
+        Trip ends
+      </span>
       <LegendItem swatch="bg-standby/25 border-t-2 border-standby" label="Hotel standby" />
       <LegendItem swatch="border border-dashed border-border-strong" label="Day off" />
       <MonthKeyInfo />
@@ -537,6 +568,12 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   const revealed = useInView(gridRef, { once: true, margin: "0px 0px 10% 0px" });
   // Seven days and six gaps across the grid, less each day's own padding.
   const barWidth = Math.max(0, (gridWidth - 6 * 4) / 7 - 8);
+  // Each layover's words go on its longest day, counted across the whole month — a stay runs over several days.
+  const stayLabeled = useMemo(() => {
+    const labeled = labeledStayPieces(month.days.map((d) => [...(d.spill?.segments ?? []), ...(d.kind === "off" ? [] : d.segments)]));
+    return (s: TimelineSegment) => labeled.has(s);
+  }, [month]);
+  const internationalCities = useMemo(() => new Set(month.days.filter((d) => d.layoverInternational && d.layoverCode).map((d) => d.layoverCode!)), [month]);
 
   if (line.trips.length === 0) return null;
   const selectedDay = selected !== null ? month.days[selected] : null;
@@ -561,6 +598,9 @@ export const MiniLinePreview = memo(function MiniLinePreview({
               joinRight={i % 7 !== 6 && (month.days[i + 1]?.chain != null || (!day.isTripEnd && month.days[i + 1]?.tripIndex === day.tripIndex && month.days[i + 1]?.kind !== "off"))}
               selected={selected === day.dayIndex}
               barWidth={barWidth}
+              stayLabeled={stayLabeled}
+              internationalCities={internationalCities}
+              cityPreferences={cityPreferences}
               onSelect={() => setSelected((cur) => (cur === day.dayIndex ? null : day.dayIndex))}
             />
           ))}

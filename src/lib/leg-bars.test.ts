@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayBars, labeledStayPieces, stagger } from "@/lib/leg-bars";
+import { dayBars, fitLayoverLabel, labeledStayPieces, layoverHours, LABEL_CHAR_PX, stagger } from "@/lib/leg-bars";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 
 const H = 60;
@@ -100,5 +100,35 @@ describe("labeledStayPieces", () => {
     const next = stay("SEA", 20 * H, 24 * H);
     const labeled = labeledStayPieces([[tonight], [tomorrow], [after, next]]);
     expect([...labeled]).toEqual([tomorrow, next]);
+  });
+});
+
+describe("deadhead cities", () => {
+  it("marks a city only deadheads touch, so it's written in the deadhead's color", () => {
+    const dh = { kind: "deadhead" as const };
+    const bars = dayBars([leg("MEM", "SFO", 14 * H, 17 * H, dh), leg("SFO", "OAK", 17.5 * H, 18.5 * H, dh), leg("OAK", "HNL", 18.75 * H, 23 * H)], 60);
+    expect(bars.cities.map((c) => [c.text, !!c.deadhead])).toEqual([
+      ["MEM", true],
+      ["SFO", true],
+      ["OAK", false],
+      ["HNL", false],
+    ]);
+  });
+});
+
+describe("layover words", () => {
+  it("rounds the length to the hour, as the ex-pilot writes it", () => {
+    expect(layoverHours(27.67)).toBe("28h");
+    expect(layoverHours(32.4)).toBe("32h");
+  });
+
+  it("says as much as fits: L/O, the city and the hours, then less", () => {
+    const wide = fitLayoverLabel("OAK", 28, 200);
+    expect(wide).toMatchObject({ prefix: true, hours: true });
+    expect(wide.widthPx).toBeCloseTo("L/O OAK 28h".length * LABEL_CHAR_PX);
+    expect(fitLayoverLabel("OAK", 28, 50)).toMatchObject({ prefix: false, hours: true });
+    expect(fitLayoverLabel("OAK", 28, 30)).toMatchObject({ prefix: false, hours: false });
+    // Room for the pilot's mark after it counts too.
+    expect(fitLayoverLabel("OAK", 28, "L/O OAK 28h".length * LABEL_CHAR_PX + 4, 10)).toMatchObject({ prefix: false });
   });
 });

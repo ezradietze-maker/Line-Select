@@ -2,10 +2,11 @@ import type { TimelineSegment } from "@/lib/trip-timeline";
 
 /**
  * A day of flying drawn the way the ex-pilot drew his lines in his paper organizer: each leg a line with a tick at each
- * end, as long as the flight and placed left to right by the time of day, the cities written under its ends — the
+ * end, as long as the flight and placed left to right by the time of day, the cities written at its ends — the
  * shared city once where two legs meet ("OAK AFW OAK"). A flight still in the air at midnight runs off the right edge
- * and on into the next day. A pilot sizes a day up from the picture — early or late, long or short, how much of the
- * day is flying — before reading a word of it.
+ * and on into the next day. On the month calendar a layover is a line of its own under the flying, from landing to
+ * the next show, with the city and its length rounded to the hour on it ("L/O OAK 28h"). A pilot sizes a day up from
+ * the picture — early or late, long or short, how much of the day is flying — before reading a word of it.
  *
  * This is the layout behind that picture, shared by the month calendar's day cells, the trip's own day rows and the
  * interview's trip cards, so a pilot learns one picture once. Positions are minutes of the day (0–1440) on whatever
@@ -42,11 +43,13 @@ export interface BarStay extends BarSpan {
 }
 
 export interface BarLabel {
-  /** Minute of the day it sits under (or above). */
+  /** Minute of the day it sits over (or under). */
   at: number;
   text: string;
   /** 0 next to the bar, 1 a line further out — where it would have run into the label before it. */
   row: 0 | 1;
+  /** A city only deadheads touch — written in the deadhead's color, as the ex-pilot wrote "MEM DH SFO" in blue. */
+  deadhead?: boolean;
 }
 
 export interface DayBars {
@@ -82,14 +85,14 @@ function dutySpans(segs: TimelineSegment[]): BarSpan[] {
  * Labels in order along the day, each moved a line out when it would sit on the one before it (closer than `minGap`
  * minutes) — and dropped when it would sit on both lines' last labels. The words are always in the day's detail.
  */
-export function stagger(points: { at: number; text: string }[], minGap: number): BarLabel[] {
-  const out: BarLabel[] = [];
+export function stagger<P extends { at: number; text: string }>(points: P[], minGap: number): (P & { row: 0 | 1 })[] {
+  const out: (P & { row: 0 | 1 })[] = [];
   const lastAt: [number, number] = [-Infinity, -Infinity];
   for (const p of [...points].sort((a, b) => a.at - b.at)) {
     const row = p.at - lastAt[0] >= minGap ? 0 : p.at - lastAt[1] >= minGap ? 1 : null;
     if (row === null) continue;
     lastAt[row] = p.at;
-    out.push({ at: p.at, text: p.text, row });
+    out.push({ ...p, row });
   }
   return out;
 }
@@ -113,16 +116,16 @@ export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled
       arrClock: s.continuesToNextDay ? null : (s.endClock ?? s.leg!.arrClock),
     }));
 
-  const cityPoints: { at: number; text: string }[] = [];
+  const cityPoints: { at: number; text: string; deadhead: boolean }[] = [];
   const timePoints: { at: number; text: string }[] = [];
   legs.forEach((l, i) => {
     const prev = legs[i - 1];
     if (l.from) {
       const shared = prev && prev.to === l.from && l.start - prev.end < minGap;
-      if (shared) cityPoints[cityPoints.length - 1] = { at: (prev.end + l.start) / 2, text: l.from };
-      else cityPoints.push({ at: l.start, text: l.from });
+      if (shared) cityPoints[cityPoints.length - 1] = { at: (prev.end + l.start) / 2, text: l.from, deadhead: prev.deadhead && l.deadhead };
+      else cityPoints.push({ at: l.start, text: l.from, deadhead: l.deadhead });
     }
-    if (l.to) cityPoints.push({ at: l.end, text: l.to });
+    if (l.to) cityPoints.push({ at: l.end, text: l.to, deadhead: l.deadhead });
     if (l.depClock) timePoints.push({ at: l.start, text: l.depClock });
     if (l.arrClock) timePoints.push({ at: l.end, text: l.arrClock });
   });
@@ -161,4 +164,25 @@ export function labeledStayPieces(days: TimelineSegment[][]): Set<TimelineSegmen
     }
   }
   return best;
+}
+
+/** A layover's length the way the ex-pilot writes it on the calendar: rounded to the hour — "28h", not "27:40". */
+export const layoverHours = (hours: number) => `${Math.round(hours)}h`;
+
+/** Width of a character in the 10px mono the labels are set in, near enough to decide what fits. */
+export const LABEL_CHAR_PX = 6.1;
+
+/**
+ * The most a layover's words can say in `roomPx`: "L/O OAK 28h", then "OAK 28h", then "OAK" — `extraPx` for the
+ * pilot's mark after it.
+ */
+export function fitLayoverLabel(city: string, hours: number, roomPx: number, extraPx = 0): { prefix: boolean; hours: boolean; widthPx: number } {
+  const options = [
+    { prefix: true, hours: true, text: `L/O ${city} ${layoverHours(hours)}` },
+    { prefix: false, hours: true, text: `${city} ${layoverHours(hours)}` },
+    { prefix: false, hours: false, text: city },
+  ];
+  const width = (text: string) => text.length * LABEL_CHAR_PX + extraPx;
+  const fit = options.find((o) => width(o.text) <= roomPx) ?? options[2];
+  return { prefix: fit.prefix, hours: fit.hours, widthPx: width(fit.text) };
 }

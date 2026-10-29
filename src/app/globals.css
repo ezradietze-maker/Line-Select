@@ -75,6 +75,14 @@
   --color-danger: #b2352a;
   --color-danger-soft: #f8e3de;
 
+  /* The calendar's own picture of a trip (components/results/LegBars.tsx), one vivid color per thing a pilot reads off
+     it: a flight, a deadhead, a layover, a report time. Brighter than the rest of the palette on purpose — the
+     ex-pilot asked for them to stand out — but each dark enough for 10px text on a trip day's tan (4.5:1 or better). */
+  --color-leg: #1d4ed8;
+  --color-deadhead: #ae1d6d;
+  --color-layover: #026b48;
+  --color-report: #ad380a;
+
   --color-focus-ring: #4a3420;
 
   /* Warm paper shadow — hue 35 (amber-brown), not a generic cool gray. */
@@ -164,6 +172,11 @@
     --color-danger: #e2604a;
     --color-danger-soft: #2e1a16;
 
+    --color-leg: #7ea6ff;
+    --color-deadhead: #f475b5;
+    --color-layover: #3ad49b;
+    --color-report: #ff8d45;
+
     --color-focus-ring: #c9a468;
     --shadow-color: 35 25% 2%;
 
@@ -222,6 +235,11 @@
   --color-warn-soft: #2c2114;
   --color-danger: #e2604a;
   --color-danger-soft: #2e1a16;
+
+  --color-leg: #7ea6ff;
+  --color-deadhead: #f475b5;
+  --color-layover: #3ad49b;
+  --color-report: #ff8d45;
 
   --color-focus-ring: #c9a468;
   --shadow-color: 35 25% 2%;
@@ -292,6 +310,12 @@
   --color-danger: #ff2020;
   --color-danger-soft: #330a0a;
 
+  /* Red light only: the four calendar colors told apart by brightness and warmth, as good/warn/danger are. */
+  --color-leg: #ff5c5c;
+  --color-deadhead: #e0608f;
+  --color-layover: #ce5c3b;
+  --color-report: #ff8a2a;
+
   --color-focus-ring: #ff4d4d;
   --shadow-color: 0 70% 2%;
   --texture-grid-line: color-mix(in srgb, var(--color-ink) 3%, transparent);
@@ -347,6 +371,10 @@
   --color-warn-soft: var(--color-warn-soft);
   --color-danger: var(--color-danger);
   --color-danger-soft: var(--color-danger-soft);
+  --color-leg: var(--color-leg);
+  --color-deadhead: var(--color-deadhead);
+  --color-layover: var(--color-layover);
+  --color-report: var(--color-report);
 
   --color-panel: var(--color-panel);
   --color-readout: var(--color-readout);
