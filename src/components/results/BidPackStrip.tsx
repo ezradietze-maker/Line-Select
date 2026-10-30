@@ -20,7 +20,7 @@ import type { Line } from "@/types/bidpack";
  *   (`lib/bidpack-row.ts`).
  * - "timeline": the same strip's size and everything on it, drawn as the month's one continuous timeline to scale
  *   (`lib/line-timeline.ts`): each duty a band from report to release with its flights in it, each layover a line with
- *   its city and hours, the flight numbers at the times they leave, the days off counted; and beside each of the
+ *   its city, the flight numbers at the times they leave, the days off counted; and beside each of the
  *   line's numbers, where it sits among every line in the pack.
  *
  * Tapping either opens everything else about the line under it.
@@ -340,7 +340,7 @@ function twoLines(items: { x: number; w: number }[], maxRight: number): { x: num
 /**
  * The month as one timeline, to scale on the base's clock: weekends shaded and the pack's week lines behind; each
  * trip's rail with its number and credit; each duty a grey band from report to release with its flights in it; each
- * layover a green line, its city and hours under it; every flight number at the time it leaves; and each run of days
+ * layover a green line, its city under it; every flight number at the time it leaves; and each run of days
  * off counted.
  */
 function TimelineDays({ columns, timeline, layout }: { columns: PackColumn[]; timeline: LineTimeline; layout: StripLayout }) {
@@ -356,9 +356,9 @@ function TimelineDays({ columns, timeline, layout }: { columns: PackColumn[]; ti
     legs.map((l) => ({ x: x(l.start), w: l.flight.length * charPx })),
     width
   );
-  const stayLabels = timeline.stays.map((s) => `${s.city} ${Math.round(s.hours)}h`);
+  // Where each layover is — just the city: its length is the line's own length.
   const stayCenters = sideBySide(
-    timeline.stays.map((s, i) => ({ at: ((s.start + s.end) / 2 / total) * DAY_MIN, text: stayLabels[i] })),
+    timeline.stays.map((s) => ({ at: ((s.start + s.end) / 2 / total) * DAY_MIN, text: s.city })),
     width,
     0
   );
@@ -410,7 +410,6 @@ function TimelineDays({ columns, timeline, layout }: { columns: PackColumn[]; ti
       {timeline.stays.map((s, i) => (
         <span key={`c${i}`} className="absolute -translate-x-1/2 whitespace-nowrap font-mono font-semibold text-layover" style={{ ...font, left: stayCenters[i], top: TL.cities }} title={`Layover in ${s.city}, ${Math.round(s.hours)}h`}>
           {s.city}
-          <span className="font-normal"> {Math.round(s.hours)}h</span>
         </span>
       ))}
       {legs.map((l, i) => (

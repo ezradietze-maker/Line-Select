@@ -351,7 +351,7 @@ export const LineCard = memo(function LineCard({
                   aria-expanded={expanded}
                   className="inline-flex items-center gap-1.5 rounded-md border print:hidden border-hairline px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-border-strong hover:text-ink"
                 >
-                  {expanded ? "Hide details" : "Details"}
+                  {expanded ? "Hide trip details" : "Trip details"}
                   <ChevronDownIcon className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
                 </button>
               </div>
