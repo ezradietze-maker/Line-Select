@@ -29,7 +29,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { LineCard } from "@/components/results/LineCard";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
-import { BidPackHeader, StripKey, stripLayout } from "@/components/results/BidPackStrip";
+import { BidPackHeader, packRanges, StripKey, StripViewToggle, stripLayout } from "@/components/results/BidPackStrip";
+import { useStripView } from "@/lib/strip-view-storage";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { packColumnCount, packColumns } from "@/lib/bidpack-row";
 import { cityMarks } from "@/lib/city-ratings";
@@ -477,6 +478,8 @@ export function ResultsView({
   const columns = useMemo(() => packColumns(bidPack.bidPeriodStart, bidPack.bidPeriodDays, packColumnCount(bidPack)), [bidPack]);
   const [listRef, listWidth] = useMeasuredWidth<HTMLDivElement>(768);
   const layout = useMemo(() => stripLayout(listWidth, columns.length), [listWidth, columns.length]);
+  const [stripView, setStripView] = useStripView();
+  const ranges = useMemo(() => packRanges(bidPack.lines), [bidPack.lines]);
   // Keys for working down the list at a desk: j / k move between lines, o opens one, s shortlists, c compares, ? shows the keys.
   const [keyIndex, setKeyIndex] = useState<number | null>(null);
   const [showKeys, setShowKeys] = useState(false);
@@ -855,7 +858,10 @@ export function ResultsView({
             />
           </div>
 
-          <StripKey className="mt-3" />
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <StripKey view={stripView} />
+            <StripViewToggle view={stripView} onChange={setStripView} />
+          </div>
 
           {showKeys && (
             <div role="note" className="mt-3 hidden flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-hairline bg-canvas/40 px-3 py-2 font-mono text-[11px] text-ink-muted sm:flex print:hidden">
@@ -955,6 +961,8 @@ export function ResultsView({
                         tripScores={tripScores}
                         packColumns={columns}
                         stripLayout={layout}
+                        stripView={stripView}
+                        packRanges={ranges}
                         open={openIds.has(lineScore.line.id)}
                         onToggleOpen={() => toggleOpen(lineScore.line.id)}
                       />

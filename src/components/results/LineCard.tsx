@@ -13,10 +13,12 @@ import { ForecastChip } from "@/components/results/ForecastBanner";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { RecurringCommitmentBanner } from "@/components/results/RecurringCommitmentBanner";
 import { TripNumberStrip } from "@/components/results/TripNumberStrip";
-import { BidPackStrip, type StripLayout } from "@/components/results/BidPackStrip";
+import { BidPackStrip, type PackRanges, type StripLayout } from "@/components/results/BidPackStrip";
 import { ChevronDownIcon, GripIcon, StarIcon } from "@/components/ui/icons";
 import { Tabs } from "@/components/ui/Tabs";
 import { buildPackRow, type PackColumn } from "@/lib/bidpack-row";
+import { buildLineTimeline } from "@/lib/line-timeline";
+import type { StripViewMode } from "@/lib/strip-view-storage";
 import { cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
 import { groupDepartures } from "@/lib/metrics/departures";
@@ -83,6 +85,9 @@ interface LineCardProps {
   /** The pack's day columns and how the list lays its strips out — the same for every line, so they line up. */
   packColumns: PackColumn[];
   stripLayout: StripLayout;
+  /** Which strip the list draws, and the pack's range of each number for the timeline's meters. */
+  stripView: StripViewMode;
+  packRanges: PackRanges;
   /** Whether everything about the line is showing under its strip. */
   open: boolean;
   onToggleOpen: () => void;
@@ -110,6 +115,8 @@ export const LineCard = memo(function LineCard({
   tripScores,
   packColumns,
   stripLayout,
+  stripView,
+  packRanges,
   open,
   onToggleOpen,
 }: LineCardProps) {
@@ -160,7 +167,13 @@ export const LineCard = memo(function LineCard({
   // Times the pilot leaves home: trips flown back to back, never home between, count once — as the calendar's summary counts them.
   const departureGroups = useMemo(() => groupDepartures(line.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [line.trips, bidPeriodStart, departureOptions]);
   const departures = departureGroups.length;
-  const packDays = useMemo(() => buildPackRow(line, bidPeriodStart, bidPeriodDays, packColumns.length), [line, bidPeriodStart, bidPeriodDays, packColumns.length]);
+  const view = useMemo(
+    () =>
+      stripView === "pack"
+        ? ({ kind: "pack", days: buildPackRow(line, bidPeriodStart, bidPeriodDays, packColumns.length) } as const)
+        : ({ kind: "timeline", timeline: buildLineTimeline(line, { bidPeriodStart, bidPeriodDays, base: homeBase }, packColumns.length), ranges: packRanges } as const),
+    [stripView, line, bidPeriodStart, bidPeriodDays, homeBase, packColumns.length, packRanges]
+  );
   const grip = draggable ? (
     <button
       ref={setDragRef}
@@ -204,7 +217,7 @@ export const LineCard = memo(function LineCard({
         score={score}
         capped={violatedDealbreakers.length > 0}
         columns={packColumns}
-        days={packDays}
+        view={view}
         layout={stripLayout}
         grip={grip}
         open={open}
