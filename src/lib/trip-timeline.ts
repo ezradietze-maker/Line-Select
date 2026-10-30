@@ -1,4 +1,5 @@
 import type { LayoverSleepPlan, SleepKind } from "@/lib/sleep-plan";
+import { dateLinePass, type DateLinePass } from "@/lib/date-line";
 import { detectDateLineCrossing, localDayStart, localInstantToZulu, toLocalInstant, ZULU_CLOCK, zoneForClock, zuluDayLabel, type LocalInstant } from "@/lib/trip-clock";
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
@@ -67,6 +68,15 @@ export interface DateLineBack {
 
 export interface TimelineSegment {
   kind: TimelineSegmentKind;
+  /** A flight across the date line: which way, when it crosses 180°, and the local clock's jump there (`lib/date-line.ts`). */
+  dateLine?: DateLinePass;
+  /**
+   * Local layout, westbound across the date line: the stretch of this piece (minutes of the day) that's the clock's
+   * jump, not flying — drawn as a squiggle between the bold flying on either side, the ex-pilot's way.
+   */
+  dateLineJump?: { start: number; end: number };
+  /** Zulu layout: where on this piece (minute of the day) the flight crosses the date line, and the local clock's jump there. */
+  dateLineMark?: { at: number; jumpMinutes: number };
   /** Set on a flight east across the date line, on the month calendar's local layout (`buildDateLineDays`). */
   dateLineBack?: DateLineBack;
   /** After an eastbound date-line flight: a piece of a date the pilot already lived once, on the other side of the line. */
@@ -139,6 +149,8 @@ function formatDuration(hours: number): string {
 
 export interface RawSegment {
   kind: TimelineSegmentKind;
+  /** A flight across the date line: which way, when it crosses 180°, and the local clock's jump there (`lib/date-line.ts`). */
+  dateLine?: DateLinePass;
   /** Which of the trip's duty periods it belongs to (`trip.schedule` index) — a layover to the duty it follows. */
   dutyIndex?: number;
   leg?: SegmentLeg;
@@ -335,6 +347,10 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local", sleepPlan
         zuluEnd: leg.arrTimeZulu,
         startAirport: leg.depAirport,
         endAirport: leg.arrAirport,
+        ...(() => {
+          const pass = dateLinePass(leg.depAirport, leg.arrAirport, leg.depTimeZulu, leg.arrTimeZulu);
+          return pass ? { dateLine: pass } : {};
+        })(),
       });
     }
     if (duty.layover) {
@@ -411,6 +427,7 @@ function toTimelineSegment(
   return {
     kind: seg.kind,
     ...(seg.dutyIndex !== undefined ? { dutyIndex: seg.dutyIndex } : {}),
+    ...(seg.dateLine ? { dateLine: seg.dateLine } : {}),
     ...(seg.leg ? { leg: seg.leg } : {}),
     ...(seg.stay ? { stay: seg.stay } : {}),
     ...(seg.sleep ? { sleep: seg.sleep } : {}),
@@ -662,12 +679,24 @@ export function buildHomeDays(trip: Trip, mode: TimeMode): TimelineDay[] {
 export function buildZuluCalendarDays(trip: Trip): TimelineDay[] {
   const raw = buildRawSegments(trip, "zulu");
   if (raw.length === 0) return [];
-  return buildLocalDays(raw, ZULU_CLOCK);
+  const days = buildLocalDays(raw, ZULU_CLOCK);
+  // On Zulu's clock the date line moves nothing: mark where each flight across it crosses, with the local clock's jump.
+  for (const day of days) {
+    for (const seg of day.segments) {
+      if (!seg.dateLine || !day.date) continue;
+      const at = DateTime.fromISO(seg.dateLine.crossesAt, { zone: "utc" });
+      if (at.toISODate() !== day.date) continue;
+      const minute = at.hour * 60 + at.minute;
+      if (minute >= seg.startMinuteOfDay && minute <= seg.endMinuteOfDay) seg.dateLineMark = { at: minute, jumpMinutes: seg.dateLine.jumpMinutes };
+    }
+  }
+  return days;
 }
 
 /**
  * A trip across the date line on the month calendar, laid out the way the ex-pilot draws one: every piece on its own
- * airport's local date and clock, from the trip's first day at home. Westbound the date simply jumps on. Eastbound the
+ * airport's local date and clock, from the trip's first day at home. Westbound the flight is its real length in bold
+ * and the clock's jump a squiggle (`dateLineJump`), the two together reaching its local landing. Eastbound the
  * flight lands on the same date it left, or the one before — so it's drawn running back to its landing
  * (`dateLineBack`), and what follows on a date already lived on the far side of the line is a second pass of it
  * (`secondPass`): the layover carries on from the landing, on a line of its own, until the date is new again.
@@ -721,7 +750,16 @@ export function buildDateLineDays(trip: Trip): TimelineDay[] {
       const clippedStart = start.dayIndex === d ? start.minuteOfDay : 0;
       const clippedEnd = end.dayIndex === d ? end.minuteOfDay : MINUTES_PER_DAY;
       if (clippedEnd <= clippedStart && !(start.dayIndex === d && end.dayIndex === d && clippedEnd === clippedStart)) continue;
-      const piece = toTimelineSegment(seg, clippedStart, clippedEnd, start.dayIndex < d, end.dayIndex > d);
+      const piece: TimelineSegment = toTimelineSegment(seg, clippedStart, clippedEnd, start.dayIndex < d, end.dayIndex > d);
+      // West across the date line: the flight's own length in bold up to where it crosses, then the clock's jump as a
+      // squiggle, then the rest of the flight — together exactly takeoff to landing on the local clocks.
+      if (seg.dateLine?.direction === "west" && seg.dateLine.jumpMinutes > 0) {
+        const jumpFrom = abs(start) + (Date.parse(seg.dateLine.crossesAt) - Date.parse(seg.zuluStart)) / 60_000 - (d - 1) * MINUTES_PER_DAY;
+        const jumpTo = jumpFrom + seg.dateLine.jumpMinutes;
+        const a = Math.max(clippedStart, jumpFrom);
+        const b = Math.min(clippedEnd, jumpTo);
+        if (b > a) piece.dateLineJump = { start: a, end: b };
+      }
       const from = (d - 1) * MINUTES_PER_DAY + clippedStart;
       const second = before !== null && from < before;
       segments.push(second ? { ...piece, secondPass: true, rejoins: end.dayIndex > d && d * MINUTES_PER_DAY >= before } : piece);

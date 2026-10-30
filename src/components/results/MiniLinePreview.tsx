@@ -211,6 +211,7 @@ function Cell({
           internationalCities={internationalCities}
           top={report}
           bleed={CELL_BLEED}
+          zulu={mode === "zulu"}
         />
       ) : (
         !isOff && <span className="flex h-[11px] items-center overflow-hidden">{report}</span>

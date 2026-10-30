@@ -3,7 +3,7 @@ import { pairingToTrip, resolveLayoverVariants } from "@/lib/pdf-parser/build-bi
 import { parsePairingColumn } from "@/lib/pdf-parser/pairing-parser";
 import { buildDetailedMonth } from "@/lib/month-detail";
 import { anchorTripToItsDate, tripReportUtc } from "@/lib/trip-anchor";
-import { buildHomeDays, buildRawSegments, buildTimelineDays } from "@/lib/trip-timeline";
+import { buildDateLineDays, buildHomeDays, buildRawSegments, buildTimelineDays } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
 
 // Rows verbatim from the October 2026 FedEx bid packs (hotel/ride lines trimmed where they don't matter).
@@ -92,6 +92,16 @@ describe("a trip home across the date line", () => {
     expect(days[10].flights.at(-1)).toEqual({ kind: "lands", from: "ICN", to: "ANC", arr: "23:41" });
     expect(days[10].segments.find((s) => s.dateLineBack)?.dateLineBack?.part).toBe("arrival");
     expect(days[11].segments.find((s) => s.dateLineBack)).toMatchObject({ startClock: "08:40", dateLineBack: { part: "departure" } });
+  });
+
+  it("draws the flight out west across the date line bold for its flying and a squiggle for the clock's 17-hour jump", () => {
+    const days = buildDateLineDays(trip);
+    const out = days.flatMap((d) => d.segments).filter((s) => s.leg?.flightNumber === "5132");
+    const jump = out.reduce((a, s) => a + (s.dateLineJump ? s.dateLineJump.end - s.dateLineJump.start : 0), 0);
+    expect(out[0].dateLine).toMatchObject({ direction: "west", jumpMinutes: 17 * 60 });
+    expect(jump).toBe(17 * 60);
+    // Bold flying and squiggle together reach the local landing: 13:15 Seoul time.
+    expect(out.at(-1)!.endMinuteOfDay).toBe(minutes("13:15"));
   });
 
   it("fits the base's own calendar the grid counts: Oct 3 to Oct 8, six days", () => {

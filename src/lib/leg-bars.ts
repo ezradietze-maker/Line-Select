@@ -34,6 +34,10 @@ export interface BarLeg {
   dateLine: DateLineDirection | null;
   /** Drawn back from its takeoff to its landing — east across the date line on the month calendar (`end` < `start`). */
   back?: DateLineBack;
+  /** West across the date line, local layout: the stretch (minutes of the day) that's the clock's jump, drawn as a squiggle. */
+  jump?: { start: number; end: number; minutes: number };
+  /** Zulu layout: where it crosses the date line (minute of the day), and how far the local clock jumps there. */
+  mark?: { at: number; jumpMinutes: number };
 }
 
 export interface BarSpan {
@@ -132,6 +136,8 @@ export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled
       start: s.startMinuteOfDay,
       end: s.dateLineBack ? s.endMinuteOfDay : endOf(s),
       ...(s.dateLineBack ? { back: s.dateLineBack } : {}),
+      ...(s.dateLineJump && s.dateLine ? { jump: { ...s.dateLineJump, minutes: s.dateLine.jumpMinutes } } : {}),
+      ...(s.dateLineMark ? { mark: s.dateLineMark } : {}),
       from: s.continuesFromPreviousDay ? null : s.leg!.dep,
       to: s.continuesToNextDay ? null : s.leg!.arr,
       deadhead: s.kind === "deadhead",

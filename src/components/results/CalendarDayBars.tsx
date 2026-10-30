@@ -57,6 +57,20 @@ interface CalendarDayBarsProps {
   top?: ReactNode;
   /** How far a line at midnight runs past the day's edge, to meet the next day's across the gap between them. */
   bleed?: number;
+  /** The month is on Zulu's clock: a flight across the date line is its plain length, marked where it crosses. */
+  zulu?: boolean;
+}
+
+/** "+17h", "−17h": how far the local clock jumps crossing the date line. */
+const jumpLabel = (minutes: number) => `${minutes > 0 ? "+" : "−"}${Math.round(Math.abs(minutes) / 60)}h`;
+
+/** A squiggle along a line, from x0 to x1 at height y — the ex-pilot's mark for hours the clock jumps rather than flies. */
+function squiggle(x0: number, x1: number, y: number): string {
+  const step = 3;
+  const points: string[] = [`${x0},${y}`];
+  for (let x = x0 + step, up = true; x < x1; x += step, up = !up) points.push(`${x},${y + (up ? -2.5 : 2.5)}`);
+  points.push(`${x1},${y}`);
+  return points.join(" ");
 }
 
 /** A layover's words: "L/O" (when there's room for it), the city, its length to the hour, and how the pilot feels about it. */
@@ -78,7 +92,7 @@ function LayoverWords({ city, hours, prefix, withHours, international, mark }: {
  * little flying), and each layover a green line of its own under the flying with "L/O OAK 28h" on it. The trip view's
  * rows keep their own picture (`LegBars`).
  */
-export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreferences, internationalCities, minLabelWidth = 60, top, bleed = 0 }: CalendarDayBarsProps) {
+export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreferences, internationalCities, minLabelWidth = 60, top, bleed = 0, zulu = false }: CalendarDayBarsProps) {
   const size = SIZE;
   const width = Math.max(widthPx, 1);
   const x = (m: number) => (m / DAY) * width;
@@ -209,7 +223,7 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
       ))}
       {bars.legs.map((l, i) => {
         const east = l.dateLine === "east";
-        const tone = east ? "bg-dateline" : l.deadhead ? "bg-deadhead" : "bg-leg";
+        const tone = l.dateLine ? "bg-dateline" : l.deadhead ? "bg-deadhead" : "bg-leg";
         const runsIn = l.from === null;
         const runsOn = l.to === null;
         const left = x(l.start) - (runsIn ? bleed : 0);
@@ -235,6 +249,49 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
                 {l.back.part !== "departure" && <circle cx={x1} cy={y1} r={2.5} fill="currentColor" />}
               </svg>
               {l.back.part !== "arrival" && <span className="absolute w-[2px] rounded-full bg-dateline" style={{ left: x(l.start) - 1, top: mid - size.tick / 2, height: size.tick }} />}
+            </span>
+          );
+        }
+        const jumpWords = (at: number, minutes: number) =>
+          showCities ? (
+            <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-[9px] font-semibold leading-none text-dateline" style={{ left: Math.min(Math.max(at, 12 - bleed), width + bleed - 12), top: citiesTop, height: size.line }}>
+              {jumpLabel(minutes)}
+            </span>
+          ) : null;
+        if (l.dateLine && zulu) {
+          // On Zulu's clock nothing jumps: the flight at its real length, in the date-line color, with a zigzag where it
+          // crosses and how far the local clock jumps there.
+          return (
+            <span key={`l${i}`} title={`Crosses the date line ${l.dateLine === "east" ? "eastbound" : "westbound"}${l.mark ? ` — the local clock jumps ${jumpLabel(l.mark.jumpMinutes)}` : ""}`}>
+              <span className="absolute bg-dateline" style={{ left, width: Math.max(2, x(l.end) + (runsOn ? bleed : 0) - left), top: mid - size.bar / 2, height: size.bar }} />
+              {!runsIn && <span className="absolute w-[2px] rounded-full bg-dateline" style={{ left: x(l.start), top: mid - size.tick / 2, height: size.tick }} />}
+              {!runsOn && <span className="absolute w-[2px] rounded-full bg-dateline" style={{ left: x(l.end) - 2, top: mid - size.tick / 2, height: size.tick }} />}
+              {l.mark && (
+                <>
+                  <svg className="absolute left-0 top-0 overflow-visible text-dateline" width={width} height={height} aria-hidden>
+                    <polyline points={`${x(l.mark.at) - 4},${mid - 5} ${x(l.mark.at) - 1},${mid + 5} ${x(l.mark.at) + 1},${mid - 5} ${x(l.mark.at) + 4},${mid + 5}`} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
+                  </svg>
+                  {jumpWords(x(l.mark.at), l.mark.jumpMinutes)}
+                </>
+              )}
+            </span>
+          );
+        }
+        if (l.jump) {
+          // West across the date line, his way: the flight bold for its real length, the clock's jump a squiggle.
+          const right = x(l.end) + (runsOn ? bleed : 0);
+          const j0 = l.jump.start <= 0 ? -bleed : x(l.jump.start);
+          const j1 = l.jump.end >= DAY ? width + bleed : x(l.jump.end);
+          return (
+            <span key={`l${i}`} title={`Crosses the date line westbound — the flight in bold, the local clock's ${jumpLabel(l.jump.minutes)} jump as the squiggle`}>
+              {j0 > left && <span className="absolute bg-dateline" style={{ left, width: j0 - left, top: mid - size.bar / 2, height: size.bar }} />}
+              {right > j1 && <span className="absolute bg-dateline" style={{ left: j1, width: right - j1, top: mid - size.bar / 2, height: size.bar }} />}
+              <svg className="absolute left-0 top-0 overflow-visible text-dateline" width={width} height={height} aria-hidden>
+                <polyline points={squiggle(j0, j1, mid)} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
+              </svg>
+              {!runsIn && <span className="absolute w-[2px] rounded-full bg-dateline" style={{ left: x(l.start), top: mid - size.tick / 2, height: size.tick }} />}
+              {!runsOn && <span className="absolute w-[2px] rounded-full bg-dateline" style={{ left: x(l.end) - 2, top: mid - size.tick / 2, height: size.tick }} />}
+              {j1 - j0 > 26 && jumpWords((j0 + j1) / 2, l.jump.minutes)}
             </span>
           );
         }

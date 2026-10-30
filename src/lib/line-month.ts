@@ -86,8 +86,9 @@ function synthesizeSpans(line: Line): Span[] {
  * off when no trip touches it — the bid pack's own days off are counted on the
  * base's calendar, so they don't apply.
  *
- * A trip that crosses the date line eastbound is laid out on local dates and clocks instead (`buildDateLineDays`), the
- * way the ex-pilot draws one: the flight runs back to the date it lands on, and the layover carries on from there.
+ * A trip that crosses the date line is laid out on local dates and clocks instead (`buildDateLineDays`), the way the
+ * ex-pilot draws one: eastbound the flight runs back to the date it lands on and the layover carries on from there;
+ * westbound the flight is bold for its real length and a squiggle for the hours the clock jumps.
  */
 export function buildLineMonthCalendar(line: Line, bidPeriodStart: string | null, bidPeriodDays: number, mode: TimeMode): LineMonthCalendar {
   const placementIsReal = bidPeriodStart !== null && line.trips.every((t) => t.startDayIndex !== null);
@@ -95,10 +96,10 @@ export function buildLineMonthCalendar(line: Line, bidPeriodStart: string | null
   const spans: Span[] = placementIsReal ? line.trips.map((t, i) => ({ trip: t, tripIndex: i, start: t.startDayIndex! })) : synthesizeSpans(line);
 
   const zulu = mode === "zulu";
-  const crossesEast = (t: Trip) => t.schedule.some((d) => d.legs.some((l) => dateLineCrossing(l.depAirport, l.arrAirport) === "east"));
+  const crossesDateLine = (t: Trip) => t.schedule.some((d) => d.legs.some((l) => dateLineCrossing(l.depAirport, l.arrAirport) !== null));
   const timelineBySpan: { span: Span; timeline: TimelineDay[] }[] = spans.map((span) => {
     if (!zulu) {
-      const local = crossesEast(span.trip) ? buildDateLineDays(span.trip) : [];
+      const local = crossesDateLine(span.trip) ? buildDateLineDays(span.trip) : [];
       return { span, timeline: local.length ? local : buildHomeDays(span.trip, mode) };
     }
     // Its first Zulu day is its first base day moved by however far apart the two dates are when it reports.
