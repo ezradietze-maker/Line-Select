@@ -13,13 +13,15 @@ import { ForecastChip } from "@/components/results/ForecastBanner";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { RecurringCommitmentBanner } from "@/components/results/RecurringCommitmentBanner";
 import { TripNumberStrip } from "@/components/results/TripNumberStrip";
-import { ScoreRing } from "@/components/results/ScoreRing";
+import { BidPackStrip, type StripLayout } from "@/components/results/BidPackStrip";
 import { ChevronDownIcon, GripIcon, StarIcon } from "@/components/ui/icons";
 import { Tabs } from "@/components/ui/Tabs";
+import { buildPackRow, type PackColumn } from "@/lib/bidpack-row";
 import { cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
-import { buildLineFactChips, type LineFactChip } from "@/lib/line-summary";
-import { useMediaQuery } from "@/lib/use-media-query";
+import { groupDepartures } from "@/lib/metrics/departures";
+import { CreditHours } from "@/components/results/TripMarks";
+import { buildLineFeatures, type LineFactChip } from "@/lib/line-summary";
 import { topImplicitContributions } from "@/lib/rank-learning";
 import type { LineScore } from "@/lib/scoring";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
@@ -47,12 +49,6 @@ const RouteMap = dynamic(() => import("@/components/results/RouteMap").then((m) 
  * fits, not just get appended to the bottom of one.
  */
 type DetailTab = "calendar" | "breakdown" | "circadian" | "route" | "reviews";
-
-function formatHours(hours: number): string {
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
-  return `${h}:${m.toString().padStart(2, "0")}`;
-}
 
 interface LineCardProps {
   rank: number;
@@ -84,6 +80,12 @@ interface LineCardProps {
   flights?: FlightAnswers | null;
   /** Every trip's own score for this pilot (see `lib/scoring-v2/trip-score.ts`), shown on its trips. */
   tripScores?: Map<string, TripScore> | null;
+  /** The pack's day columns and how the list lays its strips out — the same for every line, so they line up. */
+  packColumns: PackColumn[];
+  stripLayout: StripLayout;
+  /** Whether everything about the line is showing under its strip. */
+  open: boolean;
+  onToggleOpen: () => void;
 }
 
 export const LineCard = memo(function LineCard({
@@ -106,6 +108,10 @@ export const LineCard = memo(function LineCard({
   homeBase,
   flights,
   tripScores,
+  packColumns,
+  stripLayout,
+  open,
+  onToggleOpen,
 }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
@@ -148,12 +154,13 @@ export const LineCard = memo(function LineCard({
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: line.id });
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
 
-  const chips = useMemo(() => buildLineFactChips(line, profile), [line, profile]);
+  const chips = useMemo(() => buildLineFeatures(line, profile, lineScore.criterionResults), [line, profile, lineScore.criterionResults]);
   const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences), [profile.cityRatings, profile.cityPreferences]);
   const departureOptions = useMemo(() => monthDepartureOptions(homeBase, profile, flights), [homeBase, profile, flights]);
-  // On a phone a full-height grip column costs a real slice of the card's
-  // width, so the (single) drag handle moves up into the header row instead.
-  const wide = useMediaQuery("(min-width: 640px)");
+  // Times the pilot leaves home: trips flown back to back, never home between, count once — as the calendar's summary counts them.
+  const departureGroups = useMemo(() => groupDepartures(line.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [line.trips, bidPeriodStart, departureOptions]);
+  const departures = departureGroups.length;
+  const packDays = useMemo(() => buildPackRow(line, bidPeriodStart, bidPeriodDays, packColumns.length), [line, bidPeriodStart, bidPeriodDays, packColumns.length]);
   const grip = draggable ? (
     <button
       ref={setDragRef}
@@ -162,11 +169,7 @@ export const LineCard = memo(function LineCard({
       {...listeners}
       title="Drag onto another line to swap ranks"
       aria-label="Drag onto another line to swap ranks — teaches the app your preferences"
-      className={
-        wide
-          ? "flex shrink-0 touch-none cursor-grab items-center justify-center border-r print:hidden border-hairline px-2.5 text-ink-faint transition-colors hover:bg-accent-soft/40 hover:text-accent active:cursor-grabbing"
-          : "flex h-9 w-9 shrink-0 touch-none cursor-grab print:hidden items-center justify-center rounded-md text-ink-faint hover:text-ink active:cursor-grabbing"
-      }
+      className="flex h-9 w-6 shrink-0 touch-none cursor-grab items-center justify-center rounded text-ink-faint transition-colors hover:bg-accent-soft/40 hover:text-accent active:cursor-grabbing print:hidden"
     >
       <GripIcon className="h-4 w-4" />
     </button>
@@ -196,6 +199,29 @@ export const LineCard = memo(function LineCard({
         isTopPick ? "top-pick-glow !border-accent/50 ring-1 ring-accent/20" : "hover:!border-border-strong"
       } ${isDragging ? "opacity-40" : ""} ${isOver ? "ring-2 ring-accent" : ""}`}
     >
+      <BidPackStrip
+        line={line}
+        score={score}
+        capped={violatedDealbreakers.length > 0}
+        columns={packColumns}
+        days={packDays}
+        layout={stripLayout}
+        grip={grip}
+        open={open}
+        onToggle={onToggleOpen}
+      />
+
+      {/* Everything else about the line, under its strip when it's opened. */}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="line-open"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden border-t border-hairline"
+          >
       {isTopPick && (
         <div className="flex items-center gap-1.5 border-b border-accent/20 bg-gradient-to-r from-accent-soft to-transparent px-5 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-accent sm:px-6">
           <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-hidden>
@@ -210,20 +236,39 @@ export const LineCard = memo(function LineCard({
         dateConflicts={dateCommitmentConflicts}
         penalty={commitmentPenalty}
       />
-      <div className="flex items-stretch">
-        {wide && grip}
-
-        <div className="min-w-0 flex-1 p-4 sm:p-5">
-          <div className="flex items-start gap-3 sm:gap-3.5">
-            <ScoreRing score={score} size={wide ? 60 : 52} capped={violatedDealbreakers.length > 0} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-xs font-semibold text-ink-faint">#{rank}</span>
-                  <span className="font-display text-xl font-semibold tracking-tight text-ink">Line {line.lineNumber}</span>
-                </div>
-                <div className="-my-1.5 -mr-1.5 flex shrink-0 items-center gap-0.5 print:hidden">
-                  {!wide && grip}
+      <div>
+        <div className="min-w-0 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-xs font-semibold text-ink-faint">#{rank}</span>
+                <span className="font-display text-lg font-semibold tracking-tight text-ink">Line {line.lineNumber}</span>
+              </div>
+              <div className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.03em] text-ink-muted sm:text-[11.5px] sm:tracking-[0.08em]">
+                <CreditHours hours={line.totalCreditHours} className="whitespace-nowrap" />
+                {" · "}
+                {lineScore.estimated ? (
+                  <span
+                    className="inline-flex items-center gap-1 font-medium text-warn"
+                    title="This line's calendar entries couldn't be confidently matched to a specific pairing, so its trip shape is estimated from monthly totals rather than verified."
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 3h.01M10.3 3.9L2.7 17a2 2 0 001.7 3h15.2a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+                    </svg>
+                    Estimated trips
+                  </span>
+                ) : (
+                  <span className="whitespace-nowrap">
+                    {departures} departure{departures !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {" · "}
+                <span className="whitespace-nowrap">
+                  {line.totalLandings} landing{line.totalLandings === 1 ? "" : "s"}
+                </span>
+              </div>
+            </div>
+            <div className="-my-1.5 -mr-1.5 flex shrink-0 items-center gap-0.5 print:hidden">
                   <button
                     type="button"
                     onClick={onToggleStar}
@@ -247,46 +292,26 @@ export const LineCard = memo(function LineCard({
                       <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />
                     </svg>
                   </button>
-                </div>
-              </div>
-              <div className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.03em] text-ink-muted sm:text-[11.5px] sm:tracking-[0.08em]">
-                {lineScore.estimated ? (
-                  <span
-                    className="inline-flex items-center gap-1 font-medium text-warn"
-                    title="This line's calendar entries couldn't be confidently matched to a specific pairing, so its trip shape is estimated from monthly totals rather than verified."
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5" aria-hidden>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 3h.01M10.3 3.9L2.7 17a2 2 0 001.7 3h15.2a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
-                    </svg>
-                    Estimated trips
-                  </span>
-                ) : (
-                  <span className="whitespace-nowrap">
-                    {line.trips.length} trip{line.trips.length !== 1 ? "s" : ""}
-                  </span>
-                )}
-                {" · "}
-                <span className="whitespace-nowrap">TAFB {formatHours(line.totalTafbHours)}</span>
-                {" · "}
-                <span className="whitespace-nowrap">
-                  {line.totalLandings} landing{line.totalLandings === 1 ? "" : "s"}
-                </span>
-              </div>
             </div>
           </div>
 
           {forecast && <div className="mt-2.5"><ForecastChip forecast={forecast} /></div>}
 
-          {!lineScore.estimated && <TripNumberStrip trips={line.trips} />}
+          {!lineScore.estimated && <TripNumberStrip trips={line.trips} departures={departureGroups} />}
 
           {/* The month calendar takes the card's full width: each day lists its flights, and they need the room to read. */}
           <div className="mt-3 grid gap-4">
             <div>
-              <ul className="flex flex-wrap gap-1.5" aria-label="Key facts for this line">
-                {chips.map((chip, i) => (
-                  <FactChip key={i} chip={chip} />
-                ))}
-              </ul>
+              {chips.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">Features</span>
+                  <ul className="contents" aria-label="This line's best features for you">
+                    {chips.map((chip, i) => (
+                      <FactChip key={i} chip={chip} />
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {!lineScore.estimated && (
@@ -325,7 +350,6 @@ export const LineCard = memo(function LineCard({
                 homeBaseOffsetMinutes={homeBaseOffsetMinutes}
                 bidPeriodStart={bidPeriodStart}
                 bidPeriodDays={bidPeriodDays}
-                showLegend={false}
                 cityPreferences={marks}
                 departureOptions={departureOptions}
               />
@@ -364,7 +388,7 @@ export const LineCard = memo(function LineCard({
                   <div className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
                     This line&rsquo;s calendar entries couldn&rsquo;t be confidently matched to a
                     specific pairing, so there&rsquo;s no verified trip-by-trip breakdown to show.
-                    Days off, credit, TAFB, and landings above are exact — read straight from the
+                    Days off, credit, and landings above are exact — read straight from the
                     bid pack&rsquo;s own line totals.
                   </div>
                 ) : (
@@ -516,6 +540,9 @@ export const LineCard = memo(function LineCard({
                 </div>
               )}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>

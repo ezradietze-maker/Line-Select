@@ -81,6 +81,7 @@ export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: Pi
         score: s.score,
         explanation: explanationFor(s),
         contributors: named(1),
+        criterionResults: s.results,
         detractors: named(-1),
         categoryScores: categoriesFor(s, ls.categoryScores),
         violatedDealbreakers: [

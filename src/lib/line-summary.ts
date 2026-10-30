@@ -1,4 +1,7 @@
+import { formatValue } from "@/lib/brain/describe";
 import { cityMarks } from "@/lib/city-ratings";
+import { METRICS_BY_ID } from "@/lib/metrics/catalog";
+import type { CriterionResult } from "@/lib/scoring-v2/score";
 import { formatHoursValue } from "@/lib/interview-config";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
@@ -58,9 +61,8 @@ export function buildLineFactChips(line: Line, profile: PreferenceProfile): Line
   const dutyPeriodCount = lineDutyPeriods(line);
   const dutyPeriods = compareToTarget(dutyPeriodCount, targetParts(profile.explicitTargets.dutyPeriods), DUTY_PERIODS_TOLERANCE, int);
   chips.push({ main: `${dutyPeriodCount} duty period${dutyPeriodCount === 1 ? "" : "s"}`, ...dutyPeriods });
-  // Takeoffs — always the same number as the line's landings — shown for reference; nothing to compare it against. Called
-  // takeoffs, not "departures": to a commuter a departure is leaving home for a run of trips, a different thing entirely.
-  chips.push({ main: `${line.totalDepartures} takeoff${line.totalDepartures === 1 ? "" : "s"}`, note: "", tone: "neutral" });
+  // Landings, for reference; nothing to compare them against. Never takeoffs — the ex-pilot counts landings.
+  chips.push({ main: `${line.totalLandings} landing${line.totalLandings === 1 ? "" : "s"}`, note: "", tone: "neutral" });
 
   const credit = compareToTarget(line.totalCreditHours, targetParts(profile.explicitTargets.creditHours), CREDIT_TOLERANCE_HOURS, formatHoursValue);
   chips.push({ main: `${formatHoursValue(line.totalCreditHours)} credit`, ...credit });
@@ -86,6 +88,49 @@ export function buildLineFactChips(line: Line, profile: PreferenceProfile): Line
   for (const code of disliked.slice(0, 3)) chips.push({ main: `✕ ${code}`, note: marks[code] === "avoid" ? "one you avoid" : "one you dislike", tone: "warn" });
 
   return chips;
+}
+
+/** How many features a line card shows — there's no room for every one. */
+export const FEATURES_SHOWN = 5;
+
+/** A priority this line beats the pack's average line on by at least this many score points is one of its features. */
+const GOOD_CONTRIBUTION = 0.3;
+
+/** Priorities about which cities the layovers are in: as a feature, the line's cities the pilot likes, by name. */
+const CITY_METRICS = new Set(["layoverValue", "layoverHoursInCities", "layoversInCities", "tripsTouchingCities"]);
+
+/**
+ * A line's features: what's good about it for this pilot, most important to them first — at most `limit`. Worse
+ * features aren't listed here (yet).
+ *
+ * A pilot interviewed by the pilot brain gets their own priorities (`criterionResults`), each one this line does
+ * better than the pack's average line on, in the order they weigh them: "♥ HNL ♡ IND", "3 departures from home",
+ * "18 days off". Anyone else gets the plain facts (`buildLineFactChips`) that aren't against what they asked for.
+ */
+export function buildLineFeatures(line: Line, profile: PreferenceProfile, criterionResults: CriterionResult[] | undefined, limit = FEATURES_SHOWN): LineFactChip[] {
+  if (!criterionResults?.length) {
+    const chips = buildLineFactChips(line, profile).filter((c) => c.tone !== "warn");
+    return [...chips.filter((c) => c.tone === "good"), ...chips.filter((c) => c.tone !== "good")].slice(0, limit);
+  }
+  const marks = cityMarks(profile.cityRatings, profile.cityPreferences);
+  const lineCities = Array.from(new Set(line.trips.flatMap((t) => t.layoverCities)));
+  const features: LineFactChip[] = [];
+  const said = new Set<string>();
+  for (const r of [...criterionResults].filter((x) => x.value !== null && x.contribution >= GOOD_CONTRIBUTION).sort((a, b) => b.weight - a.weight || b.contribution - a.contribution)) {
+    const def = METRICS_BY_ID.get(r.metric);
+    if (!def) continue;
+    let main = formatValue(r.value!, def);
+    if (CITY_METRICS.has(r.metric)) {
+      // The cities themselves, loved before liked — the pilot reads "HNL", not "62 hours in cities you like".
+      const liked = [...lineCities.filter((c) => marks[c] === "love").map((c) => `♥ ${c}`), ...lineCities.filter((c) => marks[c] === "like").map((c) => `♡ ${c}`)];
+      if (liked.length) main = liked.slice(0, 3).join("  ");
+    }
+    if (said.has(main)) continue;
+    said.add(main);
+    features.push({ main, note: "", tone: "good" });
+    if (features.length === limit) break;
+  }
+  return features;
 }
 
 /** The chips as one line of plain text, for the "copy with notes" export. */

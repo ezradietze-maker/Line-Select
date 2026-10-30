@@ -27,9 +27,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { LineCard } from "@/components/results/LineCard";
-import { MonthLegend } from "@/components/results/MiniLinePreview";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
+import { BidPackHeader, StripKey, stripLayout } from "@/components/results/BidPackStrip";
+import { useMeasuredWidth } from "@/components/results/LegBars";
+import { packColumnCount, packColumns } from "@/lib/bidpack-row";
 import { cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
@@ -201,6 +203,16 @@ export function ResultsView({
   const [showHidden, setShowHidden] = useState(false);
   const [marks, setMarks] = useState<LineMarks>(() => loadLineMarks(userId, bidPack.id));
   const [pageState, setPageState] = useState({ key: "", shown: PAGE_SIZE });
+  // Which lines are open under their strips — as many as the pilot likes, to read side by side.
+  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
+  const toggleOpen = useCallback((id: string) => {
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   const caresAboutHotel = caresAboutLayoverQuality(profile);
   const reduceMotion = useReducedMotion();
 
@@ -456,11 +468,16 @@ export function ResultsView({
     const el = document.getElementById(`line-${focusTarget.line.id}`);
     if (!el) return; // still mounting — runs again as more cards mount
     el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    setOpenIds((prev) => (prev.has(focusTarget.line.id) ? prev : new Set(prev).add(focusTarget.line.id)));
     setFlashId(focusTarget.line.id);
     focusDone.current = focusLine;
     onFocusHandled?.();
   }, [focusLine, hotelsSettled, focusTarget, focusIndex, shown, listKey, mountedCount, hiddenSet, reduceMotion, onFocusHandled]);
-  // Keys for working down the list at a desk: j / k move between lines, s shortlists, c compares, ? shows the keys.
+  // Every line's strip has the pack's day columns, laid out the same at the list's width, so they line up under one header.
+  const columns = useMemo(() => packColumns(bidPack.bidPeriodStart, bidPack.bidPeriodDays, packColumnCount(bidPack)), [bidPack]);
+  const [listRef, listWidth] = useMeasuredWidth<HTMLDivElement>(768);
+  const layout = useMemo(() => stripLayout(listWidth, columns.length), [listWidth, columns.length]);
+  // Keys for working down the list at a desk: j / k move between lines, o opens one, s shortlists, c compares, ? shows the keys.
   const [keyIndex, setKeyIndex] = useState<number | null>(null);
   const [showKeys, setShowKeys] = useState(false);
   const keyedId = keyIndex !== null ? displayed[Math.min(keyIndex, mountedCount - 1)]?.line.id ?? null : null;
@@ -477,6 +494,10 @@ export function ResultsView({
         const next = keyIndex === null ? 0 : Math.max(0, Math.min(count - 1, keyIndex + (e.key === "j" ? 1 : -1)));
         setKeyIndex(next);
         document.getElementById(`line-${displayed[next].line.id}`)?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      } else if ((e.key === "o" || e.key === "Enter") && keyedId) {
+        if (e.key === "Enter" && t instanceof HTMLElement && t.closest("button, a")) return;
+        e.preventDefault();
+        toggleOpen(keyedId);
       } else if (e.key === "s" && keyedId) {
         updateMarks((m) => toggleStar(m, keyedId));
       } else if (e.key === "c" && keyedId) {
@@ -625,7 +646,7 @@ export function ResultsView({
           : "No lines match the current filters. Try clearing one or two.";
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl xl:max-w-6xl">
       <div className="flex items-start justify-between gap-3 sm:items-end">
         <div className="min-w-0">
           <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">
@@ -834,12 +855,13 @@ export function ResultsView({
             />
           </div>
 
-          <MonthLegend className="mt-3" />
+          <StripKey className="mt-3" />
 
           {showKeys && (
             <div role="note" className="mt-3 hidden flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-hairline bg-canvas/40 px-3 py-2 font-mono text-[11px] text-ink-muted sm:flex print:hidden">
               {[
                 ["j / k", "next / previous line"],
+                ["o", "open / close it"],
                 ["s", "shortlist"],
                 ["c", "compare"],
                 ["⌘K", "jump to a line"],
@@ -874,7 +896,8 @@ export function ResultsView({
             // drag start is correct here and removes that cost entirely.
             measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
           >
-            <div className="mt-3 space-y-3">
+            <div ref={listRef} className="mt-3 space-y-1.5">
+              {displayed.length > 0 && <BidPackHeader columns={columns} layout={layout} />}
               {displayed.length === 0 ? (
                 <EmptyState
                   compact
@@ -930,6 +953,10 @@ export function ResultsView({
                         homeBase={bidPack.base}
                         flights={flights}
                         tripScores={tripScores}
+                        packColumns={columns}
+                        stripLayout={layout}
+                        open={openIds.has(lineScore.line.id)}
+                        onToggleOpen={() => toggleOpen(lineScore.line.id)}
                       />
                     </ErrorBoundary>
                   </motion.div>

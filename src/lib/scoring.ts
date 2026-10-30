@@ -23,6 +23,7 @@ import { weekdayFlyingPattern, workingDayIndices } from "@/lib/line-month";
 import { lineStandbyDays } from "@/lib/standby";
 import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import { applyPilotModel } from "@/lib/scoring-v2/adapter";
+import type { CriterionResult } from "@/lib/scoring-v2/score";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { HotelAmenitySummary, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
@@ -130,6 +131,8 @@ export interface LineScore {
   categoryScores: Record<SatisfactionCategory, { score: number; label: string }>;
   /** Named, specific reasons the index went up — more than `explanation`'s own 1-2-item cap, for an expanded breakdown view. */
   contributors: SatisfactionFactor[];
+  /** A pilot interviewed by the pilot brain: how this line did on each of their own priorities (`scoring-v2/adapter.ts`). */
+  criterionResults?: CriterionResult[];
   /** Named, specific reasons the index went down. */
   detractors: SatisfactionFactor[];
   /** Empty for the overwhelming majority of lines/profiles. Non-empty means this line violates something the pilot was unambiguous about refusing — `score` is capped accordingly, and this should be surfaced prominently, not folded quietly into the average. */
