@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayBars, fitLayoverLabel, labeledStayPieces, layoverHours, LABEL_CHAR_PX, stagger } from "@/lib/leg-bars";
+import { dayBars, fitLayoverLabel, labeledStayPieces, layoverHours, LABEL_CHAR_PX, sideBySide, stagger } from "@/lib/leg-bars";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 
 const H = 60;
@@ -32,7 +32,7 @@ function stay(city: string, start: number, end: number, extra: Partial<TimelineS
 describe("dayBars", () => {
   it("draws each leg where it flies, with the times it prints", () => {
     const bars = dayBars([leg("MEM", "SEA", 3 * H, 7.5 * H, { startClock: "03:00", endClock: "05:35" })], 60);
-    expect(bars.legs).toEqual([{ start: 180, end: 450, from: "MEM", to: "SEA", deadhead: false, depClock: "03:00", arrClock: "05:35", flightNumber: "1", cab: false, dateLine: null }]);
+    expect(bars.legs).toEqual([{ start: 180, end: 450, from: "MEM", runsIn: false, runsOn: false, to: "SEA", deadhead: false, depClock: "03:00", arrClock: "05:35", flightNumber: "1", cab: false, dateLine: null }]);
     expect(bars.cities.map((c) => c.text)).toEqual(["MEM", "SEA"]);
     expect(bars.times.map((t) => t.text)).toEqual(["03:00", "05:35"]);
   });
@@ -92,6 +92,22 @@ describe("stagger", () => {
   });
 });
 
+describe("sideBySide", () => {
+  const w = 3 * LABEL_CHAR_PX;
+  it("leaves labels with room over their minute, and sets crowded ones next to each other, never on top", () => {
+    const [can, nrt, far] = sideBySide([{ at: 18 * H, text: "CAN" }, { at: 18 * H + 20, text: "NRT" }, { at: 6 * H, text: "MEM" }], 200, 6);
+    expect(far).toBeCloseTo(50);
+    expect(can).toBeCloseTo(150);
+    expect(nrt - can).toBeCloseTo(w + 3);
+  });
+
+  it("slides the lot back left rather than run past the day's edge", () => {
+    const [a, b] = sideBySide([{ at: 23.9 * H, text: "CAN" }, { at: 24 * H, text: "NRT" }], 200, 6);
+    expect(b + w / 2).toBeCloseTo(206);
+    expect(b - a).toBeCloseTo(w + 3);
+  });
+});
+
 describe("labeledStayPieces", () => {
   it("puts a stay's words on its longest piece, across midnight", () => {
     const tonight = stay("LAX", 22 * H, 24 * H, { continuesToNextDay: true });
@@ -122,14 +138,13 @@ describe("layover words", () => {
     expect(layoverHours(32.4)).toBe("32h");
   });
 
-  it("says as much as fits: L/O, the city and the hours, then less", () => {
+  it("says as much as fits: the city and the hours, then the city alone — never L/O", () => {
     const wide = fitLayoverLabel("OAK", 28, 200);
-    expect(wide).toMatchObject({ prefix: true, hours: true });
-    expect(wide.widthPx).toBeCloseTo("L/O OAK 28h".length * LABEL_CHAR_PX);
-    expect(fitLayoverLabel("OAK", 28, 50)).toMatchObject({ prefix: false, hours: true });
-    expect(fitLayoverLabel("OAK", 28, 30)).toMatchObject({ prefix: false, hours: false });
+    expect(wide).toMatchObject({ hours: true });
+    expect(wide.widthPx).toBeCloseTo("OAK 28h".length * LABEL_CHAR_PX);
+    expect(fitLayoverLabel("OAK", 28, 30)).toMatchObject({ hours: false });
     // Room for the pilot's mark after it counts too.
-    expect(fitLayoverLabel("OAK", 28, "L/O OAK 28h".length * LABEL_CHAR_PX + 4, 10)).toMatchObject({ prefix: false });
+    expect(fitLayoverLabel("OAK", 28, "OAK 28h".length * LABEL_CHAR_PX + 4, 10)).toMatchObject({ hours: false });
   });
 });
 

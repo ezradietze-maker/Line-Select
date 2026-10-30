@@ -34,7 +34,7 @@ export function ColorKey({ variant, className = "" }: { variant: "calendar" | "t
   const trip = variant === "trip";
   return (
     <div className={`flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px] text-ink-muted ${className}`} aria-label="What the colors mean">
-      <Item swatch={<LegSample />} label="Flight" />
+      <Item swatch={<LegSample />} label="FX Flight" />
       <Item swatch={<LegSample deadhead />} label="Deadhead" />
       <Item swatch={<Line tone="bg-layover" />} label="Layover" />
       {trip && (
@@ -50,17 +50,36 @@ export function ColorKey({ variant, className = "" }: { variant: "calendar" | "t
       )}
       <Item swatch={<Line tone="bg-rest" />} label="Rest hotel at a hub" />
       {!trip && (
-        <Item
-          swatch={
-            <svg aria-hidden width="20" height="10" className="shrink-0 overflow-visible text-dateline">
-              <line x1="1" y1="2" x2="19" y2="8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-            </svg>
-          }
-          label="Date line crossing"
-        />
+        <>
+          <Item
+            swatch={
+              <svg aria-hidden width="26" height="12" className="shrink-0 overflow-visible text-leg">
+                <line x1="17" y1="2" x2="25" y2="2" stroke="currentColor" strokeWidth="3" />
+                <line x1="25" y1="2" x2="2" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <line x1="2" y1="10" x2="10" y2="10" stroke="currentColor" strokeWidth="3" />
+              </svg>
+            }
+            label="Date line eastbound (−h: clock goes back)"
+          />
+          <Item
+            swatch={
+              <svg aria-hidden width="26" height="10" className="shrink-0 overflow-visible text-leg">
+                <line x1="1" y1="5" x2="7" y2="5" stroke="currentColor" strokeWidth="3" />
+                <polyline points="7,5 9,2.5 11,7.5 13,2.5 15,7.5 17,2.5 19,5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                <line x1="19" y1="5" x2="25" y2="5" stroke="currentColor" strokeWidth="3" />
+              </svg>
+            }
+            label="Date line westbound (+h: clock jumps ahead)"
+          />
+        </>
       )}
       <Item swatch={<Line tone="bg-standby" />} label="Hotel standby" />
-      <Item swatch={<span aria-hidden className="inline-block h-1.5 w-5 shrink-0 rounded-[2px] bg-calendar-accent/20" />} label="On duty, on the ground" />
+      <Item
+        swatch={
+          <span aria-hidden className="inline-block h-3 w-7 shrink-0 rounded-[3px] bg-calendar-accent/30" />
+        }
+        label="Duty Period + GT"
+      />
       <Item swatch={<span className="font-mono text-[10px] font-semibold text-report">Rpt</span>} label="Report" />
       {trip && <Item swatch={<span className="font-mono text-[10px] font-semibold text-gt">P/U</span>} label="Hotel pickup" />}
     </div>

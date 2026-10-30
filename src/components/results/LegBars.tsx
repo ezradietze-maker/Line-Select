@@ -25,7 +25,7 @@ export function useMeasuredWidth<T extends HTMLElement>(initial: number): [React
 }
 
 /** A trip's day row: wide enough for each leg's times over its ends. */
-const SIZE = { track: 14, tick: 12, bar: 4, duty: 9, lane: 4, line: 12, labelPx: 36 };
+const SIZE = { track: 18, tick: 12, bar: 4, duty: 16, lane: 4, line: 12, labelPx: 36 };
 /** How wide the hotel van is drawn at each end of a layover — a mark, not to scale: the pack doesn't print the ride's length. */
 const GT_PX = 12;
 /** The gap between the van and the layover line, so the two read as separate things. */
@@ -132,7 +132,7 @@ interface LegBarsProps {
 /**
  * One day of a trip as the ex-pilot reads it, each thing in its own color: a bold line with ticks for each leg —
  * blue flown, magenta deadheaded — its times over its ends and its cities under them, its flight number under the
- * middle; hotel standby a violet bar; a faint band under the time on duty (so a hub turn's wait reads as duty with
+ * middle; hotel standby a violet bar; a grey band around the whole duty period (so a hub turn's wait reads as duty with
  * little flying). Under that, the layover: a green line from landing to the next pickup, the hotel van (GT) a cyan
  * mark at each end, the city, its length and the hotel on it; a crew-rest hotel at a hub a gold line of its own.
  */
@@ -156,7 +156,7 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
         <span key={h} className="absolute w-px bg-ink/20" style={{ left: x(h * 60), top: trackTop + SIZE.track - 3, height: 3 }} />
       ))}
       {bars.duty.map((d, i) => (
-        <span key={`d${i}`} className="absolute rounded-[2px] bg-calendar-accent/20" style={{ left: x(d.start), width: x(d.end) - x(d.start), top: mid - SIZE.duty / 2, height: SIZE.duty }} />
+        <span key={`d${i}`} className="absolute rounded-[3px] bg-calendar-accent/30" style={{ left: x(d.start) - 2, width: x(d.end) - x(d.start) + 4, top: mid - SIZE.duty / 2, height: SIZE.duty }} />
       ))}
       {bars.standby.map((d, i) => (
         <span key={`s${i}`} className="absolute rounded-full bg-standby" style={{ left: x(d.start), width: Math.max(2, x(d.end) - x(d.start)), top: mid - SIZE.bar / 2, height: SIZE.bar }} />

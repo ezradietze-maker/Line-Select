@@ -56,10 +56,11 @@ export interface SegmentStay {
 }
 
 /**
- * A flight east across the date line on the month calendar, drawn the ex-pilot's way: from its local takeoff back to its
- * local landing, earlier on the same date or on the date before. `part`: all of it on one day, or the takeoff's day
- * (running back to the day's start) and the landing's day (coming in from the day's end). `edgeFraction`: how far
- * along the line the day's edge falls, so the two halves meet.
+ * The date line itself, east across it on the month calendar, drawn the ex-pilot's way: a diagonal from the moment the
+ * flight crosses it on the departure side's clock, back and down to that same moment on the arrival side's clock — as
+ * many hours back as the clock jumps. `part`: all of it on one day, or the later day's piece (running back to the day's
+ * start) and the earlier day's (coming in from the day's end). `edgeFraction`: how far along the line the day's edge
+ * falls, so the two halves meet.
  */
 export interface DateLineBack {
   part: "whole" | "departure" | "arrival";
@@ -77,12 +78,18 @@ export interface TimelineSegment {
   dateLineJump?: { start: number; end: number };
   /** Zulu layout: where on this piece (minute of the day) the flight crosses the date line, and the local clock's jump there. */
   dateLineMark?: { at: number; jumpMinutes: number };
-  /** Set on a flight east across the date line, on the month calendar's local layout (`buildDateLineDays`). */
+  /** The date line's diagonal on a flight east across it, on the month calendar's local layout (`buildDateLineDays`). */
   dateLineBack?: DateLineBack;
-  /** After an eastbound date-line flight: a piece of a date the pilot already lived once, on the other side of the line. */
+  /**
+   * The bold flying of a flight east across the date line, either side of the diagonal: `before` on the departure
+   * side's clock, takeoff to the crossing; `after` on the arrival side's, the crossing to the landing.
+   */
+  dateLineLeg?: "before" | "after";
+  /**
+   * After an eastbound date-line crossing: hours the pilot already lived once, on the other side of the line — drawn on
+   * a row of their own under the first time through, from the crossing until the date catches up.
+   */
   secondPass?: boolean;
-  /** A second-pass piece that runs on into a day lived only once — it rejoins the usual line at the day's end. */
-  rejoins?: boolean;
   /** Which of the trip's duty periods it belongs to (`trip.schedule` index) — a layover to the duty it follows. */
   dutyIndex?: number;
   leg?: SegmentLeg;
@@ -696,10 +703,14 @@ export function buildZuluCalendarDays(trip: Trip): TimelineDay[] {
 /**
  * A trip across the date line on the month calendar, laid out the way the ex-pilot draws one: every piece on its own
  * airport's local date and clock, from the trip's first day at home. Westbound the flight is its real length in bold
- * and the clock's jump a squiggle (`dateLineJump`), the two together reaching its local landing. Eastbound the
- * flight lands on the same date it left, or the one before — so it's drawn running back to its landing
- * (`dateLineBack`), and what follows on a date already lived on the far side of the line is a second pass of it
- * (`secondPass`): the layover carries on from the landing, on a line of its own, until the date is new again.
+ * and the clock's jump a squiggle (`dateLineJump`), the two together reaching its local landing.
+ *
+ * Eastbound it's the same sum the other way: bold on the departure side's clock from takeoff to where the flight
+ * crosses the line (`dateLineLeg: "before"`), the date line a diagonal back as many hours as the clock jumps
+ * (`dateLineBack` — 17 Seoul to Anchorage, most of a day), then bold on the arrival side's clock to the landing
+ * (`"after"`). Those hours, from the crossing on the arrival clock to the crossing on the departure clock, are lived
+ * twice: whatever starts in them after the crossing — the rest of the flight, the layover — is a second pass
+ * (`secondPass`), drawn on a row of its own under the first time through, to its end.
  */
 export function buildDateLineDays(trip: Trip): TimelineDay[] {
   const raw = buildRawSegments(trip, "local").filter((s) => s.kind !== "sleep");
@@ -711,58 +722,81 @@ export function buildDateLineDays(trip: Trip): TimelineDay[] {
 
   interface Placed {
     seg: RawSegment;
-    start: LocalInstant;
-    end: LocalInstant;
-    back: boolean;
-    /** The latest moment lived before the last eastbound crossing — anything after that crossing earlier than this is a second pass. */
+    start: number;
+    end: number;
+    /** East across the date line: where it crosses, on the departure side's clock and on the arrival side's. */
+    cross: { dep: number; arr: number } | null;
+    /** The latest moment lived before the last eastbound crossing — anything after it that starts earlier is a second pass. */
     lived: number | null;
   }
   const placed: Placed[] = [];
   let reached = -Infinity;
   let lived: number | null = null;
   for (const seg of [...raw].sort((a, b) => Date.parse(a.zuluStart) - Date.parse(b.zuluStart) || Date.parse(a.zuluEnd) - Date.parse(b.zuluEnd))) {
-    const start = toLocalInstant(seg.zuluStart, seg.startAirport, base);
-    const end = toLocalInstant(seg.zuluEnd, seg.endAirport, base);
-    if (!start || !end) continue;
+    const startAt = toLocalInstant(seg.zuluStart, seg.startAirport, base);
+    const endAt = toLocalInstant(seg.zuluEnd, seg.endAirport, base);
+    if (!startAt || !endAt) continue;
+    const start = abs(startAt);
+    const end = abs(endAt);
     const flight = seg.kind === "flying" || seg.kind === "deadhead";
-    const back = flight && abs(end) < abs(start);
-    if (back) lived = Math.max(reached, abs(start));
-    reached = Math.max(reached, abs(end), abs(start));
-    placed.push({ seg, start, end, back, lived: back ? null : lived });
+    let cross: Placed["cross"] = null;
+    if (flight && end < start) {
+      // Minutes into the flight it crosses 180°, then the same moment on the far side's clock: `jumpMinutes` earlier.
+      const into = seg.dateLine ? Math.min(Math.max((Date.parse(seg.dateLine.crossesAt) - Date.parse(seg.zuluStart)) / 60_000, 0), (Date.parse(seg.zuluEnd) - Date.parse(seg.zuluStart)) / 60_000) : 0;
+      const dep = start + into;
+      cross = { dep, arr: seg.dateLine ? Math.min(dep + seg.dateLine.jumpMinutes, end) : end };
+      lived = Math.max(reached, dep);
+    }
+    reached = Math.max(reached, start, cross ? cross.dep : end);
+    placed.push({ seg, start, end, cross, lived: cross ? null : lived });
   }
   if (placed.length === 0) return [];
 
-  const totalDays = Math.max(1, ...placed.map((p) => Math.max(p.start.dayIndex, p.end.dayIndex)));
+  const dayOf = (m: number) => Math.floor(m / MINUTES_PER_DAY) + 1;
+  const totalDays = Math.max(1, ...placed.map((p) => dayOf(Math.max(p.start, p.end) - 1e-9)));
   const days: TimelineDay[] = [];
   for (let d = 1; d <= totalDays; d++) {
+    const dayStart = (d - 1) * MINUTES_PER_DAY;
+    const dayEnd = dayStart + MINUTES_PER_DAY;
     const segments: TimelineSegment[] = [];
-    for (const { seg, start, end, back, lived: before } of placed) {
-      if (back) {
-        // From the takeoff back to the landing: the whole of it on one day, or split at the day's edge.
-        const total = abs(start) - abs(end);
-        const edgeFraction = total > 0 ? start.minuteOfDay / total : 0;
-        if (start.dayIndex === d && end.dayIndex === d) segments.push({ ...toTimelineSegment(seg, start.minuteOfDay, end.minuteOfDay, false, false), dateLineBack: { part: "whole", edgeFraction: 1 } });
-        else if (start.dayIndex === d) segments.push({ ...toTimelineSegment(seg, start.minuteOfDay, 0, false, true), dateLineBack: { part: "departure", edgeFraction } });
-        else if (end.dayIndex === d) segments.push({ ...toTimelineSegment(seg, MINUTES_PER_DAY, end.minuteOfDay, true, false), dateLineBack: { part: "arrival", edgeFraction } });
+    // The piece of [a, b] on this day, if any — one ending at midnight belongs to the day before.
+    const clip = (seg: RawSegment, a: number, b: number): TimelineSegment | null => {
+      if (dayOf(a) > d || dayOf(Math.max(a, b - 1e-9)) < d) return null;
+      return toTimelineSegment(seg, Math.max(a, dayStart) - dayStart, Math.min(b, dayEnd) - dayStart, a < dayStart, b > dayEnd);
+    };
+    for (const { seg, start, end, cross, lived: before } of placed) {
+      if (cross) {
+        const ahead = clip(seg, start, cross.dep);
+        if (ahead && cross.dep > start) segments.push({ ...ahead, dateLineLeg: "before" });
+        // The date line: back from the crossing on the departure clock to the crossing on the arrival clock.
+        const total = cross.dep - cross.arr;
+        const depDay = dayOf(cross.dep - 1e-9);
+        const arrDay = dayOf(cross.arr);
+        const depMinute = cross.dep - (depDay - 1) * MINUTES_PER_DAY;
+        const arrMinute = cross.arr - (arrDay - 1) * MINUTES_PER_DAY;
+        const edgeFraction = total > 0 ? depMinute / total : 0;
+        if (depDay === d && arrDay === d) segments.push({ ...toTimelineSegment(seg, depMinute, arrMinute, false, false), dateLineBack: { part: "whole", edgeFraction: 1 } });
+        else if (depDay === d) segments.push({ ...toTimelineSegment(seg, depMinute, 0, false, true), dateLineBack: { part: "departure", edgeFraction } });
+        else if (arrDay === d) segments.push({ ...toTimelineSegment(seg, MINUTES_PER_DAY, arrMinute, true, false), dateLineBack: { part: "arrival", edgeFraction } });
+        const after = clip(seg, cross.arr, end);
+        if (after && end > cross.arr) segments.push({ ...after, dateLineLeg: "after", secondPass: true });
         continue;
       }
-      if (end.dayIndex < d || start.dayIndex > d) continue;
-      const clippedStart = start.dayIndex === d ? start.minuteOfDay : 0;
-      const clippedEnd = end.dayIndex === d ? end.minuteOfDay : MINUTES_PER_DAY;
-      if (clippedEnd <= clippedStart && !(start.dayIndex === d && end.dayIndex === d && clippedEnd === clippedStart)) continue;
-      const piece: TimelineSegment = toTimelineSegment(seg, clippedStart, clippedEnd, start.dayIndex < d, end.dayIndex > d);
+      const piece = clip(seg, start, end);
+      if (!piece) continue;
+      const clippedStart = piece.startMinuteOfDay;
+      const clippedEnd = piece.endMinuteOfDay;
       // West across the date line: the flight's own length in bold up to where it crosses, then the clock's jump as a
       // squiggle, then the rest of the flight — together exactly takeoff to landing on the local clocks.
       if (seg.dateLine?.direction === "west" && seg.dateLine.jumpMinutes > 0) {
-        const jumpFrom = abs(start) + (Date.parse(seg.dateLine.crossesAt) - Date.parse(seg.zuluStart)) / 60_000 - (d - 1) * MINUTES_PER_DAY;
+        const jumpFrom = start + (Date.parse(seg.dateLine.crossesAt) - Date.parse(seg.zuluStart)) / 60_000 - dayStart;
         const jumpTo = jumpFrom + seg.dateLine.jumpMinutes;
         const a = Math.max(clippedStart, jumpFrom);
         const b = Math.min(clippedEnd, jumpTo);
         if (b > a) piece.dateLineJump = { start: a, end: b };
       }
-      const from = (d - 1) * MINUTES_PER_DAY + clippedStart;
-      const second = before !== null && from < before;
-      segments.push(second ? { ...piece, secondPass: true, rejoins: end.dayIndex > d && d * MINUTES_PER_DAY >= before } : piece);
+      // Started in hours already lived once: the second time through, on its own row to its end.
+      segments.push(before !== null && start < before ? { ...piece, secondPass: true } : piece);
     }
     days.push({ dayNumber: d, segments, date: base.plus({ days: d - 1 }).toISODate() ?? undefined });
   }

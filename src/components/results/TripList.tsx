@@ -246,7 +246,7 @@ function TripLegendInfo() {
                   along; <span className="font-mono">CAB</span> a ride between airports by road. A <span className="font-medium text-standby">violet</span> bar
                   is hotel standby ({STANDBY_TOOLTIP.split(" — ")[1]}). A flight still in the air at midnight runs off the right edge and on into the next row.
                 </li>
-                <li>The faint band under the flying is the time on duty, report to release &mdash; a long band with little flying in it is a long wait, like a hub turn.</li>
+                <li>The grey band around the flying is the whole duty period, report to release &mdash; a long band with little flying in it is a long wait, like a hub turn.</li>
                 <li>
                   <span className="font-medium text-layover">Green line.</span> {LAYOVER_TOOLTIP} It runs under the flying, with the city, the layover&rsquo;s
                   length to the hour and the hotel (<span className="font-mono font-semibold text-layover">L/O SEA 16h</span>). The{" "}

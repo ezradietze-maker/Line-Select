@@ -45,18 +45,20 @@ const STRIP_CLASS: Record<TimelineSegmentKind, string> = {
 
 function cellClass(day: DetailedDay, selected: boolean): string {
   const base =
-    "@container relative flex min-h-[4.75rem] min-w-0 flex-col gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
+    "@container relative flex min-h-[4.75rem] min-w-0 flex-col gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
   const ring = selected ? " ring-2 ring-brand ring-offset-1 ring-offset-surface" : "";
   switch (day.kind) {
     case "off":
-      return `${base} border border-dashed ${day.isWeekend ? "border-border-strong/70 bg-surface-raised/40" : "border-border-strong/40"} text-ink-faint hover:border-ink-faint${ring}`;
+      // A dashed outline, not a border: a border would set the day's picture a pixel in from a trip day's, and a flight
+      // running on past midnight into it would step.
+      return `${base} outline-1 -outline-offset-1 outline-dashed ${day.isWeekend ? "outline-border-strong/70 bg-surface-raised/40" : "outline-border-strong/40"} text-ink-faint hover:outline-ink-faint${ring}`;
     case "standby":
-      return `${base} bg-standby/20 text-ink hover:bg-standby/30${ring}`;
+      return `${base} focus:outline-none bg-standby/20 text-ink hover:bg-standby/30${ring}`;
     case "estimated":
-      return `${base} bg-brand-soft text-brand${ring}`;
+      return `${base} focus:outline-none bg-brand-soft text-brand${ring}`;
     default:
       // Every day of a trip shares one tint, so a trip reads as one block; what each day holds is printed on it.
-      return `${base} bg-calendar-accent/[0.13] text-ink hover:bg-calendar-accent/[0.22]${ring}`;
+      return `${base} focus:outline-none bg-calendar-accent/[0.13] text-ink hover:bg-calendar-accent/[0.22]${ring}`;
   }
 }
 
@@ -149,7 +151,6 @@ function Cell({
   joinRight,
   barWidth,
   stayLabeled,
-  internationalCities,
   cityPreferences,
   mode,
 }: {
@@ -162,7 +163,6 @@ function Cell({
   /** The width the day's bars are drawn at. */
   barWidth: number;
   stayLabeled: (s: TimelineSegment) => boolean;
-  internationalCities: ReadonlySet<string>;
   cityPreferences?: Record<string, CityMark>;
   mode: TimeMode;
 }) {
@@ -208,7 +208,6 @@ function Cell({
           widthPx={barWidth}
           stayLabeled={stayLabeled}
           cityPreferences={cityPreferences}
-          internationalCities={internationalCities}
           top={report}
           bleed={CELL_BLEED}
           zulu={mode === "zulu"}
@@ -256,9 +255,9 @@ function MonthKeyInfo() {
         <Modal title="Month calendar key" onClose={() => setOpen(false)}>
           <ul className="space-y-3 text-sm leading-relaxed text-ink-muted">
             <li><span className="font-medium text-ink">Each week reads like a line in the bid pack.</span> Shaded days joined by a bar across the top are one trip. Its first day carries the trip&rsquo;s number and credit hours (<span className="font-mono">#111 17:47CH</span>) and when it reports, in orange (<span className="font-mono font-semibold text-report">Rpt 06:30L</span>). L is local time, Z Zulu.</li>
-            <li><span className="font-medium text-ink">The lines in each day.</span> Each flight is a <span className="font-medium text-leg">blue</span> line with a tick at each end, as long as the flight and placed by the time of day &mdash; midnight at the left edge, midnight at the right, on the base&rsquo;s clock. A <span className="font-medium text-deadhead">magenta</span> line is a deadhead, riding along. The cities are written over the ends; where two legs meet, the city between them is written once. A flight still in the air at midnight runs off the right edge and on into the next day. The faint band behind the lines is the time on duty, report to release, so a long wait between two short flights shows. Small ticks mark 6am, noon and 6pm.</li>
+            <li><span className="font-medium text-ink">The lines in each day.</span> Each flight is a <span className="font-medium text-leg">blue</span> line with a tick at each end, as long as the flight and placed by the time of day &mdash; midnight at the left edge, midnight at the right, on the base&rsquo;s clock. A <span className="font-medium text-deadhead">magenta</span> line is a deadhead, riding along. The cities are written over the ends; where two legs meet, the city between them is written once. A flight still in the air at midnight runs off the right edge and on into the next day. The grey band around the lines is the whole duty period, report to release, so a long wait between two short flights shows. Small ticks mark 6am, noon and 6pm.</li>
             <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be 24 hours at home between them, counting the trip home and back (<span className="font-mono">Rpt 02:30L · 1h47 turn</span> is a straight turn at base). For a pilot who lives at base, only trips that turn within a few hours.</li>
-            <li><span className="font-medium text-ink">Green line.</span> A layover, from landing to the next show, under the flying, with the city and its length to the hour (<span className="font-mono font-semibold text-layover">L/O SEA 16h</span>) &mdash; on its longest day, or at the top of the day when it&rsquo;s too short for the words. <span className="text-good">♥</span> is a city you love, <span className="text-good">♡</span> one you like, an amber <span className="text-warn">✕</span> one you dislike and a red <span className="text-danger">✕</span> one you avoid, and a dotted underline marks an international city.</li>
+            <li><span className="font-medium text-ink">Green line.</span> A layover, from landing to the next show, under the flying, with the city and its length to the hour (<span className="font-mono font-semibold text-layover">SEA 16h</span>) &mdash; on its longest day, or at the top of the day when it&rsquo;s too short for the words. <span className="text-good">♥</span> is a city you love, <span className="text-good">♡</span> one you like, an amber <span className="text-warn">✕</span> one you dislike and a red <span className="text-danger">✕</span> one you avoid.</li>
             <li><span className="font-medium text-ink">END MEM 19:05L.</span> Where and when the trip ends, on its last day. <span className="font-mono">+1</span> means just after midnight &mdash; the bid pack still counts the next day as off.</li>
             <li><span className="font-medium text-ink">Violet day.</span> Hotel standby (<span className="font-mono">SBY</span>) &mdash; on call at the hotel, paid, not flying.</li>
             <li><span className="font-medium text-ink">Dashed empty day.</span> A day off; a run of them is labeled on its first day (&ldquo;4 days off&rdquo;).</li>
@@ -294,7 +293,7 @@ export function MonthLegend({ className = "" }: { className?: string }) {
       </span>
       <span className="inline-flex items-center gap-1">
         <span className="font-mono text-[10px] font-semibold leading-none text-layover">
-          <span className="font-normal">L/O </span>SEA<span className="font-normal"> 16h</span>
+          SEA<span className="font-normal"> 16h</span>
         </span>
         Layover, to the hour
       </span>
@@ -575,7 +574,6 @@ export const MiniLinePreview = memo(function MiniLinePreview({
     const labeled = labeledStayPieces(month.days.map((d) => [...(d.spill?.segments ?? []), ...(d.kind === "off" ? [] : d.segments)]));
     return (s: TimelineSegment) => labeled.has(s);
   }, [month]);
-  const internationalCities = useMemo(() => new Set(month.days.filter((d) => d.layoverInternational && d.layoverCode).map((d) => d.layoverCode!)), [month]);
 
   if (line.trips.length === 0) return null;
   const selectedDay = selected !== null ? month.days[selected] : null;
@@ -610,7 +608,6 @@ export const MiniLinePreview = memo(function MiniLinePreview({
               selected={selected === day.dayIndex}
               barWidth={barWidth}
               stayLabeled={stayLabeled}
-              internationalCities={internationalCities}
               cityPreferences={cityPreferences}
               mode={mode}
               onSelect={() => setSelected((cur) => (cur === day.dayIndex ? null : day.dayIndex))}

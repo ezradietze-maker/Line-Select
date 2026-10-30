@@ -19,10 +19,13 @@ const DAY = 24 * 60;
 export interface BarLeg {
   start: number;
   end: number;
-  /** The city it leaves — null when the leg is still in the air from the day before. */
+  /** The city it leaves — null when the leg is still in the air from the day before, or this piece starts mid-air. */
   from: string | null;
-  /** The city it lands — null when it's still in the air at midnight. */
+  /** The city it lands — null when it's still in the air at midnight, or this piece ends mid-air. */
   to: string | null;
+  /** Still in the air from the day before; still in the air at midnight. */
+  runsIn: boolean;
+  runsOn: boolean;
   deadhead: boolean;
   /** "HH:MM" it leaves and lands, on each airport's own clock (or Zulu), as the bid pack prints them. */
   depClock: string | null;
@@ -34,6 +37,8 @@ export interface BarLeg {
   dateLine: DateLineDirection | null;
   /** Drawn back from its takeoff to its landing — east across the date line on the month calendar (`end` < `start`). */
   back?: DateLineBack;
+  /** Across the date line: how far the local clock jumps, in minutes — negative eastbound, positive westbound. */
+  clockJump?: number;
   /** West across the date line, local layout: the stretch (minutes of the day) that's the clock's jump, drawn as a squiggle. */
   jump?: { start: number; end: number; minutes: number };
   /** Zulu layout: where it crosses the date line (minute of the day), and how far the local clock jumps there. */
@@ -55,9 +60,6 @@ export interface BarStay extends BarSpan {
   /** The stay began the day before (its landing isn't on this day), or runs on into the next (its pickup isn't). */
   runsIn: boolean;
   runsOn: boolean;
-  /** A date lived a second time, after an eastbound date-line flight — and whether it runs on into a date lived once. */
-  secondPass?: boolean;
-  rejoins?: boolean;
 }
 
 /** A crew-rest hotel during a long sit between two legs of the same duty — at a hub, through the sort. */
@@ -85,6 +87,13 @@ export interface DayBars {
   stays: BarStay[];
   rests: BarRest[];
   cities: BarLabel[];
+  /**
+   * After an eastbound date-line crossing, the hours lived a second time (`secondPass` pieces) — their own picture,
+   * drawn on a row under the first time through.
+   */
+  second?: DayBars;
+  /** Every city, unstacked — for laying out side by side on one line (`sideBySide`), as the month calendar does. */
+  cityPoints: Omit<BarLabel, "row">[];
   times: BarLabel[];
 }
 
@@ -124,11 +133,40 @@ export function stagger<P extends { at: number; text: string }>(points: P[], min
 }
 
 /**
+ * Labels side by side on one line, never stacked: each centered over its minute when there's room, else pushed along
+ * just clear of the one before — a short leg's two cities read "CAN NRT" — and the lot slid back left when that runs
+ * past the day's edge (`bleed` px into the gap beyond it). Returns each label's center in px, in the order given.
+ */
+export function sideBySide(labels: { at: number; text: string }[], widthPx: number, bleed: number, gapPx = 3): number[] {
+  const order = labels.map((_, i) => i).sort((a, b) => labels[a].at - labels[b].at);
+  const half = (i: number) => (labels[i].text.length * LABEL_CHAR_PX) / 2;
+  const centers: number[] = new Array(labels.length);
+  let right = -Infinity;
+  for (const i of order) {
+    const wanted = Math.min(Math.max((labels[i].at / DAY) * widthPx, half(i) - bleed), widthPx + bleed - half(i));
+    centers[i] = Math.max(wanted, right + gapPx + half(i));
+    right = centers[i] + half(i);
+  }
+  let limit = widthPx + bleed;
+  for (const i of [...order].reverse()) {
+    centers[i] = Math.min(centers[i], limit - half(i));
+    limit = centers[i] - half(i) - gapPx;
+  }
+  return centers;
+}
+
+/**
  * One day's picture from its timeline pieces (`buildHomeDays` / `buildTimelineDays`). `minGap` is how many minutes of
  * the day a label needs to itself at the width it's drawn — a city two legs share is written once, between them, when
  * the two would otherwise sit on each other.
  */
 export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled: (s: TimelineSegment) => boolean = (s) => !s.continuesFromPreviousDay): DayBars {
+  const again = segments.filter((s) => s.secondPass);
+  const first = picture(segments.filter((s) => !s.secondPass), minGap, stayLabeled);
+  return again.length > 0 ? { ...first, second: picture(again, minGap, stayLabeled) } : first;
+}
+
+function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: TimelineSegment) => boolean): DayBars {
   const ordered = [...segments].sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay || endOf(a) - endOf(b));
   const legs: BarLeg[] = ordered
     .filter((s) => (s.kind === "flying" || s.kind === "deadhead") && s.leg)
@@ -138,11 +176,15 @@ export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled
       ...(s.dateLineBack ? { back: s.dateLineBack } : {}),
       ...(s.dateLineJump && s.dateLine ? { jump: { ...s.dateLineJump, minutes: s.dateLine.jumpMinutes } } : {}),
       ...(s.dateLineMark ? { mark: s.dateLineMark } : {}),
-      from: s.continuesFromPreviousDay ? null : s.leg!.dep,
-      to: s.continuesToNextDay ? null : s.leg!.arr,
+      ...(s.dateLine ? { clockJump: s.dateLine.jumpMinutes } : {}),
+      // East across the date line the flight is cut at the crossing: no takeoff or landing there, and none on the diagonal.
+      from: s.continuesFromPreviousDay || s.dateLineBack || s.dateLineLeg === "after" ? null : s.leg!.dep,
+      to: s.continuesToNextDay || s.dateLineBack || s.dateLineLeg === "before" ? null : s.leg!.arr,
+      runsIn: s.continuesFromPreviousDay,
+      runsOn: s.continuesToNextDay,
       deadhead: s.kind === "deadhead",
-      depClock: s.continuesFromPreviousDay ? null : (s.startClock ?? s.leg!.depClock),
-      arrClock: s.continuesToNextDay ? null : (s.endClock ?? s.leg!.arrClock),
+      depClock: s.continuesFromPreviousDay || s.dateLineBack || s.dateLineLeg === "after" ? null : (s.startClock ?? s.leg!.depClock),
+      arrClock: s.continuesToNextDay || s.dateLineBack || s.dateLineLeg === "before" ? null : (s.endClock ?? s.leg!.arrClock),
       flightNumber: s.leg!.flightNumber,
       cab: s.leg!.equipment === "CAB",
       dateLine: dateLineCrossing(s.leg!.dep, s.leg!.arr),
@@ -177,12 +219,12 @@ export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled
         labeled: stayLabeled(s),
         runsIn: s.continuesFromPreviousDay,
         runsOn: s.continuesToNextDay,
-        ...(s.secondPass ? { secondPass: true, rejoins: !!s.rejoins } : {}),
       })),
     rests: ordered
       .filter((s) => s.kind === "connection" && s.stay)
       .map((s) => ({ start: s.startMinuteOfDay, end: endOf(s), city: s.stay!.city, hours: s.stay!.hours, hotel: s.stay!.hotel })),
     cities: stagger(cityPoints, minGap),
+    cityPoints,
     times: stagger(timePoints, minGap),
   };
 }
@@ -218,16 +260,15 @@ export const layoverHours = (hours: number) => `${Math.round(hours)}h`;
 export const LABEL_CHAR_PX = 6.1;
 
 /**
- * The most a layover's words can say in `roomPx`: "L/O OAK 28h", then "OAK 28h", then "OAK" — `extraPx` for the
- * pilot's mark after it.
+ * The most a layover's words can say in `roomPx`: "OAK 28h", then "OAK" — `extraPx` for the pilot's mark after it.
+ * No "L/O": the green line and the color key already say it's a layover.
  */
-export function fitLayoverLabel(city: string, hours: number, roomPx: number, extraPx = 0): { prefix: boolean; hours: boolean; widthPx: number } {
+export function fitLayoverLabel(city: string, hours: number, roomPx: number, extraPx = 0): { hours: boolean; widthPx: number } {
   const options = [
-    { prefix: true, hours: true, text: `L/O ${city} ${layoverHours(hours)}` },
-    { prefix: false, hours: true, text: `${city} ${layoverHours(hours)}` },
-    { prefix: false, hours: false, text: city },
+    { hours: true, text: `${city} ${layoverHours(hours)}` },
+    { hours: false, text: city },
   ];
   const width = (text: string) => text.length * LABEL_CHAR_PX + extraPx;
-  const fit = options.find((o) => width(o.text) <= roomPx) ?? options[2];
-  return { prefix: fit.prefix, hours: fit.hours, widthPx: width(fit.text) };
+  const fit = options.find((o) => width(o.text) <= roomPx) ?? options[1];
+  return { hours: fit.hours, widthPx: width(fit.text) };
 }
