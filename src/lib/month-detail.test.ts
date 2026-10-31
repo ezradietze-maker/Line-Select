@@ -73,8 +73,7 @@ describe("buildDetailedMonth", () => {
   it("flags a red-eye and counts its landings", () => {
     // Trip B leaves CDG at 03:45 local — a red-eye by its printed local time.
     const m = buildDetailedMonth(placed("9002", [2]), START, 28);
-    expect(m.summary.redEyeDays).toBeGreaterThan(0);
-    expect(m.days.filter((d) => d.redEye).length).toBe(m.summary.redEyeDays);
+    expect(m.days.some((d) => d.redEye)).toBe(true);
     expect(m.days.reduce((s, d) => s + d.landings, 0)).toBeGreaterThan(0);
   });
 

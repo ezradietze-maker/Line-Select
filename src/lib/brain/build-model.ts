@@ -2,7 +2,7 @@ import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
 import type { Region } from "@/lib/metrics/trip-facts";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type CriterionTier, type PilotModel, type PilotThread } from "@/types/pilot-model";
 import { structuredCall, type BrainUsage, type Effort } from "./llm";
-import { modelToDepartures, modelToHomePay, modelToHubTurns } from "./model-upgrade";
+import { modelToBodyClock, modelToDepartures, modelToHomePay, modelToHubTurns } from "./model-upgrade";
 import { applyPilotFacts, readPilotFacts, type PilotFacts } from "./pilot-facts";
 import { pilotWordsForPrompt } from "./pilot-words";
 
@@ -65,7 +65,7 @@ HOW TO BUILD THE MODEL
    - "Early sign-ins are fine" means early reports and early launches are not night work to them — don't bind nightsWorked or longestNightStreak to their night complaints unless they mean flying through the night.
    - All-nighters — duties that fly through the night — "two all-nighters in a row is my limit", "back to back all-nighters" → allNighterStreak (put their limit on this one) and backToBackRedEyes for how many. Don't put an all-nighter limit on longestNightStreak or nightsWorked: those count every night with any small-hours work, early launches included.
    - Hub turning — flying into a sort hub, sitting while the packages are sorted, then flying back out to an outstation ("hub turns", "night hub turning", "sitting in Indy through the sort") → the hub-turn measures, not the general night ones. A week or more of night hub turns ("four nights of hub turning", "two weeks of back-to-back night hub turns") → nightHubTurnRuns (less); a limit on nights in a row → longestHubTurnRun; the short airport hotel for a nap on long hub sits (crew-rest hotel) → restHotelHubTurns, the way they feel about it (some like the nap, some would rather have a shorter sit); long daytime sits at a hub → dayHubTurns. One hub turn now and then is fine for most pilots: bind hubTurns only for a pilot who minds hub turns as such.
-   - Sleep, night flying in general, "the back side of the clock" → nightsWorked, longestNightStreak and deepNightHours, which count hotel standby that runs past midnight as night work too (a standby window to 02:30 keeps a pilot on a night schedule). redEyeLegs counts flying only. avgCircadianStars is a rough overall rating — never the only body-clock criterion for a pilot who talks about sleep.
+   - Sleep, night flying in general, "the back side of the clock" → nightsWorked, longestNightStreak and deepNightHours, which count hotel standby that runs past midnight as night work too (a standby window to 02:30 keeps a pilot on a night schedule). redEyeLegs counts flying only. bodyClockScore is the overall body-clock score (1–100, 100 gentlest: night work, early reports, layover sleep, day/night flips, time zones) — never the only body-clock criterion for a pilot who talks about sleep.
    - A standing weekly commitment ("home Wednesday nights", "Saturdays are soccer") → weekdaysOff {weekdays:[...]}; weekends alone → weekendDaysOff.
    - A stated limit ("two in a row is my absolute limit", "nothing over 12 hours, period") is a hardLimit at that number, plus a shape that prefers staying well under it.
    - How they feel about layover cities → ONE graded cityScores list (−1 hates … +1 loves). An ordered list of favorites gets descending scores (e.g. 1.0, 0.9, 0.8 …, never below 0.3 for a city they called a favorite); "fine"/"OK" ≈ 0.2; "not my favorite" ≈ −0.3; "hard to avoid, but I minimize it" ≈ −0.5; "X sucks", "never" ≈ −1. A statement about a group ("I can't stand any of the cities in that country") goes on every city of that group in this pack — except where they said something more specific about one city ("that hub is hard to avoid; the less time there the better"), which sets that city's score instead. Use it in layoverValue — location and length together, the main layover criterion for any pilot with city feelings — and in standbyDaysByCity when they like standby. Don't also bind layoversInCities/layoverHoursInCities for the same feelings — not even when they talk about "stops" in a city they dislike as well as time there: a disliked city is already counted, hour by hour, in its grade, and a second criterion counts it twice.
@@ -347,7 +347,7 @@ export function parsePilotModel(raw: RawModel, prior?: PilotModel | null): { mod
     dropped,
     // A commuter's trip count and trip-end commutes mean departures, and their pay after shortening trips is pay from home,
     // whatever the reading bound them to.
-    model: modelToHomePay(modelToHubTurns(modelToDepartures({
+    model: modelToBodyClock(modelToHomePay(modelToHubTurns(modelToDepartures({
       version: 2,
       home: h.airports.length || h.commuter !== "unknown"
         ? {
@@ -363,7 +363,7 @@ export function parsePilotModel(raw: RawModel, prior?: PilotModel | null): { mod
       threads: raw.threads.map((t) => ({ ...t, priority: clamp01(t.priority), criteria: t.criteria.filter((c) => seen.has(c)), timesAsked: priorAsked.get(t.id) ?? 0 })),
       notMeasurable: raw.notMeasurable,
       synopsis: raw.synopsis,
-    }))),
+    })))),
   };
 }
 

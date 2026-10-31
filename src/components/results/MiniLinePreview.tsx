@@ -16,6 +16,8 @@ import { dayStats, equipmentLabel, hm } from "@/lib/trip-day-stats";
 import type { TimeMode, TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
+import { BodyClockBadge, BodyClockFact, BodyClockReasons } from "@/components/results/BodyClock";
+import { lineBodyClockScore, type BodyClockScore } from "@/lib/body-clock-score";
 import type { CityMark } from "@/types/preferences";
 
 /**
@@ -454,20 +456,40 @@ function SummaryItem({ label, value, tone = "" }: { label: string; value: string
   );
 }
 
-function Summary({ s, line }: { s: MonthSummary; line: Line }) {
+function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyClock: BodyClockScore | null }) {
   const cities = s.cities.slice(0, 5);
+  const [whyOpen, setWhyOpen] = useState(false);
   return (
     <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-lg border border-hairline bg-canvas/70 px-3 py-2 sm:grid-cols-3">
       {/* Duty periods, landings and time away are already on the card above, so this space goes to what isn't. */}
       <SummaryItem label="Trips" value={`${line.trips.length}${s.departures < line.trips.length ? ` · ${s.departures} departures` : ""} · longest ${s.longestTripDays}d`} />
       <SummaryItem label="Days off in a row" value={`${fmtRuns(s.offRuns)}`} />
       <SummaryItem label="Weekends off" value={s.weekendsTotal > 0 ? `${s.weekendsOff} of ${s.weekendsTotal}` : "—"} />
-      <SummaryItem label="Earliest duty start" value={s.earliestDutyStart ? `${s.earliestDutyStart} (L)` : "—"} tone={s.earlyReportDays > 0 ? "text-warn" : ""} />
-      <SummaryItem label="Latest landing" value={s.latestRelease ? `${s.latestRelease} (L)` : "—"} />
       <SummaryItem label="Block hours" value={line.totalBlockHours ? hm(line.totalBlockHours * 60) : "—"} />
-      <SummaryItem label="Red-eye days" value={String(s.redEyeDays)} tone={s.redEyeDays > 0 ? "text-accent" : ""} />
-      <SummaryItem label="Early reports" value={String(s.earlyReportDays)} tone={s.earlyReportDays > 0 ? "text-warn" : ""} />
       <SummaryItem label="Hotel standby" value={s.standbyDays > 0 ? `${s.standbyDays} day${s.standbyDays === 1 ? "" : "s"}` : "none"} tone={s.standbyDays > 0 ? "text-standby" : ""} />
+      {/* The body clock: one score, and under it why — the line's report and landing times among the reasons. */}
+      {bodyClock && (
+        <div className="min-w-0">
+          <dt className="sr-only">Body clock</dt>
+          <dd>
+            <BodyClockBadge result={bodyClock} open={whyOpen} onClick={() => setWhyOpen((o) => !o)} />
+          </dd>
+        </div>
+      )}
+      {bodyClock && whyOpen && (
+        <div className="col-span-2 rounded-md border border-hairline bg-surface/70 px-3 py-2 sm:col-span-3">
+          <BodyClockReasons
+            result={bodyClock}
+            facts={
+              <>
+                <BodyClockFact label="Earliest duty start" value={s.earliestDutyStart ? `${s.earliestDutyStart} (L)` : "—"} tone={s.earlyReportDays > 0 ? "text-warn" : ""} />
+                <BodyClockFact label="Latest landing" value={s.latestRelease ? `${s.latestRelease} (L)` : "—"} />
+                <BodyClockFact label="Early reports" value={String(s.earlyReportDays)} tone={s.earlyReportDays > 0 ? "text-warn" : ""} />
+              </>
+            }
+          />
+        </div>
+      )}
       {s.base && (
         <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
           <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">Commuting · </span>
@@ -552,6 +574,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   cityPreferences,
   departureOptions,
   compact = false,
+  homeBaseOffsetMinutes = null,
 }: MiniLinePreviewProps) {
   const [chosenMode, setMode] = useTimeMode();
   // The interview's small line cards stay on the base's calendar.
@@ -570,6 +593,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   // Seven days and six gaps across the grid, less each day's own padding.
   const barWidth = Math.max(0, (gridWidth - 6 * 4) / 7 - 8);
   // Each layover's words go on its longest day, counted across the whole month — a stay runs over several days.
+  const bodyClock = useMemo(() => (compact ? null : lineBodyClockScore(line.trips, homeBaseOffsetMinutes)), [compact, line.trips, homeBaseOffsetMinutes]);
   const stayLabeled = useMemo(() => {
     const labeled = labeledStayPieces(month.days.map((d) => [...(d.spill?.segments ?? []), ...(d.kind === "off" ? [] : d.segments)]));
     return (s: TimelineSegment) => labeled.has(s);
@@ -618,7 +642,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
 
       {selectedDay ? <DayDetail day={selectedDay} mode={mode} /> : <p className="mt-1.5 text-[11px] text-ink-faint print:hidden">Tap a day for everything on it.</p>}
 
-      {!compact && <Summary s={month.summary} line={line} />}
+      {!compact && <Summary s={month.summary} line={line} bodyClock={bodyClock} />}
 
       {showLegend && !compact && <MonthLegend className="mt-2" />}
 

@@ -78,8 +78,8 @@ const LINE_METRIC_READING: Record<string, TripReading> = {
   avgLayoverNightHours: "asIs",
   internationalLayoverShare: "asIs",
   layoverShareInRegions: "asIs",
-  worstCircadianStars: "asIs",
-  avgCircadianStars: "asIs",
+  hardestTripBodyClock: "asIs",
+  bodyClockScore: "asIs",
   longestNightStreak: "asIs",
   dayFlyingShare: "asIs",
   // Counts over the month.

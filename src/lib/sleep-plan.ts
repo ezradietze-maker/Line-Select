@@ -210,6 +210,21 @@ interface Context {
   bodyAt: (m: number) => number;
   /** Sleep pressure bonus at a trip minute: very tired, sleep comes early even in the body's day. */
   pressureAt: (m: number) => number;
+  /** How easily sleep comes at a trip minute, 0–1 — worked out once per minute and remembered (the search asks again and again). */
+  sample: (m: number) => number;
+}
+
+/** A layover's `sample`: its body clock and sleep pressure, each minute's ease remembered once it's been asked. */
+function sampler(zOff: number, bodyAt: (m: number) => number, pressureAt: (m: number) => number): (m: number) => number {
+  const seen = new Map<number, number>();
+  return (m) => {
+    let v = seen.get(m);
+    if (v === undefined) {
+      v = Math.min(1, sleepPropensity(m + zOff + bodyAt(m)) + pressureAt(m));
+      seen.set(m, v);
+    }
+    return v;
+  };
 }
 
 /** Mean ease of sleep over [s, e), sampled every 15 minutes. */
@@ -217,7 +232,7 @@ function easeOf(ctx: Context, s: number, e: number): number {
   let sum = 0;
   let n = 0;
   for (let m = s; m < e; m += 15) {
-    sum += Math.min(1, sleepPropensity(m + ctx.zOff + ctx.bodyAt(m)) + ctx.pressureAt(m));
+    sum += ctx.sample(m);
     n++;
   }
   return n ? sum / n : 0;
@@ -325,12 +340,10 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
     const from = inHotel + WIND_DOWN;
     const startBody = body;
     const awakeMin = Math.max(0, inHotel - lastWake);
-    const ctx: Context = {
-      zOff,
-      bodyAt: (m) => driftBodyClock(startBody, localOff, m - inHotel),
-      // Very tired, sleep comes early whatever the body clock says — fading over the first hours in.
-      pressureAt: (m) => Math.max(0, Math.min(0.5, (awakeMin / 60 - 14) / 10)) * Math.exp(-(m - from) / 240),
-    };
+    const bodyAt = (m: number) => driftBodyClock(startBody, localOff, m - inHotel);
+    // Very tired, sleep comes early whatever the body clock says — fading over the first hours in.
+    const pressureAt = (m: number) => Math.max(0, Math.min(0.5, (awakeMin / 60 - 14) / 10)) * Math.exp(-(m - from) / 240);
+    const ctx: Context = { zOff, bodyAt, pressureAt, sample: sampler(zOff, bodyAt, pressureAt) };
     const nextDutyEnd = next.legs.at(-1)?.endMinutes ?? report;
     const local = (m: number) => clockText(m + zOff + localOff);
     const blocks = planLayover(ctx, from, wakeBy, awakeMin / 60, report, nextDutyEnd).map((b) => ({ ...b, startLocal: local(b.start), endLocal: local(b.end) }));
@@ -476,4 +489,53 @@ function planLayover(ctx: Context, from: number, wakeBy: number, awakeHours: num
       });
   }
   return blocks.sort((a, b) => a.start - b.start);
+}
+
+/** One duty seen from the body: when it runs, when the pilot last woke before its end, and where the body clock is. */
+export interface DutyClock {
+  dutyIndex: number;
+  /** Trip minutes: report, and the last block-in. */
+  report: number;
+  release: number;
+  /** When the pilot last woke before the duty ends — the trip's first morning, a layover's last sleep, or a crew-rest nap on the duty. */
+  wokeAt: number;
+  /** The body clock's offset from UTC through the duty, minutes: home time at first, drifting toward local on each layover. */
+  bodyOffset: number;
+  /** UTC minute-of-day minus trip minute — a trip minute `m` is `mod(m + zOff + bodyOffset)` to the body. */
+  zOff: number;
+}
+
+/**
+ * Each duty of a trip on the body's own clock, on exactly the assumptions `planTripSleep` makes — the body clock starts
+ * on home time and moves only on layovers (`driftBodyClock`), the pilot wakes where those plans have them wake, and a
+ * night report at the start of a trip follows a nap — so a body-clock score (`lib/body-clock-score.ts`) and the sleep
+ * plan never disagree about where the pilot's body is. Also the body clock's offset at the end of the trip, which the
+ * pilot carries home. Empty when the trip has no printed GMT times.
+ */
+export function dutyClocks(trip: Trip, homeBaseOffsetMinutes: number | null): { duties: DutyClock[]; homeOffset: number; endOffset: number; plans: LayoverSleepPlan[] } | null {
+  if (!trip.schedule.length) return null;
+  const zOff = zuluOffset(trip);
+  if (zOff === null) return null;
+  const first = trip.schedule[0].legs[0];
+  const homeOffset = homeBaseOffsetMinutes ?? offsetOf(first?.depTimeLocal, first?.depTimeGmt) ?? 0;
+  const planned = planTripSleep(trip, homeBaseOffsetMinutes);
+  const plans = new Map(planned.map((p) => [p.dutyIndex, p]));
+  let body = homeOffset;
+  const firstReport = trip.schedule[0].startMinutes;
+  let wake = wokeBeforeTrip(firstReport, mod(firstReport + zOff + body));
+  const duties: DutyClock[] = [];
+  trip.schedule.forEach((duty, i) => {
+    const legs = duty.legs;
+    if (!legs.length) return;
+    const nap = dutyNapOf(duty, zOff);
+    const release = Math.max(...legs.map((l) => l.endMinutes));
+    duties.push({ dutyIndex: i, report: duty.startMinutes, release, wokeAt: nap && nap.end > wake && nap.end < release ? nap.end : wake, bodyOffset: body, zOff });
+    const plan = plans.get(i);
+    const next = trip.schedule[i + 1];
+    if (plan && next) {
+      body = driftBodyClock(plan.bodyOffset, plan.localOffset, next.startMinutes - plan.inHotel);
+      if (plan.blocks.length) wake = Math.max(...plan.blocks.map((b) => b.end));
+    }
+  });
+  return { duties, homeOffset, endOffset: body, plans: planned };
 }

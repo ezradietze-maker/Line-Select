@@ -75,6 +75,47 @@ export function modelToHubTurns(model: PilotModel | null | undefined): PilotMode
   return { ...model, criteria: model.criteria.map((c) => (aboutHubTurns(c) ? { ...c, metric: "nightHubTurnRuns", shape: { kind: "less", fineAt: 0 } } : c)) };
 }
 
+/**
+ * The body clock was rated 1–5 stars; it's now a 1–100 score with far more behind it (`lib/body-clock-score.ts`) — night
+ * work, nights in a row, early reports, time awake, layover sleep, day/night flips, time zones and recovery. A priority
+ * on the old rating moves to the score it meant — the line's rating to `bodyClockScore`, the hardest trip's to
+ * `hardestTripBodyClock` — with its weight, label and words, and any number the pilot gave carried across the scale
+ * (1★ → 1, 3★ → 50.5, 5★ → 100; a tolerance by the same stretch). Safe to run on any model, any number of times.
+ */
+export const STAR_MEASURES: Record<string, string> = {
+  avgCircadianStars: "bodyClockScore",
+  worstCircadianStars: "hardestTripBodyClock",
+};
+const starToScore = (s: number) => Math.min(100, Math.max(1, 1 + ((s - 1) * 99) / 4));
+
+export function modelToBodyClock(model: PilotModel): PilotModel;
+export function modelToBodyClock(model: PilotModel | null | undefined): PilotModel | null | undefined;
+export function modelToBodyClock(model: PilotModel | null | undefined): PilotModel | null | undefined {
+  if (!model?.criteria.some((c) => c.metric in STAR_MEASURES)) return model;
+  const shapeOf = (shape: PilotModel["criteria"][number]["shape"]): PilotModel["criteria"][number]["shape"] => {
+    switch (shape.kind) {
+      case "more":
+        return shape.enoughAt === undefined ? shape : { ...shape, enoughAt: starToScore(shape.enoughAt) };
+      case "less":
+        return { kind: "less", ...(shape.fineAt !== undefined ? { fineAt: starToScore(shape.fineAt) } : {}), ...(shape.worstAt !== undefined ? { worstAt: starToScore(shape.worstAt) } : {}) };
+      case "target":
+        return { kind: "target", ideal: starToScore(shape.ideal), tolerance: (shape.tolerance * 99) / 4 };
+      case "range":
+        return { kind: "range", ...(shape.min !== undefined ? { min: starToScore(shape.min) } : {}), ...(shape.max !== undefined ? { max: starToScore(shape.max) } : {}) };
+      case "perOccurrence":
+        return shape;
+    }
+  };
+  return {
+    ...model,
+    criteria: model.criteria.map((c) =>
+      c.metric in STAR_MEASURES
+        ? { ...c, metric: STAR_MEASURES[c.metric], shape: shapeOf(c.shape), ...(c.hardLimit ? { hardLimit: { ...c.hardLimit, value: starToScore(c.hardLimit.value) } } : {}) }
+        : c
+    ),
+  };
+}
+
 /** "Trips you can join from home": an earlier brain's made-up phrase (see `AVOIDED` in pilot-words.ts). Pilots catch a deadhead. */
 const JOIN_FROM = /\b(you can|you could|that you can|to) (actually |easily )?join (straight |right )?from\b/gi;
 

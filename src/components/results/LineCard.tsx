@@ -6,6 +6,8 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { CategoryBars } from "@/components/results/CategoryBars";
 import { CircadianInfo } from "@/components/results/CircadianInfo";
+import { BodyClockBadge, BodyClockReasons } from "@/components/results/BodyClock";
+import { lineBodyClockScore } from "@/lib/body-clock-score";
 import { DealbreakerBanner } from "@/components/results/DealbreakerBanner";
 import { LineInsightBadge } from "@/components/results/LineInsightBadge";
 import { MatchBar } from "@/components/results/MatchBar";
@@ -161,6 +163,8 @@ export const LineCard = memo(function LineCard({
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: line.id });
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
 
+  // The line's body-clock score, for its Circadian tab (worked out once a pilot opens it).
+  const bodyClock = useMemo(() => (expanded && activeTab === "circadian" ? lineBodyClockScore(line.trips, homeBaseOffsetMinutes) : null), [expanded, activeTab, line.trips, homeBaseOffsetMinutes]);
   const chips = useMemo(() => buildLineFeatures(line, profile, lineScore.criterionResults), [line, profile, lineScore.criterionResults]);
   const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences), [profile.cityRatings, profile.cityPreferences]);
   const departureOptions = useMemo(() => monthDepartureOptions(homeBase, profile, flights), [homeBase, profile, flights]);
@@ -524,6 +528,12 @@ export const LineCard = memo(function LineCard({
 
               {activeTab === "circadian" && (
                 <div className="space-y-3">
+                  {bodyClock && (
+                    <div className="space-y-2">
+                      <BodyClockBadge result={bodyClock} />
+                      <BodyClockReasons result={bodyClock} />
+                    </div>
+                  )}
                   {cumulativeCircadian ? (
                     <p className={`text-sm leading-relaxed ${cumulativeCircadian.hasCompoundingRisk ? "text-warn" : "text-ink-muted"}`}>
                       {cumulativeCircadian.summary}
@@ -531,8 +541,8 @@ export const LineCard = memo(function LineCard({
                   ) : (
                     <p className="text-sm leading-relaxed text-ink-faint">
                       This line&rsquo;s exact calendar dates couldn&rsquo;t be confirmed, so there&rsquo;s no
-                      real recovery-gap view between its trips — per-trip circadian stars (visible on the
-                      Calendar tab) are still exact.
+                      real recovery-gap view between its trips — each trip&rsquo;s own body-clock score (on its
+                      trip) is still exact.
                     </p>
                   )}
                   <CircadianInfo />

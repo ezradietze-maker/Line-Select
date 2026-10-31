@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
-import { computeCircadianAssessment, computeCumulativeCircadianAssessment, computeHomeBaseOffsetMinutes } from "@/lib/circadian";
+import { lineBodyClockScore } from "@/lib/body-clock-score";
+import { computeCumulativeCircadianAssessment, computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import type { CumulativeCircadianAssessment } from "@/lib/circadian";
 import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
 // Type-only for the same reason as the ProfileRichness import below — no
@@ -250,23 +251,17 @@ function computeCityScore(line: Line, cityPreferences: Record<string, CitySentim
 }
 
 /**
- * A line-level circadian health value in 0-1 (1 = best), averaged across
- * whichever of the line's trips have a real assessment (see
- * lib/circadian.ts) — stars 1-5 map linearly to 0-1. Null when none of the
- * line's trips have a verified schedule to score, so the caller can be
- * honest about "no real data" rather than guessing a neutral value.
+ * A line-level circadian health value in 0-1 (1 = gentlest): the line's body-clock score (`lib/body-clock-score.ts`,
+ * 1–100) on a 0–1 scale, with the pilot's own stated limit on nights in a row. Null when none of the line's trips can
+ * be placed on the clock, so the caller can be honest about "no real data" rather than guessing a neutral value.
  */
 function computeCircadianHealthScore(
   line: Line,
   homeBaseOffsetMinutes: number | null,
   consecutiveTolerance?: number | null
 ): number | null {
-  const values = line.trips
-    .map((t) => computeCircadianAssessment(t, homeBaseOffsetMinutes, consecutiveTolerance))
-    .filter((a): a is NonNullable<typeof a> => a !== null)
-    .map((a) => (a.stars - 1) / 4);
-  if (values.length === 0) return null;
-  return values.reduce((a, b) => a + b, 0) / values.length;
+  const s = lineBodyClockScore(line.trips, homeBaseOffsetMinutes, consecutiveTolerance ?? null);
+  return s ? (s.score - 1) / 99 : null;
 }
 
 const REVIEW_SENTIMENT_SCORE: Record<ReviewSentiment, number> = {

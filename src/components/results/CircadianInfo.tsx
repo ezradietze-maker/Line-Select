@@ -1,25 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { StarIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/Modal";
+import { bodyClockFactorsExplained } from "@/lib/body-clock-score";
 
-function ScaleRow({ stars, label, colorClass }: { stars: number; label: string; colorClass: string }) {
+function ScaleRow({ range, label, colorClass }: { range: string; label: string; colorClass: string }) {
   return (
-    <div className="flex items-center gap-2 py-1">
-      <span className={`inline-flex shrink-0 gap-0.5 ${colorClass}`}>
-        {[1, 2, 3, 4, 5].map((i) => (
-          <StarIcon key={i} className={`h-3 w-3 ${i <= stars ? "fill-current" : "fill-none opacity-35"}`} />
-        ))}
-      </span>
+    <div className="flex items-center gap-3 py-1">
+      <span className={`w-16 shrink-0 font-mono text-xs font-semibold tabular-nums ${colorClass}`}>{range}</span>
       <span className="text-sm text-ink-muted">{label}</span>
     </div>
   );
 }
 
-/** A small, clickable explainer for the circadian star rating — a hover-only tooltip on each star isn't discoverable (especially on mobile, or for a scale a pilot has never seen before), so this gives it a real, findable explanation once per section instead of leaving it to be guessed at trip by trip. */
+/** A small, clickable explainer for the body-clock score — a hover-only tooltip isn't discoverable (especially on a phone), so this gives it a real, findable explanation once per section. */
 export function CircadianInfo() {
   const [open, setOpen] = useState(false);
+  const factors = bodyClockFactorsExplained();
 
   return (
     <>
@@ -28,68 +25,41 @@ export function CircadianInfo() {
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
       >
-        <StarIcon className="h-2.5 w-2.5" />
-        What do the circadian stars mean?
+        What&rsquo;s in the body-clock score?
       </button>
 
       {open && (
-        <Modal title="Circadian disruption score" onClose={() => setOpen(false)}>
+        <Modal title="Body-clock score" onClose={() => setOpen(false)}>
           <div className="space-y-4 text-sm leading-relaxed text-ink-muted">
             <p>
-              A separate 1-5 rating from the 0-100 Satisfaction Index &mdash; this
-              one&rsquo;s about how much a trip is likely to mess with your
-              sleep and body clock, regardless of how well it otherwise fits
-              what you asked for.
+              A health-facing score from 1 to 100 &mdash; 100 is the gentlest on your body clock &mdash; separate from how well a
+              line fits what you asked for. Every line and every trip has one; tap it to see exactly what cost points, and why.
             </p>
 
             <div className="rounded-lg border border-border bg-canvas p-3">
-              <ScaleRow stars={5} label="Minimal disruption" colorClass="text-good" />
-              <ScaleRow stars={4} label="Slight disruption" colorClass="text-good" />
-              <ScaleRow stars={3} label="Moderate — one real factor present" colorClass="text-ink-muted" />
-              <ScaleRow stars={2} label="Significant" colorClass="text-warn" />
-              <ScaleRow stars={1} label="Severe — multiple factors stack up" colorClass="text-danger" />
+              <ScaleRow range="70–100" label="Gentle — little to answer for" colorClass="text-good" />
+              <ScaleRow range="45–69" label="Some real disruption" colorClass="text-ink" />
+              <ScaleRow range="25–44" label="Hard on the body clock" colorClass="text-warn" />
+              <ScaleRow range="1–24" label="Several disruptions stacking up" colorClass="text-danger" />
             </div>
 
             <div>
-              <div className="font-medium text-ink">What actually drives the score:</div>
+              <div className="font-medium text-ink">What costs points, and the research behind it:</div>
               <ul className="mt-1.5 space-y-2">
-                <li>
-                  <span className="font-medium text-ink">Which direction you cross time zones, not just how many.</span>{" "}
-                  Your body&rsquo;s clock naturally runs a little longer than 24
-                  hours, so it&rsquo;s easier to stay up later (a westward
-                  shift) than to force sleep and wake earlier (an eastward
-                  one). Flying six zones west is genuinely easier on you than
-                  flying six zones east — this uses the real local and GMT
-                  times printed in your own bid pack to work out which
-                  direction each trip actually is, not a generic zone count.
-                </li>
-                <li>
-                  <span className="font-medium text-ink">Report times in the middle of the night.</span>{" "}
-                  02:00-05:59 is the Window of Circadian Low — the stretch
-                  when your body&rsquo;s alertness and core temperature
-                  naturally bottom out, no matter how rested you feel
-                  otherwise. It&rsquo;s a real, named fatigue flag in actual
-                  airline fatigue risk management, not something specific to
-                  this app.
-                </li>
-                <li>
-                  <span className="font-medium text-ink">Layovers under 10 hours.</span>{" "}
-                  That&rsquo;s the FAA&rsquo;s own minimum rest floor, set
-                  specifically because that&rsquo;s what it takes to
-                  realistically get 8 hours of sleep once the ride to the
-                  hotel, a meal, and winding down are accounted for.
-                </li>
+                {factors.map((f) => (
+                  <li key={f.label}>
+                    <span className="font-medium text-ink">{f.label}.</span> {f.science}
+                  </li>
+                ))}
               </ul>
             </div>
 
             <p className="text-xs text-ink-faint">
-              If you&rsquo;ve told the interview how many consecutive early or
-              late reports actually wear on you, that&rsquo;s factored into
-              this specific score too, not just a generic cap. What this
-              still can&rsquo;t know: exactly how well you personally sleep on
-              the road, or — for a line whose exact calendar dates couldn&rsquo;t
-              be confirmed — real recovery time between trips. Treat it as a
-              real, science-based flag worth factoring in, not a verdict.
+              Everything is worked out on your body&rsquo;s clock, not the wall clock: it starts on home time and shifts toward
+              local time only about an hour a day on a layover &mdash; the same model the layover sleep plans use, from the real
+              local and GMT times printed in your bid pack. If you&rsquo;ve told the interview how many nights in a row you can
+              handle, each one past that costs more. What it can&rsquo;t know is how well you personally sleep on the road: treat
+              it as a science-based guide, not a verdict.
             </p>
           </div>
         </Modal>

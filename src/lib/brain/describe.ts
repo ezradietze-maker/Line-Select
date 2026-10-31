@@ -73,8 +73,8 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   longLayoverHours: "{n} hours on long layovers",
   tripsTouchingCities: ["{n} trip through those cities", "{n} trips through those cities"],
   layoverShareInRegions: "{n} of layovers in those regions",
-  worstCircadianStars: "{n} on the hardest trip",
-  avgCircadianStars: "{n} on the body clock",
+  hardestTripBodyClock: "{n}/100 on the body clock for the hardest trip",
+  bodyClockScore: "{n}/100 on the body clock",
   redEyeLegs: ["{n} red-eye leg", "{n} red-eye legs"],
   nightsWorked: ["{n} night worked", "{n} nights worked"],
   nightHubTurnRuns: ["{n} night hub turn in a run of 3+ nights", "{n} night hub turns in runs of 3+ nights", "no weeks of night hub turns"],
@@ -100,7 +100,7 @@ const READS: Record<string, string | [string, string] | [string, string, string]
 const ONE_TRIP_READS: Record<string, string | [string, string]> = {
   longestTripDays: ["{n} day", "{n} days"],
   avgTripDays: ["{n} day", "{n} days"],
-  worstCircadianStars: "{n} on the body clock",
+  hardestTripBodyClock: "{n}/100 on the body clock",
   fewestBackupFlights: ["{n} backup flight", "{n} backup flights"],
   earliestBaseReport: "shows at base at {n}",
   latestBaseRelease: "back at base at {n}",
@@ -121,11 +121,11 @@ const MEASURED_UNITS = new Set(["hours", "hours/day", "share", "minute of day", 
 
 type ValueDef = Pick<MetricDef, "unit"> & { id?: string };
 
-/** Just the number, in its unit's format: "4.3★", "50%", "02:30", "6.5". */
+/** Just the number, in its unit's format: "64" (a 1–100 score), "50%", "02:30", "6.5". */
 function numberOf(value: number, def: Pick<MetricDef, "unit">): string {
   if (def.unit === "minute of day") return clock(value);
   if (def.unit === "share") return `${Math.round(value * 100)}%`;
-  if (def.unit.startsWith("stars")) return `${round(value)}★`;
+  if (def.unit.startsWith("score")) return String(Math.round(value));
   return round(value);
 }
 
@@ -134,12 +134,12 @@ function readsOf(def: ValueDef, oneTrip = false): [string, string, string?] {
   const own = def.id ? ((oneTrip ? ONE_TRIP_READS[def.id] : undefined) ?? READS[def.id]) : undefined;
   if (own) return typeof own === "string" ? [own, own] : own;
   if (def.unit === "hours/day") return ["{n} credit hours a day", "{n} credit hours a day"];
-  if (def.unit === "minute of day" || def.unit === "share" || def.unit.startsWith("stars")) return ["{n}", "{n}"];
+  if (def.unit === "minute of day" || def.unit === "share" || def.unit.startsWith("score")) return ["{n}", "{n}"];
   return [`{n} ${SINGULAR[def.unit] ?? def.unit}`, `{n} ${def.unit}`];
 }
 
 /**
- * A value the way a pilot reads it, on its own: "3 extra legs", "no early reports", "4.3★ on the body clock". `oneTrip`:
+ * A value the way a pilot reads it, on its own: "3 extra legs", "no early reports", "64/100 on the body clock". `oneTrip`:
  * the value is one trip's own, not a line's.
  */
 export function formatValue(value: number, def: ValueDef, oneTrip = false): string {
@@ -157,7 +157,7 @@ function withArticle(text: string): string {
   return text.replace(/\ba (?=(?:8|11|18)(?:[^\d.]|$)|8\d)/g, "an ");
 }
 
-/** A spread of values, said once: "0 to 3 extra legs", "2★ to 4.3★ on the body clock", "4.9 to 9.5 credit hours a day". */
+/** A spread of values, said once: "0 to 3 extra legs", "40 to 64/100 on the body clock", "4.9 to 9.5 credit hours a day". */
 export function formatRange(lo: number, hi: number, def: ValueDef): string {
   if (lo === hi || def.unit === "weighted hours") return lo === hi ? formatValue(lo, def) : `${formatValue(lo, def)} to ${formatValue(hi, def)}`;
   const spread = `${numberOf(lo, def)} to ${numberOf(hi, def)}`;
@@ -166,7 +166,8 @@ export function formatRange(lo: number, hi: number, def: ValueDef): string {
 
 /** A bare amount in the measure's unit, for a tolerance or a step: "2 days", "1.5 hours". */
 function amountOf(value: number, def: Pick<MetricDef, "unit">): string {
-  if (def.unit === "share" || def.unit === "minute of day" || def.unit.startsWith("stars") || def.unit === "weighted hours") return numberOf(value, def);
+  if (def.unit === "share" || def.unit === "minute of day" || def.unit === "weighted hours") return numberOf(value, def);
+  if (def.unit.startsWith("score")) return `${Math.round(value)} points`;
   if (def.unit === "hours/day") return `${round(value)} credit hours a day`;
   return `${round(value)} ${value === 1 ? (SINGULAR[def.unit] ?? def.unit) : def.unit}`;
 }

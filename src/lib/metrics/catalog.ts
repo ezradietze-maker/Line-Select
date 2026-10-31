@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { computeCircadianAssessment } from "@/lib/circadian";
+import { lineBodyClockScore, tripBodyClockScore } from "@/lib/body-clock-score";
 import { dateOfDayIndex, longestDaysOffBlock, singleDaysOff, weekendDaysOff } from "@/lib/days-off-pattern";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { isHotelStandbyLeg, tripStandbyDays } from "@/lib/standby";
@@ -172,15 +172,14 @@ function nightsOfLine(trips: TripFacts[]): number[] | null {
 }
 
 /**
- * Body-clock ratings for trips with scheduled flying. A trip that's all
- * standby has nothing scheduled to rate — and a call-out can come at any
- * hour — so it counts as unknown, not as a perfect five.
+ * Body-clock scores (1–100, 100 gentlest — `lib/body-clock-score.ts`) for trips with scheduled flying. A trip that's all
+ * standby has nothing scheduled to rate — and a call-out can come at any hour — so it counts as unknown, not as a 100.
  */
-function circadianStars(trips: TripFacts[], c: LineContext): number[] {
+function tripBodyClocks(trips: TripFacts[], c: LineContext): number[] {
   return trips
     .filter((f) => !f.noFlying)
-    .map((f) => computeCircadianAssessment(f.trip, c.homeBaseOffsetMinutes)?.stars)
-    .filter((s): s is 1 | 2 | 3 | 4 | 5 => !!s);
+    .map((f) => tripBodyClockScore(f.trip, c.homeBaseOffsetMinutes)?.score)
+    .filter((s): s is number => s !== undefined);
 }
 
 /** Time away from home for each trip, or null when the pilot's home isn't known or a trip can't be placed. */
@@ -840,23 +839,29 @@ export const METRICS: MetricDef[] = [
 
   // ---- Body clock ----
   {
-    id: "worstCircadianStars",
+    id: "hardestTripBodyClock",
     label: "Hardest trip on the body clock",
-    unit: "stars (1–5, 5 easiest)",
+    unit: "score (1–100, 100 gentlest)",
     category: "body",
-    description: "Circadian rating of the line's hardest trip.",
+    description: "Body-clock score of the line's hardest trip: night work, nights in a row, early reports, time awake, layover sleep, day/night flips and time zones.",
     line: (_l, trips, c) => {
-      const stars = circadianStars(trips, c);
-      return stars.length ? Math.min(...stars) : null;
+      const scores = tripBodyClocks(trips, c);
+      return scores.length ? Math.min(...scores) : null;
     },
   },
   {
-    id: "avgCircadianStars",
-    label: "Body-clock rating",
-    unit: "stars (1–5, 5 easiest)",
+    id: "bodyClockScore",
+    label: "Body-clock score",
+    unit: "score (1–100, 100 gentlest)",
     category: "body",
-    description: "Average circadian rating across the line's trips.",
-    line: (_l, trips, c) => mean(circadianStars(trips, c)),
+    description:
+      "How gentle the line is on the body clock, 1–100: night work, nights in a row, early reports, time awake, layover sleep, day/night flips, time zones and recovery between trips (see lib/body-clock-score.ts). On one trip, that trip's own score.",
+    line: (l, trips, c) => {
+      // A trip read on its own (trip scores hand over the trip's line and just that trip) gets its own score, the same
+      // number its trip shows — the old stars were always the trip's own.
+      if (trips.length === 1) return tripBodyClocks(trips, c)[0] ?? null;
+      return lineBodyClockScore(l.trips, c.homeBaseOffsetMinutes)?.score ?? null;
+    },
   },
   {
     id: "redEyeLegs",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelInPilotWords, modelToDepartures, modelToHomePay, withHomeFacts } from "@/lib/brain/model-upgrade";
+import { modelInPilotWords, modelToBodyClock, modelToDepartures, modelToHomePay, withHomeFacts } from "@/lib/brain/model-upgrade";
 import { migrateProfile } from "@/lib/profile-migration";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -98,5 +98,29 @@ describe("modelInPilotWords", () => {
   it("leaves a model already in pilot words as it is", () => {
     const m = { ...model(true, [crit("dh", "tripsJoinedFromHome", { label: "Trips that start with a deadhead from home" })]), synopsis: "Few departures." };
     expect(modelInPilotWords(m)).toBe(m);
+  });
+});
+
+describe("modelToBodyClock", () => {
+  it("moves a priority on the old 1–5 star rating to the 1–100 body-clock score, its numbers carried across the scale", () => {
+    const easy = crit("easy", "avgCircadianStars", { label: "Easy on the body clock", shape: { kind: "more", enoughAt: 4 }, hardLimit: { op: "min", value: 3 } });
+    const hardest = crit("hardest", "worstCircadianStars", { shape: { kind: "target", ideal: 3, tolerance: 1 } });
+    const other = crit("nights", "nightsWorked");
+    const up = modelToBodyClock(model(false, [easy, hardest, other]));
+    expect(up.criteria[0]).toEqual({ ...easy, metric: "bodyClockScore", shape: { kind: "more", enoughAt: 75.25 }, hardLimit: { op: "min", value: 50.5 } });
+    expect(up.criteria[1]).toEqual({ ...hardest, metric: "hardestTripBodyClock", shape: { kind: "target", ideal: 50.5, tolerance: 24.75 } });
+    expect(up.criteria[2]).toBe(other);
+  });
+
+  it("is safe to run again, and on a model without the stars", () => {
+    const once = modelToBodyClock(model(false, [crit("easy", "avgCircadianStars", { shape: { kind: "more" } })]));
+    expect(modelToBodyClock(once)).toBe(once);
+    const none = model(false, [crit("nights", "nightsWorked")]);
+    expect(modelToBodyClock(none)).toBe(none);
+  });
+
+  it("runs on every saved profile as it loads", () => {
+    const p = migrateProfile({ pilotModel: model(false, [crit("easy", "avgCircadianStars", { shape: { kind: "more" } })]) } as Partial<PreferenceProfile>);
+    expect(p.pilotModel!.criteria[0].metric).toBe("bodyClockScore");
   });
 });

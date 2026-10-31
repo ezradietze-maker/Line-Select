@@ -1,9 +1,9 @@
 "use client";
 
-import { CircadianStars } from "@/components/results/CircadianStars";
+import { bodyClockTone } from "@/components/results/BodyClock";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { Modal } from "@/components/ui/Modal";
-import { computeCircadianAssessment } from "@/lib/circadian";
+import { lineBodyClockScore, tripBodyClockScore } from "@/lib/body-clock-score";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import type { LineScore } from "@/lib/scoring";
 import type { MonthDepartureOptions } from "@/lib/month-detail";
@@ -53,13 +53,23 @@ export function LineComparisonModal({
   departureOptions,
   onClose,
 }: LineComparisonModalProps) {
-  const worstCircadianStars = lineScores.map((ls) => {
-    const stars = ls.line.trips
-      .map((t) => computeCircadianAssessment(t, homeBaseOffsetMinutes))
-      .filter((a): a is NonNullable<typeof a> => a !== null)
-      .map((a) => a.stars);
-    return stars.length > 0 ? Math.min(...stars) : null;
+  // Each line's body-clock score, and its hardest trip's — 1–100, 100 the gentlest.
+  const bodyClocks = lineScores.map((ls) => {
+    const trips = ls.line.trips.map((t) => tripBodyClockScore(t, homeBaseOffsetMinutes)?.score).filter((s): s is number => s !== undefined);
+    return { line: lineBodyClockScore(ls.line.trips, homeBaseOffsetMinutes)?.score ?? null, hardest: trips.length ? Math.min(...trips) : null };
   });
+  const scoreCell = (score: number | null, i: number) => (
+    <div key={i} className="text-center font-mono">
+      {score !== null ? (
+        <span className={`font-semibold ${bodyClockTone(score)}`}>
+          {score}
+          <span className="font-normal text-ink-faint">/100</span>
+        </span>
+      ) : (
+        <span className="text-ink-faint">—</span>
+      )}
+    </div>
+  );
 
   return (
     <Modal title="Compare lines" onClose={onClose} wide>
@@ -85,16 +95,10 @@ export function LineComparisonModal({
         />
         <StatRow label="Landings" values={[String(lineScores[0].line.totalLandings), String(lineScores[1].line.totalLandings)]} />
         <StatRow label="Duty periods" values={[String(lineDutyPeriods(lineScores[0].line)), String(lineDutyPeriods(lineScores[1].line))]} />
-        <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Worst trip&rsquo;s circadian read</div>
-        {worstCircadianStars.map((stars, i) => (
-          <div key={i} className="flex justify-center">
-            {stars !== null ? (
-              <CircadianStars assessment={{ stars: stars as 1 | 2 | 3 | 4 | 5, timezoneShiftHours: 0, wocEncroachments: 0, shortRestCount: 0, summary: "" }} />
-            ) : (
-              <span className="text-ink-faint">—</span>
-            )}
-          </div>
-        ))}
+        <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Body clock</div>
+        {bodyClocks.map((b, i) => scoreCell(b.line, i))}
+        <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Hardest trip on the body clock</div>
+        {bodyClocks.map((b, i) => scoreCell(b.hardest, i))}
         <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Recovery across the month</div>
         {lineScores.map((ls) => (
           <div key={ls.line.id} className={`text-center text-[11px] leading-tight ${ls.cumulativeCircadian?.hasCompoundingRisk ? "text-warn" : "text-ink-muted"}`}>

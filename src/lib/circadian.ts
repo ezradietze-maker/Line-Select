@@ -1,63 +1,12 @@
-import { flyingSchedule } from "@/lib/standby";
+import { tripBodyClockScore } from "@/lib/body-clock-score";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /**
- * Per-trip circadian disruption score — a separate, health-facing rating
- * from the 0-100 preference match score. Grounded in three established
- * pieces of aviation fatigue science, applied to the bid pack's own printed
- * times (not estimated):
- *
- * 1. Time-zone shift direction asymmetry. The human circadian clock runs
- *    slightly longer than 24 hours on its own (~24.2h, Czeisler et al.),
- *    which makes it physiologically easier to phase-DELAY (a westward shift
- *    — your day gets longer) than to phase-ADVANCE (an eastward shift —
- *    your day gets shorter). Real-world recovery estimates commonly cited
- *    in aviation fatigue guidance run around 1 day per time zone westward
- *    versus roughly 1.5 days per time zone eastward. This is why, for
- *    example, flying home east across the Pacific typically hits harder
- *    than flying out west to Asia, even though both cross the same zones.
- * 2. The Window of Circadian Low (WOCL) — the 02:00-05:59 stretch (ICAO/
- *    EASA fatigue risk management standard) when core body temperature and
- *    alertness bottom out. Any duty period whose report time falls in this
- *    window is a real, named fatigue flag in actual FRMS practice, not
- *    something specific to this app.
- * 3. Minimum rest / sleep opportunity. US FAA Part 117 sets 10 consecutive
- *    hours as the rest-period floor specifically because it's what's
- *    needed to realistically get 8 hours of sleep once hotel transport,
- *    meals, and wind-down are accounted for. A layover under that isn't
- *    "less recovery" in the abstract, it's under the regulatory floor for
- *    a full sleep opportunity.
- *
- * What this deliberately does NOT model: full circadian phase adaptation
- * over a multi-day trip (that's what dedicated fatigue-modeling tools like
- * SAFTE-FAST or the Boeing Alertness Model do, with proprietary curve-fits).
- * This uses each duty period's own printed local time as the "am I awake
- * when my body doesn't expect to be" signal, which is the right proxy for
- * WOCL exposure (light/dark and environment are real local-time-driven cues
- * regardless of how adapted the body clock is yet) — it's a principled
- * simplification, not a claim of clinical precision.
+ * The body clock, line-wide: the home base's real UTC offset (the clock a pilot's body starts every trip on), and
+ * whether two rough trips sit too close together to recover between. Each trip's and line's own body-clock score —
+ * night work, nights in a row, early reports, time awake, layover sleep, day/night flips, time zones and recovery, each
+ * from the research — is `lib/body-clock-score.ts`.
  */
-
-export interface CircadianAssessment {
-  stars: 1 | 2 | 3 | 4 | 5;
-  /** Signed hours vs. home base, using the shorter way around the globe. Positive = eastward/phase-advance (harder), negative = westward/phase-delay (easier). */
-  timezoneShiftHours: number;
-  /** Duty periods that report in, or fly through, the 02:00-05:59 Window of Circadian Low. */
-  wocEncroachments: number;
-  /** Layovers under the FAA Part 117 10-hour rest floor. */
-  shortRestCount: number;
-  /** One-line, plain-English reason for the score, naming the biggest contributor. */
-  summary: string;
-}
-
-const WOCL_START_MIN = 2 * 60;
-const WOCL_END_MIN = 6 * 60;
-/** A duty that flies at least this much of the WOCL encroaches on it, wherever its report time falls. */
-const WOCL_FLOWN_MINUTES = 30;
-const SHORT_REST_FLOOR_HOURS = 10;
-const SEVERE_REST_FLOOR_HOURS = 8;
-/** Aviation fatigue guidance commonly puts eastward (phase-advance) recovery at roughly 1.5x the westward (phase-delay) rate. */
-const EASTWARD_MULTIPLIER = 1.5;
 
 function hhmmToMinutes(hhmm: string): number {
   return parseInt(hhmm.slice(0, 2), 10) * 60 + parseInt(hhmm.slice(2, 4), 10);
@@ -69,13 +18,6 @@ function utcOffsetMinutes(localHHMM: string, gmtHHMM: string): number {
   if (diff > 720) diff -= 1440;
   if (diff < -720) diff += 1440;
   return diff;
-}
-
-/** Signed shift vs. home base, normalized to the shorter way around the globe: positive = eastward/phase-advance, negative = westward/phase-delay. */
-function signedShiftHours(homeOffsetMin: number, destOffsetMin: number): number {
-  let diff = destOffsetMin - homeOffsetMin;
-  diff = ((diff + 720) % 1440 + 1440) % 1440 - 720;
-  return diff / 60;
 }
 
 /**
@@ -95,196 +37,10 @@ export function computeHomeBaseOffsetMinutes(bidPack: BidPack): number | null {
   return null;
 }
 
-function shiftPenalty(effectiveShiftHours: number): number {
-  if (effectiveShiftHours < 2) return 0;
-  if (effectiveShiftHours < 4) return 1;
-  if (effectiveShiftHours < 7) return 2;
-  if (effectiveShiftHours < 10) return 3;
-  return 4;
-}
-
-function starsFromPenalty(penalty: number): 1 | 2 | 3 | 4 | 5 {
-  if (penalty <= 1) return 5;
-  if (penalty <= 3) return 4;
-  if (penalty <= 6) return 3;
-  if (penalty <= 9) return 2;
-  return 1;
-}
-
-function formatShift(hours: number): string {
-  const rounded = Math.round(Math.abs(hours));
-  const direction = hours > 0 ? "east" : "west";
-  return `${rounded}h ${direction === "east" ? "eastward" : "westward"}`;
-}
-
-/**
- * The longest run of CONSECUTIVE duty periods within one trip whose report
- * time falls in the WOCL — distinct from a bare count, since two isolated
- * early reports on a 4-day trip are a very different experience from two
- * back-to-back ones. Order is exact here (a trip's own duty sequence is
- * known outright, unlike calendar position ACROSS trips — see
- * `MissingCategories` in `trip-analytics.ts` for why that distinction
- * matters and where this app draws the line on what it will and won't
- * infer).
- */
-/** Minutes of a leg's flying inside the WOCL, on the local clock it departs on. */
-function legWoclMinutes(depLocal: string, minutes: number): number {
-  const start = hhmmToMinutes(depLocal);
-  let total = 0;
-  for (const day of [-1440, 0, 1440]) {
-    const lo = Math.max(start, WOCL_START_MIN + day);
-    const hi = Math.min(start + minutes, WOCL_END_MIN + day);
-    if (hi > lo) total += hi - lo;
-  }
-  return total;
-}
-
-/**
- * A duty encroaches on the Window of Circadian Low when it reports inside it — or flies through it: FAA Part 117
- * treats a duty that infringes on the WOCL at all as the fatigue risk, and a 21:30 report that flies until 05:00 is the
- * hardest duty there is, not an easy one.
- */
-function encroachesWocl(duty: Trip["schedule"][number]): boolean {
-  const reportMin = hhmmToMinutes(duty.reportTimeLocal);
-  if (reportMin >= WOCL_START_MIN && reportMin < WOCL_END_MIN) return true;
-  const flown = duty.legs.filter((l) => !l.isDeadhead).reduce((a, l) => a + legWoclMinutes(l.depTimeLocal, Math.max(0, l.endMinutes - l.startMinutes)), 0);
-  return flown >= WOCL_FLOWN_MINUTES;
-}
-
-/**
- * Two night duties are nights in a row when the second starts within this many hours of the first — the next night,
- * with only a hotel day between. A long-haul trip with a day or more off between its night legs gives a recovery sleep
- * each time, so its nights don't stack (Oct 2026: counting those as a streak sank long-haul trips graders rated highly).
- */
-const NIGHTS_IN_A_ROW_WITHIN_HOURS = 30;
-
-function longestConsecutiveWocStreak(trip: Trip): number {
-  let longest = 0;
-  let current = 0;
-  let lastStart = -Infinity;
-  for (const duty of flyingSchedule(trip)) {
-    if (encroachesWocl(duty)) {
-      current = duty.startMinutes - lastStart <= NIGHTS_IN_A_ROW_WITHIN_HOURS * 60 ? current + 1 : 1;
-      lastStart = duty.startMinutes;
-      longest = Math.max(longest, current);
-    } else {
-      current = 0;
-    }
-  }
-  return longest;
-}
-
-/**
- * Night duties in a row stack: with no recovery sleep between them, sleep debt grows each night, so a week of night
- * hub turns is much harder than its count suggests (the ex-pilot: four nights of it in a row is hard going, two weeks
- * back to back wrecks the body clock). Past this many nights in a row, each more night adds
- * `NIGHT_IN_A_ROW_PENALTY` — three in a row stays "some issues" (3 stars), four is "rough" (2), five is 1 star. (Oct
- * 2026: his sort 96.0% → 96.7% on lines alone across 16 readings of his interview, the simulated pilots unchanged.)
- */
-const FREE_NIGHTS_IN_A_ROW = 2;
-const NIGHT_IN_A_ROW_PENALTY = 3;
-
-/**
- * `Math.min(wocEncroachments, 3)`, plus the cost of nights in a row past
- * the second, when no pilot tolerance is known. Once a
- * pilot has actually stated how many consecutive early/late reports they
- * can handle before it wears on them (the report-time-circadian interview
- * topic, captured as `explicitTargets.circadianTolerance`), the penalty is
- * personalized instead: a report streak within their own stated tolerance
- * costs a mild, capped amount (matching how forgiving the generic default
- * already was), while a streak that exceeds what they themselves said they
- * can handle costs sharply more per report beyond it — this pilot told the
- * interview exactly where that line is, so the model should trust it rather
- * than falling back to a one-size-fits-all cap.
- */
-function personalizedWocPenalty(
-  wocEncroachments: number,
-  streak: number,
-  consecutiveTolerance: number | null | undefined
-): number {
-  if (consecutiveTolerance === null || consecutiveTolerance === undefined) {
-    return Math.min(wocEncroachments, 3) + NIGHT_IN_A_ROW_PENALTY * Math.max(0, streak - FREE_NIGHTS_IN_A_ROW);
-  }
-  if (wocEncroachments === 0) return 0;
-  const withinTolerance = Math.min(streak, consecutiveTolerance);
-  const overTolerance = Math.max(0, streak - consecutiveTolerance);
-  // Past their own stated limit, each night costs more than a night past the generic one: they told us where it is.
-  return Math.min(3, withinTolerance * 0.5) + overTolerance * (NIGHT_IN_A_ROW_PENALTY + 1);
-}
-
-/** Null when the trip has no verified schedule (estimated line, or reconciliation failed) or the bid pack's home-base offset couldn't be derived — same honesty policy as the rest of the app: no real data in, no score out. */
-export function computeCircadianAssessment(
-  trip: Trip,
-  homeBaseOffsetMinutes: number | null,
-  /** This pilot's own stated ceiling on consecutive WOCL-window reports (`explicitTargets.circadianTolerance`), if the interview ever asked. Absent/null keeps the exact generic behavior this function always had. */
-  consecutiveTolerance?: number | null
-): CircadianAssessment | null {
-  if (trip.schedule.length === 0 || homeBaseOffsetMinutes === null) return null;
-
-  let worstShift = 0; // signed hours, keep the one with the largest magnitude
-  for (const duty of flyingSchedule(trip)) {
-    if (!duty.layover) continue;
-    const arrivingLeg = duty.legs[duty.legs.length - 1];
-    if (!arrivingLeg) continue;
-    const destOffset = utcOffsetMinutes(arrivingLeg.arrTimeLocal, arrivingLeg.arrTimeGmt);
-    const shift = signedShiftHours(homeBaseOffsetMinutes, destOffset);
-    if (Math.abs(shift) > Math.abs(worstShift)) worstShift = shift;
-  }
-
-  const effectiveShift = Math.abs(worstShift) * (worstShift > 0 ? EASTWARD_MULTIPLIER : 1);
-  const tzPenalty = shiftPenalty(effectiveShift);
-
-  let wocEncroachments = 0;
-  for (const duty of flyingSchedule(trip)) if (encroachesWocl(duty)) wocEncroachments++;
-  const wocStreak = longestConsecutiveWocStreak(trip);
-  const wocPenalty = personalizedWocPenalty(wocEncroachments, wocStreak, consecutiveTolerance);
-
-  let shortRestCount = 0;
-  let restPenalty = 0;
-  for (const duty of flyingSchedule(trip)) {
-    if (!duty.layover) continue;
-    if (duty.layover.hours < SEVERE_REST_FLOOR_HOURS) {
-      shortRestCount++;
-      restPenalty += 2;
-    } else if (duty.layover.hours < SHORT_REST_FLOOR_HOURS) {
-      shortRestCount++;
-      restPenalty += 1;
-    }
-  }
-
-  const totalPenalty = tzPenalty + wocPenalty + restPenalty;
-  const stars = starsFromPenalty(totalPenalty);
-
-  let summary: string;
-  const exceedsPersonalTolerance =
-    consecutiveTolerance !== null && consecutiveTolerance !== undefined && wocStreak > consecutiveTolerance;
-  if (totalPenalty === 0) {
-    summary = "No real circadian red flags — stays close to home-base time with real rest between duty periods.";
-  } else if (tzPenalty >= wocPenalty && tzPenalty >= restPenalty) {
-    summary = `Biggest factor: a ${formatShift(worstShift)} time-zone shift${
-      worstShift > 0 ? " — the harder phase-advance direction to adapt to" : ""
-    }.`;
-  } else if (wocPenalty >= restPenalty) {
-    summary = exceedsPersonalTolerance
-      ? `Biggest factor: ${wocStreak} duty periods in a row in the 2-6am window — beyond the ${consecutiveTolerance} in a row you said you can handle.`
-      : `Biggest factor: ${wocEncroachments} duty period${wocEncroachments > 1 ? "s" : ""} reporting in or flying through the 2-6am window, when the body's alertness is naturally lowest.`;
-  } else {
-    summary = `Biggest factor: ${shortRestCount} layover${shortRestCount > 1 ? "s" : ""} under the 10-hour rest floor needed for a real 8 hours of sleep.`;
-  }
-
-  return {
-    stars,
-    timezoneShiftHours: Math.round(worstShift * 10) / 10,
-    wocEncroachments,
-    shortRestCount,
-    summary,
-  };
-}
-
-/** How many real days off a line needs between two trips to count as genuine recovery, not just a token gap — deliberately generous (this is about avoiding *compounding* disruption, not the ordinary short-rest-overnight check `SHORT_REST_FLOOR_HOURS` already covers within a single trip). */
+/** How many real days off a line needs between two trips to count as genuine recovery, not just a token gap — deliberately generous (this is about avoiding *compounding* disruption across trips). */
 const MIN_REAL_RECOVERY_DAYS = 3;
-/** A per-trip star rating at or below this counts as "meaningfully disruptive" for compounding-risk purposes — the same bar `starsFromPenalty` already treats as a real problem (3 stars is "some issues," 2 and below is "rough"). */
-const DISRUPTIVE_STAR_THRESHOLD = 2;
+/** A trip at or under this body-clock score is a rough one for compounding purposes — the harder end of the range. */
+const DISRUPTIVE_SCORE = 35;
 
 export interface CumulativeCircadianAssessment {
   /** The smallest real gap (in days off) between any two of this line's trips — null only when the line has fewer than two trips. */
@@ -311,13 +67,10 @@ export function hasRealTripPlacement(trips: Trip[], bidPeriodStart: string | nul
 }
 
 /**
- * Cross-trip view `computeCircadianAssessment` deliberately doesn't attempt
- * (see that function's own doc comment on what it does NOT model) — how
- * much real recovery separates this line's own trips, and whether two
- * genuinely rough trips sit close enough together to compound. Gated on
- * `hasRealTripPlacement`: for the (common) case where a line's exact
- * calendar placement couldn't be confirmed, this returns null rather than
- * approximate a recovery window from trip order alone.
+ * How much real recovery separates this line's own trips, and whether two genuinely rough trips (body-clock score at or
+ * under `DISRUPTIVE_SCORE`) sit close enough together to compound. Gated on `hasRealTripPlacement`: for a line whose
+ * exact calendar placement couldn't be confirmed, this returns null rather than approximate a recovery window from trip
+ * order alone.
  */
 export function computeCumulativeCircadianAssessment(
   trips: Trip[],
@@ -329,7 +82,7 @@ export function computeCumulativeCircadianAssessment(
   if (trips.length < 2) return { tightestRecoveryGapDays: null, hasCompoundingRisk: false, summary: "Only one trip this month — nothing to compound." };
 
   const sorted = [...trips].sort((a, b) => a.startDayIndex! - b.startDayIndex!);
-  const assessments = sorted.map((t) => computeCircadianAssessment(t, homeBaseOffsetMinutes, consecutiveTolerance));
+  const scores = sorted.map((t) => tripBodyClockScore(t, homeBaseOffsetMinutes, consecutiveTolerance ?? null)?.score ?? null);
 
   let tightestGap: number | null = null;
   let hasCompoundingRisk = false;
@@ -338,12 +91,9 @@ export function computeCumulativeCircadianAssessment(
     const next = sorted[i + 1];
     const gap = next.startDayIndex! - (current.startDayIndex! + current.days);
     if (tightestGap === null || gap < tightestGap) tightestGap = gap;
-
-    const a = assessments[i];
-    const b = assessments[i + 1];
-    if (a && b && a.stars <= DISRUPTIVE_STAR_THRESHOLD && b.stars <= DISRUPTIVE_STAR_THRESHOLD && gap < MIN_REAL_RECOVERY_DAYS) {
-      hasCompoundingRisk = true;
-    }
+    const a = scores[i];
+    const b = scores[i + 1];
+    if (a !== null && b !== null && a <= DISRUPTIVE_SCORE && b <= DISRUPTIVE_SCORE && gap < MIN_REAL_RECOVERY_DAYS) hasCompoundingRisk = true;
   }
 
   const summary = hasCompoundingRisk

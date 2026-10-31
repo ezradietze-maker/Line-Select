@@ -8,7 +8,7 @@ describe("saying the model back in plain words", () => {
     expect(formatValue(3, { unit: "commutes" })).toBe("3 commutes");
     expect(formatValue(0.5, { unit: "share" })).toBe("50%");
     expect(formatValue(150, { unit: "minute of day" })).toBe("02:30");
-    expect(formatValue(4.25, { unit: "stars (1–5, 5 easiest)" })).toBe("4.3★");
+    expect(formatValue(63.6, { unit: "score (1–100, 100 gentlest)" })).toBe("64");
   });
 
   it("says each measure's value so it reads on its own, next to a priority written as a wish", () => {
@@ -21,12 +21,12 @@ describe("saying the model back in plain words", () => {
     expect(formatValue(13, { id: "longestTripDays", unit: "days" })).toBe("a 13-day longest trip");
     expect(formatValue(11, { id: "maxDutyHours", unit: "hours" })).toBe("an 11-hour longest duty");
     expect(formatValue(4, { id: "allNighterStreak", unit: "duties" })).toBe("4 all-nighters in a row");
-    expect(formatValue(4.3, { id: "avgCircadianStars", unit: "stars (1–5, 5 easiest)" })).toBe("4.3★ on the body clock");
+    expect(formatValue(64, { id: "bodyClockScore", unit: "score (1–100, 100 gentlest)" })).toBe("64/100 on the body clock");
     expect(formatValue(0.4, { id: "dayFlyingShare", unit: "share" })).toBe("40% of the flying in daytime");
     expect(formatValue(2, { id: "tripsJoinedFromHome", unit: "trips" })).toBe("2 trips with a front-end deadhead from home");
     expect(formatValue(-10, { id: "layoverValue", unit: "weighted hours" })).toBe("10 hours more in cities you avoid than in ones you like");
     expect(formatRange(0, 4, { id: "allNighterStreak", unit: "duties" })).toBe("0 to 4 all-nighters in a row");
-    expect(formatRange(2, 4.3, { id: "avgCircadianStars", unit: "stars (1–5, 5 easiest)" })).toBe("2★ to 4.3★ on the body clock");
+    expect(formatRange(40, 64, { id: "bodyClockScore", unit: "score (1–100, 100 gentlest)" })).toBe("40 to 64/100 on the body clock");
     expect(formatRange(4.9, 9.5, { id: "creditPerDayAway", unit: "hours/day" })).toBe("4.9 to 9.5 credit hours a day");
     expect(formatRange(3, 13, { id: "longestTripDays", unit: "days" })).toBe("longest trips of 3 to 13 days");
     expect(formatValue(1, { id: "avgLayoverNightHours", unit: "hours" })).toBe("1 night hour a layover");

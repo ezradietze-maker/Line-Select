@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
 import { CircadianInfo } from "@/components/results/CircadianInfo";
-import { CircadianStars } from "@/components/results/CircadianStars";
+import { BodyClockBadge, BodyClockFact, BodyClockReasons } from "@/components/results/BodyClock";
 import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { TripCommuteFlights } from "@/components/results/TripCommuteFlights";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
@@ -17,7 +17,7 @@ import { planTripSleep, type LayoverSleepPlan } from "@/lib/sleep-plan";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
 import { hubTurnsOf, summarizeHubTurns } from "@/lib/metrics/hub-turns";
 import { Modal } from "@/components/ui/Modal";
-import { computeCircadianAssessment } from "@/lib/circadian";
+import { tripBodyClockScore } from "@/lib/body-clock-score";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { fetchHotel } from "@/lib/hotel-client";
 import { displayHotelName } from "@/lib/hotels/hotel-names";
@@ -170,7 +170,8 @@ function TripHeader({
   /** Credit this trip carries into next month, as the line prints it — on the trip that runs past the month's end. */
   carryOverCreditHours?: number;
 }) {
-  const circadian = computeCircadianAssessment(trip, homeBaseOffsetMinutes);
+  const bodyClock = tripBodyClockScore(trip, homeBaseOffsetMinutes);
+  const [whyOpen, setWhyOpen] = useState(false);
   const block = tripBlockMinutes(trip);
   const deadhead = tripDeadheadBlockMinutes(trip);
   const first = days[0] ? dayStats(days[0]) : null;
@@ -193,8 +194,21 @@ function TripHeader({
         {trip.international && (
           <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">Intl</span>
         )}
-        <CircadianStars assessment={circadian} size="sm" />
+        {bodyClock && <BodyClockBadge result={bodyClock} open={whyOpen} onClick={() => setWhyOpen((o) => !o)} />}
       </div>
+      {bodyClock && whyOpen && (
+        <div className="mt-2 rounded-md border border-hairline bg-surface/70 px-3 py-2">
+          <BodyClockReasons
+            result={bodyClock}
+            facts={
+              <>
+                <BodyClockFact label="Report" value={first?.onDuty ? `${first.onDuty} ${zoneTag(mode)}` : "—"} />
+                <BodyClockFact label="Last in" value={last?.lastIn ? `${last.lastIn} ${zoneTag(mode)}` : "—"} />
+              </>
+            }
+          />
+        </div>
+      )}
 
       <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-4">
         <Readout label="Report" value={first?.onDuty ? `${first.onDuty} ${zoneTag(mode)}` : REPORT_LABELS[trip.reportTime]} note={stamp(startDate, 1)} title={`${REPORT_LABELS[trip.reportTime]} report, ${zone}${startDate ? ` — ${startDate.weekday} ${startDate.day} ${startDate.month}` : ""}`} />

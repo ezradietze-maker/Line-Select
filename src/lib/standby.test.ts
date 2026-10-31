@@ -6,7 +6,6 @@ import { buildLineFactChips } from "@/lib/line-summary";
 import { buildProfile, emptyWeights } from "@/lib/preference-logic";
 import { rankLines } from "@/lib/scoring";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
-import { computeCircadianAssessment } from "@/lib/circadian";
 import { backfillStandby, flyingSchedule, lineStandbyDays, packHasStandby, tripStandbyDays } from "@/lib/standby";
 import { buildEstimatedTrip, pairingToTrip } from "@/lib/pdf-parser/build-bidpack";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
@@ -224,6 +223,5 @@ describe("departures are landings", () => {
     };
     const trip = { ...base, standbyDays: 4, schedule: [...base.schedule, standbyDuty, standbyDuty, standbyDuty, standbyDuty] };
     expect(flyingSchedule(trip)).toHaveLength(base.schedule.length);
-    expect(computeCircadianAssessment(trip, 0)).toEqual(computeCircadianAssessment(base, 0));
   });
 });

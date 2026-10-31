@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  computeCircadianAssessment,
-  computeCumulativeCircadianAssessment,
-  computeHomeBaseOffsetMinutes,
-  hasRealTripPlacement,
-} from "@/lib/circadian";
+import { computeCumulativeCircadianAssessment, computeHomeBaseOffsetMinutes, hasRealTripPlacement } from "@/lib/circadian";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /**
@@ -73,165 +68,25 @@ describe("computeHomeBaseOffsetMinutes", () => {
   });
 });
 
-describe("computeCircadianAssessment", () => {
-  it("returns null for a trip with no verified schedule", () => {
-    expect(computeCircadianAssessment(stubTrip({ schedule: [] }), -300)).toBeNull();
-  });
-
-  it("returns null when the bid pack's home-base offset couldn't be derived", () => {
-    const trip = stubTrip({
-      schedule: [{ reportTimeLocal: "1400", startMinutes: 0, legs: [], layover: null }],
-    });
-    expect(computeCircadianAssessment(trip, null)).toBeNull();
-  });
-
-  it("scores a same-timezone trip with real rest and no red-eye report as minimal disruption", () => {
-    // MEM(-5) -> ATL(-5): zero shift, 20h layover, no report in the 02:00-05:59 window.
-    const trip = stubTrip({
-      schedule: [
-        {
-          reportTimeLocal: "1400",
-          startMinutes: 0,
-          legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "ATL", arrTimeLocal: "1630", arrTimeGmt: "2130", blockHours: 1.5, startMinutes: 60, endMinutes: 150, depTimeZulu: Z, arrTimeZulu: Z }],
-          layover: { city: "ATL", hotelName: "Test Hotel", transportToHotel: null, transportFromHotel: null, hours: 20, startMinutes: 150, endMinutes: 1350 },
-        },
-        {
-          reportTimeLocal: "1030",
-          startMinutes: 1350,
-          legs: [{ flightNumber: "2", equipment: "77", isDeadhead: false, depAirport: "ATL", depTimeLocal: "1115", depTimeGmt: "1615", arrAirport: "MEM", arrTimeLocal: "1130", arrTimeGmt: "1630", blockHours: 1.25, startMinutes: 1425, endMinutes: 1500, depTimeZulu: Z, arrTimeZulu: Z }],
-          layover: null,
-        },
-      ],
-    });
-    const result = computeCircadianAssessment(trip, -300);
-    expect(result).not.toBeNull();
-    expect(result!.stars).toBe(5);
-    expect(result!.timezoneShiftHours).toBe(0);
-    expect(result!.wocEncroachments).toBe(0);
-    expect(result!.shortRestCount).toBe(0);
-  });
-
-  it("penalizes a report inside the 02:00-05:59 Window of Circadian Low", () => {
-    const withoutWocl = stubTrip({
-      schedule: [{ reportTimeLocal: "0900", startMinutes: 0, legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1000", depTimeGmt: "1500", arrAirport: "MEM", arrTimeLocal: "1100", arrTimeGmt: "1600", blockHours: 1, startMinutes: 60, endMinutes: 120, depTimeZulu: Z, arrTimeZulu: Z }], layover: null }],
-    });
-    const withWocl = stubTrip({
-      schedule: [{ reportTimeLocal: "0300", startMinutes: 0, legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1000", depTimeGmt: "1500", arrAirport: "MEM", arrTimeLocal: "1100", arrTimeGmt: "1600", blockHours: 1, startMinutes: 60, endMinutes: 120, depTimeZulu: Z, arrTimeZulu: Z }], layover: null }],
-    });
-    const clean = computeCircadianAssessment(withoutWocl, -300)!;
-    const dirty = computeCircadianAssessment(withWocl, -300)!;
-    expect(dirty.wocEncroachments).toBe(1);
-    expect(clean.wocEncroachments).toBe(0);
-    expect(dirty.stars).toBeLessThanOrEqual(clean.stars);
-  });
-
-  it("penalizes a layover under the FAA Part 117 10-hour rest floor", () => {
-    const trip = stubTrip({
-      schedule: [
-        {
-          reportTimeLocal: "1400",
-          startMinutes: 0,
-          legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "ATL", arrTimeLocal: "1630", arrTimeGmt: "2130", blockHours: 1.5, startMinutes: 60, endMinutes: 150, depTimeZulu: Z, arrTimeZulu: Z }],
-          layover: { city: "ATL", hotelName: "Test Hotel", transportToHotel: null, transportFromHotel: null, hours: 7, startMinutes: 150, endMinutes: 570 },
-        },
-        {
-          reportTimeLocal: "1130",
-          startMinutes: 570,
-          legs: [{ flightNumber: "2", equipment: "77", isDeadhead: false, depAirport: "ATL", depTimeLocal: "1215", depTimeGmt: "1715", arrAirport: "MEM", arrTimeLocal: "1230", arrTimeGmt: "1730", blockHours: 1.25, startMinutes: 630, endMinutes: 705, depTimeZulu: Z, arrTimeZulu: Z }],
-          layover: null,
-        },
-      ],
-    });
-    const result = computeCircadianAssessment(trip, -300)!;
-    expect(result.shortRestCount).toBe(1);
-  });
-
-  it("scores an eastward shift as more disruptive than the same-magnitude westward shift — the real phase-advance/phase-delay asymmetry", () => {
-    function tripWithDestOffset(destOffsetMinutes: number): Trip {
-      // Construct a leg whose printed local/GMT pair implies the given destination offset, landing at a plain midday time so only the shift (not WOCL) is in play.
-      const gmtMinutes = 16 * 60; // arbitrary anchor instant, 16:00 GMT
-      const localMinutes = ((gmtMinutes + destOffsetMinutes) % 1440 + 1440) % 1440;
-      const toHHMM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}${String(m % 60).padStart(2, "0")}`;
-      return stubTrip({
-        schedule: [
-          {
-            reportTimeLocal: "1400",
-            startMinutes: 0,
-            legs: [{ flightNumber: "1", equipment: "77", isDeadhead: false, depAirport: "MEM", depTimeLocal: "1500", depTimeGmt: "2000", arrAirport: "XXX", arrTimeLocal: toHHMM(localMinutes), arrTimeGmt: toHHMM(gmtMinutes), blockHours: 5, startMinutes: 60, endMinutes: 360, depTimeZulu: Z, arrTimeZulu: Z }],
-            layover: { city: "XXX", hotelName: "Test Hotel", transportToHotel: null, transportFromHotel: null, hours: 20, startMinutes: 360, endMinutes: 1560 },
-          },
-          {
-            reportTimeLocal: "1200",
-            startMinutes: 1560,
-            legs: [{ flightNumber: "2", equipment: "77", isDeadhead: false, depAirport: "XXX", depTimeLocal: "1245", depTimeGmt: "1245", arrAirport: "MEM", arrTimeLocal: "1330", arrTimeGmt: "1330", blockHours: 5, startMinutes: 1620, endMinutes: 1920, depTimeZulu: Z, arrTimeZulu: Z }],
-            layover: null,
-          },
-        ],
-      });
-    }
-
-    // Home base MEM at -300 (UTC-5). A destination 6h east (+60) vs 6h west (-660, i.e. -11h, which normalizes to +... ) — use symmetric +/-6h around home offset directly instead.
-    const homeOffset = -300;
-    const eastward = computeCircadianAssessment(tripWithDestOffset(homeOffset + 6 * 60), homeOffset)!;
-    const westward = computeCircadianAssessment(tripWithDestOffset(homeOffset - 6 * 60), homeOffset)!;
-
-    expect(eastward.timezoneShiftHours).toBeGreaterThan(0);
-    expect(westward.timezoneShiftHours).toBeLessThan(0);
-    expect(Math.abs(eastward.timezoneShiftHours)).toBeCloseTo(Math.abs(westward.timezoneShiftHours), 1);
-    // Same magnitude, opposite direction — eastward must score no better than westward.
-    expect(eastward.stars).toBeLessThanOrEqual(westward.stars);
-  });
-});
-
-/** N duty periods, all reporting inside the 02:00-05:59 WOCL window, back to back — legs/layover left empty since only reportTimeLocal matters for this streak. */
-function woclStreakTrip(streakLength: number, overrides: Partial<Trip> = {}): Trip {
+/**
+ * `n` night duties in a row, 22:00–06:00 Memphis time, each a night apart — legs with their real printed times, so the
+ * body-clock score can place them: a run this long is a rough trip.
+ */
+function nightRunTrip(n: number, overrides: Partial<Trip> = {}): Trip {
+  const hhmm = (m: number) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, "0")}${String((((m % 1440) + 1440) % 1440) % 60).padStart(2, "0")}`;
+  // Trip minute 0 is the first report, 21:00 Memphis (02:00 UTC).
+  const leg = (start: number) => ({ flightNumber: "1", equipment: "M1", isDeadhead: false, depAirport: "MEM", depTimeLocal: hhmm(start + 21 * 60), depTimeGmt: hhmm(start + 26 * 60), arrAirport: "MEM", arrTimeLocal: hhmm(start + 29 * 60), arrTimeGmt: hhmm(start + 34 * 60), blockHours: 8, startMinutes: start, endMinutes: start + 480, depTimeZulu: Z, arrTimeZulu: Z });
   return stubTrip({
-    schedule: Array.from({ length: streakLength }, (_, i) => ({
-      reportTimeLocal: "0300",
+    id: `night${n}`,
+    schedule: Array.from({ length: n }, (_, i) => ({
+      reportTimeLocal: "2100",
       startMinutes: i * 1440,
-      legs: [],
-      layover: null,
+      legs: [leg(i * 1440 + 60)],
+      layover: i < n - 1 ? { city: "MEM", hotelName: null, transportToHotel: null, transportFromHotel: null, hours: (1440 - 540) / 60, startMinutes: i * 1440 + 540, endMinutes: (i + 1) * 1440 } : null,
     })),
     ...overrides,
   });
 }
-
-describe("computeCircadianAssessment — personalized consecutive-WOCL tolerance", () => {
-  it("behaves exactly like the generic Math.min(wocEncroachments, 3) cap when no tolerance is given", () => {
-    const result = computeCircadianAssessment(woclStreakTrip(2), -300)!;
-    expect(result.wocEncroachments).toBe(2);
-    expect(result.stars).toBe(4); // penalty 2 -> "<=3" bucket
-  });
-
-  it("stacks night duties flown night after night: four in a row is rough, three is some issues", () => {
-    expect(computeCircadianAssessment(woclStreakTrip(3), -300)!.stars).toBe(3);
-    expect(computeCircadianAssessment(woclStreakTrip(4), -300)!.stars).toBe(2);
-    expect(computeCircadianAssessment(woclStreakTrip(5), -300)!.stars).toBe(1);
-  });
-
-  it("doesn't stack night duties with a day or more off between them — each gets a recovery sleep", () => {
-    const spaced = woclStreakTrip(4);
-    spaced.schedule.forEach((d, i) => (d.startMinutes = i * 2 * 1440));
-    expect(computeCircadianAssessment(spaced, -300)!.stars).toBe(4); // the four nights' count alone, capped at three: as before
-  });
-
-  it("scores a WOCL streak comfortably within a stated tolerance more gently than the generic default", () => {
-    const generic = computeCircadianAssessment(woclStreakTrip(2), -300)!;
-    const tolerant = computeCircadianAssessment(woclStreakTrip(2), -300, 3)!;
-    expect(tolerant.stars).toBeGreaterThan(generic.stars);
-  });
-
-  it("scores a WOCL streak that exceeds a stated tolerance more harshly than the generic default", () => {
-    const generic = computeCircadianAssessment(woclStreakTrip(3), -300)!;
-    const intolerant = computeCircadianAssessment(woclStreakTrip(3), -300, 0)!;
-    expect(intolerant.stars).toBeLessThan(generic.stars);
-  });
-
-  it("names the pilot's own stated tolerance in the summary once it's exceeded and the biggest factor", () => {
-    const result = computeCircadianAssessment(woclStreakTrip(3), -300, 1)!;
-    expect(result.summary).toMatch(/you said you can handle/);
-  });
-});
 
 describe("hasRealTripPlacement", () => {
   it("is false when bidPeriodStart is null, even with every trip's startDayIndex set", () => {
@@ -276,24 +131,11 @@ describe("computeCumulativeCircadianAssessment", () => {
   });
 
   it("flags compounding risk when two meaningfully disruptive trips sit closer together than a real recovery window", () => {
-    // A 4-long WOCL streak with 0 stated tolerance reuses the already-verified
-    // personalization math above to reliably land at 2 stars (penalty 8: 0
-    // within-tolerance + 4 reports * 2 over-tolerance) — well inside the
-    // DISRUPTIVE_STAR_THRESHOLD (<=2), without needing a separately
-    // hand-engineered timezone/rest fixture.
-    const closeTrips = [
-      woclStreakTrip(4, { startDayIndex: 0, days: 2 }),
-      woclStreakTrip(4, { startDayIndex: 3, days: 2 }), // gap = 3 - (0+2) = 1 real day off
-    ];
-    const farTrips = [
-      woclStreakTrip(4, { startDayIndex: 0, days: 2 }),
-      woclStreakTrip(4, { startDayIndex: 10, days: 2 }), // gap = 10 - (0+2) = 8 real days off
-    ];
+    // Six nights in a row: a rough trip on the body clock (well under the disruptive score).
+    const closeTrips = [nightRunTrip(6, { startDayIndex: 0, days: 6 }), nightRunTrip(6, { startDayIndex: 7, days: 6 })]; // 1 real day off
+    const farTrips = [nightRunTrip(6, { startDayIndex: 0, days: 6 }), nightRunTrip(6, { startDayIndex: 14, days: 6 })]; // 8 real days off
 
-    const closeResult = computeCumulativeCircadianAssessment(closeTrips, -300, "2026-01-01", 0);
-    const farResult = computeCumulativeCircadianAssessment(farTrips, -300, "2026-01-01", 0);
-
-    expect(closeResult!.hasCompoundingRisk).toBe(true);
-    expect(farResult!.hasCompoundingRisk).toBe(false);
+    expect(computeCumulativeCircadianAssessment(closeTrips, -300, "2026-01-01")!.hasCompoundingRisk).toBe(true);
+    expect(computeCumulativeCircadianAssessment(farTrips, -300, "2026-01-01")!.hasCompoundingRisk).toBe(false);
   });
 });

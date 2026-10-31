@@ -18,7 +18,7 @@ export const SWEEP_TOPICS: { id: string; label: string; metrics: string[] }[] = 
   { id: "dates", label: "Specific dates off this month", metrics: ["requestedDatesWorked"] },
   { id: "trip-length", label: "Trip length & how often you leave home", metrics: ["avgTripDays", "longestTripDays", "tripCount", "homeDepartures"] },
   { id: "report-times", label: "Report & release times", metrics: ["earliestBaseReport", "latestBaseRelease", "earlyReports"] },
-  { id: "nights", label: "Night flying & red-eyes", metrics: ["redEyeLegs", "nightsWorked", "longestNightStreak", "deepNightHours", "backToBackRedEyes", "avgCircadianStars", "worstCircadianStars"] },
+  { id: "nights", label: "Night flying & red-eyes", metrics: ["redEyeLegs", "nightsWorked", "longestNightStreak", "deepNightHours", "backToBackRedEyes", "bodyClockScore", "hardestTripBodyClock"] },
   { id: "pay", label: "Pay & credit", metrics: ["creditHours", "creditPerDayAway", "effectiveCreditPerDayAway", "creditPerDayAwayFromHome"] },
   { id: "layover-length", label: "Layover length", metrics: ["avgLayoverHours", "layoversInRange", "shortLayovers", "longLayoverHours", "sleepableLayovers", "avgLayoverNightHours"] },
   { id: "long-duties", label: "Long duty days", metrics: ["longDuties", "maxDutyHours"] },

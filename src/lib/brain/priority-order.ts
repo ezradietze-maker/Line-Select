@@ -44,8 +44,8 @@ const FAMILY: Record<string, string> = {
   layoverHoursInCities: "cities",
   layoversInCities: "cities",
   tripsTouchingCities: "cities",
-  avgCircadianStars: "body clock",
-  worstCircadianStars: "body clock",
+  bodyClockScore: "body clock",
+  hardestTripBodyClock: "body clock",
 };
 
 /** How many of the top priorities to put to them. */

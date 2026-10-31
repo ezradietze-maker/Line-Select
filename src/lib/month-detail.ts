@@ -181,7 +181,6 @@ export interface MonthSummary {
   dutyPeriods: number;
   landings: number;
   standbyDays: number;
-  redEyeDays: number;
   earlyReportDays: number;
   earliestDutyStart: string | null;
   latestRelease: string | null;
@@ -746,7 +745,6 @@ function summarize(
     landings: line.totalLandings,
     // The line's own count, not the number of calendar days a standby row touches — a standby that runs overnight lands on two local days.
     standbyDays: lineStandbyDays(line),
-    redEyeDays: days.filter((d) => d.redEye).length,
     earlyReportDays: days.filter((d) => d.earlyReport).length,
     earliestDutyStart: starts[0] ?? null,
     latestRelease: releases[releases.length - 1] ?? null,
