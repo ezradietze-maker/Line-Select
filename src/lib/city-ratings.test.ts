@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cityMarks, cityScoresFromRatings, describeCityRatings, effectiveCityScore, packCityFacts, rateCity, sentimentFromRating } from "@/lib/city-ratings";
+import { bidMonthOf, cityMarks, cityScoreInMonth, cityScoresFromRatings, citySeasonsFromRatings, describeCityRatings, effectiveCityScore, packCityFacts, rateCity, rateCitySeason, sentimentFromRating } from "@/lib/city-ratings";
 import type { BidPack } from "@/types/bidpack";
 
 describe("city ratings", () => {
@@ -50,5 +50,44 @@ describe("cityMarks", () => {
 
   it("lets an older favorite/avoid mark stand only where the pilot gave no grade", () => {
     expect(cityMarks({ DFW: { score: 1 } }, { DFW: "love", SYD: "love" })).toEqual({ DFW: "like", SYD: "love" });
+  });
+});
+
+describe("grades that change with the season", () => {
+  // The ex-pilot: "an Anchorage layover in the summer is great; in the winter, less great"; Honolulu a little less June–August.
+  const ratings = {
+    ANC: { score: 1 as const, seasons: { summer: 2 as const, winter: -1 as const } },
+    HNL: { score: 2 as const, seasons: { months: { months: [6, 7, 8], score: 1 as const } } },
+    MSP: { score: 0 as const, seasons: { winter: -1 as const } },
+  };
+
+  it("grades each month, and marks the calendar with the bid month's grade", () => {
+    expect(cityScoreInMonth("ANC", ratings, {}, 7)).toBe(2);
+    expect(cityScoreInMonth("ANC", ratings, {}, 1)).toBe(-1);
+    expect(cityScoreInMonth("ANC", ratings, {}, 10)).toBe(1);
+    expect(cityMarks(ratings, {}, 1)).toEqual({ ANC: "dislike", HNL: "love", MSP: "dislike" });
+    expect(cityMarks(ratings, {}, 7)).toEqual({ ANC: "love", HNL: "like" });
+    expect(cityMarks(ratings, {})).toEqual({ ANC: "like", HNL: "love" });
+    expect(bidMonthOf({ bidPeriodStart: "2026-09-28", bidPeriodDays: 28 })).toBe(10);
+  });
+
+  it("speaks the brain's scale, and tells it the months", () => {
+    expect(citySeasonsFromRatings(ratings)).toEqual({ ANC: { summer: 1, winter: -0.5 }, HNL: { months: [{ months: [6, 7, 8], score: 0.5 }] }, MSP: { winter: -0.5 } });
+    expect(describeCityRatings({ ANC: ratings.ANC })).toBe("ANC: Like; Love in summer (Jun–Aug), Dislike in winter (Nov–Apr)");
+  });
+
+  it("keeps a city neutral most of the year only while it has a season, and clears one season at a time", () => {
+    let r = rateCitySeason("MSP", "winter", { score: -1 }, {}, {});
+    expect(r).toEqual({ MSP: { score: 0, seasons: { winter: -1 } } });
+    r = rateCitySeason("MSP", "winter", undefined, r, {});
+    expect(r).toEqual({});
+    // Unless they said something about it.
+    expect(rateCitySeason("MSP", "winter", undefined, { MSP: { score: 0, note: "neutral, except in the dead of winter", seasons: { winter: -1 } } }, {})).toEqual({ MSP: { score: 0, note: "neutral, except in the dead of winter" } });
+    r = rateCitySeason("ANC", "winter", undefined, ratings, {});
+    expect(r.ANC).toEqual({ score: 1, seasons: { summer: 2 } });
+    r = rateCitySeason("HNL", "months", undefined, ratings, {});
+    expect(r.HNL).toEqual({ score: 2 });
+    // Rated neutral with a season still on: kept.
+    expect(rateCity("ANC", 0, ratings, {}).ratings.ANC).toMatchObject({ score: 0, seasons: { summer: 2, winter: -1 } });
   });
 });

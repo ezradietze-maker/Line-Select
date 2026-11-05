@@ -304,7 +304,7 @@ export function scoreTripsV2(bidPack: BidPack, model: PilotModel, options: TripS
   const scored: { c: Criterion; ci: number }[] = criteria.flatMap((c, ci) => (applies[ci] ? [{ c, ci }] : []));
   const notApplicable = criteria.filter((_, ci) => !applies[ci]).map((c) => ({ criterionId: c.id, label: c.label }));
 
-  const measured = scored.map(({ c, ci }) => trips.map((t) => measureTrip(defs[ci], t, pack, { ...defs[ci].defaults, ...home, ...c.params, base: pack.ctx.base }, workDays) ?? null));
+  const measured = scored.map(({ c, ci }) => trips.map((t) => measureTrip(defs[ci], t, pack, { ...defs[ci].defaults, ...home, ...c.params, base: pack.ctx.base, bidPeriodStart: pack.ctx.bidPeriodStart }, workDays) ?? null));
   const values = measured.map((ms) => ms.map((m) => m?.value ?? null));
   const shapes = scored.map(({ c, ci }, k) => (tripReadingOf(defs[ci]) === "count" ? countShapeForTrips(c, bidPack, pack, home, values[k]) : c.shape));
   const spreads = scored.map((_, k) => spreadOf(values[k], shapes[k]));

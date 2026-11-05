@@ -166,8 +166,23 @@ export type CityRatingScore = -2 | -1 | 1 | 2;
 /** What makes a layover city good or bad for a pilot — the reasons they gave, beyond the bid pack's own numbers. */
 export type CityReasonTag = "food" | "hotel" | "bed" | "things-to-do" | "friends" | "shopping" | "hassle" | "weather";
 
+/**
+ * A city's grade in the months it's different from its usual one: "Anchorage in the summer is great; in the winter, less
+ * great." Which months are winter and summer in a city comes from its weather (`lib/seasons.ts`).
+ */
+export interface CitySeasonGrades {
+  /** Its dead of winter: the months it's in the 30s °F or colder there. */
+  winter?: CityRatingScore | 0;
+  /** Its summer: the three warmest months, and any month of desert heat (an average high of 102 °F or more). */
+  summer?: CityRatingScore | 0;
+  /** Months the pilot picks themselves (a tourist season), 1 = January; ahead of winter and summer. */
+  months?: { months: number[]; score: CityRatingScore | 0 };
+}
+
 export interface CityRating {
-  score: CityRatingScore;
+  /** Its usual grade. Neutral (0) is kept only for a city whose grade changes with the season. */
+  score: CityRatingScore | 0;
+  seasons?: CitySeasonGrades;
   reasons?: CityReasonTag[];
   /** In their own words. */
   note?: string;

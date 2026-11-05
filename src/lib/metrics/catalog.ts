@@ -3,6 +3,7 @@ import { bidMonthEnd, uncutTrip } from "@/lib/bid-month";
 import { lineBodyClockScore, tripBodyClockScore } from "@/lib/body-clock-score";
 import { dateOfDayIndex, longestDaysOffBlock, singleDaysOff, weekendDaysOff } from "@/lib/days-off-pattern";
 import { lineDutyPeriods } from "@/lib/duty-periods";
+import { freezeShare, monthAt, scoreInMonth, type SeasonScores } from "@/lib/seasons";
 import { isHotelStandbyLeg, tripStandbyDays } from "@/lib/standby";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import { backupsToWork, earliestHome, flightsForTrip, realTravelForTrip, type FlightAnswers, type TripFlights } from "@/lib/flights/trip-travel";
@@ -62,8 +63,12 @@ export interface MetricParams {
   weekdays?: number[];
   /** How much the pilot likes each layover city, −1 (hates it) … +1 (loves it); cities left out are neutral. */
   cityScores?: Record<string, number>;
+  /** A city's grade (−1 … +1) in the months it differs from its usual one in `cityScores` — winter, summer, months the pilot picked (`lib/seasons.ts`). */
+  citySeasons?: Record<string, SeasonScores>;
   /** The pack's base — filled in when a line is measured, not set by the brain. */
   base?: string;
+  /** The bid period's first day, filled in beside `base`, so each layover is graded for its own month. */
+  bidPeriodStart?: string | null;
 }
 
 export interface LineContext {
@@ -160,7 +165,10 @@ const inCities = (l: LayoverFact, p: MetricParams) => !!p.cities?.includes(l.cit
  * pilot who lives there is home, and a commuter's time at base is what the commute and base-standby measures are for.
  * Counted as a layover city, a month of hotel standby at base read as hundreds of hours "in a place you avoid".
  */
-const cityScore = (city: string, p: MetricParams) => (city === p.base ? 0 : Math.max(-1, Math.min(1, p.cityScores?.[city] ?? 0)));
+const cityScore = (city: string, p: MetricParams, month: number | null = null) =>
+  city === p.base ? 0 : Math.max(-1, Math.min(1, scoreInMonth(p.cityScores?.[city] ?? 0, p.citySeasons?.[city], city, month)));
+/** A city's grade at some minutes into a trip — its winter or summer grade when the pilot gave one, else its usual one. */
+const cityScoreOn = (f: TripFacts, city: string, minutes: number, p: MetricParams) => cityScore(city, p, p.citySeasons?.[city] ? monthAt(p, f.trip, minutes, city) : null);
 /** Standby days (one standby row each) at cities matching `where`. */
 const standbyDaysWhere = (trips: TripFacts[], where: (city: string) => boolean) =>
   sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l) && where(l.depAirport)).length));
@@ -829,7 +837,7 @@ export const METRICS: MetricDef[] = [
     category: "city",
     description: "Layover hours weighted by how much the pilot likes each city (−1 … +1): a 48-hour Sydney layover the pilot loves counts +48, 36 hours in a city they avoid counts −36, a city they're neutral on counts 0. Location and length together, in one number.",
     params: ["cityScores"],
-    trip: { measure: (f, p) => f.layovers.reduce((a, l) => a + cityScore(l.city, p) * l.hours, 0), aggregate: "sum" },
+    trip: { measure: (f, p) => f.layovers.reduce((a, l) => a + cityScoreOn(f, l.city, l.start, p) * l.hours, 0), aggregate: "sum" },
   },
   {
     id: "fullDaysInLikedCities",
@@ -839,7 +847,7 @@ export const METRICS: MetricDef[] = [
     description:
       "Full days free on layovers, each weighted by how much the pilot likes the city (−1 … +1). A full day the way pilots count it: land one day (late at night or an hour or two past midnight counts), a full night's sleep, the whole next day free to see the city and eat well, a second full night, and not up before about 6 AM the day after (up around 4 is \"just barely\" one, and still counts). Every free day between two full nights is another, worth as much as the first. For a pilot who talks about \"a full day\" or \"a real day off\" in cities they like; layoverValue is hours in a city, however they fall.",
     params: ["cityScores"],
-    trip: { measure: (f, p) => f.layovers.reduce((a, l) => a + cityScore(l.city, p) * l.fullDays, 0), aggregate: "sum" },
+    trip: { measure: (f, p) => f.layovers.reduce((a, l) => a + cityScoreOn(f, l.city, l.start, p) * l.fullDays, 0), aggregate: "sum" },
   },
   {
     id: "layoverFullDays",
@@ -923,6 +931,16 @@ export const METRICS: MetricDef[] = [
     category: "body",
     description: "Operated legs flying through the night: at least an hour of the local small hours (00:00–05:00) — a leg in just after midnight, or out just before five, isn't one.",
     trip: { measure: (f) => f.operatedLegs.filter((l) => legDeepNightMinutes(l) >= RED_EYE_MINUTES).length, aggregate: "sum" },
+  },
+  {
+    id: "deIcingExposure",
+    label: "Takeoffs in freezing weather",
+    unit: "takeoffs",
+    category: "duty",
+    description:
+      "Operated takeoffs where de-icing is likely, each counted by how often nights freeze at that airport in that month (its climate on record): a January takeoff from Anchorage counts about 1, Memphis about half, Honolulu 0. For a pilot who'd bid around de-icing, snow and freezing rain — the work of a cold-station winter, not the time in the city (that's the city's winter grade).",
+    perMonth: true,
+    trip: { measure: (f, p) => f.operatedLegs.reduce((a, l) => a + (freezeShare(l.from, monthAt(p, f.trip, l.start, l.from) ?? 0) ?? 0), 0), aggregate: "sum" },
   },
   {
     id: "nightsWorked",
@@ -1130,7 +1148,7 @@ export const METRICS: MetricDef[] = [
     category: "standby",
     description: "Hotel standby days, each worth 1 + the pilot's score for that city (−1 … +1): a standby day in a city they love counts 2, a neutral city 1, a city they avoid 0.",
     params: ["cityScores"],
-    line: (_l, trips, _ctx, p) => sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l)).reduce((a, l) => a + Math.max(0, 1 + cityScore(l.depAirport, p)), 0))),
+    line: (_l, trips, _ctx, p) => sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l)).reduce((a, l) => a + Math.max(0, 1 + cityScoreOn(f, l.depAirport, l.startMinutes, p)), 0))),
   },
   {
     id: "baseStandbyDays",

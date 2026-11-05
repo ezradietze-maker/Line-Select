@@ -4,8 +4,11 @@ import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { NoteBox } from "@/components/ui/NoteBox";
 import { airportCityName } from "@/lib/airport-city-names";
-import { CITY_RATING_STEPS, CITY_REASONS, effectiveCityScore, type CityFacts } from "@/lib/city-ratings";
+import { CITY_RATING_STEPS, CITY_REASONS, effectiveCityScore, hasSeasons, type CityFacts } from "@/lib/city-ratings";
+import { monthName, monthsWords, seasonMonths } from "@/lib/seasons";
 import type { CityRating, CityRatingScore, CityReasonTag, CitySentiment } from "@/types/preferences";
+
+export type CitySeasonChange = (code: string, season: "winter" | "summer" | "months", value: { score: CityRatingScore | 0; months?: number[] } | undefined) => void;
 
 /** Search box only appears once the list is long enough that scanning it by eye stops being practical. */
 const SEARCH_THRESHOLD = 16;
@@ -19,6 +22,8 @@ interface CityRatingStepProps {
   onRate: (code: string, score: CityRatingScore | 0) => void;
   onReasons: (code: string, reasons: CityReasonTag[]) => void;
   onNote: (code: string, note: string) => void;
+  /** A grade for one season (`CitySeasonGrades`); without it, the step has no seasons. */
+  onSeason?: CitySeasonChange;
   eyebrow?: string;
   /** Cities the bidding story itself named, already marked — said out loud so the marks aren't a mystery. */
   fromStory?: string[];
@@ -45,6 +50,87 @@ function CityNote({ value, onChange, label }: { value: string; onChange: (v: str
   );
 }
 
+function GradePills({ value, onPick, label, small }: { value: CityRatingScore | 0 | undefined; onPick: (s: CityRatingScore | 0 | undefined) => void; label: string; small?: boolean }) {
+  return (
+    <div className="grid grid-cols-5 gap-1" role="group" aria-label={label}>
+      {CITY_RATING_STEPS.map((step) => {
+        const on = value === step.score;
+        return (
+          <button
+            key={step.score}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onPick(on ? undefined : step.score)}
+            className={`rounded-md border px-1 ${small ? "py-1 text-[11px]" : "py-1.5 text-xs"} font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+              on ? GRADE_STYLE[step.score] : "border-border text-ink-muted hover:border-border-strong hover:text-ink"
+            }`}
+          >
+            {step.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * A city's grade in its seasons, where it differs from its usual one: "an Anchorage layover in the summer is great; in
+ * the winter, less great." Winter and summer are the city's own, from its weather — the months are shown so the pilot
+ * knows what they're grading — and a pilot can pick months of their own (Honolulu's tourist season).
+ */
+function SeasonGrades({ code, name, rating, onSeason }: { code: string; name: string; rating: CityRating | undefined; onSeason: (season: "winter" | "summer" | "months", value: { score: CityRatingScore | 0; months?: number[] } | undefined) => void }) {
+  const months = seasonMonths(code);
+  const seasons = rating?.seasons;
+  const picked = seasons?.months?.months ?? [];
+  const [pickedDraft, setPickedDraft] = useState<number[]>(picked);
+  const shownMonths = picked.length ? picked : pickedDraft;
+  const toggleMonth = (m: number) => {
+    const next = shownMonths.includes(m) ? shownMonths.filter((x) => x !== m) : [...shownMonths, m];
+    setPickedDraft(next);
+    if (seasons?.months) onSeason("months", next.length ? { score: seasons.months.score, months: next } : undefined);
+  };
+  const row = (title: string, when: string, value: CityRatingScore | 0 | undefined, onPick: (s: CityRatingScore | 0 | undefined) => void) => (
+    <div>
+      <p className="mb-1 text-xs text-ink-muted">
+        <span className="font-medium text-ink">{title}</span> {when}
+      </p>
+      <GradePills value={value} onPick={onPick} label={`${name} in ${title.toLowerCase()}`} small />
+    </div>
+  );
+  return (
+    <div className="mt-2 space-y-3 rounded-md border border-hairline bg-canvas/40 p-2.5">
+      {months?.summer.length ? row("Summer", `· ${monthsWords(months.summer)} there`, seasons?.summer, (s) => onSeason("summer", s === undefined ? undefined : { score: s })) : null}
+      {months?.winter.length ? (
+        row("Winter", `· ${monthsWords(months.winter)}, when most nights freeze`, seasons?.winter, (s) => onSeason("winter", s === undefined ? undefined : { score: s }))
+      ) : months ? (
+        <p className="text-xs text-ink-faint">No winter to speak of here &mdash; nights rarely freeze.</p>
+      ) : null}
+      <div>
+        <p className="mb-1 text-xs text-ink-muted">
+          <span className="font-medium text-ink">Months you pick</span> · a tourist season, say
+        </p>
+        <div className="mb-1.5 grid grid-cols-6 gap-1 sm:grid-cols-12" role="group" aria-label={`Months for ${name}`}>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+            const on = shownMonths.includes(m);
+            return (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggleMonth(m)}
+                className={`rounded border px-1 py-1 text-[11px] transition-colors ${on ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
+              >
+                {monthName(m)}
+              </button>
+            );
+          })}
+        </div>
+        {shownMonths.length > 0 && <GradePills value={seasons?.months?.score} onPick={(s) => onSeason("months", s === undefined ? undefined : { score: s, months: shownMonths })} label={`${name} in ${monthsWords(shownMonths)}`} small />}
+      </div>
+    </div>
+  );
+}
+
 function CityRow({
   facts,
   score,
@@ -52,6 +138,7 @@ function CityRow({
   onRate,
   onReasons,
   onNote,
+  onSeason,
 }: {
   facts: CityFacts;
   score: CityRatingScore | 0;
@@ -59,8 +146,11 @@ function CityRow({
   onRate: (s: CityRatingScore | 0) => void;
   onReasons: (r: CityReasonTag[]) => void;
   onNote: (n: string) => void;
+  onSeason?: (season: "winter" | "summer" | "months", value: { score: CityRatingScore | 0; months?: number[] } | undefined) => void;
 }) {
   const name = airportCityName(facts.code);
+  const seasonal = hasSeasons(rating?.seasons);
+  const [seasonsOpen, setSeasonsOpen] = useState(seasonal);
   const reasons = rating?.reasons ?? [];
   const length = facts.minHours === facts.maxHours ? hrs(facts.medianHours) : `usually ${hrs(facts.medianHours)} (${hrs(facts.minHours)}–${hrs(facts.maxHours)})`;
   return (
@@ -77,24 +167,22 @@ function CityRow({
       </div>
       {facts.hotel && <p className="mt-0.5 truncate text-xs text-ink-muted">{facts.hotel}</p>}
 
-      <div className="mt-2 grid grid-cols-5 gap-1" role="group" aria-label={`Rate ${name ?? facts.code}`}>
-        {CITY_RATING_STEPS.map((step) => {
-          const on = step.score === score;
-          return (
-            <button
-              key={step.score}
-              type="button"
-              aria-pressed={on}
-              onClick={() => onRate(on ? 0 : step.score)}
-              className={`rounded-md border px-1 py-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
-                on ? GRADE_STYLE[step.score] : "border-border text-ink-muted hover:border-border-strong hover:text-ink"
-              }`}
-            >
-              {step.label}
-            </button>
-          );
-        })}
+      <div className="mt-2">
+        <GradePills value={score} onPick={(s) => onRate(s ?? 0)} label={`Rate ${name ?? facts.code}`} />
       </div>
+      {onSeason && (
+        <>
+          <button
+            type="button"
+            aria-expanded={seasonsOpen}
+            onClick={() => setSeasonsOpen((o) => !o)}
+            className="mt-1.5 text-xs text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink"
+          >
+            {seasonal ? `Changes with the season${seasonsOpen ? "" : " ▸"}` : seasonsOpen ? "Changes with the season" : "Changes with the season? ▸"}
+          </button>
+          {seasonsOpen && <SeasonGrades code={facts.code} name={name ?? facts.code} rating={rating} onSeason={onSeason} />}
+        </>
+      )}
 
       {score !== 0 && (
         <div className="mt-3 space-y-2">
@@ -159,7 +247,7 @@ function RatedSummary({ cities, scoreOf }: { cities: CityFacts[]; scoreOf: (code
  * pilot knows which cities have their food, their friends, and a bed that
  * doesn't hurt their back.
  */
-export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons, onNote, eyebrow, fromStory = [], homeCity }: CityRatingStepProps) {
+export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons, onNote, onSeason, eyebrow, fromStory = [], homeCity }: CityRatingStepProps) {
   const [query, setQuery] = useState("");
   const showSearch = cities.length > SEARCH_THRESHOLD;
   const q = query.trim().toLowerCase();
@@ -222,6 +310,7 @@ export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons,
               onRate={(s) => onRate(c.code, s)}
               onReasons={(r) => onReasons(c.code, r)}
               onNote={(n) => onNote(c.code, n)}
+              onSeason={onSeason ? (season, value) => onSeason(c.code, season, value) : undefined}
             />
           ))}
         </ul>

@@ -37,7 +37,7 @@ import { BidPackHeader, packRanges, StripKey, StripViewToggle, stripLayout } fro
 import { useStripView } from "@/lib/strip-view-storage";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { packColumnCount, packColumns } from "@/lib/bidpack-row";
-import { cityMarks } from "@/lib/city-ratings";
+import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { cachedFlightAnswers, lookUpFlights } from "@/lib/flights/client";
@@ -534,9 +534,9 @@ export function ResultsView({
       exportable.map((r) => ({
         lineScore: r,
         rank: rankById.get(r.line.id) ?? 0,
-        note: lineFactsText(buildLineFactChips(r.line, profile)),
+        note: lineFactsText(buildLineFactChips(r.line, profile, bidMonthOf(bidPack))),
       })),
-    [exportable, rankById, profile]
+    [exportable, rankById, profile, bidPack]
   );
   const shortlistEntries = useMemo<BidOrderEntry[]>(
     () => bidOrderEntries.filter((e) => starredSet.has(e.lineScore.line.id)),
@@ -1045,7 +1045,7 @@ export function ResultsView({
           homeBaseOffsetMinutes={homeBaseOffsetMinutes}
           bidPeriodStart={bidPack.bidPeriodStart}
           bidPeriodDays={bidPack.bidPeriodDays}
-          cityPreferences={cityMarks(profile.cityRatings, profile.cityPreferences)}
+          cityPreferences={cityMarks(profile.cityRatings, profile.cityPreferences, bidMonthOf(bidPack))}
           departureOptions={monthDepartureOptions(bidPack.base, profile, flights)}
           onClose={() => setCompareIds([])}
         />

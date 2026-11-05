@@ -78,6 +78,7 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   hardestTripBodyClock: "{n}/100 on the body clock for the hardest trip",
   bodyClockScore: "{n}/100 on the body clock",
   redEyeLegs: ["{n} red-eye leg", "{n} red-eye legs"],
+  deIcingExposure: ["{n} takeoff in freezing weather", "{n} takeoffs in freezing weather", "no takeoffs in freezing weather"],
   nightsWorked: ["{n} night worked", "{n} nights worked"],
   nightHubTurnRuns: ["{n} night hub turn in a run of 3+ nights", "{n} night hub turns in runs of 3+ nights", "no weeks of night hub turns"],
   longestHubTurnRun: ["night hub turns one at a time", "{n} night hub turns in a row", "no night hub turns"],

@@ -1,5 +1,6 @@
 import type { BidPack } from "@/types/bidpack";
-import type { CityMark, CityRating, CityRatingScore, CityReasonTag, CitySentiment } from "@/types/preferences";
+import { monthsWords, seasonMonths, seasonOf, type SeasonScores } from "@/lib/seasons";
+import type { CityMark, CityRating, CityRatingScore, CityReasonTag, CitySeasonGrades, CitySentiment } from "@/types/preferences";
 
 /**
  * Graded layover-city ratings: the interview's city step, where a pilot says
@@ -53,7 +54,8 @@ export function rateCity(
   const nextSentiments = { ...sentiments };
   const prev = ratings[code];
   if (score === 0) {
-    delete nextRatings[code];
+    if (hasSeasons(prev?.seasons)) nextRatings[code] = { ...prev, score: 0 };
+    else delete nextRatings[code];
     delete nextSentiments[code];
   } else {
     nextRatings[code] = { ...prev, score };
@@ -65,24 +67,102 @@ export function rateCity(
 /**
  * Every marked city, four ways — what the calendar, trips and card chips show. Built from the pilot's own grades, so a
  * city they like isn't drawn as one they love; an older favorite/avoid mark (story, last cycle) stands where they gave
- * no grade.
+ * no grade. With a `month` (the bid month's), a city takes its grade for that month — Anchorage loved in July.
  */
-export function cityMarks(ratings: Record<string, CityRating> | undefined, sentiments: Record<string, CitySentiment> = {}): Record<string, CityMark> {
+export function cityMarks(ratings: Record<string, CityRating> | undefined, sentiments: Record<string, CitySentiment> = {}, month: number | null = null): Record<string, CityMark> {
   const marks: Record<string, CityMark> = {};
   for (const [code, s] of Object.entries(sentiments)) marks[code] = s;
-  for (const [code, r] of Object.entries(ratings ?? {})) {
-    if (r.score >= 2) marks[code] = "love";
-    else if (r.score === 1) marks[code] = "like";
-    else if (r.score === -1) marks[code] = "dislike";
-    else if (r.score <= -2) marks[code] = "avoid";
+  for (const code of Object.keys(ratings ?? {})) {
+    const score = cityScoreInMonth(code, ratings ?? {}, sentiments, month);
+    if (score >= 2) marks[code] = "love";
+    else if (score === 1) marks[code] = "like";
+    else if (score === -1) marks[code] = "dislike";
+    else if (score <= -2) marks[code] = "avoid";
     else delete marks[code];
   }
   return marks;
 }
 
+/** The month (1 = January) a bid period is mostly in — its middle. Null without a start date. */
+export function bidMonthOf(pack: { bidPeriodStart: string | null; bidPeriodDays: number }): number | null {
+  if (!pack.bidPeriodStart) return null;
+  const d = new Date(`${pack.bidPeriodStart}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + Math.floor(pack.bidPeriodDays / 2));
+  return d.getUTCMonth() + 1;
+}
+
 /** −1 … +1 per city, the scale the pilot brain's layover measures use. */
 export function cityScoresFromRatings(ratings: Record<string, CityRating>): Record<string, number> {
   return Object.fromEntries(Object.entries(ratings).map(([code, r]) => [code, r.score / 2]));
+}
+
+/** A rating's seasonal grades on the same −1 … +1 scale, for the cities whose grade changes with the season. */
+export function citySeasonsFromRatings(ratings: Record<string, CityRating>): Record<string, SeasonScores> {
+  const out: Record<string, SeasonScores> = {};
+  for (const [code, r] of Object.entries(ratings)) {
+    const s = r.seasons;
+    if (!hasSeasons(s)) continue;
+    out[code] = {
+      ...(s.winter !== undefined ? { winter: s.winter / 2 } : {}),
+      ...(s.summer !== undefined ? { summer: s.summer / 2 } : {}),
+      ...(s.months?.months.length ? { months: [{ months: s.months.months, score: s.months.score / 2 }] } : {}),
+    };
+  }
+  return out;
+}
+
+/** Whether a city's grade changes in any season. */
+export function hasSeasons(s: CitySeasonGrades | undefined): s is CitySeasonGrades {
+  return !!s && (s.winter !== undefined || s.summer !== undefined || !!s.months?.months.length);
+}
+
+/** A city's grade in a month (1 = January): its seasonal grade when it has one then, else its usual one. */
+export function cityScoreInMonth(code: string, ratings: Record<string, CityRating>, sentiments: Record<string, CitySentiment>, month: number | null): CityRatingScore | 0 {
+  const usual = effectiveCityScore(code, ratings, sentiments);
+  const s = ratings[code]?.seasons;
+  if (!hasSeasons(s) || month === null) return usual;
+  if (s.months?.months.includes(month)) return s.months.score;
+  const season = seasonOf(code, month);
+  if (season === "winter" && s.winter !== undefined) return s.winter;
+  if (season === "summer" && s.summer !== undefined) return s.summer;
+  return usual;
+}
+
+/** Change one season's grade (undefined clears it). A city left with no seasons, a neutral grade and nothing said about it is no longer kept. */
+export function rateCitySeason(
+  code: string,
+  season: "winter" | "summer" | "months",
+  value: { score: CityRatingScore | 0; months?: number[] } | undefined,
+  ratings: Record<string, CityRating>,
+  sentiments: Record<string, CitySentiment>
+): Record<string, CityRating> {
+  const prev = ratings[code] ?? { score: effectiveCityScore(code, ratings, sentiments) };
+  const seasons: CitySeasonGrades = { ...prev.seasons };
+  if (season === "months") {
+    if (value && value.months?.length) seasons.months = { months: [...value.months].sort((a, b) => a - b), score: value.score };
+    else delete seasons.months;
+  } else if (value) seasons[season] = value.score;
+  else delete seasons[season];
+  const next = { ...ratings };
+  if (!hasSeasons(seasons)) {
+    const rest = { ...prev };
+    delete rest.seasons;
+    // A neutral city goes, unless the pilot said something about it.
+    if (rest.score === 0 && !rest.note?.trim() && !rest.reasons?.length) delete next[code];
+    else next[code] = rest;
+  } else next[code] = { ...prev, seasons };
+  return next;
+}
+
+/** "; Love in summer (Jun–Aug), Dislike in winter (Nov–Apr)" — a city's seasonal grades, with the months they fall in there. */
+export function seasonWords(code: string, s: CitySeasonGrades | undefined, label: (score: number) => string): string {
+  if (!hasSeasons(s)) return "";
+  const months = seasonMonths(code);
+  const parts: string[] = [];
+  if (s.summer !== undefined) parts.push(`${label(s.summer)} in summer${months?.summer.length ? ` (${monthsWords(months.summer)})` : ""}`);
+  if (s.winter !== undefined) parts.push(`${label(s.winter)} in winter${months?.winter.length ? ` (${monthsWords(months.winter)})` : " (it has none)"}`);
+  if (s.months?.months.length) parts.push(`${label(s.months.score)} in ${monthsWords(s.months.months)}`);
+  return `; ${parts.join(", ")}`;
 }
 
 /** The ratings as the pilot brain reads them, with the pilot's reasons — one block of the interview. */
@@ -91,7 +171,7 @@ export function describeCityRatings(ratings: Record<string, CityRating>): string
   const reason = (t: CityReasonTag) => CITY_REASONS.find((x) => x.tag === t)?.label.toLowerCase() ?? t;
   return Object.entries(ratings)
     .sort((a, b) => b[1].score - a[1].score)
-    .map(([code, r]) => `${code}: ${label(r.score)}${r.reasons?.length ? ` (${r.reasons.map(reason).join(", ")})` : ""}${r.note?.trim() ? ` — "${r.note.trim()}"` : ""}`)
+    .map(([code, r]) => `${code}: ${label(r.score)}${seasonWords(code, r.seasons, label)}${r.reasons?.length ? ` (${r.reasons.map(reason).join(", ")})` : ""}${r.note?.trim() ? ` — "${r.note.trim()}"` : ""}`)
     .join("\n");
 }
 

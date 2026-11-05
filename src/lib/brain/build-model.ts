@@ -20,7 +20,7 @@ import { pilotWordsForPrompt } from "./pilot-words";
  */
 
 /** Bumped whenever the prompt or schema changes, so cached evaluations of an older brain aren't mistaken for this one. */
-export const BRAIN_PROMPT_VERSION = 23;
+export const BRAIN_PROMPT_VERSION = 24;
 
 export interface InterviewExchange {
   /** 0 = the opening story. */

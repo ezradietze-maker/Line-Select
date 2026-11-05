@@ -1,9 +1,30 @@
-import { cityScoresFromRatings } from "@/lib/city-ratings";
+import { cityScoresFromRatings, citySeasonsFromRatings } from "@/lib/city-ratings";
+import type { SeasonScores } from "@/lib/seasons";
 import type { CityRating } from "@/types/preferences";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 
 /** Measures that take graded city feelings. */
 const CITY_SCORED = new Set(["layoverValue", "fullDaysInLikedCities", "standbyDaysByCity"]);
+
+/** One grade on the city scale (Love → Like), as the pilot-facts reader counts a seasonal change. */
+const GRADE_STEP = 0.5;
+const clamp = (x: number) => Math.max(-1, Math.min(1, x));
+
+/**
+ * Each city's grades in its seasons, for one criterion: the pilot's own seasonal grades from the city screen, else what
+ * they said ("in the winter, less great"), as a change from the city's usual grade in that criterion.
+ */
+function seasonsFor(usual: Record<string, number>, rated: Record<string, SeasonScores>, spoken: NonNullable<PilotModel["facts"]>["citySeasons"]): Record<string, SeasonScores> {
+  const out: Record<string, SeasonScores> = {};
+  for (const s of spoken ?? []) {
+    if (rated[s.city]) continue;
+    const grade = clamp((usual[s.city] ?? 0) + s.change * GRADE_STEP);
+    const e = (out[s.city] ??= {});
+    if (s.season === "months") e.months = [...(e.months ?? []), { months: s.months, score: grade }];
+    else e[s.season] = grade;
+  }
+  return { ...out, ...rated };
+}
 
 /**
  * A pilot's own city grades beat anything the brain inferred from how they
@@ -12,25 +33,37 @@ const CITY_SCORED = new Set(["layoverValue", "fullDaysInLikedCities", "standbyDa
  * skipped the step). A pilot who rated cities but whose model has no
  * layover-location criterion gets one — they took the time to rate, so
  * location matters to them.
+ *
+ * Grades that change with the season go on with them (`citySeasons`): the pilot's own from the screen, else the ones
+ * read from their words.
  */
 export function applyCityRatings(model: PilotModel, ratings: Record<string, CityRating> | undefined): PilotModel {
   const graded = cityScoresFromRatings(ratings ?? {});
-  if (Object.keys(graded).length === 0) return model;
-  const criteria: Criterion[] = model.criteria.map((c) => (CITY_SCORED.has(c.metric) ? { ...c, params: { ...c.params, cityScores: { ...c.params?.cityScores, ...graded } } } : c));
+  const rated = citySeasonsFromRatings(ratings ?? {});
+  const spoken = model.facts?.citySeasons;
+  if (Object.keys(graded).length === 0 && !spoken?.length) return model;
+  const withGrades = (c: Criterion): Criterion => {
+    const cityScores = { ...c.params?.cityScores, ...graded };
+    const citySeasons = seasonsFor(cityScores, rated, spoken);
+    return { ...c, params: { ...c.params, cityScores, ...(Object.keys(citySeasons).length ? { citySeasons } : {}) } };
+  };
+  const criteria: Criterion[] = model.criteria.map((c) => (CITY_SCORED.has(c.metric) ? withGrades(c) : c));
   // A full-day criterion is a layover-location one too: city feelings are counted once.
   if (!criteria.some((c) => c.metric === "layoverValue" || c.metric === "fullDaysInLikedCities") && Object.keys(graded).length >= 2) {
-    criteria.push({
-      id: "cityRatings",
-      metric: "layoverValue",
-      params: { cityScores: graded },
-      shape: { kind: "more" },
-      tier: "medium",
-      weight: 0.4,
-      confidence: 0.9,
-      label: "Layovers in the cities you rated highest",
-      evidence: [{ quote: "Your city ratings", turn: 0 }],
-      status: "settled",
-    });
+    criteria.push(
+      withGrades({
+        id: "cityRatings",
+        metric: "layoverValue",
+        params: { cityScores: graded },
+        shape: { kind: "more" },
+        tier: "medium",
+        weight: 0.4,
+        confidence: 0.9,
+        label: "Layovers in the cities you rated highest",
+        evidence: [{ quote: "Your city ratings", turn: 0 }],
+        status: "settled",
+      })
+    );
   }
   return { ...model, criteria };
 }

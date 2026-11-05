@@ -40,7 +40,7 @@ import { pilotContextFor } from "@/lib/brain/context";
 import { applyPins } from "@/lib/brain/profile-model";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
 import { applyPriorityReview, type PriorityVerdict } from "@/lib/brain/review";
-import { cityScoresFromRatings, describeCityRatings, effectiveCityScore, packCityFacts, sentimentFromRating } from "@/lib/city-ratings";
+import { cityScoresFromRatings, describeCityRatings, effectiveCityScore, hasSeasons, packCityFacts, rateCitySeason, sentimentFromRating } from "@/lib/city-ratings";
 import { resolveBidPosition } from "@/lib/forecast/forecast";
 import { buildBrainOutcome } from "@/lib/learning/brain-learning";
 import { bidPercentile, commuteGroupOf, seniorityBandOf } from "@/lib/learning/cohort";
@@ -309,7 +309,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const out: Record<string, CityRating> = {};
     for (const c of cityFacts) {
       const score = effectiveCityScore(c.code, cityRatings, cityPreferences);
-      if (score !== 0) out[c.code] = { ...cityRatings[c.code], score };
+      // A city neutral most of the year is kept when its grade changes with the season.
+      if (score !== 0 || hasSeasons(cityRatings[c.code]?.seasons)) out[c.code] = { ...cityRatings[c.code], score };
     }
     return out;
   }
@@ -807,7 +808,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
             onRate={(code, score: CityRatingScore | 0) => {
               setCityRatings((prev) => {
                 const next = { ...prev };
-                if (score === 0) delete next[code];
+                if (score === 0 && !hasSeasons(prev[code]?.seasons)) delete next[code];
                 else next[code] = { ...prev[code], score };
                 return next;
               });
@@ -827,6 +828,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
               const implied = effectiveCityScore(code, cityRatings, cityPreferences);
               if (implied !== 0) setCityRatings((prev) => ({ ...prev, [code]: { ...prev[code], score: prev[code]?.score ?? implied, note } }));
             }}
+            onSeason={(code, season, value) => setCityRatings((prev) => rateCitySeason(code, season, value, prev, cityPreferences))}
             eyebrow={eyebrow("Layover cities")}
             fromStory={Object.keys(storySuggested).filter((c) => c !== homeCity && !cityRatings[c] && cityPreferences[c] === storySuggested[c])}
             homeCity={homeCity && cityPreferences[homeCity] === "love" ? homeCity : undefined}

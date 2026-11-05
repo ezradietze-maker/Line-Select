@@ -21,7 +21,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { buildPackRow, type PackColumn } from "@/lib/bidpack-row";
 import { buildLineTimeline } from "@/lib/line-timeline";
 import type { StripViewMode } from "@/lib/strip-view-storage";
-import { cityMarks } from "@/lib/city-ratings";
+import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
 import { lineCarryOver, monthLine } from "@/lib/bid-month";
 import { groupDepartures } from "@/lib/metrics/departures";
@@ -164,14 +164,15 @@ export const LineCard = memo(function LineCard({
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: line.id });
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
 
-  const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences), [profile.cityRatings, profile.cityPreferences]);
+  const bidMonth = bidMonthOf({ bidPeriodStart, bidPeriodDays });
+  const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences, bidMonth), [profile.cityRatings, profile.cityPreferences, bidMonth]);
   const departureOptions = useMemo(() => monthDepartureOptions(homeBase, profile, flights), [homeBase, profile, flights]);
   // The line's bid month, and what its last trip carries into the next (counted apart, as the pack prints C/O).
   const month = useMemo(() => monthLine(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);
   const carryOver = useMemo(() => lineCarryOver(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);
   // The line's body-clock score, for its Circadian tab (worked out once a pilot opens it) — its trips whole, as ranked.
   const bodyClock = useMemo(() => (expanded && activeTab === "circadian" ? lineBodyClockScore(line.trips, homeBaseOffsetMinutes) : null), [expanded, activeTab, line.trips, homeBaseOffsetMinutes]);
-  const chips = useMemo(() => buildLineFeatures(month, profile, lineScore.criterionResults), [month, profile, lineScore.criterionResults]);
+  const chips = useMemo(() => buildLineFeatures(month, profile, lineScore.criterionResults, undefined, bidMonth), [month, profile, lineScore.criterionResults, bidMonth]);
   // Times the pilot leaves home: trips flown back to back, never home between, count once — as the calendar's summary counts them.
   const departureGroups = useMemo(() => groupDepartures(month.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [month.trips, bidPeriodStart, departureOptions]);
   const departures = departureGroups.length;

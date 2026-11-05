@@ -10,7 +10,7 @@ import { pilotContextFor } from "@/lib/brain/context";
 import { describeModel } from "@/lib/brain/describe";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
 import { baseModelOf, describeChanges, withModel } from "@/lib/brain/profile-model";
-import { packCityFacts, sentimentFromRating } from "@/lib/city-ratings";
+import { packCityFacts, rateCitySeason, sentimentFromRating } from "@/lib/city-ratings";
 import { commuteGroupOf } from "@/lib/learning/cohort";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
@@ -123,7 +123,8 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
     const ratings = { ...(profile.cityRatings ?? {}) };
     const prefs: Record<string, CitySentiment> = { ...profile.cityPreferences };
     if (score === 0 && !patch) {
-      delete ratings[code];
+      if (ratings[code]?.seasons) ratings[code] = { ...ratings[code], score: 0 };
+      else delete ratings[code];
       delete prefs[code];
     } else {
       const s = (score || ratings[code]?.score || (prefs[code] === "love" ? 2 : prefs[code] === "avoid" ? -2 : 0)) as CityRatingScore | 0;
@@ -241,6 +242,7 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
           onRate={(code, score) => rateCity(code, score)}
           onReasons={(code, reasons) => rateCity(code, 0, { reasons })}
           onNote={(code, n) => rateCity(code, 0, { note: n })}
+          onSeason={(code, season, value) => apply(profile, { cityRatings: rateCitySeason(code, season, value, profile.cityRatings ?? {}, profile.cityPreferences) })}
         />
       </section>
     </div>

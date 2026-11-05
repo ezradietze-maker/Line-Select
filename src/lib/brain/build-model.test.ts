@@ -76,4 +76,25 @@ describe("applyCityRatings", () => {
     expect(applyCityRatings(bare, { HNL: { score: 2 }, SYD: { score: 1 } }).criteria.map((c) => c.metric)).toEqual(["creditHours", "layoverValue"]);
     expect(applyCityRatings(bare, {})).toBe(bare);
   });
+
+  it("puts grades that change with the season on the city measures: the screen's own, else the ones read from their words", async () => {
+    const { applyCityRatings } = await import("@/lib/brain/city-ratings");
+    const { model } = parsePilotModel(raw([crit({ id: "lv", metric: "layoverValue", params: { ...blankParams, cityScores: [{ city: "ANC", score: 0.5 }, { city: "HNL", score: 1 }] } })]));
+    const spoken = {
+      ...model,
+      facts: {
+        values: {},
+        citySeasons: [
+          { city: "ANC", season: "winter" as const, months: [], change: -1 },
+          { city: "HNL", season: "months" as const, months: [6, 7, 8], change: -0.5 },
+        ],
+        evidence: [],
+      },
+    };
+    // From their words: a change from the city's usual grade, in grades of 0.5.
+    expect(applyCityRatings(spoken, {}).criteria[0].params?.citySeasons).toEqual({ ANC: { winter: 0 }, HNL: { months: [{ months: [6, 7, 8], score: 0.75 }] } });
+    // Their grade on the screen moves what the change starts from; their seasons on the screen replace the words'.
+    const rated = applyCityRatings(spoken, { ANC: { score: 2 }, HNL: { score: 2, seasons: { months: { months: [7], score: -1 } } } });
+    expect(rated.criteria[0].params?.citySeasons).toEqual({ ANC: { winter: 0.5 }, HNL: { months: [{ months: [7], score: -0.5 }] } });
+  });
 });

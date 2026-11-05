@@ -14,13 +14,16 @@ import { coordinatesForAirport } from "@/lib/airport-coordinates";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { greatCircleNm } from "@/lib/globe/routes";
 import { cityDaylight, cityStays, hoursFromBase, offsetWords, type CityStay } from "@/lib/city-guide";
-import { cityMarks, CITY_REASONS, packCityFacts, type CityFacts } from "@/lib/city-ratings";
+import { bidMonthOf, cityMarks, CITY_RATING_STEPS, CITY_REASONS, hasSeasons, packCityFacts, seasonWords, type CityFacts } from "@/lib/city-ratings";
+import { monthsWords, seasonMonths } from "@/lib/seasons";
 import { fetchHotel } from "@/lib/hotel-client";
 import { cityName } from "@/lib/city-names";
 import { forecastWeather, typicalWeather, type DailyWeather, type TypicalWeather } from "@/lib/weather-client";
 import type { BidPack } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
 import type { CityMark, PreferenceProfile } from "@/types/preferences";
+
+const gradeLabel = (score: number) => CITY_RATING_STEPS.find((x) => x.score === score)?.label ?? String(score);
 
 const LABEL = "font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint";
 
@@ -67,7 +70,8 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
   const [sort, setSort] = useState<SortBy>("lines");
   const now = useNow();
   const facts = useMemo(() => (bidPack ? packCityFacts(bidPack) : []), [bidPack]);
-  const marks = useMemo(() => cityMarks(profile?.cityRatings, profile?.cityPreferences), [profile?.cityRatings, profile?.cityPreferences]);
+  const bidMonth = bidPack ? bidMonthOf(bidPack) : null;
+  const marks = useMemo(() => cityMarks(profile?.cityRatings, profile?.cityPreferences, bidMonth), [profile?.cityRatings, profile?.cityPreferences, bidMonth]);
 
   if (!bidPack) {
     return (
@@ -158,6 +162,8 @@ function CityPanel({ facts: f, bidPack, profile, mark, now }: { facts: CityFacts
   const today = zone ? DateTime.fromMillis(now, { zone }).toISODate()! : null;
   const sun = today ? cityDaylight(f.code, today) : null;
   const rating = profile?.cityRatings?.[f.code];
+  const seasonal = hasSeasons(rating?.seasons);
+  const bidMonth = bidMonthOf(bidPack);
   const fullDays = stays.reduce((a, s) => a + s.fullDays, 0);
 
   return (
@@ -229,8 +235,10 @@ function CityPanel({ facts: f, bidPack, profile, mark, now }: { facts: CityFacts
           ) : (
             <span className="text-ink-muted">You haven&rsquo;t rated {f.code}.</span>
           )}
+          {seasonal && bidMonth !== null ? <span className="text-ink-muted"> in {DateTime.utc(2026, bidMonth, 1).toFormat("LLLL")}</span> : null}
           {rating?.reasons?.length ? <span className="text-ink-muted"> &middot; {rating.reasons.map((r) => CITY_REASONS.find((x) => x.tag === r)?.label ?? r).join(", ")}</span> : null}
         </div>
+        {seasonal && <p className="mt-1 text-sm text-ink-muted">Usually {gradeLabel(rating!.score)}{seasonWords(f.code, rating!.seasons, gradeLabel)}.</p>}
         {rating?.note && <p className="mt-1.5 rounded-md bg-canvas/60 px-3 py-2 text-sm italic text-ink-muted">&ldquo;{rating.note}&rdquo;</p>}
         <Link href="/preferences" className="mt-2 inline-block text-sm font-medium text-accent underline decoration-dotted underline-offset-4">
           {mark ? "Change your rating" : "Rate it"} in Preferences
@@ -297,8 +305,20 @@ function Weather({ code, bidPack, stays, now }: { code: string; bidPack: BidPack
           ))}
         </ul>
       )}
-      <p className="mt-1.5 text-[11px] text-ink-faint">Weather from Open-Meteo.</p>
+      <SeasonsHere code={code} />
+      <p className="mt-1.5 text-[11px] text-ink-faint">Weather from Open-Meteo; seasons from NOAA station records, 2006–2025.</p>
     </section>
+  );
+}
+
+/** Which months are winter and summer here — what a seasonal grade covers in this city. */
+function SeasonsHere({ code }: { code: string }) {
+  const s = seasonMonths(code);
+  if (!s) return null;
+  return (
+    <p className="mt-1.5 text-sm text-ink-muted">
+      {s.winter.length ? <>Winter here is {monthsWords(s.winter)}, when most nights freeze</> : <>No winter to speak of here &mdash; nights rarely freeze</>}; summer is {monthsWords(s.summer)}.
+    </p>
   );
 }
 

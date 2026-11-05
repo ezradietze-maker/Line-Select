@@ -279,3 +279,25 @@ describe("release times", () => {
     expect(measure("latestBaseRelease", night, p)).toBe(29 * 60 + 19);
   });
 });
+
+describe("seasons", () => {
+  const inMonth = (start: string) => prepareMetrics({ ...pack, bidPeriodStart: start });
+  const january = inMonth("2027-01-04");
+  const july = inMonth("2027-07-05");
+
+  it("grades each layover for its own month: Honolulu loved, a little less in the pilot's own months", () => {
+    const p = { cityScores: { HNL: 1 }, citySeasons: { HNL: { months: [{ months: [6, 7, 8], score: 0.5 }] } } };
+    expect(measure("layoverValue", line, january, p)).toBeCloseTo(20, 5);
+    expect(measure("layoverValue", line, july, p)).toBeCloseTo(10, 5);
+    // Without seasons a city is graded the same all year.
+    expect(measure("layoverValue", line, july, { cityScores: { HNL: 1 } })).toBeCloseTo(20, 5);
+  });
+
+  it("counts operated takeoffs by how often nights freeze where they leave from", () => {
+    // Out of LAX, Anchorage, Incheon and Guangzhou: Anchorage and Incheon freeze most January nights, none in July.
+    const jan = measure("deIcingExposure", line, january)!;
+    expect(jan).toBeGreaterThan(1.6);
+    expect(jan).toBeLessThan(2);
+    expect(measure("deIcingExposure", line, july)).toBe(0);
+  });
+});

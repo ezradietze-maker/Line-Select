@@ -51,7 +51,7 @@ function compareToTarget(
  * sentences, one of them on 167 lines). Numbers and city codes a pilot can
  * verify against the bid pack beat adjectives they have to take on faith.
  */
-export function buildLineFactChips(line: Line, profile: PreferenceProfile): LineFactChip[] {
+export function buildLineFactChips(line: Line, profile: PreferenceProfile, month: number | null = null): LineFactChip[] {
   const chips: LineFactChip[] = [];
   const int = (n: number) => String(Math.round(n));
 
@@ -78,8 +78,8 @@ export function buildLineFactChips(line: Line, profile: PreferenceProfile): Line
   }
 
   const lineCities = Array.from(new Set(line.trips.flatMap((t) => t.layoverCities)));
-  // The pilot's own grades, four ways: a city they only like isn't called a favorite.
-  const marks = cityMarks(profile.cityRatings, profile.cityPreferences);
+  // The pilot's own grades, four ways: a city they only like isn't called a favorite. In the bid month's season.
+  const marks = cityMarks(profile.cityRatings, profile.cityPreferences, month);
   const loved = lineCities.filter((c) => marks[c] === "love");
   const liked = lineCities.filter((c) => marks[c] === "like");
   const disliked = lineCities.filter((c) => marks[c] === "dislike" || marks[c] === "avoid");
@@ -107,12 +107,12 @@ const CITY_METRICS = new Set(["layoverValue", "layoverHoursInCities", "layoversI
  * better than the pack's average line on, in the order they weigh them: "♥ HNL ♡ IND", "3 departures from home",
  * "18 days off". Anyone else gets the plain facts (`buildLineFactChips`) that aren't against what they asked for.
  */
-export function buildLineFeatures(line: Line, profile: PreferenceProfile, criterionResults: CriterionResult[] | undefined, limit = FEATURES_SHOWN): LineFactChip[] {
+export function buildLineFeatures(line: Line, profile: PreferenceProfile, criterionResults: CriterionResult[] | undefined, limit = FEATURES_SHOWN, month: number | null = null): LineFactChip[] {
   if (!criterionResults?.length) {
-    const chips = buildLineFactChips(line, profile).filter((c) => c.tone !== "warn");
+    const chips = buildLineFactChips(line, profile, month).filter((c) => c.tone !== "warn");
     return [...chips.filter((c) => c.tone === "good"), ...chips.filter((c) => c.tone !== "good")].slice(0, limit);
   }
-  const marks = cityMarks(profile.cityRatings, profile.cityPreferences);
+  const marks = cityMarks(profile.cityRatings, profile.cityPreferences, month);
   const lineCities = Array.from(new Set(line.trips.flatMap((t) => t.layoverCities)));
   const features: LineFactChip[] = [];
   const said = new Set<string>();
