@@ -44,6 +44,7 @@ export const AVOIDED: { phrase: RegExp; say: string }[] = [
   { phrase: /\b(?:trips?|lines?)\s+(?:(?:you|i|we|they)\s+)?(?:can\s+)?join\b/i, say: "trips that start with a deadhead from home (a front-end deadhead)" },
   { phrase: /\blayover value\b/i, say: "the layovers themselves, or time in cities they like" },
   { phrase: /\bweighted hours\b/i, say: "hours in cities they like" },
+  { phrase: /\bweighted days\b/i, say: "full days in cities they like" },
   { phrase: /\b(?:utility|utilities|criterion|criteria|metrics?)\b/i, say: "what they care about — their priorities" },
 ];
 
@@ -63,7 +64,7 @@ export function insteadOf(found: string): string {
 /** The word list, for a prompt: each term with what it means, then the phrases never to use. */
 export function pilotWordsForPrompt(): string {
   const terms = PILOT_WORDS.map((w) => `- ${w.term}${w.alsoSaid?.length ? ` (also "${w.alsoSaid.join('", "')}")` : ""}: ${w.means}`).join("\n");
-  const avoided = ['"joins from", "trips you can join"', '"layover value"', '"weighted hours"', '"utility", "criterion", "metric"'].join(", ");
+  const avoided = ['"joins from", "trips you can join"', '"layover value"', '"weighted hours", "weighted days"', '"utility", "criterion", "metric"'].join(", ");
   return `${terms}\nNever say ${avoided} — made-up words no pilot uses. A trip doesn't "join from" a city: it starts with a front-end deadhead from there. Say what the layovers are like ("time in cities you like"), not their "value".`;
 }
 

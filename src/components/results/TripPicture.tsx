@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { largestShape, LegBars, rowShape, useMeasuredWidth } from "@/components/results/LegBars";
 import { Zone } from "@/components/results/TripMarks";
 import { ChevronDownIcon } from "@/components/ui/icons";
+import { fullDayDates } from "@/lib/full-days";
 import { displayHotelName } from "@/lib/hotels/hotel-names";
 import { labeledStayPieces, layoverHours } from "@/lib/leg-bars";
 import { dateLabel, tripDayDate } from "@/lib/trip-day-stats";
@@ -67,6 +68,11 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
   const [trackRef, width] = useMeasuredWidth<HTMLDivElement>(compact ? 240 : 520);
   const shape = useMemo(() => largestShape(days.map((d) => rowShape(d.segments, width))), [days, width]);
   const [open, setOpen] = useState<Set<number>>(new Set());
+  // Full days in its layover cities, by date — placed from the trip's own report at its base.
+  const fullDays = useMemo(() => {
+    const base = trip.schedule[0]?.legs[0]?.depAirport;
+    return base ? fullDayDates(trip, { bidPeriodStart, base }) : new Map<string, { city: string; barely: boolean }>();
+  }, [trip, bidPeriodStart]);
   if (days.length === 0) return null;
   const base = trip.schedule[0]?.legs[0]?.depAirport;
   const hours = compact ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24];
@@ -116,6 +122,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
           // On the base's calendar, the last days of a trip running past the month's end are the next month's.
           const nextMonth = carryOver && mode === "local" && day.dayNumber > days.length - carryOver.days ? carryOver.month : null;
           const start = dutyStartOf(day);
+          const fullDay = mode === "local" && day.date ? fullDays.get(day.date) : undefined;
           const isOpen = open.has(day.dayNumber);
           const row = (
             <>
@@ -133,6 +140,11 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
                   <span className={`truncate font-mono text-[10px] font-semibold ${start.kind === "report" ? "text-report" : "text-gt"}`} title={start.kind === "report" ? "Report" : "Hotel pickup — the van from the layover hotel"}>
                     {start.kind === "report" ? "Rpt" : "P/U"} {start.clock}
                     <Zone mode={mode} />
+                  </span>
+                )}
+                {fullDay && (
+                  <span className="truncate text-[10px] font-semibold text-layover" title={`A full day free in ${fullDay.city}${fullDay.barely ? " — just barely: up before 6 the next morning" : ""}`}>
+                    Full day{fullDay.barely ? <span className="font-normal">, barely</span> : null}
                   </span>
                 )}
               </span>

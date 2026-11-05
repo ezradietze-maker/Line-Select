@@ -150,3 +150,47 @@ export function modelInPilotWords(model: PilotModel | null | undefined): PilotMo
   if (!changed) return model;
   return { ...model, synopsis, criteria: model.criteria.map((c) => ({ ...c, label: fix(c.label) })) };
 }
+
+/** A pilot judging a layover by a whole free day in the city: "a full day in a decent layover city", "the whole day to explore". */
+const FULL_DAY_WORDS = /\b(full|whole|entire) days?\b|\ball day to (explore|see|walk|eat)/i;
+/**
+ * Of the points a pilot's city feelings carry, the share that goes to full days there (`fullDaysInLikedCities`) when
+ * they judge layovers that way; the rest stays on hours in the city (`layoverValue`). One set of feelings, counted
+ * once, read two ways. The ex-pilot's 20 readings (Oct 2026), lines only / with his trip picks / trip picks right:
+ * hours only 98.20% / 97.82% / 100 of 100; 10% 98.49 / 98.20 / 100; 15% 98.49 / 98.27 / 100; 20% 98.45 / 98.27 / 97;
+ * full days only 94.58 / 95.18 / 80. A full day is a plus, not the whole of it: he took a trip with no full day over
+ * one with "just barely one" in a city he loves, for the commute it saved.
+ */
+export const FULL_DAY_SHARE = 0.15;
+
+/**
+ * A pilot who talks about full days in the cities they like ("a full day in a decent layover city … quite a bit more
+ * appealing") gets them counted: their city priority shares its weight with full days in those cities
+ * (`FULL_DAY_SHARE`), with the same city grades. A model with both already is set to that share; full days with no
+ * hours priority gain one. `pilotSaid` is the pilot's own answers. Safe to run on any model, any number of times.
+ */
+export function modelToFullDays(model: PilotModel, pilotSaid: string[]): PilotModel;
+export function modelToFullDays(model: PilotModel | null | undefined, pilotSaid: string[]): PilotModel | null | undefined;
+export function modelToFullDays(model: PilotModel | null | undefined, pilotSaid: string[]): PilotModel | null | undefined {
+  if (!model) return model;
+  const hours = model.criteria.find((c) => c.metric === "layoverValue");
+  const days = model.criteria.find((c) => c.metric === "fullDaysInLikedCities");
+  if (!days && (!hours || !pilotSaid.some((t) => FULL_DAY_WORDS.test(t)))) return model;
+  const total = (hours?.weight ?? 0) + (days?.weight ?? 0);
+  const cityScores = { ...days?.params?.cityScores, ...hours?.params?.cityScores };
+  const base = (hours ?? days)!;
+  const asHours = { ...base, ...(hours ?? { id: `${base.id}-hours`, label: "Time in cities you like" }), metric: "layoverValue", params: { ...hours?.params, cityScores }, weight: total * (1 - FULL_DAY_SHARE) };
+  const asDays = {
+    ...base,
+    ...(days ?? { id: `${base.id}-full-days`, label: "Full days in cities you like", shape: { kind: "more" as const } }),
+    metric: "fullDaysInLikedCities",
+    params: { ...days?.params, cityScores },
+    weight: total * FULL_DAY_SHARE,
+  };
+  delete (asDays as { hardLimit?: unknown }).hardLimit;
+  // The hours priority keeps its place (or takes the full days' place, when there was none).
+  const criteria = model.criteria.flatMap((c) => (c === (hours ?? days) ? [asHours] : c === days ? [] : [c]));
+  // Full days sit right after the hours priority they share with.
+  const at = criteria.indexOf(asHours);
+  return { ...model, criteria: [...criteria.slice(0, at + 1), asDays, ...criteria.slice(at + 1)] };
+}

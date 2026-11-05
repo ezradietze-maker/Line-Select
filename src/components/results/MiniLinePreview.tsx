@@ -235,6 +235,11 @@ function Cell({
             <span className="hidden @min-[4.75rem]:inline"> days</span> off
           </span>
         )}
+        {day.fullDay && (
+          <span className="whitespace-nowrap text-[10px] font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
+            Full day{day.fullDay.barely ? <span className="font-normal">, barely</span> : null}
+          </span>
+        )}
         {!isOff && day.finish && <End finish={day.finish} mode={mode} />}
       </span>
     </button>
@@ -264,6 +269,7 @@ function MonthKeyInfo() {
             <li><span className="font-medium text-ink">The lines in each day.</span> Each flight is a <span className="font-medium text-leg">blue</span> line with a tick at each end, as long as the flight and placed by the time of day &mdash; midnight at the left edge, midnight at the right, on the base&rsquo;s clock. A <span className="font-medium text-deadhead">magenta</span> line is a deadhead, riding along. The cities are written over the ends; where two legs meet, the city between them is written once. A flight still in the air at midnight runs off the right edge and on into the next day. The grey band around the lines is the whole duty period, report to release, so a long wait between two short flights shows. Small ticks mark 6am, noon and 6pm.</li>
             <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be 24 hours at home between them, counting the trip home and back (<span className="font-mono">Rpt 02:30L · 1h47 turn</span> is a straight turn at base). For a pilot who lives at base, only trips that turn within a few hours.</li>
             <li><span className="font-medium text-ink">Green line.</span> A layover, from landing to the next show, under the flying, with the city and its length to the hour (<span className="font-mono font-semibold text-layover">SEA 16h</span>) &mdash; on its longest day, or at the top of the day when it&rsquo;s too short for the words. <span className="text-good">♥</span> is a city you love, <span className="text-good">♡</span> one you like, an amber <span className="text-warn">✕</span> one you dislike and a red <span className="text-danger">✕</span> one you avoid.</li>
+            <li><span className="font-medium text-ink">Full day.</span> A whole day free in a layover city: in the hotel by about 2 AM the night before, and a full night after it &mdash; not up before about 6 the next morning (&ldquo;barely&rdquo; when it&rsquo;s earlier, up as early as about 3:15).</li>
             <li><span className="font-medium text-ink">END MEM 19:05L.</span> Where and when the trip ends, on its last day. <span className="font-mono">+1</span> means just after midnight &mdash; the bid pack still counts the next day as off.</li>
             <li><span className="font-medium text-ink">Violet day.</span> Hotel standby (<span className="font-mono">SBY</span>) &mdash; on call at the hotel, paid, not flying.</li>
             <li><span className="font-medium text-ink">Dashed empty day.</span> A day off; a run of them is labeled on its first day (&ldquo;4 days off&rdquo;).</li>
@@ -290,6 +296,10 @@ export function MonthLegend({ className = "" }: { className?: string }) {
           <span aria-hidden className="absolute inset-x-0 bottom-0 h-[2px] rounded-b-[3px] bg-carry" />
         </span>
         Carry-over: flown in the next bid month, not counted in this one
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <span className="text-[10px] font-semibold text-layover">Full day</span>
+        A whole day free in a layover city, between two full nights
       </span>
       <span className="inline-flex items-center gap-1">
         <span className="rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar">
@@ -413,6 +423,12 @@ function DayDetail({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
           {day.baseNote && <p className="mt-1 text-ink">{day.baseNote}</p>}
           {day.hubNote && <p className="mt-1 text-ink">{day.hubNote}</p>}
           {day.homeNote && <p className="mt-1 text-ink">{day.homeNote}</p>}
+          {day.fullDay && (
+            <p className="mt-1 text-ink">
+              A full day in {day.fullDay.city}: in the hotel the night before, the whole day free, and a full night after
+              {day.fullDay.barely ? " — just barely, up before 6 the next morning." : "."}
+            </p>
+          )}
           <p className="mt-1">
             {day.tripNumber ? `Trip #${day.tripNumber}` : "Trip"}, day {day.tripDay} of {day.tripDayCount}
             {day.tripCreditHours !== null ? ` · ${hm(day.tripCreditHours * 60)} credit for the trip` : ""}.
@@ -549,6 +565,7 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
         <dt className="text-[10px] uppercase tracking-wide text-ink-faint">
           Layovers · {s.layoverNights} night{s.layoverNights === 1 ? "" : "s"}
           {s.internationalLayoverNights > 0 ? ` (${s.internationalLayoverNights} international)` : ""}
+          {s.fullDays > 0 ? ` · ${s.fullDays} full day${s.fullDays === 1 ? "" : "s"}` : ""}
         </dt>
         <dd className="mt-0.5 flex flex-wrap gap-x-2.5 gap-y-0.5 text-xs font-medium text-ink">
           {cities.length === 0 && <span className="text-ink-muted">none</span>}

@@ -2,7 +2,7 @@ import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
 import type { Region } from "@/lib/metrics/trip-facts";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type CriterionTier, type PilotModel, type PilotThread } from "@/types/pilot-model";
 import { structuredCall, type BrainUsage, type Effort } from "./llm";
-import { modelToBodyClock, modelToDepartures, modelToHomePay, modelToHubTurns } from "./model-upgrade";
+import { modelToBodyClock, modelToDepartures, modelToFullDays, modelToHomePay, modelToHubTurns } from "./model-upgrade";
 import { applyPilotFacts, readPilotFacts, type PilotFacts } from "./pilot-facts";
 import { pilotWordsForPrompt } from "./pilot-words";
 
@@ -20,7 +20,7 @@ import { pilotWordsForPrompt } from "./pilot-words";
  */
 
 /** Bumped whenever the prompt or schema changes, so cached evaluations of an older brain aren't mistaken for this one. */
-export const BRAIN_PROMPT_VERSION = 22;
+export const BRAIN_PROMPT_VERSION = 23;
 
 export interface InterviewExchange {
   /** 0 = the opening story. */
@@ -69,6 +69,7 @@ HOW TO BUILD THE MODEL
    - A standing weekly commitment ("home Wednesday nights", "Saturdays are soccer") → weekdaysOff {weekdays:[...]}; weekends alone → weekendDaysOff.
    - A stated limit ("two in a row is my absolute limit", "nothing over 12 hours, period") is a hardLimit at that number, plus a shape that prefers staying well under it.
    - How they feel about layover cities → ONE graded cityScores list (−1 hates … +1 loves). An ordered list of favorites gets descending scores (e.g. 1.0, 0.9, 0.8 …, never below 0.3 for a city they called a favorite); "fine"/"OK" ≈ 0.2; "not my favorite" ≈ −0.3; "hard to avoid, but I minimize it" ≈ −0.5; "X sucks", "never" ≈ −1. A statement about a group ("I can't stand any of the cities in that country") goes on every city of that group in this pack — except where they said something more specific about one city ("that hub is hard to avoid; the less time there the better"), which sets that city's score instead. Use it in layoverValue — location and length together, the main layover criterion for any pilot with city feelings — and in standbyDaysByCity when they like standby. Don't also bind layoversInCities/layoverHoursInCities for the same feelings — not even when they talk about "stops" in a city they dislike as well as time there: a disliked city is already counted, hour by hour, in its grade, and a second criterion counts it twice.
+   - A full day in a city — land, a full night's sleep, the whole next day free, a second full night, not up before about 6 AM ("a full day in a decent layover city", "all day to explore and eat well") — is how many pilots judge a layover. For a pilot with city feelings, keep them in layoverValue as above: the app counts full days in those cities beside it (fullDaysInLikedCities) from their words, so don't bind that yourself. A pilot who wants real days off on the road wherever they are, with no feelings about cities → layoverFullDays (more); one who minds layovers with "just time to eat and sleep" → eatAndSleepLayovers (less).
    - "Longer layovers are better" → longLayoverHours (no ceiling), not avgLayoverHours.
    - "Single-leg duties", "two legs is nearly twice the work" → extraLegs; a strong dislike of 3+ leg duties → dutiesWithManyLegs {n:3} as well.
    - A layover in a commuter's home city is a night at home — when the pack has those, layoversInCities {cities: their home airports} is usually worth a criterion.
@@ -432,7 +433,8 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
     readPilotFacts({ pilotContext: input.pilotContext, exchanges: input.exchanges, apiKey: input.apiKey, model: input.model }).catch(() => null),
   ]);
   const parsed = parsePilotModel(data, input.prior);
-  const read: PilotModel = { ...parsed.model, readUpTo: input.exchanges.length };
+  // Full days in the cities they like share the city priority, when they judge layovers that way (`modelToFullDays`).
+  const read: PilotModel = { ...modelToFullDays(parsed.model, input.exchanges.map((e) => e.answer)), readUpTo: input.exchanges.length };
   const model = factsRead ? applyPilotFacts(read, factsRead.facts) : read;
   const dropped = parsed.dropped;
   const reasoning = Object.fromEntries(data.criteria.map((c) => [c.id, c.reasoning]));

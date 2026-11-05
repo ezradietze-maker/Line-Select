@@ -20,7 +20,7 @@ export const SWEEP_TOPICS: { id: string; label: string; metrics: string[] }[] = 
   { id: "report-times", label: "Report & release times", metrics: ["earliestBaseReport", "latestBaseRelease", "earlyReports"] },
   { id: "nights", label: "Night flying & red-eyes", metrics: ["redEyeLegs", "nightsWorked", "longestNightStreak", "deepNightHours", "backToBackRedEyes", "bodyClockScore", "hardestTripBodyClock"] },
   { id: "pay", label: "Pay & credit", metrics: ["creditHours", "creditPerDayAway", "effectiveCreditPerDayAway", "creditPerDayAwayFromHome"] },
-  { id: "layover-length", label: "Layover length", metrics: ["avgLayoverHours", "layoversInRange", "shortLayovers", "longLayoverHours", "sleepableLayovers", "avgLayoverNightHours"] },
+  { id: "layover-length", label: "Layover length", metrics: ["avgLayoverHours", "layoversInRange", "shortLayovers", "longLayoverHours", "sleepableLayovers", "avgLayoverNightHours", "layoverFullDays", "eatAndSleepLayovers"] },
   { id: "long-duties", label: "Long duty days", metrics: ["longDuties", "maxDutyHours"] },
   { id: "legs", label: "Legs per duty & landings", metrics: ["extraLegs", "dutiesWithManyLegs", "singleLegDutyShare", "avgLegsPerDuty", "maxLegsInADuty", "landings"] },
   { id: "deadheads", label: "Deadheads & commuting", metrics: ["frontDeadheadTrips", "backDeadheadTrips", "doubleDeadheadTrips", "departureCommutes", "baseHotelNights", "homeAwayHours", "tripsJoinedFromHome", "tripsEndingStraightHome", "shortenableHours", "tripsShortenableByADay"] },

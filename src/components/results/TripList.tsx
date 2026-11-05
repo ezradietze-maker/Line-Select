@@ -175,6 +175,8 @@ function TripHeader({
   const [whyOpen, setWhyOpen] = useState(false);
   const block = tripBlockMinutes(trip);
   const deadhead = tripDeadheadBlockMinutes(trip);
+  // Full days free in its layover cities, the way pilots count them (`fullDaysOf`).
+  const fullDays = computeTripFacts(trip).layovers.filter((l) => l.fullDays > 0);
   const first = days[0] ? dayStats(days[0]) : null;
   const last = days.length ? dayStats(days[days.length - 1]) : null;
   // Each column's own real date — crossing the date line, the last column's date isn't simply the first plus the count.
@@ -219,6 +221,13 @@ function TripHeader({
         <Readout label="DH block" value={deadhead > 0 ? hm(deadhead) : "none"} tone={deadhead > 0 ? "text-deadhead" : "text-readout"} />
         <Readout label="Duty periods" value={String(trip.dutyPeriods ?? trip.schedule.length)} />
         <Readout label="Landings" value={String(trip.landings)} />
+        {fullDays.length > 0 && (
+          <Readout
+            label="Full days"
+            value={fullDays.map((l) => `${l.fullDays} ${l.city}${l.barelyFullDay ? " (barely)" : ""}`).join(", ")}
+            title="Whole days free in a layover city: in the hotel the night before, a full night after, not up before about 6 the next morning"
+          />
+        )}
       </div>
       {carryOver && (
         <p className="mt-2 rounded-md border border-carry/40 bg-carry-soft px-2.5 py-1.5 font-mono text-xs text-readout">

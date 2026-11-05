@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelInPilotWords, modelToBodyClock, modelToDepartures, modelToHomePay, withHomeFacts } from "@/lib/brain/model-upgrade";
+import { FULL_DAY_SHARE, modelInPilotWords, modelToBodyClock, modelToDepartures, modelToFullDays, modelToHomePay, withHomeFacts } from "@/lib/brain/model-upgrade";
 import { migrateProfile } from "@/lib/profile-migration";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -136,5 +136,36 @@ describe("modelToBodyClock", () => {
   it("runs on every saved profile as it loads", () => {
     const p = migrateProfile({ pilotModel: model(false, [crit("easy", "avgCircadianStars", { shape: { kind: "more" } })]) } as Partial<PreferenceProfile>);
     expect(p.pilotModel!.criteria[0].metric).toBe("bodyClockScore");
+  });
+});
+
+describe("modelToFullDays", () => {
+  const cities = { HNL: 1, ANC: 0.5, CAN: -0.8 };
+  const hours = crit("cities", "layoverValue", { shape: { kind: "more" }, weight: 1, params: { cityScores: cities } });
+  const said = ["Layovers that allow for multiple sleep periods, a full day in a decent layover city, are quite a bit more appealing."];
+
+  it("shares the city priority with full days in those cities, for a pilot who judges layovers that way", () => {
+    const up = modelToFullDays(model(true, [hours, crit("pay", "creditPerDayAway")]), said);
+    expect(up.criteria.map((c) => c.metric)).toEqual(["layoverValue", "fullDaysInLikedCities", "creditPerDayAway"]);
+    expect(up.criteria[0].weight).toBeCloseTo(1 - FULL_DAY_SHARE, 10);
+    expect(up.criteria[1]).toMatchObject({ weight: FULL_DAY_SHARE, params: { cityScores: cities }, shape: { kind: "more" }, label: "Full days in cities you like" });
+    // Once is enough: run again, nothing moves.
+    expect(modelToFullDays(up, said)).toEqual(up);
+  });
+
+  it("leaves a pilot who never talked about full days as they were", () => {
+    const m = model(true, [hours]);
+    expect(modelToFullDays(m, ["Long layovers in cities I like are great."])).toBe(m);
+  });
+
+  it("sets a reading that bound full days itself to the same share, and gives full days alone their hours", () => {
+    const days = crit("days", "fullDaysInLikedCities", { shape: { kind: "more" }, weight: 0.6, params: { cityScores: cities } });
+    const both = modelToFullDays(model(true, [hours, days]), []);
+    expect(both.criteria.map((c) => c.metric)).toEqual(["layoverValue", "fullDaysInLikedCities"]);
+    expect(both.criteria[0].weight).toBeCloseTo(1.6 * (1 - FULL_DAY_SHARE), 10);
+    expect(both.criteria[1].weight).toBeCloseTo(1.6 * FULL_DAY_SHARE, 10);
+    const alone = modelToFullDays(model(true, [days]), []);
+    expect(alone.criteria.map((c) => c.metric)).toEqual(["layoverValue", "fullDaysInLikedCities"]);
+    expect(alone.criteria[0].params?.cityScores).toEqual(cities);
   });
 });

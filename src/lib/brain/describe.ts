@@ -71,6 +71,8 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   layoverHoursInCities: "{n} hours on layover in those cities",
   layoversInCities: ["{n} layover in those cities", "{n} layovers in those cities"],
   longLayoverHours: "{n} hours on long layovers",
+  layoverFullDays: ["{n} full day off on layovers", "{n} full days off on layovers", "no full days off on layovers"],
+  eatAndSleepLayovers: ["{n} layover with only time to eat and sleep", "{n} layovers with only time to eat and sleep", "a full day on every layover"],
   tripsTouchingCities: ["{n} trip through those cities", "{n} trips through those cities"],
   layoverShareInRegions: "{n} of layovers in those regions",
   hardestTripBodyClock: "{n}/100 on the body clock for the hardest trip",
@@ -150,6 +152,12 @@ function readsOf(def: ValueDef, oneTrip = false): [string, string, string?] {
 export function formatValue(value: number, def: ValueDef, oneTrip = false): string {
   if (def.unit === "weighted hours")
     return value >= 0 ? `${Math.round(value)} hours in cities you like` : `${Math.round(-value)} hours more in cities you avoid than in ones you like`;
+  if (def.unit === "weighted days") {
+    // Days weighted by how much the city is liked: said to the nearest whole day, as a pilot would count them.
+    const n = Math.round(Math.abs(value));
+    if (value >= 0) return n === 0 ? (value > 0 ? "less than a full day in cities you like" : "no full days in cities you like") : `${n} full day${n === 1 ? "" : "s"} in cities you like`;
+    return n === 0 ? "less than a full day more in cities you avoid" : `${n} full day${n === 1 ? "" : "s"} more in cities you avoid than in ones you like`;
+  }
   const [one, many, none] = readsOf(def, oneTrip);
   if (value === 0 && !MEASURED_UNITS.has(def.unit)) return none ?? many.replace("{n}", "no");
   const carried = CARRIED_COUNTS.has(def.unit) && !Number.isInteger(value);
@@ -166,14 +174,14 @@ function withArticle(text: string): string {
 
 /** A spread of values, said once: "0 to 3 extra legs", "40 to 64/100 on the body clock", "4.9 to 9.5 credit hours a day". */
 export function formatRange(lo: number, hi: number, def: ValueDef): string {
-  if (lo === hi || def.unit === "weighted hours") return lo === hi ? formatValue(lo, def) : `${formatValue(lo, def)} to ${formatValue(hi, def)}`;
+  if (lo === hi || def.unit === "weighted hours" || def.unit === "weighted days") return lo === hi ? formatValue(lo, def) : `${formatValue(lo, def)} to ${formatValue(hi, def)}`;
   const spread = `${numberOf(lo, def)} to ${numberOf(hi, def)}`;
   return withArticle(((def.id && RANGE_READS[def.id]) ?? readsOf(def)[1]).replace("{n}", spread));
 }
 
 /** A bare amount in the measure's unit, for a tolerance or a step: "2 days", "1.5 hours". */
 function amountOf(value: number, def: Pick<MetricDef, "unit">): string {
-  if (def.unit === "share" || def.unit === "minute of day" || def.unit === "weighted hours") return numberOf(value, def);
+  if (def.unit === "share" || def.unit === "minute of day" || def.unit === "weighted hours" || def.unit === "weighted days") return numberOf(value, def);
   if (def.unit.startsWith("score")) return `${Math.round(value)} points`;
   if (def.unit === "hours/day") return `${round(value)} credit hours a day`;
   return `${round(value)} ${value === 1 ? (SINGULAR[def.unit] ?? def.unit) : def.unit}`;

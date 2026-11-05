@@ -3,7 +3,7 @@ import type { CityRating } from "@/types/preferences";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 
 /** Measures that take graded city feelings. */
-const CITY_SCORED = new Set(["layoverValue", "standbyDaysByCity"]);
+const CITY_SCORED = new Set(["layoverValue", "fullDaysInLikedCities", "standbyDaysByCity"]);
 
 /**
  * A pilot's own city grades beat anything the brain inferred from how they
@@ -17,7 +17,8 @@ export function applyCityRatings(model: PilotModel, ratings: Record<string, City
   const graded = cityScoresFromRatings(ratings ?? {});
   if (Object.keys(graded).length === 0) return model;
   const criteria: Criterion[] = model.criteria.map((c) => (CITY_SCORED.has(c.metric) ? { ...c, params: { ...c.params, cityScores: { ...c.params?.cityScores, ...graded } } } : c));
-  if (!criteria.some((c) => c.metric === "layoverValue") && Object.keys(graded).length >= 2) {
+  // A full-day criterion is a layover-location one too: city feelings are counted once.
+  if (!criteria.some((c) => c.metric === "layoverValue" || c.metric === "fullDaysInLikedCities") && Object.keys(graded).length >= 2) {
     criteria.push({
       id: "cityRatings",
       metric: "layoverValue",

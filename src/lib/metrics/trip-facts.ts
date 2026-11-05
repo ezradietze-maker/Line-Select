@@ -63,6 +63,12 @@ export interface LayoverFact {
   /** Hours of the layover that fall in the local night (22:00–07:00) — the part a body can actually sleep through. */
   localNightHours: number | null;
   hotel: string | null;
+  /** Full days free in the city on this layover, the way pilots count them (`fullDaysOf`); 0 when its clock isn't printed. */
+  fullDays: number;
+  /** Of those, the last one is "just barely" a full day: up before 6 AM the morning after, though not before about 3:15. */
+  barelyFullDay: boolean;
+  /** Which days they are: 0 = the day it lands, on the city's clock. */
+  fullDayOffsets: number[];
 }
 
 export interface TripEnd {
@@ -92,6 +98,43 @@ export interface TripFacts {
 
 const NIGHT_START = 22 * 60;
 const NIGHT_END = 7 * 60;
+
+/**
+ * A full day on a layover, as a pilot counts one: land on one day (late at night, even an hour or two past midnight,
+ * counts as that day), a full night's sleep, the whole next day free to see the city and eat well, a second full night,
+ * and not up before about 6 AM on the day after. Every free day between two full nights is another full day; a long
+ * layover can hold several. In the ex-pilot's own trips: 37 hours in Phoenix landing at 05:19 and out again the next
+ * evening is none ("I don't really have a full day off there"); 34 hours in Seattle, landing 18:55 and picked up at
+ * 04:15 two days later, is "just barely one"; 49 hours in Boston, landing 06:23, is one.
+ *
+ * Counted on the city's own clock from the block-in (`arrive`, minute of the day) and the minutes to the next pickup.
+ */
+export function fullDaysOf(arrive: number | null, minutes: number): { fullDays: number; barelyFullDay: boolean; fullDayOffsets: number[] } {
+  const fullDayOffsets: number[] = [];
+  let barelyFullDay = false;
+  if (arrive !== null && minutes > 0) {
+    const inHotel = arrive + HOTEL_VAN_MINUTES;
+    const pickup = arrive + minutes;
+    // Day d runs from minute 1440·d on the arrival day's clock.
+    for (let d = 0; 1440 * (d + 1) + BARELY_PICKUP <= pickup; d++) {
+      if (inHotel > 1440 * d + IN_HOTEL_BY) continue;
+      fullDayOffsets.push(d);
+      barelyFullDay = pickup < 1440 * (d + 1) + FULL_NIGHT_PICKUP;
+    }
+  }
+  return { fullDays: fullDayOffsets.length, barelyFullDay, fullDayOffsets };
+}
+/** From block-in to the hotel. */
+const HOTEL_VAN_MINUTES = 30;
+/** In the hotel by 02:00 still makes the night before a day a full night. */
+const IN_HOTEL_BY = 2 * 60;
+/** A pickup at 06:45 or later the morning after: up at 6, a full night. */
+const FULL_NIGHT_PICKUP = 6 * 60 + 45;
+/**
+ * A pickup from 04:00 is up at about 3:15 — "just barely" a full night, and still a full day before it. His Seattle
+ * layover is picked up at 04:15; the line sits a little under it so a pack a few minutes off reads the same.
+ */
+const BARELY_PICKUP = 4 * 60;
 
 function hhmmToMinute(hhmm: string | undefined): number | null {
   if (!hhmm || !/^\d{4}$/.test(hhmm)) return null;
@@ -264,6 +307,7 @@ export function computeTripFacts(trip: Trip): TripFacts {
         international: isInternationalCity(city),
         localNightHours: localStart === null ? null : nightOverlapHours(localStart, duty.layover.hours),
         hotel: duty.layover.hotelName,
+        ...fullDaysOf(localStart, duty.layover.endMinutes - duty.layover.startMinutes),
       },
     ];
   });

@@ -832,6 +832,32 @@ export const METRICS: MetricDef[] = [
     trip: { measure: (f, p) => f.layovers.reduce((a, l) => a + cityScore(l.city, p) * l.hours, 0), aggregate: "sum" },
   },
   {
+    id: "fullDaysInLikedCities",
+    label: "Full days in cities you like",
+    unit: "weighted days",
+    category: "city",
+    description:
+      "Full days free on layovers, each weighted by how much the pilot likes the city (−1 … +1). A full day the way pilots count it: land one day (late at night or an hour or two past midnight counts), a full night's sleep, the whole next day free to see the city and eat well, a second full night, and not up before about 6 AM the day after (up around 4 is \"just barely\" one, and still counts). Every free day between two full nights is another, worth as much as the first. For a pilot who talks about \"a full day\" or \"a real day off\" in cities they like; layoverValue is hours in a city, however they fall.",
+    params: ["cityScores"],
+    trip: { measure: (f, p) => f.layovers.reduce((a, l) => a + cityScore(l.city, p) * l.fullDays, 0), aggregate: "sum" },
+  },
+  {
+    id: "layoverFullDays",
+    label: "Full days off on layovers",
+    unit: "days",
+    category: "layover",
+    description: "Full days free on layovers in any city, counted as fullDaysInLikedCities counts them — for a pilot who wants a real day off on the road wherever it is.",
+    trip: { measure: (f) => f.layovers.reduce((a, l) => a + l.fullDays, 0), aggregate: "sum" },
+  },
+  {
+    id: "eatAndSleepLayovers",
+    label: "Layovers with only time to eat and sleep",
+    unit: "layovers",
+    category: "layover",
+    description: "Layovers with no full day free in them — time to eat and sleep, perhaps an afternoon, and back to work.",
+    trip: { measure: (f) => f.layovers.filter((l) => l.fullDays === 0).length, aggregate: "sum" },
+  },
+  {
     id: "longLayoverHours",
     label: "Long-layover time",
     unit: "hours",

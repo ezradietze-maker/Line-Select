@@ -41,6 +41,7 @@ const FAMILY: Record<string, string> = {
   tripCount: "trip length",
   homeDepartures: "trip length",
   layoverValue: "cities",
+  fullDaysInLikedCities: "cities",
   layoverHoursInCities: "cities",
   layoversInCities: "cities",
   tripsTouchingCities: "cities",

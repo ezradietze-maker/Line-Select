@@ -5,6 +5,7 @@ import { groupDepartures, type DepartureOptions } from "@/lib/metrics/departures
 import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metrics/hub-turns";
 import { DEFAULT_MIN_BREAK_NIGHTS, homeStretches, summarizeHomeTime } from "@/lib/metrics/home-stretches";
 import { lineCarryOver, monthLine, nextMonthName, uncutTrip } from "@/lib/bid-month";
+import { fullDayDates } from "@/lib/full-days";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
@@ -146,6 +147,8 @@ export interface DetailedDay {
   homeNote?: string;
   /** A whole day at a layover hotel, nothing flown: the city. */
   restCity: string | null;
+  /** A full day free in a layover city, as pilots count one (`fullDaysOf` in metrics/trip-facts.ts); `barely` when the morning after starts before 6. */
+  fullDay?: { city: string; barely: boolean };
   /** A trip's tail on a day the grid gives to something else — usually a landing just after midnight on a day the bid pack counts as off. */
   spill: { tripNumber: string | null; segments: TimelineSegment[]; landsAt: string | null } | null;
   title: string;
@@ -188,6 +191,8 @@ export interface MonthSummary {
   latestRelease: string | null;
   layoverNights: number;
   internationalLayoverNights: number;
+  /** Full days free in layover cities this month (`DetailedDay.fullDay`). */
+  fullDays: number;
   /** Each distinct layover city, with how the pilot feels about it. */
   cities: { code: string; nights: number; sentiment: CityMark | null; international: boolean }[];
   longestTripDays: number;
@@ -669,6 +674,19 @@ export function buildDetailedMonth(
     d.chain = { fromTripNumber: prev.tripNumber ?? line.trips[prev.tripIndex]?.pairingNumber ?? null, city: prev.finish.city, turnMinutes: turn, landed: prev.finish.time, reports: d.dutyStart };
   });
 
+  // Full days in a layover city, on the date they fall on there — on the base's calendar, which is the city's date for
+  // the stretch of the day that matters.
+  if (mode === "local" && bidPeriodStart && departureOptions) {
+    for (const trip of line.trips) {
+      for (const [date, full] of fullDayDates(trip, { bidPeriodStart, base: departureOptions.base })) {
+        const day = days.find((d) => calendar.days[d.dayIndex]?.date === date);
+        if (!day) continue;
+        day.fullDay = full;
+        day.title = `${day.title}; a full day in ${full.city}${full.barely ? " (just barely: up before 6 the next morning)" : ""}`;
+      }
+    }
+  }
+
   const firstWeekday = calendar.days[0]?.weekday ?? null;
   const startAt = firstWeekday ? WEEKDAY_ORDER.indexOf(firstWeekday) : -1;
   const weekdayHeaders = calendar.placementIsReal && startAt >= 0 ? Array.from({ length: 7 }, (_, i) => WEEKDAY_ORDER[(startAt + i) % 7]) : null;
@@ -752,6 +770,7 @@ function summarize(
     earliestDutyStart: starts[0] ?? null,
     latestRelease: releases[releases.length - 1] ?? null,
     layoverNights: layoverDays.length,
+    fullDays: days.filter((d) => d.fullDay).length,
     internationalLayoverNights: layoverDays.filter((d) => d.layoverInternational).length,
     cities: Array.from(cityMap.values())
       .sort((a, b) => b.nights - a.nights || a.code.localeCompare(b.code))

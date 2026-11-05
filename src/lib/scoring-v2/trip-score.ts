@@ -452,7 +452,7 @@ export function tripValueText(r: TripCriterionResult): string | null {
   // Something a trip either is or isn't (ends on a red-eye, can be shortened by a day): yes or no.
   if (r.reading === "count" && def.unit === "trips") return r.raw >= 1 ? "yes" : "no";
   // A count sits next to a label that may carry a monthly number ("credit 76 or more"): say whose number this is.
-  return r.reading === "count" && def.unit !== "weighted hours" ? `${formatValue(r.raw, def, true)} on this trip` : formatValue(r.raw, def, true);
+  return r.reading === "count" && def.unit !== "weighted hours" && def.unit !== "weighted days" ? `${formatValue(r.raw, def, true)} on this trip` : formatValue(r.raw, def, true);
 }
 
 /**
