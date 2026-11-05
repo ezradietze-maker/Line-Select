@@ -75,7 +75,7 @@ function columnClass(col: PackColumn): string {
 }
 
 /** What a strip's words, lines and shading mean, once above the list — for whichever strip the pilot is reading. */
-export function StripKey({ view, className = "" }: { view: StripViewMode; className?: string }) {
+export function StripKey({ view, hint = "Tap a line for everything about it.", className = "" }: { view: StripViewMode; hint?: string; className?: string }) {
   const item = (swatch: ReactNode, label: string) => (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       {swatch}
@@ -119,7 +119,7 @@ export function StripKey({ view, className = "" }: { view: StripViewMode; classN
           )}
         </>
       )}
-      <span>Tap a line for everything about it.</span>
+      <span>{hint}</span>
     </div>
   );
 }
@@ -159,13 +159,13 @@ function DateRows({ columns, layout }: { columns: PackColumn[]; layout: StripLay
   );
 }
 
-/** The shared date header over a list of strips laid out to fit — kept in view while the list scrolls. */
-export function BidPackHeader({ columns, layout }: { columns: PackColumn[]; layout: StripLayout }) {
+/** The shared date header over a list of strips laid out to fit — kept in view while the list scrolls, unless `sticky` is off. */
+export function BidPackHeader({ columns, layout, label = "Line · score", sticky = true }: { columns: PackColumn[]; layout: StripLayout; label?: string; sticky?: boolean }) {
   if (layout.mode !== "fit") return null;
   return (
-    <div className="sticky top-0 z-20 -mx-px rounded-t-lg border border-hairline bg-canvas/95 backdrop-blur print:static" style={{ paddingLeft: PAD_X + GRIP_W, paddingRight: PAD_X }}>
+    <div className={`${sticky ? "sticky top-0 z-20" : ""} -mx-px rounded-t-lg border border-hairline bg-canvas/95 backdrop-blur print:static`} style={{ paddingLeft: PAD_X + GRIP_W, paddingRight: PAD_X }}>
       <div className="grid" style={{ gridTemplateColumns: `${LEFT_W}px minmax(0, 1fr) ${CHEVRON_W}px` }}>
-        <div className="self-end pb-0.5 font-mono text-[9px] uppercase tracking-wide text-ink-faint">Line · score</div>
+        <div className="self-end pb-0.5 font-mono text-[9px] uppercase tracking-wide text-ink-faint">{label}</div>
         <DateRows columns={columns} layout={layout} />
         <div />
       </div>
@@ -428,7 +428,10 @@ function TimelineDays({ columns, timeline, layout }: { columns: PackColumn[]; ti
 
 interface BidPackStripProps {
   line: Line;
-  score: number;
+  /** The line's score; null where there's none to show yet (the interview), and `tag` marks the line instead. */
+  score: number | null;
+  /** In place of the score: a letter the line goes by ("A", "B"). */
+  tag?: string;
   /** A violated dealbreaker holds the score down. */
   capped: boolean;
   columns: PackColumn[];
@@ -440,11 +443,20 @@ interface BidPackStripProps {
   onToggle: () => void;
 }
 
-export function BidPackStrip({ line, score, capped, columns, view, layout, grip, open, onToggle }: BidPackStripProps) {
-  const label = `Line ${line.lineNumber}, score ${Math.round(score)} — ${open ? "hide" : "show"} everything about it`;
+export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle }: BidPackStripProps) {
+  const label = `Line ${line.lineNumber}${score !== null ? `, score ${Math.round(score)}` : tag ? `, option ${tag}` : ""} — ${open ? "hide" : "show"} everything about it`;
+  const ring = layout.stacked ? 34 : 38;
   const title = (
     <div className="flex min-w-0 items-center gap-2">
-      <ScoreRing score={score} size={layout.stacked ? 34 : 38} capped={capped} />
+      {score !== null ? (
+        <ScoreRing score={score} size={ring} capped={capped} />
+      ) : (
+        tag && (
+          <span aria-hidden className="flex shrink-0 items-center justify-center rounded-full border-2 border-brand font-display text-base font-semibold text-brand" style={{ width: ring, height: ring }}>
+            {tag}
+          </span>
+        )
+      )}
       <div className="min-w-0">
         <div className="font-mono text-[12px] font-semibold leading-[14px] tracking-wide text-ink">LINE {line.lineNumber}</div>
         {view.kind === "pack" ? <Numbers line={line} /> : <RangedNumbers line={view.month} ranges={view.ranges} />}
