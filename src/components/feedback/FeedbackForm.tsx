@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { NoteBox } from "@/components/ui/NoteBox";
 import { Button } from "@/components/ui/Button";
+import { PaperPlane } from "@/components/ui/PaperPlane";
 import { submitFeedback } from "@/lib/feedback-client";
 import type { FeedbackCategory } from "@/types/feedback";
 
@@ -27,8 +28,10 @@ export function FeedbackForm({ page, onClose }: FeedbackFormProps) {
 
   if (sent) {
     return (
-      <div className="py-2 text-center">
-        <p className="text-sm text-ink">Thanks — this goes straight to the person building it.</p>
+      <div className="relative py-2 text-center">
+        {/* Folded up and sent. */}
+        <PaperPlane className="-top-2 left-1/2 -ml-3.5" />
+        <p className="drop-in text-sm text-ink">Thanks — this goes straight to the person building it.</p>
         <Button variant="secondary" className="mt-4" onClick={onClose}>
           Close
         </Button>

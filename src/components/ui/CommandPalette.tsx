@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { NAV_ITEMS, disabledReason, type NavTarget } from "@/components/nav/nav-items";
+import { FlipText } from "@/components/ui/FlipText";
 import { SearchIcon } from "@/components/ui/icons";
 import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { setStoredTheme, type ThemeMode } from "@/lib/theme";
@@ -225,10 +226,13 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
                     ) : (
                       <span className="h-4 w-4 shrink-0" aria-hidden />
                     )}
-                    <span className={`min-w-0 flex-1 truncate ${c.group === "Lines" ? "font-mono font-semibold" : "font-medium"}`}>{c.label}</span>
+                    {/* Lines turn over like rows on a departures board, one row after the next. */}
+                    <span className={`min-w-0 flex-1 truncate ${c.group === "Lines" ? "font-mono font-semibold" : "font-medium"}`}>
+                      {c.group === "Lines" ? <FlipText text={c.label} delay={Math.min(i, 8) * 45} stagger={22} /> : c.label}
+                    </span>
                     {c.standing && (
                       <span className="shrink-0 rounded-md border border-hairline px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums" title="Score">
-                        {Math.round(c.standing.score)}
+                        {c.group === "Lines" ? <FlipText text={String(Math.round(c.standing.score))} delay={Math.min(i, 8) * 45 + 160} stagger={30} /> : Math.round(c.standing.score)}
                       </span>
                     )}
                     {c.hint && <span className={`hidden shrink-0 font-mono text-[11px] tabular-nums sm:block ${i === active ? "text-on-wash" : "text-ink-faint"}`}>{c.hint}</span>}

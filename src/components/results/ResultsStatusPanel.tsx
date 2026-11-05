@@ -31,6 +31,26 @@ const URGENCY_TEXT: Record<Urgency, string> = {
 const LABEL = "font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint";
 
 /** A tick in a circle: filled when the step's done. */
+/** No date set yet: a departures board's tiles standing blank, waiting for a time to turn over to. */
+function EmptyBoard() {
+  return (
+    <span className="inline-flex gap-[3px] align-middle" aria-label="No date set">
+      {[..."--:--"].map((ch, i) =>
+        ch === ":" ? (
+          <span key={i} aria-hidden className="px-px text-ink-faint/50">
+            :
+          </span>
+        ) : (
+          <span key={i} aria-hidden className="relative inline-flex h-[1.2em] w-[0.8em] items-center justify-center rounded-[4px] bg-ink/[0.07] text-ink-faint/60">
+            {ch}
+            <span className="absolute inset-x-0 top-1/2 h-px bg-canvas/70" />
+          </span>
+        )
+      )}
+    </span>
+  );
+}
+
 function Tick({ done }: { done: boolean }) {
   return (
     <span
@@ -171,6 +191,7 @@ export function ResultsStatusPanel({
   const deadline = useBidDeadline(pack.id);
   const msLeft = useTimeLeft(deadline.deadline);
   const urgency = msLeft === null ? null : urgencyFor(msLeft);
+  const finalCall = urgency === "today" || urgency === "imminent";
   const time = msLeft !== null && msLeft > 0 ? formatTimeLeft(msLeft) : null;
   const packLabel = `${pack.base} ${pack.aircraft} ${pack.seat} ${pack.month}`;
   const reminders = useInTabReminders(pack.id, deadline.deadline, packLabel);
@@ -210,8 +231,10 @@ export function ResultsStatusPanel({
           <div className={`flex items-center gap-2 ${LABEL}`}>
             Bid closes
             {urgency === "imminent" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-danger shadow-[0_0_6px_var(--color-danger)]" aria-hidden />}
+            {/* Inside the last day: final call, and the countdown glows (the tab's title counts down too). */}
+            {finalCall && <span className={`drop-in rounded-full border px-1.5 py-px ${urgency === "imminent" ? "border-danger/50 text-danger" : "border-accent/50 text-accent"}`}>Final call</span>}
           </div>
-          <div className={`mt-1 font-mono text-3xl font-semibold tabular-nums sm:text-[2rem] ${urgency ? URGENCY_TEXT[urgency] : "text-ink-faint"}`}>
+          <div className={`mt-1 font-mono text-3xl font-semibold tabular-nums sm:text-[2rem] ${urgency ? URGENCY_TEXT[urgency] : "text-ink-faint"} ${finalCall ? "final-call" : ""}`}>
             {time ? (
               <>
                 {/* Digits turn over like a departures board as they change. */}
@@ -224,6 +247,8 @@ export function ResultsStatusPanel({
               </>
             ) : urgency === "closed" ? (
               "Closed"
+            ) : deadline.loaded ? (
+              <EmptyBoard />
             ) : (
               "—"
             )}

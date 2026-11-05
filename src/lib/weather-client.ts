@@ -101,3 +101,77 @@ export function forecastWeather(code: string): Promise<DailyWeather[] | null> {
     `https://api.open-meteo.com/v1/forecast?latitude=${at[0]}&longitude=${at[1]}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum&forecast_days=16&${UNITS}`
   );
 }
+
+/** The sky in a few kinds, from a WMO weather code — enough to draw and to say in a word. */
+export type Sky = "clear" | "partly" | "cloudy" | "fog" | "drizzle" | "rain" | "snow" | "storm";
+
+export const SKY_WORDS: Record<Sky, string> = {
+  clear: "Clear",
+  partly: "Partly cloudy",
+  cloudy: "Overcast",
+  fog: "Fog",
+  drizzle: "Drizzle",
+  rain: "Rain",
+  snow: "Snow",
+  storm: "Thunderstorms",
+};
+
+export function skyOf(wmo: number): Sky {
+  if (wmo <= 1) return "clear";
+  if (wmo === 2) return "partly";
+  if (wmo === 3) return "cloudy";
+  if (wmo === 45 || wmo === 48) return "fog";
+  if (wmo >= 51 && wmo <= 57) return "drizzle";
+  if ((wmo >= 71 && wmo <= 77) || wmo === 85 || wmo === 86) return "snow";
+  if (wmo >= 95) return "storm";
+  return "rain";
+}
+
+export interface CurrentWeather {
+  tempF: number;
+  sky: Sky;
+  isDay: boolean;
+}
+
+interface OpenMeteoCurrent {
+  current?: { temperature_2m: number | null; weather_code: number | null; is_day: number | null };
+}
+
+/** One location's current conditions from an Open-Meteo reply; null when it didn't say. */
+export function toCurrent(json: OpenMeteoCurrent): CurrentWeather | null {
+  const c = json.current;
+  if (!c || c.temperature_2m === null || c.weather_code === null) return null;
+  return { tempF: Math.round(c.temperature_2m), sky: skyOf(c.weather_code), isDay: c.is_day !== 0 };
+}
+
+const currentCache = new Map<string, Promise<Record<string, CurrentWeather>>>();
+
+/**
+ * What it's like right now at each city, in one request for all of them (Open-Meteo takes a list of places and
+ * answers with a list). Cities it can't place, or a failed request, are simply left out.
+ */
+export function currentWeather(codes: string[]): Promise<Record<string, CurrentWeather>> {
+  const placed = codes.flatMap((code) => {
+    const at = coordinatesForAirport(code);
+    return at ? [{ code, at }] : [];
+  });
+  if (!placed.length) return Promise.resolve({});
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${placed.map((p) => p.at[0]).join(",")}&longitude=${placed.map((p) => p.at[1]).join(",")}&current=temperature_2m,weather_code,is_day&${UNITS}`;
+  const known = currentCache.get(url);
+  if (known) return known;
+  const p = fetch(url)
+    .then((r) => (r.ok ? (r.json() as Promise<OpenMeteoCurrent | OpenMeteoCurrent[]>) : null))
+    .then((j) => {
+      // One place comes back as an object, several as a list in the order asked.
+      const replies = j === null ? [] : Array.isArray(j) ? j : [j];
+      const out: Record<string, CurrentWeather> = {};
+      placed.forEach((p, i) => {
+        const now = replies[i] ? toCurrent(replies[i]) : null;
+        if (now) out[p.code] = now;
+      });
+      return out;
+    })
+    .catch(() => ({}));
+  currentCache.set(url, p);
+  return p;
+}

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { CityRatingStep } from "@/components/interview/CityRatingStep";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
+import { PillHighlight } from "@/components/ui/PillHighlight";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { requestModelBuild } from "@/lib/brain/client";
 import { pilotContextFor } from "@/lib/brain/context";
@@ -190,9 +191,10 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
                       type="button"
                       aria-pressed={i === level}
                       onClick={() => i !== level && setLevel(c, i)}
-                      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${i === level ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
+                      className={`relative rounded-full border px-2.5 py-1 text-xs transition-colors duration-300 ${i === level ? "border-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
                     >
-                      {l.label}
+                      {i === level && <PillHighlight group={`priority-level-${d.id}`} />}
+                      <span className="relative">{l.label}</span>
                     </button>
                   ))}
                   <button type="button" onClick={() => drop(c)} className="ml-auto text-xs text-ink-faint underline decoration-dotted underline-offset-4 hover:text-danger">

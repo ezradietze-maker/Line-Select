@@ -46,6 +46,42 @@ function Row({ label, state, children }: { label: string; state: RowState; child
 }
 
 /**
+ * A small radar scope sweeping the pack: a return for each pairing, then each line, as the parser genuinely counts
+ * them (placed by the golden angle, so they scatter like real returns), and the count underneath. The sweep stops
+ * once the pack is loaded, and doesn't turn under reduced motion.
+ */
+function RadarScope({ progress, loaded }: { progress: LoadProgress; loaded: boolean }) {
+  const reduce = useReducedMotion();
+  const found = progress.lines ?? progress.pairings ?? 0;
+  const what = progress.lines !== undefined ? "lines" : progress.pairings !== undefined ? "pairings" : null;
+  const blips = Math.min(found, 18);
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-1" aria-hidden>
+      <div className="relative h-14 w-14 overflow-hidden rounded-full border border-hairline bg-canvas/60">
+        <span className="absolute inset-[22%] rounded-full border border-hairline" />
+        <span className="absolute inset-x-0 top-1/2 border-t border-hairline" />
+        <span className="absolute inset-y-0 left-1/2 border-l border-hairline" />
+        {!loaded && !reduce && (
+          <span className="absolute inset-0 animate-[spin_2.4s_linear_infinite] rounded-full bg-[conic-gradient(from_0deg,transparent_0deg,transparent_280deg,var(--glow-strong)_350deg,var(--color-accent)_360deg)] opacity-70" />
+        )}
+        {Array.from({ length: blips }, (_, i) => {
+          const angle = i * 2.39996; // the golden angle, in radians
+          const r = 0.18 + 0.27 * ((i * 0.618034) % 1);
+          return (
+            <span
+              key={`${what}-${i}`} // pairings, then a fresh scan filling with lines
+              className="blip absolute -ml-0.5 -mt-0.5 h-1 w-1 rounded-full bg-accent"
+              style={{ left: `${50 + Math.cos(angle) * r * 100}%`, top: `${50 + Math.sin(angle) * r * 100}%`, animationDelay: `${(i % 9) * 70}ms` }}
+            />
+          );
+        })}
+      </div>
+      <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-faint">{what ? `${found} ${what}` : "Scanning"}</span>
+    </div>
+  );
+}
+
+/**
  * The bid pack loading like a flight plan into the box: a page under a read
  * head, and four rows that each light up as the parser genuinely reaches
  * that stage — every number is the server's own running count, streamed
@@ -84,6 +120,7 @@ export function FlightPlanLoader({ fileName, progress, loaded }: { fileName: str
           <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Loading flight plan</div>
           <div className="mt-1 truncate font-display text-lg font-semibold text-ink">{fileName}</div>
         </div>
+        <RadarScope progress={progress} loaded={loaded} />
       </div>
 
       <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">

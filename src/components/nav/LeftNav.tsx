@@ -233,12 +233,13 @@ export function LeftNav({
       style={{ viewTransitionName: "app-rail" }}
       className="sidebar-scheme shadow-sidebar fixed inset-y-0 left-0 z-30 hidden w-[var(--shell-left)] flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[var(--ease-emphasized)] md:flex"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-sidebar-border/70 px-4 py-5 rail-collapsed:flex-col rail-collapsed:gap-3 rail-collapsed:px-0">
+      <div className="relative flex items-center justify-between gap-2 border-b border-sidebar-border/70 px-4 py-5 rail-collapsed:flex-col rail-collapsed:gap-3 rail-collapsed:px-0">
+        <SidebarStars />
         <button
           type="button"
           onClick={() => onNavigate(homeTarget(hasProfile, hasBidPack))}
           aria-label="Line Select home"
-          className="group flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
+          className="group relative flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
         >
           <LogoFlight className="h-9 w-9 shrink-0 transition-transform duration-200 group-hover:scale-105" />
           <Wordmark className="truncate text-[17px] rail-collapsed:hidden" />
@@ -251,7 +252,8 @@ export function LeftNav({
           <div className="flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.2em] text-ink-faint">
             <span>Bid pack</span>
             <span className="flex items-center gap-1.5 text-good">
-              <span className="h-1.5 w-1.5 rounded-full bg-good shadow-[0_0_6px_var(--color-good)]" aria-hidden />
+              {/* Blinking slowly, like an aircraft's beacon. */}
+              <span className="beacon h-1.5 w-1.5 rounded-full bg-good text-good" aria-hidden />
               Loaded
             </span>
           </div>
@@ -312,5 +314,25 @@ export function LeftNav({
         <AccountMenu user={user} onSignIn={onSignIn} onLogout={onLogout} />
       </div>
     </aside>
+  );
+}
+
+/** A faint night sky over the header, twinkling — shown in the dark scheme only (see `.sidebar-stars`). */
+const STARS = [
+  [8, 18, 1, 0], [22, 70, 0.8, 1.1], [31, 30, 1.2, 2.3], [44, 82, 0.7, 0.6], [52, 14, 0.9, 1.8],
+  [63, 58, 0.7, 2.9], [71, 26, 1.1, 0.3], [80, 76, 0.8, 1.5], [88, 40, 1, 2.6], [95, 12, 0.7, 0.9],
+] as const;
+
+function SidebarStars() {
+  return (
+    <span aria-hidden className="sidebar-stars pointer-events-none absolute inset-0 overflow-hidden">
+      {STARS.map(([x, y, r, delay]) => (
+        <span
+          key={`${x}-${y}`}
+          className="twinkle absolute rounded-full bg-ink"
+          style={{ left: `${x}%`, top: `${y}%`, width: `${r * 2}px`, height: `${r * 2}px`, animationDelay: `${delay}s`, animationDuration: `${2.6 + (delay % 1.5)}s` }}
+        />
+      ))}
+    </span>
   );
 }

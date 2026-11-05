@@ -30,16 +30,15 @@ export function ScopeIcon({ className = "h-10 w-10" }: { className?: string }) {
       <circle cx="24" cy="24" r="13.5" fill="none" stroke="currentColor" strokeOpacity={0.3} strokeWidth={1.2} />
       <circle cx="24" cy="24" r="6" fill="none" stroke="currentColor" strokeOpacity={0.25} strokeWidth={1.2} />
       <path d="M24 3v42M3 24h42" stroke="currentColor" strokeOpacity={0.18} strokeWidth={1} />
+      {/* A faint return, lit as the sweep passes over it (the two share one 4.5s clock). */}
+      <circle className="scope-return" cx="35.6" cy="28.2" r="1.6" fill="var(--color-accent)" />
+      {/* The sweep, with an afterglow trailing it in three crisp steps rather than a muddy gradient. */}
       <g className="radar-sweep">
-        <path d="M24 24 L24 3 A21 21 0 0 1 41.2 12 Z" fill="url(#scope-sweep)" />
+        <path d="M24 24 L13.5 5.8 A21 21 0 0 1 24 3 Z" fill="var(--color-accent)" fillOpacity={0.08} />
+        <path d="M24 24 L17.6 4 A21 21 0 0 1 24 3 Z" fill="var(--color-accent)" fillOpacity={0.12} />
+        <path d="M24 24 L20.9 3.2 A21 21 0 0 1 24 3 Z" fill="var(--color-accent)" fillOpacity={0.2} />
         <path d="M24 24 L24 3" stroke="var(--color-accent)" strokeWidth={1.5} strokeLinecap="round" />
       </g>
-      <defs>
-        <linearGradient id="scope-sweep" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor="var(--color-accent)" stopOpacity="0.45" />
-          <stop offset="1" stopColor="var(--color-accent)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
       <circle cx="24" cy="24" r="1.8" fill="var(--color-accent)" />
     </svg>
   );

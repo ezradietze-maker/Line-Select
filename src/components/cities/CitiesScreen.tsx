@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { RouteArc, SunDial } from "@/components/cities/CitySky";
+import { WeatherGlyph } from "@/components/cities/WeatherGlyph";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
@@ -18,7 +19,7 @@ import { bidMonthOf, cityMarks, CITY_RATING_STEPS, CITY_REASONS, hasSeasons, pac
 import { monthsWords, seasonMonths } from "@/lib/seasons";
 import { fetchHotel } from "@/lib/hotel-client";
 import { cityName } from "@/lib/city-names";
-import { forecastWeather, typicalWeather, type DailyWeather, type TypicalWeather } from "@/lib/weather-client";
+import { currentWeather, forecastWeather, SKY_WORDS, typicalWeather, type CurrentWeather, type DailyWeather, type TypicalWeather } from "@/lib/weather-client";
 import type { BidPack } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
 import type { CityMark, PreferenceProfile } from "@/types/preferences";
@@ -72,6 +73,16 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
   const facts = useMemo(() => (bidPack ? packCityFacts(bidPack) : []), [bidPack]);
   const bidMonth = bidPack ? bidMonthOf(bidPack) : null;
   const marks = useMemo(() => cityMarks(profile?.cityRatings, profile?.cityPreferences, bidMonth), [profile?.cityRatings, profile?.cityPreferences, bidMonth]);
+  // The weather at every city right now, in one request; the cards show it once it's in.
+  const [skies, setSkies] = useState<Record<string, CurrentWeather>>({});
+  const codesKey = facts.map((f) => f.code).join(",");
+  useEffect(() => {
+    let alive = true;
+    if (codesKey) currentWeather(codesKey.split(",")).then((w) => alive && setSkies(w));
+    return () => {
+      alive = false;
+    };
+  }, [codesKey]);
 
   if (!bidPack) {
     return (
@@ -111,7 +122,7 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
       <ul className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {sorted.map((f) => (
           <li key={f.code}>
-            <CityCard facts={f} base={bidPack.base} mark={marks[f.code] ?? null} now={now} onOpen={() => open(f.code)} />
+            <CityCard facts={f} base={bidPack.base} mark={marks[f.code] ?? null} now={now} sky={skies[f.code] ?? null} onOpen={() => open(f.code)} />
           </li>
         ))}
       </ul>
@@ -125,7 +136,7 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
   );
 }
 
-function CityCard({ facts: f, base, mark, now, onOpen }: { facts: CityFacts; base: string; mark: CityMark | null; now: number; onOpen: () => void }) {
+function CityCard({ facts: f, base, mark, now, sky, onOpen }: { facts: CityFacts; base: string; mark: CityMark | null; now: number; sky: CurrentWeather | null; onOpen: () => void }) {
   const clock = localClock(f.code, now);
   const offset = hoursFromBase(f.code, base, now);
   const zone = timezoneForAirport(f.code);
@@ -146,6 +157,15 @@ function CityCard({ facts: f, base, mark, now, onOpen }: { facts: CityFacts; bas
       {sun && (
         <div className="mt-2 text-xs text-ink-muted">
           Sun up {sun.sunrise} &ndash; down {sun.sunset}
+        </div>
+      )}
+      {/* What it's like there now, drawn moving. */}
+      {sky && (
+        <div className="drop-in mt-1.5 flex items-center gap-1.5 text-xs text-ink-muted">
+          <WeatherGlyph sky={sky.sky} isDay={sky.isDay} className="h-[18px] w-[18px]" />
+          <span>
+            <span className="font-medium tabular-nums text-ink">{sky.tempF}&deg;F</span> &middot; {SKY_WORDS[sky.sky]}
+          </span>
         </div>
       )}
       <div className="mt-auto pt-3 text-xs text-ink-muted">

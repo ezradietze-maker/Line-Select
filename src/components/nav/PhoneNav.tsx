@@ -89,7 +89,9 @@ export function PhoneNav({
         </button>
         <div className="flex items-center gap-2.5">
           {pack && (
-            <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
+            <span className="flex items-center gap-1.5 font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
+              {/* The loaded pack's beacon, as on the desktop sidebar. */}
+              <span aria-hidden className="beacon h-1.5 w-1.5 rounded-full bg-good text-good" />
               {pack.base} &middot; <span className="text-accent">{pack.month}</span>
             </span>
           )}
@@ -118,6 +120,16 @@ export function PhoneNav({
               style={{ left: `${tabIndex * 20}%` }}
             >
               <span className="h-[3px] w-8 rounded-b-full bg-accent shadow-[0_0_10px_var(--color-accent)]" />
+            </span>
+          )}
+          {/* A soft lit pad behind the active tab, gliding along with the marker. */}
+          {tabIndex >= 0 && (
+            <span
+              aria-hidden
+              className="absolute inset-y-1.5 flex w-1/5 justify-center transition-[left] duration-300 ease-[var(--ease-emphasized)]"
+              style={{ left: `${tabIndex * 20}%` }}
+            >
+              <span className="w-14 rounded-xl bg-accent/[0.09]" />
             </span>
           )}
           {TAB_TARGETS.map((target, i) => {

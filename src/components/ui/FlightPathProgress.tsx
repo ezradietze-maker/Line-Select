@@ -13,6 +13,8 @@ interface FlightPathProgressProps {
   destination?: string;
   /** Evenly spaced waypoints along the route; each lights up once passed. */
   waypoints?: number;
+  /** Named stops along the route instead (0 to 1), labelled above it; one at 0 or 1 just names that end. */
+  stops?: { at: number; label: string }[];
   className?: string;
 }
 
@@ -25,11 +27,11 @@ interface FlightPathProgressProps {
  * container — per globals.css's warning about transforms breaking
  * fixed-position descendants.
  */
-export function FlightPathProgress({ fraction, label, origin, destination, waypoints = 0, className = "" }: FlightPathProgressProps) {
+export function FlightPathProgress({ fraction, label, origin, destination, waypoints = 0, stops, className = "" }: FlightPathProgressProps) {
   const f = Math.min(1, Math.max(0, fraction));
   const reduceMotion = useReducedMotion();
   const transition = reduceMotion ? { duration: 0 } : { duration: DURATION.reveal, ease: EASE.emphasized };
-  const points = Array.from({ length: waypoints }, (_, i) => (i + 1) / (waypoints + 1));
+  const points = stops ? stops.map((s) => s.at).filter((at) => at > 0 && at < 1) : Array.from({ length: waypoints }, (_, i) => (i + 1) / (waypoints + 1));
 
   return (
     <div
@@ -40,6 +42,19 @@ export function FlightPathProgress({ fraction, label, origin, destination, waypo
       aria-valuemax={100}
       aria-valuenow={Math.round(f * 100)}
     >
+      {stops && (
+        <div className="relative h-3 font-mono text-[9px] uppercase tracking-[0.14em]" aria-hidden>
+          {stops.map((s) => (
+            <span
+              key={s.label}
+              className={`absolute top-0 whitespace-nowrap transition-colors duration-300 ${s.at <= 0.02 ? "" : s.at >= 0.98 ? "-translate-x-full" : "-translate-x-1/2"} ${s.at <= f ? "text-accent" : "text-ink-faint"}`}
+              style={{ left: `${s.at * 100}%` }}
+            >
+              {s.label}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="relative h-7" aria-hidden>
         {/* The route still to fly. */}
         <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-border-strong" />
@@ -52,9 +67,10 @@ export function FlightPathProgress({ fraction, label, origin, destination, waypo
         />
         {points.map((p) => (
           <div
-            key={p}
+            // Remounted as the plane passes it, so it pings once.
+            key={`${p}-${p <= f}`}
             className={`absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border transition-colors duration-300 ${
-              p <= f ? "border-accent bg-accent" : "border-border-strong bg-canvas"
+              p <= f ? "waypoint-ping border-accent bg-accent" : "border-border-strong bg-canvas"
             }`}
             style={{ left: `${p * 100}%` }}
           />
@@ -65,7 +81,9 @@ export function FlightPathProgress({ fraction, label, origin, destination, waypo
           animate={{ left: `${f * 100}%` }}
           transition={transition}
         >
-          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
+          {/* A short contrail behind it, once it's under way. */}
+          {f > 0.04 && <span className="absolute right-[18px] top-1/2 h-[3px] w-10 -translate-y-1/2 rounded-full bg-gradient-to-r from-transparent to-[var(--glow-strong)]" />}
+          <svg viewBox="0 0 24 24" className="relative h-6 w-6" fill="currentColor">
             <path d="M21 12c0-.8-.7-1.2-1.6-1.2H15L10.3 3.6H8.5l2.3 7.2H6.2L4.6 8.6H3.2l1 3.4-1 3.4h1.4l1.6-2.2h4.6l-2.3 7.2h1.8l4.7-7.2h4.4c.9 0 1.6-.4 1.6-1.2z" />
           </svg>
         </motion.div>

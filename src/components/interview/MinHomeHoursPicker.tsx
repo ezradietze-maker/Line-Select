@@ -1,5 +1,6 @@
 "use client";
 
+import { PillHighlight } from "@/components/ui/PillHighlight";
 import { DEFAULT_MIN_HOME_HOURS } from "@/lib/metrics/departures";
 
 /** The hours-at-home choices a commuter picks from: half a day to two days. */
@@ -28,9 +29,10 @@ export function MinHomeHoursPicker({ value, onChange, base, id = "min-home-hours
             type="button"
             aria-pressed={value === h}
             onClick={() => onChange(h)}
-            className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${value === h ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
+            className={`relative rounded-full border px-3 py-1.5 text-sm transition-colors duration-300 ${value === h ? "border-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
           >
-            {label(h)}
+            {value === h && <PillHighlight group={`${id}-pill`} />}
+            <span className="relative">{label(h)}</span>
           </button>
         ))}
       </div>

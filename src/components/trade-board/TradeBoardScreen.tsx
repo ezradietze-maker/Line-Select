@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
+import { NotamStrip } from "@/components/ui/NotamStrip";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
+import { PaperPlane } from "@/components/ui/PaperPlane";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { TextField } from "@/components/ui/TextField";
@@ -91,6 +93,7 @@ export function TradeBoardScreen({
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sends, setSends] = useState(0);
   const [search, setSearch] = useState("");
 
   const refresh = useCallback(async () => {
@@ -127,7 +130,7 @@ export function TradeBoardScreen({
   const shownOpenOffers =
     openFromOthers.length > SEARCH_THRESHOLD ? openFromOthers.filter((o) => matchesSearch(o, search)) : openFromOthers;
 
-  async function runAction(action: () => Promise<{ ok: boolean; error?: string }>) {
+  async function runAction(action: () => Promise<{ ok: boolean; error?: string }>, onDone?: () => void) {
     setBusy(true);
     setActionError(null);
     const result = await action();
@@ -142,6 +145,7 @@ export function TradeBoardScreen({
     }
     setShowPostForm(false);
     setRespondingTo(null);
+    onDone?.();
     await refresh();
   }
 
@@ -161,6 +165,9 @@ export function TradeBoardScreen({
         }
       />
 
+      {/* A posted offer folds into a paper plane and flies off to the board. */}
+      <div className="relative h-0">{sends > 0 && <PaperPlane key={sends} className="right-24 top-0" />}</div>
+
       <NonBindingDisclaimer />
 
       {!user && (
@@ -176,7 +183,7 @@ export function TradeBoardScreen({
           bidPack={bidPack}
           busy={busy}
           onCancel={() => setShowPostForm(false)}
-          onSubmit={(input) => runAction(() => postTradeOffer(input))}
+          onSubmit={(input) => runAction(() => postTradeOffer(input), () => setSends((n) => n + 1))}
         />
       )}
 
@@ -279,13 +286,11 @@ export function TradeBoardScreen({
 
 export function NonBindingDisclaimer() {
   return (
-    <Notice tone="warn" className="mt-6">
-      <strong className="font-semibold">This board is not official.</strong> Agreeing to a
-      trade here is not a real, legal schedule trade. Real trip trades have to go through
-      FedEx&rsquo;s official scheduling process, after bidding closes &mdash; rest rules,
-      qualifications, and currency all get checked there, and this app has no way to verify any
-      of that. Use this board to find and coordinate with another pilot only.
-    </Notice>
+    <NotamStrip className="mt-6" headline={<>This board is not official &mdash; a trade agreed here isn&rsquo;t a real schedule trade.</>}>
+      Real trip trades have to go through FedEx&rsquo;s official scheduling process, after bidding closes &mdash; rest
+      rules, qualifications, and currency all get checked there, and this app has no way to verify any of that. Use this
+      board to find and coordinate with another pilot only.
+    </NotamStrip>
   );
 }
 

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Notice } from "@/components/ui/Notice";
+import { NotamStrip } from "@/components/ui/NotamStrip";
 import { ReadingProgress } from "@/components/ui/ReadingProgress";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -331,14 +332,11 @@ function StrategyResults({
         <StandingPanel standing={standing} />
       </PageHeader>
 
-      <Notice tone="warn" className="mt-4 text-xs">
-        <span className="text-ink">
-          <span className="font-semibold">Not FedEx&rsquo;s rules, and not a sure thing.</span> These moves are read from your bid pack&rsquo;s own
-          numbers &mdash; the seniority list, line counts, reserve guarantee and vacation schedule &mdash; not from the contract or crew
-          scheduling. Some may run into FedEx or ALPA rules, and none is a guaranteed way to bid. Check anything you rely on with your
-          PSIT bid rep before the bid closes.
-        </span>
-      </Notice>
+      <NotamStrip className="mt-4" headline={<>Not FedEx&rsquo;s rules, and not a sure thing &mdash; check with your PSIT bid rep.</>}>
+        These moves are read from your bid pack&rsquo;s own numbers &mdash; the seniority list, line counts, reserve guarantee and
+        vacation schedule &mdash; not from the contract or crew scheduling. Some may run into FedEx or ALPA rules, and none is a
+        guaranteed way to bid. Check anything you rely on with your PSIT bid rep before the bid closes.
+      </NotamStrip>
 
       {!profile && (
         <Notice
@@ -434,8 +432,14 @@ function StandingPanel({ standing: st }: { standing: Standing }) {
               <div key={b.label} className={b.cls} style={{ width: `${(b.n / total) * 100}%` }} />
             ))}
           </div>
-          <div className="relative h-0">
-            <div className="absolute -top-[15px] h-5 w-1 -translate-x-1/2 rounded-full bg-ink shadow-[0_0_8px_var(--color-accent)]" style={{ left: `${at * 100}%` }} />
+          {/* Your place: a plane that taxis in from the head of the list and stops on your number. */}
+          <div className="relative h-0" aria-hidden>
+            <div className="taxi-in absolute top-0" style={{ left: `${at * 100}%` }}>
+              <svg viewBox="0 0 24 24" className="absolute -left-2.5 -top-[25px] h-5 w-5 text-ink drop-shadow-[0_0_5px_var(--glow-strong)]" fill="currentColor">
+                <path d="M21 12c0-.8-.7-1.2-1.6-1.2H15L10.3 3.6H8.5l2.3 7.2H6.2L4.6 8.6H3.2l1 3.4-1 3.4h1.4l1.6-2.2h4.6l-2.3 7.2h1.8l4.7-7.2h4.4c.9 0 1.6-.4 1.6-1.2z" />
+              </svg>
+              <span className="absolute -left-px -top-[11px] h-[14px] w-0.5 rounded-full bg-ink" />
+            </div>
           </div>
           <div className="mt-1.5 flex text-[11px] text-ink-faint">
             {bands.map((b) => (

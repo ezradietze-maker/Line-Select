@@ -55,10 +55,12 @@ export function StepNav({ onNext, nextLabel, disabled }: { onNext: () => void; n
  * aircraft moving along as you answer — with the honest readout underneath
  * (topics actually covered, a real estimate of time left).
  */
-export function InterviewProgress({ fraction, left, right }: { fraction: number; left: string; right?: string }) {
+export function InterviewProgress({ fraction, left, right, base }: { fraction: number; left: string; right?: string; base?: string }) {
+  // The stops are the interview's own: out of base, into your story, the review, and your lines ranked.
+  const stops = [...(base ? [{ at: 0, label: base }] : []), { at: 0.2, label: "Story" }, { at: 0.85, label: "Review" }, { at: 1, label: "Ranked" }];
   return (
     <div className="mb-6">
-      <FlightPathProgress fraction={fraction} label="Interview progress" waypoints={3} />
+      <FlightPathProgress fraction={fraction} label="Interview progress" stops={stops} />
       <div className="mt-1.5 flex items-center justify-between gap-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
         <span className="whitespace-nowrap">{left}</span>
         {right && <span className="whitespace-nowrap text-right">{right}</span>}

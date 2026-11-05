@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sameDatesLastYear, summarizeWeather } from "@/lib/weather-client";
+import { sameDatesLastYear, skyOf, summarizeWeather, toCurrent } from "@/lib/weather-client";
 
 describe("layover weather", () => {
   it("takes the bid month's dates a year earlier", () => {
@@ -15,5 +15,12 @@ describe("layover weather", () => {
     ])!;
     expect(s).toMatchObject({ from: "2025-10-01", to: "2025-10-03", avgHighF: 55, avgLowF: 40, wetDays: 2, snowDays: 1, days: 3 });
     expect(summarizeWeather([])).toBeNull();
+  });
+
+  it("reads the sky from a WMO code and the conditions now from a reply", () => {
+    expect([0, 2, 3, 45, 53, 63, 75, 81, 86, 95].map(skyOf)).toEqual(["clear", "partly", "cloudy", "fog", "drizzle", "rain", "snow", "rain", "snow", "storm"]);
+    expect(toCurrent({ current: { temperature_2m: 63.6, weather_code: 61, is_day: 0 } })).toEqual({ tempF: 64, sky: "rain", isDay: false });
+    expect(toCurrent({ current: { temperature_2m: null, weather_code: 0, is_day: 1 } })).toBeNull();
+    expect(toCurrent({})).toBeNull();
   });
 });

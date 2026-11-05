@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { LeftNav } from "@/components/nav/LeftNav";
 import { NAV_ITEMS, disabledReason, type NavTarget } from "@/components/nav/nav-items";
 import { PhoneNav } from "@/components/nav/PhoneNav";
+import { DeadlineTabTitle } from "@/components/results/DeadlineTabTitle";
 import { LogoMark } from "@/components/ui/Logo";
 import { Modal } from "@/components/ui/Modal";
 import { BackToTop } from "@/components/ui/BackToTop";
@@ -241,6 +242,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
       )}
 
       {showSidebar && <BackToTop />}
+      <DeadlineTabTitle packId={bidPack?.id ?? null} />
 
       <CommandPalette
         open={paletteOpen}

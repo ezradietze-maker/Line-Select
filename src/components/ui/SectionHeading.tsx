@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { FlipText } from "@/components/ui/FlipText";
 
 interface SectionHeadingProps {
   children: ReactNode;
@@ -20,7 +21,8 @@ export function SectionHeading({ children, count, action, id, className = "" }: 
     <div className={`flex items-center gap-3 ${className}`}>
       <h2 id={id} className="flex shrink-0 items-baseline gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-ink-faint">
         {children}
-        {count !== undefined && <span className="tabular-nums text-ink-muted">{count}</span>}
+        {/* The count turns over like a flip counter when it changes. */}
+        {count !== undefined && <FlipText text={String(count)} className="tabular-nums text-ink-muted" />}
       </h2>
       <span aria-hidden className="h-px flex-1 bg-hairline" />
       {action}

@@ -32,15 +32,20 @@ export default function PricingPage() {
         }
       />
 
-      <div className="mt-6 rounded-xl border border-brand/30 bg-brand-soft p-5 sm:p-6">
+      {/* The plan you're on: lit in amber, not the grey of something switched off. */}
+      <div className="panel-glass relative mt-6 overflow-hidden p-5 sm:p-6">
+        <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-accent" />
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-semibold text-ink">Free</h2>
-          <span className="text-sm font-medium text-brand">$0</span>
+          <span className="font-mono text-lg font-semibold text-accent">$0</span>
         </div>
         <ul className="mt-4 space-y-2">
-          {FREE_FEATURES.map((f) => (
-            <li key={f} className="flex gap-2 text-sm text-ink">
-              <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
+          {/* Each one ticked off in turn, the way the bid checklist ticks. */}
+          {FREE_FEATURES.map((f, i) => (
+            <li key={f} className="flex gap-2.5 text-sm text-ink">
+              <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 shrink-0 text-good" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden>
+                <path className="tick-draw" style={{ animationDelay: `${200 + i * 110}ms` }} strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
               {f}
             </li>
           ))}
