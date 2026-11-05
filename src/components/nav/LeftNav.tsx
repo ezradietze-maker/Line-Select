@@ -53,7 +53,7 @@ function RailTip({ children }: { children: ReactNode }) {
 }
 
 const ROW =
-  "group relative flex w-full items-center gap-3 rounded-md py-2.5 pl-3 pr-3 text-left text-sm transition-colors duration-150 rail-collapsed:justify-center rail-collapsed:px-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]";
+  "group relative flex w-full items-center gap-3 rounded-md py-[7px] pl-3 pr-3 text-left text-sm transition-colors duration-150 rail-collapsed:justify-center rail-collapsed:px-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]";
 
 /** An icon that lifts a hair and catches the light on hover — the switch under your finger, not a link in a list. */
 function RowIcon({ icon: Icon, active, badge = 0 }: { icon: ComponentType<{ className?: string }>; active: boolean; badge?: number }) {
@@ -77,10 +77,10 @@ function RowIcon({ icon: Icon, active, badge = 0 }: { icon: ComponentType<{ clas
 function SectionLabel({ children, first }: { children: ReactNode; first: boolean }) {
   return (
     <>
-      <div className={`px-3 pb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint rail-collapsed:hidden ${first ? "pt-1" : "pt-4"}`}>
+      <div className={`px-3 pb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint rail-collapsed:hidden ${first ? "pt-1" : "pt-3"}`}>
         {children}
       </div>
-      {!first && <div aria-hidden className="mx-auto my-3 hidden h-px w-6 bg-sidebar-border rail-collapsed:block" />}
+      {!first && <div aria-hidden className="mx-auto my-2 hidden h-px w-6 bg-sidebar-border rail-collapsed:block" />}
     </>
   );
 }
@@ -233,7 +233,7 @@ export function LeftNav({
       style={{ viewTransitionName: "app-rail" }}
       className="sidebar-scheme shadow-sidebar fixed inset-y-0 left-0 z-30 hidden w-[var(--shell-left)] flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[var(--ease-emphasized)] md:flex"
     >
-      <div className="relative flex items-center justify-between gap-2 border-b border-sidebar-border/70 px-4 py-5 rail-collapsed:flex-col rail-collapsed:gap-3 rail-collapsed:px-0">
+      <div className="relative flex items-center justify-between gap-2 border-b border-sidebar-border/70 px-4 py-4 rail-collapsed:flex-col rail-collapsed:gap-3 rail-collapsed:px-0">
         <SidebarStars />
         <button
           type="button"
@@ -248,7 +248,7 @@ export function LeftNav({
       </div>
 
       {pack && (
-        <div className="mx-3 mt-3 rounded-lg border border-hairline bg-canvas/40 px-3 py-2.5 rail-collapsed:hidden">
+        <div className="mx-3 mt-3 rounded-lg border border-hairline bg-canvas/40 px-3 py-2 rail-collapsed:hidden">
           <div className="flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.2em] text-ink-faint">
             <span>Bid pack</span>
             <span className="flex items-center gap-1.5 text-good">
@@ -280,11 +280,13 @@ export function LeftNav({
         </button>
       </div>
 
-      <nav aria-label="Destinations" className="flex-1 px-3 pt-3">
+      {/* The one part that scrolls, on a window too short for the whole rail, so the links below stay in view. Not on
+          the icon rail: its tooltips stand out past its edge, and a scrolling box would clip them. */}
+      <nav aria-label="Destinations" className="min-h-0 flex-1 overflow-y-auto px-3 pb-2 pt-3 rail-collapsed:min-h-fit rail-collapsed:overflow-visible">
         <NavList active={active} hasProfile={hasProfile} hasBidPack={hasBidPack} inboxUnreadCount={inboxUnreadCount} onGo={onNavigate} />
       </nav>
 
-      <div className="space-y-0.5 border-t border-sidebar-border/70 px-3 py-3">
+      <div className="space-y-0.5 border-t border-sidebar-border/70 px-3 py-2">
         <button type="button" onClick={onOpenHowItWorks} className={`${ROW} font-medium text-ink-faint hover:bg-ink/[0.06] hover:text-ink-muted`}>
           <RowIcon icon={InfoIcon} active={false} />
           <span className="rail-collapsed:sr-only">How this works</span>
@@ -310,7 +312,7 @@ export function LeftNav({
         </button>
       </div>
 
-      <div className="border-t border-sidebar-border px-3 pb-4 pt-4">
+      <div className="border-t border-sidebar-border px-3 py-3">
         <AccountMenu user={user} onSignIn={onSignIn} onLogout={onLogout} />
       </div>
     </aside>
