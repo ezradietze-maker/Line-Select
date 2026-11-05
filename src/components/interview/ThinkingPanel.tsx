@@ -10,6 +10,14 @@ const THINKING_STEPS: { afterMs: number; text: string }[] = [
   { afterMs: 9000, text: "Still working — this one is taking a little longer than usual…" },
 ];
 
+/** After that, a few lines in a pilot's voice, one every few seconds — a long wait that still visibly moves. */
+const LONG_WAIT = [
+  "Still working — holding short for the next question…",
+  "Still working — waiting on the sort…",
+  "Still working — running the checklist one more time…",
+  "Almost there — taxiing in…",
+];
+
 /** A question takes several seconds to come back; a message that visibly changes reads as progress, one that never changes reads as a hang. */
 function useThinkingText() {
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -18,6 +26,7 @@ function useThinkingText() {
     const id = setInterval(() => setElapsedMs(Date.now() - started), 1000);
     return () => clearInterval(id);
   }, []);
+  if (elapsedMs >= 14000) return LONG_WAIT[Math.min(LONG_WAIT.length - 1, Math.floor((elapsedMs - 14000) / 5000))];
   return ([...THINKING_STEPS].reverse().find((t) => elapsedMs >= t.afterMs) ?? THINKING_STEPS[0]).text;
 }
 

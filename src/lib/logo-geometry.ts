@@ -21,9 +21,9 @@ export const LOGO_THRESHOLD_BARS_Y: [number, number] = [49.5, 52.5];
 
 /** The plate's fixed colors for raster icons, which can't read CSS variables — the dark theme's, since a home-screen icon sits on any wallpaper. */
 export const LOGO_RASTER_COLORS = {
-  plate1: "#2b1f12",
-  plate2: "#100b06",
-  ink: "#f3e4c8",
-  accent: "#e8a54b",
-  rim: "rgba(232,165,75,0.25)",
+  plate1: "#2a2c31",
+  plate2: "#141517",
+  ink: "#ececea",
+  accent: "#ebb357",
+  rim: "rgba(235,179,87,0.3)",
 };

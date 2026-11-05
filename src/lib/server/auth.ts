@@ -16,7 +16,7 @@ import {
   updateCredential,
 } from "@/lib/server/db";
 import { getEmailConfig, sendEmail } from "@/lib/server/email";
-import { clearAttempts, isRateLimited, recordFailedAttempt } from "@/lib/server/rate-limit";
+import { clearAttempts, takeAttempt } from "@/lib/server/rate-limit";
 import type { UserAccount } from "@/types/auth";
 
 const scrypt = promisify(scryptCallback);
@@ -143,11 +143,11 @@ const RESET_FAILURE_MESSAGE = "That email and recovery code don't match.";
  */
 export async function resetPasswordWithRecoveryCode(email: string, recoveryCode: string, newPassword: string): Promise<AuthResult> {
   const normalized = normalizeEmail(email);
-  if (await isRateLimited(RESET_RATE_LIMIT_SCOPE, normalized)) {
-    return { ok: false, error: "Too many failed attempts. Try again in a few minutes." };
-  }
   if (newPassword.length < 6) {
     return { ok: false, error: "Password must be at least 6 characters." };
+  }
+  if (!(await takeAttempt(RESET_RATE_LIMIT_SCOPE, normalized))) {
+    return { ok: false, error: "Too many failed attempts. Try again in a few minutes." };
   }
 
   const credential = await findCredentialByEmail(normalized);
@@ -156,7 +156,6 @@ export async function resetPasswordWithRecoveryCode(email: string, recoveryCode:
     !!credential.recoverySalt &&
     timingSafeStringEqual(await hashPassword(normalizeRecoveryCode(recoveryCode), credential.recoverySalt), credential.recoveryHash);
   if (!credential || !matches) {
-    await recordFailedAttempt(RESET_RATE_LIMIT_SCOPE, normalized);
     return { ok: false, error: RESET_FAILURE_MESSAGE };
   }
 
@@ -191,8 +190,7 @@ export async function requestPasswordResetEmail(email: string): Promise<boolean>
   const config = getEmailConfig();
   if (!config) return false;
   const normalized = normalizeEmail(email);
-  if (await isRateLimited(RESET_EMAIL_SCOPE, normalized)) return true;
-  await recordFailedAttempt(RESET_EMAIL_SCOPE, normalized);
+  if (!(await takeAttempt(RESET_EMAIL_SCOPE, normalized))) return true;
 
   const credential = await findCredentialByEmail(normalized);
   if (!credential) return true;
@@ -232,12 +230,11 @@ export async function resetPasswordWithEmailToken(token: string, newPassword: st
 export async function createRecoveryCodeForUser(userId: string, password: string): Promise<AuthResult> {
   const credential = await findCredentialByUserId(userId);
   if (!credential) return { ok: false, error: "Account data is missing." };
-  if (await isRateLimited(LOGIN_RATE_LIMIT_SCOPE, credential.email)) {
+  if (!(await takeAttempt(LOGIN_RATE_LIMIT_SCOPE, credential.email))) {
     return { ok: false, error: "Too many failed attempts. Try again in a few minutes." };
   }
   const attempt = await hashPassword(password, credential.salt);
   if (!timingSafeStringEqual(attempt, credential.passwordHash)) {
-    await recordFailedAttempt(LOGIN_RATE_LIMIT_SCOPE, credential.email);
     return { ok: false, error: "Incorrect password." };
   }
   await clearAttempts(LOGIN_RATE_LIMIT_SCOPE, credential.email);
@@ -252,19 +249,17 @@ export async function login(email: string, password: string): Promise<AuthResult
   // Rate-limited per normalized email rather than per IP — the thing being
   // protected is the *account*, and this also means a shared or rotating IP
   // (common on mobile) can't accidentally lock someone else out.
-  if (await isRateLimited(LOGIN_RATE_LIMIT_SCOPE, normalized)) {
+  if (!(await takeAttempt(LOGIN_RATE_LIMIT_SCOPE, normalized))) {
     return { ok: false, error: "Too many failed attempts. Try again in a few minutes." };
   }
 
   const credential = await findCredentialByEmail(normalized);
   if (!credential) {
-    await recordFailedAttempt(LOGIN_RATE_LIMIT_SCOPE, normalized);
     return { ok: false, error: "No account found with that email." };
   }
 
   const attemptHash = await hashPassword(password, credential.salt);
   if (!timingSafeStringEqual(attemptHash, credential.passwordHash)) {
-    await recordFailedAttempt(LOGIN_RATE_LIMIT_SCOPE, normalized);
     return { ok: false, error: "Incorrect password." };
   }
 

@@ -1,7 +1,7 @@
 import type { NavTarget } from "@/components/nav/LeftNav";
 
 /** Pages that live outside the sidebar's destinations — nothing lights up for them, rather than wrongly lighting "Upload Bid Pack". */
-const NO_NAV_ITEM_PATHS = ["/how-it-works", "/pricing", "/privacy", "/terms", "/auth", "/reset-password"];
+const NO_NAV_ITEM_PATHS = ["/how-it-works", "/pricing", "/privacy", "/terms", "/auth", "/reset-password", "/whats-new"];
 
 /** Which sidebar item a route belongs under, or null for a page that isn't one of them — including any route this list doesn't know yet. */
 export function navTargetForPath(pathname: string): NavTarget | null {
@@ -13,5 +13,8 @@ export function navTargetForPath(pathname: string): NavTarget | null {
   if (pathname.startsWith("/trade-board")) return "trade-board";
   if (pathname.startsWith("/inbox")) return "inbox";
   if (pathname.startsWith("/hotel-ratings")) return "hotel-ratings";
+  if (pathname.startsWith("/cities")) return "cities";
+  if (pathname.startsWith("/logbook")) return "logbook";
+  if (pathname.startsWith("/tools")) return "tools";
   return null;
 }

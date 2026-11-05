@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { createAwardHistoryRecord, listAwardHistoryRecords } from "@/lib/server/db";
 import { forecastPackKey } from "@/lib/forecast/forecast";
 import { afterResponse } from "@/lib/server/after-response";
@@ -41,6 +42,8 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Sign in to report what you held." }, { status: 401 });
   }
+  // Every report can set off a learning run, and a pilot logs a handful a month at most.
+  if (!(await checkRateLimit("award-history", user.id, 20, 60 * 60)).ok) return rateLimitedResponse();
 
   let body: Partial<AwardHistoryRecord> & { awardedChoice?: unknown };
   try {
@@ -56,10 +59,10 @@ export async function POST(request: Request) {
     !isText(aircraft, 20) ||
     (seat !== "CAP" && seat !== "FO") ||
     !isText(month, 20) ||
-    !Number.isInteger(seniorityRank) ||
-    (seniorityRank as number) < 0 ||
-    !Number.isInteger(seniorityTotalPilots) ||
-    (seniorityTotalPilots as number) < 0 ||
+    !isIntOrNull(seniorityRank, 100_000) ||
+    seniorityRank == null ||
+    !isIntOrNull(seniorityTotalPilots, 100_000) ||
+    seniorityTotalPilots == null ||
     (outcome !== "line" && outcome !== "reserve" && outcome !== "other") ||
     (body.lineNumber !== undefined && body.lineNumber !== null && !isText(body.lineNumber, 12)) ||
     !isIntOrNull(body.daysOff, 31) ||

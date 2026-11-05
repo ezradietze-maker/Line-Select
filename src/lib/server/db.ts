@@ -376,23 +376,32 @@ export async function createAwardHistoryRecord(
   record: AwardHistoryRecord,
   link: { pilotHash?: string | null; packKey?: string | null; awardedChoice?: number | null } = {}
 ): Promise<void> {
-  await db.insert(awardHistoryRecords).values({
-    pilotHash: link.pilotHash ?? null,
-    packKey: link.packKey ?? null,
-    awardedChoice: link.awardedChoice ?? null,
-    id: record.id,
-    base: record.base,
-    aircraft: record.aircraft,
-    seat: record.seat,
-    month: record.month,
-    seniorityRank: record.seniorityRank,
-    seniorityTotalPilots: record.seniorityTotalPilots,
-    outcome: record.outcome,
-    lineNumber: record.lineNumber,
-    daysOff: record.daysOff,
-    totalCreditHours: record.totalCreditHours,
-    totalTafbHours: record.totalTafbHours,
-    submittedAt: new Date(record.submittedAt),
+  await db.transaction(async (tx) => {
+    // One report per pilot per pack: a corrected award replaces the earlier one rather than standing beside it
+    // in the history everyone's holdability estimates are checked against.
+    if (link.pilotHash && link.packKey) {
+      await tx
+        .delete(awardHistoryRecords)
+        .where(and(eq(awardHistoryRecords.pilotHash, link.pilotHash), eq(awardHistoryRecords.packKey, link.packKey)));
+    }
+    await tx.insert(awardHistoryRecords).values({
+      pilotHash: link.pilotHash ?? null,
+      packKey: link.packKey ?? null,
+      awardedChoice: link.awardedChoice ?? null,
+      id: record.id,
+      base: record.base,
+      aircraft: record.aircraft,
+      seat: record.seat,
+      month: record.month,
+      seniorityRank: record.seniorityRank,
+      seniorityTotalPilots: record.seniorityTotalPilots,
+      outcome: record.outcome,
+      lineNumber: record.lineNumber,
+      daysOff: record.daysOff,
+      totalCreditHours: record.totalCreditHours,
+      totalTafbHours: record.totalTafbHours,
+      submittedAt: new Date(record.submittedAt),
+    });
   });
 }
 

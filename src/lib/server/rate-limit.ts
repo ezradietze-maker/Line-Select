@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getJson, incrementCounter, setJson } from "@/lib/server/kv";
+import { incrementCounter, setJson } from "@/lib/server/kv";
 
 /**
- * A minimal failed-attempt counter for login, backed by the same persistent
+ * A minimal attempt counter for login, backed by the same persistent
  * kv store as everything else (`kv.ts`) — Redis in production, so this
  * actually holds up across serverless instances, not just a single warm
  * one. Scoped by both a `scope` (e.g. "login") and an `identifier` (e.g. a
@@ -12,30 +12,23 @@ import { getJson, incrementCounter, setJson } from "@/lib/server/kv";
 const WINDOW_SECONDS = 15 * 60;
 const MAX_ATTEMPTS = 6;
 
-interface AttemptRecord {
-  count: number;
+// A plain integer under its own prefix: Redis INCR can't touch the `{ count }` objects the old read-then-write limiter left.
+function attemptKey(scope: string, identifier: string): string {
+  return `line-select:attempts:${scope}:${identifier}`;
 }
 
-function rateLimitKey(scope: string, identifier: string): string {
-  return `line-select:ratelimit:${scope}:${identifier}`;
-}
-
-/** True when this identifier has hit the failed-attempt ceiling within the current window. */
-export async function isRateLimited(scope: string, identifier: string): Promise<boolean> {
-  const record = await getJson<AttemptRecord>(rateLimitKey(scope, identifier));
-  return (record?.count ?? 0) >= MAX_ATTEMPTS;
-}
-
-/** Records one failed attempt. The window resets from whenever the *first* failure in a burst landed — each call re-arms the same TTL, so a steady trickle of failures stays blocked rather than sliding the window forever. */
-export async function recordFailedAttempt(scope: string, identifier: string): Promise<void> {
-  const key = rateLimitKey(scope, identifier);
-  const record = await getJson<AttemptRecord>(key);
-  await setJson(key, { count: (record?.count ?? 0) + 1 }, { ttlSeconds: WINDOW_SECONDS });
+/**
+ * Takes one attempt before the password (or code) is checked; false once the ceiling is reached. Counting
+ * first, atomically, is what stops a burst of parallel guesses: checking and then recording a failure let every
+ * request in the burst see the same count. The window runs from the first attempt; a success clears it.
+ */
+export async function takeAttempt(scope: string, identifier: string): Promise<boolean> {
+  return (await incrementCounter(attemptKey(scope, identifier), WINDOW_SECONDS)) <= MAX_ATTEMPTS;
 }
 
 /** Clears the counter after a genuine success, so a legitimate pilot who mistyped a password twice isn't penalized once they get it right. */
 export async function clearAttempts(scope: string, identifier: string): Promise<void> {
-  await setJson(rateLimitKey(scope, identifier), { count: 0 }, { ttlSeconds: WINDOW_SECONDS });
+  await setJson(attemptKey(scope, identifier), 0, { ttlSeconds: WINDOW_SECONDS });
 }
 
 /**

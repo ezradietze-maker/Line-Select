@@ -5,7 +5,7 @@ import { SESSION_COOKIE, login, sessionCookieOptions } from "@/lib/server/auth";
 export const runtime = "nodejs";
 
 // login() (lib/server/auth.ts) already rate-limits per normalized email via
-// isRateLimited/recordFailedAttempt/clearAttempts — deliberately account-
+// takeAttempt/clearAttempts — deliberately account-
 // scoped rather than IP-scoped, so this route doesn't need its own layer.
 export async function POST(request: Request) {
   let body: { email?: string; password?: string };

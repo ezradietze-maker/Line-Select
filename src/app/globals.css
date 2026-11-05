@@ -10,35 +10,35 @@
 }
 
 :root {
-  /* Base surfaces — warm beige/cream, never stark white */
-  --color-canvas: #f1e8d8;
-  --color-surface: #f8f2e6;
-  --color-surface-raised: #fbf6ec;
-  --color-border: #e0d2b3;
-  --color-border-strong: #cdb98c;
+  /* Charcoal: soft light-grey surfaces under charcoal ink in daylight, a charcoal sidebar, warm amber for what to
+     look at. The dark scheme below is charcoal through and through, with the amber turned up. */
+  --color-canvas: #f1f1ef;
+  --color-surface: #f8f8f6;
+  --color-surface-raised: #fdfdfc;
+  --color-border: #deded9;
+  --color-border-strong: #c3c3bd;
 
   /* Text — ink-muted/ink-faint tuned to hold WCAG AA (4.5:1) against every
      surface they're actually rendered on (canvas, surface, surface-2), not
      just the lightest of the three. */
-  --color-ink: #2e2013;
-  --color-ink-muted: #70604b;
-  --color-ink-faint: #6e604d;
+  --color-ink: #1f2023;
+  --color-ink-muted: #53555a;
+  --color-ink-faint: #595b60;
 
-  /* Brand: deep coffee brown + warm caramel accent. Accent tuned to hold
-     4.5:1 as text on accent-soft (the "Top pick" banner's own background),
-     not just on the page surface. */
-  --color-brand: #4a3420;
-  --color-brand-strong: #34240f;
-  --color-brand-soft: #ece0c8;
-  --color-accent: #905420;
-  --color-accent-soft: #f1e2c4;
-  --color-accent-wash: #e4c48c;
+  /* Brand: charcoal for the solid controls; amber for what to look at. Accent tuned to hold 4.5:1 as text on
+     accent-soft (the "Top pick" banner's own background), not just on the page surface. */
+  --color-brand: #26282c;
+  --color-brand-strong: #17181b;
+  --color-brand-soft: #e5e5e1;
+  --color-accent: #8f5c0c;
+  --color-accent-soft: #f6e7c8;
+  --color-accent-wash: #efd49c;
   /* Accent text sitting on the accent wash (the active nav item) — adjusted from plain accent so it holds AA contrast on that tint. */
-  --color-on-wash: #79471b;
+  --color-on-wash: #5f3d06;
   /* Text on a solid brand or danger fill (primary buttons, badges). White on
      daylight's deep brown; the dark themes' brand is a light gold, so text on
      it goes dark — white there measured 2.3:1. */
-  --color-on-brand: #fbf6ec;
+  --color-on-brand: #f6f6f4;
   --color-on-danger: #ffffff;
   /* Calendar views' own "Flying" segment color — defaults to brand, but is
      the one color a pilot can personalize (see calendar-theme.ts) without
@@ -49,20 +49,20 @@
 
   /* Second accent: a warm, grayer taupe — desaturated relative to brand/accent
      on purpose, so the two don't read as one hue at two weights. */
-  --color-dispatch: #7c6446;
-  --color-dispatch-soft: #efe6d6;
-  --color-dispatch-wash: #d9c9a8;
+  --color-dispatch: #5a5d63;
+  --color-dispatch-soft: #ebebe8;
+  --color-dispatch-wash: #d6d6d1;
 
   /* Sidebar: a distinct recessed panel, not a copy of the content surface */
-  --color-sidebar: #ece0c8;
-  --color-sidebar-border: #cdb98c;
+  --color-sidebar: #26282c;
+  --color-sidebar-border: #36393e;
 
   /* Semantic — same hues as before the re-theme (status colors carry meaning
      independent of brand identity), each darkened just enough to hold 4.5:1
      against its own "-soft" background at the small sizes these render at
      (banners, badges) — they were a hair under AA before. */
   /* Dark enough for small text on a trip day's shaded calendar cell (4.8:1), not only on the page. */
-  --color-good: #25664d;
+  --color-good: #2a6f4c;
   --color-standby: #7b5ea7;
   /* Night blue: a suggested sleep on a layover (see lib/sleep-plan.ts). */
   --color-sleep: #33427a;
@@ -70,13 +70,13 @@
   /* Teal: what a line carries into the next bid month (see lib/bid-month.ts). */
   --color-carry: #2d6a74;
   --color-carry-soft: #dbeced;
-  --color-good-soft: #e1f0e7;
-  --color-warn: #92521c;
-  --color-warn-soft: #f6e8d7;
+  --color-good-soft: #e3efe7;
+  --color-warn: #9a4a1f;
+  --color-warn-soft: #f7e6da;
   /* NOTAM red: saturated and stamped, not a muted salmon — reserved strictly
      for warnings/alerts, never generic UI chrome. */
-  --color-danger: #b2352a;
-  --color-danger-soft: #f8e3de;
+  --color-danger: #b3362c;
+  --color-danger-soft: #f8e1dd;
 
   /* The calendar's own picture of a trip (components/results/LegBars.tsx), one vivid color per thing a pilot reads off
      it: a flight, a deadhead, a layover, a report time. Brighter than the rest of the palette on purpose — the
@@ -92,10 +92,10 @@
   /* Trips flown back to back without getting home between: one departure, boxed together in the trip list. */
   --color-chain: #4338ca;
 
-  --color-focus-ring: #4a3420;
+  --color-focus-ring: #26282c;
 
   /* Warm paper shadow — hue 35 (amber-brown), not a generic cool gray. */
-  --shadow-color: 35 15% 20%;
+  --shadow-color: 220 6% 14%;
   --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.06);
   --shadow-md: 0 2px 8px hsl(var(--shadow-color) / 0.08), 0 1px 2px hsl(var(--shadow-color) / 0.06);
   --shadow-lg: 0 12px 32px hsl(var(--shadow-color) / 0.12), 0 2px 6px hsl(var(--shadow-color) / 0.06);
@@ -104,7 +104,7 @@
      content without ever competing with it. A repeating hard-edged line
      reads far busier than its alpha value suggests in isolation, so this
      stays well under what a color swatch alone would imply is "faint." */
-  --texture-grid-line: color-mix(in srgb, var(--color-ink) 2%, transparent);
+  --texture-grid-line: transparent;
   --texture-grid-size: 32px;
 
   /* Motion: one shared duration/easing vocabulary instead of untimed
@@ -120,19 +120,19 @@
      Instrument-panel surfaces, readout numerals, glows and hairlines. In
      daylight the "glow" is just a warm shadow — a neon halo on paper would
      look wrong — so the light values stay quiet on purpose. */
-  --color-panel: #f6eddd;
-  --color-readout: #2e2013;
-  --color-hairline: rgb(46 32 19 / 0.12);
-  --glow-soft: rgb(147 86 33 / 0.1);
-  --glow-strong: rgb(147 86 33 / 0.2);
-  --panel-highlight: rgb(255 255 255 / 0.55);
+  --color-panel: #fbfbfa;
+  --color-readout: #1f2023;
+  --color-hairline: rgb(31 32 35 / 0.11);
+  --glow-soft: rgb(227 164 60 / 0.12);
+  --glow-strong: rgb(227 164 60 / 0.24);
+  --panel-highlight: rgb(255 255 255 / 0.6);
   /* The logo plate and its marks — the one place the mark sits on its own
      surface, so it carries its own tokens per theme. */
-  --logo-plate-1: #fbf4e6;
-  --logo-plate-2: #eadbbf;
-  --logo-ink: #2c1e10;
-  --logo-accent: #a8611c;
-  --logo-rim: rgb(168 97 28 / 0.25);
+  --logo-plate-1: #33363b;
+  --logo-plate-2: #1f2023;
+  --logo-ink: #f1f1ef;
+  --logo-accent: #e3a43c;
+  --logo-rim: rgb(227 164 60 / 0.3);
   --radius-panel: 14px;
   --radius-control: 10px;
   /* Longer, deliberate reveals for instruments (a gauge sweeping up, a route
@@ -143,45 +143,45 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-canvas: #1c150d;
-    --color-surface: #241b11;
-    --color-surface-raised: #2c2115;
-    --color-border: #42331e;
-    --color-border-strong: #54402d;
+    --color-canvas: #1c1d20;
+    --color-surface: #222428;
+    --color-surface-raised: #2a2c31;
+    --color-border: #33353a;
+    --color-border-strong: #46494f;
 
-    --color-ink: #f2e8d8;
-    --color-ink-muted: #a8977c;
-    --color-ink-faint: #968876;
+    --color-ink: #ececea;
+    --color-ink-muted: #a5a7a3;
+    --color-ink-faint: #9a9c98;
 
-    --color-brand: #c9a468;
-    --color-brand-strong: #e0c08a;
-    --color-brand-soft: #3a2b18;
-    --color-on-brand: #1c150d;
-    --color-on-danger: #1c150d;
-    --color-accent: #d68a3e;
-    --color-accent-soft: #3d2814;
-    --color-accent-wash: #5c3f1e;
-    --color-on-wash: #e1aa72;
+    --color-brand: #ebb357;
+    --color-brand-strong: #f2c574;
+    --color-brand-soft: #2f2a20;
+    --color-on-brand: #241703;
+    --color-on-danger: #1c1d20;
+    --color-accent: #ebb357;
+    --color-accent-soft: #3a2d14;
+    --color-accent-wash: #57421c;
+    --color-on-wash: #f2cf8e;
     --color-calendar-accent: var(--color-brand);
 
-    --color-dispatch: #b39a72;
-    --color-dispatch-soft: #362a1a;
-    --color-dispatch-wash: #4a3a22;
+    --color-dispatch: #a5a7a3;
+    --color-dispatch-soft: #2a2c31;
+    --color-dispatch-wash: #3a3d42;
 
-    --color-sidebar: #150f09;
-    --color-sidebar-border: #2e2314;
+    --color-sidebar: #141517;
+    --color-sidebar-border: #2a2c30;
 
-    --color-good: #5cb98d;
+    --color-good: #6cc596;
     --color-standby: #a48bd0;
     --color-sleep: #93a4e6;
     --color-sleep-soft: #1d2238;
     --color-carry: #7fc0c8;
     --color-carry-soft: #16292c;
-    --color-good-soft: #16281f;
-    --color-warn: #d99a52;
-    --color-warn-soft: #2c2114;
-    --color-danger: #e2604a;
-    --color-danger-soft: #2e1a16;
+    --color-good-soft: #173023;
+    --color-warn: #e39a5c;
+    --color-warn-soft: #33241a;
+    --color-danger: #ec7a6c;
+    --color-danger-soft: #3a1c18;
 
     --color-leg: #7ea6ff;
     --color-deadhead: #f475b5;
@@ -191,66 +191,66 @@
     --color-rest: #fbbf24;
     --color-chain: #a5b4fc;
 
-    --color-focus-ring: #c9a468;
-    --shadow-color: 35 25% 2%;
+    --color-focus-ring: #ebb357;
+    --shadow-color: 220 10% 3%;
 
     /* Dark surfaces need a stronger alpha than light for the grid to read at the same subtlety. */
-    --texture-grid-line: color-mix(in srgb, var(--color-ink) 3%, transparent);
+    --texture-grid-line: transparent;
 
-    --color-panel: #19120a;
-    --color-readout: #ffe1b0;
-    --color-hairline: rgb(242 232 216 / 0.09);
-    --glow-soft: rgb(232 165 75 / 0.16);
-    --glow-strong: rgb(232 165 75 / 0.4);
-    --panel-highlight: rgb(255 236 200 / 0.05);
-    --logo-plate-1: #2b1f12;
-    --logo-plate-2: #100b06;
-    --logo-ink: #f3e4c8;
-    --logo-accent: #e8a54b;
-    --logo-rim: rgb(232 165 75 / 0.25);
+    --color-panel: #212327;
+    --color-readout: #f2e8d2;
+    --color-hairline: rgb(236 236 234 / 0.09);
+    --glow-soft: rgb(235 179 87 / 0.16);
+    --glow-strong: rgb(235 179 87 / 0.4);
+    --panel-highlight: rgb(236 236 234 / 0.04);
+    --logo-plate-1: #2a2c31;
+    --logo-plate-2: #141517;
+    --logo-ink: #ececea;
+    --logo-accent: #ebb357;
+    --logo-rim: rgb(235 179 87 / 0.3);
   }
 }
 
 :root[data-theme="dark"] {
-  --color-canvas: #1c150d;
-  --color-surface: #241b11;
-  --color-surface-raised: #2c2115;
-  --color-border: #42331e;
-  --color-border-strong: #54402d;
+  --color-canvas: #1c1d20;
+  --color-surface: #222428;
+  --color-surface-raised: #2a2c31;
+  --color-border: #33353a;
+  --color-border-strong: #46494f;
 
-  --color-ink: #f2e8d8;
-  --color-ink-muted: #a8977c;
-  --color-ink-faint: #968876;
+  --color-ink: #ececea;
+  --color-ink-muted: #a5a7a3;
+  --color-ink-faint: #9a9c98;
 
-  --color-brand: #c9a468;
-  --color-brand-strong: #e0c08a;
-  --color-brand-soft: #3a2b18;
-  --color-on-brand: #1c150d;
-  --color-on-danger: #1c150d;
-  --color-accent: #d68a3e;
-  --color-accent-soft: #3d2814;
-  --color-accent-wash: #5c3f1e;
-  --color-on-wash: #e1aa72;
+  --color-brand: #ebb357;
+  --color-brand-strong: #f2c574;
+  --color-brand-soft: #2f2a20;
+  --color-on-brand: #241703;
+  --color-on-danger: #1c1d20;
+  --color-accent: #ebb357;
+  --color-accent-soft: #3a2d14;
+  --color-accent-wash: #57421c;
+  --color-on-wash: #f2cf8e;
   --color-calendar-accent: var(--color-brand);
 
-  --color-dispatch: #b39a72;
-  --color-dispatch-soft: #362a1a;
-  --color-dispatch-wash: #4a3a22;
+  --color-dispatch: #a5a7a3;
+  --color-dispatch-soft: #2a2c31;
+  --color-dispatch-wash: #3a3d42;
 
-  --color-sidebar: #150f09;
-  --color-sidebar-border: #2e2314;
+  --color-sidebar: #141517;
+  --color-sidebar-border: #2a2c30;
 
-  --color-good: #5cb98d;
+  --color-good: #6cc596;
   --color-standby: #a48bd0;
   --color-sleep: #93a4e6;
   --color-sleep-soft: #1d2238;
   --color-carry: #7fc0c8;
   --color-carry-soft: #16292c;
-  --color-good-soft: #16281f;
-  --color-warn: #d99a52;
-  --color-warn-soft: #2c2114;
-  --color-danger: #e2604a;
-  --color-danger-soft: #2e1a16;
+  --color-good-soft: #173023;
+  --color-warn: #e39a5c;
+  --color-warn-soft: #33241a;
+  --color-danger: #ec7a6c;
+  --color-danger-soft: #3a1c18;
 
   --color-leg: #7ea6ff;
   --color-deadhead: #f475b5;
@@ -260,20 +260,20 @@
   --color-rest: #fbbf24;
   --color-chain: #a5b4fc;
 
-  --color-focus-ring: #c9a468;
-  --shadow-color: 35 25% 2%;
+  --color-focus-ring: #ebb357;
+  --shadow-color: 220 10% 3%;
 
-  --color-panel: #19120a;
-  --color-readout: #ffe1b0;
-  --color-hairline: rgb(242 232 216 / 0.09);
-  --glow-soft: rgb(232 165 75 / 0.16);
-  --glow-strong: rgb(232 165 75 / 0.4);
-  --panel-highlight: rgb(255 236 200 / 0.05);
-  --logo-plate-1: #2b1f12;
-  --logo-plate-2: #100b06;
-  --logo-ink: #f3e4c8;
-  --logo-accent: #e8a54b;
-  --logo-rim: rgb(232 165 75 / 0.25);
+  --color-panel: #212327;
+  --color-readout: #f2e8d2;
+  --color-hairline: rgb(236 236 234 / 0.09);
+  --glow-soft: rgb(235 179 87 / 0.16);
+  --glow-strong: rgb(235 179 87 / 0.4);
+  --panel-highlight: rgb(236 236 234 / 0.04);
+  --logo-plate-1: #2a2c31;
+  --logo-plate-2: #141517;
+  --logo-ink: #ececea;
+  --logo-accent: #ebb357;
+  --logo-rim: rgb(235 179 87 / 0.3);
 }
 
 /*
@@ -355,6 +355,36 @@
   --logo-ink: #ff5c5c;
   --logo-accent: #ff7a3d;
   --logo-rim: rgb(255 92 92 / 0.28);
+}
+
+:root:not([data-theme="night"]) .sidebar-scheme {
+  /* The charcoal chrome — the desktop sidebar and the phone's bars — in both schemes: inside it, every token reads as
+     on charcoal, so the nav's own classes (text-ink, bg-canvas/40, the amber active row) need no second set. The night
+     theme's red-light sidebar keeps its own. */
+  --color-canvas: #1f2125;
+  --color-surface: #2b2d32;
+  --color-surface-raised: #33363b;
+  --color-border: #3a3d42;
+  --color-border-strong: #4b4e54;
+  --color-ink: #f1f1ef;
+  --color-ink-muted: #b9bbb7;
+  --color-ink-faint: #a9aba7;
+  --color-brand: #ebb357;
+  --color-brand-strong: #f2c574;
+  --color-brand-soft: #3a2d14;
+  --color-on-brand: #241703;
+  --color-accent: #ebb357;
+  --color-accent-soft: #3a2d14;
+  --color-accent-wash: #4a3a1f;
+  --color-on-wash: #f5d596;
+  --color-good: #6cc596;
+  --color-danger: #ec7a6c;
+  --color-on-danger: #1c1d20;
+  --color-readout: #f1f1ef;
+  --color-hairline: rgb(241 241 239 / 0.1);
+  --color-focus-ring: #ebb357;
+  --color-panel: #2b2d32;
+  color: var(--color-ink);
 }
 
 @theme inline {
@@ -637,6 +667,10 @@ body {
  * (a drag-and-drop overlay, in the case that surfaced this). Simplest safe
  * fix: never animate `transform` on a container that might contain
  * fixed-position descendants.
+ *
+ * Fill `backwards`, not `both`: an opacity animation still holding its end
+ * state keeps the element a stacking context, so a `fixed z-50` overlay
+ * inside a page (the first-visit tour) sat under the z-30 sidebar.
  */
 @keyframes fade-in {
   from {
@@ -648,7 +682,7 @@ body {
 }
 
 .animate-fade-in {
-  animation: fade-in 0.25s ease both;
+  animation: fade-in 0.25s ease backwards;
 }
 
 /*

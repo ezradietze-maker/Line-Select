@@ -9,6 +9,11 @@ vi.mock("@/lib/server/kv", () => ({
   setJson: vi.fn(async (key: string, value: unknown) => {
     kvStore.set(key, value);
   }),
+  incrementCounter: vi.fn(async (key: string) => {
+    const next = ((kvStore.get(key) as number | undefined) ?? 0) + 1;
+    kvStore.set(key, next);
+    return next;
+  }),
 }));
 
 const scrypt = promisify(scryptCallback);

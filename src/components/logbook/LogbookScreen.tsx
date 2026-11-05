@@ -1,0 +1,397 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
+import { submitAwardHistory } from "@/lib/award-history";
+import { loggedMonthFor } from "@/lib/bid-checklist";
+import { cityName } from "@/lib/city-names";
+import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
+import { logbookStats, loggedMonthFrom, withCheckIn, withLoggedMonth, withoutLoggedMonth } from "@/lib/logbook";
+import { rankLines } from "@/lib/scoring";
+import type { UserAccount } from "@/types/auth";
+import type { BidPack } from "@/types/bidpack";
+import type { LoggedMonth, MonthFeel } from "@/types/logbook";
+import type { PreferenceProfile } from "@/types/preferences";
+import type { SeniorityInput } from "@/types/strategy";
+
+const LABEL = "font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint";
+const hm = (h: number | null | undefined) => (typeof h === "number" ? `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, "0")}` : "—");
+const FEELS: { feel: MonthFeel; label: string }[] = [
+  { feel: "better", label: "Better than I expected" },
+  { feel: "asExpected", label: "About what I expected" },
+  { feel: "worse", label: "Worse than I expected" },
+];
+
+interface LogbookScreenProps {
+  bidPack: BidPack | null;
+  profile: PreferenceProfile | null;
+  user: UserAccount | null;
+  seniority: SeniorityInput | null;
+  onUpdateProfile: (profile: PreferenceProfile) => void;
+}
+
+/**
+ * The pilot's logbook: each month's award, logged once it's out, and how the month flew — adding up over time to what
+ * they've held, where they've been and how their seniority has moved. Shared, only if they say so, anonymously.
+ */
+export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfile }: LogbookScreenProps) {
+  const entries = useMemo(() => profile?.logbook ?? [], [profile?.logbook]);
+  const stats = useMemo(() => logbookStats(entries), [entries]);
+  const thisMonth = bidPack && profile ? loggedMonthFor(profile, bidPack) : null;
+  const [relogging, setRelogging] = useState(false);
+
+  return (
+    <div className="mx-auto w-full max-w-3xl">
+      <PageHeader
+        eyebrow={packEyebrow(bidPack) ?? "Your logbook"}
+        title="Logbook"
+        description="Log each month’s award once it’s out, and how the month flew once you’ve flown it. Over the months it adds up to what you’ve held, where you’ve been and where your seniority is heading."
+      />
+
+      {bidPack && profile && (!thisMonth || relogging) && (
+        <LogAward
+          bidPack={bidPack}
+          profile={profile}
+          user={user}
+          seniority={seniority}
+          existing={thisMonth}
+          onSave={(p) => {
+            onUpdateProfile(p);
+            setRelogging(false);
+          }}
+          onCancel={thisMonth ? () => setRelogging(false) : undefined}
+        />
+      )}
+
+      <WhySharing />
+
+      {entries.length > 0 && <Stats stats={stats} />}
+
+      <section className="mt-8">
+        <h2 className={LABEL}>Months logged {entries.length > 0 ? entries.length : ""}</h2>
+        {entries.length === 0 ? (
+          <p className="mt-2 text-sm text-ink-muted">Nothing logged yet. Your first month shows here once you log its award.</p>
+        ) : (
+          <ul className="mt-3 space-y-3">
+            {entries.map((m) => (
+              <li key={m.id}>
+                <MonthEntry
+                  entry={m}
+                  isThisPack={m.id === thisMonth?.id}
+                  onRelog={() => setRelogging(true)}
+                  onCheckIn={(feel, words) => profile && onUpdateProfile(withCheckIn(profile, m.id, feel, words))}
+                  onDelete={() => profile && onUpdateProfile(withoutLoggedMonth(profile, m.id))}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function LogAward({
+  bidPack,
+  profile,
+  user,
+  seniority,
+  existing,
+  onSave,
+  onCancel,
+}: {
+  bidPack: BidPack;
+  profile: PreferenceProfile;
+  user: UserAccount | null;
+  seniority: SeniorityInput | null;
+  existing: LoggedMonth | null;
+  onSave: (profile: PreferenceProfile) => void;
+  onCancel?: () => void;
+}) {
+  // The pilot's own ranking, best first — to list the lines in their order and say which choice they got.
+  const ranked = useMemo(() => rankLines(bidPack, profile, {}, computeImplicitLineValues(bidPack)).map((r) => r.line), [bidPack, profile]);
+  const [outcome, setOutcome] = useState<LoggedMonth["outcome"]>(existing?.outcome ?? "line");
+  const [lineId, setLineId] = useState(() => bidPack.lines.find((l) => l.lineNumber === existing?.lineNumber)?.id ?? ranked[0]?.id ?? "");
+  const [share, setShare] = useState(!!user && !!seniority);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    const line = outcome === "line" ? (bidPack.lines.find((l) => l.id === lineId) ?? null) : null;
+    const rank = line ? ranked.findIndex((l) => l.id === line.id) : -1;
+    let entry = loggedMonthFrom(bidPack, outcome, line, { rankedAt: rank >= 0 ? rank + 1 : null, seniority });
+    if (share && user && seniority) {
+      const whole = (x: number | null | undefined) => (typeof x === "number" ? Math.round(x) : null);
+      const result = await submitAwardHistory({
+        base: bidPack.base,
+        aircraft: bidPack.aircraft,
+        seat: bidPack.seat,
+        month: bidPack.month,
+        seniorityRank: seniority.rank,
+        seniorityTotalPilots: seniority.totalPilots,
+        outcome,
+        lineNumber: line?.lineNumber ?? null,
+        daysOff: whole(line?.daysOff),
+        totalCreditHours: whole(line?.totalCreditHours),
+        totalTafbHours: whole(line?.totalTafbHours),
+        awardedChoice: entry.rankedAt ?? null,
+      });
+      if (!result.ok) setError(`Logged here, but not shared: ${result.error}`);
+      else entry = { ...entry, sharedAt: new Date().toISOString() };
+    }
+    setSaving(false);
+    onSave(withLoggedMonth(profile, entry));
+  }
+
+  return (
+    <section className="panel-glass mt-6 p-5 sm:p-6">
+      <h2 className="font-display text-xl font-semibold text-ink">Log your {bidPack.month} award</h2>
+      <p className="mt-1 text-sm text-ink-muted">Once the award is out: what did you get?</p>
+      <div className="mt-4 flex flex-wrap gap-2" role="radiogroup" aria-label="What you were awarded">
+        {(
+          [
+            ["line", "A regular line"],
+            ["reserve", "Reserve"],
+            ["other", "Something else"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={outcome === value}
+            onClick={() => setOutcome(value)}
+            className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${outcome === value ? "border-accent bg-accent-soft text-ink" : "border-hairline text-ink-muted hover:border-border-strong"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {outcome === "line" && (
+        <label className="mt-4 block text-sm">
+          <span className="text-ink-muted">Which line?</span>
+          <select value={lineId} onChange={(e) => setLineId(e.target.value)} className="mt-1 block w-full max-w-sm rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-ink">
+            {ranked.map((l, i) => (
+              <option key={l.id} value={l.id}>
+                Line {l.lineNumber} — your #{i + 1}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <label className={`mt-4 flex items-start gap-2.5 text-sm ${user && seniority ? "cursor-pointer" : "opacity-70"}`}>
+        <input type="checkbox" checked={share} disabled={!user || !seniority} onChange={(e) => setShare(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]" />
+        <span>
+          <span className="text-ink">Share it anonymously</span>
+          <span className="block text-xs text-ink-muted">
+            {!user ? (
+              <>
+                <Link href="/auth" className="underline decoration-dotted underline-offset-2">
+                  Sign in
+                </Link>{" "}
+                to share — the sign-in only keeps out spam; what&rsquo;s shared never carries your name.
+              </>
+            ) : !seniority ? (
+              <>
+                Add your seniority number in{" "}
+                <Link href="/preferences" className="underline decoration-dotted underline-offset-2">
+                  Preferences
+                </Link>{" "}
+                to share — the award only means something next to it.
+              </>
+            ) : (
+              "Your seniority and what you held — never your name. See below for what it does."
+            )}
+          </span>
+        </span>
+      </label>
+      {error && <p className="mt-3 text-sm text-warn">{error}</p>}
+      <div className="mt-5 flex gap-2">
+        <Button onClick={save} disabled={saving || (outcome === "line" && !lineId)}>
+          {saving ? "Saving…" : existing ? "Update" : "Log it"}
+        </Button>
+        {onCancel && (
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** What sharing an award does — said plainly, and only what the app really does with it. */
+function WhySharing() {
+  return (
+    <section className="mt-6 rounded-xl border border-hairline bg-canvas/50 p-5">
+      <h2 className="text-sm font-semibold text-ink">How sharing your award makes the results better</h2>
+      <ul className="mt-3 space-y-2.5 text-sm text-ink-muted">
+        <li>
+          <span className="font-medium text-ink">Which lines you can really hold.</span> &ldquo;Likely open at your turn&rdquo; is estimated from your place on the
+          seniority list. Real awards from pilots at each seniority show where lines actually went, and the estimate is checked against them &mdash; for
+          everyone in your base, aircraft and seat.
+        </li>
+        <li>
+          <span className="font-medium text-ink">Your ranking against reality.</span> Where the line you got sat in your own ranking is kept with your month,
+          so over time you see how often you held one of your top choices &mdash; and how your seniority is moving.
+        </li>
+        <li>
+          <span className="font-medium text-ink">Pilots like you.</span> &ldquo;What pilots near you actually held,&rdquo; in Strategies, fills in with real
+          outcomes instead of staying empty.
+        </li>
+      </ul>
+      <p className="mt-3 text-xs text-ink-faint">Shared awards carry your seniority and what you held &mdash; never your name, email or employee number. Your logbook itself stays yours.</p>
+    </section>
+  );
+}
+
+function Stats({ stats }: { stats: ReturnType<typeof logbookStats> }) {
+  const last = stats.seniority.at(-1);
+  const first = stats.seniority[0];
+  return (
+    <section className="panel-glass mt-6 p-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Stat label="Months logged" value={String(stats.months)} />
+        <Stat label="Avg credit" value={stats.avgCreditHours === null ? "—" : hm(stats.avgCreditHours)} />
+        <Stat label="Avg days off" value={stats.avgDaysOff === null ? "—" : stats.avgDaysOff.toFixed(1)} />
+        <Stat label="Held a top-5 pick" value={stats.topFiveShare === null ? "—" : `${Math.round(stats.topFiveShare * 100)}%`} />
+      </div>
+      {stats.cities.length > 0 && (
+        <div className="mt-5">
+          <div className={LABEL}>Where you&rsquo;ve laid over</div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {stats.cities.slice(0, 12).map((c) => (
+              <Link key={c.code} href={`/cities?city=${c.code}`} className="rounded-full border border-hairline bg-canvas/60 px-2.5 py-1 text-xs text-ink-muted hover:border-border-strong hover:text-ink">
+                <span className="font-mono font-semibold text-ink">{c.code}</span> {cityName(c.code)} &times;{c.layovers}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+      {last && (
+        <p className="mt-5 text-sm text-ink-muted">
+          Seniority: top {Math.max(1, Math.round(last.percentile * 100))}% of your seat in {last.month}
+          {first && first !== last ? `, from top ${Math.max(1, Math.round(first.percentile * 100))}% in ${first.month}` : ""}.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className={LABEL}>{label}</div>
+      <div className="mt-0.5 font-mono text-xl font-semibold tabular-nums text-ink">{value}</div>
+    </div>
+  );
+}
+
+function MonthEntry({
+  entry: m,
+  isThisPack,
+  onRelog,
+  onCheckIn,
+  onDelete,
+}: {
+  entry: LoggedMonth;
+  isThisPack: boolean;
+  onRelog: () => void;
+  onCheckIn: (feel: MonthFeel, words: { bestTrip?: string; worstTrip?: string; note?: string }) => void;
+  onDelete: () => void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [feel, setFeel] = useState<MonthFeel | null>(m.checkIn?.feel ?? null);
+  const [best, setBest] = useState(m.checkIn?.bestTrip ?? "");
+  const [worst, setWorst] = useState(m.checkIn?.worstTrip ?? "");
+  const [note, setNote] = useState(m.checkIn?.note ?? "");
+  const cities = [...new Set(m.layoverCities ?? [])];
+  return (
+    <article className="panel-glass p-4 sm:p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="flex items-baseline gap-3">
+          <span className="font-mono text-sm font-semibold text-accent">{m.month}</span>
+          <span className="font-display text-lg font-semibold text-ink">{m.outcome === "line" ? `Line ${m.lineNumber}` : m.outcome === "reserve" ? "Reserve" : "Something else"}</span>
+          {m.rankedAt ? <span className="text-xs text-ink-muted">your #{m.rankedAt}</span> : null}
+        </div>
+        <span className="text-xs text-ink-faint">
+          {m.base} {m.aircraft} {m.seat}
+          {m.sharedAt ? " · shared" : ""}
+        </span>
+      </div>
+      {m.outcome === "line" && (
+        <div className="mt-1.5 text-sm text-ink-muted">
+          {hm(m.creditHours)} credit &middot; {m.daysOff ?? "—"} days off &middot; {m.tripCount ?? "—"} trips
+          {cities.length > 0 && <> &middot; {cities.join(" ")}</>}
+        </div>
+      )}
+
+      {m.checkIn && !checking ? (
+        <div className="mt-3 rounded-md bg-canvas/60 px-3 py-2 text-sm">
+          <span className="text-ink">{FEELS.find((f) => f.feel === m.checkIn!.feel)?.label}</span>
+          {m.checkIn.bestTrip && <span className="text-ink-muted"> &middot; best: {m.checkIn.bestTrip}</span>}
+          {m.checkIn.worstTrip && <span className="text-ink-muted"> &middot; worst: {m.checkIn.worstTrip}</span>}
+          {m.checkIn.note && <p className="mt-1 italic text-ink-muted">&ldquo;{m.checkIn.note}&rdquo;</p>}
+        </div>
+      ) : checking ? (
+        <div className="mt-3 space-y-3 rounded-md border border-hairline p-3">
+          <div className="text-sm font-medium text-ink">How did {m.month} fly?</div>
+          <div className="flex flex-wrap gap-2">
+            {FEELS.map((f) => (
+              <button
+                key={f.feel}
+                type="button"
+                onClick={() => setFeel(f.feel)}
+                aria-pressed={feel === f.feel}
+                className={`rounded-md border px-3 py-1.5 text-sm ${feel === f.feel ? "border-accent bg-accent-soft text-ink" : "border-hairline text-ink-muted hover:border-border-strong"}`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input value={best} onChange={(e) => setBest(e.target.value)} placeholder="Best trip (e.g. #76, Honolulu)" className="rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-ink" />
+            <input value={worst} onChange={(e) => setWorst(e.target.value)} placeholder="Worst trip" className="rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-ink" />
+          </div>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Anything else about the month (optional)" className="w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-ink" />
+          <div className="flex gap-2">
+            <Button
+              disabled={!feel}
+              onClick={() => {
+                if (!feel) return;
+                onCheckIn(feel, { bestTrip: best, worstTrip: worst, note });
+                setChecking(false);
+              }}
+            >
+              Save
+            </Button>
+            <Button variant="ghost" onClick={() => setChecking(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        {!checking && (
+          <button type="button" onClick={() => setChecking(true)} className="font-medium text-accent underline decoration-dotted underline-offset-4">
+            {m.checkIn ? "Change how it flew" : "How did it fly?"}
+          </button>
+        )}
+        {isThisPack && (
+          <button type="button" onClick={onRelog} className="text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink">
+            Change the award
+          </button>
+        )}
+        <button type="button" onClick={onDelete} className="text-ink-faint underline decoration-dotted underline-offset-4 hover:text-danger">
+          Delete
+        </button>
+      </div>
+    </article>
+  );
+}
+

@@ -104,7 +104,8 @@ export function AppearanceMenu() {
     setStoredCalendarAccent(value);
   }
 
-  const accentCss = accent ?? "var(--color-calendar-accent)";
+  // A pilot's own calendar color when they've picked one; otherwise the chrome's own accent (amber on the charcoal sidebar).
+  const accentCss = accent ?? "var(--color-accent)";
 
   return (
     <div className="relative shrink-0" ref={ref}>

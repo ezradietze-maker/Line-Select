@@ -242,6 +242,10 @@ export interface PreferenceProfile {
    * Absent on profiles from before the city step graded cities.
    */
   cityRatings?: Record<string, CityRating>;
+  /** This month's bid checklist, by bid pack id: what the pilot ticked themselves (see `lib/bid-checklist.ts`). */
+  bidChecklist?: Record<string, { enteredAt?: string }>;
+  /** The pilot's logbook: each month's award and how the month flew (see `types/logbook.ts`). */
+  logbook?: import("./logbook").LoggedMonth[];
   /**
    * The pilot brain's model of this pilot (see `types/pilot-model.ts`), built by the story-driven interview. When
    * present it decides the ranking: every line is scored against it criterion by criterion (`lib/scoring-v2/`), and

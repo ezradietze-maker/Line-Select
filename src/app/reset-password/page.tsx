@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
@@ -18,7 +18,12 @@ export default function ResetPasswordPage() {
 
 /** Landing page for the link in the reset email: the token in the URL is the proof of ownership, so all that's asked for is the new password. */
 function ResetPasswordForm() {
-  const token = useSearchParams().get("token");
+  const urlToken = useSearchParams().get("token");
+  const [token] = useState(urlToken);
+  // Out of the address bar before analytics (which loads once the page is idle) or a page-leave event can see it.
+  useEffect(() => {
+    if (urlToken) window.history.replaceState(null, "", "/reset-password");
+  }, [urlToken]);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

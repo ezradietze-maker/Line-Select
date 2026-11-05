@@ -1,15 +1,19 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import Link from "next/link";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { AccountMenu } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
 import { ChevronLeftIcon, SearchIcon } from "@/components/ui/icons";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
 import { setRailCollapsed, useRailCollapsed } from "@/lib/rail";
+import { hasSeenLatest } from "@/lib/whats-new";
 import type { UserAccount } from "@/types/auth";
 
 export type { NavTarget } from "@/components/nav/nav-items";
+
+const SECTION_LABELS = { bid: "Your bid", flying: "Your flying", crew: "Crew" } as const;
 
 /** The loaded bid pack, as the panel's one standing readout. */
 export interface PackLabel {
@@ -118,9 +122,9 @@ function NavList({
           <div className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-accent shadow-[0_0_8px_var(--color-accent)]" />
         </div>
       )}
-      {(["bid", "crew"] as const).map((section) => (
-        <div key={section} role="group" aria-label={section === "bid" ? "Your bid" : "Crew"}>
-          <SectionLabel first={section === "bid"}>{section === "bid" ? "Your bid" : "Crew"}</SectionLabel>
+      {(["bid", "flying", "crew"] as const).map((section) => (
+        <div key={section} role="group" aria-label={SECTION_LABELS[section]}>
+          <SectionLabel first={section === "bid"}>{SECTION_LABELS[section]}</SectionLabel>
           {NAV_ITEMS.filter((item) => item.section === section).map((item) => {
             const reason = disabledReason(item.target, hasProfile, hasBidPack);
             const isActive = active === item.target;
@@ -136,7 +140,7 @@ function NavList({
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => onGo(item.target)}
                 className={`${ROW} z-10 mb-0.5 disabled:cursor-not-allowed disabled:opacity-40 ${
-                  isActive ? "font-semibold text-on-wash" : "font-medium text-ink-muted hover:bg-black/[0.035] hover:text-ink"
+                  isActive ? "font-semibold text-on-wash" : "font-medium text-ink-muted hover:bg-ink/[0.06] hover:text-ink"
                 }`}
               >
                 <RowIcon icon={item.icon} active={isActive} badge={item.target === "inbox" ? inboxUnreadCount : 0} />
@@ -168,6 +172,37 @@ function FeedbackIcon({ className }: { className?: string }) {
   );
 }
 
+function SparkIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinejoin="round" d="M12 3l1.9 5.3L19 10l-5.1 1.7L12 17l-1.9-5.3L5 10l5.1-1.7z" />
+      <path strokeLinecap="round" d="M19 16v4M17 18h4" />
+    </svg>
+  );
+}
+
+/** What's new, with an amber dot until this device has seen the latest entry. */
+function WhatsNewLink() {
+  const [unseen, setUnseen] = useState(false);
+  useEffect(() => {
+    // Read after mount: the server can't know what this device has seen.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUnseen(!hasSeenLatest());
+  }, []);
+  return (
+    <Link href="/whats-new" onClick={() => setUnseen(false)} className={`${ROW} font-medium text-ink-faint hover:bg-ink/[0.06] hover:text-ink-muted`}>
+      <span className="relative">
+        <RowIcon icon={SparkIcon} active={false} />
+        {unseen && <span aria-hidden className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent shadow-[0_0_6px_var(--color-accent)]" />}
+      </span>
+      <span className="rail-collapsed:sr-only">
+        What&rsquo;s new{unseen && <span className="sr-only"> (new things since you last looked)</span>}
+      </span>
+      <RailTip>What&rsquo;s new</RailTip>
+    </Link>
+  );
+}
+
 export { InfoIcon, FeedbackIcon };
 
 /**
@@ -195,7 +230,7 @@ export function LeftNav({
     <aside
       aria-label="Main"
       style={{ viewTransitionName: "app-rail" }}
-      className="shadow-sidebar fixed inset-y-0 left-0 z-30 hidden w-[var(--shell-left)] flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[var(--ease-emphasized)] md:flex"
+      className="sidebar-scheme shadow-sidebar fixed inset-y-0 left-0 z-30 hidden w-[var(--shell-left)] flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[var(--ease-emphasized)] md:flex"
     >
       <div className="flex items-center justify-between gap-2 border-b border-sidebar-border/70 px-4 py-5 rail-collapsed:flex-col rail-collapsed:gap-3 rail-collapsed:px-0">
         <button
@@ -247,12 +282,13 @@ export function LeftNav({
       </nav>
 
       <div className="space-y-0.5 border-t border-sidebar-border/70 px-3 py-3">
-        <button type="button" onClick={onOpenHowItWorks} className={`${ROW} font-medium text-ink-faint hover:bg-black/[0.035] hover:text-ink-muted`}>
+        <button type="button" onClick={onOpenHowItWorks} className={`${ROW} font-medium text-ink-faint hover:bg-ink/[0.06] hover:text-ink-muted`}>
           <RowIcon icon={InfoIcon} active={false} />
           <span className="rail-collapsed:sr-only">How this works</span>
           <RailTip>How this works</RailTip>
         </button>
-        <button type="button" onClick={onOpenFeedback} className={`${ROW} font-medium text-ink-faint hover:bg-black/[0.035] hover:text-ink-muted`}>
+        <WhatsNewLink />
+        <button type="button" onClick={onOpenFeedback} className={`${ROW} font-medium text-ink-faint hover:bg-ink/[0.06] hover:text-ink-muted`}>
           <RowIcon icon={FeedbackIcon} active={false} />
           <span className="rail-collapsed:sr-only">Send feedback</span>
           <RailTip>Send feedback</RailTip>
@@ -261,7 +297,7 @@ export function LeftNav({
           type="button"
           onClick={() => setRailCollapsed(!collapsed)}
           aria-pressed={collapsed}
-          className={`${ROW} font-medium text-ink-faint hover:bg-black/[0.035] hover:text-ink-muted`}
+          className={`${ROW} font-medium text-ink-faint hover:bg-ink/[0.06] hover:text-ink-muted`}
         >
           <span className="shrink-0 transition-transform duration-300 rail-collapsed:rotate-180">
             <ChevronLeftIcon className="h-[18px] w-[18px]" />

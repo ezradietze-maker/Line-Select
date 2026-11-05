@@ -289,6 +289,9 @@ function Footer() {
             <Link href="/how-it-works" className={linkClass}>
               How this works
             </Link>
+            <Link href="/whats-new" className={linkClass}>
+              What&rsquo;s new
+            </Link>
             <Link href="/terms" className={linkClass}>
               Terms
             </Link>

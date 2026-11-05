@@ -7,6 +7,7 @@ vi.mock("@/lib/server/kv", () => ({
   getJson: vi.fn(async (key: string) => store.get(key) ?? null),
   setJson: vi.fn(async (key: string, value: unknown) => {
     store.set(key, value);
+    if (typeof value === "number") counters.set(key, value);
   }),
   incrementCounter: vi.fn(async (key: string) => {
     const next = (counters.get(key) ?? 0) + 1;
@@ -15,45 +16,44 @@ vi.mock("@/lib/server/kv", () => ({
   }),
 }));
 
-import { checkRateLimit, clearAttempts, isRateLimited, recordFailedAttempt } from "@/lib/server/rate-limit";
+import { checkRateLimit, clearAttempts, takeAttempt } from "@/lib/server/rate-limit";
 
-describe("rate-limit", () => {
+async function take(n: number, scope = "login", id = "pilot@example.com"): Promise<boolean[]> {
+  const out: boolean[] = [];
+  for (let i = 0; i < n; i++) out.push(await takeAttempt(scope, id));
+  return out;
+}
+
+describe("takeAttempt", () => {
   beforeEach(() => {
     store.clear();
     counters.clear();
   });
 
-  it("is not rate limited before any failed attempts", async () => {
-    expect(await isRateLimited("login", "pilot@example.com")).toBe(false);
+  it("allows the first six attempts in a window and refuses the seventh", async () => {
+    expect(await take(6)).toEqual([true, true, true, true, true, true]);
+    expect(await takeAttempt("login", "pilot@example.com")).toBe(false);
   });
 
-  it("stays unlimited under the failure ceiling", async () => {
-    for (let i = 0; i < 5; i++) await recordFailedAttempt("login", "pilot@example.com");
-    expect(await isRateLimited("login", "pilot@example.com")).toBe(false);
-  });
-
-  it("blocks once the failure ceiling is reached", async () => {
-    for (let i = 0; i < 6; i++) await recordFailedAttempt("login", "pilot@example.com");
-    expect(await isRateLimited("login", "pilot@example.com")).toBe(true);
+  it("counts a parallel burst one by one, so it can't all slip through on the same count", async () => {
+    const results = await Promise.all(Array.from({ length: 20 }, () => takeAttempt("login", "pilot@example.com")));
+    expect(results.filter(Boolean)).toHaveLength(6);
   });
 
   it("clearing attempts un-blocks a previously rate-limited identifier", async () => {
-    for (let i = 0; i < 6; i++) await recordFailedAttempt("login", "pilot@example.com");
-    expect(await isRateLimited("login", "pilot@example.com")).toBe(true);
+    await take(7);
     await clearAttempts("login", "pilot@example.com");
-    expect(await isRateLimited("login", "pilot@example.com")).toBe(false);
+    expect(await takeAttempt("login", "pilot@example.com")).toBe(true);
   });
 
   it("keeps separate identifiers under the same scope fully independent", async () => {
-    for (let i = 0; i < 6; i++) await recordFailedAttempt("login", "attacker@example.com");
-    expect(await isRateLimited("login", "attacker@example.com")).toBe(true);
-    expect(await isRateLimited("login", "innocent@example.com")).toBe(false);
+    await take(7, "login", "attacker@example.com");
+    expect(await takeAttempt("login", "innocent@example.com")).toBe(true);
   });
 
   it("keeps separate scopes for the same identifier fully independent", async () => {
-    for (let i = 0; i < 6; i++) await recordFailedAttempt("login", "pilot@example.com");
-    expect(await isRateLimited("login", "pilot@example.com")).toBe(true);
-    expect(await isRateLimited("signup", "pilot@example.com")).toBe(false);
+    await take(7, "login");
+    expect(await takeAttempt("signup", "pilot@example.com")).toBe(true);
   });
 });
 

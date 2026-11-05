@@ -114,7 +114,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
       </div>
 
       {summary === null ? (
-        <Spinner label="Loading…" className="mt-4" />
+        <Spinner label="Pulling the reported awards…" className="mt-4" />
       ) : summary.avgDaysOff === null ? (
         <EmptyState
           compact

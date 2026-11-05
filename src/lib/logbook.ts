@@ -1,0 +1,96 @@
+import { monthLine } from "@/lib/bid-month";
+import type { BidPack, Line } from "@/types/bidpack";
+import type { LoggedMonth, MonthFeel } from "@/types/logbook";
+import type { PreferenceProfile } from "@/types/preferences";
+import type { SeniorityInput } from "@/types/strategy";
+
+/**
+ * The pilot's logbook: one entry a month — the award, and the line's shape as it was (the pack is replaced next month,
+ * so the entry keeps its own copy) — and what the months add up to. Kept in the profile, so it travels with the
+ * pilot's account.
+ */
+
+/** A month's entry from the pack it was bid in: the line held (its own month's numbers), or reserve or something else. */
+export function loggedMonthFrom(
+  pack: Pick<BidPack, "id" | "base" | "aircraft" | "seat" | "month" | "bidPeriodStart" | "bidPeriodDays">,
+  outcome: LoggedMonth["outcome"],
+  line: Line | null,
+  extras: { rankedAt?: number | null; seniority?: SeniorityInput | null; now?: Date; id?: string } = {}
+): LoggedMonth {
+  const held = outcome === "line" && line ? monthLine(line, pack) : null;
+  return {
+    id: extras.id ?? `${pack.base}-${pack.aircraft}-${pack.seat}-${pack.month}`,
+    bidPackId: pack.id,
+    base: pack.base,
+    aircraft: pack.aircraft,
+    seat: pack.seat,
+    month: pack.month,
+    outcome,
+    lineNumber: held?.lineNumber ?? null,
+    creditHours: held?.totalCreditHours ?? null,
+    daysOff: held?.daysOff ?? null,
+    tafbHours: held?.totalTafbHours ?? null,
+    tripCount: held ? held.trips.length : null,
+    layoverCities: held ? held.trips.flatMap((t) => t.schedule.flatMap((d) => (d.layover ? [d.layover.city] : []))) : [],
+    rankedAt: held ? (extras.rankedAt ?? null) : null,
+    seniorityRank: extras.seniority?.rank ?? null,
+    seniorityTotalPilots: extras.seniority?.totalPilots ?? null,
+    loggedAt: (extras.now ?? new Date()).toISOString(),
+  };
+}
+
+/** The profile with this month logged — replacing an earlier entry for the same month. Newest month first. */
+export function withLoggedMonth(profile: PreferenceProfile, entry: LoggedMonth): PreferenceProfile {
+  const rest = (profile.logbook ?? []).filter((m) => m.id !== entry.id);
+  return { ...profile, logbook: [entry, ...rest].sort((a, b) => b.loggedAt.localeCompare(a.loggedAt)) };
+}
+
+export function withoutLoggedMonth(profile: PreferenceProfile, id: string): PreferenceProfile {
+  return { ...profile, logbook: (profile.logbook ?? []).filter((m) => m.id !== id) };
+}
+
+export function withEntry(profile: PreferenceProfile, id: string, change: Partial<LoggedMonth>): PreferenceProfile {
+  return { ...profile, logbook: (profile.logbook ?? []).map((m) => (m.id === id ? { ...m, ...change } : m)) };
+}
+
+/** How a month flew, said after it. */
+export function withCheckIn(profile: PreferenceProfile, id: string, feel: MonthFeel, words: { bestTrip?: string; worstTrip?: string; note?: string } = {}, now: Date = new Date()): PreferenceProfile {
+  const clean = (s?: string) => (s?.trim() ? s.trim() : undefined);
+  return withEntry(profile, id, { checkIn: { feel, bestTrip: clean(words.bestTrip), worstTrip: clean(words.worstTrip), note: clean(words.note), at: now.toISOString() } });
+}
+
+export interface LogbookStats {
+  months: number;
+  lineMonths: number;
+  avgCreditHours: number | null;
+  avgDaysOff: number | null;
+  /** Layovers per city across every logged line, most first. */
+  cities: { code: string; layovers: number }[];
+  /** How often the line held was one of the pilot's own top 5. */
+  topFiveShare: number | null;
+  /** Seniority as a percentile (0 = most senior) month by month, oldest first. */
+  seniority: { month: string; percentile: number }[];
+}
+
+export function logbookStats(entries: LoggedMonth[]): LogbookStats {
+  const lines = entries.filter((m) => m.outcome === "line");
+  const avg = (xs: (number | null | undefined)[]) => {
+    const v = xs.filter((x): x is number => typeof x === "number");
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  };
+  const cities = new Map<string, number>();
+  for (const m of lines) for (const c of m.layoverCities ?? []) cities.set(c, (cities.get(c) ?? 0) + 1);
+  const ranked = lines.filter((m) => typeof m.rankedAt === "number");
+  return {
+    months: entries.length,
+    lineMonths: lines.length,
+    avgCreditHours: avg(lines.map((m) => m.creditHours)),
+    avgDaysOff: avg(lines.map((m) => m.daysOff)),
+    cities: [...cities].map(([code, layovers]) => ({ code, layovers })).sort((a, b) => b.layovers - a.layovers || a.code.localeCompare(b.code)),
+    topFiveShare: ranked.length ? ranked.filter((m) => (m.rankedAt as number) <= 5).length / ranked.length : null,
+    seniority: [...entries]
+      .filter((m) => m.seniorityRank && m.seniorityTotalPilots)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt))
+      .map((m) => ({ month: m.month, percentile: (m.seniorityRank as number) / (m.seniorityTotalPilots as number) })),
+  };
+}

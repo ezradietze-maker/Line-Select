@@ -10,11 +10,11 @@ export const alt = "Line Select — find the FedEx bid line that actually fits h
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-const INK = "#f4e9d8";
-const MUTED = "#b9a88f";
-const ACCENT = "#e3a04f";
-const BG1 = "#211810";
-const BG2 = "#120d08";
+const INK = "#ececea";
+const MUTED = "#a5a7a3";
+const ACCENT = "#ebb357";
+const BG1 = "#26282c";
+const BG2 = "#141517";
 
 export default function OpengraphImage() {
   return new ImageResponse(

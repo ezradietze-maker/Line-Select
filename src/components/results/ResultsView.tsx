@@ -27,6 +27,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { LineCard } from "@/components/results/LineCard";
+import { AskPackPanel } from "@/components/results/AskPackPanel";
+import { FirstVisitTour } from "@/components/results/FirstVisitTour";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { monthLine } from "@/lib/bid-month";
@@ -331,6 +333,7 @@ export function ResultsView({
     () => rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined),
     [bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
   );
+  const rankedIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
   // Every trip's own score, from the same priorities that rank the lines — shown on each trip in a line's trip list.
   const tripScores = useMemo(() => (pilotModel ? scoreTripsV2(bidPack, pilotModel, { flights: flights ?? undefined, onLineScale: true }) : null), [bidPack, pilotModel, flights]);
 
@@ -671,8 +674,9 @@ export function ResultsView({
       </div>
 
       <ResultsStatusPanel
-        bidPackId={bidPack.id}
+        pack={bidPack}
         profile={profile}
+        onUpdateProfile={onUpdateProfile}
         confidenceLevel={confidenceLevel}
         onEditPreferences={onEditPreferences}
         bidPeriodChange={bidPeriodChange}
@@ -690,6 +694,8 @@ export function ResultsView({
           onSharingChange: forecast.setSharing,
         }}
       />
+      <FirstVisitTour ready={hotelsSettled} />
+      <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />
       {confirmingStartOver && (
         <ConfirmModal
           title="Start over from scratch?"

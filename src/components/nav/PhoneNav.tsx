@@ -81,7 +81,7 @@ export function PhoneNav({
     <>
       <header
         style={{ viewTransitionName: "app-topbar" }}
-        className="sticky top-0 z-30 flex items-center justify-between border-b border-sidebar-border bg-sidebar/95 px-4 py-2.5 backdrop-blur md:hidden"
+        className="sidebar-scheme sticky top-0 z-30 flex items-center justify-between border-b border-sidebar-border bg-sidebar/95 px-4 py-2.5 backdrop-blur md:hidden"
       >
         <button type="button" onClick={() => go(homeTarget(hasProfile, hasBidPack))} className="flex items-center gap-2" aria-label="Line Select home">
           <LogoMark className="h-8 w-8" />
@@ -108,7 +108,7 @@ export function PhoneNav({
       <nav
         aria-label="Main"
         style={{ viewTransitionName: "app-tabbar" }}
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-sidebar-border bg-sidebar/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="sidebar-scheme fixed inset-x-0 bottom-0 z-30 border-t border-sidebar-border bg-sidebar/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
         <div className="relative grid h-16 grid-cols-5">
           {tabIndex >= 0 && (
@@ -176,10 +176,10 @@ export function PhoneNav({
             role="dialog"
             aria-modal="true"
             aria-label="More"
-            className="animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-sidebar-border bg-sidebar px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-elevated-lg"
+            className="sidebar-scheme animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-sidebar-border bg-sidebar px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-elevated-lg"
           >
             <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-sidebar-border" />
-            <div className="mb-2 px-1 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">Crew</div>
+            <div className="mb-2 px-1 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">More</div>
             <div className="grid grid-cols-3 gap-2">
               {MORE_TARGETS.map((item) => {
                 const isActive = active === item.target;

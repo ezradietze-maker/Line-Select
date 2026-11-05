@@ -1,12 +1,12 @@
 import { DateTime } from "luxon";
 import type { Line } from "@/types/bidpack";
 
-function escapeIcsText(s: string): string {
+export function escapeIcsText(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
 }
 
 /** RFC 5545 line folding at 75 octets — a simple char-based approximation (this app's own text is plain ASCII), not a full UTF-8 octet-boundary implementation. */
-function foldLine(line: string): string {
+export function foldLine(line: string): string {
   if (line.length <= 75) return line;
   const parts: string[] = [];
   let rest = line;
@@ -96,4 +96,40 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null): Ic
   ].join("\r\n");
 
   return { ok: true, content };
+}
+
+const icsUtc = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+
+/**
+ * The bid deadline as a calendar event with two alarms — the day before and an hour before — so a pilot's own phone
+ * reminds them whether or not Line Select is open. `deadline` is the instant the pilot typed in, never a guess.
+ */
+export function buildDeadlineReminderIcs(deadline: string, label: string, now: number = Date.now()): string {
+  const at = new Date(deadline).getTime();
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Line Select//Bid deadline//EN",
+    "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:bid-deadline-${at}@lineselect`,
+    `DTSTAMP:${icsUtc(now)}`,
+    `DTSTART:${icsUtc(at)}`,
+    `DTEND:${icsUtc(at)}`,
+    `SUMMARY:${escapeIcsText(`Bid closes — ${label}`)}`,
+    `DESCRIPTION:${escapeIcsText("Enter your line order before bidding closes. Line Select doesn't submit anything for you.")}`,
+    "BEGIN:VALARM",
+    "ACTION:DISPLAY",
+    `DESCRIPTION:${escapeIcsText(`Bid closes tomorrow — ${label}`)}`,
+    "TRIGGER:-P1D",
+    "END:VALARM",
+    "BEGIN:VALARM",
+    "ACTION:DISPLAY",
+    `DESCRIPTION:${escapeIcsText(`Bid closes in an hour — ${label}`)}`,
+    "TRIGGER:-PT1H",
+    "END:VALARM",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
+  return lines.map(foldLine).join("\r\n") + "\r\n";
 }

@@ -8,8 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
       "Ranks FedEx pilot bid lines against your stated preferences. Independent prototype, not affiliated with FedEx.",
     start_url: "/",
     display: "standalone",
-    background_color: "#1c150d",
-    theme_color: "#150f09",
+    background_color: "#1c1d20",
+    theme_color: "#141517",
     icons: [
       { src: "/icons/192", sizes: "192x192", type: "image/png" },
       { src: "/icons/512", sizes: "512x512", type: "image/png" },
