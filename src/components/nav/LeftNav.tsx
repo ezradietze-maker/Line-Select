@@ -6,7 +6,8 @@ import { AccountMenu } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
 import { ChevronLeftIcon, SearchIcon } from "@/components/ui/icons";
-import { LogoMark, Wordmark } from "@/components/ui/Logo";
+import { Wordmark } from "@/components/ui/Logo";
+import { LogoFlight } from "@/components/ui/LogoFlight";
 import { setRailCollapsed, useRailCollapsed } from "@/lib/rail";
 import { hasSeenLatest } from "@/lib/whats-new";
 import type { UserAccount } from "@/types/auth";
@@ -239,7 +240,7 @@ export function LeftNav({
           aria-label="Line Select home"
           className="group flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
         >
-          <LogoMark className="h-9 w-9 shrink-0 transition-transform duration-200 group-hover:scale-105" />
+          <LogoFlight className="h-9 w-9 shrink-0 transition-transform duration-200 group-hover:scale-105" />
           <Wordmark className="truncate text-[17px] rail-collapsed:hidden" />
         </button>
         <AppearanceMenu />

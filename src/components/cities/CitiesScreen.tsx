@@ -4,11 +4,15 @@ import { DateTime } from "luxon";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { RouteArc, SunDial } from "@/components/cities/CitySky";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
+import { ReadingProgress } from "@/components/ui/ReadingProgress";
+import { coordinatesForAirport } from "@/lib/airport-coordinates";
 import { timezoneForAirport } from "@/lib/airport-timezones";
+import { greatCircleNm } from "@/lib/globe/routes";
 import { cityDaylight, cityStays, hoursFromBase, offsetWords, type CityStay } from "@/lib/city-guide";
 import { cityMarks, CITY_REASONS, packCityFacts, type CityFacts } from "@/lib/city-ratings";
 import { fetchHotel } from "@/lib/hotel-client";
@@ -41,6 +45,13 @@ const localClock = (code: string, at: number) => {
   const zone = timezoneForAirport(code);
   return zone ? DateTime.fromMillis(at, { zone }).toFormat("HH:mm") : null;
 };
+
+/** Great-circle distance between two airports, nautical miles; null when either can't be placed. */
+function routeNm(from: string, to: string): number | null {
+  const a = coordinatesForAirport(from);
+  const b = coordinatesForAirport(to);
+  return a && b ? greatCircleNm({ lat: a[0], lon: a[1] }, { lat: b[0], lon: b[1] }) : null;
+}
 
 type SortBy = "lines" | "rating" | "name";
 const MARK_ORDER: Record<CityMark, number> = { love: 0, like: 1, dislike: 3, avoid: 4 };
@@ -76,6 +87,7 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
 
   return (
     <div className="mx-auto w-full max-w-5xl">
+      <ReadingProgress />
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Layover cities"
@@ -155,6 +167,21 @@ function CityPanel({ facts: f, bidPack, profile, mark, now }: { facts: CityFacts
         <Fact label="Zulu" value={DateTime.fromMillis(now, { zone: "utc" }).toFormat("HH:mm")} note="UTC" />
         <Fact label="Sunrise" value={sun?.sunrise ?? "—"} note="today, local" />
         <Fact label="Sunset" value={sun?.sunset ?? "—"} note={sun ? `${sun.hours.toFixed(1)}h of daylight` : ""} />
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div>
+          <div className={LABEL}>
+            From {bidPack.base}, {Math.round(routeNm(bidPack.base, f.code) ?? 0).toLocaleString()} nm
+          </div>
+          <div className="mt-2">
+            <RouteArc from={bidPack.base} to={f.code} />
+          </div>
+        </div>
+        <div className="flex flex-col items-center">
+          <div className={LABEL}>The sky there now</div>
+          <SunDial code={f.code} now={now} />
+        </div>
       </section>
 
       <Weather code={f.code} bidPack={bidPack} stays={stays} now={now} />

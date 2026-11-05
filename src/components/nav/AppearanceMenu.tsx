@@ -8,7 +8,23 @@ import {
   setStoredCalendarAccent,
 } from "@/lib/calendar-theme";
 import { applyThemeAttribute, getStoredTheme, setStoredTheme, type ThemeMode } from "@/lib/theme";
-import { PaletteIcon } from "@/components/ui/icons";
+import { MoonIcon, PaletteIcon } from "@/components/ui/icons";
+
+/** Whether a theme choice shows dark: the red-light night counts, and "system" follows the device. */
+function isDark(mode: ThemeMode): boolean {
+  if (mode === "system") return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return mode !== "light";
+}
+
+/** A plain sun: a disc and its rays. */
+function SunGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="12" cy="12" r="4" fill="currentColor" />
+      <path strokeLinecap="round" d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" />
+    </svg>
+  );
+}
 
 const THEME_OPTIONS: { mode: ThemeMode; label: string; title?: string; icon: React.ReactNode }[] = [
   {
@@ -66,6 +82,8 @@ export function AppearanceMenu() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<ThemeMode>("system");
   const [accent, setAccent] = useState<string | null>(null);
+  // Light to dark: the sun sets and the moon rises in the button; dark to light, the other way round.
+  const [sky, setSky] = useState<{ to: "dark" | "light"; n: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -95,8 +113,11 @@ export function AppearanceMenu() {
   }, [open]);
 
   function chooseTheme(next: ThemeMode) {
+    const wasDark = isDark(mode);
     setMode(next);
     setStoredTheme(next);
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!still && isDark(next) !== wasDark) setSky((s) => ({ to: isDark(next) ? "dark" : "light", n: (s?.n ?? 0) + 1 }));
   }
 
   function chooseAccent(value: string | null) {
@@ -115,15 +136,31 @@ export function AppearanceMenu() {
         aria-expanded={open}
         aria-haspopup="menu"
         title="Appearance"
-        className="flex h-9 w-9 items-center justify-center rounded-full border transition-transform hover:scale-105"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full border transition-transform hover:scale-105"
         style={{
           borderColor: `color-mix(in srgb, ${accentCss} 45%, var(--color-border))`,
           background: `color-mix(in srgb, ${accentCss} 16%, var(--color-surface))`,
         }}
       >
-        <span style={{ color: accentCss }}>
+        <span style={{ color: accentCss }} className={`transition-opacity ${sky ? "opacity-0" : ""}`}>
           <PaletteIcon className="h-4 w-4" />
         </span>
+        {sky && (
+          <span
+            key={sky.n}
+            aria-hidden
+            className="celestial-out pointer-events-none absolute inset-0 overflow-hidden rounded-full"
+            style={{ color: accentCss }}
+            onAnimationEnd={(e) => e.target === e.currentTarget && setSky(null)}
+          >
+            <span className={`absolute inset-0 flex items-center justify-center ${sky.to === "dark" ? "sun-set" : "moon-rise"}`}>
+              <SunGlyph className="h-4 w-4" />
+            </span>
+            <span className={`absolute inset-0 flex items-center justify-center ${sky.to === "dark" ? "moon-rise" : "sun-set"}`}>
+              <MoonIcon className="h-3.5 w-3.5" />
+            </span>
+          </span>
+        )}
         <span className="sr-only">Appearance settings</span>
       </button>
 

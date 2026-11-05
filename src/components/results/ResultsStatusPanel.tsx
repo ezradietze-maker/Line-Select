@@ -7,7 +7,8 @@ import { BidPeriodChangeBanner } from "@/components/results/BidPeriodChangeBanne
 import { ForecastBanner } from "@/components/results/ForecastBanner";
 import { PilotProfileSummary } from "@/components/results/PilotProfileSummary";
 import { Button } from "@/components/ui/Button";
-import { CalendarIcon, ChevronDownIcon } from "@/components/ui/icons";
+import { FlipText } from "@/components/ui/FlipText";
+import { CalendarIcon, ChevronDownIcon, PlaneIcon } from "@/components/ui/icons";
 import { bidChecklist, upcomingReminders, withBidEntered } from "@/lib/bid-checklist";
 import { buildDeadlineReminderIcs } from "@/lib/ics-export";
 import type { BidPeriodChangeSummary } from "@/lib/bid-period-history";
@@ -38,7 +39,8 @@ function Tick({ done }: { done: boolean }) {
     >
       {done && (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} className="h-3 w-3">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          {/* Drawn in, the way a pen ticks a box. */}
+          <path className="tick-draw" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       )}
     </span>
@@ -142,6 +144,16 @@ export function ResultsStatusPanel({
   const reminders = useInTabReminders(pack.id, deadline.deadline, packLabel);
   const items = bidChecklist(profile, pack);
   const doneCount = items.filter((i) => i.done).length;
+  // Cleared to bid: every step before the award is done (the award can only be logged once it's out). The takeoff
+  // plays when that happens here, not on every visit to a finished checklist.
+  const cleared = items.every((i) => i.done || i.id === "award");
+  const awarded = items.some((i) => i.id === "award" && i.done);
+  const [takeoff, setTakeoff] = useState(false);
+  const [wasCleared, setWasCleared] = useState(cleared);
+  if (cleared !== wasCleared) {
+    setWasCleared(cleared);
+    setTakeoff(cleared);
+  }
 
   const inYourWords = profile.discoveredFacts.filter((x) => x.kind === "qualitative").length;
   const depth =
@@ -170,8 +182,13 @@ export function ResultsStatusPanel({
           <div className={`mt-1 font-mono text-3xl font-semibold tabular-nums sm:text-[2rem] ${urgency ? URGENCY_TEXT[urgency] : "text-ink-faint"}`}>
             {time ? (
               <>
-                {time.main}
-                {time.seconds && <span className="text-[0.7em] opacity-70">:{time.seconds}</span>}
+                {/* Digits turn over like a departures board as they change. */}
+                <FlipText text={time.main} />
+                {time.seconds && (
+                  <span className="text-[0.7em] opacity-70">
+                    :<FlipText text={time.seconds} />
+                  </span>
+                )}
               </>
             ) : urgency === "closed" ? (
               "Closed"
@@ -217,9 +234,18 @@ export function ResultsStatusPanel({
               {doneCount} of {items.length} done
             </span>
           </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/[0.08]" role="progressbar" aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={doneCount} aria-label="Bid steps done">
-            <div className="h-full rounded-full bg-good transition-[width] duration-500" style={{ width: `${(doneCount / items.length) * 100}%` }} />
+          <div className="relative mt-2">
+            <div className="h-1.5 overflow-hidden rounded-full bg-ink/[0.08]" role="progressbar" aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={doneCount} aria-label="Bid steps done">
+              <div className="h-full rounded-full bg-good transition-[width] duration-500" style={{ width: `${(doneCount / items.length) * 100}%` }} />
+            </div>
+            {/* Cleared to bid: a plane rolls down the bar and climbs away — once, when it happens. */}
+            {takeoff && (
+              <span aria-hidden className="takeoff pointer-events-none absolute top-1/2 text-good">
+                <PlaneIcon className="h-4 w-4 rotate-45" />
+              </span>
+            )}
           </div>
+          {cleared && !awarded && <p className="drop-in mt-1.5 text-xs font-medium text-good">Cleared to bid &mdash; good luck this month.</p>}
           <ul className="mt-3 space-y-1">
             {items.map((item) => (
               <li key={item.id}>

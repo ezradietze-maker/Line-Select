@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { PlaneIcon } from "@/components/ui/icons";
 import { buildLineCalendar } from "@/lib/ics-export";
 import type { LineScore } from "@/lib/scoring";
 
@@ -69,9 +70,19 @@ export function BidOrderExport({
         <button
           type="button"
           onClick={() => copy(entries.map((e) => e.lineScore.line.lineNumber).join("\n"), "plain")}
-          className="rounded-md bg-brand px-3 py-2 text-sm font-medium text-on-brand transition-colors hover:bg-brand-strong"
+          className="relative rounded-md bg-brand px-3 py-2 text-sm font-medium text-on-brand transition-colors hover:bg-brand-strong"
         >
-          {copied === "plain" ? "Copied" : "Copy line order"}
+          {copied === "plain" ? (
+            <>
+              {/* A plane climbing out of the button: the order's on its way to the bid system. */}
+              <span aria-hidden className="climb-out pointer-events-none absolute -right-1 top-0">
+                <PlaneIcon className="h-4 w-4 rotate-45" />
+              </span>
+              Copied &mdash; cleared to bid
+            </>
+          ) : (
+            "Copy line order"
+          )}
         </button>
         <button
           type="button"

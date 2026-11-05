@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Notice } from "@/components/ui/Notice";
+import { ReadingProgress } from "@/components/ui/ReadingProgress";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TextField } from "@/components/ui/TextField";
@@ -314,6 +315,7 @@ function StrategyResults({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
+      <ReadingProgress />
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Your strategies"

@@ -1,5 +1,6 @@
 "use client";
 
+import { markLanding } from "@/components/results/WheelsDown";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { checkSession, logout as logoutAccount } from "@/lib/auth";
@@ -425,6 +426,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     reportCorrections(pendingProfile, confirmed);
     clearPendingProfile(user?.id ?? null);
     setState((s) => ({ ...s, profile: confirmed, pendingProfile: null }));
+    markLanding();
     router.push("/results");
     captureUsageEvent("interview_completed");
     const signedIn = !!user?.id;
@@ -438,6 +440,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   function handleBrainInterviewComplete(newProfile: PreferenceProfile) {
     clearPendingProfile(user?.id ?? null);
     setState((s) => ({ ...s, profile: newProfile, pendingProfile: null }));
+    markLanding();
     router.push("/results");
     captureUsageEvent("interview_completed");
     const signedIn = !!user?.id;

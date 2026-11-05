@@ -29,6 +29,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { LineCard } from "@/components/results/LineCard";
 import { AskPackPanel } from "@/components/results/AskPackPanel";
 import { FirstVisitTour } from "@/components/results/FirstVisitTour";
+import { WheelsDown } from "@/components/results/WheelsDown";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { monthLine } from "@/lib/bid-month";
@@ -695,6 +696,7 @@ export function ResultsView({
         }}
       />
       <FirstVisitTour ready={hotelsSettled} />
+      <WheelsDown />
       <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />
       {confirmingStartOver && (
         <ConfirmModal

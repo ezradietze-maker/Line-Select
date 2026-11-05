@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { NumberTicker } from "@/components/ui/NumberTicker";
+import { NightGlobe } from "@/components/welcome/NightGlobe";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { submitAwardHistory } from "@/lib/award-history";
 import { loggedMonthFor } from "@/lib/bid-checklist";
@@ -67,7 +69,7 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
 
       <WhySharing />
 
-      {entries.length > 0 && <Stats stats={stats} />}
+      {entries.length > 0 && <Stats stats={stats} base={bidPack?.base ?? entries[0].base} />}
 
       <section className="mt-8">
         <h2 className={LABEL}>Months logged {entries.length > 0 ? entries.length : ""}</h2>
@@ -249,16 +251,25 @@ function WhySharing() {
   );
 }
 
-function Stats({ stats }: { stats: ReturnType<typeof logbookStats> }) {
+function Stats({ stats, base }: { stats: ReturnType<typeof logbookStats>; base: string | null }) {
   const last = stats.seniority.at(-1);
   const first = stats.seniority[0];
+  // Your own globe: base to every city you've laid over in.
+  const pairs = useMemo(() => (base ? stats.cities.filter((c) => c.code !== base).slice(0, 24).map((c) => [base, c.code] as [string, string]) : []), [base, stats.cities]);
   return (
     <section className="panel-glass mt-6 p-5">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Stat label="Months logged" value={String(stats.months)} />
-        <Stat label="Avg credit" value={stats.avgCreditHours === null ? "—" : hm(stats.avgCreditHours)} />
-        <Stat label="Avg days off" value={stats.avgDaysOff === null ? "—" : stats.avgDaysOff.toFixed(1)} />
-        <Stat label="Held a top-5 pick" value={stats.topFiveShare === null ? "—" : `${Math.round(stats.topFiveShare * 100)}%`} />
+      <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center">
+        <div className="grid grid-cols-2 gap-4">
+          <Stat label="Months logged" value={stats.months} format={(n) => String(Math.round(n))} />
+          <Stat label="Avg credit" value={stats.avgCreditHours} format={hm} />
+          <Stat label="Avg days off" value={stats.avgDaysOff} format={(n) => n.toFixed(1)} />
+          <Stat label="Held a top-5 pick" value={stats.topFiveShare === null ? null : stats.topFiveShare * 100} format={(n) => `${Math.round(n)}%`} />
+        </div>
+        {pairs.length > 0 && (
+          <div className="mx-auto w-48 sm:w-full">
+            <NightGlobe pairs={pairs} readout={false} />
+          </div>
+        )}
       </div>
       {stats.cities.length > 0 && (
         <div className="mt-5">
@@ -282,11 +293,12 @@ function Stats({ stats }: { stats: ReturnType<typeof logbookStats> }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, format }: { label: string; value: number | null; format: (n: number) => string }) {
   return (
     <div>
       <div className={LABEL}>{label}</div>
-      <div className="mt-0.5 font-mono text-xl font-semibold tabular-nums text-ink">{value}</div>
+      {/* Counting up to the figure the first time it shows. */}
+      <div className="mt-0.5 font-mono text-xl font-semibold tabular-nums text-ink">{value === null ? "—" : <NumberTicker value={value} format={format} />}</div>
     </div>
   );
 }

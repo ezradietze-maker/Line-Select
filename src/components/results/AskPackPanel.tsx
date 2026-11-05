@@ -76,7 +76,14 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
           Ask your pack
         </label>
         <div className="relative min-w-0 flex-1">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
+          {asking ? (
+            // Reading the question: the search glass becomes a small radar, sweeping.
+            <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 overflow-hidden rounded-full border border-accent/50">
+              <span className="absolute inset-0 animate-[spin_1.6s_linear_infinite] rounded-full motion-reduce:animate-none" style={{ background: "conic-gradient(from 0deg, transparent 0deg 270deg, var(--color-accent) 360deg)" }} />
+            </span>
+          ) : (
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
+          )}
           <input
             id="ask-pack"
             value={question}
@@ -127,8 +134,8 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
               </p>
               {answer!.lines.length > 0 && (
                 <ul className="mt-2 divide-y divide-hairline rounded-lg border border-hairline">
-                  {shown.map((r) => (
-                    <li key={r.line.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-3 py-2 text-sm">
+                  {shown.map((r, i) => (
+                    <li key={r.line.id} className="drop-in flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-3 py-2 text-sm" style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>
                       <Link href={`/results?line=${r.line.lineNumber}`} scroll={false} className="font-mono font-semibold text-ink underline decoration-dotted underline-offset-2 hover:text-accent">
                         Line {r.line.lineNumber}
                       </Link>

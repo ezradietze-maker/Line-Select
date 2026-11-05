@@ -67,9 +67,12 @@ function GlobePoster() {
  * painted, so it never weighs on first load or on any other screen.
  * Purely decorative to assistive tech; the readout below it is real text.
  */
-export function NightGlobe({ className = "" }: { className?: string }) {
+export function NightGlobe({ className = "", pairs, readout = true }: { className?: string; pairs?: [string, string][]; readout?: boolean }) {
   const container = useRef<HTMLDivElement>(null);
-  const routes = useMemo(() => globeRoutes(), []);
+  // The landing page's own routes, or the ones asked for (a pilot's logbook: base to every city they've laid over in).
+  const pairsKey = pairs ? pairs.map((p) => p.join("-")).join(",") : "";
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const routes = useMemo(() => globeRoutes(pairs), [pairsKey]);
   const reduceMotion = useReducedMotion();
   const [ready, setReady] = useState(false);
   const [active, setActive] = useState(0);
@@ -117,7 +120,7 @@ export function NightGlobe({ className = "" }: { className?: string }) {
           className={`absolute inset-0 cursor-grab transition-opacity duration-1000 active:cursor-grabbing ${ready ? "opacity-100" : "opacity-0"}`}
         />
       </div>
-      {route && (
+      {readout && route && (
         <div className="pointer-events-none absolute bottom-[8%] left-1/2 -translate-x-1/2 sm:left-auto sm:right-[4%] sm:translate-x-0">
           <div className="panel-glass flex items-center gap-3 whitespace-nowrap px-3.5 py-2">
             <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_8px_var(--glow-strong)]" aria-hidden />

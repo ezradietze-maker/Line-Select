@@ -17,13 +17,17 @@ const PLACES = [
 export default function NotFound() {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center py-16 text-center">
-      {/* A plane holding: a racetrack pattern, waiting for somewhere to land. */}
-      <svg viewBox="0 0 160 70" className="h-20 w-auto text-ink-faint" aria-hidden fill="none" stroke="currentColor">
-        <rect x="20" y="15" width="120" height="40" rx="20" strokeWidth="1.5" strokeDasharray="4 5" />
-        <g transform="translate(72 9) rotate(90)" className="text-accent" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
-          <path d="M6 0 L7.5 4 L13 6.5 L13 8 L7.5 7 L7 11 L9 12.5 L9 13.5 L6 12.8 L3 13.5 L3 12.5 L5 11 L4.5 7 L-1 8 L-1 6.5 L4.5 4 Z" fill="currentColor" fillOpacity="0.15" />
-        </g>
-      </svg>
+      {/* A plane holding: flying a racetrack pattern, waiting for somewhere to land. */}
+      <div aria-hidden className="relative h-[70px] w-[160px] text-ink-faint">
+        <svg viewBox="0 0 160 70" className="absolute inset-0 h-full w-full" fill="none" stroke="currentColor">
+          <rect x="20" y="15" width="120" height="40" rx="20" strokeWidth="1.5" strokeDasharray="4 5" />
+        </svg>
+        <span className="holding-plane absolute left-0 top-0 block text-accent">
+          <svg viewBox="-4 -4 8 8" className="h-3.5 w-3.5">
+            <path d="M3.4 0 L-2.6 -2.4 L-1.4 0 L-2.6 2.4 Z" fill="currentColor" />
+          </svg>
+        </span>
+      </div>
       <span className="mt-4 font-mono text-[11px] uppercase tracking-[0.2em] text-accent">404 · holding</span>
       <h1 className="mt-3 font-display text-2xl font-semibold text-ink">This page isn&rsquo;t on the chart</h1>
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">

@@ -1232,3 +1232,101 @@ body:has([data-bottom-bar]) .back-to-top {
     margin: 12mm;
   }
 }
+
+/* ---- Small moving touches (each has a still version under reduced motion, at the end) ---- */
+
+/* A split-flap digit: each new character flips down into place, the way a departures board turns over. */
+.flap {
+  display: inline-block;
+  transform-origin: 50% 0;
+  animation: flap-in 0.32s var(--ease-emphasized) both;
+}
+@keyframes flap-in {
+  0% { transform: perspective(240px) rotateX(-90deg); opacity: 0.2; }
+  60% { transform: perspective(240px) rotateX(12deg); opacity: 1; }
+  100% { transform: perspective(240px) rotateX(0); }
+}
+
+/* A small plane taking off along a bar: rolls left to right, lifts off, climbs away. */
+.takeoff {
+  animation: takeoff 1.6s cubic-bezier(0.45, 0, 0.55, 1) both;
+}
+@keyframes takeoff {
+  0% { left: 0; transform: translate(-50%, -50%) rotate(0deg); opacity: 1; }
+  55% { left: 70%; transform: translate(-50%, -50%) rotate(0deg); }
+  100% { left: 104%; transform: translate(-50%, -260%) rotate(-24deg); opacity: 0; }
+}
+
+/* A plane climbing out of a button. */
+.climb-out {
+  animation: climb-out 1.1s var(--ease-emphasized) both;
+}
+@keyframes climb-out {
+  0% { transform: translate(-6px, 4px) rotate(0deg); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translate(26px, -16px) rotate(-28deg); opacity: 0; }
+}
+
+/* Light and dark: the sun setting, or the moon rising, in the appearance button. */
+.sun-set { animation: sun-set 0.9s var(--ease-standard) both; }
+@keyframes sun-set {
+  from { transform: translateY(-2px); opacity: 1; }
+  to { transform: translateY(14px); opacity: 0; }
+}
+.moon-rise { animation: moon-rise 0.9s var(--ease-standard) both; }
+@keyframes moon-rise {
+  from { transform: translateY(14px); opacity: 0; }
+  to { transform: translateY(-2px); opacity: 1; }
+}
+.celestial-out { animation: celestial-out 0.5s ease 0.9s both; }
+@keyframes celestial-out { to { opacity: 0; } }
+
+/* Things dropping in one after another: give each an animation-delay. */
+.drop-in { animation: drop-in 0.36s var(--ease-emphasized) both; }
+@keyframes drop-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* A plane flying a holding pattern (the not-found page): along a racetrack, nose first. */
+.holding-plane {
+  offset-path: path("M40 15 H120 A20 20 0 0 1 120 55 H40 A20 20 0 0 1 40 15 Z");
+  offset-anchor: center;
+  offset-rotate: auto;
+  animation: holding 9s linear infinite;
+}
+@keyframes holding {
+  to { offset-distance: 100%; }
+}
+
+/* The interview landing: a plane descending onto the runway line and rolling out. */
+.wheels-down { animation: wheels-down 1.5s cubic-bezier(0.3, 0, 0.3, 1) both; }
+@keyframes wheels-down {
+  0% { transform: translate(-60vw, -90px) rotate(8deg); opacity: 0; }
+  15% { opacity: 1; }
+  70% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(14vw, 0) rotate(0deg); }
+}
+.runway-lights > span { animation: runway-light 1.2s ease-in-out infinite; }
+@keyframes runway-light {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flap, .takeoff, .climb-out, .sun-set, .moon-rise, .celestial-out, .drop-in, .wheels-down, .runway-lights > span {
+    animation: none;
+  }
+  .takeoff, .climb-out, .celestial-out { opacity: 0; }
+  .holding-plane { animation: none; offset-distance: 12%; }
+}
+
+/* A route drawing itself in (paths with pathLength="1"). */
+.route-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: route-draw 0.9s var(--ease-emphasized) 0.1s forwards;
+}
+@keyframes route-draw {
+  to { stroke-dashoffset: 0; }
+}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ReadingProgress } from "@/components/ui/ReadingProgress";
 import { markLatestSeen, WHATS_NEW } from "@/lib/whats-new";
 
 export default function WhatsNewPage() {
@@ -10,6 +11,7 @@ export default function WhatsNewPage() {
   const byDate = WHATS_NEW.reduce<Record<string, typeof WHATS_NEW>>((acc, e) => ({ ...acc, [e.date]: [...(acc[e.date] ?? []), e] }), {});
   return (
     <div className="mx-auto w-full max-w-2xl">
+      <ReadingProgress />
       <PageHeader eyebrow="Line Select" title="What’s new" description="What’s changed lately, newest first." />
       <ol className="mt-8 space-y-8">
         {Object.entries(byDate).map(([date, entries]) => (

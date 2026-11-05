@@ -4,7 +4,11 @@ import { DateTime } from "luxon";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { TripCommuteFlights } from "@/components/results/TripCommuteFlights";
+import { FlipText } from "@/components/ui/FlipText";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
+import { WorldMap } from "@/components/ui/WorldMap";
+import { coordinatesForAirport } from "@/lib/airport-coordinates";
+import { isDaylight, nightPath, project } from "@/lib/globe/flat-map";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { tripDateLabel } from "@/lib/brain/line-text";
 import { cityDaylight, offsetWords } from "@/lib/city-guide";
@@ -95,6 +99,8 @@ function WorldClock({ bidPack, profile }: { bidPack: BidPack | null; profile: Pr
         </div>
       </div>
 
+      <DayNightMap codes={codes} base={base} home={home} at={at} />
+
       <ul className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
         <ClockTile code="Z" name="Zulu" time={DateTime.fromMillis(at, { zone: "utc" })} note="UTC" />
         {codes.map((c) => {
@@ -110,6 +116,41 @@ function WorldClock({ bidPack, profile }: { bidPack: BidPack | null; profile: Pr
   );
 }
 
+/** The world at that moment: the real night side, and every pack city lit or in the dark. */
+function DayNightMap({ codes, base, home, at }: { codes: string[]; base: string; home: string | null; at: number }) {
+  const places = codes.flatMap((c) => {
+    const p = coordinatesForAirport(c);
+    return p ? [{ code: c, at: { lat: p[0], lon: p[1] } }] : [];
+  });
+  const lit = places.filter((p) => isDaylight(p.at, at)).length;
+  return (
+    <div className="mx-auto mt-4 max-w-2xl">
+      <WorldMap label={`Day and night across the world: ${lit} of your ${places.length} cities in daylight`}>
+        <path d={nightPath(at)} fill="#000" opacity={0.26} />
+        {places.map((p) => {
+          const [x, y] = project(p.at);
+          const day = isDaylight(p.at, at);
+          const mine = p.code === base || p.code === home;
+          return (
+            <g key={p.code}>
+              {day && <circle cx={x} cy={y} r={mine ? 5.5 : 4} fill="var(--color-accent)" opacity={0.22} />}
+              <circle cx={x} cy={y} r={mine ? 2.6 : 1.8} fill={day ? "var(--color-accent)" : "var(--color-ink-muted)"} />
+              {mine && (
+                <text x={x + 4} y={y - 3} fontSize={7} fontFamily="var(--font-mono)" fill="var(--color-ink)">
+                  {p.code}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </WorldMap>
+      <p className="mt-1.5 text-xs text-ink-faint">
+        {lit} of your {places.length} cities in daylight &middot; the shaded side is night
+      </p>
+    </div>
+  );
+}
+
 function ClockTile({ code, name, time, note, daylight = null }: { code: string; name: string; time: DateTime; note: string; daylight?: boolean | null }) {
   return (
     <li className="rounded-lg border border-hairline bg-canvas/50 px-3 py-2.5">
@@ -117,7 +158,9 @@ function ClockTile({ code, name, time, note, daylight = null }: { code: string; 
         <span className="font-mono text-sm font-semibold text-ink">{code}</span>
         {daylight !== null && <span className="text-xs text-ink-faint" title={daylight ? "Sun's up there" : "Dark there"}>{daylight ? "☀" : "☾"}</span>}
       </div>
-      <div className="mt-0.5 font-mono text-2xl font-semibold tabular-nums text-ink">{time.toFormat("HH:mm")}</div>
+      <div className="mt-0.5 font-mono text-2xl font-semibold tabular-nums text-ink">
+        <FlipText text={time.toFormat("HH:mm")} />
+      </div>
       <div className="truncate text-xs text-ink-muted">
         {time.toFormat("ccc d")} &middot; {name}
       </div>
