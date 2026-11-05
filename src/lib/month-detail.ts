@@ -4,7 +4,7 @@ import { timezoneForAirport } from "@/lib/airport-timezones";
 import { groupDepartures, type DepartureOptions } from "@/lib/metrics/departures";
 import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metrics/hub-turns";
 import { DEFAULT_MIN_BREAK_NIGHTS, homeStretches, summarizeHomeTime } from "@/lib/metrics/home-stretches";
-import { lineLengthDays } from "@/lib/metrics/line-length";
+import { lineCarryOver, monthLine, nextMonthName, uncutTrip } from "@/lib/bid-month";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
@@ -85,6 +85,8 @@ export interface TripChain {
 
 export interface DetailedDay {
   dayIndex: number;
+  /** Past the bid month's last day — the carry-over, flown in the next bid month: that month's name ("November"). */
+  nextMonth?: string;
   /** Day of the month ("28", "1") when real dates are known, else the bid-period day number. */
   label: string;
   weekday: string | null;
@@ -163,11 +165,11 @@ export interface MonthSummary {
    */
   home?: { between: { hours: number; nights: number }[]; nightsHome: number; shortGaps: number; minBreakNights: number } | null;
   /**
-   * A five-week line: its last trip flies past the end of the bid month (carry-over). How many days past, and the last
-   * landing on the base's clock ("Fri Oct 30"). Its departures are judged over that longer month. Null for a line that
-   * stays inside the month, or without the base.
+   * What the line's last trip carries into the next bid month (`lib/bid-month.ts`): the month's name, the days into it,
+   * and the duty periods, landings, credit and block flown there. Everything else here is this month's alone. Null for a
+   * line that stays inside its month, or without the base.
    */
-  pastMonthEnd?: { days: number; lastLanding: string } | null;
+  carryOver?: { month: string; days: number; dutyPeriods: number; landings: number; creditHours: number; blockHours: number } | null;
   /** Days off as this calendar draws them. */
   daysOff: number;
   /** Days off as the bid pack itself prints them for the line — usually the same, occasionally a day different at the edge of a trip. */
@@ -286,7 +288,7 @@ function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">, clock: "L
     return `${date} — not a day off: trip ${d.tripNumber ?? (d.tripIndex ?? 0) + 1} reports at ${d.preReportTime} (${clock}) the next morning, so this evening goes to it`;
   }
   if (d.tripIndex === null) return `${date} — on duty, continuing a trip from the previous bid period`;
-  const parts = [`${date} — trip ${d.tripNumber ?? d.tripIndex + 1}, day ${d.tripDay} of ${d.tripDayCount}`];
+  const parts = [`${date}${d.nextMonth ? ` (${d.nextMonth} bid month, carried over)` : ""} — trip ${d.tripNumber ?? d.tripIndex + 1}, day ${d.tripDay} of ${d.tripDayCount}`];
   if (d.kind === "estimated") return `${parts[0]} (exact daily detail unavailable)`;
   if (d.dutyStart) parts.push(`duty starts ${d.dutyStart} (${clock})${d.dutyStartLocalDate ? ` ${localDay(d.dutyStartLocalDate)} local` : ""}`);
   if (d.landings > 0) parts.push(`${d.landings} landing${d.landings === 1 ? "" : "s"}`);
@@ -351,6 +353,7 @@ export function buildDetailedMonth(
     else runs.push({ start: i, length: 1 });
   });
 
+  const followingMonth = nextMonthName({ bidPeriodStart, bidPeriodDays, base: departureOptions?.base ?? "" });
   const days: DetailedDay[] = calendar.days.map((day) => {
     const tripIndex = day.tripIndex;
     const trip = tripIndex !== null ? line.trips[tripIndex] : null;
@@ -358,6 +361,7 @@ export function buildDetailedMonth(
     const isWeekend = day.weekday === "Sat" || day.weekday === "Sun";
     const base = {
       dayIndex: day.dayIndex,
+      ...(day.dayIndex >= bidPeriodDays ? { nextMonth: followingMonth } : {}),
       label,
       weekday: day.weekday,
       isWeekend,
@@ -554,19 +558,18 @@ export function buildDetailedMonth(
   let summaryBase: MonthSummary["base"] = null;
   let summaryHubs: HubTurnSummary | null = null;
   let summaryHome: MonthSummary["home"] = null;
-  let pastMonthEnd: MonthSummary["pastMonthEnd"] = null;
-  if (departureOptions && bidPeriodStart) {
-    const length = lineLengthDays(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base });
-    if (length > bidPeriodDays) {
-      const zone = timezoneForAirport(departureOptions.base) ?? "UTC";
-      const last = DateTime.fromISO(bidPeriodStart, { zone }).plus({ milliseconds: length * 86_400_000 });
-      pastMonthEnd = { days: Math.ceil(length - bidPeriodDays), lastLanding: last.toFormat("ccc LLL d") };
-    }
-  }
+  // The month's own counts stop at its end: what the last trip flies after it is the next month's, said apart.
+  const dates = departureOptions ? { bidPeriodStart, bidPeriodDays, base: departureOptions.base } : null;
+  const month = dates ? monthLine(line, dates) : line;
+  const carried = dates ? lineCarryOver(line, dates) : null;
+  const carryOver: MonthSummary["carryOver"] = carried
+    ? { month: carried.month, days: carried.days, dutyPeriods: carried.dutyPeriods, landings: carried.landings, creditHours: carried.creditHours, blockHours: carried.printedBlockHours || carried.blockHours }
+    : null;
   if (departureOptions) {
-    const deps = groupDepartures(line.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions);
+    const deps = groupDepartures(month.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions);
     departureCount = deps.length;
-    const indexOf = new Map(line.trips.map((t, i) => [t, i] as const));
+    // A trip cut at the month's end is a new object; it keeps its place in the line.
+    const indexOf = new Map(month.trips.map((t) => [t, line.trips.findIndex((x) => x.id === t.id && x.startDayIndex === t.startDayIndex)] as const));
     const link = new Map<number, { prev: number; turnHours: number }>();
     for (const dep of deps) dep.trips.forEach((t, k) => k > 0 && link.set(indexOf.get(t)!, { prev: indexOf.get(dep.trips[k - 1])!, turnHours: dep.turnHours[k - 1] }));
     // What each departure means at base for a commuter, said on the day it happens.
@@ -600,7 +603,7 @@ export function buildDetailedMonth(
       }
     }
     // Hub turns, said on the day the duty they're part of started: a night one on the evening before the sort.
-    const turns = bidPeriodStart ? hubTurnsOf(line.trips, { bidPeriodStart, base: code }) : [];
+    const turns = bidPeriodStart ? hubTurnsOf(month.trips, { bidPeriodStart, base: code }) : [];
     summaryHubs = turns.length ? summarizeHubTurns(turns) : null;
     for (const h of turns) {
       const zone = timezoneForAirport(h.hub) ?? "UTC";
@@ -674,13 +677,13 @@ export function buildDetailedMonth(
     days,
     clock,
     summary: local ? local.summary : summarize(
-      line,
-      days,
+      month,
+      days.filter((d) => !d.nextMonth),
       departureCount,
       summaryBase,
       summaryHubs,
       summaryHome,
-      pastMonthEnd,
+      carryOver,
       runs.map((r) => r.length),
       cityPreferences
     ),
@@ -696,7 +699,7 @@ function summarize(
   base: MonthSummary["base"],
   hubTurns: HubTurnSummary | null,
   home: MonthSummary["home"],
-  pastMonthEnd: MonthSummary["pastMonthEnd"],
+  carryOver: MonthSummary["carryOver"],
   offRuns: number[],
   cityPreferences: Record<string, CityMark>
 ): MonthSummary {
@@ -734,7 +737,7 @@ function summarize(
     base,
     hubTurns,
     home,
-    pastMonthEnd,
+    carryOver,
     daysOff: off,
     printedDaysOff: line.daysOff,
     offRuns,
@@ -753,6 +756,7 @@ function summarize(
     cities: Array.from(cityMap.values())
       .sort((a, b) => b.nights - a.nights || a.code.localeCompare(b.code))
       .map((c) => ({ ...c, sentiment: cityPreferences[c.code] ?? null, international: isInternationalCity(c.code) })),
-    longestTripDays: Math.max(0, ...line.trips.map((t) => t.days)),
+    // A trip's length is the whole trip's, carry-over days included.
+    longestTripDays: Math.max(0, ...line.trips.map((t) => uncutTrip(t).days)),
   };
 }

@@ -259,6 +259,7 @@ export interface PackRanges {
   daysOff: [number, number];
 }
 
+/** Pass the lines as their bid months (`monthLine`): the ranges are the month's, as the timeline's numbers are. */
 export function packRanges(lines: Line[]): PackRanges {
   const range = (f: (l: Line) => number): [number, number] => {
     const v = lines.map(f).filter((n) => Number.isFinite(n));
@@ -277,7 +278,7 @@ export function packRanges(lines: Line[]): PackRanges {
 }
 
 /** Which strip, and what it draws. */
-export type StripView = { kind: "pack"; days: PackDay[] } | { kind: "timeline"; timeline: LineTimeline; ranges: PackRanges };
+export type StripView = { kind: "pack"; days: PackDay[] } | { kind: "timeline"; timeline: LineTimeline; ranges: PackRanges; month: Line };
 
 /** A small meter: where `value` sits between the pack's lowest and highest. */
 function Meter({ value, range }: { value: number; range: [number, number] }) {
@@ -290,7 +291,11 @@ function Meter({ value, range }: { value: number; range: [number, number] }) {
   );
 }
 
-/** The line's numbers, the pack's own, each with a meter: where it sits among every line in the pack. */
+/**
+ * The line's numbers in its bid month (`month`, from `monthLine`) — the pack's own, with duty periods and landings less
+ * what the last trip flies in the next month — each with a meter: where it sits among every line in the pack. The two
+ * C/O cells are what carries over.
+ */
 function RangedNumbers({ line, ranges }: { line: Line; ranges: PackRanges }) {
   const hm = formatHoursValue;
   const cells: [string, string, number, [number, number]][] = [
@@ -442,7 +447,7 @@ export function BidPackStrip({ line, score, capped, columns, view, layout, grip,
       <ScoreRing score={score} size={layout.stacked ? 34 : 38} capped={capped} />
       <div className="min-w-0">
         <div className="font-mono text-[12px] font-semibold leading-[14px] tracking-wide text-ink">LINE {line.lineNumber}</div>
-        {view.kind === "pack" ? <Numbers line={line} /> : <RangedNumbers line={line} ranges={view.ranges} />}
+        {view.kind === "pack" ? <Numbers line={line} /> : <RangedNumbers line={view.month} ranges={view.ranges} />}
       </div>
     </div>
   );

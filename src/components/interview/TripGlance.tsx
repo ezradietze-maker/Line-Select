@@ -2,11 +2,13 @@
 
 import { TripPicture } from "@/components/results/TripPicture";
 import { CreditHours } from "@/components/results/TripMarks";
+import { useMemo } from "react";
+import { carryOverWords, tripCarryInPack } from "@/lib/bid-month";
 import { tripDateLabel, tripDuties, tripHeadline } from "@/lib/brain/line-text";
 import type { BidPack, Trip } from "@/types/bidpack";
 
-/** The trip's oval — its number and credit, as the calendar marks a trip's first day — then when and how long. */
-function TripTag({ bidPack, trip }: { bidPack: Pick<BidPack, "bidPeriodStart">; trip: Trip }) {
+/** The trip's oval — its number and credit, as the calendar marks a trip's first day — then when and how long, and its C/O. */
+function TripTag({ bidPack, trip, carry }: { bidPack: Pick<BidPack, "bidPeriodStart">; trip: Trip; carry: ReturnType<typeof tripCarryInPack> }) {
   const date = tripDateLabel(bidPack, trip.startDayIndex);
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-muted">
@@ -15,6 +17,7 @@ function TripTag({ bidPack, trip }: { bidPack: Pick<BidPack, "bidPeriodStart">; 
         <CreditHours hours={trip.creditHours} className="font-normal opacity-85" />
       </span>
       <span className="font-mono">{[date, `${trip.days}-day`].filter(Boolean).join(" · ")}</span>
+      {carry && <span className="font-mono text-carry">{carryOverWords(carry)}</span>}
     </span>
   );
 }
@@ -24,11 +27,13 @@ function TripTag({ bidPack, trip }: { bidPack: Pick<BidPack, "bidPeriodStart">; 
  * how it looks, as they would a trip on a trade board, with the duties as text a tap away.
  */
 export function TripGlance({ bidPack, trip, tag = true }: { bidPack: BidPack; trip: Trip; tag?: boolean }) {
+  // A trip running past the bid month's end: its last days are the next month's, marked on the picture.
+  const carry = useMemo(() => tripCarryInPack(bidPack, trip), [bidPack, trip]);
   return (
     <div className="min-w-0">
-      {tag && <TripTag bidPack={bidPack} trip={trip} />}
+      {tag && <TripTag bidPack={bidPack} trip={trip} carry={carry} />}
       <div className={tag ? "mt-2" : ""}>
-        <TripPicture trip={trip} bidPeriodStart={bidPack.bidPeriodStart} compact />
+        <TripPicture trip={trip} bidPeriodStart={bidPack.bidPeriodStart} carryOver={carry} compact />
       </div>
       <details className="group mt-1">
         <summary className="cursor-pointer list-none text-[11px] text-ink-faint marker:hidden hover:text-ink-muted">

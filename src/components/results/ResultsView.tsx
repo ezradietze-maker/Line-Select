@@ -29,6 +29,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { LineCard } from "@/components/results/LineCard";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
+import { monthLine } from "@/lib/bid-month";
 import { BidPackHeader, packRanges, StripKey, StripViewToggle, stripLayout } from "@/components/results/BidPackStrip";
 import { useStripView } from "@/lib/strip-view-storage";
 import { useMeasuredWidth } from "@/components/results/LegBars";
@@ -479,7 +480,7 @@ export function ResultsView({
   const [listRef, listWidth] = useMeasuredWidth<HTMLDivElement>(768);
   const layout = useMemo(() => stripLayout(listWidth, columns.length), [listWidth, columns.length]);
   const [stripView, setStripView] = useStripView();
-  const ranges = useMemo(() => packRanges(bidPack.lines), [bidPack.lines]);
+  const ranges = useMemo(() => packRanges(bidPack.lines.map((l) => monthLine(l, bidPack))), [bidPack]);
   // Keys for working down the list at a desk: j / k move between lines, o opens one, s shortlists, c compares, ? shows the keys.
   const [keyIndex, setKeyIndex] = useState<number | null>(null);
   const [showKeys, setShowKeys] = useState(false);

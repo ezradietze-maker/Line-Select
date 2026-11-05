@@ -4,17 +4,13 @@ import { tripStartUtc } from "@/lib/flights/needs";
 import type { BidPack, Line } from "@/types/bidpack";
 
 /**
- * How long a line's month really is. A bid month is four weeks, but a line's last trip can run past its end
- * into the next week of the grid — the bid pack prints every line over five weeks of columns and marks that flying as
- * carry-over ("C/O"). Pilots call such a line a five-week line, and judge it that way: the ex-pilot gave one number of
- * departures and of commutes to base for a four-week line and one more of each for a five-week line.
+ * How long a line's flying runs: its bid month, or — when its last trip runs past the month's end into the next — to
+ * that trip's last landing. The bid pack prints every line over a week more of columns than its month for this (the
+ * paper view does too). What the line is judged on stops at the month's end (`lib/bid-month.ts`); this is only how
+ * wide the printed grid needs to be.
  *
- * So a line's departures (and trips, for a pilot who lives at base) are judged over the line's own length: a line flying
- * four days past a four-week month counts 28/32 of them. Commutes to base and hotel
- * nights there are left as counted: adjusted too, they didn't help his sort and cost a simulated pilot's.
- * Measured to the line's last landing, not by whole weeks or calendar days: a trip landing at 00:30 on the first day of
- * the next month adds half an hour, not a week (Oct 2026, the ex-pilot's own sort: whole weeks took his readings from
- * 97.6% to 96.1% of line pairs; to the last landing, 97.6% stayed and with his trip picks 97.0% → 97.1%).
+ * A bid month is four weeks (eight a year) or five (four a year). A pilot gives counts — departures, trips — for a
+ * four-week month, so a five-week month's counts are judged at 28 days' worth (`fourWeekFactor`).
  */
 
 const DAY = 86_400_000;
@@ -36,7 +32,7 @@ export function lineLengthDays(line: Pick<Line, "trips">, bidPack: Pick<BidPack,
   return Math.max(bidPack.bidPeriodDays, (last - start) / DAY);
 }
 
-/** What a line's count is worth over its bid month: 4 departures over a 32-day line in a 28-day month → 3.5. */
-export function perMonthFactor(line: Pick<Line, "trips">, bidPack: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">): number {
-  return bidPack.bidPeriodDays / lineLengthDays(line, bidPack);
+/** A bid month's counts at four weeks' worth: 1 for a four-week month, 0.8 for a five-week one. */
+export function fourWeekFactor(bidPack: Pick<BidPack, "bidPeriodDays">): number {
+  return bidPack.bidPeriodDays > 0 ? 28 / bidPack.bidPeriodDays : 1;
 }

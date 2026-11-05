@@ -23,7 +23,7 @@ export const SWEEP_TOPICS: { id: string; label: string; metrics: string[] }[] = 
   { id: "layover-length", label: "Layover length", metrics: ["avgLayoverHours", "layoversInRange", "shortLayovers", "longLayoverHours", "sleepableLayovers", "avgLayoverNightHours"] },
   { id: "long-duties", label: "Long duty days", metrics: ["longDuties", "maxDutyHours"] },
   { id: "legs", label: "Legs per duty & landings", metrics: ["extraLegs", "dutiesWithManyLegs", "singleLegDutyShare", "avgLegsPerDuty", "maxLegsInADuty", "landings"] },
-  { id: "deadheads", label: "Deadheads & commuting", metrics: ["frontDeadheadTrips", "backDeadheadTrips", "doubleDeadheadTrips", "baseCommutesNeeded", "departureCommutes", "baseHotelNights", "homeAwayHours", "tripsJoinedFromHome", "tripsEndingStraightHome", "shortenableHours", "tripsShortenableByADay"] },
+  { id: "deadheads", label: "Deadheads & commuting", metrics: ["frontDeadheadTrips", "backDeadheadTrips", "doubleDeadheadTrips", "departureCommutes", "baseHotelNights", "homeAwayHours", "tripsJoinedFromHome", "tripsEndingStraightHome", "shortenableHours", "tripsShortenableByADay"] },
   { id: "standby", label: "Hotel standby", metrics: ["hotelStandbyDays", "tripStandbyDays", "baseStandbyDays", "standbyDaysByCity"] },
   { id: "international", label: "International vs domestic", metrics: ["internationalLayoverShare", "layoverShareInRegions"] },
 ];

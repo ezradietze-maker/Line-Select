@@ -20,6 +20,20 @@ describe("modelToDepartures", () => {
     expect(up.criteria).toEqual([{ ...trips, metric: "homeDepartures" }, { ...commutes, metric: "departureCommutes" }, pay]);
   });
 
+  it("moves trip-by-trip commutes onto departures for every pilot, even before the reading has them down as a commuter", () => {
+    // The trip-by-trip count read 10 commutes on a line the ex-pilot flies with 5: never right, for anyone.
+    const commutes = crit("memphis", "baseCommutesNeeded", { shape: { kind: "less", fineAt: 4 } });
+    const trips = crit("trips", "tripCount");
+    const up = modelToDepartures(model(false, [commutes, trips]));
+    expect(up.criteria).toEqual([{ ...commutes, metric: "departureCommutes" }, trips]);
+  });
+
+  it("joins the weights when the departure count was already there — one priority read twice", () => {
+    const up = modelToDepartures(model(true, [crit("a", "departureCommutes", { weight: 0.3 }), crit("b", "baseCommutesNeeded", { weight: 0.2 })]));
+    expect(up.criteria.map((c) => [c.id, c.metric, c.weight])).toEqual([["a", "departureCommutes", 0.5]]);
+    expect(modelToDepartures(up)).toBe(up);
+  });
+
   it("leaves a pilot who lives at base on the trip count", () => {
     const m = model(false, [crit("trips", "tripCount")]);
     expect(modelToDepartures(m)).toBe(m);

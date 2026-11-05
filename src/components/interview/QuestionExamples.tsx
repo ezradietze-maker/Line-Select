@@ -1,5 +1,6 @@
 "use client";
 
+import { lineFigures } from "@/lib/brain/line-text";
 import { TripFold, TripGlance } from "@/components/interview/TripGlance";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import type { QuestionExample } from "@/lib/brain/question-examples";
@@ -28,7 +29,7 @@ function ExampleCard({ example, bidPack }: { example: QuestionExample; bidPack: 
       {line ? (
         <>
           <p className="mt-1 font-mono text-xs text-ink-muted">
-            {line.daysOff} days off · {line.totalCreditHours.toFixed(1)} credit · {line.trips.length} {line.trips.length === 1 ? "trip" : "trips"}
+            {lineFigures(bidPack, line)}
           </p>
           <div className="mt-2.5">
             <MiniLinePreview line={line} bidPeriodStart={bidPack.bidPeriodStart} bidPeriodDays={bidPack.bidPeriodDays} compact />

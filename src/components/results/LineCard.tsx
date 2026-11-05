@@ -23,6 +23,7 @@ import { buildLineTimeline } from "@/lib/line-timeline";
 import type { StripViewMode } from "@/lib/strip-view-storage";
 import { cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
+import { lineCarryOver, monthLine } from "@/lib/bid-month";
 import { groupDepartures } from "@/lib/metrics/departures";
 import { CreditHours } from "@/components/results/TripMarks";
 import { buildLineFeatures, type LineFactChip } from "@/lib/line-summary";
@@ -163,20 +164,23 @@ export const LineCard = memo(function LineCard({
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: line.id });
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
 
-  // The line's body-clock score, for its Circadian tab (worked out once a pilot opens it).
-  const bodyClock = useMemo(() => (expanded && activeTab === "circadian" ? lineBodyClockScore(line.trips, homeBaseOffsetMinutes) : null), [expanded, activeTab, line.trips, homeBaseOffsetMinutes]);
-  const chips = useMemo(() => buildLineFeatures(line, profile, lineScore.criterionResults), [line, profile, lineScore.criterionResults]);
   const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences), [profile.cityRatings, profile.cityPreferences]);
   const departureOptions = useMemo(() => monthDepartureOptions(homeBase, profile, flights), [homeBase, profile, flights]);
+  // The line's bid month, and what its last trip carries into the next (counted apart, as the pack prints C/O).
+  const month = useMemo(() => monthLine(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);
+  const carryOver = useMemo(() => lineCarryOver(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);
+  // The line's body-clock score, for its Circadian tab (worked out once a pilot opens it) — its trips whole, as ranked.
+  const bodyClock = useMemo(() => (expanded && activeTab === "circadian" ? lineBodyClockScore(line.trips, homeBaseOffsetMinutes) : null), [expanded, activeTab, line.trips, homeBaseOffsetMinutes]);
+  const chips = useMemo(() => buildLineFeatures(month, profile, lineScore.criterionResults), [month, profile, lineScore.criterionResults]);
   // Times the pilot leaves home: trips flown back to back, never home between, count once — as the calendar's summary counts them.
-  const departureGroups = useMemo(() => groupDepartures(line.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [line.trips, bidPeriodStart, departureOptions]);
+  const departureGroups = useMemo(() => groupDepartures(month.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [month.trips, bidPeriodStart, departureOptions]);
   const departures = departureGroups.length;
   const view = useMemo(
     () =>
       stripView === "pack"
         ? ({ kind: "pack", days: buildPackRow(line, bidPeriodStart, bidPeriodDays, packColumns.length) } as const)
-        : ({ kind: "timeline", timeline: buildLineTimeline(line, { bidPeriodStart, bidPeriodDays, base: homeBase }, packColumns.length), ranges: packRanges } as const),
-    [stripView, line, bidPeriodStart, bidPeriodDays, homeBase, packColumns.length, packRanges]
+        : ({ kind: "timeline", timeline: buildLineTimeline(line, { bidPeriodStart, bidPeriodDays, base: homeBase }, packColumns.length), ranges: packRanges, month } as const),
+    [stripView, line, month, bidPeriodStart, bidPeriodDays, homeBase, packColumns.length, packRanges]
   );
   const grip = draggable ? (
     <button
@@ -281,8 +285,19 @@ export const LineCard = memo(function LineCard({
                 )}
                 {" · "}
                 <span className="whitespace-nowrap">
-                  {line.totalLandings} landing{line.totalLandings === 1 ? "" : "s"}
+                  {month.totalLandings} landing{month.totalLandings === 1 ? "" : "s"}
                 </span>
+                {carryOver && (
+                  <span className="whitespace-nowrap text-carry" title={`What the last trip flies after the bid month ends — the ${carryOver.month} bid month's, not counted in this one`}>
+                    {" · "}
+                    {carryOver.creditHours > 0 && (
+                      <>
+                        <CreditHours hours={carryOver.creditHours} /> C/O ·{" "}
+                      </>
+                    )}
+                    {carryOver.days} day{carryOver.days === 1 ? "" : "s"} into {carryOver.month.slice(0, 3)}
+                  </span>
+                )}
               </div>
             </div>
             <div className="-my-1.5 -mr-1.5 flex shrink-0 items-center gap-0.5 print:hidden">
@@ -314,7 +329,7 @@ export const LineCard = memo(function LineCard({
 
           {forecast && <div className="mt-2.5"><ForecastChip forecast={forecast} /></div>}
 
-          {!lineScore.estimated && <TripNumberStrip trips={line.trips} departures={departureGroups} />}
+          {!lineScore.estimated && <TripNumberStrip trips={month.trips} departures={departureGroups} carryOver={carryOver} />}
 
           {/* The month calendar takes the card's full width: each day lists its flights, and they need the room to read. */}
           <div className="mt-3 grid gap-4">
@@ -409,7 +424,7 @@ export const LineCard = memo(function LineCard({
                     bid pack&rsquo;s own line totals.
                   </div>
                 ) : (
-                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} carryOverCreditHours={line.carryOverCreditHours} />
+                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} carryOver={carryOver} bidPeriodDays={bidPeriodDays} />
                 ))}
 
               {activeTab === "breakdown" && (

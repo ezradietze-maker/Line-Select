@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { bidMonthEnd, uncutTrip } from "@/lib/bid-month";
 import { lineBodyClockScore, tripBodyClockScore } from "@/lib/body-clock-score";
 import { dateOfDayIndex, longestDaysOffBlock, singleDaysOff, weekendDaysOff } from "@/lib/days-off-pattern";
 import { lineDutyPeriods } from "@/lib/duty-periods";
@@ -11,7 +12,7 @@ import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metric
 import { DEFAULT_MIN_BREAK_NIGHTS, homeStretches, summarizeHomeTime, type HomeStretch, type HomeTime } from "@/lib/metrics/home-stretches";
 import { DEFAULT_HOME_PARAMS, homeAwayForTrip, type HomeAway, type TravelTimeProvider } from "@/lib/metrics/home-travel";
 import { legDeepNightMinutes, nightsWorked, type LayoverFact, type LegFact, type Region, type TripFacts } from "@/lib/metrics/trip-facts";
-import type { Line } from "@/types/bidpack";
+import type { Line, Trip } from "@/types/bidpack";
 
 /**
  * The metric library: every measurable thing about a line a pilot might
@@ -97,7 +98,13 @@ export interface MetricDef {
   /** Default parameters, used when a pilot hasn't given his own. */
   defaults?: MetricParams;
   trip?: { measure: (f: TripFacts, p: MetricParams) => number | null; aggregate: Aggregation };
-  line?: (line: Line, trips: TripFacts[], ctx: LineContext, p: MetricParams) => number | null;
+  /**
+   * `line` is the line's bid month and `trips` its trips cut at the month's end (`lib/bid-month.ts`) — for counts and
+   * totals; `whole` the same trips uncut — for rates and runs, what the trips are like (see `metrics/compute.ts`).
+   */
+  line?: (line: Line, trips: TripFacts[], ctx: LineContext, p: MetricParams, whole: TripFacts[]) => number | null;
+  /** Kept so an old priority still reads, but no longer offered to the interview (and moved off when a model loads — see `lib/brain/model-upgrade.ts`). */
+  retired?: boolean;
   /**
    * For a "less is better" priority with no worst point given, the bad end of the scale is the pack's worst line rather
    * than the 5% mark. For counts with only a few values across a month — departures run 2 to 5 — the 5% mark is a step
@@ -105,8 +112,8 @@ export interface MetricDef {
    */
   badEndAtWorst?: boolean;
   /**
-   * A count that adds up over the line's trips, carry-over included — compared at the month length the pilot's numbers
-   * are for, so a five-week line isn't held to a four-week line's numbers (see `metrics/line-length.ts`).
+   * A count that adds up over the bid month — compared at the four weeks the pilot's numbers are for, so a five-week
+   * bid month isn't held to a four-week month's numbers (see `fourWeekFactor`).
    */
   perMonth?: boolean;
   /**
@@ -145,7 +152,7 @@ const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const mean = (xs: number[]) => (xs.length ? sum(xs) / xs.length : null);
 const flying = (trips: TripFacts[]) => trips.filter((t) => t.trip.schedule.length > 0);
 const allLayovers = (trips: TripFacts[]) => trips.flatMap((t) => t.layovers);
-/** Rates per day away compare whole trips to whole trips — the line's printed totals stop at the bid period's edge while a trip running into next month doesn't. */
+/** Rates per day away compare whole trips to whole trips (pass `whole`) — the line's printed totals stop at the bid period's edge while a trip running into next month doesn't. */
 const tripCredit = (trips: TripFacts[]) => sum(flying(trips).map((f) => f.creditHours));
 const inCities = (l: LayoverFact, p: MetricParams) => !!p.cities?.includes(l.city);
 /**
@@ -200,6 +207,23 @@ function homeAway(trips: TripFacts[], c: LineContext, p: MetricParams): HomeAway
  * worked out once per line and shared — by the three departure measures, and by every re-score while choices are fitted.
  */
 const departuresCache = new WeakMap<TripFacts[], { travel?: TravelTimeProvider; flights?: FlightAnswers; byKey: Map<string, Departure[]> }>();
+
+/**
+ * How much of a departure (or trip) is this month's: all of it, or — for one running into the next month — the share of
+ * its time away, from leaving (`from`, ms) to the last landing, that falls before the month's end. A count of departures
+ * or trips splits one that carries over this way, as the pack splits its credit: a departure leaving home three days
+ * before the month's end and landing back two days after is 0.6 of this month's (the ex-pilot's sort, 20 readings:
+ * counted whole 97.18% lines only, 97.54% with his trip picks; split 98.20%, 97.82%).
+ */
+function monthShare(last: Trip, from: number | null, c: LineContext): number {
+  if (!last.carriesIntoNextMonth || from === null) return 1;
+  const end = bidMonthEnd(c);
+  const whole = uncutTrip(last);
+  const start = tripStartUtc(c, whole);
+  if (end === null || start === null) return 1;
+  const landed = start + Math.max(0, ...whole.schedule.flatMap((x) => x.legs.map((l) => l.endMinutes))) * 60_000;
+  return landed > from ? Math.min(1, Math.max(0, (end - from) / (landed - from))) : 1;
+}
 
 /** The line's trips grouped into departures, with the pilot's own home and buffers (see `metrics/departures.ts`). */
 function departuresOf(trips: TripFacts[], c: LineContext, p: MetricParams): Departure[] {
@@ -296,7 +320,7 @@ export const METRICS: MetricDef[] = [
     unit: "hours/day",
     category: "pay",
     description: "Credit earned per 24 hours away from base, as scheduled, across the line's whole trips.",
-    line: (_l, trips) => {
+    line: (_l, _t, _c, _p, trips) => {
       const away = sum(flying(trips).map((f) => f.tafbHours));
       return away > 0 ? tripCredit(trips) / (away / 24) : null;
     },
@@ -309,7 +333,7 @@ export const METRICS: MetricDef[] = [
     description: "Credit per 24 hours actually away, if the pilot shortens trips by deviating on front- and back-end deadheads.",
     params: ["frontBufferHours", "backRestHours"],
     defaults: { frontBufferHours: 12, backRestHours: 10 },
-    line: (_l, trips, _c, p) => {
+    line: (_l, _t, _c, p, trips) => {
       const away = sum(flying(trips).map((f) => f.tafbHours - shortenableHours(f, p)));
       return away > 0 ? tripCredit(trips) / (away / 24) : null;
     },
@@ -357,7 +381,7 @@ export const METRICS: MetricDef[] = [
     description: "Credit per 24 hours away from home, commute included — the number a commuter actually lives.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours"],
     defaults: { ...DEFAULT_HOME_PARAMS },
-    line: (_l, trips, c, p) => {
+    line: (_l, _t, c, p, trips) => {
       const away = homeAway(trips, c, p);
       const total = away?.reduce((s, a) => s + a.awayHours, 0) ?? 0;
       return away && total > 0 ? tripCredit(trips) / (total / 24) : null;
@@ -473,18 +497,18 @@ export const METRICS: MetricDef[] = [
     },
   },
   { id: "weekendDaysOff", label: "Weekend days off", unit: "days", category: "calendar", description: "Saturdays and Sundays off.", line: (l, _t, c) => weekendDaysOff(l, c.bidPeriodStart) },
-  { id: "tripCount", label: "Trips", unit: "trips", category: "calendar", description: "Number of trips in the month. For a pilot who lives at base; a commuter's are counted in homeDepartures.", perMonth: true, belowFine: BELOW_FINE_COUNTS, line: (l) => l.trips.length },
+  { id: "tripCount", label: "Trips", unit: "trips", category: "calendar", description: "Number of trips in the month. For a pilot who lives at base; a commuter's are counted in homeDepartures. A trip running into the next bid month counts by the share of it in this one.", perMonth: true, belowFine: BELOW_FINE_COUNTS, line: (l, _t, c) => l.trips.reduce((n, t) => n + monthShare(t, tripStartUtc(c, t), c), 0) },
   {
     id: "homeDepartures",
     label: "Departures",
     unit: "departures",
     category: "calendar",
     description:
-      "How many times the pilot leaves home to fly — trips flown without going home in between count once (a \"series of trips\" or \"trip sequence\"). For a commuter, two trips are one departure unless there would be at least minHomeHours (default 24) at home between them, counted door to door: deadheading home from where one trip's flying ends, or commuting home from base, then back out for the next. For a pilot who lives at base, only trips that turn within a few hours at base are joined.",
+      "How many times the pilot leaves home to fly — trips flown without going home in between count once (a \"series of trips\" or \"trip sequence\"). For a commuter, two trips are one departure unless there would be at least minHomeHours (default 24) at home between them, counted door to door: deadheading home from where one trip's flying ends, or commuting home from base, then back out for the next. For a pilot who lives at base, only trips that turn within a few hours at base are joined. A departure running into the next bid month counts by the share of it in this one (0.6 when three of its five days are this month's).",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
     badEndAtWorst: true,
     perMonth: true,
-    line: (_l, trips, c, p) => departuresOf(trips, c, p).length,
+    line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((n, d) => n + monthShare(d.trips[d.trips.length - 1], d.leaveHome ?? d.reportAt, c), 0),
     belowFine: BELOW_FINE_COUNTS,
   },
   {
@@ -650,7 +674,9 @@ export const METRICS: MetricDef[] = [
     label: "Commutes to or from base, trip by trip",
     unit: "commutes",
     category: "commute",
-    description: "Trip ends where the pilot must be at base for operated flying, counted trip by trip — even between trips flown back to back without going home. A commuter's real commutes are departureCommutes.",
+    description:
+      "Retired: it counted two commutes a trip — even between trips flown back to back without going home — and took any front-end deadhead as one caught from home, wherever it left from, so a line could read 10 commutes with 5 real. A pilot's commutes are departureCommutes.",
+    retired: true,
     trip: { measure: (f) => (f.noFlying ? 2 : (f.front ? 0 : 1) + (f.back ? 0 : 1)), aggregate: "sum" },
     belowFine: BELOW_FINE_COUNTS,
   },
@@ -844,7 +870,7 @@ export const METRICS: MetricDef[] = [
     unit: "score (1–100, 100 gentlest)",
     category: "body",
     description: "Body-clock score of the line's hardest trip: night work, nights in a row, early reports, time awake, layover sleep, day/night flips and time zones.",
-    line: (_l, trips, c) => {
+    line: (_l, _t, c, _p, trips) => {
       const scores = tripBodyClocks(trips, c);
       return scores.length ? Math.min(...scores) : null;
     },
@@ -856,11 +882,12 @@ export const METRICS: MetricDef[] = [
     category: "body",
     description:
       "How gentle the line is on the body clock, 1–100: night work, nights in a row, early reports, time awake, layover sleep, day/night flips, time zones and recovery between trips (see lib/body-clock-score.ts). On one trip, that trip's own score.",
-    line: (l, trips, c) => {
+    line: (_l, _t, c, _p, trips) => {
       // A trip read on its own (trip scores hand over the trip's line and just that trip) gets its own score, the same
-      // number its trip shows — the old stars were always the trip's own.
+      // number its trip shows — the old stars were always the trip's own. A line's trips are scored whole: a run of
+      // nights the last trip flies on into the next month weighs on the body all the same.
       if (trips.length === 1) return tripBodyClocks(trips, c)[0] ?? null;
-      return lineBodyClockScore(l.trips, c.homeBaseOffsetMinutes)?.score ?? null;
+      return lineBodyClockScore(trips.map((f) => f.trip), c.homeBaseOffsetMinutes)?.score ?? null;
     },
   },
   {
@@ -887,7 +914,10 @@ export const METRICS: MetricDef[] = [
     description:
       "Night hub turns that come three or more nights in a row — a week of flying into a sort hub in the evening, sitting through the sort and flying back out before dawn. The back-of-the-clock work pilots call onerous, where one now and then is fine. For a pilot who talks about hub turning, use this rather than the general night measures.",
     badEndAtWorst: true,
-    line: (_l, trips, c) => hubTurnsOfLine(trips, c).inWeeks,
+    // A week of night turns starting this month is this month's, counted whole — into the next month if it goes on there
+    // (cut at midnight, a five-night week reads as three; counted whole, the ex-pilot's sort on 7 readings went 96.3% →
+    // 96.6% lines only, 96.6% → 97.2% with his trip picks).
+    line: (_l, _t, c, _p, trips) => hubTurnsOfLine(trips, c).inWeeks,
   },
   {
     id: "longestHubTurnRun",
@@ -896,7 +926,7 @@ export const METRICS: MetricDef[] = [
     category: "body",
     description: "The longest run of consecutive nights with a night hub turn — for a pilot who gives a limit ('two nights of hub turning in a row is fine').",
     badEndAtWorst: true,
-    line: (_l, trips, c) => hubTurnsOfLine(trips, c).longestRun,
+    line: (_l, _t, c, _p, trips) => hubTurnsOfLine(trips, c).longestRun,
   },
   {
     id: "nightHubTurns",
@@ -937,7 +967,7 @@ export const METRICS: MetricDef[] = [
     unit: "nights",
     category: "body",
     description: "The longest run of consecutive nights worked across the month, across trips — 'two all-nighters in a row is my limit'.",
-    line: (_l, trips) => {
+    line: (_l, _t, _c, _p, trips) => {
       const nights = nightsOfLine(trips);
       if (!nights) return null;
       let best = 0;

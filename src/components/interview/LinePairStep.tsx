@@ -4,6 +4,7 @@ import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
+import { lineFigures } from "@/lib/brain/line-text";
 import { TripFold } from "@/components/interview/TripGlance";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import type { LinePairCandidate } from "@/lib/brain/interviewer";
@@ -34,7 +35,7 @@ function LineDetail({ bidPack, lineNumber, label, selected }: { bidPack: BidPack
       <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">{label}</p>
       <p className="mt-0.5 font-display text-xl font-semibold text-ink">Line {lineNumber}</p>
       <p className="font-mono text-xs text-ink-muted">
-        {line.daysOff} days off · {line.totalCreditHours.toFixed(1)} credit · {line.trips.length} {line.trips.length === 1 ? "trip" : "trips"}
+        {lineFigures(bidPack, line)}
       </p>
       <div className="mt-3">
         <MiniLinePreview line={line} bidPeriodStart={bidPack.bidPeriodStart} bidPeriodDays={bidPack.bidPeriodDays} compact />

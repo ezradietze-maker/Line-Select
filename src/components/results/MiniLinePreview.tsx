@@ -185,8 +185,12 @@ function Cell({
       style={{ "--i": index } as React.CSSProperties}
     >
       {!isOff && day.tripIndex !== null && day.kind !== "estimated" && <TripRail joinLeft={joinLeft} joinRight={joinRight} standby={day.kind === "standby"} />}
+      {day.nextMonth && <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] rounded-b-md bg-carry" />}
       <span className="flex h-3 items-center justify-between gap-0.5">
-        <span className={`text-[11px] tabular-nums ${isOff ? "" : "font-semibold"}`}>{day.label}</span>
+        <span className={`text-[11px] tabular-nums ${isOff ? "" : "font-semibold"}`}>
+          {day.label}
+          {day.nextMonth && <span className="ml-0.5 text-[9px] font-semibold uppercase tracking-wide text-carry">{day.nextMonth.slice(0, 3)}</span>}
+        </span>
         {day.isTripStart && day.tripNumber && (
           <>
             <span className="hidden whitespace-nowrap rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar @min-[4.75rem]:inline" title={day.tripCreditHours !== null ? `Trip #${day.tripNumber}, ${hm(day.tripCreditHours * 60)} credit hours` : undefined}>
@@ -280,6 +284,13 @@ function MonthKeyInfo() {
 export function MonthLegend({ className = "" }: { className?: string }) {
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted ${className}`}>
+      <span className="inline-flex items-center gap-1">
+        <span className="relative inline-flex h-4 items-start rounded-[3px] bg-calendar-accent/[0.13] px-0.5 text-[10px] font-semibold leading-none text-ink">
+          26<span className="ml-0.5 text-[8px] uppercase text-carry">Nov</span>
+          <span aria-hidden className="absolute inset-x-0 bottom-0 h-[2px] rounded-b-[3px] bg-carry" />
+        </span>
+        Carry-over: flown in the next bid month, not counted in this one
+      </span>
       <span className="inline-flex items-center gap-1">
         <span className="rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar">
           #111 <CreditHours hours={17.78} className="font-normal opacity-85" />
@@ -497,10 +508,15 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
           {s.base.jumpseatIns > 0 ? ` · ${s.base.jumpseatIns} jumpseat-in${s.base.jumpseatIns === 1 ? "" : "s"}` : ""}
         </p>
       )}
-      {s.pastMonthEnd && (
+      {s.carryOver && (
         <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">Five-week line · </span>
-          flies {s.pastMonthEnd.days} day{s.pastMonthEnd.days === 1 ? "" : "s"} past the bid month, to {s.pastMonthEnd.lastLanding} · departures judged over the longer month
+          <span className="font-sans text-[10px] uppercase tracking-wide text-carry">Carries into {s.carryOver.month} · </span>
+          {s.carryOver.days} day{s.carryOver.days === 1 ? "" : "s"}
+          {s.carryOver.dutyPeriods > 0 ? ` · ${s.carryOver.dutyPeriods} duty period${s.carryOver.dutyPeriods === 1 ? "" : "s"}` : ""}
+          {s.carryOver.landings > 0 ? ` · ${s.carryOver.landings} landing${s.carryOver.landings === 1 ? "" : "s"}` : ""}
+          {s.carryOver.creditHours > 0 ? ` · ${hm(s.carryOver.creditHours * 60)} C/O credit` : ""}
+          {s.carryOver.blockHours > 0 ? ` · ${hm(s.carryOver.blockHours * 60)} C/O block` : ""}
+          <span className="font-sans text-ink-faint"> — not counted in this month</span>
         </p>
       )}
       {s.home && (
@@ -562,7 +578,7 @@ interface MiniLinePreviewProps {
   cityPreferences?: Record<string, CityMark>;
   /** The base and where the pilot lives, so trips are joined into the same departures the scores count. */
   departureOptions?: MonthDepartureOptions;
-  /** Just the month (the interview's line cards): no summary or legend under it. */
+  /** Just the month (the interview's line cards): its four or five weeks, no carry-over days, no summary or legend under it. */
   compact?: boolean;
 }
 
@@ -579,10 +595,11 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   const [chosenMode, setMode] = useTimeMode();
   // The interview's small line cards stay on the base's calendar.
   const mode: TimeMode = compact ? "local" : chosenMode;
-  const month: DetailedMonth = useMemo(
-    () => buildDetailedMonth(line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions, mode),
-    [line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions, mode]
-  );
+  const month: DetailedMonth = useMemo(() => {
+    const built = buildDetailedMonth(line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions, mode);
+    // The interview's cards show the bid month alone; what carries into the next is said as the line's C/O.
+    return compact ? { ...built, days: built.days.filter((d) => !d.nextMonth) } : built;
+  }, [line, bidPeriodStart, bidPeriodDays, cityPreferences, departureOptions, mode, compact]);
   const [selected, setSelected] = useState<number | null>(null);
   // The month lays itself out the first time it scrolls into view (see
   // .cal-grid in globals.css) — not before, so a long list doesn't spend its
@@ -593,6 +610,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   // Seven days and six gaps across the grid, less each day's own padding.
   const barWidth = Math.max(0, (gridWidth - 6 * 4) / 7 - 8);
   // Each layover's words go on its longest day, counted across the whole month — a stay runs over several days.
+  // The line's body clock as the ranking scores it: its trips whole — a run of nights going on into the next month weighs all the same.
   const bodyClock = useMemo(() => (compact ? null : lineBodyClockScore(line.trips, homeBaseOffsetMinutes)), [compact, line.trips, homeBaseOffsetMinutes]);
   const stayLabeled = useMemo(() => {
     const labeled = labeledStayPieces(month.days.map((d) => [...(d.spill?.segments ?? []), ...(d.kind === "off" ? [] : d.segments)]));

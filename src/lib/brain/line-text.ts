@@ -1,4 +1,8 @@
+import { carryOverWords, lineCarryOver, tripCarryInPack } from "@/lib/bid-month";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
+
+/** The pack as these need it: its dates (and lines and base, to say what a trip carries into the next month). */
+type PackText = Pick<BidPack, "bidPeriodStart"> & Partial<Pick<BidPack, "bidPeriodDays" | "base" | "lines">>;
 
 /**
  * A line's trips as text a pilot reads at a glance — the headline route with
@@ -16,7 +20,8 @@ export function tripDateLabel(bidPack: Pick<BidPack, "bidPeriodStart">, dayIndex
 }
 
 /** "Oct 7 · 10d · 60.6 cr · ANC → DH SEA → DH CDG → … → standby ×3 at KIX → DH ANC" */
-export function tripHeadline(bidPack: Pick<BidPack, "bidPeriodStart">, t: Trip): string {
+/** A trip in a line: when, how long, its credit, its route — and what it carries into the next bid month, when it does. */
+export function tripHeadline(bidPack: PackText, t: Trip): string {
   const stops: string[] = [];
   let standbyRun = 0;
   let standbyAt = "";
@@ -39,7 +44,9 @@ export function tripHeadline(bidPack: Pick<BidPack, "bidPeriodStart">, t: Trip):
   });
   flush();
   const route = stops.length ? stops.join(" → ") : t.layoverCities.join(" · ");
-  return [tripDateLabel(bidPack, t.startDayIndex), `${t.days}d`, `${t.creditHours.toFixed(1)} cr`, route].filter(Boolean).join(" · ");
+  const { bidPeriodDays, base, lines } = bidPack;
+  const carry = bidPeriodDays && base && lines ? tripCarryInPack({ ...bidPack, bidPeriodDays, base, lines }, t) : null;
+  return [tripDateLabel(bidPack, t.startDayIndex), `${t.days}d`, `${t.creditHours.toFixed(1)} cr`, route, carry ? carryOverWords(carry) : ""].filter(Boolean).join(" · ");
 }
 
 /** The trip duty by duty: every leg (deadheads with their airline flight, ground transport named), standby, and each layover's length and hotel. */
@@ -55,7 +62,14 @@ export function tripDuties(t: Trip): string[] {
   });
 }
 
+/** A line's headline figures: days off, its month's credit (and the C/O its last trip carries into the next), trips. */
+export function lineFigures(bidPack: PackText, line: Line): string {
+  const { bidPeriodDays, base } = bidPack;
+  const carry = bidPeriodDays && base ? lineCarryOver(line, { ...bidPack, bidPeriodDays, base }) : null;
+  return `${line.daysOff} days off · ${line.totalCreditHours.toFixed(1)} credit${carry ? ` · ${carryOverWords(carry)}` : ""} · ${line.trips.length} ${line.trips.length === 1 ? "trip" : "trips"}`;
+}
+
 /** One line in a sentence: days off, credit, and each trip's headline. */
-export function lineSummary(bidPack: Pick<BidPack, "bidPeriodStart">, line: Line): string {
-  return `${line.daysOff} days off, ${line.totalCreditHours.toFixed(1)} credit, ${line.trips.length} ${line.trips.length === 1 ? "trip" : "trips"}: ${line.trips.map((t) => tripHeadline(bidPack, t)).join(" | ")}`;
+export function lineSummary(bidPack: PackText, line: Line): string {
+  return `${lineFigures(bidPack, line)}: ${line.trips.map((t) => tripHeadline(bidPack, t)).join(" | ")}`;
 }

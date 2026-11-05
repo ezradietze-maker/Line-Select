@@ -78,15 +78,16 @@ export function homeStretches(departures: Departure[], ctx: Pick<BidPack, "bidPe
   const away: { leave: number; back: number }[] = [];
   for (const d of departures) {
     const leave = commuter ? d.leaveHome : d.reportAt === null ? null : d.reportAt - LIVES_AT_BASE_LEAVE_MINUTES * 60_000;
-    const back = commuter ? d.backHome : d.releaseAt === null ? null : d.releaseAt + LIVES_AT_BASE_HOME_MINUTES * 60_000;
+    // Running into the next month, it's away to the month's end.
+    const back = d.carriesOver ? Math.max(periodEnd, leave ?? periodEnd) : commuter ? d.backHome : d.releaseAt === null ? null : d.releaseAt + LIVES_AT_BASE_HOME_MINUTES * 60_000;
     if (leave === null || back === null) return null;
     away.push({ leave, back });
   }
   away.sort((a, b) => a.leave - b.leave);
 
   const stretches: HomeStretch[] = [];
-  // A stay between two of the line's own departures is known whole, even when the next one leaves after the bid month
-  // ends (a five-week line); only the stays before the first departure and after the last run into months not here.
+  // A stay between two of the line's own departures is known whole; only the stays before the first departure and after
+  // the last run into months not here.
   const add = (from: number, to: number, edge: HomeStretch["edge"]) => {
     const a = edge === "start" ? Math.max(from, periodStart) : from;
     const b = edge === "end" ? Math.min(to, periodEnd) : to;

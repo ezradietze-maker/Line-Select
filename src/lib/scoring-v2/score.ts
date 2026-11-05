@@ -1,6 +1,6 @@
 import { METRICS_BY_ID, type MetricDef, type MetricParams } from "@/lib/metrics/catalog";
 import { measure, prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
-import { perMonthFactor } from "@/lib/metrics/line-length";
+import { fourWeekFactor } from "@/lib/metrics/line-length";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { TravelTimeProvider } from "@/lib/metrics/home-travel";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type PilotModel } from "@/types/pilot-model";
@@ -177,11 +177,11 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
   const home = homeParams(model);
   const criteria = model.criteria.filter((c) => METRICS_BY_ID.has(c.metric));
 
-  // Measure every criterion on every line once. A count over a five-week line's trips is judged over the bid month, as
-  // a four-week line's is (`values` stay as measured, for showing; `judged` is what's scored).
+  // Measure every criterion on every line's bid month once. A count in a five-week bid month is judged at four weeks'
+  // worth, the month the pilot's numbers are for (`values` stay as measured, for showing; `judged` is what's scored).
   const values = criteria.map((c) => bidPack.lines.map((l) => measure(c.metric, l, pack, { ...home, ...c.params })));
-  const factors = bidPack.lines.map((l) => perMonthFactor(l, bidPack));
-  const judged = criteria.map((c, ci) => (METRICS_BY_ID.get(c.metric)?.perMonth ? values[ci].map((v, li) => (v === null ? null : v * factors[li])) : values[ci]));
+  const factor = fourWeekFactor(bidPack);
+  const judged = criteria.map((c, ci) => (METRICS_BY_ID.get(c.metric)?.perMonth && factor !== 1 ? values[ci].map((v) => (v === null ? null : v * factor)) : values[ci]));
   const spreads = criteria.map((c, ci) => spreadOf(judged[ci], c.shape, METRICS_BY_ID.get(c.metric)));
   const weights = criteria.map(criterionWeight);
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
@@ -226,7 +226,7 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
       const v = judged[ci][li];
       if (!c.hardLimit || v === null || !enforced[ci]) return [];
       const broken = c.hardLimit.op === "max" ? v > c.hardLimit.value : v < c.hardLimit.value;
-      // Said in the line's own terms: a five-week line's count, against the limit for a line that long.
+      // Said in the month's own terms: a five-week month's count, against the limit for a month that long.
       const scale = values[ci][li]! === 0 || v === 0 ? 1 : values[ci][li]! / v;
       return broken ? [{ criterionId: c.id, label: c.label, value: values[ci][li]!, limit: c.hardLimit.value * scale, op: c.hardLimit.op }] : [];
     });

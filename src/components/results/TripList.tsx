@@ -10,6 +10,7 @@ import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { TripScorePanel } from "@/components/results/TripScorePanel";
 import { RestPlan } from "@/components/results/SleepPlan";
 import { TripPicture, tripPictureDays } from "@/components/results/TripPicture";
+import { tripCarryOver, type LineCarryOver, type TripCarryOver } from "@/lib/bid-month";
 import { TripDayDetail } from "@/components/results/TripDayDetail";
 import { CreditHours } from "@/components/results/TripMarks";
 import { ColorKey } from "@/components/results/ColorKey";
@@ -160,15 +161,15 @@ function TripHeader({
   mode,
   bidPeriodStart,
   homeBaseOffsetMinutes,
-  carryOverCreditHours,
+  carryOver,
 }: {
   trip: Trip;
   days: TimelineDay[];
   mode: TimeMode;
   bidPeriodStart: string | null;
   homeBaseOffsetMinutes: number | null;
-  /** Credit this trip carries into next month, as the line prints it — on the trip that runs past the month's end. */
-  carryOverCreditHours?: number;
+  /** What this trip flies after its bid month ends, with the C/O credit the line prints — on the trip that runs past it. */
+  carryOver?: (TripCarryOver & { month: string; creditHours: number }) | null;
 }) {
   const bodyClock = tripBodyClockScore(trip, homeBaseOffsetMinutes);
   const [whyOpen, setWhyOpen] = useState(false);
@@ -218,8 +219,17 @@ function TripHeader({
         <Readout label="DH block" value={deadhead > 0 ? hm(deadhead) : "none"} tone={deadhead > 0 ? "text-deadhead" : "text-readout"} />
         <Readout label="Duty periods" value={String(trip.dutyPeriods ?? trip.schedule.length)} />
         <Readout label="Landings" value={String(trip.landings)} />
-        {carryOverCreditHours ? <Readout label="C/O CH" value={hm(carryOverCreditHours * 60)} title="Credit hours this trip carries over into next month, as the bid pack prints it" /> : null}
       </div>
+      {carryOver && (
+        <p className="mt-2 rounded-md border border-carry/40 bg-carry-soft px-2.5 py-1.5 font-mono text-xs text-readout">
+          <span className="font-sans text-[10px] font-semibold uppercase tracking-wide text-carry">Carries into {carryOver.month} · </span>
+          last {carryOver.days} day{carryOver.days === 1 ? "" : "s"}
+          {carryOver.dutyPeriods > 0 ? ` · ${carryOver.dutyPeriods} duty period${carryOver.dutyPeriods === 1 ? "" : "s"}` : ""}
+          {carryOver.landings > 0 ? ` · ${carryOver.landings} landing${carryOver.landings === 1 ? "" : "s"}` : ""}
+          {carryOver.creditHours > 0 ? ` · ${hm(carryOver.creditHours * 60)} C/O credit` : ""}
+          <span className="font-sans text-ink-faint"> — the line&rsquo;s numbers count only this month&rsquo;s {hm(Math.max(0, trip.creditHours - carryOver.creditHours) * 60)} credit</span>
+        </p>
+      )}
     </div>
   );
 }
@@ -316,8 +326,9 @@ interface TripListProps {
   base?: string;
   /** Each trip's own score for this pilot, by `tripKey` (see `lib/scoring-v2/trip-score.ts`); absent before an interview. */
   tripScores?: Map<string, TripScore> | null;
-  /** The line's credit carried into next month (`Line.carryOverCreditHours`) — shown on its last trip, the one that carries it. */
-  carryOverCreditHours?: number;
+  /** What the line carries into the next bid month (`lineCarryOver`) — shown on the trip that carries it. Needs `bidPeriodDays` and `base`. */
+  carryOver?: LineCarryOver | null;
+  bidPeriodDays?: number;
 }
 
 function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: FlightAnswers; base: string }) {
@@ -325,7 +336,7 @@ function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: F
   return <TripCommuteFlights answers={flights} trip={trip} base={base} frontCity={f.front?.city} backCity={f.back?.city} />;
 }
 
-export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores, carryOverCreditHours }: TripListProps) {
+export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores, carryOver = null, bidPeriodDays }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   // Starts at the same fixed default the server renders, then syncs to the
@@ -368,8 +379,11 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
     };
   }, [trips]);
 
-  // The line's last trip — the one that runs past the month's end and carries its credit into the next.
-  const lastTrip = trips.reduce((best, t, i) => ((t.startDayIndex ?? i) >= (trips[best].startDayIndex ?? best) ? i : best), 0);
+  // The trip that runs past the month's end, and what it carries into the next.
+  const carries = useMemo(
+    () => trips.map((t) => (carryOver && base && bidPeriodDays ? tripCarryOver(t, { bidPeriodStart, bidPeriodDays, base }) : null)),
+    [trips, carryOver, base, bidPeriodStart, bidPeriodDays]
+  );
 
   function handleToggleExpand(key: string) {
     setExpandedKey((k) => (k === key ? null : key));
@@ -403,13 +417,14 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                 mode={mode}
                 bidPeriodStart={bidPeriodStart}
                 homeBaseOffsetMinutes={homeBaseOffsetMinutes}
-                carryOverCreditHours={tripIndex === lastTrip ? carryOverCreditHours : undefined}
+                carryOver={carries[tripIndex] && carryOver ? { ...carries[tripIndex]!, month: carryOver.month, creditHours: carryOver.creditHours } : null}
               />
 
               {trip.schedule.length > 0 ? (
                 <div className="mt-2.5">
                   <ColorKey variant="trip" className="mb-2" />
                   <TripPicture
+                    carryOver={carries[tripIndex] && carryOver ? { days: carries[tripIndex]!.days, month: carryOver.month } : null}
                     trip={trip}
                     mode={mode}
                     bidPeriodStart={bidPeriodStart}

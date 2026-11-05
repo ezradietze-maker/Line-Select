@@ -1,5 +1,6 @@
 import { coordinatesForAirport } from "@/lib/airport-coordinates";
-import type { TripFacts } from "@/lib/metrics/trip-facts";
+import { uncutTrip } from "@/lib/bid-month";
+import { computeTripFacts, type TripFacts } from "@/lib/metrics/trip-facts";
 
 /**
  * Door-to-door time away for a pilot who doesn't live at base. A trip's
@@ -89,9 +90,9 @@ export interface HomeAway {
   /** When he leaves home and gets back, in minutes on the trip's own clock (0 = first report at base; leaving is usually negative). */
   leaveMinute: number;
   backMinute: number;
-  /** How each end was handled — for explanations. */
+  /** How each end was handled — for explanations. `end` is null for a trip running into the next month: it gets home then. */
   start: "base" | "deviate";
-  end: "base" | "deviate";
+  end: "base" | "deviate" | null;
 }
 
 /** Door-to-door hours away for one trip; null when the pilot's home or the trip's cities can't be placed. Minutes are on the trip's own clock (0 = first report at base). */
@@ -108,17 +109,25 @@ export function homeAwayForTrip(f: TripFacts, base: string, params: HomeParams, 
   const leaveViaBase = real.leaveBase ?? -(params.commuteBufferHours + toBase) * 60;
   let leave = leaveViaBase;
   let start: HomeAway["start"] = "base";
-  if (f.front && f.front.city && f.front.slackHours !== null && f.front.legs.length) {
-    const t = bestTravel(provider, params.homeAirports, f.front.city, false);
+  // A trip cut at the month's end starts as it does whole: its flying after a deadhead out can lie past the cut.
+  const front = f.trip.carriesIntoNextMonth ? computeTripFacts(uncutTrip(f.trip)).front : f.front;
+  if (front && front.city && front.slackHours !== null && front.legs.length) {
+    const t = bestTravel(provider, params.homeAirports, front.city, false);
     if (t !== null && real.leaveDeviate !== null) {
       // Must be there before the first operated leg — or before any standby ahead of it (see TripFacts.front).
-      const needAt = f.front.legs[f.front.legs.length - 1].end + f.front.slackHours * 60;
+      const needAt = front.legs[front.legs.length - 1].end + front.slackHours * 60;
       const leaveDeviating = real.leaveDeviate ?? needAt - (params.frontBufferHours + t) * 60;
       if (leaveDeviating > leave) {
         leave = leaveDeviating;
         start = "deviate";
       }
     }
+  }
+
+  // Cut at the bid month's end (`lib/bid-month.ts`), it's away to the month's end — its tafb runs to it — and home in the next.
+  if (f.trip.carriesIntoNextMonth) {
+    const monthEnd = f.trip.tafbHours * 60;
+    return { awayHours: Math.max(0, monthEnd - leave) / 60, leaveMinute: leave, backMinute: monthEnd, start, end: null };
   }
 
   // Coming home: the scheduled trip back to base then the commute, or straight home after the last operated leg.

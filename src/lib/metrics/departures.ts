@@ -20,6 +20,9 @@ import type { BidPack, Trip } from "@/types/bidpack";
  *
  * A pilot who lives at base, or whose home isn't known, simply goes home between trips; for them two trips are one
  * departure only when the second reports within a few hours of the first one landing.
+ *
+ * A departure whose last trip runs into the next month (cut at the bid month's end, `Trip.carriesIntoNextMonth`) gets
+ * home in that month: its commute home, and any night at base after it, are the next month's, not this one's.
  */
 
 /** Under this many hours at home, a commuter doesn't go home between trips (a per-pilot setting). */
@@ -81,8 +84,10 @@ export interface Departure {
   turnHours: number[];
   /** Hours at home after this departure before the next one (null for the last, or when unknown). */
   homeHoursAfter: number | null;
-  /** Commutes to or from base it takes: 0–2 for a commuter (none when it starts or ends on a deadhead from or to home), 0 for a pilot who lives at base. */
+  /** Commutes to or from base it takes this month: 0–2 for a commuter (none when it starts or ends on a deadhead from or to home, and none home when it runs into the next month), 0 for a pilot who lives at base. */
   baseCommutes: number;
+  /** Its last trip runs into the next month — it isn't home again this month: `end` is null, `backHome` the month's end. */
+  carriesOver?: boolean;
   /** Nights a commuter without a crash pad spends at base on it, each with why. */
   baseNights: { reason: BaseNightReason; nights: number; tripNumber: string | null }[];
   /** Early shows he'd jumpseat into the evening before rather than take a hotel (a short first duty). */
@@ -173,6 +178,7 @@ export function groupDepartures(trips: Trip[], ctx: Pick<BidPack, "bidPeriodStar
   const departures: Departure[] = groups.map((g) => {
     const first = g[0];
     const last = g[g.length - 1];
+    const carriesOver = !!last.trip.carriesIntoNextMonth;
     const baseNights: Departure["baseNights"] = [];
     let jumpseatIns = 0;
     if (countsNights) {
@@ -204,6 +210,7 @@ export function groupDepartures(trips: Trip[], ctx: Pick<BidPack, "bidPeriodStar
       baseCommutes: commuter ? (first.startHow === "base" ? 1 : 0) + (last.endHow === "base" ? 1 : 0) : 0,
       baseNights,
       jumpseatIns,
+      ...(carriesOver ? { carriesOver } : {}),
     };
   });
   for (let i = 0; i + 1 < departures.length; i++) {

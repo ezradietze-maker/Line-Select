@@ -33,6 +33,8 @@ interface TripPictureProps {
   compact?: boolean;
   /** Everything about one day, shown under it when it's tapped open. */
   dayDetail?: (day: TimelineDay) => ReactNode;
+  /** For a trip running past its bid month's end: its last `days` are the next bid month's (`month`, "November"). */
+  carryOver?: { days: number; month: string } | null;
 }
 
 /** The days the rows show: the base's calendar on the local clock, Zulu days on Zulu. */
@@ -59,7 +61,7 @@ export function dutyStartOf(day: TimelineDay): { kind: "report" | "pickup"; cloc
   return { kind: (first.dutyIndex ?? 0) > 0 ? "pickup" : "report", clock: first.startClock };
 }
 
-export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferences, compact = false, dayDetail }: TripPictureProps) {
+export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferences, compact = false, dayDetail, carryOver = null }: TripPictureProps) {
   const days = useMemo(() => tripPictureDays(trip, mode), [trip, mode]);
   const labeled = useMemo(() => labeledStayPieces(days.map((d) => d.segments)), [days]);
   const [trackRef, width] = useMeasuredWidth<HTMLDivElement>(compact ? 240 : 520);
@@ -111,6 +113,8 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
       <ol className="mt-0.5">
         {days.map((day) => {
           const date = mode === "local" ? (day.date ? dateLabel(day.date) : tripDayDate(trip, bidPeriodStart, day.dayNumber)) : null;
+          // On the base's calendar, the last days of a trip running past the month's end are the next month's.
+          const nextMonth = carryOver && mode === "local" && day.dayNumber > days.length - carryOver.days ? carryOver.month : null;
           const start = dutyStartOf(day);
           const isOpen = open.has(day.dayNumber);
           const row = (
@@ -118,6 +122,11 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
               <span className="flex min-w-0 flex-col items-start leading-tight">
                 <span className="flex items-center gap-1 truncate text-[11px] font-semibold text-ink">
                   {date ? `${date.weekday} ${date.day}` : `Day ${day.dayNumber}`}
+                  {nextMonth && (
+                    <span className="text-[9px] font-semibold uppercase tracking-wide text-carry" title={`The ${nextMonth} bid month's — carried over, not counted in this one`}>
+                      {nextMonth.slice(0, 3)}
+                    </span>
+                  )}
                   {dayDetail && <ChevronDownIcon className={`h-2.5 w-2.5 shrink-0 text-ink-faint transition-transform ${isOpen ? "rotate-180" : ""}`} />}
                 </span>
                 {start && (
@@ -146,7 +155,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
             </>
           );
           return (
-            <li key={day.dayNumber} className="border-t border-hairline first:border-t-0">
+            <li key={day.dayNumber} className={`border-t first:border-t-0 ${nextMonth ? "border-l-2 border-t-hairline border-l-carry pl-1" : "border-hairline"}`}>
               {dayDetail ? (
                 <button
                   type="button"

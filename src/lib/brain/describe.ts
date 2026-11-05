@@ -126,8 +126,13 @@ function numberOf(value: number, def: Pick<MetricDef, "unit">): string {
   if (def.unit === "minute of day") return clock(value);
   if (def.unit === "share") return `${Math.round(value * 100)}%`;
   if (def.unit.startsWith("score")) return String(Math.round(value));
+  // A departure or trip running into the next month counts by its share of this one (catalog `monthShare`); a pilot
+  // counts it whole.
+  if (CARRIED_COUNTS.has(def.unit)) return String(Math.ceil(value - 1e-9));
   return round(value);
 }
+
+const CARRIED_COUNTS = new Set(["departures", "trips"]);
 
 /** The value's words: its measure's own (`READS`), else its unit's. */
 function readsOf(def: ValueDef, oneTrip = false): [string, string, string?] {
@@ -147,9 +152,11 @@ export function formatValue(value: number, def: ValueDef, oneTrip = false): stri
     return value >= 0 ? `${Math.round(value)} hours in cities you like` : `${Math.round(-value)} hours more in cities you avoid than in ones you like`;
   const [one, many, none] = readsOf(def, oneTrip);
   if (value === 0 && !MEASURED_UNITS.has(def.unit)) return none ?? many.replace("{n}", "no");
-  const text = (value === 1 ? one : many).replace("{n}", numberOf(value, def));
+  const carried = CARRIED_COUNTS.has(def.unit) && !Number.isInteger(value);
+  const n = carried ? Math.ceil(value) : value;
+  const text = (n === 1 ? one : many).replace("{n}", numberOf(value, def)) + (carried ? (n === 1 ? ", running into next month" : ", the last running into next month") : "");
   // A measure with one form says "1 hours": make it "1 hour".
-  return withArticle(value === 1 ? text.replace(/\b1 ((?:night|block|credit) )?(hours|days|legs|nights)\b/, (_, kind: string | undefined, w: string) => `1 ${kind ?? ""}${w.slice(0, -1)}`) : text);
+  return withArticle(n === 1 ? text.replace(/\b1 ((?:night|block|credit) )?(hours|days|legs|nights)\b/, (_, kind: string | undefined, w: string) => `1 ${kind ?? ""}${w.slice(0, -1)}`) : text);
 }
 
 /** "a 8-day trip" → "an 8-day trip": numbers said with a vowel sound (8, 11, 18, 80s). */

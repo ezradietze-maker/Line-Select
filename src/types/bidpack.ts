@@ -170,6 +170,8 @@ export interface Trip {
    * wrong for some of its trips.
    */
   startDayIndex: number | null;
+  /** Set on a trip cut at its bid month's end (`lib/bid-month.ts`): the rest of it, and its commute home, run into the next month. */
+  carriesIntoNextMonth?: boolean;
 }
 
 export interface Line {

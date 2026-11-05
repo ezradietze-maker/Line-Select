@@ -6,20 +6,35 @@ import type { PilotModel } from "@/types/pilot-model";
  * those priorities to the trip count and to commutes counted at every trip's ends, which charge a chained trip as if
  * the pilot went home in between.
  *
- * For a commuter, each such priority moves to the measure it meant — same id, label, shape, anchors, limit and weight,
- * so nothing they said is re-weighed; only what's counted changes. A pilot who lives at base keeps the trip count: for
- * them a trip is a departure. Safe to run on any model, any number of times.
+ * Each such priority moves to the measure it meant — same id, label, shape, anchors, limit and weight, so nothing they
+ * said is re-weighed; only what's counted changes. Commutes move for every pilot, whatever the reading made of where
+ * they live: the trip-by-trip count was never right (a line read 10 commutes with 5 real), and the departure count is
+ * none at all for a pilot who lives at base. The trip count moves only for a commuter — for a pilot who lives at base a
+ * trip is a departure. When the departure count is already there, the two were one priority read twice: their weights
+ * join on it. Safe to run on any model, any number of times.
  */
 export const COMMUTER_MEASURES: Record<string, string> = {
   tripCount: "homeDepartures",
   baseCommutesNeeded: "departureCommutes",
 };
+/** Measures that move for every pilot, commuter or not. */
+const ALWAYS_MOVED = new Set(["baseCommutesNeeded"]);
 
 export function modelToDepartures(model: PilotModel): PilotModel;
 export function modelToDepartures(model: PilotModel | null | undefined): PilotModel | null | undefined;
 export function modelToDepartures(model: PilotModel | null | undefined): PilotModel | null | undefined {
-  if (!model?.home?.commuter || !model.criteria.some((c) => c.metric in COMMUTER_MEASURES)) return model;
-  return { ...model, criteria: model.criteria.map((c) => (c.metric in COMMUTER_MEASURES ? { ...c, metric: COMMUTER_MEASURES[c.metric] } : c)) };
+  if (!model) return model;
+  const moves = (metric: string) => metric in COMMUTER_MEASURES && (ALWAYS_MOVED.has(metric) || !!model.home?.commuter);
+  if (!model.criteria.some((c) => moves(c.metric))) return model;
+  let criteria = model.criteria.map((c) => (moves(c.metric) ? { ...c, metric: COMMUTER_MEASURES[c.metric] } : c));
+  // The same measure twice, now: one priority read twice — its weights join on the first.
+  for (const metric of new Set(Object.values(COMMUTER_MEASURES))) {
+    const same = criteria.filter((c) => c.metric === metric && !c.params);
+    if (same.length < 2) continue;
+    const weight = Math.min(1, same.reduce((s, c) => s + c.weight, 0));
+    criteria = criteria.filter((c) => !same.slice(1).includes(c)).map((c) => (c === same[0] ? { ...c, weight } : c));
+  }
+  return { ...model, criteria };
 }
 
 /**

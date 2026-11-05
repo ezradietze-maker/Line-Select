@@ -259,7 +259,7 @@ function measureTrip(def: MetricDef, inst: Instance, pack: PackMetrics, p: Metri
   let raw: number | null;
   if (def.trip) raw = def.trip.measure(f, p);
   else if (FROM_TRIP[def.id]) raw = FROM_TRIP[def.id](f);
-  else raw = def.line ? def.line(inst.line, [f], pack.ctx, p) : null;
+  else raw = def.line ? def.line(inst.line, [f], pack.ctx, p, [f]) : null;
   if (raw === null || raw === undefined || !Number.isFinite(raw)) return null;
   return { value: raw, raw };
 }
@@ -285,7 +285,7 @@ export function scoreTripsV2(bidPack: BidPack, model: PilotModel, options: TripS
   const seen = new Map<string, Instance>();
   for (const line of bidPack.lines) {
     if (line.estimated) continue;
-    (pack.factsByLine.get(line.id) ?? []).forEach((facts) => {
+    (pack.tripFactsByLine.get(line.id) ?? []).forEach((facts) => {
       if (facts.trip.schedule.length === 0) return;
       const key = tripKey(facts.trip);
       if (!seen.has(key)) seen.set(key, { key, facts, line });

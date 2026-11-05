@@ -1,4 +1,5 @@
 import { CreditHours } from "@/components/results/TripMarks";
+import type { LineCarryOver } from "@/lib/bid-month";
 import { tripStandbyDays } from "@/lib/standby";
 import type { Trip } from "@/types/bidpack";
 
@@ -8,12 +9,14 @@ function inFlyingOrder(trips: Trip[]): Trip[] {
   return [...trips].sort((a, b) => (a.startDayIndex ?? 0) - (b.startDayIndex ?? 0));
 }
 
-function TripChip({ trip }: { trip: Trip }) {
+/** A trip's credit and landings in this bid month — and, for the one running into the next, what it carries there. */
+function TripChip({ trip, carryOver }: { trip: Trip; carryOver?: LineCarryOver | null }) {
   const standby = tripStandbyDays(trip);
+  const carries = trip.carriesIntoNextMonth && carryOver ? carryOver : null;
   return (
     <span
       className="inline-flex items-baseline gap-1 rounded-md border border-border bg-canvas px-2 py-0.5 font-mono text-xs text-ink"
-      title={`Trip ${trip.pairingNumber} — ${trip.creditHours.toFixed(2)} credit hours, ${trip.landings} landing${trip.landings === 1 ? "" : "s"}${standby > 0 ? `, ${standby} standby day${standby === 1 ? "" : "s"}` : ""}`}
+      title={`Trip ${trip.pairingNumber} — ${trip.creditHours.toFixed(2)} credit hours, ${trip.landings} landing${trip.landings === 1 ? "" : "s"}${standby > 0 ? `, ${standby} standby day${standby === 1 ? "" : "s"}` : ""}${carries ? ` in this bid month; it carries ${carries.days} day${carries.days === 1 ? "" : "s"}${carries.creditHours > 0 ? ` and ${carries.creditHours.toFixed(2)} credit hours` : ""} into ${carries.month}` : ""}`}
     >
       <span className="font-semibold">{trip.pairingNumber}</span>
       <span className="text-ink-muted">
@@ -24,17 +27,23 @@ function TripChip({ trip }: { trip: Trip }) {
           &middot; {standby} standby
         </span>
       )}
+      {carries && (
+        <span className="text-carry">
+          &middot; {carries.creditHours > 0 ? <><CreditHours hours={carries.creditHours} /> C/O</> : `${carries.days}d into ${carries.month.slice(0, 3)}`}
+        </span>
+      )}
     </span>
   );
 }
 
 /**
- * The bid pack's own trip (pairing) numbers for a line, each with its credit and landings — the identifiers pilots
+ * The bid pack's own trip (pairing) numbers for a line, each with its credit and landings in the bid month (pass the
+ * line's `monthLine` trips; the one running into the next month shows its C/O) — the identifiers pilots
  * actually use to look a trip up in the pack or offer it on the Trade Board, shown right above the calendar. Trips
  * flown back to back without getting home between (`departures`, from `groupDepartures`) sit together in one tinted
  * box: one departure from home, however many trips.
  */
-export function TripNumberStrip({ trips, departures }: { trips: Trip[]; departures?: Trip[][] }) {
+export function TripNumberStrip({ trips, departures, carryOver }: { trips: Trip[]; departures?: Trip[][]; carryOver?: LineCarryOver | null }) {
   const numbered = inFlyingOrder(trips).filter((t) => t.pairingNumber !== null);
   if (numbered.length === 0) return null;
   // Each trip's departure, then the strip as runs: a lone trip, or the trips of one departure together.
@@ -58,11 +67,11 @@ export function TripNumberStrip({ trips, departures }: { trips: Trip[]; departur
             title={`${run.length} trips flown back to back — one departure from home`}
           >
             {run.map((trip, k) => (
-              <TripChip key={`${trip.id}-${k}`} trip={trip} />
+              <TripChip key={`${trip.id}-${k}`} trip={trip} carryOver={carryOver} />
             ))}
           </span>
         ) : (
-          <TripChip key={`${run[0].id}-${i}`} trip={run[0]} />
+          <TripChip key={`${run[0].id}-${i}`} trip={run[0]} carryOver={carryOver} />
         )
       )}
     </div>
