@@ -1,3 +1,4 @@
+import { rememberHotelAddress } from "@/lib/hotel-addresses";
 import type { HotelLookupResult } from "@/types/hotel";
 import type { HotelQualityData } from "@/lib/scoring";
 import type { BidPack } from "@/types/bidpack";
@@ -15,6 +16,10 @@ export function fetchHotel(code: string, hotelName: string): Promise<HotelLookup
 
   const promise = fetch(`/api/hotels?code=${encodeURIComponent(code)}&name=${encodeURIComponent(hotelName)}`)
     .then((res) => res.json() as Promise<HotelLookupResult>)
+    .then((result) => {
+      rememberHotelAddress(code, hotelName, result.hotel?.formattedAddress);
+      return result;
+    })
     .catch(
       (): HotelLookupResult => ({
         code,

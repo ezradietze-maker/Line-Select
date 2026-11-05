@@ -1,4 +1,4 @@
-import { cityScoresFromRatings, citySeasonsFromRatings } from "@/lib/city-ratings";
+import { cityScoresFromRatings, citySeasonsFromRatings, hotelScoresFromRatings } from "@/lib/city-ratings";
 import type { SeasonScores } from "@/lib/seasons";
 import type { CityRating } from "@/types/preferences";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
@@ -35,17 +35,40 @@ function seasonsFor(usual: Record<string, number>, rated: Record<string, SeasonS
  * location matters to them.
  *
  * Grades that change with the season go on with them (`citySeasons`): the pilot's own from the screen, else the ones
- * read from their words.
+ * read from their words. So do their grades for single hotels (`hotelScores`) and for hotels in places they named
+ * (`hotelAreas`, from their words, measured from the city's grade).
  */
 export function applyCityRatings(model: PilotModel, ratings: Record<string, CityRating> | undefined): PilotModel {
   const graded = cityScoresFromRatings(ratings ?? {});
   const rated = citySeasonsFromRatings(ratings ?? {});
   const spoken = model.facts?.citySeasons;
-  if (Object.keys(graded).length === 0 && !spoken?.length) return model;
+  const hotelScores = hotelScoresFromRatings(ratings ?? {});
+  const areas = model.facts?.hotelAreas;
+  if (Object.keys(graded).length === 0 && !spoken?.length && !areas?.length) return model;
   const withGrades = (c: Criterion): Criterion => {
     const cityScores = { ...c.params?.cityScores, ...graded };
     const citySeasons = seasonsFor(cityScores, rated, spoken);
-    return { ...c, params: { ...c.params, cityScores, ...(Object.keys(citySeasons).length ? { citySeasons } : {}) } };
+    const hotelAreas = (areas ?? []).map((a) => ({
+      city: a.city,
+      places: a.places,
+      score: clamp((cityScores[a.city] ?? 0) + a.change * GRADE_STEP),
+      ...(a.longLayovers ? { longLayovers: true } : {}),
+    }));
+    // Seasons and hotels are rebuilt from the grades and words each time: a saved model's own copies may be stale.
+    const own = { ...c.params };
+    delete own.citySeasons;
+    delete own.hotelScores;
+    delete own.hotelAreas;
+    return {
+      ...c,
+      params: {
+        ...own,
+        cityScores,
+        ...(Object.keys(citySeasons).length ? { citySeasons } : {}),
+        ...(Object.keys(hotelScores).length ? { hotelScores } : {}),
+        ...(hotelAreas.length ? { hotelAreas } : {}),
+      },
+    };
   };
   const criteria: Criterion[] = model.criteria.map((c) => (CITY_SCORED.has(c.metric) ? withGrades(c) : c));
   // A full-day criterion is a layover-location one too: city feelings are counted once.

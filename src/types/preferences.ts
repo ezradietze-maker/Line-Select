@@ -171,7 +171,7 @@ export type CityReasonTag = "food" | "hotel" | "bed" | "things-to-do" | "friends
  * great." Which months are winter and summer in a city comes from its weather (`lib/seasons.ts`).
  */
 export interface CitySeasonGrades {
-  /** Its dead of winter: the months it's in the 30s °F or colder there. */
+  /** Its dead of winter: the months most nights freeze there. */
   winter?: CityRatingScore | 0;
   /** Its summer: the three warmest months, and any month of desert heat (an average high of 102 °F or more). */
   summer?: CityRatingScore | 0;
@@ -180,9 +180,16 @@ export interface CitySeasonGrades {
 }
 
 export interface CityRating {
-  /** Its usual grade. Neutral (0) is kept only for a city whose grade changes with the season. */
+  /** Its usual grade. Neutral (0) is kept only for a city with more to it: seasons, hotels, "I'd try it", a note. */
   score: CityRatingScore | 0;
   seasons?: CitySeasonGrades;
+  /**
+   * A grade for one of its hotels, by the name the pack prints, where it differs from the city's: "a long layover away
+   * from Oakland (Pleasanton, Dublin, San Ramon) would make it much better."
+   */
+  hotels?: Record<string, CityRatingScore | 0>;
+  /** Never laid over there, and would try it ("Toronto — unknown; I might sample it"): neutral, never a dislike. */
+  untried?: boolean;
   reasons?: CityReasonTag[];
   /** In their own words. */
   note?: string;

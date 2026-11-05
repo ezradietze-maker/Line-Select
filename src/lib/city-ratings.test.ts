@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bidMonthOf, cityMarks, cityScoreInMonth, cityScoresFromRatings, citySeasonsFromRatings, describeCityRatings, effectiveCityScore, packCityFacts, rateCity, rateCitySeason, sentimentFromRating } from "@/lib/city-ratings";
+import { bidMonthOf, cityMarks, cityScoreInMonth, cityScoresFromRatings, citySeasonsFromRatings, describeCityRatings, effectiveCityScore, hotelScoresFromRatings, markCityUntried, packCityFacts, rateCity, rateCityHotel, rateCitySeason, saysMore, sentimentFromRating } from "@/lib/city-ratings";
 import type { BidPack } from "@/types/bidpack";
 
 describe("city ratings", () => {
@@ -34,10 +34,11 @@ describe("city ratings", () => {
     });
     const t1 = trip("1", [["HNL", 30, "Hilton"], ["CAN", 24, "Langham"]]);
     const t2 = trip("2", [["HNL", 48, "Hilton"]], "KIX");
-    const pack = { lines: [{ id: "a", trips: [t1, t2] }, { id: "b", trips: [t1] }] } as unknown as BidPack;
+    const t3 = trip("3", [["HNL", 26, "Sheraton"]]);
+    const pack = { lines: [{ id: "a", trips: [t1, t2] }, { id: "b", trips: [t1, t3] }] } as unknown as BidPack;
     const facts = packCityFacts(pack);
     expect(facts.map((f) => f.code)).toEqual(["HNL", "CAN"]);
-    expect(facts[0]).toMatchObject({ trips: 2, lines: 2, medianHours: 48, minHours: 30, maxHours: 48, hotel: "Hilton" });
+    expect(facts[0]).toMatchObject({ trips: 3, lines: 2, medianHours: 30, minHours: 26, maxHours: 48, hotel: "Hilton", hotels: [{ name: "Hilton", stays: 2 }, { name: "Sheraton", stays: 1 }] });
     expect(facts[1]).toMatchObject({ trips: 1, lines: 2 });
   });
 });
@@ -89,5 +90,36 @@ describe("grades that change with the season", () => {
     expect(r.HNL).toEqual({ score: 2 });
     // Rated neutral with a season still on: kept.
     expect(rateCity("ANC", 0, ratings, {}).ratings.ANC).toMatchObject({ score: 0, seasons: { summer: 2, winter: -1 } });
+  });
+});
+
+describe("hotels apart, and cities not yet tried", () => {
+  it("grades a city's hotels apart from it, and drops a neutral city with nothing more to it", () => {
+    let r = rateCityHotel("OAK", "MARRIOTT PLEASANTON", 2, {}, {});
+    expect(r).toEqual({ OAK: { score: 0, hotels: { "MARRIOTT PLEASANTON": 2 } } });
+    expect(hotelScoresFromRatings(r)).toEqual({ "OAK|MARRIOTT PLEASANTON": 1 });
+    expect(describeCityRatings(r)).toBe("OAK: Neutral; at MARRIOTT PLEASANTON: Love");
+    r = rateCityHotel("OAK", "MARRIOTT PLEASANTON", undefined, r, {});
+    expect(r).toEqual({});
+    // A graded city keeps its grade when a hotel's goes.
+    expect(rateCityHotel("IAH", "EMBASSY SUITES", undefined, { IAH: { score: 1, hotels: { "EMBASSY SUITES": 2 } } }, {})).toEqual({ IAH: { score: 1 } });
+  });
+
+  it("keeps \"I'd try it\" neutral, never a dislike, until the pilot grades the city", () => {
+    const { ratings, sentiments } = markCityUntried("YYZ", true, { YYZ: { score: -1 } }, { YYZ: "avoid" });
+    expect(ratings).toEqual({ YYZ: { score: 0, untried: true } });
+    expect(sentiments).toEqual({});
+    expect(cityScoresFromRatings(ratings)).toEqual({ YYZ: 0 });
+    expect(cityMarks(ratings, sentiments)).toEqual({});
+    expect(describeCityRatings(ratings)).toBe("YYZ: Haven't been — would try it");
+    expect(rateCity("YYZ", 1, ratings, sentiments).ratings).toEqual({ YYZ: { score: 1 } });
+    expect(markCityUntried("YYZ", false, ratings, sentiments).ratings).toEqual({});
+  });
+
+  it("keeps a neutral city when its rating says more than its grade", () => {
+    expect(saysMore(undefined)).toBe(false);
+    expect(saysMore({ score: 0 })).toBe(false);
+    expect(saysMore({ score: 0, note: "neutral, better in Pleasanton" })).toBe(true);
+    expect(rateCity("OAK", 0, { OAK: { score: 1, note: "neutral, better in Pleasanton" } }, {}).ratings).toEqual({ OAK: { score: 0, note: "neutral, better in Pleasanton" } });
   });
 });

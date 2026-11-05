@@ -40,7 +40,7 @@ import { pilotContextFor } from "@/lib/brain/context";
 import { applyPins } from "@/lib/brain/profile-model";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
 import { applyPriorityReview, type PriorityVerdict } from "@/lib/brain/review";
-import { cityScoresFromRatings, describeCityRatings, effectiveCityScore, hasSeasons, packCityFacts, rateCitySeason, sentimentFromRating } from "@/lib/city-ratings";
+import { cityScoresFromRatings, describeCityRatings, effectiveCityScore, markCityUntried, packCityFacts, rateCity, rateCityHotel, rateCitySeason, saysMore, sentimentFromRating } from "@/lib/city-ratings";
 import { resolveBidPosition } from "@/lib/forecast/forecast";
 import { buildBrainOutcome } from "@/lib/learning/brain-learning";
 import { bidPercentile, commuteGroupOf, seniorityBandOf } from "@/lib/learning/cohort";
@@ -332,10 +332,12 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
   function finalCityRatings(): Record<string, CityRating> {
     const out: Record<string, CityRating> = {};
+    // Grades for cities this pack doesn't fly to stay: they're the pilot's, and the next pack may go there.
+    for (const [code, r] of Object.entries(cityRatings)) if (!cityFacts.some((c) => c.code === code)) out[code] = r;
     for (const c of cityFacts) {
       const score = effectiveCityScore(c.code, cityRatings, cityPreferences);
-      // A city neutral most of the year is kept when its grade changes with the season.
-      if (score !== 0 || hasSeasons(cityRatings[c.code]?.seasons)) out[c.code] = { ...cityRatings[c.code], score };
+      // A city neutral most of the year is kept when there's more to it: seasons, hotels, "I'd try it", a note.
+      if (score !== 0 || saysMore(cityRatings[c.code])) out[c.code] = { ...cityRatings[c.code], score };
     }
     return out;
   }
@@ -851,12 +853,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
             ratings={cityRatings}
             sentiments={cityPreferences}
             onRate={(code, score: CityRatingScore | 0) => {
-              setCityRatings((prev) => {
-                const next = { ...prev };
-                if (score === 0 && !hasSeasons(prev[code]?.seasons)) delete next[code];
-                else next[code] = { ...prev[code], score };
-                return next;
-              });
+              setCityRatings((prev) => rateCity(code, score, prev, cityPreferences).ratings);
               setCityPreferences((prev) => {
                 const next = { ...prev };
                 const s = sentimentFromRating(score);
@@ -871,9 +868,16 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
             }}
             onNote={(code, note) => {
               const implied = effectiveCityScore(code, cityRatings, cityPreferences);
-              if (implied !== 0) setCityRatings((prev) => ({ ...prev, [code]: { ...prev[code], score: prev[code]?.score ?? implied, note } }));
+              if (implied !== 0 || saysMore(cityRatings[code])) setCityRatings((prev) => ({ ...prev, [code]: { ...prev[code], score: prev[code]?.score ?? implied, note } }));
             }}
             onSeason={(code, season, value) => setCityRatings((prev) => rateCitySeason(code, season, value, prev, cityPreferences))}
+            onHotel={(code, hotel, score) => setCityRatings((prev) => rateCityHotel(code, hotel, score, prev, cityPreferences))}
+            onUntried={(code, untried) => {
+              const next = markCityUntried(code, untried, cityRatings, cityPreferences);
+              setCityRatings(next.ratings);
+              setCityPreferences(next.sentiments);
+            }}
+            carried={checkIn ? cityFacts.filter((c) => priorProfile?.cityRatings?.[c.code]).map((c) => c.code) : []}
             eyebrow={eyebrow("Layover cities")}
             fromStory={Object.keys(storySuggested).filter((c) => c !== homeCity && !cityRatings[c] && cityPreferences[c] === storySuggested[c])}
             homeCity={homeCity && cityPreferences[homeCity] === "love" ? homeCity : undefined}

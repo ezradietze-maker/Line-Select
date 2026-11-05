@@ -11,7 +11,7 @@ import { pilotContextFor } from "@/lib/brain/context";
 import { describeModel } from "@/lib/brain/describe";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
 import { baseModelOf, describeChanges, withModel } from "@/lib/brain/profile-model";
-import { packCityFacts, rateCitySeason, sentimentFromRating } from "@/lib/city-ratings";
+import { markCityUntried, packCityFacts, rateCity as rateCityGrade, rateCityHotel, rateCitySeason, saysMore, sentimentFromRating } from "@/lib/city-ratings";
 import { commuteGroupOf } from "@/lib/learning/cohort";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
@@ -123,17 +123,17 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
   function rateCity(code: string, score: CityRatingScore | 0, patch?: Partial<CityRating>) {
     const ratings = { ...(profile.cityRatings ?? {}) };
     const prefs: Record<string, CitySentiment> = { ...profile.cityPreferences };
-    if (score === 0 && !patch) {
-      if (ratings[code]?.seasons) ratings[code] = { ...ratings[code], score: 0 };
-      else delete ratings[code];
-      delete prefs[code];
-    } else {
-      const s = (score || ratings[code]?.score || (prefs[code] === "love" ? 2 : prefs[code] === "avoid" ? -2 : 0)) as CityRatingScore | 0;
-      if (s === 0) return;
-      ratings[code] = { ...ratings[code], ...patch, score: s };
-      const sentiment = sentimentFromRating(s);
-      if (sentiment) prefs[code] = sentiment;
+    if (!patch) {
+      const next = rateCityGrade(code, score, ratings, prefs);
+      apply({ ...profile, cityPreferences: next.sentiments }, { cityRatings: next.ratings });
+      return;
     }
+    // Reasons and notes go on a graded city, or a neutral one with more to it.
+    const s = (score || ratings[code]?.score || (prefs[code] === "love" ? 2 : prefs[code] === "avoid" ? -2 : 0)) as CityRatingScore | 0;
+    if (s === 0 && !saysMore(ratings[code])) return;
+    ratings[code] = { ...ratings[code], ...patch, score: s };
+    const sentiment = sentimentFromRating(s);
+    if (sentiment) prefs[code] = sentiment;
     apply({ ...profile, cityPreferences: prefs }, { cityRatings: ratings });
   }
 
@@ -245,6 +245,11 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
           onReasons={(code, reasons) => rateCity(code, 0, { reasons })}
           onNote={(code, n) => rateCity(code, 0, { note: n })}
           onSeason={(code, season, value) => apply(profile, { cityRatings: rateCitySeason(code, season, value, profile.cityRatings ?? {}, profile.cityPreferences) })}
+          onHotel={(code, hotel, score) => apply(profile, { cityRatings: rateCityHotel(code, hotel, score, profile.cityRatings ?? {}, profile.cityPreferences) })}
+          onUntried={(code, untried) => {
+            const next = markCityUntried(code, untried, profile.cityRatings ?? {}, profile.cityPreferences);
+            apply({ ...profile, cityPreferences: next.sentiments }, { cityRatings: next.ratings });
+          }}
         />
       </section>
     </div>

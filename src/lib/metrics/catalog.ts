@@ -3,6 +3,7 @@ import { bidMonthEnd, uncutTrip } from "@/lib/bid-month";
 import { lineBodyClockScore, tripBodyClockScore } from "@/lib/body-clock-score";
 import { dateOfDayIndex, longestDaysOffBlock, singleDaysOff, weekendDaysOff } from "@/lib/days-off-pattern";
 import { lineDutyPeriods } from "@/lib/duty-periods";
+import { hotelInPlaces, hotelKey } from "@/lib/hotel-addresses";
 import { freezeShare, monthAt, scoreInMonth, type SeasonScores } from "@/lib/seasons";
 import { isHotelStandbyLeg, tripStandbyDays } from "@/lib/standby";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
@@ -65,6 +66,13 @@ export interface MetricParams {
   cityScores?: Record<string, number>;
   /** A city's grade (−1 … +1) in the months it differs from its usual one in `cityScores` — winter, summer, months the pilot picked (`lib/seasons.ts`). */
   citySeasons?: Record<string, SeasonScores>;
+  /** A hotel's grade (−1 … +1) where it differs from its city's, by `hotelKey` (city and printed name). */
+  hotelScores?: Record<string, number>;
+  /**
+   * Places whose hotels a city's grade changes for (−1 … +1), matched by the hotel's name and address (`hotelInPlaces`);
+   * `longLayovers`: only on a layover long enough to enjoy the place (`hasRealFullDay`).
+   */
+  hotelAreas?: { city: string; places: string[]; score: number; longLayovers?: boolean }[];
   /** The pack's base — filled in when a line is measured, not set by the brain. */
   base?: string;
   /** The bid period's first day, filled in beside `base`, so each layover is graded for its own month. */
@@ -169,6 +177,38 @@ const cityScore = (city: string, p: MetricParams, month: number | null = null) =
   city === p.base ? 0 : Math.max(-1, Math.min(1, scoreInMonth(p.cityScores?.[city] ?? 0, p.citySeasons?.[city], city, month)));
 /** A city's grade at some minutes into a trip — its winter or summer grade when the pilot gave one, else its usual one. */
 const cityScoreOn = (f: TripFacts, city: string, minutes: number, p: MetricParams) => cityScore(city, p, p.citySeasons?.[city] ? monthAt(p, f.trip, minutes, city) : null);
+/** A hotel's own grade, from the pilot's grade for it or for the place it's in; null when it has none. */
+/**
+ * A layover with a whole free day in it, the way the ex-pilot counts one when it's strict: "that second full night's
+ * sleep only counts if I don't have to get up before, say 6 AM." A "just barely" one (up around 4) counts as a full
+ * day elsewhere, but isn't the long layover he means.
+ */
+const hasRealFullDay = (l: LayoverFact) => l.fullDays > 1 || (l.fullDays === 1 && !l.barelyFullDay);
+
+/**
+ * A hotel's own grade, from the pilot's grade for it or for the place it's in; null when it has none. A place they tied
+ * to a long layover counts only on one: "a long layover away from Oakland (like over the hill in Pleasanton …) would
+ * make it much better." Counted on every stay at the Pleasanton hotel in his October pack, it lifted his last line
+ * (1049, two 29-hour stays picked up at 03:43) and cost his sort 2 to 3 pairs; on the stays with a real full day, his
+ * sort comes out as before.
+ */
+function hotelScore(l: LayoverFact, p: MetricParams): number | null {
+  if (!l.hotel) return null;
+  const own = p.hotelScores?.[hotelKey(l.city, l.hotel)];
+  if (own !== undefined) return own;
+  const area = p.hotelAreas?.find((a) => a.city === l.city && hotelInPlaces(l.city, l.hotel!, a.places) && (!a.longLayovers || hasRealFullDay(l)));
+  return area?.score ?? null;
+}
+/**
+ * A layover's grade: its season's when it falls in one the pilot graded (the weather is the weather, whatever the
+ * hotel), else its hotel's when that has one, else its city's.
+ */
+function layoverScore(f: TripFacts, l: LayoverFact, p: MetricParams): number {
+  if (l.city === p.base) return 0;
+  const usual = hotelScore(l, p) ?? p.cityScores?.[l.city] ?? 0;
+  const month = p.citySeasons?.[l.city] ? monthAt(p, f.trip, l.start, l.city) : null;
+  return Math.max(-1, Math.min(1, scoreInMonth(usual, p.citySeasons?.[l.city], l.city, month)));
+}
 /** Standby days (one standby row each) at cities matching `where`. */
 const standbyDaysWhere = (trips: TripFacts[], where: (city: string) => boolean) =>
   sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l) && where(l.depAirport)).length));
@@ -837,7 +877,7 @@ export const METRICS: MetricDef[] = [
     category: "city",
     description: "Layover hours weighted by how much the pilot likes each city (−1 … +1): a 48-hour Sydney layover the pilot loves counts +48, 36 hours in a city they avoid counts −36, a city they're neutral on counts 0. Location and length together, in one number.",
     params: ["cityScores"],
-    trip: { measure: (f, p) => f.layovers.reduce((a, l) => a + cityScoreOn(f, l.city, l.start, p) * l.hours, 0), aggregate: "sum" },
+    trip: { measure: (f, p) => f.layovers.reduce((a, l) => a + layoverScore(f, l, p) * l.hours, 0), aggregate: "sum" },
   },
   {
     id: "fullDaysInLikedCities",
@@ -847,7 +887,7 @@ export const METRICS: MetricDef[] = [
     description:
       "Full days free on layovers, each weighted by how much the pilot likes the city (−1 … +1). A full day the way pilots count it: land one day (late at night or an hour or two past midnight counts), a full night's sleep, the whole next day free to see the city and eat well, a second full night, and not up before about 6 AM the day after (up around 4 is \"just barely\" one, and still counts). Every free day between two full nights is another, worth as much as the first. For a pilot who talks about \"a full day\" or \"a real day off\" in cities they like; layoverValue is hours in a city, however they fall.",
     params: ["cityScores"],
-    trip: { measure: (f, p) => f.layovers.reduce((a, l) => a + cityScoreOn(f, l.city, l.start, p) * l.fullDays, 0), aggregate: "sum" },
+    trip: { measure: (f, p) => f.layovers.reduce((a, l) => a + layoverScore(f, l, p) * l.fullDays, 0), aggregate: "sum" },
   },
   {
     id: "layoverFullDays",

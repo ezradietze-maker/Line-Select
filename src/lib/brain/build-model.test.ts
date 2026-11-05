@@ -97,4 +97,19 @@ describe("applyCityRatings", () => {
     const rated = applyCityRatings(spoken, { ANC: { score: 2 }, HNL: { score: 2, seasons: { months: { months: [7], score: -1 } } } });
     expect(rated.criteria[0].params?.citySeasons).toEqual({ ANC: { winter: 0.5 }, HNL: { months: [{ months: [7], score: -0.5 }] } });
   });
+
+  it("puts hotels graded apart, and places named for better hotels, on the city measures", async () => {
+    const { applyCityRatings } = await import("@/lib/brain/city-ratings");
+    const { model } = parsePilotModel(raw([crit({ id: "lv", metric: "layoverValue", params: { ...blankParams, cityScores: [{ city: "OAK", score: 0.2 }] } })]));
+    const spoken = { ...model, facts: { values: {}, hotelAreas: [{ city: "OAK", places: ["Pleasanton", "Dublin"], change: 1 }], evidence: [] } };
+    // From their words alone: a grade up from the city's.
+    expect(applyCityRatings(spoken, {}).criteria[0].params).toMatchObject({ hotelAreas: [{ city: "OAK", places: ["Pleasanton", "Dublin"], score: 0.7 }] });
+    // With their grades on the screen: the city's grade is theirs, and a hotel they graded is graded.
+    const rated = applyCityRatings(spoken, { OAK: { score: 0, hotels: { "SONESTA OAKLAND EMERYVILLE": -1 } } });
+    expect(rated.criteria[0].params).toMatchObject({ cityScores: { OAK: 0 }, hotelScores: { "OAK|SONESTA OAKLAND EMERYVILLE": -0.5 }, hotelAreas: [{ city: "OAK", score: 0.5 }] });
+    // Taken off the screen and out of their words, they're gone, whatever a saved model still holds.
+    const cleared = applyCityRatings({ ...rated, facts: undefined }, { OAK: { score: 1 } });
+    expect(cleared.criteria[0].params).not.toHaveProperty("hotelScores");
+    expect(cleared.criteria[0].params).not.toHaveProperty("hotelAreas");
+  });
 });

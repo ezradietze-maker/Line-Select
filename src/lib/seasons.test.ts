@@ -32,6 +32,8 @@ describe("seasons, from each city's weather", () => {
     expect(scoreInMonth(1, hnl, "HNL", 12)).toBe(0);
     expect(scoreInMonth(1, hnl, "HNL", 10)).toBe(1);
     expect(scoreInMonth(1, undefined, "HNL", 7)).toBe(1);
+    // A model saved with one group, before they were a list.
+    expect(scoreInMonth(1, { months: { months: [7], score: 0 } } as never, "HNL", 7)).toBe(0);
   });
 
   it("counts freezing nights as a share of the month", () => {

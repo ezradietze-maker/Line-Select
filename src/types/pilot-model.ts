@@ -105,6 +105,8 @@ export interface PilotModel {
     values: Record<string, number | boolean>;
     /** Cities whose grade moves with the season, as a change in grades from the usual one (see `CitySeasonFact`). */
     citySeasons?: { city: string; season: "winter" | "summer" | "months"; months: number[]; change: number }[];
+    /** Places in or near a city whose hotels they'd feel differently about, as a change in grades (see `HotelAreaFact`). */
+    hotelAreas?: { city: string; places: string[]; change: number; longLayovers?: boolean }[];
     evidence: { fact: string; quote: string; turn: number }[];
   };
 }

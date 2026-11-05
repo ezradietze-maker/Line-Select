@@ -15,7 +15,7 @@ import { coordinatesForAirport } from "@/lib/airport-coordinates";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { greatCircleNm } from "@/lib/globe/routes";
 import { cityDaylight, cityStays, hoursFromBase, offsetWords, type CityStay } from "@/lib/city-guide";
-import { bidMonthOf, cityMarks, CITY_RATING_STEPS, CITY_REASONS, hasSeasons, packCityFacts, seasonWords, type CityFacts } from "@/lib/city-ratings";
+import { bidMonthOf, cityMarks, CITY_RATING_STEPS, CITY_REASONS, hasSeasons, hotelWords, packCityFacts, seasonWords, type CityFacts } from "@/lib/city-ratings";
 import { monthsWords, seasonMonths } from "@/lib/seasons";
 import { fetchHotel } from "@/lib/hotel-client";
 import { cityName } from "@/lib/city-names";
@@ -252,6 +252,8 @@ function CityPanel({ facts: f, bidPack, profile, mark, now }: { facts: CityFacts
             <span className="inline-flex items-center gap-1.5">
               <CityMarkGlyph mark={mark} /> You {mark === "avoid" ? "avoid" : mark} {f.code}
             </span>
+          ) : rating?.untried ? (
+            <span className="text-ink-muted">You haven&rsquo;t been to {f.code}, and you&rsquo;d try it.</span>
           ) : (
             <span className="text-ink-muted">You haven&rsquo;t rated {f.code}.</span>
           )}
@@ -259,6 +261,7 @@ function CityPanel({ facts: f, bidPack, profile, mark, now }: { facts: CityFacts
           {rating?.reasons?.length ? <span className="text-ink-muted"> &middot; {rating.reasons.map((r) => CITY_REASONS.find((x) => x.tag === r)?.label ?? r).join(", ")}</span> : null}
         </div>
         {seasonal && <p className="mt-1 text-sm text-ink-muted">Usually {gradeLabel(rating!.score)}{seasonWords(f.code, rating!.seasons, gradeLabel)}.</p>}
+        {Object.keys(rating?.hotels ?? {}).length > 0 && <p className="mt-1 text-sm text-ink-muted">Its hotels apart{hotelWords(rating!.hotels, gradeLabel).replace(/^;/, ":")}.</p>}
         {rating?.note && <p className="mt-1.5 rounded-md bg-canvas/60 px-3 py-2 text-sm italic text-ink-muted">&ldquo;{rating.note}&rdquo;</p>}
         <Link href="/preferences" className="mt-2 inline-block text-sm font-medium text-accent underline decoration-dotted underline-offset-4">
           {mark ? "Change your rating" : "Rate it"} in Preferences

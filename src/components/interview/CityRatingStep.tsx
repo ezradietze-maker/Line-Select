@@ -4,7 +4,7 @@ import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { NoteBox } from "@/components/ui/NoteBox";
 import { airportCityName } from "@/lib/airport-city-names";
-import { CITY_RATING_STEPS, CITY_REASONS, effectiveCityScore, hasSeasons, type CityFacts } from "@/lib/city-ratings";
+import { CITY_RATING_STEPS, CITY_REASONS, effectiveCityScore, hasSeasons, saysMore, type CityFacts } from "@/lib/city-ratings";
 import { monthName, monthsWords, seasonMonths } from "@/lib/seasons";
 import type { CityRating, CityRatingScore, CityReasonTag, CitySentiment } from "@/types/preferences";
 
@@ -24,6 +24,12 @@ interface CityRatingStepProps {
   onNote: (code: string, note: string) => void;
   /** A grade for one season (`CitySeasonGrades`); without it, the step has no seasons. */
   onSeason?: CitySeasonChange;
+  /** A grade for one of a city's hotels (undefined: back to the city's); without it, hotels aren't graded apart. */
+  onHotel?: (code: string, hotel: string, score: CityRatingScore | 0 | undefined) => void;
+  /** "Haven't been — I'd try it", on or off; without it, the step doesn't offer it. */
+  onUntried?: (code: string, untried: boolean) => void;
+  /** Cities graded last month, carried into this pack — said out loud so the pilot checks them. */
+  carried?: string[];
   eyebrow?: string;
   /** Cities the bidding story itself named, already marked — said out loud so the marks aren't a mystery. */
   fromStory?: string[];
@@ -131,6 +137,27 @@ function SeasonGrades({ code, name, rating, onSeason }: { code: string; name: st
   );
 }
 
+/**
+ * A city's hotels graded apart from it, where the pack uses more than one: the same city can be a different layover in a
+ * different part of town ("a long layover away from Oakland … would make it much better"). A hotel left ungraded takes
+ * the city's grade.
+ */
+function HotelGrades({ facts, name, rating, onHotel }: { facts: CityFacts; name: string; rating: CityRating | undefined; onHotel: (hotel: string, score: CityRatingScore | 0 | undefined) => void }) {
+  return (
+    <ul className="mt-2 space-y-2.5 rounded-md border border-hairline bg-canvas/40 p-2.5">
+      {facts.hotels.map((h) => (
+        <li key={h.name}>
+          <p className="mb-1 text-xs text-ink-muted">
+            <span className="font-medium text-ink">{h.name}</span> · {h.stays} {h.stays === 1 ? "stay" : "stays"}
+            {rating?.hotels?.[h.name] === undefined && <span className="text-ink-faint"> · as the city</span>}
+          </p>
+          <GradePills value={rating?.hotels?.[h.name]} onPick={(s) => onHotel(h.name, s)} label={`${name}, ${h.name}`} small />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function CityRow({
   facts,
   score,
@@ -139,6 +166,8 @@ function CityRow({
   onReasons,
   onNote,
   onSeason,
+  onHotel,
+  onUntried,
 }: {
   facts: CityFacts;
   score: CityRatingScore | 0;
@@ -147,10 +176,15 @@ function CityRow({
   onReasons: (r: CityReasonTag[]) => void;
   onNote: (n: string) => void;
   onSeason?: (season: "winter" | "summer" | "months", value: { score: CityRatingScore | 0; months?: number[] } | undefined) => void;
+  onHotel?: (hotel: string, score: CityRatingScore | 0 | undefined) => void;
+  onUntried?: (untried: boolean) => void;
 }) {
   const name = airportCityName(facts.code);
   const seasonal = hasSeasons(rating?.seasons);
   const [seasonsOpen, setSeasonsOpen] = useState(seasonal);
+  const hotelsGraded = Object.keys(rating?.hotels ?? {}).length > 0;
+  const [hotelsOpen, setHotelsOpen] = useState(hotelsGraded);
+  const untried = !!rating?.untried;
   const reasons = rating?.reasons ?? [];
   const length = facts.minHours === facts.maxHours ? hrs(facts.medianHours) : `usually ${hrs(facts.medianHours)} (${hrs(facts.minHours)}–${hrs(facts.maxHours)})`;
   return (
@@ -168,8 +202,31 @@ function CityRow({
       {facts.hotel && <p className="mt-0.5 truncate text-xs text-ink-muted">{facts.hotel}</p>}
 
       <div className="mt-2">
-        <GradePills value={score} onPick={(s) => onRate(s ?? 0)} label={`Rate ${name ?? facts.code}`} />
+        <GradePills value={untried ? undefined : score} onPick={(s) => onRate(s ?? 0)} label={`Rate ${name ?? facts.code}`} />
       </div>
+      {onUntried && (score === 0 || untried) && (
+        <button
+          type="button"
+          aria-pressed={untried}
+          onClick={() => onUntried(!untried)}
+          className={`mt-1.5 mr-3 rounded-full border px-2.5 py-0.5 text-xs transition-colors ${untried ? "border-accent bg-accent-soft text-accent" : "border-border text-ink-muted hover:border-border-strong"}`}
+        >
+          Haven&rsquo;t been &mdash; I&rsquo;d try it
+        </button>
+      )}
+      {onHotel && facts.hotels.length >= 2 && (
+        <>
+          <button
+            type="button"
+            aria-expanded={hotelsOpen}
+            onClick={() => setHotelsOpen((o) => !o)}
+            className="mt-1.5 mr-3 text-xs text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink"
+          >
+            {hotelsGraded ? `Its ${facts.hotels.length} hotels${hotelsOpen ? "" : " ▸"}` : hotelsOpen ? `Its ${facts.hotels.length} hotels` : `${facts.hotels.length} hotels here — grade them apart? ▸`}
+          </button>
+          {hotelsOpen && <HotelGrades facts={facts} name={name ?? facts.code} rating={rating} onHotel={onHotel} />}
+        </>
+      )}
       {onSeason && (
         <>
           <button
@@ -184,7 +241,7 @@ function CityRow({
         </>
       )}
 
-      {score !== 0 && (
+      {score !== 0 ? (
         <div className="mt-3 space-y-2">
           <p className="text-xs text-ink-muted">What makes it {score > 0 ? "good" : "bad"}?</p>
           <div className="flex flex-wrap gap-1.5">
@@ -207,6 +264,12 @@ function CityRow({
           </div>
           <CityNote value={rating?.note ?? ""} onChange={onNote} label={`Note on ${name ?? facts.code}`} />
         </div>
+      ) : (
+        saysMore(rating) && (
+          <div className="mt-3">
+            <CityNote value={rating?.note ?? ""} onChange={onNote} label={`Note on ${name ?? facts.code}`} />
+          </div>
+        )
       )}
     </li>
   );
@@ -217,12 +280,14 @@ function CityRow({
  * mix up (El Paso sits right above Newark in a Memphis pack), and a grade on the wrong card silently scores the wrong
  * city; spelled out by name, "Dislike: El Paso" stands out to a pilot who meant Newark.
  */
-function RatedSummary({ cities, scoreOf }: { cities: CityFacts[]; scoreOf: (code: string) => CityRatingScore | 0 }) {
-  const groups = [...CITY_RATING_STEPS]
-    .filter((s) => s.score !== 0)
-    .sort((a, b) => b.score - a.score)
-    .map((s) => ({ ...s, names: cities.filter((c) => scoreOf(c.code) === s.score).map((c) => airportCityName(c.code) ?? c.code) }))
-    .filter((g) => g.names.length > 0);
+function RatedSummary({ cities, scoreOf, untried }: { cities: CityFacts[]; scoreOf: (code: string) => CityRatingScore | 0; untried: (code: string) => boolean }) {
+  const groups = [
+    ...[...CITY_RATING_STEPS]
+      .filter((s) => s.score !== 0)
+      .sort((a, b) => b.score - a.score)
+      .map((s) => ({ score: s.score as number, label: s.label, names: cities.filter((c) => scoreOf(c.code) === s.score).map((c) => airportCityName(c.code) ?? c.code) })),
+    { score: 0, label: "Would try", names: cities.filter((c) => untried(c.code)).map((c) => airportCityName(c.code) ?? c.code) },
+  ].filter((g) => g.names.length > 0);
   if (!groups.length) return null;
   return (
     <div className="mt-4 rounded-lg border border-border bg-surface-raised px-3 py-2.5" aria-label="Your city ratings">
@@ -230,7 +295,7 @@ function RatedSummary({ cities, scoreOf }: { cities: CityFacts[]; scoreOf: (code
       <dl className="mt-1.5 space-y-1 text-sm">
         {groups.map((g) => (
           <div key={g.score} className="flex gap-2">
-            <dt className={`w-14 shrink-0 font-medium ${g.score > 0 ? "text-good" : g.score === -1 ? "text-warn" : "text-danger"}`}>{g.label}</dt>
+            <dt className={`w-16 shrink-0 font-medium ${g.score > 0 ? "text-good" : g.score === 0 ? "text-accent" : g.score === -1 ? "text-warn" : "text-danger"}`}>{g.label}</dt>
             <dd className="text-ink">{g.names.join(", ")}</dd>
           </div>
         ))}
@@ -247,7 +312,7 @@ function RatedSummary({ cities, scoreOf }: { cities: CityFacts[]; scoreOf: (code
  * pilot knows which cities have their food, their friends, and a bed that
  * doesn't hurt their back.
  */
-export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons, onNote, onSeason, eyebrow, fromStory = [], homeCity }: CityRatingStepProps) {
+export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons, onNote, onSeason, onHotel, onUntried, carried = [], eyebrow, fromStory = [], homeCity }: CityRatingStepProps) {
   const [query, setQuery] = useState("");
   const showSearch = cities.length > SEARCH_THRESHOLD;
   const q = query.trim().toLowerCase();
@@ -275,6 +340,12 @@ export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons,
           <p className="mb-3 rounded-lg border border-good/30 bg-good-soft/50 px-3 py-2 text-xs text-ink-muted">
             <span className="font-medium text-good">{homeCity} is home:</span> marked Love &mdash; a layover there is a night at home. Change
             it if you like.
+          </p>
+        )}
+        {carried.length > 0 && (
+          <p className="mb-3 rounded-lg border border-accent/30 bg-accent-soft/50 px-3 py-2 text-xs text-ink-muted">
+            <span className="font-medium text-accent">From last month:</span> {carried.map((c) => airportCityName(c) ?? c).join(", ")} &mdash; your
+            grades carry over; change any that aren&rsquo;t right anymore.
           </p>
         )}
         {fromStory.length > 0 && (
@@ -311,10 +382,12 @@ export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons,
               onReasons={(r) => onReasons(c.code, r)}
               onNote={(n) => onNote(c.code, n)}
               onSeason={onSeason ? (season, value) => onSeason(c.code, season, value) : undefined}
+              onHotel={onHotel ? (hotel, score) => onHotel(c.code, hotel, score) : undefined}
+              onUntried={onUntried ? (u) => onUntried(c.code, u) : undefined}
             />
           ))}
         </ul>
-        <RatedSummary cities={cities} scoreOf={scoreOf} />
+        <RatedSummary cities={cities} scoreOf={scoreOf} untried={(code) => !!ratings[code]?.untried} />
       </RevealControls>
 
       {cities.length === 0 && (

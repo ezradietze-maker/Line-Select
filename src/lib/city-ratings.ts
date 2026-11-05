@@ -1,4 +1,5 @@
 import type { BidPack } from "@/types/bidpack";
+import { hotelKey } from "@/lib/hotel-addresses";
 import { monthsWords, seasonMonths, seasonOf, type SeasonScores } from "@/lib/seasons";
 import type { CityMark, CityRating, CityRatingScore, CityReasonTag, CitySeasonGrades, CitySentiment } from "@/types/preferences";
 
@@ -43,7 +44,19 @@ export function effectiveCityScore(code: string, ratings: Record<string, CityRat
   return s === "love" ? 2 : s === "avoid" ? -2 : 0;
 }
 
-/** Apply one rating change, keeping both maps in step. Neutral with no reasons or note removes the city. */
+/** Whether a city's rating says more than its grade — seasons, hotels, "I'd try it", reasons, a note: reason to keep a neutral one. */
+export function saysMore(r: CityRating | undefined): boolean {
+  return !!r && (hasSeasons(r.seasons) || Object.keys(r.hotels ?? {}).length > 0 || !!r.untried || !!r.note?.trim() || !!r.reasons?.length);
+}
+
+/** Without "I'd try it": a pilot who grades a city has a feeling about it. */
+const withoutUntried = (r: CityRating): CityRating => {
+  const out = { ...r };
+  delete out.untried;
+  return out;
+};
+
+/** Apply one rating change, keeping both maps in step. Neutral removes the city, unless its rating says more. */
 export function rateCity(
   code: string,
   score: CityRatingScore | 0,
@@ -54,11 +67,12 @@ export function rateCity(
   const nextSentiments = { ...sentiments };
   const prev = ratings[code];
   if (score === 0) {
-    if (hasSeasons(prev?.seasons)) nextRatings[code] = { ...prev, score: 0 };
+    const kept = prev && withoutUntried(prev);
+    if (kept && saysMore(kept)) nextRatings[code] = { ...kept, score: 0 };
     else delete nextRatings[code];
     delete nextSentiments[code];
   } else {
-    nextRatings[code] = { ...prev, score };
+    nextRatings[code] = withoutUntried({ ...prev, score });
     nextSentiments[code] = sentimentFromRating(score)!;
   }
   return { ratings: nextRatings, sentiments: nextSentiments };
@@ -94,6 +108,13 @@ export function bidMonthOf(pack: { bidPeriodStart: string | null; bidPeriodDays:
 /** −1 … +1 per city, the scale the pilot brain's layover measures use. */
 export function cityScoresFromRatings(ratings: Record<string, CityRating>): Record<string, number> {
   return Object.fromEntries(Object.entries(ratings).map(([code, r]) => [code, r.score / 2]));
+}
+
+/** The pilot's grades for single hotels, on the −1 … +1 scale, by `hotelKey`. */
+export function hotelScoresFromRatings(ratings: Record<string, CityRating>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [code, r] of Object.entries(ratings)) for (const [hotel, score] of Object.entries(r.hotels ?? {})) out[hotelKey(code, hotel)] = score / 2;
+  return out;
 }
 
 /** A rating's seasonal grades on the same −1 … +1 scale, for the cities whose grade changes with the season. */
@@ -147,11 +168,39 @@ export function rateCitySeason(
   if (!hasSeasons(seasons)) {
     const rest = { ...prev };
     delete rest.seasons;
-    // A neutral city goes, unless the pilot said something about it.
-    if (rest.score === 0 && !rest.note?.trim() && !rest.reasons?.length) delete next[code];
+    if (rest.score === 0 && !saysMore(rest)) delete next[code];
     else next[code] = rest;
   } else next[code] = { ...prev, seasons };
   return next;
+}
+
+/** Grade one of a city's hotels (undefined: back to the city's grade). A city left neutral with nothing more to it goes. */
+export function rateCityHotel(code: string, hotel: string, score: CityRatingScore | 0 | undefined, ratings: Record<string, CityRating>, sentiments: Record<string, CitySentiment>): Record<string, CityRating> {
+  const prev = ratings[code] ?? { score: effectiveCityScore(code, ratings, sentiments) };
+  const hotels = { ...prev.hotels };
+  if (score === undefined) delete hotels[hotel];
+  else hotels[hotel] = score;
+  const nextRating: CityRating = { ...prev, hotels };
+  if (!Object.keys(hotels).length) delete nextRating.hotels;
+  const next = { ...ratings };
+  if (nextRating.score === 0 && !saysMore(nextRating)) delete next[code];
+  else next[code] = nextRating;
+  return next;
+}
+
+/**
+ * "Haven't been — I'd try it": the city goes neutral, never a dislike, and is said so to the brain. Turning it off
+ * leaves it neutral.
+ */
+export function markCityUntried(code: string, untried: boolean, ratings: Record<string, CityRating>, sentiments: Record<string, CitySentiment>): { ratings: Record<string, CityRating>; sentiments: Record<string, CitySentiment> } {
+  const nextSentiments = { ...sentiments };
+  delete nextSentiments[code];
+  const next = { ...ratings };
+  const prev = withoutUntried(ratings[code] ?? { score: 0 });
+  const rating: CityRating = untried ? { ...prev, score: 0, untried: true } : { ...prev, score: 0 };
+  if (saysMore(rating)) next[code] = rating;
+  else delete next[code];
+  return { ratings: next, sentiments: nextSentiments };
 }
 
 /** "; Love in summer (Jun–Aug), Dislike in winter (Nov–Apr)" — a city's seasonal grades, with the months they fall in there. */
@@ -165,13 +214,19 @@ export function seasonWords(code: string, s: CitySeasonGrades | undefined, label
   return `; ${parts.join(", ")}`;
 }
 
+/** "; at HILTON GARDEN: Love" — a city's hotels graded apart from it. */
+export function hotelWords(hotels: Record<string, number> | undefined, label: (score: number) => string): string {
+  const graded = Object.entries(hotels ?? {});
+  return graded.length ? `; ${graded.map(([hotel, score]) => `at ${hotel}: ${label(score)}`).join(", ")}` : "";
+}
+
 /** The ratings as the pilot brain reads them, with the pilot's reasons — one block of the interview. */
 export function describeCityRatings(ratings: Record<string, CityRating>): string {
   const label = (s: number) => CITY_RATING_STEPS.find((x) => x.score === s)?.label ?? String(s);
   const reason = (t: CityReasonTag) => CITY_REASONS.find((x) => x.tag === t)?.label.toLowerCase() ?? t;
   return Object.entries(ratings)
     .sort((a, b) => b[1].score - a[1].score)
-    .map(([code, r]) => `${code}: ${label(r.score)}${seasonWords(code, r.seasons, label)}${r.reasons?.length ? ` (${r.reasons.map(reason).join(", ")})` : ""}${r.note?.trim() ? ` — "${r.note.trim()}"` : ""}`)
+    .map(([code, r]) => `${code}: ${r.untried ? "Haven't been — would try it" : label(r.score)}${seasonWords(code, r.seasons, label)}${hotelWords(r.hotels, label)}${r.reasons?.length ? ` (${r.reasons.map(reason).join(", ")})` : ""}${r.note?.trim() ? ` — "${r.note.trim()}"` : ""}`)
     .join("\n");
 }
 
@@ -187,6 +242,8 @@ export interface CityFacts {
   maxHours: number;
   /** The hotel used most often, when the pack prints one. */
   hotel: string | null;
+  /** Every hotel the pack uses here, with its stays, most used first. */
+  hotels: { name: string; stays: number }[];
   /** Hotel standby days here across distinct trips. */
   standbyDays: number;
 }
@@ -225,8 +282,8 @@ export function packCityFacts(bidPack: BidPack): CityFacts[] {
     .filter(([, e]) => e.trips.size > 0)
     .map(([code, e]) => {
       const hours = [...e.hours].sort((a, b) => a - b);
-      const hotel = [...e.hotels].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-      return { code, trips: e.trips.size, lines: e.lines.size, medianHours: hours[Math.floor(hours.length / 2)], minHours: hours[0], maxHours: hours[hours.length - 1], hotel, standbyDays: e.standby };
+      const hotels = [...e.hotels].sort((a, b) => b[1] - a[1]).map(([name, stays]) => ({ name, stays }));
+      return { code, trips: e.trips.size, lines: e.lines.size, medianHours: hours[Math.floor(hours.length / 2)], minHours: hours[0], maxHours: hours[hours.length - 1], hotel: hotels[0]?.name ?? null, hotels, standbyDays: e.standby };
     })
     .sort((a, b) => b.lines - a.lines || b.trips - a.trips);
 }

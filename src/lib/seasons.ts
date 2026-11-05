@@ -72,7 +72,9 @@ export function seasonOf(code: string, month: number): Season | null {
 /** A city's grade in a month: the pilot's own months first, then its winter or summer grade, else its usual one. */
 export function scoreInMonth(usual: number, seasons: SeasonScores | undefined, code: string, month: number | null): number {
   if (!seasons || month === null) return usual;
-  const picked = seasons.months?.find((g) => g.months.includes(month));
+  // A list since Nov 2026; a model saved before then may hold one group.
+  const groups = Array.isArray(seasons.months) ? seasons.months : seasons.months ? [seasons.months as { months: number[]; score: number }] : [];
+  const picked = groups.find((g) => g.months.includes(month));
   if (picked) return picked.score;
   const season = seasonOf(code, month);
   if (season === "winter" && seasons.winter !== undefined) return seasons.winter;

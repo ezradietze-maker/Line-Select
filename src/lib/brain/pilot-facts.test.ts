@@ -42,6 +42,24 @@ describe("pilot facts", () => {
     expect(applyPilotFacts(model(null), f).facts?.citySeasons).toHaveLength(3);
   });
 
+  it("reads places whose hotels would change a city's grade, and drops ones no address can show", () => {
+    const f = parsePilotFacts({
+      citySeasons: [],
+      hotelAreas: [
+        { city: "oak", places: ["Pleasanton", "Dublin", "San Ramon", "Dublin", " "], change: 1, longLayovers: true },
+        { city: "EWR", places: ["New York, NY"], change: 0.5 },
+        { city: "IAH", places: [], change: 1 },
+        { city: "JFK", places: ["Manhattan"], change: 0 },
+      ],
+      evidence: [{ fact: "hotelAreas", quote: "over the hill in Pleasanton, Dublin, or San Ramon", turn: 4 }],
+    });
+    expect(f.hotelAreas).toEqual([
+      { city: "OAK", places: ["Pleasanton", "Dublin", "San Ramon"], change: 1, longLayovers: true },
+      { city: "EWR", places: ["New York, NY"], change: 0.5, longLayovers: false },
+    ]);
+    expect(f.evidence).toHaveLength(1);
+  });
+
   it("puts them where the app reads them, and the pilot's own answers on the commute screen still win", () => {
     const read = applyPilotFacts(model({ airports: ["SAN"], commuter: true }), { values: { minHomeHours: 36, hasCrashPad: true }, evidence: [] });
     expect(read.home).toMatchObject({ minHomeHours: 36, hasCrashPad: true });

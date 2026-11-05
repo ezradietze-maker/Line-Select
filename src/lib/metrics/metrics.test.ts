@@ -301,3 +301,36 @@ describe("seasons", () => {
     expect(measure("deIcingExposure", line, july)).toBe(0);
   });
 });
+
+describe("hotels, and cities passed through", () => {
+  // The trip lays over in LAX (Hotel A), CAN (Hotel B) and HNL (Hotel C).
+  it("grades a layover by its hotel when the pilot graded it apart, by the place it's in, else by its city", () => {
+    const city = { cityScores: { CAN: -1, HNL: 1 } };
+    expect(measure("layoverValue", line, metrics, city)).toBeCloseTo(-36 + 20, 5);
+    expect(measure("layoverValue", line, metrics, { ...city, hotelScores: { "CAN|HOTEL B": 0 } })).toBeCloseTo(20, 5);
+    expect(measure("layoverValue", line, metrics, { ...city, hotelAreas: [{ city: "CAN", places: ["Hotel B"], score: 0.5 }] })).toBeCloseTo(18 + 20, 5);
+    expect(measure("layoverValue", line, metrics, { ...city, hotelAreas: [{ city: "CAN", places: ["Pleasanton"], score: 0.5 }] })).toBeCloseTo(-36 + 20, 5);
+  });
+
+  it("counts a place tied to a long layover only on a layover with a real full day", () => {
+    // Guangzhou: in at 19:00, out at 07:00 two days later — a whole free day. Honolulu: 20 hours, none.
+    const city = { cityScores: { CAN: -1, HNL: 0 } };
+    const long = (c: string, hotel: string) => ({ ...city, hotelAreas: [{ city: c, places: [hotel], score: 1, longLayovers: true }] });
+    expect(measure("layoverValue", line, metrics, long("CAN", "Hotel B"))).toBeCloseTo(36, 5);
+    expect(measure("layoverValue", line, metrics, long("HNL", "Hotel C"))).toBeCloseTo(-36, 5);
+    expect(measure("layoverValue", line, metrics, { ...city, hotelAreas: [{ city: "HNL", places: ["Hotel C"], score: 1 }] })).toBeCloseTo(-36 + 20, 5);
+  });
+
+  it("lets a season the pilot graded win over the hotel's grade", () => {
+    const p = { cityScores: { HNL: 1 }, hotelScores: { "HNL|HOTEL C": 1 }, citySeasons: { HNL: { months: [{ months: [10], score: 0 }] } } };
+    expect(measure("layoverValue", line, metrics, p)).toBeCloseTo(0, 5);
+  });
+
+  it("counts only time on a layover in a city, not a trip passing through it", () => {
+    // Through Anchorage and Incheon without a night there: no hours in them, though the trip touches both.
+    const p = { cityScores: { ICN: -1 }, cities: ["ICN"] };
+    expect(measure("layoverValue", line, metrics, p)).toBe(0);
+    expect(measure("layoverHoursInCities", line, metrics, p)).toBe(0);
+    expect(measure("tripsTouchingCities", line, metrics, p)).toBe(1);
+  });
+});
