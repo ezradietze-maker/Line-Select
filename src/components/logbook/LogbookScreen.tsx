@@ -11,7 +11,9 @@ import { loggedMonthFor } from "@/lib/bid-checklist";
 import { cityName } from "@/lib/city-names";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { logbookStats, loggedMonthFrom, withCheckIn, withLoggedMonth, withoutLoggedMonth } from "@/lib/logbook";
+import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { rankLines } from "@/lib/scoring";
+import { hm as hmMinutes } from "@/lib/trip-day-stats";
 import type { UserAccount } from "@/types/auth";
 import type { BidPack } from "@/types/bidpack";
 import type { LoggedMonth, MonthFeel } from "@/types/logbook";
@@ -19,7 +21,7 @@ import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 
 const LABEL = "font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint";
-const hm = (h: number | null | undefined) => (typeof h === "number" ? `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, "0")}` : "—");
+const hm = (h: number | null | undefined) => (typeof h === "number" ? hmMinutes(h * 60) : "—");
 const FEELS: { feel: MonthFeel; label: string }[] = [
   { feel: "better", label: "Better than I expected" },
   { feel: "asExpected", label: "About what I expected" },
@@ -43,6 +45,8 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
   const stats = useMemo(() => logbookStats(entries), [entries]);
   const thisMonth = bidPack && profile ? loggedMonthFor(profile, bidPack) : null;
   const [relogging, setRelogging] = useState(false);
+  // Said here, not in the form: a saved award closes the form, and a failed share has to outlive it.
+  const [notice, setNotice] = useState<string | null>(null);
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -59,13 +63,16 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
           user={user}
           seniority={seniority}
           existing={thisMonth}
-          onSave={(p) => {
+          onSave={(p, warning) => {
             onUpdateProfile(p);
             setRelogging(false);
+            setNotice(warning);
           }}
           onCancel={thisMonth ? () => setRelogging(false) : undefined}
         />
       )}
+
+      {notice && <p className="mt-4 rounded-lg border border-warn/40 bg-warn-soft px-4 py-2.5 text-sm text-warn">{notice}</p>}
 
       <WhySharing />
 
@@ -109,23 +116,33 @@ function LogAward({
   user: UserAccount | null;
   seniority: SeniorityInput | null;
   existing: LoggedMonth | null;
-  onSave: (profile: PreferenceProfile) => void;
+  onSave: (profile: PreferenceProfile, warning: string | null) => void;
   onCancel?: () => void;
 }) {
-  // The pilot's own ranking, best first — to list the lines in their order and say which choice they got.
-  const ranked = useMemo(() => rankLines(bidPack, profile, {}, computeImplicitLineValues(bidPack)).map((r) => r.line), [bidPack, profile]);
+  // The pilot's own ranking, best first — to list the lines in their order and say which choice they got. The order My
+  // Rankings showed this visit when there is one: it also weighs hotels and airline flights, which aren't loaded here.
+  const shown = rankingSnapshotFor(bidPack.id);
+  const ranked = useMemo(() => {
+    if (shown) {
+      const place = (id: string) => shown.byLineId.get(id)?.rank ?? Number.MAX_SAFE_INTEGER;
+      return [...bidPack.lines].sort((a, b) => place(a.id) - place(b.id));
+    }
+    return rankLines(bidPack, profile, {}, computeImplicitLineValues(bidPack)).map((r) => r.line);
+  }, [bidPack, profile, shown]);
   const [outcome, setOutcome] = useState<LoggedMonth["outcome"]>(existing?.outcome ?? "line");
   const [lineId, setLineId] = useState(() => bidPack.lines.find((l) => l.lineNumber === existing?.lineNumber)?.id ?? ranked[0]?.id ?? "");
-  const [share, setShare] = useState(!!user && !!seniority);
+  // Off until the pilot ticks it (shared only when they say so); on when correcting an award they shared, so the
+  // correction replaces what was shared.
+  const [share, setShare] = useState(!!user && !!seniority && !!existing?.sharedAt);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function save() {
     setSaving(true);
-    setError(null);
+    let warning: string | null = null;
     const line = outcome === "line" ? (bidPack.lines.find((l) => l.id === lineId) ?? null) : null;
     const rank = line ? ranked.findIndex((l) => l.id === line.id) : -1;
-    let entry = loggedMonthFrom(bidPack, outcome, line, { rankedAt: rank >= 0 ? rank + 1 : null, seniority });
+    // A corrected award keeps the month's check-in and its shared mark.
+    let entry = { ...loggedMonthFrom(bidPack, outcome, line, { rankedAt: rank >= 0 ? rank + 1 : null, seniority }), checkIn: existing?.checkIn, sharedAt: existing?.sharedAt };
     if (share && user && seniority) {
       const whole = (x: number | null | undefined) => (typeof x === "number" ? Math.round(x) : null);
       const result = await submitAwardHistory({
@@ -142,11 +159,11 @@ function LogAward({
         totalTafbHours: whole(line?.totalTafbHours),
         awardedChoice: entry.rankedAt ?? null,
       });
-      if (!result.ok) setError(`Logged here, but not shared: ${result.error}`);
+      if (!result.ok) warning = `Logged here, but not shared: ${result.error}`;
       else entry = { ...entry, sharedAt: new Date().toISOString() };
     }
     setSaving(false);
-    onSave(withLoggedMonth(profile, entry));
+    onSave(withLoggedMonth(profile, entry), warning);
   }
 
   return (
@@ -211,7 +228,6 @@ function LogAward({
           </span>
         </span>
       </label>
-      {error && <p className="mt-3 text-sm text-warn">{error}</p>}
       <div className="mt-5 flex gap-2">
         <Button onClick={save} disabled={saving || (outcome === "line" && !lineId)}>
           {saving ? "Saving…" : existing ? "Update" : "Log it"}

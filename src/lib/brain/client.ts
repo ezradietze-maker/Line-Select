@@ -12,7 +12,11 @@ async function post<T>(url: string, body: unknown, timeoutMs: number): Promise<T
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
+    // The browser's own words for a timeout or a dropped connection ("signal is aborted without reason", "Failed to
+    // fetch") are shown to the pilot as they are, so they're said plainly here.
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal }).catch(() => {
+      throw new Error(ctrl.signal.aborted ? "That took too long to come back. Try again." : "Couldn’t reach Line Select. Check your connection and try again.");
+    });
     const json = (await res.json().catch(() => ({}))) as T & { error?: string };
     if (!res.ok) throw new Error(json.error ?? `Request failed (${res.status})`);
     return json;

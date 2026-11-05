@@ -12,3 +12,17 @@ export function isJsonObject(value: unknown): value is Record<string, unknown> {
 export function isText(value: unknown, max: number): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max;
 }
+
+/**
+ * The parsed JSON body, or null when it isn't JSON or runs past `maxChars`. Routes that hand their body to a model
+ * call cap it here: a well-formed but enormous body would otherwise be paid for in full, and these routes are open
+ * to guests.
+ */
+export async function readJsonBody(request: Request, maxChars: number): Promise<unknown> {
+  try {
+    const text = await request.text();
+    return text.length > maxChars ? null : JSON.parse(text);
+  } catch {
+    return null;
+  }
+}

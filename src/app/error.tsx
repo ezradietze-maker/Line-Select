@@ -11,8 +11,24 @@ import { captureClientException } from "@/lib/posthog-client";
  * wraps specific risky sections (like each line card) so one bad line
  * doesn't have to take down the whole page and land here.
  */
+const CHUNK_RELOAD_KEY = "line-select:chunk-reload:v1";
+
 export default function RootError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
+    // A page from before a deploy (the offline copy, or a tab left open) asking for a build file the new deploy no
+    // longer has: a fresh load fixes it, so do that once rather than show a crash. Once per tab, so a real outage
+    // can't loop.
+    if (error.name === "ChunkLoadError" || /Loading chunk|dynamically imported module/i.test(error.message)) {
+      try {
+        if (!sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+          sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // No storage, no guard against a loop: show the page below instead.
+      }
+    }
     console.error(error);
     captureClientException(error);
   }, [error]);

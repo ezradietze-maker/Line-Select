@@ -7,7 +7,11 @@ vi.mock("@/lib/server/kv", () => ({
   setJson: vi.fn(async (key: string, value: unknown) => {
     kvStore.set(key, value);
   }),
-  incrementCounter: vi.fn(async () => 1),
+  incrementCounter: vi.fn(async (key: string) => {
+    const next = ((kvStore.get(key) as number | undefined) ?? 0) + 1;
+    kvStore.set(key, next);
+    return next;
+  }),
 }));
 
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));

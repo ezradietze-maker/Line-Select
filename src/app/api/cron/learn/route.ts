@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { secretMatches } from "@/lib/server/secret";
 import { runLearningCycle } from "@/lib/server/learning-runner";
 
 export const runtime = "nodejs";
@@ -11,7 +12,7 @@ export const maxDuration = 300;
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!secret || !secretMatches(request.headers.get("authorization"), `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
   const summary = await runLearningCycle("schedule");

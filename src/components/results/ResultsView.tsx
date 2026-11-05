@@ -230,10 +230,17 @@ export function ResultsView({
   if (bidPack.id !== filtersForBidPackId) {
     setFiltersForBidPackId(bidPack.id);
     setFilters(EMPTY_FILTERS);
-    setMarks(loadLineMarks(userId, bidPack.id));
     setSearch("");
     setHotelFilter(null);
     setView("all");
+  }
+  // Stars and hidden lines are the pilot's own: reloaded for a new pack, and when the session check finds an account
+  // after the app first showed this device's guest data — else the guest's marks would be saved over the account's.
+  const marksKey = `${userId}|${bidPack.id}`;
+  const [marksFor, setMarksFor] = useState(marksKey);
+  if (marksKey !== marksFor) {
+    setMarksFor(marksKey);
+    setMarks(loadLineMarks(userId, bidPack.id));
   }
 
   useEffect(() => {
@@ -422,7 +429,7 @@ export function ResultsView({
     ),
     [matching, showHidden, hiddenSet, view, starredSet, realisticIds]
   );
-  const sorted = useMemo(() => sortLineScores(listable, sortMode), [listable, sortMode]);
+  const sorted = useMemo(() => sortLineScores(listable, sortMode, bidPack), [listable, sortMode, bidPack]);
 
   // Back to the first page whenever what's being listed changes — landing on
   // "page 4 of a different list" would show a scrolled-past-nothing view.
@@ -583,11 +590,13 @@ export function ResultsView({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const fromIndex = ranked.findIndex((r) => r.line.id === active.id);
-    const toIndex = ranked.findIndex((r) => r.line.id === over.id);
+    // Positions in the list as shown: with filters, a view or hidden lines, a line only jumps over the ones on
+    // screen, and the lines the pilot couldn't see say nothing about the move.
+    const fromIndex = sorted.findIndex((r) => r.line.id === active.id);
+    const toIndex = sorted.findIndex((r) => r.line.id === over.id);
     if (fromIndex === -1 || toIndex === -1) return;
 
-    const judgments = buildJudgments(ranked, fromIndex, toIndex);
+    const judgments = buildJudgments(sorted, fromIndex, toIndex);
 
     // A pilot ranked by their own model: the drag is a set of line choices, and their priorities refit to them.
     if (profile.pilotModel) {

@@ -34,9 +34,13 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
   const metrics = () => (pm.current ??= prepareMetrics(bidPack));
   const home = useMemo(() => (profile.pilotModel ? homeParams(profile.pilotModel) : {}), [profile.pilotModel]);
 
+  // Only the latest question's answer is shown, whatever order the replies come back in.
+  const latest = useRef(0);
+
   async function ask(q: string) {
     const text = q.trim();
     if (!text) return;
+    const id = ++latest.current;
     setAsking(true);
     setError(null);
     setShowAll(false);
@@ -44,6 +48,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
       brief.current ??= buildPackBrief(bidPack, metrics());
       const res = await fetch("/api/brain/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text, packBrief: brief.current }) });
       const data = (await res.json().catch(() => null)) as { query?: AskQuery; error?: string } | null;
+      if (id !== latest.current) return;
       if (!res.ok || !data?.query) {
         setError(data?.error ?? "Couldn't read that question just now. Please try again.");
         setAnswer(null);
@@ -51,6 +56,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
         setAnswer({ query: data.query, lines: data.query.cannotAnswer ? [] : runAskQuery(data.query, bidPack, metrics(), home, rankedIds) });
       }
     } catch {
+      if (id !== latest.current) return;
       setError("Couldn't reach the server. Check your connection and try again.");
     }
     setAsking(false);
@@ -105,11 +111,12 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
             <button
               key={ex}
               type="button"
+              disabled={asking}
               onClick={() => {
                 setQuestion(ex);
                 void ask(ex);
               }}
-              className="rounded-full border border-hairline px-2.5 py-1 text-ink-muted hover:border-border-strong hover:text-ink"
+              className="rounded-full border border-hairline px-2.5 py-1 text-ink-muted hover:border-border-strong hover:text-ink disabled:pointer-events-none disabled:opacity-50"
             >
               {ex}
             </button>

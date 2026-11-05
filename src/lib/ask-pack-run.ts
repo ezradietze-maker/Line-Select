@@ -33,7 +33,10 @@ export function runAskQuery(query: AskQuery, pack: BidPack, pm: PackMetrics, hom
   const byRank = (a: AskResultLine, b: AskResultLine) => (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.line.lineNumber.localeCompare(b.line.lineNumber);
   if (query.sort) {
     const dir = query.sort.direction === "asc" ? 1 : -1;
-    return out.sort((a, b) => (a.sortValue === null ? 1 : b.sortValue === null ? -1 : dir * (a.sortValue - b.sortValue)) || byRank(a, b));
+    // Lines with no figure go last, and among themselves (and on equal figures) in the pilot's order.
+    const bySort = (a: AskResultLine, b: AskResultLine) =>
+      a.sortValue === null || b.sortValue === null ? Number(a.sortValue === null) - Number(b.sortValue === null) : dir * (a.sortValue - b.sortValue);
+    return out.sort((a, b) => bySort(a, b) || byRank(a, b));
   }
   return out.sort(byRank);
 }

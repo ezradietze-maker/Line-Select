@@ -56,6 +56,15 @@ describe("buildLineTimeline", () => {
     ]);
   });
 
+  it("keeps a trip on its own day after the clocks go back", () => {
+    // The period starts Oct 26; Anchorage leaves daylight time on Nov 1, and the trip reports Thu Nov 5.
+    const late = "2026-10-26";
+    const trip = anchorTripToItsDate({ bidPeriodStart: late, base: "ANC" }, { ...pacific, startDayIndex: 10 });
+    const after = buildLineTimeline({ ...line, trips: [trip], gridOffDays: undefined }, { ...pack, bidPeriodStart: late }, 21);
+    // Reports 09:45 Anchorage time, as on Oct 3; counted in elapsed minutes it drew at 10:45.
+    expect(after.trips[0].start).toBe(10 * 1440 + 9 * 60 + 45);
+  });
+
   it("draws nothing it can't place without the pack's real dates", () => {
     expect(buildLineTimeline(line, { ...pack, bidPeriodStart: null }, 21).legs).toEqual([]);
   });

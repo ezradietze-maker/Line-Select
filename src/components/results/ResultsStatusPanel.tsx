@@ -64,6 +64,38 @@ function Readout({ id, label, value, open, onToggle, tone = "text-ink" }: { id: 
   );
 }
 
+/** Android Chrome refuses `new Notification()` from a page; it only shows one through the service worker, when there is one. */
+function notify(title: string, options: NotificationOptions) {
+  const direct = () => {
+    try {
+      new Notification(title, options);
+    } catch {
+      // No way to show one here.
+    }
+  };
+  if (!("serviceWorker" in navigator)) return direct();
+  navigator.serviceWorker
+    .getRegistration()
+    .then((reg) => (reg ? reg.showNotification(title, options) : direct()))
+    .catch(direct);
+}
+
+function readStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Remembered for this visit only.
+  }
+}
+
 /** Reminders while Line Select is open: the browser's own notifications, the day before and an hour before. */
 function useInTabReminders(packId: string, deadline: string | null, label: string) {
   const key = `line-select:bid-reminders:v1:${packId}`;
@@ -72,18 +104,18 @@ function useInTabReminders(packId: string, deadline: string | null, label: strin
   useEffect(() => {
     // Read once from this device's storage — outside React's own state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setEnabled(typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" && window.localStorage.getItem(key) === "on");
+    setEnabled(typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" && readStorage(key) === "on");
   }, [key]);
   useEffect(() => {
     if (!enabled || !deadline) return;
-    const timers = upcomingReminders(deadline).map((r) => window.setTimeout(() => new Notification(r.text, { body: label, tag: `bid-${packId}-${r.text}` }), r.inMs));
+    const timers = upcomingReminders(deadline).map((r) => window.setTimeout(() => notify(r.text, { body: label, tag: `bid-${packId}-${r.text}` }), r.inMs));
     return () => timers.forEach((t) => window.clearTimeout(t));
   }, [enabled, deadline, label, packId]);
   const supported = typeof window !== "undefined" && "Notification" in window;
   async function toggle() {
     if (!supported) return;
     if (enabled) {
-      window.localStorage.setItem(key, "off");
+      writeStorage(key, "off");
       setEnabled(false);
       return;
     }
@@ -92,7 +124,7 @@ function useInTabReminders(packId: string, deadline: string | null, label: strin
       setBlocked(true);
       return;
     }
-    window.localStorage.setItem(key, "on");
+    writeStorage(key, "on");
     setEnabled(true);
   }
   return { supported, enabled, blocked, toggle };

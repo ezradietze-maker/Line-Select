@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isJsonObject } from "@/lib/server/json-body";
+import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
@@ -85,12 +85,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Classification isn't configured on this server." }, { status: 503 });
   }
 
-  let body: Partial<ClassifyRequest>;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  }
+  const body = (await readJsonBody(request, 50_000)) as Partial<ClassifyRequest> | null;
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   const hasPairwiseContext = typeof body.favoredSummary === "string" && typeof body.overtakenSummary === "string";
   const hasStandaloneContext = typeof body.context === "string" && body.context.trim().length > 0;

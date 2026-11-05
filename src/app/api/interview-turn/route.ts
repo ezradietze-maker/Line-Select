@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isJsonObject } from "@/lib/server/json-body";
+import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { runInterviewTurn } from "@/lib/interview-turn-service";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { loadStyleSample } from "@/lib/server/style-store";
@@ -33,12 +33,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "The adaptive interview isn't configured on this server." }, { status: 503 });
   }
 
-  let body: Partial<TurnRequestBody>;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  }
+  // A whole classic interview's transcript runs to tens of thousands of characters, the pack summary to about 3,000.
+  const body = (await readJsonBody(request, 200_000)) as Partial<TurnRequestBody> | null;
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
   // Every field below is read directly by runInterviewTurn with no further
@@ -47,6 +43,7 @@ export async function POST(request: Request) {
   // failing here with a clean 400.
   if (
     !Array.isArray(body.transcript) ||
+    !body.transcript.every((t) => isJsonObject(t) && isJsonObject(t.question)) ||
     !Array.isArray(body.facts) ||
     !isJsonObject(body.grounding) ||
     typeof body.base !== "string" ||

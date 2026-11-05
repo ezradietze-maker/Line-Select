@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { secretMatches } from "@/lib/server/secret";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createCandidateVariable, listCandidateVariables } from "@/lib/server/db";
@@ -26,8 +27,7 @@ export const runtime = "nodejs";
  */
 
 export async function GET(request: Request) {
-  const key = request.headers.get("x-admin-key");
-  if (!key || key !== process.env.ADMIN_API_KEY) {
+  if (!secretMatches(request.headers.get("x-admin-key"), process.env.ADMIN_API_KEY)) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
   return NextResponse.json({ candidates: await listCandidateVariables() });

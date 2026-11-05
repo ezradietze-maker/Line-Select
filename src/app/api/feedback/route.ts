@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { secretMatches } from "@/lib/server/secret";
 import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createFeedbackSubmission, listFeedbackSubmissions } from "@/lib/server/db";
@@ -23,8 +24,7 @@ const VALID_CATEGORIES: FeedbackCategory[] = ["bug", "idea", "confusing", "other
  * pilot's own email — never wire this into pilot-facing UI.
  */
 export async function GET(request: Request) {
-  const key = request.headers.get("x-admin-key");
-  if (!key || key !== process.env.ADMIN_API_KEY) {
+  if (!secretMatches(request.headers.get("x-admin-key"), process.env.ADMIN_API_KEY)) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
   return NextResponse.json({ submissions: await listFeedbackSubmissions() });

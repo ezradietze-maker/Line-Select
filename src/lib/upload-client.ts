@@ -54,7 +54,9 @@ export async function uploadBidPack(file: File, onProgress: (progress: ParseProg
   const decoder = new TextDecoder();
   let buffer = "";
   for (;;) {
-    const { value, done } = await reader.read();
+    const { value, done } = await reader.read().catch(() => {
+      throw new Error("The connection dropped while the bid pack was being read. Try again.");
+    });
     buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
     const { messages, rest } = splitNdjson(done ? `${buffer}\n` : buffer);
     buffer = rest;

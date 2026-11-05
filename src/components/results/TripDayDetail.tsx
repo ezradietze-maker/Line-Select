@@ -148,7 +148,7 @@ function Layover({ layover, ratings, mode }: { layover: NonNullable<TripDutyPeri
     <div className="mt-1.5 space-y-0.5 border-l-2 border-layover/60 pl-2">
       <div className="flex flex-wrap items-center gap-x-2">
         <span className="font-mono font-semibold text-layover">
-          L/O {layover.city} {Math.floor(layover.hours)}h{String(Math.round((layover.hours % 1) * 60)).padStart(2, "0")}
+          L/O {layover.city} {hm(layover.hours * 60).replace(":", "h")}
         </span>
         {canExpand ? (
           <button type="button" onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1 hover:text-ink" aria-expanded={open}>

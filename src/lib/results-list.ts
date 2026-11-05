@@ -1,6 +1,7 @@
+import { monthLine } from "@/lib/bid-month";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import type { LineScore } from "@/lib/scoring";
-import type { Line } from "@/types/bidpack";
+import type { BidPack, Line } from "@/types/bidpack";
 
 /**
  * How many lines the results list renders at first. A real bid pack has 283
@@ -26,10 +27,22 @@ function byLineNumber(a: LineScore, b: LineScore): number {
   return a.line.lineNumber.localeCompare(b.line.lineNumber, undefined, { numeric: true });
 }
 
-/** A new array in the requested order. "match" keeps the incoming order, which callers pass in already ranked by score. Every other mode breaks ties by score, then line number, so equal lines never shuffle between renders. */
-export function sortLineScores(list: LineScore[], mode: SortMode): LineScore[] {
+/**
+ * A new array in the requested order. "match" keeps the incoming order, which callers pass in already ranked by score.
+ * Every other mode breaks ties by score, then line number, so equal lines never shuffle between renders. Given the
+ * pack's dates, duty periods and departures are counted in the bid month, as the cards show them, not with what the
+ * last trip flies in the next.
+ */
+export function sortLineScores(list: LineScore[], mode: SortMode, pack?: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">): LineScore[] {
   if (mode === "match") return list;
   const tieBreak = (a: LineScore, b: LineScore) => b.score - a.score || byLineNumber(a, b);
+  const months = new Map<string, Line>();
+  const inMonth = (line: Line) => {
+    if (!pack) return line;
+    let m = months.get(line.id);
+    if (!m) months.set(line.id, (m = monthLine(line, pack)));
+    return m;
+  };
   const sorted = [...list];
   switch (mode) {
     case "daysOff":
@@ -37,9 +50,9 @@ export function sortLineScores(list: LineScore[], mode: SortMode): LineScore[] {
     case "credit":
       return sorted.sort((a, b) => b.line.totalCreditHours - a.line.totalCreditHours || tieBreak(a, b));
     case "dutyPeriods":
-      return sorted.sort((a, b) => lineDutyPeriods(a.line) - lineDutyPeriods(b.line) || tieBreak(a, b));
+      return sorted.sort((a, b) => lineDutyPeriods(inMonth(a.line)) - lineDutyPeriods(inMonth(b.line)) || tieBreak(a, b));
     case "departures":
-      return sorted.sort((a, b) => a.line.totalDepartures - b.line.totalDepartures || tieBreak(a, b));
+      return sorted.sort((a, b) => inMonth(a.line).totalDepartures - inMonth(b.line).totalDepartures || tieBreak(a, b));
     case "lineNumber":
       return sorted.sort(byLineNumber);
   }

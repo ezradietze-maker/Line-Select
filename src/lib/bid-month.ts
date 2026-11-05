@@ -140,8 +140,12 @@ function split(line: Line, pack: PackDates): { month: Line; carry: LineCarryOver
     });
     const carried = parts.filter((p): p is { inMonth: Trip; carry: TripCarryOver } => !!p?.carry);
     const trips = parts.filter((p): p is NonNullable<typeof p> => !!p).map((p) => p.inMonth);
-    const dropped = line.trips.filter((_, i) => !parts[i]);
+    const droppedAt = line.trips.flatMap((_, i) => (parts[i] ? [] : [i]));
+    const dropped = droppedAt.map((i) => line.trips[i]);
     if (carried.length || dropped.length) {
+      // A whole trip past the month's end: every day it flies, and all its block and time away, are the next month's.
+      const droppedDays = droppedAt.map((i) => Math.floor((starts[i]! + line.trips[i].tafbHours * HOUR - end) / DAY) + 1);
+      const droppedBlock = dropped.reduce((n, t) => n + t.schedule.flatMap((d) => d.legs).filter(operated).reduce((a, l) => a + (l.blockHours ?? 0), 0), 0);
       const sum = (f: (c: TripCarryOver) => number) => carried.reduce((a, p) => a + f(p.carry), 0);
       // The pack's own counts, less what's carried: they count landings and duty periods across the carry-over.
       const carriedLandings = sum((c) => c.landings) + dropped.reduce((n, t) => n + t.landings, 0);
@@ -152,11 +156,11 @@ function split(line: Line, pack: PackDates): { month: Line; carry: LineCarryOver
         month: { ...line, trips, totalLandings: landings, totalDepartures: landings, totalDutyPeriods: dutyPeriods },
         carry: {
           month: nextMonthName(pack),
-          days: Math.max(0, ...carried.map((p) => p.carry.days)),
+          days: Math.max(0, ...carried.map((p) => p.carry.days), ...droppedDays),
           dutyPeriods: carriedDuties,
           landings: carriedLandings,
-          blockHours: sum((c) => c.blockHours),
-          tafbHours: sum((c) => c.tafbHours),
+          blockHours: sum((c) => c.blockHours) + droppedBlock,
+          tafbHours: sum((c) => c.tafbHours) + dropped.reduce((n, t) => n + t.tafbHours, 0),
           creditHours: line.carryOverCreditHours ?? 0,
           printedBlockHours: line.carryOverBlockHours ?? 0,
           trips: [...carried.map((p) => p.inMonth.pairingNumber), ...dropped.map((t) => t.pairingNumber)],

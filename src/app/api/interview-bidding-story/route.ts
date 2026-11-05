@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isJsonObject, isText } from "@/lib/server/json-body";
+import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { runBiddingStoryExtraction } from "@/lib/interview-turn-service";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { saveStyleSamples } from "@/lib/server/style-store";
@@ -31,12 +31,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "The adaptive interview isn't configured on this server." }, { status: 503 });
   }
 
-  let body: Partial<BiddingStoryRequestBody>;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  }
+  const body = (await readJsonBody(request, 60_000)) as Partial<BiddingStoryRequestBody> | null;
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
   if (

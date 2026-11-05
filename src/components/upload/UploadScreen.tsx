@@ -1,7 +1,7 @@
 "use client";
 
 import { useReducedMotion } from "motion/react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Heading } from "@/components/ui/Heading";
@@ -41,6 +41,16 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
   const [fileName, setFileName] = useState<string | null>(null);
   const [replacing, setReplacing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // A parse can take a while; a pilot who has gone to another page by the time it's read isn't pulled back to it.
+  const mounted = useRef(true);
+  const lockIn = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      window.clearTimeout(lockIn.current);
+    };
+  }, []);
 
   if (currentBidPack && !replacing) {
     return (
@@ -85,6 +95,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
           return next;
         })
       );
+      if (!mounted.current) return;
       // A pack that didn't really parse goes straight to its explanation —
       // never stamped "LOADED" first.
       if (result.errors.length > 0) {
@@ -93,8 +104,9 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
       }
       setProgress((prev) => ({ ...prev, received: true, lines: result.linesParsed, pairings: result.pairingsParsed }));
       setLoaded(true);
-      window.setTimeout(() => onParsed(result), reduce ? 250 : LOCK_IN_MS);
+      lockIn.current = window.setTimeout(() => onParsed(result), reduce ? 250 : LOCK_IN_MS);
     } catch (e) {
+      if (!mounted.current) return;
       setError(e instanceof Error ? e.message : "Something went wrong while uploading this file.");
       setUploading(false);
     }

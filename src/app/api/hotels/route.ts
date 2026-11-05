@@ -317,11 +317,13 @@ export async function GET(request: Request) {
     const result: HotelLookupResult = { code, hotelName, hotel, error: null };
     return NextResponse.json(result);
   } catch (e) {
+    // The detail (Google's own error body) goes to the server log, not the pilot.
+    console.error("[hotels] lookup failed", e);
     const result: HotelLookupResult = {
       code,
       hotelName,
       hotel: null,
-      error: e instanceof Error ? e.message : "Couldn't reach Google Places.",
+      error: "Couldn't reach Google Places.",
     };
     return NextResponse.json(result);
   }

@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
 import { decodeRanking } from "@/lib/forecast/ranking-codec";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
@@ -321,8 +321,15 @@ export async function loadActiveModel<T>(kind: ModelKind, { fresh = false } = {}
 /** Stores a model in the version history; when `active`, it becomes the one in use and the previous champion is retired (kept, not deleted). */
 export async function saveModel(params: { kind: ModelKind; version: string; payload: unknown; metrics: Record<string, unknown>; sampleSize: number; active: boolean }): Promise<void> {
   await db.transaction(async (tx) => {
-    if (params.active) await tx.update(learnedModels).set({ active: false }).where(and(eq(learnedModels.kind, params.kind), eq(learnedModels.active, true)));
-    await tx.insert(learnedModels).values(params).onConflictDoNothing();
+    // Retire the champion only once this model is really in: a second run in the same minute has the same version,
+    // its insert is skipped, and retiring first left that kind with no active model at all.
+    const [inserted] = await tx.insert(learnedModels).values(params).onConflictDoNothing().returning({ id: learnedModels.id });
+    if (params.active && inserted) {
+      await tx
+        .update(learnedModels)
+        .set({ active: false })
+        .where(and(eq(learnedModels.kind, params.kind), eq(learnedModels.active, true), ne(learnedModels.id, inserted.id)));
+    }
   });
   cache.delete(params.kind);
 }
@@ -333,18 +340,24 @@ export async function saveModel(params: { kind: ModelKind; version: string; payl
 
 /** A run that started within this long and hasn't finished is assumed still going. */
 const RUN_LEASE_MS = 10 * 60 * 1000;
+/** Any fixed number, unique among this app's advisory locks (it has no others). */
+const RUN_LOCK_KEY = 7_301_946;
 
 /** Starts a run unless one is already going — two triggers landing at once (the daily schedule and a burst of interviews) never learn twice in parallel. */
 export async function startRun(trigger: string): Promise<string | null> {
   const since = new Date(Date.now() - RUN_LEASE_MS);
-  const [running] = await db
-    .select({ id: learningRuns.id })
-    .from(learningRuns)
-    .where(and(isNull(learningRuns.finishedAt), gt(learningRuns.startedAt, since)))
-    .limit(1);
-  if (running) return null;
-  const [row] = await db.insert(learningRuns).values({ trigger, summary: {} }).returning({ id: learningRuns.id });
-  return row.id;
+  return db.transaction(async (tx) => {
+    // Held to the end of this transaction, so two triggers can't both see "nothing running" and both start.
+    await tx.execute(sql`select pg_advisory_xact_lock(${RUN_LOCK_KEY})`);
+    const [running] = await tx
+      .select({ id: learningRuns.id })
+      .from(learningRuns)
+      .where(and(isNull(learningRuns.finishedAt), gt(learningRuns.startedAt, since)))
+      .limit(1);
+    if (running) return null;
+    const [row] = await tx.insert(learningRuns).values({ trigger, summary: {} }).returning({ id: learningRuns.id });
+    return row.id;
+  });
 }
 
 export async function finishRun(id: string, summary: Record<string, unknown>): Promise<void> {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { secretMatches } from "@/lib/server/secret";
 import { runLearningCycle } from "@/lib/server/learning-runner";
 import { listRecentRuns, loadActiveModel } from "@/lib/server/learning-store";
 
@@ -6,8 +7,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 function authorized(request: Request): boolean {
-  const key = request.headers.get("x-admin-key");
-  return !!key && key === process.env.ADMIN_API_KEY;
+  return secretMatches(request.headers.get("x-admin-key"), process.env.ADMIN_API_KEY);
 }
 
 /**

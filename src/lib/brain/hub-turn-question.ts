@@ -63,7 +63,8 @@ const WORTH_ASKING_SHARE = 0.15;
 function describe(bidPack: BidPack, x: { trip: Trip; turns: HubTurn[] }, kind: "night" | "rest"): string {
   const t = x.turns.find((h) => (kind === "rest" ? h.restHotel : h.night)) ?? x.turns[0];
   const runs = summarizeHubTurns(x.turns).longestRun;
-  const sit = `${Math.floor(t.sitHours)}h${String(Math.round((t.sitHours % 1) * 60)).padStart(2, "0")}`;
+  const sitMinutes = Math.round(t.sitHours * 60);
+  const sit = `${Math.floor(sitMinutes / 60)}h${String(sitMinutes % 60).padStart(2, "0")}`;
   const base = `${tripLabel(bidPack, x.trip)} flies ${t.from} → ${t.hub}, landing ${clock(t.arrive, t.hub)}, sits ${sit} through the sort until ${clock(t.depart, t.hub)}, then flies on to ${t.to}`;
   if (kind === "rest") return `${base}, with a short stay at the ${t.restHotel} for a nap in between.`;
   return `${base}${runs > 1 ? ` — ${runs} nights in a row` : ""}.`;

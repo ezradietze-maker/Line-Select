@@ -58,10 +58,15 @@ const EMPTY: LineTimeline = { trips: [], duties: [], legs: [], stays: [], offRun
 export function buildLineTimeline(line: Line, pack: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">, days: number): LineTimeline {
   if (!pack.bidPeriodStart || line.estimated) return EMPTY;
   const zone = timezoneForAirport(pack.base) ?? "UTC";
-  const origin = DateTime.fromISO(pack.bidPeriodStart, { zone }).toMillis();
+  const first = DateTime.fromISO(pack.bidPeriodStart, { zone });
+  const origin = first.toMillis();
   if (!Number.isFinite(origin)) return EMPTY;
-  const at = (iso: string) => (Date.parse(iso) - origin) / 60_000;
-  const fromAnchor = (anchor: string, minutes: number) => (Date.parse(anchor) - origin) / 60_000 + minutes;
+  // Minutes on the base's clock, not minutes elapsed: the strip gives every day 1,440, so after a clock change
+  // (October's bid period runs into November's) elapsed time would put everything an hour off its day.
+  const clockChanges = first.offset !== first.plus({ days: pack.bidPeriodDays + 7 }).offset;
+  const minutesAt = (ms: number) => (ms - origin) / 60_000 + (clockChanges ? DateTime.fromMillis(ms, { zone }).offset - first.offset : 0);
+  const at = (iso: string) => minutesAt(Date.parse(iso));
+  const fromAnchor = (anchor: string, minutes: number) => minutesAt(Date.parse(anchor) + minutes * 60_000);
 
   const out: LineTimeline = { trips: [], duties: [], legs: [], stays: [], offRuns: [] };
   line.trips.forEach((trip, index) => {

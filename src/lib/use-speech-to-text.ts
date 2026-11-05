@@ -271,8 +271,15 @@ export function useDictation(value: string, onChange: (next: string) => void) {
       });
   }, [listening, value, serviceOk, browserOk, keyterms, apply, startBrowser]);
 
-  // Stop cleanly on unmount — navigating away or answering another way mid-dictation shouldn't leave the mic hot.
-  useEffect(() => () => session.current?.stop(), []);
+  // Stop cleanly on unmount — navigating away or answering another way mid-dictation shouldn't leave the mic hot. A
+  // session still connecting has no handle yet: moving the generation on has it stopped the moment it connects.
+  useEffect(
+    () => () => {
+      generation.current += 1;
+      session.current?.stop();
+    },
+    []
+  );
 
   return { supported: browserOk || serviceOk, listening, error, toggle };
 }

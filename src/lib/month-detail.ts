@@ -617,7 +617,8 @@ export function buildDetailedMonth(
       const index = date && bidPeriodStart ? Math.round(DateTime.fromISO(date).diff(DateTime.fromISO(bidPeriodStart), "days").days) : -1;
       const day = days.find((d) => d.dayIndex === index && d.kind !== "off") ?? days.find((d) => d.dayIndex === index);
       if (!day) continue;
-      const sit = `${Math.floor(h.sitHours)}h${String(Math.round((h.sitHours % 1) * 60)).padStart(2, "0")}`;
+      const sitMinutes = Math.round(h.sitHours * 60);
+      const sit = `${Math.floor(sitMinutes / 60)}h${String(sitMinutes % 60).padStart(2, "0")}`;
       const text = `${h.night ? "Night hub turn" : "Hub turn"} at ${h.hub}: in ${local(h.arrive)}, out ${local(h.depart)} (${sit} through the sort${h.restHotel ? `, with a nap at the ${h.restHotel}` : ""}).`;
       day.hubNote = day.hubNote ? `${day.hubNote} ${text}` : text;
       day.title = `${day.title}; ${text.charAt(0).toLowerCase()}${text.slice(1, -1)}`;

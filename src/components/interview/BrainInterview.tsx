@@ -90,6 +90,26 @@ const OPENING_QUESTION = "Walk us through your whole bidding process, start to f
  */
 const NO_CITY_RATINGS = "(Didn't rate any cities on the city screen. What I said about cities in my story still stands.)";
 
+/**
+ * How much of past months a check-in carries forward: under the brain routes' limit of 80 exchanges
+ * (`lib/server/brain-input.ts`), with room for the check-in's own three steps and its questions.
+ */
+const CARRY_LIMIT = 80 - 3 - CHECK_IN_TURNS - 2;
+
+/**
+ * Last month's record for a check-in. Every check-in adds to it, so after a few months it would pass the routes'
+ * limit and every read would fail: the first interview (the story and everything after it) is kept whole, then the
+ * latest check-ins that fit, numbered afresh.
+ */
+function carryForward(exchanges: InterviewExchange[], limit = CARRY_LIMIT): InterviewExchange[] {
+  if (exchanges.length <= limit) return exchanges;
+  const firstCheckIn = exchanges.findIndex((e) => e.question.startsWith("Monthly check-in"));
+  const original = exchanges.slice(0, firstCheckIn === -1 ? exchanges.length : firstCheckIn).slice(0, limit);
+  const room = limit - original.length;
+  const latest = room > 0 ? exchanges.slice(original.length).slice(-room) : [];
+  return [...original, ...latest].map((e, i) => ({ ...e, turn: i }));
+}
+
 interface Snapshot {
   exchanges: InterviewExchange[];
   threads: Record<string, ThreadState>;
@@ -124,6 +144,8 @@ interface DraftState {
   cityPreferences: Record<string, CitySentiment>;
   sweepDone: boolean;
   turnLimit?: number;
+  /** Whether it's a check-in; a draft from before this was saved counts as one when last month's record says so. */
+  checkIn?: boolean;
 }
 
 const draftKey = (userId: string | null, packId: string) => `line-select:brain-interview:${userId ?? "guest"}:${packId}:v1`;
@@ -161,6 +183,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
    */
   const lastTime = priorProfile?.pilotModel && priorProfile.brainInterview ? priorProfile.brainInterview : null;
   const [checkIn, setCheckIn] = useState(() => !!lastTime && lastTime.packId !== bidPack.id);
+  // For the steps that run before a re-render: resuming a draft asks its next question straight away.
+  const checkInRef = useRef(checkIn);
+  checkInRef.current = checkIn;
   const afterSeniority: Phase = checkIn ? "checkin" : "story";
   const [phase, setPhase] = useState<Phase>(hasSeniorityStep ? "seniority" : afterSeniority);
   const [error, setError] = useState<string | null>(null);
@@ -185,7 +210,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const cityFacts = useMemo(() => packCityFacts(bidPack), [bidPack]);
 
   // The interview itself.
-  const [exchanges, setExchanges] = useState<InterviewExchange[]>(() => (checkIn && lastTime ? lastTime.exchanges : []));
+  const [exchanges, setExchanges] = useState<InterviewExchange[]>(() => (checkIn && lastTime ? carryForward(lastTime.exchanges) : []));
   const [threads, setThreads] = useState<Record<string, ThreadState>>({});
   const [choices, setChoices] = useState<LineChoice[]>([]);
   /** Their trip grades, as choices between trips — tunes how each priority counts on a single trip (`fitTripWeights`). */
@@ -236,7 +261,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
   const pilotContext = () =>
     pilotContextFor(bidPack, { isCommuter, commuteFrom, hasCrashPad, minHomeHours: isCommuter ? minHomeHours : null }) +
-    (checkIn ? " This is a monthly check-in: the earlier part of the interview is from last month, on a different bid pack — its line numbers don't exist in this pack; everything else they said still stands unless they say it changed." : "");
+    (checkInRef.current ? " This is a monthly check-in: the earlier part of the interview is from last month, on a different bid pack — its line numbers don't exist in this pack; everything else they said still stands unless they say it changed." : "");
 
   const cohort = () => ({ base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, commute: commuteGroupOf(isCommuter) });
 
@@ -354,7 +379,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
   /** The check-in's two answers join last month's record; the city step comes next. */
   function submitCheckIn(changed: string, dates: string) {
-    const start = lastTime?.exchanges ?? [];
+    const start = carryForward(lastTime?.exchanges ?? []);
     setExchanges([
       ...start,
       { turn: start.length, question: `Monthly check-in (${bidPack.month} bid pack): has anything changed since last month?`, answer: changed || "Nothing has changed." },
@@ -402,6 +427,14 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     // With no story there's nothing to read yet; with one, wait for the read started when it was sent.
     if (!buildRef.current && !modelRef.current) await startBuild(opening);
     else if (buildRef.current) await buildRef.current.promise;
+    // The story's read began before the city screen, so it carries the grades from then: the first questions (and
+    // the top lines the next read is compared with) go by the ones just given.
+    if (modelRef.current) {
+      const rated = applyCityRatings(modelRef.current, finalCityRatings());
+      modelRef.current = rated;
+      setModel(rated);
+      topRef.current = topLines(bidPack, rated, pm);
+    }
     await askNext(opening, threads, choices, 0, sweepDone);
   }
 
@@ -413,7 +446,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     for (const e of all) for (const x of e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)) compared.add(`${x[1]}|${x[2]}`);
     // The first question, asked the same way for everyone: which of their top priorities they'd give up last — in
     // their words, before any line choice can reorder them (see lib/brain/priority-order.ts).
-    const priority = t === 0 && !checkIn ? priorityOrderQuestion(m) : null;
+    const priority = t === 0 && !checkInRef.current ? priorityOrderQuestion(m) : null;
     if (priority) {
       setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: priority.prompt, helpText: priority.helpText, options: priority.options, priorityIds: priority.criterionIds, transcript: priorityOrderTranscript(priority) });
       setChoiceSelection(null);
@@ -423,7 +456,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     }
     // Then, also asked the same way for everyone: anything that rules a line out, whatever else it has — a weight can't
     // say "never", and enough pay always buys a weight back (see lib/brain/dealbreakers.ts).
-    if (!checkIn && !askedDealbreakers(all)) {
+    if (!checkInRef.current && !askedDealbreakers(all)) {
       const q = dealbreakerQuestion(bidPack, m, pm);
       setQuestion({ done: false, settled: [], threadId: null, kind: "free-text", prompt: q.prompt, helpText: q.helpText, transcript: q.transcript });
       setPhase("question");
@@ -431,7 +464,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     }
     // Then hub turning, by name, with a real trip from their pack — asked whenever the pack has night hub turns, and
     // the crew-rest hotel when it has those long sits (lib/brain/hub-turn-question.ts).
-    const hub = !checkIn ? nextHubTurnQuestion(bidPack, m, pm, all) : null;
+    const hub = !checkInRef.current ? nextHubTurnQuestion(bidPack, m, pm, all) : null;
     if (hub) {
       setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: hub.prompt, helpText: hub.helpText, options: hub.options, transcript: hub.transcript });
       setChoiceSelection(null);
@@ -449,7 +482,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       if (step.done) {
         setThreads(settledThreads);
         // Before wrapping up: how would they feel about flying a screen of real trips? (lib/brain/trip-sort.ts)
-        const tripScreen = !checkIn && m ? nextTripScreen(all, m) : null;
+        const tripScreen = !checkInRef.current && m ? nextTripScreen(all, m) : null;
         if (tripScreen) {
           const asked = tripGradesTranscript(tripScreen);
           setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: asked, transcript: asked, tripScreen });
@@ -458,7 +491,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         }
         // Then: is a line near the top of their list one they'd really bid there? (lib/brain/bid-check.ts)
         const checked = checkedLines(all);
-        const check = !checkIn && m && checked.length < MAX_BID_CHECKS ? bidCheckQuestion(bidPack, m, ch, pm, checked, checkedKinds(all), checkedWeakSpots(all)) : null;
+        const check = !checkInRef.current && m && checked.length < MAX_BID_CHECKS ? bidCheckQuestion(bidPack, m, ch, pm, checked, checkedKinds(all), checkedWeakSpots(all)) : null;
         if (check) {
           setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: check.prompt, helpText: check.helpText, options: check.options, transcript: check.transcript, bidCheck: { line: check.line, alt: check.alt, kind: check.kind } });
           setChoiceSelection(null);
@@ -541,6 +574,12 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const last = history.at(-1);
     if (!last) return;
     setHistory((h) => h.slice(0, -1));
+    // Back past the "anything else?" answer, which keeps no step of its own: that screen comes round again.
+    if (exchanges.slice(last.exchanges.length).some((e) => e.question === SWEEP_QUESTION)) {
+      setSweepDone(false);
+      turnLimitRef.current = MAX_TURNS;
+      setTurnLimit(MAX_TURNS);
+    }
     setExchanges(last.exchanges);
     setThreads(last.threads);
     setChoices(last.choices);
@@ -586,7 +625,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       const rated = withHomeFacts(applyCityRatings(built, finalCityRatings()), { hasCrashPad, minHomeHours: isCommuter ? minHomeHours : null });
       // Priorities the pilot set by hand on their priorities page still hold — shown that way in the review.
       const lineFitted = applyPins(fitWeightsToChoices(bidPack, rated, ch, pm).model, priorProfile?.brainInterview?.pins ?? {});
-      const fitted: PilotModel = { ...lineFitted, tripWeights: fitTripWeights(bidPack, lineFitted, tripChoices, pm).tripWeights };
+      // The ref, not state: the last trip screen's grades were added in this same pass.
+      const fitted: PilotModel = { ...lineFitted, tripWeights: fitTripWeights(bidPack, lineFitted, tripRef.current, pm).tripWeights };
       setRatedModel(rated);
       setModel(fitted);
       setReviewModel(fitted);
@@ -664,13 +704,18 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   // Progress worth resuming: saved after every answer.
   useEffect(() => {
     if ((phase !== "question" && phase !== "sweep") || exchanges.length === 0) return;
-    const d: DraftState = { version: 1, savedAt: Date.now(), phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit };
+    const d: DraftState = { version: 1, savedAt: Date.now(), phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn };
     try {
       window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify(d));
     } catch {}
-  }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, userId, bidPack.id]);
+  }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
 
   function resumeDraft(d: DraftState) {
+    // A pilot who chose "Start over" on a check-in resumes the full interview, not the check-in.
+    if (d.checkIn !== undefined) {
+      setCheckIn(d.checkIn);
+      checkInRef.current = d.checkIn;
+    }
     setExchanges(d.exchanges);
     setThreads(d.threads);
     setChoices(d.choices);
