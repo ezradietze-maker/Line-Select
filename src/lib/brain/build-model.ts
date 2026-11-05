@@ -429,6 +429,8 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
       user: { cached: input.packBrief, fresh },
       schema: SCHEMA as unknown as Record<string, unknown>,
       effort: input.effort ?? "high",
+      // The longest saved read wrote about 13,700 tokens, thinking included; this leaves room without an open-ended bill.
+      maxTokens: 24_000,
     }),
     readPilotFacts({ pilotContext: input.pilotContext, exchanges: input.exchanges, apiKey: input.apiKey, model: input.model }).catch(() => null),
   ]);

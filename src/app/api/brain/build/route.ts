@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { buildPilotModel } from "@/lib/brain/build-model";
-import { MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
+import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
-import { isJsonObject, isText } from "@/lib/server/json-body";
+import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 // Reading a whole interview and writing the pilot's model takes up to a couple of minutes on a long one.
@@ -19,13 +20,11 @@ export async function POST(request: Request) {
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "The interview isn't configured on this server." }, { status: 503 });
+  const spender = await spenderFor(request);
+  const allowed = await checkSpend(spender);
+  if (!allowed.ok) return spendLimitResponse(allowed);
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  }
+  const body = await readJsonBody(request, MAX_BRAIN_BODY);
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   const exchanges = readExchanges(body.exchanges);
   if (!isText(body.packBrief, MAX_PACK_BRIEF) || !isText(body.pilotContext, MAX_CONTEXT) || !exchanges) {
@@ -36,6 +35,7 @@ export async function POST(request: Request) {
   try {
     const notes = await fleetNotesFor(readCohort(body.cohort));
     const r = await buildPilotModel({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, prior, effort: "high", fleetNotes: notes });
+    await recordSpend(spender, r.usage.costUsd);
     console.log("[brain-build]", { exchanges: exchanges.length, criteria: r.model.criteria.length, dropped: r.dropped.length, costUsd: +r.usage.costUsd.toFixed(3), ms: r.usage.ms });
     return NextResponse.json({ model: r.model, dropped: r.dropped });
   } catch (e) {

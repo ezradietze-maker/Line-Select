@@ -86,3 +86,15 @@ export async function incrementCounter(key: string, ttlSeconds: number): Promise
   await setJson(key, next, { ttlSeconds });
   return next;
 }
+
+/** Like `incrementCounter`, by a whole `amount` at once (INCRBY) — the running total after adding it. */
+export async function addToCounter(key: string, amount: number, ttlSeconds: number): Promise<number> {
+  if (redis) {
+    const total = await redis.incrby(key, amount);
+    if (total === amount) await redis.expire(key, ttlSeconds);
+    return total;
+  }
+  const next = ((await getJson<number>(key)) ?? 0) + amount;
+  await setJson(key, next, { ttlSeconds });
+  return next;
+}

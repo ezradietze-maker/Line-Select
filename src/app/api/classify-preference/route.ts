@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkSpend, recordSpend, spendLimitResponse, type Spender } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 
@@ -79,6 +80,9 @@ export async function POST(request: Request) {
 
   const { ok } = await checkRateLimit("classify-preference", user.id, 60, 60 * 60);
   if (!ok) return rateLimitedResponse();
+  const spender: Spender = { key: `u:${user.id}`, signedIn: true };
+  const allowed = await checkSpend(spender);
+  if (!allowed.ok) return spendLimitResponse(allowed);
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -123,6 +127,9 @@ export async function POST(request: Request) {
     }
 
     const data = await res.json();
+    const used = data.usage as { input_tokens?: number; output_tokens?: number } | undefined;
+    // Haiku 4.5 list prices: $1 in, $5 out per million tokens.
+    await recordSpend(spender, ((used?.input_tokens ?? 0) * 1 + (used?.output_tokens ?? 0) * 5) / 1e6);
     const text: string = data.content?.[0]?.text ?? "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {

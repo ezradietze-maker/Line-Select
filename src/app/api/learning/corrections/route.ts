@@ -23,9 +23,11 @@ export async function POST(request: Request) {
   }
   const events = parseCorrections(body.events);
   if (!events) return NextResponse.json({ error: "Invalid corrections." }, { status: 400 });
+  // Only signed-in pilots teach the fleet, as with interview outcomes.
   const user = await getCurrentServerUser();
+  if (!user) return NextResponse.json({ stored: false });
   try {
-    await saveCorrections(events, { base: (body.base as string).toUpperCase(), aircraft: (body.aircraft as string).toUpperCase(), seat: (body.seat as string).toUpperCase() }, user ? hashUser(user.id) : null);
+    await saveCorrections(events, { base: (body.base as string).toUpperCase(), aircraft: (body.aircraft as string).toUpperCase(), seat: (body.seat as string).toUpperCase() }, hashUser(user.id));
   } catch (e) {
     console.error("[learning] corrections not saved", e);
     return NextResponse.json({ stored: false }, { status: 503 });

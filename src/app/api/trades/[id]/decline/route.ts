@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { findTradeOffer, updateTradeOffer } from "@/lib/server/db";
+import { offerForViewer } from "@/lib/server/trade-view";
 
 export const runtime = "nodejs";
 
@@ -33,5 +34,5 @@ export async function POST(
   if (!updated) {
     return NextResponse.json({ error: "This offer isn't waiting on a response." }, { status: 409 });
   }
-  return NextResponse.json({ offer: updated });
+  return NextResponse.json({ offer: offerForViewer(updated, user.id) });
 }
