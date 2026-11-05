@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { nextInterviewStep, type LinePairCandidate, type LinePairDifference, type ThreadState } from "@/lib/brain/interviewer";
 import type { QuestionExample } from "@/lib/brain/question-examples";
-import { MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
+import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
-import { isJsonObject, isText } from "@/lib/server/json-body";
+import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -83,13 +84,11 @@ export async function POST(request: Request) {
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "The interview isn't configured on this server." }, { status: 503 });
+  const spender = await spenderFor(request);
+  const allowed = await checkSpend(spender);
+  if (!allowed.ok) return spendLimitResponse(allowed);
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  }
+  const body = await readJsonBody(request, MAX_BRAIN_BODY);
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   const exchanges = readExchanges(body.exchanges);
   if (!isText(body.packBrief, MAX_PACK_BRIEF) || !isText(body.pilotContext, MAX_CONTEXT) || !exchanges || typeof body.turn !== "number") {
@@ -105,6 +104,7 @@ export async function POST(request: Request) {
     const notes = await fleetNotesFor(readCohort(body.cohort));
     const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), examples: readExamples(body.examples), packNumbers: readPackNumbers(body.packNumbers), turn: body.turn, maxTurns, fleetNotes: notes, rankingShifts });
     const { usage, ...rest } = step;
+    if (usage) await recordSpend(spender, usage.costUsd);
     if (usage) console.log("[brain-question]", { turn: body.turn, done: step.done, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json(rest);
   } catch (e) {

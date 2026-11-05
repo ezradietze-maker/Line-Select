@@ -3,11 +3,17 @@ import { airportSearchName, citySearchName } from "@/lib/hotels/airport-names";
 import { isPlausibleMatch, pickBestMatch, readHotelName } from "@/lib/hotels/hotel-names";
 import { cacheKey, getCachedHotel, setCachedHotel } from "@/lib/server/hotel-cache";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 import type { HotelAmenityCategory, HotelAmenitySummary, HotelLookupResult, HotelResult, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 
 // Reads/writes the local hotel-cache file, which needs Node's fs module.
 /** Uncached Google Places lookups allowed per IP per hour. Raised deliberately to cover a full cold bid pack, accepting the extra Places spend. */
 const HOTEL_LOOKUPS_PER_HOUR = 250;
+/**
+ * What one uncached lookup costs, estimated from Google's list prices: two text searches, a nearby search, the
+ * reviews, and a short AI summary of them. It counts toward the site's daily total only (see `checkSpend`).
+ */
+const LOOKUP_COST_USD = 0.15;
 
 export const runtime = "nodejs";
 
@@ -311,8 +317,13 @@ export async function GET(request: Request) {
     return NextResponse.json(result);
   }
 
+  const spender = await spenderFor(request);
+  const allowed = await checkSpend(spender, { siteOnly: true });
+  if (!allowed.ok) return spendLimitResponse(allowed);
+
   try {
     const hotel = await findHotelOnGoogle(code, hotelName, apiKey, process.env.ANTHROPIC_API_KEY);
+    await recordSpend(spender, LOOKUP_COST_USD, { siteOnly: true });
     await setCachedHotel(key, hotel);
     const result: HotelLookupResult = { code, hotelName, hotel, error: null };
     return NextResponse.json(result);

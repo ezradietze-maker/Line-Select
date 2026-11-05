@@ -5,12 +5,17 @@ import { getCurrentServerUser } from "@/lib/server/auth";
 import { createTradeOffer, listTradeOffers } from "@/lib/server/db";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { sanitizeBidPackMeta, sanitizeTripSnapshot } from "@/lib/server/trade-validation";
+import { offerForViewer } from "@/lib/server/trade-view";
 import type { BidPackMetaSnapshot, TripSnapshot, TradeOffer } from "@/types/trade";
 
 export const runtime = "nodejs";
 
+/** The board, for signed-in pilots only — and with other pilots' account ids left out (`offerForViewer`). */
 export async function GET() {
-  return NextResponse.json({ offers: await listTradeOffers() });
+  const user = await getCurrentServerUser();
+  if (!user) return NextResponse.json({ error: "Sign in to see the trade board." }, { status: 401 });
+  const offers = await listTradeOffers();
+  return NextResponse.json({ offers: offers.map((o) => offerForViewer(o, user.id)) }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function POST(request: Request) {
@@ -40,7 +45,7 @@ export async function POST(request: Request) {
   const wantedPairingNumber = typeof body.wantedPairingNumber === "string" ? body.wantedPairingNumber.trim().slice(0, 12) : null;
   const note = typeof body.note === "string" ? body.note.trim().slice(0, 500) : null;
 
-  // Everyone can read the board, so cap how fast one account can fill it.
+  // Every signed-in pilot can read the board, so cap how fast one account can fill it.
   const { ok } = await checkRateLimit("trade-post", user.id, 20, 60 * 60);
   if (!ok) return rateLimitedResponse();
 

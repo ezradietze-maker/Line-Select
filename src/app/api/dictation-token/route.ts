@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +9,11 @@ export const dynamic = "force-dynamic";
 const MODEL = "universal-3-6-pro";
 /** One tap of the mic can't run longer than this — a forgotten open mic stops costing money. */
 const MAX_SESSION_SECONDS = 15 * 60;
+/**
+ * The speech service bills by the minute of audio, which this server never sees, so each pass is charged a typical
+ * dictation's worth (a few minutes) up front. The hourly limit on passes bounds anyone holding the mic open.
+ */
+const PASS_COST_USD = 0.03;
 
 /**
  * A pass for one dictation: the browser trades it for a live connection straight to the speech service (AssemblyAI),
@@ -28,6 +34,9 @@ export async function POST(request: Request) {
 
   const apiKey = process.env.ASSEMBLYAI_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "Dictation isn't configured on this server." }, { status: 503 });
+  const spender = await spenderFor(request);
+  const allowed = await checkSpend(spender);
+  if (!allowed.ok) return spendLimitResponse(allowed);
 
   const url = `https://streaming.assemblyai.com/v3/token?expires_in_seconds=60&max_session_duration_seconds=${MAX_SESSION_SECONDS}`;
   try {
@@ -38,6 +47,7 @@ export async function POST(request: Request) {
     }
     const { token } = (await res.json()) as { token?: string };
     if (!token) return NextResponse.json({ error: "Dictation is unavailable right now." }, { status: 502 });
+    await recordSpend(spender, PASS_COST_USD);
     return NextResponse.json(
       { provider: "assemblyai", token, socket: "wss://streaming.assemblyai.com/v3/ws", model: MODEL, maxSeconds: MAX_SESSION_SECONDS },
       { headers: { "Cache-Control": "no-store" } }

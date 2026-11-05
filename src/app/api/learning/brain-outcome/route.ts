@@ -27,9 +27,11 @@ export async function POST(request: Request) {
   }
   const outcome = parseBrainOutcome(raw);
   if (!outcome) return NextResponse.json({ error: "Invalid interview summary." }, { status: 400 });
+  // Only signed-in pilots teach the fleet: each counts once, and nobody can stand in for a group of pilots who aren't there.
   const user = await getCurrentServerUser();
+  if (!user) return NextResponse.json({ stored: false });
   try {
-    await saveBrainOutcome(outcome, user ? hashUser(user.id) : null);
+    await saveBrainOutcome(outcome, hashUser(user.id));
   } catch (e) {
     console.error("[learning] brain outcome not saved", e);
     return NextResponse.json({ stored: false }, { status: 503 });

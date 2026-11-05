@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { findTradeOffer, updateTradeOffer } from "@/lib/server/db";
+import { offerForViewer } from "@/lib/server/trade-view";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { sanitizeTripSnapshot } from "@/lib/server/trade-validation";
 import type { TripSnapshot } from "@/types/trade";
@@ -64,5 +65,5 @@ export async function POST(
     return NextResponse.json({ error: "This offer isn't open anymore." }, { status: 409 });
   }
 
-  return NextResponse.json({ offer: updated });
+  return NextResponse.json({ offer: offerForViewer(updated, user.id) });
 }

@@ -181,11 +181,12 @@ export async function loadOutcomes(): Promise<DatedOutcome[]> {
     .limit(MAX_OUTCOMES);
   // A signed-in pilot who redoes the interview in the same month counts once
   // (their latest), so nobody's answers outweigh everyone else's by retaking it.
+  // Guests' rows (stored before only pilots could teach the fleet) are left out.
   const seen = new Set<string>();
   const latest = rows.filter((r) => {
     // The story-driven interview's outcomes have a different shape; they're learned from separately (`loadBrainOutcomes`).
     if ((r.payload as { v?: number }).v === 2) return false;
-    if (!r.pilotHash) return true;
+    if (!r.pilotHash) return false;
     const key = `${r.pilotHash}|${r.payload.month}|${r.payload.cohort.base}|${r.payload.cohort.aircraft}|${r.payload.cohort.seat}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -201,14 +202,15 @@ export async function loadBrainOutcomes(): Promise<BrainOutcome[]> {
     .where(eq(interviewOutcomes.modelVersion, BRAIN_OUTCOME_VERSION))
     .orderBy(desc(interviewOutcomes.createdAt))
     .limit(MAX_OUTCOMES);
-  // One pilot's latest per month and pack, like the older interview's.
+  // Signed-in pilots only, and each pilot's latest per base, aircraft and seat: the groups count pilots, so one
+  // pilot interviewing every month still counts once (`MIN_PILOTS`).
   const seen = new Set<string>();
   return rows
     .map((r) => ({ o: r.payload as unknown as BrainOutcome, pilotHash: r.pilotHash }))
     .filter(({ o, pilotHash }) => {
       if (o.v !== 2) return false;
-      if (!pilotHash) return true;
-      const key = `${pilotHash}|${o.month}|${o.cohort.base}|${o.cohort.aircraft}|${o.cohort.seat}`;
+      if (!pilotHash) return false;
+      const key = `${pilotHash}|${o.cohort.base}|${o.cohort.aircraft}|${o.cohort.seat}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -218,7 +220,7 @@ export async function loadBrainOutcomes(): Promise<BrainOutcome[]> {
 }
 
 export async function loadCorrections(): Promise<CorrectionEvent[]> {
-  const rows = await db.select().from(preferenceCorrections).orderBy(desc(preferenceCorrections.createdAt)).limit(MAX_CORRECTIONS);
+  const rows = await db.select().from(preferenceCorrections).where(isNotNull(preferenceCorrections.pilotHash)).orderBy(desc(preferenceCorrections.createdAt)).limit(MAX_CORRECTIONS);
   return rows.map((r) => ({ dim: r.dim, src: r.src, from: r.fromValue, to: r.toValue }));
 }
 

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { readAskQuery } from "@/lib/brain/ask-pack";
 import { MAX_PACK_BRIEF } from "@/lib/server/brain-input";
-import { isJsonObject, isText } from "@/lib/server/json-body";
+import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,18 +14,17 @@ export async function POST(request: Request) {
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "Asking isn't configured on this server." }, { status: 503 });
+  const spender = await spenderFor(request);
+  const allowed = await checkSpend(spender);
+  if (!allowed.ok) return spendLimitResponse(allowed);
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  }
+  const body = await readJsonBody(request, MAX_PACK_BRIEF + 10_000);
   if (!isJsonObject(body) || !isText(body.question, 400) || !(body.question as string).trim() || !isText(body.packBrief, MAX_PACK_BRIEF)) {
     return NextResponse.json({ error: "Ask a question about your pack (up to 400 characters)." }, { status: 400 });
   }
   try {
     const { query, usage } = await readAskQuery({ question: (body.question as string).trim(), packBrief: body.packBrief as string, apiKey });
+    await recordSpend(spender, usage.costUsd);
     console.log("[brain-ask]", { conditions: query.conditions.length, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json({ query });
   } catch (e) {

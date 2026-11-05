@@ -13,12 +13,19 @@ export const MAX_CONTEXT = 2_000;
 export const MAX_EXCHANGES = 80;
 export const MAX_ANSWER = 12_000;
 export const MAX_QUESTION = 3_000;
+/** Every question and answer together. The longest saved interview (42 answers, a real pilot's) runs to about 34,000. */
+export const MAX_INTERVIEW_CHARS = 150_000;
+/** A whole brain request: the interview, the pack brief, the prior model and the rest, with room to spare. */
+export const MAX_BRAIN_BODY = 500_000;
 
 export function readExchanges(value: unknown): InterviewExchange[] | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_EXCHANGES) return null;
   const out: InterviewExchange[] = [];
+  let chars = 0;
   for (const e of value) {
     if (!isJsonObject(e) || typeof e.turn !== "number" || !isText(e.question, MAX_QUESTION) || typeof e.answer !== "string" || e.answer.length > MAX_ANSWER) return null;
+    chars += e.question.length + e.answer.length;
+    if (chars > MAX_INTERVIEW_CHARS) return null;
     out.push({ turn: e.turn, question: e.question, answer: e.answer });
   }
   return out;
