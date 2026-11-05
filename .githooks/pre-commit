@@ -1,0 +1,24 @@
+#!/bin/sh
+# Runs before every commit, in every checkout and worktree of this repository (core.hooksPath = .githooks, set by
+# `npm install`): the type check, lint and tests — what GitHub's checks run, minus the build — about 15 seconds.
+# A failure stops the commit and says what failed. Never skip it with --no-verify; fix what it found.
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+if [ ! -d node_modules ]; then
+  echo "pre-commit: node_modules is missing here — run npm install, then commit again." >&2
+  exit 1
+fi
+
+fail() {
+  echo "" >&2
+  echo "pre-commit: $1 failed — the commit was stopped. Fix it and commit again." >&2
+  exit 1
+}
+
+echo "pre-commit: type check, lint, tests…"
+npx next typegen >/dev/null 2>&1
+npx tsc --noEmit || fail "the type check"
+npx eslint --quiet || fail "lint"
+npx vitest run --reporter=dot || fail "the tests"
+echo "pre-commit: all clear."
