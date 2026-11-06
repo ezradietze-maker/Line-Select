@@ -32,8 +32,7 @@ import { FirstVisitTour } from "@/components/results/FirstVisitTour";
 import { WheelsDown } from "@/components/results/WheelsDown";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
-import { monthLine } from "@/lib/bid-month";
-import { BidPackHeader, packRanges, StripKey, StripViewToggle, stripLayout } from "@/components/results/BidPackStrip";
+import { BidPackHeader, StripKey, StripViewToggle, stripLayout } from "@/components/results/BidPackStrip";
 import { useStripView } from "@/lib/strip-view-storage";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { packColumnCount, packColumns } from "@/lib/bidpack-row";
@@ -491,7 +490,6 @@ export function ResultsView({
   const [listRef, listWidth] = useMeasuredWidth<HTMLDivElement>(768);
   const layout = useMemo(() => stripLayout(listWidth, columns.length), [listWidth, columns.length]);
   const [stripView, setStripView] = useStripView();
-  const ranges = useMemo(() => packRanges(bidPack.lines.map((l) => monthLine(l, bidPack))), [bidPack]);
   // Keys for working down the list at a desk: j / k move between lines, o opens one, s shortlists, c compares, ? shows the keys.
   const [keyIndex, setKeyIndex] = useState<number | null>(null);
   const [showKeys, setShowKeys] = useState(false);
@@ -980,7 +978,6 @@ export function ResultsView({
                         packColumns={columns}
                         stripLayout={layout}
                         stripView={stripView}
-                        packRanges={ranges}
                         open={openIds.has(lineScore.line.id)}
                         onToggleOpen={() => toggleOpen(lineScore.line.id)}
                       />

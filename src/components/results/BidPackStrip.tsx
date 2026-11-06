@@ -6,7 +6,7 @@ import { ChevronDownIcon } from "@/components/ui/icons";
 import type { PackColumn, PackDay, PackToken } from "@/lib/bidpack-row";
 import { PACK_TOKENS_PER_DAY } from "@/lib/bidpack-row";
 import { formatHoursValue } from "@/lib/interview-config";
-import { sideBySide } from "@/lib/leg-bars";
+import { laneLabels, routesOf } from "@/lib/line-route";
 import type { LineTimeline, TimelineLeg } from "@/lib/line-timeline";
 import type { StripViewMode } from "@/lib/strip-view-storage";
 import type { Line } from "@/types/bidpack";
@@ -18,10 +18,10 @@ import type { Line } from "@/types/bidpack";
  *   DP'S, BLK., landings, days off) with the line's score, and the month a column a day across the right, every
  *   flight number on the day it departs and the city the pilot lays over in, in the calendar's colors
  *   (`lib/bidpack-row.ts`).
- * - "timeline": the same strip's size and everything on it, drawn as the month's one continuous timeline to scale
- *   (`lib/line-timeline.ts`): each duty a band from report to release with its flights in it, each layover a line with
- *   its city, the flight numbers at the times they leave, the days off counted; and beside each of the
- *   line's numbers, where it sits among every line in the pack.
+ * - "timeline": everything the pack prints for the line, organised by trip on the month's timeline (`lib/line-route.ts`):
+ *   each trip one card from report to release with its number and credit, its flights and layovers inside as one route
+ *   — every flight number over its own leg, every city under its own layover — the pack's "---" on each day off, and
+ *   the pack's eight numbers in words.
  *
  * Tapping either opens everything else about the line under it.
  */
@@ -102,21 +102,22 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
       ) : (
         <>
           {item(
-            <span aria-hidden className="relative inline-flex h-3 w-7 items-center rounded-[3px] bg-calendar-accent/30">
-              <span className="absolute left-1.5 h-[3px] w-2.5 rounded-full bg-leg" />
-              <span className="absolute right-1 h-[3px] w-1.5 rounded-full bg-deadhead" />
-            </span>,
-            "duty, report to release: flights blue, deadheads magenta, to scale"
+            <svg aria-hidden width="30" height="8" className="overflow-visible">
+              <line x1="1" x2="29" y1="4" y2="4" stroke="var(--color-leg)" strokeWidth="2" />
+              <line x1="1" x2="1" y1="1" y2="7" stroke="var(--color-leg)" strokeWidth="1.5" />
+              <line x1="29" x2="29" y1="1" y2="7" stroke="var(--color-leg)" strokeWidth="1.5" />
+            </svg>,
+            "flight, takeoff to landing, its number over it"
           )}
-          {item(<span aria-hidden className="inline-block h-[3px] w-5 rounded-full bg-layover" />, "layover")}
-          {item(word("1875", "text-leg"), "flight number, when it leaves")}
-          {item(trip, "trip and its credit")}
           {item(
-            <span aria-hidden className="relative inline-block h-[3px] w-3 overflow-hidden rounded-full bg-ink/10">
-              <span className="absolute inset-y-0 left-0 w-2/3 rounded-full bg-ink/45" />
-            </span>,
-            "where a number sits among the pack's lines"
+            <svg aria-hidden width="20" height="8">
+              <line x1="0" x2="20" y1="4" y2="4" stroke="var(--color-deadhead)" strokeWidth="2" strokeDasharray="3 2" />
+            </svg>,
+            "D/H, deadhead"
           )}
+          {item(<span aria-hidden className="inline-block h-1 w-6 rounded-full bg-layover/85" />, "layover, as long as it lasts, its city under it")}
+          {item(<span className="rounded-[4px] border border-border-strong bg-surface-raised px-1">{trip}</span>, "trip, report to release, and its credit")}
+          {item(word("---", "text-ink-faint"), "day off")}
         </>
       )}
       <span>{hint}</span>
@@ -247,181 +248,135 @@ function Numbers({ line }: { line: Line }) {
   );
 }
 
-/** The pack's range of each of a line's numbers, low to high — where one line sits among them all. */
-export interface PackRanges {
-  credit: [number, number];
-  tafb: [number, number];
-  coCredit: [number, number];
-  dutyPeriods: [number, number];
-  block: [number, number];
-  landings: [number, number];
-  coBlock: [number, number];
-  daysOff: [number, number];
-}
-
-/** Pass the lines as their bid months (`monthLine`): the ranges are the month's, as the timeline's numbers are. */
-export function packRanges(lines: Line[]): PackRanges {
-  const range = (f: (l: Line) => number): [number, number] => {
-    const v = lines.map(f).filter((n) => Number.isFinite(n));
-    return v.length ? [Math.min(...v), Math.max(...v)] : [0, 0];
-  };
-  return {
-    credit: range((l) => l.totalCreditHours),
-    tafb: range((l) => l.totalTafbHours),
-    coCredit: range((l) => l.carryOverCreditHours ?? 0),
-    dutyPeriods: range((l) => l.totalDutyPeriods ?? NaN),
-    block: range((l) => l.totalBlockHours ?? NaN),
-    landings: range((l) => l.totalLandings),
-    coBlock: range((l) => l.carryOverBlockHours ?? 0),
-    daysOff: range((l) => l.daysOff),
-  };
-}
-
 /** Which strip, and what it draws. */
-export type StripView = { kind: "pack"; days: PackDay[] } | { kind: "timeline"; timeline: LineTimeline; ranges: PackRanges; month: Line };
+export type StripView = { kind: "pack"; days: PackDay[] } | { kind: "timeline"; timeline: LineTimeline };
 
-/** A small meter: where `value` sits between the pack's lowest and highest. */
-function Meter({ value, range }: { value: number; range: [number, number] }) {
-  const [lo, hi] = range;
-  const share = hi > lo ? Math.min(Math.max((value - lo) / (hi - lo), 0), 1) : 0.5;
-  return (
-    <span aria-hidden className="relative inline-block h-[3px] w-3 shrink-0 self-center overflow-hidden rounded-full bg-ink/10">
-      <span className="absolute inset-y-0 left-0 rounded-full bg-ink/45" style={{ width: `${Math.max(share * 100, 8)}%` }} />
-    </span>
-  );
-}
-
-/**
- * The line's numbers in its bid month (`month`, from `monthLine`) — the pack's own, with duty periods and landings less
- * what the last trip flies in the next month — each with a meter: where it sits among every line in the pack. The two
- * C/O cells are what carries over.
- */
-function RangedNumbers({ line, ranges }: { line: Line; ranges: PackRanges }) {
+/** The same eight numbers the pack prints left of a line, in words a pilot reads at a glance. */
+function SpelledNumbers({ line }: { line: Line }) {
   const hm = formatHoursValue;
-  const cells: [string, string, number, [number, number]][] = [
-    ["CR", hm(line.totalCreditHours), line.totalCreditHours, ranges.credit],
-    ["TAFB", hm(line.totalTafbHours), line.totalTafbHours, ranges.tafb],
-    ["C/O", hm(line.carryOverCreditHours ?? 0), line.carryOverCreditHours ?? 0, ranges.coCredit],
-    ["DP'S", String(line.totalDutyPeriods ?? "—"), line.totalDutyPeriods ?? 0, ranges.dutyPeriods],
-    ["BLK", line.totalBlockHours !== undefined ? hm(line.totalBlockHours) : "—", line.totalBlockHours ?? 0, ranges.block],
-    ["LDGS", String(line.totalLandings), line.totalLandings, ranges.landings],
-    ["C/O", hm(line.carryOverBlockHours ?? 0), line.carryOverBlockHours ?? 0, ranges.coBlock],
-    ["OFF", String(line.daysOff), line.daysOff, ranges.daysOff],
+  const rows: [string, string, string, string][] = [
+    ["Credit", hm(line.totalCreditHours), "TAFB", hm(line.totalTafbHours)],
+    ["Block", line.totalBlockHours !== undefined ? hm(line.totalBlockHours) : "—", "Duties", String(line.totalDutyPeriods ?? "—")],
+    ["C/O cr", hm(line.carryOverCreditHours ?? 0), "Landings", String(line.totalLandings)],
+    ["C/O blk", hm(line.carryOverBlockHours ?? 0), "Days off", String(line.daysOff)],
   ];
   return (
-    <div className="grid grid-cols-[auto_auto_auto_auto_auto_auto] items-center gap-x-1 font-mono text-[10px] leading-[11px]" title="Each bar: where this line sits among every line in the pack, lowest to highest">
-      {cells.map(([label, text, value, range], i) => (
-        <span key={i} className="contents">
-          <span className={`text-ink-faint ${i % 2 ? "pl-1.5" : ""}`}>{label}</span>
-          <span className="text-right tabular-nums text-ink">{text}</span>
-          <Meter value={value} range={range} />
-        </span>
+    <div className="grid grid-cols-[auto_auto_auto_auto] items-baseline gap-x-[5px] text-[9.5px] leading-[12px]">
+      {rows.map(([a, av, b, bv], i) => (
+        <div key={i} className="contents">
+          <span className="text-ink-muted">{a}</span>
+          <span className="text-right font-mono tabular-nums text-ink">{av}</span>
+          <span className="pl-1 text-ink-muted">{b}</span>
+          <span className="text-right font-mono tabular-nums text-ink">{bv}</span>
+        </div>
       ))}
     </div>
   );
 }
 
 const DAY_MIN = 24 * 60;
-/** The timeline strip's rows, px from its top: the trip's rail and label, the duty track, the layover line, the cities, two lines of flight numbers. */
-const TL = { rail: 0, label: 3, trackTop: 14, track: 14, duty: 12, bar: 3, lane: 2.5, cities: 34, flights: 45, line: 10, height: 66 };
-const LEG_TONE: Record<TimelineLeg["kind"], { bar: string; text: string }> = {
-  flight: { bar: "bg-leg", text: "text-leg" },
-  deadhead: { bar: "bg-deadhead", text: "text-deadhead" },
-  standby: { bar: "bg-standby", text: "text-standby" },
+/** The Timeline strip's rows, px from its top: the trips' numbers, their cards, the route, its flight-number lanes over it and city lanes under it. */
+const RT = { height: 71, header: 9, card: 11, route: 46, flightLanes: [41, 31, 21], cityLanes: [57, 66] };
+const LEG_COLOR: Record<TimelineLeg["kind"], string> = {
+  flight: "var(--color-leg)",
+  deadhead: "var(--color-deadhead)",
+  standby: "var(--color-standby)",
 };
-
-/** Words laid in up to two lines without touching: the first line when there's room, else the second, else pushed along. */
-function twoLines(items: { x: number; w: number }[], maxRight: number): { x: number; row: 0 | 1 }[] {
-  const right: [number, number] = [-Infinity, -Infinity];
-  return items.map(({ x, w }) => {
-    const fits = (r: 0 | 1) => x >= right[r] + 3;
-    const row: 0 | 1 = fits(0) ? 0 : fits(1) ? 1 : right[0] <= right[1] ? 0 : 1;
-    const placed = Math.min(Math.max(x, right[row] + 3), Math.max(maxRight - w, right[row] + 3));
-    right[row] = placed + w;
-    return { x: placed, row };
-  });
-}
+/** Plex Mono's advance, per px of font size: how wide a word is drawn. */
+const MONO_ADVANCE = 0.6;
 
 /**
- * The month as one timeline, to scale on the base's clock: weekends shaded and the pack's week lines behind; each
- * trip's rail with its number and credit; each duty a grey band from report to release with its flights in it; each
- * layover a green line, its city under it; every flight number at the time it leaves; and each run of days
- * off counted.
+ * The Timeline: every word the pack prints for the line, organised by trip, on the base's clock. Each trip is one card
+ * from report to release with its number and credit over it; inside, its flights and layovers run as one route — each
+ * flight a line with tick ends from takeoff to landing and its number over it (a deadhead run dashed, "D/H"), each
+ * layover a green stretch as long as it lasts with its city under it, each wait at an airport between legs a thin line.
+ * The pack's "---" on each day off. Words sit in lanes and never touch (`laneLabels`).
  */
-function TimelineDays({ columns, timeline, layout }: { columns: PackColumn[]; timeline: LineTimeline; layout: StripLayout }) {
+function RouteDays({ columns, timeline, layout }: { columns: PackColumn[]; timeline: LineTimeline; layout: StripLayout }) {
   const width = layout.daysPx;
   const total = columns.length * DAY_MIN;
   const x = (m: number) => (Math.min(Math.max(m, 0), total) / total) * width;
-  const charPx = layout.font * 0.6;
-  const font = { fontSize: layout.font, lineHeight: `${TL.line}px` };
+  const colPx = width / columns.length;
+  const font = layout.font;
+  const charPx = font * MONO_ADVANCE;
+  const headerFont = font + 0.5;
+  const routes = routesOf(timeline);
 
-  // Flight numbers: a deadhead run in one duty says "D/H" once.
-  const legs = timeline.legs.filter((l, i) => !(l.kind === "deadhead" && timeline.legs[i - 1]?.kind === "deadhead" && timeline.legs[i - 1].end <= l.start && l.start - timeline.legs[i - 1].end < 6 * 60));
-  const flightSpots = twoLines(
-    legs.map((l) => ({ x: x(l.start), w: l.flight.length * charPx })),
-    width
-  );
-  // Where each layover is — just the city: its length is the line's own length.
-  const stayCenters = sideBySide(
-    timeline.stays.map((s) => ({ at: ((s.start + s.end) / 2 / total) * DAY_MIN, text: s.city })),
-    width,
-    0
-  );
+  const cards = routes.map((r) => ({ left: x(r.trip.start), right: Math.max(x(r.trip.end), x(r.trip.start) + 6), trip: r.trip }));
+  const flights = routes.flatMap((r) => r.legs.map((l) => ({ ...l, at: (x(l.start) + x(l.end)) / 2, width: l.label.length * charPx })));
+  const flightSpots = laneLabels(flights, RT.flightLanes.length, width);
+  const stays = routes.flatMap((r) => r.stays.map((s) => ({ ...s, at: (x(s.start) + x(s.end)) / 2, width: s.city.length * charPx })));
+  const citySpots = laneLabels(stays, RT.cityLanes.length, width);
+  // Each trip's number and its credit, always both, from its card's left edge: a crowded one moves along rather than covering the one before.
+  const headerText = cards.map((c) => ({ number: c.trip.number ?? "—", credit: formatHoursValue(c.trip.creditHours) }));
+  const headerWidths = headerText.map((h) => (h.number.length + 1 + h.credit.length) * headerFont * MONO_ADVANCE);
+  const headerSpots = laneLabels(cards.map((c, i) => ({ at: c.left + 1 + headerWidths[i] / 2, width: headerWidths[i] })), 1, Infinity, 6);
+  const headers = headerText.map((h, i) => ({ ...h, left: headerSpots[i].x }));
+  const offDays = timeline.offRuns.flatMap((r) => Array.from({ length: r.length }, (_, k) => r.day + k));
 
   return (
-    <div className="relative" style={{ height: TL.height, width: layout.mode === "fit" ? undefined : width }}>
+    <div className="relative" style={{ height: RT.height, width: layout.mode === "fit" ? undefined : width }}>
       {/* The days behind: the pack's week lines, weekends shaded, next month faint. */}
       <div className="absolute inset-0 grid" style={{ gridTemplateColumns: gridColumns(columns.length, layout) }} aria-hidden>
         {columns.map((c, i) => (
           <div key={i} className={columnClass(c)} />
         ))}
       </div>
-      {timeline.offRuns.map((r, i) => {
-        const w = r.length * (width / columns.length);
-        const text = r.length === 1 ? "off" : w >= (r.length + 9) * charPx ? `${r.length} days off` : `${r.length} off`;
-        return (
-          <span key={`o${i}`} className="absolute flex items-center justify-center whitespace-nowrap font-mono text-ink-faint" style={{ ...font, left: (r.day / columns.length) * width, width: w, top: TL.trackTop, height: TL.track }}>
-            {text}
-          </span>
-        );
-      })}
-      {timeline.trips.map((t, i) => {
-        const left = x(t.start);
-        const next = timeline.trips[i + 1];
-        const room = (next ? x(next.start) : width) - left - 3;
-        const number = t.number ?? "—";
-        const credit = formatHoursValue(t.creditHours);
-        // The credit when there's room for it before the next trip's label; else the number alone, never cut mid-word.
-        const withCredit = (number.length + 1 + credit.length) * charPx <= room;
-        return (
-          <span key={`t${i}`}>
-            <span className="absolute h-[2px] rounded-full bg-calendar-accent" style={{ left, width: Math.max(2, x(t.end) - left), top: TL.rail }} />
-            <span className="absolute whitespace-nowrap font-mono text-ink" style={{ ...font, left, top: TL.label }} title={`Trip ${number} · ${credit} credit · ${t.days} days`}>
-              <span className="font-semibold">{number}</span>
-              {withCredit && <span className="text-ink-muted"> {credit}</span>}
-            </span>
-          </span>
-        );
-      })}
-      {timeline.duties.map((d, i) => (
-        <span key={`d${i}`} className="absolute rounded-[3px] bg-calendar-accent/30" style={{ left: x(d.start) - 1, width: Math.max(3, x(d.end) - x(d.start) + 2), top: TL.trackTop + (TL.track - TL.duty) / 2, height: TL.duty }} />
-      ))}
-      {timeline.legs.map((l, i) => (
-        <span key={`l${i}`} className={`absolute rounded-full ${LEG_TONE[l.kind].bar}`} style={{ left: x(l.start), width: Math.max(2, x(l.end) - x(l.start)), top: TL.trackTop + TL.track / 2 - TL.bar / 2, height: TL.bar }} title={`${l.flight} ${l.from}–${l.to}`} />
-      ))}
-      {timeline.stays.map((s, i) => (
-        <span key={`s${i}`} className="absolute rounded-full bg-layover" style={{ left: x(s.start) + 1, width: Math.max(2, x(s.end) - x(s.start) - 2), top: TL.trackTop + TL.track + 1, height: TL.lane }} />
-      ))}
-      {timeline.stays.map((s, i) => (
-        <span key={`c${i}`} className="absolute -translate-x-1/2 whitespace-nowrap font-mono font-semibold text-layover" style={{ ...font, left: stayCenters[i], top: TL.cities }} title={`Layover in ${s.city}, ${Math.round(s.hours)}h`}>
-          {s.city}
-        </span>
-      ))}
-      {legs.map((l, i) => (
-        <span key={`f${i}`} className={`absolute whitespace-nowrap font-mono font-medium ${LEG_TONE[l.kind].text}`} style={{ ...font, left: flightSpots[i].x, top: TL.flights + flightSpots[i].row * TL.line }}>
-          {l.flight}
-        </span>
-      ))}
+      <svg className="absolute inset-0 overflow-visible font-mono" width={width} height={RT.height} aria-hidden>
+        {offDays.map((d) => {
+          const cx = (d + 0.5) * colPx;
+          if (cards.some((c) => cx + 9 > c.left && cx - 9 < c.right)) return null;
+          return (
+            <text key={`o${d}`} x={cx} y={RT.route + 3} textAnchor="middle" fontSize={font} fill="var(--color-ink-faint)">
+              ---
+            </text>
+          );
+        })}
+        {cards.map((c, i) => (
+          <rect key={`c${i}`} x={c.left} y={RT.card} width={c.right - c.left} height={RT.height - RT.card - 1} rx={5} fill="var(--color-surface-raised)" stroke="var(--color-border-strong)">
+            <title>{`Trip ${c.trip.number ?? ""} · ${formatHoursValue(c.trip.creditHours)} credit · ${c.trip.days} days`}</title>
+          </rect>
+        ))}
+        {routes.flatMap((r, i) =>
+          r.waits.map((w, k) => <line key={`w${i}-${k}`} x1={x(w.start)} x2={x(w.end)} y1={RT.route} y2={RT.route} stroke="var(--color-ink-faint)" strokeWidth={1} />)
+        )}
+        {stays.map((s, i) => (
+          <line key={`s${i}`} x1={x(s.start) + 1} x2={Math.max(x(s.start) + 2, x(s.end) - 1)} y1={RT.route} y2={RT.route} stroke="var(--color-layover)" strokeWidth={4} strokeLinecap="round" opacity={0.85}>
+            <title>{`Layover in ${s.city}, ${Math.round(s.hours)}h`}</title>
+          </line>
+        ))}
+        {flights.map((l, i) => {
+          const a = x(l.start);
+          const b = Math.max(x(l.end), a + 3);
+          const color = LEG_COLOR[l.kind];
+          return (
+            <g key={`l${i}`} stroke={color}>
+              <title>{`${l.label} ${l.from}–${l.to}`}</title>
+              <line x1={a} x2={b} y1={RT.route} y2={RT.route} strokeWidth={2} strokeDasharray={l.kind === "deadhead" ? "3 2" : undefined} />
+              <line x1={a} x2={a} y1={RT.route - 3} y2={RT.route + 3} strokeWidth={1.5} />
+              <line x1={b} x2={b} y1={RT.route - 3} y2={RT.route + 3} strokeWidth={1.5} />
+            </g>
+          );
+        })}
+        {flights.map((l, i) => (
+          <text key={`f${i}`} x={flightSpots[i].x} y={RT.flightLanes[flightSpots[i].lane]} fontSize={font} fontWeight={500} fill={LEG_COLOR[l.kind]}>
+            {l.label}
+          </text>
+        ))}
+        {stays.map((s, i) => (
+          <text key={`t${i}`} x={citySpots[i].x} y={RT.cityLanes[citySpots[i].lane]} fontSize={font} fontWeight={600} fill="var(--color-layover)">
+            {s.city}
+          </text>
+        ))}
+        {headers.map((h, i) => (
+          <text key={`h${i}`} x={h.left} y={RT.header} fontSize={headerFont}>
+            <tspan fontWeight={600} fill="var(--color-ink)">
+              {h.number}
+            </tspan>
+            <tspan fill="var(--color-ink-muted)"> {h.credit}</tspan>
+          </text>
+        ))}
+      </svg>
     </div>
   );
 }
@@ -459,12 +414,12 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
       )}
       <div className="min-w-0">
         <div className="font-mono text-[12px] font-semibold leading-[14px] tracking-wide text-ink">LINE {line.lineNumber}</div>
-        {view.kind === "pack" ? <Numbers line={line} /> : <RangedNumbers line={view.month} ranges={view.ranges} />}
+        {view.kind === "pack" ? <Numbers line={line} /> : <SpelledNumbers line={line} />}
       </div>
     </div>
   );
   const drawn =
-    view.kind === "pack" ? <Days columns={columns} days={view.days} layout={layout} /> : <TimelineDays columns={columns} timeline={view.timeline} layout={layout} />;
+    view.kind === "pack" ? <Days columns={columns} days={view.days} layout={layout} /> : <RouteDays columns={columns} timeline={view.timeline} layout={layout} />;
   const chevron = <ChevronDownIcon className={`h-4 w-4 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />;
 
   if (layout.stacked || layout.mode === "scroll") {
