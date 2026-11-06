@@ -1,6 +1,7 @@
 import { shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
 import { prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import { criterionWeight, scorePackV2 } from "@/lib/scoring-v2/score";
+import { rankLinesWithTrips, scoreTripsV2, tripKey, TRIP_LEAN, TRIP_LESSONS } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel } from "@/types/pilot-model";
 
@@ -46,10 +47,15 @@ export const LEARNER = {
     primaryShare: 0.5,
     margin: 0.5,
     lapse: 0.1,
-    /** How noisy a pilot's swaps may be, in score points: whichever of these their swaps make most likely. */
-    temperatures: [3, 6, 12, 24],
-    /** Evidence each doubling of the noise level gives up: a pilot is read as noisy only when the swaps say so clearly. */
-    noisePenalty: 1,
+    /**
+     * How noisy a pilot's swaps may be, in score points: whichever of these their swaps make most likely. The last means
+     * "these swaps teach nothing" — on the ex-pilot's real order, keeping his swaps and learning nothing from them gave
+     * his whole bid list its best agreement with how he ranks (91.3%; the old fit 89.8%), so a pilot like him has to be
+     * able to land there.
+     */
+    temperatures: [3, 6, 12, 24, Infinity],
+    /** Evidence each step up the noise levels gives up: a pilot is read as noisy only when the swaps say so clearly. */
+    noisePenalty: 0.5,
   },
   /** A drag saved before swaps were recorded as such (no `dragId`): counted as the old fit counted it. */
   legacyDirect: 0.35,
@@ -61,9 +67,16 @@ export interface LearnerSettings {
   swap: { evidence: number; primaryShare: number; margin: number; lapse: number; temperatures: number[]; noisePenalty: number };
 }
 
+/**
+ * One line, as the fit sees it: its shortfall² and half-weight flag on each priority, and — once the pilot has graded
+ * trips — the part of its score that leans on its worst trip: the line's own score counts `share` of it, and the worst
+ * trip adds `offset` (held fixed while the weights move: it's what the pilot saw).
+ */
 interface Row {
   sf: number[];
   half: boolean[];
+  share: number;
+  offset: number;
 }
 
 type Term = { kind: "strongly" | "slightly" | "legacy"; a: Row; b: Row } | { kind: "swap"; a: Row; b: Row; weight: number };
@@ -95,11 +108,11 @@ function scoreAndGrad(row: Row, w: number[], grad: number[] | null, scale: numbe
     num += a[i] * row.sf[i];
     den += a[i];
   }
-  if (den <= 0) return 100;
+  if (den <= 0) return row.share * 100 + row.offset;
   const q = num / den;
   const root = Math.sqrt(Math.max(q, 1e-9));
-  if (grad) for (let i = 0; i < w.length; i++) grad[i] += (scale * -100 * a[i] * (row.sf[i] - q)) / (2 * root * den);
-  return 100 * (1 - root);
+  if (grad) for (let i = 0; i < w.length; i++) grad[i] += (scale * row.share * -100 * a[i] * (row.sf[i] - q)) / (2 * root * den);
+  return row.share * 100 * (1 - root) + row.offset;
 }
 
 /** The loss for log-weights `theta` with swaps read at noise level `swapT`, adding its gradient into `grad`. */
@@ -219,7 +232,22 @@ export function learnFromChoices(
   settings: Partial<LearnerSettings> = {}
 ): LearnResult {
   const s: LearnerSettings = { ...LEARNER, ...settings, swap: { ...LEARNER.swap, ...settings.swap } };
-  const scored = new Map(scorePackV2(bidPack, model, { pack }).map((x) => [x.lineNumber, x]));
+  // Fitted on the score the pilot actually sees: once they've graded trips, each line's weights carry what the grades
+  // taught, and its score leans on its worst trip (`rankLinesWithTrips`). The worst trip is held where it was — it's what
+  // they were looking at when they swapped — and the weights fitted are the untaught ones, so the lessons apply on top.
+  const tw = model.tripWeights && Object.keys(model.tripWeights).length ? model.tripWeights : null;
+  const taught: PilotModel = tw ? { ...model, tripWeights: undefined, criteria: model.criteria.map((c) => ({ ...c, weight: c.weight * (tw[c.id] ?? 1) ** TRIP_LESSONS })) } : model;
+  const scored = new Map(scorePackV2(bidPack, taught, { pack }).map((x) => [x.lineNumber, x]));
+  const worstTrip = new Map<string, number>();
+  if (tw) {
+    const trips = scoreTripsV2(bidPack, model, { pack, onLineScale: false });
+    for (const line of bidPack.lines) {
+      const ts = line.trips.flatMap((t) => (trips.has(tripKey(t)) ? [trips.get(tripKey(t))!.score] : []));
+      if (ts.length) worstTrip.set(line.lineNumber, Math.min(...ts));
+    }
+  }
+  const seenScore = (m: PilotModel) => new Map((tw ? rankLinesWithTrips(bidPack, m, { pack }) : scorePackV2(bidPack, m, { pack })).map((x) => [x.lineNumber, x.score]));
+  const shown = seenScore(model);
   // One verdict per two lines from the interview (a line pair and a bid check can land on the same two); swaps each count.
   const seen = new Set<string>();
   const known = choices.filter((c) => {
@@ -234,15 +262,21 @@ export function learnFromChoices(
   const heldByLimit = known.filter((c) => capped(c.preferred) !== capped(c.other));
   const usable = known.filter((c) => !heldByLimit.includes(c));
 
-  const agreedBefore = usable.filter((c) => scored.get(c.preferred)!.score > scored.get(c.other)!.score).length;
+  const agreedBefore = usable.filter((c) => shown.get(c.preferred)! > shown.get(c.other)!).length;
   const unchanged: LearnResult = { model, changes: [], agreedBefore, agreedAfter: agreedBefore, heldByLimit, uncertainty: Object.fromEntries(model.criteria.map((c) => [c.id, s.priorSd])), swapNoise: null };
   if (usable.length === 0 || model.criteria.length === 0) return unchanged;
 
   const ids = model.criteria.map((c) => c.id);
-  const base = model.criteria.map(criterionWeight);
+  const base = taught.criteria.map(criterionWeight);
   const rowOf = (line: string): Row => {
     const byId = new Map(scored.get(line)!.results.map((x) => [x.criterionId, x]));
-    return { sf: ids.map((id) => (byId.has(id) ? (1 - byId.get(id)!.utility) ** 2 : 0)), half: ids.map((id) => !byId.has(id) || byId.get(id)!.value === null) };
+    const worst = worstTrip.get(line);
+    return {
+      sf: ids.map((id) => (byId.has(id) ? (1 - byId.get(id)!.utility) ** 2 : 0)),
+      half: ids.map((id) => !byId.has(id) || byId.get(id)!.value === null),
+      share: worst === undefined ? 1 : 1 - TRIP_LEAN,
+      offset: worst === undefined ? 0 : TRIP_LEAN * worst,
+    };
   };
   const terms: Term[] = [];
   const swaps = new Map<string, LineChoice[]>();
@@ -256,12 +290,11 @@ export function learnFromChoices(
   }
 
   // Each noise level fitted; the one the swaps make most likely wins, leaning toward the quietest.
-  const levels = swaps.size ? s.swap.temperatures : [s.swap.temperatures[0]];
-  const lowest = Math.min(...levels);
+  const levels = swaps.size ? [...s.swap.temperatures].sort((a, b) => a - b) : [s.swap.temperatures[0]];
   const best = levels
-    .map((swapT) => {
+    .map((swapT, k) => {
       const fit = fitAt(base, terms, s, swapT);
-      return { swapT, ...fit, score: fit.evidence - s.swap.noisePenalty * Math.log2(swapT / lowest) };
+      return { swapT, ...fit, score: fit.evidence - s.swap.noisePenalty * k };
     })
     .reduce((a, b) => (b.score > a.score ? b : a));
   const uncertainty = Object.fromEntries(ids.map((id, i) => [id, best.variances && best.variances[i] > 0 ? Math.sqrt(best.variances[i]) : s.priorSd]));
@@ -270,7 +303,7 @@ export function learnFromChoices(
   const raw = model.criteria.map((c, i) => c.weight * Math.exp(best.theta[i]));
   const top = Math.max(...raw) || 1;
   const fitted: PilotModel = { ...model, criteria: model.criteria.map((c, i) => ({ ...c, weight: raw[i] / top })) };
-  const byLine = new Map(scorePackV2(bidPack, fitted, { pack }).map((x) => [x.lineNumber, x.score]));
+  const byLine = seenScore(fitted);
   const agreedAfter = usable.filter((c) => byLine.get(c.preferred)! > byLine.get(c.other)!).length;
   const swapNoise = swaps.size ? best.swapT : null;
   // Only keep the fit if it explains the choices at least as well.

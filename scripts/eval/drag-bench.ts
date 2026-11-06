@@ -22,9 +22,10 @@ import { learnFromChoices, type LearnerSettings } from "@/lib/brain/reorder-lear
 import { applyPlacements, placementFromDrag, type Placement } from "@/lib/line-placements";
 import { prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import { migrateProfile } from "@/lib/profile-migration";
-import { scorePackV2 } from "@/lib/scoring-v2/score";
+import { rankLinesWithTrips, tripKey } from "@/lib/scoring-v2/trip-score";
+import { fitTripWeights } from "@/lib/brain/fit-choices";
 import type { BidPack } from "@/types/bidpack";
-import type { LineChoice, PilotModel } from "@/types/pilot-model";
+import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
 import { PERSONAS } from "./personas";
 
 const ROOT = process.env.EVAL_ROOT ?? ".";
@@ -39,6 +40,8 @@ const SHOWN = 12;
 type Learner = (base: PilotModel, choices: LineChoice[], bidPack: BidPack, pm: PackMetrics) => PilotModel;
 /** Each learner with the choices its version of the app made from a swap. */
 const LEARNERS: Record<string, { learn: Learner; choices: (order: string[], ids: string[], from: number, to: number, id: string) => LineChoice[] }> = {
+    // Swaps kept, nothing learned.
+  none: { learn: (b) => b, choices: () => [] },
   // Before step 2: the moved line beat each line it passed, fitted by `fitWeightsToChoices`.
   old: {
     learn: (b, ch, bp, pm) => fitWeightsToChoices(bp, b, ch, pm).model,
@@ -70,7 +73,8 @@ function rng(seed: number) {
 const gauss = (r: () => number) => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 const se = (xs: number[]) => Math.sqrt(xs.reduce((a, x) => a + (x - mean(xs)) ** 2, 0) / Math.max(1, xs.length - 1) / xs.length);
-const scores = (bp: BidPack, m: PilotModel, pm: PackMetrics) => new Map(scorePackV2(bp, m, { pack: pm }).map((x) => [x.lineNumber, x.score]));
+/** Lines scored as the app ranks them: with a pilot's trip grades in (`rankLinesWithTrips`) once they have some. */
+const scores = (bp: BidPack, m: PilotModel, pm: PackMetrics) => new Map(rankLinesWithTrips(bp, m, { pack: pm }).map((x) => [x.lineNumber, x.score]));
 
 /** One simulated pilot's session: swaps on the shown list, the learner refitting after each. Returns the final model and every line shown. */
 function session(bp: BidPack, pm: PackMetrics, base: PilotModel, lines: string[], perceived: (l: string) => number, learner: (typeof LEARNERS)[string], shownCount: number) {
@@ -95,7 +99,14 @@ function session(bp: BidPack, pm: PackMetrics, base: PilotModel, lines: string[]
     choices.push(...learner.choices(placement.order, shown, drag.from, drag.to, id));
     model = learner.learn(base, choices, bp, pm);
   }
-  return { model, seen };
+  return { model, seen, placements };
+}
+
+/** The whole list as the pilot would bid it — every line ranked by the model, their swaps kept where they put them — as scores by position. */
+function bidList(bp: BidPack, pm: PackMetrics, model: PilotModel, lines: string[], placements: Placement[]) {
+  const s = scores(bp, model, pm);
+  const ranked = applyPlacements([...lines].sort((a, b) => s.get(b)! - s.get(a)! || a.localeCompare(b)), placements, (l) => l);
+  return new Map(ranked.map((l, i) => [l, ranked.length - i]));
 }
 
 function pairAgreement(s: Map<string, number>, order: string[]) {
@@ -108,9 +119,9 @@ function pairAgreement(s: Map<string, number>, order: string[]) {
   return n ? ok / n : NaN;
 }
 
-function report(title: string, byLearner: Record<string, number[]>, baseline: number[]) {
+function report(title: string, byLearner: Record<string, number[]>, baseline: number[], baselineName = "no learning") {
   console.log(`\n${title}  (n=${baseline.length})`);
-  console.log(`  no learning   ${(100 * mean(baseline)).toFixed(1)}% ± ${(100 * se(baseline)).toFixed(1)}`);
+  console.log(`  ${baselineName.padEnd(13)} ${(100 * mean(baseline)).toFixed(1)}% ± ${(100 * se(baseline)).toFixed(1)}`);
   for (const [name, xs] of Object.entries(byLearner)) console.log(`  ${name.padEnd(13)} ${(100 * mean(xs)).toFixed(1)}% ± ${(100 * se(xs)).toFixed(1)}`);
   for (const name of Object.keys(byLearner).filter((n) => n !== "old")) {
     const d = byLearner[name].map((x, i) => x - byLearner.old[i]);
@@ -181,14 +192,22 @@ function expilot() {
   };
   const across: Record<string, number[]> = Object.fromEntries(Object.keys(LEARNERS).map((n) => [n, []]));
   const acrossBaseline: number[] = [];
+  // His five real trip picks, as the app fits them after the interview (NO_TRIPS=1 leaves them out).
+  const trip = (n: string) => bp.lines.flatMap((l) => l.trips).find((t) => t.pairingNumber === n)!;
+  const picks: TripChoice[] = Object.entries(answers.tripPicks as Record<string, [string, string]>).map(([p, [a, b]]) => ({ preferred: tripKey(trip(a)), other: tripKey(trip(b)), strength: p === "C" ? "slightly" : "strongly" }));
   const readings = ["profile-oct21", "replay-v24-s14-1", "replay-v24-s14-2", "replay-v24-s14-3", "replay-v22-v22-a", "replay-v22-v22-b", "replay-v21-v21-a", "replay-v20-v20-aa"]
     .filter((f) => existsSync(`${D}/benchmark-oct26/${f}.json`))
     .map((f) => {
       const p = migrateProfile(JSON.parse(readFileSync(`${D}/benchmark-oct26/${f}.json`, "utf8")));
-      return applyCityRatings(p.brainInterview!.reviewedModel!, p.cityRatings) as PilotModel;
+      const m = applyCityRatings(p.brainInterview!.reviewedModel!, p.cityRatings) as PilotModel;
+      return process.env.NO_TRIPS ? m : { ...m, tripWeights: fitTripWeights(bp, m, picks, pm).tripWeights };
     });
   const results: Record<string, number[]> = Object.fromEntries(Object.keys(LEARNERS).map((n) => [n, []]));
   const baseline: number[] = [];
+  const whole: Record<string, number[]> = Object.fromEntries(Object.keys(LEARNERS).map((n) => [n, []]));
+  const wholeAcross: Record<string, number[]> = Object.fromEntries(Object.keys(LEARNERS).map((n) => [n, []]));
+  const wholeBefore: number[] = [];
+  const wholeAcrossBefore: number[] = [];
   for (const [ri, base] of readings.entries()) for (let split = 0; split < 6; split++) {
     const r = rng(77 + 13 * ri + split);
     const shownLines = [...truth].sort(() => r() - 0.5).slice(0, 10);
@@ -197,14 +216,23 @@ function expilot() {
     baseline.push(pairAgreement(s0, held));
     acrossBaseline.push(acrossPiles(s0, held));
     for (const [name, learner] of Object.entries(LEARNERS)) {
-      const { model } = session(bp, pm, base, shownLines, (l) => -rank.get(l)!, learner, 10);
+      const { model, placements } = session(bp, pm, base, shownLines, (l) => -rank.get(l)!, learner, 10);
       const s1 = scores(bp, model, pm);
       results[name].push(pairAgreement(s1, held));
       across[name].push(acrossPiles(s1, held));
+      whole[name].push(pairAgreement(bidList(bp, pm, model, truth, placements), truth));
+      wholeAcross[name].push(acrossPiles(bidList(bp, pm, model, truth, placements), truth));
+      // Before step 1: the old fit, and the list re-sorted by it — the swaps didn't stay.
+      if (name === "old") {
+        wholeBefore.push(pairAgreement(bidList(bp, pm, model, truth, []), truth));
+        wholeAcrossBefore.push(acrossPiles(bidList(bp, pm, model, truth, []), truth));
+      }
     }
   }
   report(`The ex-pilot's real order, ${SWAPS} swaps on 10 lines: the 10 held out, every pair`, results, baseline);
   report(`  … only pairs from different piles`, across, acrossBaseline);
+  report(`His whole list as he'd bid it (all 20 lines, his swaps kept), every pair`, whole, wholeBefore, "before step 1");
+  report(`  … only pairs from different piles`, wholeAcross, wholeAcrossBefore, "before step 1");
 }
 
 if (mode === "synthetic" || mode === "both") synthetic();
