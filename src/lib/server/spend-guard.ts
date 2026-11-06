@@ -50,6 +50,11 @@ function today(now: Date): string {
 const siteKey = (day: string) => `line-select:spend:site:${day}`;
 const spenderKey = (day: string, s: Spender) => `line-select:spend:who:${day}:${s.key}`;
 
+/** What the whole site spent on one UTC day (`YYYY-MM-DD`), in dollars — for the daily summary. */
+export async function siteSpentOn(day: string): Promise<number> {
+  return ((await getJson<number>(siteKey(day))) ?? 0) / MICRO;
+}
+
 export type SpendCheck = { ok: true } | { ok: false; scope: "site" | "pilot" };
 
 /**

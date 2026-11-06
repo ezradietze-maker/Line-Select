@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportProblem } from "@/lib/server/alerts";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   try {
     const res = await fetch(url, { headers: { Authorization: apiKey }, cache: "no-store" });
     if (!res.ok) {
-      console.error("[dictation-token] speech service refused a pass", res.status);
+      await reportProblem("dictation", new Error(`speech service refused a pass (${res.status})`));
       return NextResponse.json({ error: "Dictation is unavailable right now." }, { status: 502 });
     }
     const { token } = (await res.json()) as { token?: string };
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {
-    console.error("[dictation-token] speech service unreachable", e);
+    await reportProblem("dictation", e);
     return NextResponse.json({ error: "Dictation is unavailable right now." }, { status: 502 });
   }
 }

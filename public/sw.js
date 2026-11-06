@@ -1,4 +1,5 @@
-const CACHE_NAME = "line-select-shell-v1";
+// v2: starts a fresh cache, so any reset-password page an older worker kept (with its link) is dropped on update.
+const CACHE_NAME = "line-select-shell-v2";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -45,6 +46,9 @@ self.addEventListener("fetch", (event) => {
   // lookups, and auth all depend on live server state; a stale cached
   // response would be worse than a clear failure.
   if (url.pathname.startsWith("/api/")) return;
+  // Sign-in and password-reset pages carry one-time links (`?token=…`) that must never be kept on the phone, and
+  // gain nothing from an offline copy.
+  if (url.pathname.startsWith("/reset-password") || url.pathname.startsWith("/auth") || url.searchParams.has("token")) return;
 
   // Next's build output is content-hashed and never changes under the same
   // name, so it comes straight from the cache once it's there — no waiting on

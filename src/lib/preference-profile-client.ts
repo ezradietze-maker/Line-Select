@@ -7,38 +7,65 @@ import type { PreferenceProfile } from "@/types/preferences";
  * Every call here is only ever made for a signed-in pilot — a guest has no
  * server identity to key a profile by, so the caller (`lib/app-state.tsx`)
  * keeps guests on localStorage alone via `lib/storage.ts` and never reaches
- * this module for them. Every function fails soft (returns null / no-ops)
- * so a network hiccup degrades to "read the local cache" rather than
- * blocking the app.
+ * this module for them. Nothing here throws: each call says what happened,
+ * and "couldn't reach the server" is never mistaken for "nothing saved there".
  */
 
-export async function fetchServerProfile(): Promise<PreferenceProfile | null> {
+/** The version of the server's copy this tab last loaded or saved — sent with each save, so a save made from an older copy is refused, never written over a newer one. */
+let serverVersion: string | null = null;
+
+export type ServerProfileLoad =
+  | { kind: "found"; profile: PreferenceProfile }
+  /** Signed in, and nothing saved on the server yet. */
+  | { kind: "none" }
+  /** Couldn't tell: offline, a server error, a session that lapsed. Never a reason to upload over the server. */
+  | { kind: "unreachable" };
+
+export async function fetchServerProfile(): Promise<ServerProfileLoad> {
   try {
-    const res = await fetch("/api/preference-profile", { credentials: "same-origin" });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.profile ? migrateProfile(data.profile as PreferenceProfile) : null;
+    const res = await fetch("/api/preference-profile", { credentials: "same-origin", cache: "no-store" });
+    if (!res.ok) return { kind: "unreachable" };
+    const data = (await res.json()) as { profile?: PreferenceProfile | null; updatedAt?: string | null };
+    serverVersion = data.updatedAt ?? null;
+    return data.profile ? { kind: "found", profile: migrateProfile(data.profile) } : { kind: "none" };
   } catch {
-    return null;
+    return { kind: "unreachable" };
   }
 }
 
-export async function saveServerProfile(profile: PreferenceProfile): Promise<void> {
+export type ServerProfileSave =
+  | { kind: "saved" }
+  /** Saved from another device since this one loaded it: the newer copy, to merge with. */
+  | { kind: "conflict"; profile: PreferenceProfile | null }
+  | { kind: "failed" };
+
+export async function saveServerProfile(profile: PreferenceProfile): Promise<ServerProfileSave> {
   try {
-    await fetch("/api/preference-profile", {
+    const res = await fetch("/api/preference-profile", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ profile }),
+      body: JSON.stringify({ profile, baseUpdatedAt: serverVersion }),
     });
+    const data = (await res.json().catch(() => ({}))) as { profile?: PreferenceProfile | null; updatedAt?: string | null };
+    if (res.ok) {
+      serverVersion = data.updatedAt ?? serverVersion;
+      return { kind: "saved" };
+    }
+    if (res.status === 409) {
+      serverVersion = data.updatedAt ?? null;
+      return { kind: "conflict", profile: data.profile ? migrateProfile(data.profile) : null };
+    }
+    return { kind: "failed" };
   } catch {
-    // Local cache (lib/storage.ts) already has it — next load retries the server.
+    return { kind: "failed" };
   }
 }
 
 export async function clearServerProfile(): Promise<void> {
   try {
     await fetch("/api/preference-profile", { method: "DELETE", credentials: "same-origin" });
+    serverVersion = null;
   } catch {
     // worst case a stale server profile lingers until the next successful save.
   }

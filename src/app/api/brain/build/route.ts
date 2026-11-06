@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { buildPilotModel } from "@/lib/brain/build-model";
 import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
@@ -35,11 +36,11 @@ export async function POST(request: Request) {
   try {
     const notes = await fleetNotesFor(readCohort(body.cohort));
     const r = await buildPilotModel({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, prior, effort: "high", fleetNotes: notes });
-    await recordSpend(spender, r.usage.costUsd);
+    await Promise.all([recordSpend(spender, r.usage.costUsd), noteActivity("brain-read")]);
     console.log("[brain-build]", { exchanges: exchanges.length, criteria: r.model.criteria.length, dropped: r.dropped.length, costUsd: +r.usage.costUsd.toFixed(3), ms: r.usage.ms });
     return NextResponse.json({ model: r.model, dropped: r.dropped });
   } catch (e) {
-    console.error("[brain-build] failed", e);
+    await reportProblem("brain-build", e, { exchanges: exchanges.length });
     return NextResponse.json({ error: "Couldn't read your answers just now. Please try again." }, { status: 502 });
   }
 }

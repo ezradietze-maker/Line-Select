@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { secretMatches } from "@/lib/server/secret";
+import { sendDailySummary } from "@/lib/server/alerts";
 import { runLearningCycle } from "@/lib/server/learning-runner";
 
 export const runtime = "nodejs";
@@ -16,5 +17,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
   const summary = await runLearningCycle("schedule");
-  return NextResponse.json(summary ?? { skipped: "a run is already in progress" });
+  // The morning email: yesterday's numbers and what this run did. Its arriving each day is the sign this run happens.
+  await sendDailySummary(summary).catch((e) => console.error("[cron] daily summary not sent", e));
+  // A step that failed shows as a failed run on Vercel's cron page, not a quiet success.
+  const failed = Array.isArray(summary?.results) && (summary.results as { error?: unknown }[]).some((r) => r.error);
+  return NextResponse.json(summary ?? { skipped: "a run is already in progress" }, { status: failed ? 500 : 200 });
 }

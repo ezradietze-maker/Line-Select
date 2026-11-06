@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportProblem } from "@/lib/server/alerts";
 import { parseInterviewOutcome } from "@/lib/learning/validate";
 import { afterResponse } from "@/lib/server/after-response";
 import { getCurrentServerUser } from "@/lib/server/auth";
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
   try {
     await saveInterviewOutcome(outcome, hashUser(user.id));
   } catch (e) {
-    console.error("[learning] interview outcome not saved", e);
+    await reportProblem("learning", e, { action: "save interview outcome" });
     return NextResponse.json({ stored: false }, { status: 503 });
   }
   afterResponse(() => maybeLearn("interviews"));

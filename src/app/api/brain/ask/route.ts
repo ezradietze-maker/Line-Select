@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { readAskQuery } from "@/lib/brain/ask-pack";
 import { MAX_PACK_BRIEF } from "@/lib/server/brain-input";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
@@ -24,11 +25,11 @@ export async function POST(request: Request) {
   }
   try {
     const { query, usage } = await readAskQuery({ question: (body.question as string).trim(), packBrief: body.packBrief as string, apiKey });
-    await recordSpend(spender, usage.costUsd);
+    await Promise.all([recordSpend(spender, usage.costUsd), noteActivity("ask")]);
     console.log("[brain-ask]", { conditions: query.conditions.length, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json({ query });
   } catch (e) {
-    console.error("[brain-ask] failed", e);
+    await reportProblem("brain-ask", e);
     return NextResponse.json({ error: "Couldn't read that question just now. Please try again." }, { status: 502 });
   }
 }

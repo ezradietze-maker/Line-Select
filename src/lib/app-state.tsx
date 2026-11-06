@@ -14,7 +14,7 @@ import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/post
 import { clearPendingProfile, loadPendingProfile, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
-import { clearProfileForUser, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
+import { askToKeepStorage, clearProfileForUser, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
@@ -96,6 +96,9 @@ interface AppStateValue extends DataState {
   demoOffer: TradeOffer | null;
   toasts: ToastItem[];
   inboxUnreadCount: number;
+  /** How the signed-in pilot's last profile save went: "merged" with a newer copy from another device, or "failed" (kept on this device, retried). */
+  profileSync: "ok" | "merged" | "failed";
+  handleDismissProfileSync: () => void;
   handleAcceptDemoOffer: () => void;
   handleParsed: (result: ParseBidPackResult) => void;
   handleTrySample: () => void;
@@ -153,6 +156,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [realOffers, setRealOffers] = useState<TradeOffer[]>([]);
   const [seenOfferIds, setSeenOfferIds] = useState<Set<string>>(new Set());
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  /** How the signed-in pilot's last profile save went (see `persistProfile`). */
+  const [profileSync, setProfileSync] = useState<"ok" | "merged" | "failed">("ok");
+  const latestProfileRef = useRef<PreferenceProfile | null>(null);
   const realOffersRef = useRef<TradeOffer[]>([]);
   const knownNotifiableIdsRef = useRef<Set<string> | null>(null);
   const onTradeBoard = usePathname() === "/trade-board";
@@ -339,6 +345,33 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [notifiableOffers]);
 
   useEffect(() => {
+    latestProfileRef.current = state.profile;
+  }, [state.profile]);
+
+  // A save to the account that didn't get through is tried again when the connection comes back, and each minute.
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    if (profileSync !== "failed" || !userId) return;
+    const retry = () => {
+      const profile = latestProfileRef.current;
+      if (!profile) return;
+      void saveProfileForUser(userId, profile).then((r) => {
+        if (r.sync === "saved") setProfileSync("ok");
+        else if (r.sync === "merged") {
+          setState((s) => ({ ...s, profile: r.profile }));
+          setProfileSync("merged");
+        }
+      });
+    };
+    window.addEventListener("online", retry);
+    const timer = setInterval(retry, 60_000);
+    return () => {
+      window.removeEventListener("online", retry);
+      clearInterval(timer);
+    };
+  }, [profileSync, userId]);
+
+  useEffect(() => {
     if (toasts.length === 0) return;
     const timers = toasts.map((toast) =>
       setTimeout(() => {
@@ -382,6 +415,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function handleBidPackConfirmed(newBidPack: BidPack) {
+    askToKeepStorage();
     // Deliberately does NOT clear the existing profile: a new bid pack
     // almost always means a new bidding cycle for a pilot who's used this
     // app before, not a brand-new pilot. The old profile stays in state so
@@ -429,11 +463,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     markLanding();
     router.push("/results");
     captureUsageEvent("interview_completed");
+    persistProfile(confirmed);
+  }
+
+  /**
+   * Saves a profile on this device and, for a signed-in pilot, to their account — and says so when that didn't
+   * work: a guest whose browser refused it (`profileSaveFailed`; local storage is their only copy), an account save
+   * that couldn't get through (`profileSync` "failed", retried below), or one merged with a newer copy from another
+   * device ("merged", and the merged profile is what's shown from then on).
+   */
+  function persistProfile(profile: PreferenceProfile) {
     const signedIn = !!user?.id;
-    saveProfileForUser(user?.id ?? null, confirmed).then((savedLocally) => {
-      // A signed-in pilot's profile also lives on the server, so a local
-      // miss here is cosmetic; for a guest, local storage is the only copy.
-      if (!savedLocally && !signedIn) setState((s) => ({ ...s, profileSaveFailed: true }));
+    void saveProfileForUser(user?.id ?? null, profile).then((r) => {
+      if (!r.savedLocally && !signedIn) setState((s) => ({ ...s, profileSaveFailed: true }));
+      if (r.sync === "merged") {
+        setState((s) => ({ ...s, profile: r.profile }));
+        setProfileSync("merged");
+      } else if (r.sync === "failed") setProfileSync("failed");
+      else if (r.sync === "saved") setProfileSync((p) => (p === "failed" ? "ok" : p));
     });
   }
 
@@ -443,18 +490,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     markLanding();
     router.push("/results");
     captureUsageEvent("interview_completed");
-    const signedIn = !!user?.id;
-    saveProfileForUser(user?.id ?? null, newProfile).then((savedLocally) => {
-      if (!savedLocally && !signedIn) setState((s) => ({ ...s, profileSaveFailed: true }));
-    });
+    persistProfile(newProfile);
   }
 
   function handleUpdateProfile(updated: PreferenceProfile) {
     setState((s) => ({ ...s, profile: updated }));
-    const signedIn = !!user?.id;
-    saveProfileForUser(user?.id ?? null, updated).then((savedLocally) => {
-      if (!savedLocally && !signedIn) setState((s) => ({ ...s, profileSaveFailed: true }));
-    });
+    persistProfile(updated);
   }
 
   /** Tells the fleet learning which interview values the pilot changed, and where those values had come from. */
@@ -507,6 +548,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, profileSaveFailed: false }));
   }
 
+  function handleDismissProfileSync() {
+    setProfileSync((p) => (p === "merged" ? "ok" : p));
+  }
+
   function handleDismissToast(id: string) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }
@@ -517,6 +562,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleAuthenticated(newUser: UserAccount) {
+    askToKeepStorage();
     writeSignedInHint(newUser);
     identifyPilot(newUser.id);
     let theirBidPack = loadBidPack(newUser.id);
@@ -593,6 +639,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     demoOffer,
     toasts,
     inboxUnreadCount,
+    profileSync,
+    handleDismissProfileSync,
     handleAcceptDemoOffer,
     handleParsed,
     handleTrySample,

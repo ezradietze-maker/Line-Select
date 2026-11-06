@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportProblem } from "@/lib/server/alerts";
 import { afterResponse } from "@/lib/server/after-response";
 import { isJsonObject } from "@/lib/server/json-body";
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
@@ -113,7 +114,7 @@ export async function POST(request: Request) {
         });
       }
     } catch (e) {
-      console.error("[forecast] learning record failed", e);
+      await reportProblem("forecast", e, { action: "record" });
     }
   });
 
@@ -148,6 +149,6 @@ export async function DELETE(request: Request) {
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   if (typeof body.packKey !== "string" || !isStringArray(body.lineNumbers, MAX_LINES)) return NextResponse.json({ error: "Missing pack." }, { status: 400 });
   await removeSubmission(body.packKey, body.lineNumbers, user.id);
-  await deleteForecastPrediction(hashUser(user.id), body.packKey).catch((e) => console.error("[forecast] prediction delete failed", e));
+  await deleteForecastPrediction(hashUser(user.id), body.packKey).catch((e) => reportProblem("forecast", e, { action: "delete" }));
   return NextResponse.json({ ok: true });
 }

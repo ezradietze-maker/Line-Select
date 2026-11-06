@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportProblem } from "@/lib/server/alerts";
 import { summarizeHoldHistory } from "@/lib/learning/hold-history";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { hashUser } from "@/lib/server/forecast-store";
@@ -13,7 +14,7 @@ export async function GET() {
   try {
     return NextResponse.json({ history: summarizeHoldHistory(await listPilotHoldRecords(hashUser(user.id))) });
   } catch (e) {
-    console.error("[learning] hold history failed", e);
+    await reportProblem("learning", e, { action: "hold history" });
     return NextResponse.json({ history: null }, { status: 503 });
   }
 }

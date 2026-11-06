@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportProblem } from "@/lib/server/alerts";
 import { airportSearchName, citySearchName } from "@/lib/hotels/airport-names";
 import { isPlausibleMatch, pickBestMatch, readHotelName } from "@/lib/hotels/hotel-names";
 import { cacheKey, getCachedHotel, setCachedHotel } from "@/lib/server/hotel-cache";
@@ -329,7 +330,7 @@ export async function GET(request: Request) {
     return NextResponse.json(result);
   } catch (e) {
     // The detail (Google's own error body) goes to the server log, not the pilot.
-    console.error("[hotels] lookup failed", e);
+    await reportProblem("hotels", e, { code });
     const result: HotelLookupResult = {
       code,
       hotelName,

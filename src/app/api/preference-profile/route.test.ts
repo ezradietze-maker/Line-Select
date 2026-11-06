@@ -6,11 +6,15 @@ const authMocks = vi.hoisted(() => ({ getCurrentServerUser: vi.fn() }));
 vi.mock("@/lib/server/auth", () => authMocks);
 
 const dbMocks = vi.hoisted(() => ({
-  getPreferenceProfile: vi.fn(),
+  getPreferenceProfileRecord: vi.fn(),
   savePreferenceProfile: vi.fn(),
+  savePreferenceProfileOver: vi.fn(),
   deletePreferenceProfile: vi.fn(),
 }));
 vi.mock("@/lib/server/db", () => dbMocks);
+const historyMocks = vi.hoisted(() => ({ keepReplacedVersion: vi.fn() }));
+vi.mock("@/lib/server/profile-history", () => historyMocks);
+vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
 
 import { DELETE, GET, PUT } from "./route";
 
@@ -36,8 +40,10 @@ const SIGNED_IN_USER = { id: "user-1", email: "pilot@example.com", displayName: 
 describe("/api/preference-profile", () => {
   beforeEach(() => {
     authMocks.getCurrentServerUser.mockReset();
-    dbMocks.getPreferenceProfile.mockReset();
+    dbMocks.getPreferenceProfileRecord.mockReset().mockResolvedValue(null);
     dbMocks.savePreferenceProfile.mockReset().mockResolvedValue(undefined);
+    dbMocks.savePreferenceProfileOver.mockReset();
+    historyMocks.keepReplacedVersion.mockReset().mockResolvedValue(undefined);
     dbMocks.deletePreferenceProfile.mockReset().mockResolvedValue(undefined);
   });
 
@@ -46,25 +52,24 @@ describe("/api/preference-profile", () => {
       authMocks.getCurrentServerUser.mockResolvedValue(null);
       const res = await GET();
       expect(res.status).toBe(401);
-      expect(dbMocks.getPreferenceProfile).not.toHaveBeenCalled();
+      expect(dbMocks.getPreferenceProfileRecord).not.toHaveBeenCalled();
     });
 
     it("returns the signed-in pilot's own profile, keyed by their real server-verified id", async () => {
       authMocks.getCurrentServerUser.mockResolvedValue(SIGNED_IN_USER);
       const profile = fakeProfile();
-      dbMocks.getPreferenceProfile.mockResolvedValue(profile);
+      dbMocks.getPreferenceProfileRecord.mockResolvedValue({ profile, updatedAt: "2026-11-05T10:00:00.000Z" });
       const res = await GET();
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ profile });
-      expect(dbMocks.getPreferenceProfile).toHaveBeenCalledWith("user-1");
+      expect(await res.json()).toEqual({ profile, updatedAt: "2026-11-05T10:00:00.000Z" });
+      expect(dbMocks.getPreferenceProfileRecord).toHaveBeenCalledWith("user-1");
     });
 
     it("returns a null profile (not an error) for a signed-in pilot who's never saved one", async () => {
       authMocks.getCurrentServerUser.mockResolvedValue(SIGNED_IN_USER);
-      dbMocks.getPreferenceProfile.mockResolvedValue(null);
       const res = await GET();
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ profile: null });
+      expect(await res.json()).toEqual({ profile: null, updatedAt: null });
     });
   });
 
@@ -91,6 +96,37 @@ describe("/api/preference-profile", () => {
       );
       expect(res.status).toBe(200);
       expect(dbMocks.savePreferenceProfile).toHaveBeenCalledWith("user-1", profile);
+    });
+
+    it("saves over the version the device last saw, and keeps the one it replaced", async () => {
+      authMocks.getCurrentServerUser.mockResolvedValue(SIGNED_IN_USER);
+      const previous = { profile: fakeProfile(), updatedAt: "2026-11-05T10:00:00.000Z" };
+      dbMocks.getPreferenceProfileRecord.mockResolvedValue(previous);
+      dbMocks.savePreferenceProfileOver.mockResolvedValue({ saved: true, updatedAt: "2026-11-05T11:00:00.000Z" });
+      const profile = fakeProfile();
+      const res = await PUT(new Request("http://test", { method: "PUT", body: JSON.stringify({ profile, baseUpdatedAt: previous.updatedAt }) }));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true, updatedAt: "2026-11-05T11:00:00.000Z" });
+      expect(dbMocks.savePreferenceProfileOver).toHaveBeenCalledWith("user-1", profile, previous.updatedAt);
+      expect(historyMocks.keepReplacedVersion).toHaveBeenCalledWith("user-1", previous);
+    });
+
+    it("refuses a save made from an older copy, and hands back the newer one", async () => {
+      authMocks.getCurrentServerUser.mockResolvedValue(SIGNED_IN_USER);
+      const newer = { profile: { ...fakeProfile(), completedAt: "2026-11-05T12:00:00.000Z" }, updatedAt: "2026-11-05T12:00:00.000Z" };
+      dbMocks.getPreferenceProfileRecord.mockResolvedValue(newer);
+      dbMocks.savePreferenceProfileOver.mockResolvedValue({ saved: false, current: newer });
+      const res = await PUT(new Request("http://test", { method: "PUT", body: JSON.stringify({ profile: fakeProfile(), baseUpdatedAt: "2026-11-05T10:00:00.000Z" }) }));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ profile: newer.profile, updatedAt: newer.updatedAt });
+      expect(historyMocks.keepReplacedVersion).not.toHaveBeenCalled();
+    });
+
+    it("answers 503, not a crash, when the database is down", async () => {
+      authMocks.getCurrentServerUser.mockResolvedValue(SIGNED_IN_USER);
+      dbMocks.getPreferenceProfileRecord.mockRejectedValue(new Error("connection refused"));
+      const res = await PUT(new Request("http://test", { method: "PUT", body: JSON.stringify({ profile: fakeProfile(), baseUpdatedAt: null }) }));
+      expect(res.status).toBe(503);
     });
   });
 
