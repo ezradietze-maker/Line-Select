@@ -13,14 +13,14 @@ afterEach(() => {
 });
 
 describe("fleet notes", () => {
-  it("are off unless switched on, without touching the database", async () => {
-    expect(await fleetNotesFor(cohort)).toBeNull();
-    expect(loadActiveModel).not.toHaveBeenCalled();
-  });
-
-  it("are looked up once switched on", async () => {
-    process.env.FLEET_NOTES = "on";
+  it("are looked up by default — each group decides for itself whether its notes are on", async () => {
     expect(await fleetNotesFor(cohort)).toBeNull();
     expect(loadActiveModel).toHaveBeenCalledWith("brain");
+  });
+
+  it("stay out everywhere when the owner sets FLEET_NOTES=off, without touching the database", async () => {
+    process.env.FLEET_NOTES = "off";
+    expect(await fleetNotesFor(cohort)).toBeNull();
+    expect(loadActiveModel).not.toHaveBeenCalled();
   });
 });

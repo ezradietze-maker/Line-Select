@@ -57,8 +57,19 @@ export function structuredParams(opts: StructuredCallOptions, extra: { cacheFres
     system: opts.system,
     messages: [{ role: "user" as const, content }],
     output_config: { effort: opts.effort ?? "high", format: { type: "json_schema", schema: opts.schema } },
-    ...(model.startsWith("claude-fable") ? { betas: ["server-side-fallback-2026-06-01"], fallbacks: [{ model: "claude-opus-4-8" }] } : {}),
+    ...refusalFallback(model),
   };
+}
+
+/**
+ * A request the model declines is re-run on another model inside the same call, instead of failing the pilot's
+ * interview. Sonnet 5.5 takes only Anthropic's "default" routing (it picks the fallback by the reason declined);
+ * Fable keeps its fixed fallback. Other models get none.
+ */
+function refusalFallback(model: string) {
+  if (model.startsWith("claude-fable")) return { betas: ["server-side-fallback-2026-06-01"], fallbacks: [{ model: "claude-opus-4-8" }] };
+  if (model === "claude-sonnet-5-5") return { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const };
+  return {};
 }
 
 /** A structured call's answer, from the model's reply — shared with routed calls. */

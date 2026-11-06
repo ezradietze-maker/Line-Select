@@ -390,7 +390,7 @@ export async function listAwardHistoryRecords(filter: {
 
 export async function createAwardHistoryRecord(
   record: AwardHistoryRecord,
-  link: { pilotHash?: string | null; packKey?: string | null; awardedChoice?: number | null } = {}
+  link: { pilotHash?: string | null; packKey?: string | null; awardedChoice?: number | null; monthFeel?: string | null; brainVersion?: number | null; notesUsed?: boolean | null } = {}
 ): Promise<void> {
   await db.transaction(async (tx) => {
     // One report per pilot per pack: a corrected award replaces the earlier one rather than standing beside it
@@ -417,6 +417,10 @@ export async function createAwardHistoryRecord(
       totalCreditHours: record.totalCreditHours,
       totalTafbHours: record.totalTafbHours,
       submittedAt: new Date(record.submittedAt),
+      monthFeel: link.monthFeel ?? null,
+      checkedInAt: link.monthFeel ? new Date() : null,
+      brainVersion: link.brainVersion ?? null,
+      notesUsed: link.notesUsed ?? null,
     });
   });
 }

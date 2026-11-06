@@ -2,12 +2,12 @@ import { fleetNotes, resolveBrainCohort, type BrainFleetModel } from "@/lib/lear
 import { loadActiveModel } from "@/lib/server/learning-store";
 
 /**
- * Whether fleet notes reach the brain at all. Off unless `FLEET_NOTES=on`: the notes are built partly from the brain's
- * own earlier reads, so feeding them back nudges every pilot toward their group's average, and that average grows
- * stronger each time. They stay off until they're rebuilt from what pilots themselves said and did, and checked.
+ * Whether fleet notes may reach the brain at all. They decide for themselves, group by group, whether they're
+ * trustworthy (`decideNotes` in brain-learning.ts); `FLEET_NOTES=off` is the owner's override that keeps them out
+ * everywhere, whatever the groups decided.
  */
 export function fleetNotesEnabled(): boolean {
-  return process.env.FLEET_NOTES === "on";
+  return process.env.FLEET_NOTES !== "off";
 }
 
 /**

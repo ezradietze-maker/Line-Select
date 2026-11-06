@@ -1,10 +1,11 @@
-import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
 import { decodeRanking } from "@/lib/forecast/ranking-codec";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
 import type { InterviewOutcome } from "@/lib/learning/interview-outcome";
 import type { BrainOutcome } from "@/lib/learning/brain-learning";
 import type { HoldRecord } from "@/lib/learning/hold-history";
+import { getJson, setJson } from "@/lib/server/kv";
 import type { PackHistory, ReportedAward, StoredPrediction } from "@/lib/learning/forecast-learning";
 import { bidPercentile } from "@/lib/learning/cohort";
 import { db } from "@/lib/server/postgres";
@@ -195,18 +196,22 @@ export async function loadOutcomes(): Promise<DatedOutcome[]> {
   return latest.reverse().map((r) => ({ at: r.at, outcome: r.payload }));
 }
 
-export async function loadBrainOutcomes(): Promise<BrainOutcome[]> {
+/** Fleet learning reads the last year of interviews: what pilots cared about two seasons of packs ago is a weak guide. */
+const BRAIN_OUTCOME_WINDOW_DAYS = 365;
+
+export async function loadBrainOutcomes(now = new Date()): Promise<BrainOutcome[]> {
+  const since = new Date(now.getTime() - BRAIN_OUTCOME_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const rows = await db
-    .select({ payload: interviewOutcomes.payload, pilotHash: interviewOutcomes.pilotHash })
+    .select({ payload: interviewOutcomes.payload, pilotHash: interviewOutcomes.pilotHash, at: interviewOutcomes.createdAt })
     .from(interviewOutcomes)
-    .where(eq(interviewOutcomes.modelVersion, BRAIN_OUTCOME_VERSION))
+    .where(and(eq(interviewOutcomes.modelVersion, BRAIN_OUTCOME_VERSION), gt(interviewOutcomes.createdAt, since)))
     .orderBy(desc(interviewOutcomes.createdAt))
     .limit(MAX_OUTCOMES);
   // Signed-in pilots only, and each pilot's latest per base, aircraft and seat: the groups count pilots, so one
-  // pilot interviewing every month still counts once (`MIN_PILOTS`).
+  // pilot interviewing every month still counts once (`MIN_PILOTS`), and no pilot weighs more than any other.
   const seen = new Set<string>();
   return rows
-    .map((r) => ({ o: r.payload as unknown as BrainOutcome, pilotHash: r.pilotHash }))
+    .map((r) => ({ o: r.payload as unknown as BrainOutcome, pilotHash: r.pilotHash, at: r.at }))
     .filter(({ o, pilotHash }) => {
       if (o.v !== 2) return false;
       if (!pilotHash) return false;
@@ -215,8 +220,38 @@ export async function loadBrainOutcomes(): Promise<BrainOutcome[]> {
       seen.add(key);
       return true;
     })
-    .map(({ o }) => o)
+    .map(({ o, pilotHash, at }) => ({ ...o, pilot: pilotHash!, at: at.toISOString() }))
     .reverse();
+}
+
+/** Flown months pilots checked in on, with which brain and whether notes ranked them — the real-outcome signal. */
+export interface FlownMonth {
+  base: string;
+  aircraft: string;
+  seat: string;
+  month: string;
+  feel: "better" | "asExpected" | "worse";
+  brainVersion: number | null;
+  notesUsed: boolean | null;
+  awardedChoice: number | null;
+}
+
+export async function loadFlownMonths(): Promise<FlownMonth[]> {
+  const rows = await db
+    .select({
+      base: awardHistoryRecords.base,
+      aircraft: awardHistoryRecords.aircraft,
+      seat: awardHistoryRecords.seat,
+      month: awardHistoryRecords.month,
+      feel: awardHistoryRecords.monthFeel,
+      brainVersion: awardHistoryRecords.brainVersion,
+      notesUsed: awardHistoryRecords.notesUsed,
+      awardedChoice: awardHistoryRecords.awardedChoice,
+    })
+    .from(awardHistoryRecords)
+    .where(and(isNotNull(awardHistoryRecords.pilotHash), isNotNull(awardHistoryRecords.monthFeel)))
+    .limit(MAX_OUTCOMES);
+  return rows.filter((r): r is FlownMonth => r.feel === "better" || r.feel === "asExpected" || r.feel === "worse");
 }
 
 export async function loadCorrections(): Promise<CorrectionEvent[]> {
@@ -306,7 +341,47 @@ export interface StoredModel<T> {
 const CACHE_MS = 5 * 60 * 1000;
 const cache = new Map<ModelKind, { at: number; model: StoredModel<unknown> | null }>();
 
+const switchKey = (kind: ModelKind) => `line-select:learner-off:${kind}`;
+
+/** Whether the owner has switched a learner off (`/api/admin/learning`): its model is then never used, whatever it learned. */
+export async function isLearnerOff(kind: ModelKind): Promise<boolean> {
+  try {
+    return (await getJson<boolean>(switchKey(kind))) === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function setLearnerOff(kind: ModelKind, off: boolean): Promise<void> {
+  await setJson(switchKey(kind), off);
+  cache.delete(kind);
+}
+
+/**
+ * Undo: the version in use is retired and the one before it brought back. Returns the two versions, or null when
+ * there's no earlier version to go back to. Every version is kept, so this can be repeated.
+ */
+export async function rollBackModel(kind: ModelKind): Promise<{ from: string; to: string } | null> {
+  const result = await db.transaction(async (tx) => {
+    const [current] = await tx.select().from(learnedModels).where(and(eq(learnedModels.kind, kind), eq(learnedModels.active, true))).orderBy(desc(learnedModels.createdAt)).limit(1);
+    if (!current) return null;
+    const [previous] = await tx
+      .select()
+      .from(learnedModels)
+      .where(and(eq(learnedModels.kind, kind), eq(learnedModels.active, false), lt(learnedModels.createdAt, current.createdAt)))
+      .orderBy(desc(learnedModels.createdAt))
+      .limit(1);
+    if (!previous) return null;
+    await tx.update(learnedModels).set({ active: false }).where(eq(learnedModels.id, current.id));
+    await tx.update(learnedModels).set({ active: true }).where(eq(learnedModels.id, previous.id));
+    return { from: current.version, to: previous.version };
+  });
+  cache.delete(kind);
+  return result;
+}
+
 export async function loadActiveModel<T>(kind: ModelKind, { fresh = false } = {}): Promise<StoredModel<T> | null> {
+  if (await isLearnerOff(kind)) return null;
   const hit = cache.get(kind);
   if (!fresh && hit && Date.now() - hit.at < CACHE_MS) return hit.model as StoredModel<T> | null;
   const [row] = await db
