@@ -71,7 +71,9 @@ import {
   type DimensionUpdate,
   type PairwiseJudgment,
 } from "@/lib/rank-learning";
-import { addDragChoices, choicesFromDrag, describeChanges, withModel, withoutDrag } from "@/lib/brain/profile-model";
+import { addDragChoices, choicesFromSwap, describeChanges, withModel, withoutDrag } from "@/lib/brain/profile-model";
+import { describeSwap, explainSwap } from "@/lib/brain/explain-swap";
+import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { applyPlacements, loadPlacements, placementFromDrag, prunePlacements, savePlacements, type Placement } from "@/lib/line-placements";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
@@ -633,26 +635,19 @@ export function ResultsView({
     };
 
     // A pilot ranked by their own model: the drag is a set of line choices, and their priorities refit to them.
-    if (profile.pilotModel) {
-      const passed = judgments.map((j) => ({ favored: j.favored.line.lineNumber, overtaken: j.overtaken.line.lineNumber }));
-      const added = choicesFromDrag(passed, swapId);
-      const choices = addDragChoices(profile.brainInterview?.choices ?? [], added);
-      const { profile: next, changes, heldByLimit } = withModel(profile, bidPack, { choices }, packMetrics ?? undefined);
+    if (profile.pilotModel && placement) {
+      const numberOf = new Map(sorted.map((r) => [r.line.id, r.line.lineNumber]));
+      const order = placement.order.map((id) => numberOf.get(id)!);
+      const higher = order[0];
+      const lower = order[order.length - 1];
+      // Why, from the model the pilot was looking at when they swapped.
+      const before = new Map(scorePackV2(bidPack, profile.pilotModel, { pack: packMetrics ?? undefined }).map((s) => [s.lineNumber, s]));
+      const why = before.has(higher) && before.has(lower) ? explainSwap(before.get(higher)!, before.get(lower)!) : null;
+      const choices = addDragChoices(profile.brainInterview?.choices ?? [], choicesFromSwap(order, swapId));
+      const { profile: next, changes } = withModel(profile, bidPack, { choices }, packMetrics ?? undefined);
       remember(next);
-      const said = describeChanges(changes);
-      // Every pair this swap made is decided by a dealbreaker: the limit is what the pilot overrode, not a priority.
-      const limited = heldByLimit.filter((c) => c.dragId === swapId);
-      const cappedLine =
-        limited.length === added.length
-          ? sorted.find((r) => (r.line.lineNumber === limited[0]?.preferred || r.line.lineNumber === limited[0]?.other) && r.violatedDealbreakers.length > 0)
-          : undefined;
-      setLearnMessage(
-        cappedLine
-          ? `${kept} Line ${cappedLine.line.lineNumber} breaks your limit on ${cappedLine.violatedDealbreakers[0].label.toLowerCase()}, so your priorities haven't changed — if that limit isn't a real dealbreaker, change it under Your priorities.`
-          : said
-            ? `${kept} Learned from it — ${said}.`
-            : `${kept} Nothing you've told us explains it yet — tell us why under Your priorities, and it'll count.`
-      );
+      const said = why?.verdict === "limit" || why?.verdict === "agreed" ? null : describeChanges(changes);
+      setLearnMessage([kept, why ? describeSwap(why, higher, lower) : null, said ? `Now ${said}.` : null].filter(Boolean).join(" "));
       return;
     }
 

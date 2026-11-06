@@ -1,5 +1,6 @@
 import { applyCityRatings } from "@/lib/brain/city-ratings";
-import { fitTripWeights, fitWeightsToChoices, shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
+import { fitTripWeights, shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
+import { learnFromChoices } from "@/lib/brain/reorder-learner";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
@@ -32,7 +33,7 @@ export function deriveModel(
   tripChoices: TripChoice[] = []
 ): { model: PilotModel; changes: WeightChange[]; heldByLimit: LineChoice[] } {
   const rated = applyCityRatings(base, profile.cityRatings);
-  const fit = fitWeightsToChoices(bidPack, rated, choices, pack);
+  const fit = learnFromChoices(bidPack, rated, choices, pack);
   const lineModel = applyPins(fit.model, pins);
   const tripWeights = tripChoices.length ? fitTripWeights(bidPack, lineModel, tripChoices, pack).tripWeights : undefined;
   return { model: { ...lineModel, tripWeights }, changes: fit.changes, heldByLimit: fit.heldByLimit };
@@ -82,6 +83,27 @@ export function withModel(
  */
 export function choicesFromDrag(passed: { favored: string; overtaken: string }[], dragId?: string): LineChoice[] {
   return passed.map((p) => ({ preferred: p.favored, other: p.overtaken, strength: "slightly" as const, direct: true, ...(dragId ? { dragId } : {}) }));
+}
+
+/**
+ * A swap on the results, as line choices: `order` is the run of lines from the higher of the two swapped lines to the
+ * lower, as the pilot left it. The line now on top was put above everything in the run, and the line now at the bottom
+ * below everything — the lines between stayed where they were, so they say only that much. The first and last line
+ * appear in the most pairs, which is how the learner tells the swapped pair apart (`swapPairWeights`).
+ */
+export function choicesFromSwap(order: string[], dragId: string): LineChoice[] {
+  if (order.length < 2) return [];
+  const top = order[0];
+  const bottom = order[order.length - 1];
+  const between = order.slice(1, -1);
+  return choicesFromDrag(
+    [
+      { favored: top, overtaken: bottom },
+      ...between.map((l) => ({ favored: top, overtaken: l })),
+      ...between.map((l) => ({ favored: l, overtaken: bottom })),
+    ],
+    dragId
+  );
 }
 
 /** New drag choices joined to the pilot's earlier ones. The latest word on two lines wins: an older drag that put them the other way round is dropped. */
