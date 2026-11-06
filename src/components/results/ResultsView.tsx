@@ -71,7 +71,8 @@ import {
   type DimensionUpdate,
   type PairwiseJudgment,
 } from "@/lib/rank-learning";
-import { choicesFromDrag, describeChanges, withModel } from "@/lib/brain/profile-model";
+import { addDragChoices, choicesFromDrag, describeChanges, withModel, withoutDrag } from "@/lib/brain/profile-model";
+import { applyPlacements, loadPlacements, placementFromDrag, prunePlacements, savePlacements, type Placement } from "@/lib/line-placements";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
@@ -211,6 +212,11 @@ export function ResultsView({
   const [view, setView] = useState<"all" | "shortlist" | "realistic">("all");
   const [showHidden, setShowHidden] = useState(false);
   const [marks, setMarks] = useState<LineMarks>(() => loadLineMarks(userId, bidPack.id));
+  // Lines the pilot swapped by hand stay where they put them (see `lib/line-placements.ts`).
+  const [placements, setPlacements] = useState<Placement[]>(() => loadPlacements(userId, bidPack.id));
+  // The latest swap, with the profile from just before it and just after: undoing it while nothing else has changed
+  // puts back exactly what the pilot had.
+  const [lastSwap, setLastSwap] = useState<{ id: string; before: PreferenceProfile; after: PreferenceProfile } | null>(null);
   const [pageState, setPageState] = useState({ key: "", shown: PAGE_SIZE });
   // Which lines are open under their strips — as many as the pilot likes, to read side by side.
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
@@ -245,6 +251,8 @@ export function ResultsView({
   if (marksKey !== marksFor) {
     setMarksFor(marksKey);
     setMarks(loadLineMarks(userId, bidPack.id));
+    setPlacements(loadPlacements(userId, bidPack.id));
+    setLastSwap(null);
   }
 
   useEffect(() => {
@@ -341,10 +349,15 @@ export function ResultsView({
   // keeps this period's entry current.
   const [previousPeriodSnapshot] = useState(() => loadPreviousPeriodSnapshot(userId, bidPack.month));
 
-  const ranked = useMemo(
+  const scoredLines = useMemo(
     () => rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined),
     [bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
   );
+  // Placements for lines that no longer exist never leak in, as with marks.
+  const validPlacements = useMemo(() => prunePlacements(placements, new Set(bidPack.lines.map((l) => l.id))), [placements, bidPack]);
+  // The pilot's order: the brain's ranking with every swap they made kept where they made it. Rank numbers, the bid
+  // order and the forecast all follow it — it's what they'll bid.
+  const ranked = useMemo(() => applyPlacements(scoredLines, validPlacements, (r) => r.line.id), [scoredLines, validPlacements]);
   const rankedIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
   // Every trip's own score, from the same priorities that rank the lines — shown on each trip in a line's trip list.
   const tripScores = useMemo(() => (pilotModel ? scoreTripsV2(bidPack, pilotModel, { flights: flights ?? undefined, onLineScale: true }) : null), [bidPack, pilotModel, flights]);
@@ -354,6 +367,17 @@ export function ResultsView({
       setMarks((prev) => {
         const next = fn(prev);
         saveLineMarks(userId, bidPack.id, next);
+        return next;
+      });
+    },
+    [userId, bidPack.id]
+  );
+
+  const updatePlacements = useCallback(
+    (fn: (p: Placement[]) => Placement[]) => {
+      setPlacements((prev) => {
+        const next = fn(prev);
+        savePlacements(userId, bidPack.id, next);
         return next;
       });
     },
@@ -568,7 +592,8 @@ export function ResultsView({
 
   useEffect(() => {
     if (!learnMessage) return;
-    const timer = setTimeout(() => setLearnMessage(null), 6000);
+    // Long enough to read, and to undo.
+    const timer = setTimeout(() => setLearnMessage(null), 10000);
     return () => clearTimeout(timer);
   }, [learnMessage]);
 
@@ -600,18 +625,38 @@ export function ResultsView({
     if (fromIndex === -1 || toIndex === -1) return;
 
     const judgments = buildJudgments(sorted, fromIndex, toIndex);
+    // The two lines trade places and stay there, whatever the brain makes of it.
+    const swapId = `swap-${Date.now().toString(36)}`;
+    const placement = placementFromDrag(sorted.map((r) => r.line.id), fromIndex, toIndex, swapId);
+    if (placement) updatePlacements((p) => [...p, placement]);
+    const moved = sorted[fromIndex].line.lineNumber;
+    const target = sorted[toIndex].line.lineNumber;
+    const kept = `Swapped ${moved} and ${target} — they'll stay that way.`;
+    const remember = (next: PreferenceProfile) => {
+      onUpdateProfile(next);
+      setLastSwap({ id: swapId, before: profile, after: next });
+    };
 
     // A pilot ranked by their own model: the drag is a set of line choices, and their priorities refit to them.
     if (profile.pilotModel) {
       const passed = judgments.map((j) => ({ favored: j.favored.line.lineNumber, overtaken: j.overtaken.line.lineNumber }));
-      const choices = [...(profile.brainInterview?.choices ?? []), ...choicesFromDrag(passed)];
-      const { profile: next, changes } = withModel(profile, bidPack, { choices }, packMetrics ?? undefined);
-      onUpdateProfile(next);
+      const added = choicesFromDrag(passed, swapId);
+      const choices = addDragChoices(profile.brainInterview?.choices ?? [], added);
+      const { profile: next, changes, heldByLimit } = withModel(profile, bidPack, { choices }, packMetrics ?? undefined);
+      remember(next);
       const said = describeChanges(changes);
+      // Every pair this swap made is decided by a dealbreaker: the limit is what the pilot overrode, not a priority.
+      const limited = heldByLimit.filter((c) => c.dragId === swapId);
+      const cappedLine =
+        limited.length === added.length
+          ? sorted.find((r) => (r.line.lineNumber === limited[0]?.preferred || r.line.lineNumber === limited[0]?.other) && r.violatedDealbreakers.length > 0)
+          : undefined;
       setLearnMessage(
-        said
-          ? `Got it — ${said}.`
-          : "Noted — but nothing you've told us explains that move yet. Tell us why under Your priorities, and it'll count."
+        cappedLine
+          ? `${kept} Line ${cappedLine.line.lineNumber} breaks your limit on ${cappedLine.violatedDealbreakers[0].label.toLowerCase()}, so your priorities haven't changed — if that limit isn't a real dealbreaker, change it under Your priorities.`
+          : said
+            ? `${kept} Learned from it — ${said}.`
+            : `${kept} Nothing you've told us explains it yet — tell us why under Your priorities, and it'll count.`
       );
       return;
     }
@@ -619,9 +664,8 @@ export function ResultsView({
     const result = learnFromReorder(profile, implicitValuesByLine, judgments);
 
     if (result.updates.length === 0) {
-      setLearnMessage(
-        "Noted — but those lines look too similar on what I'm tracking to tell what to adjust. Try a few more corrections."
-      );
+      setLastSwap({ id: swapId, before: profile, after: profile });
+      setLearnMessage(`${kept} Those lines look too similar on what I'm tracking to tell what to adjust.`);
       return;
     }
 
@@ -629,13 +673,13 @@ export function ResultsView({
     // judgment already made the model a little smarter before anyone
     // answers anything. The micro-prompt only ever adds a confidence bonus
     // on top, never gates whether learning happened at all (Section 5.2).
-    onUpdateProfile({
+    remember({
       ...profile,
       weights: result.weights,
       implicitWeights: result.implicitWeights,
       implicitConfidence: result.implicitConfidence,
     });
-    setLearnMessage(describeLearn(result.updates));
+    setLearnMessage(`${kept} ${describeLearn(result.updates)}`);
 
     if (result.mostSurprising && result.maxSurprise >= SURPRISE_THRESHOLD && promptCount < MAX_PROMPTS_PER_SESSION) {
       const pairId = [result.mostSurprising.favored.line.id, result.mostSurprising.overtaken.line.id]
@@ -647,6 +691,29 @@ export function ResultsView({
         setAskedPairIds((prev) => new Set(prev).add(pairId));
       }
     }
+  }
+
+  /**
+   * Takes back a swap: the lines go back, and so does what the brain learned from it. Right after the swap, with nothing
+   * else changed since, the profile goes back exactly; otherwise the swap's line choices come out and the model refits
+   * (a profile from the older interview keeps what it learned — its weights carry no record of which drag moved them).
+   */
+  function undoSwap(id: string) {
+    updatePlacements((p) => p.filter((x) => x.id !== id));
+    setLearnMessage(null);
+    if (lastSwap?.id === id && lastSwap.after === profile) {
+      if (lastSwap.before !== profile) onUpdateProfile(lastSwap.before);
+    } else if (profile.pilotModel && profile.brainInterview?.choices.some((c) => c.dragId === id)) {
+      onUpdateProfile(withModel(profile, bidPack, { choices: withoutDrag(profile.brainInterview.choices, id) }, packMetrics ?? undefined).profile);
+    }
+    if (lastSwap?.id === id) setLastSwap(null);
+  }
+
+  /** Puts the list back in the brain's order. What it learned from the swaps stays; undo a swap to take that back too. */
+  function clearPlacements() {
+    updatePlacements(() => []);
+    setLastSwap(null);
+    setLearnMessage(null);
   }
 
   function handlePromptResolved(reinforcedProfile: PreferenceProfile | null) {
@@ -731,8 +798,13 @@ export function ResultsView({
       )}
 
       {learnMessage && !promptJudgment && (
-        <div className="mt-4 flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent animate-fade-in">
-          {learnMessage}
+        <div role="status" className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent animate-fade-in">
+          <span>{learnMessage}</span>
+          {lastSwap && validPlacements.some((p) => p.id === lastSwap.id) && (
+            <button type="button" onClick={() => undoSwap(lastSwap.id)} className="shrink-0 font-semibold underline underline-offset-2 hover:text-ink print:hidden">
+              Undo
+            </button>
+          )}
         </div>
       )}
 
@@ -909,10 +981,24 @@ export function ResultsView({
 
           {dragEnabled && (
             <p className="mt-2 hidden text-xs text-ink-faint sm:block print:hidden">
-              Ranked something wrong? Drag a line by its handle onto another to swap &mdash; each swap teaches Line
-              Select what you actually care about. Press <kbd className="rounded border border-hairline px-1 font-mono">?</kbd> for
-              keyboard shortcuts.
+              Ranked something wrong? Drag a line by its handle onto another to swap them &mdash; they stay where you put
+              them, and each swap teaches Line Select what you actually care about. Press{" "}
+              <kbd className="rounded border border-hairline px-1 font-mono">?</kbd> for keyboard shortcuts.
             </p>
+          )}
+
+          {dragEnabled && validPlacements.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted print:hidden">
+              <span>
+                {validPlacements.length === 1 ? "1 swap" : `${validPlacements.length} swaps`} of yours kept in this order.
+              </span>
+              <button type="button" onClick={() => undoSwap(validPlacements[validPlacements.length - 1].id)} className="font-semibold text-accent underline-offset-2 hover:underline">
+                Undo last swap
+              </button>
+              <button type="button" onClick={clearPlacements} className="font-semibold text-accent underline-offset-2 hover:underline">
+                Back to Line Select&rsquo;s order
+              </button>
+            </div>
           )}
 
           <DndContext

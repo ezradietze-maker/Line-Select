@@ -1,5 +1,5 @@
 import { applyCityRatings } from "@/lib/brain/city-ratings";
-import { fitTripWeights, fitWeightsToChoices, type WeightChange } from "@/lib/brain/fit-choices";
+import { fitTripWeights, fitWeightsToChoices, shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
@@ -30,12 +30,12 @@ export function deriveModel(
   pack?: PackMetrics,
   pins: Record<string, number> = {},
   tripChoices: TripChoice[] = []
-): { model: PilotModel; changes: WeightChange[] } {
+): { model: PilotModel; changes: WeightChange[]; heldByLimit: LineChoice[] } {
   const rated = applyCityRatings(base, profile.cityRatings);
   const fit = fitWeightsToChoices(bidPack, rated, choices, pack);
   const lineModel = applyPins(fit.model, pins);
   const tripWeights = tripChoices.length ? fitTripWeights(bidPack, lineModel, tripChoices, pack).tripWeights : undefined;
-  return { model: { ...lineModel, tripWeights }, changes: fit.changes };
+  return { model: { ...lineModel, tripWeights }, changes: fit.changes, heldByLimit: fit.heldByLimit };
 }
 
 /** A pinned priority counts exactly what the pilot set, relative to their strongest unpinned one ("Top" ties it). */
@@ -55,18 +55,16 @@ export function withModel(
   bidPack: BidPack,
   update: { base?: PilotModel; choices?: LineChoice[]; cityRatings?: PreferenceProfile["cityRatings"]; pins?: Record<string, number> },
   pack?: PackMetrics
-): { profile: PreferenceProfile; changes: WeightChange[] } {
+): { profile: PreferenceProfile; changes: WeightChange[]; heldByLimit: LineChoice[] } {
   const base = update.base ?? baseModelOf(profile);
-  if (!base) return { profile, changes: [] };
+  if (!base) return { profile, changes: [], heldByLimit: [] };
   const choices = update.choices ?? profile.brainInterview?.choices ?? [];
   const next = { ...profile, ...(update.cityRatings ? { cityRatings: update.cityRatings } : {}) };
   // Changes are reported against the model the pilot was looking at a moment ago.
   const before = profile.pilotModel ?? base;
   const pins = update.pins ?? profile.brainInterview?.pins ?? {};
-  const { model } = deriveModel(bidPack, base, next, choices, pack, pins, profile.brainInterview?.tripChoices ?? []);
-  const changes = model.criteria
-    .map((c) => ({ criterionId: c.id, label: c.label, from: before.criteria.find((x) => x.id === c.id)?.weight ?? 0, to: c.weight }))
-    .filter((x) => Math.abs(x.to - x.from) >= 0.03);
+  const { model, heldByLimit } = deriveModel(bidPack, base, next, choices, pack, pins, profile.brainInterview?.tripChoices ?? []);
+  const changes = shareChanges(before, model);
   return {
     profile: {
       ...next,
@@ -74,15 +72,30 @@ export function withModel(
       brainInterview: { exchanges: profile.brainInterview?.exchanges ?? [], ...profile.brainInterview, choices, reviewedModel: base, pins },
     },
     changes,
+    heldByLimit,
   };
 }
 
-/** A drag on the results: the moved line was put above (or below) each line it passed — one choice per line passed. */
-export function choicesFromDrag(passed: { favored: string; overtaken: string }[]): LineChoice[] {
-  return passed.map((p) => ({ preferred: p.favored, other: p.overtaken, strength: "slightly" as const, direct: true }));
+/**
+ * A drag on the results: the moved line was put above (or below) each line it passed — one choice per line passed,
+ * tagged with the drag (when given) so undoing it takes them back.
+ */
+export function choicesFromDrag(passed: { favored: string; overtaken: string }[], dragId?: string): LineChoice[] {
+  return passed.map((p) => ({ preferred: p.favored, other: p.overtaken, strength: "slightly" as const, direct: true, ...(dragId ? { dragId } : {}) }));
 }
 
-/** "Counting more: …; less: …" — what a change did to the pilot's priorities, in a sentence. */
+/** New drag choices joined to the pilot's earlier ones. The latest word on two lines wins: an older drag that put them the other way round is dropped. */
+export function addDragChoices(existing: LineChoice[], added: LineChoice[]): LineChoice[] {
+  const reversed = new Set(added.map((c) => `${c.other}>${c.preferred}`));
+  return [...existing.filter((c) => !(c.direct && reversed.has(`${c.preferred}>${c.other}`))), ...added];
+}
+
+/** The pilot's choices without the ones a drag added — undoing that drag. */
+export function withoutDrag(choices: LineChoice[], dragId: string): LineChoice[] {
+  return choices.filter((c) => c.dragId !== dragId);
+}
+
+/** "Counting more: …; less: …" — what a change did to the pilot's priorities (each one's share of all the weight), in a sentence. */
 export function describeChanges(changes: WeightChange[]): string | null {
   const up = changes.filter((c) => c.to > c.from).sort((a, b) => b.to - b.from - (a.to - a.from)).slice(0, 2);
   const down = changes.filter((c) => c.to < c.from).sort((a, b) => a.to - a.from - (b.to - b.from)).slice(0, 2);

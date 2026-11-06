@@ -75,6 +75,23 @@ export interface WeightChange {
   to: number;
 }
 
+/**
+ * How each priority's pull changed between two models, as its share of all the weight. Weights are kept relative to the
+ * strongest priority, so when the strongest one moves every other weight moves with it on paper; shares are what decide
+ * how lines compare, so only a real change in a priority's share is worth telling the pilot about.
+ */
+export function shareChanges(before: PilotModel, after: PilotModel, minRelative = 0.08): WeightChange[] {
+  const share = (m: PilotModel) => {
+    const total = m.criteria.reduce((a, c) => a + criterionWeight(c), 0) || 1;
+    return new Map(m.criteria.map((c) => [c.id, criterionWeight(c) / total]));
+  };
+  const was = share(before);
+  const now = share(after);
+  return after.criteria
+    .map((c) => ({ criterionId: c.id, label: c.label, from: was.get(c.id) ?? 0, to: now.get(c.id) ?? 0 }))
+    .filter((x) => Math.abs(x.to - x.from) >= 0.005 && Math.abs(x.to - x.from) >= minRelative * Math.max(x.from, x.to));
+}
+
 const softplus = (x: number) => (x > 30 ? x : Math.log1p(Math.exp(x)));
 
 export interface LineFitOptions {
@@ -88,25 +105,32 @@ export function fitWeightsToChoices(
   choices: LineChoice[],
   pack: PackMetrics = prepareMetrics(bidPack),
   options: LineFitOptions = {}
-): { model: PilotModel; changes: WeightChange[]; agreedBefore: number; agreedAfter: number } {
-  // One verdict per two lines: a line pair and a bid check can land on the same two, and counting both doubled whatever
-  // that one answer said (a simulated commuter's one off answer, counted twice, cut his line agreement 0.84 → 0.75).
+): { model: PilotModel; changes: WeightChange[]; agreedBefore: number; agreedAfter: number; heldByLimit: LineChoice[] } {
+  // One verdict per two lines from the interview: a line pair and a bid check can land on the same two, and counting
+  // both doubled whatever that one answer said (a simulated commuter's one off answer, counted twice, cut his line
+  // agreement 0.84 → 0.75). A drag is the pilot acting on their own list, so each one counts.
   const seenPair = new Set<string>();
-  const usable = choices.filter((c) => {
+  const once = choices.filter((c) => {
     if (c.preferred === c.other) return false;
+    if (c.direct) return true;
     const k = [c.preferred, c.other].sort().join("|");
     if (seenPair.has(k)) return false;
     seenPair.add(k);
     return true;
   });
   const scored = new Map(scorePackV2(bidPack, model, { pack }).map((s) => [s.lineNumber, s]));
+  // Where only one of the two lines breaks a dealbreaker, the cap decides the pair, not the weights: putting such a line
+  // above a clean one says something about the limit, and no reweighting can explain it, so it's left out of the fit.
+  const capped = (line: string) => (scored.get(line)?.violations.length ?? 0) > 0;
+  const heldByLimit = once.filter((c) => scored.has(c.preferred) && scored.has(c.other) && capped(c.preferred) !== capped(c.other));
+  const usable = once.filter((c) => !heldByLimit.includes(c));
   const agreement = (m: PilotModel) => {
     const byLine = new Map(scorePackV2(bidPack, m, { pack }).map((s) => [s.lineNumber, s.score]));
     return usable.filter((c) => (byLine.get(c.preferred) ?? 0) > (byLine.get(c.other) ?? 0)).length;
   };
   const agreedBefore = usable.filter((c) => (scored.get(c.preferred)?.score ?? 0) > (scored.get(c.other)?.score ?? 0)).length;
   const pairs = usable.filter((c) => scored.has(c.preferred) && scored.has(c.other));
-  if (pairs.length === 0 || model.criteria.length === 0) return { model, changes: [], agreedBefore, agreedAfter: agreedBefore };
+  if (pairs.length === 0 || model.criteria.length === 0) return { model, changes: [], agreedBefore, agreedAfter: agreedBefore, heldByLimit };
 
   // Each line's shortfall² on every criterion, and whether it was measured (unmeasured counts half, as in scoring).
   const ids = model.criteria.map((c) => c.id);
@@ -126,11 +150,8 @@ export function fitWeightsToChoices(
   const fitted: PilotModel = { ...model, criteria: model.criteria.map((c, i) => ({ ...c, weight: raw[i] / top })) };
   const agreedAfter = agreement(fitted);
   // Only keep the fit if it explains the choices at least as well.
-  if (agreedAfter < agreedBefore) return { model, changes: [], agreedBefore, agreedAfter: agreedBefore };
-  const changes = fitted.criteria
-    .map((c, i) => ({ criterionId: c.id, label: c.label, from: model.criteria[i].weight, to: c.weight }))
-    .filter((x) => Math.abs(x.to - x.from) >= 0.02);
-  return { model: fitted, changes, agreedBefore, agreedAfter };
+  if (agreedAfter < agreedBefore) return { model, changes: [], agreedBefore, agreedAfter: agreedBefore, heldByLimit };
+  return { model: fitted, changes: shareChanges(model, fitted), agreedBefore, agreedAfter, heldByLimit };
 }
 
 interface Shortfall {

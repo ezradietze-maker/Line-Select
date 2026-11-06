@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseModelOf, choicesFromDrag, describeChanges, withModel } from "@/lib/brain/profile-model";
+import { addDragChoices, baseModelOf, choicesFromDrag, describeChanges, withModel, withoutDrag } from "@/lib/brain/profile-model";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
@@ -27,6 +27,15 @@ describe("keeping the pilot model current after the interview", () => {
     // The same choices again change nothing: the fit always starts from the base.
     const twice = withModel(once.profile, pack, { choices });
     expect(w(twice.profile, "off")).toBeCloseTo(w(once.profile, "off"), 6);
+  });
+
+  it("lets the latest swap of two lines win, and takes a swap's choices back when it's undone", () => {
+    const first = choicesFromDrag([{ favored: "A", overtaken: "B" }], "s1");
+    const flipped = addDragChoices(first, choicesFromDrag([{ favored: "B", overtaken: "A" }], "s2"));
+    expect(flipped.map((c) => `${c.preferred}>${c.other}`)).toEqual(["B>A"]);
+    const again = addDragChoices(first, choicesFromDrag([{ favored: "A", overtaken: "B" }], "s3"));
+    expect(again).toHaveLength(2);
+    expect(withoutDrag(again, "s3")).toEqual(first);
   });
 
   it("uses a new base when the pilot edits a priority, keeping their choices", () => {
