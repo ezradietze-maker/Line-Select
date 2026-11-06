@@ -1,3 +1,8 @@
+"use client";
+
+import { useId } from "react";
+import { PillHighlight } from "@/components/ui/PillHighlight";
+
 interface Tab {
   id: string;
   label: string;
@@ -19,6 +24,7 @@ interface TabsProps {
  * active-id switch, since every current use case swaps plain content below it.
  */
 export function Tabs({ tabs, activeId, onChange }: TabsProps) {
+  const group = useId();
   return (
     <div role="tablist" className="flex gap-1 border-b border-border">
       {tabs.map((tab) => {
@@ -36,7 +42,7 @@ export function Tabs({ tabs, activeId, onChange }: TabsProps) {
           >
             {tab.label}
             {tab.badge && <span className="h-1.5 w-1.5 rounded-full bg-warn" aria-hidden />}
-            {isActive && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-brand" />}
+            {isActive && <PillHighlight group={group} className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-brand" />}
           </button>
         );
       })}

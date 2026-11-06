@@ -6,14 +6,27 @@ import { MAP_H, MAP_W, project } from "@/lib/globe/flat-map";
 
 let land: [number, number][] | null = null;
 const landXY = () => (land ??= landPoints().map((p) => project(p)));
+const FULL_VIEW = [0, 0, MAP_W, MAP_H] as const;
 
 /**
  * A small dotted world map — the same land as the landing page's globe, laid flat — with whatever's drawn over it in
  * the map's own 360 × 180 frame (`children`: arcs, the night side, city dots). The land is painted once on a canvas,
- * in the theme's own faint ink, and again when the theme changes.
+ * in the theme's own faint ink, and again when the theme changes. `view` ([x, y, width, height] in that frame) shows
+ * just part of it, larger; it may run past the date line, where the land carries on round.
  */
-export function WorldMap({ children, className = "", label }: { children?: ReactNode; className?: string; label: string }) {
+export function WorldMap({
+  children,
+  className = "",
+  label,
+  view = FULL_VIEW,
+}: {
+  children?: ReactNode;
+  className?: string;
+  label: string;
+  view?: readonly [number, number, number, number];
+}) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [vx, vy, vw, vh] = view;
   useEffect(() => {
     const el = canvas.current;
     if (!el) return;
@@ -30,13 +43,18 @@ export function WorldMap({ children, className = "", label }: { children?: React
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = getComputedStyle(el).color;
       ctx.globalAlpha = 0.28;
-      const sx = w / MAP_W;
-      const sy = h / MAP_H;
-      const r = Math.max(0.6, w / 520);
-      for (const [x, y] of landXY()) {
-        ctx.beginPath();
-        ctx.arc(x * sx, y * sy, r, 0, Math.PI * 2);
-        ctx.fill();
+      const sx = w / vw;
+      const sy = h / vh;
+      const r = Math.max(0.6, w / 520) * Math.sqrt(MAP_W / vw);
+      for (const shift of [-MAP_W, 0, MAP_W]) {
+        if (vx + vw < shift || vx > shift + MAP_W) continue;
+        for (const [x, y] of landXY()) {
+          const px = (x + shift - vx) * sx;
+          if (px < -r || px > w + r) continue;
+          ctx.beginPath();
+          ctx.arc(px, (y - vy) * sy, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     };
     draw();
@@ -51,12 +69,12 @@ export function WorldMap({ children, className = "", label }: { children?: React
       theme.disconnect();
       scheme.removeEventListener("change", draw);
     };
-  }, []);
+  }, [vx, vy, vw, vh]);
 
   return (
-    <div className={`relative aspect-[2/1] w-full overflow-hidden rounded-lg bg-canvas/60 ${className}`} role="img" aria-label={label}>
+    <div className={`relative w-full overflow-hidden rounded-lg bg-canvas/60 ${className}`} style={{ aspectRatio: `${vw} / ${vh}` }} role="img" aria-label={label}>
       <canvas ref={canvas} aria-hidden className="absolute inset-0 h-full w-full text-ink" />
-      <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} preserveAspectRatio="none" aria-hidden className="absolute inset-0 h-full w-full">
+      <svg viewBox={`${vx} ${vy} ${vw} ${vh}`} preserveAspectRatio="none" aria-hidden className="absolute inset-0 h-full w-full">
         {children}
       </svg>
     </div>

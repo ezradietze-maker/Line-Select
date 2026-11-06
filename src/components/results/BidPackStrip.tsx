@@ -1,8 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { ChevronDownIcon } from "@/components/ui/icons";
+import { PillHighlight } from "@/components/ui/PillHighlight";
 import type { PackColumn, PackDay, PackToken } from "@/lib/bidpack-row";
 import { PACK_TOKENS_PER_DAY } from "@/lib/bidpack-row";
 import { formatHoursValue } from "@/lib/interview-config";
@@ -127,15 +128,17 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
 
 /** The pilot's switch between the two strips. */
 export function StripViewToggle({ view, onChange }: { view: StripViewMode; onChange: (view: StripViewMode) => void }) {
+  const group = useId();
   const option = (value: StripViewMode, label: string) => (
     <button
       type="button"
       role="radio"
       aria-checked={view === value}
       onClick={() => onChange(value)}
-      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${view === value ? "bg-ink text-canvas" : "text-ink-muted hover:text-ink"}`}
+      className={`relative rounded-full px-3 py-1 text-xs font-medium transition-colors duration-300 ${view === value ? "text-canvas" : "text-ink-muted hover:text-ink"}`}
     >
-      {label}
+      {view === value && <PillHighlight group={group} className="absolute inset-0 rounded-full bg-ink" />}
+      <span className="relative">{label}</span>
     </button>
   );
   return (
