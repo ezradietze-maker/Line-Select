@@ -92,6 +92,10 @@ export interface PilotModel {
   synopsis: string;
   /** How many interview exchanges this reading was built from — the next reading builds on it and knows what's new. */
   readUpTo?: number;
+  /** The brain prompt version that made this reading (`BRAIN_PROMPT_VERSION`), so real outcomes can be compared version against version. */
+  brainVersion?: number;
+  /** Whether fleet notes were in the brain's prompt for any reading in this interview. */
+  notesUsed?: boolean;
   /**
    * How much more or less each criterion counts on a single trip than on a line, by criterion id (1 = the same) —
    * learned from the pilot's own trip choices (see `fitTripWeights`). Lines never read it.

@@ -10,7 +10,7 @@ import { submitAwardHistory } from "@/lib/award-history";
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { cityName } from "@/lib/city-names";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
-import { logbookStats, loggedMonthFrom, withCheckIn, withLoggedMonth, withoutLoggedMonth } from "@/lib/logbook";
+import { checkInShare, logbookStats, loggedMonthFrom, withCheckIn, withLoggedMonth, withoutLoggedMonth } from "@/lib/logbook";
 import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { rankLines } from "@/lib/scoring";
 import { hm as hmMinutes } from "@/lib/trip-day-stats";
@@ -90,7 +90,14 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
                   entry={m}
                   isThisPack={m.id === thisMonth?.id}
                   onRelog={() => setRelogging(true)}
-                  onCheckIn={(feel, words) => profile && onUpdateProfile(withCheckIn(profile, m.id, feel, words))}
+                  onCheckIn={(feel, words) => {
+                    if (!profile) return;
+                    const updated = withCheckIn(profile, m.id, feel, words);
+                    onUpdateProfile(updated);
+                    // A month already shared is shared again with how it flew: the real-outcome signal the brain is judged by.
+                    const share = user ? checkInShare(updated.logbook?.find((e) => e.id === m.id) ?? m, profile.pilotModel) : null;
+                    if (share) void submitAwardHistory(share).then((r) => !r.ok && setNotice(`Saved here, but not shared: ${r.error}`));
+                  }}
                   onDelete={() => profile && onUpdateProfile(withoutLoggedMonth(profile, m.id))}
                 />
               </li>
@@ -158,6 +165,10 @@ function LogAward({
         totalCreditHours: whole(line?.totalCreditHours),
         totalTafbHours: whole(line?.totalTafbHours),
         awardedChoice: entry.rankedAt ?? null,
+        // Which brain ranked these lines, and how the month flew if it's already been checked in.
+        monthFeel: entry.checkIn?.feel ?? null,
+        brainVersion: profile.pilotModel?.brainVersion ?? null,
+        notesUsed: profile.pilotModel?.notesUsed ?? null,
       });
       if (!result.ok) warning = `Logged here, but not shared: ${result.error}`;
       else entry = { ...entry, sharedAt: new Date().toISOString() };
