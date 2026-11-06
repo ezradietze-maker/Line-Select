@@ -9,6 +9,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { fetchEmailResetEnabled, login, requestResetEmail, resetPassword, signUp } from "@/lib/auth";
 import type { UserAccount } from "@/types/auth";
+import { PillHighlight } from "@/components/ui/PillHighlight";
 
 type Mode = "login" | "signup" | "reset" | "forgot";
 
@@ -341,11 +342,10 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-md py-2 text-sm font-medium transition-colors ${
-        active ? "bg-surface text-ink shadow-sm" : "text-ink-faint hover:text-ink-muted"
-      }`}
+      className={`relative rounded-md py-2 text-sm font-medium transition-colors duration-300 ${active ? "text-ink" : "text-ink-faint hover:text-ink-muted"}`}
     >
-      {children}
+      {active && <PillHighlight group="auth-mode" className="absolute inset-0 rounded-md bg-surface shadow-sm" />}
+      <span className="relative">{children}</span>
     </button>
   );
 }

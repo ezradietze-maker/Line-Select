@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { FlipText } from "@/components/ui/FlipText";
 import type { FilterOptions } from "@/lib/line-filter-options";
 import {
   EMPTY_FILTERS,
@@ -91,7 +92,7 @@ export function ResultsFilterBar({
           </svg>
         </button>
         <span className="text-xs text-ink-faint">
-          Showing {visibleCount} of {totalCount} lines
+          Showing <FlipText text={String(visibleCount)} /> of {totalCount} lines
         </span>
         {active && (
           <button

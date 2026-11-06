@@ -79,6 +79,8 @@ import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
 import { useProgressiveCount } from "@/lib/use-progressive-count";
+import { FlipText } from "@/components/ui/FlipText";
+import { PillHighlight } from "@/components/ui/PillHighlight";
 import { setRankingSnapshot } from "@/lib/ranking-snapshot";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
@@ -157,6 +159,9 @@ function buildJudgments(ranked: LineScore[], fromIndex: number, toIndex: number)
 
 /** How long to hold the list back waiting on hotel reviews before showing it anyway. Hotel data changes scores, so showing the list first and then reshuffling it under a pilot who's already reading is worse than a short wait. */
 const HOTEL_WAIT_MS = 6000;
+
+/** The chosen one of All lines / Shortlist / Realistic: a lit pad that slides between them. */
+const VIEW_PILL = "absolute inset-0 bg-accent-soft";
 
 interface ResultsViewProps {
   bidPack: BidPack;
@@ -918,18 +923,23 @@ export function ResultsView({
                 role="tab"
                 aria-selected={view === "all"}
                 onClick={() => setView("all")}
-                className={`px-3 py-2 font-medium transition-colors ${view === "all" ? "bg-accent-soft text-accent" : "text-ink-muted hover:text-ink"}`}
+                className={`relative px-3 py-2 font-medium transition-colors duration-300 ${view === "all" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
               >
-                All lines
+                {view === "all" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                <span className="relative">All lines</span>
               </button>
               <button
                 type="button"
                 role="tab"
                 aria-selected={view === "shortlist"}
+                data-shortlist-tab
                 onClick={() => setView("shortlist")}
-                className={`border-l border-hairline px-3 py-2 font-medium transition-colors ${view === "shortlist" ? "bg-accent-soft text-accent" : "text-ink-muted hover:text-ink"}`}
+                className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 ${view === "shortlist" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
               >
-                Shortlist ({validMarks.starred.length})
+                {view === "shortlist" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                <span className="relative">
+                  Shortlist (<FlipText text={String(validMarks.starred.length)} />)
+                </span>
               </button>
               {forecastLines && (
                 <button
@@ -937,9 +947,10 @@ export function ResultsView({
                   role="tab"
                   aria-selected={view === "realistic"}
                   onClick={() => setView("realistic")}
-                  className={`border-l border-hairline px-3 py-2 font-medium transition-colors ${view === "realistic" ? "bg-accent-soft text-accent" : "text-ink-muted hover:text-ink"}`}
+                  className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
                 >
-                  Realistic ({realisticIds.size})
+                  {view === "realistic" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                  <span className="relative">Realistic ({realisticIds.size})</span>
                 </button>
               )}
             </div>

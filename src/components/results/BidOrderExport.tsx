@@ -28,6 +28,8 @@ export function BidOrderExport({
 }) {
   const [copied, setCopied] = useState<CopiedKind>(null);
   const [calendarError, setCalendarError] = useState<string | null>(null);
+  /** The first trip's date, shown on a little calendar page that flips over once the file has saved. */
+  const [savedFrom, setSavedFrom] = useState<{ month: string; day: number } | null>(null);
   const [showMore, setShowMore] = useState(false);
 
   async function copy(text: string, kind: CopiedKind) {
@@ -56,6 +58,12 @@ export function BidOrderExport({
     a.download = `line-${topPick.lineScore.line.lineNumber}.ics`;
     a.click();
     URL.revokeObjectURL(url);
+    const firstDay = Math.min(...topPick.lineScore.line.trips.map((t) => t.startDayIndex ?? Infinity));
+    if (bidPeriodStart && Number.isFinite(firstDay)) {
+      const d = new Date(Date.parse(`${bidPeriodStart}T00:00:00Z`) + firstDay * 86_400_000);
+      setSavedFrom({ month: d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" }), day: d.getUTCDate() });
+      setTimeout(() => setSavedFrom(null), 2800);
+    }
   }
 
   if (entries.length === 0) return null;
@@ -119,9 +127,20 @@ export function BidOrderExport({
           type="button"
           onClick={downloadTopPickCalendar}
           title="Downloads your top pick's real trips as a .ics file you can import into your device's calendar."
-          className={`${secondary} ${showMore ? "" : "hidden sm:inline-flex"}`}
+          className={`${secondary} ${showMore ? "" : "hidden sm:inline-flex"} items-center gap-2`}
         >
-          Add top pick to calendar
+          {savedFrom ? (
+            <>
+              {/* A page of the calendar flipping down to the first trip's day. */}
+              <span aria-hidden className="calendar-flip inline-flex h-[22px] w-5 flex-col overflow-hidden rounded-[3px] border border-accent/60 bg-canvas text-center leading-none">
+                <span className="bg-accent py-px font-mono text-[6.5px] font-semibold uppercase text-on-brand">{savedFrom.month}</span>
+                <span className="flex flex-1 items-center justify-center font-mono text-[10px] font-semibold text-ink">{savedFrom.day}</span>
+              </span>
+              Saved &mdash; trips from {savedFrom.month} {savedFrom.day}
+            </>
+          ) : (
+            "Add top pick to calendar"
+          )}
         </button>
         <button
           type="button"

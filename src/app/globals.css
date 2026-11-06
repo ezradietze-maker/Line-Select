@@ -1307,22 +1307,42 @@ body:has([data-bottom-bar]) .back-to-top {
   to { offset-distance: 100%; }
 }
 
-/* The interview landing: a plane descending onto the runway line and rolling out. */
-.wheels-down { animation: wheels-down 1.5s cubic-bezier(0.3, 0, 0.3, 1) both; }
-@keyframes wheels-down {
-  0% { transform: translate(-60vw, -90px) rotate(8deg); opacity: 0; }
-  15% { opacity: 1; }
-  70% { transform: translate(0, 0) rotate(0deg); }
-  100% { transform: translate(14vw, 0) rotate(0deg); }
+/* The interview landing (results/WheelsDown), 2.4s: the approach, a flare, main wheels first, the nose lowered, a
+   rollout to a stop. The plane is drawn with its main wheels at (0, 0), so the pitch turns about them. */
+.ld-move { animation: ld-move 2.4s both; }
+@keyframes ld-move {
+  0% { transform: translate(-330px, -62px); opacity: 0; animation-timing-function: linear; }
+  8% { opacity: 1; animation-timing-function: linear; }
+  56% { transform: translate(-50px, -7px); animation-timing-function: cubic-bezier(0.3, 0.45, 0.6, 1); }
+  66% { transform: translate(0, 0); animation-timing-function: cubic-bezier(0.35, 0.31, 0.45, 1); }
+  100% { transform: translate(190px, 0); opacity: 1; }
 }
-.runway-lights > span { animation: runway-light 1.2s ease-in-out infinite; }
-@keyframes runway-light {
-  0%, 100% { opacity: 0.25; }
-  50% { opacity: 1; }
+.ld-pitch { animation: ld-pitch 2.4s ease-in-out both; }
+@keyframes ld-pitch {
+  0%, 48% { transform: rotate(-3deg); }
+  62%, 67% { transform: rotate(-7deg); }
+  78%, 100% { transform: rotate(0deg); }
+}
+.ld-smoke { opacity: 0; transform-box: fill-box; transform-origin: center; animation: ld-smoke 0.8s ease-out both; }
+@keyframes ld-smoke {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  15% { opacity: 0.55; }
+  100% { opacity: 0; transform: translate(-18px, -6px) scale(3.6); }
+}
+.ld-rabbit { animation: ld-rabbit 0.9s linear infinite; opacity: 0.2; }
+@keyframes ld-rabbit {
+  0%, 30%, 100% { opacity: 0.2; }
+  8% { opacity: 1; }
+}
+.ld-papi { filter: drop-shadow(0 0 2px currentColor); }
+.ld-caption { animation: ld-caption 0.5s 1.55s ease-out both; }
+@keyframes ld-caption {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .flap, .takeoff, .climb-out, .sun-set, .moon-rise, .celestial-out, .drop-in, .wheels-down, .runway-lights > span {
+  .flap, .takeoff, .climb-out, .sun-set, .moon-rise, .celestial-out, .drop-in, .ld-move, .ld-pitch, .ld-smoke, .ld-rabbit, .ld-caption {
     animation: none;
   }
   .takeoff, .climb-out, .celestial-out { opacity: 0; }
@@ -1468,4 +1488,96 @@ body:has([data-bottom-bar]) .back-to-top {
 @keyframes type-caret {
   0%, 33%, 66% { opacity: 0.8; }
   16%, 50%, 100% { opacity: 0; }
+}
+
+/* ---- Round five: cosmetic touches (still versions under reduced motion at the end of this block) ---- */
+
+/* The upload page's route map: each city's dot landing once its route has drawn in, and a ring pulsing out of base. */
+.route-dot { transform-box: fill-box; transform-origin: center; animation: route-dot 0.35s var(--ease-emphasized) both; }
+@keyframes route-dot {
+  from { opacity: 0; transform: scale(0); }
+}
+.beacon-ring { transform-box: fill-box; transform-origin: center; animation: beacon-ring 2.4s ease-out infinite; }
+@keyframes beacon-ring {
+  from { opacity: 0.8; transform: scale(1); }
+  to { opacity: 0; transform: scale(3.4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-dot { animation: none; }
+  .beacon-ring { animation: none; opacity: 0; }
+}
+
+/* The hotel's pin dropping onto its place by the field, a bounce, then a ring spreading out from where it landed. */
+.pin-drop { animation: pin-drop 0.6s 0.55s cubic-bezier(0.3, 0, 0.4, 1) both; }
+@keyframes pin-drop {
+  0% { opacity: 0; transform: translateY(-22px); }
+  60% { opacity: 1; transform: translateY(0); }
+  78% { transform: translateY(-3px); }
+  100% { transform: translateY(0); }
+}
+.pin-ping { opacity: 0; transform-box: fill-box; transform-origin: center; animation: pin-ping 0.9s 0.95s ease-out both; }
+@keyframes pin-ping {
+  from { opacity: 0.9; transform: scale(0.6); }
+  to { opacity: 0; transform: scale(3.2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pin-drop, .pin-ping { animation: none; }
+}
+
+/* Back to top: the plane climbs away out of the button, and the next one rolls up into place. */
+.plane-climb { animation: plane-climb 0.9s cubic-bezier(0.45, 0, 0.3, 1) both; }
+@keyframes plane-climb {
+  0% { transform: translateY(0); opacity: 1; }
+  42% { transform: translateY(-30px) scale(0.7); opacity: 0; }
+  43% { transform: translateY(14px) scale(1); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plane-climb { animation: none; }
+}
+
+/* The seniority line-up: each aircraft rolling forward into its place, nose to tail. */
+.queue-roll { animation: queue-roll 0.5s var(--ease-emphasized) backwards; }
+@keyframes queue-roll {
+  from { opacity: 0; transform: translateX(-14px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-roll { animation: none; }
+}
+
+/* The crash page: the seatbelt sign chiming on (two blinks, then lit), and a plane bumping through light chop. */
+.seatbelt-sign { opacity: 0.2; animation: seatbelt-sign 1.4s 0.3s steps(1) forwards; }
+@keyframes seatbelt-sign {
+  0% { opacity: 1; filter: drop-shadow(0 0 4px var(--color-accent)); }
+  18% { opacity: 0.2; filter: none; }
+  36%, 100% { opacity: 1; filter: drop-shadow(0 0 4px var(--color-accent)); }
+}
+.turbulence { animation: turbulence 1.6s ease-in-out infinite; }
+@keyframes turbulence {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  14% { transform: translate(0, -2.2px) rotate(-3deg); }
+  27% { transform: translate(0, 1.6px) rotate(2deg); }
+  41% { transform: translate(0, -0.8px) rotate(-1deg); }
+  60% { transform: translate(0, 2px) rotate(2.5deg); }
+  78% { transform: translate(0, -1.4px) rotate(-1.5deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seatbelt-sign { animation: none; opacity: 1; }
+  .turbulence { animation: none; }
+}
+
+/* Saved to the calendar: a page flipping down onto the first trip's day. */
+.calendar-flip { transform-origin: top; animation: calendar-flip 0.55s cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+@keyframes calendar-flip {
+  from { transform: perspective(60px) rotateX(-95deg); opacity: 0; }
+  to { transform: perspective(60px) rotateX(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-flip { animation: none; }
 }

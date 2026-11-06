@@ -12,6 +12,7 @@ import { DeadlineTabTitle } from "@/components/results/DeadlineTabTitle";
 import { LogoMark } from "@/components/ui/Logo";
 import { Modal } from "@/components/ui/Modal";
 import { BackToTop } from "@/components/ui/BackToTop";
+import { OfflineNotice } from "@/components/ui/OfflineNotice";
 import { CommandPalette } from "@/components/ui/CommandPalette";
 import { ScreenTransition, type NavDirection } from "@/components/ui/ScreenTransition";
 import { Spinner } from "@/components/ui/Spinner";
@@ -267,6 +268,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
 
       {showSidebar && <BackToTop />}
       <DeadlineTabTitle packId={bidPack?.id ?? null} />
+      <OfflineNotice />
 
       <CommandPalette
         open={paletteOpen}

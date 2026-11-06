@@ -7,6 +7,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Heading } from "@/components/ui/Heading";
 import { NumberTicker } from "@/components/ui/NumberTicker";
 import { FlightPlanLoader, type LoadProgress } from "@/components/upload/FlightPlanLoader";
+import { LayoverRouteMap } from "@/components/upload/LayoverRouteMap";
 import { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { rankLayoverCitiesByFrequency } from "@/lib/scoring";
@@ -256,6 +257,7 @@ function AlreadyUploaded({
       avgCredit: bidPack.lines.reduce((s, l) => s + l.totalCreditHours, 0) / n,
       cityCount: cities.length,
       topCities: cities.slice(0, 10).map((c) => c.code),
+      allCities: cities.map((c) => c.code),
       internationalPct: verified.length ? Math.round((verified.filter((l) => l.trips.some((t) => t.international)).length / verified.length) * 100) : null,
     };
   }, [bidPack]);
@@ -304,7 +306,8 @@ function AlreadyUploaded({
 
         {stats.topCities.length > 0 && (
           <div className="border-t border-hairline p-5">
-            <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
+            <LayoverRouteMap base={bidPack.base} cities={stats.allCities} />
+            <div className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
               Most-flown layovers
               {stats.internationalPct !== null && <span> &middot; {stats.internationalPct}% of lines fly international</span>}
             </div>
