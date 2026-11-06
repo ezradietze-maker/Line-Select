@@ -8,7 +8,7 @@ import { applyCalibration, resolveForecastPrior, type Calibration, type Forecast
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { blobKey, hashUser, loadKnownRankings, removeSubmission, saveSubmission } from "@/lib/server/forecast-store";
 import { deleteForecastPrediction, loadActiveModel, parsePackKey, saveForecastPrediction, savePackFeatures } from "@/lib/server/learning-store";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -41,7 +41,7 @@ const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Num
  * probabilities ever come back.
  */
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("forecast", clientIp(request), 20, 60);
+  const { ok } = await checkRequestLimit("forecast", request, 20, 60);
   if (!ok) return rateLimitedResponse();
 
   let body: Body;

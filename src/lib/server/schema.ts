@@ -1,5 +1,6 @@
 import {
   boolean,
+  customType,
   index,
   integer,
   jsonb,
@@ -153,6 +154,22 @@ export const interviewCandidateFacts = pgTable("interview_candidate_facts", {
   proposedName: text("proposed_name").notNull(),
   proposedDescription: text("proposed_description").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Raw bytes (Postgres bytea) — for data stored compressed. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/**
+ * Each signed-in pilot's latest bid pack, so it follows them to a new device and survives the browser clearing its
+ * storage. Stored gzipped in the browser's compact format (`compactBidPack`): the biggest pack is about 3 MB as JSON.
+ */
+export const bidPacks = pgTable("bid_packs", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  packId: text("pack_id").notNull(),
+  data: bytea("data").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const preferenceProfiles = pgTable("preference_profiles", {

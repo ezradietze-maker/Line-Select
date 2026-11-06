@@ -4,7 +4,7 @@ import { buildPilotModel } from "@/lib/brain/build-model";
 import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ export const maxDuration = 300;
  * Guest-accessible and IP-rate-limited like the rest of the interview.
  */
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("brain-build", clientIp(request), 40, 60 * 60);
+  const { ok } = await checkRequestLimit("brain-build", request, 40, 60 * 60);
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "The interview isn't configured on this server." }, { status: 503 });

@@ -10,7 +10,7 @@ const dbMocks = vi.hoisted(() => ({
 vi.mock("@/lib/server/db", () => dbMocks);
 
 const rateLimitMocks = vi.hoisted(() => ({
-  checkRateLimit: vi.fn(),
+  checkRequestLimit: vi.fn(),
   clientIp: vi.fn(() => "127.0.0.1"),
   rateLimitedResponse: vi.fn(),
 }));
@@ -30,7 +30,7 @@ describe("/api/feedback", () => {
     authMocks.getCurrentServerUser.mockReset().mockResolvedValue(null);
     dbMocks.createFeedbackSubmission.mockReset().mockResolvedValue(undefined);
     dbMocks.listFeedbackSubmissions.mockReset().mockResolvedValue([]);
-    rateLimitMocks.checkRateLimit.mockReset().mockResolvedValue({ ok: true });
+    rateLimitMocks.checkRequestLimit.mockReset().mockResolvedValue({ ok: true });
     rateLimitMocks.rateLimitedResponse.mockReset().mockReturnValue(NextResponse.json({ error: "rate limited" }, { status: 429 }));
   });
 
@@ -59,7 +59,7 @@ describe("/api/feedback", () => {
     });
 
     it("is rate limited, since it's open to guests with no account to throttle by", async () => {
-      rateLimitMocks.checkRateLimit.mockResolvedValue({ ok: false });
+      rateLimitMocks.checkRequestLimit.mockResolvedValue({ ok: false });
       const res = await POST(postRequest({ message: "hello", category: "bug", page: "/results" }));
       expect(res.status).toBe(429);
       expect(dbMocks.createFeedbackSubmission).not.toHaveBeenCalled();

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { sendEmail } from "@/lib/server/email";
 import { addToCounter, getJson, incrementCounter } from "@/lib/server/kv";
-import { clientIp } from "@/lib/server/rate-limit";
+import { clientIp, deviceIdFrom } from "@/lib/server/rate-limit";
 
 /**
  * A dollar ceiling on everything that costs money per call — the AI, dictation, hotel lookups — for the whole site
@@ -29,18 +29,27 @@ export function spendCaps() {
     site: dollars("SPEND_SITE_DAILY_USD", 100),
     pilot: dollars("SPEND_PILOT_DAILY_USD", 8),
     guest: dollars("SPEND_GUEST_DAILY_USD", 2),
+    /** All the guests on one address together — a crew room's worth, so clearing cookies doesn't buy a fresh guest allowance. */
+    guestAddress: dollars("SPEND_GUEST_ADDRESS_DAILY_USD", 10),
   };
 }
 
-/** Who a call is charged to: the signed-in account, or for a guest the address they call from. */
+/**
+ * Who a call is charged to: the signed-in account; or for a guest, their device (the address when there's no device
+ * cookie), and also the address all guests on it share (`addressKey`).
+ */
 export interface Spender {
   key: string;
   signedIn: boolean;
+  addressKey?: string;
 }
 
 export async function spenderFor(request: Request): Promise<Spender> {
   const user = await getCurrentServerUser().catch(() => null);
-  return user ? { key: `u:${user.id}`, signedIn: true } : { key: `ip:${clientIp(request)}`, signedIn: false };
+  if (user) return { key: `u:${user.id}`, signedIn: true };
+  const ip = clientIp(request);
+  const device = deviceIdFrom(request);
+  return { key: device ? `device:${device}` : `ip:${ip}`, signedIn: false, addressKey: `address:${ip}` };
 }
 
 function today(now: Date): string {
@@ -48,7 +57,7 @@ function today(now: Date): string {
 }
 
 const siteKey = (day: string) => `line-select:spend:site:${day}`;
-const spenderKey = (day: string, s: Spender) => `line-select:spend:who:${day}:${s.key}`;
+const whoKey = (day: string, key: string) => `line-select:spend:who:${day}:${key}`;
 
 /** What the whole site spent on one UTC day (`YYYY-MM-DD`), in dollars — for the daily summary. */
 export async function siteSpentOn(day: string): Promise<number> {
@@ -64,9 +73,14 @@ export type SpendCheck = { ok: true } | { ok: false; scope: "site" | "pilot" };
 export async function checkSpend(spender: Spender, { siteOnly = false, now = new Date() } = {}): Promise<SpendCheck> {
   const caps = spendCaps();
   const day = today(now);
-  const [site, mine] = await Promise.all([getJson<number>(siteKey(day)), siteOnly ? Promise.resolve(0) : getJson<number>(spenderKey(day, spender))]);
+  const [site, mine, address] = await Promise.all([
+    getJson<number>(siteKey(day)),
+    siteOnly ? Promise.resolve(0) : getJson<number>(whoKey(day, spender.key)),
+    siteOnly || !spender.addressKey ? Promise.resolve(0) : getJson<number>(whoKey(day, spender.addressKey)),
+  ]);
   if ((site ?? 0) >= caps.site * MICRO) return { ok: false, scope: "site" };
   if ((mine ?? 0) >= (spender.signedIn ? caps.pilot : caps.guest) * MICRO) return { ok: false, scope: "pilot" };
+  if ((address ?? 0) >= caps.guestAddress * MICRO) return { ok: false, scope: "pilot" };
   return { ok: true };
 }
 
@@ -78,7 +92,8 @@ export async function recordSpend(spender: Spender, usd: number, { siteOnly = fa
   try {
     const [site] = await Promise.all([
       addToCounter(siteKey(day), amount, DAY_SECONDS),
-      siteOnly ? Promise.resolve(0) : addToCounter(spenderKey(day, spender), amount, DAY_SECONDS),
+      siteOnly ? Promise.resolve(0) : addToCounter(whoKey(day, spender.key), amount, DAY_SECONDS),
+      siteOnly || !spender.addressKey ? Promise.resolve(0) : addToCounter(whoKey(day, spender.addressKey), amount, DAY_SECONDS),
     ]);
     if (site >= spendCaps().site * MICRO) await alertSiteCapReached(day, site / MICRO);
   } catch (e) {

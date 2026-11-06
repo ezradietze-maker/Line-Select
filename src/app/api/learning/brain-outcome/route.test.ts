@@ -4,7 +4,7 @@ const saved: { pilotHash: string | null }[] = [];
 let user: { id: string } | null = null;
 
 vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => user }));
-vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: async () => ({ ok: true }), clientIp: () => "203.0.113.9", rateLimitedResponse: () => new Response(null, { status: 429 }) }));
+vi.mock("@/lib/server/rate-limit", () => ({ checkRequestLimit: async () => ({ ok: true }), rateLimitedResponse: () => new Response(null, { status: 429 }) }));
 vi.mock("@/lib/server/learning-store", () => ({ saveBrainOutcome: async (_o: unknown, pilotHash: string | null) => void saved.push({ pilotHash }) }));
 vi.mock("@/lib/server/learning-runner", () => ({ maybeLearn: async () => null }));
 vi.mock("@/lib/server/after-response", () => ({ afterResponse: () => {} }));

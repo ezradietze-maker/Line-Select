@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { requestPasswordResetEmail } from "@/lib/server/auth";
 import { isEmailConfigured } from "@/lib/server/email";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -12,7 +12,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("auth-forgot", clientIp(request), 10, 60 * 60);
+  const { ok } = await checkRequestLimit("auth-forgot", request, 10, 60 * 60);
   if (!ok) return rateLimitedResponse();
 
   let body: { email?: string };

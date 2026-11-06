@@ -128,7 +128,10 @@ export function dailySummaryText(s: DailySummary, learning: Record<string, unkno
 /** Emails the summary of the UTC day before `now`. Returns whether it was sent. */
 export async function sendDailySummary(learning: Record<string, unknown> | null, now = new Date()): Promise<boolean> {
   const to = alertAddress();
-  if (!to) return false;
+  if (!to) {
+    console.error("[alerts] daily summary not sent: ALERT_EMAIL isn't set");
+    return false;
+  }
   const yesterday = day(new Date(now.getTime() - 24 * 60 * 60 * 1000));
   const s = await summarizeDay(yesterday);
   const failed = Object.keys(s.problems).length > 0 || (Array.isArray(learning?.results) && (learning.results as { error?: unknown }[]).some((r) => r.error));

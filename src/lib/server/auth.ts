@@ -88,6 +88,10 @@ async function storeNewRecoveryCode(userId: string): Promise<string> {
   return code;
 }
 
+/** For every new password (sign-up and both resets). Passwords set before this rule keep working. */
+export const MIN_PASSWORD_LENGTH = 8;
+const PASSWORD_TOO_SHORT = `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+
 export async function signUp(
   email: string,
   password: string,
@@ -97,8 +101,8 @@ export async function signUp(
   if (!/^\S+@\S+\.\S+$/.test(normalized)) {
     return { ok: false, error: "Enter a valid email address." };
   }
-  if (password.length < 6) {
-    return { ok: false, error: "Password must be at least 6 characters." };
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { ok: false, error: PASSWORD_TOO_SHORT };
   }
   if (!displayName.trim()) {
     return { ok: false, error: "Enter a name to display." };
@@ -143,8 +147,8 @@ const RESET_FAILURE_MESSAGE = "That email and recovery code don't match.";
  */
 export async function resetPasswordWithRecoveryCode(email: string, recoveryCode: string, newPassword: string): Promise<AuthResult> {
   const normalized = normalizeEmail(email);
-  if (newPassword.length < 6) {
-    return { ok: false, error: "Password must be at least 6 characters." };
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    return { ok: false, error: PASSWORD_TOO_SHORT };
   }
   if (!(await takeAttempt(RESET_RATE_LIMIT_SCOPE, normalized))) {
     return { ok: false, error: "Too many failed attempts. Try again in a few minutes." };
@@ -214,7 +218,7 @@ export async function requestPasswordResetEmail(email: string): Promise<boolean>
 
 /** Completes an emailed reset: the token is spent, every old session is signed out, and the pilot is signed straight in. */
 export async function resetPasswordWithEmailToken(token: string, newPassword: string): Promise<AuthResult> {
-  if (newPassword.length < 6) return { ok: false, error: "Password must be at least 6 characters." };
+  if (newPassword.length < MIN_PASSWORD_LENGTH) return { ok: false, error: PASSWORD_TOO_SHORT };
   const userId = await consumeResetToken(hashResetToken(token));
   const user = userId ? await findUserById(userId) : null;
   if (!userId || !user) return { ok: false, error: "This reset link is invalid or has expired. Request a new one." };
@@ -242,25 +246,27 @@ export async function createRecoveryCodeForUser(userId: string, password: string
 }
 
 const LOGIN_RATE_LIMIT_SCOPE = "login";
+/** The same answer for "no such account" and "wrong password", so the sign-in form can't be used to find out who has an account. */
+export const LOGIN_FAILED = "Email or password is incorrect.";
+/** A dummy salt, so a sign-in for an email with no account takes as long as one with a wrong password. */
+const NO_ACCOUNT_SALT = "0".repeat(32);
 
 export async function login(email: string, password: string): Promise<AuthResult> {
   const normalized = normalizeEmail(email);
 
-  // Rate-limited per normalized email rather than per IP — the thing being
-  // protected is the *account*, and this also means a shared or rotating IP
-  // (common on mobile) can't accidentally lock someone else out.
+  // Rate-limited per normalized email, so the account itself is protected
+  // whatever address the guesses come from; the login route adds a limit
+  // per address on top, against one machine trying many accounts. A pilot
+  // locked out by someone else's guesses gets back in with their recovery
+  // code or an emailed reset link, either of which clears this count.
   if (!(await takeAttempt(LOGIN_RATE_LIMIT_SCOPE, normalized))) {
-    return { ok: false, error: "Too many failed attempts. Try again in a few minutes." };
+    return { ok: false, error: "Too many failed attempts. Try again in 15 minutes, or reset your password with your recovery code." };
   }
 
   const credential = await findCredentialByEmail(normalized);
-  if (!credential) {
-    return { ok: false, error: "No account found with that email." };
-  }
-
-  const attemptHash = await hashPassword(password, credential.salt);
-  if (!timingSafeStringEqual(attemptHash, credential.passwordHash)) {
-    return { ok: false, error: "Incorrect password." };
+  const attemptHash = await hashPassword(password, credential?.salt ?? NO_ACCOUNT_SALT);
+  if (!credential || !timingSafeStringEqual(attemptHash, credential.passwordHash)) {
+    return { ok: false, error: LOGIN_FAILED };
   }
 
   const user = await findUserById(credential.userId);

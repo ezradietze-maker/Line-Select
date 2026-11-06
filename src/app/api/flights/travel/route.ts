@@ -4,7 +4,7 @@ import type { ScheduledFlight } from "@/lib/flights/itineraries";
 import type { TravelNeed } from "@/lib/flights/needs";
 import { answerTravelNeeds, flightDataConfigured } from "@/lib/server/flight-schedules";
 import { isJsonObject } from "@/lib/server/json-body";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 // The first look at a month's flights fetches a few hundred departure boards; after that it's cached.
@@ -71,7 +71,7 @@ function readJumpseats(value: unknown): ScheduledFlight[] | null {
  */
 export async function POST(request: Request) {
   if (!flightDataConfigured()) return NextResponse.json({ configured: false, answers: [] });
-  const { ok } = await checkRateLimit("flights-travel", clientIp(request), 20, 60 * 60);
+  const { ok } = await checkRequestLimit("flights-travel", request, 20, 60 * 60);
   if (!ok) return rateLimitedResponse();
   let body: unknown;
   try {

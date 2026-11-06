@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
@@ -30,7 +30,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("dictation-token", clientIp(request), 120, 60 * 60);
+  const { ok } = await checkRequestLimit("dictation-token", request, 120, 60 * 60);
   if (!ok) return rateLimitedResponse();
 
   const apiKey = process.env.ASSEMBLYAI_API_KEY;

@@ -82,9 +82,22 @@ describe("spend guard", () => {
     expect(store.size).toBe(0);
   });
 
-  it("charges a guest to their address", async () => {
-    const request = new Request("https://example.com", { headers: { "x-forwarded-for": "198.51.100.4, 10.0.0.1" } });
-    expect(await spenderFor(request)).toEqual({ key: "ip:198.51.100.4", signedIn: false });
+  it("charges a guest to their device and to their address", async () => {
+    const device = "6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b";
+    const withCookie = new Request("https://example.com", { headers: { "x-forwarded-for": "198.51.100.4, 10.0.0.1", cookie: `theme=dark; ls_device=${device}` } });
+    expect(await spenderFor(withCookie)).toEqual({ key: `device:${device}`, signedIn: false, addressKey: "address:198.51.100.4" });
+    const noCookie = new Request("https://example.com", { headers: { "x-forwarded-for": "198.51.100.4" } });
+    expect(await spenderFor(noCookie)).toEqual({ key: "ip:198.51.100.4", signedIn: false, addressKey: "address:198.51.100.4" });
+  });
+
+  it("gives each guest in a crew room their own $2, up to $10 for the address", async () => {
+    const guest = (n: number) => ({ key: `device:${n}`, signedIn: false, addressKey: "address:203.0.113.1" });
+    for (let n = 0; n < 4; n++) await recordSpend(guest(n), 2, { now: day });
+    expect(await checkSpend(guest(0), { now: day })).toEqual({ ok: false, scope: "pilot" });
+    expect(await checkSpend(guest(4), { now: day })).toEqual({ ok: true });
+    await recordSpend(guest(4), 2, { now: day });
+    expect(await checkSpend(guest(5), { now: day })).toEqual({ ok: false, scope: "pilot" });
+    expect(await checkSpend({ key: "device:x", signedIn: false, addressKey: "address:198.51.100.7" }, { now: day })).toEqual({ ok: true });
   });
 
   it("answers a stopped call with a 429 the app already shows", async () => {

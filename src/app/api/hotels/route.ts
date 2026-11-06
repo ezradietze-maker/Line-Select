@@ -3,7 +3,8 @@ import { reportProblem } from "@/lib/server/alerts";
 import { airportSearchName, citySearchName } from "@/lib/hotels/airport-names";
 import { isPlausibleMatch, pickBestMatch, readHotelName } from "@/lib/hotels/hotel-names";
 import { cacheKey, getCachedHotel, setCachedHotel } from "@/lib/server/hotel-cache";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { isPackHotel } from "@/lib/server/pack-hotels";
 import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 import type { HotelAmenityCategory, HotelAmenitySummary, HotelLookupResult, HotelResult, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 
@@ -304,7 +305,7 @@ export async function GET(request: Request) {
   // ~100 unique hotels and a larger First Officer pack more, and the results
   // page looks all of them up at once. 60 left the first pilot to open a
   // fresh pack with only partial hotel data until the next hour.
-  const { ok } = await checkRateLimit("hotels-lookup", clientIp(request), HOTEL_LOOKUPS_PER_HOUR, 60 * 60);
+  const { ok } = await checkRequestLimit("hotels-lookup", request, HOTEL_LOOKUPS_PER_HOUR, 60 * 60);
   if (!ok) return rateLimitedResponse();
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -321,6 +322,11 @@ export async function GET(request: Request) {
   const spender = await spenderFor(request);
   const allowed = await checkSpend(spender, { siteOnly: true });
   if (!allowed.ok) return spendLimitResponse(allowed);
+  // A guest looks up only hotels a real uploaded pack names, so made-up names can't be used to run up Google's bill.
+  if (!spender.signedIn && !(await isPackHotel(code, hotelName))) {
+    const result: HotelLookupResult = { code, hotelName, hotel: null, error: null };
+    return NextResponse.json(result);
+  }
 
   try {
     const hotel = await findHotelOnGoogle(code, hotelName, apiKey, process.env.ANTHROPIC_API_KEY);

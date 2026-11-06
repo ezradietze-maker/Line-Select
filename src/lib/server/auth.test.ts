@@ -69,14 +69,14 @@ describe("login", () => {
   it("rejects the wrong password without revealing anything beyond that", async () => {
     const result = await login(EMAIL, "wrong-password");
     expect(result.ok).toBe(false);
-    expect(result.error).toBe("Incorrect password.");
+    expect(result.error).toBe("Email or password is incorrect.");
   });
 
   it("rejects an email with no account", async () => {
     dbMocks.findCredentialByEmail.mockResolvedValue(null);
     const result = await login("nobody@example.com", "whatever");
     expect(result.ok).toBe(false);
-    expect(result.error).toBe("No account found with that email.");
+    expect(result.error).toBe("Email or password is incorrect.");
   });
 
   it("locks out further attempts after enough failures, even with the correct password", async () => {
@@ -113,6 +113,6 @@ describe("login", () => {
     for (let i = 0; i < 6; i++) await login(EMAIL, "wrong-password");
     dbMocks.findCredentialByEmail.mockResolvedValue(null);
     const other = await login("someone-else@example.com", "whatever");
-    expect(other.error).toBe("No account found with that email.");
+    expect(other.error).toBe("Email or password is incorrect.");
   });
 });

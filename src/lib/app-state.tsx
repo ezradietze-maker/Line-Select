@@ -4,6 +4,7 @@ import { markLanding } from "@/components/results/WheelsDown";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { checkSession, logout as logoutAccount } from "@/lib/auth";
+import { clearServerBidPack, fetchServerBidPack, saveServerBidPack } from "@/lib/bidpack-server";
 import { clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
 import { generateFakeOffer } from "@/lib/fake-trade-offers";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
@@ -86,6 +87,13 @@ interface DataState {
 }
 
 /** Where a pilot with this bid pack/profile combination actually belongs — the same "resume point" logic used both on first load and after sign-in/sign-out. */
+/** A signed-in pilot with no pack on this device gets the one saved to their account, kept here too from then on. */
+async function packFromAccount(userId: string): Promise<BidPack | null> {
+  const pack = await fetchServerBidPack();
+  if (pack) saveBidPack(userId, pack);
+  return pack;
+}
+
 function landingPathFor(bidPack: BidPack | null, profile: PreferenceProfile | null): string {
   if (!bidPack) return "/";
   return profile ? "/results" : "/preferences";
@@ -173,7 +181,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // since it would mismatch the server-rendered "not ready yet" state.
     let cancelled = false;
     const stateFor = async (currentUser: UserAccount | null): Promise<DataState> => {
-      const savedBidPack = loadBidPack(currentUser?.id ?? null);
+      const savedBidPack = loadBidPack(currentUser?.id ?? null) ?? (currentUser ? await packFromAccount(currentUser.id) : null);
       return {
         ready: true,
         profile: await loadProfileForUser(currentUser?.id ?? null),
@@ -425,6 +433,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // machinery, which a blanket clear here used to defeat on every single
     // confirm. `handleStartOver` is the deliberate, explicit reset instead.
     const saved = saveBidPack(user?.id ?? null, newBidPack);
+    // A signed-in pilot's pack also goes to their account, so a new device or a cleared browser gets it back.
+    if (user) void saveServerBidPack(newBidPack);
     clearPendingProfile(user?.id ?? null);
     setState((s) => ({
       ...s,
@@ -529,6 +539,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   function handleStartOver() {
     clearBidPack(user?.id ?? null);
+    if (user) void clearServerBidPack();
     clearPendingProfile(user?.id ?? null);
     setInterviewKey((k) => k + 1);
     setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null, freshBidPack: false }));
@@ -565,7 +576,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     askToKeepStorage();
     writeSignedInHint(newUser);
     identifyPilot(newUser.id);
-    let theirBidPack = loadBidPack(newUser.id);
+    let theirBidPack = loadBidPack(newUser.id) ?? (await packFromAccount(newUser.id));
     let theirProfile = await loadProfileForUser(newUser.id);
     let theirSeniority = loadSeniority(newUser.id);
 
@@ -573,6 +584,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!state.user) {
       if (!theirBidPack && state.bidPack && !state.bidPack.id.startsWith("sample")) {
         saveBidPack(newUser.id, state.bidPack);
+        void saveServerBidPack(state.bidPack);
         theirBidPack = state.bidPack;
       }
       if (!theirProfile && state.profile) {

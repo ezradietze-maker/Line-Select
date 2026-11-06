@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { SESSION_COOKIE, resetPasswordWithRecoveryCode, sessionCookieOptions } from "@/lib/server/auth";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 // this per-IP layer additionally stops one address from working through many
 // different emails.
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("auth-reset", clientIp(request), 20, 60 * 60);
+  const { ok } = await checkRequestLimit("auth-reset", request, 20, 60 * 60);
   if (!ok) return rateLimitedResponse();
 
   let body: { email?: string; recoveryCode?: string; newPassword?: string };

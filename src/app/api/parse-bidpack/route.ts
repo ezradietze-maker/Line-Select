@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { parseBidPackPdf } from "@/lib/pdf-parser";
 import { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { rememberPackHotels } from "@/lib/server/pack-hotels";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 // pdfjs-dist needs Node APIs (Buffer, etc.), not the edge runtime.
 export const runtime = "nodejs";
@@ -11,7 +12,7 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   // Parsing costs only CPU (no paid API), and every pilot uploads within hours of bid release — often behind shared wifi — so this allows a crowd from one address.
-  const { ok } = await checkRateLimit("parse-bidpack", clientIp(request), 40, 60 * 60);
+  const { ok } = await checkRequestLimit("parse-bidpack", request, 40, 60 * 60);
   if (!ok) return rateLimitedResponse();
 
   let formData: FormData;
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await parseBidPackPdf(bytes);
-    await noteActivity("pack-parsed");
+    await Promise.all([noteActivity("pack-parsed"), rememberPackHotels(result)]);
     return NextResponse.json(result);
   } catch (e) {
     await reportProblem("parse-bidpack", e, { bytes: bytes.length });
@@ -86,7 +87,7 @@ function streamParse(bytes: Uint8Array): Response {
           },
         });
         send({ type: "result", result });
-        await noteActivity("pack-parsed");
+        await Promise.all([noteActivity("pack-parsed"), rememberPackHotels(result)]);
       } catch (e) {
         await reportProblem("parse-bidpack", e, { bytes: bytes.length });
         send({
