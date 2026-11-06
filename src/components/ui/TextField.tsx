@@ -16,11 +16,17 @@ export function TextField({ label, error, id, className = "", ...props }: TextFi
         id={inputId}
         {...props}
         aria-invalid={!!error}
+        // The error is read out with the field, not only seen under it.
+        aria-describedby={error ? `${inputId}-error` : props["aria-describedby"]}
         className={`w-full rounded-md border bg-surface px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-brand/40 ${
           error ? "border-danger" : "border-border-strong"
         } ${className}`}
       />
-      {error && <p className="mt-1.5 text-xs text-danger">{error}</p>}
+      {error && (
+        <p id={`${inputId}-error`} className="mt-1.5 text-xs text-danger">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

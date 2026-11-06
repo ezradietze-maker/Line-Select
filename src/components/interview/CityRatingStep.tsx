@@ -290,7 +290,7 @@ function RatedSummary({ cities, scoreOf, untried }: { cities: CityFacts[]; score
   ].filter((g) => g.names.length > 0);
   if (!groups.length) return null;
   return (
-    <div className="mt-4 rounded-lg border border-border bg-surface-raised px-3 py-2.5" aria-label="Your city ratings">
+    <div role="group" className="mt-4 rounded-lg border border-border bg-surface-raised px-3 py-2.5" aria-label="Your city ratings">
       <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">Your ratings — check they&rsquo;re on the right cities</p>
       <dl className="mt-1.5 space-y-1 text-sm">
         {groups.map((g) => (

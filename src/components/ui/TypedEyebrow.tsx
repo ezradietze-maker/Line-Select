@@ -25,7 +25,8 @@ export function TypedEyebrow({ text }: { text: string }) {
   }, [path]);
   if (!typing) return <>{text}</>;
   return (
-    <span aria-label={text}>
+    <span>
+      <span className="sr-only">{text}</span>
       {[...text].map((ch, i) => (
         <span key={i} aria-hidden className="type-in" style={{ animationDelay: `${i * 26}ms` }}>
           {ch}

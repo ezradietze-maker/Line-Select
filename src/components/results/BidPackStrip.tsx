@@ -89,7 +89,7 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
     </span>
   );
   return (
-    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-muted ${className}`} aria-label="How to read a line's strip">
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-muted ${className}`} role="group" aria-label="How to read a line's strip">
       {view === "pack" ? (
         <>
           {item(word("1875", "text-leg"), "flight, on the day it leaves")}
@@ -425,7 +425,8 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
   if (layout.stacked || layout.mode === "scroll") {
     // The days scroll sideways under (a phone) or beside (a narrow laptop) the numbers, each strip with its own dates.
     const scroller = (
-      <div className="min-w-0 overflow-x-auto overscroll-x-contain" onClick={onToggle}>
+      // Focusable, so a keyboard can scroll it too (arrow keys once it has focus).
+      <div role="region" aria-label={`Line ${line.lineNumber}, day by day`} tabIndex={0} className="min-w-0 overflow-x-auto overscroll-x-contain focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={onToggle}>
         <div style={{ width: columns.length * SCROLL_COL }}>
           <DateRows columns={columns} layout={layout} />
           {drawn}

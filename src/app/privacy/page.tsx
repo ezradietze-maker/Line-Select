@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "October 28, 2026";
+const LAST_UPDATED = "November 6, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -283,7 +283,8 @@ export default function PrivacyPage() {
             interview was completed) &mdash; never the bid pack&rsquo;s contents, your interview
             answers, your preference weights, or any free text you&rsquo;ve written anywhere in the
             Service. If something crashes, the error and the page it happened on are sent the same
-            way. If you&rsquo;re signed in, these events are tied to your account id so we can tell
+            way. It also measures page speed &mdash; how quickly each page loads and responds to a tap
+            &mdash; as timings only, so slow screens can be found and fixed. If you&rsquo;re signed in, these events are tied to your account id so we can tell
             how many distinct pilots hit an issue rather than how many times it happened to one
             pilot &mdash; never your name or email. We don&rsquo;t use this for advertising, and we
             don&rsquo;t run session recording or record what you click or type.

@@ -33,7 +33,7 @@ function Item({ swatch, label }: { swatch: ReactNode; label: string }) {
 export function ColorKey({ variant, className = "" }: { variant: "calendar" | "trip"; className?: string }) {
   const trip = variant === "trip";
   return (
-    <div className={`flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px] text-ink-muted ${className}`} aria-label="What the colors mean">
+    <div className={`flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px] text-ink-muted ${className}`} role="group" aria-label="What the colors mean">
       <Item swatch={<LegSample />} label="FX Flight" />
       <Item swatch={<LegSample deadhead />} label="Deadhead" />
       <Item swatch={<Line tone="bg-layover" />} label="Layover" />

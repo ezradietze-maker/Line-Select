@@ -30,7 +30,8 @@ import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tri
 import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
 import { askedDealbreakers, dealbreakerQuestion } from "@/lib/brain/dealbreakers";
 import { nextHubTurnQuestion } from "@/lib/brain/hub-turn-question";
-import { minTurnsFor, SWEEP_QUESTION, type LinePairCandidate, type ThreadState } from "@/lib/brain/interviewer";
+import { minTurnsFor, SWEEP_QUESTION } from "@/lib/brain/interview-pace";
+import type { LinePairCandidate, ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
 import { pickQuestionExamples } from "@/lib/brain/question-examples";
 import { QuestionExamples } from "@/components/interview/QuestionExamples";

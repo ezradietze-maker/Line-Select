@@ -1,3 +1,6 @@
+// Every zone lookup in the app comes through here, so this is where zone offsets start being remembered.
+import "@/lib/fast-zones";
+
 /**
  * Airport code -> IANA timezone, for converting a leg's real Zulu timestamp
  * into local wall-clock time at either end. Seeded with every code this

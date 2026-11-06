@@ -34,11 +34,12 @@ export function loadPosthog(): Promise<PostHog | null> {
         disable_session_recording: true,
         disable_surveys: true,
         autocapture: false,
-        // Off here, whatever the PostHog project's remote settings say: dead-click and heatmap capture record clicks,
-        // and web-vitals reporting isn't among what the Privacy Policy says is collected.
+        // Off here, whatever the PostHog project's remote settings say: dead-click and heatmap capture record clicks.
         capture_dead_clicks: false,
         capture_heatmaps: false,
-        capture_performance: false,
+        // Page speed only (how fast pages load and answer taps — Google's four web vitals), as the Privacy Policy
+        // says: no network timings (they'd list the requests made), and no attribution naming what was tapped.
+        capture_performance: { web_vitals: true, network_timing: false, web_vitals_attribution: false },
         person_profiles: "identified_only",
       });
       return posthog;

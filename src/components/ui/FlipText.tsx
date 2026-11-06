@@ -5,7 +5,9 @@
  */
 export function FlipText({ text, className = "", delay = 0, stagger = 0 }: { text: string; className?: string; delay?: number; stagger?: number }) {
   return (
-    <span className={className} aria-label={text}>
+    <span className={className}>
+      {/* Read once, as plain text: the flipping characters are drawing, not words. */}
+      <span className="sr-only">{text}</span>
       {[...text].map((ch, i) => (
         <span
           key={`${i}-${ch}`}
