@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildLineFeatures, FEATURE_COUNT, FEATURE_NAMES } from "@/lib/forecast/features";
-import { estimateDropoutRate, forecastBid, forecastPackKey, likelihoodOf, resolveBidPosition } from "@/lib/forecast/forecast";
+import { estimateDropoutRate, forecastBid, forecastFromFeatures, forecastPackKey, likelihoodOf, resolveBidPosition } from "@/lib/forecast/forecast";
 import { estimatePopulation, fitWeightsFromRanking, PRIOR_MEAN } from "@/lib/forecast/population";
 import { mulberry32 } from "@/lib/forecast/random";
 import type { BidPack, Line, SeniorityEntry } from "@/types/bidpack";
@@ -63,6 +63,16 @@ describe("likelihood bands", () => {
 });
 
 describe("forecastBid", () => {
+  it("never puts the chance of being awarded a line above the chance it's open, once corrected", () => {
+    const L = 6;
+    const values = new Float64Array(L * FEATURE_COUNT).map((_, i) => ((i * 7919) % 13) / 6 - 1);
+    const features = { lineIds: [...Array(L)].map((_, i) => `l${i}`), lineNumbers: [...Array(L)].map((_, i) => String(i + 1)), values, lineCount: L };
+    const seniorityList: SeniorityEntry[] = [...Array(10)].map((_, i) => ({ seniority: 100 + i, bidNumber: i + 1 }));
+    const f = forecastFromFeatures({ packKey: "k", features, seniorityList, regularLines: L, dropoutRate: 0.08, seniorityNumber: 104, myRanking: [0, 1, 2], known: [], calibrate: (p) => p * 0.6 });
+    expect(f.lines.l0.pAward).toBeGreaterThan(0);
+    for (const l of Object.values(f.lines)) expect(l.pAward).toBeLessThanOrEqual(l.pAvailable + 1e-12);
+  });
+
   it("returns nothing when the pack has no seniority list", () => {
     const pack = { ...syntheticPack(20, 30), seniorityList: undefined };
     expect(forecastBid({ bidPack: pack, seniorityNumber: 3, myRanking: idsBestFirst(pack) })).toBeNull();

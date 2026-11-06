@@ -46,6 +46,9 @@ export function applyThemeAttribute(mode: ThemeMode): void {
   }
 }
 
+/** Sent on `window` when the theme changes, with the new mode as its detail — every appearance menu shows the same choice. */
+export const THEME_CHANGE_EVENT = "line-select:theme-change";
+
 export function setStoredTheme(mode: ThemeMode): void {
   applyThemeAttribute(mode);
   if (typeof window === "undefined") return;
@@ -54,6 +57,7 @@ export function setStoredTheme(mode: ThemeMode): void {
   } catch {
     // ignore
   }
+  window.dispatchEvent(new CustomEvent<ThemeMode>(THEME_CHANGE_EVENT, { detail: mode }));
 }
 
 /**

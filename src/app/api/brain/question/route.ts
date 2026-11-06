@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { nextInterviewStep, type LinePairCandidate, type LinePairDifference, type ThreadState } from "@/lib/brain/interviewer";
 import type { QuestionExample } from "@/lib/brain/question-examples";
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
     if (usage) console.log("[brain-question]", { turn: body.turn, done: step.done, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json(rest);
   } catch (e) {
-    await reportProblem("brain-question", e, { turn: body.turn });
+    await Promise.all([recordSpend(spender, failedCallCost(e)), reportProblem("brain-question", e, { turn: body.turn })]);
     return NextResponse.json({ error: "Couldn't come up with the next question just now. Please try again." }, { status: 502 });
   }
 }

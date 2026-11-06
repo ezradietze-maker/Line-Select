@@ -27,7 +27,9 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
   const [formOpen, setFormOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>("line");
-  const [lineId, setLineId] = useState(bidPack.lines[0]?.id ?? "");
+  const [pickedLineId, setLineId] = useState(bidPack.lines[0]?.id ?? "");
+  // A line picked before a new pack loaded isn't in it: the new pack's first line instead, never a report without one.
+  const lineId = bidPack.lines.some((l) => l.id === pickedLineId) ? pickedLineId : (bidPack.lines[0]?.id ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HoldHistorySummary | null>(null);

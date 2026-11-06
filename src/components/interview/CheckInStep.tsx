@@ -26,6 +26,9 @@ interface CheckInStepProps {
   eyebrow?: string;
   onContinue: (changed: string, dates: string) => void;
   onStartOver: () => void;
+  /** What they wrote before going on — back from the next step, the boxes hold it rather than starting blank. */
+  initialChanged?: string;
+  initialDates?: string;
 }
 
 /**
@@ -33,9 +36,9 @@ interface CheckInStepProps {
  * at a glance, and the two things a new month usually brings — something
  * that's changed, and dates they need off. Everything else carries over.
  */
-export function CheckInStep({ model, periodLabel, eyebrow, onContinue, onStartOver }: CheckInStepProps) {
-  const [changed, setChanged] = useState("");
-  const [dates, setDates] = useState("");
+export function CheckInStep({ model, periodLabel, eyebrow, onContinue, onStartOver, initialChanged = "", initialDates = "" }: CheckInStepProps) {
+  const [changed, setChanged] = useState(initialChanged);
+  const [dates, setDates] = useState(initialDates);
   const top = describeModel(model).slice(0, 5);
   const title = "New month. Anything different?";
   return (

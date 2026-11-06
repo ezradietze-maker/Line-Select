@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { BRAIN_PROMPT_VERSION, buildPilotModel } from "@/lib/brain/build-model";
 import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
     // Stamped so what pilots later say about their month can be traced to the brain, and the notes, that ranked it.
     return NextResponse.json({ model: { ...r.model, brainVersion: BRAIN_PROMPT_VERSION, notesUsed: !!notes || !!prior?.notesUsed }, dropped: r.dropped });
   } catch (e) {
-    await reportProblem("brain-build", e, { exchanges: exchanges.length });
+    await Promise.all([recordSpend(spender, failedCallCost(e)), reportProblem("brain-build", e, { exchanges: exchanges.length })]);
     return NextResponse.json({ error: "Couldn't read your answers just now. Please try again." }, { status: 502 });
   }
 }

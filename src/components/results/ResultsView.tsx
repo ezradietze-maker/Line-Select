@@ -459,7 +459,9 @@ export function ResultsView({
     ),
     [matching, showHidden, hiddenSet, view, starredSet, realisticIds]
   );
-  const sorted = useMemo(() => sortLineScores(listable, sortMode, bidPack), [listable, sortMode, bidPack]);
+  // Departures counted as each card counts them: the times the pilot leaves home.
+  const departureOptions = useMemo(() => monthDepartureOptions(bidPack.base, profile, flights), [bidPack.base, profile, flights]);
+  const sorted = useMemo(() => sortLineScores(listable, sortMode, bidPack, departureOptions), [listable, sortMode, bidPack, departureOptions]);
 
   // Back to the first page whenever what's being listed changes — landing on
   // "page 4 of a different list" would show a scrolled-past-nothing view.

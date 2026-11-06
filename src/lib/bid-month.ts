@@ -17,7 +17,6 @@ import type { BidPack, Line, Trip } from "@/types/bidpack";
  */
 
 const HOUR = 3_600_000;
-const DAY = 24 * HOUR;
 
 type PackDates = Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">;
 
@@ -26,6 +25,17 @@ export function bidMonthEnd(pack: PackDates): number | null {
   if (!pack.bidPeriodStart) return null;
   const end = DateTime.fromISO(pack.bidPeriodStart, { zone: timezoneForAirport(pack.base) ?? "UTC" }).plus({ days: pack.bidPeriodDays });
   return end.isValid ? end.toMillis() : null;
+}
+
+/**
+ * Which calendar day after the month's end an instant falls on, on the base's clock: 1 for the first. Counted in
+ * dates, not 24-hour spans — the night the clocks go back is 25 hours long, and a landing late on the day after it
+ * would otherwise count a day further on.
+ */
+function dayPastEnd(at: number, end: number, pack: PackDates): number {
+  const zone = timezoneForAirport(pack.base) ?? "UTC";
+  const day = DateTime.fromMillis(at, { zone }).startOf("day");
+  return Math.round(day.diff(DateTime.fromMillis(end, { zone }).startOf("day"), "days").days) + 1;
 }
 
 /**
@@ -95,7 +105,7 @@ export function splitTrip(trip: Trip, pack: PackDates, carryOverCredit = 0): { i
   const gone = trip.schedule.slice(kept.length);
   const carry: TripCarryOver = {
     // Calendar days after the month's end the trip is still flying on, the day it lands back counted.
-    days: Math.floor((lastLanding - end) / DAY) + 1,
+    days: dayPastEnd(lastLanding, end, pack),
     dutyPeriods: gone.length,
     landings: gone.reduce((n, d) => n + d.legs.filter(operated).length, 0),
     blockHours: gone.reduce((n, d) => n + d.legs.filter(operated).reduce((a, l) => a + (l.blockHours ?? 0), 0), 0),
@@ -144,7 +154,7 @@ function split(line: Line, pack: PackDates): { month: Line; carry: LineCarryOver
     const dropped = droppedAt.map((i) => line.trips[i]);
     if (carried.length || dropped.length) {
       // A whole trip past the month's end: every day it flies, and all its block and time away, are the next month's.
-      const droppedDays = droppedAt.map((i) => Math.floor((starts[i]! + line.trips[i].tafbHours * HOUR - end) / DAY) + 1);
+      const droppedDays = droppedAt.map((i) => dayPastEnd(starts[i]! + line.trips[i].tafbHours * HOUR, end, pack));
       const droppedBlock = dropped.reduce((n, t) => n + t.schedule.flatMap((d) => d.legs).filter(operated).reduce((a, l) => a + (l.blockHours ?? 0), 0), 0);
       const sum = (f: (c: TripCarryOver) => number) => carried.reduce((a, p) => a + f(p.carry), 0);
       // The pack's own counts, less what's carried: they count landings and duty periods across the carry-over.

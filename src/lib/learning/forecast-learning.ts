@@ -176,9 +176,13 @@ export function fitCalibration(pairs: CalibrationPair[], version: string, now: D
     }
   }
   // Each point leans toward "the forecast was right" until it has real weight behind it.
+  // Each shrinks by its own weight, which can tip a light point below a heavy one before it — so the order is set
+  // again after: a higher forecast never maps to a lower real chance.
+  let floor = 0;
   const points = stack.map((b) => {
     const trust = b.w / (b.w + 15);
-    return { p: b.p, q: Math.min(0.995, Math.max(0.005, trust * b.y + (1 - trust) * b.p)) };
+    floor = Math.max(floor, Math.min(0.995, Math.max(0.005, trust * b.y + (1 - trust) * b.p)));
+    return { p: b.p, q: floor };
   });
   return { version, createdAt: now.toISOString(), n: pairs.length, points };
 }

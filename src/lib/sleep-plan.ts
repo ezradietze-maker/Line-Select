@@ -197,10 +197,15 @@ export function sleepPropensity(bodyMinute: number): number {
   return 1;
 }
 
-const clockText = (m: number) => `${String(Math.floor(mod(m) / 60)).padStart(2, "0")}:${String(Math.round(mod(m) % 60)).padStart(2, "0")}`;
+// Rounded to the minute before splitting: the body clock drifts in fractions of a minute, and 23:59.6 is 00:00, not 23:60.
+const clockText = (m: number) => {
+  const t = mod(Math.round(m));
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+};
 const hoursText = (min: number) => {
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
+  const whole = Math.round(min);
+  const h = Math.floor(whole / 60);
+  const m = whole % 60;
   return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
 };
 

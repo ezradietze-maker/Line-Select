@@ -21,11 +21,10 @@ export function loadPosthog(): Promise<PostHog | null> {
     .then(({ default: posthog }) => {
       posthog.init(key, {
         api_host: host,
-        // Pageviews are sent manually from `onRouterTransitionStart` in
-        // instrumentation-client.ts, which fires on every App Router
-        // navigation — the automatic capture doesn't reliably see client-side
-        // route changes.
-        capture_pageview: false,
+        // The page they're on when it starts, then each change of path. Sent by hand from the router's transition
+        // start, a pageview carried the page being left (the address hadn't changed yet) and the first page of
+        // every visit was never counted.
+        capture_pageview: "history_change",
         capture_pageleave: true,
         // No session replay, no autocapture of clicks/form inputs, no
         // rageclick heuristics, no surveys — this app's whole pitch to pilots

@@ -99,11 +99,13 @@ export async function createRecoveryCode(password: string): Promise<{ ok: boolea
   }
 }
 
-export async function logout(): Promise<void> {
+/** Whether the server ended the session. When it didn't, the cookie still signs this device in — so the app must not act signed out. */
+export async function logout(): Promise<boolean> {
   try {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    return res.ok;
   } catch {
-    // ignore — worst case the session cookie just expires on its own later.
+    return false;
   }
 }
 

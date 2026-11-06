@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { secretMatches } from "@/lib/server/secret";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { createCandidateVariable, listCandidateVariables } from "@/lib/server/db";
 import type { CandidateVariable } from "@/types/candidate-variable";
 
@@ -38,6 +39,8 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
+  // A pilot flags a handful of these in an interview; without a ceiling one account could fill the table admins review.
+  if (!(await checkRateLimit("candidate-variables", user.id, 60, 60 * 60)).ok) return rateLimitedResponse();
 
   let body: {
     rawQuote?: string;

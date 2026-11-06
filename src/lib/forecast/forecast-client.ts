@@ -2,7 +2,7 @@ import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
 import { estimateDropoutRate, forecastBid, forecastPackKey, type BidForecast } from "@/lib/forecast/forecast";
 import type { BidPack } from "@/types/bidpack";
 
-export type ShareOutcome = "stored" | "not-signed-in" | "not-requested" | "position-taken" | "store-full" | "unlisted";
+export type ShareOutcome = "stored" | "not-signed-in" | "not-requested" | "position-taken" | "store-full" | "unlisted" | "failed";
 
 export interface ForecastResponse {
   forecast: BidForecast;

@@ -161,12 +161,15 @@ export function forecastWithCore(input: FeatureForecastInput): { forecast: BidFo
 
   const lines: Record<string, LineForecast> = {};
   features.lineIds.forEach((lineId, i) => {
-    const pAvailable = calibrate(core.pAvailable[i]);
+    const raw = core.pAvailable[i];
+    const pAvailable = calibrate(raw);
     lines[lineId] = {
       lineId,
       lineNumber: features.lineNumbers[i],
       pAvailable,
-      pAward: core.pAward[i],
+      // A line is only awarded when it's open: the award chance moves with the corrected open chance (the same share
+      // of it), so "40% open" never sits beside "66% you're awarded it".
+      pAward: raw > 0 ? Math.min(pAvailable, core.pAward[i] * (pAvailable / raw)) : 0,
       likelihood: likelihoodOf(pAvailable),
     };
   });

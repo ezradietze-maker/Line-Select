@@ -16,9 +16,9 @@ import type { LineScore } from "@/lib/scoring";
 import type { PreferenceProfile } from "@/types/preferences";
 
 function formatHours(hours: number): string {
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
-  return `${h}:${m.toString().padStart(2, "0")}`;
+  // Whole minutes first, so 20.999 h reads 21:00 rather than 20:60.
+  const total = Math.round(hours * 60);
+  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
 function lineSummary(line: LineScore): string {

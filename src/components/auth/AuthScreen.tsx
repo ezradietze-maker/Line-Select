@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { RecoveryCodePanel } from "@/components/auth/RecoveryCodePanel";
 import { Button } from "@/components/ui/Button";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
@@ -30,6 +30,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const handedOff = useRef(false);
   const [emailResetEnabled, setEmailResetEnabled] = useState(false);
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
 
@@ -88,18 +89,26 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
         : mode === "reset"
           ? await resetPassword(email, recoveryCode, password)
           : await signUp(email, password, displayName);
-    setSubmitting(false);
 
     if (!result.ok || !result.user) {
+      setSubmitting(false);
       setError(result.error ?? "Something went wrong. Try again.");
       return;
     }
 
     if (mode !== "login" && result.recoveryCode) {
+      setSubmitting(false);
       setReveal({ user: result.user, code: result.recoveryCode, reason: mode === "reset" ? "reset" : "signup" });
       return;
     }
-    onAuthenticated(result.user);
+    // Still "submitting" until the app has loaded their account and moved on: a second tap meanwhile signed in twice.
+    handOff(result.user);
+  }
+
+  function handOff(user: UserAccount) {
+    if (handedOff.current) return;
+    handedOff.current = true;
+    onAuthenticated(user);
   }
 
   if (reveal) {
@@ -110,7 +119,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
             code={reveal.code}
             reason={reveal.reason}
             doneLabel="Continue to Line Select"
-            onDone={() => onAuthenticated(reveal.user)}
+            onDone={() => handOff(reveal.user)}
           />
         </div>
       </div>

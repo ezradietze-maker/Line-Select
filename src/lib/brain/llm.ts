@@ -74,13 +74,25 @@ function refusalFallback(model: string) {
 
 /** A structured call's answer, from the model's reply — shared with routed calls. */
 export function structuredResult<T>(res: Pick<Anthropic.Beta.BetaMessage, "stop_reason" | "content" | "model" | "usage">, ms: number, priceFactor = 1): { data: T; usage: BrainUsage } {
-  if (res.stop_reason === "refusal") throw new Error("brain call declined");
-  if (res.stop_reason === "max_tokens") throw new Error("brain call ran out of room");
+  const usage: BrainUsage = { model: res.model, inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens, costUsd: costOf(res.model, res.usage) * priceFactor, ms };
+  // A reply that can't be used was still paid for: the error carries its cost, so the spend caps count it (see `failedCallCost`).
+  const fail = (message: string) => Object.assign(new Error(message), { usage });
+  if (res.stop_reason === "refusal") throw fail("brain call declined");
+  if (res.stop_reason === "max_tokens") throw fail("brain call ran out of room");
   const text = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-  return {
-    data: JSON.parse(text) as T,
-    usage: { model: res.model, inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens, costUsd: costOf(res.model, res.usage) * priceFactor, ms },
-  };
+  let data: T;
+  try {
+    data = JSON.parse(text) as T;
+  } catch {
+    throw fail("brain call returned unreadable JSON");
+  }
+  return { data, usage };
+}
+
+/** What a failed call had already cost, when the model answered before it failed; 0 when it never got that far. */
+export function failedCallCost(error: unknown): number {
+  const usage = (error as { usage?: BrainUsage } | null)?.usage;
+  return typeof usage?.costUsd === "number" && Number.isFinite(usage.costUsd) ? usage.costUsd : 0;
 }
 
 type Caller = <T>(opts: StructuredCallOptions) => Promise<{ data: T; usage: BrainUsage }>;

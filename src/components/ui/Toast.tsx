@@ -4,6 +4,8 @@ export interface ToastItem {
   id: string;
   title: string;
   body: string;
+  /** Where a tap goes — the Inbox when unset; null for a notice that only dismisses. */
+  href?: string | null;
 }
 
 interface ToastStackProps {

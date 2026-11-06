@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { readAskQuery } from "@/lib/brain/ask-pack";
 import { MAX_PACK_BRIEF } from "@/lib/server/brain-input";
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
     console.log("[brain-ask]", { conditions: query.conditions.length, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json({ query });
   } catch (e) {
-    await reportProblem("brain-ask", e);
+    await Promise.all([recordSpend(spender, failedCallCost(e)), reportProblem("brain-ask", e)]);
     return NextResponse.json({ error: "Couldn't read that question just now. Please try again." }, { status: 502 });
   }
 }

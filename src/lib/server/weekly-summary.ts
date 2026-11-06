@@ -54,7 +54,8 @@ export async function weeklySection(now = new Date()): Promise<string | null> {
         a.runs++;
         if (r.promoted) a.promoted++;
         if (r.error) a.failed++;
-        a.last = r.skipped ? `skipped: ${String(r.skipped)}` : r.error ? `failed: ${String(r.error)}` : `${r.promoted ? "new version in use" : "kept the version in use"}`;
+        // Runs come newest first, so the first one seen is the latest.
+        if (!a.last) a.last = r.skipped ? `skipped: ${String(r.skipped)}` : r.error ? `failed: ${String(r.error)}` : `${r.promoted ? "new version in use" : "kept the version in use"}`;
         return acc;
       }, {});
     return weeklyText({

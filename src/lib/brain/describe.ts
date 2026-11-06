@@ -8,7 +8,11 @@ import type { Criterion, CriterionShape, PilotModel } from "@/types/pilot-model"
  * ranking, how it's measured on their pack, and the words it came from.
  */
 
-const clock = (m: number) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, "0")}:${String(Math.round(m % 60)).padStart(2, "0")}`;
+// Rounded to the minute before splitting, so 23:59.6 reads 00:00 rather than 23:60.
+const clock = (m: number) => {
+  const t = (((Math.round(m) % 1440) + 1440) % 1440);
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+};
 const round = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 const SINGULAR: Record<string, string> = { duties: "duty", hours: "hour", days: "day", trips: "trip", legs: "leg", layovers: "layover", commutes: "commute", landings: "landing", nights: "night", flights: "flight", departures: "departure", "hub turns": "hub turn", gaps: "gap" };

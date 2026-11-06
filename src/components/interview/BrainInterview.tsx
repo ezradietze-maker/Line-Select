@@ -70,6 +70,11 @@ type Phase = "seniority" | "checkin" | "story" | "commuter" | "cities" | "readin
 
 /** A monthly check-in asks at most this many questions about what's new. */
 const CHECK_IN_TURNS = 5;
+/** The check-in's two questions as they begin, and what's recorded for a box left blank. */
+const CHECK_IN_CHANGED_Q = "Monthly check-in (";
+const CHECK_IN_DATES_Q = "Monthly check-in: any dates you need off";
+const NOTHING_CHANGED = "Nothing has changed.";
+const NO_DATES = "No specific dates this month.";
 
 /**
  * A safety net, not a target: the interviewer decides when it has learned enough (see `rankingHasSettled` and the
@@ -189,6 +194,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   checkInRef.current = checkIn;
   const afterSeniority: Phase = checkIn ? "checkin" : "story";
   const [phase, setPhase] = useState<Phase>(hasSeniorityStep ? "seniority" : afterSeniority);
+  const [confirming, setConfirming] = useState(false);
+  const confirmedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   // Opening steps.
@@ -207,7 +214,11 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [cityPreferences, setCityPreferences] = useState<Record<string, CitySentiment>>(() => ({ ...(priorProfile?.cityPreferences ?? {}) }));
   /** Cities the story itself rated, as the brain read it — shown as such on the city step until the pilot changes them. */
   const [storySuggested, setStorySuggested] = useState<Record<string, CitySentiment>>({});
+  /** Cities the pilot graded on the screen themselves, whatever the grade — the story's reading never overrides them. */
+  const touchedCities = useRef(new Set<string>());
   const [homeCity, setHomeCity] = useState<string | null>(null);
+  /** The home airport the commute step marked loved, when it was this step that did. */
+  const autoLovedHome = useRef<string | null>(null);
   const cityFacts = useMemo(() => packCityFacts(bidPack), [bidPack]);
 
   // The interview itself.
@@ -325,6 +336,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       const s = sentimentFromRating(v >= 0.5 ? 1 : v <= -0.5 ? -1 : 0);
       if (s && cityFacts.some((c) => c.code === code)) suggested[code] = s;
     }
+    // Never a city the pilot set on the screen — set back to neutral, it isn't in their marks, and a later read would put
+    // the story's grade straight back.
+    for (const code of touchedCities.current) delete suggested[code];
     if (!Object.keys(suggested).length) return;
     setStorySuggested((p) => ({ ...suggested, ...p }));
     // Only cities the pilot hasn't rated themselves.
@@ -337,8 +351,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     for (const [code, r] of Object.entries(cityRatings)) if (!cityFacts.some((c) => c.code === code)) out[code] = r;
     for (const c of cityFacts) {
       const score = effectiveCityScore(c.code, cityRatings, cityPreferences);
-      // A city neutral most of the year is kept when there's more to it: seasons, hotels, "I'd try it", a note.
-      if (score !== 0 || saysMore(cityRatings[c.code])) out[c.code] = { ...cityRatings[c.code], score };
+      // A city neutral most of the year is kept when there's more to it: seasons, hotels, "I'd try it", a note. So is
+      // one the story graded and the pilot set back to neutral: their 0 has to outweigh the brain's reading of the story.
+      if (score !== 0 || saysMore(cityRatings[c.code]) || (touchedCities.current.has(c.code) && storySuggested[c.code])) out[c.code] = { ...cityRatings[c.code], score };
     }
     return out;
   }
@@ -385,10 +400,17 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const start = carryForward(lastTime?.exchanges ?? []);
     setExchanges([
       ...start,
-      { turn: start.length, question: `Monthly check-in (${bidPack.month} bid pack): has anything changed since last month?`, answer: changed || "Nothing has changed." },
-      { turn: start.length + 1, question: `Monthly check-in: any dates you need off in this bid period (${periodLabel})?`, answer: dates || "No specific dates this month." },
+      { turn: start.length, question: `${CHECK_IN_CHANGED_Q}${bidPack.month} bid pack): has anything changed since last month?`, answer: changed || NOTHING_CHANGED },
+      { turn: start.length + 1, question: `${CHECK_IN_DATES_Q} in this bid period (${periodLabel})?`, answer: dates || NO_DATES },
     ]);
     setPhase("cities");
+  }
+
+  /** What the check-in already holds, for going back to it: the pilot's own words, not the stand-ins for a blank box. */
+  function checkInAnswer(prefix: string, blank: string): string {
+    // Only the last two: this month's, just written. Further back are last month's, carried forward.
+    const answer = exchanges.slice(-2).find((e) => e.question.startsWith(prefix))?.answer ?? "";
+    return answer === blank ? "" : answer;
   }
 
   /** Check-in: this pack's city grades join the record, the brain re-reads everything against the new pack, then a few questions about what's new. */
@@ -642,7 +664,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   }
 
   function confirmReview(verdicts: Record<string, PriorityVerdict | undefined>) {
-    if (!reviewModel || !ratedModel) return;
+    // Once only: a second tap before the rankings open would save the profile again and post a second outcome.
+    if (!reviewModel || !ratedModel || confirmedRef.current) return;
+    confirmedRef.current = true;
+    setConfirming(true);
     // The pilot's verdicts land on the model before fitting, so later choices and edits refit from what they confirmed.
     const reviewed = applyPriorityReview(ratedModel, verdicts);
     const pins = priorProfile?.brainInterview?.pins ?? {};
@@ -704,10 +729,11 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     onComplete(profile);
   }
 
-  // Progress worth resuming: saved after every answer.
+  // Progress worth resuming: saved after every answer — the moment it's sent, not once the next question arrives, so an
+  // answer isn't lost to a phone locking while that question is worked out (resuming then asks it again).
   useEffect(() => {
-    if ((phase !== "question" && phase !== "sweep") || exchanges.length === 0) return;
-    const d: DraftState = { version: 1, savedAt: Date.now(), phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn };
+    if ((phase !== "question" && phase !== "sweep" && phase !== "asking") || exchanges.length === 0) return;
+    const d: DraftState = { version: 1, savedAt: Date.now(), phase: phase === "sweep" ? "sweep" : "question", exchanges, threads, choices, tripChoices, pastTrades, model, question: phase === "asking" ? null : question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn };
     try {
       window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify(d));
     } catch {}
@@ -744,8 +770,16 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setResume(null);
     if (d.phase === "sweep") setPhase("sweep");
     else if (d.question) setPhase("question");
-    else void askNext(d.exchanges, d.threads, d.choices, d.turn, d.sweepDone);
+    // Asked once the draft's answers have rendered: asked now, the request would carry this screen's commute and cohort, not the draft's.
+    else setResumeAsk(d);
   }
+  const [resumeAsk, setResumeAsk] = useState<DraftState | null>(null);
+  useEffect(() => {
+    if (!resumeAsk) return;
+    setResumeAsk(null);
+    void askNext(resumeAsk.exchanges, resumeAsk.threads, resumeAsk.choices, resumeAsk.turn, resumeAsk.sweepDone);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeAsk]);
 
   // ----- Rendering -----
 
@@ -773,7 +807,17 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       );
     }
     if (phase === "checkin" && model) {
-      return <CheckInStep model={model} periodLabel={periodLabel} eyebrow="Monthly check-in" onContinue={submitCheckIn} onStartOver={startOverInstead} />;
+      return (
+        <CheckInStep
+          model={model}
+          periodLabel={periodLabel}
+          eyebrow="Monthly check-in"
+          onContinue={submitCheckIn}
+          onStartOver={startOverInstead}
+          initialChanged={checkInAnswer(CHECK_IN_CHANGED_Q, NOTHING_CHANGED)}
+          initialDates={checkInAnswer(CHECK_IN_DATES_Q, NO_DATES)}
+        />
+      );
     }
     if (phase === "story") {
       return (
@@ -834,10 +878,21 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
           <StepNav
             onNext={() => {
               const home = isCommuter ? parseAirportCode(commuteFrom) : null;
-              if (home && cityFacts.some((c) => c.code === home)) {
-                setCityPreferences((prev) => (prev[home] ? prev : { ...prev, [home]: "love" }));
-                setHomeCity(home);
-              } else setHomeCity(null);
+              const isHome = home && cityFacts.some((c) => c.code === home) ? home : null;
+              const next = { ...cityPreferences };
+              // The home this step itself marked loved, when they've since changed it (a typo fixed, or living locally
+              // after all), stops being a loved layover — unless they graded it themselves.
+              const marked = autoLovedHome.current;
+              if (marked && marked !== isHome) {
+                if (next[marked] === "love" && !cityRatings[marked]) delete next[marked];
+                autoLovedHome.current = null;
+              }
+              if (isHome && !next[isHome]) {
+                next[isHome] = "love";
+                autoLovedHome.current = isHome;
+              }
+              setCityPreferences(next);
+              setHomeCity(isHome);
               setPhase("cities");
             }}
             nextLabel="Next"
@@ -854,6 +909,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
             ratings={cityRatings}
             sentiments={cityPreferences}
             onRate={(code, score: CityRatingScore | 0) => {
+              touchedCities.current.add(code);
               setCityRatings((prev) => rateCity(code, score, prev, cityPreferences).ratings);
               setCityPreferences((prev) => {
                 const next = { ...prev };
@@ -874,6 +930,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
             onSeason={(code, season, value) => setCityRatings((prev) => rateCitySeason(code, season, value, prev, cityPreferences))}
             onHotel={(code, hotel, score) => setCityRatings((prev) => rateCityHotel(code, hotel, score, prev, cityPreferences))}
             onUntried={(code, untried) => {
+              touchedCities.current.add(code);
               const next = markCityUntried(code, untried, cityRatings, cityPreferences);
               setCityRatings(next.ratings);
               setCityPreferences(next.sentiments);
@@ -904,7 +961,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       );
     }
     if (phase === "sweep") return <TopicSweepStep topics={uncoveredTopics(model)} eyebrow="Almost done" onContinue={(p, n) => void submitSweep(p, n)} />;
-    if (phase === "review" && reviewModel) return <PriorityReviewStep model={reviewModel} eyebrow="Your priorities" onConfirm={confirmReview} />;
+    if (phase === "review" && reviewModel) return <PriorityReviewStep model={reviewModel} eyebrow="Your priorities" onConfirm={confirmReview} busy={confirming} />;
     if (phase === "question") {
       if (!question) {
         return (

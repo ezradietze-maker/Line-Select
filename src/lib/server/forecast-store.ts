@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, count, eq, ne } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { decodeRanking, encodeRanking } from "@/lib/forecast/ranking-codec";
 import type { KnownRanking } from "@/lib/forecast/simulate";
 import { db } from "@/lib/server/postgres";
@@ -81,6 +81,16 @@ export async function saveSubmission(params: {
         .from(forecastRankings)
         .where(eq(forecastRankings.blobKey, key));
       if (Number(total) >= MAX_ENTRIES) return { stored: false, reason: "store-full" };
+    } else if (existingMine.bidNumber !== params.bidNumber) {
+      // A moved bid number: the old row goes first, or the insert below breaks the one-row-per-pilot index — which
+      // its conflict target (the bid number) doesn't cover — and the share fails outright. Not if the new place is taken.
+      const [holder] = await tx
+        .select({ userHash: forecastRankings.userHash })
+        .from(forecastRankings)
+        .where(and(eq(forecastRankings.blobKey, key), eq(forecastRankings.bidNumber, params.bidNumber)))
+        .limit(1);
+      if (holder && holder.userHash !== user) return { stored: false, reason: "position-taken" };
+      await tx.delete(forecastRankings).where(and(eq(forecastRankings.blobKey, key), eq(forecastRankings.userHash, user)));
     }
 
     const [claimed] = await tx
@@ -96,17 +106,6 @@ export async function saveSubmission(params: {
     if (!claimed || claimed.userHash !== user) {
       return { stored: false, reason: "position-taken" };
     }
-
-    // Moved bid numbers: drop this pilot's old row under the same pack so they have exactly one.
-    await tx
-      .delete(forecastRankings)
-      .where(
-        and(
-          eq(forecastRankings.blobKey, key),
-          eq(forecastRankings.userHash, user),
-          ne(forecastRankings.bidNumber, params.bidNumber)
-        )
-      );
 
     return { stored: true };
   });

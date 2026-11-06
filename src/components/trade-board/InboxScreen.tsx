@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import {
@@ -22,16 +23,20 @@ interface InboxScreenProps {
   user: UserAccount | null;
   /** A synthetic, client-only offer for demo purposes — see `fake-trade-offers.ts`. */
   onGoToTradeBoard: () => void;
+  /** The board as the app last polled it — see \`useAppState().tradeOffers\`. */
+  polledOffers?: TradeOffer[];
 }
 
-export function InboxScreen({ bidPack, user, onGoToTradeBoard }: InboxScreenProps) {
+export function InboxScreen({ bidPack, user, polledOffers, onGoToTradeBoard }: InboxScreenProps) {
   const [offers, setOffers] = useState<TradeOffer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     const data = await fetchTradeOffers();
-    setOffers(data);
+    setLoadFailed(data === null);
+    if (data) setOffers(data);
     setLoading(false);
   }, []);
 
@@ -41,6 +46,16 @@ export function InboxScreen({ bidPack, user, onGoToTradeBoard }: InboxScreenProp
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [refresh]);
+
+  // The app polls the board every few seconds (the Inbox badge and toasts read it): each new poll is shown here too,
+  // or a proposal could clear the badge while this list still holds the copy from when the screen opened.
+  const firstPoll = useRef(polledOffers);
+  useEffect(() => {
+    if (polledOffers && polledOffers !== firstPoll.current) {
+      setOffers(polledOffers);
+      setLoadFailed(false);
+    }
+  }, [polledOffers]);
 
   const realVisibleOffers = bidPack ? offers.filter((o) => sameBidPack(o, bidPack)) : offers;
   const visibleOffers = realVisibleOffers;
@@ -68,6 +83,8 @@ export function InboxScreen({ bidPack, user, onGoToTradeBoard }: InboxScreenProp
         </InfoBanner>
       )}
       {user && !bidPack && <InfoBanner>Upload your bid pack to use the Inbox.</InfoBanner>}
+
+      {loadFailed && <ErrorBanner className="mt-4">Couldn&rsquo;t load the board just now. Check your connection and try again in a moment.</ErrorBanner>}
 
       {loading ? (
         <SkeletonCards shape="offer" className="mt-8" />
