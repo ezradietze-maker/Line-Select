@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
+import { fitWeightsToChoices, shareChanges } from "@/lib/brain/fit-choices";
 import { applyPriorityReview } from "@/lib/brain/review";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
@@ -37,6 +37,33 @@ describe("fitting weights to a pilot's line choices", () => {
     const off = r.model.criteria.find((c) => c.id === "off")!.weight;
     const credit = r.model.criteria.find((c) => c.id === "credit")!.weight;
     expect(off / credit).toBeLessThanOrEqual((0.05 * 3) / (1 / 3) + 1e-9);
+  });
+
+  it("counts a swap the pilot makes again, where a repeated interview answer counts once", () => {
+    const drag = { preferred: "A", other: "B", strength: "slightly", direct: true } as const;
+    const w = (r: ReturnType<typeof fitWeightsToChoices>, id: string) => r.model.criteria.find((c) => c.id === id)!.weight;
+    const off = (r: ReturnType<typeof fitWeightsToChoices>) => w(r, "off") / w(r, "credit");
+    expect(off(fitWeightsToChoices(pack, model, [drag, drag]))).toBeGreaterThan(off(fitWeightsToChoices(pack, model, [drag])));
+    const asked = { preferred: "A", other: "B", strength: "slightly" } as const;
+    expect(off(fitWeightsToChoices(pack, model, [asked, asked]))).toBeCloseTo(off(fitWeightsToChoices(pack, model, [asked])), 9);
+  });
+
+  it("leaves a pair a dealbreaker decides out of the fit", () => {
+    // B breaks a days-off limit; the pilot puts it above A anyway. No reweighting can explain that — the limit is the question.
+    const limited: PilotModel = { ...model, criteria: [model.criteria[0], { ...model.criteria[1], hardLimit: { op: "min", value: 14 } }] };
+    const r = fitWeightsToChoices(pack, limited, [{ preferred: "B", other: "A", strength: "strongly", direct: true }]);
+    expect(r.heldByLimit).toHaveLength(1);
+    expect(r.model).toBe(limited);
+  });
+
+  it("reports a change only where a priority's share of the weight moved, not where rescaling moved it on paper", () => {
+    const halved: PilotModel = { ...model, criteria: model.criteria.map((c) => ({ ...c, weight: c.weight / 2 })) };
+    expect(shareChanges(model, halved)).toEqual([]);
+    const moved = shareChanges(model, { ...model, criteria: [model.criteria[0], { ...model.criteria[1], weight: 1 }] });
+    expect(moved.map((c) => [c.criterionId, c.to > c.from])).toEqual([
+      ["credit", false],
+      ["off", true],
+    ]);
   });
 });
 

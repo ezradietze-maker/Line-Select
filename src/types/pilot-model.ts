@@ -126,6 +126,8 @@ export interface LineChoice {
    * full however far it is from the model's view, where a close call in the interview is capped (see `fit-choices.ts`).
    */
   direct?: boolean;
+  /** The drag that made it (see `Placement.id` in `lib/line-placements.ts`), so undoing the drag takes it back. */
+  dragId?: string;
   why?: string;
 }
 
