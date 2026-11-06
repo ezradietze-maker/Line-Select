@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Not this checkout's code: other sessions' worktrees, scratch analyses, private and local data.
+    ".claude/**",
+    ".cache/**",
+    "private/**",
+    ".data/**",
   ]),
 ]);
 
