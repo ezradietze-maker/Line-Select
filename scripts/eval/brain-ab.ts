@@ -25,6 +25,12 @@ import { lineAgreement, lineJudge, loadRun } from "./trip-scorecard";
  *   npx tsx scripts/eval/brain-ab.ts <persona>-<tag> [<persona>-<tag> …] [--reads N] [--old <git ref>]
  */
 
+/**
+ * The simulated pilot a run is of: the longest persona id it starts with. "expilot-readback-w10a" is the read-back
+ * persona, not "expilot" — matched first in list order, its readings were scored against the other one's judge.
+ */
+const personaOf = (run: string) => [...PERSONAS].sort((a, b) => b.id.length - a.id.length).find((p) => run.startsWith(`${p.id}-`));
+
 const args = process.argv.slice(2);
 const flag = (name: string) => {
   const i = args.indexOf(`--${name}`);
@@ -59,7 +65,7 @@ async function committedBrain(): Promise<{ build: Build; key: string }> {
   const ctx = new Map<string, { judge: NonNullable<ReturnType<typeof lineJudge>>; run: NonNullable<ReturnType<typeof loadRun>>; ratings: ReturnType<typeof cityRatingsFromLog> }>();
 
   for (const run of runs) {
-    const persona = PERSONAS.find((p) => run.startsWith(`${p.id}-`));
+    const persona = personaOf(run);
     if (!persona) throw new Error(`Unknown run ${run}`);
     const r = loadRun(persona.id, run.slice(persona.id.length + 1))!;
     const exchanges = JSON.parse(readFileSync(`.cache/eval/sim/${run}.json`, "utf8")).exchanges;
@@ -97,7 +103,7 @@ async function committedBrain(): Promise<{ build: Build; key: string }> {
     const o = olds.map((m) => score(run, m));
     const n = news.map((m) => score(run, m));
     console.log(`${run}: committed fit ${mean(o.map((x) => x.fit)).toFixed(3)} (fresh ${mean(o.map((x) => x.fresh)).toFixed(3)}) · working fit ${mean(n.map((x) => x.fit)).toFixed(3)} (fresh ${mean(n.map((x) => x.fresh)).toFixed(3)}) · reads ${o.length}/${n.length}`);
-    const persona = PERSONAS.find((p) => run.startsWith(`${p.id}-`))!.id;
+    const persona = personaOf(run)!.id;
     const acc = perPersona.get(persona) ?? { old: [], new: [] };
     acc.old.push(...o.map((x) => x.fit));
     acc.new.push(...n.map((x) => x.fit));

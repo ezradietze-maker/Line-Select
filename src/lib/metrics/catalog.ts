@@ -14,6 +14,7 @@ import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metric
 import { DEFAULT_MIN_BREAK_NIGHTS, homeStretches, summarizeHomeTime, type HomeStretch, type HomeTime } from "@/lib/metrics/home-stretches";
 import { DEFAULT_HOME_PARAMS, homeAwayForTrip, type HomeAway, type TravelTimeProvider } from "@/lib/metrics/home-travel";
 import { legDeepNightMinutes, nightsWorked, type LayoverFact, type LegFact, type Region, type TripFacts } from "@/lib/metrics/trip-facts";
+import { timezoneForAirport } from "@/lib/airport-timezones";
 import type { Line, Trip } from "@/types/bidpack";
 
 /**
@@ -29,6 +30,8 @@ import type { Line, Trip } from "@/types/bidpack";
  * Trip-level measurements roll up to the line with a stated aggregation
  * (sum, mean, max, min); line-level ones read the line directly.
  */
+
+export type DayPart = "morning" | "afternoon" | "evening" | "night";
 
 export type MetricCategory = "pay" | "time" | "duty" | "commute" | "layover" | "city" | "body" | "standby" | "calendar";
 export type Aggregation = "sum" | "mean" | "max" | "min";
@@ -62,6 +65,8 @@ export interface MetricParams {
   dates?: string[];
   /** Days of the week, 1 = Monday … 7 = Sunday. */
   weekdays?: number[];
+  /** Which part of a chosen weekday is meant, by weekday ("3": "night" — "home on Wednesday nights"); the whole day otherwise. */
+  weekdayParts?: Record<string, DayPart>;
   /** How much the pilot likes each layover city, −1 (hates it) … +1 (loves it); cities left out are neutral. */
   cityScores?: Record<string, number>;
   /** A city's grade (−1 … +1) in the months it differs from its usual one in `cityScores` — winter, summer, months the pilot picked (`lib/seasons.ts`). */
@@ -209,6 +214,24 @@ function layoverScore(f: TripFacts, l: LayoverFact, p: MetricParams): number {
   const month = p.citySeasons?.[l.city] ? monthAt(p, f.trip, l.start, l.city) : null;
   return Math.max(-1, Math.min(1, scoreInMonth(usual, p.citySeasons?.[l.city], l.city, month)));
 }
+/**
+ * A trip's time away from home in days, as the ex-pilot counts them: any part of a day is a day. Monday morning to Friday
+ * afternoon, about 4.3 days, is "really a 5-day trip for me for 32 credit hours". Counted as hours over 24, a commute
+ * that leaves home the morning of an afternoon show made a line look better paid than he'd see it, and cost his sort
+ * 0.7 points; counted whole, his sort came out higher than before the same-day commute (98.94% with his trip picks over
+ * 8 readings, 98.64% over 16, against 98.15%) and the simulated ex-pilot back where it was. Rounding to the nearest
+ * day, or forgiving the first few hours over, both scored well below.
+ */
+const daysAway = (hours: number) => Math.max(1, Math.ceil(hours / 24 - 1e-9));
+/** The hours of a day each part covers, from its midnight; a night runs into the next morning. */
+const DAY_PART_HOURS: Record<DayPart | "day", [number, number]> = { morning: [7, 12], afternoon: [12, 17], evening: [17, 22], night: [22, 30], day: [8, 20] };
+/** Calendar days from one instant to another on a clock, both days counted; 0 when either isn't known. */
+function daysTouched(from: number | null, to: number | null, zone: string): number {
+  if (from === null || to === null || to < from) return 0;
+  const a = DateTime.fromMillis(from, { zone }).startOf("day");
+  const b = DateTime.fromMillis(to, { zone }).startOf("day");
+  return Math.round(b.diff(a, "days").days) + 1;
+}
 /** Standby days (one standby row each) at cities matching `where`. */
 const standbyDaysWhere = (trips: TripFacts[], where: (city: string) => boolean) =>
   sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l) && where(l.depAirport)).length));
@@ -242,7 +265,7 @@ function homeAway(trips: TripFacts[], c: LineContext, p: MetricParams): HomeAway
   if (!p.homeAirports?.length) return null;
   const params = {
     homeAirports: p.homeAirports,
-    commuteBufferHours: p.commuteBufferHours ?? DEFAULT_HOME_PARAMS.commuteBufferHours,
+    commuteBufferHours: p.commuteBufferHours,
     frontBufferHours: p.frontBufferHours ?? DEFAULT_HOME_PARAMS.frontBufferHours,
     backRestHours: p.backRestHours ?? DEFAULT_HOME_PARAMS.backRestHours,
   };
@@ -363,6 +386,18 @@ export const METRICS: MetricDef[] = [
     trip: { measure: (f) => f.blockHours, aggregate: "sum" },
   },
   {
+    id: "creditPerBlockHour",
+    label: "Pay for the flying",
+    unit: "credit per block hour",
+    category: "pay",
+    description:
+      "Credit per block hour flown — what the line pays for the work itself. A trip that pays well for little flying (a double deadhead around one long leg) scores high; one that flies 18 hours for 28 credit scores low. For a pilot who weighs pay against the work it takes (\"25% less pay — but maybe 65% less work\"); creditPerDayAway weighs it against time away.",
+    line: (_l, _t, _c, _p, whole) => {
+      const block = sum(flying(whole).map((f) => f.blockHours ?? 0));
+      return block > 0 ? tripCredit(whole) / block : null;
+    },
+  },
+  {
     id: "creditPerDayAway",
     label: "Credit per day away",
     unit: "hours/day",
@@ -426,13 +461,14 @@ export const METRICS: MetricDef[] = [
     label: "Credit per day away from home",
     unit: "hours/day",
     category: "pay",
-    description: "Credit per 24 hours away from home, commute included — the number a commuter actually lives.",
+    description:
+      "Credit per day away from home, commute included — the number a commuter actually lives. Days counted the way pilots count them: any part of a day away is a day (\"really a 5-day trip for me for 32 credit hours\", for Monday morning to Friday afternoon).",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours"],
     defaults: { ...DEFAULT_HOME_PARAMS },
     line: (_l, _t, c, p, trips) => {
       const away = homeAway(trips, c, p);
-      const total = away?.reduce((s, a) => s + a.awayHours, 0) ?? 0;
-      return away && total > 0 ? tripCredit(trips) / (total / 24) : null;
+      const days = away?.reduce((s, a) => s + daysAway(a.awayHours), 0) ?? 0;
+      return away && days > 0 ? tripCredit(trips) / days : null;
     },
   },
   {
@@ -533,15 +569,29 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "weekdaysOff",
-    label: "Chosen weekdays off",
+    label: "Chosen weekdays at home",
     unit: "days",
     category: "calendar",
-    description: "Days off that fall on the pilot's chosen days of the week (e.g. Wednesdays and Sundays) — for a standing weekly commitment.",
+    description:
+      "The pilot's chosen days of the week (e.g. Wednesdays and Sundays) spent at home — door to door, so a day off spent commuting home doesn't count — for a standing weekly commitment. A part of the day the pilot names (\"home on Wednesday nights and Sunday mornings\") is that part: the evening (17:00–22:00), the night (22:00–06:00), the morning (07:00–12:00) or the afternoon (12:00–17:00); otherwise the day, 08:00–20:00. Counted on the clock at home.",
     params: ["weekdays"],
-    line: (line, _t, ctx, p) => {
-      if (line.estimated || !line.gridOffDays || !ctx.bidPeriodStart || !p.weekdays?.length) return null;
-      const start = DateTime.fromISO(ctx.bidPeriodStart, { zone: "utc" });
-      return [...new Set(line.gridOffDays)].filter((i) => p.weekdays!.includes(start.plus({ days: i }).weekday)).length;
+    line: (line, trips, ctx, p) => {
+      if (line.estimated || !ctx.bidPeriodStart || !p.weekdays?.length) return null;
+      const home = homeTimeOf(trips, ctx, p);
+      if (!home) return null;
+      const homeAirport = p.homeAirports?.find((a) => a && a !== ctx.base);
+      const zone = timezoneForAirport(homeAirport ?? ctx.base) ?? timezoneForAirport(ctx.base) ?? "UTC";
+      const start = DateTime.fromISO(ctx.bidPeriodStart, { zone });
+      let n = 0;
+      for (let i = 0; i < ctx.bidPeriodDays; i++) {
+        const day = start.plus({ days: i });
+        if (!p.weekdays.includes(day.weekday)) continue;
+        const [from, to] = DAY_PART_HOURS[p.weekdayParts?.[String(day.weekday)] ?? "day"];
+        const a = day.plus({ hours: from }).toMillis();
+        const b = day.plus({ hours: to }).toMillis();
+        if (home.stretches.some((s) => s.from <= a && s.to >= b)) n++;
+      }
+      return n;
     },
   },
   { id: "weekendDaysOff", label: "Weekend days off", unit: "days", category: "calendar", description: "Saturdays and Sundays off.", line: (l, _t, c) => weekendDaysOff(l, c.bidPeriodStart) },
@@ -558,6 +608,21 @@ export const METRICS: MetricDef[] = [
     perMonth: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((n, d) => n + monthShare(d.trips[d.trips.length - 1], d.leaveHome ?? d.reportAt, c), 0),
     belowFine: BELOW_FINE_COUNTS,
+  },
+  {
+    id: "workDays",
+    label: "Days given to work",
+    unit: "days",
+    category: "calendar",
+    description:
+      "Calendar days each departure touches, from the day the pilot leaves home to the day they're back, both counted — commute days and all: a two-day trip with a commute either side takes four (\"there are four days that I'm thinking about work — for just 12 hours of pay\"). Counted on the clock at home; for a pilot who lives at base, from report to release. A departure running into the next bid month counts its days in this one. For a pilot who talks about days lost to work rather than hours away.",
+    params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
+    perMonth: true,
+    line: (_l, trips, c, p) => {
+      const home = p.homeAirports?.find((a) => a && a !== c.base);
+      const zone = timezoneForAirport(home ?? c.base) ?? timezoneForAirport(c.base) ?? "UTC";
+      return departuresOf(trips, c, p).reduce((n, d) => n + daysTouched(d.leaveHome ?? d.reportAt, d.backHome ?? d.releaseAt, zone), 0);
+    },
   },
   {
     id: "shortHomeGaps",
@@ -1186,9 +1251,15 @@ export const METRICS: MetricDef[] = [
     label: "Standby days, valued by where they are",
     unit: "days",
     category: "standby",
-    description: "Hotel standby days, each worth 1 + the pilot's score for that city (−1 … +1): a standby day in a city they love counts 2, a neutral city 1, a city they avoid 0.",
+    description:
+      "Hotel standby days, each worth 1 + the pilot's score for that city (−1 … +1): a standby day in a city they love counts 2, a neutral city 1, a city they avoid 0. For a commuter with no crash pad, a day at base counts 0 — it's a hotel in the base city, away from home (\"I don't want to do reserve in Memphis, given that I don't live there and don't have a crash pad there\"); baseStandbyDays counts those days on their own.",
     params: ["cityScores"],
-    line: (_l, trips, _ctx, p) => sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l)).reduce((a, l) => a + Math.max(0, 1 + cityScoreOn(f, l.depAirport, l.startMinutes, p)), 0))),
+    line: (_l, trips, ctx, p) => {
+      const commuter = !!p.homeAirports?.some((a) => a && a !== ctx.base) && !p.homeAirports?.includes(ctx.base);
+      const worth = (f: TripFacts, l: Trip["schedule"][number]["legs"][number]) =>
+        l.depAirport === ctx.base && commuter && !p.hasCrashPad ? 0 : Math.max(0, 1 + cityScoreOn(f, l.depAirport, l.startMinutes, p));
+      return sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l)).reduce((a, l) => a + worth(f, l), 0)));
+    },
   },
   {
     id: "baseStandbyDays",

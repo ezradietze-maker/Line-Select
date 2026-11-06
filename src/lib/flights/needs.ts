@@ -1,4 +1,4 @@
-import { distanceKm } from "@/lib/metrics/home-travel";
+import { commuteBufferHoursFor, distanceKm } from "@/lib/metrics/home-travel";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import { tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Trip } from "@/types/bidpack";
@@ -62,8 +62,8 @@ function withAlternates(city: string): { airports: string[]; groundMs?: Record<s
 
 export interface TravelParams {
   homeAirports: string[];
-  /** Hours at base before a report. */
-  commuteBufferHours: number;
+  /** Hours at base before a report, when the pilot said; otherwise it follows the report (`commuteBufferHoursFor`). */
+  commuteBufferHours?: number;
   /** Hours before the first operated leg when deviating onto a front-end deadhead. */
   frontBufferHours: number;
   /** Rest after the last operated leg before heading home on your own. */
@@ -110,7 +110,7 @@ export function travelNeedsForTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "ba
 
   // Out: commute to base for the first report — and, when the flying starts somewhere else after a deadhead, fly from
   // home straight there instead. Both are asked; the pilot takes whichever works better.
-  const toBaseBy = start - p.commuteBufferHours * HOUR;
+  const toBaseBy = start - commuteBufferHoursFor(trip, p.commuteBufferHours) * HOUR;
   add({
     kind: "toBase",
     from: home,

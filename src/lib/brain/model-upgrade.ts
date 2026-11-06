@@ -1,3 +1,4 @@
+import type { DayPart } from "@/lib/metrics/catalog";
 import type { PilotModel } from "@/types/pilot-model";
 
 /**
@@ -193,4 +194,40 @@ export function modelToFullDays(model: PilotModel | null | undefined, pilotSaid:
   // Full days sit right after the hours priority they share with.
   const at = criteria.indexOf(asHours);
   return { ...model, criteria: [...criteria.slice(0, at + 1), asDays, ...criteria.slice(at + 1)] };
+}
+
+const WEEKDAY_WORDS: Record<string, number> = { monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 7 };
+const PART_WORDS: Record<string, DayPart> = { morning: "morning", afternoon: "afternoon", evening: "evening", night: "night" };
+
+/**
+ * Which part of a chosen weekday a pilot means, from their own words: "home on Wednesday nights and Sunday mornings"
+ * is a Wednesday night and a Sunday morning, not two whole days. The brain binds the weekdays (3, 7); the part rides in
+ * the words it quotes for them, so it's read from those — the evidence and the label — for every saved model too. A
+ * weekday named without a part is the whole day. Safe to run on any model, any number of times.
+ */
+export function modelToWeekdayParts(model: PilotModel): PilotModel;
+export function modelToWeekdayParts(model: PilotModel | null | undefined): PilotModel | null | undefined;
+export function modelToWeekdayParts(model: PilotModel | null | undefined): PilotModel | null | undefined {
+  if (!model || !model.criteria.some((c) => c.metric === "weekdaysOff")) return model;
+  return {
+    ...model,
+    criteria: model.criteria.map((c) => {
+      if (c.metric !== "weekdaysOff" || !c.params?.weekdays?.length) return c;
+      const parts = weekdayPartsIn([c.label, ...c.evidence.map((e) => e.quote)].join(" "), c.params.weekdays);
+      const params = { ...c.params };
+      if (Object.keys(parts).length) params.weekdayParts = parts;
+      else delete params.weekdayParts;
+      return { ...c, params };
+    }),
+  };
+}
+
+/** "Wednesday nights and Sunday mornings" → { 3: "night", 7: "morning" }, for the weekdays given. */
+export function weekdayPartsIn(text: string, weekdays: number[]): Record<string, DayPart> {
+  const parts: Record<string, DayPart> = {};
+  for (const m of text.matchAll(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\s+(morning|afternoon|evening|night)s?\b/gi)) {
+    const day = WEEKDAY_WORDS[m[1].toLowerCase()];
+    if (weekdays.includes(day)) parts[String(day)] ??= PART_WORDS[m[2].toLowerCase()];
+  }
+  return parts;
 }

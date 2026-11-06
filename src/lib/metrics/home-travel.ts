@@ -8,8 +8,8 @@ import { computeTripFacts, type TripFacts } from "@/lib/metrics/trip-facts";
  * runs from leaving home to getting back. Two things change it:
  *
  * - Commuting: a trip that starts or ends with operated flying at base
- *   means getting to base before the report (with the buffer the pilot
- *   keeps) and home again after.
+ *   means getting to base before the report (the same day, or the evening
+ *   before an early show — `commuteBufferHoursFor`) and home again after.
  * - Deviating: a trip that starts with a deadhead can often be joined by
  *   flying from home straight to where the flying starts, arriving with the
  *   buffer the pilot wants before the first operated leg; one that ends with
@@ -56,15 +56,42 @@ export const estimatedTravel: TravelTimeProvider = {
 
 export interface HomeParams {
   homeAirports: string[];
-  /** Hours a commuter arrives at base ahead of the report. */
-  commuteBufferHours: number;
+  /** Hours a commuter arrives at base ahead of the report, when they said; otherwise the commute follows the report (`commuteBufferHoursFor`). */
+  commuteBufferHours?: number;
   /** Hours ahead of the first operated leg when deviating on a front-end deadhead (backup flights and rest). */
   frontBufferHours: number;
   /** Rest after the last operated leg before heading home on a back-end deviation. */
   backRestHours: number;
 }
 
-export const DEFAULT_HOME_PARAMS: Omit<HomeParams, "homeAirports"> = { commuteBufferHours: 10, frontBufferHours: 12, backRestHours: 10 };
+/**
+ * A pilot's own commute settings when they gave none. No rest before deviating home: off the last leg, a commuter heads
+ * for the first flight home, as from base — the ex-pilot, landing in Anchorage at 08:09 after a 03:06 show, is "back in
+ * SAN by Saturday afternoon"; off a week of night hub turns, home "by Friday afternoon (tired)". It was 10 hours, which
+ * put him home from Anchorage at 3 the next morning.
+ */
+export const DEFAULT_HOME_PARAMS: Omit<HomeParams, "homeAirports"> = { frontBufferHours: 12, backRestHours: 0 };
+
+/** A report at base before this local hour can't be reached the same morning from home: the commuter goes the night before. */
+export const EARLY_SHOW_HOUR = 10;
+/** A same-day commute gets to base this long before the report: room for a missed flight to have a backup. */
+export const SAME_DAY_COMMUTE_HOURS = 3;
+/** Going the night before, the commuter is at base by this local hour — the evening flight in. */
+export const EVENING_BEFORE_HOUR = 21;
+
+/**
+ * How long before a report a commuter gets to base: their own number when they gave one; otherwise the day of the report
+ * for a show from 10:00 on, with a backup's worth to spare, and the evening before for an earlier one. The ex-pilot's
+ * own trips: for a 15:10 show he'd "leave SAN early Tuesday morning", for a 03:06 one "Friday afternoon". A flat 10 hours
+ * had him leaving the evening before for every afternoon show.
+ */
+export function commuteBufferHoursFor(trip: { schedule: { reportTimeLocal: string }[] }, own?: number): number {
+  if (own !== undefined) return own;
+  const hhmm = trip.schedule[0]?.reportTimeLocal ?? "";
+  if (!/^\d{4}$/.test(hhmm)) return SAME_DAY_COMMUTE_HOURS;
+  const report = Number(hhmm.slice(0, 2)) + Number(hhmm.slice(2)) / 60;
+  return report >= EARLY_SHOW_HOUR ? SAME_DAY_COMMUTE_HOURS : Math.max(SAME_DAY_COMMUTE_HOURS, report + 24 - EVENING_BEFORE_HOUR);
+}
 
 function bestTravel(provider: TravelTimeProvider, homes: string[], city: string, toHome: boolean): number | null {
   const hs = homes.map((h) => (toHome ? provider.hours(city, h) : provider.hours(h, city))).filter((x): x is number => x !== null);
@@ -106,7 +133,7 @@ export function homeAwayForTrip(f: TripFacts, base: string, params: HomeParams, 
   if (toBase === null || fromBase === null) return null;
 
   // Leaving: commute to base for the report, or fly straight to where the flying starts.
-  const leaveViaBase = real.leaveBase ?? -(params.commuteBufferHours + toBase) * 60;
+  const leaveViaBase = real.leaveBase ?? -(commuteBufferHoursFor(f.trip, params.commuteBufferHours) + toBase) * 60;
   let leave = leaveViaBase;
   let start: HomeAway["start"] = "base";
   // A trip cut at the month's end starts as it does whole: its flying after a deadhead out can lie past the cut.

@@ -1,4 +1,4 @@
-import { modelInPilotWords, modelToBodyClock, modelToDepartures, modelToFullDays, modelToHomePay, modelToHubTurns, withHomeFacts } from "@/lib/brain/model-upgrade";
+import { modelInPilotWords, modelToBodyClock, modelToDepartures, modelToFullDays, modelToHomePay, modelToHubTurns, modelToWeekdayParts, withHomeFacts } from "@/lib/brain/model-upgrade";
 import type { PilotModel } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -51,7 +51,8 @@ export function migrateModelsToDepartures<T extends Partial<PreferenceProfile>>(
   // The commute step's answers ride along: the crash pad (nights at base it saves) and the hours at home worth going home for.
   // And what they said: full days in the cities they like, when they judge layovers that way.
   const said = (bi?.exchanges ?? []).map((e) => e.answer);
-  const upgrade = (m: PilotModel) => modelToFullDays(modelInPilotWords(withHomeFacts(modelToBodyClock(modelToHomePay(modelToHubTurns(modelToDepartures(m)))), { hasCrashPad: profile.hasCrashPad, minHomeHours: profile.minHomeHours })), said);
+  const upgrade = (m: PilotModel) =>
+    modelToWeekdayParts(modelToFullDays(modelInPilotWords(withHomeFacts(modelToBodyClock(modelToHomePay(modelToHubTurns(modelToDepartures(m)))), { hasCrashPad: profile.hasCrashPad, minHomeHours: profile.minHomeHours })), said));
   return {
     ...profile,
     ...(profile.pilotModel ? { pilotModel: upgrade(profile.pilotModel) } : {}),

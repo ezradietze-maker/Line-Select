@@ -2,7 +2,7 @@ import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
 import type { Region } from "@/lib/metrics/trip-facts";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type CriterionTier, type PilotModel, type PilotThread } from "@/types/pilot-model";
 import { structuredCall, type BrainUsage, type Effort } from "./llm";
-import { modelToBodyClock, modelToDepartures, modelToFullDays, modelToHomePay, modelToHubTurns } from "./model-upgrade";
+import { modelToBodyClock, modelToDepartures, modelToFullDays, modelToHomePay, modelToHubTurns, modelToWeekdayParts } from "./model-upgrade";
 import { applyPilotFacts, readPilotFacts, type PilotFacts } from "./pilot-facts";
 import { pilotWordsForPrompt } from "./pilot-words";
 
@@ -20,7 +20,7 @@ import { pilotWordsForPrompt } from "./pilot-words";
  */
 
 /** Bumped whenever the prompt or schema changes, so cached evaluations of an older brain aren't mistaken for this one. */
-export const BRAIN_PROMPT_VERSION = 24;
+export const BRAIN_PROMPT_VERSION = 26;
 
 export interface InterviewExchange {
   /** 0 = the opening story. */
@@ -436,7 +436,8 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
   ]);
   const parsed = parsePilotModel(data, input.prior);
   // Full days in the cities they like share the city priority, when they judge layovers that way (`modelToFullDays`).
-  const read: PilotModel = { ...modelToFullDays(parsed.model, input.exchanges.map((e) => e.answer)), readUpTo: input.exchanges.length };
+  // And a chosen weekday's part of the day, from the words quoted for it ("Wednesday nights", `modelToWeekdayParts`).
+  const read: PilotModel = { ...modelToWeekdayParts(modelToFullDays(parsed.model, input.exchanges.map((e) => e.answer))), readUpTo: input.exchanges.length };
   const model = factsRead ? applyPilotFacts(read, factsRead.facts) : read;
   const dropped = parsed.dropped;
   const reasoning = Object.fromEntries(data.criteria.map((c) => [c.id, c.reasoning]));

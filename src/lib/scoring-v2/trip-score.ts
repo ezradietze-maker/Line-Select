@@ -68,6 +68,7 @@ const LINE_METRIC_READING: Record<string, TripReading> = {
   creditPerDayAway: "asIs",
   effectiveCreditPerDayAway: "asIs",
   creditPerDayAwayFromHome: "asIs",
+  creditPerBlockHour: "asIs",
   fewestBackupFlights: "asIs",
   longestTripHome: "asIs",
   singleLegDutyShare: "asIs",
@@ -92,6 +93,8 @@ const LINE_METRIC_READING: Record<string, TripReading> = {
   tripCount: "count",
   // A trip on its own is one departure; its commutes and nights at base are its own, as if flown alone.
   homeDepartures: "count",
+  // A trip on its own is a departure: the days it takes, commute days and all.
+  workDays: "count",
   // A trip's own hub turns; a week of night hub turns inside one trip counts as on a line.
   nightHubTurnRuns: "count",
   nightHubTurns: "count",

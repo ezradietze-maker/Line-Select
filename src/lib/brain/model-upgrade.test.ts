@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FULL_DAY_SHARE, modelInPilotWords, modelToBodyClock, modelToDepartures, modelToFullDays, modelToHomePay, withHomeFacts } from "@/lib/brain/model-upgrade";
+import { FULL_DAY_SHARE, modelInPilotWords, modelToBodyClock, modelToDepartures, modelToFullDays, modelToHomePay, modelToWeekdayParts, weekdayPartsIn, withHomeFacts } from "@/lib/brain/model-upgrade";
 import { migrateProfile } from "@/lib/profile-migration";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -167,5 +167,33 @@ describe("modelToFullDays", () => {
     const alone = modelToFullDays(model(true, [days]), []);
     expect(alone.criteria.map((c) => c.metric)).toEqual(["layoverValue", "fullDaysInLikedCities"]);
     expect(alone.criteria[0].params?.cityScores).toEqual(cities);
+  });
+});
+
+describe("modelToWeekdayParts", () => {
+  it("reads the part of a chosen weekday from the pilot's own words", () => {
+    expect(weekdayPartsIn("To the extent that I'm able to be home on Wednesday nights and Sunday mornings, that's great", [3, 7])).toEqual({ "3": "night", "7": "morning" });
+    // Only for the weekdays the priority is about; a weekday with no part is the whole day.
+    expect(weekdayPartsIn("home Wednesday nights, and Fridays", [3, 5])).toEqual({ "3": "night" });
+    expect(weekdayPartsIn("Saturday evening flights are fine", [3])).toEqual({});
+  });
+
+  it("puts them on the weekday priority, from its evidence and label, and leaves other models alone", () => {
+    const m: PilotModel = {
+      version: 2,
+      home: null,
+      criteria: [
+        {
+          id: "wk", metric: "weekdaysOff", params: { weekdays: [3, 7] }, shape: { kind: "more" }, tier: "low", weight: 0.1, confidence: 0.8,
+          label: "Home Wednesday nights and Sundays", evidence: [{ quote: "home on Wednesday nights and Sunday mornings", turn: 0 }], status: "settled",
+        },
+      ],
+      threads: [],
+      notMeasurable: [],
+      synopsis: "",
+    };
+    expect(modelToWeekdayParts(m).criteria[0].params).toEqual({ weekdays: [3, 7], weekdayParts: { "3": "night", "7": "morning" } });
+    const none = { ...m, criteria: [] };
+    expect(modelToWeekdayParts(none)).toBe(none);
   });
 });
