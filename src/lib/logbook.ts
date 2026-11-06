@@ -1,4 +1,5 @@
 import { monthLine } from "@/lib/bid-month";
+import type { AwardHistorySubmission } from "@/types/award-history";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { LoggedMonth, MonthFeel } from "@/types/logbook";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -51,6 +52,33 @@ export function withoutLoggedMonth(profile: PreferenceProfile, id: string): Pref
 
 export function withEntry(profile: PreferenceProfile, id: string, change: Partial<LoggedMonth>): PreferenceProfile {
   return { ...profile, logbook: (profile.logbook ?? []).map((m) => (m.id === id ? { ...m, ...change } : m)) };
+}
+
+/**
+ * The anonymous report for a month already shared, carrying how it flew — sent again when the pilot checks in, so the
+ * real-outcome score learns from it (`lib/learning/outcome-score.ts`). Null for a month that was never shared or
+ * lacks the seniority every report needs.
+ */
+export function checkInShare(entry: LoggedMonth, model: { brainVersion?: number; notesUsed?: boolean } | null | undefined): AwardHistorySubmission | null {
+  if (!entry.sharedAt || !entry.checkIn || entry.seniorityRank == null || entry.seniorityTotalPilots == null) return null;
+  const whole = (x: number | null | undefined) => (typeof x === "number" ? Math.round(x) : null);
+  return {
+    base: entry.base,
+    aircraft: entry.aircraft,
+    seat: entry.seat,
+    month: entry.month,
+    seniorityRank: entry.seniorityRank,
+    seniorityTotalPilots: entry.seniorityTotalPilots,
+    outcome: entry.outcome,
+    lineNumber: entry.lineNumber ?? null,
+    daysOff: whole(entry.daysOff),
+    totalCreditHours: whole(entry.creditHours),
+    totalTafbHours: whole(entry.tafbHours),
+    awardedChoice: entry.rankedAt ?? null,
+    monthFeel: entry.checkIn.feel,
+    brainVersion: model?.brainVersion ?? null,
+    notesUsed: model?.notesUsed ?? null,
+  };
 }
 
 /** How a month flew, said after it. */

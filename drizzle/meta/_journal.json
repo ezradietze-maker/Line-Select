@@ -29,6 +29,13 @@
       "when": 1793933727893,
       "tag": "0003_bid_packs",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793993934861,
+      "tag": "0004_award_outcomes",
+      "breakpoints": true
     }
   ]
 }

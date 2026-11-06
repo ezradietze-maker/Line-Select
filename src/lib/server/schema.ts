@@ -140,6 +140,12 @@ export const awardHistoryRecords = pgTable(
     packKey: text("pack_key"),
     /** Which of the pilot's own choices they were awarded (1 = their first), when known. */
     awardedChoice: integer("awarded_choice"),
+    /** After the month, how it flew: "better" | "asExpected" | "worse" — the real-outcome signal. Null until checked in. */
+    monthFeel: text("month_feel"),
+    checkedInAt: timestamp("checked_in_at", { withTimezone: true }),
+    /** The brain version that ranked this pilot's lines, and whether fleet notes were in its prompt. */
+    brainVersion: integer("brain_version"),
+    notesUsed: boolean("notes_used"),
   },
   (t) => [
     index("award_history_base_aircraft_seat_idx").on(t.base, t.aircraft, t.seat),

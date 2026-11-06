@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   // Every report can set off a learning run, and a pilot logs a handful a month at most.
   if (!(await checkRateLimit("award-history", user.id, 20, 60 * 60)).ok) return rateLimitedResponse();
 
-  let body: Partial<AwardHistoryRecord> & { awardedChoice?: unknown };
+  let body: Partial<AwardHistoryRecord> & { awardedChoice?: unknown; monthFeel?: unknown; brainVersion?: unknown; notesUsed?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -97,7 +97,11 @@ export async function POST(request: Request) {
   const packKey = forecastPackKey({ month, base, aircraft, seat });
   const clientChoice = Number.isInteger(body.awardedChoice) && (body.awardedChoice as number) > 0 && (body.awardedChoice as number) <= 2000 ? (body.awardedChoice as number) : null;
   const fromForecast = isLine ? await awardedChoiceFromPrediction(pilotHash, packKey, record.lineNumber).catch(() => null) : null;
-  await createAwardHistoryRecord(record, { pilotHash, packKey, awardedChoice: isLine ? (fromForecast ?? clientChoice) : null });
+  // After the month, a re-share carries how it flew, and every share which brain ranked the lines — the real-outcome signal.
+  const monthFeel = body.monthFeel === "better" || body.monthFeel === "asExpected" || body.monthFeel === "worse" ? body.monthFeel : null;
+  const brainVersion = Number.isInteger(body.brainVersion) && (body.brainVersion as number) > 0 && (body.brainVersion as number) < 10_000 ? (body.brainVersion as number) : null;
+  const notesUsed = typeof body.notesUsed === "boolean" ? body.notesUsed : null;
+  await createAwardHistoryRecord(record, { pilotHash, packKey, awardedChoice: isLine ? (fromForecast ?? clientChoice) : null, monthFeel, brainVersion, notesUsed });
   afterResponse(() => maybeLearn("awards"));
   return NextResponse.json({ record });
 }

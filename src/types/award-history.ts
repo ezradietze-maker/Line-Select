@@ -33,4 +33,9 @@ export interface AwardHistoryRecord {
 export type AwardHistorySubmission = Omit<AwardHistoryRecord, "id" | "submittedAt"> & {
   /** Where the held line sat in this pilot's own ranking (1 = their top line) — never shown to anyone else. */
   awardedChoice?: number | null;
+  /** After the month: how it flew against what they expected. The real-outcome signal (`lib/learning/outcome-score.ts`). */
+  monthFeel?: import("./logbook").MonthFeel | null;
+  /** Which brain version ranked the pilot's lines, and whether fleet notes were in its prompt — so outcomes can be compared by both. */
+  brainVersion?: number | null;
+  notesUsed?: boolean | null;
 };
