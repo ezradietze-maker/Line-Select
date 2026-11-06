@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { measure, prepareMetrics } from "@/lib/metrics/compute";
-import { DEFAULT_HOME_PARAMS, homeAwayForTrip } from "@/lib/metrics/home-travel";
+import { commuteBufferHoursFor, DEFAULT_HOME_PARAMS, homeAwayForTrip } from "@/lib/metrics/home-travel";
 import { computeTripFacts, deepNightOverlapMinutes, nightOverlapHours, regionOf } from "@/lib/metrics/trip-facts";
 import type { BidPack, Line, Trip, TripLeg } from "@/types/bidpack";
 
@@ -123,12 +123,31 @@ describe("metric library", () => {
 describe("door to door, for a commuter", () => {
   const home = { ...DEFAULT_HOME_PARAMS, homeAirports: ["SAN", "SNA", "LAX"] };
 
+  it("commutes in the day of a show from 10:00 on, and the evening before an earlier one, unless the pilot said", () => {
+    const at = (hhmm: string) => ({ schedule: [{ reportTimeLocal: hhmm }] });
+    expect(commuteBufferHoursFor(at("1535"))).toBe(3);
+    expect(commuteBufferHoursFor(at("1000"))).toBe(3);
+    // A 03:06 show: at base by 21:00 the evening before.
+    expect(commuteBufferHoursFor(at("0306"))).toBeCloseTo(6.1, 5);
+    expect(commuteBufferHoursFor(at("0700"))).toBe(10);
+    // A 00:30 show: the evening before, but never less than a backup's worth.
+    expect(commuteBufferHoursFor(at("0030"))).toBe(3.5);
+    expect(commuteBufferHoursFor(at("1535"), 8)).toBe(8);
+  });
+
   it("joins a front-deadhead trip straight from home and leaves straight for home after the last flight", () => {
     const away = homeAwayForTrip(computeTripFacts(trip), "ANC", home)!;
     expect(away.start).toBe("deviate");
     expect(away.end).toBe("deviate");
     // Shorter than the base-to-base trip, even with travel and buffers added.
     expect(away.awayHours).toBeLessThan(trip.tafbHours);
+  });
+
+  it("pays per day away counting any part of a day as a day, as pilots count them", () => {
+    const away = homeAwayForTrip(computeTripFacts(trip), "ANC", home)!;
+    const days = Math.ceil(away.awayHours / 24);
+    expect(days).toBeGreaterThan(away.awayHours / 24);
+    expect(measure("creditPerDayAwayFromHome", line, metrics, { homeAirports: home.homeAirports })).toBeCloseTo(trip.creditHours / days, 5);
   });
 
   it("never lets a pilot skip hotel standby by heading home early", () => {
@@ -159,10 +178,17 @@ describe("dates and standby", () => {
     expect(worked(["2026-10-10", "2026-10-11", "2026-10-12", "2026-10-13"])).toBe(2);
     // Dates outside the bid period can't be worked on this line.
     expect(worked(["2026-11-20"])).toBe(0);
-    // Sep 28 2026 is a Monday: the 14 days off hold two Wednesdays and two Sundays.
-    expect(measure("weekdaysOff", offFirstTwoWeeks, p, { weekdays: [3, 7] })).toBe(4);
     // No printed calendar, no answer.
     expect(measure("requestedDatesWorked", line, metrics, { dates: ["2026-10-10"] })).toBeNull();
+  });
+
+  it("counts chosen weekdays at home door to door, for the part of the day the pilot named", () => {
+    // Sep 28 2026 is a Monday. The trip reports at 08:00 that day and is back at base 19:00 Saturday Oct 3: the four
+    // weeks hold four Wednesdays and four Sundays, and the trip takes Wednesday Sep 30.
+    expect(measure("weekdaysOff", line, metrics, { weekdays: [3, 7] })).toBe(7);
+    // Saturday Oct 3: back that evening — home for the night, not the evening.
+    expect(measure("weekdaysOff", line, metrics, { weekdays: [6], weekdayParts: { "6": "evening" } })).toBe(3);
+    expect(measure("weekdaysOff", line, metrics, { weekdays: [6], weekdayParts: { "6": "night" } })).toBe(4);
   });
 
   it("tells standby on a trip from standby at base", () => {
@@ -182,6 +208,21 @@ describe("dates and standby", () => {
     // time at base isn't a layover anywhere.
     expect(measure("standbyDaysByCity", standbyLine, p, { cityScores: { CAN: -1, ANC: 0.5 } })).toBe(3);
     expect(measure("standbyDaysByCity", standbyLine, p, { cityScores: { CAN: 1 } })).toBe(7);
+    // For a commuter with no crash pad, standby at base is a hotel in the base city: no plus at all. With one, it's a day a day.
+    expect(measure("standbyDaysByCity", standbyLine, p, { cityScores: { CAN: 1 }, homeAirports: ["SEA"] })).toBe(4);
+    expect(measure("standbyDaysByCity", standbyLine, p, { cityScores: { CAN: 1 }, homeAirports: ["SEA"], hasCrashPad: true })).toBe(7);
+  });
+});
+
+describe("the work in a trip, and the days it takes", () => {
+  it("pays the credit against the hours flown, deadheads aside", () => {
+    // 40 credit for 5+9+4+10 = 28 hours of operated flying.
+    expect(measure("creditPerBlockHour", line, metrics)).toBeCloseTo(40 / 28, 5);
+  });
+
+  it("counts the calendar days a departure touches, commute days and all", () => {
+    // Living at base: report Monday 08:00, back Saturday 19:00 — six days.
+    expect(measure("workDays", line, metrics)).toBe(6);
   });
 });
 

@@ -2,7 +2,9 @@ import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { tripStartUtc } from "@/lib/flights/needs";
 import { realTravelForTrip, type FlightAnswers } from "@/lib/flights/trip-travel";
-import { DEFAULT_HOME_PARAMS, estimatedTravel, homeAwayForTrip, type TravelTimeProvider } from "@/lib/metrics/home-travel";
+import { DEFAULT_HOME_PARAMS, EARLY_SHOW_HOUR, estimatedTravel, homeAwayForTrip, type TravelTimeProvider } from "@/lib/metrics/home-travel";
+
+export { EARLY_SHOW_HOUR };
 import { computeTripFacts, type TripFacts } from "@/lib/metrics/trip-facts";
 import type { BidPack, Trip } from "@/types/bidpack";
 
@@ -36,8 +38,6 @@ const HOUR = 3_600_000;
  * Nights at base, for a commuter without a crash pad — the hotel nights that come with commuting in early for a trip or
  * getting back too late to go home. Each is a setting:
  */
-/** A report at base before this local hour can't be reached the same morning from home: the commuter goes the night before. */
-export const EARLY_SHOW_HOUR = 10;
 /**
  * Unless the duty after that early show is shorter than this: then the commuter can jumpseat in on the evening flight
  * the night before and nap in the hub's sleep room rather than take a hotel. (Whether the contract allows it into a long
@@ -120,7 +120,7 @@ export function groupDepartures(trips: Trip[], ctx: Pick<BidPack, "bidPeriodStar
   const commuter = homes.length > 0 && !(options.homeAirports ?? []).includes(ctx.base);
   const params = {
     homeAirports: homes,
-    commuteBufferHours: options.commuteBufferHours ?? DEFAULT_HOME_PARAMS.commuteBufferHours,
+    commuteBufferHours: options.commuteBufferHours,
     frontBufferHours: options.frontBufferHours ?? DEFAULT_HOME_PARAMS.frontBufferHours,
     backRestHours: options.backRestHours ?? DEFAULT_HOME_PARAMS.backRestHours,
   };

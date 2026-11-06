@@ -22,7 +22,8 @@ import type { PilotModel } from "@/types/pilot-model";
 export const LINES_LOOKED_UP = 30;
 /** Airline schedules move; looked-up flights are kept this long on the device before asking again. */
 const KEEP_MS = 3 * 24 * 3600_000;
-const STORE_PREFIX = "line-select:flights:v4:";
+// v5: commutes in follow the report (same day, or the evening before an early show), and no rest before deviating home.
+const STORE_PREFIX = "line-select:flights:v5:";
 /** The server takes at most this many needs, and this many FedEx flights, in one request. */
 const CHUNK = 500;
 const MAX_JUMPSEATS = 4000;
@@ -33,14 +34,14 @@ export function travelParamsFor(bidPack: BidPack, model: PilotModel | undefined 
   if (!h || !h.commuter || h.airports.length === 0 || h.airports.includes(bidPack.base)) return null;
   return {
     homeAirports: h.airports.slice(0, 3),
-    commuteBufferHours: h.commuteBufferHours ?? DEFAULT_HOME_PARAMS.commuteBufferHours,
+    ...(h.commuteBufferHours !== undefined ? { commuteBufferHours: h.commuteBufferHours } : {}),
     frontBufferHours: h.frontBufferHours ?? DEFAULT_HOME_PARAMS.frontBufferHours,
     backRestHours: h.backRestHours ?? DEFAULT_HOME_PARAMS.backRestHours,
   };
 }
 
 const storeKey = (bidPack: BidPack, p: TravelParams) =>
-  `${STORE_PREFIX}${bidPack.id}:${p.homeAirports.join(",")}:${p.commuteBufferHours}/${p.frontBufferHours}/${p.backRestHours}`;
+  `${STORE_PREFIX}${bidPack.id}:${p.homeAirports.join(",")}:${p.commuteBufferHours ?? "by-report"}/${p.frontBufferHours}/${p.backRestHours}`;
 
 interface Stored {
   savedAt: number;
