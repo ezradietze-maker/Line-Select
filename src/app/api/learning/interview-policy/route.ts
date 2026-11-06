@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { commuteGroupOf, seniorityBandOf, type Cohort } from "@/lib/learning/cohort";
 import { decideInterviewPolicy, resolveCohort, type InterviewModel } from "@/lib/learning/interview-learning";
 import { loadActiveModel } from "@/lib/server/learning-store";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -17,7 +17,7 @@ const code = (v: string | null, max: number) => (v && /^[A-Za-z0-9]{1,12}$/.test
  * the interview simply asks everything, as it always has.
  */
 export async function GET(request: Request) {
-  const { ok } = await checkRateLimit("interview-policy", clientIp(request), 30, 60 * 60);
+  const { ok } = await checkRequestLimit("interview-policy", request, 30, 60 * 60);
   if (!ok) return rateLimitedResponse();
   const q = new URL(request.url).searchParams;
   const base = code(q.get("base"), 6);

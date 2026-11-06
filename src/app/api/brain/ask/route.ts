@@ -3,7 +3,7 @@ import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { readAskQuery } from "@/lib/brain/ask-pack";
 import { MAX_PACK_BRIEF } from "@/lib/server/brain-input";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export const maxDuration = 60;
 
 /** "Ask your pack": a pilot's question read as a query over the app's measures (see `lib/brain/ask-pack.ts`). */
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("brain-ask", clientIp(request), 60, 60 * 60);
+  const { ok } = await checkRequestLimit("brain-ask", request, 60, 60 * 60);
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "Asking isn't configured on this server." }, { status: 503 });

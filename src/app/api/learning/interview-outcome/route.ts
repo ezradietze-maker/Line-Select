@@ -6,7 +6,7 @@ import { getCurrentServerUser } from "@/lib/server/auth";
 import { hashUser } from "@/lib/server/forecast-store";
 import { maybeLearn } from "@/lib/server/learning-runner";
 import { saveInterviewOutcome } from "@/lib/server/learning-store";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,7 +18,7 @@ export const maxDuration = 60;
  * from them right away rather than waiting for the daily run.
  */
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("interview-outcome", clientIp(request), 10, 60 * 60);
+  const { ok } = await checkRequestLimit("interview-outcome", request, 10, 60 * 60);
   if (!ok) return rateLimitedResponse();
   let raw: unknown;
   try {

@@ -5,13 +5,13 @@ import { parseCorrections } from "@/lib/learning/validate";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { hashUser } from "@/lib/server/forecast-store";
 import { saveCorrections } from "@/lib/server/learning-store";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
 /** A pilot changing values the interview set — the clearest sign of where it gets pilots wrong, and what stops it assuming an answer it shouldn't. */
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("learning-corrections", clientIp(request), 20, 60 * 60);
+  const { ok } = await checkRequestLimit("learning-corrections", request, 20, 60 * 60);
   if (!ok) return rateLimitedResponse();
   let body: unknown;
   try {

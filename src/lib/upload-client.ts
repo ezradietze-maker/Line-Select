@@ -43,6 +43,8 @@ export async function uploadBidPack(file: File, onProgress: (progress: ParseProg
 
   if (!res.ok) {
     const err = await res.json().catch(() => null);
+    // The hosting platform turns away a request that's too large before the app sees it, with no message of its own.
+    if (res.status === 413) throw new Error("That file is too large to upload. Bid packs are usually under 2 MB — check it's the pack PDF itself.");
     throw new Error(err?.error ?? "Something went wrong while uploading this file.");
   }
 

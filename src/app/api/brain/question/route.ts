@@ -5,7 +5,7 @@ import type { QuestionExample } from "@/lib/brain/question-examples";
 import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
@@ -81,7 +81,7 @@ function readDifferences(value: unknown): LinePairDifference[] {
 
 /** The interviewer's next move: one question drawn from the pilot's own threads, or "done". See `nextInterviewStep`. */
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("brain-question", clientIp(request), 150, 60 * 60);
+  const { ok } = await checkRequestLimit("brain-question", request, 150, 60 * 60);
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "The interview isn't configured on this server." }, { status: 503 });

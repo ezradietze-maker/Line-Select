@@ -4,7 +4,7 @@ import { secretMatches } from "@/lib/server/secret";
 import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createFeedbackSubmission, listFeedbackSubmissions } from "@/lib/server/db";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import type { FeedbackCategory, FeedbackSubmission } from "@/types/feedback";
 
 export const runtime = "nodejs";
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { ok } = await checkRateLimit("feedback", clientIp(request), 10, 60 * 60);
+  const { ok } = await checkRequestLimit("feedback", request, 10, 60 * 60);
   if (!ok) return rateLimitedResponse();
 
   let body: { message?: string; category?: string; page?: string };

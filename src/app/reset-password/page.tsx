@@ -71,9 +71,9 @@ function ResetPasswordForm() {
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters"
               required
-              minLength={6}
+              minLength={8}
             />
             <TextField
               label="Confirm new password"
@@ -82,7 +82,7 @@ function ResetPasswordForm() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
             />
             {error && <ErrorBanner>{error}</ErrorBanner>}
             <Button type="submit" disabled={submitting} className="w-full">

@@ -213,9 +213,10 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
             autoComplete={mode === "login" ? "current-password" : "new-password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="At least 6 characters"
+            // Sign-in takes any length: passwords set before the 8-character rule still work.
+            placeholder={mode === "login" ? undefined : "At least 8 characters"}
             required
-            minLength={6}
+            minLength={mode === "login" ? undefined : 8}
           />
           )}
           {(mode === "signup" || mode === "reset") && (
@@ -226,7 +227,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
             />
           )}
 

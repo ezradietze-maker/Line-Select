@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/server/postgres";
 import {
   awardHistoryRecords,
   bidPackMetaOf,
+  bidPacks,
   candidateVariables,
   credentials as credentialsTable,
   feedbackSubmissions,
@@ -189,20 +191,34 @@ export async function consumeResetToken(tokenHash: string): Promise<string | nul
 
 // ---- Sessions ----
 
+/**
+ * Sessions are stored by a hash of their token, never the token itself: the cookie holds the token, the database
+ * only its SHA-256, so a leaked copy of the table can't be used to sign in as anyone. Rows written before this rule
+ * hold the token as it was; each is found that way once and rewritten as its hash.
+ */
+function sessionKey(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 export async function createSession(session: ServerSession): Promise<void> {
   await db
     .insert(sessions)
-    .values({ token: session.token, userId: session.userId, expiresAt: new Date(session.expiresAt) });
+    .values({ token: sessionKey(session.token), userId: session.userId, expiresAt: new Date(session.expiresAt) });
 }
 
 export async function findSession(token: string): Promise<ServerSession | null> {
-  const [row] = await db.select().from(sessions).where(eq(sessions.token, token)).limit(1);
+  const key = sessionKey(token);
+  let [row] = await db.select().from(sessions).where(eq(sessions.token, key)).limit(1);
+  if (!row) {
+    [row] = await db.select().from(sessions).where(eq(sessions.token, token)).limit(1);
+    if (row) await db.update(sessions).set({ token: key }).where(eq(sessions.token, token));
+  }
   if (!row) return null;
   if (row.expiresAt.getTime() < Date.now()) {
     await deleteSession(token);
     return null;
   }
-  return { token: row.token, userId: row.userId, expiresAt: row.expiresAt.toISOString() };
+  return { token, userId: row.userId, expiresAt: row.expiresAt.toISOString() };
 }
 
 /** Signs a pilot out everywhere — used after a password reset, so a session someone else may be holding can't outlive the credential that created it. */
@@ -212,7 +228,7 @@ export async function deleteSessionsForUser(userId: string): Promise<void> {
 }
 
 export async function deleteSession(token: string): Promise<void> {
-  await db.delete(sessions).where(eq(sessions.token, token));
+  await db.delete(sessions).where(inArray(sessions.token, [sessionKey(token), token]));
 }
 
 // ---- Trade offers ----
@@ -432,6 +448,24 @@ export async function savePreferenceProfile(userId: string, profile: PreferenceP
       target: preferenceProfiles.userId,
       set: { profile, updatedAt: new Date() },
     });
+}
+
+/** A pilot's latest bid pack, stored gzipped (see `bidPacks` in schema.ts). */
+export async function getBidPackRecord(userId: string): Promise<{ packId: string; data: Buffer; updatedAt: string } | null> {
+  if (!isUuid(userId)) return null;
+  const [row] = await db.select().from(bidPacks).where(eq(bidPacks.userId, userId)).limit(1);
+  return row ? { packId: row.packId, data: row.data, updatedAt: row.updatedAt.toISOString() } : null;
+}
+
+export async function saveBidPackRecord(userId: string, packId: string, data: Buffer): Promise<void> {
+  if (!isUuid(userId)) return;
+  const now = new Date();
+  await db.insert(bidPacks).values({ userId, packId, data, updatedAt: now }).onConflictDoUpdate({ target: bidPacks.userId, set: { packId, data, updatedAt: now } });
+}
+
+export async function deleteBidPackRecord(userId: string): Promise<void> {
+  if (!isUuid(userId)) return;
+  await db.delete(bidPacks).where(eq(bidPacks.userId, userId));
 }
 
 /** A pilot's saved profile with when it was last saved — the version a device has to start from to save over it. */

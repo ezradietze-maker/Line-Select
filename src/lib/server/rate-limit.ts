@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { DEVICE_COOKIE } from "@/lib/device-cookie";
 import { incrementCounter, setJson } from "@/lib/server/kv";
 
 /**
@@ -51,6 +52,35 @@ export async function checkRateLimit(
   const key = `line-select:ratelimit:${bucket}:${identity}:${window}`;
   const count = await incrementCounter(key, windowSeconds);
   return { ok: count <= limit };
+}
+
+/** How many devices' worth of requests one address may make: a crew room or hotel shares one, and a device that drops its cookie lands here. */
+export const ADDRESS_FACTOR = 10;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** The device id from the request's cookie, when it has a well-formed one. */
+export function deviceIdFrom(request: Request): string | null {
+  const match = request.headers.get("cookie")?.match(new RegExp(`(?:^|;\\s*)${DEVICE_COOKIE}=([^;]+)`));
+  const id = match?.[1];
+  return id && UUID.test(id) ? id : null;
+}
+
+/**
+ * The limit for a route anyone can call, per device rather than per address: fifteen pilots on one crew room's
+ * Wi-Fi each get the full `limit`, while the address as a whole gets `ADDRESS_FACTOR` times it, so clearing cookies
+ * to look like a new device only reaches that ceiling. A request with no device cookie counts against its address
+ * at the plain `limit`.
+ */
+export async function checkRequestLimit(bucket: string, request: Request, limit: number, windowSeconds: number): Promise<{ ok: boolean }> {
+  const ip = clientIp(request);
+  const device = deviceIdFrom(request);
+  if (!device) return checkRateLimit(bucket, `ip:${ip}`, limit, windowSeconds);
+  const [mine, address] = await Promise.all([
+    checkRateLimit(bucket, `device:${device}`, limit, windowSeconds),
+    checkRateLimit(`${bucket}:address`, ip, limit * ADDRESS_FACTOR, windowSeconds),
+  ]);
+  return { ok: mine.ok && address.ok };
 }
 
 /** Best-effort caller IP for rate-limiting anonymous routes — read from the headers most hosts (Vercel included) set on the incoming request. */

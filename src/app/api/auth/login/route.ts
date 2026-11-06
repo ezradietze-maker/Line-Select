@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { SESSION_COOKIE, login, sessionCookieOptions } from "@/lib/server/auth";
+import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
-// login() (lib/server/auth.ts) already rate-limits per normalized email via
-// takeAttempt/clearAttempts — deliberately account-
-// scoped rather than IP-scoped, so this route doesn't need its own layer.
+/** Sign-in attempts from one address in 15 minutes, across every email — enough for a crew room signing in at once, not for trying passwords on many accounts. */
+const ATTEMPTS_PER_ADDRESS = 60;
+
+// login() (lib/server/auth.ts) also limits attempts per email, protecting each account whatever address the
+// guesses come from; this limit is the other half, against one address working through many accounts.
 export async function POST(request: Request) {
+  const { ok } = await checkRateLimit("auth-login", clientIp(request), ATTEMPTS_PER_ADDRESS, 15 * 60);
+  if (!ok) return rateLimitedResponse();
+
   let body: { email?: string; password?: string };
   try {
     body = await request.json();
