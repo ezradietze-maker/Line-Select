@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/server/postgres";
 import {
   awardHistoryRecords,
@@ -432,6 +432,54 @@ export async function savePreferenceProfile(userId: string, profile: PreferenceP
       target: preferenceProfiles.userId,
       set: { profile, updatedAt: new Date() },
     });
+}
+
+/** A pilot's saved profile with when it was last saved — the version a device has to start from to save over it. */
+export interface ProfileRecord {
+  profile: PreferenceProfile;
+  updatedAt: string;
+}
+
+export async function getPreferenceProfileRecord(userId: string): Promise<ProfileRecord | null> {
+  if (!isUuid(userId)) return null;
+  const [row] = await db.select().from(preferenceProfiles).where(eq(preferenceProfiles.userId, userId)).limit(1);
+  return row ? { profile: row.profile, updatedAt: row.updatedAt.toISOString() } : null;
+}
+
+/**
+ * Saves a profile only over the version the device last saw: `base` is that version's `updatedAt`, or null when the
+ * device saw none. Saved by someone else since (another device, another tab) and it isn't written — the caller gets
+ * the newer copy back to merge with instead, so an older device can never silently overwrite a newer one.
+ */
+export async function savePreferenceProfileOver(
+  userId: string,
+  profile: PreferenceProfile,
+  base: string | null
+): Promise<{ saved: true; updatedAt: string } | { saved: false; current: ProfileRecord | null }> {
+  if (!isUuid(userId)) return { saved: false, current: null };
+  const now = new Date();
+  if (base === null) {
+    const [inserted] = await db.insert(preferenceProfiles).values({ userId, profile, updatedAt: now }).onConflictDoNothing().returning({ updatedAt: preferenceProfiles.updatedAt });
+    if (inserted) return { saved: true, updatedAt: inserted.updatedAt.toISOString() };
+  } else {
+    const baseAt = new Date(base);
+    if (!Number.isNaN(baseAt.getTime())) {
+      // Rows saved before this check kept the database's microseconds; a millisecond's grace matches them to the copy a device holds.
+      const [updated] = await db
+        .update(preferenceProfiles)
+        .set({ profile, updatedAt: now })
+        .where(and(eq(preferenceProfiles.userId, userId), sql`${preferenceProfiles.updatedAt} < ${baseAt.toISOString()}::timestamptz + interval '1 millisecond'`))
+        .returning({ updatedAt: preferenceProfiles.updatedAt });
+      if (updated) return { saved: true, updatedAt: updated.updatedAt.toISOString() };
+    }
+  }
+  const current = await getPreferenceProfileRecord(userId);
+  // Cleared on another device since: nothing newer to keep, so this save stands.
+  if (!current) {
+    const [inserted] = await db.insert(preferenceProfiles).values({ userId, profile, updatedAt: now }).onConflictDoNothing().returning({ updatedAt: preferenceProfiles.updatedAt });
+    if (inserted) return { saved: true, updatedAt: inserted.updatedAt.toISOString() };
+  }
+  return { saved: false, current };
 }
 
 export async function deletePreferenceProfile(userId: string): Promise<void> {

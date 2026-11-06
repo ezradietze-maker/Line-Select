@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportProblem } from "@/lib/server/alerts";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { parseCorrections } from "@/lib/learning/validate";
 import { getCurrentServerUser } from "@/lib/server/auth";
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
   try {
     await saveCorrections(events, { base: (body.base as string).toUpperCase(), aircraft: (body.aircraft as string).toUpperCase(), seat: (body.seat as string).toUpperCase() }, hashUser(user.id));
   } catch (e) {
-    console.error("[learning] corrections not saved", e);
+    await reportProblem("learning", e, { action: "save corrections" });
     return NextResponse.json({ stored: false }, { status: 503 });
   }
   return NextResponse.json({ stored: true });

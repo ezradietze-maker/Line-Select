@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { nextInterviewStep, type LinePairCandidate, type LinePairDifference, type ThreadState } from "@/lib/brain/interviewer";
 import type { QuestionExample } from "@/lib/brain/question-examples";
 import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
@@ -104,11 +105,11 @@ export async function POST(request: Request) {
     const notes = await fleetNotesFor(readCohort(body.cohort));
     const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), examples: readExamples(body.examples), packNumbers: readPackNumbers(body.packNumbers), turn: body.turn, maxTurns, fleetNotes: notes, rankingShifts });
     const { usage, ...rest } = step;
-    if (usage) await recordSpend(spender, usage.costUsd);
+    if (usage) await Promise.all([recordSpend(spender, usage.costUsd), noteActivity("interview-question")]);
     if (usage) console.log("[brain-question]", { turn: body.turn, done: step.done, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json(rest);
   } catch (e) {
-    console.error("[brain-question] failed", e);
+    await reportProblem("brain-question", e, { turn: body.turn });
     return NextResponse.json({ error: "Couldn't come up with the next question just now. Please try again." }, { status: 502 });
   }
 }

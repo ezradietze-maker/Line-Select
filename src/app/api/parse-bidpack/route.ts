@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseBidPackPdf } from "@/lib/pdf-parser";
 import { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
+import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 // pdfjs-dist needs Node APIs (Buffer, etc.), not the edge runtime.
@@ -48,8 +49,10 @@ export async function POST(request: Request) {
 
   try {
     const result = await parseBidPackPdf(bytes);
+    await noteActivity("pack-parsed");
     return NextResponse.json(result);
   } catch (e) {
+    await reportProblem("parse-bidpack", e, { bytes: bytes.length });
     return NextResponse.json(
       {
         error: "Something went wrong while parsing this PDF.",
@@ -83,7 +86,9 @@ function streamParse(bytes: Uint8Array): Response {
           },
         });
         send({ type: "result", result });
+        await noteActivity("pack-parsed");
       } catch (e) {
+        await reportProblem("parse-bidpack", e, { bytes: bytes.length });
         send({
           type: "error",
           error: "Something went wrong while parsing this PDF.",

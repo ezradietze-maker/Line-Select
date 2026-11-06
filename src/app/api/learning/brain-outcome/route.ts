@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportProblem } from "@/lib/server/alerts";
 import { parseBrainOutcome } from "@/lib/learning/brain-learning";
 import { afterResponse } from "@/lib/server/after-response";
 import { getCurrentServerUser } from "@/lib/server/auth";
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
   try {
     await saveBrainOutcome(outcome, hashUser(user.id));
   } catch (e) {
-    console.error("[learning] brain outcome not saved", e);
+    await reportProblem("learning", e, { action: "save brain outcome" });
     return NextResponse.json({ stored: false }, { status: 503 });
   }
   afterResponse(() => maybeLearn("interviews"));

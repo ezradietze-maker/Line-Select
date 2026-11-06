@@ -8,6 +8,7 @@ import {
   type ForecastPriorModel,
 } from "@/lib/learning/forecast-learning";
 import { computeBrainModel } from "@/lib/learning/brain-learning";
+import { reportProblem } from "@/lib/server/alerts";
 import { backtestInterviewModel, computeInterviewModel, type InterviewModel } from "@/lib/learning/interview-learning";
 import {
   finishRun,
@@ -140,7 +141,7 @@ export async function runLearningCycle(trigger: string): Promise<Record<string, 
       results.push(await step(now));
     } catch (e) {
       // One model failing to learn never stops the others.
-      console.error("[learning] step failed", step.name, e);
+      await reportProblem("learning", e, { step: step.name });
       results.push({ step: step.name, error: e instanceof Error ? e.message : String(e) });
     }
   }
@@ -160,6 +161,6 @@ export async function maybeLearn(trigger: string): Promise<void> {
     const fresh = await newDataSinceLastRun();
     if (fresh.interviews >= BURST_INTERVIEWS || fresh.awards >= BURST_AWARDS) await runLearningCycle(trigger);
   } catch (e) {
-    console.error("[learning] maybeLearn failed", e);
+    await reportProblem("learning", e, { step: "maybeLearn" });
   }
 }

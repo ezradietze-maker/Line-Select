@@ -63,9 +63,11 @@ function Chrome({ children }: { children: React.ReactNode }) {
     toasts,
     bidPackSaveFailed,
     profileSaveFailed,
+    profileSync,
     handleLogout,
     handleDismissBidPackSaveWarning,
     handleDismissProfileSaveWarning,
+    handleDismissProfileSync,
     handleDismissToast,
     handleToastClick,
   } = useAppState();
@@ -219,6 +221,21 @@ function Chrome({ children }: { children: React.ReactNode }) {
                   you refresh or close this tab. Signing in saves it to your account instead, so it survives that.
                 </span>
                 <button type="button" onClick={handleDismissProfileSaveWarning} className="shrink-0 font-medium underline decoration-dotted underline-offset-4">
+                  Dismiss
+                </button>
+              </div>
+            )}
+            {profileSync === "failed" && (
+              <div role="status" className="mx-auto mb-4 w-full max-w-3xl rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
+                Couldn&rsquo;t save to your account just now. It&rsquo;s kept on this device and will try again when the connection is back.
+              </div>
+            )}
+            {profileSync === "merged" && (
+              <div role="status" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-ink">
+                <span>
+                  Your profile was updated on another device, so this is that latest version. Logbook entries from both are kept.
+                </span>
+                <button type="button" onClick={handleDismissProfileSync} className="shrink-0 font-medium underline decoration-dotted underline-offset-4">
                   Dismiss
                 </button>
               </div>

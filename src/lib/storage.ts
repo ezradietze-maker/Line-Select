@@ -1,4 +1,5 @@
 import { clearServerProfile, fetchServerProfile, saveServerProfile } from "@/lib/preference-profile-client";
+import { mergeAfterConflict } from "@/lib/profile-merge";
 import { migrateProfile } from "@/lib/profile-migration";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
 
@@ -82,26 +83,63 @@ export function clearProfile(userId: string | null): void {
  * change localStorage alone never could. A guest has no server identity, so
  * stays on the plain localStorage functions above. On a hit, the server
  * profile also refreshes the local cache so the next boot has something to
- * show instantly before the network call resolves. On a miss, this
- * migrates any pre-existing local-only profile up to the server once
- * (covers a pilot who used the app before server-side persistence existed).
+ * show instantly before the network call resolves. When the server says
+ * it has nothing, this migrates any pre-existing local-only profile up to
+ * it once (covers a pilot who used the app before server-side persistence
+ * existed). When the server can't be reached, the local copy is used and
+ * nothing is uploaded: an older copy on this device must never replace a
+ * newer one saved from another.
  */
 export async function loadProfileForUser(userId: string | null): Promise<PreferenceProfile | null> {
   if (!userId) return loadProfile(null);
-  const serverProfile = await fetchServerProfile();
-  if (serverProfile) {
-    saveProfile(userId, serverProfile);
-    return serverProfile;
+  const server = await fetchServerProfile();
+  if (server.kind === "found") {
+    saveProfile(userId, server.profile);
+    return server.profile;
   }
   const localProfile = loadProfile(userId);
-  if (localProfile) await saveServerProfile(localProfile);
+  if (server.kind === "none" && localProfile) {
+    const saved = await saveServerProfile(localProfile);
+    if (saved.kind === "conflict" && saved.profile) {
+      const merged = mergeAfterConflict(saved.profile, localProfile);
+      saveProfile(userId, merged);
+      await saveServerProfile(merged);
+      return merged;
+    }
+  }
   return localProfile;
 }
 
-export async function saveProfileForUser(userId: string | null, profile: PreferenceProfile): Promise<boolean> {
+/**
+ * Where a signed-in pilot's save ended up: on the server ("saved"); merged with a newer copy from another device
+ * ("merged" — `profile` is what's now saved, and what the app should show); or only on this device for now
+ * ("failed" — retried later). A guest's save is "local".
+ */
+export type ProfileSync = "local" | "saved" | "merged" | "failed";
+
+export async function saveProfileForUser(userId: string | null, profile: PreferenceProfile): Promise<{ savedLocally: boolean; sync: ProfileSync; profile: PreferenceProfile }> {
   const savedLocally = saveProfile(userId, profile);
-  if (userId) await saveServerProfile(profile);
-  return savedLocally;
+  if (!userId) return { savedLocally, sync: "local", profile };
+  const saved = await saveServerProfile(profile);
+  if (saved.kind === "saved") return { savedLocally, sync: "saved", profile };
+  if (saved.kind === "failed" || !saved.profile) return { savedLocally, sync: "failed", profile };
+  const merged = mergeAfterConflict(saved.profile, profile);
+  saveProfile(userId, merged);
+  const again = await saveServerProfile(merged);
+  return { savedLocally, sync: again.kind === "saved" ? "merged" : "failed", profile: merged };
+}
+
+/**
+ * Asks the browser to keep this site's storage rather than clear it when space runs low or the site goes unvisited
+ * (Safari clears it after 7 days away). Browsers decide for themselves — Chrome grants it to sites used often, Safari
+ * to sites added to the home screen — so this lowers the risk, it doesn't remove it. Asking again is harmless.
+ */
+export function askToKeepStorage(): void {
+  try {
+    void navigator.storage?.persist?.().catch(() => {});
+  } catch {
+    // An old browser without the Storage API: nothing to ask.
+  }
 }
 
 export async function clearProfileForUser(userId: string | null): Promise<void> {

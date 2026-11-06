@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportProblem } from "@/lib/server/alerts";
 import type { ScheduledFlight } from "@/lib/flights/itineraries";
 import type { TravelNeed } from "@/lib/flights/needs";
 import { answerTravelNeeds, flightDataConfigured } from "@/lib/server/flight-schedules";
@@ -86,7 +87,7 @@ export async function POST(request: Request) {
     console.log("[flights]", { needs: needs.length, jumpseats: jumpseats.length, answered: answers.length, ...stats });
     return NextResponse.json({ configured: true, answers });
   } catch (e) {
-    console.error("[flights] failed", e);
+    await reportProblem("flights", e);
     return NextResponse.json({ error: "Couldn't look up flights just now." }, { status: 502 });
   }
 }
