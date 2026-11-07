@@ -320,15 +320,28 @@ export function monthDepartureOptions(
   profile: (Pick<PreferenceProfile, "isCommuter" | "commuteFrom" | "hasCrashPad" | "minHomeHours"> & Partial<Pick<PreferenceProfile, "brainInterview">>) | null | undefined,
   flights?: FlightAnswers | null
 ): MonthDepartureOptions {
-  const home = profile?.isCommuter && profile.commuteFrom ? [profile.commuteFrom] : [];
-  // What makes a real break, as the pilot said it (read from their words beside the brain's reading).
-  const minBreakNights = profile?.brainInterview?.reviewedModel?.home?.minBreakNights;
+  return monthDepartureOptionsFrom(base, {
+    isCommuter: profile?.isCommuter,
+    commuteFrom: profile?.commuteFrom,
+    hasCrashPad: profile?.hasCrashPad,
+    minHomeHours: profile?.minHomeHours,
+    // What makes a real break, as the pilot said it (read from their words beside the brain's reading).
+    minBreakNights: profile?.brainInterview?.reviewedModel?.home?.minBreakNights,
+  }, flights);
+}
+
+/** The same from just the settings it reads — for a caller that keeps it while the rest of the profile changes. */
+export function monthDepartureOptionsFrom(
+  base: string,
+  s: { isCommuter?: boolean | null; commuteFrom?: string | null; hasCrashPad?: boolean | null; minHomeHours?: number | null; minBreakNights?: number },
+  flights?: FlightAnswers | null
+): MonthDepartureOptions {
   return {
     base,
-    homeAirports: home,
-    hasCrashPad: profile?.hasCrashPad ?? null,
-    ...(profile?.minHomeHours ? { minHomeHours: profile.minHomeHours } : {}),
-    ...(minBreakNights ? { minBreakNights } : {}),
+    homeAirports: s.isCommuter && s.commuteFrom ? [s.commuteFrom] : [],
+    hasCrashPad: s.hasCrashPad ?? null,
+    ...(s.minHomeHours ? { minHomeHours: s.minHomeHours } : {}),
+    ...(s.minBreakNights ? { minBreakNights: s.minBreakNights } : {}),
     ...(flights ? { flights } : {}),
   };
 }

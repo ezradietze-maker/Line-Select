@@ -22,7 +22,7 @@ import { buildPackRow, type PackColumn } from "@/lib/bidpack-row";
 import { buildLineTimeline } from "@/lib/line-timeline";
 import type { StripViewMode } from "@/lib/strip-view-storage";
 import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
-import { monthDepartureOptions } from "@/lib/month-detail";
+import { monthDepartureOptionsFrom } from "@/lib/month-detail";
 import { lineCarryOver, monthLine } from "@/lib/bid-month";
 import { groupDepartures } from "@/lib/metrics/departures";
 import { CreditHours } from "@/components/results/TripMarks";
@@ -165,7 +165,14 @@ export const LineCard = memo(function LineCard({
 
   const bidMonth = bidMonthOf({ bidPeriodStart, bidPeriodDays });
   const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences, bidMonth), [profile.cityRatings, profile.cityPreferences, bidMonth]);
-  const departureOptions = useMemo(() => monthDepartureOptions(homeBase, profile, flights), [homeBase, profile, flights]);
+  // Kept on just what it reads: a refit after a swap gives a new profile every time, and redoing every card's departure
+  // grouping (date work for each trip) for each one was a large part of the freeze after a swap on a big pack.
+  const { isCommuter, commuteFrom, hasCrashPad, minHomeHours } = profile;
+  const minBreakNights = profile.brainInterview?.reviewedModel?.home?.minBreakNights;
+  const departureOptions = useMemo(
+    () => monthDepartureOptionsFrom(homeBase, { isCommuter, commuteFrom, hasCrashPad, minHomeHours, minBreakNights }, flights),
+    [homeBase, isCommuter, commuteFrom, hasCrashPad, minHomeHours, minBreakNights, flights]
+  );
   // The line's bid month, and what its last trip carries into the next (counted apart, as the pack prints C/O).
   const month = useMemo(() => monthLine(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);
   const carryOver = useMemo(() => lineCarryOver(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);

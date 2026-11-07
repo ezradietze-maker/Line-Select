@@ -70,14 +70,20 @@ function categoriesFor(s: V2LineScore, fallback: LineScore["categoryScores"]): L
  */
 const rankingPacks = new WeakMap<BidPack, PackMetrics>();
 
-export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: PilotModel, flights?: FlightAnswers): LineScore[] {
-  // With every priority dropped there's nothing to rank by here; the older scores still come back best first,
-  // as `scoreBidPack` hands them over in pack order.
-  if (model.criteria.length === 0) return [...scores].sort((a, b) => b.score - a.score || a.line.lineNumber.localeCompare(b.line.lineNumber));
+/** The measured pack the results rank and score trips with, its flights set to these (or none). */
+export function rankingPack(bidPack: BidPack, flights?: FlightAnswers): PackMetrics {
   let pack = rankingPacks.get(bidPack);
   if (!pack) rankingPacks.set(bidPack, (pack = prepareMetrics(bidPack)));
   // Set every time, flights or none, so a ranking never reads the flights of an earlier one.
   pack.ctx.flights = flights;
+  return pack;
+}
+
+export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: PilotModel, flights?: FlightAnswers): LineScore[] {
+  // With every priority dropped there's nothing to rank by here; the older scores still come back best first,
+  // as `scoreBidPack` hands them over in pack order.
+  if (model.criteria.length === 0) return [...scores].sort((a, b) => b.score - a.score || a.line.lineNumber.localeCompare(b.line.lineNumber));
+  const pack = rankingPack(bidPack, flights);
   // Once the pilot has graded trips, each line leans on its worst trip's score (see `TRIP_LEAN`).
   const v2 = new Map(rankLinesWithTrips(bidPack, model, { flights, pack }).map((s) => [s.lineId, s]));
   return scores

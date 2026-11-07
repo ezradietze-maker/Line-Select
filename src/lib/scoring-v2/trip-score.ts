@@ -3,7 +3,7 @@ import { dateOfDayIndex } from "@/lib/days-off-pattern";
 import { tripDutyPeriods } from "@/lib/duty-periods";
 import { formatValue } from "@/lib/brain/describe";
 import { METRICS_BY_ID, type MetricDef, type MetricParams } from "@/lib/metrics/catalog";
-import { measure, prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
+import { measureAll, prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import type { TripFacts } from "@/lib/metrics/trip-facts";
 import {
   BEYOND_BAD,
@@ -222,7 +222,7 @@ function countShapeForTrips(c: Criterion, bidPack: BidPack, pack: PackMetrics, h
   const shape = c.shape;
   const anchored = (shape.kind === "less" && (shape.fineAt !== undefined || shape.worstAt !== undefined)) || (shape.kind === "more" && shape.enoughAt !== undefined);
   if (!anchored) return shape;
-  const lines = bidPack.lines.map((l) => measure(c.metric, l, pack, { ...home, ...c.params })).filter((v): v is number => v !== null);
+  const lines = measureAll(c.metric, bidPack.lines, pack, { ...home, ...c.params }).filter((v): v is number => v !== null);
   const trips = tripValues.filter((v): v is number => v !== null).sort((a, b) => a - b);
   if (!lines.length || !trips.length) return shape;
   const share = (x: number) => lines.filter((v) => v <= x).length / lines.length;
@@ -254,6 +254,24 @@ function countShapeForTrips(c: Criterion, bidPack: BidPack, pack: PackMetrics, h
 }
 
 /** One criterion's measurement on one trip, in the line's units; undefined when a trip can't show it at all. */
+/**
+ * Every trip's value on a measure, worked out once per pack, parameters, and flight and travel data — like `measureAll`
+ * for lines: a pilot's weights never change a measurement, so re-scoring trips after a refit doesn't re-measure them.
+ */
+const tripMeasuresByPack = new WeakMap<PackMetrics, { travel: PackMetrics["ctx"]["travel"]; flights: PackMetrics["ctx"]["flights"]; values: Map<string, (Measured | null)[]> }>();
+
+function measureTrips(def: MetricDef, trips: Instance[], pack: PackMetrics, p: MetricParams, workDays: number): (Measured | null)[] {
+  let cache = tripMeasuresByPack.get(pack);
+  if (!cache || cache.travel !== pack.ctx.travel || cache.flights !== pack.ctx.flights) {
+    cache = { travel: pack.ctx.travel, flights: pack.ctx.flights, values: new Map() };
+    tripMeasuresByPack.set(pack, cache);
+  }
+  const key = `${def.id}|${trips.length}|${workDays}|${JSON.stringify(p)}`;
+  let values = cache.values.get(key);
+  if (!values) cache.values.set(key, (values = trips.map((t) => measureTrip(def, t, pack, p, workDays) ?? null)));
+  return values;
+}
+
 function measureTrip(def: MetricDef, inst: Instance, pack: PackMetrics, p: MetricParams, workDays: number): Measured | null | undefined {
   const reading = tripReadingOf(def);
   if (!reading || reading === "none") return undefined;
@@ -307,7 +325,7 @@ export function scoreTripsV2(bidPack: BidPack, model: PilotModel, options: TripS
   const scored: { c: Criterion; ci: number }[] = criteria.flatMap((c, ci) => (applies[ci] ? [{ c, ci }] : []));
   const notApplicable = criteria.filter((_, ci) => !applies[ci]).map((c) => ({ criterionId: c.id, label: c.label }));
 
-  const measured = scored.map(({ c, ci }) => trips.map((t) => measureTrip(defs[ci], t, pack, { ...defs[ci].defaults, ...home, ...c.params, base: pack.ctx.base, bidPeriodStart: pack.ctx.bidPeriodStart }, workDays) ?? null));
+  const measured = scored.map(({ c, ci }) => measureTrips(defs[ci], trips, pack, { ...defs[ci].defaults, ...home, ...c.params, base: pack.ctx.base, bidPeriodStart: pack.ctx.bidPeriodStart }, workDays));
   const values = measured.map((ms) => ms.map((m) => m?.value ?? null));
   const shapes = scored.map(({ c, ci }, k) => (tripReadingOf(defs[ci]) === "count" ? countShapeForTrips(c, bidPack, pack, home, values[k]) : c.shape));
   const spreads = scored.map(({ ci }, k) => spreadOf(values[k], shapes[k], { goodEndAtMark: defs[ci].goodEndAtMark }));

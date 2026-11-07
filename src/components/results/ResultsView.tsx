@@ -44,6 +44,7 @@ import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { cachedFlightAnswers, lookUpFlights } from "@/lib/flights/client";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { scoreTripsV2 } from "@/lib/scoring-v2/trip-score";
+import { rankingPack } from "@/lib/scoring-v2/adapter";
 import { fetchAllHotelQualityData, settledHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { useBidForecast } from "@/lib/forecast/use-bid-forecast";
@@ -387,7 +388,11 @@ export function ResultsView({
   const ranked = useMemo(() => applyPlacements(scoredLines, validPlacements, (r) => r.line.id), [scoredLines, validPlacements]);
   const rankedIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
   // Every trip's own score, from the same priorities that rank the lines — shown on each trip in a line's trip list.
-  const tripScores = useMemo(() => (pilotModel ? scoreTripsV2(bidPack, pilotModel, { flights: flights ?? undefined, onLineScale: true }) : null), [bidPack, pilotModel, flights]);
+  // On the ranking's own measured pack, so a refit re-scores trips without re-measuring them.
+  const tripScores = useMemo(
+    () => (pilotModel ? scoreTripsV2(bidPack, pilotModel, { flights: flights ?? undefined, onLineScale: true, pack: rankingPack(bidPack, flights ?? undefined) }) : null),
+    [bidPack, pilotModel, flights]
+  );
 
   const updateMarks = useCallback(
     (fn: (m: LineMarks) => LineMarks) => {
@@ -507,6 +512,16 @@ export function ResultsView({
   // A phone shows one card at a time, so it paints the first two and builds the rest in idle time.
   const [firstBatch] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? 2 : 6));
   const mountedCount = useProgressiveCount(displayed.length, 6, firstBatch);
+
+  // Which cards changed place since the last render: only those animate into their new place. Measuring every card's
+  // layout on each re-rank was much of the freeze after a swap on a big pack. Adjusted during render, React's documented
+  // pattern for state derived from a change.
+  const orderKey = displayed.map((r) => r.line.id).join(",");
+  const [order, setOrder] = useState({ key: orderKey, moved: new Set<string>() });
+  if (order.key !== orderKey) {
+    const before = new Map(order.key.split(",").map((id, i) => [id, i] as const));
+    setOrder({ key: orderKey, moved: new Set(displayed.flatMap((r, i) => (before.has(r.line.id) && before.get(r.line.id) !== i ? [r.line.id] : []))) });
+  }
 
   useEffect(() => {
     if (typeof window.requestIdleCallback === "function") {
@@ -1158,7 +1173,7 @@ export function ResultsView({
                     key={lineScore.line.id}
                     id={`line-${lineScore.line.id}`}
                     className={`scroll-mt-20 md:scroll-mt-6 ${flashId === lineScore.line.id ? "line-flash" : ""} ${keyedId === lineScore.line.id ? "line-keyed" : ""}`}
-                    layout={dragEnabled && layoutArmed ? "position" : false}
+                    layout={dragEnabled && layoutArmed && order.moved.has(lineScore.line.id) ? "position" : false}
                     initial={reduceMotion ? false : { opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={
