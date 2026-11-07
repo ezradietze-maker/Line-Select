@@ -399,10 +399,15 @@ interface BidPackStripProps {
   grip: ReactNode;
   open: boolean;
   onToggle: () => void;
+  /**
+   * The pilot swapped this line into its place: its score is still Line Select's own match, so a lower score can sit
+   * above a higher one — the tag says that's the pilot's order, not a mistake.
+   */
+  placedByYou?: boolean;
 }
 
-export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle }: BidPackStripProps) {
-  const label = `Line ${line.lineNumber}${score !== null ? `, score ${Math.round(score)}` : tag ? `, option ${tag}` : ""} — ${open ? "hide" : "show"} everything about it`;
+export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle, placedByYou = false }: BidPackStripProps) {
+  const label = `Line ${line.lineNumber}${score !== null ? `, score ${Math.round(score)}` : tag ? `, option ${tag}` : ""}${placedByYou ? ", placed here by you" : ""} — ${open ? "hide" : "show"} everything about it`;
   const ring = layout.stacked ? 34 : 38;
   const title = (
     <div className="flex min-w-0 items-center gap-2">
@@ -416,7 +421,17 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
         )
       )}
       <div className="min-w-0">
-        <div className="font-mono text-[12px] font-semibold leading-[14px] tracking-wide text-ink">LINE {line.lineNumber}</div>
+        <div className="flex items-center gap-1.5 font-mono text-[12px] font-semibold leading-[14px] tracking-wide text-ink">
+          LINE {line.lineNumber}
+          {placedByYou && (
+            <span
+              className="whitespace-nowrap rounded-full border border-accent/40 bg-accent-soft px-1.5 py-px text-[9px] font-semibold uppercase leading-[12px] tracking-[0.08em] text-accent"
+              title="You put this line here. Its score is still Line Select's own match, so it can sit above a line with a higher score."
+            >
+              Your order
+            </span>
+          )}
+        </div>
         {view.kind === "pack" ? <Numbers line={line} /> : <SpelledNumbers line={line} />}
       </div>
     </div>

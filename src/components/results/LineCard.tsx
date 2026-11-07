@@ -94,9 +94,12 @@ interface LineCardProps {
   /** Whether everything about the line is showing under its strip. */
   open: boolean;
   onToggleOpen: () => void;
+  /** The pilot swapped this line into its place (see `BidPackStrip`'s tag). */
+  placedByYou?: boolean;
 }
 
 export const LineCard = memo(function LineCard({
+  placedByYou = false,
   rank,
   lineScore,
   profile,
@@ -237,6 +240,7 @@ export const LineCard = memo(function LineCard({
         grip={grip}
         open={open}
         onToggle={onToggleOpen}
+        placedByYou={placedByYou}
       />
 
       {/* Everything else about the line, under its strip when it's opened. */}

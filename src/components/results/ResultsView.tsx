@@ -386,6 +386,8 @@ export function ResultsView({
   // The pilot's order: the brain's ranking with every swap they made kept where they made it. Rank numbers, the bid
   // order and the forecast all follow it — it's what they'll bid.
   const ranked = useMemo(() => applyPlacements(scoredLines, validPlacements, (r) => r.line.id), [scoredLines, validPlacements]);
+  // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order.
+  const swappedIds = useMemo(() => new Set(validPlacements.flatMap((p) => [p.order[0], p.order[p.order.length - 1]])), [validPlacements]);
   const rankedIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
   // Every trip's own score, from the same priorities that rank the lines — shown on each trip in a line's trip list.
   // On the ranking's own measured pack, so a refit re-scores trips without re-measuring them.
@@ -1212,6 +1214,7 @@ export function ResultsView({
                         stripView={stripView}
                         open={openIds.has(lineScore.line.id)}
                         onToggleOpen={() => toggleOpen(lineScore.line.id)}
+                        placedByYou={dragEnabled && swappedIds.has(lineScore.line.id)}
                       />
                     </ErrorBoundary>
                   </motion.div>
