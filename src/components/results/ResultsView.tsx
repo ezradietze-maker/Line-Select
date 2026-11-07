@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -73,7 +73,9 @@ import {
   type DimensionUpdate,
   type PairwiseJudgment,
 } from "@/lib/rank-learning";
-import { addDragChoices, choicesFromDrag, describeChanges, withModel, withoutDrag } from "@/lib/brain/profile-model";
+import { addDragChoices, choicesFromSwap, describeChanges, withModel, withoutDrag } from "@/lib/brain/profile-model";
+import { describeSwap, explainSwap } from "@/lib/brain/explain-swap";
+import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { applyPlacements, loadPlacements, placementFromDrag, prunePlacements, savePlacements, type Placement } from "@/lib/line-placements";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
@@ -132,6 +134,11 @@ function DragPreview({ lineScore }: { lineScore: LineScore }) {
 }
 
 /** Whether the pilot expressed any opinion at all about their layover hotel — gates fetching hotel quality data at all, so a pilot who left every hotel slider at 0 doesn't pay for network calls that can't affect their score. */
+/** Runs `fn` once the browser has drawn the next frame — after whatever the current update shows. */
+function afterPaint(fn: () => void) {
+  requestAnimationFrame(() => setTimeout(fn, 0));
+}
+
 function caresAboutLayoverQuality(profile: PreferenceProfile): boolean {
   const { hotelFood, hotelGym, hotelGrocery, hotelQuiet, hotelQuality } = profile.weights;
   return [hotelFood, hotelGym, hotelGrocery, hotelQuiet, hotelQuality].some((w) => Math.abs(w) > 0);
@@ -375,11 +382,20 @@ export function ResultsView({
     [userId, bidPack.id]
   );
 
+  // The newest profile and placements, for learning that runs after a swap has painted (see `handleDragEnd`).
+  const profileRef = useRef(profile);
+  const placementsRef = useRef(placements);
+  useLayoutEffect(() => {
+    profileRef.current = profile;
+    placementsRef.current = placements;
+  }, [profile, placements]);
+
   const updatePlacements = useCallback(
     (fn: (p: Placement[]) => Placement[]) => {
       setPlacements((prev) => {
         const next = fn(prev);
         savePlacements(userId, bidPack.id, next);
+        placementsRef.current = next;
         return next;
       });
     },
@@ -661,26 +677,29 @@ export function ResultsView({
     };
 
     // A pilot ranked by their own model: the drag is a set of line choices, and their priorities refit to them.
-    if (profile.pilotModel) {
-      const passed = judgments.map((j) => ({ favored: j.favored.line.lineNumber, overtaken: j.overtaken.line.lineNumber }));
-      const added = choicesFromDrag(passed, swapId);
-      const choices = addDragChoices(profile.brainInterview?.choices ?? [], added);
-      const { profile: next, changes, heldByLimit } = withModel(profile, bidPack, { choices }, packMetrics ?? undefined);
-      remember(next);
-      const said = describeChanges(changes);
-      // Every pair this swap made is decided by a dealbreaker: the limit is what the pilot overrode, not a priority.
-      const limited = heldByLimit.filter((c) => c.dragId === swapId);
-      const cappedLine =
-        limited.length === added.length
-          ? sorted.find((r) => (r.line.lineNumber === limited[0]?.preferred || r.line.lineNumber === limited[0]?.other) && r.violatedDealbreakers.length > 0)
-          : undefined;
-      setLearnMessage(
-        cappedLine
-          ? `${kept} Line ${cappedLine.line.lineNumber} breaks your limit on ${cappedLine.violatedDealbreakers[0].label.toLowerCase()}, so your priorities haven't changed — if that limit isn't a real dealbreaker, change it under Your priorities.`
-          : said
-            ? `${kept} Learned from it — ${said}.`
-            : `${kept} Nothing you've told us explains it yet — tell us why under Your priorities, and it'll count.`
-      );
+    if (profile.pilotModel && placement) {
+      const numberOf = new Map(sorted.map((r) => [r.line.id, r.line.lineNumber]));
+      const order = placement.order.map((id) => numberOf.get(id)!);
+      const higher = order[0];
+      const lower = order[order.length - 1];
+      // The swap shows at once. Working out why and refitting re-measures the pack — on the biggest pack and a slow
+      // phone that's a second or two — so it waits until the swap has painted, and reads the newest profile when it runs
+      // (two quick swaps both count), skipping a swap undone in the meantime.
+      setLearnMessage(kept);
+      afterPaint(() => {
+        const current = profileRef.current;
+        if (!current.pilotModel || !placementsRef.current.some((p) => p.id === swapId)) return;
+        // Why, from the model the pilot was looking at when they swapped.
+        const before = new Map(scorePackV2(bidPack, current.pilotModel, { pack: packMetrics ?? undefined }).map((s) => [s.lineNumber, s]));
+        const why = before.has(higher) && before.has(lower) ? explainSwap(before.get(higher)!, before.get(lower)!) : null;
+        const choices = addDragChoices(current.brainInterview?.choices ?? [], choicesFromSwap(order, swapId));
+        const { profile: next, changes } = withModel(current, bidPack, { choices }, packMetrics ?? undefined);
+        profileRef.current = next;
+        onUpdateProfile(next);
+        setLastSwap({ id: swapId, before: current, after: next });
+        const said = why?.verdict === "limit" || why?.verdict === "agreed" ? null : describeChanges(changes);
+        setLearnMessage([kept, why ? describeSwap(why, higher, lower) : null, said ? `Now ${said}.` : null].filter(Boolean).join(" "));
+      });
       return;
     }
 

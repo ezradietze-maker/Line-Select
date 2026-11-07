@@ -130,6 +130,12 @@ export interface MetricDef {
    */
   badEndAtWorst?: boolean;
   /**
+   * For a "more is better" priority with no enough point given, the good end of the scale is the 95% mark rather than
+   * the pack's best line: a few lines far above the rest (standby lines pay 15–23 credit per hour flown, ordinary ones
+   * 1.5–3) would otherwise squash every ordinary line into the bottom tenth of the priority.
+   */
+  goodEndAtMark?: boolean;
+  /**
    * A count that adds up over the bid month — compared at the four weeks the pilot's numbers are for, so a five-week
    * bid month isn't held to a four-week month's numbers (see `fourWeekFactor`).
    */
@@ -235,8 +241,14 @@ function daysTouched(from: number | null, to: number | null, zone: string): numb
 /** Standby days (one standby row each) at cities matching `where`. */
 const standbyDaysWhere = (trips: TripFacts[], where: (city: string) => boolean) =>
   sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l) && where(l.depAirport)).length));
-/** For "how late" measures, the night runs on until 06:00: an arrival before then belongs to the evening before. */
-const NIGHT_RUNS_UNTIL = 6 * 60;
+/**
+ * For "how late" measures, the night runs on until 05:00: an arrival before then belongs to the evening before. From
+ * 05:00 a commuter makes the first flights out in the morning — a 05:19 block-in isn't a night stuck at base.
+ */
+const NIGHT_RUNS_UNTIL = 5 * 60;
+/** "How early / how late at base" for a line whose every trip starts (or ends) on a deadhead: no report to make, no flight home to catch. */
+const NO_BASE_REPORT = 23 * 60 + 59;
+const NO_BASE_RELEASE = NIGHT_RUNS_UNTIL;
 
 /** Every night the line works, as bid-period day indexes of the morning each night ends on; null when a trip's dates or schedule are unknown. */
 function nightsOfLine(trips: TripFacts[]): number[] | null {
@@ -396,6 +408,7 @@ export const METRICS: MetricDef[] = [
       const block = sum(flying(whole).map((f) => f.blockHours ?? 0));
       return block > 0 ? tripCredit(whole) / block : null;
     },
+    goodEndAtMark: true,
   },
   {
     id: "creditPerDayAway",
@@ -828,10 +841,13 @@ export const METRICS: MetricDef[] = [
     label: "Earliest report at base",
     unit: "minute of day",
     category: "commute",
-    description: "Earliest local report time at base on a trip that starts with operated flying (a commuter must be there in time).",
+    description:
+      "Earliest local report time at base on a trip that starts with operated flying (a commuter must be there in time). A line whose every trip starts on a deadhead has no report at base to make: it counts as 23:59, the easiest there is.",
     line: (_l, trips) => {
-      const reports = trips.filter((t) => !t.front && !t.noFlying).map((t) => t.duties[0]?.reportLocalMinute).filter((m): m is number => m !== null && m !== undefined);
-      return reports.length ? Math.min(...reports) : null;
+      const flying = trips.filter((t) => !t.noFlying);
+      const reports = flying.filter((t) => !t.front).map((t) => t.duties[0]?.reportLocalMinute).filter((m): m is number => m !== null && m !== undefined);
+      if (reports.length) return Math.min(...reports);
+      return flying.length && flying.every((t) => t.front) ? NO_BASE_REPORT : null;
     },
   },
   {
@@ -840,13 +856,15 @@ export const METRICS: MetricDef[] = [
     unit: "minute of day",
     category: "commute",
     description:
-      "Latest local block-in at base on a trip that ends with operated flying (a commuter then needs a flight home). The night runs on past midnight: an arrival before 06:00 counts as later than the evening before it (05:19 is measured as 29:19, i.e. 1759 minutes).",
+      "Latest local block-in at base on a trip that ends with operated flying (a commuter then needs a flight home). The night runs on past midnight: an arrival before 05:00 counts as later than the evening before it (02:30 is measured as 26:30, i.e. 1590 minutes); from 05:00 it's morning, with flights home. A line whose every trip ends on a deadhead has no flight home to catch from base: it counts as 05:00, the earliest there is.",
     line: (_l, trips) => {
-      const arrivals = trips
-        .filter((t) => !t.back && !t.noFlying)
+      const flying = trips.filter((t) => !t.noFlying);
+      if (flying.length && flying.every((t) => t.back)) return NO_BASE_RELEASE;
+      const arrivals = flying
+        .filter((t) => !t.back)
         .map((t) => t.operatedLegs[t.operatedLegs.length - 1]?.arrLocalMinute)
         .filter((m): m is number => m !== null && m !== undefined)
-        // A 05:19 block-in is the end of a long night, not an early release.
+        // A 02:30 block-in is the end of a long night, not an early release.
         .map((m) => (m < NIGHT_RUNS_UNTIL ? m + 1440 : m));
       return arrivals.length ? Math.max(...arrivals) : null;
     },
