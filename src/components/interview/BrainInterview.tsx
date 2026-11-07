@@ -54,6 +54,7 @@ import { prepareMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
 import { DEFAULT_WEIGHTS, type CityRating, type CityRatingScore, type CitySentiment, type PreferenceProfile } from "@/types/preferences";
+import { isPackId, legacyPackIdFor, packIdFor } from "@/lib/pack-id";
 
 /**
  * The story-driven interview. The pilot tells their bidding story in their
@@ -191,7 +192,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
    * rather than the whole interview again. Same pack (a retake) starts over.
    */
   const lastTime = priorProfile?.pilotModel && priorProfile.brainInterview ? priorProfile.brainInterview : null;
-  const [checkIn, setCheckIn] = useState(() => !!lastTime && lastTime.packId !== bidPack.id);
+  // A new month's pack (its id before ids named the aircraft still counts as this pack).
+  const [checkIn, setCheckIn] = useState(() => !!lastTime && !isPackId(lastTime.packId, bidPack));
   // For the steps that run before a re-render: resuming a draft asks its next question straight away.
   const checkInRef = useRef(checkIn);
   checkInRef.current = checkIn;
@@ -275,17 +277,26 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [resume, setResume] = useState<DraftState | null>(() => (typeof window === "undefined" ? null : loadDraftState(userId, bidPack.id)));
   // A signed-in pilot's draft also lives on their account: begun on another device, or kept after this browser cleared
   // its storage. The newer of the two is the one offered.
+  const olderPackId = bidPack.id === packIdFor(bidPack) ? legacyPackIdFor(bidPack) : null;
+  /** The account's copy gone — under the older id too, or another device would keep offering it. */
+  const clearServerDrafts = () => {
+    void clearServerDraft(bidPack.id);
+    if (olderPackId) void clearServerDraft(olderPackId);
+  };
   useEffect(() => {
     if (!userId) return;
     let live = true;
-    void fetchServerDraft<DraftState>(bidPack.id).then((d) => {
-      const server = usableDraft(d);
-      if (live && server) setResume((local) => (local && local.savedAt >= server.savedAt ? local : server));
-    });
+    // Saved from another device before ids named the aircraft: under the pack's older id.
+    void fetchServerDraft<DraftState>(bidPack.id)
+      .then((d) => d ?? (olderPackId ? fetchServerDraft<DraftState>(olderPackId) : null))
+      .then((d) => {
+        const server = usableDraft(d);
+        if (live && server) setResume((local) => (local && local.savedAt >= server.savedAt ? local : server));
+      });
     return () => {
       live = false;
     };
-  }, [userId, bidPack.id]);
+  }, [userId, bidPack.id, olderPackId]);
 
   const pilotContext = () =>
     pilotContextFor(bidPack, { isCommuter, commuteFrom, hasCrashPad, minHomeHours: isCommuter ? minHomeHours : null }) +
@@ -722,7 +733,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     try {
       window.localStorage.removeItem(draftKey(userId, bidPack.id));
     } catch {}
-    if (userId) void clearServerDraft(bidPack.id);
+    if (userId) void clearServerDrafts();
     // What the fleet learns from this interview: the shape of the finished model, city grades and review verdicts — never the pilot's words.
     if (isLearnablePack(bidPack)) {
       const list = bidPack.seniorityList ?? [];
@@ -1085,7 +1096,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
                 try {
                   window.localStorage.removeItem(draftKey(userId, bidPack.id));
                 } catch {}
-                if (userId) void clearServerDraft(bidPack.id);
+                if (userId) void clearServerDrafts();
                 setResume(null);
               }}
             >

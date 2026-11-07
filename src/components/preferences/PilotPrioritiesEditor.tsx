@@ -13,6 +13,7 @@ import { buildPackBrief } from "@/lib/brain/pack-brief";
 import { baseModelOf, describeChanges, withModel } from "@/lib/brain/profile-model";
 import { markCityUntried, packCityFacts, rateCity as rateCityGrade, rateCityHotel, rateCitySeason, saysMore, sentimentFromRating } from "@/lib/city-ratings";
 import { commuteGroupOf } from "@/lib/learning/cohort";
+import { useAppState } from "@/lib/app-state";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
 import type { Criterion } from "@/types/pilot-model";
@@ -84,6 +85,7 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
   const [removed, setRemoved] = useState<Criterion[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { handleUpdateProfileWith: updateLatest } = useAppState();
   const [error, setError] = useState<string | null>(null);
   // The profile as it is now, and whether this screen is still open, for a reading that lands seconds later.
   const latest = useRef(profile);
@@ -162,11 +164,16 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
         exchanges: bi.exchanges,
         prior: base,
       });
-      // Gone to another screen, the pilot may have dragged lines there since: this older copy would write over them.
-      if (!mounted.current) return;
-      const now = latest.current;
-      const interview = now.brainInterview ?? { exchanges: [], choices: [] };
-      apply({ ...now, brainInterview: { ...interview, exchanges: [...interview.exchanges, { turn: interview.exchanges.length, question, answer: text }] } }, { base: built });
+      const withNote = (p: PreferenceProfile): PreferenceProfile => {
+        const interview = p.brainInterview ?? { exchanges: [], choices: [] };
+        return { ...p, brainInterview: { ...interview, exchanges: [...interview.exchanges, { turn: interview.exchanges.length, question, answer: text }] } };
+      };
+      // Gone to another screen (lines dragged there since, maybe): it lands on the app's profile as it is by now.
+      if (!mounted.current) {
+        updateLatest((p) => withModel(withNote(p), bidPack, { base: built }, pm).profile);
+        return;
+      }
+      apply(withNote(latest.current), { base: built });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't read that in just now.");
     } finally {

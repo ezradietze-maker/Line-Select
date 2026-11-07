@@ -127,14 +127,16 @@ export function addDragChoices(existing: LineChoice[], added: LineChoice[]): Lin
 
 /** The pilot's choices without the ones a drag added — undoing that drag — and whatever it had set aside counting again. */
 export function withoutDrag(choices: LineChoice[], dragId: string): LineChoice[] {
-  return choices
-    .filter((c) => c.dragId !== dragId)
-    .map((c) => {
-      if (c.supersededBy !== dragId) return c;
-      const back = { ...c };
-      delete back.supersededBy;
-      return back;
-    });
+  const kept = choices.filter((c) => c.dragId !== dragId);
+  return kept.map((c) => {
+    if (c.supersededBy !== dragId) return c;
+    // Undone out of order, a later swap may still put the two the other way round: then it's set aside under that one.
+    const stillReversed = kept.findLast((x) => x.direct && !x.supersededBy && x.preferred === c.other && x.other === c.preferred);
+    if (stillReversed?.dragId) return { ...c, supersededBy: stillReversed.dragId };
+    const back = { ...c };
+    delete back.supersededBy;
+    return back;
+  });
 }
 
 /** "Counting more: …; less: …" — what a change did to the pilot's priorities (each one's share of all the weight), in a sentence. */

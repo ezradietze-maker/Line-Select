@@ -31,7 +31,7 @@ async function post<T>(url: string, body: unknown, timeoutMs: number): Promise<T
       // fetch") are shown to the pilot as they are, so they're said plainly here.
       if (ctrl.signal.aborted) throw new Error("That took too long to come back. Try again.");
       reportConnectionLost();
-      if (attempt < 1 && (await waitForConnection(WAIT_FOR_CONNECTION_MS))) continue;
+      if (attempt < 3 && (await waitForConnection(WAIT_FOR_CONNECTION_MS))) continue;
       throw new Error("Couldn’t reach Line Select. Check your connection and try again.");
     }
     try {

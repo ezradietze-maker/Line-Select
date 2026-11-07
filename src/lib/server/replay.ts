@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getJson, incrementCounter, setJson } from "@/lib/server/kv";
+import { clientIp, deviceIdFrom } from "@/lib/server/rate-limit";
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const POLL_MS = 2000;
+const MAX_COPIES = 4;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -15,7 +17,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function onceForRequest(request: Request, waitMs: number, run: () => Promise<Response>): Promise<Response> {
   const id = request.headers.get("x-request-id");
   if (!id || !ID.test(id)) return run();
-  const key = `line-select:replay:${id}`;
+  // The id is the browser's own pick: tied to the route and to whoever sent it (their device, else their address), so
+  // an id seen elsewhere can't fetch someone else's answer.
+  const sender = deviceIdFrom(request) ?? clientIp(request);
+  const key = `line-select:replay:${new URL(request.url).pathname}:${sender}:${id}`;
   const answer = async () => {
     const r = await getJson<{ status: number; body: unknown }>(`${key}:reply`);
     return r ? NextResponse.json(r.body, { status: r.status }) : null;
@@ -23,23 +28,35 @@ export async function onceForRequest(request: Request, waitMs: number, run: () =
   try {
     const ready = await answer();
     if (ready) return ready;
-    if ((await incrementCounter(`${key}:claim`, Math.ceil(waitMs / 1000) + 60)) > 1) {
+    const claims = await incrementCounter(`${key}:claim`, Math.ceil(waitMs / 1000) + 60);
+    // A real resend is the second copy, now and then a third. More than that is someone holding functions open on
+    // one id without ever reaching the rate limits, which only the run itself checks.
+    if (claims > MAX_COPIES) return NextResponse.json({ error: "Too many requests — please slow down and try again shortly." }, { status: 429 });
+    if (claims > 1) {
       for (let waited = 0; waited < waitMs; waited += POLL_MS) {
         await sleep(POLL_MS);
         const done = await answer();
         if (done) return done;
-        if (await getJson<number>(`${key}:failed`)) break;
+        if (await getJson<number>(`${key}:failed`)) return run().then(keep);
       }
+      // Still not back: the first copy is running long or was cut off. Running again now would only be cut off too.
+      return NextResponse.json({ error: "That's taking longer than usual. Try again in a moment." }, { status: 503 });
     }
   } catch {
     // The store being unreachable never stops the call itself.
   }
-  const res = await run();
-  try {
-    if (res.ok) await setJson(`${key}:reply`, { status: res.status, body: await res.clone().json() }, { ttlSeconds: 15 * 60 });
-    else await setJson(`${key}:failed`, 1, { ttlSeconds: 5 * 60 });
-  } catch {
-    // Kept or not, this copy's answer still goes back.
+  return run().then(keep, async (e) => {
+    await setJson(`${key}:failed`, 1, { ttlSeconds: 5 * 60 }).catch(() => {});
+    throw e;
+  });
+
+  async function keep(res: Response): Promise<Response> {
+    try {
+      if (res.ok) await setJson(`${key}:reply`, { status: res.status, body: await res.clone().json() }, { ttlSeconds: 15 * 60 });
+      else await setJson(`${key}:failed`, 1, { ttlSeconds: 5 * 60 });
+    } catch {
+      // Kept or not, this copy's answer still goes back.
+    }
+    return res;
   }
-  return res;
 }
