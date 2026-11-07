@@ -67,7 +67,7 @@ export function PriorityReviewStep({ model, eyebrow, onConfirm, busy }: Priority
                       type="button"
                       aria-pressed={on}
                       onClick={() => setVerdicts((p) => ({ ...p, [c.id]: on ? undefined : x.v }))}
-                      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${on ? x.tone : "border-border text-ink-muted hover:border-border-strong"}`}
+                      className={`min-h-10 rounded-full border px-3 py-1.5 text-sm transition-colors sm:min-h-0 sm:px-2.5 sm:py-1 sm:text-xs ${on ? x.tone : "border-border text-ink-muted hover:border-border-strong"}`}
                     >
                       {x.label}
                     </button>

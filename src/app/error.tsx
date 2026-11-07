@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/Button";
+import { reportClientError } from "@/lib/client-error-report";
 import { captureClientException } from "@/lib/posthog-client";
 
 /**
@@ -31,6 +32,7 @@ export default function RootError({ error, reset }: { error: Error & { digest?: 
     }
     console.error(error);
     captureClientException(error);
+    reportClientError(error, "page");
   }, [error]);
 
   return (

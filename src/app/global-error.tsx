@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportClientError } from "@/lib/client-error-report";
 import { captureClientException } from "@/lib/posthog-client";
 
 /**
@@ -11,6 +12,7 @@ import { captureClientException } from "@/lib/posthog-client";
 export default function GlobalError({ error, retry }: { error: unknown; retry: () => void }) {
   useEffect(() => {
     captureClientException(error instanceof Error ? error : new Error(String(error)));
+    reportClientError(error, "app");
   }, [error]);
 
   return (

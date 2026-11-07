@@ -57,7 +57,7 @@ export function StepNav({ onNext, nextLabel, disabled }: { onNext: () => void; n
  */
 export function InterviewProgress({ fraction, left, right, base }: { fraction: number; left: string; right?: string; base?: string }) {
   // The stops are the interview's own: out of base, into your story, the review, and your lines ranked.
-  const stops = [...(base ? [{ at: 0, label: base }] : []), { at: 0.2, label: "Story" }, { at: 0.85, label: "Review" }, { at: 1, label: "Ranked" }];
+  const stops = [...(base ? [{ at: 0, label: base }] : []), { at: 0.2, label: "Story" }, { at: 0.85, label: "Review", wideOnly: true }, { at: 1, label: "Ranked" }];
   return (
     <div className="mb-6">
       <FlightPathProgress fraction={fraction} label="Interview progress" stops={stops} />

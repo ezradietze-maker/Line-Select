@@ -328,11 +328,11 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
 
       <p className="mt-4 text-center text-xs leading-relaxed text-ink-faint">
         Your account is real and stored on this app&rsquo;s own server so
-        trade offers can be seen by other pilots, and so your preferences
-        follow you to a new device or browser once you&rsquo;re signed in
-        &mdash; and if you forget your password, the recovery code you get
-        when you sign up is your way back in. Your bid pack itself still
-        stays on each device.
+        trade offers can be seen by other pilots, and so your bid pack,
+        your interview (finished or partway) and your preferences follow you
+        to a new device or browser once you&rsquo;re signed in &mdash; and if
+        you forget your password, the recovery code you get when you sign up
+        is your way back in.
       </p>
     </div>
   );

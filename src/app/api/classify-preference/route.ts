@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { failedCallCost, structuredCall } from "@/lib/brain/llm";
 import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -6,7 +7,8 @@ import { checkSpend, recordSpend, spendLimitResponse, type Spender } from "@/lib
 
 export const runtime = "nodejs";
 
-const MODEL = "claude-haiku-4-5-20251001";
+/** A short reason against a fixed list: the smallest current model does it, at a tenth of the old one's price. */
+const MODEL = "claude-haiku-5-5";
 
 /**
  * Maps a pilot's free-text explanation onto the existing implicit taxonomy,
@@ -68,9 +70,21 @@ If their answer does not clearly match any variable in the list, propose a short
 
 Never invent or infer a sensitive personal category (medical condition, family/custody situation, financial hardship, etc.) that was not literally stated — if the answer touches on something sensitive, treat it the same as any other unmatched answer: propose a plain, literal name for what they said, don't diagnose or categorize the underlying reason.
 
-Respond with ONLY a JSON object, no other text, in exactly this shape:
-{"matchedVariableId": string or null, "direction": "favors_more" or "favors_less" or null, "proposedName": string or null, "proposedDescription": string or null}`;
+Answer with matchedVariableId and direction when it matches (the other two null), or proposedName and proposedDescription when it doesn't (the first two null).`;
 }
+
+const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type: "null" }] });
+const SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["matchedVariableId", "direction", "proposedName", "proposedDescription"],
+  properties: {
+    matchedVariableId: nullable({ type: "string" }),
+    direction: nullable({ type: "string", enum: ["favors_more", "favors_less"] }),
+    proposedName: nullable({ type: "string" }),
+    proposedDescription: nullable({ type: "string" }),
+  },
+};
 
 export async function POST(request: Request) {
   const user = await getCurrentServerUser();
@@ -107,47 +121,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing classification input." }, { status: 400 });
   }
 
+  let parsed: ClassifyResult;
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 300,
-        messages: [{ role: "user", content: buildPrompt(body as ClassifyRequest) }],
-      }),
+    const r = await structuredCall<ClassifyResult>({
+      apiKey,
+      model: MODEL,
+      system: "You match a pilot's own reason for a preference to a list of tracked preference variables.",
+      user: { fresh: buildPrompt(body as ClassifyRequest) },
+      schema: SCHEMA,
+      effort: "low",
+      maxTokens: 2_000,
     });
-
-    if (!res.ok) {
-      return NextResponse.json({ error: "Classification service unavailable." }, { status: 502 });
-    }
-
-    const data = await res.json();
-    const used = data.usage as { input_tokens?: number; output_tokens?: number } | undefined;
-    // Haiku 4.5 list prices: $1 in, $5 out per million tokens.
-    await recordSpend(spender, ((used?.input_tokens ?? 0) * 1 + (used?.output_tokens ?? 0) * 5) / 1e6);
-    const text: string = data.content?.[0]?.text ?? "";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return NextResponse.json({ error: "Couldn't read the classification response." }, { status: 502 });
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]) as ClassifyResult;
-    const validVariableIds = new Set(body.variables!.map((v) => v.id));
-    const matchedVariableId =
-      parsed.matchedVariableId && validVariableIds.has(parsed.matchedVariableId) ? parsed.matchedVariableId : null;
-
-    return NextResponse.json({
-      matchedVariableId,
-      direction: matchedVariableId ? parsed.direction : null,
-      proposedName: matchedVariableId ? null : parsed.proposedName,
-      proposedDescription: matchedVariableId ? null : parsed.proposedDescription,
-    } satisfies ClassifyResult);
-  } catch {
+    await recordSpend(spender, r.usage.costUsd);
+    parsed = r.data;
+  } catch (e) {
+    await recordSpend(spender, failedCallCost(e));
     return NextResponse.json({ error: "Couldn't reach the classification service." }, { status: 502 });
   }
+
+  const validVariableIds = new Set(body.variables!.map((v) => v.id));
+  const matchedVariableId = parsed.matchedVariableId && validVariableIds.has(parsed.matchedVariableId) ? parsed.matchedVariableId : null;
+
+  return NextResponse.json({
+    matchedVariableId,
+    direction: matchedVariableId ? parsed.direction : null,
+    proposedName: matchedVariableId ? null : parsed.proposedName,
+    proposedDescription: matchedVariableId ? null : parsed.proposedDescription,
+  } satisfies ClassifyResult);
 }

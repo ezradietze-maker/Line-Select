@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans_Condensed, Public_Sans } from "next/font/google";
 import { AppShell } from "@/components/app/AppShell";
+import { CrashReporting } from "@/components/CrashReporting";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme";
 import "./globals.css";
@@ -62,6 +63,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col bg-canvas text-ink">
         <ServiceWorkerRegistration />
+        <CrashReporting />
         <AppShell>{children}</AppShell>
       </body>
     </html>

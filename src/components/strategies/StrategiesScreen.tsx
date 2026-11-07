@@ -166,7 +166,7 @@ function SeniorityForm({
         Every strategy below is built from the real lines in your {bidPack.base} {bidPack.aircraft}{" "}
         {bidPack.seat} pack. Your seniority number just tells Line Select which of those moves are
         realistic for you versus a reach — nothing here reads your name or employee number, and
-        this stays on this device.
+        it&rsquo;s kept with your preferences: on this device, and on your account if you&rsquo;re signed in.
       </p>
 
       <form

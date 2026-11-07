@@ -13,8 +13,11 @@ interface FlightPathProgressProps {
   destination?: string;
   /** Evenly spaced waypoints along the route; each lights up once passed. */
   waypoints?: number;
-  /** Named stops along the route instead (0 to 1), labelled above it; one at 0 or 1 just names that end. */
-  stops?: { at: number; label: string }[];
+  /**
+   * Named stops along the route instead (0 to 1), labelled above it; one at 0 or 1 just names that end. `wideOnly`
+   * labels a stop only on wider screens — on a phone it would run into its neighbour; its marker stays.
+   */
+  stops?: { at: number; label: string; wideOnly?: boolean }[];
   className?: string;
 }
 
@@ -47,7 +50,7 @@ export function FlightPathProgress({ fraction, label, origin, destination, waypo
           {stops.map((s) => (
             <span
               key={s.label}
-              className={`absolute top-0 whitespace-nowrap transition-colors duration-300 ${s.at <= 0.02 ? "" : s.at >= 0.98 ? "-translate-x-full" : "-translate-x-1/2"} ${s.at <= f ? "text-accent" : "text-ink-faint"}`}
+              className={`absolute top-0 whitespace-nowrap transition-colors duration-300 ${s.wideOnly ? "hidden sm:block" : ""} ${s.at <= 0.02 ? "" : s.at >= 0.98 ? "-translate-x-full" : "-translate-x-1/2"} ${s.at <= f ? "text-accent" : "text-ink-faint"}`}
               style={{ left: `${s.at * 100}%` }}
             >
               {s.label}

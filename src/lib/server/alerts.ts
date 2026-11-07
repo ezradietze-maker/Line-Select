@@ -11,7 +11,7 @@ import { siteSpentOn, spendCaps } from "@/lib/server/spend-guard";
  * the daily run itself still happens.
  */
 
-export type ProblemKind = "brain-build" | "brain-question" | "brain-ask" | "dictation" | "hotels" | "flights" | "parse-bidpack" | "profile-save" | "forecast" | "learning";
+export type ProblemKind = "brain-build" | "brain-question" | "brain-ask" | "dictation" | "hotels" | "flights" | "parse-bidpack" | "profile-save" | "forecast" | "learning" | "browser";
 
 const LABELS: Record<ProblemKind, string> = {
   "brain-build": "Brain reads (the interview's model)",
@@ -24,6 +24,7 @@ const LABELS: Record<ProblemKind, string> = {
   "profile-save": "Saving pilots' profiles",
   forecast: "Hold forecasts",
   learning: "Fleet learning",
+  browser: "The app in pilots' browsers",
 };
 
 /** Failures of one kind in a clock hour that send an email. */
@@ -66,6 +67,18 @@ export async function noteActivity(kind: ActivityKind, now = new Date()): Promis
 
 function alertAddress(): string | null {
   return process.env.ALERT_EMAIL?.trim() || null;
+}
+
+/** A tester's feedback, emailed as it arrives — at beta size each one is worth reading the day it's sent. Never throws. */
+export async function sendFeedbackNote(f: { category: string; message: string; page: string; pilotDisplayName: string | null; pilotEmail: string | null }): Promise<void> {
+  const to = alertAddress();
+  if (!to) return;
+  const who = f.pilotEmail ? `${f.pilotDisplayName ?? "A pilot"} (${f.pilotEmail})` : "A guest";
+  try {
+    await sendEmail({ to, subject: `Line Select feedback: ${f.category}${f.page ? ` on ${f.page}` : ""}`, text: `${who} wrote${f.page ? ` from ${f.page}` : ""}:\n\n${f.message}` });
+  } catch (e) {
+    console.error("[alerts] couldn't email feedback", e);
+  }
 }
 
 async function sendAlert(kind: ProblemKind, count: number, latest: string): Promise<void> {

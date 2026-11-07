@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { secretMatches } from "@/lib/server/secret";
 import { isJsonObject } from "@/lib/server/json-body";
+import { afterResponse } from "@/lib/server/after-response";
+import { sendFeedbackNote } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { createFeedbackSubmission, listFeedbackSubmissions } from "@/lib/server/db";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -67,5 +69,6 @@ export async function POST(request: Request) {
   };
 
   await createFeedbackSubmission(submission);
+  afterResponse(() => sendFeedbackNote(submission));
   return NextResponse.json({ ok: true });
 }

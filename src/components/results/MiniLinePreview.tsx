@@ -202,8 +202,9 @@ function Cell({
                 </span>
               )}
             </span>
-            {/* On a phone the oval won't fit beside the date: the number alone. */}
-            <span className="font-mono text-[9px] font-semibold text-ink @min-[4.75rem]:hidden">#{day.tripNumber}</span>
+            {/* On a phone the oval won't fit beside the date: the number alone. In the narrowest cells (a phone's week) even
+                that spills into the next day ("13 #50214"), so it's left to the day's details, a tap away. */}
+            <span className="hidden font-mono text-[9px] font-semibold text-ink @min-[3.25rem]:inline @min-[4.75rem]:hidden">#{day.tripNumber}</span>
           </>
         )}
       </span>

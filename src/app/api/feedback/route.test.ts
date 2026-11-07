@@ -16,6 +16,9 @@ const rateLimitMocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/server/rate-limit", () => rateLimitMocks);
 
+const alertMocks = vi.hoisted(() => ({ sendFeedbackNote: vi.fn(async () => {}) }));
+vi.mock("@/lib/server/alerts", () => alertMocks);
+
 import { NextResponse } from "next/server";
 import { GET, POST } from "./route";
 
@@ -71,6 +74,15 @@ describe("/api/feedback", () => {
       expect(dbMocks.createFeedbackSubmission).toHaveBeenCalledWith(
         expect.objectContaining({ pilotId: null, pilotEmail: null, message: "The interview took forever", category: "bug" })
       );
+    });
+
+    it("emails the owner each message as it arrives", async () => {
+      alertMocks.sendFeedbackNote.mockClear();
+      await POST(postRequest({ message: "The calendar cut off on my phone", category: "bug", page: "/results" }));
+      expect(alertMocks.sendFeedbackNote).toHaveBeenCalledWith(expect.objectContaining({ message: "The calendar cut off on my phone", category: "bug", page: "/results" }));
+      alertMocks.sendFeedbackNote.mockClear();
+      await POST(postRequest({ message: "   " }));
+      expect(alertMocks.sendFeedbackNote).not.toHaveBeenCalled();
     });
 
     it("attaches the signed-in pilot's real identity, not anything the client sent", async () => {

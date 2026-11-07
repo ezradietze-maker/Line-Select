@@ -49,6 +49,7 @@ import { isLearnablePack } from "@/lib/learning/corrections";
 import { postBrainOutcome } from "@/lib/learning/learning-client";
 import { parseAirportCode } from "@/lib/interview-story";
 import { loadStoryDraft, saveStoryDraft } from "@/lib/interview-draft";
+import { clearServerDraft, fetchServerDraft, saveServerDraft } from "@/lib/interview-draft-sync";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
@@ -157,13 +158,15 @@ interface DraftState {
 const draftKey = (userId: string | null, packId: string) => `line-select:brain-interview:${userId ?? "guest"}:${packId}:v1`;
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
+/** A draft worth offering: the right shape, and under a day old. */
+function usableDraft(d: DraftState | null): DraftState | null {
+  return d && d.version === 1 && typeof d.savedAt === "number" && Date.now() - d.savedAt <= DRAFT_MAX_AGE_MS && Array.isArray(d.exchanges) ? d : null;
+}
+
 function loadDraftState(userId: string | null, packId: string): DraftState | null {
   try {
     const raw = window.localStorage.getItem(draftKey(userId, packId));
-    if (!raw) return null;
-    const d = JSON.parse(raw) as DraftState;
-    if (d.version !== 1 || Date.now() - d.savedAt > DRAFT_MAX_AGE_MS || !Array.isArray(d.exchanges)) return null;
-    return d;
+    return raw ? usableDraft(JSON.parse(raw) as DraftState) : null;
   } catch {
     return null;
   }
@@ -270,6 +273,19 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
   // The interview only renders once the bid pack has loaded from this device, so local storage is always there to read.
   const [resume, setResume] = useState<DraftState | null>(() => (typeof window === "undefined" ? null : loadDraftState(userId, bidPack.id)));
+  // A signed-in pilot's draft also lives on their account: begun on another device, or kept after this browser cleared
+  // its storage. The newer of the two is the one offered.
+  useEffect(() => {
+    if (!userId) return;
+    let live = true;
+    void fetchServerDraft<DraftState>(bidPack.id).then((d) => {
+      const server = usableDraft(d);
+      if (live && server) setResume((local) => (local && local.savedAt >= server.savedAt ? local : server));
+    });
+    return () => {
+      live = false;
+    };
+  }, [userId, bidPack.id]);
 
   const pilotContext = () =>
     pilotContextFor(bidPack, { isCommuter, commuteFrom, hasCrashPad, minHomeHours: isCommuter ? minHomeHours : null }) +
@@ -705,6 +721,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     try {
       window.localStorage.removeItem(draftKey(userId, bidPack.id));
     } catch {}
+    if (userId) void clearServerDraft(bidPack.id);
     // What the fleet learns from this interview: the shape of the finished model, city grades and review verdicts — never the pilot's words.
     if (isLearnablePack(bidPack)) {
       const list = bidPack.seniorityList ?? [];
@@ -737,6 +754,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     try {
       window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify(d));
     } catch {}
+    if (userId) saveServerDraft(bidPack.id, d);
   }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
 
   function resumeDraft(d: DraftState) {
@@ -1066,6 +1084,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
                 try {
                   window.localStorage.removeItem(draftKey(userId, bidPack.id));
                 } catch {}
+                if (userId) void clearServerDraft(bidPack.id);
                 setResume(null);
               }}
             >

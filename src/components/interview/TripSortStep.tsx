@@ -42,7 +42,7 @@ function TripCard({ bidPack, trip, label, grade, onGrade }: { bidPack: BidPack; 
             role="radio"
             aria-checked={grade === g}
             onClick={() => onGrade(g)}
-            className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+            className={`min-h-11 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-2 sm:min-h-0 sm:px-2.5 sm:py-1.5 sm:text-xs focus-visible:outline-offset-2 focus-visible:outline-brand ${
               grade === g ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong hover:text-ink"
             }`}
           >
