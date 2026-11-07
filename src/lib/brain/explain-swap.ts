@@ -73,6 +73,55 @@ function amountOf(r: CriterionResult): string {
   return Number.isInteger(r.value) || Math.abs(r.value) >= 10 ? String(Math.round(r.value)) : String(Math.round(r.value * 10) / 10);
 }
 
+/**
+ * How many times as much one priority would have to count, alone, for the line put higher to draw level — solved on
+ * each line's own sums. A priority a line has no measure of weighs on it differently (its totals differ), so the
+ * shortcut k = 1 − net/d, which assumes both lines carry the same total weight, called some flips that don't happen
+ * and missed some that do. Null when it doesn't happen within a generous range.
+ */
+function flipFactor(higher: V2LineScore, lower: V2LineScore, criterionId: string): number | null {
+  const sums = (s: V2LineScore) => {
+    let all = 0;
+    let weight = 0;
+    let mine = 0;
+    let mineWeight = 0;
+    for (const r of s.results) {
+      const term = r.weight * (1 - r.utility) ** 2;
+      all += term;
+      weight += r.weight;
+      if (r.criterionId === criterionId) {
+        mine += term;
+        mineWeight += r.weight;
+      }
+    }
+    return { all, weight, mine, mineWeight };
+  };
+  const h = sums(higher);
+  const l = sums(lower);
+  const shortfall = (x: ReturnType<typeof sums>, k: number) => (x.all + (k - 1) * x.mine) / Math.max(1e-12, x.weight + (k - 1) * x.mineWeight);
+  // Above 0, the line put higher is still behind.
+  const behind = (k: number) => shortfall(h, k) - shortfall(l, k);
+  if (behind(1) <= 0) return 1;
+  const top = LEARNER.maxFactor * 4;
+  const steps = 120;
+  let below = 1;
+  for (let i = 1; i <= steps; i++) {
+    const k = Math.exp((Math.log(top) * i) / steps);
+    if (behind(k) <= 0) {
+      let lo = below;
+      let hi = k;
+      for (let j = 0; j < 40; j++) {
+        const mid = (lo + hi) / 2;
+        if (behind(mid) <= 0) hi = mid;
+        else lo = mid;
+      }
+      return hi;
+    }
+    below = k;
+  }
+  return null;
+}
+
 export function explainSwap(higher: V2LineScore, lower: V2LineScore): SwapExplanation {
   const gap = higher.score - lower.score;
   const cappedHigher = higher.violations.length > 0;
@@ -93,11 +142,9 @@ export function explainSwap(higher: V2LineScore, lower: V2LineScore): SwapExplan
   // The uncapped gap's numerator: Σ (termB − termA); the higher line is ahead when it's positive.
   const net = SB - SA;
 
-  const factors: SwapFactor[] = parts
+  const everyFactor: SwapFactor[] = parts
     .map(({ a, b, termA, termB }) => {
       const d = termB - termA;
-      // Counting k times as much changes this term by (k − 1)·d (ignoring the small shift in Σw): ties at k = 1 − net/d.
-      const k = d !== 0 ? 1 - net / d : Infinity;
       return {
         criterionId: a.criterionId,
         label: a.label,
@@ -105,13 +152,14 @@ export function explainSwap(higher: V2LineScore, lower: V2LineScore): SwapExplan
         higherValue: valueOf(a),
         lowerValue: valueOf(b),
         amounts: `${amountOf(a)} vs ${amountOf(b)}`,
-        flipAlone: net >= 0 ? 1 : d > 0 && Number.isFinite(k) ? k : null,
+        flipAlone: net >= 0 ? 1 : flipFactor(higher, lower, a.criterionId),
       };
     })
-    .filter((f) => Math.abs(f.share) >= MIN_SHARE)
     .sort((x, y) => y.share - x.share);
+  // Small shares aren't worth naming in the breakdown — but one that would flip the order alone is an explanation.
+  const factors = everyFactor.filter((f) => Math.abs(f.share) >= MIN_SHARE);
 
-  const explains = net >= 0 ? [] : factors.filter((f) => f.share > 0 && f.flipAlone !== null && f.flipAlone <= LEARNER.maxFactor).sort((x, y) => x.flipAlone! - y.flipAlone!);
+  const explains = net >= 0 ? [] : everyFactor.filter((f) => f.flipAlone !== null && f.flipAlone <= LEARNER.maxFactor).sort((x, y) => x.flipAlone! - y.flipAlone!);
   const againstOnes = factors.filter((f) => f.share < 0);
   const against = againstOnes.length ? againstOnes[againstOnes.length - 1] : null;
 

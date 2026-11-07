@@ -24,6 +24,7 @@ import type { SeniorityInput } from "@/types/strategy";
 import type { TradeOffer } from "@/types/trade";
 import type { ToastItem } from "@/components/ui/Toast";
 import { isPackId, legacyPackIdFor, moveKeptUnderOldId, packIdFor } from "@/lib/pack-id";
+import { forgetPilotOnDevice } from "@/lib/device-data";
 
 /**
  * Whether this device was signed in when the app last checked — not a credential (the session cookie is), just a
@@ -689,6 +690,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setToasts((prev) => [...prev, { id: `logout-${Date.now()}`, title: "Couldn't sign out", body: "Check your connection and try again. You're still signed in.", href: null }]);
       return;
     }
+    // What this device kept for them goes too — the next person here mustn't find their pack or their own words. Not
+    // while an edit is still waiting to reach their account: then this device holds the only copy.
+    if (user && profileSync !== "failed") forgetPilotOnDevice(user.id);
     await showSignedOut();
   }
 

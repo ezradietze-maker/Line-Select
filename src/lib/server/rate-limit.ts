@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { DEVICE_COOKIE } from "@/lib/device-cookie";
+import { DEVICE_COOKIE, deviceIdOf } from "@/lib/device-cookie";
 import { incrementCounter, setJson } from "@/lib/server/kv";
 
 /**
@@ -23,8 +23,8 @@ function attemptKey(scope: string, identifier: string): string {
  * first, atomically, is what stops a burst of parallel guesses: checking and then recording a failure let every
  * request in the burst see the same count. The window runs from the first attempt; a success clears it.
  */
-export async function takeAttempt(scope: string, identifier: string): Promise<boolean> {
-  return (await incrementCounter(attemptKey(scope, identifier), WINDOW_SECONDS)) <= MAX_ATTEMPTS;
+export async function takeAttempt(scope: string, identifier: string, max: number = MAX_ATTEMPTS): Promise<boolean> {
+  return (await incrementCounter(attemptKey(scope, identifier), WINDOW_SECONDS)) <= max;
 }
 
 /** Clears the counter after a genuine success, so a legitimate pilot who mistyped a password twice isn't penalized once they get it right. */
@@ -57,13 +57,10 @@ export async function checkRateLimit(
 /** How many devices' worth of requests one address may make: a crew room or hotel shares one, and a device that drops its cookie lands here. */
 export const ADDRESS_FACTOR = 10;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-/** The device id from the request's cookie, when it has a well-formed one. */
+/** The device id from the request's cookie, when it has a well-formed one this server signed. */
 export function deviceIdFrom(request: Request): string | null {
   const match = request.headers.get("cookie")?.match(new RegExp(`(?:^|;\\s*)${DEVICE_COOKIE}=([^;]+)`));
-  const id = match?.[1];
-  return id && UUID.test(id) ? id : null;
+  return deviceIdOf(match?.[1]);
 }
 
 /**

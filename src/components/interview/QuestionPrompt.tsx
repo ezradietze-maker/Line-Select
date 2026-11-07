@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { EASE } from "@/lib/motion-tokens";
 
 /** Per-word stagger, capped so a long question never takes more than about half a second to land. */
@@ -13,6 +13,9 @@ export function controlsDelay(title: string): number {
   return Math.min(MAX_REVEAL, title.split(/\s+/).length * WORD_STAGGER) + 0.08;
 }
 
+/** Whether a question has been shown yet this visit: the first one doesn't take focus as the page opens. */
+let shownOne = false;
+
 /**
  * Every interview question's header — a small mono eyebrow saying where you
  * are ("QUESTION 4 · DAYS OFF"), then the question itself arriving word by
@@ -22,6 +25,14 @@ export function controlsDelay(title: string): number {
 export function QuestionPrompt({ eyebrow, title, help }: { eyebrow?: string; title: string; help?: ReactNode }) {
   const reduce = useReducedMotion();
   const words = title.split(/\s+/);
+  // The button just pressed is gone with the step it was on, which drops focus to the page: the new question takes it,
+  // so a keyboard user carries on from here and a screen reader says the question. Never away from a focused control.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (shownOne && lost) heading.current?.focus({ preventScroll: true });
+    shownOne = true;
+  }, []);
   const stagger = Math.min(WORD_STAGGER, MAX_REVEAL / Math.max(1, words.length));
   return (
     <div>
@@ -35,7 +46,7 @@ export function QuestionPrompt({ eyebrow, title, help }: { eyebrow?: string; tit
           {eyebrow}
         </motion.div>
       )}
-      <h2 aria-label={title} className="mt-2.5 font-display text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-[1.75rem]">
+      <h2 ref={heading} tabIndex={-1} aria-label={title} className="mt-2.5 outline-none font-display text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-[1.75rem]">
         {words.map((w, i) => (
           <motion.span
             key={i}

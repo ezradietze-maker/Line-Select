@@ -13,7 +13,8 @@ import { posthogServer } from "@/lib/server/posthog";
 export const onRequestError: Instrumentation.onRequestError = async (error, request) => {
   if (!posthogServer) return;
   await posthogServer.captureExceptionImmediate(error, undefined, {
-    path: request.path,
+    // The path alone: a query can carry a reset link's token.
+    path: request.path.split("?")[0],
     method: request.method,
   });
 };

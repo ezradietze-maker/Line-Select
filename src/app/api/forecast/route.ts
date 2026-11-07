@@ -15,6 +15,8 @@ export const maxDuration = 30;
 
 const MAX_LINES = 1500;
 const MAX_PILOTS = 3000;
+/** Shared rankings ahead of the asked place before any are used — fewer, and one could be picked out (see the POST). */
+const MIN_SHARERS_AHEAD = 3;
 const SERVER_SIMULATIONS = 400;
 
 interface Body {
@@ -68,7 +70,14 @@ export async function POST(request: Request) {
   const seniority = seniorityNumber as number;
 
   const user = await getCurrentServerUser();
-  const { known, total } = await loadKnownRankings(packKey, lineNumbers, user?.id ?? null);
+  const sharing = await loadKnownRankings(packKey, lineNumbers, user?.id ?? null);
+  const total = sharing.total;
+  // Other pilots' shared rankings sharpen the forecast, but the list of who's ahead is the caller's own: a guest, or
+  // anyone with fewer than a few sharers ahead of the place they ask about, could put one known pilot alone ahead of
+  // them and read that pilot's first choice off which line drops to 0% open. Only signed-in pilots, and only when
+  // several sharers sit ahead, so no one ranking can be picked out.
+  const askedAt = resolveBidPosition(list, seniority).bidNumber;
+  const known = user && sharing.known.filter((k) => k.bidNumber < askedAt).length >= MIN_SHARERS_AHEAD ? sharing.known : [];
 
   // What the fleet has learned: starting beliefs from past months at this
   // seat, and a correction from how past forecasts compared with real awards.

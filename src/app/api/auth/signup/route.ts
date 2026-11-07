@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { SESSION_COOKIE, sessionCookieOptions, signUp } from "@/lib/server/auth";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const { ok } = await checkRequestLimit("auth-signup", request, 5, 60 * 60);
   if (!ok) return rateLimitedResponse();
 

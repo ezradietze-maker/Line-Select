@@ -134,6 +134,12 @@ export interface LineChoice {
   dragId?: string;
   /** A later drag that put these two lines the other way round: not counted while it stands, counted again if it's undone. */
   supersededBy?: string;
+  /**
+   * The pack it was made on. Line numbers repeat from pack to pack (every First Officer pack starts at 2001), so a
+   * choice only counts on its own pack. Absent on interview choices — those are the interview's pack's — and on drags
+   * made before this was kept.
+   */
+  packId?: string;
   why?: string;
 }
 

@@ -211,6 +211,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     return () => clearTimeout(t);
   }, [userId, bidPack.id, storyText]);
   const [isCommuter, setIsCommuter] = useState<boolean | null>(priorProfile?.isCommuter ?? null);
+  const [commuteDeclined, setCommuteDeclined] = useState(false);
   const [commuteFrom, setCommuteFrom] = useState(priorProfile?.commuteFrom ?? "");
   const [hasCrashPad, setHasCrashPad] = useState<boolean | null>(priorProfile?.hasCrashPad ?? null);
   /** Hours at home that make going home between trips worth it — under it, the trips around the gap are one departure. */
@@ -278,6 +279,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   // A signed-in pilot's draft also lives on their account: begun on another device, or kept after this browser cleared
   // its storage. The newer of the two is the one offered.
   const olderPackId = bidPack.id === packIdFor(bidPack) ? legacyPackIdFor(bidPack) : null;
+  /** The pilot picked Resume or Start fresh: a server draft arriving after that doesn't replace their choice. */
+  const draftChosen = useRef(false);
   /** The account's copy gone — under the older id too, or another device would keep offering it. */
   const clearServerDrafts = () => {
     void clearServerDraft(bidPack.id);
@@ -291,7 +294,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       .then((d) => d ?? (olderPackId ? fetchServerDraft<DraftState>(olderPackId) : null))
       .then((d) => {
         const server = usableDraft(d);
-        if (live && server) setResume((local) => (local && local.savedAt >= server.savedAt ? local : server));
+        // Resumed or started fresh before it came back: that choice stands — not overwritten by the account's copy.
+        if (live && server && !draftChosen.current) setResume((local) => (local && local.savedAt >= server.savedAt ? local : server));
       });
     return () => {
       live = false;
@@ -770,6 +774,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
 
   function resumeDraft(d: DraftState) {
+    draftChosen.current = true;
     // A pilot who chose "Start over" on a check-in resumes the full interview, not the check-in.
     if (d.checkIn !== undefined) {
       setCheckIn(d.checkIn);
@@ -865,7 +870,16 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     }
     if (phase === "commuter") {
       return (
-        <CommuterStep value={isCommuter} onChange={setIsCommuter} base={bidPack.base} eyebrow={eyebrow("Your commute")}>
+        <CommuterStep
+          value={isCommuter}
+          onChange={(v) => {
+            setIsCommuter(v);
+            setCommuteDeclined(v === null);
+          }}
+          declined={commuteDeclined}
+          base={bidPack.base}
+          eyebrow={eyebrow("Your commute")}
+        >
           {isCommuter === true && (
             <div className="mt-6 rounded-xl border border-hairline bg-canvas/50 p-4">
               <label htmlFor="brain-commute-from" className="mb-1 block text-sm font-medium text-ink">
@@ -926,7 +940,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
               setPhase("cities");
             }}
             nextLabel="Next"
-            disabled={isCommuter === null}
+            // "Prefer not to say" is an answer too; only not having answered at all holds Next back.
+            disabled={isCommuter === null && !commuteDeclined}
           />
         </CommuterStep>
       );
@@ -955,7 +970,18 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
             }}
             onNote={(code, note) => {
               const implied = effectiveCityScore(code, cityRatings, cityPreferences);
-              if (implied !== 0 || saysMore(cityRatings[code])) setCityRatings((prev) => ({ ...prev, [code]: { ...prev[code], score: prev[code]?.score ?? implied, note } }));
+              if (implied === 0 && !saysMore(cityRatings[code])) return;
+              setCityRatings((prev) => {
+                const next: CityRating = { ...prev[code], score: prev[code]?.score ?? implied, note };
+                if (!note) delete next.note;
+                // A neutral city with its note emptied and nothing else said isn't a rating any more.
+                if (next.score === 0 && !saysMore(next)) {
+                  const rest = { ...prev };
+                  delete rest[code];
+                  return rest;
+                }
+                return { ...prev, [code]: next };
+              });
             }}
             onSeason={(code, season, value) => setCityRatings((prev) => rateCitySeason(code, season, value, prev, cityPreferences))}
             onHotel={(code, hotel, score) => setCityRatings((prev) => rateCityHotel(code, hotel, score, prev, cityPreferences))}
@@ -1093,6 +1119,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
             <Button
               variant="secondary"
               onClick={() => {
+                draftChosen.current = true;
                 try {
                   window.localStorage.removeItem(draftKey(userId, bidPack.id));
                 } catch {}

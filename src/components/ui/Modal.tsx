@@ -12,20 +12,33 @@ interface ModalProps {
   wide?: boolean;
 }
 
+/**
+ * The dialogs open now, oldest first. A dialog can open over another (a key opened from inside Compare): only the top
+ * one answers Escape, and the page underneath stays locked until the last one closes.
+ */
+const openDialogs: object[] = [];
+
 export function Modal({ title, onClose, children, wide = false }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
+    const me = {};
+    openDialogs.push(me);
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && openDialogs[openDialogs.length - 1] === me) onCloseRef.current();
     }
     document.addEventListener("keydown", handleKey);
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", handleKey);
-      document.body.style.overflow = "";
+      openDialogs.splice(openDialogs.indexOf(me), 1);
+      if (openDialogs.length === 0) document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, []);
 
   // Move focus into the dialog on open, and back to whatever triggered it
   // once it closes — without this, a keyboard or screen-reader user's focus

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { requestPasswordResetEmail } from "@/lib/server/auth";
 import { isEmailConfigured } from "@/lib/server/email";
-import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const { ok } = await checkRequestLimit("auth-forgot", request, 10, 60 * 60);
   if (!ok) return rateLimitedResponse();
 
@@ -24,6 +27,6 @@ export async function POST(request: Request) {
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   if (!isText(body.email, 200)) return NextResponse.json({ error: "Enter your email address." }, { status: 400 });
 
-  const emailEnabled = await requestPasswordResetEmail(body.email);
+  const emailEnabled = await requestPasswordResetEmail(body.email, clientIp(request));
   return NextResponse.json({ emailEnabled });
 }

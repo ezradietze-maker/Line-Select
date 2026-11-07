@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
+import { radioKeyProps } from "@/components/ui/radio-keys";
 
 interface ChoiceStepProps {
   prompt: string;
@@ -57,6 +58,7 @@ export function ChoiceStep({ prompt, helpText, eyebrow, options, selected, onSel
                 role="radio"
                 aria-checked={isSelected}
                 onClick={() => onSelect(i)}
+                {...radioKeyProps(i, options.length, selected, onSelect)}
                 className={`group relative flex items-start gap-3.5 rounded-xl border p-4 text-left transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-panel)] ${
                   isSelected
                     ? "glow-soft border-accent bg-accent-soft/70"

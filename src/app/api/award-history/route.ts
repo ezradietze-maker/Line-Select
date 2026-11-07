@@ -34,7 +34,19 @@ export async function GET(request: Request) {
   if (!base || !aircraft || !seat) {
     return NextResponse.json({ error: "Missing base, aircraft, or seat." }, { status: 400 });
   }
-  return NextResponse.json({ records: await listAwardHistoryRecords({ base, aircraft, seat }) });
+  const records = await listAwardHistoryRecords({ base, aircraft, seat });
+  return NextResponse.json({ records: records.map(withRoughRank) });
+}
+
+/**
+ * A report's seniority, rounded to a band about 5% of the seat wide. An exact rank, with the base, seat and month,
+ * names the pilot who reported; what the board needs from it is roughly how senior the holder was.
+ */
+function withRoughRank(record: AwardHistoryRecord): AwardHistoryRecord {
+  const total = Math.max(1, record.seniorityTotalPilots);
+  const band = Math.max(1, Math.round(total * 0.05));
+  const rank = Math.min(total, Math.max(1, Math.round(record.seniorityRank / band) * band));
+  return { ...record, seniorityRank: rank };
 }
 
 export async function POST(request: Request) {

@@ -5,6 +5,8 @@ import { ChoiceStep } from "@/components/interview/ChoiceStep";
 interface CommuterStepProps {
   value: boolean | null;
   onChange: (value: boolean | null) => void;
+  /** They chose "Prefer not to say" — an answer, unlike not having answered yet. */
+  declined?: boolean;
   base: string;
   eyebrow?: string;
   /** Rendered under the options (the crash-pad follow-up and the Next button). */
@@ -13,7 +15,7 @@ interface CommuterStepProps {
 
 const PROMPT = "Do you commute to base, or live locally?";
 
-export function CommuterStep({ value, onChange, base, eyebrow, children }: CommuterStepProps) {
+export function CommuterStep({ value, onChange, declined = false, base, eyebrow, children }: CommuterStepProps) {
   return (
     <ChoiceStep
       eyebrow={eyebrow}
@@ -29,8 +31,9 @@ export function CommuterStep({ value, onChange, base, eyebrow, children }: Commu
       <button
         type="button"
         onClick={() => onChange(null)}
+        aria-pressed={declined}
         className={`mt-4 text-sm underline decoration-dotted underline-offset-4 transition-colors ${
-          value === null ? "font-medium text-accent" : "text-ink-faint hover:text-ink-muted"
+          declined ? "font-medium text-accent" : "text-ink-faint hover:text-ink-muted"
         }`}
       >
         Prefer not to say

@@ -3,9 +3,11 @@ import { fitTripWeights, shareChanges, type WeightChange } from "@/lib/brain/fit
 import { learnFromChoices } from "@/lib/brain/reorder-learner";
 import { criterionFromAnswer, type FactorOption, type SwapQuestion } from "@/lib/brain/swap-question";
 import type { PackMetrics } from "@/lib/metrics/compute";
+import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, SwapAnswer, TripChoice } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
+import { isPackId } from "@/lib/pack-id";
 
 /**
  * Keeping a pilot's model current after the interview. The model the pilot
@@ -41,7 +43,22 @@ export function deriveModel(
   const fit = learnFromChoices(bidPack, { ...rated, tripWeights: seenTrips }, choices, pack, {}, swapAnswers);
   const lineModel = applyPins({ ...fit.model, tripWeights: undefined }, pins);
   const tripWeights = tripChoices.length ? fitTripWeights(bidPack, lineModel, tripChoices, pack).tripWeights : undefined;
-  return { model: { ...lineModel, tripWeights }, changes: fit.changes, heldByLimit: fit.heldByLimit };
+  const learned: PilotModel = { ...lineModel, tripWeights };
+  // The learner keeps a fit only if it explains the choices at least as well — judged before the pins go back on and
+  // the trip grades are refitted. With pins, that can leave the model the pilot actually sees agreeing with fewer of
+  // their choices than learning nothing would: then nothing is learned this time.
+  if (Object.keys(pins).length && choices.length) {
+    const unpinned = applyPins({ ...rated, tripWeights: undefined }, pins);
+    const plain: PilotModel = { ...unpinned, tripWeights: tripChoices.length ? fitTripWeights(bidPack, unpinned, tripChoices, pack).tripWeights : undefined };
+    if (agreement(bidPack, learned, choices, pack) < agreement(bidPack, plain, choices, pack)) return { model: plain, changes: [], heldByLimit: fit.heldByLimit };
+  }
+  return { model: learned, changes: fit.changes, heldByLimit: fit.heldByLimit };
+}
+
+/** How many of the pilot's standing choices a model's shown scores agree with. */
+function agreement(bidPack: BidPack, model: PilotModel, choices: LineChoice[], pack?: PackMetrics): number {
+  const score = new Map(rankLinesWithTrips(bidPack, model, { pack }).map((s) => [s.lineNumber, s.score]));
+  return choices.filter((c) => !c.supersededBy && (score.get(c.preferred) ?? -Infinity) > (score.get(c.other) ?? Infinity)).length;
 }
 
 /** A pinned priority counts exactly what the pilot set, relative to their strongest unpinned one ("Top" ties it). */
@@ -72,7 +89,11 @@ export function withModel(
   // Changes are reported against the model the pilot was looking at a moment ago.
   const before = profile.pilotModel ?? base;
   const pins = update.pins ?? profile.brainInterview?.pins ?? {};
-  const { model, heldByLimit } = deriveModel(bidPack, base, next, choices, pack, pins, profile.brainInterview?.tripChoices ?? [], swapAnswers);
+  // Fitted on this pack's choices only (all of them are kept): line numbers repeat from pack to pack, so last month's
+  // "2014 over 2009" is about two other lines here. Untagged ones are the interview's, so its pack's.
+  const interviewHere = !profile.brainInterview?.packId || isPackId(profile.brainInterview.packId, bidPack);
+  const here = choices.filter((c) => (c.packId ? isPackId(c.packId, bidPack) : interviewHere));
+  const { model, heldByLimit } = deriveModel(bidPack, base, next, here, pack, pins, profile.brainInterview?.tripChoices ?? [], swapAnswers);
   const changes = shareChanges(before, model);
   return {
     profile: {
@@ -139,8 +160,8 @@ export function answerSwap(profile: PreferenceProfile, bidPack: BidPack, questio
  * A drag on the results: the moved line was put above (or below) each line it passed — one choice per line passed,
  * tagged with the drag (when given) so undoing it takes them back.
  */
-export function choicesFromDrag(passed: { favored: string; overtaken: string }[], dragId?: string): LineChoice[] {
-  return passed.map((p) => ({ preferred: p.favored, other: p.overtaken, strength: "slightly" as const, direct: true, ...(dragId ? { dragId } : {}) }));
+export function choicesFromDrag(passed: { favored: string; overtaken: string }[], dragId?: string, packId?: string): LineChoice[] {
+  return passed.map((p) => ({ preferred: p.favored, other: p.overtaken, strength: "slightly" as const, direct: true, ...(dragId ? { dragId } : {}), ...(packId ? { packId } : {}) }));
 }
 
 /**
@@ -149,7 +170,7 @@ export function choicesFromDrag(passed: { favored: string; overtaken: string }[]
  * below everything — the lines between stayed where they were, so they say only that much. The first and last line
  * appear in the most pairs, which is how the learner tells the swapped pair apart (`swapPairWeights`).
  */
-export function choicesFromSwap(order: string[], dragId: string): LineChoice[] {
+export function choicesFromSwap(order: string[], dragId: string, packId?: string): LineChoice[] {
   if (order.length < 2) return [];
   const top = order[0];
   const bottom = order[order.length - 1];
@@ -160,7 +181,8 @@ export function choicesFromSwap(order: string[], dragId: string): LineChoice[] {
       ...between.map((l) => ({ favored: top, overtaken: l })),
       ...between.map((l) => ({ favored: l, overtaken: bottom })),
     ],
-    dragId
+    dragId,
+    packId
   );
 }
 

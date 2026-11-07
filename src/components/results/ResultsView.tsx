@@ -38,6 +38,7 @@ import { BidPackHeader, StripKey, StripViewToggle, stripLayout } from "@/compone
 import { useStripView } from "@/lib/strip-view-storage";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { packColumnCount, packColumns } from "@/lib/bidpack-row";
+import { monthLine } from "@/lib/bid-month";
 import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
@@ -79,7 +80,7 @@ import { pickSwapQuestion, reasonOptions, untrackedFactor, type AskState, type S
 import type { ReasonOption } from "@/lib/brain/swap-reason";
 import { shareChanges } from "@/lib/brain/fit-choices";
 import { SwapQuestionCard } from "@/components/results/SwapQuestionCard";
-import { scorePackV2 } from "@/lib/scoring-v2/score";
+import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import { applyPlacements, loadPlacements, placementFromDrag, prunePlacements, savePlacements, type Placement } from "@/lib/line-placements";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
@@ -606,7 +607,8 @@ export function ResultsView({
       exportable.map((r) => ({
         lineScore: r,
         rank: rankById.get(r.line.id) ?? 0,
-        note: lineFactsText(buildLineFactChips(r.line, profile, bidMonthOf(bidPack))),
+        // The bid month, as each card counts it — not with what the last trip flies in the next.
+        note: lineFactsText(buildLineFactChips(monthLine(r.line, bidPack), profile, bidMonthOf(bidPack))),
       })),
     [exportable, rankById, profile, bidPack]
   );
@@ -708,9 +710,10 @@ export function ResultsView({
         const current = profileRef.current;
         if (!current.pilotModel || !placementsRef.current.some((p) => p.id === swapId)) return;
         // Why, from the model the pilot was looking at when they swapped.
-        const before = new Map(scorePackV2(bidPack, current.pilotModel, { pack: packMetrics ?? undefined }).map((s) => [s.lineNumber, s]));
+        // On the score the list shows — trip grades and each line's lean on its worst trip included.
+        const before = new Map(rankLinesWithTrips(bidPack, current.pilotModel, { pack: packMetrics ?? undefined }).map((s) => [s.lineNumber, s]));
         const why = before.has(higher) && before.has(lower) ? explainSwap(before.get(higher)!, before.get(lower)!) : null;
-        const choices = addDragChoices(current.brainInterview?.choices ?? [], choicesFromSwap(order, swapId));
+        const choices = addDragChoices(current.brainInterview?.choices ?? [], choicesFromSwap(order, swapId, bidPack.id));
         const { profile: next, changes } = withModel(current, bidPack, { choices }, packMetrics ?? undefined);
         profileRef.current = next;
         onUpdateProfile(next);

@@ -184,6 +184,8 @@ function CityRow({
   const [seasonsOpen, setSeasonsOpen] = useState(seasonal);
   const hotelsGraded = Object.keys(rating?.hotels ?? {}).length > 0;
   const [hotelsOpen, setHotelsOpen] = useState(hotelsGraded);
+  // A neutral city's note box stays while it's being typed in, even once emptying the note leaves nothing else said.
+  const [writingNote, setWritingNote] = useState(false);
   const untried = !!rating?.untried;
   const reasons = rating?.reasons ?? [];
   const length = facts.minHours === facts.maxHours ? hrs(facts.medianHours) : `usually ${hrs(facts.medianHours)} (${hrs(facts.minHours)}–${hrs(facts.maxHours)})`;
@@ -265,8 +267,8 @@ function CityRow({
           <CityNote value={rating?.note ?? ""} onChange={onNote} label={`Note on ${name ?? facts.code}`} />
         </div>
       ) : (
-        saysMore(rating) && (
-          <div className="mt-3">
+        (saysMore(rating) || writingNote) && (
+          <div className="mt-3" onFocus={() => setWritingNote(true)} onBlur={() => setWritingNote(false)}>
             <CityNote value={rating?.note ?? ""} onChange={onNote} label={`Note on ${name ?? facts.code}`} />
           </div>
         )
