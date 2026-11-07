@@ -114,8 +114,13 @@ export function parseDateRange(row: string): { from: number; to: number } | null
   return { from, to: m[4] ? toMonth * 100 + Number(m[4]) : from };
 }
 
-// The pickup on a "Trans From:" line — on the same row, or on the wrapped row after it when the company name is long. Local time can carry a "*" (previous day).
-const PICKUP_RE = /pickup\s*@\s*(\d{4})\s*\(\s*\*?(\d{4})\s*\)/i;
+// The pickup on a "Trans From:" line — on the same row, or on the wrapped row after it when the company name is long. Local time can carry a "*" (local day before the GMT day) or a "#" (the day after).
+const PICKUP_RE = /pickup\s*@\s*(\d{4})\s*\(\s*[*#]?(\d{4})\s*\)/i;
+
+/** A ground ride between airports ("GT9999 CAB"), printed as a leg. */
+function isGroundRide(flightNumber: string): boolean {
+  return /^GT\d+$/i.test(flightNumber);
+}
 
 function timeToHours(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
@@ -329,7 +334,9 @@ function tryParseRichLeg(row: string): RichLegMatch | null {
   const layover = findLayover(rest);
   // After BLOCK: the MEAL column (when printed), then — on a duty's last row — its BLOCK, CREDIT and DUTY.
   const meal = rest[0] && MEAL_RE.test(rest[0]) ? rest[0] : null;
-  const afterMeal = meal ? rest.slice(1) : rest;
+  // Some rows print a lone "S" after the meal code ("MS S 01:11 03:12 04:26"); it isn't a total.
+  const afterMealCode = meal ? rest.slice(1) : rest;
+  const afterMeal = meal && afterMealCode[0] === "S" ? afterMealCode.slice(1) : afterMealCode;
   const totals =
     afterMeal.length >= 3 && afterMeal.slice(0, 3).every((t) => HHMM_RE.test(t))
       ? { blockHours: timeToHours(afterMeal[0]), creditHours: timeToHours(afterMeal[1]), dutyHours: timeToHours(afterMeal[2]) }
@@ -502,20 +509,26 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
     const legs: LegInfo[] = [];
     const layoverDetails: LayoverDetail[] = [];
     let legsSinceLayover = 0;
+    // A hotel printed mid-duty, before a cab to the airport the crew actually lays over at (OAK hotel, then GT9999
+    // OAK→SFO with the layover at SFO): it's that layover's hotel, labelled with the cab's departure city.
+    let hotelBeforeCab: { city: string; name: string } | null = null;
     for (const row of contentRows) {
       const leg = tryParseLeg(row);
       if (leg) {
         legs.push(leg);
         legsSinceLayover++;
         if (leg.layoverCity) {
-          layoverDetails.push({ city: leg.layoverCity, hotelName: null });
+          const viaCab = hotelBeforeCab && isGroundRide(leg.flightNumber) && leg.depAirport === hotelBeforeCab.city ? hotelBeforeCab.name : null;
+          layoverDetails.push({ city: leg.layoverCity, hotelName: viaCab });
           legsSinceLayover = 0;
         }
+        hotelBeforeCab = null;
         continue;
       }
       const hotel = extractHotel(row);
       const last = layoverDetails[layoverDetails.length - 1];
       if (hotel && last && legsSinceLayover === 0 && hotel.city === last.city) last.hotelName = hotel.name;
+      else if (hotel && legsSinceLayover > 0) hotelBeforeCab = hotel;
     }
 
     if (legs.length === 0) {
@@ -558,10 +571,29 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
       let awaitingPickup: { pickupTimeGmt?: string; pickupTimeLocal?: string }[] | null = null;
       // The dated version of the current layover the following hotel and ride lines belong to, if the pack splits them by date.
       let variant: LayoverVariant | null = null;
+      // The lines printed since the last leg of an open duty, and the stop a hotel among them was taken as a day room at:
+      // when the next leg is a cab from that city ending in the layover, they're the layover's (rides, hotel, pickup)
+      // and are read again after it (see the summary pass).
+      let sinceLeg: string[] = [];
+      let staged: { stop: ScheduledLeg; city: string } | null = null;
+      // While those lines are read again: the city they're labelled with, standing for the layover's.
+      let cabFrom: string | null = null;
 
-      for (const row of contentRows) {
+      const queue = [...contentRows];
+      while (queue.length > 0) {
+        const row = queue.shift()!;
         const richLeg = tryParseRichLeg(row);
         if (richLeg) {
+          const replay = staged && richLeg.layover && isGroundRide(richLeg.flightNumber) && richLeg.depAirport === staged.city ? staged : null;
+          const rows = sinceLeg;
+          staged = null;
+          sinceLeg = [];
+          cabFrom = null;
+          if (replay) {
+            delete replay.stop.dayRoomHotel;
+            queue.unshift(...rows);
+            cabFrom = replay.city;
+          }
           awaitingPickup = null;
           awaitingPhone = null;
           variant = null;
@@ -637,7 +669,7 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
         }
         const hotel = extractHotel(row);
         if (hotel) {
-          if (layover && target && hotel.city === layover.city) {
+          if (layover && target && (hotel.city === layover.city || hotel.city === cabFrom)) {
             target.hotelName = hotel.name;
             if (variant) layover.hotelName = hotel.name;
             const { phone, wrapped } = phoneOnLine(row, HOTEL_RE);
@@ -649,12 +681,16 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
             awaitingPhone = wrapped ? put : null;
           } else {
             const stop = currentLegs[currentLegs.length - 1];
-            if (stop && stop.arrAirport === hotel.city) stop.dayRoomHotel = hotel.name;
+            if (stop && stop.arrAirport === hotel.city) {
+              stop.dayRoomHotel = hotel.name;
+              staged = { stop, city: hotel.city };
+            }
           }
         }
+        if (currentLegs.length > 0) sinceLeg.push(row);
 
         const transport = extractTransport(row);
-        if (transport && layover && target && transport.city === layover.city) {
+        if (transport && layover && target && (transport.city === layover.city || transport.city === cabFrom)) {
           const key = transport.direction === "To" ? "transportToPhone" : "transportFromPhone";
           const put = (p: string) => {
             target[key] = p;

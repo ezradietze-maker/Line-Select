@@ -111,7 +111,8 @@ export function fitWeightsToChoices(
   // agreement 0.84 → 0.75). A drag is the pilot acting on their own list, so each one counts.
   const seenPair = new Set<string>();
   const once = choices.filter((c) => {
-    if (c.preferred === c.other) return false;
+    // An older drag a newer one reversed is kept only so undoing the newer can bring it back.
+    if (c.preferred === c.other || c.supersededBy) return false;
     if (c.direct) return true;
     const k = [c.preferred, c.other].sort().join("|");
     if (seenPair.has(k)) return false;

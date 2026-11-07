@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PlaneIcon } from "@/components/ui/icons";
 import { buildLineCalendar } from "@/lib/ics-export";
 import type { LineScore } from "@/lib/scoring";
@@ -15,6 +15,19 @@ export interface BidOrderEntry {
   note?: string;
 }
 
+/** A note shown for `ms`, then gone. Showing it again starts the clock over — an earlier timer never cuts the new one short. */
+function useFlash<T>(ms: number): [T | null, (value: T | null) => void] {
+  const [value, setValue] = useState<T | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const show = (next: T | null) => {
+    window.clearTimeout(timer.current);
+    setValue(next);
+    if (next !== null) timer.current = window.setTimeout(() => setValue(null), ms);
+  };
+  return [value, show];
+}
+
 export function BidOrderExport({
   entries,
   shortlistEntries = [],
@@ -26,17 +39,16 @@ export function BidOrderExport({
   /** Threaded through to `buildLineCalendar` — the top pick's calendar export only works when the bid pack's own trip placement is real (see that function's own doc comment). */
   bidPeriodStart: string | null;
 }) {
-  const [copied, setCopied] = useState<CopiedKind>(null);
-  const [calendarError, setCalendarError] = useState<string | null>(null);
+  const [copied, setCopied] = useFlash<NonNullable<CopiedKind>>(2000);
+  const [calendarError, setCalendarError] = useFlash<string>(4000);
   /** The first trip's date, shown on a little calendar page that flips over once the file has saved. */
-  const [savedFrom, setSavedFrom] = useState<{ month: string; day: number } | null>(null);
+  const [savedFrom, setSavedFrom] = useFlash<{ month: string; day: number }>(2800);
   const [showMore, setShowMore] = useState(false);
 
   async function copy(text: string, kind: CopiedKind) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(kind);
-      setTimeout(() => setCopied(null), 2000);
     } catch {
       // clipboard unavailable — nothing to fall back to, just leave the buttons unchanged
     }
@@ -48,7 +60,6 @@ export function BidOrderExport({
     const result = buildLineCalendar(topPick.lineScore.line, bidPeriodStart);
     if (!result.ok) {
       setCalendarError(result.reason ?? "Couldn't build a calendar file for this line.");
-      setTimeout(() => setCalendarError(null), 4000);
       return;
     }
     const blob = new Blob([result.content!], { type: "text/calendar;charset=utf-8" });
@@ -62,7 +73,6 @@ export function BidOrderExport({
     if (bidPeriodStart && Number.isFinite(firstDay)) {
       const d = new Date(Date.parse(`${bidPeriodStart}T00:00:00Z`) + firstDay * 86_400_000);
       setSavedFrom({ month: d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" }), day: d.getUTCDate() });
-      setTimeout(() => setSavedFrom(null), 2800);
     }
   }
 

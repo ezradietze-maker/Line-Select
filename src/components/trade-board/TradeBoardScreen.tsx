@@ -108,12 +108,18 @@ export function TradeBoardScreen({
     setLoading(false);
   }, []);
 
+  const signedIn = !!user;
   useEffect(() => {
+    // The board is for signed-in pilots only: a guest's request would just be refused.
+    if (!signedIn) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+      return;
+    }
     // One-time fetch of the board on mount — a legitimate external-data
     // load, not state derived from props/state that belongs in render.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
-  }, [refresh]);
+  }, [refresh, signedIn]);
 
   // The app polls the board every few seconds (the Inbox badge and toasts read it): each new poll is shown here too,
   // or a proposal could clear the badge while this list still holds the copy from when the screen opened.

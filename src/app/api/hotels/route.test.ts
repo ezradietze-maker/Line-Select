@@ -76,12 +76,10 @@ describe("fetchAmenitySummary", () => {
     expect(summary).toEqual({ food: 1, gym: 0, coffee: 1, grocery: 0 });
   });
 
-  it("returns all-zero counts rather than null when the request fails", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
+  it("fails rather than report nothing nearby when the request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429, json: async () => ({}) }));
 
-    const summary = await fetchAmenitySummary({ latitude: 1, longitude: 2 }, "key");
-
-    expect(summary).toEqual({ food: 0, gym: 0, coffee: 0, grocery: 0 });
+    await expect(fetchAmenitySummary({ latitude: 1, longitude: 2 }, "key")).rejects.toThrow();
   });
 
   it("returns null without calling fetch when there's no location", async () => {

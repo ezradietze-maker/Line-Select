@@ -368,7 +368,17 @@ export async function rollBackModel(kind: ModelKind): Promise<{ from: string; to
     const [previous] = await tx
       .select()
       .from(learnedModels)
-      .where(and(eq(learnedModels.kind, kind), eq(learnedModels.active, false), lt(learnedModels.createdAt, current.createdAt)))
+      // Only a version that was once in use: a challenger that failed its fair test is stored inactive too, and undo
+      // must never switch it on. Rows from before this was stamped count as used — except calibrations, which could
+      // be either, so they're passed over.
+      .where(
+        and(
+          eq(learnedModels.kind, kind),
+          eq(learnedModels.active, false),
+          lt(learnedModels.createdAt, current.createdAt),
+          sql`coalesce((${learnedModels.metrics}->>'promoted')::boolean, ${learnedModels.kind} <> 'forecast-calibration')`
+        )
+      )
       .orderBy(desc(learnedModels.createdAt))
       .limit(1);
     if (!previous) return null;
@@ -400,7 +410,11 @@ export async function saveModel(params: { kind: ModelKind; version: string; payl
   await db.transaction(async (tx) => {
     // Retire the champion only once this model is really in: a second run in the same minute has the same version,
     // its insert is skipped, and retiring first left that kind with no active model at all.
-    const [inserted] = await tx.insert(learnedModels).values(params).onConflictDoNothing().returning({ id: learnedModels.id });
+    const [inserted] = await tx
+      .insert(learnedModels)
+      .values({ ...params, metrics: { ...params.metrics, promoted: params.active } })
+      .onConflictDoNothing()
+      .returning({ id: learnedModels.id });
     if (params.active && inserted) {
       await tx
         .update(learnedModels)

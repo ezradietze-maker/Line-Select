@@ -77,7 +77,12 @@ function fetchDaily(url: string): Promise<DailyWeather[] | null> {
   const p = fetch(url)
     .then((r) => (r.ok ? (r.json() as Promise<OpenMeteoDaily>) : null))
     .then((j) => (j ? toDaily(j) : null))
-    .catch(() => null);
+    .catch(() => null)
+    .then((daily) => {
+      // A failed request is asked again next time, not remembered as "no weather on record".
+      if (daily === null) cache.delete(url);
+      return daily;
+    });
   cache.set(url, p);
   return p;
 }
@@ -162,8 +167,9 @@ export function currentWeather(codes: string[]): Promise<Record<string, CurrentW
   const p = fetch(url)
     .then((r) => (r.ok ? (r.json() as Promise<OpenMeteoCurrent | OpenMeteoCurrent[]>) : null))
     .then((j) => {
+      if (j === null) return null;
       // One place comes back as an object, several as a list in the order asked.
-      const replies = j === null ? [] : Array.isArray(j) ? j : [j];
+      const replies = Array.isArray(j) ? j : [j];
       const out: Record<string, CurrentWeather> = {};
       placed.forEach((p, i) => {
         const now = replies[i] ? toCurrent(replies[i]) : null;
@@ -171,7 +177,11 @@ export function currentWeather(codes: string[]): Promise<Record<string, CurrentW
       });
       return out;
     })
-    .catch(() => ({}));
+    .catch(() => null)
+    .then((out) => {
+      if (out === null) currentCache.delete(url);
+      return out ?? {};
+    });
   currentCache.set(url, p);
   return p;
 }

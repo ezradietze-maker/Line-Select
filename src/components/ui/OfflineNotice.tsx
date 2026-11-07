@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useOffline } from "@/lib/connection";
 
 /** How long "back online" stays up once the connection returns. */
 const BACK_MS = 2600;
@@ -10,25 +11,22 @@ const BACK_MS = 2600;
  * rankings live on this device; lookups wait) — then "back online" for a moment when it returns.
  */
 export function OfflineNotice() {
-  const [state, setState] = useState<"online" | "offline" | "back">("online");
+  // The app's own reading of the connection (`connection.ts`): it also catches a hotel's Wi-Fi with nothing behind it,
+  // which the browser still calls online, and says "back" only once a request has really got through.
+  const offline = useOffline();
+  const [seen, setSeen] = useState(offline);
+  const [back, setBack] = useState(false);
+  // Coming back from offline shows "back online"; going offline clears it.
+  if (offline !== seen) {
+    setSeen(offline);
+    setBack(!offline);
+  }
   useEffect(() => {
-    // Already offline when the page opened (the offline copy, from the service worker).
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!navigator.onLine) setState("offline");
-    const off = () => setState("offline");
-    const on = () => setState((s) => (s === "offline" ? "back" : s));
-    window.addEventListener("offline", off);
-    window.addEventListener("online", on);
-    return () => {
-      window.removeEventListener("offline", off);
-      window.removeEventListener("online", on);
-    };
-  }, []);
-  useEffect(() => {
-    if (state !== "back") return;
-    const id = window.setTimeout(() => setState("online"), BACK_MS);
+    if (!back) return;
+    const id = window.setTimeout(() => setBack(false), BACK_MS);
     return () => window.clearTimeout(id);
-  }, [state]);
+  }, [back]);
+  const state = offline ? "offline" : back ? "back" : "online";
 
   return (
     <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--shell-bottom,0px)+1rem)] z-40 flex justify-center px-4">
@@ -40,7 +38,7 @@ export function OfflineNotice() {
           {state === "offline" ? (
             <span className="text-ink">
               <span className="font-medium">Flying offline</span>
-              <span className="text-ink-muted"> &mdash; your pack and rankings still work here; lookups wait for a connection.</span>
+              <span className="text-ink-muted"> &mdash; your pack, rankings, calendar and logbook still work here; the interview waits for a connection.</span>
             </span>
           ) : (
             <span className="font-medium text-ink">Back online</span>

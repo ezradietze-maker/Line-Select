@@ -15,19 +15,21 @@ export function fetchHotel(code: string, hotelName: string): Promise<HotelLookup
   if (existing) return existing;
 
   const promise = fetch(`/api/hotels?code=${encodeURIComponent(code)}&name=${encodeURIComponent(hotelName)}`)
-    .then((res) => res.json() as Promise<HotelLookupResult>)
+    .then(async (res) => {
+      const body = (await res.json()) as Partial<HotelLookupResult> & { error?: string };
+      if (!res.ok) throw new Error(body.error ?? `Hotel lookup failed (${res.status})`);
+      return body as HotelLookupResult;
+    })
     .then((result) => {
       rememberHotelAddress(code, hotelName, result.hotel?.formattedAddress);
+      // A lookup that failed for now (Google unreachable) is asked again next time; an answer, "not found" included, is kept.
+      if (result.error) inFlight.delete(key);
       return result;
     })
-    .catch(
-      (): HotelLookupResult => ({
-        code,
-        hotelName,
-        hotel: null,
-        error: "Couldn't reach the server. Check your connection and try again.",
-      })
-    );
+    .catch((): HotelLookupResult => {
+      inFlight.delete(key);
+      return { code, hotelName, hotel: null, error: "Couldn't reach the server. Check your connection and try again." };
+    });
   inFlight.set(key, promise);
   return promise;
 }
@@ -66,7 +68,7 @@ export async function fetchAllHotelQualityData(bidPack: BidPack): Promise<HotelQ
   const entries = await Promise.all(
     Array.from(pairs.entries()).map(async ([key, { code, hotelName }]) => {
       const result = await fetchHotel(code, hotelName);
-      return [key, result.hotel] as const;
+      return [key, result.hotel, !!result.error] as const;
     })
   );
 
@@ -76,6 +78,7 @@ export async function fetchAllHotelQualityData(bidPack: BidPack): Promise<HotelQ
       data[key] = { amenities: hotel.amenities, reviewSummary: hotel.reviewSummary, rating: hotel.rating };
     }
   }
-  settled.set(bidPack, data);
+  // Kept for the visit only when every hotel answered: with gaps from a failed lookup, the next visit asks again.
+  if (!entries.some(([, , failed]) => failed)) settled.set(bidPack, data);
   return data;
 }

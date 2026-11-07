@@ -11,10 +11,10 @@ import type { SeniorityInput } from "@/types/strategy";
 export type SeniorityBand = "top-10" | "upper-third" | "middle-third" | "lower-third";
 
 export const SENIORITY_BANDS: { id: SeniorityBand; label: string; hint: string; input: SeniorityInput }[] = [
-  { id: "top-10", label: "Top 10%", hint: "Among the most senior in the seat", input: { rank: 5, totalPilots: 100 } },
-  { id: "upper-third", label: "Upper third", hint: "Senior, but not at the very top", input: { rank: 20, totalPilots: 100 } },
-  { id: "middle-third", label: "Middle third", hint: "Right around the middle", input: { rank: 50, totalPilots: 100 } },
-  { id: "lower-third", label: "Lower third", hint: "Toward the junior end", input: { rank: 83, totalPilots: 100 } },
+  { id: "top-10", label: "Top 10%", hint: "Among the most senior in the seat", input: { rank: 5, totalPilots: 100, source: "band" } },
+  { id: "upper-third", label: "Upper third", hint: "Senior, but not at the very top", input: { rank: 20, totalPilots: 100, source: "band" } },
+  { id: "middle-third", label: "Middle third", hint: "Right around the middle", input: { rank: 50, totalPilots: 100, source: "band" } },
+  { id: "lower-third", label: "Lower third", hint: "Toward the junior end", input: { rank: 83, totalPilots: 100, source: "band" } },
 ];
 
 export function seniorityFromBand(band: SeniorityBand): SeniorityInput {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CityRatingStep } from "@/components/interview/CityRatingStep";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
@@ -85,6 +85,18 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The profile as it is now, and whether this screen is still open, for a reading that lands seconds later.
+  const latest = useRef(profile);
+  const mounted = useRef(true);
+  useEffect(() => {
+    latest.current = profile;
+  });
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const items = describeModel(model);
   const base = baseModelOf(profile)!;
@@ -141,7 +153,8 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
     setBusy(true);
     setError(null);
     try {
-      const bi = record("Something to add about how you bid (from your priorities page):", text)!;
+      const question = "Something to add about how you bid (from your priorities page):";
+      const bi = record(question, text)!;
       const built = await requestModelBuild({
         packBrief: buildPackBrief(bidPack, pm),
         pilotContext: pilotContextFor(bidPack, profile),
@@ -149,7 +162,11 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
         exchanges: bi.exchanges,
         prior: base,
       });
-      apply({ ...profile, brainInterview: bi }, { base: built });
+      // Gone to another screen, the pilot may have dragged lines there since: this older copy would write over them.
+      if (!mounted.current) return;
+      const now = latest.current;
+      const interview = now.brainInterview ?? { exchanges: [], choices: [] };
+      apply({ ...now, brainInterview: { ...interview, exchanges: [...interview.exchanges, { turn: interview.exchanges.length, question, answer: text }] } }, { base: built });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't read that in just now.");
     } finally {
@@ -158,7 +175,8 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
   }
 
   return (
-    <div>
+    // Locked while "Add it" is read in: an edit made meanwhile would be written over when the new reading lands.
+    <fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">
       <section className="panel-glass mt-6 p-5 sm:p-6">
         <SectionHeading>Your priorities</SectionHeading>
         <p className="mt-2 rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-[15px] leading-relaxed text-ink">{model.synopsis}</p>
@@ -252,6 +270,6 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
           }}
         />
       </section>
-    </div>
+    </fieldset>
   );
 }

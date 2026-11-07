@@ -1,5 +1,6 @@
 import { applyCityRatings } from "@/lib/brain/city-ratings";
-import { fitTripWeights, fitWeightsToChoices, shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
+import { fitTripWeights, shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
+import { learnFromChoices } from "@/lib/brain/reorder-learner";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
@@ -32,8 +33,11 @@ export function deriveModel(
   tripChoices: TripChoice[] = []
 ): { model: PilotModel; changes: WeightChange[]; heldByLimit: LineChoice[] } {
   const rated = applyCityRatings(base, profile.cityRatings);
-  const fit = fitWeightsToChoices(bidPack, rated, choices, pack);
-  const lineModel = applyPins(fit.model, pins);
+  // The line choices are fitted on the score the pilot sees — with their trip grades in, once they have some
+  // (`learnFromChoices` reads `tripWeights`) — then the trip grades are fitted again on the lines that came out.
+  const seenTrips = tripChoices.length ? fitTripWeights(bidPack, applyPins(rated, pins), tripChoices, pack).tripWeights : undefined;
+  const fit = learnFromChoices(bidPack, { ...rated, tripWeights: seenTrips }, choices, pack);
+  const lineModel = applyPins({ ...fit.model, tripWeights: undefined }, pins);
   const tripWeights = tripChoices.length ? fitTripWeights(bidPack, lineModel, tripChoices, pack).tripWeights : undefined;
   return { model: { ...lineModel, tripWeights }, changes: fit.changes, heldByLimit: fit.heldByLimit };
 }
@@ -84,15 +88,53 @@ export function choicesFromDrag(passed: { favored: string; overtaken: string }[]
   return passed.map((p) => ({ preferred: p.favored, other: p.overtaken, strength: "slightly" as const, direct: true, ...(dragId ? { dragId } : {}) }));
 }
 
-/** New drag choices joined to the pilot's earlier ones. The latest word on two lines wins: an older drag that put them the other way round is dropped. */
-export function addDragChoices(existing: LineChoice[], added: LineChoice[]): LineChoice[] {
-  const reversed = new Set(added.map((c) => `${c.other}>${c.preferred}`));
-  return [...existing.filter((c) => !(c.direct && reversed.has(`${c.preferred}>${c.other}`))), ...added];
+/**
+ * A swap on the results, as line choices: `order` is the run of lines from the higher of the two swapped lines to the
+ * lower, as the pilot left it. The line now on top was put above everything in the run, and the line now at the bottom
+ * below everything — the lines between stayed where they were, so they say only that much. The first and last line
+ * appear in the most pairs, which is how the learner tells the swapped pair apart (`swapPairWeights`).
+ */
+export function choicesFromSwap(order: string[], dragId: string): LineChoice[] {
+  if (order.length < 2) return [];
+  const top = order[0];
+  const bottom = order[order.length - 1];
+  const between = order.slice(1, -1);
+  return choicesFromDrag(
+    [
+      { favored: top, overtaken: bottom },
+      ...between.map((l) => ({ favored: top, overtaken: l })),
+      ...between.map((l) => ({ favored: l, overtaken: bottom })),
+    ],
+    dragId
+  );
 }
 
-/** The pilot's choices without the ones a drag added — undoing that drag. */
+/**
+ * New drag choices joined to the pilot's earlier ones. The latest word on two lines wins: an older drag that put them
+ * the other way round stops counting — set aside, not deleted, so undoing this drag brings it back (`withoutDrag`).
+ * Without a drag to name, it's dropped.
+ */
+export function addDragChoices(existing: LineChoice[], added: LineChoice[]): LineChoice[] {
+  const reversedBy = new Map(added.map((c) => [`${c.other}>${c.preferred}`, c.dragId]));
+  const kept = existing.flatMap((c) => {
+    const key = `${c.preferred}>${c.other}`;
+    if (!c.direct || c.supersededBy || !reversedBy.has(key)) return [c];
+    const by = reversedBy.get(key);
+    return by ? [{ ...c, supersededBy: by }] : [];
+  });
+  return [...kept, ...added];
+}
+
+/** The pilot's choices without the ones a drag added — undoing that drag — and whatever it had set aside counting again. */
 export function withoutDrag(choices: LineChoice[], dragId: string): LineChoice[] {
-  return choices.filter((c) => c.dragId !== dragId);
+  return choices
+    .filter((c) => c.dragId !== dragId)
+    .map((c) => {
+      if (c.supersededBy !== dragId) return c;
+      const back = { ...c };
+      delete back.supersededBy;
+      return back;
+    });
 }
 
 /** "Counting more: …; less: …" — what a change did to the pilot's priorities (each one's share of all the weight), in a sentence. */

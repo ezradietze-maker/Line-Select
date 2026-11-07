@@ -18,7 +18,6 @@ import { ScreenTransition, type NavDirection } from "@/components/ui/ScreenTrans
 import { Spinner } from "@/components/ui/Spinner";
 import { ToastStack } from "@/components/ui/Toast";
 import { AppStateProvider, useAppState } from "@/lib/app-state";
-import { useOffline } from "@/lib/connection";
 import { navTargetForPath } from "@/lib/nav-target";
 
 // Only ever shown in a dialog someone opens — fetched then, not shipped with every screen.
@@ -56,7 +55,6 @@ function litTarget(target: NavTarget | null, hasProfile: boolean, hasBidPack: bo
 function Chrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const offline = useOffline();
   const {
     ready,
     profile,
@@ -226,11 +224,6 @@ function Chrome({ children }: { children: React.ReactNode }) {
                 <button type="button" onClick={handleDismissProfileSaveWarning} className="shrink-0 font-medium underline decoration-dotted underline-offset-4">
                   Dismiss
                 </button>
-              </div>
-            )}
-            {offline && (
-              <div role="status" className="mx-auto mb-4 w-full max-w-3xl rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
-                You&rsquo;re offline. Your rankings, calendar and logbook still work; the interview and Ask your pack will pick up where you left off when you&rsquo;re back.
               </div>
             )}
             {profileSync === "failed" && (

@@ -42,6 +42,6 @@ export async function getCachedHotel(key: string): Promise<HotelResult | null | 
   return entry.hotel;
 }
 
-export async function setCachedHotel(key: string, hotel: HotelResult | null): Promise<void> {
-  await setJson<CacheEntry>(key, { hotel }, { ttlSeconds: CACHE_TTL_SECONDS });
+export async function setCachedHotel(key: string, hotel: HotelResult | null, ttlSeconds: number = CACHE_TTL_SECONDS): Promise<void> {
+  await setJson<CacheEntry>(key, { hotel }, { ttlSeconds });
 }

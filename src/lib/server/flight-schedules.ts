@@ -36,6 +36,7 @@ const THIN = 0.5;
 /** Calls stop when the month's remaining units fall to this — a margin for a busy bid week. */
 const UNITS_FLOOR = 2000;
 const UNITS_KEY = "adb:units-remaining";
+const UNITS_TTL_SECONDS = 6 * 3600;
 /** The Starter plan allows 5 calls a second: calls start at most this often, and a refused one waits and tries again. */
 const MIN_GAP_MS = 260;
 const CONCURRENCY = 3;
@@ -74,7 +75,8 @@ export function blocksFor(airport: string, from: number, to: number): Block[] {
   t = t.set({ hour: t.hour < 12 ? 0 : 12 });
   while (t <= end) {
     out.push({ airport, date: t.toISODate()!, half: t.hour < 12 ? 0 : 1 });
-    t = t.plus({ hours: 12 });
+    // By the clock, not 12 real hours: across a clock change those land on 11:00 or 13:00 and skip a half-day board.
+    t = t.hour < 12 ? t.set({ hour: 12 }) : t.plus({ days: 1 }).startOf("day");
   }
   return out;
 }
@@ -120,7 +122,9 @@ async function fetchBoard(b: Block, key: string, direction: Direction = "Departu
     await new Promise((r) => setTimeout(r, 1000 * attempt));
     res = await paced(() => fetch(url, { headers: { "X-Api-Key": key, Accept: "application/json" } }));
   }
-  const unitsLeft = Number(res.headers.get("x-api-units-remaining"));
+  // A missing header is "not said", not zero: Number(null) is 0, which used to read as an empty allowance.
+  const unitsHeader = res.headers.get("x-api-units-remaining");
+  const unitsLeft = unitsHeader === null || unitsHeader.trim() === "" ? NaN : Number(unitsHeader);
   if (res.status === 204)
     return {
       flights: [],
@@ -312,6 +316,7 @@ async function loadRealBoards(
   );
   if (!key || missing.length === 0) return out;
   let unitsLeft = (await getJson<number>(UNITS_KEY)) ?? Infinity;
+  let unitsSeen = false;
   let i = 0;
   const worker = async () => {
     while (i < missing.length) {
@@ -324,7 +329,10 @@ async function loadRealBoards(
       if (!r) continue;
       stats.fetched++;
       out.set(blockKey(b), r.flights);
-      if (r.unitsLeft !== null) unitsLeft = r.unitsLeft;
+      if (r.unitsLeft !== null) {
+        unitsLeft = r.unitsLeft;
+        unitsSeen = true;
+      }
       // An empty board is often a gap in the provider's data rather than a quiet day — asked again tomorrow.
       await setJson(`${prefix}${blockKey(b)}`, r.flights, {
         ttlSeconds: r.flights.length ? CACHE_SECONDS : EMPTY_CACHE_SECONDS,
@@ -332,7 +340,9 @@ async function loadRealBoards(
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  if (Number.isFinite(unitsLeft)) await setJson(UNITS_KEY, unitsLeft, { ttlSeconds: 40 * 24 * 3600 });
+  // Only a count the provider just gave, and only for a few hours: once it's gone, the next lookup asks again. Kept for
+  // weeks and rewritten on every request, a low count outlived the monthly reset and kept lookups off for good.
+  if (unitsSeen && Number.isFinite(unitsLeft)) await setJson(UNITS_KEY, unitsLeft, { ttlSeconds: UNITS_TTL_SECONDS });
   return out;
 }
 

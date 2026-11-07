@@ -16,19 +16,22 @@ async function post<T>(url: string, body: unknown, timeoutMs: number): Promise<T
   // A dropped connection (a hotel's Wi-Fi, a jet bridge) waits for the connection and tries again, instead of failing
   // the interview: every call here carries the whole interview and the server keeps no state, so sending it again is
   // safe. A slow answer is a different thing: it still times out.
+  // One id for every send of this request: a copy the server already ran (the connection dropped on the way back) is
+  // answered from that run, not paid for again.
+  const requestId = crypto.randomUUID();
   for (let attempt = 0; ; attempt++) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     let res: Response;
     try {
-      res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
+      res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Request-Id": requestId }, body: JSON.stringify(body), signal: ctrl.signal });
     } catch {
       clearTimeout(timer);
       // The browser's own words for a timeout or a dropped connection ("signal is aborted without reason", "Failed to
       // fetch") are shown to the pilot as they are, so they're said plainly here.
       if (ctrl.signal.aborted) throw new Error("That took too long to come back. Try again.");
       reportConnectionLost();
-      if (attempt < 3 && (await waitForConnection(WAIT_FOR_CONNECTION_MS))) continue;
+      if (attempt < 1 && (await waitForConnection(WAIT_FOR_CONNECTION_MS))) continue;
       throw new Error("Couldn’t reach Line Select. Check your connection and try again.");
     }
     try {

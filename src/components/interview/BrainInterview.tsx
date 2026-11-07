@@ -424,8 +424,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
   /** What the check-in already holds, for going back to it: the pilot's own words, not the stand-ins for a blank box. */
   function checkInAnswer(prefix: string, blank: string): string {
-    // Only the last two: this month's, just written. Further back are last month's, carried forward.
-    const answer = exchanges.slice(-2).find((e) => e.question.startsWith(prefix))?.answer ?? "";
+    // Only this month's two, just past last month's record carried forward — that record ends in a check-in of its own.
+    const start = carryForward(lastTime?.exchanges ?? []).length;
+    const answer = exchanges.slice(start, start + 2).find((e) => e.question.startsWith(prefix))?.answer ?? "";
     return answer === blank ? "" : answer;
   }
 

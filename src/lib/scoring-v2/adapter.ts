@@ -59,7 +59,7 @@ function categoriesFor(s: V2LineScore, fallback: LineScore["categoryScores"]): L
     sums.set(cat, acc);
   }
   const out = { ...fallback };
-  for (const [cat, { w, u }] of sums) if (w > 0) out[cat] = { score: (u / w) * 100, label: SATISFACTION_CATEGORY_LABELS[cat] };
+  for (const [cat, { w, u }] of sums) if (w > 0) out[cat] = { score: Math.min(100, Math.max(0, (u / w) * 100)), label: SATISFACTION_CATEGORY_LABELS[cat] };
   return out;
 }
 
@@ -77,10 +77,12 @@ export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: Pi
         s.results
           .filter((r) => sign * r.contribution >= NOTABLE)
           .sort((a, b) => sign * (b.contribution - a.contribution))
-          .map((r) => ({ label: valueText(r), matchPercent: Math.round(r.utility * 100) }));
+          .map((r) => ({ label: valueText(r), matchPercent: Math.round(Math.max(0, r.utility) * 100) }));
       return {
         ...ls,
-        score: s.score,
+        // Shown 0–100. Past the bad end of a scale a line's raw score goes below 0; the order (by the raw score) keeps it.
+        score: Math.max(0, s.score),
+        rawScore: s.score,
         explanation: explanationFor(s),
         contributors: named(1),
         criterionResults: s.results,
@@ -98,5 +100,5 @@ export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: Pi
         counterfactual: null,
       };
     })
-    .sort((a, b) => b.score - a.score || a.line.lineNumber.localeCompare(b.line.lineNumber));
+    .sort((a, b) => b.score - a.score || (b.rawScore ?? b.score) - (a.rawScore ?? a.score) || a.line.lineNumber.localeCompare(b.line.lineNumber));
 }

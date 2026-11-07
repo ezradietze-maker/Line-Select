@@ -11,6 +11,9 @@ export function loadSeniority(userId: string | null): SeniorityInput | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<SeniorityInput>;
     if (typeof parsed.rank !== "number" || typeof parsed.totalPilots !== "number") return null;
+    if (parsed.source === "band" || parsed.source === "between") return { rank: parsed.rank, totalPilots: parsed.totalPilots, source: parsed.source };
+    // A band picked before bands were marked: exactly one of their midpoints on the 100-pilot scale.
+    if (parsed.totalPilots === 100 && [5, 20, 50, 83].includes(parsed.rank)) return { rank: parsed.rank, totalPilots: 100, source: "band" };
     return { rank: parsed.rank, totalPilots: parsed.totalPilots };
   } catch {
     return null;

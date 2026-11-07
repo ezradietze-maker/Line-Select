@@ -86,6 +86,8 @@ export function computeCumulativeCircadianAssessment(
 
   let tightestGap: number | null = null;
   let hasCompoundingRisk = false;
+  // The gap between the rough pair itself (the tightest such pair), which is what the note talks about.
+  let roughGap: number | null = null;
   for (let i = 0; i < sorted.length - 1; i++) {
     const current = sorted[i];
     const next = sorted[i + 1];
@@ -93,11 +95,14 @@ export function computeCumulativeCircadianAssessment(
     if (tightestGap === null || gap < tightestGap) tightestGap = gap;
     const a = scores[i];
     const b = scores[i + 1];
-    if (a !== null && b !== null && a <= DISRUPTIVE_SCORE && b <= DISRUPTIVE_SCORE && gap < MIN_REAL_RECOVERY_DAYS) hasCompoundingRisk = true;
+    if (a !== null && b !== null && a <= DISRUPTIVE_SCORE && b <= DISRUPTIVE_SCORE && gap < MIN_REAL_RECOVERY_DAYS) {
+      hasCompoundingRisk = true;
+      if (roughGap === null || gap < roughGap) roughGap = gap;
+    }
   }
 
   const summary = hasCompoundingRisk
-    ? `Two rough trips back to back with only ${tightestGap} real day${tightestGap === 1 ? "" : "s"} off between them.`
+    ? `Two rough trips back to back with only ${roughGap} real day${roughGap === 1 ? "" : "s"} off between them.`
     : tightestGap !== null
       ? `At least ${tightestGap} real day${tightestGap === 1 ? "" : "s"} off between every trip this month.`
       : "No real gaps to assess.";

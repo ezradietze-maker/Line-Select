@@ -1,7 +1,7 @@
 import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
 import type { Region } from "@/lib/metrics/trip-facts";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type CriterionTier, type PilotModel, type PilotThread } from "@/types/pilot-model";
-import { structuredCall, type BrainUsage, type Effort } from "./llm";
+import { failedCallCost, structuredCall, withSpent, type BrainUsage, type Effort } from "./llm";
 import { modelToBodyClock, modelToDepartures, modelToFullDays, modelToHomePay, modelToHubTurns, modelToWeekdayParts } from "./model-upgrade";
 import { applyPilotFacts, readPilotFacts, type PilotFacts } from "./pilot-facts";
 import { pilotWordsForPrompt } from "./pilot-words";
@@ -420,8 +420,13 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
     `Write the pilot's complete model now.`,
   ].filter(Boolean).join("\n\n");
 
-  // The facts the brain's format has no room for, read beside it — never holding up or failing the reading itself.
-  const [{ data, usage }, factsRead] = await Promise.all([
+  // The facts the brain's format has no room for, read beside it — never holding up or failing the reading itself. What
+  // it cost counts either way, the reading's own failure included.
+  const factsCall = readPilotFacts({ pilotContext: input.pilotContext, exchanges: input.exchanges, apiKey: input.apiKey, model: input.model }).then(
+    (read) => ({ read, cost: read.usage.costUsd }),
+    (e) => ({ read: null, cost: failedCallCost(e) })
+  );
+  const [{ data, usage }, facts] = await Promise.all([
     structuredCall<RawModel>({
       apiKey: input.apiKey,
       model: input.model,
@@ -431,9 +436,12 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
       effort: input.effort ?? "high",
       // The longest saved read wrote about 13,700 tokens, thinking included; this leaves room without an open-ended bill.
       maxTokens: 24_000,
+    }).catch(async (e) => {
+      throw withSpent(e, (await factsCall).cost);
     }),
-    readPilotFacts({ pilotContext: input.pilotContext, exchanges: input.exchanges, apiKey: input.apiKey, model: input.model }).catch(() => null),
+    factsCall,
   ]);
+  const factsRead = facts.read;
   const parsed = parsePilotModel(data, input.prior);
   // Full days in the cities they like share the city priority, when they judge layovers that way (`modelToFullDays`).
   // And a chosen weekday's part of the day, from the words quoted for it ("Wednesday nights", `modelToWeekdayParts`).
@@ -443,6 +451,6 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
   const reasoning = Object.fromEntries(data.criteria.map((c) => [c.id, c.reasoning]));
   const both: BrainUsage = factsRead
     ? { ...usage, inputTokens: usage.inputTokens + factsRead.usage.inputTokens, outputTokens: usage.outputTokens + factsRead.usage.outputTokens, costUsd: usage.costUsd + factsRead.usage.costUsd, ms: Math.max(usage.ms, factsRead.usage.ms) }
-    : usage;
+    : { ...usage, costUsd: usage.costUsd + facts.cost };
   return { model, reasoning, dropped, usage: both, facts: factsRead?.facts ?? null };
 }
