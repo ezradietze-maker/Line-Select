@@ -5,6 +5,7 @@ import { MinHomeHoursPicker } from "@/components/interview/MinHomeHoursPicker";
 import { CityChips } from "@/components/preferences/CityChips";
 import { PilotPrioritiesEditor } from "@/components/preferences/PilotPrioritiesEditor";
 import { TargetEditor } from "@/components/preferences/TargetEditor";
+import { SeniorityQueue } from "@/components/preferences/SeniorityQueue";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
@@ -316,6 +317,7 @@ export function PreferencesScreen({
                   : "Used only to estimate which lines you could realistically hold. Leave blank to skip."}
               </p>
             </div>
+            {position && <SeniorityQueue ahead={position.bidNumber - 1} total={list.length} />}
           </section>
         );
       })()}

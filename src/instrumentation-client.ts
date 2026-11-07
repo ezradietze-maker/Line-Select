@@ -1,4 +1,4 @@
-import { loadPosthog, posthogConfigured, withPosthog } from "@/lib/posthog-loader";
+import { loadPosthog, posthogConfigured } from "@/lib/posthog-loader";
 
 /**
  * Next.js's `instrumentation-client` convention (see
@@ -19,8 +19,4 @@ if (posthogConfigured && typeof window !== "undefined") {
   const start = () => void loadPosthog();
   if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(start, { timeout: 5000 });
   else window.setTimeout(start, 2000);
-}
-
-export function onRouterTransitionStart(url: string) {
-  withPosthog((posthog) => posthog.capture("$pageview", { $current_url: url }));
 }

@@ -94,14 +94,16 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
   if (!userId) return loadProfile(null);
   const server = await fetchServerProfile();
   if (server.kind === "found") {
-    saveProfile(userId, server.profile);
-    return server.profile;
+    // Backfilled like a local copy: a server copy saved by an older version lacks the newer weights and lists too.
+    const profile = normalizeProfile(server.profile);
+    saveProfile(userId, profile);
+    return profile;
   }
   const localProfile = loadProfile(userId);
   if (server.kind === "none" && localProfile) {
     const saved = await saveServerProfile(localProfile);
     if (saved.kind === "conflict" && saved.profile) {
-      const merged = mergeAfterConflict(saved.profile, localProfile);
+      const merged = mergeAfterConflict(normalizeProfile(saved.profile), localProfile);
       saveProfile(userId, merged);
       await saveServerProfile(merged);
       return merged;
@@ -123,7 +125,7 @@ export async function saveProfileForUser(userId: string | null, profile: Prefere
   const saved = await saveServerProfile(profile);
   if (saved.kind === "saved") return { savedLocally, sync: "saved", profile };
   if (saved.kind === "failed" || !saved.profile) return { savedLocally, sync: "failed", profile };
-  const merged = mergeAfterConflict(saved.profile, profile);
+  const merged = mergeAfterConflict(normalizeProfile(saved.profile), profile);
   saveProfile(userId, merged);
   const again = await saveServerProfile(merged);
   return { savedLocally, sync: again.kind === "saved" ? "merged" : "failed", profile: merged };

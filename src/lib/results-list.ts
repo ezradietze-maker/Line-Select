@@ -1,5 +1,7 @@
 import { monthLine } from "@/lib/bid-month";
 import { lineDutyPeriods } from "@/lib/duty-periods";
+import { groupDepartures } from "@/lib/metrics/departures";
+import type { MonthDepartureOptions } from "@/lib/month-detail";
 import type { LineScore } from "@/lib/scoring";
 import type { BidPack, Line } from "@/types/bidpack";
 
@@ -31,9 +33,15 @@ function byLineNumber(a: LineScore, b: LineScore): number {
  * A new array in the requested order. "match" keeps the incoming order, which callers pass in already ranked by score.
  * Every other mode breaks ties by score, then line number, so equal lines never shuffle between renders. Given the
  * pack's dates, duty periods and departures are counted in the bid month, as the cards show them, not with what the
- * last trip flies in the next.
+ * last trip flies in the next. Given the card's departure options too, departures are the times the pilot leaves
+ * home — trips flown back to back count once — exactly the number on each card.
  */
-export function sortLineScores(list: LineScore[], mode: SortMode, pack?: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">): LineScore[] {
+export function sortLineScores(
+  list: LineScore[],
+  mode: SortMode,
+  pack?: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">,
+  departureOptions?: MonthDepartureOptions
+): LineScore[] {
   if (mode === "match") return list;
   const tieBreak = (a: LineScore, b: LineScore) => b.score - a.score || byLineNumber(a, b);
   const months = new Map<string, Line>();
@@ -51,8 +59,19 @@ export function sortLineScores(list: LineScore[], mode: SortMode, pack?: Pick<Bi
       return sorted.sort((a, b) => b.line.totalCreditHours - a.line.totalCreditHours || tieBreak(a, b));
     case "dutyPeriods":
       return sorted.sort((a, b) => lineDutyPeriods(inMonth(a.line)) - lineDutyPeriods(inMonth(b.line)) || tieBreak(a, b));
-    case "departures":
-      return sorted.sort((a, b) => inMonth(a.line).totalDepartures - inMonth(b.line).totalDepartures || tieBreak(a, b));
+    case "departures": {
+      const counts = new Map<string, number>();
+      const departures = (line: Line) => {
+        let n = counts.get(line.id);
+        if (n === undefined) {
+          const month = inMonth(line);
+          n = pack && departureOptions ? groupDepartures(month.trips, { bidPeriodStart: pack.bidPeriodStart, base: departureOptions.base }, departureOptions).length : month.totalDepartures;
+          counts.set(line.id, n);
+        }
+        return n;
+      };
+      return sorted.sort((a, b) => departures(a.line) - departures(b.line) || tieBreak(a, b));
+    }
     case "lineNumber":
       return sorted.sort(byLineNumber);
   }

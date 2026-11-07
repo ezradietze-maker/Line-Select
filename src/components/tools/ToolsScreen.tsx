@@ -183,7 +183,8 @@ function CommutePlanner({ bidPack, profile }: { bidPack: BidPack | null; profile
   const params = useMemo(() => (bidPack && model ? travelParamsFor(bidPack, model) : null), [bidPack, model]);
   const ranked = useMemo(() => (bidPack && model ? rankLinesWithTrips(bidPack, model).slice(0, 30) : []), [bidPack, model]);
   const [lineId, setLineId] = useState<string | null>(null);
-  const line = bidPack?.lines.find((l) => l.id === (lineId ?? ranked[0]?.lineId)) ?? null;
+  // A line picked from an earlier pack isn't in this one: fall back to the top line rather than show no trips.
+  const line = (lineId ? bidPack?.lines.find((l) => l.id === lineId) : undefined) ?? bidPack?.lines.find((l) => l.id === ranked[0]?.lineId) ?? null;
   const [answers, setAnswers] = useState<FlightAnswers | null>(() => (bidPack && model && typeof window !== "undefined" ? cachedFlightAnswers(bidPack, model) : null));
   const [looking, setLooking] = useState(false);
   useEffect(() => {

@@ -313,6 +313,19 @@ describe("forecast calibrated against real awards", () => {
   it("leaves a forecast alone when there's nothing to correct it with", () => {
     expect(applyCalibration(null, 0.42)).toBe(0.42);
   });
+
+  it("stays in order after a light point is shrunk below a heavy one before it", () => {
+    // Pooled, the first block holds 60 pairs and the last 20: shrunk by their own weights, the last used to land lower.
+    const ys = (n: number, rate: number) => Array.from({ length: n }, (_, i) => (i < Math.round(n * rate) ? 1 : 0) as 0 | 1);
+    const pairs: CalibrationPair[] = [
+      ...ys(20, 0.9).map((y, i) => ({ p: 0.38 + i * 0.0001, y })),
+      ...ys(20, 0.75).map((y, i) => ({ p: 0.4 + i * 0.0001, y })),
+      ...ys(20, 0.75).map((y, i) => ({ p: 0.42 + i * 0.0001, y })),
+      ...ys(20, 0.85).map((y, i) => ({ p: 0.45 + i * 0.0001, y })),
+    ];
+    const cal = fitCalibration(pairs, "c2", new Date(), 4);
+    expect(applyCalibration(cal, 0.452)).toBeGreaterThanOrEqual(applyCalibration(cal, 0.41));
+  });
 });
 
 describe("a pilot's own holding history", () => {

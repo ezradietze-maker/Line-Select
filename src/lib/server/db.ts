@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/server/postgres";
 import {
   awardHistoryRecords,
@@ -206,11 +206,18 @@ export async function createSession(session: ServerSession): Promise<void> {
     .values({ token: sessionKey(session.token), userId: session.userId, expiresAt: new Date(session.expiresAt) });
 }
 
+/**
+ * Every row written before hashing began (deployed 6 Nov 2026) expires by this moment, and every hashed row after
+ * it. Only rows that old are looked up by the raw cookie: otherwise a hash copied out of the table would itself work
+ * as a cookie, the very thing hashing is there to stop.
+ */
+const LEGACY_SESSIONS_EXPIRE_BY = new Date("2026-12-06T19:20:00Z");
+
 export async function findSession(token: string): Promise<ServerSession | null> {
   const key = sessionKey(token);
   let [row] = await db.select().from(sessions).where(eq(sessions.token, key)).limit(1);
-  if (!row) {
-    [row] = await db.select().from(sessions).where(eq(sessions.token, token)).limit(1);
+  if (!row && Date.now() < LEGACY_SESSIONS_EXPIRE_BY.getTime()) {
+    [row] = await db.select().from(sessions).where(and(eq(sessions.token, token), lte(sessions.expiresAt, LEGACY_SESSIONS_EXPIRE_BY))).limit(1);
     if (row) await db.update(sessions).set({ token: key }).where(eq(sessions.token, token));
   }
   if (!row) return null;

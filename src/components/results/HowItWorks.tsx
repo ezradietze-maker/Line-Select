@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Heading } from "@/components/ui/Heading";
 
 interface Point {
@@ -93,24 +95,95 @@ const POINTS: Point[] = [
   },
 ];
 
-/** The four things worth knowing, as waypoints down one route line. Also shown in the sidebar's "How this works" dialog. */
+/** The nearest box that scrolls this element, or the page. */
+function scrollerOf(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const overflow = getComputedStyle(p).overflowY;
+    if (overflow === "auto" || overflow === "scroll") return p;
+  }
+  return null;
+}
+
+/**
+ * How far down the route the reader has come — as a share of the line, and as the number of waypoints reached — where
+ * it crosses a line three-quarters of the way down the screen; or all of it, once there's nowhere further to scroll.
+ */
+function useReadProgress(list: React.RefObject<HTMLUListElement | null>): { progress: number; reached: number } {
+  const [read, setRead] = useState({ progress: 0, reached: 0 });
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const id = requestAnimationFrame(() => setRead({ progress: 1, reached: POINTS.length }));
+      return () => cancelAnimationFrame(id);
+    }
+    const scroller = scrollerOf(el);
+    let frame = 0;
+    const measure = () => {
+      const box = el.getBoundingClientRect();
+      const atEnd = scroller
+        ? scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4
+        : window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4;
+      if (atEnd && box.bottom <= window.innerHeight) {
+        setRead({ progress: 1, reached: POINTS.length });
+        return;
+      }
+      const reading = window.innerHeight * 0.75;
+      const reached = [...el.children].filter((c) => c.tagName === "LI" && c.getBoundingClientRect().top + 18 <= reading).length;
+      setRead({ progress: Math.min(1, Math.max(0, (reading - box.top) / box.height)), reached });
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    onScroll();
+    // Capturing, so a scroll inside the sidebar's dialog counts as well as the page's own.
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll, { capture: true });
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [list]);
+  return read;
+}
+
+/**
+ * The four things worth knowing, as waypoints down one route line that lights up as it's read: the line filling in
+ * amber, each waypoint coming on as the reader reaches it. Also shown in the sidebar's "How this works" dialog.
+ */
 export function HowItWorksContent({ headingLevel = "h3" }: { headingLevel?: "h2" | "h3" } = {}) {
+  const list = useRef<HTMLUListElement>(null);
+  const { progress, reached } = useReadProgress(list);
   return (
-    <ul className="relative space-y-6">
-      <span aria-hidden className="absolute bottom-4 left-[17px] top-4 w-px bg-gradient-to-b from-accent/60 via-hairline to-transparent" />
-      {POINTS.map((point) => (
-        <li key={point.title} className="relative flex gap-4">
-          <div className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/40 bg-panel text-accent shadow-[0_0_14px_-4px_var(--color-accent)]">
-            {point.icon}
-          </div>
-          <div className="min-w-0 pt-1.5">
-            <Heading as={headingLevel} className="text-base text-ink">
-              {point.title}
-            </Heading>
-            <p className="mt-1 text-sm leading-relaxed text-ink-muted">{point.body}</p>
-          </div>
-        </li>
-      ))}
+    <ul ref={list} className="relative space-y-6">
+      <span aria-hidden className="absolute bottom-4 left-[17px] top-4 w-px bg-hairline" />
+      <span
+        aria-hidden
+        className="absolute bottom-4 left-[17px] top-4 w-px origin-top bg-gradient-to-b from-accent to-accent/40 transition-transform duration-200 ease-out"
+        style={{ transform: `scaleY(${progress})` }}
+      />
+      {POINTS.map((point, i) => {
+        const lit = i < reached;
+        return (
+          <li key={point.title} className="relative flex gap-4">
+            <div
+              className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-panel transition-[color,border-color,box-shadow] duration-500 ${
+                lit ? "border-accent/40 text-accent shadow-[0_0_14px_-4px_var(--color-accent)]" : "border-hairline text-ink-faint"
+              }`}
+            >
+              {point.icon}
+            </div>
+            <div className="min-w-0 pt-1.5">
+              <Heading as={headingLevel} className="text-base text-ink">
+                {point.title}
+              </Heading>
+              <p className="mt-1 text-sm leading-relaxed text-ink-muted">{point.body}</p>
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }

@@ -53,14 +53,9 @@ export async function POST(request: Request) {
     await Promise.all([noteActivity("pack-parsed"), rememberPackHotels(result)]);
     return NextResponse.json(result);
   } catch (e) {
+    // What went wrong is in the report, not the response: an internal error's message is no business of the browser's.
     await reportProblem("parse-bidpack", e, { bytes: bytes.length });
-    return NextResponse.json(
-      {
-        error: "Something went wrong while parsing this PDF.",
-        detail: e instanceof Error ? e.message : String(e),
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Something went wrong while parsing this PDF." }, { status: 500 });
   }
 }
 
@@ -72,10 +67,16 @@ export async function POST(request: Request) {
  */
 function streamParse(bytes: Uint8Array): Response {
   const encoder = new TextEncoder();
+  // A pilot who closes the tab mid-parse cancels the stream: writing to it after that throws, and that throw used to
+  // end the parse as a failure and file a false problem report.
+  let cancelled = false;
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (message: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(message)}\n`));
+      const send = (message: unknown) => {
+        if (!cancelled) controller.enqueue(encoder.encode(`${JSON.stringify(message)}\n`));
+      };
       let lastPageSent = 0;
+      let parsed: Awaited<ReturnType<typeof parseBidPackPdf>> | null = null;
       try {
         const result = await parseBidPackPdf(bytes, {
           onProgress: (progress) => {
@@ -86,17 +87,20 @@ function streamParse(bytes: Uint8Array): Response {
             send({ type: "progress", ...progress });
           },
         });
+        parsed = result;
         send({ type: "result", result });
-        await Promise.all([noteActivity("pack-parsed"), rememberPackHotels(result)]);
       } catch (e) {
-        await reportProblem("parse-bidpack", e, { bytes: bytes.length });
-        send({
-          type: "error",
-          error: "Something went wrong while parsing this PDF.",
-          detail: e instanceof Error ? e.message : String(e),
-        });
+        if (!cancelled) {
+          await reportProblem("parse-bidpack", e, { bytes: bytes.length });
+          send({ type: "error", error: "Something went wrong while parsing this PDF." });
+        }
       }
-      controller.close();
+      if (!cancelled) controller.close();
+      // After the result is sent: a hiccup keeping the pack's hotels is no parse failure.
+      if (parsed) await Promise.all([noteActivity("pack-parsed"), rememberPackHotels(parsed)]).catch((e) => console.error("[parse-bidpack] after parse", e));
+    },
+    cancel() {
+      cancelled = true;
     },
   });
   return new Response(stream, {

@@ -7,6 +7,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Heading } from "@/components/ui/Heading";
 import { NumberTicker } from "@/components/ui/NumberTicker";
 import { FlightPlanLoader, type LoadProgress } from "@/components/upload/FlightPlanLoader";
+import { LayoverRouteMap } from "@/components/upload/LayoverRouteMap";
 import { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { rankLayoverCitiesByFrequency } from "@/lib/scoring";
@@ -25,13 +26,15 @@ interface UploadScreenProps {
   /** Where a pilot with a pack already loaded goes next, and what that button says. */
   onContinue?: () => void;
   continueLabel?: string;
+  /** Opens on the file picker even with a pack loaded — "Try a different file" after one that couldn't be read. */
+  startReplacing?: boolean;
 }
 
 const MAX_MB = Math.round(MAX_PDF_BYTES / 1024 / 1024);
 /** How long the "LOADED" lock-in holds before moving on — long enough to land, short enough not to stall anyone. */
 const LOCK_IN_MS = 900;
 
-export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, onContinue, continueLabel }: UploadScreenProps) {
+export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, onContinue, continueLabel, startReplacing = false }: UploadScreenProps) {
   const reduce = useReducedMotion();
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -39,7 +42,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
   const [progress, setProgress] = useState<LoadProgress>({ received: false });
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [replacing, setReplacing] = useState(false);
+  const [replacing, setReplacing] = useState(startReplacing);
   const inputRef = useRef<HTMLInputElement>(null);
   // A parse can take a while; a pilot who has gone to another page by the time it's read isn't pulled back to it.
   const mounted = useRef(true);
@@ -221,9 +224,9 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
 }
 
 function formatHours(hours: number): string {
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
-  return `${h}:${m.toString().padStart(2, "0")}`;
+  // Whole minutes first, so 20.999 h reads 21:00 rather than 20:60.
+  const total = Math.round(hours * 60);
+  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
 function formatPeriod(start: string | null, days: number): string | null {
@@ -256,6 +259,7 @@ function AlreadyUploaded({
       avgCredit: bidPack.lines.reduce((s, l) => s + l.totalCreditHours, 0) / n,
       cityCount: cities.length,
       topCities: cities.slice(0, 10).map((c) => c.code),
+      allCities: cities.map((c) => c.code),
       internationalPct: verified.length ? Math.round((verified.filter((l) => l.trips.some((t) => t.international)).length / verified.length) * 100) : null,
     };
   }, [bidPack]);
@@ -304,7 +308,8 @@ function AlreadyUploaded({
 
         {stats.topCities.length > 0 && (
           <div className="border-t border-hairline p-5">
-            <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
+            <LayoverRouteMap base={bidPack.base} cities={stats.allCities} />
+            <div className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
               Most-flown layovers
               {stats.internationalPct !== null && <span> &middot; {stats.internationalPct}% of lines fly international</span>}
             </div>

@@ -31,6 +31,8 @@ interface Body {
 }
 
 const isStringArray = (v: unknown, max: number): v is string[] => Array.isArray(v) && v.length > 0 && v.length <= max && v.every((x) => typeof x === "string" && x.length <= 40);
+// Bid numbers and seniority numbers are stored in integer columns: one past their range fails the whole share.
+const isIntIn = (v: unknown, min: number, max: number): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /**
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
   if (!isStringArray(lineIds, MAX_LINES) || !isStringArray(lineNumbers, MAX_LINES) || lineIds.length !== lineNumbers.length) return NextResponse.json({ error: "Malformed lines." }, { status: 400 });
   const L = lineIds.length;
   if (!Array.isArray(features) || features.length !== L * FEATURE_COUNT || !features.every((x) => isFiniteNumber(x) && Math.abs(x) < 50)) return NextResponse.json({ error: "Malformed line features." }, { status: 400 });
-  if (!Array.isArray(seniorityList) || seniorityList.length === 0 || seniorityList.length > MAX_PILOTS || !seniorityList.every((e) => Array.isArray(e) && (e.length === 2 || (e.length === 3 && (e[2] === 0 || e[2] === 1))) && Number.isInteger(e[0]) && Number.isInteger(e[1]))) return NextResponse.json({ error: "Malformed seniority list." }, { status: 400 });
+  if (!Array.isArray(seniorityList) || seniorityList.length === 0 || seniorityList.length > MAX_PILOTS || !seniorityList.every((e) => Array.isArray(e) && (e.length === 2 || (e.length === 3 && (e[2] === 0 || e[2] === 1))) && isIntIn(e[0], 1, 100_000) && isIntIn(e[1], 1, 999_999))) return NextResponse.json({ error: "Malformed seniority list." }, { status: 400 });
   if (!Number.isInteger(seniorityNumber) || (seniorityNumber as number) < 1 || (seniorityNumber as number) > 999999) return NextResponse.json({ error: "Enter a valid seniority number." }, { status: 400 });
   if (!Array.isArray(ranking) || ranking.length === 0 || ranking.length > L || !ranking.every((i) => Number.isInteger(i) && i >= 0 && i < L)) return NextResponse.json({ error: "Malformed ranking." }, { status: 400 });
 
@@ -118,13 +120,17 @@ export async function POST(request: Request) {
     }
   });
 
-  let shared: "stored" | "not-signed-in" | "not-requested" | "position-taken" | "store-full" | "unlisted" = "not-requested";
+  let shared: "stored" | "not-signed-in" | "not-requested" | "position-taken" | "store-full" | "unlisted" | "failed" = "not-requested";
   if (body.share === true) {
     if (!user) shared = "not-signed-in";
     else if (!position.exact) shared = "unlisted";
     else {
-      const saved = await saveSubmission({ packKey, lineNumbers, userId: user.id, bidNumber: position.bidNumber, seniority, ranking: ranking as number[] });
-      shared = saved.stored ? "stored" : saved.reason;
+      // The forecast is already worked out: a failed save costs the pilot their share, not the answer.
+      const saved = await saveSubmission({ packKey, lineNumbers, userId: user.id, bidNumber: position.bidNumber, seniority, ranking: ranking as number[] }).catch(async (e) => {
+        await reportProblem("forecast", e, { action: "share" });
+        return null;
+      });
+      shared = saved === null ? "failed" : saved.stored ? "stored" : saved.reason;
     }
   }
 

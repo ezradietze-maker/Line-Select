@@ -1,8 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { ChevronDownIcon } from "@/components/ui/icons";
+import { PillHighlight } from "@/components/ui/PillHighlight";
 import type { PackColumn, PackDay, PackToken } from "@/lib/bidpack-row";
 import { PACK_TOKENS_PER_DAY } from "@/lib/bidpack-row";
 import { formatHoursValue } from "@/lib/interview-config";
@@ -89,7 +90,7 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
     </span>
   );
   return (
-    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-muted ${className}`} aria-label="How to read a line's strip">
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-muted ${className}`} role="group" aria-label="How to read a line's strip">
       {view === "pack" ? (
         <>
           {item(word("1875", "text-leg"), "flight, on the day it leaves")}
@@ -127,15 +128,17 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
 
 /** The pilot's switch between the two strips. */
 export function StripViewToggle({ view, onChange }: { view: StripViewMode; onChange: (view: StripViewMode) => void }) {
+  const group = useId();
   const option = (value: StripViewMode, label: string) => (
     <button
       type="button"
       role="radio"
       aria-checked={view === value}
       onClick={() => onChange(value)}
-      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${view === value ? "bg-ink text-canvas" : "text-ink-muted hover:text-ink"}`}
+      className={`relative rounded-full px-3 py-1 text-xs font-medium transition-colors duration-300 ${view === value ? "text-canvas" : "text-ink-muted hover:text-ink"}`}
     >
-      {label}
+      {view === value && <PillHighlight group={group} className="absolute inset-0 rounded-full bg-ink" />}
+      <span className="relative">{label}</span>
     </button>
   );
   return (
@@ -425,7 +428,8 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
   if (layout.stacked || layout.mode === "scroll") {
     // The days scroll sideways under (a phone) or beside (a narrow laptop) the numbers, each strip with its own dates.
     const scroller = (
-      <div className="min-w-0 overflow-x-auto overscroll-x-contain" onClick={onToggle}>
+      // Focusable, so a keyboard can scroll it too (arrow keys once it has focus).
+      <div role="region" aria-label={`Line ${line.lineNumber}, day by day`} tabIndex={0} className="min-w-0 overflow-x-auto overscroll-x-contain focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={onToggle}>
         <div style={{ width: columns.length * SCROLL_COL }}>
           <DateRows columns={columns} layout={layout} />
           {drawn}

@@ -30,6 +30,7 @@ import { buildLineFeatures, type LineFactChip } from "@/lib/line-summary";
 import { topImplicitContributions } from "@/lib/rank-learning";
 import type { LineScore } from "@/lib/scoring";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
+import { flyStarToShortlist } from "@/lib/fly-star";
 import type { LineForecast } from "@/lib/forecast/forecast";
 import type { TripScore } from "@/lib/scoring-v2/trip-score";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -302,7 +303,10 @@ export const LineCard = memo(function LineCard({
             <div className="-my-1.5 -mr-1.5 flex shrink-0 items-center gap-0.5 print:hidden">
                   <button
                     type="button"
-                    onClick={onToggleStar}
+                    onClick={(e) => {
+                      if (!starred) flyStarToShortlist(e.currentTarget);
+                      onToggleStar();
+                    }}
                     aria-pressed={starred}
                     aria-label={starred ? "Remove from shortlist" : "Add to shortlist"}
                     title={starred ? "On your shortlist" : "Shortlist this line"}

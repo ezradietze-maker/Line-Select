@@ -41,6 +41,19 @@ export async function fetchServerBidPack(): Promise<BidPack | null> {
   }
 }
 
+/** Which pack the account holds and when it was saved (ms) — null when there's none or it can't be asked. */
+export async function fetchServerBidPackMeta(): Promise<{ packId: string; savedAt: number } | null> {
+  try {
+    const res = await fetch("/api/bid-pack?meta", { credentials: "same-origin", cache: "no-store" });
+    if (res.status !== 200) return null;
+    const data = (await res.json()) as { packId?: unknown; savedAt?: unknown };
+    const savedAt = typeof data.savedAt === "string" ? Date.parse(data.savedAt) : NaN;
+    return typeof data.packId === "string" && Number.isFinite(savedAt) ? { packId: data.packId, savedAt } : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function clearServerBidPack(): Promise<void> {
   try {
     await fetch("/api/bid-pack", { method: "DELETE", credentials: "same-origin" });

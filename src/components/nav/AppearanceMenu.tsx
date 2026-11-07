@@ -7,7 +7,7 @@ import {
   getStoredCalendarAccent,
   setStoredCalendarAccent,
 } from "@/lib/calendar-theme";
-import { applyThemeAttribute, getStoredTheme, setStoredTheme, type ThemeMode } from "@/lib/theme";
+import { applyThemeAttribute, getStoredTheme, setStoredTheme, THEME_CHANGE_EVENT, type ThemeMode } from "@/lib/theme";
 import { MoonIcon, PaletteIcon } from "@/components/ui/icons";
 
 /** Whether a theme choice shows dark: the red-light night counts, and "system" follows the device. */
@@ -94,6 +94,10 @@ export function AppearanceMenu() {
     setAccent(storedAccent);
     applyThemeAttribute(storedTheme);
     applyCalendarAccent(storedAccent);
+    // Chosen elsewhere (the command palette, or the other of the two menus): show it here too.
+    const onChange = (e: Event) => setMode((e as CustomEvent<ThemeMode>).detail);
+    window.addEventListener(THEME_CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, onChange);
   }, []);
 
   useEffect(() => {

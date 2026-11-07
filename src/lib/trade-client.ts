@@ -38,14 +38,16 @@ async function postAction(url: string, body?: unknown): Promise<ActionResult> {
   }
 }
 
-export async function fetchTradeOffers(): Promise<TradeOffer[]> {
+/** The board — empty for a guest (it's for signed-in pilots), null when it couldn't be loaded, which isn't the same as no offers. */
+export async function fetchTradeOffers(): Promise<TradeOffer[] | null> {
   try {
     const res = await fetch("/api/trades", { credentials: "same-origin" });
-    if (!res.ok) return [];
+    if (res.status === 401) return [];
+    if (!res.ok) return null;
     const data = await res.json();
     return (data.offers as TradeOffer[]) ?? [];
   } catch {
-    return [];
+    return null;
   }
 }
 

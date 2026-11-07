@@ -38,7 +38,10 @@ function ResultsPageContent() {
 
   if (profile && bidPack) {
     return (
+      // A fresh view for each pilot and pack: what it reads once on opening (last cycle's top lines, the history
+      // summary, the sharing choice) belongs to whoever is signed in — a guest shown first, then their account loaded.
       <ResultsView
+        key={`${user?.id ?? "guest"}|${bidPack.id}`}
         bidPack={bidPack}
         profile={profile}
         onStartOver={handleStartOver}

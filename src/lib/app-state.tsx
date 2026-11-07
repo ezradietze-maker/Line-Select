@@ -4,8 +4,8 @@ import { markLanding } from "@/components/results/WheelsDown";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { checkSession, logout as logoutAccount } from "@/lib/auth";
-import { clearServerBidPack, fetchServerBidPack, saveServerBidPack } from "@/lib/bidpack-server";
-import { clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
+import { clearServerBidPack, fetchServerBidPack, fetchServerBidPackMeta, saveServerBidPack } from "@/lib/bidpack-server";
+import { bidPackSavedAt, clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
 import { generateFakeOffer } from "@/lib/fake-trade-offers";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import { correctionEvents, isLearnablePack } from "@/lib/learning/corrections";
@@ -15,7 +15,7 @@ import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/post
 import { clearPendingProfile, loadPendingProfile, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
-import { askToKeepStorage, clearProfileForUser, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
+import { askToKeepStorage, clearProfile, clearProfileForUser, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
@@ -94,6 +94,18 @@ async function packFromAccount(userId: string): Promise<BidPack | null> {
   return pack;
 }
 
+/**
+ * A signed-in pilot's pack: this device's copy, unless the account holds a different one saved after it — a new
+ * month uploaded on the laptop reaches the phone still holding last month's. Without a connection, the device's copy.
+ */
+async function accountBidPack(userId: string): Promise<BidPack | null> {
+  const local = loadBidPack(userId);
+  if (!local) return packFromAccount(userId);
+  const server = await fetchServerBidPackMeta();
+  if (server && server.packId !== local.id && server.savedAt > bidPackSavedAt(userId)) return (await packFromAccount(userId)) ?? local;
+  return local;
+}
+
 function landingPathFor(bidPack: BidPack | null, profile: PreferenceProfile | null): string {
   if (!bidPack) return "/";
   return profile ? "/results" : "/preferences";
@@ -104,6 +116,8 @@ interface AppStateValue extends DataState {
   demoOffer: TradeOffer | null;
   toasts: ToastItem[];
   inboxUnreadCount: number;
+  /** The real offers as last polled (signed in, with a pack) — screens listing offers refresh when it changes. */
+  tradeOffers: TradeOffer[];
   /** How the signed-in pilot's last profile save went: "merged" with a newer copy from another device, or "failed" (kept on this device, retried). */
   profileSync: "ok" | "merged" | "failed";
   handleDismissProfileSync: () => void;
@@ -166,14 +180,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   /** How the signed-in pilot's last profile save went (see `persistProfile`). */
   const [profileSync, setProfileSync] = useState<"ok" | "merged" | "failed">("ok");
+  const showSignedOutRef = useRef<() => void>(() => {});
   const latestProfileRef = useRef<PreferenceProfile | null>(null);
   const realOffersRef = useRef<TradeOffer[]>([]);
   const knownNotifiableIdsRef = useRef<Set<string> | null>(null);
-  const onTradeBoard = usePathname() === "/trade-board";
+  const pathname = usePathname();
+  const onTradeBoard = pathname === "/trade-board";
+  const onInbox = pathname === "/inbox";
   /** Which pack (and pilot) the current example offer was made for. */
   const demoOfferKey = useRef<string | null>(null);
-  const pathnameRef = useRef<string>("/");
-  if (typeof window !== "undefined") pathnameRef.current = window.location.pathname;
+  // The router's path, not the address bar's: during a navigation's render the address bar still shows the old page.
+  const onInboxRef = useRef(false);
 
   useEffect(() => {
     // One-time read of external stores (server session + localStorage) to
@@ -181,7 +198,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // since it would mismatch the server-rendered "not ready yet" state.
     let cancelled = false;
     const stateFor = async (currentUser: UserAccount | null): Promise<DataState> => {
-      const savedBidPack = loadBidPack(currentUser?.id ?? null) ?? (currentUser ? await packFromAccount(currentUser.id) : null);
+      const savedBidPack = currentUser ? await accountBidPack(currentUser.id) : loadBidPack(null);
       return {
         ready: true,
         profile: await loadProfileForUser(currentUser?.id ?? null),
@@ -274,6 +291,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // re-render the whole app every ten seconds.
       if (document.visibilityState === "hidden") return;
       const data = await fetchTradeOffers();
+      // A failed poll keeps what was last seen: an empty list would read as every offer withdrawn.
+      if (!data) return;
       const signature = JSON.stringify(data);
       if (cancelled || signature === last) return;
       last = signature;
@@ -308,7 +327,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // Only the Inbox counts as "checked" — the Trade Board shows the same
     // offers, but browsing it isn't the same deliberate act as opening your
     // notifications, so a Trade Board visit alone shouldn't clear the badge.
-    if (pathnameRef.current !== "/inbox") return;
+    onInboxRef.current = onInbox;
+    if (!onInbox) return;
     if (notifiableOffers.length === 0) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSeenOfferIds((prev) => {
@@ -322,7 +342,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }
       return changed ? next : prev;
     });
-  }, [notifiableOffers]);
+  }, [notifiableOffers, onInbox]);
 
   useEffect(() => {
     // Toasts only a brand-new arrival (never the pre-existing backlog found
@@ -336,7 +356,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
     const newOnes = notifiableOffers.filter((o) => !knownNotifiableIdsRef.current!.has(o.id));
     knownNotifiableIdsRef.current = currentIds;
-    if (newOnes.length === 0 || pathnameRef.current === "/inbox") return;
+    if (newOnes.length === 0 || onInboxRef.current) return;
     setToasts((prev) => [
       ...prev,
       ...newOnes.map((offer) => ({
@@ -360,9 +380,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const userId = user?.id ?? null;
   useEffect(() => {
     if (profileSync !== "failed" || !userId) return;
-    const retry = () => {
+    const retry = async () => {
       const profile = latestProfileRef.current;
       if (!profile) return;
+      // A save refused because the session ended (signed out in another tab, or expired) would fail forever behind a
+      // "will try again" notice: the server says who's signed in now, and a pilot no longer signed in is shown so.
+      const session = await checkSession();
+      if (session.reachable && session.user?.id !== userId) {
+        showSignedOutRef.current();
+        return;
+      }
       void saveProfileForUser(userId, profile).then((r) => {
         if (r.sync === "saved") setProfileSync("ok");
         else if (r.sync === "merged") {
@@ -371,10 +398,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         }
       });
     };
-    window.addEventListener("online", retry);
-    const timer = setInterval(retry, 60_000);
+    const tryAgain = () => void retry();
+    window.addEventListener("online", tryAgain);
+    const timer = setInterval(tryAgain, 60_000);
     return () => {
-      window.removeEventListener("online", retry);
+      window.removeEventListener("online", tryAgain);
       clearInterval(timer);
     };
   }, [profileSync, userId]);
@@ -450,7 +478,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   function handleUploadDifferent() {
     setState((s) => ({ ...s, parseResult: null }));
-    router.push("/upload");
+    // Straight to the file picker: the pack already loaded isn't the one they were trying to replace it with.
+    router.push("/upload?replace");
   }
 
   function handleInterviewComplete(newProfile: PreferenceProfile) {
@@ -568,27 +597,35 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function handleToastClick(id: string) {
+    const href = toasts.find((t) => t.id === id)?.href;
     handleDismissToast(id);
-    router.push("/inbox");
+    if (href !== null) router.push(href ?? "/inbox");
   }
 
   async function handleAuthenticated(newUser: UserAccount) {
     askToKeepStorage();
     writeSignedInHint(newUser);
     identifyPilot(newUser.id);
-    let theirBidPack = loadBidPack(newUser.id) ?? (await packFromAccount(newUser.id));
+    let theirBidPack = await accountBidPack(newUser.id);
     let theirProfile = await loadProfileForUser(newUser.id);
     let theirSeniority = loadSeniority(newUser.id);
+    let packSaveFailed = false;
 
     // A guest who uploaded a pack and answered the interview, then makes an account so it "follows them to a new device", must not land on an empty app. An account that has nothing of its own adopts what the guest was just working on; one that already has data keeps it untouched.
     if (!state.user) {
+      // What the account takes over stops being the guest's, so signing out later really does take it off the screen.
       if (!theirBidPack && state.bidPack && !state.bidPack.id.startsWith("sample")) {
-        saveBidPack(newUser.id, state.bidPack);
+        // The guest's copy goes first: two copies of a big pack don't fit in the browser's storage together.
+        clearBidPack(null);
+        if (!saveBidPack(newUser.id, state.bidPack)) {
+          packSaveFailed = true;
+          saveBidPack(null, state.bidPack);
+        }
         void saveServerBidPack(state.bidPack);
         theirBidPack = state.bidPack;
       }
       if (!theirProfile && state.profile) {
-        await saveProfileForUser(newUser.id, state.profile);
+        if ((await saveProfileForUser(newUser.id, state.profile)).savedLocally) clearProfile(null);
         theirProfile = state.profile;
       }
       if (!theirSeniority && state.seniority) {
@@ -606,13 +643,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       pendingProfile: null,
       seniority: theirSeniority,
       freshBidPack: false,
-      bidPackSaveFailed: false,
+      bidPackSaveFailed: packSaveFailed,
       profileSaveFailed: false,
     });
     router.push(landingPathFor(theirBidPack, theirProfile));
   }
 
   async function handleContinueAsGuest() {
+    // Signed in, carrying on as a guest means signing out first: the guest's pack and profile under the account's
+    // name would be saved over the account's own at the next edit.
+    if (state.user) return handleLogout();
     const guestBidPack = loadBidPack(null);
     const guestProfile = await loadProfileForUser(null);
     setState((s) => ({
@@ -625,7 +665,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleLogout() {
-    await logoutAccount();
+    // Offline, the session cookie outlives a sign-out that only happened on screen: the next person to open the app
+    // here would be let back into this account. Stay signed in and say so.
+    if (!(await logoutAccount())) {
+      setToasts((prev) => [...prev, { id: `logout-${Date.now()}`, title: "Couldn't sign out", body: "Check your connection and try again. You're still signed in.", href: null }]);
+      return;
+    }
+    await showSignedOut();
+  }
+
+  /** The guest view, once the server no longer holds a session for this device. */
+  async function showSignedOut() {
+    setProfileSync("ok");
     writeSignedInHint(null);
     resetPilotIdentity();
     const guestBidPack = loadBidPack(null);
@@ -644,6 +695,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
     router.push(landingPathFor(guestBidPack, guestProfile));
   }
+  useEffect(() => {
+    showSignedOutRef.current = () => void showSignedOut();
+  });
 
   const value: AppStateValue = {
     ...state,
@@ -651,6 +705,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     demoOffer,
     toasts,
     inboxUnreadCount,
+    tradeOffers: realOffers,
     profileSync,
     handleDismissProfileSync,
     handleAcceptDemoOffer,

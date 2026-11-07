@@ -9,6 +9,11 @@ function bidPackKey(userId: string | null): string {
   return userId ? `line-select:bidpack:${userId}:v1` : "line-select:bidpack:guest:v1";
 }
 
+/** When this device last saved its pack — set beside it, so a newer one saved to the account from another device can be told apart from an older one. */
+function savedAtKey(userId: string | null): string {
+  return `${bidPackKey(userId)}:saved-at`;
+}
+
 function zuluAt(anchorISO: string, minutes: number): string {
   return new Date(new Date(anchorISO).getTime() + minutes * 60_000).toISOString();
 }
@@ -155,6 +160,7 @@ export function saveBidPack(userId: string | null, bidPack: BidPack): boolean {
   if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(bidPackKey(userId), JSON.stringify(compactBidPack(bidPack)));
+    window.localStorage.setItem(savedAtKey(userId), String(Date.now()));
     return true;
   } catch {
     return false;
@@ -171,10 +177,21 @@ export function loadBidPack(userId: string | null): BidPack | null {
   }
 }
 
+/** When this device saved its pack (ms); 0 for a pack saved before that was kept, or none. */
+export function bidPackSavedAt(userId: string | null): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    return Number(window.localStorage.getItem(savedAtKey(userId))) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function clearBidPack(userId: string | null): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(bidPackKey(userId));
+    window.localStorage.removeItem(savedAtKey(userId));
   } catch {
     // ignore
   }

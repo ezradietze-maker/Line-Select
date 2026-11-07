@@ -306,17 +306,8 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
 }
 
 /** The "anything else?" screen's question, as the transcript records it — both the app and the simulator use it. */
-export const SWEEP_QUESTION = "Anything else that matters when you bid? (Topics you hadn't raised.)";
-
-/**
- * Questions before a settled ranking may end the interview on its own: more for a pilot with more that matters to them —
- * a long story with a dozen priorities needs more questions than a short one with four. Not a target; the interviewer
- * usually goes on past it.
- */
-export function minTurnsFor(model: PilotModel | null): number {
-  const important = (model?.criteria ?? []).filter((c) => c.weight >= 0.3).length;
-  return Math.max(12, Math.min(28, 4 + 2 * important));
-}
+import { minTurnsFor, SWEEP_QUESTION } from "./interview-pace";
+export { minTurnsFor, SWEEP_QUESTION };
 
 /**
  * The answers have stopped moving the ranking: the last two re-reads each changed at most one of the pilot's top-10

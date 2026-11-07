@@ -12,11 +12,13 @@ import { DeadlineTabTitle } from "@/components/results/DeadlineTabTitle";
 import { LogoMark } from "@/components/ui/Logo";
 import { Modal } from "@/components/ui/Modal";
 import { BackToTop } from "@/components/ui/BackToTop";
+import { OfflineNotice } from "@/components/ui/OfflineNotice";
 import { CommandPalette } from "@/components/ui/CommandPalette";
 import { ScreenTransition, type NavDirection } from "@/components/ui/ScreenTransition";
 import { Spinner } from "@/components/ui/Spinner";
 import { ToastStack } from "@/components/ui/Toast";
 import { AppStateProvider, useAppState } from "@/lib/app-state";
+import { useOffline } from "@/lib/connection";
 import { navTargetForPath } from "@/lib/nav-target";
 
 // Only ever shown in a dialog someone opens — fetched then, not shipped with every screen.
@@ -54,6 +56,7 @@ function litTarget(target: NavTarget | null, hasProfile: boolean, hasBidPack: bo
 function Chrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const offline = useOffline();
   const {
     ready,
     profile,
@@ -225,6 +228,11 @@ function Chrome({ children }: { children: React.ReactNode }) {
                 </button>
               </div>
             )}
+            {offline && (
+              <div role="status" className="mx-auto mb-4 w-full max-w-3xl rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
+                You&rsquo;re offline. Your rankings, calendar and logbook still work; the interview and Ask your pack will pick up where you left off when you&rsquo;re back.
+              </div>
+            )}
             {profileSync === "failed" && (
               <div role="status" className="mx-auto mb-4 w-full max-w-3xl rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
                 Couldn&rsquo;t save to your account just now. It&rsquo;s kept on this device and will try again when the connection is back.
@@ -260,6 +268,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
 
       {showSidebar && <BackToTop />}
       <DeadlineTabTitle packId={bidPack?.id ?? null} />
+      <OfflineNotice />
 
       <CommandPalette
         open={paletteOpen}

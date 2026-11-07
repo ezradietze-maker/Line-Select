@@ -15,7 +15,12 @@ const MAX_JUMPSEATS = 4000;
 const KINDS = new Set(["toBase", "deviateOut", "homeFromBase", "deviateHome"]);
 const code = (x: unknown): x is string => typeof x === "string" && /^[A-Z]{3}$/.test(x);
 
-function readNeeds(value: unknown): TravelNeed[] | null {
+// A pack's month runs from a few weeks back (a month already flying) to a few months ahead. A need dated outside that
+// is left unanswered: its departure board is one nobody has cached, paid for out of the month's allowance.
+const PAST_LIMIT_MS = 45 * 24 * 3600_000;
+const FUTURE_LIMIT_MS = 150 * 24 * 3600_000;
+
+function readNeeds(value: unknown, now = Date.now()): TravelNeed[] | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_NEEDS) return null;
   const out: TravelNeed[] = [];
   for (const n of value) {
@@ -28,6 +33,7 @@ function readNeeds(value: unknown): TravelNeed[] | null {
       n.departBefore < n.departAfter
     )
       return null;
+    if (n.departAfter < now - PAST_LIMIT_MS || n.departAfter > now + FUTURE_LIMIT_MS) continue;
     if (n.arriveBy !== undefined && typeof n.arriveBy !== "number") return null;
     let groundMs: Record<string, number> | undefined;
     if (n.groundMs !== undefined) {

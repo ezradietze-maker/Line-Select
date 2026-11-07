@@ -7,13 +7,13 @@ import type { CityMark } from "@/types/preferences";
 export function CityMarkGlyph({ mark }: { mark: CityMark | null | undefined }) {
   switch (mark) {
     case "love":
-      return <span className="text-good" aria-label="a city you love">♥</span>;
+      return <span role="img" className="text-good" aria-label="a city you love">♥</span>;
     case "like":
-      return <span className="text-good" aria-label="a city you like">♡</span>;
+      return <span role="img" className="text-good" aria-label="a city you like">♡</span>;
     case "dislike":
-      return <span className="text-warn" aria-label="a city you dislike">✕</span>;
+      return <span role="img" className="text-warn" aria-label="a city you dislike">✕</span>;
     case "avoid":
-      return <span className="font-semibold text-danger" aria-label="a city you avoid">✕</span>;
+      return <span role="img" className="font-semibold text-danger" aria-label="a city you avoid">✕</span>;
     default:
       return null;
   }

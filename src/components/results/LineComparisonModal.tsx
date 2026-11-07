@@ -2,8 +2,10 @@
 
 import { bodyClockTone } from "@/components/results/BodyClock";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
+import { FlipText } from "@/components/ui/FlipText";
 import { Modal } from "@/components/ui/Modal";
 import { lineBodyClockScore, tripBodyClockScore } from "@/lib/body-clock-score";
+import { monthLine } from "@/lib/bid-month";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import type { LineScore } from "@/lib/scoring";
 import type { MonthDepartureOptions } from "@/lib/month-detail";
@@ -28,18 +30,21 @@ interface LineComparisonModalProps {
 }
 
 function formatHours(hours: number): string {
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
-  return `${h}:${m.toString().padStart(2, "0")}`;
+  // Whole minutes first, so 20.999 h reads 21:00 rather than 20:60.
+  const total = Math.round(hours * 60);
+  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
-function StatRow({ label, values }: { label: string; values: [string, string] }) {
+/** Each row's numbers turn over a beat after the one above, like a departures board filling in. */
+const ROW_MS = 70;
+
+function StatRow({ label, values, row }: { label: string; values: [string, string]; row: number }) {
   return (
     <>
       {/* On a phone the label takes its own row above the two values — three items in a two-column grid otherwise interleave labels and numbers. */}
       <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">{label}</div>
-      <div className="text-center font-mono text-ink">{values[0]}</div>
-      <div className="text-center font-mono text-ink">{values[1]}</div>
+      <FlipText text={values[0]} delay={row * ROW_MS} stagger={30} className="text-center font-mono text-ink" />
+      <FlipText text={values[1]} delay={row * ROW_MS + 35} stagger={30} className="text-center font-mono text-ink" />
     </>
   );
 }
@@ -53,6 +58,10 @@ export function LineComparisonModal({
   departureOptions,
   onClose,
 }: LineComparisonModalProps) {
+  // Landings and duty periods in the bid month, as each line's card counts them — not with what the last trip flies in the next.
+  const months = departureOptions
+    ? lineScores.map((ls) => monthLine(ls.line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }))
+    : lineScores.map((ls) => ls.line);
   // Each line's body-clock score, and its hardest trip's — 1–100, 100 the gentlest.
   const bodyClocks = lineScores.map((ls) => {
     const trips = ls.line.trips.map((t) => tripBodyClockScore(t, homeBaseOffsetMinutes)?.score).filter((s): s is number => s !== undefined);
@@ -84,17 +93,19 @@ export function LineComparisonModal({
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-4 gap-y-1.5 text-xs sm:grid-cols-[120px_1fr_1fr]">
-        <StatRow label="Days off" values={[String(lineScores[0].line.daysOff), String(lineScores[1].line.daysOff)]} />
+        <StatRow row={0} label="Days off" values={[String(lineScores[0].line.daysOff), String(lineScores[1].line.daysOff)]} />
         <StatRow
+          row={1}
           label="Credit"
           values={[formatHours(lineScores[0].line.totalCreditHours), formatHours(lineScores[1].line.totalCreditHours)]}
         />
         <StatRow
+          row={2}
           label="TAFB"
           values={[formatHours(lineScores[0].line.totalTafbHours), formatHours(lineScores[1].line.totalTafbHours)]}
         />
-        <StatRow label="Landings" values={[String(lineScores[0].line.totalLandings), String(lineScores[1].line.totalLandings)]} />
-        <StatRow label="Duty periods" values={[String(lineDutyPeriods(lineScores[0].line)), String(lineDutyPeriods(lineScores[1].line))]} />
+        <StatRow row={3} label="Landings" values={[String(months[0].totalLandings), String(months[1].totalLandings)]} />
+        <StatRow row={4} label="Duty periods" values={[String(lineDutyPeriods(months[0])), String(lineDutyPeriods(months[1]))]} />
         <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Body clock</div>
         {bodyClocks.map((b, i) => scoreCell(b.line, i))}
         <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Hardest trip on the body clock</div>

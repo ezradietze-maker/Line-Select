@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { HotelPinMap } from "@/components/hotels/HotelPinMap";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Gauge, type GaugeTone } from "@/components/ui/Gauge";
@@ -421,6 +422,7 @@ function HotelCard({
 
           {expanded && (
             <div className="mt-3">
+              <HotelPinMap code={group.code} location={hotel.location} />
               <HotelQualityDetails hotel={hotel} profile={profile} />
             </div>
           )}

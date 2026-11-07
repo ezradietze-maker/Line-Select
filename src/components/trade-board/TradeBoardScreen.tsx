@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NoteBox } from "@/components/ui/NoteBox";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -27,9 +27,9 @@ import type { UserAccount } from "@/types/auth";
 import type { TripSnapshot, TradeOffer } from "@/types/trade";
 
 function formatHours(hours: number): string {
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
-  return `${h}:${m.toString().padStart(2, "0")}`;
+  // Whole minutes first, so 20.999 h reads 21:00 rather than 20:60.
+  const total = Math.round(hours * 60);
+  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
 /** Every trip in a bid pack, paired with which of the pilot's own lines it currently lives on. */
@@ -79,6 +79,8 @@ interface TradeBoardScreenProps {
   /** A synthetic, client-only offer for demo purposes — see `fake-trade-offers.ts`. */
   demoOffer?: TradeOffer | null;
   onAcceptDemoOffer?: () => void;
+  /** The board as the app last polled it — see \`useAppState().tradeOffers\`. */
+  polledOffers?: TradeOffer[];
 }
 
 export function TradeBoardScreen({
@@ -86,9 +88,11 @@ export function TradeBoardScreen({
   user,
   demoOffer,
   onAcceptDemoOffer,
+  polledOffers,
 }: TradeBoardScreenProps) {
   const [offers, setOffers] = useState<TradeOffer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showPostForm, setShowPostForm] = useState(false);
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -99,7 +103,8 @@ export function TradeBoardScreen({
   const refresh = useCallback(async () => {
     setLoading(true);
     const data = await fetchTradeOffers();
-    setOffers(data);
+    setLoadFailed(data === null);
+    if (data) setOffers(data);
     setLoading(false);
   }, []);
 
@@ -109,6 +114,16 @@ export function TradeBoardScreen({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [refresh]);
+
+  // The app polls the board every few seconds (the Inbox badge and toasts read it): each new poll is shown here too,
+  // or a proposal could clear the badge while this list still holds the copy from when the screen opened.
+  const firstPoll = useRef(polledOffers);
+  useEffect(() => {
+    if (polledOffers && polledOffers !== firstPoll.current) {
+      setOffers(polledOffers);
+      setLoadFailed(false);
+    }
+  }, [polledOffers]);
 
   const realVisibleOffers = bidPack ? offers.filter((o) => sameBidPack(o, bidPack)) : offers;
   // The example offer only fills an otherwise-empty board — once a real
@@ -172,8 +187,7 @@ export function TradeBoardScreen({
 
       {!user && (
         <InfoBanner>
-          Sign in to post an offer or propose a trade. You can still browse what&rsquo;s open
-          below.
+          Sign in to see what other pilots have posted, and to post an offer or propose a trade.
         </InfoBanner>
       )}
       {user && !bidPack && <InfoBanner>Upload your bid pack to post an offer or propose a trade.</InfoBanner>}
@@ -188,6 +202,7 @@ export function TradeBoardScreen({
       )}
 
       {actionError && <ErrorBanner className="mt-4">{actionError}</ErrorBanner>}
+      {loadFailed && <ErrorBanner className="mt-4">Couldn&rsquo;t load the board just now. Check your connection and try again in a moment.</ErrorBanner>}
 
       {loading ? (
         <SkeletonCards shape="offer" className="mt-8" />
@@ -385,7 +400,11 @@ export function OfferCard({
             {isMine ? "You" : offer.isDemo ? "Example pilot" : offer.offeringDisplayName} offering {offerTripName(offer.offeredTrip)}
             {offer.isDemo && (
               <span
-                title="No real pilot has posted an offer for this bid pack yet, so this is an example of what one looks like."
+                title={
+                  currentUserId
+                    ? "No real pilot has posted an offer for this bid pack yet, so this is an example of what one looks like."
+                    : "An example of what an offer looks like. Sign in to see the real ones."
+                }
                 className="ml-2 inline-block rounded-full bg-warn-soft px-2 py-0.5 align-middle font-sans text-[11px] font-semibold uppercase tracking-wide text-warn"
               >
                 Example &mdash; not real

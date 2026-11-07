@@ -17,11 +17,15 @@ const MAX_EXPANDED = 16 * 1024 * 1024;
  * browser clearing its storage. The body both ways is the browser's compact pack (`compactBidPack`), gzipped; the
  * server checks it unzips to a pack before keeping it, and keeps the bytes as sent.
  */
-export async function GET() {
+export async function GET(request?: Request) {
   const user = await getCurrentServerUser();
   if (!user) return NextResponse.json({ error: "Sign in to load your bid pack." }, { status: 401 });
   const record = await getBidPackRecord(user.id);
   if (!record) return new Response(null, { status: 204, headers: { "Cache-Control": "private, no-store" } });
+  // "?meta": which pack it is and when it was saved, without the pack — how a device holding one tells if it's behind.
+  if (request && new URL(request.url).searchParams.has("meta")) {
+    return NextResponse.json({ packId: record.packId, savedAt: record.updatedAt }, { headers: { "Cache-Control": "private, no-store" } });
+  }
   return new Response(new Uint8Array(record.data), {
     headers: { "Content-Type": "application/gzip", "Cache-Control": "private, no-store", "X-Pack-Id": encodeURIComponent(record.packId), "X-Saved-At": record.updatedAt },
   });

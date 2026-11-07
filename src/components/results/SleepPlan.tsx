@@ -21,8 +21,9 @@ function blockClass(kind: SleepBlock["kind"]): string {
 }
 
 const hoursOf = (min: number) => {
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
+  const whole = Math.round(min);
+  const h = Math.floor(whole / 60);
+  const m = whole % 60;
   return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
 };
 

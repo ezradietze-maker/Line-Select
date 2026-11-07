@@ -18,20 +18,19 @@ export default function RootPage() {
   const router = useRouter();
   const { ready, bidPack, profile, handleTrySample } = useAppState();
 
-  // Only a pilot who ARRIVED here already holding a bid pack gets bounced to
-  // their resume point. A bid pack that appears while this page is showing
-  // (e.g. "Try it with sample data") already navigates itself — redirecting
-  // again here raced that navigation and dropped a returning pilot straight
-  // onto Results, skipping the "same preferences as last time?" prompt.
-  const hadBidPackOnArrival = useRef<boolean | null>(null);
+  // A pack this page itself loaded ("Try it with sample data") navigates on its
+  // own — redirecting again here raced that navigation and dropped a returning
+  // pilot straight onto Results, skipping the "same preferences as last time?"
+  // prompt. Any other pack is the pilot's own, whether it was there on arrival
+  // or arrived a moment later with their account (signed in on the server, but
+  // this device last showed a guest), and gets them to their resume point.
+  const loadingSample = useRef(false);
   // "/?welcome" shows the landing page to anyone, a returning pilot included — no bounce to their resume point.
   // (Only read once state has loaded, so the server's render and the first client render still match.)
   const [welcomeAsked] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("welcome"));
 
   useEffect(() => {
-    if (!ready || welcomeAsked) return;
-    if (hadBidPackOnArrival.current === null) hadBidPackOnArrival.current = !!bidPack;
-    if (!hadBidPackOnArrival.current || !bidPack) return;
+    if (!ready || welcomeAsked || !bidPack || loadingSample.current) return;
     const target = landingPathFor(bidPack, profile);
     if (target !== "/") router.replace(target);
   }, [ready, bidPack, profile, router, welcomeAsked]);
@@ -52,6 +51,11 @@ export default function RootPage() {
   // A returning pilot on their way to their resume point: the mark, breathing gently.
   if (ready && bidPack && !welcomeAsked) return loader;
 
+  function trySample() {
+    loadingSample.current = true;
+    handleTrySample();
+  }
+
   // Everyone else gets the landing page in the server HTML, so the headline
   // paints before any JavaScript runs. A returning pilot (marked before first
   // paint by the bootstrap in lib/theme.ts) sees the mark instead while their
@@ -60,7 +64,7 @@ export default function RootPage() {
     <>
       <div className="returning-only">{loader}</div>
       <div className="landing-only">
-        <WelcomeScreen onStart={() => router.push("/upload")} onTrySample={handleTrySample} />
+        <WelcomeScreen onStart={() => router.push("/upload")} onTrySample={trySample} />
       </div>
     </>
   );

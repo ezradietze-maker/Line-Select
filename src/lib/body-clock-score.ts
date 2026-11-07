@@ -235,7 +235,11 @@ function computeTripPoints(trip: Trip, homeBaseOffsetMinutes: number | null, nig
 }
 
 const hours = (h: number) => (h >= 10 ? `${Math.round(h)} h` : `${Math.round(h * 10) / 10} h`);
-const clock = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(Math.round(m % 60)).padStart(2, "0")}`;
+// Rounded to the minute before splitting, so a drifted 04:59.7 reads 05:00 rather than 04:60.
+const clock = (m: number) => {
+  const t = (((Math.round(m) % 1440) + 1440) % 1440);
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+};
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function detailOf(id: BodyClockFactorId, c: BodyClockScore["counts"], extra: { earliestEarly: number | null; recoveryGaps: number }): string {

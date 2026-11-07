@@ -11,10 +11,12 @@ import {
   closestCenter,
   useSensor,
   useSensors,
+  type Announcements,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
+import { swapKeyboardCoordinates } from "@/lib/swap-keyboard";
 import { motion, useReducedMotion } from "motion/react";
 import { BidOrderExport, type BidOrderEntry } from "@/components/results/BidOrderExport";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -79,6 +81,8 @@ import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
 import { useProgressiveCount } from "@/lib/use-progressive-count";
+import { FlipText } from "@/components/ui/FlipText";
+import { PillHighlight } from "@/components/ui/PillHighlight";
 import { setRankingSnapshot } from "@/lib/ranking-snapshot";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
@@ -157,6 +161,9 @@ function buildJudgments(ranked: LineScore[], fromIndex: number, toIndex: number)
 
 /** How long to hold the list back waiting on hotel reviews before showing it anyway. Hotel data changes scores, so showing the list first and then reshuffling it under a pilot who's already reading is worse than a short wait. */
 const HOTEL_WAIT_MS = 6000;
+
+/** The chosen one of All lines / Shortlist / Realistic: a lit pad that slides between them. */
+const VIEW_PILL = "absolute inset-0 bg-accent-soft";
 
 interface ResultsViewProps {
   bidPack: BidPack;
@@ -454,7 +461,9 @@ export function ResultsView({
     ),
     [matching, showHidden, hiddenSet, view, starredSet, realisticIds]
   );
-  const sorted = useMemo(() => sortLineScores(listable, sortMode, bidPack), [listable, sortMode, bidPack]);
+  // Departures counted as each card counts them: the times the pilot leaves home.
+  const departureOptions = useMemo(() => monthDepartureOptions(bidPack.base, profile, flights), [bidPack.base, profile, flights]);
+  const sorted = useMemo(() => sortLineScores(listable, sortMode, bidPack, departureOptions), [listable, sortMode, bidPack, departureOptions]);
 
   // Back to the first page whenever what's being listed changes — landing on
   // "page 4 of a different list" would show a scrolled-past-nothing view.
@@ -598,8 +607,25 @@ export function ResultsView({
     // A small activation distance so a plain tap/click to expand a card
     // (no real movement) never gets mistaken for the start of a drag.
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor)
+    // From the keyboard, Up and Down jump straight to the line above or below, so Space–arrow–Space swaps like a drop.
+    useSensor(KeyboardSensor, { coordinateGetter: swapKeyboardCoordinates })
   );
+
+  // What a screen reader hears while swapping: line numbers and places, never internal ids.
+  const swapSpeech = useMemo(() => {
+    const where = new Map(sorted.map((r, i) => [r.line.id, { number: r.line.lineNumber, place: i + 1 }]));
+    const say = (id: string | number | undefined) => {
+      const w = id === undefined ? undefined : where.get(String(id));
+      return w ? `line ${w.number}, number ${w.place}` : "a line";
+    };
+    const announcements: Announcements = {
+      onDragStart: ({ active }) => `Picked up ${say(active.id)}. Up and down arrows choose the line to swap with, Space swaps, Escape cancels.`,
+      onDragOver: ({ active, over }) => (over && over.id !== active.id ? `Over ${say(over.id)}.` : `Back at ${say(active.id)}.`),
+      onDragEnd: ({ active, over }) => (over && over.id !== active.id ? `Swapped ${say(active.id)} with ${say(over.id)}.` : `Put back. ${say(active.id)} hasn't moved.`),
+      onDragCancel: ({ active }) => `Cancelled. ${say(active.id)} hasn't moved.`,
+    };
+    return { announcements, screenReaderInstructions: { draggable: "To swap this line with another, press Space, use the up and down arrows to choose the other line, then press Space again. Escape cancels." } };
+  }, [sorted]);
 
   const activeLineScore = activeId ? ranked.find((r) => r.line.id === activeId) ?? null : null;
   // Drag-to-swap only means something in the pilot's own ranking order — in any other sort the visual order isn't the ranked order the judgment is built from.
@@ -894,18 +920,23 @@ export function ResultsView({
                 role="tab"
                 aria-selected={view === "all"}
                 onClick={() => setView("all")}
-                className={`px-3 py-2 font-medium transition-colors ${view === "all" ? "bg-accent-soft text-accent" : "text-ink-muted hover:text-ink"}`}
+                className={`relative px-3 py-2 font-medium transition-colors duration-300 ${view === "all" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
               >
-                All lines
+                {view === "all" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                <span className="relative">All lines</span>
               </button>
               <button
                 type="button"
                 role="tab"
                 aria-selected={view === "shortlist"}
+                data-shortlist-tab
                 onClick={() => setView("shortlist")}
-                className={`border-l border-hairline px-3 py-2 font-medium transition-colors ${view === "shortlist" ? "bg-accent-soft text-accent" : "text-ink-muted hover:text-ink"}`}
+                className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 ${view === "shortlist" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
               >
-                Shortlist ({validMarks.starred.length})
+                {view === "shortlist" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                <span className="relative">
+                  Shortlist (<FlipText text={String(validMarks.starred.length)} />)
+                </span>
               </button>
               {forecastLines && (
                 <button
@@ -913,9 +944,10 @@ export function ResultsView({
                   role="tab"
                   aria-selected={view === "realistic"}
                   onClick={() => setView("realistic")}
-                  className={`border-l border-hairline px-3 py-2 font-medium transition-colors ${view === "realistic" ? "bg-accent-soft text-accent" : "text-ink-muted hover:text-ink"}`}
+                  className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
                 >
-                  Realistic ({realisticIds.size})
+                  {view === "realistic" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                  <span className="relative">Realistic ({realisticIds.size})</span>
                 </button>
               )}
             </div>
@@ -998,6 +1030,7 @@ export function ResultsView({
             // move to support layouts that DO reflow mid-drag; measuring once at
             // drag start is correct here and removes that cost entirely.
             measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
+            accessibility={swapSpeech}
           >
             <div ref={listRef} className="mt-3 space-y-1.5">
               {displayed.length > 0 && <BidPackHeader columns={columns} layout={layout} />}
