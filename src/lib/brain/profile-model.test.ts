@@ -40,6 +40,15 @@ describe("keeping the pilot model current after the interview", () => {
     expect(withoutDrag(again, "s3")).toEqual(first);
   });
 
+  it("keeps a choice set aside when it's undone out of order and a later swap still reverses it", () => {
+    let c = choicesFromDrag([{ favored: "A", overtaken: "B" }], "d1");
+    c = addDragChoices(c, choicesFromDrag([{ favored: "B", overtaken: "A" }], "d2"));
+    c = addDragChoices(c, choicesFromDrag([{ favored: "A", overtaken: "B" }], "d3"));
+    c = addDragChoices(c, choicesFromDrag([{ favored: "B", overtaken: "A" }], "d4"));
+    const live = withoutDrag(c, "d2").filter((x) => !x.supersededBy).map((x) => `${x.preferred}>${x.other}`);
+    expect(live).toEqual(["B>A"]);
+  });
+
   it("uses a new base when the pilot edits a priority, keeping their choices", () => {
     const edited = { ...base, criteria: base.criteria.map((c) => (c.id === "off" ? { ...c, weight: 1 } : c)) };
     const r = withModel(profile, pack, { base: edited });

@@ -1,6 +1,7 @@
 import type { BidPack } from "@/types/bidpack";
 import type { LoggedMonth } from "@/types/logbook";
 import type { PreferenceProfile } from "@/types/preferences";
+import { isPackId, legacyPackIdFor } from "@/lib/pack-id";
 
 /**
  * This month's bid, step by step: what's done ticks itself where the app can see it (the pack's loaded, the interview's
@@ -21,7 +22,7 @@ export interface ChecklistItem {
 /** The logbook month for this pack: logged from it, or the same base, aircraft, seat and month. */
 export function loggedMonthFor(profile: Pick<PreferenceProfile, "logbook">, pack: Pick<BidPack, "id" | "base" | "aircraft" | "seat" | "month">): LoggedMonth | null {
   return (
-    profile.logbook?.find((m) => m.bidPackId === pack.id) ??
+    profile.logbook?.find((m) => isPackId(m.bidPackId, pack)) ??
     profile.logbook?.find((m) => m.base === pack.base && m.aircraft === pack.aircraft && m.seat === pack.seat && m.month === pack.month) ??
     null
   );
@@ -31,7 +32,7 @@ export function bidChecklist(profile: PreferenceProfile, pack: Pick<BidPack, "id
   return [
     { id: "pack", label: "Bid pack uploaded", done: true, manual: false },
     { id: "interview", label: "Interview done", done: !!profile.pilotModel || !!profile.brainInterview?.reviewedModel, manual: false },
-    { id: "entered", label: "Bid entered in the bid system", done: !!profile.bidChecklist?.[pack.id]?.enteredAt, manual: true },
+    { id: "entered", label: "Bid entered in the bid system", done: !!(profile.bidChecklist?.[pack.id] ?? profile.bidChecklist?.[legacyPackIdFor(pack)])?.enteredAt, manual: true },
     { id: "award", label: "Award logged", done: !!loggedMonthFor(profile, pack), manual: false },
   ];
 }

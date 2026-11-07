@@ -4,6 +4,7 @@ import { backfillDeadheads } from "@/lib/deadhead";
 import { backfillStandby } from "@/lib/standby";
 import { anchorTripToItsDate } from "@/lib/trip-anchor";
 import type { BidPack, Trip, TripDutyPeriod } from "@/types/bidpack";
+import { moveKeptUnderOldId, withCurrentPackId } from "@/lib/pack-id";
 
 function bidPackKey(userId: string | null): string {
   return userId ? `line-select:bidpack:${userId}:v1` : "line-select:bidpack:guest:v1";
@@ -50,7 +51,8 @@ function anchorStored(pack: BidPack, trip: Trip): Trip {
  * older version of the app shouldn't crash the newer one just because a
  * trip predates a field like `layoverDetails`.
  */
-function normalizeBidPack(parsed: BidPack): BidPack {
+function normalizeBidPack(stored: BidPack): BidPack {
+  const parsed = withCurrentPackId(stored);
   return {
     ...parsed,
     lines: parsed.lines.map((line) => {
@@ -171,7 +173,17 @@ export function loadBidPack(userId: string | null): BidPack | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(bidPackKey(userId));
-    return raw ? normalizeBidPack(expandBidPack(JSON.parse(raw) as BidPack | CompactPack)) : null;
+    if (!raw) return null;
+    const stored = expandBidPack(JSON.parse(raw) as BidPack | CompactPack);
+    const pack = normalizeBidPack(stored);
+    // Saved under the id it had before ids named the aircraft: what the device kept under that id follows it.
+    if (pack.id !== stored.id) {
+      moveKeptUnderOldId(stored.id, pack.id, userId);
+      // Rewritten under its new id but not re-stamped: it wasn't saved any later than before, and a stamp of "now"
+      // would make it look newer than a pack saved to the account since (see `bidPackSavedAt`).
+      window.localStorage.setItem(bidPackKey(userId), JSON.stringify(compactBidPack(pack)));
+    }
+    return pack;
   } catch {
     return null;
   }

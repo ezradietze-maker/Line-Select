@@ -17,6 +17,8 @@ const HOTEL_LOOKUPS_PER_HOUR = 250;
  */
 const LOOKUP_COST_USD = 0.15;
 const UNLISTED_LOOKUPS_PER_DAY = 150;
+/** Lookups the whole site makes in a day: a cold pack has around a hundred hotels, so this covers several fresh packs a day. Raise with HOTEL_SITE_DAILY_LOOKUPS. */
+const hotelSiteLookupsPerDay = () => Number(process.env.HOTEL_SITE_DAILY_LOOKUPS) || 300;
 /** A result missing its amenities or review summary for a passing failure is kept a day, not a month. */
 const INCOMPLETE_CACHE_SECONDS = 24 * 60 * 60;
 
@@ -341,21 +343,33 @@ export async function GET(request: Request) {
   // A signed-in pilot may look up names no parsed pack lists (a pack saved before packs' hotels were kept), but only
   // so many a day: unlimited, one account could spend the whole site's day on made-up names and pause the interview
   // for everyone. A pack has around a hundred hotels.
-  if (!packHotel && !(await checkRateLimit("hotels-unlisted", spender.key, UNLISTED_LOOKUPS_PER_DAY, 24 * 60 * 60)).ok) return rateLimitedResponse();
   const allowed = await checkSpend(spender, { siteOnly: true });
   if (!allowed.ok) return spendLimitResponse(allowed);
+  if (!packHotel && !(await checkRateLimit("hotels-unlisted", spender.key, UNLISTED_LOOKUPS_PER_DAY, 24 * 60 * 60)).ok) return rateLimitedResponse();
+  // Hotel lookups share the site's daily spending cap with the AI, so they get a ceiling of their own inside it: names
+  // run through by the thousand (made up, or from an uploaded PDF) would otherwise pause the interview for everyone.
+  if (!(await checkRateLimit("hotels-site", "all", hotelSiteLookupsPerDay(), 24 * 60 * 60)).ok) {
+    const result: HotelLookupResult = { code, hotelName, hotel: null, error: "Hotel ratings are resting until tomorrow." };
+    return NextResponse.json(result);
+  }
 
+  let charged = false;
+  const charge = async () => {
+    if (charged) return;
+    charged = true;
+    await recordSpend(spender, LOOKUP_COST_USD, { siteOnly: true });
+  };
   try {
     const { hotel, complete } = await findHotelOnGoogle(code, hotelName, apiKey, process.env.ANTHROPIC_API_KEY);
-    await recordSpend(spender, LOOKUP_COST_USD, { siteOnly: true });
+    await charge();
     await setCachedHotel(key, hotel, complete ? undefined : INCOMPLETE_CACHE_SECONDS);
     const result: HotelLookupResult = { code, hotelName, hotel, error: null };
     return NextResponse.json(result);
   } catch (e) {
     // The detail (Google's own error body) goes to the server log, not the pilot.
     await reportProblem("hotels", e, { code });
-    // The searches that ran before the failure were still billed.
-    await recordSpend(spender, LOOKUP_COST_USD, { siteOnly: true });
+    // The searches that ran before the failure were still billed — once.
+    await charge().catch(() => {});
     const result: HotelLookupResult = {
       code,
       hotelName,

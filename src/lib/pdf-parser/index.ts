@@ -30,6 +30,7 @@ import type {
   ParseWarning,
 } from "@/lib/pdf-parser/types";
 import type { BidPack, BidPackInfo, ReserveLine, Seat, SeniorityEntry, SweepFlight, VacationPeriod } from "@/types/bidpack";
+import { packIdFor } from "@/lib/pack-id";
 
 export { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 export type { ParseBidPackResult, ParseProgress } from "@/lib/pdf-parser/types";
@@ -252,7 +253,7 @@ export async function parseBidPackPdf(
     }
 
     bidPacksBySeat[seat] = {
-      id: `uploaded-${meta.base}-${seat}-${meta.month}`.toLowerCase(),
+      id: packIdFor({ base: meta.base, aircraft: meta.aircraft, seat, month: meta.month }),
       month: meta.month,
       base: meta.base,
       aircraft: meta.aircraft,

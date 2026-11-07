@@ -584,7 +584,16 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
         const row = queue.shift()!;
         const richLeg = tryParseRichLeg(row);
         if (richLeg) {
-          const replay = staged && richLeg.layover && isGroundRide(richLeg.flightNumber) && richLeg.depAirport === staged.city ? staged : null;
+          // Unless the layover's own hotel is printed after the cab: then the one before it really was a day room.
+          const layoverCity = richLeg.layover?.city;
+          const ownHotelAfter = (() => {
+            for (const next of queue) {
+              if (tryParseRichLeg(next)) return false;
+              if (extractHotel(next)?.city === layoverCity) return true;
+            }
+            return false;
+          })();
+          const replay = staged && richLeg.layover && isGroundRide(richLeg.flightNumber) && richLeg.depAirport === staged.city && !ownHotelAfter ? staged : null;
           const rows = sinceLeg;
           staged = null;
           sinceLeg = [];

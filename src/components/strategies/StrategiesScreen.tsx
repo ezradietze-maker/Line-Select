@@ -172,7 +172,7 @@ function SeniorityForm({
         className="panel-glass mt-6 max-w-md space-y-4 p-5"
         onSubmit={(e) => {
           e.preventDefault();
-          if (valid) onSave({ rank: rankNum, totalPilots: totalNum });
+          if (valid) onSave({ rank: rankNum, totalPilots: totalNum, source: "typed" });
         }}
       >
         <TextField

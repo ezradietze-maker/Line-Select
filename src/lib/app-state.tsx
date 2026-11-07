@@ -23,6 +23,7 @@ import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 import type { TradeOffer } from "@/types/trade";
 import type { ToastItem } from "@/components/ui/Toast";
+import { isPackId, legacyPackIdFor, moveKeptUnderOldId, packIdFor } from "@/lib/pack-id";
 
 /**
  * Whether this device was signed in when the app last checked — not a credential (the session cookie is), just a
@@ -90,7 +91,10 @@ interface DataState {
 /** A signed-in pilot with no pack on this device gets the one saved to their account, kept here too from then on. */
 async function packFromAccount(userId: string): Promise<BidPack | null> {
   const pack = await fetchServerBidPack();
-  if (pack) saveBidPack(userId, pack);
+  if (!pack) return null;
+  // Saved to the account before ids named the aircraft: what this device kept under the older id follows it.
+  if (pack.id === packIdFor(pack)) moveKeptUnderOldId(legacyPackIdFor(pack), pack.id, userId);
+  saveBidPack(userId, pack);
   return pack;
 }
 
@@ -102,7 +106,7 @@ async function accountBidPack(userId: string): Promise<BidPack | null> {
   const local = loadBidPack(userId);
   if (!local) return packFromAccount(userId);
   const server = await fetchServerBidPackMeta();
-  if (!server || server.packId === local.id) return local;
+  if (!server || isPackId(server.packId, local)) return local;
   const localAt = bidPackSavedAt(userId);
   if (localAt > 0) return server.savedAt > localAt ? ((await packFromAccount(userId)) ?? local) : local;
   // A copy saved before the device kept a time beside it: a newer month only, never by guessing which was saved
@@ -138,6 +142,7 @@ interface AppStateValue extends DataState {
   /** The story-driven interview reviews its own priorities before finishing, so its profile is saved as it comes. */
   handleBrainInterviewComplete: (profile: PreferenceProfile) => void;
   handleUpdateProfile: (updated: PreferenceProfile) => void;
+  handleUpdateProfileWith: (update: (latest: PreferenceProfile) => PreferenceProfile) => void;
   handleSaveProfileEdits: (edits: ProfileEdits) => void;
   handleSaveSeniority: (input: SeniorityInput) => void;
   handleStartInterview: () => void;
@@ -544,6 +549,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     persistProfile(updated);
   }
 
+  /** A change worked out on whatever the profile is by now — for a result that lands after the screen asking for it closed. */
+  function handleUpdateProfileWith(update: (latest: PreferenceProfile) => PreferenceProfile) {
+    const latest = latestProfileRef.current;
+    if (latest) handleUpdateProfile(update(latest));
+  }
+
   /** Tells the fleet learning which interview values the pilot changed, and where those values had come from. */
   function reportCorrections(before: PreferenceProfile, after: PreferenceProfile) {
     if (!bidPack || !isLearnablePack(bidPack)) return;
@@ -724,6 +735,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     handleConfirmPreferences,
     handleBrainInterviewComplete,
     handleUpdateProfile,
+    handleUpdateProfileWith,
     handleSaveProfileEdits,
     handleSaveSeniority,
     handleStartInterview,
