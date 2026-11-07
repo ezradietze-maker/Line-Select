@@ -65,6 +65,14 @@ export default function PrivacyPage() {
             lookup, without storing them &mdash; Section 4.)
           </p>
           <p className="mt-3">
+            If you use Send to VIPS, your own FedEx employee number and your answers to VIPS&rsquo;s
+            bid questions are kept in your browser&rsquo;s local storage too, so you don&rsquo;t retype
+            them. Pressing send posts your line order, those answers, and your employee number
+            straight from your browser to FedEx&rsquo;s pilot site in a new tab &mdash; none of it passes
+            through or is stored on our servers, and you sign in to FedEx yourself, so we never see
+            your FedEx password.
+          </p>
+          <p className="mt-3">
             Your interview answers and preference weights work differently if you create an
             account: they&rsquo;re also stored on our server, keyed to your account, specifically
             so they follow you to a new device or browser instead of being lost &mdash; the same
