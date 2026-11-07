@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import type { PilotModel } from "@/types/pilot-model";
 import { EXPILOT_MODEL } from "./expilot-model";
+import type { RealSort } from "./real-sort";
 
 /**
  * Pilots to test with. The first is real — the ex-pilot's own opening
@@ -24,6 +25,8 @@ export interface EvalPersona {
   followUps?: InterviewExchange[];
   /** The pilot's own verdicts on specific lines (real ground truth, from a readback). */
   lineLabels?: Record<string, "top" | "fine" | "never">;
+  /** The pilot's own sort of some lines and trip picks (real ground truth) — never in their truth sheet. */
+  sort?: RealSort;
 }
 
 /** What the interview knows about a simulated pilot before they answer anything — the app's pilot context, for their pack. */
@@ -67,6 +70,17 @@ const expilot = existsSync(EXPILOT_FILE) ? (JSON.parse(readFileSync(EXPILOT_FILE
 
 const followUps = realFollowUps();
 
+/**
+ * The ex-pilot on his own pack (MD-11 Memphis captain, Oct 2026): his story, interview answers and city grades from
+ * Oct 15, and his Oct 21 answers to eight questions — his words only. His line sort and five trip pairs from Oct 21 are
+ * the test, so they stay out of what the simulated pilot knows. Built from his private files into the gitignored eval
+ * cache; without it, the persona is absent.
+ */
+const EXPILOT_MEM = ".cache/eval/expilot-mem-persona.json";
+const expilotMem = existsSync(EXPILOT_MEM)
+  ? (JSON.parse(readFileSync(EXPILOT_MEM, "utf8")) as { pack: string; commuteFrom: string; context: string; story: string; followUps: InterviewExchange[]; sort: RealSort })
+  : null;
+
 /** His answers to the readback of the brain's model (Oct 10 2026): corrections, answers to its questions, and verdicts on 15 lines. */
 const READBACK = ".cache/eval/expilot-readback.json";
 const readback = existsSync(READBACK)
@@ -74,6 +88,7 @@ const readback = existsSync(READBACK)
   : null;
 
 export const PERSONAS: EvalPersona[] = [
+  ...(expilotMem ? [{ id: "expilot-mem", isCommuter: true, ...expilotMem }] : []),
   ...(expilot
     ? [
         { id: "expilot", pack: expilot.pack, isCommuter: true, commuteFrom: expilot.commuteFrom, context: expilot.context, story: expilot.story, referenceModel: EXPILOT_MODEL ?? undefined },
@@ -170,6 +185,6 @@ export const PERSONAS: EvalPersona[] = [
     isCommuter: true,
     commuteFrom: "BNA",
     context: "A300 captain based in Memphis (MEM), lives in Nashville and drives in (about 3.5 hours). Mid-seniority.",
-    story: `I drive in from Nashville, about three and a half hours each way, so I don't fly a commute but I do have to plan around that drive. I won't drive in for a 3 am report, so early reports at Memphis are a problem, I'd have to come in the night before. Same at the end, landing at 4 am and then driving three hours is dangerous, I try to avoid that. So I like trips that start in the afternoon or evening and end mid-morning or later. I prefer longer trips, 4 or 5 days, so I make the drive fewer times. Fewer trips is better. I'd like the 10th through the 13th off for my daughter's wedding, that's the one hard date this month. Overall I want around 15 days off and decent credit, nothing crazy. I like the layovers where I can get to a gym, the bigger cities like Newark and Ontario and Seattle. I don't love the A300 hub turns where you sit at a station for 8 hours at night with nowhere to sleep.`,
+    story: `I drive in from Nashville, about three and a half hours each way, so I don't fly a commute but I do have to plan around that drive. I won't drive in for a 3 am report, so early reports at Memphis are a problem, I'd have to come in the night before. Same at the end, landing at 4 am and then driving three hours is dangerous, I try to avoid that. So I like trips that start in the afternoon or evening and end mid-morning or later. I prefer longer trips, 4 or 5 days, so I make the drive fewer times. Fewer trips is better. I'd like the 10th through the 13th off for my daughter's wedding, that's the one hard date this month. Overall I want around 15 days off and decent credit, nothing crazy. I like the layovers where I can get to a gym, the bigger cities like Newark and Ontario and Seattle. Regular hub turns through the sort are fine, three or four hours at Indy is no big deal. What I don't love is a really long sit at night with nowhere to sleep, like the 8 hours at a station we used to get on the A300.`,
   },
 ];
