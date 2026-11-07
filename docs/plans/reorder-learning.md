@@ -294,6 +294,28 @@ Each step is described in full and approved before it starts. Every step runs `n
        over the whole catalog, makes them worse too (picks change from split to split: noise). His order within a pile
        can't be predicted from the lines he saw. So the most swaps can do for him is no harm, which the new learner now
        gets close to (98.8 vs 98.9 across piles). More than that has to come from his words (step 4).
+     - **Raising his score (Nov 6–7).**
+       1. **The bench now scores him the way the app does**, with his five trip picks fitted. The trip lean on each
+          line's worst trip lifts his held-out lines from 85.1% to 86.3% before any swap.
+       2. **New score: his whole bid list** (all 20 lines, his swaps kept, the rest in the model's order) against his
+          real order. That's what he'd submit.
+       3. **Two changes that raised it:**
+          - the learner fits the score he sees (trip-leaned, trip-taught weights);
+          - a "these swaps teach nothing" noise level (∞), picked by evidence (`noisePenalty` 0.5).
+       4. **`deriveModel` fits trip grades before the line fit**, so the app matches. Interview only, all 189 readings:
+          87.72% → 87.73%, across piles 99.10% both.
+
+       | His whole bid list (6 swaps) | Every pair | Across piles |
+       |---|---|---|
+       | Before step 1 (swaps snapped back, old fit) | 87.2% | 98.2% |
+       | Swaps kept, old fit | 89.8% | 98.5% |
+       | **Swaps kept, new learner** | **91.2%** | **99.3%** |
+       | Swaps kept, nothing learned (best possible for him) | 91.3% | 99.4% |
+
+       - Held-out lines: 86.0% (no learning 86.3%, old fit 84.5%).
+       - Simulated pilots, 12 swaps: 77.0% (no learning 75.8%, old fit 78.4%).
+       - A swap paints at once; the explanation and refit run after paint (on the biggest pack and a 4× slowed phone,
+         the refit took about 1.9 s inside the drop).
      - Threshold explanations (H2) weren't built: on his data no learned rule generalises, so there was nothing for them
        to win. They stay in step 7, for when real swap logs show "one bad thing" swaps.
 4. **The one question** (§4.4).

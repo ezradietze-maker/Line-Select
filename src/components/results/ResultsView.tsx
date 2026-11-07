@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -134,6 +134,11 @@ function DragPreview({ lineScore }: { lineScore: LineScore }) {
 }
 
 /** Whether the pilot expressed any opinion at all about their layover hotel — gates fetching hotel quality data at all, so a pilot who left every hotel slider at 0 doesn't pay for network calls that can't affect their score. */
+/** Runs `fn` once the browser has drawn the next frame — after whatever the current update shows. */
+function afterPaint(fn: () => void) {
+  requestAnimationFrame(() => setTimeout(fn, 0));
+}
+
 function caresAboutLayoverQuality(profile: PreferenceProfile): boolean {
   const { hotelFood, hotelGym, hotelGrocery, hotelQuiet, hotelQuality } = profile.weights;
   return [hotelFood, hotelGym, hotelGrocery, hotelQuiet, hotelQuality].some((w) => Math.abs(w) > 0);
@@ -377,11 +382,20 @@ export function ResultsView({
     [userId, bidPack.id]
   );
 
+  // The newest profile and placements, for learning that runs after a swap has painted (see `handleDragEnd`).
+  const profileRef = useRef(profile);
+  const placementsRef = useRef(placements);
+  useLayoutEffect(() => {
+    profileRef.current = profile;
+    placementsRef.current = placements;
+  }, [profile, placements]);
+
   const updatePlacements = useCallback(
     (fn: (p: Placement[]) => Placement[]) => {
       setPlacements((prev) => {
         const next = fn(prev);
         savePlacements(userId, bidPack.id, next);
+        placementsRef.current = next;
         return next;
       });
     },
@@ -666,14 +680,24 @@ export function ResultsView({
       const order = placement.order.map((id) => numberOf.get(id)!);
       const higher = order[0];
       const lower = order[order.length - 1];
-      // Why, from the model the pilot was looking at when they swapped.
-      const before = new Map(scorePackV2(bidPack, profile.pilotModel, { pack: packMetrics ?? undefined }).map((s) => [s.lineNumber, s]));
-      const why = before.has(higher) && before.has(lower) ? explainSwap(before.get(higher)!, before.get(lower)!) : null;
-      const choices = addDragChoices(profile.brainInterview?.choices ?? [], choicesFromSwap(order, swapId));
-      const { profile: next, changes } = withModel(profile, bidPack, { choices }, packMetrics ?? undefined);
-      remember(next);
-      const said = why?.verdict === "limit" || why?.verdict === "agreed" ? null : describeChanges(changes);
-      setLearnMessage([kept, why ? describeSwap(why, higher, lower) : null, said ? `Now ${said}.` : null].filter(Boolean).join(" "));
+      // The swap shows at once. Working out why and refitting re-measures the pack — on the biggest pack and a slow
+      // phone that's a second or two — so it waits until the swap has painted, and reads the newest profile when it runs
+      // (two quick swaps both count), skipping a swap undone in the meantime.
+      setLearnMessage(kept);
+      afterPaint(() => {
+        const current = profileRef.current;
+        if (!current.pilotModel || !placementsRef.current.some((p) => p.id === swapId)) return;
+        // Why, from the model the pilot was looking at when they swapped.
+        const before = new Map(scorePackV2(bidPack, current.pilotModel, { pack: packMetrics ?? undefined }).map((s) => [s.lineNumber, s]));
+        const why = before.has(higher) && before.has(lower) ? explainSwap(before.get(higher)!, before.get(lower)!) : null;
+        const choices = addDragChoices(current.brainInterview?.choices ?? [], choicesFromSwap(order, swapId));
+        const { profile: next, changes } = withModel(current, bidPack, { choices }, packMetrics ?? undefined);
+        profileRef.current = next;
+        onUpdateProfile(next);
+        setLastSwap({ id: swapId, before: current, after: next });
+        const said = why?.verdict === "limit" || why?.verdict === "agreed" ? null : describeChanges(changes);
+        setLearnMessage([kept, why ? describeSwap(why, higher, lower) : null, said ? `Now ${said}.` : null].filter(Boolean).join(" "));
+      });
       return;
     }
 
