@@ -27,7 +27,19 @@ export function tripReportUtc(bidPack: { bidPeriodStart: string | null; base: st
   const at = DateTime.fromISO(bidPack.bidPeriodStart, { zone })
     .plus({ days: trip.startDayIndex })
     .set({ hour: Number(hhmm.slice(0, 2)), minute: Number(hhmm.slice(2, 4)), second: 0, millisecond: 0 });
-  return at.isValid ? at.toMillis() : null;
+  if (!at.isValid) return null;
+  // The hour the clocks go back happens twice, and luxon takes the first. The printed GMT times settle which: the
+  // first leg's GMT departure less its minutes from report is the report in GMT.
+  const later = at.plus({ hours: 1 });
+  if (later.hour === at.hour && later.minute === at.minute) {
+    const leg = trip.schedule[0].legs[0];
+    if (leg && /^\d{4}$/.test(leg.depTimeGmt ?? "")) {
+      const reportGmt = (((Number(leg.depTimeGmt.slice(0, 2)) * 60 + Number(leg.depTimeGmt.slice(2)) - leg.startMinutes) % 1440) + 1440) % 1440;
+      const utcMinute = (t: DateTime) => t.toUTC().hour * 60 + t.toUTC().minute;
+      if (utcMinute(later) === reportGmt) return later.toMillis();
+    }
+  }
+  return at.toMillis();
 }
 
 const zuluAt = (anchorMs: number, minutes: number) => new Date(anchorMs + minutes * 60_000).toISOString();

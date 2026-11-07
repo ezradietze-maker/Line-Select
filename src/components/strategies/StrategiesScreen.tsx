@@ -13,8 +13,7 @@ import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TextField } from "@/components/ui/TextField";
 import { fetchAwardHistory, summarizeAwardHistory } from "@/lib/award-history";
-import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
-import { rankLines } from "@/lib/scoring";
+import { rankingAsShown } from "@/lib/ranking-as-shown";
 import { attachScoreContext, computeStanding, generateStrategies, rankStrategiesByPreference, type Standing } from "@/lib/strategy-engine";
 import { SENIORITY_BANDS } from "@/lib/seniority-bands";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
@@ -250,11 +249,10 @@ function StrategyResults({
   // effect) — layoverQuality still scores from amenities/whatever's cached,
   // just without a fresh review lookup; a reasonable trade against adding a
   // second hotel-fetch effect purely for this screen's score-lift context.
-  const implicitValuesByLine = useMemo(() => computeImplicitLineValues(bidPack), [bidPack]);
-  const ranked = useMemo(
-    () => (profile ? rankLines(bidPack, profile, {}, implicitValuesByLine) : null),
-    [bidPack, profile, implicitValuesByLine]
-  );
+  // Ordered as My Rankings shows it — the pilot's airline flights and the lines they moved by hand included — so a
+  // move's lines, and which choice a reported award was, match the list they bid from.
+  const userId = user?.id ?? null;
+  const ranked = useMemo(() => (profile ? rankingAsShown(bidPack, profile, userId) : null), [bidPack, profile, userId]);
   const rankedLineIds = useMemo(() => ranked?.map((r) => r.line.id), [ranked]);
 
   // Real self-reported hold outcomes for this exact base/aircraft/seat —
@@ -285,7 +283,9 @@ function StrategyResults({
   const standing = useMemo(() => computeStanding(bidPack, seniority), [bidPack, seniority]);
 
   function handleReaction(strategyId: StrategyId, reaction: "used" | "dismissed") {
-    if (!profile) return;
+    // The buttons stay pressed: tapping the one already chosen again isn't a second vote, and used to nudge the
+    // weights another step on every tap.
+    if (!profile || profile.strategyReactions?.[strategyId] === reaction) return;
     const { weights, implicitConfidence } = learnFromStrategyReaction(profile, strategyId, reaction);
     onUpdateProfile({
       ...profile,

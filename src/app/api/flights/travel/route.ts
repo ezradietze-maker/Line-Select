@@ -34,7 +34,8 @@ function readNeeds(value: unknown, now = Date.now()): TravelNeed[] | null {
     )
       return null;
     if (n.departAfter < now - PAST_LIMIT_MS || n.departAfter > now + FUTURE_LIMIT_MS) continue;
-    if (n.arriveBy !== undefined && typeof n.arriveBy !== "number") return null;
+    // Bounded like the departure window: every 12 hours of it is another departure board to fetch.
+    if (n.arriveBy !== undefined && (typeof n.arriveBy !== "number" || n.arriveBy < n.departAfter || n.arriveBy > n.departBefore + 72 * 3600_000)) return null;
     let groundMs: Record<string, number> | undefined;
     if (n.groundMs !== undefined) {
       if (!isJsonObject(n.groundMs)) return null;

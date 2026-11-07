@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { onceForRequest } from "@/lib/server/replay";
 import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { readAskQuery } from "@/lib/brain/ask-pack";
@@ -11,7 +12,12 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /** "Ask your pack": a pilot's question read as a query over the app's measures (see `lib/brain/ask-pack.ts`). */
+/** A copy re-sent after a dropped connection gets the first copy's answer rather than a second paid call (see `onceForRequest`). */
 export async function POST(request: Request) {
+  return onceForRequest(request, 50_000, () => respond(request));
+}
+
+async function respond(request: Request) {
   const { ok } = await checkRequestLimit("brain-ask", request, 60, 60 * 60);
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;

@@ -1,6 +1,6 @@
 import type { PilotModel } from "@/types/pilot-model";
 import type { InterviewExchange } from "./build-model";
-import { structuredCall, type BrainUsage } from "./llm";
+import { structuredCall, withSpent, type BrainUsage } from "./llm";
 import { avoidedPhrases, insteadOf, inventedLimit, pilotWordsForPrompt } from "./pilot-words";
 import { examplesTranscript, type QuestionExample } from "./question-examples";
 
@@ -349,7 +349,11 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
 
   let usage: BrainUsage | undefined;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const r = await structuredCall<RawStep>({ apiKey: input.apiKey, model: INTERVIEWER_MODEL, system: SYSTEM, user: { cached: input.packBrief, fresh }, schema: SCHEMA as unknown as Record<string, unknown>, effort: "medium", maxTokens: 4000 });
+    const spent = usage?.costUsd ?? 0;
+    // A later attempt failing still leaves the earlier, rejected ones paid for.
+    const r = await structuredCall<RawStep>({ apiKey: input.apiKey, model: INTERVIEWER_MODEL, system: SYSTEM, user: { cached: input.packBrief, fresh }, schema: SCHEMA as unknown as Record<string, unknown>, effort: "medium", maxTokens: 4000 }).catch((e) => {
+      throw withSpent(e, spent);
+    });
     usage = usage ? { ...r.usage, costUsd: usage.costUsd + r.usage.costUsd, ms: usage.ms + r.usage.ms } : r.usage;
     const step = r.data;
     const known = new Set(Object.keys(input.threads));

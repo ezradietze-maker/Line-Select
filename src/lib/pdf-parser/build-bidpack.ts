@@ -361,6 +361,48 @@ export function resolveLayoverVariants(trip: Trip, reportUtcMs: number): Trip {
   return { ...trip, schedule, layoverDetails };
 }
 
+const MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
+
+/** The dates a pairing's EFFECTIVE line covers, as GMT month-days ("OCTOBER 4 ONLY", "SEPTEMBER 29 - OCTOBER 22"); null for any other wording. */
+export function effectiveRange(text: string): { from: number; to: number } | null {
+  const day = (month: string, d: string) => {
+    const m = MONTHS.findIndex((name) => name.startsWith(month.toUpperCase()));
+    return m >= 0 && month.length >= 3 ? (m + 1) * 100 + Number(d) : null;
+  };
+  const only = text.match(/^([A-Za-z]+)\s+(\d{1,2})\s+ONLY$/i);
+  if (only) {
+    const d = day(only[1], only[2]);
+    return d === null ? null : { from: d, to: d };
+  }
+  const span = text.match(/^([A-Za-z]+)\s+(\d{1,2})\s*-\s*([A-Za-z]+)\s+(\d{1,2})$/i);
+  if (!span) return null;
+  const from = day(span[1], span[2]);
+  const to = day(span[3], span[4]);
+  return from === null || to === null ? null : { from, to };
+}
+
+/**
+ * The copy of a reused pairing number printed for this trip's own date. A number can be printed several times with
+ * the same totals ("OCTOBER 1 ONLY", "OCTOBER 15 ONLY") but its own hotels, pickups and local times — matching a line
+ * by its totals can't tell them apart, so once the grid has dated the trip, the copy whose dates cover it is used.
+ */
+function copyForItsDate(trip: Trip, chosen: ParsedPairing, copies: ParsedPairing[], bidPackMonth: string, pack: { bidPeriodStart: string | null; base: string }): Trip {
+  if (copies.length < 2) return trip;
+  const at = tripReportUtc(pack, trip);
+  if (at === null) return trip;
+  const date = tripGmtMonthDay(at);
+  const covers = (p: ParsedPairing) => {
+    const r = effectiveRange(p.effectiveText);
+    return r !== null && inRange(date, r.from, r.to);
+  };
+  if (covers(chosen)) return trip;
+  const same = (p: ParsedPairing) =>
+    Math.abs(p.creditHours - chosen.creditHours) < 0.01 && Math.abs(p.blockHours - chosen.blockHours) < 0.01 && p.landings === chosen.landings;
+  const own = copies.find((p) => p !== chosen && same(p) && covers(p));
+  if (!own) return trip;
+  return { ...pairingToTrip(own, bidPackMonth), startDayIndex: trip.startDayIndex };
+}
+
 /** Once the grid has dated a trip: its dated hotels, and its anchor on its own real date (see `trip-anchor.ts`). */
 function settleOnItsDate(trip: Trip, bidPack: { bidPeriodStart: string | null; base: string }): Trip {
   const at = tripReportUtc(bidPack, trip);
@@ -396,11 +438,15 @@ export function buildLine(
   /** The grid's own "---" (no trip) days for this line — kept only when they add up to its printed days off. */
   gridDays?: { offDays: number[]; dayCount: number },
   /** The pack's first day and base, for pinning each dated trip to its real date. */
-  pack?: { bidPeriodStart: string | null; base: string }
+  pack?: { bidPeriodStart: string | null; base: string },
+  /** Every printed copy of a pairing number, for picking the one dated for each trip. */
+  copiesOf?: (pairingNumber: string) => ParsedPairing[]
 ): Line {
   const rawTrips = matchedPairings ? matchedPairings.map((p) => pairingToTrip(p, bidPackMonth)) : [buildEstimatedTrip(summary, bidPackMonth)];
 
   applyDayPlacements(rawTrips, dayPlacements);
+  if (pack && copiesOf && matchedPairings)
+    rawTrips.forEach((t, i) => (rawTrips[i] = copyForItsDate(t, matchedPairings[i], copiesOf(matchedPairings[i].sequenceNumber), bidPackMonth, pack)));
   if (pack) rawTrips.forEach((t, i) => (rawTrips[i] = settleOnItsDate(t, pack)));
   const gridOffDays = gridDays && gridDays.offDays.length === summary.daysOff ? gridDays.offDays : undefined;
   if (gridOffDays) applyGridFootprints(rawTrips, gridOffDays, gridDays!.dayCount);

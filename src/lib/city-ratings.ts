@@ -2,6 +2,7 @@ import type { BidPack } from "@/types/bidpack";
 import { hotelKey } from "@/lib/hotel-addresses";
 import { monthsWords, seasonMonths, seasonOf, type SeasonScores } from "@/lib/seasons";
 import type { CityMark, CityRating, CityRatingScore, CityReasonTag, CitySeasonGrades, CitySentiment } from "@/types/preferences";
+import { isHotelStandbyLeg } from "@/lib/standby";
 
 /**
  * Graded layover-city ratings: the interview's city step, where a pilot says
@@ -264,7 +265,8 @@ export function packCityFacts(bidPack: BidPack): CityFacts[] {
       seenTrips.add(tripKey);
       for (const duty of trip.schedule) {
         if (firstTime) {
-          for (const leg of duty.legs) if (leg.isStandby) entry(leg.depAirport).standby++;
+          // Days on call at the hotel only: an hour or two of airport standby inside a duty isn't a standby day.
+          for (const leg of duty.legs) if (isHotelStandbyLeg(leg)) entry(leg.depAirport).standby++;
         }
         const lay = duty.layover;
         if (!lay) continue;

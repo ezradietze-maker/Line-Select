@@ -531,7 +531,10 @@ export const METRICS: MetricDef[] = [
     line: (_l, trips, c) => {
       const ts = tripFlights(trips, c);
       if (!ts) return null;
+      // A trip still flying at the month's end comes home next month: its flight home was looked up for the whole
+      // trip, so measured from this month's cut it counted the carried-over flying as waiting.
       const hours = ts.flatMap(({ f, t }) => {
+        if (f.trip.carriesIntoNextMonth) return [];
         const home = earliestHome(t);
         const start = tripStartUtc(c, f.trip);
         // Done once the last operated flight or standby is over — a deadhead back to base is part of the trip home.

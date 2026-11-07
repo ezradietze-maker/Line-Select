@@ -102,8 +102,15 @@ async function accountBidPack(userId: string): Promise<BidPack | null> {
   const local = loadBidPack(userId);
   if (!local) return packFromAccount(userId);
   const server = await fetchServerBidPackMeta();
-  if (server && server.packId !== local.id && server.savedAt > bidPackSavedAt(userId)) return (await packFromAccount(userId)) ?? local;
-  return local;
+  if (!server || server.packId === local.id) return local;
+  const localAt = bidPackSavedAt(userId);
+  if (localAt > 0) return server.savedAt > localAt ? ((await packFromAccount(userId)) ?? local) : local;
+  // A copy saved before the device kept a time beside it: a newer month only, never by guessing which was saved
+  // last — this device's own upload may never have reached the account. Kept either way, it's stamped from now on.
+  const remote = await fetchServerBidPack();
+  const keep = remote && remote.bidPeriodStart && local.bidPeriodStart && remote.bidPeriodStart > local.bidPeriodStart ? remote : local;
+  saveBidPack(userId, keep);
+  return keep;
 }
 
 function landingPathFor(bidPack: BidPack | null, profile: PreferenceProfile | null): string {

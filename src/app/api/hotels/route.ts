@@ -3,7 +3,7 @@ import { reportProblem } from "@/lib/server/alerts";
 import { airportSearchName, citySearchName } from "@/lib/hotels/airport-names";
 import { isPlausibleMatch, pickBestMatch, readHotelName } from "@/lib/hotels/hotel-names";
 import { cacheKey, getCachedHotel, setCachedHotel } from "@/lib/server/hotel-cache";
-import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRateLimit, checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { isPackHotel } from "@/lib/server/pack-hotels";
 import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 import type { HotelAmenityCategory, HotelAmenitySummary, HotelLookupResult, HotelResult, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
@@ -16,6 +16,9 @@ const HOTEL_LOOKUPS_PER_HOUR = 250;
  * reviews, and a short AI summary of them. It counts toward the site's daily total only (see `checkSpend`).
  */
 const LOOKUP_COST_USD = 0.15;
+const UNLISTED_LOOKUPS_PER_DAY = 150;
+/** A result missing its amenities or review summary for a passing failure is kept a day, not a month. */
+const INCOMPLETE_CACHE_SECONDS = 24 * 60 * 60;
 
 export const runtime = "nodejs";
 
@@ -84,7 +87,9 @@ export async function fetchAmenitySummary(location: LatLng | null, apiKey: strin
     }),
   });
   const counts = Object.fromEntries(categories.map((c) => [c, 0])) as Record<HotelAmenityCategory, number>;
-  if (!response.ok) return counts as HotelAmenitySummary;
+  // A refused request (a burst of lookups from a cold pack hitting Google's rate limit) is "couldn't tell", not
+  // "nothing nearby": thrown, so the lookup is kept only briefly and asked again.
+  if (!response.ok) throw new Error(`Places nearby search failed (${response.status})`);
 
   const data = (await response.json()) as { places?: { rating?: number; types?: string[] }[] };
   for (const place of data.places ?? []) {
@@ -204,7 +209,7 @@ async function summarizeReviews(hotelName: string, placeId: string, googleApiKey
       messages: [{ role: "user", content: `Hotel: ${hotelName}\n\nReview excerpts:\n${reviewLines}` }],
     }),
   });
-  if (!response.ok) return null;
+  if (!response.ok) throw new Error(`Review summary failed (${response.status})`);
 
   const data = (await response.json()) as { content?: { type: string; text?: string }[] };
   const text = data.content?.find((c) => c.type === "text")?.text;
@@ -221,7 +226,7 @@ async function summarizeReviews(hotelName: string, placeId: string, googleApiKey
   };
 }
 
-async function findHotelOnGoogle(code: string, hotelName: string, apiKey: string, anthropicApiKey: string | undefined): Promise<HotelResult | null> {
+async function findHotelOnGoogle(code: string, hotelName: string, apiKey: string, anthropicApiKey: string | undefined): Promise<{ hotel: HotelResult | null; complete: boolean }> {
   // The pairing schedule's own hotel name is often abbreviated (e.g. "HILTON
   // NRT" for the Hilton Tokyo Narita), and most crew hotels genuinely are
   // airport-adjacent — but several real assigned hotels are well-known
@@ -233,7 +238,7 @@ async function findHotelOnGoogle(code: string, hotelName: string, apiKey: string
   // Searched under its spelled-out name (the packs abbreviate: "DTREE S PARK", "INTERCON DT"), and only a match that's
   // plausibly the same hotel in the right place counts — otherwise no rating at all rather than another hotel's.
   const name = readHotelName(hotelName);
-  if (!name.assigned) return null;
+  if (!name.assigned) return { hotel: null, complete: true };
   const [airportResults, cityResults] = await Promise.all([
     searchPlaces(`${name.search} hotel near ${airportSearchName(code)}`, apiKey),
     searchPlaces(`${name.search} hotel, ${citySearchName(code)}`, apiKey),
@@ -249,16 +254,22 @@ async function findHotelOnGoogle(code: string, hotelName: string, apiKey: string
       location: place.location ?? null,
     }))
   );
-  if (!best) return null;
+  if (!best) return { hotel: null, complete: true };
 
   const location = best.location ? { latitude: best.location.latitude, longitude: best.location.longitude } : null;
 
+  // Either side failing for a moment leaves its part empty and the result marked incomplete, so it isn't kept a month.
+  let complete = true;
+  const failed = () => {
+    complete = false;
+    return null;
+  };
   const [amenities, reviewSummary] = await Promise.all([
-    fetchAmenitySummary(location, apiKey),
-    best.id && anthropicApiKey ? summarizeReviews(hotelName, best.id, apiKey, anthropicApiKey).catch(() => null) : Promise.resolve(null),
+    fetchAmenitySummary(location, apiKey).catch(failed),
+    best.id && anthropicApiKey ? summarizeReviews(hotelName, best.id, apiKey, anthropicApiKey).catch(failed) : Promise.resolve(null),
   ]);
 
-  return {
+  const hotel: HotelResult = {
     name: best.displayName?.text ?? hotelName,
     rating: best.rating ?? null,
     userRatingCount: best.userRatingCount ?? null,
@@ -269,6 +280,7 @@ async function findHotelOnGoogle(code: string, hotelName: string, apiKey: string
     amenities,
     reviewSummary,
   };
+  return { hotel, complete };
 }
 
 export async function GET(request: Request) {
@@ -320,23 +332,30 @@ export async function GET(request: Request) {
   }
 
   const spender = await spenderFor(request);
-  const allowed = await checkSpend(spender, { siteOnly: true });
-  if (!allowed.ok) return spendLimitResponse(allowed);
+  const packHotel = await isPackHotel(code, hotelName);
   // A guest looks up only hotels a real uploaded pack names, so made-up names can't be used to run up Google's bill.
-  if (!spender.signedIn && !(await isPackHotel(code, hotelName))) {
+  if (!spender.signedIn && !packHotel) {
     const result: HotelLookupResult = { code, hotelName, hotel: null, error: null };
     return NextResponse.json(result);
   }
+  // A signed-in pilot may look up names no parsed pack lists (a pack saved before packs' hotels were kept), but only
+  // so many a day: unlimited, one account could spend the whole site's day on made-up names and pause the interview
+  // for everyone. A pack has around a hundred hotels.
+  if (!packHotel && !(await checkRateLimit("hotels-unlisted", spender.key, UNLISTED_LOOKUPS_PER_DAY, 24 * 60 * 60)).ok) return rateLimitedResponse();
+  const allowed = await checkSpend(spender, { siteOnly: true });
+  if (!allowed.ok) return spendLimitResponse(allowed);
 
   try {
-    const hotel = await findHotelOnGoogle(code, hotelName, apiKey, process.env.ANTHROPIC_API_KEY);
+    const { hotel, complete } = await findHotelOnGoogle(code, hotelName, apiKey, process.env.ANTHROPIC_API_KEY);
     await recordSpend(spender, LOOKUP_COST_USD, { siteOnly: true });
-    await setCachedHotel(key, hotel);
+    await setCachedHotel(key, hotel, complete ? undefined : INCOMPLETE_CACHE_SECONDS);
     const result: HotelLookupResult = { code, hotelName, hotel, error: null };
     return NextResponse.json(result);
   } catch (e) {
     // The detail (Google's own error body) goes to the server log, not the pilot.
     await reportProblem("hotels", e, { code });
+    // The searches that ran before the failure were still billed.
+    await recordSpend(spender, LOOKUP_COST_USD, { siteOnly: true });
     const result: HotelLookupResult = {
       code,
       hotelName,

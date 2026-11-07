@@ -95,6 +95,14 @@ export function failedCallCost(error: unknown): number {
   return typeof usage?.costUsd === "number" && Number.isFinite(usage.costUsd) ? usage.costUsd : 0;
 }
 
+/** The error, carrying `usd` more of cost: calls in the same request that were paid for before this one failed. */
+export function withSpent(error: unknown, usd: number): unknown {
+  if (!(usd > 0)) return error;
+  const failed = error instanceof Error ? error : new Error(String(error));
+  const usage = (failed as { usage?: Partial<BrainUsage> }).usage;
+  return Object.assign(failed, { usage: { ...usage, costUsd: failedCallCost(failed) + usd } });
+}
+
 type Caller = <T>(opts: StructuredCallOptions) => Promise<{ data: T; usage: BrainUsage }>;
 let routed: Caller | null = null;
 

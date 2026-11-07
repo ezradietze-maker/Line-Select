@@ -84,15 +84,32 @@ export function choicesFromDrag(passed: { favored: string; overtaken: string }[]
   return passed.map((p) => ({ preferred: p.favored, other: p.overtaken, strength: "slightly" as const, direct: true, ...(dragId ? { dragId } : {}) }));
 }
 
-/** New drag choices joined to the pilot's earlier ones. The latest word on two lines wins: an older drag that put them the other way round is dropped. */
+/**
+ * New drag choices joined to the pilot's earlier ones. The latest word on two lines wins: an older drag that put them
+ * the other way round stops counting — set aside, not deleted, so undoing this drag brings it back (`withoutDrag`).
+ * Without a drag to name, it's dropped.
+ */
 export function addDragChoices(existing: LineChoice[], added: LineChoice[]): LineChoice[] {
-  const reversed = new Set(added.map((c) => `${c.other}>${c.preferred}`));
-  return [...existing.filter((c) => !(c.direct && reversed.has(`${c.preferred}>${c.other}`))), ...added];
+  const reversedBy = new Map(added.map((c) => [`${c.other}>${c.preferred}`, c.dragId]));
+  const kept = existing.flatMap((c) => {
+    const key = `${c.preferred}>${c.other}`;
+    if (!c.direct || c.supersededBy || !reversedBy.has(key)) return [c];
+    const by = reversedBy.get(key);
+    return by ? [{ ...c, supersededBy: by }] : [];
+  });
+  return [...kept, ...added];
 }
 
-/** The pilot's choices without the ones a drag added — undoing that drag. */
+/** The pilot's choices without the ones a drag added — undoing that drag — and whatever it had set aside counting again. */
 export function withoutDrag(choices: LineChoice[], dragId: string): LineChoice[] {
-  return choices.filter((c) => c.dragId !== dragId);
+  return choices
+    .filter((c) => c.dragId !== dragId)
+    .map((c) => {
+      if (c.supersededBy !== dragId) return c;
+      const back = { ...c };
+      delete back.supersededBy;
+      return back;
+    });
 }
 
 /** "Counting more: …; less: …" — what a change did to the pilot's priorities (each one's share of all the weight), in a sentence. */

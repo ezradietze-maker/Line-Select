@@ -143,3 +143,22 @@ describe("a layover whose hotel changes with the trip's date", () => {
     expect(early.schedule[1].startMinutes - late.schedule[1].startMinutes).toBe(5);
   });
 });
+
+describe("a report in the hour the clocks go back", () => {
+  it("takes the instant the printed GMT time names, not the first of the two", () => {
+    // Memphis, Sun Nov 1 2026: 01:30 happens at 06:30Z (CDT) and again at 07:30Z (CST). Printed: report 0130, first leg 0830Z an hour later.
+    const trip = {
+      startDayIndex: 0,
+      schedule: [{ reportTimeLocal: "0130", startMinutes: 0, legs: [{ depTimeGmt: "0830", startMinutes: 60 }], layover: null }],
+    } as unknown as Trip;
+    expect(tripReportUtc({ bidPeriodStart: "2026-11-01", base: "MEM" }, trip)).toBe(Date.UTC(2026, 10, 1, 7, 30));
+  });
+
+  it("keeps the first when that's the one printed", () => {
+    const trip = {
+      startDayIndex: 0,
+      schedule: [{ reportTimeLocal: "0130", startMinutes: 0, legs: [{ depTimeGmt: "0730", startMinutes: 60 }], layover: null }],
+    } as unknown as Trip;
+    expect(tripReportUtc({ bidPeriodStart: "2026-11-01", base: "MEM" }, trip)).toBe(Date.UTC(2026, 10, 1, 6, 30));
+  });
+});

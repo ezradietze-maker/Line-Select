@@ -80,6 +80,8 @@ function streamParse(bytes: Uint8Array): Response {
       try {
         const result = await parseBidPackPdf(bytes, {
           onProgress: (progress) => {
+            // Nobody is reading any more: stop here rather than parse the rest of the pack for no one.
+            if (cancelled) throw new Error("parse cancelled");
             if (progress.stage === "pages") {
               if (progress.done !== progress.total && progress.done - lastPageSent < 3) return;
               lastPageSent = progress.done;

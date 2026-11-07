@@ -9,10 +9,9 @@ import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { submitAwardHistory } from "@/lib/award-history";
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { cityName } from "@/lib/city-names";
-import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
+import { rankingAsShown } from "@/lib/ranking-as-shown";
 import { checkInShare, logbookStats, loggedMonthFrom, withCheckIn, withLoggedMonth, withoutLoggedMonth } from "@/lib/logbook";
 import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
-import { rankLines } from "@/lib/scoring";
 import { hm as hmMinutes } from "@/lib/trip-day-stats";
 import type { UserAccount } from "@/types/auth";
 import type { BidPack } from "@/types/bidpack";
@@ -134,8 +133,8 @@ function LogAward({
       const place = (id: string) => shown.byLineId.get(id)?.rank ?? Number.MAX_SAFE_INTEGER;
       return [...bidPack.lines].sort((a, b) => place(a.id) - place(b.id));
     }
-    return rankLines(bidPack, profile, {}, computeImplicitLineValues(bidPack)).map((r) => r.line);
-  }, [bidPack, profile, shown]);
+    return rankingAsShown(bidPack, profile, user?.id ?? null).map((r) => r.line);
+  }, [bidPack, profile, shown, user]);
   const [outcome, setOutcome] = useState<LoggedMonth["outcome"]>(existing?.outcome ?? "line");
   const [lineId, setLineId] = useState(() => bidPack.lines.find((l) => l.lineNumber === existing?.lineNumber)?.id ?? ranked[0]?.id ?? "");
   // Off until the pilot ticks it (shared only when they say so); on when correcting an award they shared, so the

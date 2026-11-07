@@ -32,7 +32,9 @@ describe("keeping the pilot model current after the interview", () => {
   it("lets the latest swap of two lines win, and takes a swap's choices back when it's undone", () => {
     const first = choicesFromDrag([{ favored: "A", overtaken: "B" }], "s1");
     const flipped = addDragChoices(first, choicesFromDrag([{ favored: "B", overtaken: "A" }], "s2"));
-    expect(flipped.map((c) => `${c.preferred}>${c.other}`)).toEqual(["B>A"]);
+    // Only the latest counts; the older one is set aside, and undoing the latest brings it back.
+    expect(flipped.filter((c) => !c.supersededBy).map((c) => `${c.preferred}>${c.other}`)).toEqual(["B>A"]);
+    expect(withoutDrag(flipped, "s2")).toEqual(first);
     const again = addDragChoices(first, choicesFromDrag([{ favored: "A", overtaken: "B" }], "s3"));
     expect(again).toHaveLength(2);
     expect(withoutDrag(again, "s3")).toEqual(first);

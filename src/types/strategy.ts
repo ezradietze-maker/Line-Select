@@ -12,6 +12,12 @@ export interface SeniorityInput {
   rank: number;
   /** Total pilots holding this seat at this domicile — not just those who got a regular line. */
   totalPilots: number;
+  /**
+   * How rough it is. "band": a share of the seat ("upper third") on a 100-pilot scale, measured against the pack's own
+   * size wherever it's used. "between": the pilot's seniority number isn't on the pack's list, so `rank` is the place
+   * it falls at — the list entry holding that bid number is someone else's. Absent: a number the pilot gave as theirs.
+   */
+  source?: "band" | "between";
 }
 
 export type StrategyId =

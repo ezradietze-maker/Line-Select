@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { onceForRequest } from "@/lib/server/replay";
 import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { nextInterviewStep, type LinePairCandidate, type LinePairDifference, type ThreadState } from "@/lib/brain/interviewer";
@@ -81,7 +82,12 @@ function readDifferences(value: unknown): LinePairDifference[] {
 }
 
 /** The interviewer's next move: one question drawn from the pilot's own threads, or "done". See `nextInterviewStep`. */
+/** A copy re-sent after a dropped connection gets the first copy's answer rather than a second paid call (see `onceForRequest`). */
 export async function POST(request: Request) {
+  return onceForRequest(request, 80_000, () => respond(request));
+}
+
+async function respond(request: Request) {
   const { ok } = await checkRequestLimit("brain-question", request, 150, 60 * 60);
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;

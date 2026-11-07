@@ -4,7 +4,7 @@ import { tripStartUtc } from "@/lib/flights/needs";
 import { formatHoursValue } from "@/lib/interview-config";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import type { LineScore } from "@/lib/scoring";
-import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
+import type { BidPack, Line, SeniorityEntry, Trip, VacationPeriod } from "@/types/bidpack";
 import type {
   FeasibilityTier,
   SeniorityInput,
@@ -72,22 +72,38 @@ function overlapDays(v: VacationPeriod, [from, to]: [number, number]): number {
   return b > a ? Math.round((b - a) / DAY_MS) : 0;
 }
 
+/**
+ * The pilot's place in this pack: a rough band measured against the pack's own size (a share of a 100-pilot scale
+ * compared with real line counts called a top-10% pilot reserve on a small pack), and their own entry on the pack's
+ * list only when the place really is theirs — not a band's midpoint, nor the bid number a seniority number missing
+ * from the list falls at, which belong to other pilots (their PAY flag and vacations aren't this pilot's).
+ */
+export function placeInPack(bidPack: BidPack, seniority: SeniorityInput): { rank: number; listSize: number; me: SeniorityEntry | undefined } {
+  const list = bidPack.seniorityList ?? [];
+  if (seniority.source === "band") {
+    const size = list.length || (bidPack.info?.totalRegularLines ?? bidPack.lines.length) + (bidPack.info?.totalSecondaryLines ?? 0) + (bidPack.info?.totalReserveLines ?? 0);
+    return { rank: Math.min(size, Math.max(1, Math.round((seniority.rank / seniority.totalPilots) * size))), listSize: size, me: undefined };
+  }
+  const me = seniority.source === "between" ? undefined : list.find((e) => e.bidNumber === seniority.rank);
+  return { rank: seniority.rank, listSize: seniority.totalPilots, me };
+}
+
 export function computeStanding(bidPack: BidPack, seniority: SeniorityInput): Standing {
   const list = bidPack.seniorityList ?? [];
   const hasPay = list.some((e) => e.pay);
-  const me = list.find((e) => e.bidNumber === seniority.rank);
-  const payAhead = hasPay ? list.filter((e) => e.pay && e.bidNumber < seniority.rank).length : null;
-  const effective = payAhead !== null ? seniority.rank - payAhead : null;
+  const { rank, listSize, me } = placeInPack(bidPack, seniority);
+  const payAhead = hasPay ? list.filter((e) => e.pay && e.bidNumber < rank).length : null;
+  const effective = payAhead !== null ? rank - payAhead : null;
   const regular = bidPack.info?.totalRegularLines ?? bidPack.lines.length;
   const secondary = bidPack.info?.totalSecondaryLines ?? 0;
   const reserve = bidPack.info?.totalReserveLines ?? 0;
-  const position = effective ?? seniority.rank;
+  const position = effective ?? rank;
   const band: Band = position <= regular ? "regular" : position <= regular + secondary ? "secondary" : "reserve";
   const bounds = periodBounds(bidPack);
   const vacations = bounds ? (me?.vacations ?? []).filter((v) => overlapDays(v, bounds) > 0) : [];
   return {
-    printedBidNumber: seniority.rank,
-    listSize: seniority.totalPilots,
+    printedBidNumber: rank,
+    listSize,
     payAhead,
     effective,
     bidders: hasPay ? list.filter((e) => !e.pay).length : null,
@@ -194,7 +210,7 @@ export function generateStrategies(
   // Chance each line is still there at the pilot's turn — the same simulation the line cards' "% open" uses.
   const pAvail: Record<string, number> = options.pAvailable ?? {};
   if (!options.pAvailable) {
-    const me = bidPack.seniorityList?.find((e) => e.bidNumber === seniority.rank);
+    const { me } = placeInPack(bidPack, seniority);
     const f = me ? forecastBid({ bidPack, seniorityNumber: me.seniority, myRanking: lines.map((l) => l.id), simulations: 300 }) : null;
     if (f) for (const [id, lf] of Object.entries(f.lines)) pAvail[id] = lf.pAvailable;
   }

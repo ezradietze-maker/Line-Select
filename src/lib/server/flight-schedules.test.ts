@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { plausible, shiftWeeks, standIn, standIns } from "@/lib/server/flight-schedules";
+import { blocksFor, plausible, shiftWeeks, standIn, standIns } from "@/lib/server/flight-schedules";
 
 describe("one real week of departure boards stands in for the month", () => {
   const now = Date.UTC(2026, 9, 11, 18); // Sun Oct 11, 11:00 in San Diego
@@ -41,3 +41,12 @@ describe("one real week of departure boards stands in for the month", () => {
   });
 });
 
+
+describe("half-day boards over a span", () => {
+  it("keeps to midnight and noon on the airport's clock across the night the clocks go back", () => {
+    // Memphis, Nov 1 00:30 CDT to Nov 2 12:30 CST: four boards, the afternoon of Nov 2 included.
+    const from = Date.UTC(2026, 10, 1, 5, 30);
+    const to = Date.UTC(2026, 10, 2, 18, 30);
+    expect(blocksFor("MEM", from, to).map((b) => `${b.date}/${b.half}`)).toEqual(["2026-11-01/0", "2026-11-01/1", "2026-11-02/0", "2026-11-02/1"]);
+  });
+});

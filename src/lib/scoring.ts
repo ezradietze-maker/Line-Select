@@ -123,6 +123,8 @@ export interface LineScore {
   line: Line;
   /** The Satisfaction Index, 0-100 — already capped when `violatedDealbreakers` is non-empty (see `DEALBREAKER_SCORE_CAP`), and already lowered by `commitmentPenalty`. */
   score: number;
+  /** The pilot model's score before it's held to 0–100 for display (it can fall below 0) — breaks ties among lines shown at 0. */
+  rawScore?: number;
   dimensions: DimensionScore[];
   topDimensions: DimensionScore[];
   explanation: string;

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { onceForRequest } from "@/lib/server/replay";
 import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { BRAIN_PROMPT_VERSION, buildPilotModel } from "@/lib/brain/build-model";
@@ -17,7 +18,12 @@ export const maxDuration = 300;
  * their pack, written into their complete model (see `buildPilotModel`).
  * Guest-accessible and IP-rate-limited like the rest of the interview.
  */
+/** A copy re-sent after a dropped connection gets the first copy's answer rather than a second paid call (see `onceForRequest`). */
 export async function POST(request: Request) {
+  return onceForRequest(request, 280_000, () => respond(request));
+}
+
+async function respond(request: Request) {
   const { ok } = await checkRequestLimit("brain-build", request, 40, 60 * 60);
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;

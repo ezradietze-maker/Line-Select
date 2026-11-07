@@ -589,7 +589,9 @@ export function ResultsView({
 
   // Measured once per pack, for refitting a pilot model to their drags without re-measuring every trip each time.
   const hasPilotModel = !!profile.pilotModel;
-  const packMetrics = useMemo(() => (hasPilotModel ? prepareMetrics(bidPack) : null), [bidPack, hasPilotModel]);
+  const packFacts = useMemo(() => (hasPilotModel ? prepareMetrics(bidPack) : null), [bidPack, hasPilotModel]);
+  // With the pilot's looked-up flights, as the list on screen is scored: a drag learns from the order they saw.
+  const packMetrics = useMemo(() => (packFacts && flights ? { ...packFacts, ctx: { ...packFacts.ctx, flights } } : packFacts), [packFacts, flights]);
 
   // Derived once from the bid pack's own printed times — see lib/circadian.ts.
   const homeBaseOffsetMinutes = useMemo(() => computeHomeBaseOffsetMinutes(bidPack), [bidPack]);

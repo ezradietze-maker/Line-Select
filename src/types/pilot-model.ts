@@ -132,6 +132,8 @@ export interface LineChoice {
   direct?: boolean;
   /** The drag that made it (see `Placement.id` in `lib/line-placements.ts`), so undoing the drag takes it back. */
   dragId?: string;
+  /** A later drag that put these two lines the other way round: not counted while it stands, counted again if it's undone. */
+  supersededBy?: string;
   why?: string;
 }
 

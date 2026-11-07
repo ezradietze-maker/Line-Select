@@ -24,9 +24,11 @@ export function SeniorityQueue({ ahead, total }: { ahead: number; total: number 
   const next = () => (i++) * 45;
   return (
     <div className="mt-5" aria-hidden>
-      <div className="flex items-center gap-1.5 overflow-hidden">
+      {/* Clipped sideways only: the "You" label hangs below the row. On a phone the planes behind are left off and the
+          runway is shorter, so the line ahead and the runway fit. */}
+      <div className="flex items-center gap-1 overflow-x-clip pb-4 sm:gap-1.5">
         {Array.from({ length: behind }, (_, k) => (
-          <Plane key={k} className="text-ink-faint" delay={next()} opacity={0.3 + (0.4 * (k + 1)) / behind} />
+          <Plane key={k} className="hidden text-ink-faint sm:block" delay={next()} opacity={0.3 + (0.4 * (k + 1)) / behind} />
         ))}
         <span className="relative flex">
           <Plane className="text-accent drop-shadow-[0_0_5px_var(--glow-strong)]" delay={next()} />
@@ -52,11 +54,11 @@ export function SeniorityQueue({ ahead, total }: { ahead: number; total: number 
           <span className="w-[2px] bg-accent/70" />
           <span className="w-[2px] bg-[repeating-linear-gradient(to_bottom,var(--color-accent)_0_3px,transparent_3px_6px)] opacity-70" />
         </span>
-        <span className="relative h-6 w-16 shrink-0 rounded-sm bg-ink/10">
+        <span className="relative h-6 w-10 shrink-0 rounded-sm bg-ink/10 sm:w-16">
           <span className="absolute inset-x-1 top-1/2 h-px -translate-y-1/2 bg-[repeating-linear-gradient(to_right,var(--color-ink-faint)_0_6px,transparent_6px_10px)]" />
         </span>
       </div>
-      <div className="mt-5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
+      <div className="mt-1 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
         {ahead === 0 ? "First in line for the runway" : `${ahead} ahead of you for the runway`}
       </div>
     </div>

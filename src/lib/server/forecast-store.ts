@@ -68,7 +68,20 @@ export async function saveSubmission(params: {
   const user = hashUser(params.userId);
   const ranking = encodeRanking(params.ranking, params.lineNumbers.length);
 
+  try {
+    return await saveInTransaction(key, user, ranking, params);
+  } catch (e) {
+    if (e instanceof PositionTaken) return { stored: false, reason: "position-taken" };
+    throw e;
+  }
+}
+
+/** Thrown to undo the transaction: a moved pilot whose new place was taken in the meantime keeps their old row. */
+class PositionTaken extends Error {}
+
+function saveInTransaction(key: string, user: string, ranking: string, params: { bidNumber: number; seniority: number }): Promise<SaveResult> {
   return db.transaction(async (tx) => {
+    let moved = false;
     const [existingMine] = await tx
       .select({ bidNumber: forecastRankings.bidNumber })
       .from(forecastRankings)
@@ -91,6 +104,7 @@ export async function saveSubmission(params: {
         .limit(1);
       if (holder && holder.userHash !== user) return { stored: false, reason: "position-taken" };
       await tx.delete(forecastRankings).where(and(eq(forecastRankings.blobKey, key), eq(forecastRankings.userHash, user)));
+      moved = true;
     }
 
     const [claimed] = await tx
@@ -104,6 +118,8 @@ export async function saveSubmission(params: {
       .returning({ userHash: forecastRankings.userHash, bidNumber: forecastRankings.bidNumber });
 
     if (!claimed || claimed.userHash !== user) {
+      // Another pilot took the new place after the check above: their old row's delete is rolled back with the rest.
+      if (moved) throw new PositionTaken();
       return { stored: false, reason: "position-taken" };
     }
 

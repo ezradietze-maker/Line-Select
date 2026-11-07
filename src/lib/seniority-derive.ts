@@ -14,5 +14,7 @@ export function deriveSeniorityInput(bidPack: Pick<BidPack, "seniorityList"> | n
   const list = bidPack?.seniorityList;
   const number = profile?.seniorityNumber;
   if (!list || list.length === 0 || !number) return null;
-  return { rank: resolveBidPosition(list, number).bidNumber, totalPilots: list.length };
+  const position = resolveBidPosition(list, number);
+  // Junior to everyone on the list lands one past its end: the seat is at least that big.
+  return { rank: position.bidNumber, totalPilots: Math.max(list.length, position.bidNumber), ...(position.exact ? {} : { source: "between" as const }) };
 }
