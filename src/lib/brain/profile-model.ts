@@ -33,8 +33,11 @@ export function deriveModel(
   tripChoices: TripChoice[] = []
 ): { model: PilotModel; changes: WeightChange[]; heldByLimit: LineChoice[] } {
   const rated = applyCityRatings(base, profile.cityRatings);
-  const fit = learnFromChoices(bidPack, rated, choices, pack);
-  const lineModel = applyPins(fit.model, pins);
+  // The line choices are fitted on the score the pilot sees — with their trip grades in, once they have some
+  // (`learnFromChoices` reads `tripWeights`) — then the trip grades are fitted again on the lines that came out.
+  const seenTrips = tripChoices.length ? fitTripWeights(bidPack, applyPins(rated, pins), tripChoices, pack).tripWeights : undefined;
+  const fit = learnFromChoices(bidPack, { ...rated, tripWeights: seenTrips }, choices, pack);
+  const lineModel = applyPins({ ...fit.model, tripWeights: undefined }, pins);
   const tripWeights = tripChoices.length ? fitTripWeights(bidPack, lineModel, tripChoices, pack).tripWeights : undefined;
   return { model: { ...lineModel, tripWeights }, changes: fit.changes, heldByLimit: fit.heldByLimit };
 }
