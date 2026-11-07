@@ -44,6 +44,14 @@ paired reads (step 2), and use fresh interviews to see the flow. The spend line 
 
 These can't be batched: each turn waits on the last, and a batch round takes minutes (7.5 for 8 calls, Oct 2026).
 
+- **The ex-pilot on his own pack**: `simulate.ts expilot-mem <tag>` plays him from his Oct 15 and Oct 21 answers on the
+  MD-11 Memphis captain pack, and scores the result against his real sort and five trip picks, which his truth sheet
+  never sees.
+- **The simulated pilot stays on Sonnet.** Haiku 5.5 (`SIM_PILOT_MODEL=claude-haiku-5-5`) is 20 times cheaper, but on
+  his own sort and trip pairs (Nov 2026) it got 2–3 of his 5 trip picks where Sonnet got 4, missing the same ones every
+  time: the trips a West Coast deadhead makes easy. Low or high effort made no difference. The pilot's answers are only
+  about a sixth of an interview's cost anyway (the brain is about half).
+
 ## Running live instead of batched
 
 Without `--batch`, re-reads run the first read alone and the rest after it, so they read its cache instead of each

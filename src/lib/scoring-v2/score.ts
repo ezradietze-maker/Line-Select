@@ -73,14 +73,15 @@ const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 /**
  * The scale a criterion is scored on where the pilot gave no anchor: the good end is the real best measured — exactly
  * where a top priority has to tell things apart — while the bad end stops at the 5% mark, so one terrible outlier can't
- * squash everything else together (or, for a measure marked `badEndAtWorst`, at the pack's worst line).
+ * squash everything else together (or, for a measure marked `badEndAtWorst`, at the pack's worst line; one marked
+ * `goodEndAtMark` stops its good end at the 95% mark too).
  */
-export function spreadOf(values: (number | null)[], shape: CriterionShape, def?: Pick<MetricDef, "badEndAtWorst">): { lo: number; hi: number } {
+export function spreadOf(values: (number | null)[], shape: CriterionShape, def?: Pick<MetricDef, "badEndAtWorst" | "goodEndAtMark">): { lo: number; hi: number } {
   const sorted = values.filter((v): v is number => v !== null).sort((a, b) => a - b);
   const min = sorted[0] ?? 0;
   const max = sorted[sorted.length - 1] ?? 0;
   if (shape.kind === "less") return { lo: min, hi: def?.badEndAtWorst ? max : quantile(sorted, 0.95) };
-  if (shape.kind === "more") return { lo: quantile(sorted, 0.05), hi: max };
+  if (shape.kind === "more") return { lo: quantile(sorted, 0.05), hi: def?.goodEndAtMark ? quantile(sorted, 0.95) : max };
   return { lo: quantile(sorted, 0.05), hi: quantile(sorted, 0.95) };
 }
 

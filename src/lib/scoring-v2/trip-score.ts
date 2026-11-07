@@ -310,7 +310,7 @@ export function scoreTripsV2(bidPack: BidPack, model: PilotModel, options: TripS
   const measured = scored.map(({ c, ci }) => trips.map((t) => measureTrip(defs[ci], t, pack, { ...defs[ci].defaults, ...home, ...c.params, base: pack.ctx.base, bidPeriodStart: pack.ctx.bidPeriodStart }, workDays) ?? null));
   const values = measured.map((ms) => ms.map((m) => m?.value ?? null));
   const shapes = scored.map(({ c, ci }, k) => (tripReadingOf(defs[ci]) === "count" ? countShapeForTrips(c, bidPack, pack, home, values[k]) : c.shape));
-  const spreads = scored.map((_, k) => spreadOf(values[k], shapes[k]));
+  const spreads = scored.map(({ ci }, k) => spreadOf(values[k], shapes[k], { goodEndAtMark: defs[ci].goodEndAtMark }));
   // On a trip, each priority counts as on a line, times what the pilot's own trip choices taught (see `fitTripWeights`) —
   // and joining from home only for what it adds beyond the commute it saves, when commutes count too.
   const weighsCommutes = scored.some(({ c }) => COMMUTE_MEASURES.has(c.metric));

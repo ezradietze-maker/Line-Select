@@ -290,6 +290,8 @@ export function computeTripFacts(trip: Trip): TripFacts {
   const legs = duties.flatMap((d) => d.legs);
   const operatedLegs = legs.filter((l) => !l.deadhead);
 
+  // A stay at base between standby days isn't a layover a pilot gets to enjoy: no full days there.
+  const base = trip.schedule[0]?.legs[0]?.depAirport;
   const layovers: LayoverFact[] = trip.schedule.flatMap((duty) => {
     if (!duty.layover) return [];
     const lastLeg = duty.legs[duty.legs.length - 1];
@@ -307,7 +309,7 @@ export function computeTripFacts(trip: Trip): TripFacts {
         international: isInternationalCity(city),
         localNightHours: localStart === null ? null : nightOverlapHours(localStart, duty.layover.hours),
         hotel: duty.layover.hotelName,
-        ...fullDaysOf(localStart, duty.layover.endMinutes - duty.layover.startMinutes),
+        ...fullDaysOf(city === base ? null : localStart, duty.layover.endMinutes - duty.layover.startMinutes),
       },
     ];
   });

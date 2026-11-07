@@ -62,6 +62,18 @@ describe("spreadOf", () => {
     expect(spreadOf(values, { kind: "less" })).toEqual({ lo: 2, hi: 4 });
     expect(spreadOf(values, { kind: "less" }, { badEndAtWorst: true })).toEqual({ lo: 2, hi: 5 });
   });
+
+  it("stops the good end of pay for the flying at the 95% mark, so standby lines don't squash the rest", () => {
+    // Ordinary lines 1.5–3 credit per hour flown, and two standby lines at 15 and 22.5.
+    const values = [...Array.from({ length: 40 }, (_, i) => 1.5 + i * (1.5 / 39)), 15, 22.5];
+    const plain = spreadOf(values, { kind: "more" });
+    const marked = spreadOf(values, { kind: "more" }, { goodEndAtMark: true });
+    expect(plain.hi).toBe(22.5);
+    expect(marked.hi).toBeCloseTo(3, 5);
+    // A 3-credit line against a 2.5: barely apart on the plain scale, far apart on the marked one.
+    expect(utilityOf(3, { kind: "more" }, plain) - utilityOf(2.5, { kind: "more" }, plain)).toBeLessThan(0.03);
+    expect(utilityOf(3, { kind: "more" }, marked) - utilityOf(2.5, { kind: "more" }, marked)).toBeGreaterThan(0.3);
+  });
 });
 
 describe("below a fine number", () => {

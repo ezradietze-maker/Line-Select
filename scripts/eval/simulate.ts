@@ -35,12 +35,14 @@ import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
 import type { Judgment } from "./judge";
 import { pilotAgreement, scorecard } from "./metrics";
 import { pilotWordsOf, PERSONAS, simPilotContext } from "./personas";
+import { sortAgreement, tripPicksAgreed } from "./real-sort";
 import { spearman } from "./trip-scorecard";
 
 const MAX_TURNS = 40;
 /** As in the app: after the "anything else?" screen, at most this many follow-ups. */
 const AFTER_SWEEP = 5;
-const SIM_MODEL = "claude-sonnet-5-5";
+/** The model playing the pilot (not the app's): `SIM_PILOT_MODEL=claude-haiku-5-5` for a cheaper round. */
+const SIM_MODEL = process.env.SIM_PILOT_MODEL ?? "claude-sonnet-5-5";
 
 const persona = PERSONAS.find((p) => p.id === process.argv[2])!;
 const tag = process.argv[3] ?? "run1";
@@ -55,8 +57,14 @@ const say = (s: string) => {
 
 const SIM_SYSTEM = `You are role-playing a real FedEx pilot taking an interview about how they bid their lines. Everything you know about yourself is in the TRUTH SHEET: your own words from earlier conversations. Answer every question exactly as this pilot would — consistent with the truth sheet, in their voice (plain, conversational, a few sentences), never more polished than they are. If asked about something the truth sheet doesn't cover, answer the way someone with these priorities plausibly would, or say it doesn't matter much to you. Never mention the truth sheet.`;
 
+/**
+ * What the simulated pilot knows: where they fly and how the company works, as any pilot would (that a scheduled
+ * deadhead out of base can be caught from home, say), then their own words.
+ */
+let truthSheet = pilotWordsOf(persona);
+
 async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T> {
-  const r = await structuredCall<T>({ model: SIM_MODEL, system: SIM_SYSTEM, user: { cached: `TRUTH SHEET:\n${pilotWordsOf(persona)}`, fresh }, schema, effort: "low", maxTokens: 3000 });
+  const r = await structuredCall<T>({ model: SIM_MODEL, system: SIM_SYSTEM, user: { cached: `TRUTH SHEET:\n${truthSheet}`, fresh }, schema, effort: "low", maxTokens: 3000 });
   spend += r.usage.costUsd;
   spendBy.pilot += r.usage.costUsd;
   return r.data;
@@ -73,6 +81,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   );
   const home = persona.commuteFrom;
   const context = simPilotContext(persona, pack);
+  truthSheet = `Who you are: ${context}\n\n${pilotWordsOf(persona)}`;
 
   // The city step: the pilot rates the pack's cities.
   const cities = packCityFacts(pack);
@@ -318,6 +327,10 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   };
   if (panel) say(`panel judge spearman: ${panelRho(order)} (before choice fitting ${panelRho(orderNoFit)})`);
   if (persona.lineLabels) say(`agreement with the pilot's own verdicts: ${pilotAgreement(order, persona.lineLabels).share} (before fitting ${pilotAgreement(orderNoFit, persona.lineLabels).share})`);
+  if (persona.sort) {
+    const picks = tripPicksAgreed(pack, fit.model, persona.sort, pm);
+    say(`agreement with the pilot's own sort: ${(100 * sortAgreement(order, persona.sort)).toFixed(1)}% (before fitting ${(100 * sortAgreement(orderNoFit, persona.sort)).toFixed(1)}%) · trip picks ${picks.agreed}/${picks.of}`);
+  }
   say(`top 10: ${order.slice(0, 10).join(" ")}`);
   for (const c of [...fit.model.criteria].sort((a, b) => b.weight - a.weight)) say(`  ${c.weight.toFixed(2)} ${c.label} — ${c.metric}`);
   mkdirSync(".cache/eval/sim", { recursive: true });
@@ -326,6 +339,8 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   if (existsSync(judgeFile)) result.judgeSpearman = scorecard("", order, JSON.parse(readFileSync(judgeFile, "utf8"))).spearman;
   if (persona.lineLabels) result.pilotAgreement = pilotAgreement(order, persona.lineLabels).share;
   if (panel) result.panelSpearman = Number(panelRho(order));
+  if (persona.sort) result.sortAgreement = { fitted: sortAgreement(order, persona.sort), fresh: sortAgreement(orderNoFit, persona.sort), tripPicks: tripPicksAgreed(pack, fit.model, persona.sort, pm) };
+  result.pilotModel = SIM_MODEL;
   writeFileSync(`.cache/eval/sim/${persona.id}-${tag}.json`, JSON.stringify(result, null, 2));
   writeFileSync(`.cache/eval/sim/${persona.id}-${tag}.steps.json`, JSON.stringify(steps));
 })();

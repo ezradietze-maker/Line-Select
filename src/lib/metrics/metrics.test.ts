@@ -314,10 +314,27 @@ describe("release times", () => {
   it("treats a block-in after midnight as later than one the evening before", () => {
     const backAt = (arr: string, id: string): Trip => ({ ...trip, id, schedule: [{ reportTimeLocal: "1800", startMinutes: 0, legs: [leg("301", "ICN", "ANC", 0, 300, { arrTimeLocal: arr })], layover: null }] });
     const evening: Line = { ...line, id: "E", trips: [backAt("2200", "e")] };
-    const night: Line = { ...line, id: "N", trips: [backAt("0519", "n")] };
-    const p = prepareMetrics({ ...pack, lines: [evening, night] } as BidPack);
+    const night: Line = { ...line, id: "N", trips: [backAt("0230", "n")] };
+    // In at 05:19, the first flights home are leaving: morning, not a night stuck at base.
+    const dawn: Line = { ...line, id: "D", trips: [backAt("0519", "d")] };
+    const p = prepareMetrics({ ...pack, lines: [evening, night, dawn] } as BidPack);
     expect(measure("latestBaseRelease", evening, p)).toBe(22 * 60);
-    expect(measure("latestBaseRelease", night, p)).toBe(29 * 60 + 19);
+    expect(measure("latestBaseRelease", night, p)).toBe(26 * 60 + 30);
+    expect(measure("latestBaseRelease", dawn, p)).toBe(5 * 60 + 19);
+  });
+
+  it("gives a line that starts or ends every trip on a deadhead the easiest report and release there is", () => {
+    const dh = (from: string, to: string, start: number) => leg("DH1", from, to, start, start + 180, { isDeadhead: true, depTimeLocal: "0600", arrTimeLocal: "0900" });
+    const op = (from: string, to: string, start: number, arr: string) => leg("401", from, to, start, start + 300, { depTimeLocal: "0300", arrTimeLocal: arr });
+    const out: Trip = { ...trip, id: "o", schedule: [{ reportTimeLocal: "0500", startMinutes: 0, legs: [dh("ANC", "SEA", 0), op("SEA", "ANC", 240, "2330")], layover: null }] };
+    const back: Trip = { ...trip, id: "b", schedule: [{ reportTimeLocal: "0200", startMinutes: 0, legs: [op("ANC", "SEA", 0, "0800"), dh("SEA", "ANC", 600)], layover: null }] };
+    const outLine: Line = { ...line, id: "O", trips: [out] };
+    const backLine: Line = { ...line, id: "B", trips: [back] };
+    const p = prepareMetrics({ ...pack, lines: [outLine, backLine] } as BidPack);
+    expect(measure("earliestBaseReport", outLine, p)).toBe(23 * 60 + 59);
+    expect(measure("latestBaseRelease", outLine, p)).toBe(23 * 60 + 30);
+    expect(measure("earliestBaseReport", backLine, p)).toBe(2 * 60);
+    expect(measure("latestBaseRelease", backLine, p)).toBe(5 * 60);
   });
 });
 
