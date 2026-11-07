@@ -1,9 +1,10 @@
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { fitTripWeights, shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
 import { learnFromChoices } from "@/lib/brain/reorder-learner";
+import { criterionFromAnswer, type FactorOption, type SwapQuestion } from "@/lib/brain/swap-question";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
-import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
+import type { LineChoice, PilotModel, SwapAnswer, TripChoice } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
 
 /**
@@ -30,13 +31,14 @@ export function deriveModel(
   choices: LineChoice[],
   pack?: PackMetrics,
   pins: Record<string, number> = {},
-  tripChoices: TripChoice[] = []
+  tripChoices: TripChoice[] = [],
+  swapAnswers: SwapAnswer[] = []
 ): { model: PilotModel; changes: WeightChange[]; heldByLimit: LineChoice[] } {
   const rated = applyCityRatings(base, profile.cityRatings);
   // The line choices are fitted on the score the pilot sees — with their trip grades in, once they have some
   // (`learnFromChoices` reads `tripWeights`) — then the trip grades are fitted again on the lines that came out.
   const seenTrips = tripChoices.length ? fitTripWeights(bidPack, applyPins(rated, pins), tripChoices, pack).tripWeights : undefined;
-  const fit = learnFromChoices(bidPack, { ...rated, tripWeights: seenTrips }, choices, pack);
+  const fit = learnFromChoices(bidPack, { ...rated, tripWeights: seenTrips }, choices, pack, {}, swapAnswers);
   const lineModel = applyPins({ ...fit.model, tripWeights: undefined }, pins);
   const tripWeights = tripChoices.length ? fitTripWeights(bidPack, lineModel, tripChoices, pack).tripWeights : undefined;
   return { model: { ...lineModel, tripWeights }, changes: fit.changes, heldByLimit: fit.heldByLimit };
@@ -57,27 +59,80 @@ export function applyPins(model: PilotModel, pins: Record<string, number>): Pilo
 export function withModel(
   profile: PreferenceProfile,
   bidPack: BidPack,
-  update: { base?: PilotModel; choices?: LineChoice[]; cityRatings?: PreferenceProfile["cityRatings"]; pins?: Record<string, number> },
+  update: { base?: PilotModel; choices?: LineChoice[]; cityRatings?: PreferenceProfile["cityRatings"]; pins?: Record<string, number>; swapAnswers?: SwapAnswer[] },
   pack?: PackMetrics
 ): { profile: PreferenceProfile; changes: WeightChange[]; heldByLimit: LineChoice[] } {
   const base = update.base ?? baseModelOf(profile);
   if (!base) return { profile, changes: [], heldByLimit: [] };
   const choices = update.choices ?? profile.brainInterview?.choices ?? [];
+  // A swap's answer goes when the swap does.
+  const dragIds = new Set(choices.flatMap((c) => (c.dragId ? [c.dragId] : [])));
+  const swapAnswers = (update.swapAnswers ?? profile.brainInterview?.swapAnswers ?? []).filter((a) => dragIds.has(a.dragId));
   const next = { ...profile, ...(update.cityRatings ? { cityRatings: update.cityRatings } : {}) };
   // Changes are reported against the model the pilot was looking at a moment ago.
   const before = profile.pilotModel ?? base;
   const pins = update.pins ?? profile.brainInterview?.pins ?? {};
-  const { model, heldByLimit } = deriveModel(bidPack, base, next, choices, pack, pins, profile.brainInterview?.tripChoices ?? []);
+  const { model, heldByLimit } = deriveModel(bidPack, base, next, choices, pack, pins, profile.brainInterview?.tripChoices ?? [], swapAnswers);
   const changes = shareChanges(before, model);
   return {
     profile: {
       ...next,
       pilotModel: model,
-      brainInterview: { exchanges: profile.brainInterview?.exchanges ?? [], ...profile.brainInterview, choices, reviewedModel: base, pins },
+      brainInterview: { exchanges: profile.brainInterview?.exchanges ?? [], ...profile.brainInterview, choices, reviewedModel: base, pins, ...(swapAnswers.length || profile.brainInterview?.swapAnswers ? { swapAnswers } : {}) },
     },
     changes,
     heldByLimit,
   };
+}
+
+/** What a pilot answered to the question after a swap (`lib/brain/swap-question.ts`). */
+export type SwapReply =
+  /** This is why — one of the priorities offered, or a measure they never named, which they've agreed to add. */
+  | { kind: "factor"; option: FactorOption; text?: string }
+  | { kind: "equal" }
+  | { kind: "limit"; action: "keep" | "drop" | "raise" }
+  /** A reason a bid pack can't show, in their words. */
+  | { kind: "note"; text: string };
+
+/** The profile with a pilot's answer about a swap in, and their model refitted. */
+export function answerSwap(profile: PreferenceProfile, bidPack: BidPack, question: SwapQuestion, reply: SwapReply, pack?: PackMetrics): PreferenceProfile {
+  const base = baseModelOf(profile);
+  if (!base) return profile;
+  const { dragId, higher, lower } = question;
+  const answers = profile.brainInterview?.swapAnswers ?? [];
+  const add = (a: Omit<SwapAnswer, "dragId" | "higher" | "lower">, nextBase: PilotModel = base) =>
+    withModel(profile, bidPack, { base: nextBase, swapAnswers: [...answers, { dragId, higher, lower, ...a }] }, pack).profile;
+  switch (reply.kind) {
+    case "factor": {
+      const offered = question.kind === "factors" ? question.options.flatMap((o) => (o.criterionId ? [o.criterionId] : [])) : [];
+      if (reply.option.criterionId) return add({ kind: "factor", criterionId: reply.option.criterionId, offered, ...(reply.text ? { text: reply.text } : {}) });
+      // A measure they never named: added as a new priority (they've just agreed to it), and named as the reason.
+      const criterion = criterionFromAnswer(reply.option, reply.text ?? `Put line ${higher} above ${lower}`);
+      const nextBase = base.criteria.some((c) => c.id === criterion.id) ? base : { ...base, criteria: [...base.criteria, criterion] };
+      return add({ kind: "factor", criterionId: criterion.id, offered: [...offered, criterion.id], ...(reply.text ? { text: reply.text } : {}) }, nextBase);
+    }
+    case "equal":
+      return add({ kind: "equal" });
+    case "limit": {
+      if (question.kind !== "limit") return profile;
+      if (reply.action === "keep") return add({ kind: "limit-kept", criterionId: question.criterionId });
+      const criteria = base.criteria.map((c) => {
+        if (c.id !== question.criterionId || !c.hardLimit) return c;
+        if (reply.action === "drop") {
+          const rest = { ...c };
+          delete rest.hardLimit;
+          return rest;
+        }
+        // Moved just far enough to let this line through. The limit shown was in the month's own terms (a five-week
+        // month's count against a limit scaled up to match — see `scorePackV2`), so it's scaled back the same way.
+        const perShown = question.limit ? c.hardLimit.value / question.limit : 1;
+        return { ...c, hardLimit: { ...c.hardLimit, value: question.value * perShown } };
+      });
+      return add({ kind: reply.action === "drop" ? "limit-dropped" : "limit-raised", criterionId: question.criterionId }, { ...base, criteria });
+    }
+    case "note":
+      return add({ kind: "not-measurable", text: reply.text }, { ...base, notMeasurable: [...base.notMeasurable, { statement: reply.text, why: `Named as the reason for putting line ${higher} above ${lower}` }] });
+  }
 }
 
 /**

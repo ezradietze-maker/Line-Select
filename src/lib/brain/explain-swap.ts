@@ -54,6 +54,8 @@ export interface SwapExplanation {
   against: SwapFactor | null;
   /** For "limit": the dealbreaker the pilot overrode. */
   limit: string | null;
+  /** For "limit": which priority it is, the higher line's value against the limit, said as "6 vs limit 4". */
+  limitDetail: { criterionId: string; label: string; value: number; limit: number; op: "max" | "min"; amounts: string } | null;
 }
 
 /** Shares this small (score points) are left out: a difference the score barely notices isn't a reason. */
@@ -114,7 +116,10 @@ export function explainSwap(higher: V2LineScore, lower: V2LineScore): SwapExplan
   const against = againstOnes.length ? againstOnes[againstOnes.length - 1] : null;
 
   const verdict: SwapVerdict = limit ? "limit" : gap >= 0 ? "agreed" : explains.length === 1 ? "clear" : explains.length > 1 ? "ambiguous" : "unexplained";
-  return { verdict, gap, factors, explains, against, limit };
+  const v = limit ? higher.violations[0] : null;
+  const round = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10));
+  const limitDetail = v ? { criterionId: v.criterionId, label: v.label, value: v.value, limit: v.limit, op: v.op, amounts: `${round(v.value)} vs your limit of ${round(v.limit)}` } : null;
+  return { verdict, gap, factors, explains, against, limit, limitDetail };
 }
 
 /** The swap's reason in a sentence or two, contrasted with what the brain had the other line ahead for. */

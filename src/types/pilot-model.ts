@@ -137,6 +137,28 @@ export interface LineChoice {
   why?: string;
 }
 
+/**
+ * What a pilot said when asked why they swapped two lines (see `lib/brain/swap-question.ts`). It belongs to the swap:
+ * undoing the swap takes it back.
+ */
+export interface SwapAnswer {
+  dragId: string;
+  /** The line the pilot put higher, and the one it went above. */
+  higher: string;
+  lower: string;
+  /**
+   * - "factor": this priority is why (`criterionId`), out of the ones they were offered (`offered`).
+   * - "equal": the two lines are about equal to them — nothing to learn from the swap.
+   * - "limit-kept" / "limit-dropped" / "limit-raised": what they said about the dealbreaker the higher line breaks.
+   * - "not-measurable": a reason a bid pack can't show (`text`).
+   */
+  kind: "factor" | "equal" | "limit-kept" | "limit-dropped" | "limit-raised" | "not-measurable";
+  criterionId?: string;
+  offered?: string[];
+  /** Their own words, when they typed a reason. */
+  text?: string;
+}
+
 /** A trip-versus-trip choice from the interview: which of two real trips the pilot would rather fly. Trips by `tripKey`. */
 export interface TripChoice {
   preferred: string;

@@ -3,7 +3,7 @@ import { prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import { criterionWeight, scorePackV2 } from "@/lib/scoring-v2/score";
 import { rankLinesWithTrips, scoreTripsV2, tripKey, TRIP_LEAN, TRIP_LESSONS } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
-import type { LineChoice, PilotModel } from "@/types/pilot-model";
+import type { LineChoice, PilotModel, SwapAnswer } from "@/types/pilot-model";
 
 /**
  * Learning a pilot's weights from every line choice they've made — the interview's, and each swap on their results —
@@ -59,12 +59,19 @@ export const LEARNER = {
   },
   /** A drag saved before swaps were recorded as such (no `dragId`): counted as the old fit counted it. */
   legacyDirect: 0.35,
+  /**
+   * A pilot's answer to "why?": how much it counts (in swaps' worth of evidence — the behavioural research puts a stated
+   * reason at 2–3 swaps, and behaviour that keeps pointing the other way still wins), and how sharply a priority's share
+   * of the gap decides which one they'd name (per score point; Basu et al. 2018 used 2.5 on their scale).
+   */
+  answer: { weight: 2.5, beta: 0.4 },
 };
 
 export interface LearnerSettings {
   priorSd: number;
   maxFactor: number;
   swap: { evidence: number; primaryShare: number; margin: number; lapse: number; temperatures: number[]; noisePenalty: number };
+  answer: { weight: number; beta: number };
 }
 
 /**
@@ -79,7 +86,45 @@ interface Row {
   offset: number;
 }
 
-type Term = { kind: "strongly" | "slightly" | "legacy"; a: Row; b: Row } | { kind: "swap"; a: Row; b: Row; weight: number };
+type Term =
+  | { kind: "strongly" | "slightly" | "legacy"; a: Row; b: Row }
+  | { kind: "swap"; a: Row; b: Row; weight: number }
+  /** "This priority is why": `picked` out of the `offered` priorities (indices), for the swap of line a over line b. */
+  | { kind: "reason"; a: Row; b: Row; offered: number[]; picked: number };
+
+/**
+ * Each priority's share of the score gap between two lines, in score points (positive favours `a`) — the exact split
+ * `explain-swap.ts` shows the pilot.
+ */
+function shares(a: Row, b: Row, w: number[]): number[] {
+  let dA = 0;
+  let dB = 0;
+  let nA = 0;
+  let nB = 0;
+  for (let i = 0; i < w.length; i++) {
+    const wa = a.half[i] ? w[i] / 2 : w[i];
+    const wb = b.half[i] ? w[i] / 2 : w[i];
+    dA += wa;
+    dB += wb;
+    nA += wa * a.sf[i];
+    nB += wb * b.sf[i];
+  }
+  const scale = (100 * a.share) / (Math.sqrt(nA / (dA || 1)) + Math.sqrt(nB / (dB || 1)) || 1);
+  return w.map((_, i) => scale * (((b.half[i] ? w[i] / 2 : w[i]) * b.sf[i]) / (dB || 1) - ((a.half[i] ? w[i] / 2 : w[i]) * a.sf[i]) / (dA || 1)));
+}
+
+/**
+ * How unlikely the pilot's answer is under weights `w`: they name the priority that pulled hardest toward the line they
+ * put higher, with the softmax noise of Basu, Singhal & Dragan (2018) — so the answer pulls up the priority they named
+ * against the others they were offered, by as much as it takes for it to plausibly be the main reason.
+ */
+function reasonLoss(t: Extract<Term, { kind: "reason" }>, w: number[], answer: LearnerSettings["answer"]): number {
+  const c = shares(t.a, t.b, w);
+  const z = t.offered.map((i) => answer.beta * c[i]);
+  const top = Math.max(...z);
+  const logSum = top + Math.log(z.reduce((s, x) => s + Math.exp(x - top), 0));
+  return answer.weight * (logSum - answer.beta * c[t.picked]);
+}
 
 /** Each swap's pairs, weighted: `evidence` in all, `primaryShare` of it on the pair of lines the pilot swapped. */
 export function swapPairWeights(pairs: LineChoice[], evidence: number, primaryShare: number): number[] {
@@ -121,6 +166,18 @@ function objective(theta: number[], base: number[], terms: Term[], s: LearnerSet
   const T = LEARNER.temperature;
   let loss = 0;
   for (const t of terms) {
+    if (t.kind === "reason") {
+      // A handful of these at most: their gradient by differences is cheap.
+      const at = reasonLoss(t, w, s.answer);
+      loss += at;
+      if (grad)
+        for (let i = 0; i < w.length; i++) {
+          const nudged = [...w];
+          nudged[i] = w[i] * Math.exp(1e-5);
+          grad[i] += (reasonLoss(t, nudged, s.answer) - at) / 1e-5;
+        }
+      continue;
+    }
     const local = grad ? new Array<number>(w.length).fill(0) : null;
     const gap = scoreAndGrad(t.a, w, local, 1) - scoreAndGrad(t.b, w, local, -1);
     let dLossDGap: number;
@@ -229,9 +286,12 @@ export function learnFromChoices(
   model: PilotModel,
   choices: LineChoice[],
   pack: PackMetrics = prepareMetrics(bidPack),
-  settings: Partial<LearnerSettings> = {}
+  settings: Partial<LearnerSettings> = {},
+  answers: SwapAnswer[] = []
 ): LearnResult {
-  const s: LearnerSettings = { ...LEARNER, ...settings, swap: { ...LEARNER.swap, ...settings.swap } };
+  const s: LearnerSettings = { ...LEARNER, ...settings, swap: { ...LEARNER.swap, ...settings.swap }, answer: { ...LEARNER.answer, ...settings.answer } };
+  // Swaps the pilot called "about equal" teach nothing; the lines stay where they put them.
+  const equal = new Set(answers.filter((a) => a.kind === "equal").map((a) => a.dragId));
   // Fitted on the score the pilot actually sees: once they've graded trips, each line's weights carry what the grades
   // taught, and its score leans on its worst trip (`rankLinesWithTrips`). The worst trip is held where it was — it's what
   // they were looking at when they swapped — and the weights fitted are the untaught ones, so the lessons apply on top.
@@ -253,6 +313,7 @@ export function learnFromChoices(
   const known = choices.filter((c) => {
     // A swap a later one reversed is kept only so undoing the later one brings it back (`addDragChoices`).
     if (c.preferred === c.other || c.supersededBy || !scored.has(c.preferred) || !scored.has(c.other)) return false;
+    if (c.dragId && equal.has(c.dragId)) return false;
     if (c.direct) return true;
     const k = [c.preferred, c.other].sort().join("|");
     if (seen.has(k)) return false;
@@ -265,9 +326,12 @@ export function learnFromChoices(
 
   const agreedBefore = usable.filter((c) => shown.get(c.preferred)! > shown.get(c.other)!).length;
   const unchanged: LearnResult = { model, changes: [], agreedBefore, agreedAfter: agreedBefore, heldByLimit, uncertainty: Object.fromEntries(model.criteria.map((c) => [c.id, s.priorSd])), swapNoise: null };
-  if (usable.length === 0 || model.criteria.length === 0) return unchanged;
-
   const ids = model.criteria.map((c) => c.id);
+  // "This priority is why", for swaps still standing between lines the fit can read (not ones a dealbreaker decides).
+  const standing = new Set(usable.flatMap((c) => (c.dragId ? [c.dragId] : [])));
+  const reasons = answers.filter((a) => a.kind === "factor" && a.criterionId && ids.includes(a.criterionId) && standing.has(a.dragId) && scored.has(a.higher) && scored.has(a.lower));
+  if ((usable.length === 0 && reasons.length === 0) || model.criteria.length === 0) return unchanged;
+
   const base = taught.criteria.map(criterionWeight);
   const rowOf = (line: string): Row => {
     const byId = new Map(scored.get(line)!.results.map((x) => [x.criterionId, x]));
@@ -288,6 +352,11 @@ export function learnFromChoices(
   for (const pairs of swaps.values()) {
     const weights = swapPairWeights(pairs, s.swap.evidence, s.swap.primaryShare);
     pairs.forEach((c, k) => terms.push({ kind: "swap", a: rowOf(c.preferred), b: rowOf(c.other), weight: weights[k] }));
+  }
+  for (const r of reasons) {
+    // Weighed against the others they were shown (or every priority, if that wasn't kept).
+    const offered = [...new Set([...(r.offered ?? ids), r.criterionId!])].filter((id) => ids.includes(id)).map((id) => ids.indexOf(id));
+    if (offered.length > 1) terms.push({ kind: "reason", a: rowOf(r.higher), b: rowOf(r.lower), offered, picked: ids.indexOf(r.criterionId!) });
   }
 
   // Each noise level fitted; the one the swaps make most likely wins, leaning toward the quietest.

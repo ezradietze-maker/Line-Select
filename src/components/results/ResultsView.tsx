@@ -73,8 +73,12 @@ import {
   type DimensionUpdate,
   type PairwiseJudgment,
 } from "@/lib/rank-learning";
-import { addDragChoices, choicesFromSwap, describeChanges, withModel, withoutDrag } from "@/lib/brain/profile-model";
+import { addDragChoices, answerSwap, choicesFromSwap, describeChanges, withModel, withoutDrag, type SwapReply } from "@/lib/brain/profile-model";
 import { describeSwap, explainSwap } from "@/lib/brain/explain-swap";
+import { pickSwapQuestion, reasonOptions, untrackedFactor, type AskState, type SwapQuestion } from "@/lib/brain/swap-question";
+import type { ReasonOption } from "@/lib/brain/swap-reason";
+import { shareChanges } from "@/lib/brain/fit-choices";
+import { SwapQuestionCard } from "@/components/results/SwapQuestionCard";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { applyPlacements, loadPlacements, placementFromDrag, prunePlacements, savePlacements, type Placement } from "@/lib/line-placements";
 import { prepareMetrics } from "@/lib/metrics/compute";
@@ -134,6 +138,17 @@ function DragPreview({ lineScore }: { lineScore: LineScore }) {
 }
 
 /** Whether the pilot expressed any opinion at all about their layover hotel — gates fetching hotel quality data at all, so a pilot who left every hotel slider at 0 doesn't pay for network calls that can't affect their score. */
+/** A pilot who chose "Stop asking" on the question after a swap isn't asked again on this device. */
+const STOP_ASKING_KEY = "line-select:swap-questions-off:v1";
+
+function readStopAsking(): boolean {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem(STOP_ASKING_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /** Runs `fn` once the browser has drawn the next frame — after whatever the current update shows. */
 function afterPaint(fn: () => void) {
   requestAnimationFrame(() => setTimeout(fn, 0));
@@ -226,6 +241,9 @@ export function ResultsView({
   // The latest swap, with the profile from just before it and just after: undoing it while nothing else has changed
   // puts back exactly what the pilot had.
   const [lastSwap, setLastSwap] = useState<{ id: string; before: PreferenceProfile; after: PreferenceProfile } | null>(null);
+  // The one question after an unclear swap, and how often it's been asked this visit (see `lib/brain/swap-question.ts`).
+  const [swapQuestion, setSwapQuestion] = useState<{ question: SwapQuestion; options: { priorities: ReasonOption[]; measures: ReasonOption[] } } | null>(null);
+  const askRef = useRef<AskState>({ swapsSince: 0, asked: 0, askedPairs: new Set(), stopped: readStopAsking() });
   const [pageState, setPageState] = useState({ key: "", shown: PAGE_SIZE });
   // Which lines are open under their strips — as many as the pilot likes, to read side by side.
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
@@ -699,6 +717,15 @@ export function ResultsView({
         setLastSwap({ id: swapId, before: current, after: next });
         const said = why?.verdict === "limit" || why?.verdict === "agreed" ? null : describeChanges(changes);
         setLearnMessage([kept, why ? describeSwap(why, higher, lower) : null, said ? `Now ${said}.` : null].filter(Boolean).join(" "));
+        // When the brain can't tell why, and it's time to ask: one question.
+        const ask = askRef.current;
+        ask.swapsSince += 1;
+        if (!why || !packMetrics) return;
+        const untracked = why.verdict === "unexplained" ? untrackedFactor(bidPack, packMetrics, current.pilotModel, higher, lower) : null;
+        const question = pickSwapQuestion(why, { dragId: swapId, higher, lower }, ask, untracked);
+        if (!question) return;
+        askRef.current = { ...ask, asked: ask.asked + 1, swapsSince: 0, askedPairs: new Set(ask.askedPairs).add([higher, lower].sort().join("|")) };
+        setSwapQuestion({ question, options: reasonOptions(bidPack, packMetrics, current.pilotModel, before, higher, lower) });
       });
       return;
     }
@@ -749,6 +776,7 @@ export function ResultsView({
       onUpdateProfile(withModel(profile, bidPack, { choices: withoutDrag(profile.brainInterview.choices, id) }, packMetrics ?? undefined).profile);
     }
     if (lastSwap?.id === id) setLastSwap(null);
+    if (swapQuestion?.question.dragId === id) setSwapQuestion(null);
   }
 
   /** Puts the list back in the brain's order. What it learned from the swaps stays; undo a swap to take that back too. */
@@ -756,6 +784,44 @@ export function ResultsView({
     updatePlacements(() => []);
     setLastSwap(null);
     setLearnMessage(null);
+    setSwapQuestion(null);
+  }
+
+  /** The pilot's answer to the question after a swap: into their profile, the model refitted, and said back in a line. */
+  function replyToSwap(reply: SwapReply) {
+    if (!swapQuestion) return;
+    const { question } = swapQuestion;
+    const current = profileRef.current;
+    const next = answerSwap(current, bidPack, question, reply, packMetrics ?? undefined);
+    profileRef.current = next;
+    onUpdateProfile(next);
+    // Undoing the swap right after still puts back exactly what the pilot had before it, answer and all.
+    setLastSwap((prev) => (prev && prev.id === question.dragId ? { ...prev, after: next } : prev));
+    setSwapQuestion(null);
+    const moved = current.pilotModel && next.pilotModel ? describeChanges(shareChanges(current.pilotModel, next.pilotModel)) : null;
+    const said =
+      reply.kind === "equal"
+        ? `Got it — ${question.higher} stays where you put it, and I won't read anything into that swap.`
+        : reply.kind === "note"
+          ? "Noted — that's something a bid pack can't show, so it's kept with your priorities as you said it."
+          : reply.kind === "limit"
+            ? reply.action === "keep"
+              ? "Kept as a dealbreaker."
+              : reply.action === "drop"
+                ? "No longer a dealbreaker — it still counts as one of your priorities."
+                : "Limit moved to let that line through."
+            : `Thanks${reply.option.criterionId ? "" : ` — added ${reply.option.label.toLowerCase()} to your priorities`}.`;
+    setLearnMessage([said, moved ? `Now ${moved}.` : null].filter(Boolean).join(" "));
+  }
+
+  function stopAsking() {
+    askRef.current = { ...askRef.current, stopped: true };
+    setSwapQuestion(null);
+    try {
+      window.localStorage.setItem(STOP_ASKING_KEY, "1");
+    } catch {
+      // storage unavailable — it just asks again next visit
+    }
   }
 
   function handlePromptResolved(reinforcedProfile: PreferenceProfile | null) {
@@ -856,6 +922,17 @@ export function ResultsView({
           profile={profile}
           implicitValuesByLine={implicitValuesByLine}
           onResolved={handlePromptResolved}
+        />
+      )}
+
+      {swapQuestion && (
+        <SwapQuestionCard
+          key={swapQuestion.question.dragId}
+          question={swapQuestion.question}
+          options={swapQuestion.options}
+          onReply={replyToSwap}
+          onDismiss={() => setSwapQuestion(null)}
+          onStop={stopAsking}
         />
       )}
 

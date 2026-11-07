@@ -323,6 +323,36 @@ Each step is described in full and approved before it starts. Every step runs `n
      the catalog or a proposed new criterion.
    - Costs about a cent per free-text answer.
    - *Done when:* simulated pilots learn the hidden factor when they name it, and do not when they say "about equal".
+   - **Built Nov 7**, with the owner's choices: at most once every 5 swaps and 3 a visit, with "Stop asking"; typed
+     reasons through Claude's cheap model; a new priority only after the pilot confirms.
+     - **`lib/brain/swap-question.ts`** decides when to ask (ambiguous, unexplained, or dealbreaker swaps) and what to
+       offer:
+       - the priorities that could each explain the swap, with both lines' numbers;
+       - for an unexplained swap, a measure never named that clearly favours the higher line, only in the direction
+         pilots want it.
+     - **`SwapQuestionCard`**: chips, "Something else…", "About equal", "Not sure", "Stop asking". A dealbreaker gets
+       Keep / Not a dealbreaker / Raise it.
+     - **The learner reads answers** (`SwapAnswer`, saved with the profile; undoing the swap takes the answer back):
+       - a named priority is a softmax over the offered priorities' shares (Basu et al. 2018), worth 2.5 swaps;
+       - "about equal" drops the swap from learning;
+       - dealbreaker answers keep, remove or move the limit;
+       - a typed reason a pack can't show is kept as a note.
+     - **Typed reasons**: `/api/brain/swap-reason` (Haiku 5.5, low effort, the site's rate and spend limits). It
+       matches the words to the pilot's priorities or to catalog measures, the result is checked against both lines,
+       and "both lines are the same on that" is said back. One call: $0.00017, 1.9 s.
+     - **Swap bench**, simulated pilots answering from their true preferences, 12 swaps, 80 pilots:
+
+       | | No learning | Old fit | Swaps only | Swaps + one question |
+       |---|---|---|---|---|
+       | Pilots with a factor the interview never named | 69.8% | 71.3% | 70.1% | **73.1%** (factor added for 59 of 80) |
+       | Pilots without one (6 swaps, 40 pilots) | 75.2% | 77.8% | 76.7% | 77.5% |
+
+       - The ex-pilot's bench is unchanged (99.3% across piles): it has no simulated answers, since made-up answers
+         wouldn't be his. His real answers are what can raise him from here.
+       - Answer weight 2.5–5 scored the same; 10 was worse.
+     - **Speed.** Measurements are kept per pack (`measureAll`), and the results ranking keeps one measured pack per bid
+       pack. On the biggest pack (489 lines), explaining and refitting a swap went from about 425 ms to 6–10 ms on a
+       laptop, and the re-rank from 80 ms to 1 ms.
 5. **Memory** (§4.6). Drag log with snapshots, the learned offset carried across months with decay, the "this month"
    layer, and the "What I've learned" panel.
    - Needs a Neon migration, applied before the deploy, only with the owner's OK.

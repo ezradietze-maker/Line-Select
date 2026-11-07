@@ -1,6 +1,7 @@
 import { formatValue } from "@/lib/brain/describe";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { METRICS_BY_ID, type MetricCategory } from "@/lib/metrics/catalog";
+import { prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import { SATISFACTION_CATEGORY_LABELS, type SatisfactionCategory } from "@/lib/satisfaction-categories";
 import type { LineScore } from "@/lib/scoring";
 import { type CriterionResult, type V2LineScore } from "@/lib/scoring-v2/score";
@@ -63,12 +64,22 @@ function categoriesFor(s: V2LineScore, fallback: LineScore["categoryScores"]): L
   return out;
 }
 
+/**
+ * One measured pack per bid pack for ranking: a re-rank after a refit then re-scores without re-measuring every line
+ * (see `measureAll`) — on the biggest pack, 80 ms down to about 1 ms on a laptop, four times that on a slowed phone.
+ */
+const rankingPacks = new WeakMap<BidPack, PackMetrics>();
+
 export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: PilotModel, flights?: FlightAnswers): LineScore[] {
   // With every priority dropped there's nothing to rank by here; the older scores still come back best first,
   // as `scoreBidPack` hands them over in pack order.
   if (model.criteria.length === 0) return [...scores].sort((a, b) => b.score - a.score || a.line.lineNumber.localeCompare(b.line.lineNumber));
+  let pack = rankingPacks.get(bidPack);
+  if (!pack) rankingPacks.set(bidPack, (pack = prepareMetrics(bidPack)));
+  // Set every time, flights or none, so a ranking never reads the flights of an earlier one.
+  pack.ctx.flights = flights;
   // Once the pilot has graded trips, each line leans on its worst trip's score (see `TRIP_LEAN`).
-  const v2 = new Map(rankLinesWithTrips(bidPack, model, { flights }).map((s) => [s.lineId, s]));
+  const v2 = new Map(rankLinesWithTrips(bidPack, model, { flights, pack }).map((s) => [s.lineId, s]));
   return scores
     .map((ls) => {
       const s = v2.get(ls.line.id);

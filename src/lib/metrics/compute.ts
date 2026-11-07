@@ -94,3 +94,23 @@ export function measure(metricId: string, line: Line, pack: PackMetrics, params:
   const def = METRICS_BY_ID.get(metricId);
   return def ? measureLine(def, line, pack, params) : null;
 }
+
+/**
+ * Every line's value on a measure, worked out once per pack, parameters, and flight and travel data. A pilot's weights
+ * never change a measurement — only how it's scored — so a refit after a swap re-scores the lines without re-measuring
+ * them: on the biggest pack on a slowed phone, re-measuring was most of the second-long freeze after a swap. Flights or
+ * travel times arriving (they're set on `pack.ctx`) start the cache afresh.
+ */
+const measuredByPack = new WeakMap<PackMetrics, { travel: LineContext["travel"]; flights: LineContext["flights"]; values: Map<string, (number | null)[]> }>();
+
+export function measureAll(metricId: string, lines: Line[], pack: PackMetrics, params: MetricParams = {}): (number | null)[] {
+  let cache = measuredByPack.get(pack);
+  if (!cache || cache.travel !== pack.ctx.travel || cache.flights !== pack.ctx.flights) {
+    cache = { travel: pack.ctx.travel, flights: pack.ctx.flights, values: new Map() };
+    measuredByPack.set(pack, cache);
+  }
+  const key = `${metricId}|${lines.length}|${JSON.stringify(params)}`;
+  let values = cache.values.get(key);
+  if (!values) cache.values.set(key, (values = lines.map((l) => measure(metricId, l, pack, params))));
+  return values;
+}

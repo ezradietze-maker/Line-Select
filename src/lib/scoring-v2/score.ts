@@ -1,5 +1,5 @@
 import { METRICS_BY_ID, type MetricDef, type MetricParams } from "@/lib/metrics/catalog";
-import { measure, prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
+import { measureAll, prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import { fourWeekFactor } from "@/lib/metrics/line-length";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { TravelTimeProvider } from "@/lib/metrics/home-travel";
@@ -180,7 +180,8 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
 
   // Measure every criterion on every line's bid month once. A count in a five-week bid month is judged at four weeks'
   // worth, the month the pilot's numbers are for (`values` stay as measured, for showing; `judged` is what's scored).
-  const values = criteria.map((c) => bidPack.lines.map((l) => measure(c.metric, l, pack, { ...home, ...c.params })));
+  // Measured once per pack and kept: a refit only changes weights, never a measurement (see `measureAll`).
+  const values = criteria.map((c) => measureAll(c.metric, bidPack.lines, pack, { ...home, ...c.params }));
   const factor = fourWeekFactor(bidPack);
   const judged = criteria.map((c, ci) => (METRICS_BY_ID.get(c.metric)?.perMonth && factor !== 1 ? values[ci].map((v) => (v === null ? null : v * factor)) : values[ci]));
   const spreads = criteria.map((c, ci) => spreadOf(judged[ci], c.shape, METRICS_BY_ID.get(c.metric)));

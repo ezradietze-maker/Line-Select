@@ -25,7 +25,10 @@ import { migrateProfile } from "@/lib/profile-migration";
 import { rankLinesWithTrips, tripKey } from "@/lib/scoring-v2/trip-score";
 import { fitTripWeights } from "@/lib/brain/fit-choices";
 import type { BidPack } from "@/types/bidpack";
-import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
+import type { LineChoice, PilotModel, SwapAnswer, TripChoice } from "@/types/pilot-model";
+import { explainSwap } from "@/lib/brain/explain-swap";
+import { criterionFromAnswer, pickSwapQuestion, untrackedFactor, type AskState } from "@/lib/brain/swap-question";
+import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { PERSONAS } from "./personas";
 
 const ROOT = process.env.EVAL_ROOT ?? ".";
@@ -142,13 +145,16 @@ function synthetic() {
     const bp = expandBidPack(JSON.parse(readFileSync(packFile, "utf8")));
     sources.push({ name: persona.id, bp, pm: prepareMetrics(bp), model });
   }
-  const results: Record<string, number[]> = Object.fromEntries(Object.keys(LEARNERS).map((n) => [n, []]));
+  const results: Record<string, number[]> = Object.fromEntries([...Object.keys(LEARNERS), "ask"].map((n) => [n, []]));
   const baseline: number[] = [];
+  let hiddenNamed = 0;
   for (const [si, src] of sources.entries()) {
     const lines = src.bp.lines.map((l) => l.lineNumber);
     for (let p = 0; p < PER; p++) {
       const r = rng(1000 * si + p + 1);
-      const truth: PilotModel = { ...src.model, criteria: src.model.criteria.map((c) => ({ ...c, weight: Math.max(0.01, c.weight) * Math.exp(0.6 * gauss(r)) })) };
+      const weighted: PilotModel = { ...src.model, criteria: src.model.criteria.map((c) => ({ ...c, weight: Math.max(0.01, c.weight) * Math.exp(0.6 * gauss(r)) })) };
+      // HIDDEN=1: the pilot also cares about something the interview never named.
+      const truth = process.env.HIDDEN ? withHidden(weighted, r) : weighted;
       const sT = scores(src.bp, truth, src.pm);
       const truthTop = [...lines].sort((a, b) => sT.get(b)! - sT.get(a)!).slice(0, 30);
       const noise = new Map(lines.map((l) => [l, TAU * gauss(r)]));
@@ -158,14 +164,92 @@ function synthetic() {
         const { model, seen } = session(src.bp, src.pm, src.model, lines, perceived, learner, SHOWN);
         out[name] = { s: scores(src.bp, model, src.pm), seen };
       }
+      const asked = askSession(src.bp, src.pm, src.model, truth, lines, perceived, SHOWN);
+      out.ask = { s: scores(src.bp, asked.model, src.pm), seen: asked.seen };
+      if (asked.named) hiddenNamed++;
       // The same held-out lines for every learner: never on screen for any of them.
       const unseen = truthTop.filter((l) => Object.values(out).every((o) => !o.seen.has(l)));
       baseline.push(pairAgreement(scores(src.bp, src.model, src.pm), unseen));
-      for (const name of Object.keys(LEARNERS)) results[name].push(pairAgreement(out[name].s, unseen));
+      for (const name of Object.keys(out)) results[name].push(pairAgreement(out[name].s, unseen));
     }
     console.log(`  ${src.name.padEnd(26)} ${src.bp.lines.length} lines, ${src.model.criteria.length} criteria`);
   }
-  report(`Synthetic pilots, ${SWAPS} swaps, τ=${TAU}: unseen lines of their true top 30`, results, baseline);
+  report(`Synthetic pilots${process.env.HIDDEN ? " with a factor the interview never named" : ""}, ${SWAPS} swaps, τ=${TAU}: unseen lines of their true top 30`, results, baseline);
+  if (process.env.HIDDEN) console.log(`  the hidden factor got named and added for ${hiddenNamed} of ${baseline.length} pilots`);
+}
+
+/** Measures a simulated pilot may secretly care about, with the way they'd want them. */
+const HIDDEN_FACTORS: [string, "more" | "less"][] = [
+  ["daysOff", "more"], ["longestDaysOffBlock", "more"], ["weekendDaysOff", "more"], ["creditHours", "more"], ["longDuties", "less"],
+  ["earlyReports", "less"], ["redEyeLegs", "less"], ["nightsWorked", "less"], ["dutiesWithManyLegs", "less"], ["landings", "less"], ["tafbHours", "less"],
+];
+
+/** The pilot's true model with one factor the interview never named, counting about half as much as their top priority. */
+function withHidden(model: PilotModel, r: () => number): PilotModel {
+  const used = new Set(model.criteria.map((c) => c.metric));
+  const options = HIDDEN_FACTORS.filter(([m]) => !used.has(m));
+  const [metric, kind] = options[Math.floor(r() * options.length)];
+  const top = Math.max(...model.criteria.map((c) => c.weight));
+  return { ...model, criteria: [...model.criteria, { id: `hidden-${metric}`, metric, shape: { kind }, tier: "medium", weight: 0.5 * top, confidence: 1, label: metric, evidence: [], status: "settled" }] };
+}
+
+/**
+ * A session with the question after unclear swaps, answered by the simulated pilot from its true preferences: the
+ * offered priority that truly pulled hardest for the line it put higher; or, when that wasn't offered, the real reason
+ * "typed" (standing in for the reason route matching their words); or "about equal" when nothing truly favoured it (a
+ * noisy swap). The same timing rules as the app (`pickSwapQuestion`).
+ */
+function askSession(bp: BidPack, pm: PackMetrics, interview: PilotModel, truth: PilotModel, lines: string[], perceived: (l: string) => number, shownCount: number) {
+  let base = interview;
+  let model = interview;
+  const choices: LineChoice[] = [];
+  const answers: SwapAnswer[] = [];
+  const placements: Placement[] = [];
+  const seen = new Set<string>();
+  const state: AskState = { swapsSince: 0, asked: 0, askedPairs: new Set(), stopped: false };
+  const truthScores = new Map(scorePackV2(bp, truth, { pack: pm }).map((s) => [s.lineNumber, s]));
+  let named = false;
+  for (let k = 0; k < SWAPS; k++) {
+    const s = scores(bp, model, pm);
+    const ranked = [...lines].sort((a, b) => s.get(b)! - s.get(a)! || a.localeCompare(b));
+    const shown = applyPlacements(ranked, placements, (l) => l).slice(0, shownCount);
+    shown.forEach((l) => seen.add(l));
+    let drag: { from: number; to: number } | null = null;
+    for (let i = 0; i < shown.length && !drag; i++) {
+      const best = shown.slice(i).reduce((a, b) => (perceived(a) > perceived(b) ? a : b));
+      if (best !== shown[i]) drag = { from: shown.indexOf(best), to: i };
+    }
+    if (!drag) break;
+    const id = `swap-${k}`;
+    const placement = placementFromDrag(shown, drag.from, drag.to, id)!;
+    placements.push(placement);
+    const [higher, lower] = [placement.order[0], placement.order[placement.order.length - 1]];
+    choices.push(...choicesFromSwap(placement.order, id));
+    const before = new Map(scorePackV2(bp, model, { pack: pm }).map((x) => [x.lineNumber, x]));
+    const why = explainSwap(before.get(higher)!, before.get(lower)!);
+    state.swapsSince++;
+    const untracked = why.verdict === "unexplained" ? untrackedFactor(bp, pm, model, higher, lower) : null;
+    const question = pickSwapQuestion(why, { dragId: id, higher, lower }, state, untracked);
+    if (question?.kind === "factors") {
+      state.asked++;
+      state.swapsSince = 0;
+      state.askedPairs.add([higher, lower].sort().join("|"));
+      // The pilot's real main reason: the priority (or hidden factor) that truly pulled hardest for the higher line.
+      const truly = explainSwap(truthScores.get(higher)!, truthScores.get(lower)!).factors.filter((f) => f.share > 0)[0];
+      const offered = question.options.flatMap((o) => (o.criterionId ? [o.criterionId] : []));
+      if (!truly) answers.push({ dragId: id, higher, lower, kind: "equal" });
+      else if (truly.criterionId.startsWith("hidden-")) {
+        const metric = truly.criterionId.slice("hidden-".length);
+        const kind = truth.criteria.find((c) => c.id === truly.criterionId)!.shape.kind as "more" | "less";
+        const c = criterionFromAnswer({ metric, direction: kind, label: metric, amounts: "" }, "typed");
+        if (!base.criteria.some((x) => x.id === c.id)) base = { ...base, criteria: [...base.criteria, c] };
+        answers.push({ dragId: id, higher, lower, kind: "factor", criterionId: c.id, offered: [...offered, c.id] });
+        named = true;
+      } else answers.push({ dragId: id, higher, lower, kind: "factor", criterionId: truly.criterionId, offered: [...new Set([...offered, truly.criterionId])] });
+    }
+    model = learnFromChoices(bp, base, choices, pm, SETTINGS_LIST[0], answers).model;
+  }
+  return { model, seen, named };
 }
 
 function expilot() {

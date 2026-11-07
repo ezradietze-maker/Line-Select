@@ -73,3 +73,9 @@ export async function requestNextStep(
 ): Promise<StepResponse> {
   return post<StepResponse>("/api/brain/question", body, 85_000);
 }
+
+/** A pilot's own words for why they swapped two lines, matched to a priority or measure (see `lib/brain/swap-reason.ts`). */
+export async function requestSwapReason(body: import("./swap-reason").SwapReasonInput): Promise<import("./swap-reason").SwapReason> {
+  const r = await post<{ reason: import("./swap-reason").SwapReason }>("/api/brain/swap-reason", body, 25_000);
+  return r.reason;
+}

@@ -282,6 +282,8 @@ export interface PreferenceProfile {
     choices: import("./pilot-model").LineChoice[];
     /** Every trip-versus-trip choice from the interview — what tunes how each priority counts on a single trip. */
     tripChoices?: import("./pilot-model").TripChoice[];
+    /** What the pilot said when asked why they swapped two lines on their results — evidence the fit reads with the swaps. */
+    swapAnswers?: import("./pilot-model").SwapAnswer[];
     /**
      * The model as the pilot confirmed it (their review applied, their city grades in), before any choice fitting.
      * `pilotModel` is always this, fitted to all of `choices` — so every new choice or edit refits from what the
