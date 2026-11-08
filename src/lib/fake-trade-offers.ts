@@ -1,10 +1,10 @@
 /**
- * Client-only demo data for the Trade Board and Inbox: synthetic offers built
- * from a pilot's own real bid pack trips, so the numbers look legitimate.
+ * Client-only demo data for the Trade Board: synthetic offers built from the
+ * sample bid pack's trips, so a first-time visitor can see how the board works.
+ * Only ever for the sample pack: with a pilot's real pack the board shows real
+ * offers or none, so an invented pilot can never be mistaken for a colleague.
  * Never sent to the server, never visible to other real pilots, and always
- * tagged `isDemo: true` so the UI can badge it clearly. This exists purely so
- * the trade flow has something to interact with before real pilots are using
- * the board — it should come out once there's real activity to show instead.
+ * tagged `isDemo: true` so the UI can badge it clearly.
  */
 import { tripToSnapshot } from "@/lib/trade-client";
 import type { BidPack, Trip } from "@/types/bidpack";
@@ -25,6 +25,11 @@ const FAKE_PILOT_NAMES = [
   "N. Haddad",
 ];
 
+/** Whether this is the sample pack rather than one a pilot uploaded. */
+export function isSamplePack(bidPack: Pick<BidPack, "id">): boolean {
+  return bidPack.id.startsWith("sample");
+}
+
 function pickRandom<T>(items: T[]): T | null {
   if (items.length === 0) return null;
   return items[Math.floor(Math.random() * items.length)];
@@ -36,16 +41,16 @@ function allTrips(bidPack: BidPack): { lineNumber: string; trip: Trip }[] {
 }
 
 /**
- * Builds one synthetic open offer from the pilot's own bid pack. `biasWantedPairingNumber`,
- * when supplied, is used for the "wants back" field most of the time — this is how the
- * Inbox's "direct interest in your trips" section (and its notifications) reliably get
- * demo data to show once the pilot has an open offer of their own, rather than only
- * occasionally lining up by chance.
+ * Builds one synthetic open offer from the sample pack, or null for any other pack.
+ * `biasWantedPairingNumber`, when supplied, is used for the "wants back" field most of the
+ * time, so the example lines up with an open offer of the pilot's own rather than only
+ * occasionally by chance.
  */
 export function generateFakeOffer(
   bidPack: BidPack,
   biasWantedPairingNumber?: string | null
 ): TradeOffer | null {
+  if (!isSamplePack(bidPack)) return null;
   const trips = allTrips(bidPack);
   if (trips.length === 0) return null;
 
@@ -85,4 +90,20 @@ export function generateFakeOffer(
     resolvedAt: null,
     isDemo: true,
   };
+}
+
+/**
+ * The board's offers with the example added: only for the sample pack, and only while no real pilot has an open offer
+ * on it, so an invented one never sits next to (or gets mistaken for) a real one. Checked here as well as where offers
+ * are made because a pack just loaded over the sample still has the old example for a moment.
+ */
+export function withExampleOffer(
+  demoOffer: TradeOffer | null | undefined,
+  realOffers: TradeOffer[],
+  bidPack: BidPack | null,
+  userId: string | undefined
+): TradeOffer[] {
+  if (!demoOffer || !bidPack || !isSamplePack(bidPack)) return realOffers;
+  const hasRealOpenOffer = realOffers.some((o) => o.status === "open" && o.offeringUserId !== userId);
+  return hasRealOpenOffer ? realOffers : [demoOffer, ...realOffers];
 }

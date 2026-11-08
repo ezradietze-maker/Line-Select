@@ -196,7 +196,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
       {!uploading && (
         <p className="mt-4 text-xs leading-relaxed text-ink-faint">
           Parsed on our server and never stored there &mdash; only the extracted line data comes back to this device.
-          Pages naming other pilots are never read.
+          Other pilots&rsquo; names and employee numbers are never kept.
         </p>
       )}
 

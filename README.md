@@ -10,40 +10,24 @@ endorsed by, or connected to Federal Express Corporation in any way.
 ## What it does
 
 1. **Bid pack upload & parsing** — a pilot uploads their bid pack PDF and the
-   app extracts real line and trip data directly from it. It parses two page
-   types only: pairing schedule pages (individual trips) and line grid pages
-   (per-line totals + calendar). Every other page type — vacation schedules,
-   seniority lists, training rosters, or anything else listing named
-   individuals — is detected by its header and **never parsed, stored, or
-   displayed**, since it contains other pilots' personal employment data that
-   this app has no reason to touch.
+   app extracts real line and trip data directly from it: pairing schedule
+   pages (individual trips), line grid pages (per-line totals + calendar),
+   reserve lines, the pack's info pages and FedEx flights. The Bid Seniority
+   List and Vacation Schedule name other pilots, so only numbers are kept from
+   them (bid order, seniority, pay status, vacation days and dates) and names
+   and employee numbers are never captured. Pages that only list people, like
+   training rosters, are detected by their header and skipped unread.
 2. **Preview & confirm** — before anything is scored, the pilot sees a
    summary of what was found (how many lines, from how many pairing pages,
    which seat) and any parsing warnings, and confirms it looks right. If the
    PDF can't be read (wrong file, scanned image, unrecognized layout), a
    specific error is shown instead of silently producing bad data.
-3. **Preference interview** — a 21-question adaptive interview, built around
-   what actually varies in a real bid pack:
-   - **Commuter check** (first question): commuting vs. local isn't scored on
-     its own, but raises the effective importance of report time and trip
-     count even if a pilot leaves those sliders near neutral — an early/late
-     report or an extra trip costs a commuter a hotel night or a missed
-     flight home.
-   - **Six quick sliders**: days off, trip length, trip count (separate from
-     trip length — a commuter's real lever), domestic vs. international,
-     report time, lean line vs. max credit.
-   - **Optional deeper round**: a deadhead-tolerance slider; a Northeast vs.
-     Southeast Asia layover-region slider (only asked when a pilot's own bid
-     pack actually has both — e.g. HKG/ICN/KIX vs. SIN/BKK/CGK); three
-     "pin an exact target" sliders in real units (days off, credit hours,
-     trip count) instead of a rough slider midpoint; a **city preference
-     picker** built from the actual layover cities in the pilot's own bid
-     pack, letting them flag specific cities as favorites or ones to avoid;
-     and eight "would you rather" trade-off questions that nudge the slider
-     weights.
-   - A **confirmation screen** after the interview shows a plain-English
-     summary of what was heard, ranked by importance, with every slider
-     still live to adjust before anything is scored.
+3. **Preference interview** — a story-driven interview (`/interview`). The
+   pilot describes how they bid in their own words, and the AI builds a model
+   of what they care about from that, asks follow-ups only where the story
+   leaves something open, and has them choose between real pairs of lines from
+   their own pack. A review screen shows each priority it heard, ranked by
+   importance, to adjust before anything is scored.
 4. **Scoring engine** — normalizes each line's real attributes (days off,
    trip length, trip count, international share, Asia region mix, report-time
    lean, deadhead legs, credit hours) to a 0-1 scale, plus a city-preference
@@ -59,18 +43,16 @@ endorsed by, or connected to Federal Express Corporation in any way.
    backing the Trade Board below. Passwords are hashed with Node's built-in
    `scrypt` (a salt per account, timing-safe comparison on login) via API
    routes under `app/api/auth/`; sessions are an opaque token in an
-   HTTP-only cookie, checked against a server-side session store. Accounts
-   and sessions live in a JSON file on the dev server's disk
-   (`lib/server/db.ts`) — a real, shared, prototype-grade store, not a
-   production database, but genuinely visible across devices hitting the
-   same server (unlike the interview/preferences data below, which stays
-   local per-device). Guests (no account) still get their preferences and
-   bid pack saved locally under a separate guest key, but can't post or
-   respond to trade offers.
+   HTTP-only cookie, checked against a server-side session store. Accounts,
+   sessions and everything else account-linked live in Postgres on Neon
+   (`lib/server/schema.ts`, `lib/server/db.ts`). A signed-in pilot's bid pack
+   and preferences are stored there too, so they follow them between devices.
+   Guests (no account) still get their preferences and bid pack saved locally
+   under a separate guest key, but can't post or respond to trade offers.
 7. **Trade Board** — a coordination tool for finding another pilot to trade
    with, not a binding trade system. A pilot posts an offer (one of their
-   own lines, optionally a specific line wanted back, an optional note);
-   another pilot proposes a counter-line; the offering pilot accepts or
+   own trips, optionally a specific pairing wanted back, an optional note);
+   another pilot proposes a trip in return; the offering pilot accepts or
    declines. Status (open/pending/accepted/declined/withdrawn) is visible to
    both sides. The non-binding disclaimer is permanently visible on the page
    itself — not a modal — and an accepted trade shows "Agreed — now file
@@ -93,15 +75,13 @@ endorsed by, or connected to Federal Express Corporation in any way.
    international trips"), with every slider still live so they can nudge an
    answer that's off without redoing the whole interview. Nothing is saved
    until "Show my rankings" is pressed.
-11. **Demo offers on the Trade Board** — since there's no real pilot traffic
-   yet, a synthetic "Demo"-badged offer rotates into the open-offers list
-   every 15-20 seconds, built from real lines in the pilot's own bid pack so
-   the numbers look legitimate. It's client-side only (`lib/fake-trade-offers.ts`)
-   and never touches the server or another pilot's screen. Accepting one
-   skips the normal propose-a-counter-line flow (a single "Accept" resolves
-   it immediately) and shows the same "Agreed" state a real accepted trade
-   would, so the flow is easy to see working before there's real activity to
-   show instead.
+11. **Example offers on the Trade Board** — only with the sample pack, so a
+   first-time visitor can see how the board works: an offer from an "Example
+   pilot", marked "Example — not real", rotates in every 15-20 seconds. It's
+   client-side only (`lib/fake-trade-offers.ts`) and never touches the server
+   or another pilot's screen. With an uploaded pack, the board shows only real
+   offers. Accepting an example skips the normal propose-a-trip flow and shows
+   the same "Agreed" state a real accepted trade would.
 12. **Inbox** — a nav item separate from the Trade Board surfacing three
    things: proposals waiting on the pilot's own posted offers ("needs your
    response"), offers from other pilots who specifically asked for a line
@@ -215,7 +195,7 @@ src/
     preference-summary.ts    Ranks weights into the "here's what we heard" sentence
     auth.ts                  Client wrapper around the server auth API (fetch, not localStorage)
     trade-client.ts          Client wrapper around the server trade API
-    fake-trade-offers.ts     Client-only synthetic Trade Board offers (demo data, never sent to the server)
+    fake-trade-offers.ts     Client-only example Trade Board offers, sample pack only (never sent to the server)
     inbox.ts                 Shared "needs response / direct interest / accepted" filtering used by the Trade Board, Inbox, and unread badge
     hotel-client.ts          Client wrapper around the server hotel API
     storage.ts               Per-account localStorage read/write for the saved preference profile

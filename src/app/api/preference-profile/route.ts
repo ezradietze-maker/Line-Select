@@ -4,15 +4,21 @@ import { getCurrentServerUser } from "@/lib/server/auth";
 import { reportProblem } from "@/lib/server/alerts";
 import { deletePreferenceProfile, getPreferenceProfileRecord, savePreferenceProfile, savePreferenceProfileOver } from "@/lib/server/db";
 import { keepReplacedVersion } from "@/lib/server/profile-history";
+import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import type { PreferenceProfile } from "@/types/preferences";
 
 export const runtime = "nodejs";
+
+// Well above real use: a save follows every change, and one refused here just shows as unsaved and retries a minute later.
+const READS_PER_HOUR = 300;
+const WRITES_PER_HOUR = 600;
 
 export async function GET() {
   const user = await getCurrentServerUser();
   if (!user) {
     return NextResponse.json({ error: "Sign in to load your preference profile." }, { status: 401 });
   }
+  if (!(await checkRateLimit("preference-profile-read", user.id, READS_PER_HOUR, 60 * 60)).ok) return rateLimitedResponse();
   const record = await getPreferenceProfileRecord(user.id);
   // `updatedAt` is the version this device now holds; it sends it back with its next save (see PUT).
   return NextResponse.json({ profile: record?.profile ?? null, updatedAt: record?.updatedAt ?? null }, { headers: { "Cache-Control": "private, no-store" } });
@@ -23,6 +29,7 @@ export async function PUT(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Sign in to save your preference profile." }, { status: 401 });
   }
+  if (!(await checkRateLimit("preference-profile-write", user.id, WRITES_PER_HOUR, 60 * 60)).ok) return rateLimitedResponse();
 
   let body: { profile?: PreferenceProfile; baseUpdatedAt?: string | null };
   try {
@@ -66,6 +73,7 @@ export async function DELETE() {
   if (!user) {
     return NextResponse.json({ error: "Sign in to clear your preference profile." }, { status: 401 });
   }
+  if (!(await checkRateLimit("preference-profile-write", user.id, WRITES_PER_HOUR, 60 * 60)).ok) return rateLimitedResponse();
   await deletePreferenceProfile(user.id);
   return NextResponse.json({ ok: true });
 }

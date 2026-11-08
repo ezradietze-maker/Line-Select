@@ -106,3 +106,29 @@ describe("spend guard", () => {
     expect((await res.json()).error).toMatch(/resting until tomorrow/);
   });
 });
+
+describe("a feature's own allowance", () => {
+  it("is kept apart from the AI's: spending one leaves the other whole", async () => {
+    await recordSpend(pilot, 2, { feature: "flights", now: day });
+    expect(await checkSpend(pilot, { feature: "flights", now: day })).toEqual({ ok: false, scope: "pilot" });
+    expect(await checkSpend(pilot, { now: day })).toEqual({ ok: true });
+
+    await recordSpend(otherPilot, 8, { now: day });
+    expect(await checkSpend(otherPilot, { now: day })).toEqual({ ok: false, scope: "pilot" });
+    expect((await checkSpend(otherPilot, { feature: "flights", now: day })).ok).toBe(true);
+  });
+
+  it("is smaller for a guest, and says how much is left", async () => {
+    expect(await checkSpend(guest, { feature: "flights", now: day })).toEqual({ ok: true, leftUsd: 0.5 });
+    expect(await checkSpend(pilot, { feature: "flights", now: day })).toEqual({ ok: true, leftUsd: 2 });
+    await recordSpend(pilot, 0.5, { feature: "flights", now: day });
+    expect(await checkSpend(pilot, { feature: "flights", now: day })).toEqual({ ok: true, leftUsd: 1.5 });
+  });
+
+  it("still counts toward the site's ceiling, and stops at it", async () => {
+    process.env.SPEND_SITE_DAILY_USD = "1";
+    await recordSpend(pilot, 1, { feature: "flights", now: day });
+    expect(await checkSpend(otherPilot, { feature: "flights", now: day })).toEqual({ ok: false, scope: "site" });
+    expect(await checkSpend(otherPilot, { now: day })).toEqual({ ok: false, scope: "site" });
+  });
+});

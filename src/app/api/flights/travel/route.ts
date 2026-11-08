@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import type { ScheduledFlight } from "@/lib/flights/itineraries";
 import type { TravelNeed } from "@/lib/flights/needs";
-import { answerTravelNeeds, flightDataConfigured } from "@/lib/server/flight-schedules";
+import { answerTravelNeeds, boardCostUsd, flightDataConfigured } from "@/lib/server/flight-schedules";
 import { isJsonObject } from "@/lib/server/json-body";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkSpend, recordSpend, spenderFor } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 // The first look at a month's flights fetches a few hundred departure boards; after that it's cached.
@@ -75,6 +76,9 @@ function readJumpseats(value: unknown): ScheduledFlight[] | null {
  * A commuter's real flights: for each trip's travel (to base, deviating to join a trip, home again), how many real
  * airline itineraries (and FedEx jumpseats from the pilot's own bid pack) fit, the last one that still works, and the first one home. Without the flight-data key
  * configured, it says so and the app keeps its estimates.
+ *
+ * Only new boards are charged, to the caller's daily flight allowance; once that's gone the lookup answers from boards
+ * already cached, for free, and what those can't answer stays an estimate.
  */
 export async function POST(request: Request) {
   if (!flightDataConfigured()) return NextResponse.json({ configured: false, answers: [] });
@@ -89,8 +93,13 @@ export async function POST(request: Request) {
   const needs = isJsonObject(body) ? readNeeds(body.needs) : null;
   const jumpseats = isJsonObject(body) ? readJumpseats(body.jumpseats) : null;
   if (!needs || !jumpseats) return NextResponse.json({ error: "Invalid travel request." }, { status: 400 });
+  const spender = await spenderFor(request);
+  const allowed = await checkSpend(spender, { feature: "flights" });
+  const costPerBoard = boardCostUsd();
+  const maxBoards = allowed.ok ? Math.floor((allowed.leftUsd ?? 0) / costPerBoard) : 0;
   try {
-    const { answers, stats } = await answerTravelNeeds(needs, jumpseats);
+    const { answers, stats } = await answerTravelNeeds(needs, jumpseats, { maxBoards });
+    await recordSpend(spender, stats.fetched * costPerBoard, { feature: "flights" });
     console.log("[flights]", { needs: needs.length, jumpseats: jumpseats.length, answered: answers.length, ...stats });
     return NextResponse.json({ configured: true, answers });
   } catch (e) {

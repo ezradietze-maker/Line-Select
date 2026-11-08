@@ -5,7 +5,7 @@ import { addToCounter, getJson, incrementCounter } from "@/lib/server/kv";
 import { clientIp, deviceIdFrom } from "@/lib/server/rate-limit";
 
 /**
- * A dollar ceiling on everything that costs money per call — the AI, dictation, hotel lookups — for the whole site
+ * A dollar ceiling on everything that costs money per call — the AI, dictation, hotel and flight lookups — for the whole site
  * and for each pilot, per UTC day. Rate limits count requests, but one request can cost a tenth of a cent or half a
  * dollar, so only a running total of what was actually spent stops someone running up the bill (or a bug looping).
  *
@@ -31,7 +31,24 @@ export function spendCaps() {
     guest: dollars("SPEND_GUEST_DAILY_USD", 2),
     /** All the guests on one address together — a crew room's worth, so clearing cookies doesn't buy a fresh guest allowance. */
     guestAddress: dollars("SPEND_GUEST_ADDRESS_DAILY_USD", 10),
+    /** Flight lookups have their own allowance beside the AI's, so neither can use up the other; the site's ceiling covers both. */
+    flights: {
+      pilot: dollars("SPEND_FLIGHTS_PILOT_DAILY_USD", 2),
+      guest: dollars("SPEND_FLIGHTS_GUEST_DAILY_USD", 0.5),
+      guestAddress: dollars("SPEND_FLIGHTS_GUEST_ADDRESS_DAILY_USD", 2.5),
+    },
   };
+}
+
+/** A paid feature with its own daily allowance (see `spendCaps`). */
+export type SpendFeature = "flights";
+
+interface SpendOptions {
+  /** Charges the call to the site's total alone — see `checkSpend`. */
+  siteOnly?: boolean;
+  /** Charges the call to this feature's allowance instead of the pilot's general one. The site's total counts it either way. */
+  feature?: SpendFeature;
+  now?: Date;
 }
 
 /**
@@ -58,42 +75,47 @@ function today(now: Date): string {
 
 const siteKey = (day: string) => `line-select:spend:site:${day}`;
 const whoKey = (day: string, key: string) => `line-select:spend:who:${day}:${key}`;
+const chargedTo = (key: string, feature?: SpendFeature) => (feature ? `${feature}:${key}` : key);
 
 /** What the whole site spent on one UTC day (`YYYY-MM-DD`), in dollars — for the daily summary. */
 export async function siteSpentOn(day: string): Promise<number> {
   return ((await getJson<number>(siteKey(day))) ?? 0) / MICRO;
 }
 
-export type SpendCheck = { ok: true } | { ok: false; scope: "site" | "pilot" };
+/** `leftUsd`, asked for with a `feature`, is how much more can be spent today — so a call that buys many things at once can stop in time. */
+export type SpendCheck = { ok: true; leftUsd?: number } | { ok: false; scope: "site" | "pilot" };
 
 /**
  * Whether a paid call may start. `siteOnly` charges the call to the site's total alone — for hotel lookups, whose
  * results are cached for every pilot, so the first pilot to open a fresh pack shouldn't pay for everyone.
  */
-export async function checkSpend(spender: Spender, { siteOnly = false, now = new Date() } = {}): Promise<SpendCheck> {
+export async function checkSpend(spender: Spender, { siteOnly = false, feature, now = new Date() }: SpendOptions = {}): Promise<SpendCheck> {
   const caps = spendCaps();
+  const limits = feature ? caps[feature] : caps;
   const day = today(now);
   const [site, mine, address] = await Promise.all([
     getJson<number>(siteKey(day)),
-    siteOnly ? Promise.resolve(0) : getJson<number>(whoKey(day, spender.key)),
-    siteOnly || !spender.addressKey ? Promise.resolve(0) : getJson<number>(whoKey(day, spender.addressKey)),
+    siteOnly ? Promise.resolve(0) : getJson<number>(whoKey(day, chargedTo(spender.key, feature))),
+    siteOnly || !spender.addressKey ? Promise.resolve(0) : getJson<number>(whoKey(day, chargedTo(spender.addressKey, feature))),
   ]);
-  if ((site ?? 0) >= caps.site * MICRO) return { ok: false, scope: "site" };
-  if ((mine ?? 0) >= (spender.signedIn ? caps.pilot : caps.guest) * MICRO) return { ok: false, scope: "pilot" };
-  if ((address ?? 0) >= caps.guestAddress * MICRO) return { ok: false, scope: "pilot" };
-  return { ok: true };
+  const siteLeft = caps.site * MICRO - (site ?? 0);
+  const mineLeft = (spender.signedIn ? limits.pilot : limits.guest) * MICRO - (mine ?? 0);
+  const addressLeft = limits.guestAddress * MICRO - (address ?? 0);
+  if (siteLeft <= 0) return { ok: false, scope: "site" };
+  if (mineLeft <= 0 || addressLeft <= 0) return { ok: false, scope: "pilot" };
+  return feature ? { ok: true, leftUsd: Math.min(siteLeft, mineLeft, addressLeft) / MICRO } : { ok: true };
 }
 
 /** Adds a finished call's cost. Never throws: a counter that can't be written must not fail the pilot's answer. */
-export async function recordSpend(spender: Spender, usd: number, { siteOnly = false, now = new Date() } = {}): Promise<void> {
+export async function recordSpend(spender: Spender, usd: number, { siteOnly = false, feature, now = new Date() }: SpendOptions = {}): Promise<void> {
   if (!(usd > 0)) return;
   const amount = Math.ceil(usd * MICRO);
   const day = today(now);
   try {
     const [site] = await Promise.all([
       addToCounter(siteKey(day), amount, DAY_SECONDS),
-      siteOnly ? Promise.resolve(0) : addToCounter(whoKey(day, spender.key), amount, DAY_SECONDS),
-      siteOnly || !spender.addressKey ? Promise.resolve(0) : addToCounter(whoKey(day, spender.addressKey), amount, DAY_SECONDS),
+      siteOnly ? Promise.resolve(0) : addToCounter(whoKey(day, chargedTo(spender.key, feature)), amount, DAY_SECONDS),
+      siteOnly || !spender.addressKey ? Promise.resolve(0) : addToCounter(whoKey(day, chargedTo(spender.addressKey, feature)), amount, DAY_SECONDS),
     ]);
     if (site >= spendCaps().site * MICRO) await alertSiteCapReached(day, site / MICRO);
   } catch (e) {
@@ -110,7 +132,7 @@ async function alertSiteCapReached(day: string, spentUsd: number): Promise<void>
   await sendEmail({
     to,
     subject: "Line Select reached its daily AI spending limit",
-    text: `Paid features (the interview, Ask your pack, dictation, new hotel lookups) are paused until midnight UTC. Spent today: $${spentUsd.toFixed(2)}; the limit is $${spendCaps().site}. Raise SPEND_SITE_DAILY_USD in Vercel to resume sooner.`,
+    text: `Paid features (the interview, Ask your pack, dictation, new hotel and flight lookups) are paused until midnight UTC. Spent today: $${spentUsd.toFixed(2)}; the limit is $${spendCaps().site}. Raise SPEND_SITE_DAILY_USD in Vercel to resume sooner.`,
   });
 }
 

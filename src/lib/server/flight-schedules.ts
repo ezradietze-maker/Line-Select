@@ -51,8 +51,25 @@ async function paced<T>(call: () => Promise<T>): Promise<T> {
   return call();
 }
 
+/**
+ * What one board costs, for the spend guard: the plan is $19.99 a month for 40,000 units, and a board is a 2-unit (Tier 2)
+ * call. The fee is flat, so this is a board's share of it rather than a charge per call. `FLIGHT_BOARD_USD` overrides it.
+ */
+export function boardCostUsd(): number {
+  const v = Number(process.env.FLIGHT_BOARD_USD);
+  return Number.isFinite(v) && v > 0 ? v : (19.99 / 40_000) * 2;
+}
+
 export function flightDataConfigured(): boolean {
   return !!process.env.AERODATABOX_API_KEY;
+}
+
+/** A lookup's running count of boards. `boardsLeft` is how many more it may fetch; past that it answers from what's cached. */
+interface BoardStats {
+  fetched: number;
+  cached: number;
+  skipped: number;
+  boardsLeft: number;
 }
 
 interface Block {
@@ -215,7 +232,7 @@ export function shiftWeeks(f: ScheduledFlight, weeks: number): ScheduledFlight {
  */
 async function loadBoards(
   blocks: Block[],
-  stats: { fetched: number; cached: number; skipped: number },
+  stats: BoardStats,
   now = Date.now()
 ): Promise<{ boards: Map<string, ScheduledFlight[]>; gaps: Block[] }> {
   const wanted = [...new Map(blocks.map((b) => [blockKey(b), b])).values()].map((b) => ({ b, options: standIns(b, now) }));
@@ -269,7 +286,7 @@ async function loadBoards(
  * — so the flights into it are missing from the other airports' boards too. They come back from the same weekday's
  * real arrivals there last week (or the week before), moved forward: one arrivals board per gap.
  */
-async function loadArrivalFills(gaps: Block[], stats: { fetched: number; cached: number; skipped: number }, now = Date.now()): Promise<ScheduledFlight[]> {
+async function loadArrivalFills(gaps: Block[], stats: BoardStats, now = Date.now()): Promise<ScheduledFlight[]> {
   const out: ScheduledFlight[] = [];
   let pending = [...new Map(gaps.map((b) => [blockKey(b), b])).values()].map((b) => {
     const zone = timezoneForAirport(b.airport) ?? "UTC";
@@ -297,7 +314,7 @@ async function loadArrivalFills(gaps: Block[], stats: { fetched: number; cached:
 /** Loads real boards from the cache, fetching the missing ones while the allowance holds. */
 async function loadRealBoards(
   blocks: Block[],
-  stats: { fetched: number; cached: number; skipped: number },
+  stats: BoardStats,
   direction: Direction = "Departure"
 ): Promise<Map<string, ScheduledFlight[]>> {
   const prefix = direction === "Departure" ? "adb:board:v1:" : "adb:arr:v1:";
@@ -321,10 +338,11 @@ async function loadRealBoards(
   const worker = async () => {
     while (i < missing.length) {
       const b = missing[i++];
-      if (unitsLeft <= UNITS_FLOOR) {
+      if (unitsLeft <= UNITS_FLOOR || stats.boardsLeft <= 0) {
         stats.skipped++;
         continue;
       }
+      stats.boardsLeft--;
       const r = await fetchBoard(b, key, direction).catch(() => null);
       if (!r) continue;
       stats.fetched++;
@@ -375,6 +393,8 @@ const windowEnd = (n: TravelNeed) => n.arriveBy ?? n.departBefore + CONNECT_AHEA
 export interface AnswerOptions {
   /** Connecting airports looked through per need (default 3). Audits raise it to see what the default misses. */
   maxHubs?: number;
+  /** New boards this lookup may fetch (default no limit, audits being the only callers without one). Cached boards don't count. */
+  maxBoards?: number;
 }
 
 export async function answerTravelNeeds(
@@ -383,11 +403,11 @@ export async function answerTravelNeeds(
   options: AnswerOptions = {}
 ): Promise<{
   answers: TravelAnswer[];
-  stats: { fetched: number; cached: number; skipped: number };
+  stats: BoardStats;
   /** Every airport's departures over a need's window, exactly as the answers saw them — for audits. */
   departuresFor: (n: TravelNeed) => (airport: string) => ScheduledFlight[] | undefined;
 }> {
-  const stats = { fetched: 0, cached: 0, skipped: 0 };
+  const stats: BoardStats = { fetched: 0, cached: 0, skipped: 0, boardsLeft: options.maxBoards ?? Infinity };
   const originBlocks = needs.flatMap((n) => n.from.flatMap((a) => blocksFor(a, n.departAfter, n.departBefore)));
   const { boards } = await loadBoards(originBlocks, stats);
   // Where the trip ends: its own board tells whether the provider's data there has a gap, and if so the flights into it

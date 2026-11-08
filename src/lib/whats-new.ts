@@ -13,6 +13,12 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-11-08",
+    title: "Only real offers on your Trade Board",
+    body: "Example offers now appear only with the sample pack. With your own pack, the board shows real pilots' offers, or says plainly that there aren't any yet.",
+    href: "/trade-board",
+  },
+  {
     date: "2026-11-07",
     title: "The countdown reads your bid pack",
     body: "Bid close now comes straight from the bid calendar printed on your pack's cover, for your seat, in Memphis time — nothing to type in. You can still set your own time if FedEx announces a change. Upload this month's pack again to pick it up.",
