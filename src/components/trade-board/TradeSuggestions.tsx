@@ -7,7 +7,14 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { answerSuggestion, fetchSuggestions, findTradesNow, markTradeStepDone, type SuggestionsState } from "@/lib/trades/holding-client";
-import type { TradeReason, TradeSuggestionView, TradeTrip } from "@/types/trade";
+import type { TradeDeclineReason, TradeReason, TradeSuggestionView, TradeTrip } from "@/types/trade";
+
+const DECLINE_REASONS: { reason: TradeDeclineReason; label: string }[] = [
+  { reason: "trip", label: "I don't want that trip" },
+  { reason: "notWorthIt", label: "Not worth the trouble" },
+  { reason: "notNow", label: "Not right now" },
+  { reason: "wrongHolding", label: "That's not what I hold" },
+];
 
 /** Answers from the other pilots show up without a reload, as the board's offers do. */
 const REFRESH_MS = 20_000;
@@ -47,7 +54,18 @@ function TripBlock({ title, trip }: { title: string; trip: TradeTrip }) {
   );
 }
 
-function SuggestionCard({ s, busy, onAnswer, onStep }: { s: TradeSuggestionView; busy: boolean; onAnswer: (answer: "accepted" | "declined") => void; onStep: (step: number) => void }) {
+function SuggestionCard({
+  s,
+  busy,
+  onAnswer,
+  onStep,
+}: {
+  s: TradeSuggestionView;
+  busy: boolean;
+  onAnswer: (answer: "accepted" | "declined", reason?: TradeDeclineReason | null) => void;
+  onStep: (step: number) => void;
+}) {
+  const [declining, setDeclining] = useState(false);
   const others = s.pilots.filter((p) => !p.isYou);
   const waitingOn = others.filter((p) => !p.accepted).map((p) => p.name);
   const { value } = s.you;
@@ -111,12 +129,26 @@ function SuggestionCard({ s, busy, onAnswer, onStep }: { s: TradeSuggestionView;
 
       {s.status === "proposed" && (
         <div className="mt-4">
-          {s.you.answer === "waiting" ? (
+          {s.you.answer === "waiting" && declining ? (
+            <div>
+              <p className="text-sm text-ink-muted">What&rsquo;s the main reason? It shapes what you&rsquo;re offered next.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {DECLINE_REASONS.map(({ reason, label }) => (
+                  <Button key={reason} variant="secondary" disabled={busy} onClick={() => onAnswer("declined", reason)}>
+                    {label}
+                  </Button>
+                ))}
+                <Button variant="ghost" disabled={busy} onClick={() => onAnswer("declined")}>
+                  Skip
+                </Button>
+              </div>
+            </div>
+          ) : s.you.answer === "waiting" ? (
             <div className="flex flex-wrap gap-2">
               <Button disabled={busy} onClick={() => onAnswer("accepted")}>
                 I&rsquo;d do this
               </Button>
-              <Button variant="secondary" disabled={busy} onClick={() => onAnswer("declined")}>
+              <Button variant="secondary" disabled={busy} onClick={() => setDeclining(true)}>
                 No thanks
               </Button>
             </div>
@@ -134,7 +166,10 @@ function SuggestionCard({ s, busy, onAnswer, onStep }: { s: TradeSuggestionView;
             {s.steps.map((step, i) => (
               <li key={i} className={`text-sm ${step.yours ? "text-ink" : "text-ink-muted"}`}>
                 <div>
-                  {i + 1}. {who(step.pilotA)} {step.pilotA === you ? "trade" : "trades"} {tripName(step.aGives)} with {who(step.pilotB)} for {tripName(step.bGives)}
+                  {i + 1}.{" "}
+                  {step.pilotB === you
+                    ? `You trade ${tripName(step.bGives)} with ${step.pilotA} for ${tripName(step.aGives)}`
+                    : `${who(step.pilotA)} ${step.pilotA === you ? "trade" : "trades"} ${tripName(step.aGives)} with ${step.pilotB} for ${tripName(step.bGives)}`}
                   {step.done && <span className="ml-2 text-good">Done</span>}
                 </div>
                 {step.yours && step.youHoldAfter && <div className="text-xs text-ink-muted">After this you hold {tripName(step.youHoldAfter)}.</div>}
@@ -193,6 +228,7 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
     setFinding(false);
     if (!outcome) return setError("Couldn't look for trades just now. Try again in a moment.");
     if (outcome.status === "busy") return setMessage("Another pilot's search is running for this seat. Try again in a moment.");
+    if (outcome.status === "closed") return setMessage("Trades open once enough pilots in your seat are using Line Select.");
     if (outcome.status === "not-ready") return setMessage("Your account doesn't have this bid pack yet. Give it a moment to save, then try again.");
     setMessage(
       outcome.found > 0
@@ -222,7 +258,10 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
       {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
       <div className="mt-3 space-y-3">
         {list.map((s) => (
-          <SuggestionCard key={s.id} s={s} busy={busy} onAnswer={(answer) => void run(() => answerSuggestion(s.id, answer))} onStep={(step) => void run(() => markTradeStepDone(s.id, step))} />
+          <SuggestionCard key={s.id} s={s} busy={busy} onAnswer={(answer, reason) => {
+              if (reason === "wrongHolding") setMessage("Thanks. Update what you hold above so the next suggestions are right.");
+              void run(() => answerSuggestion(s.id, answer, reason ?? null));
+            }} onStep={(step) => void run(() => markTradeStepDone(s.id, step))} />
         ))}
       </div>
       {!onlyWaiting && (

@@ -14,7 +14,7 @@ import { sql } from "drizzle-orm";
 import type { FeedMonth, FeedOptions } from "@/lib/calendar-feed";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
 import type { InterviewOutcome } from "@/lib/learning/interview-outcome";
-import type { BidPackMetaSnapshot, HeldTrip, TradeAnswer, TradeCancelReason, TradeSuggestionStatus, TradeTrip, TradeValue, TripSnapshot } from "@/types/trade";
+import type { BidPackMetaSnapshot, HeldTrip, TradeAnswer, TradeCancelReason, TradeDeclineReason, TradeSuggestionStatus, TradeTrip, TradeValue, TripSnapshot } from "@/types/trade";
 import type { PreferenceProfile } from "@/types/preferences";
 
 /**
@@ -173,6 +173,7 @@ export const tradeSuggestionMembers = pgTable(
     /** This pilot's own gain and reasons. Never sent to anyone else on the trade. */
     value: jsonb("value").notNull().$type<TradeValue>(),
     answer: text("answer").notNull().default("waiting").$type<TradeAnswer>(),
+    declineReason: text("decline_reason").$type<TradeDeclineReason>(),
     answeredAt: timestamp("answered_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("trade_suggestion_members_position_idx").on(t.suggestionId, t.position), index("trade_suggestion_members_user_idx").on(t.userId)]

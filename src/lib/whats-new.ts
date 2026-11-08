@@ -14,6 +14,12 @@ export interface WhatsNewEntry {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-08",
+    title: "Trades that help everyone on them",
+    body: "Confirm what you hold on the Trade Board, and each day the site looks for trades that leave you and other pilots better off by your own priorities: a straight swap, or a chain of up to 5 pilots. Everyone says yes first, then you each submit your part in VIPS. Opens when your seat has enough pilots.",
+    href: "/trade-board",
+  },
+  {
+    date: "2026-11-08",
     title: "Open time, scored for you",
     body: "Paste the open-time list from VIPS and every trip gets a score for you, with the reasons: what it does to your days off, whether you can commute to it, and whether it's legal on your line. It checks overlaps and rest, the 0900 deadline, your make-up and trade limits, and holiday no-drops. We haven't seen a real VIPS list yet, so any row we can't read is shown to you, never guessed at.",
     href: "/open-time",

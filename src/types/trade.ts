@@ -95,6 +95,9 @@ export interface TradeSettings {
 
 export type TradeAnswer = "waiting" | "accepted" | "declined";
 export type TradeSuggestionStatus = "proposed" | "accepted" | "cancelled" | "done";
+/** Why a pilot said no, if they said: what shapes what they're offered next. */
+export type TradeDeclineReason = "trip" | "notWorthIt" | "notNow" | "wrongHolding";
+
 /** A pilot said no; or someone's trips changed or their account went, so the trade no longer stands. */
 export type TradeCancelReason = "declined" | "changed";
 

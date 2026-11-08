@@ -1,4 +1,4 @@
-import type { TradeHolding, TradeSettings, TradeSuggestionView } from "@/types/trade";
+import type { TradeDeclineReason, TradeHolding, TradeSettings, TradeSuggestionView } from "@/types/trade";
 
 /** The browser's side of "what you hold". */
 
@@ -69,7 +69,7 @@ export async function fetchWaitingSuggestions(packId: string): Promise<number | 
   }
 }
 
-export type FindOutcome = { status: "ran"; found: number; pilots: number } | { status: "busy" } | { status: "not-ready" };
+export type FindOutcome = { status: "ran"; found: number; pilots: number } | { status: "busy" } | { status: "not-ready" } | { status: "closed" };
 
 export async function findTradesNow(packId: string): Promise<FindOutcome | null> {
   try {
@@ -90,5 +90,5 @@ async function act(url: string, body: unknown): Promise<{ ok: boolean; error?: s
   }
 }
 
-export const answerSuggestion = (id: string, answer: "accepted" | "declined") => act(`/api/trades/matches/${id}/answer`, { answer });
+export const answerSuggestion = (id: string, answer: "accepted" | "declined", reason: TradeDeclineReason | null = null) => act(`/api/trades/matches/${id}/answer`, { answer, reason });
 export const markTradeStepDone = (id: string, step: number) => act(`/api/trades/matches/${id}/step`, { step });

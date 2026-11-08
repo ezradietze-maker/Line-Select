@@ -112,8 +112,8 @@ export function HoldingPanel({ bidPack }: { bidPack: BidPack }) {
     setEditing(false);
   }
 
-  async function toggleSuggest(suggestMe: boolean) {
-    const next = { ...settings, suggestMe };
+  async function changeSettings(change: Partial<TradeSettings>) {
+    const next = { ...settings, ...change };
     setSettings(next);
     if (!(await saveTradeSettings(next))) {
       setSettings(settings);
@@ -158,8 +158,12 @@ export function HoldingPanel({ bidPack }: { bidPack: BidPack }) {
             })}
           </ul>
           <label className="mt-3 flex items-start gap-2 text-sm text-ink">
-            <input type="checkbox" className="mt-0.5" checked={settings.suggestMe} onChange={(e) => void toggleSuggest(e.target.checked)} />
+            <input type="checkbox" className="mt-0.5" checked={settings.suggestMe} onChange={(e) => void changeSettings({ suggestMe: e.target.checked })} />
             <span>Include me when suggesting trades</span>
+          </label>
+          <label className="mt-2 flex items-start gap-2 text-sm text-ink">
+            <input type="checkbox" className="mt-0.5" checked={settings.emailMatches} disabled={!settings.suggestMe} onChange={(e) => void changeSettings({ emailMatches: e.target.checked })} />
+            <span>Email me when a trade needs my answer</span>
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startEditing}>

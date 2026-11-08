@@ -149,7 +149,7 @@ export function dailySummaryText(s: DailySummary, learning: Record<string, unkno
 }
 
 /** Emails the summary of the UTC day before `now`. Returns whether it was sent. */
-export async function sendDailySummary(learning: Record<string, unknown> | null, now = new Date(), weekly: string | null = null): Promise<boolean> {
+export async function sendDailySummary(learning: Record<string, unknown> | null, now = new Date(), weekly: string | null = null, trades: string | null = null): Promise<boolean> {
   const to = alertAddress();
   if (!to) {
     console.error("[alerts] daily summary not sent: ALERT_EMAIL isn't set");
@@ -158,6 +158,6 @@ export async function sendDailySummary(learning: Record<string, unknown> | null,
   const yesterday = day(new Date(now.getTime() - 24 * 60 * 60 * 1000));
   const s = await summarizeDay(yesterday);
   const failed = Object.keys(s.problems).length > 0 || (Array.isArray(learning?.results) && (learning.results as { error?: unknown }[]).some((r) => r.error));
-  const text = weekly ? `${dailySummaryText(s, learning)}\n\n\n${weekly}` : dailySummaryText(s, learning);
+  const text = [dailySummaryText(s, learning), trades, weekly].filter(Boolean).join("\n\n\n");
   return sendEmail({ to, subject: `Line Select ${weekly ? "weekly" : "daily"}: ${failed ? "something needs a look" : "all clear"} (${yesterday})`, text });
 }

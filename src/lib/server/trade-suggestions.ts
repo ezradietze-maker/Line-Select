@@ -1,10 +1,10 @@
-import { and, desc, eq, inArray, isNull, or, gt } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lt, or, gt } from "drizzle-orm";
 import { db } from "@/lib/server/postgres";
 import { preferenceProfiles, tradeHoldings, tradePreferences, tradeSuggestionMembers, tradeSuggestions, users } from "@/lib/server/schema";
 import { tripInstanceKey } from "@/lib/trades/legality";
 import type { MatchingRow } from "@/lib/trades/holding";
 import { holdingsAfter, isWhole, type suggestionToStore } from "@/lib/trades/suggestions";
-import type { BidPackMetaSnapshot, TradeAnswer, TradeHolding, TradeSuggestionMember, TradeSuggestionRecord } from "@/types/trade";
+import type { BidPackMetaSnapshot, TradeAnswer, TradeDeclineReason, TradeHolding, TradeSuggestionMember, TradeSuggestionRecord } from "@/types/trade";
 
 /** Suggested trades in the database (see `lib/trades/suggestions.ts` for what they mean). */
 
@@ -54,25 +54,38 @@ export async function listMatchingGroup(meta: BidPackMetaSnapshot): Promise<{ ro
   return { rows, names: new Map(people.map((p) => [p.id, p.displayName])) };
 }
 
-/** What the matching must steer around in a group: pilots already on an open trade, trades already suggested, and swaps a pilot has said no to. */
+/**
+ * What the matching must steer around in a group: pilots already on an open trade, trades already suggested, and what
+ * pilots have said no to. A pilot who didn't want a trip isn't offered it again, whatever they'd give for it; one who said
+ * a trade wasn't worth it needs more than that trade's gain next time.
+ */
 export async function matchingHistory(meta: BidPackMetaSnapshot, now: Date) {
+  const empty = { busyPilots: new Set<string>(), signatures: new Set<string>(), declined: new Set<string>(), refusedTrips: new Set<string>(), minGains: new Map<string, number>() };
   const rows = await db.select().from(tradeSuggestions).where(suggestionGroupIs(meta));
-  if (!rows.length) return { busyPilots: new Set<string>(), signatures: new Set<string>(), declined: new Set<string>() };
+  if (!rows.length) return empty;
   const members = await db.select().from(tradeSuggestionMembers).where(inArray(tradeSuggestionMembers.suggestionId, rows.map((r) => r.id)));
   const bySuggestion = new Map<string, MemberRow[]>();
   for (const m of members) bySuggestion.set(m.suggestionId, [...(bySuggestion.get(m.suggestionId) ?? []), m]);
-  const busyPilots = new Set<string>();
-  const declined = new Set<string>();
+  const { busyPilots, declined, refusedTrips, minGains } = empty;
   for (const r of rows) {
     const part = (bySuggestion.get(r.id) ?? []).sort((a, b) => a.position - b.position);
     const open = (r.status === "proposed" || r.status === "accepted") && (r.stepsDone > 0 || r.expiresAt > now);
     if (open) for (const m of part) busyPilots.add(m.userId);
     part.forEach((m, i) => {
-      if (m.answer === "declined") declined.add(swapKey(m.userId, m.give, part[(i + 1) % part.length].give));
+      if (m.answer !== "declined") return;
+      const take = part[(i + 1) % part.length].give;
+      declined.add(swapKey(m.userId, m.give, take));
+      if (m.declineReason === "trip") refusedTrips.add(refusedTripKey(m.userId, take));
+      if (m.declineReason === "notWorthIt") minGains.set(m.userId, Math.max(minGains.get(m.userId) ?? 0, m.value.gain + NOT_WORTH_IT_MARGIN));
     });
   }
-  return { busyPilots, signatures: new Set(rows.flatMap((r) => (r.signature ? [r.signature] : []))), declined };
+  return { ...empty, signatures: new Set(rows.flatMap((r) => (r.signature ? [r.signature] : []))) };
 }
+
+/** How much more than a declined trade's gain the next one must offer a pilot who said it wasn't worth it. */
+const NOT_WORTH_IT_MARGIN = 1;
+
+export const refusedTripKey = (userId: string, trip: { id: string; startDayIndex: number | null }) => `${userId}|${tripInstanceKey(trip)}`;
 
 export const swapKey = (userId: string, give: { id: string; startDayIndex: number | null }, take: { id: string; startDayIndex: number | null }) =>
   `${userId}|${tripInstanceKey(give)}|${tripInstanceKey(take)}`;
@@ -112,7 +125,7 @@ export type AnswerResult = { ok: true; record: TradeSuggestionRecord } | { ok: f
  * A pilot's answer. One no cancels the trade for everyone; the last yes opens it. In a transaction with the trade's row
  * locked, so two pilots answering together can't each miss the other's yes.
  */
-export async function answerSuggestion(id: string, userId: string, answer: Exclude<TradeAnswer, "waiting">, now = new Date()): Promise<AnswerResult> {
+export async function answerSuggestion(id: string, userId: string, answer: Exclude<TradeAnswer, "waiting">, now = new Date(), declineReason: TradeDeclineReason | null = null): Promise<AnswerResult> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(tradeSuggestions).where(eq(tradeSuggestions.id, id)).for("update");
     if (!row) return { ok: false, reason: "not-found" } as const;
@@ -120,7 +133,7 @@ export async function answerSuggestion(id: string, userId: string, answer: Exclu
     const me = members.find((m) => m.userId === userId);
     if (!me) return { ok: false, reason: "not-found" } as const;
     if (row.status !== "proposed" || row.expiresAt <= now || !isWhole({ members: toRecord(row, members).members, steps: row.steps })) return { ok: false, reason: "closed" } as const;
-    await tx.update(tradeSuggestionMembers).set({ answer, answeredAt: now }).where(eq(tradeSuggestionMembers.id, me.id));
+    await tx.update(tradeSuggestionMembers).set({ answer, answeredAt: now, declineReason: answer === "declined" ? declineReason : null }).where(eq(tradeSuggestionMembers.id, me.id));
     const after = members.map((m) => (m.id === me.id ? { ...m, answer } : m));
     const next =
       answer === "declined"
@@ -193,4 +206,57 @@ export async function lapseSuggestionsFor(userId: string, packId: string | null,
         eq(tradeSuggestions.stepsDone, 0)
       )
     );
+}
+
+/** Every month and seat where at least `min` pilots have confirmed what they hold. */
+export async function listActiveGroups(min: number): Promise<BidPackMetaSnapshot[]> {
+  const rows = await db
+    .select({ base: tradeHoldings.base, aircraft: tradeHoldings.aircraft, seat: tradeHoldings.seat, month: tradeHoldings.month, n: count() })
+    .from(tradeHoldings)
+    .groupBy(tradeHoldings.base, tradeHoldings.aircraft, tradeHoldings.seat, tradeHoldings.month);
+  return rows.filter((r) => r.n >= min).map(({ base, aircraft, seat, month }) => ({ base, aircraft, seat, month }));
+}
+
+/** The address and name of those on a trade who want an email about it. Someone who turned suggestions off gets none. */
+export async function listTradeEmailTargets(userIds: readonly string[]): Promise<Map<string, string>> {
+  if (!userIds.length) return new Map();
+  const rows = await db
+    .select({ id: users.id, email: users.email, suggestMe: tradePreferences.suggestMe, emailMatches: tradePreferences.emailMatches })
+    .from(tradePreferences)
+    .innerJoin(users, eq(users.id, tradePreferences.userId))
+    .where(inArray(tradePreferences.userId, [...userIds]));
+  return new Map(rows.filter((r) => r.emailMatches && r.suggestMe).map((r) => [r.id, r.email]));
+}
+
+export interface TradeDayCounts {
+  suggested: Record<number, number>;
+  yes: number;
+  no: number;
+  noBecause: Partial<Record<TradeDeclineReason, number>>;
+  finished: number;
+  lapsed: number;
+}
+
+/** What happened to suggested trades over a span: for the owner's daily email, to see whether suggestions are any good. */
+export async function tradeDayCounts(from: Date, to: Date): Promise<TradeDayCounts> {
+  const within = (c: Parameters<typeof gte>[0]) => and(gte(c, from), lt(c, to));
+  const [created, answers, resolved] = await Promise.all([
+    db.select({ steps: tradeSuggestions.steps }).from(tradeSuggestions).where(within(tradeSuggestions.createdAt)),
+    db.select({ answer: tradeSuggestionMembers.answer, reason: tradeSuggestionMembers.declineReason }).from(tradeSuggestionMembers).where(within(tradeSuggestionMembers.answeredAt)),
+    db.select({ status: tradeSuggestions.status, why: tradeSuggestions.cancelReason }).from(tradeSuggestions).where(within(tradeSuggestions.resolvedAt)),
+  ]);
+  const out: TradeDayCounts = { suggested: {}, yes: 0, no: 0, noBecause: {}, finished: 0, lapsed: 0 };
+  for (const c of created) out.suggested[c.steps.length + 1] = (out.suggested[c.steps.length + 1] ?? 0) + 1;
+  for (const a of answers) {
+    if (a.answer === "accepted") out.yes++;
+    if (a.answer === "declined") {
+      out.no++;
+      if (a.reason) out.noBecause[a.reason] = (out.noBecause[a.reason] ?? 0) + 1;
+    }
+  }
+  for (const r of resolved) {
+    if (r.status === "done") out.finished++;
+    if (r.status === "cancelled" && r.why === "changed") out.lapsed++;
+  }
+  return out;
 }

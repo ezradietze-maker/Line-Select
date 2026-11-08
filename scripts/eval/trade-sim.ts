@@ -1,10 +1,10 @@
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { latestPersona, PERSONAS, rng, varied } from "./trade-cohort";
 import { restoreBidPack } from "@/lib/bidpack-storage";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import { findTrades, type PilotHolding } from "@/lib/trades/match";
 import type { BidPack } from "@/types/bidpack";
-import type { PilotModel } from "@/types/pilot-model";
 
 /**
  * How many good trades the matcher finds at a given number of pilots on the site, on real bid packs. Free: no AI calls.
@@ -25,38 +25,6 @@ const SEEDS = Number(arg("seeds", "5"));
 const OUT = arg("out", "");
 const PACKS = arg("packs", "OCT26-MEM-MD11-FO,OCT26-MEM-B757-FO,OCT26-IND-B767-FO,OCT26-MEM-B777-FO").split(",");
 const SIZES = [5, 15, 30, 100];
-const HOMES = ["SAN", "SEA", "DFW", "ATL", "BOS", "PHX", "DEN", "MCO", "MSP", "LAX"];
-const PERSONAS = ["anc-777fo-sea-commuter", "expilot", "ind-local-family", "mem-757-bodyclock", "mem-a300-captain-dates", "mem-md11-paymax"];
-
-function rng(seed: number) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function latestPersona(name: string): PilotModel {
-  const dir = ".cache/eval";
-  const files = readdirSync(dir).filter((f) => f.startsWith(`brain-${name}-claude-`));
-  const newest = files.sort((a, b) => statSync(`${dir}/${b}`).mtimeMs - statSync(`${dir}/${a}`).mtimeMs)[0];
-  return (JSON.parse(readFileSync(`${dir}/${newest}`, "utf8")) as { model: PilotModel }).model;
-}
-
-/** A persona with its priorities' weights varied and, half the time, a different home. Date requests belong to one pilot's month, so they go. */
-function varied(base: PilotModel, packBase: string, rand: () => number): PilotModel {
-  const gaussian = () => Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand());
-  const commute = rand() < 0.5;
-  const home = commute ? { airports: [HOMES[Math.floor(rand() * HOMES.length)]], commuter: true } : { airports: [packBase], commuter: false };
-  return {
-    ...base,
-    home,
-    criteria: base.criteria.filter((c) => c.metric !== "requestedDatesWorked").map((c) => ({ ...c, weight: c.weight * Math.exp(0.5 * gaussian()) })),
-  };
-}
 
 interface Row {
   pack: string;

@@ -192,7 +192,7 @@ export default function PrivacyPage() {
             <li>
               If you ask to reset your password by email, a single-use reset link is sent to the address on your
               account through a transactional email provider (Resend). Only a hash of the link&rsquo;s token is
-              kept, and it expires after an hour or once used. That is the only email we send you;
+              kept, and it expires after an hour or once used. Unless you turn on trade emails (Section 6), that is the only email we send you;
             </li>
             <li>
               A session token in an <code className="font-mono text-xs">httpOnly</code> cookie
@@ -224,8 +224,10 @@ export default function PrivacyPage() {
             trade would help you. They don&rsquo;t see your priorities or interview answers, how much it helps you, or why.
             Any pilot on a trade can see whether anyone has said no, though not who. We keep each suggestion, what it was
             worth to you and your answer, so the same trade isn&rsquo;t suggested again. When a pilot marks a step of an
-            agreed trade as done, what both pilots hold is updated. You can turn this off on the Trade Board, or remove
-            what you hold, at any time.
+            agreed trade as done, what both pilots hold is updated. Trades are worked out once a day, and when a pilot asks. If you say why you turned a trade down, we keep that
+            too and use it to choose what you&rsquo;re offered next. If you turn on trade emails, we send you one through our
+            email provider (Resend) when a trade needs your answer, naming the trips. You can turn this off on the Trade
+            Board, or remove what you hold, at any time.
           </p>
         </Section>
 

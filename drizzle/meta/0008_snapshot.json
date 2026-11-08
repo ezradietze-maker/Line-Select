@@ -1,5 +1,5 @@
 {
-  "id": "54c5e847-40b7-4300-90d6-b401d42da2ae",
+  "id": "72efb389-cdf8-4ad4-9ce3-ea03c990c344",
   "prevId": "f5cfe911-be0e-4e90-991f-c2099df744e6",
   "version": "7",
   "dialect": "postgresql",
@@ -1859,6 +1859,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'waiting'"
+        },
+        "decline_reason": {
+          "name": "decline_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "answered_at": {
           "name": "answered_at",

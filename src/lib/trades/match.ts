@@ -63,6 +63,8 @@ export interface MatchOptions {
   maxCycles?: number;
   /** A swap not to suggest again: this pilot has said no to it. */
   excludeSwap?: (pilotId: string, give: Trip, take: Trip) => boolean;
+  /** A pilot who has said a trade wasn't worth it needs more than the usual gain. */
+  minGainFor?: (pilotId: string) => number | undefined;
 }
 
 interface Node {
@@ -75,7 +77,7 @@ interface Edge {
   value: SwapValue;
 }
 
-function buildGraph(pack: BidPack, pilots: readonly PilotHolding[], now: number, minGain: number, excludeSwap: MatchOptions["excludeSwap"]) {
+function buildGraph(pack: BidPack, pilots: readonly PilotHolding[], now: number, minGain: number, excludeSwap: MatchOptions["excludeSwap"], minGainFor: MatchOptions["minGainFor"]) {
   const nodes: Node[] = [];
   pilots.forEach((p, pilot) => {
     const vacations = vacationsOf(pack, p.seniority);
@@ -108,7 +110,8 @@ function buildGraph(pack: BidPack, pilots: readonly PilotHolding[], now: number,
       }
     }
     const values = valueSwaps(pack, p.line, p.model, swaps);
-    for (const w of wanted) if (values[w.swap].gain >= minGain) edges[w.from].push({ to: w.to, value: values[w.swap] });
+    const needed = Math.max(minGain, minGainFor?.(p.pilotId) ?? 0);
+    for (const w of wanted) if (values[w.swap].gain >= needed) edges[w.from].push({ to: w.to, value: values[w.swap] });
   });
   for (const list of edges) {
     list.sort((a, b) => b.value.gain - a.value.gain);
@@ -212,7 +215,7 @@ function bestSet(options: TradeSuggestion[]): { chosen: TradeSuggestion[]; compl
 
 export function findTrades(pack: BidPack, pilots: readonly PilotHolding[], options: MatchOptions = {}): MatchResult {
   const maxChain = Math.min(options.maxChain ?? MAX_CHAIN_PILOTS, MAX_CHAIN_PILOTS);
-  const { nodes, edges } = buildGraph(pack, pilots, options.now ?? Date.now(), options.minGain ?? MIN_GAIN, options.excludeSwap);
+  const { nodes, edges } = buildGraph(pack, pilots, options.now ?? Date.now(), options.minGain ?? MIN_GAIN, options.excludeSwap, options.minGainFor);
   const { cycles, truncated } = listCycles(nodes, edges, maxChain, options.maxCycles ?? MAX_CYCLES);
   const startOf = (cycle: Edge[]) => cycle[cycle.length - 1].to;
   const suggestions = cycles

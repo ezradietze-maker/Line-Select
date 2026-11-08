@@ -98,6 +98,19 @@ describe("finding trades", () => {
     expect(options.map((o) => o.legs.length)).toEqual([2, 3]);
   });
 
+  it("asks more of a pilot who said an earlier trade wasn't worth it", () => {
+    wants(1, 2, 3);
+    wants(2, 1, 3);
+    expect(findTrades(pack, [pilot(1), pilot(2)], { now, minGainFor: (id) => (id === "P1" ? 4 : undefined) }).trades).toEqual([]);
+    expect(findTrades(pack, [pilot(1), pilot(2)], { now, minGainFor: (id) => (id === "P1" ? 3 : undefined) }).trades).toHaveLength(1);
+  });
+
+  it("won't offer a swap a pilot has said no to", () => {
+    wants(1, 2);
+    wants(2, 1);
+    expect(findTrades(pack, [pilot(1), pilot(2)], { now, excludeSwap: (id) => id === "P2" }).trades).toEqual([]);
+  });
+
   it("leaves out a trip the pilot has locked", () => {
     wants(1, 2);
     wants(2, 1);

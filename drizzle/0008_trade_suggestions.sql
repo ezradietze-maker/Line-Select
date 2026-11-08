@@ -7,6 +7,7 @@ CREATE TABLE "trade_suggestion_members" (
 	"give" jsonb NOT NULL,
 	"value" jsonb NOT NULL,
 	"answer" text DEFAULT 'waiting' NOT NULL,
+	"decline_reason" text,
 	"answered_at" timestamp with time zone
 );
 --> statement-breakpoint

@@ -5,21 +5,26 @@ import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { answerSuggestion } from "@/lib/server/trade-suggestions";
 import { suggestionForViewer } from "@/lib/trades/suggestions";
+import type { TradeDeclineReason } from "@/types/trade";
 
 export const runtime = "nodejs";
+
+const REASONS = new Set<string>(["trip", "notWorthIt", "notNow", "wrongHolding"] satisfies TradeDeclineReason[]);
 
 /** A pilot's yes or no to a suggested trade they're on. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentServerUser();
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   if (!(await checkRateLimit("trade-matches-answer", user.id, 60, 60 * 60)).ok) return rateLimitedResponse();
-  const body = await readJsonBody(request, 200);
+  const body = await readJsonBody(request, 300);
   const answer = isJsonObject(body) ? body.answer : null;
   if (answer !== "accepted" && answer !== "declined") return NextResponse.json({ error: "Accept or decline?" }, { status: 400 });
+  const reason = isJsonObject(body) ? (body.reason ?? null) : null;
+  if (reason !== null && !REASONS.has(reason as string)) return NextResponse.json({ error: "Invalid reason." }, { status: 400 });
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: "We couldn't find that trade." }, { status: 404 });
   try {
-    const result = await answerSuggestion(id, user.id, answer);
+    const result = await answerSuggestion(id, user.id, answer, new Date(), reason as TradeDeclineReason | null);
     if (!result.ok) {
       return result.reason === "not-found"
         ? NextResponse.json({ error: "We couldn't find that trade." }, { status: 404 })

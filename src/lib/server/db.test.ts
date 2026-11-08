@@ -189,6 +189,37 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(history.declined.has(suggestions.swapKey(pilots[1].id, { id: "t1", startDayIndex: 1 }, { id: "t2", startDayIndex: 2 }))).toBe(true);
     });
 
+    it("remembers why a pilot said no, for what they're offered next", async () => {
+      const a = await threePilots(randomUUID());
+      await suggestions.answerSuggestion(a.id, a.pilots[1].id, "declined", new Date(), "trip");
+      const b = await threePilots(randomUUID());
+      await suggestions.answerSuggestion(b.id, b.pilots[0].id, "declined", new Date(), "notWorthIt");
+      const history = await suggestions.matchingHistory(meta, new Date());
+      expect(history.refusedTrips.has(suggestions.refusedTripKey(a.pilots[1].id, { id: "t2", startDayIndex: 2 }))).toBe(true);
+      expect(history.minGains.get(b.pilots[0].id)).toBe(4);
+    });
+
+    it("counts a day's trades for the owner's email, and finds who wants an email", async () => {
+      const before = await suggestions.tradeDayCounts(new Date(Date.now() - 60_000), new Date(Date.now() + 60_000));
+      const { pilots, id } = await threePilots(randomUUID());
+      await suggestions.answerSuggestion(id, pilots[0].id, "declined", new Date(), "notNow");
+      const after = await suggestions.tradeDayCounts(new Date(Date.now() - 60_000), new Date(Date.now() + 60_000));
+      expect((after.suggested[3] ?? 0) - (before.suggested[3] ?? 0)).toBe(1);
+      expect(after.no - before.no).toBe(1);
+      expect((after.noBecause.notNow ?? 0) - (before.noBecause.notNow ?? 0)).toBe(1);
+      await mod.saveTradeSettings(pilots[1].id, { suggestMe: true, emailMatches: true });
+      await mod.saveTradeSettings(pilots[2].id, { suggestMe: false, emailMatches: true });
+      const targets = await suggestions.listTradeEmailTargets(pilots.map((p) => p.id));
+      expect([...targets.keys()]).toEqual([pilots[1].id]);
+    });
+
+    it("lists a group once enough pilots in it have confirmed", async () => {
+      await threePilots(randomUUID());
+      const groups = await suggestions.listActiveGroups(2);
+      expect(groups).toContainEqual(meta);
+      expect(await suggestions.listActiveGroups(100_000)).toEqual([]);
+    });
+
     it("moves what the pilots hold, one step at a time, in order, and only the two in the step can mark it", async () => {
       const { pilots, id } = await threePilots(randomUUID());
       for (const p of pilots) await suggestions.answerSuggestion(id, p.id, "accepted");
