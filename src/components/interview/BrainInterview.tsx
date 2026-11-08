@@ -191,7 +191,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
    * A pilot the brain already knows, on a new pack: a short check-in that starts from everything they said last time,
    * rather than the whole interview again. Same pack (a retake) starts over.
    */
-  const lastTime = priorProfile?.pilotModel && priorProfile.brainInterview ? priorProfile.brainInterview : null;
+  // A quick brief told the brain too little to skip the interview on: they get the whole thing.
+  const lastTime = priorProfile?.pilotModel && priorProfile.brainInterview && priorProfile.source !== "quick" ? priorProfile.brainInterview : null;
   // A new month's pack (its id before ids named the aircraft still counts as this pack).
   const [checkIn, setCheckIn] = useState(() => !!lastTime && !isPackId(lastTime.packId, bidPack));
   // For the steps that run before a re-render: resuming a draft asks its next question straight away.

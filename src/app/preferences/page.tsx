@@ -24,6 +24,7 @@ export default function PreferencesPage() {
       onGoToUpload={() => router.push("/upload")}
       onTrySample={handleTrySample}
       onStartInterview={handleStartInterview}
+      onQuickStart={() => router.push("/preferences/quick")}
       onShowRankings={() => {
         handleAcknowledgeFreshBidPack();
         router.push("/results");

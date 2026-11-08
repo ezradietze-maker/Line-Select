@@ -58,6 +58,8 @@ interface PreferencesScreenProps {
   /** Loads the built-in sample pack, for a pilot without one to hand. */
   onTrySample?: () => void;
   onStartInterview: () => void;
+  /** The one-minute quick brief, offered ahead of the full interview. */
+  onQuickStart?: () => void;
   onShowRankings?: () => void;
   onSaveEdits?: (edits: ProfileEdits) => void;
   /** Saves a whole updated profile — how a pilot's own model is edited (see `PilotPrioritiesEditor`). */
@@ -87,6 +89,7 @@ export function PreferencesScreen({
   onGoToUpload,
   onTrySample,
   onStartInterview,
+  onQuickStart,
   onShowRankings,
   onSaveEdits,
   onUpdateProfile,
@@ -160,6 +163,8 @@ export function PreferencesScreen({
         description="Answer a few questions about what you care about, and Line Select will rank every line in your bid pack against it."
         actionLabel="Start the interview"
         onAction={onStartInterview}
+        secondaryLabel={onQuickStart ? "Short on time? Quick start: about a minute" : undefined}
+        onSecondary={onQuickStart}
       />
     );
   }

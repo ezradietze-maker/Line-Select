@@ -19,6 +19,7 @@ import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifier
 import { swapKeyboardCoordinates } from "@/lib/swap-keyboard";
 import { motion, useReducedMotion } from "motion/react";
 import { BidOrderExport, type BidOrderEntry } from "@/components/results/BidOrderExport";
+import { QuickStartNote } from "@/components/results/QuickStartNote";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
 import { FilterBlameList, ResultsFilterBar } from "@/components/results/ResultsFilterBar";
@@ -932,6 +933,7 @@ export function ResultsView({
         </Button>
       </div>
 
+      <QuickStartNote bidPack={bidPack} profile={profile} />
       <ResultsStatusPanel
         pack={bidPack}
         profile={profile}

@@ -14,6 +14,18 @@ export interface WhatsNewEntry {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-08",
+    title: "Quick start, in about a minute",
+    body: "Short on time? Tap what matters, put it in order, and every line is ranked, reserve lines too. Dragging lines keeps teaching it, and the full interview is there when you want it sharper.",
+    href: "/preferences",
+  },
+  {
+    date: "2026-11-08",
+    title: "Checks before you send to VIPS",
+    body: "Send to VIPS now tells you how many of your lines will likely be gone at your turn, what to bid after your list, which reserve lines to name and in what order, and what each VIPS question means. It also warns if the bid has closed or the pack is the wrong one.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-08",
     title: "Find your best vacation slide",
     body: "On Strategies: every legal slide and expansion of your vacation on your top lines, scored on your own priorities, not just credit. See which trips come off, what it draws from your bank and the days off you end up with, the best three per line, and the best slide if you don't know which line you'll hold. You enter it in VIPS yourself, in the Conflict Input Window.",
     href: "/strategies",

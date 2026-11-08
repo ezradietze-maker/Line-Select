@@ -300,6 +300,8 @@ export interface PreferenceProfile {
     packId?: string;
   };
   completedAt: string;
+  /** "quick": from the one-minute quick brief, so the results say it's a start and the next interview begins at the top. Absent on anything from an interview. */
+  source?: "quick";
   /**
    * The implicit layer: per-pilot learned weight for every variable in the
    * implicit taxonomy (see `implicit-dimensions.ts`), keyed by variable id.
