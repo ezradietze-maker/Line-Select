@@ -21,7 +21,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { BidOrderExport, type BidOrderEntry } from "@/components/results/BidOrderExport";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPrompt";
-import { ResultsFilterBar } from "@/components/results/ResultsFilterBar";
+import { FilterBlameList, ResultsFilterBar } from "@/components/results/ResultsFilterBar";
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -53,7 +53,8 @@ import { useBidForecast } from "@/lib/forecast/use-bid-forecast";
 import { loadPreviousPeriodSnapshot, saveBidPeriodSnapshot, summarizeBidPeriodChange } from "@/lib/bid-period-history";
 import { assessProfileRichness } from "@/lib/interview-engine";
 import { computeFilterOptions } from "@/lib/line-filter-options";
-import { collectLayoverCities, EMPTY_FILTERS, filtersActive, lineMatchesFilters, type LineFilters } from "@/lib/line-filters";
+import { collectLayoverCities, collectTouchedCities, EMPTY_FILTERS, filtersActive, filtersKey, lineMatchesFilters, type FilterContext, type LineFilters } from "@/lib/line-filters";
+import { useCommuteCheck } from "@/lib/use-commute-check";
 import { loadTopLinesSnapshot, saveTopLinesSnapshot } from "@/lib/line-history-storage";
 import { buildLineFactChips, lineFactsText } from "@/lib/line-summary";
 import { loadLineMarks, saveLineMarks } from "@/lib/line-marks-storage";
@@ -486,15 +487,17 @@ export function ResultsView({
     [forecastLines]
   );
 
+  const commute = useCommuteCheck(bidPack, profile, filters.commuteOnly);
+  const filterCtx = useMemo<FilterContext>(() => ({ bidPeriodStart: bidPack.bidPeriodStart, commute: commute.statuses }), [bidPack.bidPeriodStart, commute.statuses]);
   const matching = useMemo(
     () =>
       ranked.filter(
         (r) =>
-          lineMatchesFilters(r.line, filters) &&
+          lineMatchesFilters(r.line, filters, filterCtx) &&
           matchesLineSearch(r.line, search) &&
           (!hotelFilter || lineHasHotel(r.line, hotelFilter))
       ),
-    [ranked, filters, search, hotelFilter]
+    [ranked, filters, filterCtx, search, hotelFilter]
   );
   const hiddenMatchingCount = matching.filter((r) => hiddenSet.has(r.line.id)).length;
   const listable = useMemo(
@@ -642,7 +645,8 @@ export function ResultsView({
   const confidenceLevel = ranked[0]?.confidenceLevel ?? null;
 
   const availableCities = useMemo(() => collectLayoverCities(bidPack.lines), [bidPack]);
-  const filterOptions = useMemo(() => computeFilterOptions(bidPack.lines), [bidPack]);
+  const touchedCities = useMemo(() => collectTouchedCities(bidPack.lines), [bidPack]);
+  const filterOptions = useMemo(() => computeFilterOptions(bidPack.lines, bidPack.bidPeriodStart), [bidPack]);
 
   // Measured once per pack, for refitting a pilot model to their drags without re-measuring every trip each time.
   const hasPilotModel = !!profile.pilotModel;
@@ -1077,6 +1081,8 @@ export function ResultsView({
               onChange={setFilters}
               options={filterOptions}
               availableCities={availableCities}
+              touchedCities={touchedCities}
+              commute={commute}
               visibleCount={matching.length}
               totalCount={ranked.length}
             />
@@ -1153,6 +1159,7 @@ export function ResultsView({
           >
             <div ref={listRef} className="mt-3 space-y-1.5">
               {displayed.length > 0 && <BidPackHeader columns={columns} layout={layout} />}
+              {displayed.length === 0 && filtersActive(filters) && <FilterBlameList lines={bidPack.lines} filters={filters} ctx={filterCtx} onChange={setFilters} />}
               {displayed.length === 0 ? (
                 <EmptyState
                   compact
@@ -1305,20 +1312,4 @@ export function ResultsView({
       </div>
     </div>
   );
-}
-
-/** A stable string for "what filters are on" — lets the page reset to the first page when they change without depending on Set identity. */
-function filtersKey(f: LineFilters): string {
-  return [
-    f.minDaysOff,
-    f.minCreditHours,
-    f.maxTripDays,
-    f.tripCount,
-    [...f.reportTimes].sort().join(","),
-    [...f.cities].sort().join(","),
-    f.noDeadheadsOnly,
-    f.noRedEyesOnly,
-    f.verifiedOnly,
-    f.international,
-  ].join("/");
 }

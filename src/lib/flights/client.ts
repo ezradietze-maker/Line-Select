@@ -87,7 +87,7 @@ export function needsToLookUp(bidPack: BidPack, model: PilotModel, p: TravelPara
 }
 
 /** The pack's FedEx flights that could matter to these needs — the ones flying inside any of their windows. */
-function jumpseatsFor(bidPack: BidPack, needs: TravelNeed[]): ScheduledFlight[] {
+export function jumpseatsFor(bidPack: BidPack, needs: TravelNeed[]): ScheduledFlight[] {
   if (!needs.length) return [];
   const from = Math.min(...needs.map((n) => n.departAfter));
   const to = Math.max(...needs.map((n) => n.arriveBy ?? n.departBefore));

@@ -1,12 +1,18 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { restoreBidPack } from "@/lib/bidpack-storage";
+import { computeFilterOptions } from "@/lib/line-filter-options";
 import {
   EMPTY_FILTERS,
   activeFilterCount,
+  blameFilters,
   collectLayoverCities,
   filtersActive,
+  filtersKey,
   lineMatchesFilters,
   type LineFilters,
 } from "@/lib/line-filters";
+import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import type { Line, Trip } from "@/types/bidpack";
 
 function makeTrip(overrides: Partial<Trip> = {}): Trip {
@@ -250,4 +256,129 @@ describe("collectLayoverCities", () => {
     const lines = [makeLine({ id: "l1" }, [makeTrip({ layoverCities: [] })])];
     expect(collectLayoverCities(lines)).toEqual([]);
   });
+});
+
+describe("the new filters", () => {
+  const with_ = (over: Partial<LineFilters>): LineFilters => ({ ...EMPTY_FILTERS, ...over });
+
+  it("reads TAFB and credit ranges at both ends, and treats 0 as off", () => {
+    const line = makeLine({ totalTafbHours: 100, totalCreditHours: 70 });
+    expect(lineMatchesFilters(line, with_({ minTafbHours: 100, maxTafbHours: 100 }))).toBe(true);
+    expect(lineMatchesFilters(line, with_({ maxTafbHours: 99 }))).toBe(false);
+    expect(lineMatchesFilters(line, with_({ minTafbHours: 101 }))).toBe(false);
+    expect(lineMatchesFilters(line, with_({ maxCreditHours: 69 }))).toBe(false);
+    expect(lineMatchesFilters(line, with_({ minCreditHours: 60, maxCreditHours: 80 }))).toBe(true);
+    expect(activeFilterCount(with_({ minTafbHours: 1, maxTafbHours: 2 }))).toBe(1);
+  });
+
+  it("finds pairing numbers by part, case-blind, and no filter on blank", () => {
+    const line = makeLine({}, [makeTrip({ pairingNumber: "A1234" })]);
+    expect(lineMatchesFilters(line, with_({ pairingContains: " a12 " }))).toBe(true);
+    expect(lineMatchesFilters(line, with_({ pairingContains: "99" }))).toBe(false);
+    expect(activeFilterCount(with_({ pairingContains: "   " }))).toBe(0);
+  });
+
+  it("keeps a line whose commute isn't known, and drops only a real no", () => {
+    const line = makeLine();
+    const ctx = (s: "yes" | "no" | "unknown") => ({ commute: new Map([[line.id, s]]) });
+    expect(lineMatchesFilters(line, with_({ commuteOnly: true }), ctx("yes"))).toBe(true);
+    expect(lineMatchesFilters(line, with_({ commuteOnly: true }), ctx("unknown"))).toBe(true);
+    expect(lineMatchesFilters(line, with_({ commuteOnly: true }), ctx("no"))).toBe(false);
+    expect(lineMatchesFilters(line, with_({ commuteOnly: true }))).toBe(true);
+  });
+});
+
+describe("blameFilters", () => {
+  it("says what each filter takes out on its own, most first, with the way to take it off", () => {
+    const a = makeLine({ id: "a", daysOff: 10, totalTafbHours: 50 });
+    const b = makeLine({ id: "b", daysOff: 20, totalTafbHours: 500 });
+    const c = makeLine({ id: "c", daysOff: 10, totalTafbHours: 500 });
+    const f: LineFilters = { ...EMPTY_FILTERS, minDaysOff: 15, maxTafbHours: 100 };
+    const blame = blameFilters([a, b, c], f);
+    expect(blame.map((x) => [x.key, x.removes])).toEqual([
+      ["minDaysOff", 2],
+      ["tafb", 2],
+    ]);
+    expect(blame[0].label).toBe("At least 15 days off");
+    expect(blame[0].without.minDaysOff).toBe(0);
+    expect(blame[0].without.maxTafbHours).toBe(100);
+    expect(blameFilters([a], EMPTY_FILTERS)).toEqual([]);
+  });
+});
+
+describe("filtersKey", () => {
+  it("changes with any filter and doesn't care about Set order", () => {
+    const k = filtersKey({ ...EMPTY_FILTERS, cities: new Set(["LAX", "ANC"]) });
+    expect(filtersKey({ ...EMPTY_FILTERS, cities: new Set(["ANC", "LAX"]) })).toBe(k);
+    expect(filtersKey(EMPTY_FILTERS)).not.toBe(k);
+    expect(filtersKey({ ...EMPTY_FILTERS, noTakeoffBefore: 0 })).not.toBe(filtersKey(EMPTY_FILTERS));
+  });
+});
+
+// The 14 October seats, where they exist: they aren't in the repository, so this runs on a machine that has them.
+const PACKS_DIR = ".cache/packs";
+const seats = existsSync(PACKS_DIR) ? readdirSync(PACKS_DIR).filter((f) => f.startsWith("OCT26") && f.endsWith(".json")) : [];
+
+describe.skipIf(seats.length === 0)("every new filter on the October seats", () => {
+  it.each(seats)("%s", (file) => {
+    const pack = restoreBidPack(JSON.parse(readFileSync(`${PACKS_DIR}/${file}`, "utf8")));
+    const options = computeFilterOptions(pack.lines, pack.bidPeriodStart);
+    const ctx = { bidPeriodStart: pack.bidPeriodStart };
+    const pass = (f: Partial<LineFilters>) => pack.lines.filter((l) => lineMatchesFilters(l, { ...EMPTY_FILTERS, ...f }, ctx));
+    const legsOf = (l: Line) => l.trips.flatMap((t) => computeTripFacts(t).legs);
+
+    // Each offered chip splits the pack, as the options promise.
+    for (const n of options.minDaysOffBlockSteps) {
+      const kept = pass({ minDaysOffBlock: n }).length;
+      expect(kept, `block ${n}`).toBeGreaterThan(0);
+      expect(kept, `block ${n}`).toBeLessThan(pack.lines.length);
+    }
+    for (const n of options.minWeekendSteps) {
+      const kept = pass({ minWeekendDaysOff: n }).length;
+      expect(kept, `weekend ${n}`).toBeGreaterThan(0);
+      expect(kept, `weekend ${n}`).toBeLessThan(pack.lines.length);
+    }
+    for (const n of options.minLayoverSteps) expect(pass({ minLongestLayoverHours: n }).length, `layover ${n}`).toBeGreaterThan(0);
+
+    // Takeoffs: every leg on what's left is outside the excluded hours.
+    for (const l of pass({ noTakeoffBefore: 8 * 60 })) expect(legsOf(l).every((x) => x.depLocalMinute === null || x.depLocalMinute >= 480)).toBe(true);
+    for (const l of pass({ noTakeoffAfter: 20 * 60 })) expect(legsOf(l).every((x) => x.depLocalMinute === null || x.depLocalMinute <= 1200)).toBe(true);
+    for (const l of pass({ noTakeoffBefore: 22 * 60, noTakeoffAfter: 6 * 60 })) expect(legsOf(l).every((x) => x.depLocalMinute === null || x.depLocalMinute >= 1320 || x.depLocalMinute <= 360)).toBe(true);
+
+    // Deadheads: nothing left starts, ends or both on one; each is at least as strict as the double.
+    const nf = pass({ noFrontDeadhead: true });
+    const nb = pass({ noBackDeadhead: true });
+    const nd = pass({ noDoubleDeadhead: true });
+    for (const l of nf) expect(l.trips.every((t) => !computeTripFacts(t).front)).toBe(true);
+    for (const l of nb) expect(l.trips.every((t) => !computeTripFacts(t).back)).toBe(true);
+    expect(nd.length).toBeGreaterThanOrEqual(Math.max(nf.length, nb.length));
+
+    // Out-and-backs and single-leg duties: "only" and "none" can't overlap, and only ever narrows.
+    const only = new Set(pass({ outAndBacks: "only" }).map((l) => l.id));
+    const none = new Set(pass({ outAndBacks: "none" }).map((l) => l.id));
+    expect([...only].some((id) => none.has(id))).toBe(false);
+    for (const l of pass({ singleLegDutiesOnly: true })) {
+      for (const t of l.trips) for (const d of computeTripFacts(t).duties) if (d.operatedLegs > 0) expect(d.operatedLegs).toBe(1);
+    }
+
+    // Touching a city includes every line that lays over there, and any line only passing through.
+    const city = collectLayoverCities(pack.lines)[0];
+    if (city) {
+      const over = new Set(pass({ cities: new Set([city]) }).map((l) => l.id));
+      const touch = new Set(pass({ touchedCities: new Set([city]) }).map((l) => l.id));
+      for (const id of over) expect(touch.has(id)).toBe(true);
+      for (const l of pack.lines) expect(touch.has(l.id)).toBe(l.trips.some((t) => t.layoverCities.includes(city)) || legsOf(l).some((x) => x.from === city || x.to === city));
+    }
+
+    // Pairing number, TAFB: read straight back.
+    const pairing = pack.lines.flatMap((l) => l.trips).find((t) => t.pairingNumber)?.pairingNumber;
+    if (pairing) for (const l of pass({ pairingContains: pairing })) expect(l.trips.some((t) => t.pairingNumber?.includes(pairing))).toBe(true);
+    const tafb = [...pack.lines.map((l) => l.totalTafbHours)].sort((a, b) => a - b);
+    const mid = tafb[Math.floor(tafb.length / 2)];
+    for (const l of pass({ maxTafbHours: mid })) expect(l.totalTafbHours).toBeLessThanOrEqual(mid);
+
+    // Blame adds up: with one filter on, it names exactly the lines that filter takes out.
+    const f = { ...EMPTY_FILTERS, minDaysOff: 999 };
+    expect(blameFilters(pack.lines, f, ctx)[0].removes).toBe(pack.lines.filter((l) => l.daysOff < 999).length);
+  }, 60_000);
 });

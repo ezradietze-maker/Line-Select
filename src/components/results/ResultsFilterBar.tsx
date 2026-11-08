@@ -6,11 +6,16 @@ import type { FilterOptions } from "@/lib/line-filter-options";
 import {
   EMPTY_FILTERS,
   activeFilterCount,
+  blameFilters,
   filtersActive,
+  type FilterContext,
   type InternationalFilter,
   type LineFilters,
+  type OutAndBackFilter,
   type TripCountFilter,
 } from "@/lib/line-filters";
+import type { CommuteCheck } from "@/lib/use-commute-check";
+import type { Line } from "@/types/bidpack";
 import type { ReportTime } from "@/types/bidpack";
 
 const REPORT_TIME_LABEL: Record<ReportTime, string> = {
@@ -32,11 +37,20 @@ const TRIP_COUNT_LABEL: Record<TripCountFilter, string> = {
   "3plus": "3+ trips",
 };
 
+const OUT_AND_BACK_LABEL: Record<OutAndBackFilter, string> = {
+  any: "Any",
+  only: "Only",
+  none: "None",
+};
+
 interface ResultsFilterBarProps {
   filters: LineFilters;
   onChange: (next: LineFilters) => void;
   options: FilterOptions;
   availableCities: string[];
+  /** Every airport any leg touches, for the "touches" filter. */
+  touchedCities: string[];
+  commute: CommuteCheck;
   visibleCount: number;
   totalCount: number;
 }
@@ -46,6 +60,8 @@ export function ResultsFilterBar({
   onChange,
   options,
   availableCities,
+  touchedCities,
+  commute,
   visibleCount,
   totalCount,
 }: ResultsFilterBarProps) {
@@ -66,7 +82,15 @@ export function ResultsFilterBar({
     onChange({ ...filters, cities: next });
   }
 
+  function toggleTouched(city: string) {
+    const next = new Set(filters.touchedCities);
+    if (next.has(city)) next.delete(city);
+    else next.add(city);
+    onChange({ ...filters, touchedCities: next });
+  }
+
   const showToggleRow = options.showDeadheadToggle || options.showRedEyeToggle;
+  const showDeadheadRow = options.showFrontDeadheadToggle || options.showBackDeadheadToggle || options.showDoubleDeadheadToggle;
 
   return (
     <div className="mt-4 rounded-lg border border-border bg-surface">
@@ -126,6 +150,9 @@ export function ResultsFilterBar({
             </FilterRow>
           )}
 
+          <StepRow label="Days off in a row" steps={options.minDaysOffBlockSteps} value={filters.minDaysOffBlock} onChange={(n) => onChange({ ...filters, minDaysOffBlock: n })} />
+          <StepRow label="Weekend days off" steps={options.minWeekendSteps} value={filters.minWeekendDaysOff} onChange={(n) => onChange({ ...filters, minWeekendDaysOff: n })} />
+
           {options.minCreditHoursSteps.length > 0 && (
             <FilterRow label="Credit hours">
               <div className="flex flex-wrap gap-1.5">
@@ -147,6 +174,19 @@ export function ResultsFilterBar({
               </div>
             </FilterRow>
           )}
+
+          <FilterRow label="Credit range">
+            <HoursRange
+              label="credit"
+              min={filters.minCreditHours}
+              max={filters.maxCreditHours}
+              onChange={(minCreditHours, maxCreditHours) => onChange({ ...filters, minCreditHours, maxCreditHours })}
+            />
+          </FilterRow>
+
+          <FilterRow label="TAFB range">
+            <HoursRange label="TAFB" min={filters.minTafbHours} max={filters.maxTafbHours} onChange={(minTafbHours, maxTafbHours) => onChange({ ...filters, minTafbHours, maxTafbHours })} />
+          </FilterRow>
 
           {options.maxTripDaysSteps.length > 0 && (
             <FilterRow label="Longest trip">
@@ -231,6 +271,77 @@ export function ResultsFilterBar({
             </FilterRow>
           )}
 
+          <FilterRow label="Takeoffs">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-ink-muted">
+              <label className="flex items-center gap-1.5">
+                None before
+                <TimeInput value={filters.noTakeoffBefore} onChange={(noTakeoffBefore) => onChange({ ...filters, noTakeoffBefore })} />
+              </label>
+              <label className="flex items-center gap-1.5">
+                None after
+                <TimeInput value={filters.noTakeoffAfter} onChange={(noTakeoffAfter) => onChange({ ...filters, noTakeoffAfter })} />
+              </label>
+              <span className="text-xs">Local time where each flight leaves.</span>
+            </div>
+          </FilterRow>
+
+          {showDeadheadRow && (
+            <FilterRow label="Deadheads">
+              <div className="flex flex-wrap gap-1.5">
+                {options.showFrontDeadheadToggle && (
+                  <Chip active={filters.noFrontDeadhead} onClick={() => onChange({ ...filters, noFrontDeadhead: !filters.noFrontDeadhead })}>
+                    None at the start
+                  </Chip>
+                )}
+                {options.showBackDeadheadToggle && (
+                  <Chip active={filters.noBackDeadhead} onClick={() => onChange({ ...filters, noBackDeadhead: !filters.noBackDeadhead })}>
+                    None at the end
+                  </Chip>
+                )}
+                {options.showDoubleDeadheadToggle && (
+                  <Chip active={filters.noDoubleDeadhead} onClick={() => onChange({ ...filters, noDoubleDeadhead: !filters.noDoubleDeadhead })}>
+                    No double deadheads
+                  </Chip>
+                )}
+              </div>
+            </FilterRow>
+          )}
+
+          {options.showOutAndBackOptions && (
+            <FilterRow label="Out-and-backs">
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(OUT_AND_BACK_LABEL) as OutAndBackFilter[]).map((v) => (
+                  <Chip key={v} active={filters.outAndBacks === v} onClick={() => onChange({ ...filters, outAndBacks: v })}>
+                    {OUT_AND_BACK_LABEL[v]}
+                  </Chip>
+                ))}
+              </div>
+            </FilterRow>
+          )}
+
+          {options.showSingleLegToggle && (
+            <FilterRow label="Duties">
+              <Chip active={filters.singleLegDutiesOnly} onClick={() => onChange({ ...filters, singleLegDutiesOnly: !filters.singleLegDutiesOnly })}>
+                Single-leg duties only
+              </Chip>
+            </FilterRow>
+          )}
+
+          <StepRow label="Longest layover" steps={options.minLayoverSteps} value={filters.minLongestLayoverHours} suffix=" hrs+" onChange={(n) => onChange({ ...filters, minLongestLayoverHours: n })} />
+
+          <FilterRow label="Pairing number">
+            <input
+              type="search"
+              value={filters.pairingContains}
+              onChange={(e) => onChange({ ...filters, pairingContains: e.target.value })}
+              aria-label="Pairing number contains"
+              placeholder="Contains…"
+              className={`${FIELD} w-32`}
+            />
+          </FilterRow>
+
+          <CommuteRow on={filters.commuteOnly} onToggle={() => onChange({ ...filters, commuteOnly: !filters.commuteOnly })} commute={commute} />
+
           {options.showVerifiedToggle && (
             <FilterRow label="Data quality">
               <div className="flex flex-wrap gap-1.5">
@@ -240,6 +351,41 @@ export function ResultsFilterBar({
                 >
                   Verified schedules only
                 </Chip>
+              </div>
+            </FilterRow>
+          )}
+
+          {touchedCities.length > 0 && (
+            <FilterRow label="Touches city">
+              <div className="min-w-0 flex-1">
+                <input
+                  type="search"
+                  list="touchable-cities"
+                  aria-label="Add a city the line lands in or leaves, layover or not"
+                  placeholder="Add a city, e.g. ANC"
+                  className={`${FIELD} w-44`}
+                  onChange={(e) => {
+                    const code = e.target.value.trim().toUpperCase();
+                    if (touchedCities.includes(code) && !filters.touchedCities.has(code)) {
+                      toggleTouched(code);
+                      e.target.value = "";
+                    }
+                  }}
+                />
+                <datalist id="touchable-cities">
+                  {touchedCities.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+                {filters.touchedCities.size > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {[...filters.touchedCities].map((c) => (
+                      <Chip key={c} active onClick={() => toggleTouched(c)}>
+                        {c} ×
+                      </Chip>
+                    ))}
+                  </div>
+                )}
               </div>
             </FilterRow>
           )}
@@ -258,6 +404,146 @@ export function ResultsFilterBar({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+const FIELD = "rounded-md border border-border-strong bg-surface px-2 py-1.5 text-[13px] text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none";
+
+/** "At least N" chips, offered only when the pack has values that split it. */
+function StepRow({ label, steps, value, suffix = "+", onChange }: { label: string; steps: number[]; value: number; suffix?: string; onChange: (n: number) => void }) {
+  if (steps.length === 0) return null;
+  return (
+    <FilterRow label={label}>
+      <div className="flex flex-wrap gap-1.5">
+        <Chip active={value === 0} onClick={() => onChange(0)}>
+          Any
+        </Chip>
+        {steps.map((n) => (
+          <Chip key={n} active={value === n} onClick={() => onChange(n)}>
+            {n}
+            {suffix}
+          </Chip>
+        ))}
+      </div>
+    </FilterRow>
+  );
+}
+
+function HoursRange({ label, min, max, onChange }: { label: string; min: number; max: number; onChange: (min: number, max: number) => void }) {
+  const read = (v: string) => Math.max(0, Number(v) || 0);
+  return (
+    <div className="flex items-center gap-1.5 text-[13px] text-ink-muted">
+      <input type="number" inputMode="decimal" min={0} value={min || ""} onChange={(e) => onChange(read(e.target.value), max)} placeholder="Min" aria-label={`Fewest ${label} hours`} className={`${FIELD} w-20`} />
+      to
+      <input type="number" inputMode="decimal" min={0} value={max || ""} onChange={(e) => onChange(min, read(e.target.value))} placeholder="Max" aria-label={`Most ${label} hours`} className={`${FIELD} w-20`} />
+      hrs
+    </div>
+  );
+}
+
+function TimeInput({ value, onChange }: { value: number | null; onChange: (minute: number | null) => void }) {
+  const text = value === null ? "" : `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+  return (
+    <input
+      type="time"
+      value={text}
+      onChange={(e) => {
+        const [h, m] = e.target.value.split(":").map(Number);
+        onChange(e.target.value ? h * 60 + m : null);
+      }}
+      className={FIELD}
+    />
+  );
+}
+
+const ARRIVE_HOURS = [1, 2, 3, 4];
+const RELEASE_HOURS = [1, 2, 3];
+
+/** The commute filter: its settings, and what the real flights have said so far. */
+function CommuteRow({ on, onToggle, commute }: { on: boolean; onToggle: () => void; commute: CommuteCheck }) {
+  const { settings, update, canCheck, phase, done, total, counts } = commute;
+  return (
+    <FilterRow label="Commute">
+      <div className="min-w-0 flex-1 space-y-2">
+        <Chip active={on} onClick={onToggle}>
+          Only lines I can commute to and from
+        </Chip>
+        {on && (
+          <>
+            <p className="text-xs text-ink-muted">Real flights in on each report day and home on each release day, checked on your clock at home.</p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-ink-muted">
+              <label className="flex items-center gap-1.5">
+                Home airport
+                <input
+                  value={settings.homeAirport}
+                  onChange={(e) => update({ homeAirport: e.target.value.trim().toUpperCase().slice(0, 3) })}
+                  aria-invalid={settings.homeAirport.length === 3 && !canCheck}
+                  placeholder="DEN"
+                  className={`${FIELD} w-16 font-mono uppercase`}
+                />
+              </label>
+              <label className="flex items-center gap-1.5">
+                Arrive
+                <select value={settings.arriveBeforeReportHours} onChange={(e) => update({ arriveBeforeReportHours: Number(e.target.value) })} className={FIELD}>
+                  {[...new Set([...ARRIVE_HOURS, settings.arriveBeforeReportHours])].sort((a, b) => a - b).map((h) => (
+                    <option key={h} value={h}>
+                      {h} hr{h === 1 ? "" : "s"} before report
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5">
+                Fly home
+                <select value={settings.releaseToDepartureHours} onChange={(e) => update({ releaseToDepartureHours: Number(e.target.value) })} className={FIELD}>
+                  {RELEASE_HOURS.map((h) => (
+                    <option key={h} value={h}>
+                      {h} hr{h === 1 ? "" : "s"} after release
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Chip active={settings.jumpseats} onClick={() => update({ jumpseats: !settings.jumpseats })}>
+                FedEx jumpseats count
+              </Chip>
+            </div>
+            <p role="status" className="text-xs text-ink-muted">
+              {!canCheck
+                ? "Enter the airport you commute from. It can't be your base."
+                : phase === "unavailable"
+                  ? "Flight data isn't available right now, so no line is ruled out."
+                  : phase === "checking"
+                    ? `Checking flights… ${done} of ${total || "…"}`
+                    : total === 0
+                      ? "This month's trips have already flown, so there's nothing to check."
+                      : `${counts.yes} lines work, ${counts.no} don't, ${counts.unknown} not known (kept in the list).${phase === "paused" ? " Flight checks are paused for now; try again later for the rest." : ""}`}
+            </p>
+          </>
+        )}
+      </div>
+    </FilterRow>
+  );
+}
+
+/** Shown when filters leave nothing: what each one takes out, and a tap to take it off. */
+export function FilterBlameList({ lines, filters, ctx, onChange }: { lines: Line[]; filters: LineFilters; ctx: FilterContext; onChange: (next: LineFilters) => void }) {
+  const blame = blameFilters(lines, filters, ctx);
+  if (blame.length === 0) return null;
+  return (
+    <div className="mb-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+      <p className="font-medium text-ink">These filters leave no lines. Take one off:</p>
+      <ul className="mt-2 space-y-1.5">
+        {blame.map((b) => (
+          <li key={b.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <span className="text-ink-muted">
+              {b.label} <span className="text-xs">(removes {b.removes})</span>
+            </span>
+            <button type="button" onClick={() => onChange(b.without)} className="font-semibold text-accent underline-offset-2 hover:underline">
+              Remove<span className="sr-only"> {b.label}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
