@@ -90,17 +90,12 @@ export function ThinkingPanel({ lastExchange, briefing }: { lastExchange?: LastE
       )}
       <div className="flex items-center gap-4">
         <RadarSweep />
-        <motion.p
-          key={text}
-          className="text-sm text-ink-muted"
-          role="status"
-          aria-live="polite"
-          initial={reduce ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4 }}
-        >
-          {text}
-        </motion.p>
+        {/* The live region stays put and only its words change — one mounted already filled isn't read out. */}
+        <p className="text-sm text-ink-muted" role="status" aria-live="polite">
+          <motion.span key={text} className="inline-block" initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
+            {text}
+          </motion.span>
+        </p>
       </div>
     </div>
   );

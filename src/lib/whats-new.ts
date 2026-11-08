@@ -13,6 +13,30 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-11-08",
+    title: "Only real offers on your Trade Board",
+    body: "Example offers now appear only with the sample pack. With your own pack, the board shows real pilots' offers, or says plainly that there aren't any yet.",
+    href: "/trade-board",
+  },
+  {
+    date: "2026-11-08",
+    title: "Lines scored as they'll really fly with your carry-in",
+    body: "Enter what runs in from last month, a trip or R-days, above your rankings. Each line is re-scored with what the contract does to it: the trips your carry-in drops, the make-up you're owed and the days off you gain, each with its section. It also suggests how to answer the bid's waiver questions. Our reading of the contract, not an official award.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-07",
+    title: "The countdown reads your bid pack",
+    body: "Bid close now comes straight from the bid calendar printed on your pack's cover, for your seat, in Memphis time — nothing to type in. You can still set your own time if FedEx announces a change. Upload this month's pack again to pick it up.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-07",
+    title: "Send to VIPS",
+    body: "Your ranked order goes straight into VIPS's Monthly Bid Input: open it from \"Ready to bid?\", answer VIPS's bid questions, and sign in to FedEx in the new tab. Line Select never sees your FedEx password. Check Monthly Bid Review afterwards.",
+    href: "/results",
+  },
+  {
     date: "2026-11-05",
     title: "Your bid checklist and countdown",
     body: "Above your rankings: when bidding closes, counted down, with a reminder in your phone's calendar the day before and an hour before — and the month's bid step by step, ticking itself off as you go.",

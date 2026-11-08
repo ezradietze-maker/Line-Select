@@ -4,7 +4,7 @@ import { timezoneForAirport } from "@/lib/airport-timezones";
 import { groupDepartures, type DepartureOptions } from "@/lib/metrics/departures";
 import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metrics/hub-turns";
 import { DEFAULT_MIN_BREAK_NIGHTS, homeStretches, summarizeHomeTime } from "@/lib/metrics/home-stretches";
-import { lineCarryOver, monthLine, nextMonthName, uncutTrip } from "@/lib/bid-month";
+import { bidMonthEnd, lineCarryOver, monthLine, nextMonthName, uncutTrip } from "@/lib/bid-month";
 import { fullDayDates } from "@/lib/full-days";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { lineDutyPeriods } from "@/lib/duty-periods";
@@ -372,6 +372,14 @@ export function buildDetailedMonth(
   });
 
   const followingMonth = nextMonthName({ bidPeriodStart, bidPeriodDays, base: departureOptions?.base ?? "" });
+  // A Zulu day is the base's day shifted by hours: one carrying flying is next month's only when that flying starts at
+  // or after the month's real end — counted by its index alone, the evening's last landing at base read as carried over.
+  const monthEnd = mode === "zulu" ? bidMonthEnd({ bidPeriodStart, bidPeriodDays, base: departureOptions?.base ?? "" }) : null;
+  const isNextMonth = (day: (typeof calendar.days)[number]) => {
+    const first = day.segments[0];
+    if (monthEnd === null || !first || !day.date) return day.dayIndex >= bidPeriodDays;
+    return Date.parse(`${day.date}T00:00:00Z`) + first.startMinuteOfDay * 60_000 >= monthEnd;
+  };
   const days: DetailedDay[] = calendar.days.map((day) => {
     const tripIndex = day.tripIndex;
     const trip = tripIndex !== null ? line.trips[tripIndex] : null;
@@ -379,7 +387,7 @@ export function buildDetailedMonth(
     const isWeekend = day.weekday === "Sat" || day.weekday === "Sun";
     const base = {
       dayIndex: day.dayIndex,
-      ...(day.dayIndex >= bidPeriodDays ? { nextMonth: followingMonth } : {}),
+      ...(isNextMonth(day) ? { nextMonth: followingMonth } : {}),
       label,
       weekday: day.weekday,
       isWeekend,

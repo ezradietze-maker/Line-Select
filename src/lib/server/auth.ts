@@ -145,12 +145,12 @@ const RESET_FAILURE_MESSAGE = "That email and recovery code don't match.";
  * rate-limited per email like login, signs out every existing session on
  * success, and rotates the code (the used one is spent).
  */
-export async function resetPasswordWithRecoveryCode(email: string, recoveryCode: string, newPassword: string): Promise<AuthResult> {
+export async function resetPasswordWithRecoveryCode(email: string, recoveryCode: string, newPassword: string, from?: string): Promise<AuthResult> {
   const normalized = normalizeEmail(email);
   if (newPassword.length < MIN_PASSWORD_LENGTH) {
     return { ok: false, error: PASSWORD_TOO_SHORT };
   }
-  if (!(await takeAttempt(RESET_RATE_LIMIT_SCOPE, normalized))) {
+  if (!(await takeAccountAttempt(RESET_RATE_LIMIT_SCOPE, normalized, from))) {
     return { ok: false, error: "Too many failed attempts. Try again in a few minutes." };
   }
 
@@ -169,8 +169,8 @@ export async function resetPasswordWithRecoveryCode(email: string, recoveryCode:
   const salt = randomBytes(16).toString("hex");
   await updateCredential(credential.userId, { passwordHash: await hashPassword(newPassword, salt), salt });
   await deleteSessionsForUser(credential.userId);
-  await clearAttempts(RESET_RATE_LIMIT_SCOPE, normalized);
-  await clearAttempts(LOGIN_RATE_LIMIT_SCOPE, normalized);
+  await clearAccountAttempts(RESET_RATE_LIMIT_SCOPE, normalized, from);
+  await clearAccountAttempts(LOGIN_RATE_LIMIT_SCOPE, normalized, from);
   const newRecoveryCode = await storeNewRecoveryCode(credential.userId);
   const sessionToken = await startSession(credential.userId);
   return { ok: true, user, sessionToken, recoveryCode: newRecoveryCode };
@@ -190,11 +190,11 @@ function hashResetToken(token: string): string {
  * requests per address in a short window so it can't be used to spam an inbox.
  * Returns false only when email isn't configured on this deployment.
  */
-export async function requestPasswordResetEmail(email: string): Promise<boolean> {
+export async function requestPasswordResetEmail(email: string, from?: string): Promise<boolean> {
   const config = getEmailConfig();
   if (!config) return false;
   const normalized = normalizeEmail(email);
-  if (!(await takeAttempt(RESET_EMAIL_SCOPE, normalized))) return true;
+  if (!(await takeAccountAttempt(RESET_EMAIL_SCOPE, normalized, from))) return true;
 
   const credential = await findCredentialByEmail(normalized);
   if (!credential) return true;
@@ -251,15 +251,12 @@ export const LOGIN_FAILED = "Email or password is incorrect.";
 /** A dummy salt, so a sign-in for an email with no account takes as long as one with a wrong password. */
 const NO_ACCOUNT_SALT = "0".repeat(32);
 
-export async function login(email: string, password: string): Promise<AuthResult> {
+export async function login(email: string, password: string, from?: string): Promise<AuthResult> {
   const normalized = normalizeEmail(email);
 
-  // Rate-limited per normalized email, so the account itself is protected
-  // whatever address the guesses come from; the login route adds a limit
-  // per address on top, against one machine trying many accounts. A pilot
-  // locked out by someone else's guesses gets back in with their recovery
-  // code or an emailed reset link, either of which clears this count.
-  if (!(await takeAttempt(LOGIN_RATE_LIMIT_SCOPE, normalized))) {
+  // Rate-limited per account and address, with a far higher ceiling per account (see `takeAccountAttempt`); the
+  // login route adds a limit per address on top, against one machine trying many accounts.
+  if (!(await takeAccountAttempt(LOGIN_RATE_LIMIT_SCOPE, normalized, from))) {
     return { ok: false, error: "Too many failed attempts. Try again in 15 minutes, or reset your password with your recovery code." };
   }
 
@@ -274,9 +271,29 @@ export async function login(email: string, password: string): Promise<AuthResult
     return { ok: false, error: "Account data is missing. Try creating a new account." };
   }
 
-  await clearAttempts(LOGIN_RATE_LIMIT_SCOPE, normalized);
+  await clearAccountAttempts(LOGIN_RATE_LIMIT_SCOPE, normalized, from);
   const sessionToken = await startSession(user.id);
   return { ok: true, user, sessionToken };
+}
+
+/** Guesses one account may take from everywhere at once in the window — enough to stop guessing, not one person. */
+const ACCOUNT_ATTEMPT_CEILING = 50;
+
+/**
+ * One attempt at an account. Counted per account and the address it came from, so a handful of junk tries from
+ * somewhere else can't lock a pilot out of signing in, their recovery code and the emailed link all at once; and per
+ * account overall at a much higher ceiling, so guessing spread across many addresses still stops. Without an address
+ * (a caller that doesn't know one), per account as before.
+ */
+async function takeAccountAttempt(scope: string, email: string, from?: string): Promise<boolean> {
+  if (!from) return takeAttempt(scope, email);
+  const [mine, everyone] = await Promise.all([takeAttempt(scope, `${email}|${from}`), takeAttempt(`${scope}:all`, email, ACCOUNT_ATTEMPT_CEILING)]);
+  return mine && everyone;
+}
+
+async function clearAccountAttempts(scope: string, email: string, from?: string): Promise<void> {
+  await clearAttempts(scope, email);
+  if (from) await Promise.all([clearAttempts(scope, `${email}|${from}`), clearAttempts(`${scope}:all`, email)]);
 }
 
 async function startSession(userId: string): Promise<string> {

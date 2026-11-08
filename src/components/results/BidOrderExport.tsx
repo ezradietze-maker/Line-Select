@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PlaneIcon } from "@/components/ui/icons";
+import { SendToVipsDialog } from "@/components/results/SendToVipsDialog";
 import { buildLineCalendar } from "@/lib/ics-export";
 import type { LineScore } from "@/lib/scoring";
 
@@ -32,15 +33,22 @@ export function BidOrderExport({
   entries,
   shortlistEntries = [],
   bidPeriodStart,
+  packLabel,
+  leftOut,
 }: {
   entries: BidOrderEntry[];
   /** The starred lines, in ranked order — when present, "Copy shortlist" becomes the fastest way to turn a hand-picked set into a bid order. */
   shortlistEntries?: BidOrderEntry[];
   /** Threaded through to `buildLineCalendar` — the top pick's calendar export only works when the bid pack's own trip placement is real (see that function's own doc comment). */
   bidPeriodStart: string | null;
+  /** e.g. "OCT26 · MEM · MD11 · FO" — shown in the VIPS dialog to check against VIPS's own "You are bidding as…". */
+  packLabel: string;
+  /** Lines in the pack that `entries` leaves out (hidden or filtered) — the VIPS dialog warns they won't be bid. */
+  leftOut: number;
 }) {
   const [copied, setCopied] = useFlash<NonNullable<CopiedKind>>(2000);
   const [calendarError, setCalendarError] = useFlash<string>(4000);
+  const [vipsOpen, setVipsOpen] = useState(false);
   /** The first trip's date, shown on a little calendar page that flips over once the file has saved. */
   const [savedFrom, setSavedFrom] = useFlash<{ month: string; day: number }>(2800);
   const [showMore, setShowMore] = useState(false);
@@ -104,6 +112,14 @@ export function BidOrderExport({
         </button>
         <button
           type="button"
+          onClick={() => setVipsOpen(true)}
+          title="Opens VIPS in a new tab with this order filled in — you sign in and it's sent."
+          className={secondary}
+        >
+          Send to VIPS
+        </button>
+        <button
+          type="button"
           onClick={() => setShowMore((v) => !v)}
           aria-expanded={showMore}
           className={`${secondary} sm:hidden`}
@@ -162,9 +178,17 @@ export function BidOrderExport({
         </button>
       </div>
       <p className="mt-2 hidden text-xs leading-relaxed text-ink-faint sm:block">
-        Line Select doesn&rsquo;t submit anything &mdash; copy your order, then enter it in your actual bid.
+        Send to VIPS opens pilot.fedex.com with this order filled in &mdash; you sign in there, and nothing is sent until you do. Or copy the order and enter it yourself.
       </p>
       {calendarError && <p className="mt-2 text-xs text-danger">{calendarError}</p>}
+      {vipsOpen && (
+        <SendToVipsDialog
+          lineNumbers={entries.map((e) => e.lineScore.line.lineNumber)}
+          packLabel={packLabel}
+          leftOut={leftOut}
+          onClose={() => setVipsOpen(false)}
+        />
+      )}
     </div>
   );
 }

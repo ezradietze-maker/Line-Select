@@ -49,6 +49,16 @@ describe("keeping the pilot model current after the interview", () => {
     expect(live).toEqual(["B>A"]);
   });
 
+  it("counts a swap only on the pack it was made on, and keeps it for when that pack is back", () => {
+    const made = choicesFromDrag([{ favored: "A", overtaken: "B" }], undefined, "uploaded-mem-b767-fo-sep26");
+    const w = (p: PreferenceProfile) => p.pilotModel!.criteria.find((c) => c.id === "off")!.weight;
+    const elsewhere = withModel(profile, pack, { choices: made });
+    expect(w(elsewhere.profile)).toBeCloseTo(0.3, 6);
+    expect(elsewhere.profile.brainInterview?.choices).toEqual(made);
+    const onItsPack = withModel(profile, { ...pack, id: "uploaded-mem-b767-fo-sep26" } as BidPack, { choices: made });
+    expect(w(onItsPack.profile)).toBeGreaterThan(0.3 * 1.01);
+  });
+
   it("uses a new base when the pilot edits a priority, keeping their choices", () => {
     const edited = { ...base, criteria: base.criteria.map((c) => (c.id === "off" ? { ...c, weight: 1 } : c)) };
     const r = withModel(profile, pack, { base: edited });

@@ -30,8 +30,8 @@ export function StepNav({ onNext, nextLabel, disabled }: { onNext: () => void; n
         onNextRef.current();
         return;
       }
-      // Any other focused button handles its own Enter; a text box keeps Enter for typing.
-      if (isTypingTarget(target) || target?.tagName === "BUTTON" || target?.tagName === "A") return;
+      // Any other focused control handles its own Enter (a trip's fold-out opens on it); a text box keeps Enter for typing.
+      if (isTypingTarget(target) || target?.closest("button, a, summary, [role=button]")) return;
       e.preventDefault();
       onNextRef.current();
     }

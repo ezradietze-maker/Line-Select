@@ -284,6 +284,18 @@ export interface SweepFlight {
   from: string;
 }
 
+/** One entry on the bid calendar a pack prints on its cover ("OCT26 Cap Bid Closes 1200 CT"), on the date it falls. */
+export interface BidCalendarEvent {
+  /** "YYYY-MM-DD". */
+  date: string;
+  /** The cell's text as printed, lines joined. */
+  text: string;
+  /** "HH:MM" — the first time printed in it, if any. */
+  time: string | null;
+  /** "CT" (Memphis time) or "LBT" (the base's local time), as printed beside that time. */
+  zone: "CT" | "LBT" | null;
+}
+
 export interface BidPack {
   id: string;
   /** e.g. "SEP26" */
@@ -309,6 +321,8 @@ export interface BidPack {
   info?: BidPackInfo;
   /** Every pilot bidding this seat, in bid order — numbers only. Absent when the PDF had no readable Bid Seniority List. */
   seniorityList?: SeniorityEntry[];
+  /** The cover page's bid calendar — when this seat's bid closes, the conflict, View/Add and SWW windows, open time release. Absent on a pack parsed before it was read. */
+  bidCalendar?: BidCalendarEvent[];
   /** Flights the pack's Sweep Aircraft page says may be rerouted. */
   sweepFlights?: SweepFlight[];
 }

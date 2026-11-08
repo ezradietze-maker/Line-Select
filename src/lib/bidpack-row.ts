@@ -81,8 +81,23 @@ function fit(tokens: PackToken[]): PackToken[] {
   return out.length > PACK_TOKENS_PER_DAY ? [...out.slice(0, PACK_TOKENS_PER_DAY - 1), out.at(-1)!] : out;
 }
 
+/**
+ * Each line's strip as last built, by line: it takes the whole month calendar to learn which trip owns each day, and a
+ * card is drawn again every time it comes back into the list (a filter changed, the list re-sorted). Callers only read it.
+ */
+const built = new WeakMap<Line, { key: string; days: PackDay[] }>();
+
 /** A line's strip, a day a column, `count` columns long. Without the bid period's real dates, only the trips' days and labels. */
 export function buildPackRow(line: Line, bidPeriodStart: string | null, bidPeriodDays: number, count: number): PackDay[] {
+  const key = `${bidPeriodStart}|${bidPeriodDays}|${count}`;
+  const hit = built.get(line);
+  if (hit && hit.key === key) return hit.days;
+  const days = buildPackRowFresh(line, bidPeriodStart, bidPeriodDays, count);
+  built.set(line, { key, days });
+  return days;
+}
+
+function buildPackRowFresh(line: Line, bidPeriodStart: string | null, bidPeriodDays: number, count: number): PackDay[] {
   const month = buildLineMonthCalendar(line, bidPeriodStart, bidPeriodDays, "local");
   const out: PackDay[] = Array.from({ length: count }, (_, i) => {
     const day = month.days[i];

@@ -12,6 +12,7 @@ import { PaperPlane } from "@/components/ui/PaperPlane";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { TextField } from "@/components/ui/TextField";
+import { withExampleOffer } from "@/lib/fake-trade-offers";
 import { sameBidPack } from "@/lib/inbox";
 import {
   acceptOffer,
@@ -132,11 +133,7 @@ export function TradeBoardScreen({
   }, [polledOffers]);
 
   const realVisibleOffers = bidPack ? offers.filter((o) => sameBidPack(o, bidPack)) : offers;
-  // The example offer only fills an otherwise-empty board — once a real
-  // pilot has posted something for this pack, the board shows only real
-  // offers, so an invented one never sits next to (or gets mistaken for) them.
-  const hasRealOpenOffer = realVisibleOffers.some((o) => o.status === "open" && o.offeringUserId !== user?.id);
-  const visibleOffers = demoOffer && bidPack && !hasRealOpenOffer ? [demoOffer, ...realVisibleOffers] : realVisibleOffers;
+  const visibleOffers = withExampleOffer(demoOffer, realVisibleOffers, bidPack, user?.id);
   const needsResponse = visibleOffers.filter(
     (o) => o.status === "pending" && o.offeringUserId === user?.id
   );
@@ -260,7 +257,11 @@ export function TradeBoardScreen({
             {openFromOthers.length === 0 ? (
               <EmptyState
                 compact
-                description={`No open offers right now${bidPack ? " for this bid pack" : ""}.`}
+                description={
+                  user && bidPack
+                    ? "No open offers for this bid pack yet. The board fills as pilots join, and offers here are non-binding."
+                    : `No open offers to show${bidPack ? " for this bid pack" : ""}.`
+                }
               />
             ) : shownOpenOffers.length === 0 ? (
               <EmptyState compact description="No open offers match that search." />
@@ -406,11 +407,7 @@ export function OfferCard({
             {isMine ? "You" : offer.isDemo ? "Example pilot" : offer.offeringDisplayName} offering {offerTripName(offer.offeredTrip)}
             {offer.isDemo && (
               <span
-                title={
-                  currentUserId
-                    ? "No real pilot has posted an offer for this bid pack yet, so this is an example of what one looks like."
-                    : "An example of what an offer looks like. Sign in to see the real ones."
-                }
+                title="An example of what an offer looks like, shown only with the sample bid pack. No real pilot posted it."
                 className="ml-2 inline-block rounded-full bg-warn-soft px-2 py-0.5 align-middle font-sans text-[11px] font-semibold uppercase tracking-wide text-warn"
               >
                 Example &mdash; not real

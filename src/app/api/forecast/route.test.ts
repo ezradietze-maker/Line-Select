@@ -159,16 +159,29 @@ describe("/api/forecast", () => {
     expect(forecastStore.blobs.size).toBe(0);
   });
 
-  it("uses other pilots' shared rankings but never sends them back", async () => {
+  it("uses other pilots' shared rankings when several sit ahead, but never sends them back", async () => {
+    for (const [id, seniority] of [["user-a", 10], ["user-b", 15], ["user-c", 25]] as const) {
+      authMocks.getCurrentServerUser.mockResolvedValue({ ...USER, id });
+      await POST(request(goodBody({ share: true, seniorityNumber: seniority, ranking: [3, 4, 5, 0, 1, 2, 6, 7, 8, 9, 10, 11] })));
+    }
     authMocks.getCurrentServerUser.mockResolvedValue(USER);
-    await POST(request(goodBody({ share: true, seniorityNumber: 25, ranking: [3, 4, 5, 0, 1, 2, 6, 7, 8, 9, 10, 11] })));
-    authMocks.getCurrentServerUser.mockResolvedValue(null);
     const data = await (await POST(request(goodBody({ seniorityNumber: 50 })))).json();
-    expect(data.crowd.pilotsSharing).toBe(1);
-    expect(data.forecast.knownAhead).toBe(1);
-    expect(data.forecast.lines["line-1003"].pAvailable).toBe(0); // pilot 5 (seniority 25) takes their top line for certain
+    expect(data.crowd.pilotsSharing).toBe(3);
+    expect(data.forecast.knownAhead).toBe(3);
+    expect(data.forecast.lines["line-1003"].pAvailable).toBe(0); // their shared top line is gone for certain
     const text = JSON.stringify(data);
     expect(text).not.toContain("ranking");
+  });
+
+  it("never lets one sharer's ranking be picked out: not for a guest, nor with too few sharers ahead", async () => {
+    authMocks.getCurrentServerUser.mockResolvedValue({ ...USER, id: "user-a" });
+    await POST(request(goodBody({ share: true, seniorityNumber: 25, ranking: [3, 4, 5, 0, 1, 2, 6, 7, 8, 9, 10, 11] })));
+    authMocks.getCurrentServerUser.mockResolvedValue(null);
+    const guest = await (await POST(request(goodBody({ seniorityNumber: 50 })))).json();
+    expect(guest.forecast.knownAhead).toBe(0);
+    authMocks.getCurrentServerUser.mockResolvedValue(USER);
+    const signedIn = await (await POST(request(goodBody({ seniorityNumber: 50 })))).json();
+    expect(signedIn.forecast.knownAhead).toBe(0);
   });
 
   it("lets a different account not take over a claimed bid position", async () => {

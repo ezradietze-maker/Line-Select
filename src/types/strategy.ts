@@ -48,7 +48,7 @@ export interface StrategyFact {
 /**
  * "grounded" = computed straight from this pilot's own parsed bid pack data,
  * same trust level as the original strategies. "pending-contract" = the
- * mechanism depends on specific contract/PBS language this app hasn't
+ * mechanism depends on specific contract or bidding-rule language this app hasn't
  * confirmed — built ahead of that confirmation on purpose (see the
  * Strategies-board plan), but never presented at the same confidence as a
  * grounded one. Absent on the original seven strategies (all grounded) for

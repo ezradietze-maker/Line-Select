@@ -41,13 +41,13 @@ export function RecurringCommitmentBanner({ conflicts, dateConflicts = [], penal
           </div>
           <ul className="mt-1 space-y-0.5">
             {conflicts.map((c) => (
-              <li key={c.factId} className="text-sm leading-relaxed text-warn">
+              <li key={`weekday-${c.factId}`} className="text-sm leading-relaxed text-warn">
                 Flying on {c.conflictCount} of {c.totalOccurrences} {weekdayPlural(c.weekday)} this month &mdash; you mentioned:
                 &ldquo;{c.statement}&rdquo;
               </li>
             ))}
             {dateConflicts.map((c) => (
-              <li key={c.factId} className="text-sm leading-relaxed text-warn">
+              <li key={`dates-${c.factId}`} className="text-sm leading-relaxed text-warn">
                 Working {shortDates(c.conflictDates)}
                 {c.datesInPeriod.length > c.conflictDates.length &&
                   ` (off ${shortDates(c.datesInPeriod.filter((d) => !c.conflictDates.includes(d)))})`}

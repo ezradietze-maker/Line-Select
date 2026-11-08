@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { logbookStats, loggedMonthFrom, withCheckIn, withLoggedMonth, withoutLoggedMonth } from "@/lib/logbook";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
+import type { Line, Trip } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
 const pack = { ...SAMPLE_BID_PACK, bidPeriodStart: "2026-09-28", bidPeriodDays: 28 };
@@ -37,5 +38,34 @@ describe("the logbook", () => {
     expect(s.cities[0]).toEqual({ code: "HNL", layovers: 3 });
     expect(s.topFiveShare).toBe(0.5);
     expect(s.seniority).toEqual([{ month: "SEP26", percentile: 0.25 }, { month: "OCT26", percentile: 0.2 }]);
+  });
+});
+
+describe("carryOut: what next month's carry-in needs", () => {
+  const pack = { id: "p", base: "MEM", aircraft: "B767", seat: "CAP" as const, month: "NOV26", bidPeriodStart: "2026-10-26", bidPeriodDays: 28 };
+  const duty = (startMinutes: number, endMinutes: number, layover: boolean) => ({
+    reportTimeLocal: "0800",
+    startMinutes,
+    legs: [{ flightNumber: "1", equipment: "76", isDeadhead: false, depAirport: "MEM", depTimeLocal: "0900", depTimeGmt: "1500", arrAirport: "HKG", arrTimeLocal: "1100", arrTimeGmt: "1700", blockHours: 2, startMinutes: startMinutes + 60, endMinutes, depTimeZulu: "", arrTimeZulu: "" }],
+    layover: layover ? { city: "HKG", hotelName: null, transportToHotel: null, transportFromHotel: null, hours: 24, startMinutes: endMinutes, endMinutes: endMinutes + 1440 } : null,
+  });
+  const trip = (startDayIndex: number, number: string): Trip => ({
+    id: number, pairingNumber: number, days: 3, layoverCities: [], layoverDetails: [], reportTime: "early", international: true, deadheadLegs: 0, creditHours: 22, landings: 2, tafbHours: 60, departures: 2,
+    schedule: [duty(0, 600, true), duty(2040, 3600, false)], zuluAnchor: "", startDayIndex,
+  });
+  const lineOf = (trips: Trip[]): Line => ({ id: "l", lineNumber: "1", trips, daysOff: 13, totalCreditHours: 44, totalTafbHours: 120, totalLandings: 4, totalDepartures: 4 });
+
+  it("keeps the trip that runs past the month's end, with its real times and duties, and nothing else", () => {
+    const entry = loggedMonthFrom(pack, "line", lineOf([trip(3, "12"), trip(27, "99")]));
+    expect(entry.carryOut?.map((t) => t.label)).toEqual(["Trip 99"]);
+    const t = entry.carryOut![0];
+    expect(Date.parse(t.release) - Date.parse(t.report)).toBe(60 * 3_600_000);
+    expect(t.international).toBe(true);
+    expect(t.duties).toHaveLength(2);
+    expect(t.duties[1].end).toBe(t.release);
+  });
+  it("is absent when nothing carries", () => {
+    expect(loggedMonthFrom(pack, "line", lineOf([trip(3, "12")])).carryOut).toBeUndefined();
+    expect(loggedMonthFrom(pack, "reserve", null).carryOut).toBeUndefined();
   });
 });

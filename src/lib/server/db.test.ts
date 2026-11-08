@@ -14,9 +14,11 @@ import type { TradeOffer } from "@/types/trade";
  * Integration tests against a real Postgres — the old version of this file
  * mocked `kv.ts` with an in-memory Map, which could never exercise the
  * thing that actually matters now (real unique constraints, real atomic
- * conditional updates). Skips cleanly with no DATABASE_URL set, so `npm
- * test` still runs clean for anyone without database access; every row a
- * test creates is deleted afterward.
+ * conditional updates). They run only against a database named in
+ * TEST_DATABASE_URL, migrated with `npm run db:migrate`. DATABASE_URL is the
+ * live database, whose real accounts these tests must never sit beside, so
+ * without TEST_DATABASE_URL they skip; every row a test creates is deleted
+ * afterward.
  *
  * Unlike `next dev`/`next build`, vitest doesn't auto-load .env.local — load
  * it explicitly (harmless if it's absent or already loaded).
@@ -27,9 +29,12 @@ try {
   // no .env.local — fine if the environment already has these vars set
 }
 
-const hasDb = !!(process.env.DATABASE_URL ?? process.env.POSTGRES_URL);
-if (!hasDb) {
-  console.warn("Skipping db.test.ts — no DATABASE_URL set.");
+const hasDb = !!process.env.TEST_DATABASE_URL;
+if (hasDb) {
+  // `postgres.ts` connects on first use, so this reaches it despite the imports above.
+  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+} else {
+  console.warn("Skipping db.test.ts — no TEST_DATABASE_URL set.");
 }
 
 describe.skipIf(!hasDb)("Postgres-backed store", () => {

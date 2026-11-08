@@ -8,6 +8,7 @@ import { NoteBox } from "@/components/ui/NoteBox";
 import { TRIP_GRADES, type TripGrade, type TripGradeScreen } from "@/lib/brain/trip-sort";
 import { tripKey } from "@/lib/scoring-v2/trip-score";
 import type { BidPack, Trip } from "@/types/bidpack";
+import { radioKeyProps } from "@/components/ui/radio-keys";
 
 interface TripSortStepProps {
   eyebrow?: string;
@@ -35,13 +36,14 @@ function TripCard({ bidPack, trip, label, grade, onGrade }: { bidPack: BidPack; 
         <TripGlance bidPack={bidPack} trip={trip} />
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={`${id}-label`}>
-        {TRIP_GRADES.map((g) => (
+        {TRIP_GRADES.map((g, i) => (
           <button
             key={g}
             type="button"
             role="radio"
             aria-checked={grade === g}
             onClick={() => onGrade(g)}
+            {...radioKeyProps(i, TRIP_GRADES.length, grade ? TRIP_GRADES.indexOf(grade) : null, (k) => onGrade(TRIP_GRADES[k]))}
             className={`min-h-11 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-2 sm:min-h-0 sm:px-2.5 sm:py-1.5 sm:text-xs focus-visible:outline-offset-2 focus-visible:outline-brand ${
               grade === g ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong hover:text-ink"
             }`}
@@ -66,10 +68,12 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
   const [error, setError] = useState<string | null>(null);
   const trips = new Map(bidPack.lines.flatMap((l) => l.trips).map((t) => [tripKey(t), t]));
   const graded = Object.keys(grades).length;
+  // A later screen can show fewer trips than that (pairings already shown are left out): then all of them will do.
+  const needed = Math.min(MIN_GRADED, screen.keys.filter((k) => trips.has(k)).length);
   const title = "How would you feel about flying each of these trips?";
 
   async function submit() {
-    if (graded < MIN_GRADED || busy) return;
+    if (graded < needed || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -106,7 +110,7 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
             <span className="font-mono text-xs text-ink-faint" aria-live="polite">
               {graded} of {screen.keys.length} graded
             </span>
-            <Button type="button" onClick={submit} disabled={graded < MIN_GRADED || busy} className="sm:px-6">
+            <Button type="button" onClick={submit} disabled={graded < needed || busy} className="sm:px-6">
               {busy ? "Sending…" : "Continue"}
             </Button>
           </div>

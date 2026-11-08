@@ -140,6 +140,11 @@ function checkService(): Promise<boolean> {
 }
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);
+/** A run of words by its letters alone, for telling the same words apart however they're split or punctuated. */
+const letters = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** The answer box whose mic is on, page-wide: starting another one stops it. */
+let activeDictation: { stop: () => void } | null = null;
 
 /**
  * The mic for an answer box: dictated speech goes in after whatever the pilot already typed, live, the way typing
@@ -156,6 +161,8 @@ export function useDictation(value: string, onChange: (next: string) => void) {
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const session = useRef<ServiceSession | null>(null);
+  /** This box, as the page-wide active mic knows it. */
+  const self = useRef<{ stop: () => void }>({ stop: () => {} });
   // Which tap of the mic is current: words or a late start from an earlier one are ignored (or stopped).
   const generation = useRef(0);
   const stoppedEarly = useRef(-1);
@@ -170,6 +177,12 @@ export function useDictation(value: string, onChange: (next: string) => void) {
   const lastEmitted = useRef(value);
   const said = useRef("");
   const consumed = useRef(0);
+  // The settled part of the dictation as last heard, and the half-heard words after it.
+  const heardSettled = useRef("");
+  const heardHearing = useRef("");
+  // Half-heard words already in the box when the pilot typed: the engine may settle them re-split ("four teen" →
+  // "fourteen"), so they're matched by their letters when they come back, not counted off as words.
+  const pendingHearing = useRef("");
 
   useEffect(() => {
     // One-time checks of what this browser and server can do — not state derived from props.
@@ -187,7 +200,8 @@ export function useDictation(value: string, onChange: (next: string) => void) {
     if (value !== lastEmitted.current) {
       base.current = value;
       lastEmitted.current = value;
-      consumed.current = words(said.current).length;
+      consumed.current = words(heardSettled.current).length;
+      pendingHearing.current = heardHearing.current;
     }
   }, [value]);
 
@@ -195,7 +209,30 @@ export function useDictation(value: string, onChange: (next: string) => void) {
     (heard: Heard) => {
       const fixed = { settled: fixSpelledCodes(heard.settled, codes), hearing: fixSpelledCodes(heard.hearing, codes) };
       said.current = [fixed.settled, fixed.hearing].filter(Boolean).join(" ");
-      const fresh = words(said.current).slice(consumed.current).join(" ");
+      heardSettled.current = fixed.settled;
+      heardHearing.current = fixed.hearing;
+      let freshWords = words(said.current).slice(consumed.current);
+      if (pendingHearing.current) {
+        const already = letters(pendingHearing.current);
+        let matched = -1;
+        for (let j = 0; j < freshWords.length; j++) {
+          const sofar = letters(freshWords.slice(0, j + 1).join(""));
+          if (sofar === already) {
+            matched = j + 1;
+            break;
+          }
+          if (sofar.length > already.length) break;
+        }
+        // Matched: those words are in the box already. Heard differently: as many words as were half-heard.
+        const drop = matched > 0 ? matched : Math.min(words(pendingHearing.current).length, freshWords.length);
+        freshWords = freshWords.slice(drop);
+        // Counted off for good once the engine has settled them; until then they can still be re-split.
+        if (words(fixed.settled).length - consumed.current >= drop) {
+          consumed.current += drop;
+          pendingHearing.current = "";
+        }
+      }
+      const fresh = freshWords.join(" ");
       const next = withDictated(base.current, { settled: fresh, hearing: "" });
       if (next === lastEmitted.current) return;
       lastEmitted.current = next;
@@ -223,15 +260,26 @@ export function useDictation(value: string, onChange: (next: string) => void) {
     session.current = s;
   }, [apply]);
 
+  // Tapped off: the last words of this tap still land; only a new tap stops them. Also how another box's mic stops this one.
+  const stopListening = useCallback(() => {
+    if (!session.current) stoppedEarly.current = generation.current;
+    session.current?.stop();
+    session.current = null;
+    setListening(false);
+    if (activeDictation === self.current) activeDictation = null;
+  }, []);
+  useEffect(() => {
+    self.current.stop = stopListening;
+  }, [stopListening]);
+
   const toggle = useCallback(() => {
     if (listening) {
-      if (!session.current) stoppedEarly.current = generation.current;
-      // The last words of this tap still land; only a new tap stops them.
-      session.current?.stop();
-      session.current = null;
-      setListening(false);
+      stopListening();
       return;
     }
+    // One mic at a time: another box still listening would hear the same words and write them in too.
+    if (activeDictation && activeDictation !== self.current) activeDictation.stop();
+    activeDictation = self.current;
     const mine = ++generation.current;
     base.current = value;
     lastEmitted.current = value;
@@ -269,17 +317,18 @@ export function useDictation(value: string, onChange: (next: string) => void) {
         setListening(false);
         setError(friendlyError(e instanceof DOMException ? e.name : e instanceof DictationUnavailable ? "unavailable" : "other"));
       });
-  }, [listening, value, serviceOk, browserOk, keyterms, apply, startBrowser]);
+  }, [listening, value, serviceOk, browserOk, keyterms, apply, startBrowser, stopListening]);
 
   // Stop cleanly on unmount — navigating away or answering another way mid-dictation shouldn't leave the mic hot. A
   // session still connecting has no handle yet: moving the generation on has it stopped the moment it connects.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const me = self.current;
+    return () => {
       generation.current += 1;
       session.current?.stop();
-    },
-    []
-  );
+      if (activeDictation === me) activeDictation = null;
+    };
+  }, []);
 
   return { supported: browserOk || serviceOk, listening, error, toggle };
 }

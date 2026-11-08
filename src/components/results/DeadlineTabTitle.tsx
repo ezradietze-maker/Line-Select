@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { getBidDeadline } from "@/lib/bid-deadline-storage";
+import { effectiveBidClose } from "@/lib/bid-calendar";
+import type { BidPack } from "@/types/bidpack";
 
 const PREFIX = /^⏱ [^·]+· /;
 const BADGE_ID = "final-call-icon";
@@ -45,13 +46,13 @@ async function badgedIcon(color: string): Promise<string | null> {
 }
 
 /**
- * Final call in the browser tab: inside the last day before the pilot's own bid-close time, the tab's title counts
+ * Final call in the browser tab: inside the last day before bidding closes (the pack's printed time, or the pilot's own), the tab's title counts
  * down ("⏱ 3h 12m · Line Select") and its icon wears a dot, so it's seen from whatever else is open. Each page's own
  * title is kept underneath — a page that sets its title afresh gets the countdown put back in front of it.
  */
-export function DeadlineTabTitle({ packId }: { packId: string | null }) {
+export function DeadlineTabTitle({ pack }: { pack: BidPack | null }) {
   useEffect(() => {
-    if (!packId) return;
+    if (!pack) return;
     let badge: string | null = null; // the dot's color now shown, if any
     const setBadge = (color: string | null) => {
       if (color === badge) return;
@@ -75,7 +76,7 @@ export function DeadlineTabTitle({ packId }: { packId: string | null }) {
     };
     const apply = () => {
       const page = document.title.replace(PREFIX, "");
-      const deadline = getBidDeadline(packId);
+      const deadline = effectiveBidClose(pack)?.iso ?? null;
       const msLeft = deadline ? new Date(deadline).getTime() - Date.now() : null;
       const left = msLeft === null ? null : tabCountdown(msLeft);
       const next = left ? `⏱ ${left} · ${page}` : page;
@@ -92,6 +93,6 @@ export function DeadlineTabTitle({ packId }: { packId: string | null }) {
       document.title = document.title.replace(PREFIX, "");
       document.getElementById(BADGE_ID)?.remove();
     };
-  }, [packId]);
+  }, [pack]);
   return null;
 }

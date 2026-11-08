@@ -28,6 +28,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
+import { CarryInLineNote, CarryInPanel } from "@/components/results/CarryInPanel";
 import { LineCard } from "@/components/results/LineCard";
 import { AskPackPanel } from "@/components/results/AskPackPanel";
 import { FirstVisitTour } from "@/components/results/FirstVisitTour";
@@ -38,6 +39,7 @@ import { BidPackHeader, StripKey, StripViewToggle, stripLayout } from "@/compone
 import { useStripView } from "@/lib/strip-view-storage";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { packColumnCount, packColumns } from "@/lib/bidpack-row";
+import { monthLine } from "@/lib/bid-month";
 import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
@@ -80,7 +82,9 @@ import { pickSwapQuestion, reasonOptions, untrackedFactor, type AskState, type S
 import type { ReasonOption } from "@/lib/brain/swap-reason";
 import { shareChanges } from "@/lib/brain/fit-choices";
 import { SwapQuestionCard } from "@/components/results/SwapQuestionCard";
-import { scorePackV2 } from "@/lib/scoring-v2/score";
+import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
+import { withPrintedLines } from "@/lib/phase-in";
+import { useCarryIn } from "@/lib/use-carry-in";
 import { applyPlacements, loadPlacements, placementFromDrag, prunePlacements, savePlacements, type Placement } from "@/lib/line-placements";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
@@ -377,9 +381,10 @@ export function ResultsView({
   // keeps this period's entry current.
   const [previousPeriodSnapshot] = useState(() => loadPreviousPeriodSnapshot(userId, bidPack.month));
 
+  const carry = useCarryIn(bidPack, userId);
   const scoredLines = useMemo(
-    () => rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined),
-    [bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
+    () => withPrintedLines(rankLines(carry.flown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, carry.flown.pack),
+    [bidPack, carry.flown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
   );
   // Placements for lines that no longer exist never leak in, as with marks.
   const validPlacements = useMemo(() => prunePlacements(placements, new Set(bidPack.lines.map((l) => l.id))), [placements, bidPack]);
@@ -623,7 +628,8 @@ export function ResultsView({
       exportable.map((r) => ({
         lineScore: r,
         rank: rankById.get(r.line.id) ?? 0,
-        note: lineFactsText(buildLineFactChips(r.line, profile, bidMonthOf(bidPack))),
+        // The bid month, as each card counts it — not with what the last trip flies in the next.
+        note: lineFactsText(buildLineFactChips(monthLine(r.line, bidPack), profile, bidMonthOf(bidPack))),
       })),
     [exportable, rankById, profile, bidPack]
   );
@@ -725,9 +731,10 @@ export function ResultsView({
         const current = profileRef.current;
         if (!current.pilotModel || !placementsRef.current.some((p) => p.id === swapId)) return;
         // Why, from the model the pilot was looking at when they swapped.
-        const before = new Map(scorePackV2(bidPack, current.pilotModel, { pack: packMetrics ?? undefined }).map((s) => [s.lineNumber, s]));
+        // On the score the list shows — trip grades and each line's lean on its worst trip included.
+        const before = new Map(rankLinesWithTrips(bidPack, current.pilotModel, { pack: packMetrics ?? undefined }).map((s) => [s.lineNumber, s]));
         const why = before.has(higher) && before.has(lower) ? explainSwap(before.get(higher)!, before.get(lower)!) : null;
-        const choices = addDragChoices(current.brainInterview?.choices ?? [], choicesFromSwap(order, swapId));
+        const choices = addDragChoices(current.brainInterview?.choices ?? [], choicesFromSwap(order, swapId, bidPack.id));
         const { profile: next, changes } = withModel(current, bidPack, { choices }, packMetrics ?? undefined);
         profileRef.current = next;
         onUpdateProfile(next);
@@ -899,6 +906,7 @@ export function ResultsView({
           onSharingChange: forecast.setSharing,
         }}
       />
+      <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
       <FirstVisitTour ready={hotelsSettled} />
       <WheelsDown />
       <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />
@@ -1090,6 +1098,8 @@ export function ResultsView({
               entries={bidOrderEntries}
               shortlistEntries={shortlistEntries}
               bidPeriodStart={bidPack.bidPeriodStart}
+              packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
+              leftOut={bidPack.lines.length - exportable.length}
             />
           </div>
 
@@ -1217,6 +1227,7 @@ export function ResultsView({
                         placedByYou={dragEnabled && swappedIds.has(lineScore.line.id)}
                       />
                     </ErrorBoundary>
+                    <CarryInLineNote flown={carry.flown.lines.get(lineScore.line.id)} />
                   </motion.div>
                 ))
               )}

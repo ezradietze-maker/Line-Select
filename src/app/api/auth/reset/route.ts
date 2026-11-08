@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { SESSION_COOKIE, resetPasswordWithRecoveryCode, sessionCookieOptions } from "@/lib/server/auth";
-import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,8 @@ export const runtime = "nodejs";
 // this per-IP layer additionally stops one address from working through many
 // different emails.
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const { ok } = await checkRequestLimit("auth-reset", request, 20, 60 * 60);
   if (!ok) return rateLimitedResponse();
 
@@ -25,7 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Email, recovery code, and a new password are required." }, { status: 400 });
   }
 
-  const result = await resetPasswordWithRecoveryCode(email, recoveryCode, newPassword);
+  const result = await resetPasswordWithRecoveryCode(email, recoveryCode, newPassword, clientIp(request));
   if (!result.ok || !result.user || !result.sessionToken) {
     return NextResponse.json({ error: result.error ?? "Something went wrong." }, { status: 400 });
   }

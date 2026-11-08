@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { createRecoveryCodeForUser, getCurrentServerUser } from "@/lib/server/auth";
+import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const user = await getCurrentServerUser();
   if (!user) {
     return NextResponse.json({ error: "Sign in first." }, { status: 401 });

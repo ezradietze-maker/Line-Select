@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { DEVICE_COOKIE } from "@/lib/device-cookie";
+import { DEVICE_COOKIE, deviceCookieValue, deviceIdOf } from "@/lib/device-cookie";
 
 /**
  * Gives each browser a random device id on its first page visit, so limits on the open routes count per device
@@ -8,8 +8,9 @@ import { DEVICE_COOKIE } from "@/lib/device-cookie";
  */
 export function proxy(request: NextRequest) {
   const response = NextResponse.next();
-  if (!request.cookies.get(DEVICE_COOKIE)) {
-    response.cookies.set(DEVICE_COOKIE, crypto.randomUUID(), {
+  // Missing, or not one this server signed (made up, or from before ids were signed): a fresh one.
+  if (!deviceIdOf(request.cookies.get(DEVICE_COOKIE)?.value)) {
+    response.cookies.set(DEVICE_COOKIE, deviceCookieValue(crypto.randomUUID()), {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",

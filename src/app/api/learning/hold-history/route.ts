@@ -4,6 +4,7 @@ import { summarizeHoldHistory } from "@/lib/learning/hold-history";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { hashUser } from "@/lib/server/forecast-store";
 import { listPilotHoldRecords } from "@/lib/server/learning-store";
+import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,7 @@ export const runtime = "nodejs";
 export async function GET() {
   const user = await getCurrentServerUser();
   if (!user) return NextResponse.json({ error: "Sign in to see your history." }, { status: 401 });
+  if (!(await checkRateLimit("hold-history", user.id, 120, 60 * 60)).ok) return rateLimitedResponse();
   try {
     return NextResponse.json({ history: summarizeHoldHistory(await listPilotHoldRecords(hashUser(user.id))) });
   } catch (e) {

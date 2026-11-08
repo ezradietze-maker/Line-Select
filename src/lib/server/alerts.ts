@@ -71,11 +71,17 @@ function alertAddress(): string | null {
 }
 
 /** A tester's feedback, emailed as it arrives — at beta size each one is worth reading the day it's sent. Never throws. */
+const FEEDBACK_EMAILS_PER_HOUR = 10;
+
 export async function sendFeedbackNote(f: { category: string; message: string; page: string; pilotDisplayName: string | null; pilotEmail: string | null }): Promise<void> {
   const to = alertAddress();
   if (!to) return;
   const who = f.pilotEmail ? `${f.pilotDisplayName ?? "A pilot"} (${f.pilotEmail})` : "A guest";
   try {
+    // A few emails an hour for the whole site; past that the notes wait in the database for the daily summary. A
+    // script posting feedback from many addresses would otherwise spend the email quota password resets depend on.
+    const hour = new Date().toISOString().slice(0, 13);
+    if ((await incrementCounter(`line-select:feedback-mail:${hour}`, 2 * 60 * 60)) > FEEDBACK_EMAILS_PER_HOUR) return;
     await sendEmail({ to, subject: `Line Select feedback: ${f.category}${f.page ? ` on ${f.page}` : ""}`, text: `${who} wrote${f.page ? ` from ${f.page}` : ""}:\n\n${f.message}` });
   } catch (e) {
     console.error("[alerts] couldn't email feedback", e);

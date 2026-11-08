@@ -15,6 +15,8 @@ vi.mock("@/lib/server/db", () => dbMocks);
 const historyMocks = vi.hoisted(() => ({ keepReplacedVersion: vi.fn() }));
 vi.mock("@/lib/server/profile-history", () => historyMocks);
 vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
+const rateLimit = vi.hoisted(() => ({ checkRateLimit: vi.fn() }));
+vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: rateLimit.checkRateLimit, rateLimitedResponse: () => new Response(null, { status: 429 }) }));
 
 import { DELETE, GET, PUT } from "./route";
 
@@ -45,6 +47,30 @@ describe("/api/preference-profile", () => {
     dbMocks.savePreferenceProfileOver.mockReset();
     historyMocks.keepReplacedVersion.mockReset().mockResolvedValue(undefined);
     dbMocks.deletePreferenceProfile.mockReset().mockResolvedValue(undefined);
+    rateLimit.checkRateLimit.mockReset().mockResolvedValue({ ok: true });
+  });
+
+  describe("rate limit", () => {
+    const put = () => PUT(new Request("http://x", { method: "PUT", body: JSON.stringify({ profile: fakeProfile() }) }));
+
+    it("counts per account, and stops reads, saves and deletes once it's reached", async () => {
+      authMocks.getCurrentServerUser.mockResolvedValue(SIGNED_IN_USER);
+      rateLimit.checkRateLimit.mockResolvedValue({ ok: false });
+      expect((await GET()).status).toBe(429);
+      expect((await put()).status).toBe(429);
+      expect((await DELETE()).status).toBe(429);
+      expect(rateLimit.checkRateLimit).toHaveBeenCalledWith("preference-profile-read", "user-1", 300, 3600);
+      expect(rateLimit.checkRateLimit).toHaveBeenCalledWith("preference-profile-write", "user-1", 600, 3600);
+      expect(dbMocks.getPreferenceProfileRecord).not.toHaveBeenCalled();
+      expect(dbMocks.savePreferenceProfile).not.toHaveBeenCalled();
+      expect(dbMocks.deletePreferenceProfile).not.toHaveBeenCalled();
+    });
+
+    it("doesn't spend a signed-out request against anyone's limit", async () => {
+      authMocks.getCurrentServerUser.mockResolvedValue(null);
+      await GET();
+      expect(rateLimit.checkRateLimit).not.toHaveBeenCalled();
+    });
   });
 
   describe("GET", () => {

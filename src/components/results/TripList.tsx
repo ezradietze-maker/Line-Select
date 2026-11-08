@@ -23,7 +23,7 @@ import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { fetchHotel } from "@/lib/hotel-client";
 import { displayHotelName } from "@/lib/hotels/hotel-names";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
-import { loadTimeMode, saveTimeMode } from "@/lib/time-mode-storage";
+import { useTimeMode } from "@/lib/time-mode-storage";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
 import { dateLabel, dayStats, hm, tripBlockMinutes, tripDayDate, tripDeadheadBlockMinutes } from "@/lib/trip-day-stats";
 import { type TimeMode, type TimelineDay } from "@/lib/trip-timeline";
@@ -348,21 +348,9 @@ function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: F
 export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores, carryOver = null, bidPeriodDays }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  // Starts at the same fixed default the server renders, then syncs to the
-  // pilot's stored choice once mounted — reading localStorage during render
-  // would mismatch the server's HTML.
-  const [mode, setMode] = useState<TimeMode>("local");
+  // The same Local/Zulu choice as the month calendar's, shared page-wide: switching either switches both.
+  const [mode, handleModeChange] = useTimeMode();
   const sleepPlans = useMemo(() => trips.map((t) => planTripSleep(t, homeBaseOffsetMinutes)), [trips, homeBaseOffsetMinutes]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMode(loadTimeMode());
-  }, []);
-
-  function handleModeChange(next: TimeMode) {
-    setMode(next);
-    saveTimeMode(next);
-  }
 
   useEffect(() => {
     const pairs = new Map<string, { code: string; hotelName: string }>();
@@ -453,7 +441,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                       .filter((d) => d.hotelName)
                       .map((layover, i) => {
                         const hotel = ratings[`${layover.city}|${layover.hotelName}`];
-                        const detailKey = `${trip.id}-fallback-${layover.city}-${i}`;
+                        const detailKey = `${key}-fallback-${layover.city}-${i}`;
                         const canExpand = !!hotel && hasHotelQualityDetails(hotel);
                         const content = (
                           <>
@@ -502,7 +490,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                 trip.layoverDetails
                   .filter((d) => d.hotelName)
                   .map((layover, i) => {
-                    const detailKey = `${trip.id}-fallback-${layover.city}-${i}`;
+                    const detailKey = `${key}-fallback-${layover.city}-${i}`;
                     if (expandedKey !== detailKey) return null;
                     const hotel = ratings[`${layover.city}|${layover.hotelName}`];
                     if (!hotel) return null;

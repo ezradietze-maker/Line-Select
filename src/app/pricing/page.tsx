@@ -26,8 +26,8 @@ export default function PricingPage() {
         title="Pricing"
         description={
           <>
-            Line Select is free today. Everything below is real, not a trial &mdash; there&rsquo;s no feature here held
-            back for a future paid tier.
+            Line Select is free today. Everything below is a working feature, not a trial &mdash; there&rsquo;s nothing here held
+            back for a future paid tier. (With the sample pack, the Trade Board shows clearly marked example offers.)
           </>
         }
       />

@@ -260,7 +260,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
       )}
 
       {showSidebar && <BackToTop />}
-      <DeadlineTabTitle packId={bidPack?.id ?? null} />
+      <DeadlineTabTitle pack={bidPack ?? null} />
       <OfflineNotice />
 
       <CommandPalette
@@ -336,15 +336,15 @@ function Footer() {
             Bid pack PDFs are uploaded to this app&rsquo;s own server for parsing — never to FedEx or any third
             party — which extracts pairing data, line data, reserve-line on-call
             types, and the pack&rsquo;s own summary numbers (guarantees, credit
-            ranges, line counts) only. Pages listing other pilots&rsquo; names or
-            employee numbers are never read; from the pack&rsquo;s Bid Seniority
-            List, only two numbers per pilot &mdash; bid order and seniority
-            &mdash; are used, to estimate your chances at each line. The PDF
-            itself isn&rsquo;t stored once parsing finishes. The extracted result and
-            your preferences are stored only on this device as a guest; create
-            an account and your preferences follow you to a new device too,
-            alongside the Trade Board, Inbox, and reporting what you held that
-            an account also enables. See the{" "}
+            ranges, line counts) only. Other pilots&rsquo; names and employee
+            numbers are never kept; from the pack&rsquo;s Bid Seniority List and
+            Vacation Schedule, only numbers are used &mdash; bid order, seniority,
+            pay status, vacation dates &mdash; to estimate your chances at each line
+            and allow for your own vacation. The PDF itself isn&rsquo;t stored once parsing
+            finishes. The extracted result and your preferences are stored only on
+            this device as a guest; create an account and they follow you to a new
+            device too, alongside the Trade Board, Inbox, and reporting what you
+            held that an account also enables. See the{" "}
             <Link href="/privacy" className={linkClass}>
               Privacy Policy
             </Link>{" "}

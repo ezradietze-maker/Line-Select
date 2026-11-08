@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { checkSession, logout as logoutAccount } from "@/lib/auth";
 import { clearServerBidPack, fetchServerBidPack, fetchServerBidPackMeta, saveServerBidPack } from "@/lib/bidpack-server";
 import { bidPackSavedAt, clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
-import { generateFakeOffer } from "@/lib/fake-trade-offers";
+import { generateFakeOffer, isSamplePack } from "@/lib/fake-trade-offers";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import { correctionEvents, isLearnablePack } from "@/lib/learning/corrections";
 import { postCorrections } from "@/lib/learning/learning-client";
@@ -24,6 +24,7 @@ import type { SeniorityInput } from "@/types/strategy";
 import type { TradeOffer } from "@/types/trade";
 import type { ToastItem } from "@/components/ui/Toast";
 import { isPackId, legacyPackIdFor, moveKeptUnderOldId, packIdFor } from "@/lib/pack-id";
+import { forgetPilotOnDevice } from "@/lib/device-data";
 
 /**
  * Whether this device was signed in when the app last checked — not a credential (the session cookie is), just a
@@ -252,11 +253,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Demo-only: rotates a synthetic Trade Board offer every 15-20s so the
-    // accept flow has something to interact with before real pilots are
-    // using the board. Never touches the server. Cleared entirely once
-    // there's no bid pack to build fake offers from.
-    if (!bidPack) {
+    // Sample pack only: rotates a synthetic Trade Board offer every 15-20s so a
+    // first-time visitor can see how the board works. Never touches the server.
+    // Cleared entirely with any other pack, or none.
+    if (!bidPack || !isSamplePack(bidPack)) {
       demoOfferKey.current = null;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDemoOffer(null);
@@ -276,7 +276,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // It keeps rotating only while the Trade Board is open: every rotation re-renders everything that reads app
     // state, and on the rankings that was a whole list of cards redrawn every fifteen seconds for nothing on screen.
     // Arriving on the board keeps the offer already made for this pack (no swap mid-transition) and starts the clock.
-    const packKey = `${bidPack.base}|${bidPack.aircraft}|${bidPack.seat}|${bidPack.month}|${user?.id ?? ""}`;
+    const packKey = `${bidPack.id}|${user?.id ?? ""}`;
     if (demoOfferKey.current !== packKey) {
       demoOfferKey.current = packKey;
       rotate(onTradeBoard);
@@ -285,7 +285,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
     return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bidPack?.base, bidPack?.aircraft, bidPack?.seat, bidPack?.month, user?.id, onTradeBoard]);
+  }, [bidPack?.id, user?.id, onTradeBoard]);
 
   useEffect(() => {
     // Polls real trade offers (independent of the demo rotation above) so
@@ -689,6 +689,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setToasts((prev) => [...prev, { id: `logout-${Date.now()}`, title: "Couldn't sign out", body: "Check your connection and try again. You're still signed in.", href: null }]);
       return;
     }
+    // What this device kept for them goes too — the next person here mustn't find their pack or their own words. Not
+    // while an edit is still waiting to reach their account: then this device holds the only copy.
+    if (user && profileSync !== "failed") forgetPilotOnDevice(user.id);
     await showSignedOut();
   }
 
