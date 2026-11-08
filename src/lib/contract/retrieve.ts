@@ -116,7 +116,25 @@ function passageFor(id: string): string {
   return pick.id;
 }
 
-export function retrievePassages(question: string, budgetChars: number): { passages: string[]; hits: Hit[] } {
+/** The words the search looks for, as the pilot wrote them, then the contract's own: for showing the search at work. */
+export function searchWords(question: string, limit = 6): string[] {
+  const raw = (question.replace(/[’']/g, "").match(/[A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)*/g) ?? []).filter((w) => !STOP.has(w.toLowerCase()) && !/^\d+$/.test(w));
+  const contract = raw.flatMap((w) => CONTRACT_WORDS[w.toLowerCase()] ?? []);
+  const seen = new Set<string>();
+  return [...raw, ...contract].filter((w) => !seen.has(w.toLowerCase()) && !!seen.add(w.toLowerCase())).slice(0, limit);
+}
+
+/** A follow-up leans on what came before: "what about for reserves?" says little alone. */
+export interface EarlierContext {
+  question: string;
+  /** Where the last answer's quotes came from. They're read first. */
+  sections: string[];
+}
+
+/** How much the earlier question counts against the one being asked. */
+const EARLIER_WEIGHT = 0.35;
+
+export function retrievePassages(question: string, budgetChars: number, earlier?: EarlierContext): { passages: string[]; hits: Hit[] } {
   const hits = searchPieces(question);
   const scores = new Map<string, number>();
   for (const [i, h] of hits.entries()) {
@@ -124,7 +142,14 @@ export function retrievePassages(question: string, budgetChars: number): { passa
     // The best piece counts in full, others a little: a section that matches in several places beats one lucky line.
     scores.set(p, Math.max(scores.get(p) ?? 0, h.score) + (scores.has(p) ? h.score * 0.15 : 0) + (i === 0 ? 0.01 : 0));
   }
-  const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+  if (earlier) {
+    for (const h of searchPieces(earlier.question, 20)) {
+      const p = passageFor(h.id);
+      scores.set(p, Math.max(scores.get(p) ?? 0, h.score * EARLIER_WEIGHT));
+    }
+  }
+  const pinned = (earlier?.sections ?? []).flatMap((s) => (contractNode(s) ? [passageFor(s)] : [])).slice(0, 2);
+  const ranked = [...new Set([...pinned, ...[...scores.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id)])];
   const passages: string[] = [];
   let used = 0;
   for (const id of ranked) {

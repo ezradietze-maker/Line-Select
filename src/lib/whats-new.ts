@@ -27,7 +27,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-08",
     title: "Ask the contract",
-    body: "Ask a question about the 2026 contract and get a short answer, then the contract's own words with the section and page, and when that rule starts. If it isn't in the text we have, it says so instead of guessing. Name a line to ask about your own pack.",
+    body: "A chat over the 2026 contract. Watch it search, read and check, then get a short answer and the contract's own words with the section and page, and when that rule starts. Ask follow-ups, or name a line to ask about your own pack. If it isn't in the text we have, it says so instead of guessing.",
     href: "/contract",
   },
   {

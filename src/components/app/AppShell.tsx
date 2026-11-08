@@ -203,7 +203,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
           {/* The landing page is full-bleed — its hero and globe run edge to edge. */}
           {/* Screens sit at the top, not centered: centered, a short screen and a long one put the title at different
               heights, and every move between them jumped. */}
-          <main className={pathname === "/" ? "flex flex-1 flex-col" : "flex flex-1 flex-col px-4 py-10 sm:py-14"}>
+          <main className={pathname === "/" ? "flex flex-1 flex-col" : pathname === "/contract" ? "flex flex-1 flex-col px-4 pt-4" : "flex flex-1 flex-col px-4 py-10 sm:py-14"}>
             {bidPackSaveFailed && (
               <div role="alert" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
                 <span>
@@ -243,7 +243,8 @@ function Chrome({ children }: { children: React.ReactNode }) {
             )}
             {children}
           </main>
-          <Footer />
+          {/* The contract chat fills the page, its question box at the bottom edge. */}
+          {pathname !== "/contract" && <Footer />}
         </ScreenTransition>
       </div>
 
@@ -259,7 +260,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
         </Modal>
       )}
 
-      {showSidebar && <BackToTop />}
+      {showSidebar && pathname !== "/contract" && <BackToTop />}
       <DeadlineTabTitle pack={bidPack ?? null} />
       <OfflineNotice />
 

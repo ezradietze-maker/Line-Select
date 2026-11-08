@@ -10,14 +10,14 @@ export type StreamMessage =
  * every complete message, plus the unfinished tail to prepend to the next
  * chunk. A line that isn't valid JSON is skipped rather than ending the read.
  */
-export function splitNdjson(buffer: string): { messages: StreamMessage[]; rest: string } {
+export function splitNdjson<T = StreamMessage>(buffer: string): { messages: T[]; rest: string } {
   const parts = buffer.split("\n");
   const rest = parts.pop() ?? "";
-  const messages: StreamMessage[] = [];
+  const messages: T[] = [];
   for (const part of parts) {
     if (!part.trim()) continue;
     try {
-      messages.push(JSON.parse(part) as StreamMessage);
+      messages.push(JSON.parse(part) as T);
     } catch {
       // A malformed line can't be a result; ignore it and keep reading.
     }

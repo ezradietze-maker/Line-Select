@@ -25,3 +25,19 @@ export function appliesLine(applies: Applicability, version: ContractVersion): s
     }
   }
 }
+
+/** The same, in a few words, for the line that shows the box working it out. */
+export function appliesShort(applies: Applicability): string {
+  switch (applies.kind) {
+    case "unchanged":
+      return "same wording as 2015";
+    case "unlisted":
+      return "changed in 2026, not on the implementation chart";
+    case "mixed":
+      return "parts change at different times";
+    case "scheduled":
+      if (applies.manual) return "in force, applied by hand for now";
+      if (applies.phase === 1) return "in force since June 29, 2026";
+      return applies.inForce ? "in force for this bid period" : `starts by ${applies.startsLabel}`;
+  }
+}

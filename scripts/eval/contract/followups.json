@@ -1,0 +1,9 @@
+[
+  { "id": "f1", "earlier": { "question": "How long is the SWW and when does it start?", "sections": ["25.E.6"] }, "q": "What can I do during it if I'm a secondary line holder?", "expect": ["25.E.6"] },
+  { "id": "f2", "earlier": { "question": "What do I get if the company involuntarily cancels my vacation?", "sections": ["7.I.3.c"] }, "q": "How much notice do they have to give me?", "expect": ["7.I.3.b"] },
+  { "id": "f3", "earlier": { "question": "What do I get if the company involuntarily cancels my vacation?", "sections": ["7.I.3.c"] }, "q": "And if I volunteer instead?", "expect": ["7.I.2"] },
+  { "id": "f4", "earlier": { "question": "What's the minimum domestic rest?", "sections": ["12.C.6.a"] }, "q": "Is that different if the next duty is all deadhead?", "expect": ["12.C.6.a"] },
+  { "id": "f5", "earlier": { "question": "How does First Fly work for reserves?", "sections": ["25.M.4"] }, "q": "What about trips over 60 hours TAFB?", "expect": ["25.M.6.b"] },
+  { "id": "f6", "earlier": { "question": "How long is the SWW and when does it start?", "sections": ["25.E.6"] }, "q": "How do I reset my VIPS password?", "notFound": true },
+  { "id": "f7", "earlier": { "question": "What's the minimum domestic rest?", "sections": ["12.C.6.a"] }, "q": "Where do I find the sick leave accrual rate?", "notFound": true }
+]

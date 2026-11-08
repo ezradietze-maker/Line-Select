@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandQuestion, renderPassage, retrievePassages } from "./retrieve";
+import { expandQuestion, renderPassage, retrievePassages, searchWords } from "./retrieve";
 
 const retrieved = (q: string) => retrievePassages(q, 40_000).passages;
 
@@ -8,6 +8,19 @@ describe("finding the sections for a question", () => {
     expect(retrieved("how long is the sww")).toContain("25.E.6");
     expect(retrieved("what's the limit on an MUV over my bank")).toContain("7.G.5");
     expect(expandQuestion("does a carry-in hit my PNP").phrases).toEqual(expect.arrayContaining(["phase-in", "priority non-premium"]));
+  });
+
+  it("shows the search in the pilot's words, then the contract's", () => {
+    expect(searchWords("How long is the SWW?")).toEqual(["long", "SWW", "secondary working window"]);
+    expect(searchWords("what is it")).toEqual([]);
+  });
+
+  it("reads a follow-up with the section the last answer came from first", () => {
+    const alone = retrievePassages("what about for reserves?", 40_000).passages;
+    const followUp = retrievePassages("what about for reserves?", 40_000, { question: "How long is the SWW?", sections: ["25.E.6"] }).passages;
+    expect(alone).not.toContain("25.E.6");
+    expect(followUp[0]).toBe("25.E.6");
+    expect(retrievePassages("anything", 40_000, { question: "q", sections: ["99.Z.1"] }).passages).not.toContain("99.Z.1");
   });
 
   it("stays within what it was given to spend", () => {
