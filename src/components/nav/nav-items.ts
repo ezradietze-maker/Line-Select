@@ -4,6 +4,7 @@ import {
   BuildingIcon,
   ContractIcon,
   GlobeIcon,
+  ListIcon,
   MailIcon,
   SlidersIcon,
   SwapIcon,
@@ -18,6 +19,7 @@ export type NavTarget =
   | "preferences"
   | "results"
   | "strategies"
+  | "view-add"
   | "trade-board"
   | "inbox"
   | "hotel-ratings"
@@ -41,6 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
   { target: "preferences", label: "Preferences", tabLabel: "Preferences", section: "bid", icon: SlidersIcon },
   { target: "results", label: "My Rankings", tabLabel: "Rankings", section: "bid", icon: TrophyIcon },
   { target: "strategies", label: "Strategies", tabLabel: "Strategies", section: "bid", icon: TargetIcon },
+  { target: "view-add", label: "View/Add", tabLabel: "View/Add", section: "bid", icon: ListIcon },
   { target: "cities", label: "Cities", tabLabel: "Cities", section: "flying", icon: GlobeIcon },
   { target: "logbook", label: "Logbook", tabLabel: "Logbook", section: "flying", icon: BookIcon },
   { target: "tools", label: "Tools", tabLabel: "Tools", section: "flying", icon: ToolboxIcon },
@@ -54,6 +57,7 @@ export const NAV_ITEMS: NavItem[] = [
 export function disabledReason(target: NavTarget, hasProfile: boolean, hasBidPack: boolean): string | undefined {
   if (target === "results" && !hasProfile) return "Set your preferences first to see your ranked lines.";
   if (target === "strategies" && !hasBidPack) return "Upload a bid pack first to see strategies.";
+  if (target === "view-add" && !hasBidPack) return "Upload a bid pack first to build your View/Add list.";
   if (target === "cities" && !hasBidPack) return "Upload a bid pack first to see its layover cities.";
   return undefined;
 }

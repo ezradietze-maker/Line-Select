@@ -16,6 +16,7 @@ describe("navTargetForPath", () => {
   it("maps every other sidebar destination to itself", () => {
     expect(navTargetForPath("/results")).toBe("results");
     expect(navTargetForPath("/strategies")).toBe("strategies");
+    expect(navTargetForPath("/view-add")).toBe("view-add");
     expect(navTargetForPath("/trade-board")).toBe("trade-board");
     expect(navTargetForPath("/inbox")).toBe("inbox");
     expect(navTargetForPath("/hotel-ratings")).toBe("hotel-ratings");

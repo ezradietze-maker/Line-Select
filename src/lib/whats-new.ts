@@ -45,8 +45,8 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-08",
     title: "Your View/Add list, built for you",
-    body: "On Strategies: tell us your awarded line, and see the open trips that are legal on it, the combination that wins back your make-up with the most days off, and a list to copy into VIPS in order. Paste VIPS's own open-time list during the window. New bid packs you upload now keep their open trips.",
-    href: "/strategies",
+    body: "A page of its own: tell us your awarded line, and see the open trips that are legal on it, the combination that wins back your make-up with the most days off, and a list to copy into VIPS in order. Paste VIPS's own open-time list during the window. New bid packs you upload now keep their open trips.",
+    href: "/view-add",
   },
   {
     date: "2026-11-08",

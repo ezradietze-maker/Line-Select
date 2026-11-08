@@ -322,6 +322,15 @@ export function ContractIcon({ className = base }: IconProps) {
   );
 }
 
+export function ListIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="M4 5.5l.9.9L6 5M4 11.5l.9.9L6 11M4 17.5l.9.9L6 17" />
+    </svg>
+  );
+}
+
 export function ToolboxIcon({ className = base }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
