@@ -218,20 +218,20 @@ export function SendToVipsDialog({
       >
         <section>
           <p className="font-medium">
-            {packLabel} &middot; {build.ok ? build.lines.length : 0} choices
+            {packLabel} &middot; {fullOrder.length} choices
           </p>
           <p className="mt-0.5 text-xs text-ink-muted">
             Check VIPS says you&rsquo;re bidding this same base, fleet and seat before you submit.
           </p>
-          {build.ok && (
+          {fullOrder.length > 0 && (
             <ol className="mt-2 flex flex-wrap gap-1.5 font-mono text-xs">
-              {build.lines.slice(0, PREVIEW_COUNT).map((n, i) => (
+              {fullOrder.slice(0, PREVIEW_COUNT).map((n, i) => (
                 <li key={n} className="rounded border border-hairline bg-canvas px-1.5 py-0.5">
                   <span className="text-ink-faint">{i + 1}.</span> {n}
                 </li>
               ))}
-              {build.lines.length > PREVIEW_COUNT && (
-                <li className="px-1 py-0.5 text-ink-muted">and {build.lines.length - PREVIEW_COUNT} more</li>
+              {fullOrder.length > PREVIEW_COUNT && (
+                <li className="px-1 py-0.5 text-ink-muted">and {fullOrder.length - PREVIEW_COUNT} more</li>
               )}
             </ol>
           )}
