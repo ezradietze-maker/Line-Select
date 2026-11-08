@@ -792,6 +792,8 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
       landings,
       tafbHours: timeToHours(footerMatch[4]),
       effectiveText,
+      operatesOn: headerMatch[2].trim().split(/\s+/),
+      crew: headerMatch[5].trim(),
       firstFlightNumber: flightNumbers[0],
       flightNumbers,
       schedule: verifiedSchedule,

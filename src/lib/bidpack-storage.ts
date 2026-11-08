@@ -53,11 +53,7 @@ function anchorStored(pack: BidPack, trip: Trip): Trip {
  */
 function normalizeBidPack(stored: BidPack): BidPack {
   const parsed = withCurrentPackId(stored);
-  return {
-    ...parsed,
-    lines: parsed.lines.map((line) => {
-      const trips = line.trips.map(
-        (trip): Trip =>
+  const restored = (trip: Trip): Trip =>
           anchorStored(parsed, backfillDeadheads(backfillStandby(backfillZuluFields(
             {
               ...trip,
@@ -70,8 +66,12 @@ function normalizeBidPack(stored: BidPack): BidPack {
               dutyPeriods: trip.dutyPeriods ?? (trip.layoverDetails?.length ?? 0) + 1,
             },
             parsed.month
-          ))))
-      );
+          ))));
+  return {
+    ...parsed,
+    ...(parsed.openPairings ? { openPairings: parsed.openPairings.map(restored) } : {}),
+    lines: parsed.lines.map((line) => {
+      const trips = line.trips.map(restored);
       return {
         ...line,
         trips,
@@ -93,9 +93,10 @@ function normalizeBidPack(stored: BidPack): BidPack {
  * So each distinct trip is written once and lines point at it, and the
  * derivable timestamps are left out and rebuilt on load.
  */
-interface CompactPack extends Omit<BidPack, "lines"> {
+interface CompactPack extends Omit<BidPack, "lines" | "openPairings"> {
   format: 2;
   tripTable: Record<string, Trip>;
+  openPairings?: { ref: string; startDayIndex: number | null }[];
   lines: (Omit<BidPack["lines"][number], "trips"> & { trips: { ref: string; startDayIndex: number | null }[] })[];
 }
 
@@ -119,20 +120,19 @@ function withoutDerivedZulu(trip: Trip, dated = false): Trip {
 
 export function compactBidPack(pack: BidPack): CompactPack {
   const tripTable: Record<string, Trip> = {};
-  const lines = pack.lines.map((line) => ({
-    ...line,
-    trips: line.trips.map((trip, i) => {
-      const { startDayIndex, ...rest } = trip;
-      const stored = withoutDerivedZulu({ ...rest, startDayIndex: null }, startDayIndex !== null && !!pack.bidPeriodStart && !!pack.base);
-      // Same id, different content (a layover whose hotel changes with the trip's date) is kept under its own key rather than losing data.
-      let key = trip.id;
-      const existing = tripTable[key];
-      if (existing && JSON.stringify(existing) !== JSON.stringify(stored)) key = `${trip.id}#${line.id}#${i}`;
-      tripTable[key] ??= stored;
-      return { ref: key, startDayIndex };
-    }),
-  }));
-  return { ...pack, format: 2, tripTable, lines };
+  const compactTrip = (owner: string) => (trip: Trip, i: number) => {
+    const { startDayIndex, ...rest } = trip;
+    const stored = withoutDerivedZulu({ ...rest, startDayIndex: null }, startDayIndex !== null && !!pack.bidPeriodStart && !!pack.base);
+    // Same id, different content (a layover whose hotel changes with the trip's date) is kept under its own key rather than losing data.
+    let key = trip.id;
+    const existing = tripTable[key];
+    if (existing && JSON.stringify(existing) !== JSON.stringify(stored)) key = `${trip.id}#${owner}#${i}`;
+    tripTable[key] ??= stored;
+    return { ref: key, startDayIndex };
+  };
+  const lines = pack.lines.map((line) => ({ ...line, trips: line.trips.map(compactTrip(line.id)) }));
+  const { openPairings, ...rest } = pack;
+  return { ...rest, ...(openPairings ? { openPairings: openPairings.map(compactTrip("open")) } : {}), format: 2, tripTable, lines };
 }
 
 function isCompact(value: unknown): value is CompactPack {
@@ -141,10 +141,11 @@ function isCompact(value: unknown): value is CompactPack {
 
 export function expandBidPack(stored: BidPack | CompactPack): BidPack {
   if (!isCompact(stored)) return stored;
-  const { tripTable, format: _format, lines, ...rest } = stored;
+  const { tripTable, format: _format, lines, openPairings, ...rest } = stored;
   void _format;
   return {
     ...rest,
+    ...(openPairings ? { openPairings: openPairings.map(({ ref, startDayIndex }) => ({ ...tripTable[ref], startDayIndex })) } : {}),
     lines: lines.map((line) => ({
       ...line,
       trips: line.trips.map(({ ref, startDayIndex }) => ({ ...tripTable[ref], startDayIndex })),

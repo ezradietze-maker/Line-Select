@@ -404,7 +404,7 @@ function copyForItsDate(trip: Trip, chosen: ParsedPairing, copies: ParsedPairing
 }
 
 /** Once the grid has dated a trip: its dated hotels, and its anchor on its own real date (see `trip-anchor.ts`). */
-function settleOnItsDate(trip: Trip, bidPack: { bidPeriodStart: string | null; base: string }): Trip {
+export function settleOnItsDate(trip: Trip, bidPack: { bidPeriodStart: string | null; base: string }): Trip {
   const at = tripReportUtc(bidPack, trip);
   if (at === null) return trip;
   const settled = anchorTripAt(resolveLayoverVariants(trip, at), at);

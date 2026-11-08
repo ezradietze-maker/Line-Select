@@ -33,6 +33,8 @@ import type {
 import type { BidPack, BidPackInfo, ReserveLine, Seat, SeniorityEntry, SweepFlight, VacationPeriod } from "@/types/bidpack";
 import { packIdFor } from "@/lib/pack-id";
 
+import { openTripsOfSeat } from "@/lib/pdf-parser/open-trips";
+
 export { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 export type { ParseBidPackResult, ParseProgress } from "@/lib/pdf-parser/types";
 
@@ -283,6 +285,11 @@ export async function parseBidPackPdf(
       seniorityList: withVacations(validateSeniorityList(seniorityBySeat[seat] ?? [], seat, warnings), vacationsBySeat[seat]),
       ...(bidCalendar.length ? { bidCalendar } : {}),
       ...(sweepFlights.length ? { sweepFlights } : {}),
+      openPairings: openTripsOfSeat(allPairings, heldBySeat(placementsBySeat[seat]), seat, meta.month, {
+        bidPeriodStart: meta.bidPeriodStart,
+        bidPeriodDays: meta.bidPeriodDays ?? 28,
+        base: meta.base,
+      }),
     };
   }
 
@@ -297,6 +304,15 @@ export async function parseBidPackPdf(
     errors,
     looksLikeScannedPdf: false,
   };
+}
+
+/** Where a seat's lines place each pairing number, repeats counted. */
+function heldBySeat(placements: Map<string, DayPlacement[]> | undefined): Map<string, number[]> {
+  const held = new Map<string, number[]>();
+  for (const entries of placements?.values() ?? []) {
+    for (const e of entries) held.set(e.pairingNumber, [...(held.get(e.pairingNumber) ?? []), e.startDayIndex]);
+  }
+  return held;
 }
 
 function emptyResult(

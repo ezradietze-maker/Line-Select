@@ -218,7 +218,7 @@ function carryBlock(item: CarryInItem, zone: string): Block | null {
 }
 
 /** A trip's duties as real instants. Its layovers are what's between them. */
-function tripSpans(trip: Trip, report: number): Span[] {
+export function tripSpans(trip: Trip, report: number): Span[] {
   const release = report + trip.tafbHours * HOUR;
   if (!trip.schedule.length) return [{ start: report, end: release }];
   return trip.schedule.map((d) => ({

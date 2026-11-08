@@ -327,4 +327,6 @@ export interface BidPack {
   bidCalendar?: BidCalendarEvent[];
   /** Flights the pack's Sweep Aircraft page says may be rerouted. */
   sweepFlights?: SweepFlight[];
+  /** Trips the pack prints that no regular line of this seat holds, each on its own date: its open time before View/Add (see `pdf-parser/open-trips.ts`). Absent on a pack parsed before they were kept. */
+  openPairings?: Trip[];
 }

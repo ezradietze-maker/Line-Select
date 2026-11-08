@@ -140,6 +140,10 @@ export interface ParsedPairing {
   tafbHours: number;
   /** Raw effective-date text, e.g. "SEPTEMBER 4 - SEPTEMBER 11". Kept for trip matching. */
   effectiveText: string;
+  /** The weekdays it operates, as its header prints them ("MO", "FR"): GMT, of its first departure. With `effectiveText`, the dates it flies. */
+  operatesOn?: string[];
+  /** Who it's for, as its header prints it ("STANDARD CREW", "1 RFO"). */
+  crew?: string;
   /** First leg's flight number, used to match this pairing to line-grid day cells. */
   firstFlightNumber: string;
   /** All flight numbers appearing in this pairing, in order. */

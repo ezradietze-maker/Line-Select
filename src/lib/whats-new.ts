@@ -32,6 +32,12 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   },
   {
     date: "2026-11-08",
+    title: "Your View/Add list, built for you",
+    body: "On Strategies: tell us your awarded line, and see the open trips that are legal on it, the combination that wins back your make-up with the most days off, and a list to copy into VIPS in order. Paste VIPS's own open-time list during the window. New bid packs you upload now keep their open trips.",
+    href: "/strategies",
+  },
+  {
+    date: "2026-11-08",
     title: "Find your best vacation slide",
     body: "On Strategies: every legal slide and expansion of your vacation on your top lines, scored on your own priorities, not just credit. See which trips come off, what it draws from your bank and the days off you end up with, the best three per line, and the best slide if you don't know which line you'll hold. You enter it in VIPS yourself, in the Conflict Input Window.",
     href: "/strategies",
