@@ -16,6 +16,9 @@ vi.mock("@/lib/server/db", () => ({
   deleteTradeHolding: async (u: string, p: string) => void held.delete(`${u}|${p}`),
 }));
 
+const lapsed: unknown[][] = [];
+vi.mock("@/lib/server/trade-suggestions", () => ({ lapseSuggestionsFor: async (...args: unknown[]) => void lapsed.push(args) }));
+
 const { GET, PUT, DELETE } = await import("./route");
 
 const PACK = "uploaded-mem-md11-fo-oct26";
@@ -27,6 +30,7 @@ beforeEach(() => {
   user = { id: "pilot-1" };
   held.clear();
   limited = false;
+  lapsed.length = 0;
 });
 
 describe("/api/trades/holding", () => {
@@ -46,6 +50,13 @@ describe("/api/trades/holding", () => {
     await put();
     expect((await DELETE(new Request(url, { method: "DELETE" }))).status).toBe(200);
     expect((await (await GET(new Request(url))).json()).holding).toBeNull();
+  });
+
+  it("lapses suggestions worked out from what they held before, when it changes or goes", async () => {
+    await put();
+    expect(lapsed).toEqual([["pilot-1", PACK]]);
+    await DELETE(new Request(url, { method: "DELETE" }));
+    expect(lapsed).toHaveLength(2);
   });
 
   it("refuses anyone not signed in", async () => {

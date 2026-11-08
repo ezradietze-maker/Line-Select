@@ -3,6 +3,7 @@ import type { CriterionResult, V2LineScore } from "@/lib/scoring-v2/score";
 import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
+import type { TradeReason } from "@/types/trade";
 
 /**
  * What a trade is worth to one pilot: their whole month scored with the trip swapped, on the same score their rankings
@@ -44,15 +45,6 @@ export function lineWithTrips(line: Line, remove: readonly Trip[], add: readonly
 
 export function swappedLine(line: Line, give: Trip, take: Trip, id: string): Line {
   return lineWithTrips(line, [give], [take], id);
-}
-
-/** One priority a trade moves, as a pilot would read it. */
-export interface TradeReason {
-  label: string;
-  from: number | null;
-  to: number | null;
-  unit: string;
-  better: boolean;
 }
 
 export interface SwapValue {

@@ -57,6 +57,13 @@
       "when": 1794165626104,
       "tag": "0007_trade_holdings",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794165632658,
+      "tag": "0008_trade_suggestions",
+      "breakpoints": true
     }
   ]
 }

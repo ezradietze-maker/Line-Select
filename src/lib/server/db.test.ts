@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import * as mod from "@/lib/server/db";
 import * as forecastStore from "@/lib/server/forecast-store";
 import { db } from "@/lib/server/postgres";
+import * as suggestions from "@/lib/server/trade-suggestions";
 import { feedbackSubmissions, users } from "@/lib/server/schema";
 import { DEFAULT_WEIGHTS } from "@/types/preferences";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -127,6 +128,108 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       await db.delete(users).where(inArray(users.id, [user.id]));
       expect(await mod.getTradeHolding(user.id, "p1")).toBeNull();
       expect(await mod.getTradeSettings(user.id)).toEqual({ suggestMe: true, emailMatches: false });
+    });
+  });
+
+  describe("suggested trades", () => {
+    const meta = { base: "MEM", aircraft: "MD11", seat: "FO", month: `Z${randomUUID().slice(0, 8)}` };
+    const packId = `pack-${meta.month}`;
+    const tripOf = (n: number) => ({ id: `t${n}`, startDayIndex: n, date: null, lineNumber: "held", pairingNumber: `${n}`, days: 2, layoverCities: [], international: false, reportTime: "am", creditHours: 10, tafbHours: 48, landings: 2, deadheadLegs: 0 }) as never;
+    const value = { gain: 3, before: 50, after: 53, creditChange: 0, daysOffChange: 0, reasons: [] };
+
+    async function threePilots(signature: string, expiresAt = new Date(Date.now() + 86_400_000)) {
+      const pilots = [await makeUser("a"), await makeUser("b"), await makeUser("c")];
+      for (const [i, p] of pilots.entries()) await mod.saveTradeHolding(p.id, { packId, bidPackMeta: meta, lineNumber: null, trips: [{ id: `t${i}`, startDayIndex: i, lock: null }] });
+      const saved = await suggestions.saveSuggestion({
+        signature,
+        packId,
+        bidPackMeta: meta,
+        steps: [{ a: 0, b: 1 }, { a: 1, b: 2 }],
+        expiresAt,
+        members: pilots.map((p, position) => ({ userId: p.id, displayName: `P${position}`, position, give: tripOf(position), value })),
+      });
+      expect(saved).toBe(true);
+      const [record] = await suggestions.listSuggestionsFor(pilots[0].id, packId);
+      return { pilots, id: record.id };
+    }
+
+    it("won't store the same trade twice", async () => {
+      const signature = randomUUID();
+      await threePilots(signature);
+      const again = await suggestions.saveSuggestion({ signature, packId, bidPackMeta: meta, steps: [], expiresAt: new Date(), members: [] });
+      expect(again).toBe(false);
+    });
+
+    it("opens on the last yes, and lets only those on it answer", async () => {
+      const { pilots, id } = await threePilots(randomUUID());
+      const stranger = await makeUser("stranger");
+      expect(await suggestions.answerSuggestion(id, stranger.id, "accepted")).toEqual({ ok: false, reason: "not-found" });
+      await suggestions.answerSuggestion(id, pilots[0].id, "accepted");
+      const second = await suggestions.answerSuggestion(id, pilots[1].id, "accepted");
+      expect(second.ok && second.record.status).toBe("proposed");
+      const last = await suggestions.answerSuggestion(id, pilots[2].id, "accepted");
+      expect(last.ok && last.record.status).toBe("accepted");
+    });
+
+    it("counts two yeses at once, so the trade can't stall on a race", async () => {
+      const { pilots, id } = await threePilots(randomUUID());
+      await suggestions.answerSuggestion(id, pilots[0].id, "accepted");
+      await Promise.all([suggestions.answerSuggestion(id, pilots[1].id, "accepted"), suggestions.answerSuggestion(id, pilots[2].id, "accepted")]);
+      const [record] = await suggestions.listSuggestionsFor(pilots[0].id, packId);
+      expect(record.status).toBe("accepted");
+    });
+
+    it("is cancelled for everyone by one no, and that swap isn't suggested to them again", async () => {
+      const { pilots, id } = await threePilots(randomUUID());
+      await suggestions.answerSuggestion(id, pilots[0].id, "accepted");
+      const no = await suggestions.answerSuggestion(id, pilots[1].id, "declined");
+      expect(no.ok && no.record.status).toBe("cancelled");
+      expect(await suggestions.answerSuggestion(id, pilots[2].id, "accepted")).toEqual({ ok: false, reason: "closed" });
+      const history = await suggestions.matchingHistory(meta, new Date());
+      expect(history.declined.has(suggestions.swapKey(pilots[1].id, { id: "t1", startDayIndex: 1 }, { id: "t2", startDayIndex: 2 }))).toBe(true);
+    });
+
+    it("moves what the pilots hold, one step at a time, in order, and only the two in the step can mark it", async () => {
+      const { pilots, id } = await threePilots(randomUUID());
+      for (const p of pilots) await suggestions.answerSuggestion(id, p.id, "accepted");
+      expect(await suggestions.markStepDone(id, pilots[0].id, 1)).toEqual({ ok: false, reason: "not-next" });
+      expect(await suggestions.markStepDone(id, pilots[2].id, 0)).toEqual({ ok: false, reason: "not-yours" });
+      const first = await suggestions.markStepDone(id, pilots[1].id, 0);
+      expect(first.ok && first.record.stepsDone).toBe(1);
+      expect((await mod.getTradeHolding(pilots[0].id, packId))?.trips.map((t) => t.id)).toEqual(["t1"]);
+      expect((await mod.getTradeHolding(pilots[1].id, packId))?.trips.map((t) => t.id)).toEqual(["t0"]);
+      const second = await suggestions.markStepDone(id, pilots[2].id, 1);
+      expect(second.ok && second.record.status).toBe("done");
+      expect((await mod.getTradeHolding(pilots[0].id, packId))?.trips.map((t) => t.id)).toEqual(["t1"]);
+      expect((await mod.getTradeHolding(pilots[1].id, packId))?.trips.map((t) => t.id)).toEqual(["t2"]);
+      expect((await mod.getTradeHolding(pilots[2].id, packId))?.trips.map((t) => t.id)).toEqual(["t0"]);
+    });
+
+    it("lapses a trade not yet begun when someone's trips change, leaving it free to be found again", async () => {
+      const signature = randomUUID();
+      const { pilots, id } = await threePilots(signature);
+      await suggestions.lapseSuggestionsFor(pilots[1].id, packId);
+      const [record] = await suggestions.listSuggestionsFor(pilots[0].id, packId);
+      expect(record.status).toBe("cancelled");
+      expect(record.cancelReason).toBe("changed");
+      expect((await suggestions.matchingHistory(meta, new Date())).signatures.has(signature)).toBe(false);
+      expect(id).toBe(record.id);
+    });
+
+    it("keeps a trade already under way when someone's trips change", async () => {
+      const { pilots, id } = await threePilots(randomUUID());
+      for (const p of pilots) await suggestions.answerSuggestion(id, p.id, "accepted");
+      await suggestions.markStepDone(id, pilots[0].id, 0);
+      await suggestions.lapseSuggestionsFor(pilots[1].id, packId);
+      const [record] = await suggestions.listSuggestionsFor(pilots[2].id, packId);
+      expect(record.status).toBe("accepted");
+    });
+
+    it("counts pilots on an open trade as taken, until it expires", async () => {
+      const { pilots } = await threePilots(randomUUID());
+      expect((await suggestions.matchingHistory(meta, new Date())).busyPilots.has(pilots[0].id)).toBe(true);
+      const late = new Date(Date.now() + 2 * 86_400_000);
+      expect((await suggestions.matchingHistory(meta, late)).busyPilots.has(pilots[0].id)).toBe(false);
     });
   });
 

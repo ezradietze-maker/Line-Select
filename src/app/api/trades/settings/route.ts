@@ -4,6 +4,7 @@ import { getCurrentServerUser } from "@/lib/server/auth";
 import { saveTradeSettings } from "@/lib/server/db";
 import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { lapseSuggestionsFor } from "@/lib/server/trade-suggestions";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,8 @@ export async function PUT(request: Request) {
   }
   try {
     await saveTradeSettings(user.id, { suggestMe: body.suggestMe, emailMatches: body.emailMatches });
+    // Trades everyone has already agreed stand; ones still being asked about go.
+    if (!body.suggestMe) await lapseSuggestionsFor(user.id, null, { onlyProposed: true });
     return NextResponse.json({ ok: true });
   } catch (e) {
     await reportProblem("trades", e, { action: "save settings" });

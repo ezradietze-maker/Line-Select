@@ -12,6 +12,7 @@ import {
   OfferCard,
   Section,
 } from "@/components/trade-board/TradeBoardScreen";
+import { TradeSuggestions } from "@/components/trade-board/TradeSuggestions";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import { fetchTradeOffers } from "@/lib/trade-client";
 import type { BidPack } from "@/types/bidpack";
@@ -89,6 +90,7 @@ export function InboxScreen({ bidPack, user, polledOffers, onGoToTradeBoard }: I
         </InfoBanner>
       )}
       {user && !bidPack && <InfoBanner>Upload your bid pack to use the Inbox.</InfoBanner>}
+      {user && bidPack && !bidPack.id.startsWith("sample") && <TradeSuggestions packId={bidPack.id} onlyWaiting />}
 
       {loadFailed && <ErrorBanner className="mt-4">Couldn&rsquo;t load the board just now. Check your connection and try again in a moment.</ErrorBanner>}
 

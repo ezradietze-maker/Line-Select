@@ -220,9 +220,12 @@ export default function PrivacyPage() {
             suggestions, tied to your account. We compare them and your saved priorities with those of other pilots in
             the same base, aircraft, seat and month who have also confirmed theirs, to find trades that leave everyone
             in them better off. There&rsquo;s no separate sign-up: confirming your trips is what includes you. Other
-            pilots on a suggested trade see your name and the trips involved, and can tell the trade would help you.
-            They don&rsquo;t see your priorities or interview answers, or why it helps you. You can turn this off on the
-            Trade Board, or remove what you hold, at any time.
+            pilots on a suggested trade see your name, the trips involved, whether you&rsquo;ve said yes, and can tell the
+            trade would help you. They don&rsquo;t see your priorities or interview answers, how much it helps you, or why.
+            Any pilot on a trade can see whether anyone has said no, though not who. We keep each suggestion, what it was
+            worth to you and your answer, so the same trade isn&rsquo;t suggested again. When a pilot marks a step of an
+            agreed trade as done, what both pilots hold is updated. You can turn this off on the Trade Board, or remove
+            what you hold, at any time.
           </p>
         </Section>
 
@@ -400,8 +403,8 @@ export default function PrivacyPage() {
           </p>
           <p className="mt-3">
             You can delete your account at any time by contacting us at the address below. This removes your login
-            and sessions, your stored bid pack and saved preferences, what you&rsquo;ve confirmed you hold, and your
-            Trade Board offers and responses.
+            and sessions, your stored bid pack and saved preferences, what you&rsquo;ve confirmed you hold, your part in
+            suggested trades, and your Trade Board offers and responses.
             Earlier versions of your preferences and any interview draft expire on their own (Section 2). Some
             things remain unless you ask us to remove them: award-history reports, interview summaries and stored
             forecasts stay under the one-way hash in Section 9, which can no longer be matched to anyone once your

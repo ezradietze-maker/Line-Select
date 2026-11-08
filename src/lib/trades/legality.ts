@@ -44,12 +44,20 @@ export function tradeDeadlineHours(pack: Pick<BidPack, "month">): number {
   return fromPhase2(pack) ? 1 : 2;
 }
 
+const monthNumber = (pack: Pick<BidPack, "month">): number | null => {
+  const m = /^([A-Z]{3})(\d{2})$/i.exec(pack.month);
+  if (!m) return null;
+  return Number(m[2]) * 12 + "JANFEBMARAPRMAYJUNJULAUGSEPOCTNOVDEC".indexOf(m[1].toUpperCase()) / 3;
+};
+
 /** Whether this bid period is December 2026 or later, when Phase 2 of the contract starts. */
 export function fromPhase2(pack: Pick<BidPack, "month">): boolean {
-  const m = /^([A-Z]{3})(\d{2})$/i.exec(pack.month);
-  if (!m) return false;
-  const month = "JANFEBMARAPRMAYJUNJULAUGSEPOCTNOVDEC".indexOf(m[1].toUpperCase()) / 3;
-  return Number(m[2]) * 12 + month >= 26 * 12 + 11;
+  return (monthNumber(pack) ?? 0) >= 26 * 12 + 11;
+}
+
+/** Whether trades are processed in real time (CBA 2026 25.L.1.a), from the August 2027 bid period (Phase 3). */
+export function hasRealTimeTrading(pack: Pick<BidPack, "month">): boolean {
+  return (monthNumber(pack) ?? 0) >= 27 * 12 + 7;
 }
 
 /** Whether a trip can change hands at all: placed on a date, inside the bid month, not locked, and before its deadline. */

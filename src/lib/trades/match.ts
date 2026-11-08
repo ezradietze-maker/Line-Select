@@ -61,6 +61,8 @@ export interface MatchOptions {
   minGain?: number;
   /** How many chains to list before sharing out what's left (see `listCycles`). */
   maxCycles?: number;
+  /** A swap not to suggest again: this pilot has said no to it. */
+  excludeSwap?: (pilotId: string, give: Trip, take: Trip) => boolean;
 }
 
 interface Node {
@@ -73,7 +75,7 @@ interface Edge {
   value: SwapValue;
 }
 
-function buildGraph(pack: BidPack, pilots: readonly PilotHolding[], now: number, minGain: number) {
+function buildGraph(pack: BidPack, pilots: readonly PilotHolding[], now: number, minGain: number, excludeSwap: MatchOptions["excludeSwap"]) {
   const nodes: Node[] = [];
   pilots.forEach((p, pilot) => {
     const vacations = vacationsOf(pack, p.seniority);
@@ -93,6 +95,7 @@ function buildGraph(pack: BidPack, pilots: readonly PilotHolding[], now: number,
         const taking = nodes[to];
         if (taking.pilot === pilot || tripInstanceKey(taking.trip) === tripInstanceKey(giving.trip)) continue;
         if (!canHold(pack, others, taking.trip, vacations)) continue;
+        if (excludeSwap?.(p.pilotId, giving.trip, taking.trip)) continue;
         // The same trip on the same date from two different pilots is one swap to score.
         const key = `${from}|${tripInstanceKey(taking.trip)}`;
         let swap = swapIndex.get(key);
@@ -209,7 +212,7 @@ function bestSet(options: TradeSuggestion[]): { chosen: TradeSuggestion[]; compl
 
 export function findTrades(pack: BidPack, pilots: readonly PilotHolding[], options: MatchOptions = {}): MatchResult {
   const maxChain = Math.min(options.maxChain ?? MAX_CHAIN_PILOTS, MAX_CHAIN_PILOTS);
-  const { nodes, edges } = buildGraph(pack, pilots, options.now ?? Date.now(), options.minGain ?? MIN_GAIN);
+  const { nodes, edges } = buildGraph(pack, pilots, options.now ?? Date.now(), options.minGain ?? MIN_GAIN, options.excludeSwap);
   const { cycles, truncated } = listCycles(nodes, edges, maxChain, options.maxCycles ?? MAX_CYCLES);
   const startOf = (cycle: Edge[]) => cycle[cycle.length - 1].to;
   const suggestions = cycles

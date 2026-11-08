@@ -4,6 +4,7 @@ import { getCurrentServerUser } from "@/lib/server/auth";
 import { deleteTradeHolding, getTradeHolding, getTradeSettings, saveTradeHolding } from "@/lib/server/db";
 import { readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { lapseSuggestionsFor } from "@/lib/server/trade-suggestions";
 import { readHolding } from "@/lib/trades/holding";
 
 export const runtime = "nodejs";
@@ -34,7 +35,10 @@ export async function PUT(request: Request) {
   const holding = readHolding(await readJsonBody(request, MAX_BODY));
   if (!holding) return NextResponse.json({ error: "That isn't a list of trips from your bid pack." }, { status: 400 });
   try {
-    return NextResponse.json({ holding: await saveTradeHolding(user.id, holding) });
+    const saved = await saveTradeHolding(user.id, holding);
+    // Every suggestion on this pack was worked out from what they held before.
+    await lapseSuggestionsFor(user.id, holding.packId);
+    return NextResponse.json({ holding: saved });
   } catch (e) {
     await reportProblem("trades", e, { action: "save holding" });
     return NextResponse.json({ error: "Couldn't save what you hold just now." }, { status: 503 });
@@ -49,6 +53,7 @@ export async function DELETE(request: Request) {
   if (!pack) return NextResponse.json({ error: "Which bid pack?" }, { status: 400 });
   try {
     await deleteTradeHolding(user.id, pack);
+    await lapseSuggestionsFor(user.id, pack);
     return NextResponse.json({ ok: true });
   } catch (e) {
     await reportProblem("trades", e, { action: "remove holding" });
