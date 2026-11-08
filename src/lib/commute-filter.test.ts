@@ -88,6 +88,19 @@ describe("runCommuteCheck", () => {
     expect(await runCommuteCheck(pack, { ...SETTINGS, homeAirport: "SEA" }, () => {}, { now: BEFORE_OCT, fetcher: off })).toBe("unavailable");
   });
 
+  it.skipIf(!seats.length)("keeps a partial answer's word only for a yes, and asks it again next run", async () => {
+    const partial = vi.fn(async (_u: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { needs: { id: string; tripId: string; kind: string }[] };
+      return new Response(JSON.stringify({ configured: true, partial: true, answers: body.needs.map((n) => ({ id: n.id, tripId: n.tripId, kind: n.kind, lastDeparture: null, firstArrival: null })) }));
+    }) as unknown as typeof fetch;
+    await runCommuteCheck(pack, SETTINGS, () => {}, { now: BEFORE_OCT, fetcher: partial });
+    const kept = loadCommuteAnswers(pack.id, SETTINGS, BEFORE_OCT);
+    expect(Object.values(kept).every((a) => a.partial)).toBe(true);
+    const calls = vi.mocked(partial).mock.calls.length;
+    await runCommuteCheck(pack, SETTINGS, () => {}, { now: BEFORE_OCT, fetcher: partial });
+    expect(vi.mocked(partial).mock.calls.length).toBe(calls * 2);
+  });
+
   it.skipIf(!seats.length)("sends jumpseats only when they count", async () => {
     const bodies: { jumpseats: unknown[] }[] = [];
     const fetcher = vi.fn(async (_u: unknown, init?: RequestInit) => {
@@ -120,7 +133,7 @@ describe.skipIf(!seats.length)("commute status on the October seats", () => {
     // With every flight on the day, every line that isn't an estimate works.
     const ok: CommuteAnswers = {};
     for (const n of needs) {
-      const onDay = n.kind === "toBase" || n.kind === "deviateOut" ? n.arriveBy! - 3 * 3_600_000 : n.departAfter + 3_600_000;
+      const onDay = n.kind === "toBase" || n.kind === "deviateOut" ? n.arriveBy! - 1 : n.departAfter + 1;
       ok[n.id] = { lastDeparture: onDay, firstArrival: onDay };
     }
     const yes = commuteStatuses(pack, s, ok, BEFORE_OCT);
@@ -159,18 +172,76 @@ describe.skipIf(!seats.length)("commute status on the October seats", () => {
 });
 
 describe("whose day a time belongs to", () => {
-  const zone = "America/Denver";
-  const at = (t: string) => Date.parse(`2026-10-${t}-06:00`);
+  const home = "America/Denver";
+  const base = "America/Chicago";
+  const ct = (t: string) => Date.parse(`2026-10-${t}-05:00`);
+  const mt = (t: string) => Date.parse(`2026-10-${t}-06:00`);
 
   it("takes the evening before for a report in the small hours, and not for a morning one", () => {
-    expect(leavesOnReportDay(at("13T19:00:00"), at("14T02:00:00"), zone)).toBe(true);
-    expect(leavesOnReportDay(at("13T19:00:00"), at("14T08:00:00"), zone)).toBe(false);
-    expect(leavesOnReportDay(at("14T06:00:00"), at("14T08:00:00"), zone)).toBe(true);
+    expect(leavesOnReportDay(mt("13T19:00:00"), ct("14T02:00:00"), home, base)).toBe(true);
+    expect(leavesOnReportDay(mt("13T19:00:00"), ct("14T08:00:00"), home, base)).toBe(false);
+    expect(leavesOnReportDay(mt("14T06:00:00"), ct("14T08:00:00"), home, base)).toBe(true);
+  });
+
+  it("goes by the pack's date for the report, whatever the clock says at home", () => {
+    // 05:30 Tuesday in Memphis is 04:30 in Denver, but it's a Tuesday report: Monday evening's flight means a night at base.
+    expect(leavesOnReportDay(mt("13T19:00:00"), ct("14T05:30:00"), home, base)).toBe(false);
   });
 
   it("counts landing home just past midnight, and the morning after a small-hours release, but not the next day", () => {
-    expect(landsOnReleaseDay(at("15T00:40:00"), at("14T22:00:00"), zone)).toBe(true);
-    expect(landsOnReleaseDay(at("15T09:00:00"), at("14T22:00:00"), zone)).toBe(false);
-    expect(landsOnReleaseDay(at("14T10:00:00"), at("14T02:30:00"), zone)).toBe(true);
+    expect(landsOnReleaseDay(mt("15T00:40:00"), ct("14T22:00:00"), home, base)).toBe(true);
+    expect(landsOnReleaseDay(mt("15T09:00:00"), ct("14T22:00:00"), home, base)).toBe(false);
+    expect(landsOnReleaseDay(mt("14T10:00:00"), ct("14T02:30:00"), home, base)).toBe(true);
+  });
+
+  it("goes by the pack's date for the release: 00:39 in Memphis is that day, though it's still yesterday in Denver", () => {
+    expect(landsOnReleaseDay(mt("15T07:45:00"), ct("15T00:39:00"), home, base)).toBe(true);
+    expect(landsOnReleaseDay(mt("15T07:45:00"), ct("14T23:56:00"), home, base)).toBe(false);
+  });
+});
+
+describe.skipIf(!seats.length)("each way is asked about its own day", () => {
+  const pack = seats.length ? load(seats.find((f) => f.includes("MD11-CAP")) ?? seats[0]) : ({} as BidPack);
+  const s = { ...SETTINGS, homeAirport: "DEN" };
+  const needs = seats.length ? commuteNeedsForPack(pack, s, BEFORE_OCT) : [];
+
+  it("asks about the day alone, never the evening before a morning report", () => {
+    for (const n of needs.filter((x) => x.kind === "toBase" || x.kind === "deviateOut")) {
+      expect(n.departBefore).toBe(n.arriveBy);
+      // Opening at midnight on the clock at home, and a window the server will take.
+      expect(new Date(n.departAfter).toLocaleTimeString("en-US", { timeZone: "America/Denver", hour12: false }).startsWith("24:00") || new Date(n.departAfter).toLocaleTimeString("en-US", { timeZone: "America/Denver", hour12: false }).startsWith("00:00")).toBe(true);
+      expect(n.departBefore - n.departAfter).toBeLessThanOrEqual(48 * 3_600_000);
+      expect(n.departBefore).toBeGreaterThan(n.departAfter);
+    }
+    for (const n of needs.filter((x) => x.kind === "homeFromBase" || x.kind === "deviateHome")) {
+      expect(n.departBefore).toBeGreaterThan(n.departAfter);
+      expect(n.departBefore - n.departAfter).toBeLessThanOrEqual(48 * 3_600_000);
+    }
+  });
+
+  it("lets a deviation stand on its own day, not the trip's report", () => {
+    const deviating = pack.lines.find((l) => l.trips.length === 1 && !l.estimated && needs.some((n) => n.kind === "deviateOut" && n.tripId.startsWith(l.trips[0].id)));
+    if (!deviating) return;
+    const own = commuteNeedsForPack({ ...pack, lines: [deviating] }, s, BEFORE_OCT);
+    const answers: CommuteAnswers = {};
+    for (const n of own) {
+      answers[n.id] =
+        n.kind === "deviateOut"
+          ? { lastDeparture: n.arriveBy! - 3_600_000, firstArrival: null }
+          : n.kind === "toBase"
+            ? { lastDeparture: null, firstArrival: null }
+            : { lastDeparture: null, firstArrival: n.departAfter + 3_600_000 };
+    }
+    // Commuting to base can't be done, but the deadhead can be caught from home on the day its flying starts.
+    expect(commuteStatusOfLine(deviating, pack, s, answers, BEFORE_OCT)).not.toBe("no");
+  });
+
+  it("won't rule a line out on answers given while boards were held back, and asks them again", async () => {
+    const line = pack.lines.find((l) => !l.estimated && l.trips.length > 0)!;
+    const own = commuteNeedsForPack({ ...pack, lines: [line] }, s, BEFORE_OCT);
+    const held: CommuteAnswers = Object.fromEntries(own.map((n) => [n.id, { lastDeparture: null, firstArrival: null, partial: true as const }]));
+    expect(commuteStatusOfLine(line, pack, s, held, BEFORE_OCT)).toBe("unknown");
+    const whole: CommuteAnswers = Object.fromEntries(own.map((n) => [n.id, { lastDeparture: null, firstArrival: null }]));
+    expect(commuteStatusOfLine(line, pack, s, whole, BEFORE_OCT)).toBe("no");
   });
 });

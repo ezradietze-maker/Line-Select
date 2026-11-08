@@ -101,7 +101,8 @@ export async function POST(request: Request) {
     const { answers, stats } = await answerTravelNeeds(needs, jumpseats, { maxBoards });
     await recordSpend(spender, stats.fetched * costPerBoard, { feature: "flights" });
     console.log("[flights]", { needs: needs.length, jumpseats: jumpseats.length, answered: answers.length, ...stats });
-    return NextResponse.json({ configured: true, answers });
+    // Boards held back (the allowance ran out) can only have hidden flights: a "no" in these answers isn't certain.
+    return NextResponse.json({ configured: true, answers, ...(stats.skipped > 0 ? { partial: true } : {}) });
   } catch (e) {
     await reportProblem("flights", e);
     return NextResponse.json({ error: "Couldn't look up flights just now." }, { status: 502 });

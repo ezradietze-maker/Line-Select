@@ -5,7 +5,6 @@ import type { TravelAnswer } from "@/lib/flights/itineraries";
 import { travelNeedsForTrip, tripStartUtc, type TravelNeed } from "@/lib/flights/needs";
 import type { CommuteStatus, FilterContext } from "@/lib/line-filters";
 import { groupDepartures } from "@/lib/metrics/departures";
-import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 
 /**
@@ -14,6 +13,10 @@ import type { BidPack, Line, Trip } from "@/types/bidpack";
  *
  * It goes by departures, not trips: trips flown back to back without going home need no commute between them, so a
  * departure asks for a way in to its first trip and a way home from its last.
+ *
+ * Each question is asked about the day itself. The same questions asked about a whole day and night (as the commute
+ * measures do, to count backups) find plenty of flights the evening before and stop there, without looking through the
+ * hubs for that morning's connections: a line that's easy to commute to reads as one that isn't.
  *
  * Boards are shared and cached on the server and charged there under the spend guard; a board it won't fetch leaves a
  * question unanswered, and an unanswered question is "unknown" here, never a guess in either direction.
@@ -42,6 +45,8 @@ const CURB_HOURS = 1;
 export interface CommuteAnswer {
   lastDeparture: number | null;
   firstArrival: number | null;
+  /** The server held back boards while answering, so this may not be the whole story: asked again next time. */
+  partial?: true;
 }
 export type CommuteAnswers = Record<string, CommuteAnswer>;
 
@@ -50,8 +55,32 @@ export function canCheckCommute(bidPack: Pick<BidPack, "base">, homeAirport: str
   return /^[A-Z]{3}$/.test(homeAirport) && homeAirport !== bidPack.base && !!timezoneForAirport(homeAirport);
 }
 
-/** A trip's travel for this filter: the pilot's buffers, on `travelNeedsForTrip`'s windows. */
-function needsOfTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Trip, s: CommuteSettings): TravelNeed[] {
+/**
+ * Whose day a time belongs to. Until 05:00 it's still last night, as a report or a late flight in the catalog's commute
+ * measures is: for a 02:00 report the evening's flight is the commute, not a night at base, and a flight landing home at
+ * 00:40 got the pilot home the day they were released.
+ */
+const NIGHT_RUNS_UNTIL_HOURS = 5;
+const nightDay = (ms: number, zone: string) => DateTime.fromMillis(ms, { zone }).minus({ hours: NIGHT_RUNS_UNTIL_HOURS }).toISODate();
+const calendarDay = (ms: number, zone: string) => DateTime.fromMillis(ms, { zone }).toISODate();
+/** A flight leaving home this day still makes a report (or a first flown leg) at `report` without a night away first. Report days go by the pack's clock at base, as it prints them. */
+export const leavesOnReportDay = (departure: number, report: number, homeZone: string, baseZone: string) => calendarDay(departure, homeZone) === nightDay(report, baseZone);
+/** A flight landing home then gets the pilot home the day they were released. */
+export const landsOnReleaseDay = (arrival: number, release: number, homeZone: string, baseZone: string) => nightDay(arrival, homeZone) === calendarDay(release, baseZone);
+
+interface Way {
+  need: TravelNeed;
+  /** What this way has to make the day of: the report or first flown leg on the way in, the release or last flown leg going home. */
+  day: number;
+  /** Its window closed before it opened: nothing can make it on the day (a report too early to fly in that morning). */
+  impossible: boolean;
+}
+
+/** A trip's ways in or home, each narrowed to its own day, with the pilot's buffers. */
+function waysOfTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Trip, s: CommuteSettings, direction: "in" | "home"): Way[] {
+  const homeZone = timezoneForAirport(s.homeAirport);
+  const baseZone = timezoneForAirport(bidPack.base);
+  if (!homeZone || !baseZone) return [];
   const needs = travelNeedsForTrip(bidPack, trip, {
     homeAirports: [s.homeAirport],
     commuteBufferHours: s.arriveBeforeReportHours,
@@ -59,7 +88,22 @@ function needsOfTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Tr
     backRestHours: s.releaseToDepartureHours,
   });
   const extra = (s.releaseToDepartureHours - CURB_HOURS) * HOUR;
-  return needs.map((n) => (n.kind === "homeFromBase" ? { ...n, departAfter: n.departAfter + extra, departBefore: n.departBefore + extra } : n));
+  const ways: Way[] = [];
+  for (const n of needs) {
+    const goingIn = n.kind === "toBase" || n.kind === "deviateOut";
+    if (goingIn !== (direction === "in")) continue;
+    if (goingIn) {
+      const day = n.arriveBy! + s.arriveBeforeReportHours * HOUR;
+      const opens = DateTime.fromISO(nightDay(day, baseZone)!, { zone: homeZone }).toMillis();
+      ways.push({ need: { ...n, departAfter: opens, departBefore: n.arriveBy! }, day, impossible: opens >= n.arriveBy! });
+    } else {
+      const departAfter = n.kind === "homeFromBase" ? n.departAfter + extra : n.departAfter;
+      const day = departAfter - s.releaseToDepartureHours * HOUR;
+      const closes = DateTime.fromISO(calendarDay(day, baseZone)!, { zone: homeZone }).plus({ days: 1, hours: NIGHT_RUNS_UNTIL_HOURS }).toMillis();
+      ways.push({ need: { ...n, departAfter, departBefore: closes }, day, impossible: departAfter >= closes });
+    }
+  }
+  return ways;
 }
 
 /** A departure's first and last trips: the two ends of it the pilot travels to and from. */
@@ -76,79 +120,56 @@ export function commuteNeedsForPack(bidPack: BidPack, s: CommuteSettings, now = 
   for (const line of bidPack.lines) {
     if (line.estimated) continue;
     for (const { first, last } of departureEnds(line, bidPack, s)) {
-      for (const n of needsOfTrip(bidPack, first, s)) if ((n.kind === "toBase" || n.kind === "deviateOut") && n.departBefore > now) seen.set(n.id, n);
-      if (last.carriesIntoNextMonth) continue;
-      for (const n of needsOfTrip(bidPack, last, s)) if ((n.kind === "homeFromBase" || n.kind === "deviateHome") && n.departBefore > now) seen.set(n.id, n);
+      const ways = [...waysOfTrip(bidPack, first, s, "in"), ...(last.carriesIntoNextMonth ? [] : waysOfTrip(bidPack, last, s, "home"))];
+      for (const w of ways) if (!w.impossible && w.need.departBefore > now) seen.set(w.need.id, w.need);
     }
   }
   return [...seen.values()];
 }
 
 /**
- * Whose day a time belongs to, on the clock at home. Until 05:00 it's still last night, as a report or a late flight in
- * the catalog's commute measures is: for a 02:00 report the evening's flight is the commute, not a night at base, and a
- * flight landing home at 00:40 got the pilot home the day they were released.
+ * Of an end's ways: yes if any works on the day, no only if every way was asked and none does. An answer given while the
+ * server was holding back boards (`partial`) can prove a way works, but can't rule one out.
  */
-const NIGHT_RUNS_UNTIL_HOURS = 5;
-const nightDay = (ms: number, zone: string) => DateTime.fromMillis(ms, { zone }).minus({ hours: NIGHT_RUNS_UNTIL_HOURS }).toISODate();
-const calendarDay = (ms: number, zone: string) => DateTime.fromMillis(ms, { zone }).toISODate();
-/** A flight leaving this day still makes this report without a night at base. */
-export const leavesOnReportDay = (departure: number, report: number, zone: string) => calendarDay(departure, zone) === nightDay(report, zone);
-/** A flight landing then gets the pilot home the day they were released. */
-export const landsOnReleaseDay = (arrival: number, release: number, zone: string) => nightDay(arrival, zone) === calendarDay(release, zone);
-
-/** When a trip's last leg or standby is done, as a real instant. */
-function releaseAt(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Trip): number | null {
-  const start = tripStartUtc(bidPack, trip);
-  if (start === null) return null;
-  const f = computeTripFacts(trip);
-  const end = Math.max(f.legs.at(-1)?.end ?? 0, f.duties.flatMap((d) => d.standbyLegs).at(-1)?.end ?? 0);
-  return start + end * 60_000;
-}
-
-/** Of a trip's ways in or home: yes if any works on the day, no only if every way was asked and none does. */
-function endStatus(needs: TravelNeed[], answers: CommuteAnswers, works: (a: CommuteAnswer) => boolean): CommuteStatus {
-  if (needs.length === 0) return "unknown";
-  let known = 0;
-  for (const n of needs) {
-    const a = answers[n.id];
+function endStatus(ways: Way[], answers: CommuteAnswers, works: (a: CommuteAnswer, way: Way) => boolean): CommuteStatus {
+  if (ways.length === 0) return "unknown";
+  let settled = 0;
+  for (const w of ways) {
+    if (w.impossible) {
+      settled++;
+      continue;
+    }
+    const a = answers[w.need.id];
     if (!a) continue;
-    known++;
-    if (works(a)) return "yes";
+    if (works(a, w)) return "yes";
+    if (!a.partial) settled++;
   }
-  return known === needs.length ? "no" : "unknown";
+  return settled === ways.length ? "no" : "unknown";
 }
 
 /**
- * Whether real flights get the pilot in on each report day and home on each release day, on the clock at home. One end
- * that can't be done makes the line a no, whatever's still unknown; a trip already flown no longer counts.
+ * Whether real flights get the pilot in on each report day and home on each release day. One end that can't be done makes
+ * the line a no, whatever's still unknown; a trip already flown no longer counts.
  */
 export function commuteStatusOfLine(line: Line, bidPack: Pick<BidPack, "bidPeriodStart" | "base">, s: CommuteSettings, answers: CommuteAnswers, now = Date.now()): CommuteStatus {
   if (line.estimated) return "unknown";
-  const zone = timezoneForAirport(s.homeAirport);
-  if (!zone) return "unknown";
+  const homeZone = timezoneForAirport(s.homeAirport);
+  const baseZone = timezoneForAirport(bidPack.base);
+  if (!homeZone || !baseZone) return "unknown";
+  const flown = (ways: Way[]) => ways.length > 0 && ways.every((w) => w.need.departBefore <= now);
   let unknown = false;
   let checked = 0;
+  const read = (st: CommuteStatus) => {
+    checked++;
+    if (st === "unknown") unknown = true;
+    return st;
+  };
   for (const { first, last } of departureEnds(line, bidPack, s)) {
-    const report = tripStartUtc(bidPack, first);
-    const inNeeds = needsOfTrip(bidPack, first, s).filter((n) => n.kind === "toBase" || n.kind === "deviateOut");
-    if (report === null || inNeeds.length === 0) unknown = true;
-    else if (inNeeds.every((n) => n.departBefore > now)) {
-      const st = endStatus(inNeeds, answers, (a) => a.lastDeparture !== null && leavesOnReportDay(a.lastDeparture, report, zone));
-      if (st === "no") return "no";
-      checked++;
-      if (st === "unknown") unknown = true;
-    }
+    const ways = waysOfTrip(bidPack, first, s, "in");
+    if (!flown(ways) && read(endStatus(ways, answers, (a, w) => a.lastDeparture !== null && leavesOnReportDay(a.lastDeparture, w.day, homeZone, baseZone))) === "no") return "no";
     if (last.carriesIntoNextMonth) continue;
-    const release = releaseAt(bidPack, last);
-    const homeNeeds = needsOfTrip(bidPack, last, s).filter((n) => n.kind === "homeFromBase" || n.kind === "deviateHome");
-    if (release === null || homeNeeds.length === 0) unknown = true;
-    else if (homeNeeds.every((n) => n.departBefore > now)) {
-      const st = endStatus(homeNeeds, answers, (a) => a.firstArrival !== null && landsOnReleaseDay(a.firstArrival, release, zone));
-      if (st === "no") return "no";
-      checked++;
-      if (st === "unknown") unknown = true;
-    }
+    const home = waysOfTrip(bidPack, last, s, "home");
+    if (!flown(home) && read(endStatus(home, answers, (a, w) => a.firstArrival !== null && landsOnReleaseDay(a.firstArrival, w.day, homeZone, baseZone))) === "no") return "no";
   }
   return unknown || checked === 0 ? "unknown" : "yes";
 }
@@ -157,7 +178,8 @@ export function commuteStatuses(bidPack: BidPack, s: CommuteSettings, answers: C
   return new Map(bidPack.lines.map((l) => [l.id, commuteStatusOfLine(l, bidPack, s, answers, now)]));
 }
 
-const STORE_PREFIX = "line-select:commute-check:v1:";
+// v2: questions asked about the day itself; v1's answers read their evening-before flights as the day failing.
+const STORE_PREFIX = "line-select:commute-check:v2:";
 /** Airline schedules move; kept on the device this long before asking again, as the commute's own flights are. */
 const KEEP_MS = 3 * 24 * HOUR;
 /** The server takes 600 questions in one request. */
@@ -180,7 +202,7 @@ function saveCommuteAnswers(bidPackId: string, s: CommuteSettings, answers: Comm
   try {
     // One check at a time: the bid pack itself needs the room.
     const key = storeKey(bidPackId, s);
-    for (const k of Object.keys(window.localStorage)) if (k.startsWith(STORE_PREFIX) && k !== key) window.localStorage.removeItem(k);
+    for (const k of Object.keys(window.localStorage)) if (k.startsWith("line-select:commute-check:") && k !== key) window.localStorage.removeItem(k);
     window.localStorage.setItem(key, JSON.stringify({ savedAt: now, answers }));
   } catch {
     // A full store just means asking again next time; the server's boards are already paid for.
@@ -207,7 +229,7 @@ export async function runCommuteCheck(
 ): Promise<CommuteCheckEnd> {
   const answers: CommuteAnswers = { ...loadCommuteAnswers(bidPack.id, s, now) };
   const needs = commuteNeedsForPack(bidPack, s, now);
-  const missing = needs.filter((n) => !(n.id in answers));
+  const missing = needs.filter((n) => !answers[n.id] || answers[n.id].partial);
   const total = needs.length;
   let done = total - missing.length;
   onProgress({ done, total, answers });
@@ -221,10 +243,10 @@ export async function runCommuteCheck(
       signal,
     }).catch(() => null);
     if (!res?.ok) return "paused";
-    const j = (await res.json().catch(() => null)) as { configured?: boolean; answers?: TravelAnswer[] } | null;
+    const j = (await res.json().catch(() => null)) as { configured?: boolean; answers?: TravelAnswer[]; partial?: boolean } | null;
     if (!j?.configured) return "unavailable";
     if (!Array.isArray(j.answers)) return "paused";
-    for (const a of j.answers) answers[a.id] = { lastDeparture: a.lastDeparture, firstArrival: a.firstArrival };
+    for (const a of j.answers) answers[a.id] = { lastDeparture: a.lastDeparture, firstArrival: a.firstArrival, ...(j.partial ? { partial: true as const } : {}) };
     done += chunk.length;
     saveCommuteAnswers(bidPack.id, s, answers, now);
     onProgress({ done, total, answers: { ...answers } });

@@ -471,7 +471,7 @@ function CommuteRow({ on, onToggle, commute }: { on: boolean; onToggle: () => vo
         </Chip>
         {on && (
           <>
-            <p className="text-xs text-ink-muted">Real flights in on each report day and home on each release day, checked on your clock at home.</p>
+            <p className="text-xs text-ink-muted">Real flights in on each report day and home on each release day, by the dates your pack prints.</p>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-ink-muted">
               <label className="flex items-center gap-1.5">
                 Home airport
