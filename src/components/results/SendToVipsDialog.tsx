@@ -1,9 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
+import { useAppState } from "@/lib/app-state";
+import { effectiveBidClose } from "@/lib/bid-calendar";
+import { forecastBid, type BidForecast } from "@/lib/forecast/forecast";
+import { RESERVE_TYPE_LABEL, rankReserveLines } from "@/lib/reserve-rank";
+import type { LineScore } from "@/lib/scoring";
+import { deriveSeniorityInput } from "@/lib/seniority-derive";
+import { fullBidOrder, runPresendChecks, vipsQuestionNotes, type CheckFix, type PresendCheck } from "@/lib/vips-presend";
+import type { BidPack } from "@/types/bidpack";
+import type { PreferenceProfile } from "@/types/preferences";
 import {
   ANY_LINE_CODES,
   VIPS_BID_REVIEW_URL,
@@ -29,28 +39,106 @@ const ANY_LINE_LABELS: { kind: AnyLineKind; label: string }[] = [
 /** How many of the order to show before "and N more" — enough to recognise it's the right bid. */
 const PREVIEW_COUNT = 12;
 
+/** What the checks before sending read, beyond the order itself. */
+export interface PresendContext {
+  bidPack: BidPack;
+  profile: PreferenceProfile;
+  /** The forecast of the pilot's whole ranking, with its line ids. It answers for the bid only when the bid is that ranking. */
+  rankedForecast: BidForecast | null;
+  rankedIds: string[];
+}
+
+const CHECK_TONE: Record<PresendCheck["level"], string> = {
+  stop: "bg-danger/15",
+  warn: "bg-warning/15",
+  info: "bg-canvas border border-hairline",
+};
+
+function CheckRow({ check, onFix }: { check: PresendCheck; onFix: (fix: Extract<CheckFix, { kind: "catch-all" }>) => void }) {
+  const { fix } = check;
+  return (
+    <li className={`rounded-md px-3 py-2 text-xs leading-relaxed ${CHECK_TONE[check.level]}`} data-presend-check={check.id} data-level={check.level}>
+      {check.message}
+      {fix?.kind === "catch-all" && (
+        <button type="button" onClick={() => onFix(fix)} className="ml-1.5 font-medium text-brand underline underline-offset-2">
+          {fix.label}
+        </button>
+      )}
+      {fix?.kind === "link" && (
+        <Link href={fix.href} className="ml-1.5 font-medium text-brand underline underline-offset-2">
+          {fix.label}
+        </Link>
+      )}
+    </li>
+  );
+}
+
 export function SendToVipsDialog({
   lineNumbers,
+  lineScores,
   packLabel,
   leftOut,
+  presend,
   onClose,
 }: {
   /** The order to bid, best first — the same order "Copy line order" copies. */
   lineNumbers: string[];
+  /** The same lines, scored. */
+  lineScores: LineScore[];
   /** Month, base, fleet and seat of the pack these lines came from, to check against VIPS's own "You are bidding as…". */
   packLabel: string;
   /** Lines in the pack this order doesn't include (hidden, or outside the current filters) — they won't be bid. */
   leftOut: number;
+  presend: PresendContext;
   onClose: () => void;
 }) {
+  const { seniority: savedSeniority } = useAppState();
   const [employee, setEmployee] = useState(() => getVipsEmployeeNumber() ?? "");
   const [employeeError, setEmployeeError] = useState<string | undefined>();
   const [answers, setAnswers] = useState<VipsBidDraft>(getVipsAnswers);
   const [anyLines, setAnyLines] = useState<AnyLineKind[]>([]);
+  const [reserveAdded, setReserveAdded] = useState(false);
+  const [sendAnyway, setSendAnyway] = useState(false);
   const [sent, setSent] = useState(false);
+  const [openedAt] = useState(() => new Date());
 
-  const build = useMemo(() => buildVipsBidFields({ lineNumbers, anyLines, answers }), [lineNumbers, anyLines, answers]);
+  const { bidPack, profile, rankedForecast, rankedIds } = presend;
+  const reserveLines = useMemo(() => rankReserveLines(bidPack, { model: profile.pilotModel, isCommuter: profile.isCommuter }), [bidPack, profile.pilotModel, profile.isCommuter]);
+  const reserveNumbers = useMemo(() => reserveLines.map((l) => l.lineNumber), [reserveLines]);
+  const forecast = useMemo(() => {
+    const ids = lineScores.map((s) => s.line.id);
+    if (rankedForecast && ids.join() === rankedIds.join()) return rankedForecast;
+    return profile.seniorityNumber ? forecastBid({ bidPack, seniorityNumber: profile.seniorityNumber, myRanking: ids, simulations: 200 }) : null;
+  }, [lineScores, rankedForecast, rankedIds, bidPack, profile.seniorityNumber]);
+  const checks = useMemo(
+    () =>
+      runPresendChecks({
+        bidPack,
+        lineNumbers,
+        leftOut,
+        lineScores,
+        seniority: deriveSeniorityInput(bidPack, profile) ?? savedSeniority,
+        forecast,
+        reserveLines,
+        anyLines,
+        reserveLinesAdded: reserveAdded,
+        close: effectiveBidClose(bidPack),
+        now: openedAt,
+      }),
+    [bidPack, lineNumbers, leftOut, lineScores, profile, savedSeniority, forecast, reserveLines, anyLines, reserveAdded, openedAt]
+  );
+  const stopped = checks.some((c) => c.level === "stop");
+  const notes = useMemo(() => vipsQuestionNotes(bidPack, lineNumbers), [bidPack, lineNumbers]);
+
+  // Named reserve lines sit between the secondary and reserve catch-alls, so the order goes in whole.
+  const fullOrder = useMemo(() => fullBidOrder(lineNumbers, anyLines, reserveAdded ? reserveNumbers : []), [lineNumbers, anyLines, reserveAdded, reserveNumbers]);
+  const build = useMemo(() => buildVipsBidFields({ lineNumbers: fullOrder, answers }), [fullOrder, answers]);
   const normalized = normalizeEmployeeNumber(employee);
+
+  function applyFix(fix: Extract<CheckFix, { kind: "catch-all" }>) {
+    setAnyLines(fix.anyLines);
+    if (fix.reserveLines.length) setReserveAdded(true);
+  }
 
   function toggleAnyLine(kind: AnyLineKind) {
     // Kept in the fixed regular → secondary → reserve order whatever order they're ticked in.
@@ -60,6 +148,10 @@ export function SendToVipsDialog({
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    if (stopped && !sendAnyway) {
+      e.preventDefault();
+      return;
+    }
     if (!normalized) {
       e.preventDefault();
       setEmployeeError("Your FedEx employee number — digits only.");
@@ -136,12 +228,6 @@ export function SendToVipsDialog({
               )}
             </ol>
           )}
-          {leftOut > 0 && (
-            <p className="mt-2 rounded-md bg-warning/15 px-3 py-2 text-xs leading-relaxed">
-              {leftOut} {leftOut === 1 ? "line" : "lines"} in the pack {leftOut === 1 ? "isn't" : "aren't"} in this order
-              (hidden or filtered out) and won&rsquo;t be bid. If your choices run out, VIPS falls back to your standing bid.
-            </p>
-          )}
         </section>
 
         <fieldset>
@@ -159,6 +245,26 @@ export function SendToVipsDialog({
               </label>
             ))}
           </div>
+          {reserveLines.length > 0 && (
+            <div className="mt-2">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={reserveAdded} onChange={(e) => setReserveAdded(e.target.checked)} className="h-4 w-4 accent-brand" data-reserve-lines />
+                Name your {reserveLines.length} reserve lines, in your order, before any reserve line
+              </label>
+              <details className="mt-1 pl-6 text-xs text-ink-muted">
+                <summary className="cursor-pointer">See the order</summary>
+                <ol className="mt-1 space-y-0.5">
+                  {reserveLines.map((l) => (
+                    <li key={l.lineNumber}>
+                      <span className="font-mono text-ink">{l.lineNumber}</span>
+                      {l.reserveType ? ` ${RESERVE_TYPE_LABEL[l.reserveType]}` : ""}
+                      {l.reason ? ` · ${l.reason}` : ""}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            </div>
+          )}
         </fieldset>
 
         <fieldset className="space-y-3">
@@ -169,7 +275,13 @@ export function SendToVipsDialog({
           </p>
           {VIPS_QUESTIONS.map((q) => (
             <div key={q.key} role="radiogroup" aria-label={q.text} className="flex items-start justify-between gap-4">
-              <span className="text-xs leading-relaxed text-ink-muted">{q.text}</span>
+              <span className="text-xs leading-relaxed text-ink-muted">
+                {q.text}
+                <span className="mt-0.5 block text-ink-faint" data-vips-note={q.key}>
+                  {notes[q.key].meaning}
+                  {notes[q.key].forThisOrder ? ` ${notes[q.key].forThisOrder}` : ""}
+                </span>
+              </span>
               <span className="flex shrink-0 gap-3 pt-0.5">
                 {(["Yes", "No"] as const).map((choice) => (
                   <label key={choice} className="flex items-center gap-1 text-xs">
@@ -211,8 +323,25 @@ export function SendToVipsDialog({
 
         {!build.ok && <p className="text-xs text-danger">{build.reason}</p>}
 
+        {checks.length > 0 && (
+          <section aria-label="Before you send">
+            <h3 className="font-medium">Before you send</h3>
+            <ul className="mt-1.5 space-y-1.5">
+              {checks.map((c) => (
+                <CheckRow key={c.id} check={c} onFix={applyFix} />
+              ))}
+            </ul>
+            {stopped && (
+              <label className="mt-2 flex items-center gap-2 text-xs">
+                <input type="checkbox" checked={sendAnyway} onChange={(e) => setSendAnyway(e.target.checked)} className="h-4 w-4 accent-brand" data-send-anyway />
+                I know, send it anyway
+              </label>
+            )}
+          </section>
+        )}
+
         <div className="space-y-2 border-t border-border pt-4">
-          <Button type="submit" disabled={!build.ok} className="w-full">
+          <Button type="submit" disabled={!build.ok || (stopped && !sendAnyway)} className="w-full">
             Open VIPS and send
           </Button>
           <p className="text-xs leading-relaxed text-ink-faint">

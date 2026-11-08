@@ -1139,6 +1139,7 @@ export function ResultsView({
               bidPeriodStart={bidPack.bidPeriodStart}
               packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
               leftOut={bidPack.lines.length - exportable.length}
+              presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds }}
             />
           </div>
 

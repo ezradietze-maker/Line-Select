@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PlaneIcon } from "@/components/ui/icons";
-import { SendToVipsDialog } from "@/components/results/SendToVipsDialog";
+import { SendToVipsDialog, type PresendContext } from "@/components/results/SendToVipsDialog";
 import { buildLineCalendar } from "@/lib/ics-export";
 import type { LineScore } from "@/lib/scoring";
 
@@ -35,6 +35,7 @@ export function BidOrderExport({
   bidPeriodStart,
   packLabel,
   leftOut,
+  presend,
 }: {
   entries: BidOrderEntry[];
   /** The starred lines, in ranked order — when present, "Copy shortlist" becomes the fastest way to turn a hand-picked set into a bid order. */
@@ -45,6 +46,8 @@ export function BidOrderExport({
   packLabel: string;
   /** Lines in the pack that `entries` leaves out (hidden or filtered) — the VIPS dialog warns they won't be bid. */
   leftOut: number;
+  /** What the VIPS dialog's checks read beyond the order. */
+  presend: PresendContext;
 }) {
   const [copied, setCopied] = useFlash<NonNullable<CopiedKind>>(2000);
   const [calendarError, setCalendarError] = useFlash<string>(4000);
@@ -184,8 +187,10 @@ export function BidOrderExport({
       {vipsOpen && (
         <SendToVipsDialog
           lineNumbers={entries.map((e) => e.lineScore.line.lineNumber)}
+          lineScores={entries.map((e) => e.lineScore)}
           packLabel={packLabel}
           leftOut={leftOut}
+          presend={presend}
           onClose={() => setVipsOpen(false)}
         />
       )}

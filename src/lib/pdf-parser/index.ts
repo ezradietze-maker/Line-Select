@@ -10,7 +10,7 @@ import {
 import { extractMetaFromLineGridHeader, extractMetaFromPairingHeader } from "@/lib/pdf-parser/meta";
 import { parsePairingPages } from "@/lib/pdf-parser/pairing-parser";
 import { classifyPage } from "@/lib/pdf-parser/page-classifier";
-import { extractReserveLineSeat, parseReserveLineGridRows } from "@/lib/pdf-parser/reserve-line-parser";
+import { extractReserveLineSeat, parseReserveLineDays, parseReserveLineGridRows } from "@/lib/pdf-parser/reserve-line-parser";
 import { extractSeniorityListSeat, parseSeniorityListRows, validateSeniorityList } from "@/lib/pdf-parser/seniority-list-parser";
 import { extractVacationScheduleSeat, parseSweepFlightRows, parseVacationScheduleRows } from "@/lib/pdf-parser/vacation-schedule-parser";
 import {
@@ -225,7 +225,11 @@ export async function parseBidPackPdf(
 
     if (kind === "reserve-line-grid") {
       const seat = extractReserveLineSeat(rows.slice(0, 4)) ?? "CAP";
-      const parsed = parseReserveLineGridRows(rows, page.pageNumber, warnings);
+      const onCallDays = parseReserveLineDays(page.items);
+      const parsed = parseReserveLineGridRows(rows, page.pageNumber, warnings).map((r) => {
+        const days = onCallDays.get(r.lineNumber);
+        return days?.length ? { ...r, days } : r;
+      });
       if (parsed.length > 0) {
         reserveLinesBySeat[seat] = [...(reserveLinesBySeat[seat] ?? []), ...parsed];
       }

@@ -225,6 +225,8 @@ export interface ReserveLine {
   lineNumber: string;
   /** "24hr" = the pack's own "R (24-Hr)" type; "a"/"b" = its "RA"/"RB" types, whatever those specifically cover isn't printed on the grid itself. */
   reserveType: "24hr" | "a" | "b" | null;
+  /** Which days it stands, as offsets from the bid period's first day; offsets past the period are carry-over days. Absent on a pack parsed before these were read. */
+  days?: number[];
 }
 
 /**
