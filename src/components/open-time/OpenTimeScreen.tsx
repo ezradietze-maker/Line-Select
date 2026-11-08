@@ -1,6 +1,7 @@
 "use client";
 
 import { DateTime } from "luxon";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { Button } from "@/components/ui/Button";
@@ -268,7 +269,20 @@ function OpenTimeBuilder({ bidPack, seniority, profile, userId }: { bidPack: Bid
     <div className="mx-auto w-full max-w-3xl">
       <PageHeader eyebrow={packEyebrow(bidPack)} title="Open time, scored for you" description="Paste the open-time list from VIPS. Every trip gets a score for you, with the reasons, and is checked against your line and the contract." />
 
-      <Notice tone="warn" className="mt-4">
+      <Notice className="mt-4">
+        <span className="block">
+          <span className="font-medium text-ink">What it&rsquo;s for:</span> deciding on one trip at a time: picking it up with your make-up or priority hours, or trading or dropping one of your trips for it. PMU and PNP go first, then submissions go in the order received, so a good trip won&rsquo;t wait (CBA 2026 25.L.4&ndash;6).
+        </span>
+        <span className="mt-1 block">
+          <span className="font-medium text-ink">When to use it:</span> once secondary lines are built, before or during the bid period (CBA 2026 25.G.1), up to 0900 LBT the day before the trip (CBA 2026 25.L.1.b). In the View/Add window, use{" "}
+          <Link href="/view-add" className="underline underline-offset-2 hover:text-ink">
+            View/Add
+          </Link>{" "}
+          instead.
+        </span>
+      </Notice>
+
+      <Notice tone="warn" className="mt-3">
         We haven&rsquo;t seen a real VIPS open-time list yet, so this reads the list by its best guess at the format. Any row it can&rsquo;t read is shown to you. Check each trip against VIPS before you submit: this is our reading of the contract, not an official award.
       </Notice>
 

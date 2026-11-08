@@ -1,9 +1,11 @@
 "use client";
 
 import { DateTime } from "luxon";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Notice } from "@/components/ui/Notice";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { eventInstant } from "@/lib/bid-calendar";
 import { loadCarryIn } from "@/lib/carry-in-storage";
@@ -185,8 +187,20 @@ function ViewAddBuilder({ bidPack, seniority, profile, userId }: { bidPack: BidP
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Your View/Add list"
-        description="Once you’re awarded a line: the open trips that are legal on it, the combination that wins back your make-up with the most days off, and the list to enter. Bids are awarded in seniority order (CBA 2026 25.E.4), so the list goes on past your first choices."
+        description="The open trips that are legal on your awarded line, the combination that wins back your make-up with the most days off, and the list to enter."
       />
+      <Notice className="mt-4">
+        <span className="block">
+          <span className="font-medium text-ink">What it&rsquo;s for:</span> building one list of open trips to bid, in order, to win back phase-in or vacation make-up. Bids are awarded in seniority order, so the list goes on past your first choices.
+        </span>
+        <span className="mt-1 block">
+          <span className="font-medium text-ink">When to use it:</span> during the View/Add window, which opens when conflict processing closes and runs at least 48 hours (CBA 2026 25.E.4). Once that&rsquo;s over, use{" "}
+          <Link href="/open-time" className="underline underline-offset-2 hover:text-ink">
+            Open Time
+          </Link>
+          .
+        </span>
+      </Notice>
       <section aria-label="View/Add list" className="panel-glass mt-6 p-4 sm:p-5 print:hidden">
         {!hasOpen && bidPack.bidPeriodStart && <p className="mt-2 text-xs text-ink">This pack was saved before we kept its open trips. Upload it again to see them, or paste VIPS&rsquo;s list below.</p>}
         {!bidPack.bidPeriodStart && <p className="mt-2 text-xs text-ink">This pack&rsquo;s trips aren&rsquo;t on dates, so we can&rsquo;t check them against your line.</p>}
