@@ -7,7 +7,6 @@ import {
   nextVisibleCount,
   pruneMarks,
   restoreLine,
-  sortLineScores,
   toggleStar,
 } from "@/lib/results-list";
 import type { LineScore } from "@/lib/scoring";
@@ -19,31 +18,6 @@ function ls(lineNumber: string, score: number, over: Partial<Line> = {}): LineSc
     score,
   } as unknown as LineScore;
 }
-
-describe("sortLineScores", () => {
-  const list = [ls("1002", 70, { daysOff: 13 }), ls("1010", 90, { daysOff: 19 }), ls("1001", 80, { daysOff: 19 })];
-
-  it("keeps the ranked order for best match, and never mutates its input", () => {
-    expect(sortLineScores(list, "match")).toBe(list);
-    sortLineScores(list, "daysOff");
-    expect(list.map((l) => l.line.lineNumber)).toEqual(["1002", "1010", "1001"]);
-  });
-
-  it("sorts by days off descending, breaking ties by score", () => {
-    expect(sortLineScores(list, "daysOff").map((l) => l.line.lineNumber)).toEqual(["1010", "1001", "1002"]);
-  });
-
-  it("sorts by credit descending and departures ascending", () => {
-    const l2 = [ls("1", 50, { totalCreditHours: 80, totalDepartures: 9 }), ls("2", 50, { totalCreditHours: 88, totalDepartures: 6 })];
-    expect(sortLineScores(l2, "credit").map((l) => l.line.lineNumber)).toEqual(["2", "1"]);
-    expect(sortLineScores(l2, "departures").map((l) => l.line.lineNumber)).toEqual(["2", "1"]);
-  });
-
-  it("sorts line numbers numerically, not alphabetically", () => {
-    const l3 = [ls("1100", 1), ls("999", 1), ls("1010", 1)];
-    expect(sortLineScores(l3, "lineNumber").map((l) => l.line.lineNumber)).toEqual(["999", "1010", "1100"]);
-  });
-});
 
 describe("matchesLineSearch", () => {
   const line = ls("1105", 1).line;

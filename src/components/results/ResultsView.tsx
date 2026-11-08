@@ -60,16 +60,13 @@ import { loadLineMarks, saveLineMarks } from "@/lib/line-marks-storage";
 import { PHRASES } from "@/lib/preference-summary";
 import {
   PAGE_SIZE,
-  SORT_OPTIONS,
   hideLine,
   matchesLineSearch,
   nextVisibleCount,
   pruneMarks,
   restoreLine,
-  sortLineScores,
   toggleStar,
   type LineMarks,
-  type SortMode,
 } from "@/lib/results-list";
 import {
   learnFromReorder,
@@ -85,6 +82,8 @@ import { SwapQuestionCard } from "@/components/results/SwapQuestionCard";
 import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import { withPrintedLines } from "@/lib/phase-in";
 import { useCarryIn } from "@/lib/use-carry-in";
+import { SortMenu, SortNote } from "@/components/results/SortMenu";
+import { useLineSort } from "@/lib/use-line-sort";
 import { applyPlacements, loadPlacements, placementFromDrag, prunePlacements, savePlacements, type Placement } from "@/lib/line-placements";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
@@ -235,7 +234,6 @@ export function ResultsView({
   const [filters, setFilters] = useState<LineFilters>(EMPTY_FILTERS);
   // At most two at a time — picking a third drops the oldest rather than growing unbounded, since the comparison view only ever shows two side by side.
   const [compareIds, setCompareIds] = useState<string[]>([]);
-  const [sortMode, setSortMode] = useState<SortMode>("match");
   const [search, setSearch] = useState("");
   const [hotelFilter, setHotelFilter] = useState<HotelFilter | null>(initialHotelFilter);
   const [view, setView] = useState<"all" | "shortlist" | "realistic">("all");
@@ -507,11 +505,13 @@ export function ResultsView({
   );
   // Departures counted as each card counts them: the times the pilot leaves home.
   const departureOptions = useMemo(() => monthDepartureOptions(bidPack.base, profile, flights), [bidPack.base, profile, flights]);
-  const sorted = useMemo(() => sortLineScores(listable, sortMode, bidPack, departureOptions), [listable, sortMode, bidPack, departureOptions]);
+  const lineSort = useLineSort(userId, bidPack, profile, flights, departureOptions);
+  const applyLineSort = lineSort.apply;
+  const sorted = useMemo(() => applyLineSort(listable), [applyLineSort, listable]);
 
   // Back to the first page whenever what's being listed changes — landing on
   // "page 4 of a different list" would show a scrolled-past-nothing view.
-  const listKey = `${sortMode}|${search}|${hotelFilter?.city}|${hotelFilter?.hotelName}|${view}|${showHidden}|${filtersKey(filters)}|${ranked.length}`;
+  const listKey = `${lineSort.key}|${search}|${hotelFilter?.city}|${hotelFilter?.hotelName}|${view}|${showHidden}|${filtersKey(filters)}|${ranked.length}`;
   if (pageState.key !== listKey) setPageState({ key: listKey, shown: PAGE_SIZE });
   const shown = pageState.key === listKey ? pageState.shown : PAGE_SIZE;
   const displayed = sorted.slice(0, shown);
@@ -686,7 +686,7 @@ export function ResultsView({
 
   const activeLineScore = activeId ? ranked.find((r) => r.line.id === activeId) ?? null : null;
   // Drag-to-swap only means something in the pilot's own ranking order — in any other sort the visual order isn't the ranked order the judgment is built from.
-  const dragEnabled = sortMode === "match";
+  const dragEnabled = lineSort.isRanking;
 
   function handleDragStart(event: DragStartEvent) {
     setLayoutArmed(true);
@@ -876,7 +876,7 @@ export function ResultsView({
           </Heading>
           <p className="mt-1.5 text-sm text-ink-muted">
             {bidPack.lines.length} lines scored against what you told us
-            {sortMode === "match" ? <span className="hidden sm:inline"> &middot; best match first</span> : null}
+            {lineSort.isRanking ? <span className="hidden sm:inline"> &middot; best match first</span> : null}
           </p>
         </div>
         <Button variant="secondary" onClick={onEditPreferences} className="shrink-0 px-3 sm:px-4 print:hidden">
@@ -1028,20 +1028,7 @@ export function ResultsView({
                 className="w-full rounded-md border border-hairline bg-canvas/50 px-3 py-2 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-faint focus:border-accent focus:outline-none"
               />
             </div>
-            <label className="flex items-center gap-2 text-sm text-ink-muted">
-              <span className="sr-only sm:not-sr-only">Sort</span>
-              <select
-                value={sortMode}
-                onChange={(e) => setSortMode(e.target.value as SortMode)}
-                className="rounded-md border border-hairline bg-canvas/50 px-2.5 py-2 text-sm text-ink focus:border-accent focus:outline-none"
-              >
-                {SORT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SortMenu sort={lineSort} lines={listable} />
             <div className="ml-auto flex overflow-hidden rounded-md border border-hairline text-sm" role="tablist" aria-label="Which lines to show">
               <button
                 type="button"
@@ -1080,6 +1067,8 @@ export function ResultsView({
               )}
             </div>
           </div>
+
+          <SortNote sort={lineSort} />
 
           {/* A small staggered beat behind the header above — the page reads as "header settles, then controls, then the list below" instead of everything landing in one flat instant. */}
           <div className="animate-rise-in print:hidden" style={{ animationDelay: "60ms" }}>
@@ -1225,6 +1214,8 @@ export function ResultsView({
                         open={openIds.has(lineScore.line.id)}
                         onToggleOpen={() => toggleOpen(lineScore.line.id)}
                         placedByYou={dragEnabled && swappedIds.has(lineScore.line.id)}
+                        sortedBy={openIds.has(lineScore.line.id) ? lineSort.def.label : undefined}
+                        sortedValue={openIds.has(lineScore.line.id) ? lineSort.valueFor(lineScore.line.id) : null}
                       />
                     </ErrorBoundary>
                     <CarryInLineNote flown={carry.flown.lines.get(lineScore.line.id)} />
@@ -1239,7 +1230,7 @@ export function ResultsView({
             <div className="panel-glass mt-4 flex flex-col items-center gap-2 px-4 py-4 text-center">
               <p className="text-sm text-ink-muted">
                 Showing {displayed.length} of {sorted.length} lines
-                {view === "all" && sortMode === "match" ? " — the best matches first" : ""}.
+                {view === "all" && lineSort.isRanking ? " — the best matches first" : ""}.
               </p>
               <div className="flex flex-wrap justify-center gap-2 print:hidden">
                 <Button

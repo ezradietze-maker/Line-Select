@@ -96,6 +96,9 @@ interface LineCardProps {
   onToggleOpen: () => void;
   /** The pilot swapped this line into its place (see `BidPackStrip`'s tag). */
   placedByYou?: boolean;
+  /** What the list is sorted by and this line's value on it, shown only once it's opened: the strips stay as they are. */
+  sortedBy?: string;
+  sortedValue?: string | null;
 }
 
 export const LineCard = memo(function LineCard({
@@ -124,6 +127,8 @@ export const LineCard = memo(function LineCard({
   stripView,
   open,
   onToggleOpen,
+  sortedBy,
+  sortedValue,
 }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
@@ -254,6 +259,11 @@ export const LineCard = memo(function LineCard({
             transition={reduceMotion ? { duration: 0 } : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden border-t border-hairline"
           >
+      {sortedValue && (
+        <div className="border-b border-hairline px-5 py-2 text-sm text-ink-muted sm:px-6">
+          {sortedBy}: <span className="font-semibold text-ink">{sortedValue}</span>
+        </div>
+      )}
       {isTopPick && (
         <div className="flex items-center gap-1.5 border-b border-accent/20 bg-gradient-to-r from-accent-soft to-transparent px-5 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-accent sm:px-6">
           <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-hidden>

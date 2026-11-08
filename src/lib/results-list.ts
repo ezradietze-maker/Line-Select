@@ -1,9 +1,4 @@
-import { monthLine } from "@/lib/bid-month";
-import { lineDutyPeriods } from "@/lib/duty-periods";
-import { groupDepartures } from "@/lib/metrics/departures";
-import type { MonthDepartureOptions } from "@/lib/month-detail";
-import type { LineScore } from "@/lib/scoring";
-import type { BidPack, Line } from "@/types/bidpack";
+import type { Line } from "@/types/bidpack";
 
 /**
  * How many lines the results list renders at first. A real bid pack has 283
@@ -13,69 +8,6 @@ import type { BidPack, Line } from "@/types/bidpack";
  * the top couple dozen. The rest is one "show more" tap away.
  */
 export const PAGE_SIZE = 25;
-
-export type SortMode = "match" | "daysOff" | "credit" | "dutyPeriods" | "departures" | "lineNumber";
-
-export const SORT_OPTIONS: { value: SortMode; label: string }[] = [
-  { value: "match", label: "Best match" },
-  { value: "daysOff", label: "Most days off" },
-  { value: "credit", label: "Highest credit" },
-  { value: "dutyPeriods", label: "Fewest duty periods" },
-  { value: "departures", label: "Fewest departures" },
-  { value: "lineNumber", label: "Line number" },
-];
-
-function byLineNumber(a: LineScore, b: LineScore): number {
-  return a.line.lineNumber.localeCompare(b.line.lineNumber, undefined, { numeric: true });
-}
-
-/**
- * A new array in the requested order. "match" keeps the incoming order, which callers pass in already ranked by score.
- * Every other mode breaks ties by score, then line number, so equal lines never shuffle between renders. Given the
- * pack's dates, duty periods and departures are counted in the bid month, as the cards show them, not with what the
- * last trip flies in the next. Given the card's departure options too, departures are the times the pilot leaves
- * home — trips flown back to back count once — exactly the number on each card.
- */
-export function sortLineScores(
-  list: LineScore[],
-  mode: SortMode,
-  pack?: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">,
-  departureOptions?: MonthDepartureOptions
-): LineScore[] {
-  if (mode === "match") return list;
-  const tieBreak = (a: LineScore, b: LineScore) => b.score - a.score || byLineNumber(a, b);
-  const months = new Map<string, Line>();
-  const inMonth = (line: Line) => {
-    if (!pack) return line;
-    let m = months.get(line.id);
-    if (!m) months.set(line.id, (m = monthLine(line, pack)));
-    return m;
-  };
-  const sorted = [...list];
-  switch (mode) {
-    case "daysOff":
-      return sorted.sort((a, b) => b.line.daysOff - a.line.daysOff || tieBreak(a, b));
-    case "credit":
-      return sorted.sort((a, b) => b.line.totalCreditHours - a.line.totalCreditHours || tieBreak(a, b));
-    case "dutyPeriods":
-      return sorted.sort((a, b) => lineDutyPeriods(inMonth(a.line)) - lineDutyPeriods(inMonth(b.line)) || tieBreak(a, b));
-    case "departures": {
-      const counts = new Map<string, number>();
-      const departures = (line: Line) => {
-        let n = counts.get(line.id);
-        if (n === undefined) {
-          const month = inMonth(line);
-          n = pack && departureOptions ? groupDepartures(month.trips, { bidPeriodStart: pack.bidPeriodStart, base: departureOptions.base }, departureOptions).length : month.totalDepartures;
-          counts.set(line.id, n);
-        }
-        return n;
-      };
-      return sorted.sort((a, b) => departures(a.line) - departures(b.line) || tieBreak(a, b));
-    }
-    case "lineNumber":
-      return sorted.sort(byLineNumber);
-  }
-}
 
 /** "1105", "line 1105", "#1105" and a partial "110" all find line 1105 — pilots think in line numbers, not ranks. */
 export function matchesLineSearch(line: Line, query: string): boolean {
