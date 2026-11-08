@@ -13,6 +13,12 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-11-09",
+    title: "Ask the contract",
+    body: "Ask a question about the 2026 contract and get a short answer, then the contract's own words with the section and page, and when that rule starts. If it isn't in the text we have, it says so instead of guessing. Name a line to ask about your own pack.",
+    href: "/contract",
+  },
+  {
     date: "2026-11-08",
     title: "Quick start, in about a minute",
     body: "Short on time? Tap what matters, put it in order, and every line is ranked, reserve lines too. Dragging lines keeps teaching it, and the full interview is there when you want it sharper.",

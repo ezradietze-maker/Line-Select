@@ -12,7 +12,7 @@ import { reportConnectionLost, waitForConnection } from "@/lib/connection";
 /** How long a request waits for a dropped connection to come back before giving up and saying so. */
 const WAIT_FOR_CONNECTION_MS = 3 * 60 * 1000;
 
-async function post<T>(url: string, body: unknown, timeoutMs: number): Promise<T> {
+export async function postWithRetry<T>(url: string, body: unknown, timeoutMs: number): Promise<T> {
   // A dropped connection (a hotel's Wi-Fi, a jet bridge) waits for the connection and tries again, instead of failing
   // the interview: every call here carries the whole interview and the server keeps no state, so sending it again is
   // safe. A slow answer is a different thing: it still times out.
@@ -53,7 +53,7 @@ export interface BrainRequestBase {
 }
 
 export async function requestModelBuild(body: BrainRequestBase & { prior: PilotModel | null }): Promise<PilotModel> {
-  const r = await post<{ model: PilotModel }>("/api/brain/build", body, 290_000);
+  const r = await postWithRetry<{ model: PilotModel }>("/api/brain/build", body, 290_000);
   return r.model;
 }
 
@@ -71,11 +71,11 @@ export async function requestNextStep(
     rankingShifts?: number[];
   }
 ): Promise<StepResponse> {
-  return post<StepResponse>("/api/brain/question", body, 85_000);
+  return postWithRetry<StepResponse>("/api/brain/question", body, 85_000);
 }
 
 /** A pilot's own words for why they swapped two lines, matched to a priority or measure (see `lib/brain/swap-reason.ts`). */
 export async function requestSwapReason(body: import("./swap-reason").SwapReasonInput): Promise<import("./swap-reason").SwapReason> {
-  const r = await post<{ reason: import("./swap-reason").SwapReason }>("/api/brain/swap-reason", body, 25_000);
+  const r = await postWithRetry<{ reason: import("./swap-reason").SwapReason }>("/api/brain/swap-reason", body, 25_000);
   return r.reason;
 }

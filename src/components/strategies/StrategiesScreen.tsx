@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
@@ -332,6 +333,10 @@ function StrategyResults({
       >
         <StandingPanel standing={standing} />
       </PageHeader>
+
+      <p className="mt-3 text-sm text-ink-muted">
+        Wondering what a rule says? <Link href="/contract" className="text-accent underline-offset-2 hover:underline">Ask the contract</Link>.
+      </p>
 
       <NotamStrip className="mt-4" headline={<>Not FedEx&rsquo;s rules, and not a sure thing &mdash; check with your PSIT bid rep.</>}>
         These moves are read from your bid pack&rsquo;s own numbers &mdash; the seniority list, line counts, reserve guarantee and

@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import {
   BookIcon,
   BuildingIcon,
+  ContractIcon,
   GlobeIcon,
   MailIcon,
   SlidersIcon,
@@ -22,7 +23,8 @@ export type NavTarget =
   | "hotel-ratings"
   | "cities"
   | "logbook"
-  | "tools";
+  | "tools"
+  | "contract";
 
 export interface NavItem {
   target: NavTarget;
@@ -42,6 +44,7 @@ export const NAV_ITEMS: NavItem[] = [
   { target: "cities", label: "Cities", tabLabel: "Cities", section: "flying", icon: GlobeIcon },
   { target: "logbook", label: "Logbook", tabLabel: "Logbook", section: "flying", icon: BookIcon },
   { target: "tools", label: "Tools", tabLabel: "Tools", section: "flying", icon: ToolboxIcon },
+  { target: "contract", label: "Ask the Contract", tabLabel: "Contract", section: "flying", icon: ContractIcon },
   { target: "trade-board", label: "Trade Board", tabLabel: "Trades", section: "crew", icon: SwapIcon },
   { target: "inbox", label: "Inbox", tabLabel: "Inbox", section: "crew", icon: MailIcon },
   { target: "hotel-ratings", label: "Hotel Ratings", tabLabel: "Hotels", section: "crew", icon: BuildingIcon },

@@ -113,10 +113,10 @@ export default function PrivacyPage() {
 
         <Section title="3. The AI features use a third-party provider">
           <p>
-            These features use Anthropic&rsquo;s Claude API: the interview, Ask your pack, reading the reason you
+            These features use Anthropic&rsquo;s Claude API: the interview, Ask your pack, Ask the contract, reading the reason you
             type for swapping or correcting lines, and the plain-language summaries on the Hotel Ratings page.
             Each one sends Anthropic only what that turn needs: your interview answers and relevant bid pack
-            context (for the interview); your question and a short summary of the pack (for Ask your pack); what
+            context (for the interview); your question and a short summary of the pack (for Ask your pack); your question and, if it names a line, that line&rsquo;s figures and carry-in conflicts (for Ask the contract); what
             you typed, the lines involved and your list of priorities (for a reason); or a hotel&rsquo;s public
             review text (for hotel summaries). We do not attach your name, email, or account identity to these
             requests, though anything you type goes as you wrote it. Anthropic processes this data under its own
