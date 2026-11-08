@@ -2,10 +2,11 @@ import { DateTime } from "luxon";
 import type { BidClose } from "@/lib/bid-calendar";
 import type { BidForecast } from "@/lib/forecast/forecast";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
+import type { PhaseInElections } from "@/lib/phase-in";
 import type { RankedReserveLine } from "@/lib/reserve-rank";
 import type { LineScore } from "@/lib/scoring";
 import { computeStanding, type Band } from "@/lib/strategy-engine";
-import { ANY_LINE_CODES, type AnyLineKind, type VipsBidAnswers } from "@/lib/vips-bid";
+import { ANY_LINE_CODES, type AnyLineKind, type VipsBidAnswers, type VipsBidDraft } from "@/lib/vips-bid";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { SeniorityInput } from "@/types/strategy";
 
@@ -49,6 +50,9 @@ export interface PresendInput {
   reserveLinesAdded: boolean;
   close: BidClose | null;
   now: Date;
+  /** The answers so far, and what the rankings were scored with when the pilot has a carry-in. */
+  answers?: VipsBidDraft;
+  carryInElections?: PhaseInElections | null;
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -198,7 +202,7 @@ export function meetsDaysOffBlocks(blocks: number[], threes: number): boolean {
  * Published lines are built to these limits, so one failing means the pack was misread or isn't a normal one — worth a
  * look at the PDF, not a legality verdict. The contract text holds no monthly block-hour cap and no number for
  * "minimum days off" (25.F.7 uses the term without defining it), so neither is checked; both wait on the ex-pilot.
- * Protection after a carry-in needs the carry-in itself (`phase-in.ts`).
+ * Protection after a carry-in is `recommendVipsAnswers`'s to weigh (`phase-in.ts`).
  */
 function constructionCheck({ bidPack, lineNumbers }: PresendInput): PresendCheck | null {
   const limits = LINE_LIMITS[bidPack.bidPeriodDays];
@@ -287,10 +291,28 @@ function orderChecks({ lineScores, leftOut }: PresendInput): PresendCheck[] {
     out.push({
       id: "left-out",
       level: "warn",
-      message: `${leftOut} ${leftOut === 1 ? "line" : "lines"} in the pack ${leftOut === 1 ? "isn't" : "aren't"} in this order (hidden or filtered out) and won't be bid.`,
+      message: `${leftOut} ${leftOut === 1 ? "line" : "lines"} in the pack ${leftOut === 1 ? "is" : "are"} left out of this order and won't be bid.`,
     });
   }
   return out;
+}
+
+const ELECTION_NAMES: Record<keyof PhaseInElections, string> = {
+  waiveBufferPhaseIn: "the international buffer waiver",
+  waive1in10: "the 1-in-10 waiver",
+  protectMinDays: "minimum days off protection",
+};
+
+/** A carry-in's lines are scored as they'd fly under the elections on My Rankings; a different answer here means the order was ranked for a month the bid won't produce. */
+function answersDifferCheck({ answers, carryInElections }: PresendInput): PresendCheck | null {
+  if (!answers || !carryInElections) return null;
+  const differ = (Object.keys(ELECTION_NAMES) as (keyof PhaseInElections)[]).filter((k) => answers[k] !== null && answers[k] !== carryInElections[k]);
+  if (!differ.length) return null;
+  return {
+    id: "answers-differ",
+    level: "warn",
+    message: `Your rankings assumed a different answer on ${differ.map((k) => ELECTION_NAMES[k]).join(" and ")} than you've given here. What you send here is what counts, so match them on My Rankings to see your lines as they'd really fly.`,
+  };
 }
 
 const LEVEL_ORDER: Record<CheckLevel, number> = { stop: 0, warn: 1, info: 2 };
@@ -302,6 +324,7 @@ export function runPresendChecks(input: PresendInput): PresendCheck[] {
     seniorityMismatchCheck(input),
     runOutCheck(input),
     catchAllCheck(input),
+    answersDifferCheck(input),
     ...orderChecks(input),
     constructionCheck(input),
   ].filter((c): c is PresendCheck => c !== null);
@@ -337,7 +360,7 @@ function linesWithInternationalNearStart(bidPack: BidPack, lineNumbers: string[]
 
 /**
  * One line on each of VIPS's questions (CBA 2026 25.E.1.a, c, d; 25.F.7). What to answer depends on the pilot's carry-in,
- * so these explain rather than advise until `recommendVipsAnswers` (phase-in.ts) can say which is better for them. From
+ * so these explain, and `recommendVipsAnswers` (phase-in.ts) advises when the pilot asks. From
  * the December 2026 bid period, 25.E.1.a makes the days-off waivers "all-in-one", which the dialog already warns of.
  */
 export function vipsQuestionNotes(bidPack: BidPack, lineNumbers: string[]): Record<keyof VipsBidAnswers, VipsQuestionNote> {

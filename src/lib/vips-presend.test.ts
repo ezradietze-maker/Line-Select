@@ -257,7 +257,7 @@ describe("order sanity", () => {
   });
 
   it("keeps the warning about lines left out", () => {
-    expect(byId(runPresendChecks(input(packWith(20), { leftOut: 3 })), "left-out")!.message).toContain("3 lines");
+    expect(byId(runPresendChecks(input(packWith(20), { leftOut: 3 })), "left-out")!.message).toBe("3 lines in the pack are left out of this order and won't be bid.");
   });
 
   it("orders stops before warnings before notes", () => {
@@ -265,6 +265,24 @@ describe("order sanity", () => {
     const levels = runPresendChecks(input(pack, { leftOut: 1 })).map((c) => c.level);
     expect(levels).toEqual([...levels].sort((a, b) => ["stop", "warn", "info"].indexOf(a) - ["stop", "warn", "info"].indexOf(b)));
     expect(levels[0]).toBe("stop");
+  });
+});
+
+describe("answers against the rankings' carry-in", () => {
+  const elections = { waiveBufferPhaseIn: true, waive1in10: false, protectMinDays: false };
+  const answers = { waiveBufferRecurrent: null, waiveBufferPhaseIn: false, waive1in10: false, protectMinDays: null };
+
+  it("warns when an answer differs from what the rankings assumed", () => {
+    const check = byId(runPresendChecks(input(packWith(20), { answers, carryInElections: elections })), "answers-differ")!;
+    expect(check.level).toBe("warn");
+    expect(check.message).toContain("international buffer waiver");
+    expect(check.message).not.toContain("1-in-10");
+  });
+
+  it("says nothing with no carry-in, a matching answer, or a question not answered yet", () => {
+    expect(byId(runPresendChecks(input(packWith(20), { answers, carryInElections: null })), "answers-differ")).toBeUndefined();
+    expect(byId(runPresendChecks(input(packWith(20), { answers: { ...answers, waiveBufferPhaseIn: true }, carryInElections: elections })), "answers-differ")).toBeUndefined();
+    expect(byId(runPresendChecks(input(packWith(20), { answers: { ...answers, waiveBufferPhaseIn: null }, carryInElections: elections })), "answers-differ")).toBeUndefined();
   });
 });
 

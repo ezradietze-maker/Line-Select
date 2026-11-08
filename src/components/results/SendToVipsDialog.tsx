@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { useAppState } from "@/lib/app-state";
 import { effectiveBidClose } from "@/lib/bid-calendar";
+import { loadCarryIn } from "@/lib/carry-in-storage";
 import { forecastBid, type BidForecast } from "@/lib/forecast/forecast";
+import { recommendVipsAnswers, type VipsRecommendation } from "@/lib/phase-in";
 import { RESERVE_TYPE_LABEL, rankReserveLines } from "@/lib/reserve-rank";
 import type { LineScore } from "@/lib/scoring";
 import { deriveSeniorityInput } from "@/lib/seniority-derive";
@@ -92,7 +94,7 @@ export function SendToVipsDialog({
   presend: PresendContext;
   onClose: () => void;
 }) {
-  const { seniority: savedSeniority } = useAppState();
+  const { seniority: savedSeniority, user } = useAppState();
   const [employee, setEmployee] = useState(() => getVipsEmployeeNumber() ?? "");
   const [employeeError, setEmployeeError] = useState<string | undefined>();
   const [answers, setAnswers] = useState<VipsBidDraft>(getVipsAnswers);
@@ -101,6 +103,8 @@ export function SendToVipsDialog({
   const [sendAnyway, setSendAnyway] = useState(false);
   const [sent, setSent] = useState(false);
   const [openedAt] = useState(() => new Date());
+  /** Asked for by a tap: it scores the whole pack both ways for each waiver. */
+  const [advice, setAdvice] = useState<VipsRecommendation[] | null>(null);
 
   const { bidPack, profile, rankedForecast, rankedIds } = presend;
   const reserveLines = useMemo(() => rankReserveLines(bidPack, { model: profile.pilotModel, isCommuter: profile.isCommuter }), [bidPack, profile.pilotModel, profile.isCommuter]);
@@ -110,6 +114,7 @@ export function SendToVipsDialog({
     if (rankedForecast && ids.join() === rankedIds.join()) return rankedForecast;
     return profile.seniorityNumber ? forecastBid({ bidPack, seniorityNumber: profile.seniorityNumber, myRanking: ids, simulations: 200 }) : null;
   }, [lineScores, rankedForecast, rankedIds, bidPack, profile.seniorityNumber]);
+  const carryIn = useMemo(() => loadCarryIn(user?.id ?? null, bidPack.id), [user?.id, bidPack.id]);
   const checks = useMemo(
     () =>
       runPresendChecks({
@@ -124,8 +129,10 @@ export function SendToVipsDialog({
         reserveLinesAdded: reserveAdded,
         close: effectiveBidClose(bidPack),
         now: openedAt,
+        answers,
+        carryInElections: carryIn.items.length ? carryIn.elections : null,
       }),
-    [bidPack, lineNumbers, leftOut, lineScores, profile, savedSeniority, forecast, reserveLines, anyLines, reserveAdded, openedAt]
+    [bidPack, lineNumbers, leftOut, lineScores, profile, savedSeniority, forecast, reserveLines, anyLines, reserveAdded, openedAt, answers, carryIn]
   );
   const stopped = checks.some((c) => c.level === "stop");
   const notes = useMemo(() => vipsQuestionNotes(bidPack, lineNumbers), [bidPack, lineNumbers]);
@@ -273,7 +280,17 @@ export function SendToVipsDialog({
             Answer each one &mdash; nothing is picked for you. The 2026 contract changes these questions from the
             December 2026 bid, so if VIPS shows different ones, answer them there before you submit.
           </p>
-          {VIPS_QUESTIONS.map((q) => (
+          <button
+            type="button"
+            onClick={() => setAdvice(recommendVipsAnswers({ pack: bidPack, order: lineNumbers, carryIn: carryIn.items, model: profile.pilotModel }))}
+            className="text-xs font-medium text-brand underline underline-offset-2"
+            data-vips-advice
+          >
+            What should I answer for this order?
+          </button>
+          {VIPS_QUESTIONS.map((q) => {
+            const advised = advice?.find((a) => a.key === q.key);
+            return (
             <div key={q.key} role="radiogroup" aria-label={q.text} className="flex items-start justify-between gap-4">
               <span className="text-xs leading-relaxed text-ink-muted">
                 {q.text}
@@ -281,6 +298,11 @@ export function SendToVipsDialog({
                   {notes[q.key].meaning}
                   {notes[q.key].forThisOrder ? ` ${notes[q.key].forThisOrder}` : ""}
                 </span>
+                {advised && (
+                  <span className="mt-0.5 block text-ink" data-vips-advised={q.key}>
+                    <span className="font-medium">{advised.answer === null ? "Your call." : advised.answer ? "We'd say Yes." : "We'd say No."}</span> {advised.reason} ({advised.section})
+                  </span>
+                )}
               </span>
               <span className="flex shrink-0 gap-3 pt-0.5">
                 {(["Yes", "No"] as const).map((choice) => (
@@ -299,7 +321,8 @@ export function SendToVipsDialog({
                 ))}
               </span>
             </div>
-          ))}
+            );
+          })}
         </fieldset>
 
         <TextField
