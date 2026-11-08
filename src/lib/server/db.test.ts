@@ -95,6 +95,41 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
     }
   });
 
+  describe("what a pilot holds, for suggesting trades", () => {
+    const meta = { base: "MEM", aircraft: "MD11", seat: "FO", month: "OCT26" };
+    const holding = (packId: string, lineNumber: string | null = "2001") => ({ packId, bidPackMeta: meta, lineNumber, trips: [{ id: "t1", startDayIndex: 3, lock: null }] });
+
+    it("keeps one holding per pilot and pack, a new one replacing the old", async () => {
+      const user = await makeUser("holding");
+      expect(await mod.getTradeHolding(user.id, "p1")).toBeNull();
+      await mod.saveTradeHolding(user.id, holding("p1"));
+      await mod.saveTradeHolding(user.id, holding("p1", null));
+      await mod.saveTradeHolding(user.id, holding("p2"));
+      expect((await mod.getTradeHolding(user.id, "p1"))?.lineNumber).toBeNull();
+      expect((await mod.getTradeHolding(user.id, "p2"))?.lineNumber).toBe("2001");
+      expect((await mod.getTradeHolding(user.id, "p1"))?.bidPackMeta).toEqual(meta);
+      await mod.deleteTradeHolding(user.id, "p1");
+      expect(await mod.getTradeHolding(user.id, "p1")).toBeNull();
+      expect(await mod.getTradeHolding(user.id, "p2")).not.toBeNull();
+    });
+
+    it("includes a pilot in suggestions, and doesn't email them, until they say otherwise", async () => {
+      const user = await makeUser("settings");
+      expect(await mod.getTradeSettings(user.id)).toEqual({ suggestMe: true, emailMatches: false });
+      await mod.saveTradeSettings(user.id, { suggestMe: false, emailMatches: true });
+      expect(await mod.getTradeSettings(user.id)).toEqual({ suggestMe: false, emailMatches: true });
+    });
+
+    it("goes when the account goes", async () => {
+      const user = await makeUser("cascade");
+      await mod.saveTradeHolding(user.id, holding("p1"));
+      await mod.saveTradeSettings(user.id, { suggestMe: false, emailMatches: false });
+      await db.delete(users).where(inArray(users.id, [user.id]));
+      expect(await mod.getTradeHolding(user.id, "p1")).toBeNull();
+      expect(await mod.getTradeSettings(user.id)).toEqual({ suggestMe: true, emailMatches: false });
+    });
+  });
+
   describe("preference profile store", () => {
     it("returns null for a pilot who has never saved a profile", async () => {
       expect(await mod.getPreferenceProfile(randomUUID())).toBeNull();

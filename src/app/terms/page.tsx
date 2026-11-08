@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "November 7, 2026";
+const LAST_UPDATED = "November 8, 2026";
 
 /**
  * A real Terms of Service — not boilerplate copy-pasted from a generator.
@@ -174,6 +174,12 @@ export default function TermsPage() {
             feasible under your contract. We are not a party to any arrangement between pilots
             made through the Service and have no obligation or ability to enforce it, mediate it,
             or guarantee any pilot&rsquo;s identity, seniority, or qualifications.
+          </p>
+          <p className="mt-3">
+            The same goes for trades the Service suggests. A suggestion is an estimate from your saved priorities and what
+            you and other pilots say you hold, and it can be wrong or out of date. It isn&rsquo;t advice to make the trade and
+            doesn&rsquo;t mean FedEx will approve it. A chain of trades can leave you holding a trip you didn&rsquo;t want if
+            another pilot doesn&rsquo;t follow through. Whether to trade, and what you submit to FedEx, is up to you.
           </p>
         </Section>
 

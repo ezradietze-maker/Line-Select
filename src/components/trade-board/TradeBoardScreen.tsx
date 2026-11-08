@@ -12,6 +12,7 @@ import { PaperPlane } from "@/components/ui/PaperPlane";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { TextField } from "@/components/ui/TextField";
+import { HoldingPanel } from "@/components/trade-board/HoldingPanel";
 import { isSamplePack, withExampleOffer } from "@/lib/fake-trade-offers";
 import { sameBidPack } from "@/lib/inbox";
 import {
@@ -227,6 +228,7 @@ export function TradeBoardScreen({
         </InfoBanner>
       )}
       {user && !bidPack && <InfoBanner>Upload your bid pack to post an offer or propose a trade.</InfoBanner>}
+      {user && bidPack && !isSamplePack(bidPack) && <HoldingPanel bidPack={bidPack} />}
 
       {showPostForm && bidPack && (
         <PostOfferForm

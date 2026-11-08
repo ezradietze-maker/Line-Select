@@ -177,7 +177,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="5. If you create an account">
-          <p>Creating an account is optional. You need one for the Trade Board, Inbox, award-history reporting, sharing your ranking with the forecast, and keeping your data across devices (Section 2). If you create one, we store:</p>
+          <p>Creating an account is optional. You need one for the Trade Board, suggested trades, Inbox, award-history reporting, sharing your ranking with the forecast, and keeping your data across devices (Section 2). If you create one, we store:</p>
           <ul className="mt-2 list-disc space-y-1.5 pl-5">
             <li>Your email address and display name, as you provide them;</li>
             <li>
@@ -213,6 +213,16 @@ export default function PrivacyPage() {
             The example offers shown with the sample bid pack are made up in your browser and marked as examples.
             No real pilot is behind them, nothing about them reaches our server, and they never appear with a pack
             you uploaded.
+          </p>
+          <p className="mt-3">
+            <span className="font-medium text-ink">Suggested trades.</span> If you confirm what you hold on the Trade
+            Board, we store those trips, any you&rsquo;ve marked as ones you can&rsquo;t trade, and your choices about
+            suggestions, tied to your account. We compare them and your saved priorities with those of other pilots in
+            the same base, aircraft, seat and month who have also confirmed theirs, to find trades that leave everyone
+            in them better off. There&rsquo;s no separate sign-up: confirming your trips is what includes you. Other
+            pilots on a suggested trade see your name and the trips involved, and can tell the trade would help you.
+            They don&rsquo;t see your priorities or interview answers, or why it helps you. You can turn this off on the
+            Trade Board, or remove what you hold, at any time.
           </p>
         </Section>
 
@@ -385,12 +395,13 @@ export default function PrivacyPage() {
         <Section title="15. Your choices and rights">
           <p>
             &ldquo;Start over&rdquo; on your results page removes your bid pack and saved preferences, from your
-            device and, if you&rsquo;re signed in, from our server. As a guest you can do the same by clearing your
+            device and, if you&rsquo;re signed in, from our server, along with what you&rsquo;ve confirmed you hold in that pack. As a guest you can do the same by clearing your
             browser&rsquo;s site data.
           </p>
           <p className="mt-3">
             You can delete your account at any time by contacting us at the address below. This removes your login
-            and sessions, your stored bid pack and saved preferences, and your Trade Board offers and responses.
+            and sessions, your stored bid pack and saved preferences, what you&rsquo;ve confirmed you hold, and your
+            Trade Board offers and responses.
             Earlier versions of your preferences and any interview draft expire on their own (Section 2). Some
             things remain unless you ask us to remove them: award-history reports, interview summaries and stored
             forecasts stay under the one-way hash in Section 9, which can no longer be matched to anyone once your

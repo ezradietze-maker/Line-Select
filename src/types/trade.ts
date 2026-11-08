@@ -62,3 +62,33 @@ export interface TradeOffer {
    */
   isDemo?: boolean;
 }
+
+/**
+ * Why a pilot can't trade a trip. CBA 2026 25.L.1.h "may not trade, proffer, or drop a trip assigned as VLT, DRF, AVA,
+ * CMU, PDO, PMU, or RSV"; 25.L.1.c a trip scheduled for a check ride; 8.x.b a trip with a deviated deadhead inside 14 days.
+ */
+export type TradeLock = "VLT" | "DRF" | "AVA" | "CMU" | "PDO" | "PMU" | "RSV" | "checkRide" | "deviation";
+
+/** One trip a pilot holds: which trip on which date in their bid pack, and why they can't trade it, if they can't. */
+export interface HeldTrip {
+  id: string;
+  startDayIndex: number;
+  lock: TradeLock | null;
+}
+
+/** What a pilot has confirmed they hold in one bid pack. */
+export interface TradeHolding {
+  packId: string;
+  bidPackMeta: BidPackMetaSnapshot;
+  /** The line these trips started from; null once they no longer came from one line. */
+  lineNumber: string | null;
+  trips: HeldTrip[];
+  confirmedAt: string;
+}
+
+export interface TradeSettings {
+  /** On unless the pilot turns it off: whether they're included when trades are worked out. */
+  suggestMe: boolean;
+  /** Off unless the pilot turns it on: an email when a suggested trade needs their answer. */
+  emailMatches: boolean;
+}

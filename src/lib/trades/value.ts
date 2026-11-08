@@ -17,29 +17,33 @@ function daysOf(t: Trip): number[] {
   return t.startDayIndex === null ? [] : Array.from({ length: t.days }, (_, i) => t.startDayIndex! + i);
 }
 
-/** `line` with `give` taken out and `take` put in, its totals moved by the difference. Neither trip runs past the month (`isTradeable`). */
-export function swappedLine(line: Line, give: Trip, take: Trip, id: string): Line {
-  const trips = [...line.trips.filter((t) => t !== give), take].sort((a, b) => (a.startDayIndex ?? 0) - (b.startDayIndex ?? 0));
+/** `line` with some trips taken out and others put in, its totals moved by the difference. None runs past the month (`isTradeable`). */
+export function lineWithTrips(line: Line, remove: readonly Trip[], add: readonly Trip[], id: string): Line {
+  const trips = [...line.trips.filter((t) => !remove.includes(t)), ...add].sort((a, b) => (a.startDayIndex ?? 0) - (b.startDayIndex ?? 0));
   const held = (ts: Trip[]) => new Set(ts.flatMap(daysOf));
   const before = held(line.trips);
   const after = held(trips);
   const off = new Set(line.gridOffDays ?? []);
   for (const d of before) if (!after.has(d)) off.add(d);
   for (const d of after) off.delete(d);
-  const add = (total: number | undefined, a: number | undefined, b: number | undefined) => (total === undefined ? undefined : total + (a ?? 0) - (b ?? 0));
+  const moved = (read: (t: Trip) => number | undefined) => add.reduce((n, t) => n + (read(t) ?? 0), 0) - remove.reduce((n, t) => n + (read(t) ?? 0), 0);
   return {
     ...line,
     id,
     trips,
     daysOff: line.daysOff + before.size - after.size,
-    totalCreditHours: line.totalCreditHours + take.creditHours - give.creditHours,
-    totalTafbHours: line.totalTafbHours + take.tafbHours - give.tafbHours,
-    totalBlockHours: add(line.totalBlockHours, blockOf(take), blockOf(give)),
-    totalLandings: line.totalLandings + take.landings - give.landings,
-    totalDepartures: line.totalDepartures + take.departures - give.departures,
-    totalDutyPeriods: add(line.totalDutyPeriods, take.dutyPeriods, give.dutyPeriods),
+    totalCreditHours: line.totalCreditHours + moved((t) => t.creditHours),
+    totalTafbHours: line.totalTafbHours + moved((t) => t.tafbHours),
+    ...(line.totalBlockHours === undefined ? {} : { totalBlockHours: line.totalBlockHours + moved(blockOf) }),
+    totalLandings: line.totalLandings + moved((t) => t.landings),
+    totalDepartures: line.totalDepartures + moved((t) => t.departures),
+    ...(line.totalDutyPeriods === undefined ? {} : { totalDutyPeriods: line.totalDutyPeriods + moved((t) => t.dutyPeriods) }),
     ...(line.gridOffDays ? { gridOffDays: [...off].sort((a, b) => a - b) } : {}),
   };
+}
+
+export function swappedLine(line: Line, give: Trip, take: Trip, id: string): Line {
+  return lineWithTrips(line, [give], [take], id);
 }
 
 /** One priority a trade moves, as a pilot would read it. */

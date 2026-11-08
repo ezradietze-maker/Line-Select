@@ -7,6 +7,7 @@ import { checkSession, logout as logoutAccount } from "@/lib/auth";
 import { clearServerBidPack, fetchServerBidPack, fetchServerBidPackMeta, saveServerBidPack } from "@/lib/bidpack-server";
 import { bidPackSavedAt, clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
 import { generateFakeOffer, isSamplePack } from "@/lib/fake-trade-offers";
+import { clearTradeHolding } from "@/lib/trades/holding-client";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import { correctionEvents, isLearnablePack } from "@/lib/learning/corrections";
 import { postCorrections } from "@/lib/learning/learning-client";
@@ -587,6 +588,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   function handleStartOver() {
     clearBidPack(user?.id ?? null);
     if (user) void clearServerBidPack();
+    if (user && bidPack) void clearTradeHolding(bidPack.id);
     clearPendingProfile(user?.id ?? null);
     setInterviewKey((k) => k + 1);
     setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null, freshBidPack: false }));

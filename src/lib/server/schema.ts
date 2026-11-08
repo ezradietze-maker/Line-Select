@@ -14,7 +14,7 @@ import { sql } from "drizzle-orm";
 import type { FeedMonth, FeedOptions } from "@/lib/calendar-feed";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
 import type { InterviewOutcome } from "@/lib/learning/interview-outcome";
-import type { BidPackMetaSnapshot, TripSnapshot } from "@/types/trade";
+import type { BidPackMetaSnapshot, HeldTrip, TripSnapshot } from "@/types/trade";
 import type { PreferenceProfile } from "@/types/preferences";
 
 /**
@@ -97,6 +97,40 @@ export const tradeOffers = pgTable(
   },
   (t) => [index("trade_offers_status_idx").on(t.status)]
 );
+
+/**
+ * What a pilot says they hold in one bid pack, for suggesting trades: confirming it is what puts them in the matching.
+ * The trips are named by their place in that pack (`HeldTrip`), not copied.
+ */
+export const tradeHoldings = pgTable(
+  "trade_holdings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    packId: text("pack_id").notNull(),
+    base: text("base").notNull(),
+    aircraft: text("aircraft").notNull(),
+    seat: text("seat").notNull(),
+    month: text("month").notNull(),
+    /** The line these trips started from; null once the trips no longer came from one line. */
+    lineNumber: text("line_number"),
+    trips: jsonb("trips").notNull().$type<HeldTrip[]>(),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("trade_holdings_user_pack_idx").on(t.userId, t.packId), index("trade_holdings_group_idx").on(t.base, t.aircraft, t.seat, t.month)]
+);
+
+/** Whether a pilot wants trades suggested at all (on unless they turn it off), and whether to be emailed about a match (off unless they turn it on). */
+export const tradePreferences = pgTable("trade_preferences", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  suggestMe: boolean("suggest_me").notNull().default(true),
+  emailMatches: boolean("email_matches").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export function bidPackMetaOf(row: { base: string; aircraft: string; seat: string; month: string }): BidPackMetaSnapshot {
   return { base: row.base, aircraft: row.aircraft, seat: row.seat, month: row.month };

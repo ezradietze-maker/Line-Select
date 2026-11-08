@@ -41,10 +41,15 @@ export function tripSpan(pack: Pick<BidPack, "bidPeriodStart" | "base">, trip: T
  * affected activity"; from the December 2026 bid period (Phase 2), 1 hour.
  */
 export function tradeDeadlineHours(pack: Pick<BidPack, "month">): number {
+  return fromPhase2(pack) ? 1 : 2;
+}
+
+/** Whether this bid period is December 2026 or later, when Phase 2 of the contract starts. */
+export function fromPhase2(pack: Pick<BidPack, "month">): boolean {
   const m = /^([A-Z]{3})(\d{2})$/i.exec(pack.month);
-  if (!m) return 2;
+  if (!m) return false;
   const month = "JANFEBMARAPRMAYJUNJULAUGSEPOCTNOVDEC".indexOf(m[1].toUpperCase()) / 3;
-  return Number(m[2]) * 12 + month >= 26 * 12 + 11 ? 1 : 2;
+  return Number(m[2]) * 12 + month >= 26 * 12 + 11;
 }
 
 /** Whether a trip can change hands at all: placed on a date, inside the bid month, not locked, and before its deadline. */

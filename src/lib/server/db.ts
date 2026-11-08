@@ -13,7 +13,9 @@ import {
   passwordResetTokens,
   preferenceProfiles,
   sessions,
+  tradeHoldings,
   tradeOffers,
+  tradePreferences,
   users,
 } from "@/lib/server/schema";
 import type { AwardHistoryRecord } from "@/types/award-history";
@@ -22,7 +24,7 @@ import type { CandidateVariable } from "@/types/candidate-variable";
 import type { FeedbackSubmission } from "@/types/feedback";
 import type { InterviewCandidateFact } from "@/types/interview-candidate-fact";
 import type { PreferenceProfile } from "@/types/preferences";
-import type { TradeOffer, TradeOfferStatus } from "@/types/trade";
+import type { TradeHolding, TradeOffer, TradeOfferStatus, TradeSettings } from "@/types/trade";
 
 /**
  * Real tables behind Postgres (`schema.ts`/`postgres.ts`) — replaces the old
@@ -472,6 +474,48 @@ export async function saveBidPackRecord(userId: string, packId: string, data: Bu
 export async function deleteBidPackRecord(userId: string): Promise<void> {
   if (!isUuid(userId)) return;
   await db.delete(bidPacks).where(eq(bidPacks.userId, userId));
+}
+
+function holdingOf(row: typeof tradeHoldings.$inferSelect): TradeHolding {
+  return { packId: row.packId, bidPackMeta: bidPackMetaOf(row), lineNumber: row.lineNumber, trips: row.trips, confirmedAt: row.confirmedAt.toISOString() };
+}
+
+/** What a pilot has confirmed they hold in this pack. */
+export async function getTradeHolding(userId: string, packId: string): Promise<TradeHolding | null> {
+  if (!isUuid(userId)) return null;
+  const [row] = await db.select().from(tradeHoldings).where(and(eq(tradeHoldings.userId, userId), eq(tradeHoldings.packId, packId))).limit(1);
+  return row ? holdingOf(row) : null;
+}
+
+export async function saveTradeHolding(userId: string, holding: Omit<TradeHolding, "confirmedAt">): Promise<TradeHolding | null> {
+  if (!isUuid(userId)) return null;
+  const { packId, bidPackMeta, lineNumber, trips } = holding;
+  const now = new Date();
+  const [row] = await db
+    .insert(tradeHoldings)
+    .values({ userId, packId, ...bidPackMeta, lineNumber, trips, confirmedAt: now })
+    .onConflictDoUpdate({ target: [tradeHoldings.userId, tradeHoldings.packId], set: { ...bidPackMeta, lineNumber, trips, confirmedAt: now } })
+    .returning();
+  return holdingOf(row);
+}
+
+export async function deleteTradeHolding(userId: string, packId: string): Promise<void> {
+  if (!isUuid(userId)) return;
+  await db.delete(tradeHoldings).where(and(eq(tradeHoldings.userId, userId), eq(tradeHoldings.packId, packId)));
+}
+
+/** A pilot's trade settings; the defaults until they change one. */
+export async function getTradeSettings(userId: string): Promise<TradeSettings> {
+  const defaults: TradeSettings = { suggestMe: true, emailMatches: false };
+  if (!isUuid(userId)) return defaults;
+  const [row] = await db.select().from(tradePreferences).where(eq(tradePreferences.userId, userId)).limit(1);
+  return row ? { suggestMe: row.suggestMe, emailMatches: row.emailMatches } : defaults;
+}
+
+export async function saveTradeSettings(userId: string, settings: TradeSettings): Promise<void> {
+  if (!isUuid(userId)) return;
+  const now = new Date();
+  await db.insert(tradePreferences).values({ userId, ...settings, updatedAt: now }).onConflictDoUpdate({ target: tradePreferences.userId, set: { ...settings, updatedAt: now } });
 }
 
 /** A pilot's saved profile with when it was last saved — the version a device has to start from to save over it. */
