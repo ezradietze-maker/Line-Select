@@ -2,9 +2,10 @@ import { DateTime } from "luxon";
 import { splitTrip } from "@/lib/bid-month";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { parseOpenTimePaste } from "@/lib/open-time/parse";
-import { dayIndices, flownUnderInternationalRules, flyLine, phaseInRules, reservePeriodSpan, tripSpans, zoneOf, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
+import { carriedDaysOf, dayIndices, flownUnderInternationalRules, flyLine, phaseInRules, reservePeriodSpan, tripSpans, zoneOf, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { tripReportUtc } from "@/lib/trip-anchor";
+import { flyVacationsOnLine } from "@/lib/vacation-lines";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -338,7 +339,10 @@ function comboOrder(a: ViewAddCombo, b: ViewAddCombo): number {
 
 export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
   const { pack, line, carryIn, elections, vacations = [], model } = input;
-  const flown = flyLine(line, pack, carryIn, elections);
+  // The vacation's trips are off the line too (CBA 2026 7.G.1), so they aren't in the way, and its days off count.
+  const carried = flyLine(line, pack, carryIn, elections);
+  const onVacation = flyVacationsOnLine(carried.line, pack, vacations.map((vacation) => ({ vacation, choice: "use" as const })), carriedDaysOf(pack, carryIn));
+  const flown = { ...carried, line: onVacation.line };
   const cia = Math.max(0, input.makeUp?.cia ?? flown.makeUpCH);
   const muv = Math.max(0, input.makeUp?.muv ?? 0);
   const target = cia + muv;

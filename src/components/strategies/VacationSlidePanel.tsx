@@ -7,6 +7,7 @@ import { loadCarryIn } from "@/lib/carry-in-storage";
 import { flyPack, zoneOf } from "@/lib/phase-in";
 import { placeInPack } from "@/lib/strategy-engine";
 import { CH_PER_VACATION_DAY, findVacationSlides, slideWhere, typedVacation, vacationsInReach, type LineSlides, type SlideOption, type VacationSlides } from "@/lib/vacation-slide";
+import { vacationId } from "@/lib/vacation-lines";
 import type { BidPack, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
@@ -128,7 +129,11 @@ function Results({ found, zone }: { found: VacationSlides; zone: string }) {
 /** The best slide of the pilot's own vacation, on their own priorities. Regular lines; it never submits anything. */
 export function VacationSlidePanel({ bidPack, seniority, profile, userId, order }: { bidPack: BidPack; seniority: SeniorityInput; profile: PreferenceProfile | null; userId: string | null; order: string[] }) {
   const zone = zoneOf(bidPack);
-  const fromPack = useMemo(() => vacationsInReach(placeInPack(bidPack, seniority).me?.vacations ?? [], bidPack), [bidPack, seniority]);
+  // A vacation the pilot told My Rankings they aren't taking has nothing to slide.
+  const fromPack = useMemo(() => {
+    const choices = loadCarryIn(userId, bidPack.id).vacationChoices;
+    return vacationsInReach(placeInPack(bidPack, seniority).me?.vacations ?? [], bidPack).filter((v) => choices?.[vacationId(v)] !== "not-taking");
+  }, [bidPack, seniority, userId]);
   const [typed, setTyped] = useState<VacationPeriod[]>([]);
   const [firstDay, setFirstDay] = useState("");
   const [days, setDays] = useState("7");

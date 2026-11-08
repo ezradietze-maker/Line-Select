@@ -1,4 +1,5 @@
 import { NO_ELECTIONS, type CarryInItem, type CarryInTrip, type PhaseInElections } from "@/lib/phase-in";
+import type { VacationChoice } from "@/lib/vacation-lines";
 import type { BidPack } from "@/types/bidpack";
 import type { LoggedMonth } from "@/types/logbook";
 
@@ -6,6 +7,8 @@ import type { LoggedMonth } from "@/types/logbook";
 export interface CarryInState {
   items: CarryInItem[];
   elections: PhaseInElections;
+  /** What the pilot wants done with each vacation, by its id; "use" when it isn't here. */
+  vacationChoices?: Record<string, VacationChoice>;
 }
 
 export const NO_CARRY_IN: CarryInState = { items: [], elections: NO_ELECTIONS };
@@ -26,7 +29,7 @@ export function loadCarryIn(userId: string | null, packId: string): CarryInState
   try {
     const stored = JSON.parse(window.localStorage.getItem(key(userId, packId)) ?? "null") as Partial<CarryInState> | null;
     if (!stored || !Array.isArray(stored.items)) return NO_CARRY_IN;
-    return { items: stored.items.filter(isItem), elections: { ...NO_ELECTIONS, ...stored.elections } };
+    return { items: stored.items.filter(isItem), elections: { ...NO_ELECTIONS, ...stored.elections }, ...(stored.vacationChoices ? { vacationChoices: stored.vacationChoices } : {}) };
   } catch {
     return NO_CARRY_IN;
   }
@@ -35,7 +38,7 @@ export function loadCarryIn(userId: string | null, packId: string): CarryInState
 export function saveCarryIn(userId: string | null, packId: string, state: CarryInState): void {
   if (typeof window === "undefined") return;
   try {
-    if (state.items.length) window.localStorage.setItem(key(userId, packId), JSON.stringify(state));
+    if (state.items.length || Object.keys(state.vacationChoices ?? {}).length) window.localStorage.setItem(key(userId, packId), JSON.stringify(state));
     else window.localStorage.removeItem(key(userId, packId));
   } catch {
     // Storage unavailable: it lasts as long as the page.

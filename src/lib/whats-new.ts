@@ -26,6 +26,12 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   },
   {
     date: "2026-11-08",
+    title: "Your vacation now counts in your ranking",
+    body: "If the pack shows a vacation for you this month, every line is scored with the trips it takes off, the days off you get, and what it draws from your bank, with the reason under each line. Rather keep your flying, or not taking it at all? Choose per vacation above your rankings. You need your seniority number in Preferences.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-08",
     title: "See who held what, if pilots choose to share",
     body: "When you log an award you can now choose to show your seniority number beside your line. Once five pilots in a seat have said yes for a month, an opened line shows who held it. Your name never goes with it, and you can withdraw your share from the Logbook any time. Shared awards also check the odds against what really happened.",
     href: "/logbook",

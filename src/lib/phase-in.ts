@@ -595,6 +595,17 @@ function reasonFor(f: Omit<FlownLine, "reason" | "line">): string | null {
   return `${text[0].toUpperCase()}${text.slice(1)}.`;
 }
 
+/** The bid month's days a carry-in is still flying or on reserve. */
+export function carriedDaysOf(pack: Pick<BidPack, "base" | "bidPeriodStart" | "bidPeriodDays">, carryIn: CarryInItem[]): Set<number> {
+  const zone = zoneOf(pack);
+  return new Set(
+    carryIn.flatMap((c) => {
+      const b = carryBlock(c, zone);
+      return b ? dayIndices({ start: b.duties[0].start, end: b.duties[b.duties.length - 1].end }, pack) : [];
+    })
+  );
+}
+
 /** One line of the new month with the carry-in laid over it. */
 export function flyLine(line: Line, pack: BidPack, carryIn: CarryInItem[], elections: PhaseInElections): FlownLine {
   const rules = phaseInRules(pack.month);
@@ -603,7 +614,7 @@ export function flyLine(line: Line, pack: BidPack, carryIn: CarryInItem[], elect
     const b = carryBlock(c, zone);
     return b ? [b] : [];
   });
-  const carriedDays = new Set(carryBlocks.flatMap((b) => dayIndices({ start: b.duties[0].start, end: b.duties[b.duties.length - 1].end }, pack)));
+  const carriedDays = carriedDaysOf(pack, carryIn);
   const longestBefore = longestDaysOffBlock(line);
   const blank = { dropped: [], kept: [], makeUpCH: 0, daysOffBefore: line.daysOff, daysOffAfter: line.daysOff, longestOffBefore: longestBefore, longestOffAfter: longestBefore, minDays: null, advice: [] };
 

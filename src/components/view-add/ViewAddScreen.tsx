@@ -11,6 +11,7 @@ import { eventInstant } from "@/lib/bid-calendar";
 import { loadCarryIn } from "@/lib/carry-in-storage";
 import { buildViewAdd, viewAddCopyText, type ViewAddChoice, type ViewAddPlan } from "@/lib/view-add";
 import { placeInPack } from "@/lib/strategy-engine";
+import { vacationId } from "@/lib/vacation-lines";
 import { vacationsInReach } from "@/lib/vacation-slide";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -176,7 +177,7 @@ function ViewAddBuilder({ bidPack, seniority, profile, userId }: { bidPack: BidP
         makeUp: { cia: number(cia), muv: number(muv) },
         pasted,
         labels,
-        vacations: seniority ? vacationsInReach(placeInPack(bidPack, seniority).me?.vacations ?? [], bidPack) : [],
+        vacations: seniority ? vacationsInReach(placeInPack(bidPack, seniority).me?.vacations ?? [], bidPack).filter((v) => carry.vacationChoices?.[vacationId(v)] !== "not-taking") : [],
         model: profile?.pilotModel,
       })
     );

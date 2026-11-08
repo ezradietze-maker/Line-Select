@@ -30,6 +30,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { CarryInLineNote, CarryInPanel } from "@/components/results/CarryInPanel";
+import { VacationChoicePanel } from "@/components/results/VacationChoicePanel";
 import { LineCard } from "@/components/results/LineCard";
 import { AskPackPanel } from "@/components/results/AskPackPanel";
 import { FirstVisitTour } from "@/components/results/FirstVisitTour";
@@ -83,7 +84,7 @@ import type { ReasonOption } from "@/lib/brain/swap-reason";
 import { shareChanges } from "@/lib/brain/fit-choices";
 import { SwapQuestionCard } from "@/components/results/SwapQuestionCard";
 import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
-import { withPrintedLines } from "@/lib/phase-in";
+import { rankedAsFlown } from "@/lib/vacation-lines";
 import { useCarryIn } from "@/lib/use-carry-in";
 import { SortMenu, SortNote } from "@/components/results/SortMenu";
 import { selectableCardProps, TierBar, TierHeadingRow, TierMoveRow } from "@/components/results/TierBar";
@@ -385,10 +386,10 @@ export function ResultsView({
   // keeps this period's entry current.
   const [previousPeriodSnapshot] = useState(() => loadPreviousPeriodSnapshot(userId, bidPack.month));
 
-  const carry = useCarryIn(bidPack, userId);
+  const carry = useCarryIn(bidPack, userId, profile);
   const scoredLines = useMemo(
-    () => withPrintedLines(rankLines(carry.flown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, carry.flown.pack),
-    [bidPack, carry.flown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
+    () => rankedAsFlown(rankLines(carry.flown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, carry.flown),
+    [bidPack, carry.flown, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
   );
   // Placements for lines that no longer exist never leak in, as with marks.
   const validPlacements = useMemo(() => prunePlacements(placements, new Set(bidPack.lines.map((l) => l.id))), [placements, bidPack]);
@@ -958,6 +959,7 @@ export function ResultsView({
         }}
       />
       <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
+      <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
       <FirstVisitTour ready={hotelsSettled} />
       <WheelsDown />
       <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />
@@ -1282,7 +1284,7 @@ export function ResultsView({
                         openExtra={openIds.has(lineScore.line.id) ? <TierMoveRow tiers={tiers} lineId={lineScore.line.id} /> : null}
                       />
                     </ErrorBoundary>
-                    <CarryInLineNote flown={carry.flown.lines.get(lineScore.line.id)} />
+                    <CarryInLineNote flown={carry.flown.lines.get(lineScore.line.id)} vacation={carry.flown.vacationLines.get(lineScore.line.id)} />
                   </motion.div>
                   </Fragment>
                 ))
