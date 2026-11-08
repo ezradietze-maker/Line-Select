@@ -14,10 +14,12 @@ import { fitWeightsFromRanking, PRIOR_MEAN, PRIOR_SD, type LearnedPrior } from "
  * 2. How far to trust the forecast's own numbers (`fitCalibration`). When a
  *    pilot reports the line they were actually awarded, the forecast made
  *    for them that month can be checked: every line they ranked above their
- *    award was gone by their turn, and the awarded one was there. Across many
- *    pilots, "the forecast said 70%" can be compared with how often those
- *    lines really were still open — and corrected when it's been too
- *    optimistic or too cautious.
+ *    award was gone by their turn, and the awarded one was there. A shared
+ *    award also checks every other pilot's forecast for that pack: its line
+ *    was open for anyone ahead of its holder and gone for anyone behind.
+ *    Across many pilots, "the forecast said 70%" can be compared with how
+ *    often those lines really were still open — and corrected when it's been
+ *    too optimistic or too cautious.
  */
 
 /** A group of seats the forecast learns for: the whole fleet, one seat, or one base/aircraft/seat. */
@@ -104,6 +106,8 @@ export function resolveForecastPrior(model: ForecastPriorModel, base: string, ai
 export interface StoredPrediction {
   ranking: number[];
   pAvailable: number[];
+  /** The pilot's place in bid order — what other pilots' awards are checked against. */
+  bidNumber?: number;
 }
 
 /** What the pilot actually got. `lineIndex` is the awarded line's index in the same pack, or null when it wasn't a regular line. */
@@ -134,6 +138,33 @@ export function pairsFromAward(prediction: StoredPrediction, award: ReportedAwar
   const pairs: CalibrationPair[] = [];
   for (let i = 0; i < goneThrough; i++) pairs.push({ p: pAvailable[i], y: 0 });
   if (at >= 0) pairs.push({ p: pAvailable[at], y: 1 });
+  return pairs.filter((x) => Number.isFinite(x.p));
+}
+
+/** Another pilot's award in the same pack: which line, and their place in bid order. */
+export interface SharedHolder {
+  lineIndex: number;
+  bidPosition: number;
+  id?: string;
+}
+
+/**
+ * What other pilots' awards say about one forecast. A line is taken at its holder's turn and not before, so it was
+ * open for anyone ahead of them and gone for anyone behind. Skips any line the pilot's own award already settles, and
+ * the pilot's own place on the list (that award is their own).
+ */
+export function pairsFromHolders(prediction: StoredPrediction, holders: SharedHolder[], ownAward: ReportedAward | null = null): CalibrationPair[] {
+  const { ranking, pAvailable, bidNumber } = prediction;
+  if (bidNumber === undefined || (ownAward && ownAward.outcome === "reserve")) return [];
+  const at = ownAward?.outcome === "line" && ownAward.lineIndex !== null ? ranking.indexOf(ownAward.lineIndex) : -1;
+  const settledThrough = ownAward && ownAward.outcome === "line" ? (at === -1 ? ranking.length : at + 1) : 0;
+  const pairs: CalibrationPair[] = [];
+  for (const h of holders) {
+    if (h.bidPosition === bidNumber) continue;
+    const i = ranking.indexOf(h.lineIndex);
+    if (i === -1 || i < settledThrough) continue;
+    pairs.push({ p: pAvailable[i], y: bidNumber < h.bidPosition ? 1 : 0 });
+  }
   return pairs.filter((x) => Number.isFinite(x.p));
 }
 
@@ -209,4 +240,35 @@ export function applyCalibration(cal: Calibration | null | undefined, p: number)
 export function brierScore(pairs: CalibrationPair[], cal?: Calibration | null): number {
   if (pairs.length === 0) return NaN;
   return pairs.reduce((s, x) => s + (applyCalibration(cal, x.p) - x.y) ** 2, 0) / pairs.length;
+}
+
+/** One row of "what we said against what happened". */
+export interface ReliabilityBin {
+  from: number;
+  to: number;
+  n: number;
+  /** The forecast's average number in this bin. */
+  said: number;
+  /** How often those lines really were still open. */
+  happened: number;
+}
+
+/** The forecast's numbers against what happened, in fixed bins; empty bins are left out. A well-calibrated forecast has `said` close to `happened` in every row. */
+export function reliabilityTable(pairs: CalibrationPair[], cal?: Calibration | null, bins = 10): ReliabilityBin[] {
+  const rows = Array.from({ length: bins }, (_, i) => ({ from: i / bins, to: (i + 1) / bins, n: 0, said: 0, happened: 0 }));
+  for (const x of pairs) {
+    const p = applyCalibration(cal, x.p);
+    const row = rows[Math.min(bins - 1, Math.floor(p * bins))];
+    row.n++;
+    row.said += p;
+    row.happened += x.y;
+  }
+  return rows.filter((r) => r.n > 0).map((r) => ({ ...r, said: r.said / r.n, happened: r.happened / r.n }));
+}
+
+/** The Brier score of always saying the overall rate: what a forecast must beat to be telling anyone anything. */
+export function baselineBrier(pairs: CalibrationPair[]): number {
+  if (pairs.length === 0) return NaN;
+  const rate = pairs.reduce((s, x) => s + x.y, 0) / pairs.length;
+  return rate * (1 - rate);
 }

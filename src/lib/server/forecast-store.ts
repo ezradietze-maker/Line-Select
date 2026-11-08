@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { and, count, eq } from "drizzle-orm";
 import { decodeRanking, encodeRanking } from "@/lib/forecast/ranking-codec";
 import type { KnownRanking } from "@/lib/forecast/simulate";
+import { hashUser } from "@/lib/server/pilot-hash";
 import { db } from "@/lib/server/postgres";
 import { forecastRankings } from "@/lib/server/schema";
 
@@ -25,9 +25,7 @@ export function blobKey(packKey: string, lineNumbers: string[]): string {
   return `line-select:forecast:${packKey}:${lineNumbers.length}:${lineNumbers[0] ?? ""}-${lineNumbers[lineNumbers.length - 1] ?? ""}`;
 }
 
-export function hashUser(userId: string): string {
-  return createHash("sha256").update(`line-select-forecast:${userId}`).digest("hex").slice(0, 20);
-}
+export { hashUser };
 
 /** Everyone's shared rankings for this pack except the asking pilot's own, as line indices. */
 export async function loadKnownRankings(

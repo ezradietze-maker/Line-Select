@@ -286,4 +286,47 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       await expect(mod.deleteSessionsForUser(garbage)).resolves.toBeUndefined();
     });
   });
+
+  describe("shared awards", () => {
+    const stamp = randomUUID().slice(0, 8);
+    const seat = { base: `T${stamp}`, aircraft: "MD11", seat: "CAP" as const };
+    const packKey = (month: string) => `${month}|${seat.base}|md11|cap`.toLowerCase();
+    const share = (hash: string, month: string, line: string, holderShown: boolean) =>
+      mod.createAwardHistoryRecord(
+        { id: randomUUID(), ...seat, month, seniorityRank: 5, seniorityTotalPilots: 100, outcome: "line", lineNumber: line, daysOff: 15, totalCreditHours: 70, totalTafbHours: 200, submittedAt: new Date().toISOString() },
+        { pilotHash: hash, packKey: packKey(month), holderShown }
+      );
+
+    it("stores the answer, replaces a corrected report, and withdraws by hash", async () => {
+      const [a, b] = [`a-${stamp}`, `b-${stamp}`];
+      await share(a, "OCT26", "1", true);
+      await share(a, "OCT26", "2", false);
+      await share(a, "NOV26", "3", true);
+      await share(b, "OCT26", "4", true);
+
+      const oct = await mod.listAwardRowsForPack(packKey("OCT26"));
+      expect(oct.map((r) => r.lineNumber).sort()).toEqual(["2", "4"]);
+      expect(oct.find((r) => r.lineNumber === "2")?.holderShown).toBe(false);
+      expect(Object.keys(oct[0])).not.toContain("id");
+      expect(await mod.listAwardRowsForSeat(seat)).toHaveLength(3);
+
+      expect(await mod.deleteAwardShares(a, packKey("OCT26"))).toBe(1);
+      expect(await mod.listAwardRowsForSeat(seat)).toHaveLength(2);
+      expect(await mod.deleteAwardShares(a)).toBe(1);
+      expect(await mod.deleteAwardShares(a)).toBe(0);
+      expect((await mod.listAwardRowsForSeat(seat)).map((r) => r.lineNumber)).toEqual(["4"]);
+      expect(await mod.deleteAwardShares(b)).toBe(1);
+    });
+
+    it("counts recent pilots with a real pack of this seat, and no other", async () => {
+      const prefix = `uploaded-t${stamp}-md11-cap-`;
+      const u1 = await makeUser("bar1");
+      const u2 = await makeUser("bar2");
+      await mod.saveBidPackRecord(u1.id, `${prefix}oct26`, Buffer.from("x"));
+      await mod.saveBidPackRecord(u2.id, `uploaded-t${stamp}-md11-fo-oct26`, Buffer.from("x"));
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      expect(await mod.countRecentPilotsWithPack(prefix, weekAgo)).toBe(1);
+      expect(await mod.countRecentPilotsWithPack(prefix, new Date(Date.now() + 60_000))).toBe(0);
+    });
+  });
 });

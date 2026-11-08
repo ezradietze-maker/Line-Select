@@ -12,11 +12,12 @@ import { PaperPlane } from "@/components/ui/PaperPlane";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { TextField } from "@/components/ui/TextField";
-import { withExampleOffer } from "@/lib/fake-trade-offers";
+import { isSamplePack, withExampleOffer } from "@/lib/fake-trade-offers";
 import { sameBidPack } from "@/lib/inbox";
 import {
   acceptOffer,
   declineOffer,
+  fetchTradeBoardOpen,
   fetchTradeOffers,
   postTradeOffer,
   respondToOffer,
@@ -132,6 +133,22 @@ export function TradeBoardScreen({
     }
   }, [polledOffers]);
 
+  // A real pack's board stays hidden until its seat has enough pilots (`lib/server/trade-board-bar.ts`). The sample pack
+  // is the demo, and with no pack there's no seat to ask about.
+  const barSeat = signedIn && bidPack && !isSamplePack(bidPack) ? `${bidPack.base}|${bidPack.aircraft}|${bidPack.seat}` : null;
+  const [barAnswer, setBarAnswer] = useState<{ seat: string; open: boolean } | null>(null);
+  useEffect(() => {
+    if (!barSeat) return;
+    let cancelled = false;
+    const [base, aircraft, seat] = barSeat.split("|");
+    fetchTradeBoardOpen({ base, aircraft, seat }).then((open) => {
+      if (!cancelled) setBarAnswer({ seat: barSeat, open });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [barSeat]);
+
   const realVisibleOffers = bidPack ? offers.filter((o) => sameBidPack(o, bidPack)) : offers;
   const visibleOffers = withExampleOffer(demoOffer, realVisibleOffers, bidPack, user?.id);
   const needsResponse = visibleOffers.filter(
@@ -165,6 +182,22 @@ export function TradeBoardScreen({
     setRespondingTo(null);
     onDone?.();
     await refresh();
+  }
+
+  // Offers a pilot already has in play stay in front of them whatever the bar says.
+  const barKnown = !!barSeat && barAnswer?.seat === barSeat;
+  const barClosed = barKnown && !barAnswer.open && !loading && needsResponse.length === 0 && myActivity.length === 0;
+  if (barSeat && (!barKnown || barClosed)) {
+    return (
+      <div className="mx-auto w-full max-w-3xl">
+        <PageHeader eyebrow={packEyebrow(bidPack)} title="Trade Board" />
+        {barKnown ? (
+          <EmptyState className="mt-8" title="Coming when your seat has enough pilots" description="The board opens for a base, aircraft and seat once enough pilots are using Line Select there, so you'd find real offers on it. Nothing to do until then." />
+        ) : (
+          <SkeletonCards shape="offer" className="mt-8" />
+        )}
+      </div>
+    );
   }
 
   return (

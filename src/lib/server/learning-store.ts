@@ -6,7 +6,9 @@ import type { InterviewOutcome } from "@/lib/learning/interview-outcome";
 import type { BrainOutcome } from "@/lib/learning/brain-learning";
 import type { HoldRecord } from "@/lib/learning/hold-history";
 import { getJson, setJson } from "@/lib/server/kv";
-import type { PackHistory, ReportedAward, StoredPrediction } from "@/lib/learning/forecast-learning";
+import type { CalibrationCase } from "@/lib/learning/fair-test";
+import type { PackHistory, ReportedAward } from "@/lib/learning/forecast-learning";
+import { trustedHolders } from "@/lib/server/award-aggregate";
 import { bidPercentile } from "@/lib/learning/cohort";
 import { db } from "@/lib/server/postgres";
 import {
@@ -280,14 +282,16 @@ export async function loadPackHistories(): Promise<PackHistory[]> {
     }));
 }
 
-export interface DatedCalibrationCase {
+export interface DatedCalibrationCase extends CalibrationCase {
   at: Date;
   seat: string;
-  prediction: StoredPrediction;
-  award: ReportedAward;
 }
 
-/** Every forecast that has a reported award to check it against: same pilot, same pack. */
+/**
+ * Every shared forecast with a real result to check it against: the pilot's own award, and other pilots' awards in the
+ * same pack, from those who agreed to show them (their place on the list is exact; any other report's may not be).
+ * Oldest pack first, a pack's forecasts together. A withdrawn share is simply no longer here at the next refit.
+ */
 export async function loadCalibrationCases(): Promise<DatedCalibrationCase[]> {
   const awards = await db
     .select()
@@ -299,28 +303,49 @@ export async function loadCalibrationCases(): Promise<DatedCalibrationCase[]> {
   const predictions = await db
     .select()
     .from(forecastPredictions)
-    .where(inArray(forecastPredictions.pilotHash, [...new Set(awards.map((a) => a.pilotHash!))]));
+    .where(inArray(forecastPredictions.packKey, [...new Set(awards.map((a) => a.packKey!))]));
+  if (predictions.length === 0) return [];
   const blobs = await db
     .select({ blobKey: packFeatures.blobKey, lineNumbers: packFeatures.lineNumbers })
     .from(packFeatures)
     .where(inArray(packFeatures.blobKey, [...new Set(predictions.map((p) => p.blobKey))]));
-  const linesByBlob = new Map(blobs.map((b) => [b.blobKey, b.lineNumbers] as const));
-  const predictionFor = new Map(predictions.map((p) => [`${p.pilotHash}|${p.packKey}`, p] as const));
+  return calibrationCasesFrom(awards, predictions, new Map(blobs.map((b) => [b.blobKey, b.lineNumbers] as const)));
+}
 
+type StoredAward = Pick<typeof awardHistoryRecords.$inferSelect, "id" | "pilotHash" | "packKey" | "seat" | "outcome" | "lineNumber" | "seniorityRank" | "holderShown" | "submittedAt">;
+type StoredForecast = Pick<typeof forecastPredictions.$inferSelect, "pilotHash" | "blobKey" | "packKey" | "bidNumber" | "ranking" | "pAvailable">;
+
+/** Puts each forecast next to the awards that check it. The hashes are only for matching: none reaches a case. */
+export function calibrationCasesFrom(awards: StoredAward[], predictions: StoredForecast[], linesByBlob: Map<string, string[]>): DatedCalibrationCase[] {
+  const byPack = new Map<string, StoredAward[]>();
+  for (const a of awards) byPack.set(a.packKey!, [...(byPack.get(a.packKey!) ?? []), a]);
   const cases: DatedCalibrationCase[] = [];
-  for (const a of awards) {
-    const p = predictionFor.get(`${a.pilotHash}|${a.packKey}`);
-    if (!p) continue;
+  const onePerPilot = new Map(predictions.map((p) => [`${p.pilotHash}|${p.packKey}`, p] as const));
+  for (const p of onePerPilot.values()) {
+    const packAwards = byPack.get(p.packKey);
     const lines = linesByBlob.get(p.blobKey);
-    const lineIndex = a.lineNumber && lines ? lines.indexOf(a.lineNumber) : -1;
+    if (!packAwards) continue;
+    const indexOf = (lineNumber: string | null) => (lineNumber && lines ? lines.indexOf(lineNumber) : -1);
+    const own = packAwards.find((a) => a.pilotHash === p.pilotHash) ?? null;
+    const holders = trustedHolders(packAwards)
+      .filter((a) => a.pilotHash !== p.pilotHash && indexOf(a.lineNumber) >= 0)
+      .map((a) => ({ lineIndex: indexOf(a.lineNumber), bidPosition: a.seniorityRank, id: a.id }));
+    if (!own && holders.length === 0) continue;
+    const ownIndex = indexOf(own?.lineNumber ?? null);
     cases.push({
-      at: a.submittedAt,
-      seat: a.seat,
-      prediction: { ranking: p.ranking, pAvailable: p.pAvailable },
-      award: { outcome: a.outcome as ReportedAward["outcome"], lineIndex: lineIndex >= 0 ? lineIndex : null },
+      at: own?.submittedAt ?? packAwards.reduce((latest, a) => (a.submittedAt > latest ? a.submittedAt : latest), packAwards[0].submittedAt),
+      seat: packAwards[0].seat,
+      packKey: p.packKey,
+      awardId: own?.id,
+      prediction: { ranking: p.ranking, pAvailable: p.pAvailable, bidNumber: p.bidNumber },
+      award: own ? { outcome: own.outcome as ReportedAward["outcome"], lineIndex: ownIndex >= 0 ? ownIndex : null } : null,
+      holders,
     });
   }
-  return cases.reverse();
+  // Oldest first by pack, so the fair test holds back the newest packs whole.
+  const packStart = new Map<string, number>();
+  for (const c of cases) packStart.set(c.packKey!, Math.min(packStart.get(c.packKey!) ?? Infinity, c.at.getTime()));
+  return cases.sort((a, b) => packStart.get(a.packKey!)! - packStart.get(b.packKey!)! || a.packKey!.localeCompare(b.packKey!) || a.at.getTime() - b.at.getTime());
 }
 
 // ---------------------------------------------------------------------------

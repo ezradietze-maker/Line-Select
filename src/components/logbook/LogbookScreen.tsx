@@ -7,11 +7,11 @@ import { NumberTicker } from "@/components/ui/NumberTicker";
 import { NightGlobe } from "@/components/welcome/NightGlobe";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { CalendarSubscribe } from "@/components/results/CalendarSubscribe";
-import { submitAwardHistory } from "@/lib/award-history";
+import { MIN_SHARED_PILOTS, ownListEntry, submitAwardHistory, withdrawAwardShares } from "@/lib/award-history";
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { cityName } from "@/lib/city-names";
 import { rankingAsShown } from "@/lib/ranking-as-shown";
-import { checkInShare, logbookStats, loggedMonthFrom, withCheckIn, withLoggedMonth, withoutLoggedMonth } from "@/lib/logbook";
+import { checkInShare, logbookStats, loggedMonthFrom, withCheckIn, withLoggedMonth, withoutLoggedMonth, withoutShares } from "@/lib/logbook";
 import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { hm as hmMinutes } from "@/lib/trip-day-stats";
 import type { UserAccount } from "@/types/auth";
@@ -38,7 +38,7 @@ interface LogbookScreenProps {
 
 /**
  * The pilot's logbook: each month's award, logged once it's out, and how the month flew — adding up over time to what
- * they've held, where they've been and how their seniority has moved. Shared, only if they say so, anonymously.
+ * they've held, where they've been and how their seniority has moved. Shared only if they say so, never with a name.
  */
 export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfile }: LogbookScreenProps) {
   const entries = useMemo(() => profile?.logbook ?? [], [profile?.logbook]);
@@ -76,7 +76,18 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
 
       {bidPack && profile && <CalendarSubscribe />}
 
-      <WhySharing />
+      <WhySharing
+        canWithdraw={!!user}
+        onWithdrawAll={async () => {
+          const r = await withdrawAwardShares();
+          if (!r.ok) {
+            setNotice(`Nothing withdrawn: ${r.error}`);
+            return;
+          }
+          if (profile) onUpdateProfile(withoutShares(profile));
+          setNotice(r.removed ? `Withdrawn: ${r.removed} shared ${r.removed === 1 ? "award" : "awards"} removed. Your logbook stays as it was.` : "You have nothing shared.");
+        }}
+      />
 
       {entries.length > 0 && <Stats stats={stats} base={bidPack?.base ?? entries[0].base} />}
 
@@ -101,6 +112,18 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
                     if (share) void submitAwardHistory(share).then((r) => !r.ok && setNotice(`Saved here, but not shared: ${r.error}`));
                   }}
                   onDelete={() => profile && onUpdateProfile(withoutLoggedMonth(profile, m.id))}
+                  onWithdraw={
+                    user && m.sharedAt
+                      ? async () => {
+                          const r = await withdrawAwardShares({ base: m.base, aircraft: m.aircraft, seat: m.seat, month: m.month });
+                          if (!r.ok) setNotice(`Still shared: ${r.error}`);
+                          else {
+                            if (profile) onUpdateProfile(withoutShares(profile, m.id));
+                            setNotice(`Your ${m.month} share is withdrawn. The month stays in your logbook.`);
+                          }
+                        }
+                      : undefined
+                  }
                 />
               </li>
             ))}
@@ -140,10 +163,14 @@ function LogAward({
   }, [bidPack, profile, shown, user]);
   const [outcome, setOutcome] = useState<LoggedMonth["outcome"]>(existing?.outcome ?? "line");
   const [lineId, setLineId] = useState(() => bidPack.lines.find((l) => l.lineNumber === existing?.lineNumber)?.id ?? ranked[0]?.id ?? "");
+  // Only an exact place on the pack's list can be shown as "held by seniority #N".
+  const ownEntry = ownListEntry(bidPack, profile.seniorityNumber);
+  const placeIsExact = !!ownEntry && ownEntry.bidNumber === seniority?.rank;
   // Off until the pilot ticks it (shared only when they say so); on when correcting an award they shared, so the
-  // correction replaces what was shared.
-  const [share, setShare] = useState(!!user && !!seniority && !!existing?.sharedAt);
+  // correction replaces what was shared. A month shared before this showed a seniority number asks again.
+  const [share, setShare] = useState(!!user && !!seniority && !!existing?.sharedAt && (!placeIsExact || existing.outcome !== "line" || !!existing.holderShown));
   const [saving, setSaving] = useState(false);
+  const canShowHolder = placeIsExact && outcome === "line";
 
   async function save() {
     setSaving(true);
@@ -151,7 +178,13 @@ function LogAward({
     const line = outcome === "line" ? (bidPack.lines.find((l) => l.id === lineId) ?? null) : null;
     const rank = line ? ranked.findIndex((l) => l.id === line.id) : -1;
     // A corrected award keeps the month's check-in and its shared mark.
-    let entry = { ...loggedMonthFrom(bidPack, outcome, line, { rankedAt: rank >= 0 ? rank + 1 : null, seniority }), checkIn: existing?.checkIn, sharedAt: existing?.sharedAt };
+    let entry: LoggedMonth = { ...loggedMonthFrom(bidPack, outcome, line, { rankedAt: rank >= 0 ? rank + 1 : null, seniority }), checkIn: existing?.checkIn, sharedAt: existing?.sharedAt, holderShown: existing?.holderShown };
+    if (!share && user && existing?.sharedAt) {
+      // Unticked on a month that was shared: unshared, not left standing with the old answer.
+      const result = await withdrawAwardShares({ base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month });
+      if (!result.ok) warning = `Saved here, but still shared: ${result.error}`;
+      else entry = { ...entry, sharedAt: undefined, holderShown: undefined };
+    }
     if (share && user && seniority) {
       const whole = (x: number | null | undefined) => (typeof x === "number" ? Math.round(x) : null);
       const result = await submitAwardHistory({
@@ -167,13 +200,14 @@ function LogAward({
         totalCreditHours: whole(line?.totalCreditHours),
         totalTafbHours: whole(line?.totalTafbHours),
         awardedChoice: entry.rankedAt ?? null,
+        holderShown: canShowHolder,
         // Which brain ranked these lines, and how the month flew if it's already been checked in.
         monthFeel: entry.checkIn?.feel ?? null,
         brainVersion: profile.pilotModel?.brainVersion ?? null,
         notesUsed: profile.pilotModel?.notesUsed ?? null,
       });
       if (!result.ok) warning = `Logged here, but not shared: ${result.error}`;
-      else entry = { ...entry, sharedAt: new Date().toISOString() };
+      else entry = { ...entry, sharedAt: new Date().toISOString(), holderShown: canShowHolder };
     }
     setSaving(false);
     onSave(withLoggedMonth(profile, entry), warning);
@@ -218,14 +252,14 @@ function LogAward({
       <label className={`mt-4 flex items-start gap-2.5 text-sm ${user && seniority ? "cursor-pointer" : "opacity-70"}`}>
         <input type="checkbox" checked={share} disabled={!user || !seniority} onChange={(e) => setShare(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]" />
         <span>
-          <span className="text-ink">Share it anonymously</span>
+          <span className="text-ink">Share it with other pilots</span>
           <span className="block text-xs text-ink-muted">
             {!user ? (
               <>
                 <Link href="/auth" className="underline decoration-dotted underline-offset-2">
                   Sign in
                 </Link>{" "}
-                to share — the sign-in only keeps out spam; what&rsquo;s shared never carries your name.
+                to share — the sign-in keeps out spam and lets you withdraw it; what&rsquo;s shared never carries your name.
               </>
             ) : !seniority ? (
               <>
@@ -235,8 +269,13 @@ function LogAward({
                 </Link>{" "}
                 to share — the award only means something next to it.
               </>
+            ) : canShowHolder ? (
+              <>
+                Once at least {MIN_SHARED_PILOTS} pilots in your seat have shared this month, signed-in pilots see &ldquo;Held by seniority #{ownEntry.seniority}&rdquo; on this line. No name or employee number
+                goes with it, but anyone with the seniority list can match that number to you. You can withdraw it any time.
+              </>
             ) : (
-              "Your seniority and what you held — never your name. See below for what it does."
+              `Goes into group numbers only${outcome === "line" ? ", because your seniority number isn't on this pack's list" : ""}. Never your name, and you can withdraw it any time.`
             )}
           </span>
         </span>
@@ -256,7 +295,9 @@ function LogAward({
 }
 
 /** What sharing an award does — said plainly, and only what the app really does with it. */
-function WhySharing() {
+function WhySharing({ canWithdraw, onWithdrawAll }: { canWithdraw: boolean; onWithdrawAll: () => Promise<void> }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
   return (
     <section className="mt-6 rounded-xl border border-hairline bg-canvas/50 p-5">
       <h2 className="text-sm font-semibold text-ink">How sharing your award makes the results better</h2>
@@ -274,8 +315,37 @@ function WhySharing() {
           <span className="font-medium text-ink">Pilots like you.</span> &ldquo;What pilots near you actually held,&rdquo; in Strategies, fills in with real
           outcomes instead of staying empty.
         </li>
+        <li>
+          <span className="font-medium text-ink">Who held what.</span> Once enough pilots in a seat have shared a month, an opened line shows the seniority number that
+          held it, so you can see how far down it went.
+        </li>
       </ul>
-      <p className="mt-3 text-xs text-ink-faint">Shared awards carry your seniority and what you held &mdash; never your name, email or employee number. Your logbook itself stays yours.</p>
+      <p className="mt-3 text-xs text-ink-faint">Shared awards carry your place on the list and what you held &mdash; never your name, email or employee number. Your logbook itself stays yours.</p>
+      {canWithdraw &&
+        (confirming ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+            <span>Remove everything you&rsquo;ve shared? Your private hold history goes with it; your logbook stays.</span>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                await onWithdrawAll();
+                setBusy(false);
+                setConfirming(false);
+              }}
+            >
+              {busy ? "Withdrawing…" : "Yes, withdraw"}
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setConfirming(true)} className="mt-3 text-xs text-ink-muted underline decoration-dotted underline-offset-2 hover:text-ink">
+            Withdraw all my shares
+          </button>
+        ))}
     </section>
   );
 }
@@ -338,14 +408,18 @@ function MonthEntry({
   onRelog,
   onCheckIn,
   onDelete,
+  onWithdraw,
 }: {
   entry: LoggedMonth;
   isThisPack: boolean;
   onRelog: () => void;
   onCheckIn: (feel: MonthFeel, words: { bestTrip?: string; worstTrip?: string; note?: string }) => void;
   onDelete: () => void;
+  /** Present when the month is shared and the pilot is signed in. */
+  onWithdraw?: () => Promise<void>;
 }) {
   const [checking, setChecking] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
   const [feel, setFeel] = useState<MonthFeel | null>(m.checkIn?.feel ?? null);
   const [best, setBest] = useState(m.checkIn?.bestTrip ?? "");
   const [worst, setWorst] = useState(m.checkIn?.worstTrip ?? "");
@@ -361,7 +435,24 @@ function MonthEntry({
         </div>
         <span className="text-xs text-ink-faint">
           {m.base} {m.aircraft} {m.seat}
-          {m.sharedAt ? " · shared" : ""}
+          {m.sharedAt ? (m.holderShown ? " · shared, number shown" : " · shared") : ""}
+          {onWithdraw && (
+            <>
+              {" · "}
+              <button
+                type="button"
+                disabled={withdrawing}
+                onClick={async () => {
+                  setWithdrawing(true);
+                  await onWithdraw();
+                  setWithdrawing(false);
+                }}
+                className="underline decoration-dotted underline-offset-2 hover:text-ink"
+              >
+                {withdrawing ? "withdrawing…" : "withdraw"}
+              </button>
+            </>
+          )}
         </span>
       </div>
       {m.outcome === "line" && (

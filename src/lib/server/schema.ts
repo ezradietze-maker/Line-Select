@@ -144,6 +144,11 @@ export const awardHistoryRecords = pgTable(
     awardedChoice: integer("awarded_choice"),
     /** After the month, how it flew: "better" | "asExpected" | "worse" — the real-outcome signal. Null until checked in. */
     monthFeel: text("month_feel"),
+    /**
+     * The pilot agreed their seniority number may be shown beside this line ("Held by seniority #N") and their place
+     * was read exactly from the pack's own list. False for every other report: those only ever count in group numbers.
+     */
+    holderShown: boolean("holder_shown").notNull().default(false),
     checkedInAt: timestamp("checked_in_at", { withTimezone: true }),
     /** The brain version that ranked this pilot's lines, and whether fleet notes were in its prompt. */
     brainVersion: integer("brain_version"),

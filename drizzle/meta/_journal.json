@@ -43,6 +43,13 @@
       "when": 1794130004874,
       "tag": "0005_calendar_feeds",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794164108818,
+      "tag": "0006_award_holder_shown",
+      "breakpoints": true
     }
   ]
 }

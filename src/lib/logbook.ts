@@ -79,7 +79,7 @@ export function withEntry(profile: PreferenceProfile, id: string, change: Partia
 }
 
 /**
- * The anonymous report for a month already shared, carrying how it flew — sent again when the pilot checks in, so the
+ * The report for a month already shared, carrying how it flew — sent again when the pilot checks in, so the
  * real-outcome score learns from it (`lib/learning/outcome-score.ts`). Null for a month that was never shared or
  * lacks the seniority every report needs.
  */
@@ -99,9 +99,24 @@ export function checkInShare(entry: LoggedMonth, model: { brainVersion?: number;
     totalCreditHours: whole(entry.creditHours),
     totalTafbHours: whole(entry.tafbHours),
     awardedChoice: entry.rankedAt ?? null,
+    holderShown: entry.holderShown === true,
     monthFeel: entry.checkIn.feel,
     brainVersion: model?.brainVersion ?? null,
     notesUsed: model?.notesUsed ?? null,
+  };
+}
+
+/** The profile with a month's share taken back, or with no id, every share: the months stay logged. */
+export function withoutShares(profile: PreferenceProfile, id?: string): PreferenceProfile {
+  return {
+    ...profile,
+    logbook: (profile.logbook ?? []).map((m) => {
+      if (id !== undefined && m.id !== id) return m;
+      const rest = { ...m };
+      delete rest.sharedAt;
+      delete rest.holderShown;
+      return rest;
+    }),
   };
 }
 

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import type { AwardRow } from "@/lib/server/award-aggregate";
 import { db } from "@/lib/server/postgres";
 import {
   awardHistoryRecords,
@@ -347,57 +348,50 @@ export async function createInterviewCandidateFact(fact: InterviewCandidateFact)
 
 // ---- Award history ----
 
-export async function listAwardHistoryRecords(filter: {
-  base: string;
-  aircraft: string;
-  seat: string;
-}): Promise<AwardHistoryRecord[]> {
-  // Only the public columns — the pilot hash and choice behind each report
-  // are for that pilot's own history and the learning, never this listing.
-  const rows = await db
-    .select({
-      id: awardHistoryRecords.id,
-      base: awardHistoryRecords.base,
-      aircraft: awardHistoryRecords.aircraft,
-      seat: awardHistoryRecords.seat,
-      month: awardHistoryRecords.month,
-      seniorityRank: awardHistoryRecords.seniorityRank,
-      seniorityTotalPilots: awardHistoryRecords.seniorityTotalPilots,
-      outcome: awardHistoryRecords.outcome,
-      lineNumber: awardHistoryRecords.lineNumber,
-      daysOff: awardHistoryRecords.daysOff,
-      totalCreditHours: awardHistoryRecords.totalCreditHours,
-      totalTafbHours: awardHistoryRecords.totalTafbHours,
-      submittedAt: awardHistoryRecords.submittedAt,
-    })
+const AWARD_ROW = {
+  pilotHash: awardHistoryRecords.pilotHash,
+  seniorityRank: awardHistoryRecords.seniorityRank,
+  seniorityTotalPilots: awardHistoryRecords.seniorityTotalPilots,
+  outcome: awardHistoryRecords.outcome,
+  lineNumber: awardHistoryRecords.lineNumber,
+  daysOff: awardHistoryRecords.daysOff,
+  totalCreditHours: awardHistoryRecords.totalCreditHours,
+  holderShown: awardHistoryRecords.holderShown,
+};
+
+/** The rows group numbers are worked out from. Server-side only: `lib/server/award-aggregate.ts` is what a client gets to see of them. */
+export async function listAwardRowsForSeat(filter: { base: string; aircraft: string; seat: string }): Promise<AwardRow[]> {
+  return db
+    .select(AWARD_ROW)
     .from(awardHistoryRecords)
-    .where(
-      and(
-        eq(awardHistoryRecords.base, filter.base),
-        eq(awardHistoryRecords.aircraft, filter.aircraft),
-        eq(awardHistoryRecords.seat, filter.seat)
-      )
-    );
-  return rows.map((row) => ({
-    id: row.id,
-    base: row.base,
-    aircraft: row.aircraft,
-    seat: row.seat as AwardHistoryRecord["seat"],
-    month: row.month,
-    seniorityRank: row.seniorityRank,
-    seniorityTotalPilots: row.seniorityTotalPilots,
-    outcome: row.outcome as AwardHistoryRecord["outcome"],
-    lineNumber: row.lineNumber,
-    daysOff: row.daysOff,
-    totalCreditHours: row.totalCreditHours,
-    totalTafbHours: row.totalTafbHours,
-    submittedAt: row.submittedAt.toISOString(),
-  }));
+    .where(and(eq(awardHistoryRecords.base, filter.base), eq(awardHistoryRecords.aircraft, filter.aircraft), eq(awardHistoryRecords.seat, filter.seat)));
+}
+
+export async function listAwardRowsForPack(packKey: string): Promise<AwardRow[]> {
+  return db.select(AWARD_ROW).from(awardHistoryRecords).where(eq(awardHistoryRecords.packKey, packKey));
+}
+
+/** Removes a pilot's own shares: one pack's, or all of them. Returns how many went. */
+export async function deleteAwardShares(pilotHash: string, packKey?: string): Promise<number> {
+  const removed = await db
+    .delete(awardHistoryRecords)
+    .where(packKey ? and(eq(awardHistoryRecords.pilotHash, pilotHash), eq(awardHistoryRecords.packKey, packKey)) : eq(awardHistoryRecords.pilotHash, pilotHash))
+    .returning({ id: awardHistoryRecords.id });
+  return removed.length;
+}
+
+/** How many accounts have had a real pack of this kind on the server since `since`. An uploaded pack's id starts with its base, aircraft and seat. */
+export async function countRecentPilotsWithPack(packIdPrefix: string, since: Date): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(bidPacks)
+    .where(and(sql`starts_with(${bidPacks.packId}, ${packIdPrefix})`, gte(bidPacks.updatedAt, since)));
+  return row?.n ?? 0;
 }
 
 export async function createAwardHistoryRecord(
   record: AwardHistoryRecord,
-  link: { pilotHash?: string | null; packKey?: string | null; awardedChoice?: number | null; monthFeel?: string | null; brainVersion?: number | null; notesUsed?: boolean | null } = {}
+  link: { pilotHash?: string | null; packKey?: string | null; awardedChoice?: number | null; monthFeel?: string | null; brainVersion?: number | null; notesUsed?: boolean | null; holderShown?: boolean } = {}
 ): Promise<void> {
   await db.transaction(async (tx) => {
     // One report per pilot per pack: a corrected award replaces the earlier one rather than standing beside it
@@ -411,6 +405,7 @@ export async function createAwardHistoryRecord(
       pilotHash: link.pilotHash ?? null,
       packKey: link.packKey ?? null,
       awardedChoice: link.awardedChoice ?? null,
+      holderShown: link.holderShown ?? false,
       id: record.id,
       base: record.base,
       aircraft: record.aircraft,

@@ -12,6 +12,7 @@ import { DealbreakerBanner } from "@/components/results/DealbreakerBanner";
 import { LineInsightBadge } from "@/components/results/LineInsightBadge";
 import { MatchBar } from "@/components/results/MatchBar";
 import { ForecastChip } from "@/components/results/ForecastBanner";
+import { HeldByNote } from "@/components/results/HeldByNote";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { RecurringCommitmentBanner } from "@/components/results/RecurringCommitmentBanner";
 import { TripNumberStrip } from "@/components/results/TripNumberStrip";
@@ -32,6 +33,7 @@ import type { LineScore } from "@/lib/scoring";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { flyStarToShortlist } from "@/lib/fly-star";
 import type { LineForecast } from "@/lib/forecast/forecast";
+import type { HeldByNoteData } from "@/lib/use-held-by";
 import type { TripScore } from "@/lib/scoring-v2/trip-score";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -80,6 +82,8 @@ interface LineCardProps {
   draggable: boolean;
   /** This pilot's chance at the line, when they've given a seniority number and the pack lists the pilots bidding. */
   forecast?: LineForecast | null;
+  /** Who held this line, from pilots who shared, and how far the odds have been checked. */
+  heldBy?: HeldByNoteData | null;
   /** The bid pack's own home base code, e.g. "MEM" — the one fixed point every trip on this line starts and ends at, for the Route tab's map. */
   homeBase: string;
   /** A commuter's looked-up airline flights, shown on the line's trips. */
@@ -121,6 +125,7 @@ export const LineCard = memo(function LineCard({
   onRestore,
   draggable,
   forecast,
+  heldBy,
   homeBase,
   flights,
   tripScores,
@@ -357,6 +362,7 @@ export const LineCard = memo(function LineCard({
           </div>
 
           {forecast && <div className="mt-2.5"><ForecastChip forecast={forecast} /></div>}
+          {heldBy && <HeldByNote note={heldBy} showOdds={!!forecast} />}
 
           {!lineScore.estimated && <TripNumberStrip trips={month.trips} departures={departureGroups} carryOver={carryOver} />}
 

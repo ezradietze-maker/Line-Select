@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { checkInShare } from "@/lib/logbook";
+import { checkInShare, withoutShares } from "@/lib/logbook";
+import type { PreferenceProfile } from "@/types/preferences";
 import type { LoggedMonth } from "@/types/logbook";
 
 const month: LoggedMonth = {
@@ -22,6 +23,21 @@ const month: LoggedMonth = {
 };
 
 describe("sharing how a month flew", () => {
+  it("keeps the pilot's answer about showing their number, and never assumes yes", () => {
+    expect(checkInShare({ ...month, holderShown: true }, null)?.holderShown).toBe(true);
+    expect(checkInShare(month, null)?.holderShown).toBe(false);
+  });
+
+  it("taking back a share leaves the month logged, without its share marks", () => {
+    const profile = { logbook: [{ ...month, holderShown: true }, { ...month, id: "other", holderShown: true }] } as unknown as PreferenceProfile;
+    const one = withoutShares(profile, month.id).logbook!;
+    expect(one[0].sharedAt).toBeUndefined();
+    expect(one[0].holderShown).toBeUndefined();
+    expect(one[0].lineNumber).toBe("1033");
+    expect(one[1].sharedAt).toBeDefined();
+    expect(withoutShares(profile).logbook!.every((m) => m.sharedAt === undefined && m.holderShown === undefined)).toBe(true);
+  });
+
   it("re-sends a shared month with its check-in and the brain that ranked it", () => {
     expect(checkInShare(month, { brainVersion: 24, notesUsed: false })).toMatchObject({
       month: "NOV26",

@@ -17,7 +17,7 @@ export interface CarriedTrip {
 /**
  * One month in a pilot's logbook: the award they got, a picture of the line as flown (kept with the entry, since the
  * pack itself is replaced next month), and — after the month — how it flew. Kept in the pilot's own profile; shared
- * only when they say so, and then only anonymously (see `/api/award-history`).
+ * only when they say so, never with a name (see `/api/award-history`).
  */
 export interface LoggedMonth {
   id: string;
@@ -44,8 +44,10 @@ export interface LoggedMonth {
   seniorityRank?: number | null;
   seniorityTotalPilots?: number | null;
   loggedAt: string;
-  /** When it was shared anonymously, if it was. */
+  /** When it was shared, if it was. */
   sharedAt?: string;
+  /** The pilot agreed to show their seniority number beside this line, once enough pilots have shared. */
+  holderShown?: boolean;
   /** After the month: how it flew. */
   checkIn?: { feel: MonthFeel; bestTrip?: string; worstTrip?: string; note?: string; at: string };
 }

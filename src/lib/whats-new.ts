@@ -14,6 +14,12 @@ export interface WhatsNewEntry {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-08",
+    title: "See who held what, if pilots choose to share",
+    body: "When you log an award you can now choose to show your seniority number beside your line. Once five pilots in a seat have said yes for a month, an opened line shows who held it. Your name never goes with it, and you can withdraw your share from the Logbook any time. Shared awards also check the odds against what really happened.",
+    href: "/logbook",
+  },
+  {
+    date: "2026-11-08",
     title: "A calendar that updates itself",
     body: "Subscribe in Apple Calendar, Google Calendar or Outlook with a private link: your bid dates for your seat, your #1 line's trips with hotels and pickups, and your award once you log it. Change your line here and your calendar follows, with nothing to export again. Find it under \"Ready to bid?\" or in your Logbook.",
     href: "/results",

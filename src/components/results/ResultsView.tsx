@@ -51,6 +51,7 @@ import { rankingPack } from "@/lib/scoring-v2/adapter";
 import { fetchAllHotelQualityData, settledHotelQualityData } from "@/lib/hotel-client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { useBidForecast } from "@/lib/forecast/use-bid-forecast";
+import { useHeldBy } from "@/lib/use-held-by";
 import { loadPreviousPeriodSnapshot, saveBidPeriodSnapshot, summarizeBidPeriodChange } from "@/lib/bid-period-history";
 import { assessProfileRichness } from "@/lib/interview-engine";
 import { computeFilterOptions } from "@/lib/line-filter-options";
@@ -508,6 +509,7 @@ export function ResultsView({
     enabled: hotelsSettled,
   });
   const forecastLines = forecast.result?.forecast.lines ?? null;
+  const heldByNotes = useHeldBy(bidPack, userId, profile.seniorityNumber);
   const realisticIds = useMemo(
     () => new Set(forecastLines ? Object.values(forecastLines).filter((l) => l.pAvailable >= 0.2).map((l) => l.lineId) : []),
     [forecastLines]
@@ -1265,6 +1267,7 @@ export function ResultsView({
                         onRestore={() => updateMarks((m) => restoreLine(m, lineScore.line.id))}
                         draggable={dragEnabled}
                         forecast={forecastLines?.[lineScore.line.id] ?? null}
+                        heldBy={heldByNotes(lineScore.line.lineNumber)}
                         homeBase={bidPack.base}
                         flights={flights}
                         tripScores={tripScores}

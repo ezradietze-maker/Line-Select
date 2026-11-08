@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
-import { fetchAwardHistory, submitAwardHistory, summarizeAwardHistory } from "@/lib/award-history";
+import { fetchAwardSummary, MIN_SHARED_PILOTS, submitAwardHistory, summaryForSeniority } from "@/lib/award-history";
 import type { HoldHistorySummary } from "@/lib/learning/hold-history";
 import { fetchHoldHistory } from "@/lib/learning/learning-client";
 import type { BidPack } from "@/types/bidpack";
-import type { AwardHistoryRecord, AwardHistorySubmission } from "@/types/award-history";
+import type { AwardHistorySubmission, AwardSummaryResponse } from "@/types/award-history";
 import type { UserAccount } from "@/types/auth";
 import type { SeniorityInput } from "@/types/strategy";
 
@@ -23,7 +23,7 @@ interface AwardHistoryPanelProps {
 }
 
 export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: AwardHistoryPanelProps) {
-  const [records, setRecords] = useState<AwardHistoryRecord[] | null>(null);
+  const [awardData, setAwardData] = useState<AwardSummaryResponse | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>("line");
@@ -48,17 +48,17 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
 
   useEffect(() => {
     let cancelled = false;
-    fetchAwardHistory(bidPack.base, bidPack.aircraft, bidPack.seat).then((data) => {
-      if (!cancelled) setRecords(data);
+    fetchAwardSummary(bidPack.base, bidPack.aircraft, bidPack.seat).then((data) => {
+      if (!cancelled) setAwardData(data);
     });
     return () => {
       cancelled = true;
     };
-  }, [bidPack.base, bidPack.aircraft, bidPack.seat]);
+  }, [bidPack.base, bidPack.aircraft, bidPack.seat, historyVersion]);
 
   const summary = useMemo(
-    () => (records ? summarizeAwardHistory(records, seniority) : null),
-    [records, seniority]
+    () => (awardData ? summaryForSeniority(awardData, seniority) : null),
+    [awardData, seniority]
   );
 
   async function handleSubmit() {
@@ -94,11 +94,6 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
     setSubmitted(true);
     setFormOpen(false);
     setHistoryVersion((v) => v + 1);
-    // Reflect the new report immediately rather than re-fetching.
-    setRecords((prev) => [
-      ...(prev ?? []),
-      { ...submission, id: "local-pending", submittedAt: new Date().toISOString() },
-    ]);
   }
 
   return (
@@ -108,8 +103,8 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
           <h2 className="font-display text-xl font-semibold text-ink">What pilots near you actually held</h2>
           <p className="mt-1 text-sm leading-relaxed text-ink-muted">
             Real, self-reported outcomes for {bidPack.base} {bidPack.aircraft} {bidPack.seat} — no
-            competitor has this data for FedEx specifically. Other pilots only ever see a
-            seniority number and what was held, never your name. Signed in, your own reports
+            competitor has this data for FedEx specifically. Other pilots only ever see group
+            numbers from here, once at least {MIN_SHARED_PILOTS} pilots near your seniority have reported. Signed in, your own reports
             also build a private month-by-month record of what you&rsquo;ve held.
           </p>
         </div>

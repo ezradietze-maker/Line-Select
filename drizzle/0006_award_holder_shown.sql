@@ -1,0 +1,1 @@
+ALTER TABLE "award_history_records" ADD COLUMN "holder_shown" boolean DEFAULT false NOT NULL;

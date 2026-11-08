@@ -5,12 +5,13 @@ import type { Seat } from "@/types/bidpack";
  * tied to their seniority at the time — the raw material for a real,
  * FedEx-specific hold-rate history that doesn't exist anywhere else (every
  * competitor's "odds" feature is built on a different airline's award data).
- * No pilot id, name, or email is stored. What other pilots see is only the
- * numbers needed to bucket a future pilot's own line by base/aircraft/seat
- * and seniority. Server-side, a record is also tagged with a one-way hash of
- * the reporter's account (never returned by any listing) so their own months
- * form a private hold history and the forecast they were shown can be
- * checked against what they got — see `lib/learning/hold-history.ts`.
+ * No pilot id, name, or email is stored. Server-side, a record is tagged with a
+ * keyed one-way hash of the reporter's account (never returned by anything) so
+ * their own months form a private hold history, they can withdraw it, and the
+ * forecast they were shown can be checked against what they got — see
+ * `lib/learning/hold-history.ts`. Single records never leave the server: other
+ * pilots see group numbers (`AwardBand`), and "held by" only for pilots who
+ * agreed to it (`HeldByView`), both behind `lib/server/award-aggregate.ts`.
  */
 export interface AwardHistoryRecord {
   id: string;
@@ -35,7 +36,37 @@ export type AwardHistorySubmission = Omit<AwardHistoryRecord, "id" | "submittedA
   awardedChoice?: number | null;
   /** After the month: how it flew against what they expected. The real-outcome signal (`lib/learning/outcome-score.ts`). */
   monthFeel?: import("./logbook").MonthFeel | null;
+  /** The pilot agreed to "Held by seniority #N" beside this line, and `seniorityRank` was read exactly from the pack's list. */
+  holderShown?: boolean;
   /** Which brain version ranked the pilot's lines, and whether fleet notes were in its prompt — so outcomes can be compared by both. */
   brainVersion?: number | null;
   notesUsed?: boolean | null;
 };
+
+/** Group numbers for one fixed slice of a seat's seniority list. The averages stay null until enough different pilots stand behind them. */
+export interface AwardBand {
+  /** How many reports fall in this slice, across every month. */
+  reports: number;
+  avgDaysOff: number | null;
+  avgCreditHours: number | null;
+  lineRate: number | null;
+}
+
+/** All a client ever gets from the public listing: one entry per slice, most senior first. */
+export interface AwardSummaryResponse {
+  totalReports: number;
+  bands: AwardBand[];
+}
+
+/** One line's holder, from a pilot who agreed to show it. The browser turns the bid position into a seniority number using the pack's own list. */
+export interface HeldByEntry {
+  lineNumber: string;
+  bidPosition: number;
+}
+
+/** What a signed-in pilot sees for one pack: nothing until enough pilots have agreed to show what they held. */
+export interface HeldByView {
+  holders: HeldByEntry[];
+  /** How many shared awards the odds in use have been checked against, once a correction has passed its fair test. */
+  oddsCheckedAgainst: number | null;
+}

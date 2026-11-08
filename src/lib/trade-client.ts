@@ -75,3 +75,14 @@ export function declineOffer(id: string): Promise<ActionResult> {
 export function withdrawOffer(id: string): Promise<ActionResult> {
   return postAction(`/api/trades/${id}/withdraw`);
 }
+
+/** Whether this seat's board has opened. A failed check reads as not yet: it's only a matter of waiting. */
+export async function fetchTradeBoardOpen(seat: { base: string; aircraft: string; seat: string }): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/trade-board/status?${new URLSearchParams(seat).toString()}`);
+    if (!res.ok) return false;
+    return ((await res.json()) as { open?: boolean }).open === true;
+  } catch {
+    return false;
+  }
+}

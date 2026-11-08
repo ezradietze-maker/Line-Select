@@ -1,7 +1,7 @@
-import { fitCalibration, learnForecastPriors, pairsFromAward, type ForecastPriorModel } from "@/lib/learning/forecast-learning";
+import { fitCalibration, learnForecastPriors, type ForecastPriorModel } from "@/lib/learning/forecast-learning";
 import { computeBrainModel } from "@/lib/learning/brain-learning";
 import { cohortLevels } from "@/lib/learning/cohort";
-import { testCalibration } from "@/lib/learning/fair-test";
+import { awardsBehind, pairsOfCase, testCalibration } from "@/lib/learning/fair-test";
 import { reportProblem } from "@/lib/server/alerts";
 import {
   finishRun,
@@ -55,10 +55,11 @@ async function learnCalibration(now: Date) {
   if (!test.ready) return { kind: "forecast-calibration", skipped: test.reason };
   const champion = await loadActiveModel("forecast-calibration", { fresh: true });
   const { heldBack, brierUncalibrated, brierChallenger, winShare } = test;
-  const metrics = { awardsChecked: cases.length, heldBack, brierUncalibrated, brierChallenger, winShare };
+  const awards = awardsBehind(cases);
+  const metrics = { awardsChecked: awards, forecastsChecked: cases.length, heldBack, brierUncalibrated, brierChallenger, winShare };
   // Passed: learn from every award, the held-back ones included, and use that. Failed: stored, but what's in use stays.
-  const model = fitCalibration(cases.flatMap((c) => pairsFromAward(c.prediction, c.award)), version, now);
-  await saveModel({ kind: "forecast-calibration", version, payload: model, metrics, sampleSize: cases.length, active: test.promote });
+  const model = fitCalibration(cases.flatMap(pairsOfCase), version, now);
+  await saveModel({ kind: "forecast-calibration", version, payload: model, metrics, sampleSize: awards, active: test.promote });
   return { kind: "forecast-calibration", version, promoted: test.promote, replaced: champion?.version ?? null, metrics };
 }
 

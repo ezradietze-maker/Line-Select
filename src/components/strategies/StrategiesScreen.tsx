@@ -15,12 +15,12 @@ import { ReadingProgress } from "@/components/ui/ReadingProgress";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TextField } from "@/components/ui/TextField";
-import { fetchAwardHistory, summarizeAwardHistory } from "@/lib/award-history";
+import { fetchAwardSummary, summaryForSeniority } from "@/lib/award-history";
 import { rankingAsShown } from "@/lib/ranking-as-shown";
 import { attachScoreContext, computeStanding, generateStrategies, rankStrategiesByPreference, type Standing } from "@/lib/strategy-engine";
 import { SENIORITY_BANDS } from "@/lib/seniority-bands";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
-import type { AwardHistoryRecord } from "@/types/award-history";
+import type { AwardSummaryResponse } from "@/types/award-history";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -262,20 +262,20 @@ function StrategyResults({
   // fetched here (a second copy of what AwardHistoryPanel below also
   // fetches for its own display) purely to ground `estimateFeasibility`'s
   // tiers in real data instead of the seniority-vs-rarity heuristic alone;
-  // see `lib/award-history.ts`'s own doc comments for the sample-size gate.
-  const [awardRecords, setAwardRecords] = useState<AwardHistoryRecord[] | null>(null);
+  // the server holds the numbers back for small groups (`lib/server/award-aggregate.ts`).
+  const [awardData, setAwardData] = useState<AwardSummaryResponse | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetchAwardHistory(bidPack.base, bidPack.aircraft, bidPack.seat).then((data) => {
-      if (!cancelled) setAwardRecords(data);
+    fetchAwardSummary(bidPack.base, bidPack.aircraft, bidPack.seat).then((data) => {
+      if (!cancelled) setAwardData(data);
     });
     return () => {
       cancelled = true;
     };
   }, [bidPack.base, bidPack.aircraft, bidPack.seat]);
   const awardSummary = useMemo(
-    () => (awardRecords ? summarizeAwardHistory(awardRecords, seniority) : null),
-    [awardRecords, seniority]
+    () => (awardData ? summaryForSeniority(awardData, seniority) : null),
+    [awardData, seniority]
   );
 
   const strategies = useMemo(() => {

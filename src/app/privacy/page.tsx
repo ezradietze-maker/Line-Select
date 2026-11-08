@@ -260,6 +260,17 @@ export default function PrivacyPage() {
             share your ranking, Section 7) can be checked against what you really got.
           </p>
           <p className="mt-3">
+            One exception, only if you say yes when you log an award: once at least five pilots in your
+            base, aircraft and seat have agreed for that month, signed-in pilots see your seniority number
+            beside the line you held (&ldquo;Held by seniority #N&rdquo;, marked as from pilots who shared).
+            Your name and employee number are never stored or shown, but anyone with the seniority list can
+            match that number to you. Everything else stays in group numbers, shown only once at least five
+            pilots stand behind them. Your award also helps check the odds shown to other pilots for that
+            month. The account hash is keyed with a secret held only on our server, so a copy of the database
+            alone can&rsquo;t link a report to an account. You can withdraw one month or everything from your
+            Logbook: it&rsquo;s deleted at once and leaves the learned numbers at their next rebuild.
+          </p>
+          <p className="mt-3">
             When you finish the interview, a numeric summary of it is stored: your
             base/aircraft/seat and month, whether you commute, a broad seniority band (top, middle,
             or bottom third), where each preference landed, how many questions it took, and which

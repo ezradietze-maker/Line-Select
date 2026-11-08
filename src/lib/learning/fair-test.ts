@@ -1,11 +1,11 @@
-import { brierScore, fitCalibration, pairsFromAward, type Calibration, type CalibrationPair } from "@/lib/learning/forecast-learning";
+import { brierScore, fitCalibration, pairsFromAward, pairsFromHolders, type Calibration, type CalibrationPair, type ReportedAward, type SharedHolder, type StoredPrediction } from "@/lib/learning/forecast-learning";
 
 /**
  * The fair test a new forecast calibration must pass before it's used. Awards, not pairs, are what count: one award
  * yields dozens of correlated pairs, so a test "with 200 pairs" can rest on a handful of pilot-months.
  *
- * - The newest quarter of awards is held back; the challenger learns only from the older ones, so it's judged on
- *   months it has never seen. (The model in use learned from everything, the held-back months included, so scoring
+ * - The newest quarter of forecasts is held back, whole packs at a time; the challenger learns only from the older ones,
+ *   so it's judged on months it has never seen. (The model in use learned from everything, the held-back months included, so scoring
  *   it on them would flatter it — it isn't used as the yardstick.)
  * - It must beat leaving the forecast alone on those months by more than chance: the held-back awards are resampled
  *   many times, and it has to come out ahead in at least 95% of the resamples.
@@ -16,9 +16,32 @@ export const MIN_AWARDS = 30;
 const HOLD_SHARE = 0.25;
 const RESAMPLES = 400;
 
+/** One forecast and what's known about how it turned out. */
 export interface CalibrationCase {
-  prediction: Parameters<typeof pairsFromAward>[0];
-  award: Parameters<typeof pairsFromAward>[1];
+  prediction: StoredPrediction;
+  /** What this pilot reported they got, when they did. */
+  award: ReportedAward | null;
+  /** Lines other pilots shared holding in the same pack. */
+  holders?: SharedHolder[];
+  /** The pack, so a pack's forecasts all land on one side of the fair test. */
+  packKey?: string;
+  /** The award row's id: one award shows up in many cases. */
+  awardId?: string;
+}
+
+/** Every checkable pair in one forecast: its own award first, then what other pilots' awards say about the lines it didn't settle. */
+export function pairsOfCase(c: CalibrationCase): CalibrationPair[] {
+  return [...(c.award ? pairsFromAward(c.prediction, c.award) : []), ...pairsFromHolders(c.prediction, c.holders ?? [], c.award)];
+}
+
+/** Different real awards behind these forecasts. */
+export function awardsBehind(cases: CalibrationCase[]): number {
+  const ids = new Set<string>();
+  cases.forEach((c, i) => {
+    if (c.award) ids.add(c.awardId ?? `case-${i}`);
+    for (const h of c.holders ?? []) ids.add(h.id ?? `case-${i}-${h.lineIndex}`);
+  });
+  return ids.size;
 }
 
 export type FairTest =
@@ -36,12 +59,16 @@ function seeded(seed: number): () => number {
 
 /** `cases` oldest first. */
 export function testCalibration(cases: CalibrationCase[], version: string, now: Date): FairTest {
-  if (cases.length < MIN_AWARDS) return { ready: false, reason: `${cases.length} checked awards so far — needs ${MIN_AWARDS}` };
-  const cut = Math.floor(cases.length * (1 - HOLD_SHARE));
+  const awards = awardsBehind(cases);
+  if (awards < MIN_AWARDS) return { ready: false, reason: `${awards} checked awards so far — needs ${MIN_AWARDS}` };
+  let cut = Math.floor(cases.length * (1 - HOLD_SHARE));
+  // A pack's forecasts share the same awards, so one on each side of the line would let the challenger see its own test.
+  while (cut > 0 && cases[cut].packKey !== undefined && cases[cut].packKey === cases[cut - 1].packKey) cut--;
+  if (cut === 0) return { ready: false, reason: "every checked forecast is from one pack — needs an older one to learn from" };
   const train = cases.slice(0, cut);
   const heldBack = cases.slice(cut);
-  const challenger = fitCalibration(train.flatMap((c) => pairsFromAward(c.prediction, c.award)), version, now);
-  const perAward: CalibrationPair[][] = heldBack.map((c) => pairsFromAward(c.prediction, c.award)).filter((p) => p.length > 0);
+  const challenger = fitCalibration(train.flatMap(pairsOfCase), version, now);
+  const perAward: CalibrationPair[][] = heldBack.map(pairsOfCase).filter((p) => p.length > 0);
   if (perAward.length < 5) return { ready: false, reason: "too few held-back awards with a forecast to judge" };
   const all = perAward.flat();
   const brierUncalibrated = brierScore(all);
