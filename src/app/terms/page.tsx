@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "September 25, 2026";
+const LAST_UPDATED = "November 7, 2026";
 
 /**
  * A real Terms of Service — not boilerplate copy-pasted from a generator.
@@ -48,10 +48,14 @@ export default function TermsPage() {
             &ldquo;FedEx&rdquo;). &ldquo;FedEx&rdquo; and any related marks are the property of
             their respective owners and are used on this site solely to accurately describe the
             pilots this Service is built for &mdash; not to claim any affiliation, sponsorship, or
-            endorsement. The Service has no access to, integration with, or ability to submit
-            anything to any FedEx system. Nothing you do here is transmitted to FedEx, and nothing
-            here affects your actual bid, schedule, or employment in any way unless you separately
-            and manually act on it through FedEx&rsquo;s own official systems.
+            endorsement. The Service has no access to, account with, or integration into any FedEx
+            system, and never asks for or sees your FedEx password. The one way anything reaches
+            FedEx is if you choose Send to VIPS: your own browser then opens FedEx&rsquo;s pilot site
+            in a new tab with your line order filled in, you sign in there yourself, and FedEx&rsquo;s
+            own system decides what it accepts. Apart from that, nothing you do here is
+            transmitted to FedEx, and nothing here affects your actual bid, schedule, or
+            employment unless you act on it through FedEx&rsquo;s own official systems. Always
+            check your bid in VIPS&rsquo;s own Monthly Bid Review before bidding closes.
           </p>
         </Section>
 
@@ -70,7 +74,7 @@ export default function TermsPage() {
         <Section title="4. This is a planning aid, not a verified or professional source — read this section before you bid">
           <p className="font-medium text-ink">
             The single most important thing in these Terms: nothing the Service tells you is a
-            substitute for your own bid pack, your own PBS/VIPS system, or FedEx&rsquo;s own
+            substitute for your own bid pack, your own VIPS bid, or FedEx&rsquo;s own
             official records. You are solely responsible for independently verifying any
             information from the Service &mdash; line numbers, credit, days off, TAFB, trip
             content, feasibility estimates, or anything else &mdash; against your own official
@@ -90,7 +94,7 @@ export default function TermsPage() {
             explanation or review summary are estimates and pattern-matches, not professional,
             legal, financial, or career advice, and not a prediction of what you will actually be
             awarded. Real seniority-based award outcomes depend on factors &mdash; other
-            pilots&rsquo; bids, contract and PBS rules the Service does not have access to,
+            pilots&rsquo; bids, contract and bidding rules the Service does not have access to,
             scheduling decisions made after bidding closes &mdash; that the Service cannot see or
             verify. Every strategy is intended to work within applicable FAA duty and rest rules
             (including 14 C.F.R. Part 117); the Service does not compute or verify duty or rest

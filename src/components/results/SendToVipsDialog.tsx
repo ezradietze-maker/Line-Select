@@ -9,6 +9,7 @@ import {
   VIPS_BID_REVIEW_URL,
   VIPS_QUESTIONS,
   buildVipsBidFields,
+  completeAnswers,
   getVipsAnswers,
   getVipsEmployeeNumber,
   normalizeEmployeeNumber,
@@ -16,7 +17,7 @@ import {
   setVipsEmployeeNumber,
   vipsBidInputUrl,
   type AnyLineKind,
-  type VipsBidAnswers,
+  type VipsBidDraft,
 } from "@/lib/vips-bid";
 
 const ANY_LINE_LABELS: { kind: AnyLineKind; label: string }[] = [
@@ -44,7 +45,7 @@ export function SendToVipsDialog({
 }) {
   const [employee, setEmployee] = useState(() => getVipsEmployeeNumber() ?? "");
   const [employeeError, setEmployeeError] = useState<string | undefined>();
-  const [answers, setAnswers] = useState<VipsBidAnswers>(getVipsAnswers);
+  const [answers, setAnswers] = useState<VipsBidDraft>(getVipsAnswers);
   const [anyLines, setAnyLines] = useState<AnyLineKind[]>([]);
   const [sent, setSent] = useState(false);
 
@@ -65,8 +66,13 @@ export function SendToVipsDialog({
       return;
     }
     // Let the browser post the form into its new tab; just remember this month's choices first.
+    const complete = completeAnswers(answers);
+    if (!complete) {
+      e.preventDefault();
+      return;
+    }
     setVipsEmployeeNumber(normalized);
-    setVipsAnswers(answers);
+    setVipsAnswers(complete);
     setSent(true);
   }
 
@@ -157,6 +163,10 @@ export function SendToVipsDialog({
 
         <fieldset className="space-y-3">
           <legend className="font-medium">VIPS&rsquo;s bid questions</legend>
+          <p className="text-xs leading-relaxed text-ink-faint">
+            Answer each one &mdash; nothing is picked for you. The 2026 contract changes these questions from the
+            December 2026 bid, so if VIPS shows different ones, answer them there before you submit.
+          </p>
           {VIPS_QUESTIONS.map((q) => (
             <div key={q.key} role="radiogroup" aria-label={q.text} className="flex items-start justify-between gap-4">
               <span className="text-xs leading-relaxed text-ink-muted">{q.text}</span>

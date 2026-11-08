@@ -416,7 +416,7 @@ export function generateStrategies(
       name: "Put your vacation under a line's biggest trips",
       tagline: mine.length ? `Your ${plural(st.vacationDays, "vacation day")} this month (${mine.map(fmtV).join(", ")}) can sit on top of a line's heaviest flying.` : "Line up vacation with a line's heaviest week, not its days off.",
       mechanism:
-        "Vacation that falls on days a line was going to be off is wasted on days you'd have had anyway. Vacation that falls on a line's trips takes those trips off the line in the vacation adjustment (the pack calendar's \"SWW Vac Adj\" window) — so a line whose biggest trips sit inside your vacation gives you the most time at home for the same vacation days.",
+        "Vacation that falls on days a line was going to be off is wasted on days you'd have had anyway. Vacation that falls on a line's trips takes those trips off the line as vacation conflicts after the award (CBA 7.G, 25.E) — so a line whose biggest trips sit inside your vacation gives you the most time at home for the same vacation days. With a regular line you can also slide your vacation up to 5 days either way, or expand it, in the Conflict Input Window that opens right after bidding closes (CBA 7.E.2–3); the SWW vacation adjustment is for secondary-line holders.",
       benefits: [],
       fit: mine.length ? "now" : "later",
       fitReason: mine.length ? "The pack's vacation schedule shows you on vacation this month." : "The pack's vacation schedule has no vacation for you this month — this is for a month when it does.",
@@ -424,7 +424,7 @@ export function generateStrategies(
         ? [
             `Your vacation: ${mine.map((v) => `${fmtV(v)} (${v.days} days)`).join(", ")}.`,
             "Favor the lines below — the most credit inside your vacation — over lines that are already off those days.",
-            "After the award, put in the vacation adjustment in the SWW window so the overlapping trips come off.",
+            "After the award, check which trips your vacation conflicts with, and enter any slide or expansion in the Conflict Input Window — it opens right after your bid closes (the pack calendar's Conflict Input dates). On a secondary line, adjust in the SWW instead.",
           ]
         : [
             "When you bid vacation, look at the weeks you'd most likely hold a heavy line, not the ones you'd be off anyway.",
@@ -502,7 +502,7 @@ export function generateStrategies(
       name: "Work every window after the award",
       tagline: "The bid doesn't end at the award — each window after it still goes in seniority order.",
       mechanism:
-        "The pack's bid calendar runs several windows after the regular award: conflict input, view/add, the SWW windows (including vacation adjustment), the secondary lines release and the open-time release. Each still favors seniority, and each happens after you've seen what everyone above you got — better information than the original bid had.",
+        "The pack's bid calendar runs several windows after the regular award: conflict input (where a regular-line holder slides or expands vacation), view/add, the SWW windows (including the secondary-line vacation adjustment), the secondary lines release and the open-time release. Each still favors seniority, and each happens after you've seen what everyone above you got — better information than the original bid had.",
       benefits: [],
       fit: "now",
       fitReason: holds ? "You'll hold a line — the windows after are where you shape it." : "Without a regular line, the later windows are where your month gets built.",

@@ -38,14 +38,28 @@ export interface VipsBidAnswers {
   protectMinDays: boolean;
 }
 
-export const NO_TO_EVERYTHING: VipsBidAnswers = {
-  waiveBufferRecurrent: false,
-  waiveBufferPhaseIn: false,
-  waive1in10: false,
-  protectMinDays: false,
+/** Answers as the pilot is filling them in — null until they've picked, because these choose pay and days-off outcomes (CBA 2026 25.E.1, 25.F.7) and a silent default could cost a pilot protection they wanted. */
+export type VipsBidDraft = { [K in keyof VipsBidAnswers]: boolean | null };
+
+export const UNANSWERED: VipsBidDraft = {
+  waiveBufferRecurrent: null,
+  waiveBufferPhaseIn: null,
+  waive1in10: null,
+  protectMinDays: null,
 };
 
-/** The bid's Yes/No questions in VIPS's own order and wording, each with the field it fills. */
+/** The full set once every question has an answer, else null. */
+export function completeAnswers(draft: VipsBidDraft): VipsBidAnswers | null {
+  const values = Object.values(draft);
+  return values.every((v) => v !== null) ? (draft as VipsBidAnswers) : null;
+}
+
+/**
+ * The bid's Yes/No questions in VIPS's own order and wording, each with the field it fills. CBA 2026 25.E.1
+ * makes the minimum-days-off waivers "all-in-one" from the December 2026 bid period (Phase 2) and adds a
+ * student-line opt-out from October 2027 (Phase 4), so VIPS's page may ask a different set than this; the
+ * dialog tells the pilot to answer whatever VIPS shows.
+ */
 export const VIPS_QUESTIONS: { key: keyof VipsBidAnswers; field: string; text: string }[] = [
   {
     key: "waiveBufferRecurrent",
@@ -87,7 +101,7 @@ export function buildVipsBidFields({
 }: {
   lineNumbers: string[];
   anyLines?: AnyLineKind[];
-  answers: VipsBidAnswers;
+  answers: VipsBidDraft;
 }): VipsBidBuild {
   const lines: string[] = [];
   const seen = new Set<string>();
@@ -103,7 +117,9 @@ export function buildVipsBidFields({
     return { ok: false, reason: `VIPS takes at most ${MAX_VIPS_LINES} choices; this bid has ${lines.length}.` };
   }
 
-  const fields: [string, string][] = VIPS_QUESTIONS.map((q) => [q.field, answers[q.key] ? "Yes" : "No"]);
+  const complete = completeAnswers(answers);
+  if (!complete) return { ok: false, reason: "Answer each of VIPS's bid questions." };
+  const fields: [string, string][] = VIPS_QUESTIONS.map((q) => [q.field, complete[q.key] ? "Yes" : "No"]);
   // Questions VIPS has fields for but no longer asks on this page.
   fields.push(["n007", "Unasked"], ["n008", "Unasked"], ["n009", "Unasked"]);
   lines.forEach((n, i) => fields.push([`n${101 + i}`, n]));
@@ -133,21 +149,22 @@ export function setVipsEmployeeNumber(employeeNumber: string | null): void {
   }
 }
 
-/** Last month's answers, so a pilot who always waives the same things doesn't re-tick them — No to everything until they've answered once. */
-export function getVipsAnswers(): VipsBidAnswers {
-  if (typeof window === "undefined") return NO_TO_EVERYTHING;
+/** Last month's answers, so a pilot who always waives the same things doesn't re-tick them — unanswered until they've answered once. */
+export function getVipsAnswers(): VipsBidDraft {
+  if (typeof window === "undefined") return UNANSWERED;
   try {
     const raw = window.localStorage.getItem(ANSWERS_KEY);
-    if (!raw) return NO_TO_EVERYTHING;
+    if (!raw) return UNANSWERED;
     const parsed = JSON.parse(raw) as Partial<Record<keyof VipsBidAnswers, unknown>>;
+    const read = (v: unknown) => (typeof v === "boolean" ? v : null);
     return {
-      waiveBufferRecurrent: parsed.waiveBufferRecurrent === true,
-      waiveBufferPhaseIn: parsed.waiveBufferPhaseIn === true,
-      waive1in10: parsed.waive1in10 === true,
-      protectMinDays: parsed.protectMinDays === true,
+      waiveBufferRecurrent: read(parsed.waiveBufferRecurrent),
+      waiveBufferPhaseIn: read(parsed.waiveBufferPhaseIn),
+      waive1in10: read(parsed.waive1in10),
+      protectMinDays: read(parsed.protectMinDays),
     };
   } catch {
-    return NO_TO_EVERYTHING;
+    return UNANSWERED;
   }
 }
 

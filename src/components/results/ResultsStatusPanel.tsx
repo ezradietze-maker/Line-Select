@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { BidDeadlineEditor, formatTimeLeft, urgencyFor, useBidDeadline, useTimeLeft, type Urgency } from "@/components/results/BidCountdown";
+import { BidDeadlineEditor, bidCloseSourceLabel, formatTimeLeft, urgencyFor, useBidDeadline, useTimeLeft, type Urgency } from "@/components/results/BidCountdown";
 import { BidPeriodChangeBanner } from "@/components/results/BidPeriodChangeBanner";
 import { ForecastBanner } from "@/components/results/ForecastBanner";
 import { PilotProfileSummary } from "@/components/results/PilotProfileSummary";
@@ -151,7 +151,7 @@ function useInTabReminders(packId: string, deadline: string | null, label: strin
 }
 
 interface ResultsStatusPanelProps {
-  pack: Pick<BidPack, "id" | "base" | "aircraft" | "seat" | "month">;
+  pack: Pick<BidPack, "id" | "base" | "aircraft" | "seat" | "month" | "bidCalendar">;
   profile: PreferenceProfile;
   onUpdateProfile: (profile: PreferenceProfile) => void;
   confidenceLevel: ProfileRichness["level"] | null;
@@ -188,7 +188,7 @@ export function ResultsStatusPanel({
 }: ResultsStatusPanelProps) {
   const [open, setOpen] = useState<DrawerId | null>(null);
   const toggle = (id: DrawerId) => setOpen((cur) => (cur === id ? null : id));
-  const deadline = useBidDeadline(pack.id);
+  const deadline = useBidDeadline(pack);
   const msLeft = useTimeLeft(deadline.deadline);
   const urgency = msLeft === null ? null : urgencyFor(msLeft);
   const finalCall = urgency === "today" || urgency === "imminent";
@@ -259,6 +259,12 @@ export function ResultsStatusPanel({
               : deadline.deadline
                 ? new Date(deadline.deadline).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
                 : "Set when bidding closes for a live countdown."}
+            {deadline.loaded && deadline.deadline && bidCloseSourceLabel(deadline.source) && (
+              <span className="mt-0.5 block text-xs text-ink-faint">
+                {bidCloseSourceLabel(deadline.source)} &middot;{" "}
+                {new Date(deadline.deadline).toLocaleString(undefined, { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" })} CT
+              </span>
+            )}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button variant="secondary" className="!px-3 !py-1.5 text-sm" onClick={() => toggle("deadline")} aria-expanded={open === "deadline"}>
@@ -358,7 +364,14 @@ export function ResultsStatusPanel({
       {open && (
         <div id={`status-drawer-${open}`} className="animate-fade-in mt-3 border-t border-hairline px-1 pt-4">
           {open === "deadline" && (
-            <BidDeadlineEditor deadline={deadline.deadline} onSave={deadline.save} onClear={deadline.clear} onDone={() => setOpen(null)} />
+            <BidDeadlineEditor
+              deadline={deadline.deadline}
+              ownSet={deadline.source === "pilot"}
+              packClose={deadline.packClose}
+              onSave={deadline.save}
+              onClear={deadline.clear}
+              onDone={() => setOpen(null)}
+            />
           )}
           {open === "chances" && (
             <ForecastBanner

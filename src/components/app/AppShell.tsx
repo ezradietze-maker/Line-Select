@@ -260,7 +260,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
       )}
 
       {showSidebar && <BackToTop />}
-      <DeadlineTabTitle packId={bidPack?.id ?? null} />
+      <DeadlineTabTitle pack={bidPack ?? null} />
       <OfflineNotice />
 
       <CommandPalette

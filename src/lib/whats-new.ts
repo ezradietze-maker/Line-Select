@@ -13,6 +13,18 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-11-07",
+    title: "The countdown reads your bid pack",
+    body: "Bid close now comes straight from the bid calendar printed on your pack's cover, for your seat, in Memphis time — nothing to type in. You can still set your own time if FedEx announces a change. Upload this month's pack again to pick it up.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-07",
+    title: "Send to VIPS",
+    body: "Your ranked order goes straight into VIPS's Monthly Bid Input: open it from \"Ready to bid?\", answer VIPS's bid questions, and sign in to FedEx in the new tab. Line Select never sees your FedEx password. Check Monthly Bid Review afterwards.",
+    href: "/results",
+  },
+  {
     date: "2026-11-05",
     title: "Your bid checklist and countdown",
     body: "Above your rankings: when bidding closes, counted down, with a reminder in your phone's calendar the day before and an hour before — and the month's bid step by step, ticking itself off as you go.",

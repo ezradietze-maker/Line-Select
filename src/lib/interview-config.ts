@@ -69,7 +69,7 @@ const DEADHEAD_LOCAL: SliderQuestionConfig = {
   key: "deadheadTolerance",
   question: "How much does deadheading bother you?",
   helpText:
-    "A deadhead leg is dead time — you're riding along, not flying it and not getting paid to fly it. Based locally, that's mostly just time you'd rather spend at home or actually at the controls.",
+    "A deadhead leg pays and credits like the trip, but you're riding along rather than flying it. Based locally, that's mostly time in a seat you'd rather spend at home or actually at the controls.",
   lowLabel: "Avoid deadhead legs",
   highLabel: "Doesn't matter to me",
   centerLabel: "No strong preference",
@@ -79,7 +79,7 @@ const DEADHEAD_COMMUTER: SliderQuestionConfig = {
   key: "deadheadTolerance",
   question: "Where do you land on deadheads, given you commute?",
   helpText:
-    "A deadhead can actually work in your favor as a commuter — it can position you without having to fly (or pay for) getting there yourself, and plenty of commuters specifically like a deadhead on both ends of a trip. Others would still rather fly every leg themselves. Where do you land?",
+    "A deadhead can actually work in your favor as a commuter — it can position you, paid, without having to fly or buy a ticket to get there yourself, and plenty of commuters specifically like a deadhead on both ends of a trip. Others would still rather fly every leg themselves. Where do you land?",
   lowLabel: "Avoid deadhead legs",
   highLabel: "Like having them — makes commuting easier",
   centerLabel: "Depends on the trip",

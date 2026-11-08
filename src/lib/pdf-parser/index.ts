@@ -1,4 +1,5 @@
 import { buildLine } from "@/lib/pdf-parser/build-bidpack";
+import { parseBidCalendarPage } from "@/lib/pdf-parser/bid-calendar-parser";
 import { parseInfoPage } from "@/lib/pdf-parser/info-page-parser";
 import { extractLineOffDays, extractLinePlacements, type DayPlacement } from "@/lib/pdf-parser/line-grid-days";
 import {
@@ -240,6 +241,7 @@ export async function parseBidPackPdf(
     return m ? `${m[1]}:${m[2]}` : null;
   };
   if (infoBySeat) for (const seat of ["CAP", "FO"] as const) if (infoBySeat[seat]) infoBySeat[seat] = { ...infoBySeat[seat]!, openTimeRelease: otRelease(seat) };
+  const bidCalendar = pages[0] ? parseBidCalendarPage(pages[0]) : [];
 
   const linesWithIncompleteTrips: { lineNumber: string; seat: "CAP" | "FO" }[] = [];
   const bidPacksBySeat: Partial<Record<"CAP" | "FO", BidPack>> = {};
@@ -275,6 +277,7 @@ export async function parseBidPackPdf(
       reserveLines: reserveLinesBySeat[seat],
       info: infoBySeat?.[seat],
       seniorityList: withVacations(validateSeniorityList(seniorityBySeat[seat] ?? [], seat, warnings), vacationsBySeat[seat]),
+      ...(bidCalendar.length ? { bidCalendar } : {}),
       ...(sweepFlights.length ? { sweepFlights } : {}),
     };
   }

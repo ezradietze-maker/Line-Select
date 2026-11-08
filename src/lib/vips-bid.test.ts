@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MAX_VIPS_LINES,
-  NO_TO_EVERYTHING,
+  UNANSWERED,
   buildVipsBidFields,
   getVipsAnswers,
   getVipsEmployeeNumber,
@@ -19,6 +19,8 @@ function memoryStorage() {
     removeItem: (k: string) => void map.delete(k),
   };
 }
+
+const ALL_NO = { waiveBufferRecurrent: false, waiveBufferPhaseIn: false, waive1in10: false, protectMinDays: false };
 
 function fieldsOf(result: ReturnType<typeof buildVipsBidFields>) {
   if (!result.ok) throw new Error(result.reason);
@@ -52,22 +54,28 @@ describe("buildVipsBidFields", () => {
     const result = buildVipsBidFields({
       lineNumbers: ["1001", "1002"],
       anyLines: ["regular", "reserve", "secondary"],
-      answers: NO_TO_EVERYTHING,
+      answers: ALL_NO,
     });
     expect(result.ok && result.lines).toEqual(["1001", "1002", "9950", "9954", "9952"]);
   });
 
+  it("won't build until every bid question is answered", () => {
+    const result = buildVipsBidFields({ lineNumbers: ["1001"], answers: { ...ALL_NO, protectMinDays: null } });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.reason).toMatch(/Answer each/);
+  });
+
   it("drops a repeated line instead of bidding it twice", () => {
-    const result = buildVipsBidFields({ lineNumbers: ["1001", " 1002 ", "1001", "1002"], answers: NO_TO_EVERYTHING });
+    const result = buildVipsBidFields({ lineNumbers: ["1001", " 1002 ", "1001", "1002"], answers: ALL_NO });
     expect(result.ok && result.lines).toEqual(["1001", "1002"]);
   });
 
   it("refuses an empty bid, a non-number, and more lines than VIPS has slots for", () => {
-    expect(buildVipsBidFields({ lineNumbers: [], answers: NO_TO_EVERYTHING }).ok).toBe(false);
-    expect(buildVipsBidFields({ lineNumbers: ["1001", "10A2"], answers: NO_TO_EVERYTHING }).ok).toBe(false);
+    expect(buildVipsBidFields({ lineNumbers: [], answers: ALL_NO }).ok).toBe(false);
+    expect(buildVipsBidFields({ lineNumbers: ["1001", "10A2"], answers: ALL_NO }).ok).toBe(false);
     const tooMany = Array.from({ length: MAX_VIPS_LINES + 1 }, (_, i) => String(1000 + i));
-    expect(buildVipsBidFields({ lineNumbers: tooMany, answers: NO_TO_EVERYTHING }).ok).toBe(false);
-    const result = buildVipsBidFields({ lineNumbers: tooMany.slice(0, MAX_VIPS_LINES), answers: NO_TO_EVERYTHING });
+    expect(buildVipsBidFields({ lineNumbers: tooMany, answers: ALL_NO }).ok).toBe(false);
+    const result = buildVipsBidFields({ lineNumbers: tooMany.slice(0, MAX_VIPS_LINES), answers: ALL_NO });
     expect(result.ok && result.fields.at(-2)).toEqual(["n998", String(1000 + MAX_VIPS_LINES - 1)]);
   });
 });
@@ -100,15 +108,15 @@ describe("storage", () => {
     expect(getVipsEmployeeNumber()).toBeNull();
   });
 
-  it("answers No to everything until the pilot has answered, then remembers", () => {
-    expect(getVipsAnswers()).toEqual(NO_TO_EVERYTHING);
+  it("starts unanswered until the pilot has answered, then remembers", () => {
+    expect(getVipsAnswers()).toEqual(UNANSWERED);
     const answers = { waiveBufferRecurrent: false, waiveBufferPhaseIn: true, waive1in10: false, protectMinDays: true };
     setVipsAnswers(answers);
     expect(getVipsAnswers()).toEqual(answers);
   });
 
-  it("treats anything but a stored true as No", () => {
+  it("treats anything but a stored true or false as unanswered", () => {
     window.localStorage.setItem("line-select:vips-answers:v1", '{"waive1in10":"yes","protectMinDays":true}');
-    expect(getVipsAnswers()).toEqual({ ...NO_TO_EVERYTHING, protectMinDays: true });
+    expect(getVipsAnswers()).toEqual({ ...UNANSWERED, protectMinDays: true });
   });
 });
