@@ -13,7 +13,7 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
-    date: "2026-11-09",
+    date: "2026-11-08",
     title: "Ask the contract",
     body: "Ask a question about the 2026 contract and get a short answer, then the contract's own words with the section and page, and when that rule starts. If it isn't in the text we have, it says so instead of guessing. Name a line to ask about your own pack.",
     href: "/contract",
