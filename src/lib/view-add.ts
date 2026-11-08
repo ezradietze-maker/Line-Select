@@ -23,6 +23,8 @@ const RELIEF_HOURS = 24;
 export const MAX_CHOICES = 99;
 const MAX_CANDIDATES = 30;
 const MAX_COMBO_TRIPS = 4;
+/** The search stops here: it tries the pilot's best-looking trips first, and a long list of small trips would otherwise take seconds on a phone. */
+const MAX_COMBOS_TRIED = 3000;
 /** How many of the best-looking combinations go to the pilot's model. */
 const MAX_SCORED_COMBOS = 40;
 const BEST_COMBOS = 3;
@@ -97,12 +99,19 @@ function stretchThrough(candidate: Busy, others: Busy[], atBase: boolean): { hou
   let i = 0;
   while (i < pieces.length) {
     let j = i;
-    while (j + 1 < pieces.length && pieces[j + 1].start - Math.max(...pieces.slice(i, j + 1).map((p) => p.end)) < relief) j++;
-    const run = pieces.slice(i, j + 1);
-    if (run.some((p) => p.b === candidate)) {
-      const hours = (Math.max(...run.map((p) => p.end)) - run[0].start) / HOUR;
-      if (hours > worst.hours) worst = { hours, unsure: run.some((p) => !p.b.dutiesKnown), international: run.some((p) => p.b.international) };
+    let end = pieces[i].end;
+    let holdsCandidate = pieces[i].b === candidate;
+    let unsure = !pieces[i].b.dutiesKnown;
+    let international = pieces[i].b.international;
+    while (j + 1 < pieces.length && pieces[j + 1].start - end < relief) {
+      j++;
+      end = Math.max(end, pieces[j].end);
+      holdsCandidate ||= pieces[j].b === candidate;
+      unsure ||= !pieces[j].b.dutiesKnown;
+      international ||= pieces[j].b.international;
     }
+    const hours = (end - pieces[i].start) / HOUR;
+    if (holdsCandidate && hours > worst.hours) worst = { hours, unsure, international };
     i = j + 1;
   }
   return worst;
@@ -389,13 +398,16 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
   // The combination: a small search over the best-looking trips, each tried against those already in it.
   const candidates = ranked.slice(0, MAX_CANDIDATES);
   const found: ViewAddCombo[] = [];
+  let tried = 0;
   const walk = (from: number, chosen: typeof candidates, busy: Busy[], total: number) => {
     if (chosen.length) {
+      tried++;
       const whole = lineWithAdded(flown.line, chosen.map((c) => c.trip), pack);
       found.push({ trips: chosen.map((c) => c.trip), totalCH: Math.round(total * 100) / 100, shortCH: Math.max(0, Math.round((target - total) * 100) / 100), daysOffAfter: whole.daysOff, longestOff: longestDaysOffBlock(whole), workStretches: workStretches(whole, pack.bidPeriodDays), score: null });
     }
     if (chosen.length === MAX_COMBO_TRIPS || total >= target) return;
     for (let i = from; i < candidates.length; i++) {
+      if (tried >= MAX_COMBOS_TRIED) return;
       const c = candidates[i];
       // CBA 2026 25.L.6.e: each trip against what's still owed.
       if (c.trip.creditHours > Math.min(target - total, onePayCode) + over) continue;
