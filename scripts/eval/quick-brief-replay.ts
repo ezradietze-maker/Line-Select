@@ -15,6 +15,11 @@ import { batched } from "./batch";
  * The brief itself is written from his Oct 15 story and fixed in QUICK_BRIEF below, before any read: tuning it to the
  * answer would prove nothing.
  *
+ * Measured Nov 8, 2026: 8 of 8, all four in his top 6. Controls, two reads each: his chips without the sentence, and the
+ * commuter starting point from SAN, also pass (top 7); three other pilots' briefs living locally all fail (rested, earn,
+ * family: as low as #47). So it tells his brief from others'. But the top 15 alone is a low bar on this pack: plain line
+ * number order passes it too (#3, #5, #10, #11), so judge by how near the top they land, and by the controls.
+ *
  *   npx tsx scripts/eval/quick-brief-replay.ts [--reads 8] [--batch] [--tag name]
  *
  * Reads are saved to .cache/eval/quick-brief/ and scored again free with --rescore. A live read (no --batch) is what a
