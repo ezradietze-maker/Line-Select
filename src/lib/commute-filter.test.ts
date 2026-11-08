@@ -245,3 +245,14 @@ describe.skipIf(!seats.length)("each way is asked about its own day", () => {
     expect(commuteStatusOfLine(line, pack, s, whole, BEFORE_OCT)).toBe("no");
   });
 });
+
+describe.skipIf(!seats.length)("what the commute filter asks", () => {
+  it("allows a wider detour on every question, and within what the route takes", () => {
+    const needs = commuteNeedsForPack(load(seats[0]), SETTINGS, BEFORE_OCT);
+    expect(needs.length).toBeGreaterThan(0);
+    for (const n of needs) {
+      expect(n.maxDetour).toBeGreaterThanOrEqual(1);
+      expect(n.maxDetour).toBeLessThanOrEqual(2);
+    }
+  });
+});

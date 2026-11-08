@@ -116,4 +116,25 @@ describe("/api/flights/travel spending", () => {
     for (let i = 0; i < 20; i++) expect((await POST(request())).status).toBe(200);
     expect((await POST(request())).status).toBe(429);
   });
+
+  it("passes a question's allowed detour to the search, and refuses one too wide", async () => {
+    const asked = (maxDetour: unknown) => {
+      const r = request();
+      return r.json().then((body) => {
+        body.needs[0].maxDetour = maxDetour;
+        return new Request(r.url, { method: "POST", headers: r.headers, body: JSON.stringify(body) });
+      });
+    };
+    expect((await POST(await asked(2))).status).toBe(200);
+    expect(answerTravelNeeds.mock.lastCall![0][0].maxDetour).toBe(2);
+    expect((await POST(await asked(5))).status).toBe(400);
+    expect((await POST(await asked("wide"))).status).toBe(400);
+  });
+
+  it("says when boards were held back, so a no isn't taken as certain", async () => {
+    answerTravelNeeds.mockResolvedValueOnce({ answers: [], stats: { fetched: 0, cached: 0, skipped: 3, boardsLeft: 0 } });
+    expect((await (await POST(request())).json()).partial).toBe(true);
+    answerTravelNeeds.mockResolvedValueOnce({ answers: [], stats: { fetched: 0, cached: 0, skipped: 0, boardsLeft: 9 } });
+    expect((await (await POST(request())).json()).partial).toBeUndefined();
+  });
 });

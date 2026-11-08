@@ -37,6 +37,8 @@ function readNeeds(value: unknown, now = Date.now()): TravelNeed[] | null {
     if (n.departAfter < now - PAST_LIMIT_MS || n.departAfter > now + FUTURE_LIMIT_MS) continue;
     // Bounded like the departure window: every 12 hours of it is another departure board to fetch.
     if (n.arriveBy !== undefined && (typeof n.arriveBy !== "number" || n.arriveBy < n.departAfter || n.arriveBy > n.departBefore + 72 * 3600_000)) return null;
+    // Every hub a wider detour lets in is more boards to fetch, so this stays within reason too.
+    if (n.maxDetour !== undefined && (typeof n.maxDetour !== "number" || !(n.maxDetour >= 1 && n.maxDetour <= 2))) return null;
     let groundMs: Record<string, number> | undefined;
     if (n.groundMs !== undefined) {
       if (!isJsonObject(n.groundMs)) return null;
@@ -53,6 +55,7 @@ function readNeeds(value: unknown, now = Date.now()): TravelNeed[] | null {
       departAfter: n.departAfter,
       departBefore: n.departBefore,
       ...(typeof n.arriveBy === "number" ? { arriveBy: n.arriveBy } : {}),
+      ...(typeof n.maxDetour === "number" ? { maxDetour: n.maxDetour } : {}),
       ...(groundMs ? { groundMs } : {}),
     });
   }

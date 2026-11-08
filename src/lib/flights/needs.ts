@@ -27,6 +27,8 @@ export interface TravelNeed {
   departAfter: number;
   /** The end of the window: departures after this don't count. */
   departBefore: number;
+  /** How far out of the way a connection may go, as a share of the direct distance. Unset: what's fine for counting backups (`itineraries.ts`). */
+  maxDetour?: number;
   /** Drive time (ms) between a FedEx-only field and an airline airport standing in for it (see `GROUND_ALTERNATES`). */
   groundMs?: Record<string, number>;
 }

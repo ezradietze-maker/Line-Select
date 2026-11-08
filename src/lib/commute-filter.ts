@@ -14,7 +14,7 @@ import type { BidPack, Line, Trip } from "@/types/bidpack";
  * It goes by departures, not trips: trips flown back to back without going home need no commute between them, so a
  * departure asks for a way in to its first trip and a way home from its last.
  *
- * Each question is asked about the day itself. The same questions asked about a whole day and night (as the commute
+ * Each question is asked about the day itself, and allows a connection further out of the way than counting backups does. The same questions asked about a whole day and night (as the commute
  * measures do, to count backups) find plenty of flights the evening before and stop there, without looking through the
  * hubs for that morning's connections: a line that's easy to commute to reads as one that isn't.
  *
@@ -38,6 +38,12 @@ export const DEFAULT_COMMUTE_SETTINGS: Omit<CommuteSettings, "homeAirport"> = {
 };
 
 const HOUR = 3_600_000;
+/**
+ * How far out of the way a commute can go and still count. Counting backups, a connection well off the line isn't one
+ * anybody would book; asked whether a pilot can get to work that day at all, it is. Denver to Memphis through Atlanta is
+ * 1.8 times the direct distance, and the one that gets them there.
+ */
+const COMMUTE_MAX_DETOUR = 2;
 /** What `travelNeedsForTrip` already allows from block-in to the curb. */
 const CURB_HOURS = 1;
 
@@ -95,12 +101,12 @@ function waysOfTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Tri
     if (goingIn) {
       const day = n.arriveBy! + s.arriveBeforeReportHours * HOUR;
       const opens = DateTime.fromISO(nightDay(day, baseZone)!, { zone: homeZone }).toMillis();
-      ways.push({ need: { ...n, departAfter: opens, departBefore: n.arriveBy! }, day, impossible: opens >= n.arriveBy! });
+      ways.push({ need: { ...n, departAfter: opens, departBefore: n.arriveBy!, maxDetour: COMMUTE_MAX_DETOUR }, day, impossible: opens >= n.arriveBy! });
     } else {
       const departAfter = n.kind === "homeFromBase" ? n.departAfter + extra : n.departAfter;
       const day = departAfter - s.releaseToDepartureHours * HOUR;
       const closes = DateTime.fromISO(calendarDay(day, baseZone)!, { zone: homeZone }).plus({ days: 1, hours: NIGHT_RUNS_UNTIL_HOURS }).toMillis();
-      ways.push({ need: { ...n, departAfter, departBefore: closes }, day, impossible: departAfter >= closes });
+      ways.push({ need: { ...n, departAfter, departBefore: closes, maxDetour: COMMUTE_MAX_DETOUR }, day, impossible: departAfter >= closes });
     }
   }
   return ways;

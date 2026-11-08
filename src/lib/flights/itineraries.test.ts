@@ -110,3 +110,28 @@ describe("counting real ways to make a trip", () => {
   });
 });
 
+
+describe("how far out of the way a connection may go", () => {
+  // Denver to Memphis through Atlanta: 1.8 times the direct distance. What gets the pilot there, if nothing else does.
+  const atl: Record<string, ScheduledFlight[]> = {
+    DEN: [f("DL 341", "DEN", "ATL", 5, 8.5)],
+    ATL: [f("DL 2778", "ATL", "MEM", 10, 11)],
+  };
+  const commute: TravelNeed = { id: "c:toBase", tripId: "c", kind: "toBase", from: ["DEN"], to: ["MEM"], arriveBy: t0 + 12 * H, departAfter: t0, departBefore: t0 + 12 * H };
+  const seen = (a: string) => atl[a];
+
+  it("leaves a wide detour out unless the question allows it, so counting backups stays as it was", () => {
+    expect(answerNeed(commute, seen)!.options).toBe(0);
+    expect(answerNeed({ ...commute, maxDetour: 2 }, seen)!.options).toBe(1);
+    expect(answerNeed({ ...commute, maxDetour: 2 }, seen)!.lastDeparture).toBe(t0 + 5 * H);
+  });
+
+  it("looks through such a hub only when the question allows it", () => {
+    expect(hubsFor(commute, seen)).not.toContain("ATL");
+    expect(hubsFor({ ...commute, maxDetour: 2 }, seen)).toContain("ATL");
+  });
+
+  it("still won't count one past what's allowed", () => {
+    expect(answerNeed({ ...commute, maxDetour: 1.2 }, seen)!.options).toBe(0);
+  });
+});

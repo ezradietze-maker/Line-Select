@@ -148,7 +148,7 @@ export function hubsFor(need: TravelNeed, boards: Boards, max = 3, maxGateways =
         f.dep <= need.departBefore &&
         !need.to.includes(f.to) &&
         !need.from.includes(f.to) &&
-        need.to.some((dest) => onTheWay(origin, f.to, dest))
+        need.to.some((dest) => onTheWay(origin, f.to, dest, need.maxDetour))
       ) {
         if (f.jumpseat) company.add(f.to);
         else if (CONNECTING_HUBS.has(f.to)) airline.set(f.to, (airline.get(f.to) ?? 0) + 1);
@@ -199,7 +199,7 @@ export function answerNeed(need: TravelNeed, boards: Boards, maxStops: 1 | 2 = 1
         need.to.includes(g.to) &&
         g.dep >= f.arr + connectionMs(f, g) &&
         arrives(g) &&
-        (f.jumpseat || g.jumpseat || onTheWay(f.from, f.to, g.to, MAX_TWO_STOP_DETOUR))
+        (f.jumpseat || g.jumpseat || onTheWay(f.from, f.to, g.to, need.maxDetour ?? MAX_TWO_STOP_DETOUR))
       )
         itineraries.push([f, g]);
   }
@@ -247,7 +247,7 @@ function twoStops(need: TravelNeed, firsts: ScheduledFlight[], boards: Boards, a
       const hs = finalsFrom(g.to);
       if (!hs.length) continue;
       const km = (distanceKm(f.from, f.to) ?? 0) + (distanceKm(g.from, g.to) ?? 0) + Math.min(...hs.map((h) => distanceKm(h.from, h.to) ?? 0));
-      if (Number.isFinite(direct) && km > direct * MAX_TWO_STOP_DETOUR) continue;
+      if (Number.isFinite(direct) && km > direct * (need.maxDetour ?? MAX_TWO_STOP_DETOUR)) continue;
       for (const h of hs) if (h.dep >= g.arr + connectionMs(g, h)) out.push([f, g, h]);
     }
   }
@@ -267,7 +267,7 @@ export function secondHubsFor(need: TravelNeed, boards: Boards, firstHubs: strin
         !firstHubs.includes(g.to) &&
         !need.to.includes(g.to) &&
         !need.from.includes(g.to) &&
-        need.from.some((o) => need.to.some((d) => onTheWay(o, g.to, d, MAX_TWO_STOP_DETOUR)))
+        need.from.some((o) => need.to.some((d) => onTheWay(o, g.to, d, need.maxDetour ?? MAX_TWO_STOP_DETOUR)))
       )
         hubs.add(g.to);
   const toDest = (hub: string) => Math.min(...need.to.map((d) => distanceKm(hub, d) ?? Infinity));
