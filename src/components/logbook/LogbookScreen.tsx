@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { NumberTicker } from "@/components/ui/NumberTicker";
 import { NightGlobe } from "@/components/welcome/NightGlobe";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
+import { CalendarSubscribe } from "@/components/results/CalendarSubscribe";
 import { submitAwardHistory } from "@/lib/award-history";
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { cityName } from "@/lib/city-names";
@@ -72,6 +73,8 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
       )}
 
       {notice && <p className="mt-4 rounded-lg border border-warn/40 bg-warn-soft px-4 py-2.5 text-sm text-warn">{notice}</p>}
+
+      {bidPack && profile && <CalendarSubscribe />}
 
       <WhySharing />
 

@@ -96,6 +96,18 @@ export default function PrivacyPage() {
             the forecast (Section 7).
           </p>
           <p className="mt-3">
+            If you turn on a calendar link, your account also keeps what that calendar shows, for up to your last
+            three bid months: your seat&rsquo;s bid dates; your awarded or #1 line&rsquo;s number and its trips, with
+            their times, layovers, hotels, rides, pickups and any suggested commute flights; and your days off, if
+            you ask for them. Your browser tells our server which line is your #1 so the calendar can follow it. It
+            never includes other pilots&rsquo; data. We store only a hash of the link, but the link itself is secret:
+            anyone who has it can read that calendar without signing in, and the calendar service you add it to
+            (Apple, Google or Microsoft, say) fetches it and keeps a copy under its own terms. Making a new link
+            stops the old one at once. Turning the link off, or deleting your account, also removes what we kept
+            for it; &ldquo;Start over&rdquo; on your results page doesn&rsquo;t, so turn the link off too. A copy
+            may stay in your calendar app until you remove the subscription there.
+          </p>
+          <p className="mt-3">
             If you use Send to VIPS, your own FedEx employee number and your answers to VIPS&rsquo;s
             bid questions are kept in your browser&rsquo;s local storage too, so you don&rsquo;t retype
             them. Pressing send posts your line order, those answers, and your employee number

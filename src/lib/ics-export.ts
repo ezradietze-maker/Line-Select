@@ -2,19 +2,29 @@ import { DateTime } from "luxon";
 import type { Line } from "@/types/bidpack";
 
 export function escapeIcsText(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+  return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 }
 
-/** RFC 5545 line folding at 75 octets — a simple char-based approximation (this app's own text is plain ASCII), not a full UTF-8 octet-boundary implementation. */
+const encoder = new TextEncoder();
+const octets = (s: string) => encoder.encode(s).length;
+
+/** RFC 5545 3.1 line folding: no line over 75 octets, and never splitting a multi-byte character (hotel names and arrows aren't plain ASCII). */
 export function foldLine(line: string): string {
-  if (line.length <= 75) return line;
+  if (octets(line) <= 75) return line;
   const parts: string[] = [];
-  let rest = line;
-  while (rest.length > 75) {
-    parts.push(rest.slice(0, 75));
-    rest = " " + rest.slice(75);
+  let current = "";
+  let used = 0;
+  for (const ch of line) {
+    const size = octets(ch);
+    if (used + size > 75) {
+      parts.push(current);
+      current = " ";
+      used = 1;
+    }
+    current += ch;
+    used += size;
   }
-  parts.push(rest);
+  parts.push(current);
   return parts.join("\r\n");
 }
 
@@ -98,7 +108,7 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null): Ic
   return { ok: true, content };
 }
 
-const icsUtc = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+export const icsUtc = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 
 /**
  * The bid deadline as a calendar event with two alarms — the day before and an hour before — so a pilot's own phone

@@ -10,6 +10,8 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import type { FeedMonth, FeedOptions } from "@/lib/calendar-feed";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
 import type { InterviewOutcome } from "@/lib/learning/interview-outcome";
 import type { BidPackMetaSnapshot, TripSnapshot } from "@/types/trade";
@@ -185,6 +187,27 @@ export const preferenceProfiles = pgTable("preference_profiles", {
   profile: jsonb("profile").notNull().$type<PreferenceProfile>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * A pilot's private calendar subscription (`server/calendar-feeds.ts`). The link's token is stored only as a hash, so a
+ * link can't be read back from here. A new link revokes the old row; at most one is live per pilot. `months` holds the
+ * trips and timeline as built when the pilot's choice last changed, and is emptied on revoke.
+ */
+export const calendarFeeds = pgTable(
+  "calendar_feeds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    options: jsonb("options").notNull().$type<FeedOptions>(),
+    months: jsonb("months").notNull().$type<FeedMonth[]>(),
+  },
+  (t) => [uniqueIndex("calendar_feeds_one_live_idx").on(t.userId).where(sql`${t.revokedAt} is null`)]
+);
 
 export const feedbackSubmissions = pgTable("feedback_submissions", {
   id: uuid("id").primaryKey().defaultRandom(),

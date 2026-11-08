@@ -14,6 +14,12 @@ export interface WhatsNewEntry {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-08",
+    title: "A calendar that updates itself",
+    body: "Subscribe in Apple Calendar, Google Calendar or Outlook with a private link: your bid dates for your seat, your #1 line's trips with hotels and pickups, and your award once you log it. Change your line here and your calendar follows, with nothing to export again. Find it under \"Ready to bid?\" or in your Logbook.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-08",
     title: "Ask the contract",
     body: "Ask a question about the 2026 contract and get a short answer, then the contract's own words with the section and page, and when that rule starts. If it isn't in the text we have, it says so instead of guessing. Name a line to ask about your own pack.",
     href: "/contract",

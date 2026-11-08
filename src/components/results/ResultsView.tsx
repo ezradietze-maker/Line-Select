@@ -1142,6 +1142,7 @@ export function ResultsView({
               packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
               leftOut={bidPack.lines.length - exportable.length}
               presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds }}
+              topLineNumber={ranked.find((r) => !hiddenSet.has(r.line.id))?.line.lineNumber ?? null}
             />
           </div>
 

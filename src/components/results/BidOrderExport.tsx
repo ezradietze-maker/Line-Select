@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CalendarSubscribe } from "@/components/results/CalendarSubscribe";
 import { PlaneIcon } from "@/components/ui/icons";
 import { SendToVipsDialog, type PresendContext } from "@/components/results/SendToVipsDialog";
 import { buildLineCalendar } from "@/lib/ics-export";
@@ -36,6 +37,7 @@ export function BidOrderExport({
   packLabel,
   leftOut,
   presend,
+  topLineNumber,
 }: {
   entries: BidOrderEntry[];
   /** The starred lines, in ranked order — when present, "Copy shortlist" becomes the fastest way to turn a hand-picked set into a bid order. */
@@ -48,6 +50,8 @@ export function BidOrderExport({
   leftOut: number;
   /** What the VIPS dialog's checks read beyond the order. */
   presend: PresendContext;
+  /** The pilot's #1, whatever the filters show: what their calendar link follows. */
+  topLineNumber: string | null;
 }) {
   const [copied, setCopied] = useFlash<NonNullable<CopiedKind>>(2000);
   const [calendarError, setCalendarError] = useFlash<string>(4000);
@@ -184,6 +188,7 @@ export function BidOrderExport({
         Send to VIPS opens pilot.fedex.com with this order filled in &mdash; you sign in there, and nothing is sent until you do. Or copy the order and enter it yourself.
       </p>
       {calendarError && <p className="mt-2 text-xs text-danger">{calendarError}</p>}
+      <CalendarSubscribe topLineNumber={topLineNumber} />
       {vipsOpen && (
         <SendToVipsDialog
           lineNumbers={entries.map((e) => e.lineScore.line.lineNumber)}
