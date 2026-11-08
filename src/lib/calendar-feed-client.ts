@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { loggedMonthFor } from "@/lib/bid-checklist";
+import { saveServerBidPack } from "@/lib/bidpack-server";
 import { getBidDeadline } from "@/lib/bid-deadline-storage";
 import type { LineSource } from "@/lib/calendar-feed";
 import { isSamplePack } from "@/lib/fake-trade-offers";
@@ -61,12 +62,20 @@ export function feedChoiceFor(pack: BidPack, profile: PreferenceProfile | null, 
 
 export type FeedSyncResult = "off" | "pack-not-saved" | "ok" | "failed";
 
+/**
+ * Sends the pilot's line. The feed is built from the pack on their account, and that can be missing: a pack is only saved
+ * there when it's uploaded while signed in, so one from before that, still on this device, has never been. It goes up here.
+ */
 export async function syncFeedChoice(pack: BidPack, profile: PreferenceProfile | null, topLineNumber: string | null): Promise<FeedSyncResult> {
   const choice = feedChoiceFor(pack, profile, topLineNumber) ?? { lineNumber: null, lineSource: null };
-  try {
+  const sendChoice = async (): Promise<FeedSyncResult> => {
     const res = await send("PUT", { packId: pack.id, ...choice, pilotClose: getBidDeadline(pack.id) });
     if (!res.ok) return "failed";
     return ((await res.json()) as { result: FeedSyncResult }).result;
+  };
+  try {
+    const result = await sendChoice();
+    return result === "pack-not-saved" && (await saveServerBidPack(pack)) ? await sendChoice() : result;
   } catch {
     return "failed";
   }

@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { feedChoiceFor, feedLinks } from "@/lib/calendar-feed-client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+const server = vi.hoisted(() => ({ saveServerBidPack: vi.fn() }));
+vi.mock("@/lib/bidpack-server", () => server);
+import { feedChoiceFor, feedLinks, syncFeedChoice } from "@/lib/calendar-feed-client";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -32,5 +34,46 @@ describe("feedChoiceFor", () => {
 
   it("has nothing to send with no award and no #1", () => {
     expect(feedChoiceFor(pack, null, null)).toBeNull();
+  });
+});
+
+describe("syncFeedChoice", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  function answers(...results: string[]) {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ result: results.shift() })));
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("sends the line, and saves nothing when the account has the pack", async () => {
+    const fetchMock = answers("ok");
+    expect(await syncFeedChoice(pack, null, "1004")).toBe("ok");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(server.saveServerBidPack).not.toHaveBeenCalled();
+  });
+
+  it("saves a pack that never reached the account, then sends again", async () => {
+    const fetchMock = answers("pack-not-saved", "ok");
+    server.saveServerBidPack.mockResolvedValue(true);
+    expect(await syncFeedChoice(pack, null, "1004")).toBe("ok");
+    expect(server.saveServerBidPack).toHaveBeenCalledWith(pack);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("says so when the pack can't be saved, without sending again", async () => {
+    const fetchMock = answers("pack-not-saved");
+    server.saveServerBidPack.mockResolvedValue(false);
+    expect(await syncFeedChoice(pack, null, "1004")).toBe("pack-not-saved");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't save anything for a pilot with no link", async () => {
+    answers("off");
+    expect(await syncFeedChoice(pack, null, "1004")).toBe("off");
+    expect(server.saveServerBidPack).not.toHaveBeenCalled();
   });
 });

@@ -198,7 +198,7 @@ function vevent(uid: string, stamp: number, props: string[]): string[] {
  * are spelled out in each trip's description. Newest build wins when two months describe the same event: a pack's
  * cover prints the next bid's dates too, and that bid's own pack is the better source.
  */
-export function renderFeed(months: FeedMonth[], options: FeedOptions): string {
+export function renderFeed(months: FeedMonth[], options: FeedOptions, now = Date.now()): string {
   const events = new Map<string, string[]>();
   const add = (uid: string, lines: string[]) => {
     if (!events.has(uid)) events.set(uid, lines);
@@ -235,6 +235,17 @@ export function renderFeed(months: FeedMonth[], options: FeedOptions): string {
         ]));
       }
     }
+  }
+  // RFC 5545 3.6: a calendar holds at least one component, and a calendar service may refuse an empty one.
+  if (events.size === 0) {
+    const today = DateTime.fromMillis(now, { zone: "utc" }).startOf("day");
+    add("waiting@lineselect", vevent("waiting@lineselect", today.toMillis(), [
+      `DTSTART;VALUE=DATE:${today.toFormat("yyyyLLdd")}`,
+      `DTEND;VALUE=DATE:${today.plus({ days: 1 }).toFormat("yyyyLLdd")}`,
+      `SUMMARY:${escapeIcsText("Line Select: open My Rankings to fill this calendar")}`,
+      `DESCRIPTION:${escapeIcsText("Your bid dates and trips appear here once your bid pack is on your account. This note goes away on its own.")}`,
+      "TRANSP:TRANSPARENT",
+    ]));
   }
   const sorted = [...events.keys()].sort();
   const lines = [

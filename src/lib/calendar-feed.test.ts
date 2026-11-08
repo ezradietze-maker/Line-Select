@@ -214,6 +214,18 @@ describe("the feed's output", () => {
     expect(month({ lineNumber: "7014" }).trips).toEqual([]);
   });
 
+  it("is never empty: a calendar has to hold something, and it says what to do", () => {
+    const ics = renderFeed([], { homeDays: false }, Date.UTC(2026, 10, 8, 19));
+    expectValid(ics);
+    const events = parsed(ics);
+    expect(events).toHaveLength(1);
+    expect(events[0].summary).toContain("open My Rankings");
+    expect(events[0].startDate.toString()).toBe("2026-11-08");
+    expect(events[0].startDate.isDate).toBe(true);
+    // It goes as soon as there's anything real.
+    expect(parsed(renderFeed([month()], { homeDays: false })).some((e) => e.uid === "waiting@lineselect")).toBe(false);
+  });
+
   it("skips a trip with no grid-confirmed date rather than guessing one", () => {
     const m = month({}, pack({ lines: [line({ trips: [trip({ startDayIndex: null })] })] }));
     expect(m.trips).toEqual([]);

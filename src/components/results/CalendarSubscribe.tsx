@@ -58,7 +58,7 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
       forgetFeedSync();
       if (bidPack) {
         const result = await syncFeedChoice(bidPack, profile, topLineNumber);
-        if (result === "pack-not-saved") setNotice("Your bid pack hasn't finished saving to your account. Your trips will appear after your next visit to My Rankings.");
+        if (result === "pack-not-saved") setNotice("Your link works, but your bid pack couldn't be saved to your account just now. Your trips will appear after your next visit to My Rankings.");
         if (result === "failed") setNotice("Your link works, but your line didn't reach it yet. It will on your next visit to My Rankings.");
         if (result === "ok") setStatus(await fetchFeedStatus());
       }
