@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { CategoryBars } from "@/components/results/CategoryBars";
@@ -99,6 +99,8 @@ interface LineCardProps {
   /** What the list is sorted by and this line's value on it, shown only once it's opened: the strips stay as they are. */
   sortedBy?: string;
   sortedValue?: string | null;
+  /** Controls shown at the top of the opened line. */
+  openExtra?: ReactNode;
 }
 
 export const LineCard = memo(function LineCard({
@@ -129,6 +131,7 @@ export const LineCard = memo(function LineCard({
   onToggleOpen,
   sortedBy,
   sortedValue,
+  openExtra,
 }: LineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
@@ -203,6 +206,7 @@ export const LineCard = memo(function LineCard({
       type="button"
       {...attributes}
       {...listeners}
+      data-drag-handle
       title="Drag onto another line to swap ranks"
       aria-label="Drag onto another line to swap ranks — teaches the app your preferences"
       className="flex h-9 w-6 shrink-0 touch-none cursor-grab items-center justify-center rounded text-ink-faint transition-colors hover:bg-accent-soft/40 hover:text-accent active:cursor-grabbing print:hidden"
@@ -259,6 +263,7 @@ export const LineCard = memo(function LineCard({
             transition={reduceMotion ? { duration: 0 } : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden border-t border-hairline"
           >
+      {openExtra}
       {sortedValue && (
         <div className="border-b border-hairline px-5 py-2 text-sm text-ink-muted sm:px-6">
           {sortedBy}: <span className="font-semibold text-ink">{sortedValue}</span>

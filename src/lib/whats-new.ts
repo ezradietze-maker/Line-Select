@@ -25,6 +25,12 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     href: "/results",
   },
   {
+    date: "2026-11-08",
+    title: "Sort by anything, filter on real commutes, and sort lines into tiers",
+    body: "Sort your lines by anything Line Select measures, with a look at what lands on top first; sorting is for looking, and what you send still follows your ranking and tiers. New filters cover takeoff times, deadheads, out-and-backs, TAFB and credit ranges, any city a line touches, and whether real flights get you to work and home on the day. Open a line to put it in Best, Better, Good, Backup or Not bid (or press 1\u20135), pick several with shift-click or a long press, and undo as far back as you like. Tier moves teach your priorities the way swaps do, and Send to VIPS and Copy follow your tiers, leaving out Not bid.",
+    href: "/results",
+  },
+  {
     date: "2026-11-07",
     title: "The countdown reads your bid pack",
     body: "Bid close now comes straight from the bid calendar printed on your pack's cover, for your seat, in Memphis time — nothing to type in. You can still set your own time if FedEx announces a change. Upload this month's pack again to pick it up.",

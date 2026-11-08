@@ -551,7 +551,7 @@ export function FilterBlameList({ lines, filters, ctx, onChange }: { lines: Line
 function FilterRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
-      <span className="mt-1.5 w-24 shrink-0 text-[13px] font-medium text-ink-muted">{label}</span>
+      <span className="mt-1.5 shrink-0 text-[13px] font-medium text-ink-muted sm:w-24">{label}</span>
       {children}
     </div>
   );

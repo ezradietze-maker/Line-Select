@@ -50,7 +50,7 @@ export function SortNote({ sort }: { sort: LineSort }) {
   if (sort.isRanking) return null;
   return (
     <p className="mt-2 text-xs text-ink-muted print:hidden">
-      Sorted by {sort.def.label.toLowerCase()} to look through. Send to VIPS and Copy still follow your ranking.{" "}
+      Sorted by {sort.def.label.toLowerCase()} to look through. Send to VIPS and Copy still follow your ranking and tiers.{" "}
       <button type="button" onClick={() => sort.choose(DEFAULT_SORT)} className="font-semibold text-accent underline-offset-2 hover:underline">
         Back to your ranking
       </button>
@@ -206,7 +206,7 @@ function SortDialog({ sort, lines, onClose }: { sort: LineSort; lines: LineScore
             <Button onClick={() => choose(active)} className="mt-3 w-full">
               Sort by this
             </Button>
-            <p className="mt-2 text-xs text-ink-muted">Sorting is for looking. Send to VIPS and Copy keep following your ranking.</p>
+            <p className="mt-2 text-xs text-ink-muted">Sorting is for looking. Send to VIPS and Copy keep following your ranking and tiers.</p>
           </div>
         )}
       </div>

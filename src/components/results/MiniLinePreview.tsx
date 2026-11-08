@@ -519,26 +519,31 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
         </div>
       )}
       {s.base && (
-        <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">Commuting · </span>
+        <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
+          <dt className="inline font-sans text-[10px] uppercase tracking-wide text-ink-faint">Commuting · </dt>
+          <dd className="inline">
           {s.base.commutes} {s.base.code} commute{s.base.commutes === 1 ? "" : "s"} · {s.base.nights === 0 ? `no nights in ${s.base.code}` : `${s.base.nights} night${s.base.nights === 1 ? "" : "s"} in ${s.base.code}`}
           {s.base.jumpseatIns > 0 ? ` · ${s.base.jumpseatIns} jumpseat-in${s.base.jumpseatIns === 1 ? "" : "s"}` : ""}
-        </p>
+        </dd>
+        </div>
       )}
       {s.carryOver && (
-        <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <span className="font-sans text-[10px] uppercase tracking-wide text-carry">Carries into {s.carryOver.month} · </span>
+        <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
+          <dt className="inline font-sans text-[10px] uppercase tracking-wide text-carry">Carries into {s.carryOver.month} · </dt>
+          <dd className="inline">
           {s.carryOver.days} day{s.carryOver.days === 1 ? "" : "s"}
           {s.carryOver.dutyPeriods > 0 ? ` · ${s.carryOver.dutyPeriods} duty period${s.carryOver.dutyPeriods === 1 ? "" : "s"}` : ""}
           {s.carryOver.landings > 0 ? ` · ${s.carryOver.landings} landing${s.carryOver.landings === 1 ? "" : "s"}` : ""}
           {s.carryOver.creditHours > 0 ? ` · ${hm(s.carryOver.creditHours * 60)} C/O credit` : ""}
           {s.carryOver.blockHours > 0 ? ` · ${hm(s.carryOver.blockHours * 60)} C/O block` : ""}
           <span className="font-sans text-ink-faint"> — not counted in this month</span>
-        </p>
+        </dd>
+        </div>
       )}
       {s.home && (
-        <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">At home · </span>
+        <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
+          <dt className="inline font-sans text-[10px] uppercase tracking-wide text-ink-faint">At home · </dt>
+          <dd className="inline">
           {s.home.between.length ? `${s.home.between.map((b) => `${Math.round(b.hours)}h`).join(", ")} between departures · ` : ""}
           {s.home.nightsHome} night{s.home.nightsHome === 1 ? "" : "s"} in your own bed
           {s.home.shortGaps > 0 ? (
@@ -546,21 +551,27 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
           ) : (
             ""
           )}
-        </p>
+        </dd>
+        </div>
       )}
       {s.hubTurns && (
-        <p className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">Hub turns · </span>
+        <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
+          <dt className="inline font-sans text-[10px] uppercase tracking-wide text-ink-faint">Hub turns · </dt>
+          <dd className="inline">
           {s.hubTurns.all} at {s.hubTurns.hubs.join(", ")}
           {s.hubTurns.night ? ` · ${s.hubTurns.night === s.hubTurns.all ? "all" : s.hubTurns.night} at night` : " · by day"}
           {s.hubTurns.longestRun > 1 ? ` · up to ${s.hubTurns.longestRun} nights in a row` : ""}
           {s.hubTurns.withRestHotel ? ` · ${s.hubTurns.withRestHotel} with a crew-rest hotel` : ""}
-        </p>
+        </dd>
+        </div>
       )}
       {s.daysOff !== s.printedDaysOff && (
-        <p className="col-span-2 text-[11px] leading-snug text-ink-faint sm:col-span-3">
+        <div className="col-span-2 text-[11px] leading-snug text-ink-faint sm:col-span-3">
+          <dt className="sr-only">Note</dt>
+          <dd>
           The bid pack prints {s.printedDaysOff} days off for this line; the calendar draws {s.daysOff} from the trips&rsquo; dates, so a day at either end of a trip can differ.
-        </p>
+        </dd>
+        </div>
       )}
       <div className="col-span-2 min-w-0 sm:col-span-3">
         <dt className="text-[10px] uppercase tracking-wide text-ink-faint">

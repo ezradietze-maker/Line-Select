@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -84,9 +84,12 @@ import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import { withPrintedLines } from "@/lib/phase-in";
 import { useCarryIn } from "@/lib/use-carry-in";
 import { SortMenu, SortNote } from "@/components/results/SortMenu";
+import { selectableCardProps, TierBar, TierHeadingRow, TierMoveRow } from "@/components/results/TierBar";
+import { tierHeadings } from "@/lib/line-tiers";
 import { useLineSort } from "@/lib/use-line-sort";
+import { useLineTiers, type TeachTiers } from "@/lib/use-line-tiers";
 import { applyPlacements, loadPlacements, placementFromDrag, prunePlacements, savePlacements, type Placement } from "@/lib/line-placements";
-import { prepareMetrics } from "@/lib/metrics/compute";
+import { prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
 import { useProgressiveCount } from "@/lib/use-progressive-count";
@@ -389,7 +392,13 @@ export function ResultsView({
   const validPlacements = useMemo(() => prunePlacements(placements, new Set(bidPack.lines.map((l) => l.id))), [placements, bidPack]);
   // The pilot's order: the brain's ranking with every swap they made kept where they made it. Rank numbers, the bid
   // order and the forecast all follow it — it's what they'll bid.
-  const ranked = useMemo(() => applyPlacements(scoredLines, validPlacements, (r) => r.line.id), [scoredLines, validPlacements]);
+  const placed = useMemo(() => applyPlacements(scoredLines, validPlacements, (r) => r.line.id), [scoredLines, validPlacements]);
+  // The pilot's tiers on top of that (see `lib/line-tiers.ts`); a pilot who never uses them gets the same list back.
+  const teachTiersRef = useRef<TeachTiers | null>(null);
+  const packLineIds = useMemo(() => bidPack.lines.map((l) => l.id), [bidPack]);
+  const tiers = useLineTiers(userId, bidPack.id, packLineIds, placed, teachTiersRef);
+  const orderByTier = tiers.order;
+  const ranked = useMemo(() => orderByTier(placed), [orderByTier, placed]);
   // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order.
   const swappedIds = useMemo(() => new Set(validPlacements.flatMap((p) => [p.order[0], p.order[p.order.length - 1]])), [validPlacements]);
   const rankedIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
@@ -414,10 +423,26 @@ export function ResultsView({
   // The newest profile and placements, for learning that runs after a swap has painted (see `handleDragEnd`).
   const profileRef = useRef(profile);
   const placementsRef = useRef(placements);
+  const packMetricsRef = useRef<PackMetrics | null>(null);
   useLayoutEffect(() => {
     profileRef.current = profile;
     placementsRef.current = placements;
   }, [profile, placements]);
+
+  // What a tier move teaches goes the way a swap's does: after it's painted, on the newest profile.
+  useEffect(() => {
+    teachTiersRef.current = (add, retract) =>
+      afterPaint(() => {
+        const current = profileRef.current;
+        if (!current.pilotModel) return;
+        let choices = current.brainInterview?.choices ?? [];
+        for (const id of retract) choices = withoutDrag(choices, id);
+        if (add.length) choices = addDragChoices(choices, add);
+        const { profile: next } = withModel(current, bidPack, { choices }, packMetricsRef.current ?? undefined);
+        profileRef.current = next;
+        onUpdateProfile(next);
+      });
+  }, [bidPack, onUpdateProfile]);
 
   const updatePlacements = useCallback(
     (fn: (p: Placement[]) => Placement[]) => {
@@ -501,10 +526,10 @@ export function ResultsView({
   );
   const hiddenMatchingCount = matching.filter((r) => hiddenSet.has(r.line.id)).length;
   const listable = useMemo(
-    () => matching.filter((r) => (showHidden || !hiddenSet.has(r.line.id)) &&
+    () => matching.filter((r) => (showHidden || !hiddenSet.has(r.line.id)) && !tiers.setAside.has(r.line.id) &&
         (view === "all" || (view === "shortlist" ? starredSet.has(r.line.id) : realisticIds.has(r.line.id)))
     ),
-    [matching, showHidden, hiddenSet, view, starredSet, realisticIds]
+    [matching, showHidden, hiddenSet, tiers.setAside, view, starredSet, realisticIds]
   );
   // Departures counted as each card counts them: the times the pilot leaves home.
   const departureOptions = useMemo(() => monthDepartureOptions(bidPack.base, profile, flights), [bidPack.base, profile, flights]);
@@ -518,6 +543,8 @@ export function ResultsView({
   if (pageState.key !== listKey) setPageState({ key: listKey, shown: PAGE_SIZE });
   const shown = pageState.key === listKey ? pageState.shown : PAGE_SIZE;
   const displayed = sorted.slice(0, shown);
+  const listedIds = useMemo(() => sorted.map((r) => r.line.id), [sorted]);
+  const headings = useMemo(() => (lineSort.isRanking ? tierHeadings(listedIds, tiers.state) : new Map()), [lineSort.isRanking, listedIds, tiers.state]);
   // The cards themselves mount a few at a time, so the top of the list paints fast on a phone; `displayed` stays the page's real contents for counts and paging.
   // A phone shows one card at a time, so it paints the first two and builds the rest in idle time.
   const [firstBatch] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? 2 : 6));
@@ -607,6 +634,14 @@ export function ResultsView({
         updateMarks((m) => toggleStar(m, keyedId));
       } else if (e.key === "c" && keyedId) {
         toggleCompare(keyedId);
+      } else if (e.key === "x" && keyedId) {
+        tiers.toggleSelected(keyedId);
+      } else if (/^[0-9]$/.test(e.key) && keyedId) {
+        // 1–9 move the line (or the selection it's in) to that tier; 0 takes it out of any.
+        const tier = e.key === "0" ? null : tiers.state.tiers[Number(e.key) - 1]?.id;
+        if (tier === undefined) return;
+        e.preventDefault();
+        tiers.move(tiers.selected.has(keyedId) ? [...tiers.selected] : [keyedId], tier);
       } else if (e.key === "?") {
         setShowKeys((v) => !v);
       } else if (e.key === "Escape") {
@@ -624,8 +659,8 @@ export function ResultsView({
     return () => clearTimeout(timer);
   }, [flashId]);
 
-  // Exports follow the pilot's own ranking (best match), among lines they haven't hidden — a sort-by-days-off view is for looking, not for what to bid.
-  const exportable = useMemo(() => matching.filter((r) => !hiddenSet.has(r.line.id)), [matching, hiddenSet]);
+  // Exports follow the pilot's own ranking and tiers, among lines they haven't hidden or marked Not bid — a sort-by-days-off view is for looking, not for what to bid.
+  const exportable = useMemo(() => matching.filter((r) => !hiddenSet.has(r.line.id) && !tiers.notBid.has(r.line.id)), [matching, hiddenSet, tiers.notBid]);
   const bidOrderEntries = useMemo<BidOrderEntry[]>(
     () =>
       exportable.map((r) => ({
@@ -653,6 +688,9 @@ export function ResultsView({
   const packFacts = useMemo(() => (hasPilotModel ? prepareMetrics(bidPack) : null), [bidPack, hasPilotModel]);
   // With the pilot's looked-up flights, as the list on screen is scored: a drag learns from the order they saw.
   const packMetrics = useMemo(() => (packFacts && flights ? { ...packFacts, ctx: { ...packFacts.ctx, flights } } : packFacts), [packFacts, flights]);
+  useEffect(() => {
+    packMetricsRef.current = packMetrics;
+  }, [packMetrics]);
 
   // Derived once from the bid pack's own printed times — see lib/circadian.ts.
   const homeBaseOffsetMinutes = useMemo(() => computeHomeBaseOffsetMinutes(bidPack), [bidPack]);
@@ -707,6 +745,11 @@ export function ResultsView({
     const fromIndex = sorted.findIndex((r) => r.line.id === active.id);
     const toIndex = sorted.findIndex((r) => r.line.id === over.id);
     if (fromIndex === -1 || toIndex === -1) return;
+    // Onto a line in another tier: the two trade tiers, and each stays in score order in its new one.
+    if (tiers.tierOf(String(active.id)) !== tiers.tierOf(String(over.id))) {
+      tiers.swap(String(active.id), String(over.id));
+      return;
+    }
 
     const judgments = buildJudgments(sorted, fromIndex, toIndex);
     // The two lines trade places and stay there, whatever the brain makes of it.
@@ -1073,6 +1116,7 @@ export function ResultsView({
           </div>
 
           <SortNote sort={lineSort} />
+          <TierBar tiers={tiers} lines={placed} />
 
           {/* A small staggered beat behind the header above — the page reads as "header settles, then controls, then the list below" instead of everything landing in one flat instant. */}
           <div className="animate-rise-in print:hidden" style={{ animationDelay: "60ms" }}>
@@ -1110,6 +1154,9 @@ export function ResultsView({
                 ["o", "open / close it"],
                 ["s", "shortlist"],
                 ["c", "compare"],
+                ["x", "select"],
+                ["1–5", "move to a tier"],
+                ["⌘Z", "undo"],
                 ["⌘K", "jump to a line"],
                 ["esc", "clear"],
               ].map(([k, what]) => (
@@ -1177,10 +1224,12 @@ export function ResultsView({
                 />
               ) : (
                 displayed.slice(0, mountedCount).map((lineScore, index) => (
+                  <Fragment key={lineScore.line.id}>
+                  {headings.get(lineScore.line.id) && <TierHeadingRow heading={headings.get(lineScore.line.id)!} />}
                   <motion.div
-                    key={lineScore.line.id}
                     id={`line-${lineScore.line.id}`}
-                    className={`scroll-mt-20 md:scroll-mt-6 ${flashId === lineScore.line.id ? "line-flash" : ""} ${keyedId === lineScore.line.id ? "line-keyed" : ""}`}
+                    {...selectableCardProps(tiers, lineScore.line.id, listedIds)}
+                    className={`scroll-mt-20 md:scroll-mt-6 ${flashId === lineScore.line.id ? "line-flash" : ""} ${keyedId === lineScore.line.id ? "line-keyed" : ""} ${tiers.selected.has(lineScore.line.id) ? "rounded-xl ring-2 ring-accent" : ""}`}
                     layout={dragEnabled && layoutArmed && order.moved.has(lineScore.line.id) ? "position" : false}
                     initial={reduceMotion ? false : { opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1223,10 +1272,12 @@ export function ResultsView({
                         placedByYou={dragEnabled && swappedIds.has(lineScore.line.id)}
                         sortedBy={openIds.has(lineScore.line.id) ? lineSort.def.label : undefined}
                         sortedValue={openIds.has(lineScore.line.id) ? lineSort.valueFor(lineScore.line.id) : null}
+                        openExtra={openIds.has(lineScore.line.id) ? <TierMoveRow tiers={tiers} lineId={lineScore.line.id} /> : null}
                       />
                     </ErrorBoundary>
                     <CarryInLineNote flown={carry.flown.lines.get(lineScore.line.id)} />
                   </motion.div>
+                  </Fragment>
                 ))
               )}
             </div>
