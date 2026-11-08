@@ -1,7 +1,9 @@
-import { monthLine } from "@/lib/bid-month";
+import { monthLine, tripCarryOver } from "@/lib/bid-month";
+import { flownUnderInternationalRules } from "@/lib/phase-in";
+import { tripReportUtc } from "@/lib/trip-anchor";
 import type { AwardHistorySubmission } from "@/types/award-history";
 import type { BidPack, Line } from "@/types/bidpack";
-import type { LoggedMonth, MonthFeel } from "@/types/logbook";
+import type { CarriedTrip, LoggedMonth, MonthFeel } from "@/types/logbook";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 
@@ -10,6 +12,27 @@ import type { SeniorityInput } from "@/types/strategy";
  * so the entry keeps its own copy) — and what the months add up to. Kept in the profile, so it travels with the
  * pilot's account.
  */
+
+/** The held line's trips still flying when the month ends, with real times — all next month's carry-in needs of them. */
+function carriedOut(line: Line, pack: Pick<BidPack, "base" | "bidPeriodStart" | "bidPeriodDays">): CarriedTrip[] {
+  return line.trips.flatMap((trip) => {
+    const report = tripReportUtc(pack, trip);
+    if (report === null || !tripCarryOver(trip, pack)) return [];
+    const iso = (ms: number) => new Date(ms).toISOString();
+    const at = (minutes: number) => report + minutes * 60_000;
+    const release = report + trip.tafbHours * 3_600_000;
+    return [
+      {
+        label: trip.pairingNumber ? `Trip ${trip.pairingNumber}` : "Your carry-in trip",
+        report: iso(report),
+        release: iso(release),
+        international: flownUnderInternationalRules(trip),
+        creditHours: trip.creditHours,
+        duties: trip.schedule.map((d) => ({ start: iso(at(d.startMinutes)), end: iso(d.layover ? at(d.layover.startMinutes) : release) })),
+      },
+    ];
+  });
+}
 
 /** A month's entry from the pack it was bid in: the line held (its own month's numbers), or reserve or something else. */
 export function loggedMonthFrom(
@@ -33,6 +56,7 @@ export function loggedMonthFrom(
     tafbHours: held?.totalTafbHours ?? null,
     tripCount: held ? held.trips.length : null,
     layoverCities: held ? held.trips.flatMap((t) => t.schedule.flatMap((d) => (d.layover ? [d.layover.city] : []))) : [],
+    ...(outcome === "line" && line && carriedOut(line, pack).length ? { carryOut: carriedOut(line, pack) } : {}),
     rankedAt: held ? (extras.rankedAt ?? null) : null,
     seniorityRank: extras.seniority?.rank ?? null,
     seniorityTotalPilots: extras.seniority?.totalPilots ?? null,
