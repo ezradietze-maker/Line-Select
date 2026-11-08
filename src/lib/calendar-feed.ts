@@ -52,7 +52,7 @@ export interface FeedOptions {
 
 export const DEFAULT_FEED_OPTIONS: FeedOptions = { homeDays: false };
 
-/** Asked of the calendar app in the feed itself; Apple Calendar and Outlook honor it, Google sets its own pace. */
+/** Asked of the calendar app in the feed itself, but only a request: Apple Calendar on the Mac offers its own Auto-refresh choice, starting on "Every week", and Google sets its own pace. */
 export const REFRESH_HOURS = 6;
 /** The current month, the one being flown, and the one before it, which may still be running or carrying over. */
 const MONTHS_KEPT = 3;
@@ -112,7 +112,7 @@ function feedTrip(pack: Pick<BidPack, "month" | "base" | "bidPeriodStart">, line
   const zone = timezoneForAirport(pack.base) ?? "UTC";
   const local = (ms: number) => DateTime.fromMillis(ms, { zone }).toFormat("ccc LLL d HH:mm");
   const name = trip.pairingNumber ? `Trip ${trip.pairingNumber}` : `Line ${line.lineNumber} trip`;
-  const cities = trip.layoverCities.length > 0 ? trip.layoverCities.join(", ") : "no layovers";
+  const cities = trip.layoverCities.length > 0 ? [...new Set(trip.layoverCities)].join(", ") : "no layovers";
   const date = DateTime.fromMillis(start, { zone }).toFormat("yyyyLLdd");
   let layover = 0;
   const description = [

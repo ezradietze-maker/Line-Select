@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { REFRESH_HOURS, renderFeed } from "@/lib/calendar-feed";
+import { renderFeed } from "@/lib/calendar-feed";
 import { reportProblem } from "@/lib/server/alerts";
 import { feedForToken, hashFeedToken, isFeedToken } from "@/lib/server/calendar-feeds";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -32,7 +32,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   const body = renderFeed(feed.months, feed.options);
   const etag = `"${createHash("sha256").update(body).digest("hex").slice(0, 32)}"`;
   const headers = {
-    "Cache-Control": `private, max-age=${REFRESH_HOURS * 3600}, must-revalidate`,
+    // Always asked afresh, and answered with a 304 if nothing changed: "refresh" has to show a new #1, so the pace is set by REFRESH-INTERVAL in the feed, not by a cache.
+    "Cache-Control": "private, no-cache",
     ETag: etag,
     "X-Robots-Tag": "noindex",
     "Referrer-Policy": "no-referrer",

@@ -38,8 +38,8 @@ describe("GET /api/calendar/[token]", () => {
     const res = await call(`${TOKEN}.ics`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/calendar");
-    expect(res.headers.get("cache-control")).toContain("private");
-    expect(res.headers.get("cache-control")).toContain("max-age=21600");
+    // A refresh has to see a new #1: nothing may reuse an old copy without asking.
+    expect(res.headers.get("cache-control")).toBe("private, no-cache");
     const events = new ICAL.Component(ICAL.parse(await res.text())).getAllSubcomponents("vevent");
     expect(events.map((e) => new ICAL.Event(e).summary)).toEqual(["Trip 27: NRT"]);
     expect(feeds.feedForToken).toHaveBeenCalledWith(TOKEN);
