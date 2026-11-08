@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   NO_ELECTIONS,
+  baseDayStartMinutes,
+  dayIndices,
   flownUnderInternationalRules,
   flyLine,
   flyPack,
@@ -166,10 +168,10 @@ describe("R-day conflicts (CBA 2026 25.F.1.b.i–iii, every bid period)", () => 
     expect(rDayConflictsWithRDay(0, 12 * HOUR, false)).toBe(false);
     expect(rDayConflictsWithRDay(0, 6 * HOUR, true)).toBe(false);
   });
-  it("25.M.2.a: reserve periods start at 0, 6, 12, 18 hours and last 12 (RP-24: 24)", () => {
+  it("25.M.2.a, 25.A.2: reserve periods start 0, 6, 12, 18 hours into the 0130 base day and last 12 (RP-24: 24)", () => {
     const at = (rp: "A" | "A+" | "B" | "B+" | "24") => {
       const s = reservePeriodSpan("2026-12-01", rp, ZONE);
-      const day = DateTime.fromISO("2026-12-01", { zone: ZONE }).toMillis();
+      const day = DateTime.fromISO("2026-12-01T01:30", { zone: ZONE }).toMillis();
       return [(s.start - day) / HOUR, (s.end - s.start) / HOUR];
     };
     expect(at("A")).toEqual([0, 12]);
@@ -273,6 +275,25 @@ describe("flyLine: a conflict drops the new trip (CBA 2026 25.F.3, 25.F.5)", () 
   });
 });
 
+describe("local base days (CBA 2026 25.A.2, 25.A.5)", () => {
+  const p = { bidPeriodStart: "2026-11-30", bidPeriodDays: 28, base: "MEM" };
+  const at = (s: string) => DateTime.fromISO(s, { zone: ZONE }).toMillis();
+  it("25.A.2: a base day starts at 0130, so 00:58 still belongs to the day before", () => {
+    expect(dayIndices({ start: at("2026-12-02T00:58"), end: at("2026-12-02T05:00") }, p)).toEqual([1, 2]);
+    expect(dayIndices({ start: at("2026-12-02T01:30"), end: at("2026-12-02T05:00") }, p)).toEqual([2]);
+  });
+  it("a release at the stroke of the new base day doesn't touch it", () => {
+    expect(dayIndices({ start: at("2026-12-02T08:00"), end: at("2026-12-03T01:30") }, p)).toEqual([2]);
+  });
+  it("25.A.2: EUR's base day starts at 0215", () => {
+    expect(baseDayStartMinutes("Europe/Paris")).toBe(135);
+    expect(baseDayStartMinutes("America/Chicago")).toBe(90);
+  });
+  it("stays inside the bid month", () => {
+    expect(dayIndices({ start: at("2026-11-28T08:00"), end: at("2026-11-30T12:00") }, p)).toEqual([0]);
+  });
+});
+
 describe("the international buffers (CBA 2026 12.D.1.d, 25.F.4)", () => {
   const longIntl = (num: string, day: number) => trip(num, day, { tafb: 130, airports: ["MEM", "HKG"] });
   const international = { international: true, tafb: 130 };
@@ -318,7 +339,7 @@ describe("the international buffers (CBA 2026 12.D.1.d, 25.F.4)", () => {
 });
 
 describe("carried-in R-days against a new trip (CBA 2026 25.F.1.b.ii)", () => {
-  // Day 0 is Nov 30. An RP-A R-day on Nov 29 ends at 12:00 on Nov 29, and the calendar day at midnight.
+  // Day 0 is Nov 30. An RP-A R-day on Nov 29 ends at 13:30 on Nov 29, and its base day at 01:30 on Nov 30.
   const r = (rp: "A" | "24", firstDay = "2026-11-29", days = 1): CarryInItem => ({ kind: "rdays", id: "r", label: "your R-days", firstDay, days, rp });
 
   it("under 12 hours after the R-day ends conflicts", () => {

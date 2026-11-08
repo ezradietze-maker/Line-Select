@@ -134,18 +134,26 @@ export function minimumDaysOff(bidPeriodDays: number): number | null {
   return work === undefined ? null : bidPeriodDays - work;
 }
 
-interface Span {
+export interface Span {
   start: number;
   end: number;
 }
 
-function zoneOf(pack: Pick<BidPack, "base">): string {
+export function zoneOf(pack: Pick<BidPack, "base">): string {
   return timezoneForAirport(pack.base) ?? "UTC";
+}
+
+/**
+ * CBA 2026 25.A.2: "any local base day, except EUR" starts at 0130 LBT, and "the local EUR base day" at 0215 LBT, in
+ * every bid period. Minutes after midnight. The pack's vacation schedule runs on it too: 0630Z is 0130 in Memphis.
+ */
+export function baseDayStartMinutes(zone: string): number {
+  return zone.startsWith("Europe/") ? 135 : 90;
 }
 
 /** An R-day's reserve period as real instants. CBA 2026 25.M.2.a. */
 export function reservePeriodSpan(day: string, rp: ReservePeriod, zone: string): Span {
-  const start = DateTime.fromISO(day, { zone });
+  const start = DateTime.fromISO(day, { zone }).plus({ minutes: baseDayStartMinutes(zone) });
   const offset = { A: 0, "A+": 6, B: 12, "B+": 18, "24": 0 }[rp];
   return { start: start.plus({ hours: offset }).toMillis(), end: start.plus({ hours: offset + (rp === "24" ? 24 : 12) }).toMillis() };
 }
@@ -205,7 +213,7 @@ function carryBlock(item: CarryInItem, zone: string): Block | null {
     international: false,
     dutiesKnown: false,
     carry: item,
-    reserve: { rpEnd: last.end, dayEnd: lastDay.plus({ days: 1 }).toMillis() },
+    reserve: { rpEnd: last.end, dayEnd: lastDay.plus({ days: 1, minutes: baseDayStartMinutes(zone) }).toMillis() },
   };
 }
 
@@ -467,12 +475,13 @@ function findLegalityConflicts(trip: Trip, span: Span, blocks: Block[], election
   return out;
 }
 
-/** The bid month's day indices a stretch of time touches, on the base's own calendar (CBA 2026 25.A.5: days off are local base days). */
-function dayIndices(span: Span, pack: BidPack): number[] {
+/** The bid month's day indices a stretch of time touches, in local base days (CBA 2026 25.A.5: days off are local base days; 25.A.2: when one starts). */
+export function dayIndices(span: Span, pack: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">): number[] {
   if (!pack.bidPeriodStart) return [];
   const zone = zoneOf(pack);
   const first = DateTime.fromISO(pack.bidPeriodStart, { zone }).startOf("day");
-  const at = (ms: number) => Math.floor(DateTime.fromMillis(ms, { zone }).startOf("day").diff(first, "days").days + 0.01);
+  const dayStart = baseDayStartMinutes(zone);
+  const at = (ms: number) => Math.round(DateTime.fromMillis(ms, { zone }).minus({ minutes: dayStart }).startOf("day").diff(first, "days").days);
   const out: number[] = [];
   // A release at the stroke of midnight doesn't touch the new day.
   for (let d = at(span.start); d <= at(span.end - 1); d++) if (d >= 0 && d < pack.bidPeriodDays) out.push(d);
@@ -489,16 +498,22 @@ function freedDays(dropped: Trip[], kept: Trip[], pack: BidPack, spanOf: Map<Tri
   return new Set(daysOf(dropped).filter((d) => !keptDays.has(d) && !carriedDays.has(d)));
 }
 
-/** The line with these trips gone and these days no longer free. Everything the line prints comes down by the dropped trips' share of this month. */
-function lineAsFlown(line: Line, pack: BidPack, dropped: Trip[], spanOf: Map<Trip, Span>, carriedDays: Set<number>): Line {
+/**
+ * The line with these trips gone and these days no longer free. Everything the line prints comes down by the dropped
+ * trips' share of this month. Credit too, unless `creditPaid`: a trip a vacation removes is still paid, from the vacation
+ * bank (CBA 2026 7.G.1). `alsoOff` adds days off beyond the trips' own: the vacation days themselves.
+ */
+export function lineAsFlown(line: Line, pack: BidPack, dropped: Trip[], spanOf: Map<Trip, Span>, carriedDays: Set<number>, opts: { creditPaid?: boolean; alsoOff?: Set<number> } = {}): Line {
   const gone = new Set(dropped);
   const kept = line.trips.filter((t) => !gone.has(t));
   const carryOver = lineCarryOver(line, pack);
   const freed = freedDays(dropped, kept, pack, spanOf, carriedDays);
-  const off = line.gridOffDays ? new Set([...line.gridOffDays.filter((d) => !carriedDays.has(d)), ...freed]) : null;
+  const keptDays = new Set(kept.flatMap((t) => (spanOf.has(t) ? dayIndices(spanOf.get(t)!, pack) : [])));
+  const alsoFree = [...(opts.alsoOff ?? [])].filter((d) => !keptDays.has(d) && !carriedDays.has(d));
+  const off = line.gridOffDays ? new Set([...line.gridOffDays.filter((d) => !carriedDays.has(d)), ...freed, ...alsoFree]) : null;
   // Without the grid: the carried-in days that took a day off are the ones no trip was on.
   const worked = new Set(line.trips.flatMap((t) => (spanOf.has(t) ? dayIndices(spanOf.get(t)!, pack) : [])));
-  const printedOff = line.gridOffDays ? null : Math.max(0, line.daysOff + freed.size - [...carriedDays].filter((d) => !worked.has(d)).length);
+  const printedOff = line.gridOffDays ? null : Math.max(0, line.daysOff + new Set([...freed, ...alsoFree.filter((d) => worked.has(d))]).size - [...carriedDays].filter((d) => !worked.has(d)).length);
 
   let credit = line.totalCreditHours;
   let tafb = line.totalTafbHours;
@@ -510,11 +525,11 @@ function lineAsFlown(line: Line, pack: BidPack, dropped: Trip[], spanOf: Map<Tri
   for (const t of dropped) {
     const carries = !!carryOver && carryOver.trips.includes(t.pairingNumber) && !!splitTrip(t, pack)?.carry;
     const inMonth = splitTrip(t, pack, carries ? (line.carryOverCreditHours ?? 0) : 0)?.inMonth ?? t;
-    credit -= inMonth.creditHours;
+    if (!opts.creditPaid) credit -= inMonth.creditHours;
     tafb -= inMonth.tafbHours;
     if (block !== undefined) block -= operatedHours(inMonth);
     if (carries) {
-      carryCredit = carryCredit === undefined ? carryCredit : 0;
+      if (!opts.creditPaid) carryCredit = carryCredit === undefined ? carryCredit : 0;
       carryBlock = carryBlock === undefined ? carryBlock : 0;
     }
     // The pack's own counts run across the carry-over (see `lib/bid-month.ts`).

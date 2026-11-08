@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
+import { VacationSlidePanel } from "@/components/strategies/VacationSlidePanel";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
@@ -379,6 +380,8 @@ function StrategyResults({
           </section>
         );
       })}
+
+      <VacationSlidePanel bidPack={bidPack} seniority={seniority} profile={profile} userId={user?.id ?? null} order={ranked?.map((r) => r.line.lineNumber) ?? []} />
 
       <div className="mt-10">
         <AwardHistoryPanel bidPack={bidPack} seniority={seniority} user={user} rankedLineIds={rankedLineIds} />

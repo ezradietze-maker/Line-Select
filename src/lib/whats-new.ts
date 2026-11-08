@@ -14,6 +14,12 @@ export interface WhatsNewEntry {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-08",
+    title: "Find your best vacation slide",
+    body: "On Strategies: every legal slide and expansion of your vacation on your top lines, scored on your own priorities, not just credit. See which trips come off, what it draws from your bank and the days off you end up with, the best three per line, and the best slide if you don't know which line you'll hold. You enter it in VIPS yourself, in the Conflict Input Window.",
+    href: "/strategies",
+  },
+  {
+    date: "2026-11-08",
     title: "Only real offers on your Trade Board",
     body: "Example offers now appear only with the sample pack. With your own pack, the board shows real pilots' offers, or says plainly that there aren't any yet.",
     href: "/trade-board",
