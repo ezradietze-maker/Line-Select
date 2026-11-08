@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import {
   BookIcon,
   BuildingIcon,
+  ClockIcon,
   ContractIcon,
   GlobeIcon,
   ListIcon,
@@ -20,6 +21,7 @@ export type NavTarget =
   | "results"
   | "strategies"
   | "view-add"
+  | "open-time"
   | "trade-board"
   | "inbox"
   | "hotel-ratings"
@@ -44,6 +46,7 @@ export const NAV_ITEMS: NavItem[] = [
   { target: "results", label: "My Rankings", tabLabel: "Rankings", section: "bid", icon: TrophyIcon },
   { target: "strategies", label: "Strategies", tabLabel: "Strategies", section: "bid", icon: TargetIcon },
   { target: "view-add", label: "View/Add", tabLabel: "View/Add", section: "bid", icon: ListIcon },
+  { target: "open-time", label: "Open Time", tabLabel: "Open Time", section: "bid", icon: ClockIcon },
   { target: "cities", label: "Cities", tabLabel: "Cities", section: "flying", icon: GlobeIcon },
   { target: "logbook", label: "Logbook", tabLabel: "Logbook", section: "flying", icon: BookIcon },
   { target: "tools", label: "Tools", tabLabel: "Tools", section: "flying", icon: ToolboxIcon },
@@ -58,6 +61,7 @@ export function disabledReason(target: NavTarget, hasProfile: boolean, hasBidPac
   if (target === "results" && !hasProfile) return "Set your preferences first to see your ranked lines.";
   if (target === "strategies" && !hasBidPack) return "Upload a bid pack first to see strategies.";
   if (target === "view-add" && !hasBidPack) return "Upload a bid pack first to build your View/Add list.";
+  if (target === "open-time" && !hasBidPack) return "Upload a bid pack first to score open time.";
   if (target === "cities" && !hasBidPack) return "Upload a bid pack first to see its layover cities.";
   return undefined;
 }

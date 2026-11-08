@@ -14,6 +14,12 @@ export interface WhatsNewEntry {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-08",
+    title: "Open time, scored for you",
+    body: "Paste the open-time list from VIPS and every trip gets a score for you, with the reasons: what it does to your days off, whether you can commute to it, and whether it's legal on your line. It checks overlaps and rest, the 0900 deadline, your make-up and trade limits, and holiday no-drops. We haven't seen a real VIPS list yet, so any row we can't read is shown to you, never guessed at.",
+    href: "/open-time",
+  },
+  {
+    date: "2026-11-08",
     title: "See who held what, if pilots choose to share",
     body: "When you log an award you can now choose to show your seniority number beside your line. Once five pilots in a seat have said yes for a month, an opened line shows who held it. Your name never goes with it, and you can withdraw your share from the Logbook any time. Shared awards also check the odds against what really happened.",
     href: "/logbook",

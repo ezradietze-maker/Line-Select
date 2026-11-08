@@ -4,7 +4,7 @@ import { tripDutyPeriods } from "@/lib/duty-periods";
 import { formatValue } from "@/lib/brain/describe";
 import { METRICS_BY_ID, type MetricDef, type MetricParams } from "@/lib/metrics/catalog";
 import { measureAll, prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
-import type { TripFacts } from "@/lib/metrics/trip-facts";
+import { computeTripFacts, type TripFacts } from "@/lib/metrics/trip-facts";
 import {
   BEYOND_BAD,
   criterionWeight,
@@ -288,6 +288,8 @@ function measureTrip(def: MetricDef, inst: Instance, pack: PackMetrics, p: Metri
 export interface TripScoreOptions extends ScoreOptions {
   /** Put the scores on the line scale (see `tripsOnLineScale`) — for showing them beside line scores. */
   onLineScale?: boolean;
+  /** Trips to score alongside the lines' own: open time, which no line in the pack holds. */
+  extraTrips?: Trip[];
 }
 
 /**
@@ -311,6 +313,12 @@ export function scoreTripsV2(bidPack: BidPack, model: PilotModel, options: TripS
       const key = tripKey(facts.trip);
       if (!seen.has(key)) seen.set(key, { key, facts, line });
     });
+  }
+  for (const trip of options.extraTrips ?? []) {
+    const key = tripKey(trip);
+    if (trip.schedule.length === 0 || seen.has(key)) continue;
+    // A line of its own, for the few measures that read one.
+    seen.set(key, { key, facts: computeTripFacts(trip), line: { id: `extra-${key}`, lineNumber: "", trips: [trip], daysOff: Math.max(0, bidPack.bidPeriodDays - trip.days), totalCreditHours: trip.creditHours, totalTafbHours: trip.tafbHours, totalLandings: trip.landings, totalDepartures: trip.departures } });
   }
   const trips = [...seen.values()];
   if (!trips.length) return out;

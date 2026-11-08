@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import { splitTrip } from "@/lib/bid-month";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
+import { parseOpenTimePaste } from "@/lib/open-time/parse";
 import { dayIndices, flownUnderInternationalRules, flyLine, phaseInRules, reservePeriodSpan, tripSpans, zoneOf, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { tripReportUtc } from "@/lib/trip-anchor";
@@ -37,7 +38,7 @@ export interface MakeUpHours {
 }
 
 /** A piece of the pilot's schedule a candidate has to fit around. */
-interface Busy {
+export interface Busy {
   label: string;
   span: Span;
   /** The duties, when known. */
@@ -48,7 +49,7 @@ interface Busy {
   allDeadheadFirst: boolean;
 }
 
-function busyFromTrip(trip: Trip, pack: BidPack): Busy | null {
+export function busyFromTrip(trip: Trip, pack: BidPack): Busy | null {
   const report = tripReportUtc(pack, trip);
   if (report === null) return null;
   return {
@@ -62,7 +63,7 @@ function busyFromTrip(trip: Trip, pack: BidPack): Busy | null {
   };
 }
 
-function busyFromCarry(item: CarryInItem, zone: string): Busy | null {
+export function busyFromCarry(item: CarryInItem, zone: string): Busy | null {
   if (item.kind === "trip") {
     const start = Date.parse(item.report);
     const end = Date.parse(item.release);
@@ -81,6 +82,8 @@ export interface FitCheck {
   illegal: string[];
   /** What the text doesn't settle for a make-up trip: it stays on the list, flagged. */
   check: string[];
+  /** The part of `check` that an open-time bid line adjustment settles: CBA 2026 12.D.1.d.iii and 12.C.1.c excuse the buffers and 1-in-10 for one. */
+  excusedByAdjustment: string[];
 }
 
 function hoursText(ms: number): string {
@@ -125,10 +128,15 @@ function stretchThrough(candidate: Busy, others: Busy[], atBase: boolean): { hou
  */
 export function fitCheck(trip: Trip, schedule: Busy[], vacations: VacationPeriod[], pack: BidPack): FitCheck {
   const candidate = busyFromTrip(trip, pack);
-  if (!candidate) return { illegal: ["It isn't on a date in the pack."], check: [] };
+  if (!candidate) return { illegal: ["It isn't on a date in the pack."], check: [], excusedByAdjustment: [] };
   const rules = phaseInRules(pack.month);
   const illegal: string[] = [];
   const check: string[] = [];
+  const excusedByAdjustment: string[] = [];
+  const excused = (text: string) => {
+    check.push(text);
+    excusedByAdjustment.push(text);
+  };
   for (const v of vacations) {
     if (candidate.span.start < Date.parse(v.to) && candidate.span.end > Date.parse(v.from)) illegal.push("It's during your vacation (CBA 2026 7.A.3).");
   }
@@ -145,15 +153,30 @@ export function fitCheck(trip: Trip, schedule: Busy[], vacations: VacationPeriod
       illegal.push(`Only ${hoursText(gap)} from ${o.label}; legal rest is ${hoursText(rest * 60_000)} (CBA 2026 ${international ? "12.D.7" : "12.C.6.a"}).`);
       continue;
     }
-    if (first.international && first.tafbHours > 120 && gap < 48 * HOUR) check.push(`Inside the 48-hour international buffer after ${first === o ? o.label : "it"} (CBA 2026 12.D.1.d.ii).`);
-    if (second.international && second.tafbHours > 120 && gap < 24 * HOUR) check.push(`Inside the 24-hour international buffer before ${second === o ? o.label : "it"} (CBA 2026 12.D.1.d.i).`);
+    if (first.international && first.tafbHours > 120 && gap < 48 * HOUR) excused(`Inside the 48-hour international buffer after ${first === o ? o.label : "it"} (CBA 2026 12.D.1.d.ii).`);
+    if (second.international && second.tafbHours > 120 && gap < 24 * HOUR) excused(`Inside the 24-hour international buffer before ${second === o ? o.label : "it"} (CBA 2026 12.D.1.d.i).`);
   }
   const seven = stretchThrough(candidate, schedule, false);
   if (seven.hours > 144 && !seven.unsure) illegal.push(`It would run ${Math.round(seven.hours / 24)} days without 24 hours off (CBA 2026 12.C.1.b, 12.D.1.i).`);
   else if (seven.hours > 120) check.push(`It would run ${Math.round(seven.hours / 24)} days without 24 hours off; check 1-in-7 (CBA 2026 12.C.1.b, 12.D.1.i).`);
   const ten = stretchThrough(candidate, schedule, true);
-  if (!ten.international && ten.hours > 192) check.push(`It would run ${Math.round(ten.hours / 24)} days without 24 hours at base; check 1-in-10 (CBA 2026 12.C.1.c).`);
-  return { illegal, check };
+  if (!ten.international && ten.hours > 192) excused(`It would run ${Math.round(ten.hours / 24)} days without 24 hours at base; check 1-in-10 (CBA 2026 12.C.1.c).`);
+  return { illegal, check, excusedByAdjustment };
+}
+
+/** What a new trip has to fit around: the line as it will fly, and what's carried in. */
+export function scheduleAsFlown(line: Line, carryIn: CarryInItem[], pack: BidPack): Busy[] {
+  const zone = zoneOf(pack);
+  return [
+    ...line.trips.flatMap((t) => {
+      const b = busyFromTrip(t, pack);
+      return b ? [b] : [];
+    }),
+    ...carryIn.flatMap((c) => {
+      const b = busyFromCarry(c, zone);
+      return b ? [b] : [];
+    }),
+  ];
 }
 
 /** The CBA 2026 25.L.6.e overage: from December 2026 a make-up trip can pass eligibility by no more than 7 CH; before it, 6 CH. Also 7.G.5.a for MUV. */
@@ -207,54 +230,45 @@ export function pairingDate(trip: Trip, pack: BidPack): string | null {
   return new Date(report + leg.startMinutes * 60_000).toISOString().slice(0, 10);
 }
 
-const MONTH_CODES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-
 export interface PastedEntry {
   raw: string;
   tripNumber: string;
   /** Month and day, as far as the line says. */
   month: number;
   day: number;
+  /** The year, when the line prints one. */
+  year?: number;
 }
 
 /**
  * The open-time list a pilot pastes from VIPS: lines naming a trip number and a date. The screen's exact format isn't known
- * yet, so it reads the common ways a date is written ("14OCT", "OCT 14", "10/14") beside a number, and keeps the pilot's
- * own text for the list. Anything else comes back as not understood; it's never guessed at.
+ * yet, so `parseOpenTimePaste` reads the common ways of writing them and keeps the pilot's own text for the list. Anything
+ * else comes back as not understood; it's never guessed at.
  */
 export function parseOpenTimeList(text: string): { entries: PastedEntry[]; notRead: string[] } {
-  const entries: PastedEntry[] = [];
-  const notRead: string[] = [];
-  const months = MONTH_CODES.join("|");
-  const dated = new RegExp(`\\b(\\d{1,2})\\s?(${months})\\w*\\b|\\b(${months})\\w*\\s?(\\d{1,2})\\b|\\b(\\d{1,2})/(\\d{1,2})\\b`, "i");
-  for (const raw of text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
-    const m = raw.match(dated);
-    const rest = m ? raw.replace(m[0], " ") : raw;
-    const number = rest.match(/\b(\d{1,4})\b/);
-    if (!m || !number) {
-      notRead.push(raw);
-      continue;
-    }
-    const month = m[2] ? MONTH_CODES.indexOf(m[2].slice(0, 3).toUpperCase()) + 1 : m[3] ? MONTH_CODES.indexOf(m[3].slice(0, 3).toUpperCase()) + 1 : Number(m[5]);
-    const day = Number(m[1] ?? m[4] ?? m[6]);
-    entries.push({ raw, tripNumber: number[1], month, day });
-  }
-  return { entries, notRead };
+  const { rows, unread } = parseOpenTimePaste(text);
+  return {
+    entries: rows.map((r) => ({ raw: r.raw, tripNumber: r.tripNumbers[0], month: r.month, day: r.day, ...(r.year ? { year: r.year } : {}) })),
+    notRead: unread.map((u) => u.raw),
+  };
 }
 
-/** A pasted line's trip in the pack, among open trips and trips on lines (another pilot's conflict puts those in open time). The nearest date within a day, since VIPS's date convention isn't known yet. */
-function findPasted(entry: PastedEntry, universe: Trip[], pack: BidPack): Trip | null {
-  const year = DateTime.fromISO(pack.bidPeriodStart ?? "").year;
-  const wanted = DateTime.utc(year, entry.month, entry.day);
-  let best: { t: Trip; gap: number } | null = null;
-  for (const t of universe) {
-    if (t.pairingNumber !== entry.tripNumber) continue;
-    const date = pairingDate(t, pack);
-    if (!date) continue;
-    const gap = Math.abs(DateTime.fromISO(date, { zone: "utc" }).diff(wanted, "days").days);
-    if (gap <= 1 && (!best || gap < best.gap)) best = { t, gap };
-  }
-  return best?.t ?? null;
+/** How far a pasted date sits from each date of this trip number in the pack, nearest first, within a day: VIPS's date convention isn't known yet. A date with no year takes the one nearest the bid period: a January pack can start in December. */
+export function pastedMatches(entry: Pick<PastedEntry, "tripNumber" | "month" | "day" | "year">, universe: Trip[], pack: BidPack): { trip: Trip; gap: number }[] {
+  const start = DateTime.fromISO(pack.bidPeriodStart ?? "", { zone: "utc" });
+  if (!start.isValid) return [];
+  const wanted = (entry.year ? [entry.year] : [start.year - 1, start.year, start.year + 1])
+    .map((year) => DateTime.utc(year, entry.month, entry.day))
+    .sort((a, b) => Math.abs(a.diff(start).toMillis()) - Math.abs(b.diff(start).toMillis()))[0];
+  return universe
+    .filter((t) => t.pairingNumber === entry.tripNumber)
+    .flatMap((trip) => {
+      const date = pairingDate(trip, pack);
+      if (!date) return [];
+      const gap = Math.abs(DateTime.fromISO(date, { zone: "utc" }).diff(wanted, "days").days);
+      return gap <= 1 ? [{ trip, gap }] : [];
+    })
+    .sort((a, b) => a.gap - b.gap);
 }
 
 export interface ViewAddChoice {
@@ -331,18 +345,8 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
   const over = overageCH(pack.month);
   // CBA 2026 25.L.6.d: "A make-up assignment shall be operated under a single pay code (e.g., one trip could not be half MUV and half MUS)." Every bid period.
   const onePayCode = Math.max(cia, muv);
-  const zone = zoneOf(pack);
 
-  const schedule = [
-    ...flown.line.trips.flatMap((t) => {
-      const b = busyFromTrip(t, pack);
-      return b ? [b] : [];
-    }),
-    ...carryIn.flatMap((c) => {
-      const b = busyFromCarry(c, zone);
-      return b ? [b] : [];
-    }),
-  ];
+  const schedule = scheduleAsFlown(flown.line, carryIn, pack);
 
   // The pool: VIPS's own list when pasted, the pack's open trips until then. A trip the carry-in dropped from this line can be bid back only if it can fly, which the fit check settles.
   const pasted = parseOpenTimeList(input.pasted ?? "");
@@ -356,7 +360,7 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
     const universe = [...(pack.openPairings ?? []), ...pack.lines.flatMap((l) => l.trips)];
     const found = new Map<string, Trip>();
     for (const e of pasted.entries) {
-      const t = findPasted(e, universe, pack);
+      const t = pastedMatches(e, universe, pack)[0]?.trip;
       if (!t) {
         notInPack.push(e.raw);
         continue;
