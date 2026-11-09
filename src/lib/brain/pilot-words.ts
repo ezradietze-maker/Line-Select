@@ -118,8 +118,9 @@ export const AVOIDED: { name: string; phrase: RegExp; say: string }[] = [
   // Block is flying time in the pack: time at home is never a block.
   { name: "a block of days off", phrase: /\b(?:real|long|big|solid|days?[- ]off|\d+[- ]day)\s+blocks?\b(?!\s+(?:time|hours?))|\bblocks?\s+of\s+(?:days|time)\b|\bhow long a block\b/i, say: "a real break, or days in a row at home (in the pack, block means flying time)" },
   { name: "block-in", phrase: /\bblock[- ](?:in|off|out)\b/i, say: "the time a flight departs or arrives" },
-  // The domicile: the pack prints DOMICILE, and he says Memphis. TAFB's own "time away from base" stands.
-  { name: "base", phrase: /(?<!away from )\bbase\b/i, say: "the domicile by its city (\"Memphis\"), or \"domicile\" where no city is known" },
+  // The domicile: the pack prints DOMICILE, and he says Memphis. TAFB's own "time away from base" stands, and so does
+  // the contract's "base transit".
+  { name: "base", phrase: /(?<!away from )\bbase\b(?! transit)/i, say: "the domicile by its city (\"Memphis\"), or \"domicile\" where no city is known" },
   // The duty: the pack prints DUTY, and he says duty period and show time.
   { name: "duty day", phrase: /\bduty[- ]days?\b/i, say: "duty period" },
   { name: "release", phrase: /\breport[- ](?:to|and|&)[- ]release\b|\b(?:after|at|duty)\s+release\b|\b(?:early|earliest|late|latest|a)\s+release\b|\brelease\s+(?:times?|back)\b|&\s+release\b/i, say: "the end of the duty period (in the pack, release is lines going out)" },

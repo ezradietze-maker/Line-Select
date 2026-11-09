@@ -40,6 +40,8 @@ export interface CarryInTrip {
   creditHours?: number | null;
   /** The duty periods, when known (from the Logbook). Typed by hand they aren't, so a 24-hour layover inside it can't be seen. */
   duties?: { start: string; end: string }[];
+  /** Operated block hours of its last duty, when known: how much rest it needs (CBA 2026 12.C.6.b, 12.D.7.c). */
+  lastDutyBlockHours?: number;
 }
 
 /** CBA 2026 25.M.2.a. */
@@ -73,6 +75,8 @@ export interface PhaseInRules {
   makeUpOverageCH: number;
   /** CBA 2026 25.E.1.a: from December 2026 one minimum-days-off election, for phase-in and recurrent training together. */
   minDaysElectionAllInOne: boolean;
+  /** CBA 2026 12.D.1.d.i: from December 2026 no 24-hour buffer before a trip of domestic parameters (12.D.1.c.i). Before it, the buffer has no such exception. */
+  frontBufferSparesDomesticParameters: boolean;
 }
 
 export function phaseInRules(packMonth: string): PhaseInRules {
@@ -82,11 +86,23 @@ export function phaseInRules(packMonth: string): PhaseInRules {
     domesticDeadheadRestMinutes: phase2 ? 510 : 480,
     makeUpOverageCH: phase2 ? 7 : 6,
     minDaysElectionAllInOne: phase2,
+    frontBufferSparesDomesticParameters: phase2,
   };
 }
 
 /** CBA 2026 12.D.7.a, b: every bid period. */
 const INTERNATIONAL_REST_MINUTES = 720;
+/** CBA 2026 12.D.7.c: "at least 17 hours" after an international duty "scheduled to exceed 8 block hours or 12 hours on-duty". Every bid period. No line in the 14 October packs breaks it. */
+const LONG_INTERNATIONAL_REST_HOURS = 17;
+/** CBA 2026 12.C.6.b: after exceeding 8 block hours in 24, 17 hours, or 13 on an exception pairing (12.C.2.d). Which one applies isn't printed for a carry-in, so between them it's a question. Every bid period. */
+const LONG_DOMESTIC_REST_HOURS = 17;
+const LONG_DOMESTIC_EXCEPTION_REST_HOURS = 13;
+/** CBA 2026 12.C.4.j: "at least 1:30 hours shall be scheduled between block-in and block-out" when a duty transits a base. Every bid period. */
+const BASE_TRANSIT_MINUTES = 90;
+/** CBA 2026 12.C.4.d.iv: "at least 4 hours between block-in and block-out" with a day room lifts blended limits. We can't see the room. */
+const DAY_ROOM_GAP_HOURS = 4;
+/** CBA 2026 12.C.4.g.ii: up to 2 hours past the limit "in order to accomplish the deadhead" to base. */
+const DEADHEAD_HOME_ALLOWANCE_HOURS = 2;
 /** CBA 2026 12.D.1.d.i, ii: the buffers guard an international trip of more than 120 hours TAFB. */
 const BUFFER_TAFB_HOURS = 120;
 const BUFFER_BEFORE_HOURS = 24;
@@ -115,14 +131,56 @@ const NEAR_ZONE =
  * Hawaii and a trip between Alaska and the 48 stay international (question 8 for the ex-pilot).
  * `Trip.international` is a rougher label, made for scoring: it calls Alaska and Hawaii domestic and Canada international.
  */
+export function touchesOutside48(trip: Pick<Trip, "international" | "schedule">): boolean {
+  const zones = trip.schedule.flatMap((d) => d.legs.flatMap((l) => [l.depAirport, l.arrAirport])).map((a) => timezoneForAirport(a));
+  if (!zones.length || zones.some((z) => !z)) return trip.international;
+  return !zones.every((z) => CONUS_ZONE.test(z!));
+}
+
+/**
+ * Whether one duty of a trip is an international duty period: CBA 2026 12.D.1.a, "flight activities ... that originate from,
+ * have a destination of, or make an intermediate stop at a location outside the contiguous 48 states", in a trip that
+ * 12.D.1.c.i doesn't take out as a whole. So an Asian trip's last leg, Vancouver to Memphis, is international; a duty
+ * entirely inside the 48 isn't. Every bid period.
+ */
+export function dutyIsInternational(trip: Pick<Trip, "international" | "schedule">, duty: Trip["schedule"][number] | undefined): boolean {
+  if (!flownUnderInternationalRules(trip)) return false;
+  return !duty?.legs.length || touchesOutside48({ international: true, schedule: [duty] });
+}
+
+export const operatedBlockHours = (duty: Trip["schedule"][number] | undefined): number =>
+  (duty?.legs ?? []).filter((l) => !l.isDeadhead && !l.isStandby).reduce((a, l) => a + (l.blockHours ?? 0), 0);
+
+/**
+ * CBA 2026 12.C.4.a–d, every bid period: the scheduled duty limit by showtime, in hours, from minutes after midnight LBT.
+ * Day 13, night 11:30, critical 9, with the blends in 12.C.4.d. 12.D.1.c.ii's FDA European trips aren't handled: no European
+ * pack has been seen. Of the 2,499 two-trip duties on the October lines, 2,412 fit this; 77 more are within the deadhead's
+ * 2 hours; the last 10 all have a day-room gap (12.C.4.d.iv).
+ */
+export function scheduledDutyLimitHours(showMinutes: number): number {
+  const m = showMinutes;
+  if (m >= 60 && m < 300) return 9;
+  if (m >= 300 && m < 330) return 11 + ((m - 300) / 30) * 2;
+  if (m >= 330 && m < 915) return 13;
+  if (m >= 915 && m < 1005) return 13 - (m - 915) / 60;
+  if (m >= 1005 && m < 1350) return 11.5;
+  return 11.5 - ((m >= 1350 ? m - 1350 : m + 90) / 60);
+}
+
 export function flownUnderInternationalRules(trip: Pick<Trip, "international" | "schedule">): boolean {
+  const known = rulesBySchedule.get(trip.schedule);
+  if (known !== undefined) return known;
   const airports = trip.schedule.flatMap((d) => d.legs.flatMap((l) => [l.depAirport, l.arrAirport]));
   if (!airports.length) return trip.international;
   const zones = airports.map((a) => timezoneForAirport(a));
   if (zones.some((z) => !z)) return trip.international;
-  if (zones.every((z) => ALASKA_ZONE.test(z!))) return false;
-  return !zones.every((z) => CONUS_ZONE.test(z!) || NEAR_ZONE.test(z!));
+  const answer = !zones.every((z) => ALASKA_ZONE.test(z!)) && !zones.every((z) => CONUS_ZONE.test(z!) || NEAR_ZONE.test(z!));
+  rulesBySchedule.set(trip.schedule, answer);
+  return answer;
 }
+
+/** Asked over and over in the View/Add search; a trip's airports don't change. */
+const rulesBySchedule = new WeakMap<Trip["schedule"], boolean>();
 
 /**
  * Days off a line must keep: not stated as a number in the text we have. Taken from CBA 2026 25.D.1.b's most work days a
@@ -193,6 +251,10 @@ interface Block {
   carry: CarryInItem | null;
   /** A carried-in R-day block: its end for 25.F.1.b.ii, and the calendar day's end. */
   reserve?: { rpEnd: number; dayEnd: number };
+  /** The stretches between 24 hours off at base: for 1-in-10, a long layover at base inside a trip is relief too. */
+  baseSpans: Span[];
+  /** Operated block hours of the last duty, when known. */
+  lastDutyBlockHours?: number;
 }
 
 function carryBlock(item: CarryInItem, zone: string): Block | null {
@@ -202,7 +264,7 @@ function carryBlock(item: CarryInItem, zone: string): Block | null {
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
     const known = (item.duties ?? []).map((d) => ({ start: Date.parse(d.start), end: Date.parse(d.end) }));
     const duties = known.length ? known : [{ start, end }];
-    return { duties, international: item.international, dutiesKnown: known.length > 0, carry: item };
+    return { duties, international: item.international, dutiesKnown: known.length > 0, carry: item, baseSpans: [{ start, end }], lastDutyBlockHours: item.lastDutyBlockHours };
   }
   if (item.days < 1 || !DateTime.fromISO(item.firstDay, { zone }).isValid) return null;
   const first = reservePeriodSpan(item.firstDay, item.rp, zone);
@@ -214,6 +276,7 @@ function carryBlock(item: CarryInItem, zone: string): Block | null {
     dutiesKnown: false,
     carry: item,
     reserve: { rpEnd: last.end, dayEnd: lastDay.plus({ days: 1, minutes: baseDayStartMinutes(zone) }).toMillis() },
+    baseSpans: [{ start: first.start, end: last.end }],
   };
 }
 
@@ -225,6 +288,20 @@ export function tripSpans(trip: Trip, report: number): Span[] {
     start: report + d.startMinutes * MINUTE,
     end: d.layover ? report + d.layover.startMinutes * MINUTE : release,
   }));
+}
+
+/** A trip cut at each layover at base of 24 hours or more (CBA 2026 12.C.1.c: "relieved from all duty at the pilot's base"). Without this, Anchorage's long standby trips read as 300 hours without relief. */
+export function tripBaseSpans(trip: Trip, report: number, base: string): Span[] {
+  const out: Span[] = [];
+  let from = report;
+  for (const d of trip.schedule) {
+    if (d.layover && d.layover.city === base && d.layover.hours >= RELIEF_HOURS) {
+      out.push({ start: from, end: report + d.layover.startMinutes * MINUTE });
+      from = report + d.layover.endMinutes * MINUTE;
+    }
+  }
+  out.push({ start: from, end: report + trip.tafbHours * HOUR });
+  return out;
 }
 
 export type ConflictRule = "overlap" | "rest" | "buffer-before" | "buffer-after" | "one-in-7" | "one-in-10" | "r-day";
@@ -244,6 +321,8 @@ export interface PhaseInFinding {
   waivedBy: "buffer" | "1-in-10" | null;
   /** The pilot's answers on the bid waive it, so the trip stays. */
   waived: boolean;
+  /** The carry-in it's against, when it's against one item. */
+  carryId?: string;
 }
 
 export interface DroppedTrip {
@@ -305,14 +384,18 @@ function allDeadheadFirstDuty(trip: Trip): boolean {
  * CBA 2026 25.F.1.b and 25.F.3: the carry-in against one new trip — overlap, rest and buffers. Only the carry-in's blocks
  * count here: a line's own trips are legal with each other as built.
  */
-function findCarryConflicts(trip: Trip, span: Span, blocks: Block[], rules: PhaseInRules, elections: PhaseInElections): PhaseInFinding[] {
+function findCarryConflicts(trip: Trip, span: Span, blocks: Block[], rules: PhaseInRules, elections: PhaseInElections, zone: string): PhaseInFinding[] {
   const out: PhaseInFinding[] = [];
-  const add = (f: Omit<PhaseInFinding, "tripId" | "pairingNumber">) => out.push({ tripId: trip.id, pairingNumber: trip.pairingNumber, ...f });
+  let carryId: string | undefined;
+  const add = (f: Omit<PhaseInFinding, "tripId" | "pairingNumber">) => out.push({ tripId: trip.id, pairingNumber: trip.pairingNumber, carryId, ...f });
   const intl = flownUnderInternationalRules(trip);
+  const firstDutyIntl = dutyIsInternational(trip, trip.schedule[0]);
+  const bufferedBefore = rules.frontBufferSparesDomesticParameters ? intl : touchesOutside48(trip);
 
   for (const block of blocks) {
     const item = block.carry;
     if (!item) continue;
+    carryId = item.id;
     const start = block.duties[0].start;
     const end = block.duties[block.duties.length - 1].end;
     // A new trip entirely before the carry-in has nothing to do with it.
@@ -353,20 +436,63 @@ function findCarryConflicts(trip: Trip, span: Span, blocks: Block[], rules: Phas
         });
       }
     } else {
-      // CBA 2026 12.C.6.a and 12.D.7.a, b, e. Measured from the scheduled release (question 5), and international when
-      // either side is (question 6).
-      const international = block.international || intl;
-      const restMinutes = international ? INTERNATIONAL_REST_MINUTES : allDeadheadFirstDuty(trip) ? rules.domesticDeadheadRestMinutes : rules.domesticRestMinutes;
-      if (gap < restMinutes * MINUTE) {
-        add({
-          rule: "rest",
-          section: international ? "CBA 2026 12.D.7, 25.F.1.b" : "CBA 2026 12.C.6.a, 25.F.1.b",
-          detail: `reports ${hoursText(gap)} after ${item.label} ends; the legal rest is ${hoursText(restMinutes * MINUTE)}`,
-          certainty: "clear",
-          waivedBy: null,
-          waived: false,
-        });
-        continue;
+      // CBA 2026 12.D.7.a, b, e: measured from the scheduled release (question 5), between the duty that ends and the one
+      // that starts. A carry-in the pilot only told us is international counts as ending in an international duty.
+      const international = block.international || firstDutyIntl;
+      const lastDuty = block.duties[block.duties.length - 1];
+      if (international) {
+        if (gap < INTERNATIONAL_REST_MINUTES * MINUTE) {
+          add({ rule: "rest", section: "CBA 2026 12.D.7, 25.F.1.b", detail: `reports ${hoursText(gap)} after ${item.label} ends; the legal rest is 12 hours`, certainty: "clear", waivedBy: null, waived: false });
+          continue;
+        }
+        if (block.international && gap < LONG_INTERNATIONAL_REST_HOURS * HOUR) {
+          const onDuty = (lastDuty.end - lastDuty.start) / HOUR;
+          const long = block.dutiesKnown && (onDuty > 12 || (block.lastDutyBlockHours ?? 0) > 8);
+          // Typed in, its last duty's length isn't known, so whether the 17 hours apply isn't either.
+          if (long || !block.dutiesKnown) {
+            add({
+              rule: "rest",
+              section: "CBA 2026 12.D.7.c, 25.F.1.b",
+              detail: long ? `reports ${hoursText(gap)} after ${item.label} ends; after a duty that long the rest is 17 hours` : `reports ${hoursText(gap)} after ${item.label} ends, and needs 17 hours if its last duty was over 8 block or 12 on duty`,
+              certainty: long ? "clear" : "check",
+              waivedBy: null,
+              waived: false,
+            });
+            if (long) continue;
+          }
+        }
+      } else {
+        const restMinutes = allDeadheadFirstDuty(trip) ? rules.domesticDeadheadRestMinutes : rules.domesticRestMinutes;
+        if (gap < restMinutes * MINUTE) {
+          // Less than a legal rest isn't a conflict by itself: two trips can hub turn as one duty (CBA 2026 12.C.4.e, j), and 37% of
+          // back-to-back trips on the October lines do. CBA 2026 25.F.2: conflicts "relating to on-duty limitations shall be
+          // determined based upon scheduled duty limitations".
+          const firstDuty = tripSpans(trip, span.start)[0];
+          const from = block.dutiesKnown ? lastDuty.start : lastDuty.end;
+          const dutyHours = (firstDuty.end - from) / HOUR;
+          const show = DateTime.fromMillis(from, { zone });
+          const limit = scheduledDutyLimitHours(show.hour * 60 + show.minute);
+          const transit = (trip.schedule[0]?.legs[0]?.startMinutes ?? 0) * MINUTE + gap;
+          if (block.dutiesKnown && dutyHours <= limit && transit >= BASE_TRANSIT_MINUTES * MINUTE) continue;
+          // Sure only past the longest limit there is: its deadhead allowance included, without a day-room gap to lift it.
+          const past = dutyHours > (block.dutiesKnown ? limit : 13) + DEADHEAD_HOME_ALLOWANCE_HOURS && gap < DAY_ROOM_GAP_HOURS * HOUR;
+          add({
+            rule: "rest",
+            section: "CBA 2026 12.C.4, 12.C.6.a, 25.F.2",
+            detail: past
+              ? `reports ${hoursText(gap)} after ${item.label} ends: under the ${hoursText(restMinutes * MINUTE)} rest, and too long as one duty (${dutyHours.toFixed(1)} hours)`
+              : `reports ${hoursText(gap)} after ${item.label} ends, under the ${hoursText(restMinutes * MINUTE)} rest, so it's legal only as one duty with it`,
+            certainty: past ? "clear" : "check",
+            waivedBy: null,
+            waived: false,
+          });
+          if (past) continue;
+        } else if ((block.lastDutyBlockHours ?? 0) > 8 && gap < LONG_DOMESTIC_REST_HOURS * HOUR) {
+          // CBA 2026 12.C.6.b: 17 hours after more than 8 block in 24, 13 on an exception pairing.
+          const short = gap < LONG_DOMESTIC_EXCEPTION_REST_HOURS * HOUR;
+          add({ rule: "rest", section: "CBA 2026 12.C.6.b, 25.F.1.b", detail: `reports ${hoursText(gap)} after ${item.label} ends, whose last duty passed 8 block hours`, certainty: short ? "clear" : "check", waivedBy: null, waived: false });
+          if (short) continue;
+        }
       }
     }
 
@@ -383,7 +509,7 @@ function findCarryConflicts(trip: Trip, span: Span, blocks: Block[], rules: Phas
     }
     // CBA 2026 12.D.1.d.i, iii and 25.F.4: 24 hours free before one, waivable. It lets a pilot "be on reserve (during which
     // time the pilot performed no flying or standby duty)" inside the 24 hours, so a carried-in R-day doesn't break it.
-    if (item.kind === "trip" && intl && trip.tafbHours > BUFFER_TAFB_HOURS && gap < BUFFER_BEFORE_HOURS * HOUR) {
+    if (item.kind === "trip" && bufferedBefore && trip.tafbHours > BUFFER_TAFB_HOURS && gap < BUFFER_BEFORE_HOURS * HOUR) {
       add({
         rule: "buffer-before",
         section: "CBA 2026 12.D.1.d.i, 25.F.4",
@@ -401,12 +527,12 @@ function findCarryConflicts(trip: Trip, span: Span, blocks: Block[], rules: Phas
  * How long the pilot has gone without `reliefHours` off by the end of `span`, counting back through `blocks`. Null when
  * the stretch doesn't reach the carry-in: a line's own trips were built legal.
  *
- * `atBase` counts only time at base as relief, so a layover inside a trip doesn't count, and stops at an international
+ * `atBase` counts only time at base as relief, so a layover away inside a trip doesn't count, and stops at an international
  * block, since 1-in-10 covers only a period "exclusively" of domestic trips.
  */
 function stretchFromCarryIn(span: Span, blocks: Block[], opts: { atBase: boolean; end?: number }): { hours: number; unsure: boolean } | null {
   const pieces = blocks
-    .flatMap((b) => (opts.atBase ? [{ start: b.duties[0].start, end: b.duties[b.duties.length - 1].end }] : b.duties).map((d) => ({ ...d, block: b })))
+    .flatMap((b) => (opts.atBase ? b.baseSpans : b.duties).map((d) => ({ ...d, block: b })))
     .sort((a, b) => a.start - b.start);
   let from = span.start;
   let unsure = false;
@@ -431,33 +557,33 @@ function stretchFromCarryIn(span: Span, blocks: Block[], opts: { atBase: boolean
  * consecutive days". CBA 2026 12.C.1.c: 1-in-10 is the same over 240 hours, at base, for "exclusively" domestic trips, and
  * waivable on the bid. Every bid period.
  *
- * "Any seven consecutive days" can be measured two ways: 144 hours with no break (a full 7 days holds no 24 hours off), or
- * 120 (a window that starts just under 24 hours into a break). Past the longer it's certain; between them it's a question
- * for the ex-pilot (question 21). Which trip gets dropped is also unsettled, so it's the first one to break the rule
- * (question 2).
+ * "Any seven consecutive days" could be read as 144 hours with no break, or 120. The packs settle it: the October lines hold
+ * 358 stretches of 120 to 144 hours and none past 144, so 144 it is, though the ex-pilot's asked to confirm it (question 21).
+ * 1-in-10's 192 to 216 hours has no such evidence, so it stays a question. Which trip gets dropped is unsettled, so it's the
+ * first one to break the rule (question 2).
  */
-function findLegalityConflicts(trip: Trip, span: Span, blocks: Block[], elections: PhaseInElections): PhaseInFinding[] {
+function findLegalityConflicts(trip: Trip, span: Span, blocks: Block[], elections: PhaseInElections, base: string): PhaseInFinding[] {
   const out: PhaseInFinding[] = [];
   const name = (hours: number) => `${Math.round(hours / 24)} days`;
   // A 24-hour layover inside the trip is the relief, so the stretch ends where it starts.
   const duties = tripSpans(trip, span.start);
   const firstRelief = duties.findIndex((d, i) => i + 1 < duties.length && duties[i + 1].start - d.end >= RELIEF_HOURS * HOUR);
   const seven = stretchFromCarryIn(span, blocks, { atBase: false, end: firstRelief >= 0 ? duties[firstRelief].end : span.end });
-  if (seven && seven.hours > ONE_IN_7_HOURS - 2 * RELIEF_HOURS) {
-    const beyond = seven.hours > ONE_IN_7_HOURS - RELIEF_HOURS;
+  if (seven && seven.hours > ONE_IN_7_HOURS - RELIEF_HOURS) {
     out.push({
       tripId: trip.id,
       pairingNumber: trip.pairingNumber,
       rule: "one-in-7",
       section: "CBA 2026 12.C.1.b, 12.D.1.i, 25.F.1.b",
       detail: `would run ${name(seven.hours)} from your carry-in without 24 hours off${seven.unsure ? ", unless your carry-in has a layover that long" : ""}`,
-      certainty: beyond && !seven.unsure ? "clear" : "check",
+      certainty: seven.unsure ? "check" : "clear",
       waivedBy: null,
       waived: false,
     });
   }
   if (!flownUnderInternationalRules(trip)) {
-    const ten = stretchFromCarryIn(span, blocks, { atBase: true });
+    const pieces = tripBaseSpans(trip, span.start, base);
+    const ten = stretchFromCarryIn({ start: pieces[0].start, end: pieces[0].end }, blocks, { atBase: true });
     if (ten && ten.hours > ONE_IN_10_HOURS - 2 * RELIEF_HOURS) {
       const beyond = ten.hours > ONE_IN_10_HOURS - RELIEF_HOURS;
       out.push({
@@ -568,11 +694,13 @@ function minDaysOptions(flown: Line, pack: BidPack, needed: number, spanOf: Map<
       },
     ];
   });
-  // Only pairs when no single trip does it.
-  const fewest = Math.min(...options.map((o) => o.pairingNumbers.length));
-  return options
+  // CBA 2026 25.F.7.b is only for a pilot "unable" under F.7.a: anything landing on the minimum comes first, a pair included.
+  const onMinimum = options.filter((o) => o.section === "25.F.7.a");
+  const allowed = onMinimum.length ? onMinimum : options;
+  const fewest = Math.min(...allowed.map((o) => o.pairingNumbers.length));
+  return allowed
     .filter((o) => o.pairingNumbers.length === fewest)
-    .sort((a, b) => (a.section === b.section ? a.makeUpCH - b.makeUpCH : a.section === "25.F.7.a" ? -1 : 1))
+    .sort((a, b) => a.makeUpCH - b.makeUpCH)
     .slice(0, 3);
 }
 
@@ -595,6 +723,17 @@ function reasonFor(f: Omit<FlownLine, "reason" | "line">): string | null {
   return `${text[0].toUpperCase()}${text.slice(1)}.`;
 }
 
+/** The bid month's days a carry-in is still flying or on reserve. */
+export function carriedDaysOf(pack: Pick<BidPack, "base" | "bidPeriodStart" | "bidPeriodDays">, carryIn: CarryInItem[]): Set<number> {
+  const zone = zoneOf(pack);
+  return new Set(
+    carryIn.flatMap((c) => {
+      const b = carryBlock(c, zone);
+      return b ? dayIndices({ start: b.duties[0].start, end: b.duties[b.duties.length - 1].end }, pack) : [];
+    })
+  );
+}
+
 /** One line of the new month with the carry-in laid over it. */
 export function flyLine(line: Line, pack: BidPack, carryIn: CarryInItem[], elections: PhaseInElections): FlownLine {
   const rules = phaseInRules(pack.month);
@@ -603,7 +742,7 @@ export function flyLine(line: Line, pack: BidPack, carryIn: CarryInItem[], elect
     const b = carryBlock(c, zone);
     return b ? [b] : [];
   });
-  const carriedDays = new Set(carryBlocks.flatMap((b) => dayIndices({ start: b.duties[0].start, end: b.duties[b.duties.length - 1].end }, pack)));
+  const carriedDays = carriedDaysOf(pack, carryIn);
   const longestBefore = longestDaysOffBlock(line);
   const blank = { dropped: [], kept: [], makeUpCH: 0, daysOffBefore: line.daysOff, daysOffAfter: line.daysOff, longestOffBefore: longestBefore, longestOffAfter: longestBefore, minDays: null, advice: [] };
 
@@ -621,7 +760,7 @@ export function flyLine(line: Line, pack: BidPack, carryIn: CarryInItem[], elect
   const blocks: Block[] = [...carryBlocks];
   for (const { trip } of ordered) {
     const span = spanOf.get(trip)!;
-    const findings = [...findCarryConflicts(trip, span, blocks, rules, elections), ...findLegalityConflicts(trip, span, blocks, elections)];
+    const findings = [...findCarryConflicts(trip, span, blocks, rules, elections, zone), ...findLegalityConflicts(trip, span, blocks, elections, pack.base)];
     const drops = findings.filter((f) => f.certainty === "clear" && !f.waived);
     if (!drops.length) kept.push(...findings);
     if (drops.length) {
@@ -630,12 +769,15 @@ export function flyLine(line: Line, pack: BidPack, carryIn: CarryInItem[], elect
       dropped.push({ trip, makeUpCH: trip.creditHours, findings: drops });
       // CBA 2026 25.F.3.a and 25.E.2.f: the pilot may ask to keep the long trip instead, every bid period.
       if (trip.tafbHours > DROP_NEW_TRIP_OVER_TAFB && drops.some((d) => d.rule !== "one-in-7" && d.rule !== "one-in-10")) {
-        const short = carryIn.find((c) => (c.kind === "trip" ? (Date.parse(c.release) - Date.parse(c.report)) / HOUR < DROP_CARRYOVER_UNDER_TAFB : c.days < DROP_CARRYOVER_UNDER_RDAYS));
+        // "To avoid a phase-in conflict": the carry-in has to be the one in the way.
+        const inTheWay = new Set(drops.map((d) => d.carryId));
+        const short = carryIn.find((c) => inTheWay.has(c.id) && (c.kind === "trip" ? (Date.parse(c.release) - Date.parse(c.report)) / HOUR < DROP_CARRYOVER_UNDER_TAFB : c.days < DROP_CARRYOVER_UNDER_RDAYS));
         if (short) advice.push(`${tripName(trip)} is over 120 hours TAFB, so you can submit to drop ${short.label} instead during the Conflict Input Window, processed in seniority order (CBA 2026 25.F.3.a, 25.E.2.f).`);
       }
       continue;
     }
-    blocks.push({ duties: tripSpans(trip, span.start), international: flownUnderInternationalRules(trip), dutiesKnown: trip.schedule.length > 0, carry: null });
+    const lastDuty = trip.schedule[trip.schedule.length - 1];
+    blocks.push({ duties: tripSpans(trip, span.start), international: dutyIsInternational(trip, lastDuty), dutiesKnown: trip.schedule.length > 0, carry: null, baseSpans: tripBaseSpans(trip, span.start, pack.base), lastDutyBlockHours: operatedBlockHours(lastDuty) });
   }
 
   const droppedTrips = dropped.map((d) => d.trip);

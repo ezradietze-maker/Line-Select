@@ -1,9 +1,12 @@
 import { DateTime } from "luxon";
 import { splitTrip } from "@/lib/bid-month";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
-import { dayIndices, flownUnderInternationalRules, flyLine, phaseInRules, reservePeriodSpan, tripSpans, zoneOf, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
+import { parseOpenTimePaste } from "@/lib/open-time/parse";
+import { carriedDaysOf, dayIndices, dutyIsInternational, flownUnderInternationalRules, flyLine, operatedBlockHours, phaseInRules, reservePeriodSpan, tripBaseSpans, tripSpans, zoneOf, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { tripReportUtc } from "@/lib/trip-anchor";
+import { flyVacationsOnLine } from "@/lib/vacation-lines";
+import { vacationSpan } from "@/lib/vacation-slide";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -37,43 +40,74 @@ export interface MakeUpHours {
 }
 
 /** A piece of the pilot's schedule a candidate has to fit around. */
-interface Busy {
+export interface Busy {
   label: string;
   span: Span;
   /** The duties, when known. */
   duties: Span[];
   dutiesKnown: boolean;
-  international: boolean;
+  /** Its last and first duties are international ones (CBA 2026 12.D.1.a). */
+  endsInternational: boolean;
+  startsInternational: boolean;
+  /** An international trip of the kind the buffers guard, whatever its last duty. */
+  buffered: boolean;
   tafbHours: number;
   allDeadheadFirst: boolean;
+  /** Operated block hours of the last duty; null when not known. */
+  lastDutyBlockHours: number | null;
+  /** When its last leg blocks in and its first blocks out; null when not known. */
+  blockIn: number | null;
+  blockOut: number | null;
+  /** Carried-in R-days: CBA 2026 25.L.1.d.i, ii want 12 hours either side. */
+  reserve: boolean;
+  /** The stretches between 24 hours off at base (CBA 2026 12.C.1.c). */
+  baseSpans: Span[];
 }
 
-function busyFromTrip(trip: Trip, pack: BidPack): Busy | null {
+export function busyFromTrip(trip: Trip, pack: BidPack): Busy | null {
+  const known = busyOfTrip.get(trip);
+  if (known) return known;
   const report = tripReportUtc(pack, trip);
   if (report === null) return null;
-  return {
+  const first = trip.schedule[0];
+  const last = trip.schedule[trip.schedule.length - 1];
+  const lastLeg = last?.legs[last.legs.length - 1];
+  const firstLeg = first?.legs[0];
+  const busy: Busy = {
     label: trip.pairingNumber ? `trip ${trip.pairingNumber}` : "a trip",
     span: { start: report, end: report + trip.tafbHours * HOUR },
     duties: tripSpans(trip, report),
     dutiesKnown: trip.schedule.length > 0,
-    international: flownUnderInternationalRules(trip),
+    endsInternational: dutyIsInternational(trip, last),
+    startsInternational: dutyIsInternational(trip, first),
+    buffered: flownUnderInternationalRules(trip),
     tafbHours: trip.tafbHours,
-    allDeadheadFirst: !!trip.schedule[0]?.legs.length && trip.schedule[0].legs.every((l) => l.isDeadhead),
+    allDeadheadFirst: !!first?.legs.length && first.legs.every((l) => l.isDeadhead),
+    lastDutyBlockHours: last ? operatedBlockHours(last) : null,
+    blockIn: lastLeg ? report + lastLeg.endMinutes * 60_000 : null,
+    blockOut: firstLeg ? report + firstLeg.startMinutes * 60_000 : null,
+    reserve: false,
+    baseSpans: tripBaseSpans(trip, report, pack.base),
   };
+  busyOfTrip.set(trip, busy);
+  return busy;
 }
 
-function busyFromCarry(item: CarryInItem, zone: string): Busy | null {
+/** The search asks about each trip thousands of times, and it doesn't change. */
+const busyOfTrip = new WeakMap<Trip, Busy>();
+
+export function busyFromCarry(item: CarryInItem, zone: string): Busy | null {
   if (item.kind === "trip") {
     const start = Date.parse(item.report);
     const end = Date.parse(item.release);
     if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
     const known = (item.duties ?? []).map((d) => ({ start: Date.parse(d.start), end: Date.parse(d.end) }));
-    return { label: item.label, span: { start, end }, duties: known.length ? known : [{ start, end }], dutiesKnown: known.length > 0, international: item.international, tafbHours: (end - start) / HOUR, allDeadheadFirst: false };
+    return { label: item.label, span: { start, end }, duties: known.length ? known : [{ start, end }], dutiesKnown: known.length > 0, endsInternational: item.international, startsInternational: item.international, buffered: item.international, tafbHours: (end - start) / HOUR, allDeadheadFirst: false, lastDutyBlockHours: item.lastDutyBlockHours ?? null, blockIn: null, blockOut: null, reserve: false, baseSpans: [{ start, end }] };
   }
   const first = reservePeriodSpan(item.firstDay, item.rp, zone);
   const last = reservePeriodSpan(DateTime.fromISO(item.firstDay, { zone }).plus({ days: item.days - 1 }).toISODate()!, item.rp, zone);
   const span = { start: first.start, end: last.end };
-  return { label: item.label, span, duties: [span], dutiesKnown: false, international: false, tafbHours: 0, allDeadheadFirst: false };
+  return { label: item.label, span, duties: [span], dutiesKnown: false, endsInternational: false, startsInternational: false, buffered: false, tafbHours: 0, allDeadheadFirst: false, lastDutyBlockHours: null, blockIn: null, blockOut: null, reserve: true, baseSpans: [span] };
 }
 
 export interface FitCheck {
@@ -81,6 +115,8 @@ export interface FitCheck {
   illegal: string[];
   /** What the text doesn't settle for a make-up trip: it stays on the list, flagged. */
   check: string[];
+  /** The part of `check` that an open-time bid line adjustment settles: CBA 2026 12.D.1.d.iii and 12.C.1.c excuse the buffers and 1-in-10 for one. */
+  excusedByAdjustment: string[];
 }
 
 function hoursText(ms: number): string {
@@ -92,7 +128,7 @@ function hoursText(ms: number): string {
 /** The longest stretch through this trip without 24 hours off (at base, for 1-in-10), and whether time off inside it can't be seen. */
 function stretchThrough(candidate: Busy, others: Busy[], atBase: boolean): { hours: number; unsure: boolean; international: boolean } {
   const pieces = [candidate, ...others]
-    .flatMap((b) => (atBase ? [{ start: b.span.start, end: b.span.end, b }] : b.duties.map((d) => ({ ...d, b }))))
+    .flatMap((b) => (atBase ? b.baseSpans : b.duties).map((d) => ({ ...d, b })))
     .sort((x, y) => x.start - y.start);
   const relief = RELIEF_HOURS * HOUR;
   let worst = { hours: 0, unsure: false, international: false };
@@ -102,13 +138,13 @@ function stretchThrough(candidate: Busy, others: Busy[], atBase: boolean): { hou
     let end = pieces[i].end;
     let holdsCandidate = pieces[i].b === candidate;
     let unsure = !pieces[i].b.dutiesKnown;
-    let international = pieces[i].b.international;
+    let international = pieces[i].b.buffered;
     while (j + 1 < pieces.length && pieces[j + 1].start - end < relief) {
       j++;
       end = Math.max(end, pieces[j].end);
       holdsCandidate ||= pieces[j].b === candidate;
       unsure ||= !pieces[j].b.dutiesKnown;
-      international ||= pieces[j].b.international;
+      international ||= pieces[j].b.buffered;
     }
     const hours = (end - pieces[i].start) / HOUR;
     if (holdsCandidate && hours > worst.hours) worst = { hours, unsure, international };
@@ -118,42 +154,170 @@ function stretchThrough(candidate: Busy, others: Busy[], atBase: boolean): { hou
 }
 
 /**
+ * CBA 2026 12.C.4.e, every bid period: a duty made of "portions of 2 trips (e.g., two trips hub turning), one of which is an
+ * optional assignment (e.g., makeup...)". Up to the usual 13 day or 11:30 night; past those, "a maximum of 13:30 (Day)/13:00
+ * (Night)". Critical showtimes keep their 9 hours (12.C.4.c). In hours, from minutes after midnight LBT.
+ */
+export function twoTripDutyLimitHours(showMinutes: number): number {
+  if (showMinutes >= 300 && showMinutes < 960) return 13.5;
+  if (showMinutes >= 960 || showMinutes < 60) return 13;
+  return 9;
+}
+
+/**
  * Whether a trip can go on this schedule. Every bid period but the rest numbers, which `phaseInRules` switches.
- * CBA 2026 7.A.3: no trip in conflict with a vacation. CBA 2026 12.C.6.a, 12.D.7: legal rest. CBA 2026 12.C.1.b, 12.D.1.i: 1-in-7.
- * The buffers (12.D.1.d) and 1-in-10 (12.C.1.c) both excuse a bid line adjustment, and make-up is one (25.L.6). Whether that
- * reaches a View/Add bid is question 27, so they only flag.
+ * CBA 2026 7.A.3: no trip in conflict with a vacation. CBA 2026 25.L.1.d.i, ii: 12 hours from an R-day. CBA 2026 12.D.7.a, b, c, e:
+ * 12 hours around an international duty, 17 after a long one. CBA 2026 12.C.6.a: domestic rest, or else one duty with the trip
+ * beside it, within 12.C.4.e and 12.C.4.j. CBA 2026 12.C.6.b: 17 hours after 8 block, 13 on an exception pairing. CBA 2026 12.C.1.b,
+ * 12.D.1.i: 1-in-7. The buffers (12.D.1.d, 7.G.1) and 1-in-10 (12.C.1.c) both excuse a bid line adjustment, and make-up is one
+ * (25.L.6). Whether that reaches a View/Add bid is question 27, so they only flag.
  */
 export function fitCheck(trip: Trip, schedule: Busy[], vacations: VacationPeriod[], pack: BidPack): FitCheck {
   const candidate = busyFromTrip(trip, pack);
-  if (!candidate) return { illegal: ["It isn't on a date in the pack."], check: [] };
-  const rules = phaseInRules(pack.month);
+  if (!candidate) return { illegal: ["It isn't on a date in the pack."], check: [], excusedByAdjustment: [] };
   const illegal: string[] = [];
   const check: string[] = [];
+  const excusedByAdjustment: string[] = [];
+  const excused = (text: string) => {
+    check.push(text);
+    excusedByAdjustment.push(text);
+  };
   for (const v of vacations) {
-    if (candidate.span.start < Date.parse(v.to) && candidate.span.end > Date.parse(v.from)) illegal.push("It's during your vacation (CBA 2026 7.A.3).");
+    const span = vacationSpan(v);
+    if (candidate.span.start < span.end && candidate.span.end > span.start) {
+      illegal.push("It's during your vacation (CBA 2026 7.A.3).");
+    } else if (candidate.buffered && candidate.tafbHours > 120) {
+      if (span.start >= candidate.span.end && span.start - candidate.span.end < 48 * HOUR) check.push("Your vacation starts inside the 48-hour international buffer after it (CBA 2026 7.G.1, 12.D.1.d.ii).");
+      // CBA 2026 7.G.1.b: "deemed to have waived" this one for a bid line adjustment; the 48 hours "may not be waived".
+      if (candidate.span.start >= span.end && candidate.span.start - span.end < 24 * HOUR) excused("Your vacation ends inside the 24-hour international buffer before it (CBA 2026 7.G.1, 12.D.1.d.i).");
+    }
   }
   for (const o of schedule) {
+    const pair = pairFit(candidate, o, pack);
+    illegal.push(...pair.illegal);
+    check.push(...pair.check);
+    excusedByAdjustment.push(...pair.excusedByAdjustment);
+  }
+  // The packs settle 1-in-7 at 144 hours: their own lines reach it and never pass it (see `lib/phase-in.ts`).
+  const stretch = stretchFit(candidate, schedule);
+  illegal.push(...stretch.illegal);
+  check.push(...stretch.check);
+  excusedByAdjustment.push(...stretch.excusedByAdjustment);
+  return { illegal, check, excusedByAdjustment };
+}
+
+const pairFits = new WeakMap<Busy, WeakMap<Busy, FitCheck>>();
+
+/** One trip against one other piece of the schedule. The combination search asks the same pairs over and over, so each is worked out once. */
+function pairFit(candidate: Busy, o: Busy, pack: BidPack): FitCheck {
+  const seen = pairFits.get(candidate)?.get(o);
+  if (seen) return seen;
+  const fit: FitCheck = { illegal: [], check: [], excusedByAdjustment: [] };
+  workOutPair(candidate, o, pack, fit);
+  if (!pairFits.has(candidate)) pairFits.set(candidate, new WeakMap());
+  pairFits.get(candidate)!.set(o, fit);
+  return fit;
+}
+
+function workOutPair(candidate: Busy, o: Busy, pack: BidPack, { illegal, check, excusedByAdjustment }: FitCheck): void {
+  const excused = (text: string) => {
+    check.push(text);
+    excusedByAdjustment.push(text);
+  };
+  const rules = phaseInRules(pack.month);
+  const zone = zoneOf(pack);
+  {
     const [first, second] = o.span.start <= candidate.span.start ? [o, candidate] : [candidate, o];
     const gap = second.span.start - first.span.end;
     if (gap < 0) {
       illegal.push(`It overlaps ${o.label}.`);
-      continue;
+      return;
     }
-    const international = first.international || second.international;
-    const rest = international ? 720 : second.allDeadheadFirst ? rules.domesticDeadheadRestMinutes : rules.domesticRestMinutes;
-    if (gap < rest * 60_000) {
-      illegal.push(`Only ${hoursText(gap)} from ${o.label}; legal rest is ${hoursText(rest * 60_000)} (CBA 2026 ${international ? "12.D.7" : "12.C.6.a"}).`);
-      continue;
+    if (first.reserve || second.reserve) {
+      if (gap < 12 * HOUR) illegal.push(`Only ${hoursText(gap)} from ${o.label}; an R-day needs 12 hours (CBA 2026 25.L.1.d).`);
+      return;
     }
-    if (first.international && first.tafbHours > 120 && gap < 48 * HOUR) check.push(`Inside the 48-hour international buffer after ${first === o ? o.label : "it"} (CBA 2026 12.D.1.d.ii).`);
-    if (second.international && second.tafbHours > 120 && gap < 24 * HOUR) check.push(`Inside the 24-hour international buffer before ${second === o ? o.label : "it"} (CBA 2026 12.D.1.d.i).`);
+    const lastDuty = first.duties[first.duties.length - 1];
+    const firstDuty = second.duties[0];
+    if (first.endsInternational || second.startsInternational) {
+      if (gap < 12 * HOUR) {
+        illegal.push(`Only ${hoursText(gap)} from ${o.label}; legal rest is 12 hours (CBA 2026 12.D.7).`);
+        return;
+      }
+      const onDuty = (lastDuty.end - lastDuty.start) / HOUR;
+      const known = first.dutiesKnown && first.lastDutyBlockHours !== null;
+      if (first.endsInternational && gap < 17 * HOUR) {
+        if (known && (onDuty > 12 || first.lastDutyBlockHours! > 8)) {
+          illegal.push(`Only ${hoursText(gap)} from ${o.label}; rest after a duty that long is 17 hours (CBA 2026 12.D.7.c).`);
+          return;
+        }
+        if (!known) check.push(`Only ${hoursText(gap)} from ${o.label}; it needs 17 hours if that duty was over 8 block or 12 on duty (CBA 2026 12.D.7.c).`);
+      }
+    } else {
+      const rest = second.allDeadheadFirst ? rules.domesticDeadheadRestMinutes : rules.domesticRestMinutes;
+      if (gap < rest * 60_000) {
+        // Under a legal rest, the two can only be one duty.
+        const transit = first.blockIn !== null && second.blockOut !== null ? second.blockOut - first.blockIn : null;
+        if (transit !== null && transit < 90 * 60_000) {
+          illegal.push(`Only ${hoursText(transit)} on the ground before ${first === o ? "it" : o.label}; a base transit needs 1:30 (CBA 2026 12.C.4.j).`);
+          return;
+        }
+        if (!first.dutiesKnown) {
+          check.push(`Under the rest after ${o.label}, so it's legal only as one duty with it (CBA 2026 12.C.4.e).`);
+        } else {
+          const show = DateTime.fromMillis(lastDuty.start, { zone });
+          const limit = twoTripDutyLimitHours(show.hour * 60 + show.minute);
+          const hours = (firstDuty.end - lastDuty.start) / HOUR;
+          // A day room lifts blended limits, and we can't see one (CBA 2026 12.C.4.d.iv), so a long gap is a question.
+          if (hours > limit && (transit === null || transit < 4 * HOUR)) {
+            illegal.push(`As one duty with ${o.label} it's ${hours.toFixed(1)} hours; the most is ${limit} (CBA 2026 12.C.4.e).`);
+            return;
+          }
+          if (hours > limit) check.push(`As one duty with ${o.label} it's ${hours.toFixed(1)} hours; check for a day room (CBA 2026 12.C.4.d.iv).`);
+          else check.push(`It hub turns with ${o.label} as one duty, ${hours.toFixed(1)} hours (CBA 2026 12.C.4.e).`);
+        }
+      } else if ((first.lastDutyBlockHours ?? 0) > 8 && gap < 17 * HOUR) {
+        // CBA 2026 12.C.6.b.
+        if (gap < 13 * HOUR) {
+          illegal.push(`Only ${hoursText(gap)} from ${o.label}, whose last duty passes 8 block hours; rest is 17 hours, or 13 on an exception pairing (CBA 2026 12.C.6.b).`);
+          return;
+        }
+        check.push(`Only ${hoursText(gap)} from ${o.label}, whose last duty passes 8 block hours; legal only if it's an exception pairing (CBA 2026 12.C.6.b).`);
+      }
+    }
+    if (first.buffered && first.tafbHours > 120 && gap < 48 * HOUR) excused(`Inside the 48-hour international buffer after ${first === o ? o.label : "it"} (CBA 2026 12.D.1.d.ii).`);
+    if (second.buffered && second.tafbHours > 120 && gap < 24 * HOUR) excused(`Inside the 24-hour international buffer before ${second === o ? o.label : "it"} (CBA 2026 12.D.1.d.i).`);
   }
+}
+
+function stretchFit(candidate: Busy, schedule: Busy[]): FitCheck {
+  const illegal: string[] = [];
+  const check: string[] = [];
+  const excusedByAdjustment: string[] = [];
   const seven = stretchThrough(candidate, schedule, false);
-  if (seven.hours > 144 && !seven.unsure) illegal.push(`It would run ${Math.round(seven.hours / 24)} days without 24 hours off (CBA 2026 12.C.1.b, 12.D.1.i).`);
-  else if (seven.hours > 120) check.push(`It would run ${Math.round(seven.hours / 24)} days without 24 hours off; check 1-in-7 (CBA 2026 12.C.1.b, 12.D.1.i).`);
+  if (seven.hours > 144) (seven.unsure ? check : illegal).push(`It would run ${Math.round(seven.hours / 24)} days without 24 hours off${seven.unsure ? "; check 1-in-7" : ""} (CBA 2026 12.C.1.b, 12.D.1.i).`);
   const ten = stretchThrough(candidate, schedule, true);
-  if (!ten.international && ten.hours > 192) check.push(`It would run ${Math.round(ten.hours / 24)} days without 24 hours at the domicile; check 1-in-10 (CBA 2026 12.C.1.c).`);
-  return { illegal, check };
+  if (!ten.international && ten.hours > 192) {
+    const text = `It would run ${Math.round(ten.hours / 24)} days without 24 hours at the domicile; check 1-in-10 (CBA 2026 12.C.1.c).`;
+    check.push(text);
+    excusedByAdjustment.push(text);
+  }
+  return { illegal, check, excusedByAdjustment };
+}
+
+/** What a new trip has to fit around: the line as it will fly, and what's carried in. */
+export function scheduleAsFlown(line: Line, carryIn: CarryInItem[], pack: BidPack): Busy[] {
+  const zone = zoneOf(pack);
+  return [
+    ...line.trips.flatMap((t) => {
+      const b = busyFromTrip(t, pack);
+      return b ? [b] : [];
+    }),
+    ...carryIn.flatMap((c) => {
+      const b = busyFromCarry(c, zone);
+      return b ? [b] : [];
+    }),
+  ];
 }
 
 /** The CBA 2026 25.L.6.e overage: from December 2026 a make-up trip can pass eligibility by no more than 7 CH; before it, 6 CH. Also 7.G.5.a for MUV. */
@@ -163,15 +327,25 @@ export function overageCH(packMonth: string): number {
 
 const operatedHours = (t: Trip) => t.schedule.flatMap((d) => d.legs).filter((l) => !l.isDeadhead && !l.isStandby).reduce((a, l) => a + (l.blockHours ?? 0), 0);
 
+const factsOfTrip = new WeakMap<Trip, { days: number[]; inMonth: Trip }>();
+
+/** The search asks these of each trip thousands of times, and they're slow: every one is a date calculation. */
+function addedFacts(trip: Trip, pack: BidPack): { days: number[]; inMonth: Trip } {
+  const seen = factsOfTrip.get(trip);
+  if (seen) return seen;
+  const b = busyFromTrip(trip, pack);
+  const facts = { days: b ? dayIndices(b.span, pack) : [], inMonth: splitTrip(trip, pack)?.inMonth ?? trip };
+  factsOfTrip.set(trip, facts);
+  return facts;
+}
+
 /** The line with these trips added, its days off and totals with it. */
 export function lineWithAdded(line: Line, added: Trip[], pack: BidPack): Line {
   const trips = [...line.trips, ...added].sort((a, b) => (a.startDayIndex ?? 0) - (b.startDayIndex ?? 0));
-  const days = new Set(added.flatMap((t) => {
-    const b = busyFromTrip(t, pack);
-    return b ? dayIndices(b.span, pack) : [];
-  }));
+  const facts = added.map((t) => addedFacts(t, pack));
+  const days = new Set(facts.flatMap((f) => f.days));
   const off = line.gridOffDays?.filter((d) => !days.has(d));
-  const inMonth = added.map((t) => splitTrip(t, pack)?.inMonth ?? t);
+  const inMonth = facts.map((f) => f.inMonth);
   return {
     ...line,
     trips,
@@ -207,54 +381,45 @@ export function pairingDate(trip: Trip, pack: BidPack): string | null {
   return new Date(report + leg.startMinutes * 60_000).toISOString().slice(0, 10);
 }
 
-const MONTH_CODES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-
 export interface PastedEntry {
   raw: string;
   tripNumber: string;
   /** Month and day, as far as the line says. */
   month: number;
   day: number;
+  /** The year, when the line prints one. */
+  year?: number;
 }
 
 /**
  * The open-time list a pilot pastes from VIPS: lines naming a trip number and a date. The screen's exact format isn't known
- * yet, so it reads the common ways a date is written ("14OCT", "OCT 14", "10/14") beside a number, and keeps the pilot's
- * own text for the list. Anything else comes back as not understood; it's never guessed at.
+ * yet, so `parseOpenTimePaste` reads the common ways of writing them and keeps the pilot's own text for the list. Anything
+ * else comes back as not understood; it's never guessed at.
  */
 export function parseOpenTimeList(text: string): { entries: PastedEntry[]; notRead: string[] } {
-  const entries: PastedEntry[] = [];
-  const notRead: string[] = [];
-  const months = MONTH_CODES.join("|");
-  const dated = new RegExp(`\\b(\\d{1,2})\\s?(${months})\\w*\\b|\\b(${months})\\w*\\s?(\\d{1,2})\\b|\\b(\\d{1,2})/(\\d{1,2})\\b`, "i");
-  for (const raw of text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
-    const m = raw.match(dated);
-    const rest = m ? raw.replace(m[0], " ") : raw;
-    const number = rest.match(/\b(\d{1,4})\b/);
-    if (!m || !number) {
-      notRead.push(raw);
-      continue;
-    }
-    const month = m[2] ? MONTH_CODES.indexOf(m[2].slice(0, 3).toUpperCase()) + 1 : m[3] ? MONTH_CODES.indexOf(m[3].slice(0, 3).toUpperCase()) + 1 : Number(m[5]);
-    const day = Number(m[1] ?? m[4] ?? m[6]);
-    entries.push({ raw, tripNumber: number[1], month, day });
-  }
-  return { entries, notRead };
+  const { rows, unread } = parseOpenTimePaste(text);
+  return {
+    entries: rows.map((r) => ({ raw: r.raw, tripNumber: r.tripNumbers[0], month: r.month, day: r.day, ...(r.year ? { year: r.year } : {}) })),
+    notRead: unread.map((u) => u.raw),
+  };
 }
 
-/** A pasted line's trip in the pack, among open trips and trips on lines (another pilot's conflict puts those in open time). The nearest date within a day, since VIPS's date convention isn't known yet. */
-function findPasted(entry: PastedEntry, universe: Trip[], pack: BidPack): Trip | null {
-  const year = DateTime.fromISO(pack.bidPeriodStart ?? "").year;
-  const wanted = DateTime.utc(year, entry.month, entry.day);
-  let best: { t: Trip; gap: number } | null = null;
-  for (const t of universe) {
-    if (t.pairingNumber !== entry.tripNumber) continue;
-    const date = pairingDate(t, pack);
-    if (!date) continue;
-    const gap = Math.abs(DateTime.fromISO(date, { zone: "utc" }).diff(wanted, "days").days);
-    if (gap <= 1 && (!best || gap < best.gap)) best = { t, gap };
-  }
-  return best?.t ?? null;
+/** How far a pasted date sits from each date of this trip number in the pack, nearest first, within a day: VIPS's date convention isn't known yet. A date with no year takes the one nearest the bid period: a January pack can start in December. */
+export function pastedMatches(entry: Pick<PastedEntry, "tripNumber" | "month" | "day" | "year">, universe: Trip[], pack: BidPack): { trip: Trip; gap: number }[] {
+  const start = DateTime.fromISO(pack.bidPeriodStart ?? "", { zone: "utc" });
+  if (!start.isValid) return [];
+  const wanted = (entry.year ? [entry.year] : [start.year - 1, start.year, start.year + 1])
+    .map((year) => DateTime.utc(year, entry.month, entry.day))
+    .sort((a, b) => Math.abs(a.diff(start).toMillis()) - Math.abs(b.diff(start).toMillis()))[0];
+  return universe
+    .filter((t) => t.pairingNumber === entry.tripNumber)
+    .flatMap((trip) => {
+      const date = pairingDate(trip, pack);
+      if (!date) return [];
+      const gap = Math.abs(DateTime.fromISO(date, { zone: "utc" }).diff(wanted, "days").days);
+      return gap <= 1 ? [{ trip, gap }] : [];
+    })
+    .sort((a, b) => a.gap - b.gap);
 }
 
 export interface ViewAddChoice {
@@ -324,25 +489,18 @@ function comboOrder(a: ViewAddCombo, b: ViewAddCombo): number {
 
 export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
   const { pack, line, carryIn, elections, vacations = [], model } = input;
-  const flown = flyLine(line, pack, carryIn, elections);
+  // The vacation's trips are off the line too (CBA 2026 7.G.1), so they aren't in the way, and its days off count.
+  const carried = flyLine(line, pack, carryIn, elections);
+  const onVacation = flyVacationsOnLine(carried.line, pack, vacations.map((vacation) => ({ vacation, choice: "use" as const })), carriedDaysOf(pack, carryIn));
+  const flown = { ...carried, line: onVacation.line };
   const cia = Math.max(0, input.makeUp?.cia ?? flown.makeUpCH);
   const muv = Math.max(0, input.makeUp?.muv ?? 0);
   const target = cia + muv;
   const over = overageCH(pack.month);
   // CBA 2026 25.L.6.d: "A make-up assignment shall be operated under a single pay code (e.g., one trip could not be half MUV and half MUS)." Every bid period.
   const onePayCode = Math.max(cia, muv);
-  const zone = zoneOf(pack);
 
-  const schedule = [
-    ...flown.line.trips.flatMap((t) => {
-      const b = busyFromTrip(t, pack);
-      return b ? [b] : [];
-    }),
-    ...carryIn.flatMap((c) => {
-      const b = busyFromCarry(c, zone);
-      return b ? [b] : [];
-    }),
-  ];
+  const schedule = scheduleAsFlown(flown.line, carryIn, pack);
 
   // The pool: VIPS's own list when pasted, the pack's open trips until then. A trip the carry-in dropped from this line can be bid back only if it can fly, which the fit check settles.
   const pasted = parseOpenTimeList(input.pasted ?? "");
@@ -356,7 +514,7 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
     const universe = [...(pack.openPairings ?? []), ...pack.lines.flatMap((l) => l.trips)];
     const found = new Map<string, Trip>();
     for (const e of pasted.entries) {
-      const t = findPasted(e, universe, pack);
+      const t = pastedMatches(e, universe, pack)[0]?.trip;
       if (!t) {
         notInPack.push(e.raw);
         continue;

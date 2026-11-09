@@ -12,6 +12,8 @@ export interface CarriedTrip {
   international: boolean;
   creditHours: number;
   duties: { start: string; end: string }[];
+  /** Operated block hours of its last duty: how much rest it needs. */
+  lastDutyBlockHours?: number;
 }
 
 /**

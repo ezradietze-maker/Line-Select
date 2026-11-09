@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import { eventInstant, newCloseRuleApplies, packBidClose } from "@/lib/bid-calendar";
 import { longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
-import { baseDayStartMinutes, dayIndices, flownUnderInternationalRules, lineAsFlown, zoneOf, type Span } from "@/lib/phase-in";
+import { baseDayStartMinutes, dayIndices, dutyIsInternational, flownUnderInternationalRules, lineAsFlown, touchesOutside48, zoneOf, type Span } from "@/lib/phase-in";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
@@ -44,10 +44,30 @@ function periodSpan(pack: BidPack): Span | null {
   return { start: first.toMillis(), end: first.plus({ days: pack.bidPeriodDays }).toMillis() };
 }
 
+/** A vacation as real instants. The pack prints its last minute ("0129"); it ends when the next base day starts. */
+export function vacationSpan(v: Pick<VacationPeriod, "from" | "to">): Span {
+  return { start: Date.parse(v.from), end: Date.parse(v.to) + 60_000 };
+}
+
 /** The vacation moved by whole base days: the same clock time on the base's calendar, so a clock change doesn't shift it. */
 function shifted(v: VacationPeriod, days: number, zone: string): Span {
-  const move = (iso: string) => DateTime.fromISO(iso, { zone }).plus({ days }).toMillis();
-  return { start: move(v.from), end: move(v.to) };
+  const whole = vacationSpan(v);
+  const move = (ms: number) => DateTime.fromMillis(ms, { zone }).plus({ days }).toMillis();
+  return { start: move(whole.start), end: move(whole.end) };
+}
+
+/** How far this bid month's trips reach: the last release of any line, past the month's end when a trip carries over. */
+export function monthReachEnd(pack: BidPack): number | null {
+  const period = periodSpan(pack);
+  if (!period) return null;
+  let end = period.end;
+  for (const l of pack.lines) {
+    for (const t of l.trips) {
+      const report = tripReportUtc(pack, t);
+      if (report !== null) end = Math.max(end, report + t.tafbHours * HOUR);
+    }
+  }
+  return end;
 }
 
 export interface SlideCheck {
@@ -57,6 +77,11 @@ export interface SlideCheck {
   legal: boolean;
   /** Why not, naming the section. */
   why?: string;
+  /**
+   * Past this bid month, legal only to reach a trip of it that carries over: CBA 2026 7.E.2.b, "the Conflict Input Window in the
+   * end of November ... is used to slide a January vacation to conflict with a December into January carryover trip".
+   */
+  carryoverOnly?: boolean;
 }
 
 /**
@@ -71,6 +96,7 @@ export interface SlideCheck {
 export function slideChecks(v: VacationPeriod, pack: BidPack): SlideCheck[] {
   const zone = zoneOf(pack);
   const period = periodSpan(pack);
+  const reach = monthReachEnd(pack);
   const original = Date.parse(v.from);
   const name = pack.month.slice(0, 3).toUpperCase();
   const out: SlideCheck[] = [];
@@ -82,6 +108,8 @@ export function slideChecks(v: VacationPeriod, pack: BidPack): SlideCheck[] {
       out.push({ offset, span, legal: true });
     } else if (span.start < period.start && offset < 0) {
       out.push({ offset, span, legal: false, why: "It starts before this bid month, so it needed last month's Conflict Input Window (CBA 2026 7.E.2.a)." });
+    } else if (span.start >= period.end && span.start < reach!) {
+      out.push({ offset, span, legal: true, carryoverOnly: true });
     } else if (span.start >= period.end || span.end <= period.start) {
       out.push({ offset, span, legal: false, why: "It doesn't touch this bid month, so this month's Conflict Input Window isn't the one for it (CBA 2026 7.E.2.a)." });
     } else if (original >= period.end && span.start < period.end && (name === "NOV" || name === "DEC")) {
@@ -108,16 +136,18 @@ function tripSpan(trip: Trip, pack: BidPack): Span | null {
   return report === null ? null : { start: report, end: report + trip.tafbHours * HOUR };
 }
 
+/** CBA 2026 7.E.2.c: "a trip in which the last activity is an international duty period", except a trip under 12.D.1.c.i. */
 function endsInternational(trip: Trip): boolean {
   const last = trip.schedule[trip.schedule.length - 1];
-  return !!last && flownUnderInternationalRules(trip) && flownUnderInternationalRules({ international: trip.international, schedule: [last] });
+  return !!last && dutyIsInternational(trip, last);
 }
 
 /**
  * What a vacation takes off a line. CBA 2026 7.G.1: "A regular line holder shall be removed from a trip(s) in conflict with
  * the pilot's vacation period (as awarded or slid) or vacation expansion. Conflict with an international duty free
  * buffer, as described in Section 12.D.1.d., shall constitute a conflict with the trip protected by that buffer."
- * `slid`: CBA 2026 7.E.2.c's 48 hours apply "if a pilot slides". Every bid period, but for the waiver noted above.
+ * `slid`: CBA 2026 7.E.2.c's 48 hours apply "if a pilot slides", not to an expansion. Every bid period, but for the waiver
+ * noted above and 12.D.1.d.i's domestic-parameters exception, Phase 2.
  */
 export function vacationRemovals(line: Line, pack: BidPack, vacation: Span, opts: { slid: boolean; waiveFrontBuffer?: boolean }): RemovedTrip[] {
   const waivable = frontBufferWaivable(pack.month);
@@ -127,6 +157,7 @@ export function vacationRemovals(line: Line, pack: BidPack, vacation: Span, opts
     if (!span) continue;
     const intl = flownUnderInternationalRules(trip);
     const long = intl && trip.tafbHours > BUFFER_TAFB_HOURS;
+    const longBefore = (waivable ? intl : touchesOutside48(trip)) && trip.tafbHours > BUFFER_TAFB_HOURS;
     const sinceRelease = vacation.start - span.end;
     const untilReport = span.start - vacation.end;
     if (span.start < vacation.end && span.end > vacation.start) {
@@ -135,7 +166,7 @@ export function vacationRemovals(line: Line, pack: BidPack, vacation: Span, opts
       out.push({ trip, rule: "after-international", section: "CBA 2026 7.E.2.c", waivable: false });
     } else if (long && sinceRelease >= 0 && sinceRelease < BUFFER_AFTER_HOURS * HOUR) {
       out.push({ trip, rule: "buffer-after", section: "CBA 2026 7.G.1, 12.D.1.d.ii", waivable: false });
-    } else if (long && untilReport >= 0 && untilReport < BUFFER_BEFORE_HOURS * HOUR) {
+    } else if (longBefore && untilReport >= 0 && untilReport < BUFFER_BEFORE_HOURS * HOUR) {
       if (!(waivable && opts.waiveFrontBuffer)) out.push({ trip, rule: "buffer-before", section: "CBA 2026 7.G.1, 12.D.1.d.i", waivable });
     }
   }
@@ -154,14 +185,17 @@ function holidayDays(year: number): Set<string> {
   return new Set([thanksgiving.toFormat("MM-dd"), "12-24", "12-25", "12-31", "01-01"]);
 }
 
+/** CBA 2026 7.E.3.d: "in whole or in part" on those base days, inside the bid month or past it. */
 function touchesHoliday(trip: Trip, pack: BidPack): boolean {
   const span = tripSpan(trip, pack);
-  if (!span || !pack.bidPeriodStart) return false;
-  const first = DateTime.fromISO(pack.bidPeriodStart, { zone: "utc" });
-  return dayIndices(span, pack).some((d) => {
-    const date = first.plus({ days: d });
-    return holidayDays(date.year).has(date.toFormat("MM-dd"));
-  });
+  if (!span) return false;
+  const zone = zoneOf(pack);
+  const shift = baseDayStartMinutes(zone);
+  const last = DateTime.fromMillis(span.end - 1, { zone }).minus({ minutes: shift }).startOf("day");
+  for (let d = DateTime.fromMillis(span.start, { zone }).minus({ minutes: shift }).startOf("day"); d <= last; d = d.plus({ days: 1 })) {
+    if (holidayDays(d.year).has(d.toFormat("MM-dd"))) return true;
+  }
+  return false;
 }
 
 export interface SlideOption {
@@ -191,7 +225,7 @@ function baseDate(ms: number, zone: string): string {
 
 function optionFor(line: Line, pack: BidPack, vacation: VacationPeriod, span: Span, offset: number, expandBefore: number, expandAfter: number): SlideOption {
   const zone = zoneOf(pack);
-  const removed = vacationRemovals(line, pack, span, { slid: offset !== 0 || expandBefore > 0 || expandAfter > 0 });
+  const removed = vacationRemovals(line, pack, span, { slid: offset !== 0 });
   const trips = removed.map((r) => r.trip);
   const spans = new Map<Trip, Span>();
   for (const t of line.trips) {
@@ -226,6 +260,9 @@ function expansions(line: Line, pack: BidPack, vacation: VacationPeriod, slide: 
   const zone = zoneOf(pack);
   const period = periodSpan(pack);
   if (!period) return [];
+  // 7.E.3.c: not "a trip(s) that begins outside the bid period of the pilot's vacation as awarded or slid". This also keeps
+  // December out of November and January out of December (7.E.3.a).
+  if (slide.span.start >= period.end) return [];
   const limit = vacation.days * CH_PER_VACATION_DAY + EXPANSION_OVER_CH;
   if (base.chargedCH > limit) return [];
   const taken = new Set(base.removed.map((r) => r.trip));
@@ -249,7 +286,7 @@ function expansions(line: Line, pack: BidPack, vacation: VacationPeriod, slide: 
     if ((b > 0 && !prior) || (a > 0 && !next)) continue;
     const start = DateTime.fromMillis(slide.span.start, { zone }).minus({ days: b }).toMillis();
     const end = DateTime.fromMillis(slide.span.end, { zone }).plus({ days: a }).toMillis();
-    // 7.E.3.a keeps December out of November and January out of December; and in any month, what's before it was last month's window.
+    // What's before this month was last month's window.
     if (start < period.start) continue;
     const option = optionFor(line, pack, vacation, { start, end }, slide.offset, b, a);
     if (option.chargedCH > limit) continue;
@@ -324,6 +361,8 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
     const options: SlideOption[] = [];
     for (const c of legal) {
       const base = optionFor(line, pack, vacation, c.span, c.offset, 0, 0);
+      // 7.E.2.b: this window reaches past the month only for a trip carrying over.
+      if (c.carryoverOnly && !base.removed.length) continue;
       options.push(base);
       options.push(...expansions(line, pack, vacation, c, base));
     }
@@ -350,7 +389,7 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
   });
 
   const across = legal
-    .filter((c) => c.offset !== 0)
+    .filter((c) => c.offset !== 0 && !c.carryoverOnly)
     .flatMap((c): SlideAcrossLines[] => {
       if (!rows.length) return [];
       const weighted = rows.map((r) => {
@@ -381,9 +420,8 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
 export function vacationsInReach(vacations: VacationPeriod[], pack: BidPack): VacationPeriod[] {
   const period = periodSpan(pack);
   if (!period) return [];
-  return vacations.filter((v) =>
-    slideChecks(v, pack).some((c) => c.legal && c.span.start < period.end && c.span.end > period.start)
-  );
+  const reach = monthReachEnd(pack)!;
+  return vacations.filter((v) => slideChecks(v, pack).some((c) => c.legal && c.span.start < reach && c.span.end > period.start));
 }
 
 /** A vacation the pilot typed, from its first day: base day to base day, so it's the same shape as the pack's own (0130 to 0129). */

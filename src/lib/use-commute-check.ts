@@ -28,7 +28,7 @@ export interface CommuteCheck {
 
 const SETTINGS_KEY = "line-select:commute-settings:v1";
 
-function startingSettings(profile: PreferenceProfile): CommuteSettings {
+export function startingSettings(profile: PreferenceProfile): CommuteSettings {
   const h = profile.pilotModel?.home;
   const fromProfile: CommuteSettings = {
     ...DEFAULT_COMMUTE_SETTINGS,

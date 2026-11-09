@@ -7,6 +7,7 @@ import { timezoneForAirport } from "@/lib/airport-timezones";
 import { carryInFromLogbook } from "@/lib/carry-in-storage";
 import { recommendVipsAnswers, type CarryInItem, type FlownLine, type PhaseInElections, type ReservePeriod, type VipsRecommendation } from "@/lib/phase-in";
 import type { CarryIn } from "@/lib/use-carry-in";
+import type { VacationLine } from "@/lib/vacation-lines";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -303,16 +304,16 @@ function RDaysForm({ onAdd, onCancel }: { onAdd: (item: CarryInItem) => void; on
   );
 }
 
-/** Under a line in the list: what the carry-in does to it. Nothing when it does nothing. */
-export function CarryInLineNote({ flown }: { flown: FlownLine | undefined }) {
-  if (!flown) return null;
-  if (!flown.reason && !flown.advice.length) return null;
+/** Under a line in the list: what the carry-in and the vacation do to it. Nothing when they do nothing. */
+export function CarryInLineNote({ flown, vacation }: { flown: FlownLine | undefined; vacation?: VacationLine }) {
+  if (!flown?.reason && !flown?.advice.length && !vacation?.reason) return null;
   return (
     <div className="mt-1 space-y-0.5 px-3 text-xs text-ink-muted">
-      {flown.reason && <p>{flown.reason}</p>}
-      {flown.advice.map((a) => (
+      {flown?.reason && <p>{flown.reason}</p>}
+      {flown?.advice.map((a) => (
         <p key={a}>{a}</p>
       ))}
+      {vacation?.reason && <p>{vacation.reason}</p>}
     </div>
   );
 }

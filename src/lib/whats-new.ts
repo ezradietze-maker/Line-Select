@@ -14,6 +14,24 @@ export interface WhatsNewEntry {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-08",
+    title: "Trades that help everyone on them",
+    body: "Confirm what you hold on the Trade Board, and each day the site looks for trades that leave you and other pilots better off by your own priorities: a straight swap, or a chain of up to 5 pilots. Everyone says yes first, then you each submit your part in VIPS. Opens when your seat has enough pilots.",
+    href: "/trade-board",
+  },
+  {
+    date: "2026-11-08",
+    title: "Open time, scored for you",
+    body: "Paste the open-time list from VIPS and every trip gets a score for you, with the reasons: what it does to your days off, whether you can commute to it, and whether it's legal on your line. It checks overlaps and rest, the 0900 deadline, your make-up and trade limits, and holiday no-drops. We haven't seen a real VIPS list yet, so any row we can't read is shown to you, never guessed at.",
+    href: "/open-time",
+  },
+  {
+    date: "2026-11-08",
+    title: "Your vacation now counts in your ranking",
+    body: "If the pack shows a vacation for you this month, every line is scored with the trips it takes off, the days off you get, and what it draws from your bank, with the reason under each line. Rather keep your flying, or not taking it at all? Choose per vacation above your rankings. You need your seniority number in Preferences.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-08",
     title: "See who held what, if pilots choose to share",
     body: "When you log an award you can now choose to show your seniority number beside your line. Once five pilots in a seat have said yes for a month, an opened line shows who held it. Your name never goes with it, and you can withdraw your share from the Logbook any time. Shared awards also check the odds against what really happened.",
     href: "/logbook",

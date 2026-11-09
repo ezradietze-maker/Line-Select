@@ -169,6 +169,11 @@ export interface ScoreOptions {
   power?: number;
   /** See `utilityOf`. Defaults to `BEYOND_BAD`. */
   beyondBad?: number;
+  /**
+   * Only the first this-many lines set the scale. For scoring hypothetical lines added after a pack's real ones (a line
+   * as it would be after a trade): they're measured against the pack the pilot knows, and can't move it.
+   */
+  referenceLines?: number;
 }
 
 export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreOptions = {}): V2LineScore[] {
@@ -184,12 +189,16 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
   const values = criteria.map((c) => measureAll(c.metric, bidPack.lines, pack, { ...home, ...c.params }));
   const factor = fourWeekFactor(bidPack);
   const judged = criteria.map((c, ci) => (METRICS_BY_ID.get(c.metric)?.perMonth && factor !== 1 ? values[ci].map((v) => (v === null ? null : v * factor)) : values[ci]));
-  const spreads = criteria.map((c, ci) => spreadOf(judged[ci], c.shape, METRICS_BY_ID.get(c.metric)));
+  const reference = (vs: (number | null)[]) => (options.referenceLines === undefined ? vs : vs.slice(0, options.referenceLines));
+  const spreads = criteria.map((c, ci) => spreadOf(reference(judged[ci]), c.shape, METRICS_BY_ID.get(c.metric)));
   const weights = criteria.map(criterionWeight);
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
   const beyond = options.beyondBad ?? BEYOND_BAD;
   const utilities = criteria.map((c, ci) => judged[ci].map((v) => (v === null ? 0.5 : utilityOf(v, c.shape, spreads[ci], beyond, METRICS_BY_ID.get(c.metric)?.belowFine))));
-  const meanUtility = utilities.map((us) => us.reduce((a, b) => a + b, 0) / Math.max(1, us.length));
+  const meanUtility = utilities.map((us) => {
+    const real = options.referenceLines === undefined ? us : us.slice(0, options.referenceLines);
+    return real.reduce((a, b) => a + b, 0) / Math.max(1, real.length);
+  });
   // A dealbreaker that rules out most of the pack is usually misread or bound to the wrong measure ("not two all-nighters
   // in a row" as a cap on every night worked capped two-thirds of a pack, its best lines included): it still counts
   // through its criterion's weight, it just stops capping. Dates a pilot must have off are the exception — those really
@@ -197,7 +206,7 @@ export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreO
   const enforced = criteria.map((c, ci) => {
     if (!c.hardLimit) return false;
     if (LITERAL_LIMITS.has(c.metric)) return true;
-    const measured = judged[ci].filter((v): v is number => v !== null);
+    const measured = reference(judged[ci]).filter((v): v is number => v !== null);
     const broken = measured.filter((v) => (c.hardLimit!.op === "max" ? v > c.hardLimit!.value : v < c.hardLimit!.value)).length;
     return measured.length === 0 || broken / measured.length <= MAX_SHARE_RULED_OUT;
   });

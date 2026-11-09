@@ -14,7 +14,7 @@ import { sql } from "drizzle-orm";
 import type { FeedMonth, FeedOptions } from "@/lib/calendar-feed";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
 import type { InterviewOutcome } from "@/lib/learning/interview-outcome";
-import type { BidPackMetaSnapshot, TripSnapshot } from "@/types/trade";
+import type { BidPackMetaSnapshot, HeldTrip, TradeAnswer, TradeCancelReason, TradeDeclineReason, TradeSuggestionStatus, TradeTrip, TradeValue, TripSnapshot } from "@/types/trade";
 import type { PreferenceProfile } from "@/types/preferences";
 
 /**
@@ -96,6 +96,87 @@ export const tradeOffers = pgTable(
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   },
   (t) => [index("trade_offers_status_idx").on(t.status)]
+);
+
+/**
+ * What a pilot says they hold in one bid pack, for suggesting trades: confirming it is what puts them in the matching.
+ * The trips are named by their place in that pack (`HeldTrip`), not copied.
+ */
+export const tradeHoldings = pgTable(
+  "trade_holdings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    packId: text("pack_id").notNull(),
+    base: text("base").notNull(),
+    aircraft: text("aircraft").notNull(),
+    seat: text("seat").notNull(),
+    month: text("month").notNull(),
+    /** The line these trips started from; null once the trips no longer came from one line. */
+    lineNumber: text("line_number"),
+    trips: jsonb("trips").notNull().$type<HeldTrip[]>(),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("trade_holdings_user_pack_idx").on(t.userId, t.packId), index("trade_holdings_group_idx").on(t.base, t.aircraft, t.seat, t.month)]
+);
+
+/** Whether a pilot wants trades suggested at all (on unless they turn it off), and whether to be emailed about a match (off unless they turn it on). */
+export const tradePreferences = pgTable("trade_preferences", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  suggestMe: boolean("suggest_me").notNull().default(true),
+  emailMatches: boolean("email_matches").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * A trade the matching found (see `lib/trades/match.ts`): each pilot's part is in `tradeSuggestionMembers`.
+ * `signature` names the trade so it's never suggested twice; it's cleared if the trade lapses because someone's trips changed, since it may stand again later.
+ */
+export const tradeSuggestions = pgTable(
+  "trade_suggestions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    signature: text("signature"),
+    packId: text("pack_id").notNull(),
+    base: text("base").notNull(),
+    aircraft: text("aircraft").notNull(),
+    seat: text("seat").notNull(),
+    month: text("month").notNull(),
+    status: text("status").notNull().default("proposed").$type<TradeSuggestionStatus>(),
+    cancelReason: text("cancel_reason").$type<TradeCancelReason>(),
+    steps: jsonb("steps").notNull().$type<{ a: number; b: number }[]>(),
+    stepsDone: integer("steps_done").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("trade_suggestions_signature_idx").on(t.signature), index("trade_suggestions_group_idx").on(t.base, t.aircraft, t.seat, t.month)]
+);
+
+export const tradeSuggestionMembers = pgTable(
+  "trade_suggestion_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    suggestionId: uuid("suggestion_id")
+      .notNull()
+      .references(() => tradeSuggestions.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    displayName: text("display_name").notNull(),
+    position: integer("position").notNull(),
+    give: jsonb("give").notNull().$type<TradeTrip>(),
+    /** This pilot's own gain and reasons. Never sent to anyone else on the trade. */
+    value: jsonb("value").notNull().$type<TradeValue>(),
+    answer: text("answer").notNull().default("waiting").$type<TradeAnswer>(),
+    declineReason: text("decline_reason").$type<TradeDeclineReason>(),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("trade_suggestion_members_position_idx").on(t.suggestionId, t.position), index("trade_suggestion_members_user_idx").on(t.userId)]
 );
 
 export function bidPackMetaOf(row: { base: string; aircraft: string; seat: string; month: string }): BidPackMetaSnapshot {

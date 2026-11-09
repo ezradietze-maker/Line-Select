@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "November 7, 2026";
+const LAST_UPDATED = "November 8, 2026";
 
 /**
  * A real Terms of Service — not boilerplate copy-pasted from a generator.
@@ -56,6 +56,25 @@ export default function TermsPage() {
             transmitted to FedEx, and nothing here affects your actual bid, schedule, or
             employment unless you act on it through FedEx&rsquo;s own official systems. Always
             check your bid in VIPS&rsquo;s own Monthly Bid Review before bidding closes.
+          </p>
+        </Section>
+
+        <Section title="2a. Connecting your FedEx account (optional, and not enabled yet)">
+          <p>
+            We are building an optional feature that would let you connect your own FedEx pilot account so the Service can
+            read your open time (and later your own schedule) and score it for you, instead of you pasting the list. This
+            feature is <span className="font-medium text-ink">not enabled</span> as of the date above, and until it is, the
+            section above remains the whole story: Send to VIPS is the only way anything here reaches FedEx. If and when you
+            choose to turn the connection on, these additional terms apply, and only then. You would sign in on
+            FedEx&rsquo;s own page, yourself &mdash; we never render a password field, never see or store your FedEx
+            password, and never bypass FedEx&rsquo;s two-factor sign-in. We never pick up, trade, or drop a trip for you;
+            every action stays yours to confirm in FedEx&rsquo;s own systems. You can disconnect at any time, which deletes
+            anything held for the connection. Connecting is optional and at your own risk:
+            <span className="font-medium text-ink"> FedEx has not approved, endorsed, or authorized this Service or this
+            feature, we have not reviewed FedEx&rsquo;s computer-use policy that applies to pilots, and your own FedEx
+            policies and obligations apply to you.</span> You are solely responsible for deciding whether connecting is
+            permitted for you, and for any consequence of doing so. If FedEx objects to or blocks this access, the feature
+            pauses.
           </p>
         </Section>
 
@@ -174,6 +193,12 @@ export default function TermsPage() {
             feasible under your contract. We are not a party to any arrangement between pilots
             made through the Service and have no obligation or ability to enforce it, mediate it,
             or guarantee any pilot&rsquo;s identity, seniority, or qualifications.
+          </p>
+          <p className="mt-3">
+            The same goes for trades the Service suggests. A suggestion is an estimate from your saved priorities and what
+            you and other pilots say you hold, and it can be wrong or out of date. It isn&rsquo;t advice to make the trade and
+            doesn&rsquo;t mean FedEx will approve it. A chain of trades can leave you holding a trip you didn&rsquo;t want if
+            another pilot doesn&rsquo;t follow through. Whether to trade, and what you submit to FedEx, is up to you.
           </p>
         </Section>
 

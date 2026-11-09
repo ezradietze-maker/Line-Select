@@ -177,7 +177,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="5. If you create an account">
-          <p>Creating an account is optional. You need one for the Trade Board, Inbox, award-history reporting, sharing your ranking with the forecast, and keeping your data across devices (Section 2). If you create one, we store:</p>
+          <p>Creating an account is optional. You need one for the Trade Board, suggested trades, Inbox, award-history reporting, sharing your ranking with the forecast, and keeping your data across devices (Section 2). If you create one, we store:</p>
           <ul className="mt-2 list-disc space-y-1.5 pl-5">
             <li>Your email address and display name, as you provide them;</li>
             <li>
@@ -192,7 +192,7 @@ export default function PrivacyPage() {
             <li>
               If you ask to reset your password by email, a single-use reset link is sent to the address on your
               account through a transactional email provider (Resend). Only a hash of the link&rsquo;s token is
-              kept, and it expires after an hour or once used. That is the only email we send you;
+              kept, and it expires after an hour or once used. Unless you turn on trade emails (Section 6), that is the only email we send you;
             </li>
             <li>
               A session token in an <code className="font-mono text-xs">httpOnly</code> cookie
@@ -213,6 +213,21 @@ export default function PrivacyPage() {
             The example offers shown with the sample bid pack are made up in your browser and marked as examples.
             No real pilot is behind them, nothing about them reaches our server, and they never appear with a pack
             you uploaded.
+          </p>
+          <p className="mt-3">
+            <span className="font-medium text-ink">Suggested trades.</span> If you confirm what you hold on the Trade
+            Board, we store those trips, any you&rsquo;ve marked as ones you can&rsquo;t trade, and your choices about
+            suggestions, tied to your account. We compare them and your saved priorities with those of other pilots in
+            the same domicile, aircraft, seat and month who have also confirmed theirs, to find trades that leave everyone
+            in them better off. There&rsquo;s no separate sign-up: confirming your trips is what includes you. Other
+            pilots on a suggested trade see your name, the trips involved, whether you&rsquo;ve said yes, and can tell the
+            trade would help you. They don&rsquo;t see your priorities or interview answers, how much it helps you, or why.
+            Any pilot on a trade can see whether anyone has said no, though not who. We keep each suggestion, what it was
+            worth to you and your answer, so the same trade isn&rsquo;t suggested again. When a pilot marks a step of an
+            agreed trade as done, what both pilots hold is updated. Trades are worked out once a day, and when a pilot asks. If you say why you turned a trade down, we keep that
+            too and use it to choose what you&rsquo;re offered next. If you turn on trade emails, we send you one through our
+            email provider (Resend) when a trade needs your answer, naming the trips. You can turn this off on the Trade
+            Board, or remove what you hold, at any time.
           </p>
         </Section>
 
@@ -361,6 +376,22 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
+        <Section title="13a. If you connect your FedEx account (optional, and not enabled yet)">
+          <p>
+            We are building an optional feature that would let you connect your own FedEx pilot account so the Service can
+            read your open time, and later your own schedule, and score it for you. It is{" "}
+            <span className="font-medium text-ink">not enabled</span> as of the date above, so today nothing described here
+            happens. If you choose to turn it on once it exists: you sign in on FedEx&rsquo;s own page, and{" "}
+            <span className="font-medium text-ink">we never see or store your FedEx password</span>. If any session needed
+            to keep the connection is ever held on our side, it is encrypted at rest, kept out of our logs, isolated from
+            the rest of the Service, and deleted when you disconnect or when it expires &mdash; and with a device-based
+            option it stays on your device and we hold nothing. We read only your open time and your own schedule, we never
+            store another pilot&rsquo;s name beyond showing it on your own trip, and you can see a log of every time your
+            connection was used. FedEx has not approved this feature; connecting is your choice and at your own risk, and
+            you can disconnect at any time to delete what is held for it.
+          </p>
+        </Section>
+
         <Section title="14. What we don’t do">
           <ul className="list-disc space-y-1.5 pl-5">
             <li>We don&rsquo;t sell or rent your personal information to anyone.</li>
@@ -384,12 +415,13 @@ export default function PrivacyPage() {
         <Section title="15. Your choices and rights">
           <p>
             &ldquo;Start over&rdquo; on your results page removes your bid pack and saved preferences, from your
-            device and, if you&rsquo;re signed in, from our server. As a guest you can do the same by clearing your
+            device and, if you&rsquo;re signed in, from our server, along with what you&rsquo;ve confirmed you hold in that pack. As a guest you can do the same by clearing your
             browser&rsquo;s site data.
           </p>
           <p className="mt-3">
             You can delete your account at any time by contacting us at the address below. This removes your login
-            and sessions, your stored bid pack and saved preferences, and your Trade Board offers and responses.
+            and sessions, your stored bid pack and saved preferences, what you&rsquo;ve confirmed you hold, your part in
+            suggested trades, and your Trade Board offers and responses.
             Earlier versions of your preferences and any interview draft expire on their own (Section 2). Some
             things remain unless you ask us to remove them: award-history reports, interview summaries and stored
             forecasts stay under the one-way hash in Section 9, which can no longer be matched to anyone once your

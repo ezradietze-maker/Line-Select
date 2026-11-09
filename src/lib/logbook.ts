@@ -1,5 +1,5 @@
 import { monthLine, tripCarryOver } from "@/lib/bid-month";
-import { flownUnderInternationalRules } from "@/lib/phase-in";
+import { flownUnderInternationalRules, operatedBlockHours } from "@/lib/phase-in";
 import { tripReportUtc } from "@/lib/trip-anchor";
 import type { AwardHistorySubmission } from "@/types/award-history";
 import type { BidPack, Line } from "@/types/bidpack";
@@ -29,6 +29,7 @@ function carriedOut(line: Line, pack: Pick<BidPack, "base" | "bidPeriodStart" | 
         international: flownUnderInternationalRules(trip),
         creditHours: trip.creditHours,
         duties: trip.schedule.map((d) => ({ start: iso(at(d.startMinutes)), end: iso(d.layover ? at(d.layover.startMinutes) : release) })),
+        lastDutyBlockHours: operatedBlockHours(trip.schedule[trip.schedule.length - 1]),
       },
     ];
   });

@@ -120,6 +120,42 @@ function departureEnds(line: Line, bidPack: Pick<BidPack, "bidPeriodStart" | "ba
     .map((d) => ({ first: d.trips[0], last: d.trips[d.trips.length - 1] }));
 }
 
+/** The same questions for trips the pack's lines don't hold: open time. */
+export function commuteNeedsForTrips(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trips: Trip[], s: CommuteSettings, now = Date.now()): TravelNeed[] {
+  const ways = trips.flatMap((t) => [...waysOfTrip(bidPack, t, s, "in"), ...(t.carriesIntoNextMonth ? [] : waysOfTrip(bidPack, t, s, "home"))]);
+  return ways.filter((w) => !w.impossible && w.need.departBefore > now).map((w) => w.need);
+}
+
+export interface TripCommute {
+  /** "joined": it runs straight on from a trip already on the line, so that way needs no commute. */
+  in: CommuteStatus | "joined";
+  home: CommuteStatus | "joined";
+  /** The last departure from home that makes the report, and the first arrival home after release, when asked. Epoch ms. */
+  lastDeparture: number | null;
+  firstArrival: number | null;
+}
+
+/** Whether real flights get the pilot to and from one trip, on the line it would join (null when the line isn't known). */
+export function commuteOfTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Trip, line: Pick<Line, "trips"> | null, s: CommuteSettings, answers: CommuteAnswers): TripCommute {
+  const homeZone = timezoneForAirport(s.homeAirport);
+  const baseZone = timezoneForAirport(bidPack.base);
+  if (!homeZone || !baseZone) return { in: "unknown", home: "unknown", lastDeparture: null, firstArrival: null };
+  const options = { homeAirports: [s.homeAirport], commuteBufferHours: s.arriveBeforeReportHours, frontBufferHours: s.arriveBeforeReportHours, backRestHours: s.releaseToDepartureHours };
+  const together = line ? groupDepartures([...line.trips, trip], bidPack, options).find((d) => d.trips.includes(trip)) : null;
+  const inWays = waysOfTrip(bidPack, trip, s, "in");
+  const homeWays = trip.carriesIntoNextMonth ? [] : waysOfTrip(bidPack, trip, s, "home");
+  const worksIn = (a: CommuteAnswer, w: Way) => a.lastDeparture !== null && leavesOnReportDay(a.lastDeparture, w.day, homeZone, baseZone);
+  const worksHome = (a: CommuteAnswer, w: Way) => a.firstArrival !== null && landsOnReleaseDay(a.firstArrival, w.day, homeZone, baseZone);
+  const departures = inWays.flatMap((w) => (answers[w.need.id] && worksIn(answers[w.need.id], w) ? [answers[w.need.id].lastDeparture!] : []));
+  const arrivals = homeWays.flatMap((w) => (answers[w.need.id] && worksHome(answers[w.need.id], w) ? [answers[w.need.id].firstArrival!] : []));
+  return {
+    in: together && together.trips[0] !== trip ? "joined" : endStatus(inWays, answers, worksIn),
+    home: together && together.trips[together.trips.length - 1] !== trip ? "joined" : endStatus(homeWays, answers, worksHome),
+    lastDeparture: departures.length ? Math.max(...departures) : null,
+    firstArrival: arrivals.length ? Math.min(...arrivals) : null,
+  };
+}
+
 /** What the filter has to ask across the pack: each distinct question once, none about trips already flown. */
 export function commuteNeedsForPack(bidPack: BidPack, s: CommuteSettings, now = Date.now()): TravelNeed[] {
   const seen = new Map<string, TravelNeed>();
@@ -231,10 +267,10 @@ export async function runCommuteCheck(
   bidPack: BidPack,
   s: CommuteSettings,
   onProgress: (p: CommuteCheckProgress) => void,
-  { now = Date.now(), fetcher = fetch, signal }: { now?: number; fetcher?: typeof fetch; signal?: AbortSignal } = {}
+  { now = Date.now(), fetcher = fetch, signal, needs: asked }: { now?: number; fetcher?: typeof fetch; signal?: AbortSignal; needs?: TravelNeed[] } = {}
 ): Promise<CommuteCheckEnd> {
   const answers: CommuteAnswers = { ...loadCommuteAnswers(bidPack.id, s, now) };
-  const needs = commuteNeedsForPack(bidPack, s, now);
+  const needs = asked ?? commuteNeedsForPack(bidPack, s, now);
   const missing = needs.filter((n) => !answers[n.id] || answers[n.id].partial);
   const total = needs.length;
   let done = total - missing.length;

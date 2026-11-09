@@ -17,6 +17,7 @@ describe("navTargetForPath", () => {
     expect(navTargetForPath("/results")).toBe("results");
     expect(navTargetForPath("/strategies")).toBe("strategies");
     expect(navTargetForPath("/view-add")).toBe("view-add");
+    expect(navTargetForPath("/open-time")).toBe("open-time");
     expect(navTargetForPath("/trade-board")).toBe("trade-board");
     expect(navTargetForPath("/inbox")).toBe("inbox");
     expect(navTargetForPath("/hotel-ratings")).toBe("hotel-ratings");

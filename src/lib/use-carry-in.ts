@@ -2,11 +2,13 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { loadCarryIn, saveCarryIn, type CarryInState } from "@/lib/carry-in-storage";
-import { flyPack } from "@/lib/phase-in";
+import { loadSeniority } from "@/lib/seniority-storage";
+import { flySchedule, pilotVacations, withChoices } from "@/lib/vacation-lines";
 import type { BidPack } from "@/types/bidpack";
+import type { PreferenceProfile } from "@/types/preferences";
 
-/** The pilot's carry-in for this pack, and the pack as it will fly because of it. */
-export function useCarryIn(bidPack: BidPack, userId: string | null) {
+/** The pilot's carry-in and vacation for this pack, and the pack as it will fly because of them. */
+export function useCarryIn(bidPack: BidPack, userId: string | null, profile: Pick<PreferenceProfile, "seniorityNumber"> | null) {
   const owner = `${userId}|${bidPack.id}`;
   const [kept, setKept] = useState(() => ({ owner, state: loadCarryIn(userId, bidPack.id) }));
   const state = kept.owner === owner ? kept.state : loadCarryIn(userId, bidPack.id);
@@ -19,8 +21,10 @@ export function useCarryIn(bidPack: BidPack, userId: string | null) {
     },
     [userId, bidPack.id]
   );
-  const flown = useMemo(() => flyPack(bidPack, state.items, state.elections), [bidPack, state]);
-  return { state, update, flown };
+  const seniorityNumber = profile?.seniorityNumber;
+  const vacations = useMemo(() => pilotVacations(bidPack, { seniorityNumber }, loadSeniority(userId)), [bidPack, seniorityNumber, userId]);
+  const flown = useMemo(() => flySchedule(bidPack, state, withChoices(vacations.vacations, state.vacationChoices)), [bidPack, state, vacations]);
+  return { state, update, flown, vacations };
 }
 
 export type CarryIn = ReturnType<typeof useCarryIn>;

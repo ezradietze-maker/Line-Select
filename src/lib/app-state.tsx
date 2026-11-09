@@ -7,6 +7,7 @@ import { checkSession, logout as logoutAccount } from "@/lib/auth";
 import { clearServerBidPack, fetchServerBidPack, fetchServerBidPackMeta, saveServerBidPack } from "@/lib/bidpack-server";
 import { bidPackSavedAt, clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
 import { generateFakeOffer, isSamplePack } from "@/lib/fake-trade-offers";
+import { clearTradeHolding, fetchWaitingSuggestions } from "@/lib/trades/holding-client";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
 import { correctionEvents, isLearnablePack } from "@/lib/learning/corrections";
 import { postCorrections } from "@/lib/learning/learning-client";
@@ -188,6 +189,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const { user, bidPack, pendingProfile } = state;
   const [interviewKey, setInterviewKey] = useState(0);
   const [demoOffer, setDemoOffer] = useState<TradeOffer | null>(null);
+  const [waitingTrades, setWaitingTrades] = useState(0);
   const [realOffers, setRealOffers] = useState<TradeOffer[]>([]);
   const [seenOfferIds, setSeenOfferIds] = useState<Set<string>>(new Set());
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -294,6 +296,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!user || !bidPack) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setRealOffers([]);
+      setWaitingTrades(0);
       return;
     }
     let cancelled = false;
@@ -302,6 +305,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // Not while the tab is in the background, and no state change when nothing changed — an unchanged poll used to
       // re-render the whole app every ten seconds.
       if (document.visibilityState === "hidden") return;
+      if (bidPack && !isSamplePack(bidPack)) {
+        const waiting = await fetchWaitingSuggestions(bidPack.id);
+        if (!cancelled && waiting !== null) setWaitingTrades(waiting);
+      }
       const data = await fetchTradeOffers();
       // A failed poll keeps what was last seen: an empty list would read as every offer withdrawn.
       if (!data) return;
@@ -333,7 +340,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return [...byId.values()];
   }, [realOffers, bidPack, user]);
 
-  const inboxUnreadCount = notifiableOffers.filter((o) => !seenOfferIds.has(o.id)).length;
+  // A suggested trade waiting on the pilot counts until they answer it: unlike an offer, opening the Inbox doesn't deal with it.
+  const inboxUnreadCount = notifiableOffers.filter((o) => !seenOfferIds.has(o.id)).length + waitingTrades;
 
   useEffect(() => {
     // Only the Inbox counts as "checked" — the Trade Board shows the same
@@ -587,6 +595,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   function handleStartOver() {
     clearBidPack(user?.id ?? null);
     if (user) void clearServerBidPack();
+    if (user && bidPack) void clearTradeHolding(bidPack.id);
     clearPendingProfile(user?.id ?? null);
     setInterviewKey((k) => k + 1);
     setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null, freshBidPack: false }));

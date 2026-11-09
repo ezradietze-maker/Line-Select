@@ -50,6 +50,20 @@
       "when": 1794164108818,
       "tag": "0006_award_holder_shown",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794165626104,
+      "tag": "0007_trade_holdings",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794165803592,
+      "tag": "0008_trade_suggestions",
+      "breakpoints": true
     }
   ]
 }

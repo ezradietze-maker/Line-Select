@@ -31,6 +31,7 @@ const RIGHT_HERE: { file: RegExp; word: string; why: string }[] = [
   { file: /^src\/lib\/metrics\/catalog\.ts$/, word: "weighted", why: "a unit's name in code, turned into \"hours in cities you like\" before it's shown" },
   { file: /^src\/lib\/scoring-v2\/trip-score\.ts$/, word: "weighted", why: "a unit's name in code" },
   { file: /^src\/lib\/metrics\/home-travel\.ts$/, word: "base", why: "an id in code: where a trip starts, never shown" },
+  { file: /^src\/lib\/open-time\/engine\.ts$/, word: "base", why: "an id in code (open-time-base), never shown" },
   { file: /^src\/lib\/(?:phase-in|vacation-slide)\.ts$/, word: "buffer", why: "the contract's rule ids (buffer-after, buffer-before), never shown" },
 ];
 
