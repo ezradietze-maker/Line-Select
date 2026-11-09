@@ -20,6 +20,12 @@ describe("the contract validator", () => {
     expect(check({ ...good, quotes: [{ ...good.quotes[0], quote }] })).toMatchObject({ ok: false, reason: expect.stringContaining("not word for word") });
   });
 
+  it("doesn't relabel a deleted rule for the model: it rejects it and says where the words are", () => {
+    const deleted = 'Reserves who elected the "first fly" option as provided in Section 25.M.4., shall be assigned in seniority order, prior to pilots who have not elected that option, until they have accrued 75% of RLG.';
+    const verdict = check({ found: true, answer: "Until they have accrued 75% of RLG.", quotes: [{ section: "25.M.6", quote: deleted, version: "2026" }] });
+    expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining("Those words are in the 2015 wording of 25.M.6.b.iv") });
+  });
+
   it("rejects a real quote cited to the wrong section", () => {
     expect(check({ ...good, quotes: [{ ...good.quotes[0], section: "25.E.5" }] }).ok).toBe(false);
   });

@@ -24,6 +24,11 @@ describe("finding the sections for a question", () => {
     expect(retrievePassages("anything", 40_000, { question: "q", sections: ["99.Z.1"] }).passages).not.toContain("99.Z.1");
   });
 
+  it("marks a deleted paragraph as no longer the rule once its replacement is in force", () => {
+    // The 75% First Fly limit, deleted by the row the chart marks as in force by hand since signing.
+    expect(renderPassage("25.M.6.b", "2026-11")).toMatch(/\[25\.M\.6\.b\.iv \| 2015 wording \| replaced: no longer the rule\] i\. Reserves who elected .*75% of RLG/);
+  });
+
   it("stays within what it was given to spend", () => {
     const small = retrievePassages("first fly reserve assignment", 5_000).passages;
     expect(small.length).toBeGreaterThan(0);
@@ -32,9 +37,10 @@ describe("finding the sections for a question", () => {
 
   it("shows the model each piece's exact id, with the 2015 words beside what changed", () => {
     const text = renderPassage("25.E.6", "2026-11");
-    expect(text).toContain("[25.E.6] (not in force yet for this bid period: starts by the December 2026 bid period; the 2015 wording applies until then) Secondary Working Window");
-    expect(renderPassage("25.E.6", "2026-12")).toContain("[25.E.6] (in force for this bid period");
-    expect(text).toContain("[25.E.6] (2015 wording)");
+    expect(text).toContain("[25.E.6 | not in force yet for this bid period: starts by the December 2026 bid period; the 2015 wording applies until then] Secondary Working Window");
+    expect(renderPassage("25.E.6", "2026-12")).toContain("[25.E.6 | in force for this bid period");
+    expect(text).toContain("[25.E.6 | 2015 wording | still the rule for this bid period]");
+    expect(renderPassage("25.E.6", "2026-12")).toContain("[25.E.6 | 2015 wording | replaced: no longer the rule]");
     expect(text).toContain("144 hours");
   });
 });

@@ -89,7 +89,7 @@ describe("POST /api/contract/ask, streamed", () => {
     const all = await messages(await POST(streamReq({ question: "and what can I do during it?", history })));
     const sent = llm.structuredCall.mock.calls[0][0];
     expect(sent.user.fresh).toContain("<earlier_conversation>");
-    expect(sent.user.cached).toContain("[25.E.6]");
+    expect(sent.user.cached).toContain("[25.E.6");
     expect(sent.system).toContain("Earlier answers are not evidence");
     expect(all.map((m) => m.text)).toContain("Keeping your earlier question in mind.");
     // 999 comes only from the earlier answer, so it doesn't count as backed up.

@@ -1,4 +1,4 @@
-import { DOCS, childrenOf, contractNode, findNode, fullText, versionText } from "./index";
+import { DOCS, NODES, childrenOf, contractNode, findNode, fullText, versionText } from "./index";
 import type { ContractVersion } from "./types";
 
 /**
@@ -45,6 +45,17 @@ export function narrowestPiece(id: string, quote: string, version: ContractVersi
   return id;
 }
 
+/** Where a quote's words really are, to tell the model when it mislabels one. It never changes a label itself: words the model took for the current rule may be a deleted one. */
+export function whereIsQuote(quote: string): { section: string; version: ContractVersion } | null {
+  const wanted = normalizeForMatch(quote);
+  for (const n of NODES) {
+    for (const version of ["2026", "2015"] as const) {
+      if (normalizeForMatch(versionText(n, version)).includes(wanted)) return { section: n.id, version };
+    }
+  }
+  return null;
+}
+
 export function validateAnswer(raw: RawAnswer, context: { question: string; facts?: string }): Verdict {
   if (!raw.found) return { ok: false, reason: "the model found nothing" };
   if (!raw.answer.trim()) return { ok: false, reason: "empty answer" };
@@ -55,7 +66,9 @@ export function validateAnswer(raw: RawAnswer, context: { question: string; fact
     const node = findNode(q.section);
     if (!node) return { ok: false, reason: `no section ${q.section}` };
     if (!normalizeForMatch(fullText(node.id, q.version)).includes(normalizeForMatch(q.quote))) {
-      return { ok: false, reason: `not word for word in ${node.id} (${q.version}): "${q.quote.slice(0, 80)}"` };
+      const actually = whereIsQuote(q.quote);
+      const hint = actually ? ` Those words are in the ${actually.version} wording of ${actually.section}.` : "";
+      return { ok: false, reason: `not word for word in ${node.id} (${q.version}): "${q.quote.slice(0, 80)}".${hint}` };
     }
     if (q.quote.trim().split(/\s+/).length < MIN_QUOTE_WORDS) continue;
     quotes.push({ section: narrowestPiece(node.id, q.quote, q.version), quote: q.quote.trim(), version: q.version });
