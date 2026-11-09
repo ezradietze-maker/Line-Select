@@ -39,7 +39,8 @@ const flag = (name: string) => {
 const runs = args.filter((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--"));
 const every = Math.max(1, Number(flag("every") ?? 1));
 const label = flag("label") ?? "latest";
-const PERSONAS = ["expilot-readback", "ind-local-family", "mem-757-bodyclock"];
+/** Longest first: "expilot-mem-…" isn't a run of "expilot". */
+const PERSONAS = ALL_PERSONAS.map((p) => p.id).sort((a, b) => b.length - a.length);
 
 /** The fixed questions, which the interviewer didn't write. */
 const FIXED = [DEALBREAKER_LEAD, HUB_TURNS_LEAD, REST_HOTEL_LEAD, BID_CHECK_LEAD, PRIORITY_ORDER_LEAD, TRIP_GRADES_LEAD, SWEEP_QUESTION];

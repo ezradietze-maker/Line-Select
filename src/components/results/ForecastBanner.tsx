@@ -134,7 +134,7 @@ export function ForecastBanner({
         {CONFIDENCE_TEXT[forecast.confidence]}{" "}
         {sharingPilots > 0 && `${sharingPilots} pilot${sharingPilots === 1 ? " has" : "s have"} shared a ranking for this seat. `}
         {response?.local && "Couldn't reach the server, so this was worked out on your device from the pack alone. "}
-        This is an estimate, not a promise &mdash; it gets sharper as more pilots at your base and seat use Line Select.
+        This is an estimate, not a promise &mdash; it gets sharper as more pilots at your domicile and seat use Line Select.
       </p>
 
       {canShare && (

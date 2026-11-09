@@ -87,7 +87,7 @@ const CELL_BLEED = 6;
 /** 107 → "1h47": time on the ground between two chained trips. */
 const turnLabel = (m: number) => `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
 
-/** Turns this short are a straight turn at base; longer, the pilot is sitting at base between trips because home is too far to be worth it. */
+/** Turns this short are a straight turn at the domicile; longer, the pilot is sitting at base between trips because home is too far to be worth it. */
 const STRAIGHT_TURN_MINUTES = 6 * 60;
 
 /** "L" or "Z", for a time written in a sentence. */
@@ -267,15 +267,15 @@ function MonthKeyInfo() {
         <Modal title="Month calendar key" onClose={() => setOpen(false)}>
           <ul className="space-y-3 text-sm leading-relaxed text-ink-muted">
             <li><span className="font-medium text-ink">Each week reads like a line in the bid pack.</span> Shaded days joined by a bar across the top are one trip. Its first day carries the trip&rsquo;s number and credit hours (<span className="font-mono">#111 17:47CH</span>) and when it reports, in orange (<span className="font-mono font-semibold text-report">Rpt 06:30L</span>). L is local time, Z Zulu.</li>
-            <li><span className="font-medium text-ink">The lines in each day.</span> Each flight is a <span className="font-medium text-leg">blue</span> line with a tick at each end, as long as the flight and placed by the time of day &mdash; midnight at the left edge, midnight at the right, on the base&rsquo;s clock. A <span className="font-medium text-deadhead">magenta</span> line is a deadhead, riding along. The cities are written over the ends; where two legs meet, the city between them is written once. A flight still in the air at midnight runs off the right edge and on into the next day. The grey band around the lines is the whole duty period, report to release, so a long wait between two short flights shows. Small ticks mark 6am, noon and 6pm.</li>
-            <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be 24 hours at home between them, counting the trip home and back (<span className="font-mono">Rpt 02:30L · 1h47 turn</span> is a straight turn at base). For a pilot who lives at base, only trips that turn within a few hours.</li>
+            <li><span className="font-medium text-ink">The lines in each day.</span> Each flight is a <span className="font-medium text-leg">blue</span> line with a tick at each end, as long as the flight and placed by the time of day &mdash; midnight at the left edge, midnight at the right, on the domicile&rsquo;s clock. A <span className="font-medium text-deadhead">magenta</span> line is a deadhead, riding along. The cities are written over the ends; where two legs meet, the city between them is written once. A flight still in the air at midnight runs off the right edge and on into the next day. The grey band around the lines is the whole duty period, report to the end of its last leg, so a long wait between two short flights shows. Small ticks mark 6am, noon and 6pm.</li>
+            <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be 24 hours at home between them, counting the trip home and back (<span className="font-mono">Rpt 02:30L · 1h47 turn</span> is a straight turn at the domicile). For a pilot who lives in the domicile city, only trips that turn within a few hours.</li>
             <li><span className="font-medium text-ink">Green line.</span> A layover, from landing to the next show, under the flying, with the city and its length to the hour (<span className="font-mono font-semibold text-layover">SEA 16h</span>) &mdash; on its longest day, or at the top of the day when it&rsquo;s too short for the words. <span className="text-good">♥</span> is a city you love, <span className="text-good">♡</span> one you like, an amber <span className="text-warn">✕</span> one you dislike and a red <span className="text-danger">✕</span> one you avoid.</li>
             <li><span className="font-medium text-ink">Full day.</span> A whole day free in a layover city: in the hotel by about 2 AM the night before, and a full night after it &mdash; not up before about 6 the next morning (&ldquo;barely&rdquo; when it&rsquo;s earlier, up as early as about 3:15).</li>
             <li><span className="font-medium text-ink">END MEM 19:05L.</span> Where and when the trip ends, on its last day. <span className="font-mono">+1</span> means just after midnight &mdash; the bid pack still counts the next day as off.</li>
             <li><span className="font-medium text-ink">Violet day.</span> Hotel standby (<span className="font-mono">SBY</span>) &mdash; on call at the hotel, paid, not flying.</li>
             <li><span className="font-medium text-ink">Dashed empty day.</span> A day off; a run of them is labeled on its first day (&ldquo;4 days off&rdquo;).</li>
             <li><span className="font-medium text-ink">Tap any day</span> for every flight with its times and aircraft, the hotel and rest, block time and landings. The hour-by-hour chart for each trip is under &ldquo;Details&rdquo;.</li>
-            <li><span className="font-medium text-ink">Local or Zulu.</span> The switch over the calendar picks the clock. Local: each day is the base&rsquo;s own calendar day, the one the bid pack counts days off on, and every time is local where it happens (L). Zulu: each day runs midnight to midnight Z and every time is Zulu (Z), so a trip can sit a day later than it does in Local &mdash; an evening report at a US base is already tomorrow in Zulu. The numbers under the calendar are the line&rsquo;s own month either way.</li>
+            <li><span className="font-medium text-ink">Local or Zulu.</span> The switch over the calendar picks the clock. Local: each day is the domicile&rsquo;s own calendar day, the one the bid pack counts days off on, and every time is local where it happens (L). Zulu: each day runs midnight to midnight Z and every time is Zulu (Z), so a trip can sit a day later than it does in Local &mdash; an evening report at a US domicile is already tomorrow in Zulu. The numbers under the calendar are the line&rsquo;s own month either way.</li>
           </ul>
         </Modal>
       )}
@@ -458,7 +458,7 @@ function DayDetail({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
           {day.spill && <SpillList spill={day.spill} offDay={false} mode={mode} />}
           {(day.redEye || day.earlyReport || day.layoverInternational || day.citySentiment) && (
             <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
-              {day.redEye && <span className="text-accent">Red-eye: a flight departs or lands between midnight and 5am.</span>}
+              {day.redEye && <span className="text-accent">Night leg: a flight departs or lands between midnight and 5am.</span>}
               {day.earlyReport && <span className="text-warn">Early report: duty starts in the 2–6am window{mode === "zulu" ? ", local time" : ""}.</span>}
               {day.layoverInternational && <span>International layover.</span>}
               {day.citySentiment === "love" && <span className="text-good">{day.layoverCode} is a city you love.</span>}
@@ -654,7 +654,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
       {!compact && (
         <div className="mb-1.5 flex items-center justify-between gap-2 print:hidden">
           <span className="min-w-0 text-[11px] leading-tight text-ink-faint">
-            {mode === "zulu" ? "Zulu days, midnight to midnight Z · times Z" : `${departureOptions?.base ? `${departureOptions.base}'s` : "The base's"} calendar days · times local`}
+            {mode === "zulu" ? "Zulu days, midnight to midnight Z · times Z" : `${departureOptions?.base ? `${departureOptions.base}'s` : "The domicile's"} calendar days · times local`}
           </span>
           <TimeModeToggle mode={mode} onChange={setMode} />
         </div>

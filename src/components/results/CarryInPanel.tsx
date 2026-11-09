@@ -220,7 +220,7 @@ function TripForm({ base, zone, onAdd, onCancel }: { base: string; zone: string;
         onAdd({ kind: "trip", id: newId(), label: label.trim() ? `Trip ${label.trim()}` : "Your carry-in trip", report: reportIso, release: releaseIso, international, creditHours: credit && Number.isFinite(value) ? value : null });
       }}
     >
-      <p className="text-xs text-ink-muted">Times at {base}, base local.</p>
+      <p className="text-xs text-ink-muted">Times at {base}, domicile local.</p>
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="block text-xs text-ink-muted">
           Trip number

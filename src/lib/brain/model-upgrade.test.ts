@@ -109,6 +109,19 @@ describe("modelInPilotWords", () => {
     expect(up.criteria[0].evidence[0].quote).toBe("trips I can join from home");
   });
 
+  it("gives a saved priority its measure's own name when it's in words pilots here don't use", () => {
+    const red = crit("red", "redEyeLegs", { label: "Avoid red-eyes" });
+    expect(modelInPilotWords(model(true, [red])).criteria[0].label).toBe("Night legs");
+    // Only the name: its weight and shape stay as they were.
+    const up = modelInPilotWords(model(true, [red])).criteria[0];
+    expect(up).toEqual({ ...red, label: "Night legs" });
+  });
+
+  it("keeps a saved priority's name if the pilot brought the word up themselves", () => {
+    const m = model(true, [crit("red", "redEyeLegs", { label: "Avoid red-eyes" })]);
+    expect(modelInPilotWords(m, ["Red-eyes wear me out."])).toBe(m);
+  });
+
   it("leaves a model already in pilot words as it is", () => {
     const m = { ...model(true, [crit("dh", "tripsJoinedFromHome", { label: "Trips that start with a deadhead from home" })]), synopsis: "Few departures." };
     expect(modelInPilotWords(m)).toBe(m);

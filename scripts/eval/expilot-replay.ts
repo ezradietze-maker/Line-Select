@@ -41,7 +41,7 @@ const arg = (name: string) => {
   const exchanges = (profile.brainInterview?.exchanges ?? []).map((e) =>
     /layover city/i.test(e.question) && profile.cityRatings
       ? { ...e, answer: describeCityRatings(profile.cityRatings) }
-      : /commute to base/i.test(e.question) && profile.minHomeHours && !e.answer.includes("at home")
+      : /\bcommute to\b/i.test(e.question) && profile.minHomeHours && !e.answer.includes("at home")
         ? { ...e, answer: e.answer + minHomeHoursSentence(profile.minHomeHours) }
         : e
   );

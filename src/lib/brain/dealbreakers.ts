@@ -1,3 +1,4 @@
+import { namedDomicile } from "@/lib/domicile-name";
 import { formatRange } from "@/lib/brain/describe";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
 import type { PackMetrics } from "@/lib/metrics/compute";
@@ -43,7 +44,7 @@ function rangesFor(bidPack: BidPack, model: PilotModel, pack: PackMetrics): { la
       const lo = Math.min(...values);
       const hi = Math.max(...values);
       if (lo === hi) return [];
-      return [{ label: c.label, range: formatRange(lo, hi, def) }];
+      return [{ label: namedDomicile(c.label, bidPack.base), range: namedDomicile(formatRange(lo, hi, def), bidPack.base) }];
     })
     .slice(0, SHOWN);
 }

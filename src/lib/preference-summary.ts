@@ -4,7 +4,7 @@ import type { ExplicitTargetKey, PreferenceWeights, RangeTarget } from "@/types/
 export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negative: string }> = {
   daysOff: {
     positive: "having plenty of days off",
-    negative: "keeping a lean, compact schedule",
+    negative: "being fine with fewer days off",
   },
   tripLength: {
     positive: "flying longer trips",
@@ -55,8 +55,8 @@ export const PHRASES: Record<keyof PreferenceWeights, { positive: string; negati
     negative: "not worrying much about circadian disruption",
   },
   landings: {
-    positive: "getting more landings in for proficiency and comfort",
-    negative: "keeping landings down for fatigue management",
+    positive: "getting more landings in",
+    negative: "keeping landings down",
   },
   hotelStandby: {
     positive: "hotel standby days — paid to sit at the hotel rather than fly",

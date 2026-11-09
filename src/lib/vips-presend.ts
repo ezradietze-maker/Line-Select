@@ -215,7 +215,7 @@ function constructionCheck({ bidPack, lineNumbers }: PresendInput): PresendCheck
     const blocks = offBlocks(line, bidPack.bidPeriodDays);
     if (line.totalTafbHours > limits.tafb) odd.push(`line ${line.lineNumber} shows ${Math.round(line.totalTafbHours)} h away (25.D.1.b caps it at ${limits.tafb} h)`);
     else if (workDays > limits.workDays) odd.push(`line ${line.lineNumber} shows ${workDays} work days (25.D.1.b caps it at ${limits.workDays})`);
-    else if (blocks && !meetsDaysOffBlocks(blocks, limits.threes)) odd.push(`line ${line.lineNumber} doesn't show the blocks of days off 25.D.1 requires`);
+    else if (blocks && !meetsDaysOffBlocks(blocks, limits.threes)) odd.push(`line ${line.lineNumber} doesn't show the days off in a row 25.D.1 requires`);
   }
   if (!odd.length) return null;
   return {
@@ -269,7 +269,7 @@ function seniorityMismatchCheck({ bidPack, seniority }: PresendInput): PresendCh
   return {
     id: "not-on-list",
     level: "warn",
-    message: `Your seniority number isn't on this pack's list for ${bidPack.base} ${bidPack.aircraft} ${bidPack.seat}. Check this is your base, fleet and seat.`,
+    message: `Your seniority number isn't on this pack's list for ${bidPack.base} ${bidPack.aircraft} ${bidPack.seat}. Check this is your domicile, fleet and seat.`,
   };
 }
 

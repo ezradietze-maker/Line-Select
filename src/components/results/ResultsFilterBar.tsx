@@ -264,7 +264,7 @@ export function ResultsFilterBar({
                     active={filters.noRedEyesOnly}
                     onClick={() => onChange({ ...filters, noRedEyesOnly: !filters.noRedEyesOnly })}
                   >
-                    No red-eyes
+                    No night legs
                   </Chip>
                 )}
               </div>
@@ -498,7 +498,7 @@ function CommuteRow({ on, onToggle, commute }: { on: boolean; onToggle: () => vo
                 <select value={settings.releaseToDepartureHours} onChange={(e) => update({ releaseToDepartureHours: Number(e.target.value) })} className={FIELD}>
                   {RELEASE_HOURS.map((h) => (
                     <option key={h} value={h}>
-                      {h} hr{h === 1 ? "" : "s"} after release
+                      {h} hr{h === 1 ? "" : "s"} after the last duty period
                     </option>
                   ))}
                 </select>
@@ -509,7 +509,7 @@ function CommuteRow({ on, onToggle, commute }: { on: boolean; onToggle: () => vo
             </div>
             <p role="status" className="text-xs text-ink-muted">
               {!canCheck
-                ? "Enter the airport you commute from. It can't be your base."
+                ? "Enter the airport you commute from. It can't be your domicile."
                 : phase === "unavailable"
                   ? "Flight data isn't available right now, so no line is ruled out."
                   : phase === "checking"

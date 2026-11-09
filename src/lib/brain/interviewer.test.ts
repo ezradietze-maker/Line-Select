@@ -62,14 +62,14 @@ describe("the interviewer's guard rails", () => {
       { turn: 3, question: "A? [Line 1001 vs Line 1002: t]", answer: "1001" },
       { turn: 4, question: "Why weekends?", answer: "Soccer." },
       { turn: 5, question: "B? [Line 1003 vs Line 1004: t]", answer: "1004" },
-      { turn: 6, question: "How long a block?", answer: "Five days." },
+      { turn: 6, question: "How many days at home?", answer: "Five days." },
     ];
-    proposals.push(step({ kind: "line-pair", pairIndex: 0, prompt: "1011 or 1018?" }), step({ prompt: "Red-eyes into base — how many is too many?" }));
+    proposals.push(step({ kind: "line-pair", pairIndex: 0, prompt: "1011 or 1018?" }), step({ prompt: "Night flying into Memphis — how many is too many?" }));
     expect(await nextInterviewStep(input({ exchanges: [...opening, ...asked], turn: 4 }))).toMatchObject({ kind: "free-text" });
   });
 
   it("says back what it heard before the next question, but not before the first", async () => {
-    proposals.push(step({ ack: "Saturdays over Sundays — got it.", prompt: "How long a block counts as real?" }));
+    proposals.push(step({ ack: "Saturdays over Sundays — got it.", prompt: "How many days at home make a real break?" }));
     expect(await nextInterviewStep(input())).toMatchObject({ ack: "Saturdays over Sundays — got it." });
     proposals.push(step({ ack: "Hello.", prompt: "First question?" }));
     expect(await nextInterviewStep(input({ turn: 0 }))).not.toHaveProperty("ack");
@@ -141,6 +141,31 @@ describe("pilot words", () => {
     const own = input({ exchanges: [{ turn: 0, question: "Walk us through how you bid.", answer: "I like trips I can join from Denver." }] });
     proposals.push(step({ threadId: "china", prompt: "You like trips you can join from Denver — how many a month?" }));
     expect(await nextInterviewStep(own)).toMatchObject({ done: false, prompt: "You like trips you can join from Denver — how many a month?" });
+  });
+
+  it("sends back a word that's in neither the pack nor the ex-pilot's talk", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "How many red-eyes into base before it wears on you?" }),
+      step({ threadId: "china", prompt: "How many nights of flying into Memphis before it wears on you?" })
+    );
+    expect(await nextInterviewStep(input())).toMatchObject({ done: false, prompt: "How many nights of flying into Memphis before it wears on you?" });
+    expect(proposals).toHaveLength(0);
+  });
+
+  it("lets such a word through only if the pilot brought it up, and only that word", async () => {
+    const own = input({ exchanges: [{ turn: 0, question: "Walk us through how you bid.", answer: "Red-eyes into Memphis wear me out." }] });
+    proposals.push(step({ threadId: "china", prompt: "How many red-eyes a month is too many?" }));
+    expect(await nextInterviewStep(own)).toMatchObject({ done: false, prompt: "How many red-eyes a month is too many?" });
+
+    proposals.push(step({ threadId: "china", prompt: "How many all-nighters a month is too many?" }), step({ threadId: "china", prompt: "How many red-eyes a month is too many?" }));
+    expect(await nextInterviewStep(own)).toMatchObject({ done: false, prompt: "How many red-eyes a month is too many?" });
+    expect(proposals).toHaveLength(0);
+  });
+
+  it("doesn't count the app's own questions as the pilot's words", async () => {
+    const asked = input({ exchanges: [{ turn: 0, question: "How many red-eyes do you fly?", answer: "Not many." }] });
+    proposals.push(step({ threadId: "china", prompt: "How many red-eyes a month?" }), step({ threadId: "china", prompt: "How many nights of flying a month?" }));
+    expect(await nextInterviewStep(asked)).toMatchObject({ done: false, prompt: "How many nights of flying a month?" });
   });
 
   it("never lets a wording slip end the interview", async () => {

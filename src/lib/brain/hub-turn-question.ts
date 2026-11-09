@@ -96,9 +96,9 @@ export function nextHubTurnQuestion(bidPack: BidPack, model: PilotModel | null, 
   if (!asked(exchanges, REST_HOTEL_LEAD)) {
     const x = example(bidPack, model, pack, (turns) => turns.filter((h) => h.restHotel).length);
     if (!x) return null;
-    const prompt = "Some long hub sits come with a crew-rest hotel, a short airport stay for a nap. Would you rather have that, or a shorter sit with no hotel?";
+    const prompt = "Some long hub turns come with a crew-rest hotel, a short airport stay for a nap. Would you rather have that, or a shorter hub turn with no hotel?";
     const example_ = describe(bidPack, x, "rest");
-    const options = ["I'd take the nap", "A shorter sit, no hotel", "No preference"];
+    const options = ["I'd take the nap", "A shorter hub turn, no hotel", "No preference"];
     return { prompt, helpText: example_, options, transcript: `${REST_HOTEL_LEAD} ${prompt} (Example: ${example_}) Options: ${options.join(" / ")}` };
   }
   return null;

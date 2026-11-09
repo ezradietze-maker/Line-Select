@@ -9,6 +9,7 @@
  * Usage: npx tsx scripts/eval/simulate.ts <persona-id> [tag]
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { airportCityName } from "@/lib/airport-city-names";
 import { expandBidPack } from "@/lib/bidpack-storage";
 import { buildPilotModel, type InterviewExchange } from "@/lib/brain/build-model";
 import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
@@ -95,7 +96,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
 
   let exchanges: InterviewExchange[] = [
     { turn: 0, question: "Walk us through your whole bidding process, start to finish, in your own words.", answer: persona.story },
-    { turn: 1, question: "Do you commute to base, or live locally?", answer: persona.isCommuter ? `I commute in${home ? ` from ${home}` : ""}.` : "I live locally." },
+    { turn: 1, question: `Do you commute to ${airportCityName(pack.base) ?? "the domicile"}, or live locally?`, answer: persona.isCommuter ? `I commute in${home ? ` from ${home}` : ""}.` : "I live locally." },
     { turn: 2, question: "How do you feel about each layover city in your pack?", answer: describeCityRatings(ratings) || "No strong feelings about any city." },
   ];
   const build = async (prior: PilotModel | null) => {

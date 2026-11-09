@@ -83,7 +83,7 @@ function itinerary(a: TravelAnswer): string | null {
   const route = [first.from, ...a.best.map((f) => f.to)].join(" > ");
   const flights = a.best.map((f) => (f.jumpseat ? `${f.n} (jumpseat)` : f.n)).join(" + ");
   const backups = backupsOf(a);
-  return `${route}, ${flights}: leaves ${local(first.dep, first.from)}, lands ${local(last.arr, last.to)}${backups > 0 ? ` (${backups} backup${backups === 1 ? "" : "s"})` : ""}`;
+  return `${route}, ${flights}: leaves ${local(first.dep, first.from)}, lands ${local(last.arr, last.to)}${backups > 0 ? ` (${backups} other${backups === 1 ? "" : "s"} to fall back on)` : ""}`;
 }
 
 function commuteLines(flights: FlightAnswers | undefined, trip: Trip): string[] {

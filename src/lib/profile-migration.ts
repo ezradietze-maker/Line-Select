@@ -52,7 +52,7 @@ export function migrateModelsToDepartures<T extends Partial<PreferenceProfile>>(
   // And what they said: full days in the cities they like, when they judge layovers that way.
   const said = (bi?.exchanges ?? []).map((e) => e.answer);
   const upgrade = (m: PilotModel) =>
-    modelToWeekdayParts(modelToFullDays(modelInPilotWords(withHomeFacts(modelToBodyClock(modelToHomePay(modelToHubTurns(modelToDepartures(m)))), { hasCrashPad: profile.hasCrashPad, minHomeHours: profile.minHomeHours })), said));
+    modelToWeekdayParts(modelToFullDays(modelInPilotWords(withHomeFacts(modelToBodyClock(modelToHomePay(modelToHubTurns(modelToDepartures(m)))), { hasCrashPad: profile.hasCrashPad, minHomeHours: profile.minHomeHours }), said), said));
   return {
     ...profile,
     ...(profile.pilotModel ? { pilotModel: upgrade(profile.pilotModel) } : {}),

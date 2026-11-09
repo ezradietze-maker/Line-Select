@@ -1,5 +1,6 @@
 import { formatValue } from "@/lib/brain/describe";
 import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
+import { namedDomicile } from "@/lib/domicile-name";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import { scorePackV2, type CriterionResult } from "@/lib/scoring-v2/score";
@@ -144,15 +145,16 @@ export function bidCheckQuestion(
     .sort((a, b) => b.weight * b.utility - a.weight * a.utility)
     .slice(0, 2);
   // Each value says what it counts ("2 departures", "4 long duty days"), so the line is described the way a pilot would.
-  const good = strengths.length ? `${listed(strengths.map(v))}, which fits what you've told us` : "most of it fits what you've told us";
+  const good = strengths.length ? `${listed(strengths.map((r) => namedDomicile(v(r), bidPack.base)))}, which fits what you've told us` : "most of it fits what you've told us";
   const options = pick.kind === "top" ? [...BID_CHECK_OPTIONS] : [...MIDDLE_CHECK_OPTIONS];
   // Too little of something they want more of reads "only has 5.8 credit hours a day"; too much of the rest, "also has".
   const short = fitted.criteria.find((c) => c.id === pick.weak.criterionId)?.shape.kind === "more";
-  const has = short ? "only has" : "also has";
+  // "Only has 0 hours" reads wrong: none at all is just "has".
+  const has = short ? (pick.weak.value === 0 ? "has" : "only has") : "also has";
   const prompt =
     pick.kind === "top"
-      ? `Line ${line.lineNumber} is #${pick.i + 1} on your list right now — ${good}. But it ${has} ${v(pick.weak)}. Would you actually bid it that high?`
-      : `Line ${line.lineNumber} is #${pick.i + 1} of ${ranked.length} on your list right now — ${good}. But it ${has} ${v(pick.weak)}, among the worst in this pack. Is #${pick.i + 1} about right for it?`;
+      ? `Line ${line.lineNumber} is #${pick.i + 1} on your list right now — ${good}. But it ${has} ${namedDomicile(v(pick.weak), bidPack.base)}. Would you actually bid it that high?`
+      : `Line ${line.lineNumber} is #${pick.i + 1} of ${ranked.length} on your list right now — ${good}. But it ${has} ${namedDomicile(v(pick.weak), bidPack.base)}, among the worst in this pack. Is #${pick.i + 1} about right for it?`;
   return {
     kind: pick.kind,
     line: line.lineNumber,

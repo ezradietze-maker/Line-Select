@@ -138,7 +138,7 @@ export function RouteMap({ homeBase, line }: RouteMapProps) {
       <p className="text-sm leading-relaxed text-ink-muted">
         {coordinatesForAirport(homeBase)
           ? "This line has no layover cities with known coordinates to map yet."
-          : "This base's coordinates aren't in the map yet."}
+          : "This domicile's coordinates aren't in the map yet."}
       </p>
     );
   }

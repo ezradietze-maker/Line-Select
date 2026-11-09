@@ -305,7 +305,7 @@ function WhySharing({ canWithdraw, onWithdrawAll }: { canWithdraw: boolean; onWi
         <li>
           <span className="font-medium text-ink">Which lines you can really hold.</span> &ldquo;Likely open at your turn&rdquo; is estimated from your place on the
           seniority list. Real awards from pilots at each seniority show where lines actually went, and the estimate is checked against them &mdash; for
-          everyone in your base, aircraft and seat.
+          everyone in your domicile, aircraft and seat.
         </li>
         <li>
           <span className="font-medium text-ink">Your ranking against reality.</span> Where the line you got sat in your own ranking is kept with your month,

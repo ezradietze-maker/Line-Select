@@ -117,7 +117,7 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
             "D/H, deadhead"
           )}
           {item(<span aria-hidden className="inline-block h-1 w-6 rounded-full bg-layover/85" />, "layover, as long as it lasts, its city under it")}
-          {item(<span className="rounded-[4px] border border-border-strong bg-surface-raised px-1">{trip}</span>, "trip, report to release, and its credit")}
+          {item(<span className="rounded-[4px] border border-border-strong bg-surface-raised px-1">{trip}</span>, "trip, report to the end of its last duty period, and its credit")}
           {item(word("---", "text-ink-faint"), "day off")}
         </>
       )}

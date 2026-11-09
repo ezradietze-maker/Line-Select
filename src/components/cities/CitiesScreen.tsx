@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { ReadingProgress } from "@/components/ui/ReadingProgress";
+import { namedDomicile } from "@/lib/domicile-name";
 import { coordinatesForAirport } from "@/lib/airport-coordinates";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { greatCircleNm } from "@/lib/globe/routes";
@@ -152,7 +153,7 @@ function CityCard({ facts: f, base, mark, now, sky, onOpen }: { facts: CityFacts
       </div>
       <div className="mt-0.5 flex items-baseline justify-between gap-2 text-sm">
         <span className="truncate text-ink-muted">{cityName(f.code)}</span>
-        <span className="shrink-0 text-xs text-ink-faint">{offsetWords(offset)}</span>
+        <span className="shrink-0 text-xs text-ink-faint">{namedDomicile(offsetWords(offset), base)}</span>
       </div>
       {sun && (
         <div className="mt-2 text-xs text-ink-muted">
@@ -189,7 +190,7 @@ function CityPanel({ facts: f, bidPack, profile, mark, now }: { facts: CityFacts
   return (
     <div className="space-y-6">
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Fact label="Local time" value={localClock(f.code, now) ?? "—"} note={offsetWords(hoursFromBase(f.code, bidPack.base, now))} />
+        <Fact label="Local time" value={localClock(f.code, now) ?? "—"} note={namedDomicile(offsetWords(hoursFromBase(f.code, bidPack.base, now)), bidPack.base)} />
         <Fact label="Zulu" value={DateTime.fromMillis(now, { zone: "utc" }).toFormat("HH:mm")} note="UTC" />
         <Fact label="Sunrise" value={sun?.sunrise ?? "—"} note="today, local" />
         <Fact label="Sunset" value={sun?.sunset ?? "—"} note={sun ? `${sun.hours.toFixed(1)}h of daylight` : ""} />

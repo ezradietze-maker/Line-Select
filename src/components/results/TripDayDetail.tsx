@@ -105,7 +105,7 @@ function LegRow({ leg, mode, next }: { leg: TripLeg; mode: TimeMode; next: TripL
         <div className="mt-0.5 text-ink-muted">
           <span className="font-mono font-semibold text-rest">Rest HTL {leg.arrAirport}</span> <span className="font-mono text-readout">{hm(next.startMinutes - leg.endMinutes)}</span>{" "}
           <span className="capitalize text-ink">{displayHotelName(leg.dayRoomHotel).toLowerCase()}</span>
-          <span className="text-ink-faint"> · a hotel through the sit, same duty</span>
+          <span className="text-ink-faint"> · a hotel through the hub turn, same duty</span>
         </div>
       )}
     </li>

@@ -189,7 +189,7 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
           const clear = w >= half && !stayWords.some((sw) => !sw.up && Math.abs(sw.center - center) < half + 30);
           return (
             <span key={`r${i}`}>
-              <span className="absolute rounded-full bg-rest" style={{ left, width: w, top: f.laneTop, height: size.lane }} title={`Rest hotel at ${r.city}, ${Math.round(r.hours)}h`} />
+              <span className="absolute rounded-full bg-rest" style={{ left, width: w, top: f.laneTop, height: size.lane }} title={`Crew-rest hotel at ${r.city}, ${Math.round(r.hours)}h`} />
               {clear && (
                 <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-[10px] font-semibold leading-none text-rest" style={{ left: center, top: f.wordsTop, height: size.line }}>
                   {text}

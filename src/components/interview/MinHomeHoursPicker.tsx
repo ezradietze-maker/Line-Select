@@ -42,5 +42,5 @@ export function MinHomeHoursPicker({ value, onChange, base, id = "min-home-hours
 
 /** The answer as the pilot would say it, for the interview transcript the brain reads. */
 export function minHomeHoursSentence(hours: number | null | undefined): string {
-  return hours ? ` I'd go home between trips if I'd get at least ${label(hours)} at home; less than that and I stay at base.` : "";
+  return hours ? ` I'd go home between trips if I'd get at least ${label(hours)} at home; less than that and I stay in the domicile city.` : "";
 }

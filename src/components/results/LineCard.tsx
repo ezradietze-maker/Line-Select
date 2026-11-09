@@ -194,7 +194,7 @@ export const LineCard = memo(function LineCard({
   const carryOver = useMemo(() => lineCarryOver(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);
   // The line's body-clock score, for its Circadian tab (worked out once a pilot opens it) — its trips whole, as ranked.
   const bodyClock = useMemo(() => (expanded && activeTab === "circadian" ? lineBodyClockScore(line.trips, homeBaseOffsetMinutes) : null), [expanded, activeTab, line.trips, homeBaseOffsetMinutes]);
-  const chips = useMemo(() => buildLineFeatures(month, profile, lineScore.criterionResults, undefined, bidMonth), [month, profile, lineScore.criterionResults, bidMonth]);
+  const chips = useMemo(() => buildLineFeatures(month, profile, lineScore.criterionResults, undefined, bidMonth, departureOptions.base), [month, profile, lineScore.criterionResults, bidMonth, departureOptions.base]);
   // Times the pilot leaves home: trips flown back to back, never home between, count once — as the calendar's summary counts them.
   const departureGroups = useMemo(() => groupDepartures(month.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [month.trips, bidPeriodStart, departureOptions]);
   const departures = departureGroups.length;

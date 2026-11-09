@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { namedDomicile } from "@/lib/domicile-name";
 import { lookUpFlights } from "@/lib/flights/client";
 import { BiddingStoryStep } from "@/components/interview/BiddingStoryStep";
 import { CheckInStep } from "@/components/interview/CheckInStep";
 import { ChoiceStep } from "@/components/interview/ChoiceStep";
 import { CityRatingStep } from "@/components/interview/CityRatingStep";
-import { CommuterStep } from "@/components/interview/CommuterStep";
+import { commuterPrompt, CommuterStep } from "@/components/interview/CommuterStep";
 import { MinHomeHoursPicker, minHomeHoursSentence } from "@/components/interview/MinHomeHoursPicker";
 import { FreeTextAnswerBox } from "@/components/interview/FreeTextAnswerBox";
 import { InterviewProgress, StepNav } from "@/components/interview/InterviewChrome";
@@ -476,7 +477,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const base = exchanges.filter((e) => e.turn === 0);
     const opening: InterviewExchange[] = [
       ...base,
-      { turn: base.length, question: "Do you commute to base, or live locally?", answer: isCommuter === true ? `I commute in${home ? ` from ${home}` : ""}.${hasCrashPad === false ? " No crash pad." : hasCrashPad ? " I have a crash pad." : ""}${minHomeHoursSentence(minHomeHours)}` : isCommuter === false ? "I live locally." : "(skipped)" },
+      { turn: base.length, question: commuterPrompt(bidPack.base), answer: isCommuter === true ? `I commute in${home ? ` from ${home}` : ""}.${hasCrashPad === false ? " No crash pad." : hasCrashPad ? " I have a crash pad." : ""}${minHomeHoursSentence(minHomeHours)}` : isCommuter === false ? "I live locally." : "(skipped)" },
       { turn: base.length + 1, question: "How do you feel about each layover city in your pack?", answer: ratingsText || NO_CITY_RATINGS },
     ];
     setExchanges(opening);
@@ -886,7 +887,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
               <label htmlFor="brain-commute-from" className="mb-1 block text-sm font-medium text-ink">
                 Where do you commute from?
               </label>
-              <p className="mb-2 text-xs text-ink-muted">The airport code — it lets us count your real time away from home, and backup flights.</p>
+              <p className="mb-2 text-xs text-ink-muted">The airport code — it lets us count your real time away from home, and the other flights you could commute on.</p>
               <input
                 id="brain-commute-from"
                 type="text"
@@ -898,7 +899,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
                 placeholder="e.g. CLT"
                 className="mb-5 block w-28 rounded-lg border border-hairline bg-canvas/60 px-3 py-2 font-mono text-base uppercase tracking-wider text-readout placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
               />
-              <div className="text-sm font-medium text-ink">Got a crash pad in domicile?</div>
+              <div className="text-sm font-medium text-ink">{namedDomicile("Got a crash pad in the domicile city?", bidPack.base)}</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {([
                   [true, "Yes, I’ve got a place"],

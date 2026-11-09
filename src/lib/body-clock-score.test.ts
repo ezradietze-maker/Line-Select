@@ -94,7 +94,7 @@ describe("tripBodyClockScore", () => {
     expect(s.counts.nightHours).toBeCloseTo(2, 0);
     expect(s.counts.flips).toBe(2);
     expect(s.score).toBeLessThan(tripBodyClockScore(dayTrip(), MEM)!.score);
-    expect(s.factors.find((f) => f.id === "night")?.science).toMatch(/circadian low/);
+    expect(s.factors.find((f) => f.id === "night")?.science).toMatch(/backside of the clock/);
   });
 
   it("counts each night in a row for more — but not nights with a day off between them", () => {

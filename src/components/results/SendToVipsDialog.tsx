@@ -222,7 +222,7 @@ export function SendToVipsDialog({
             {packLabel} &middot; {fullOrder.length} choices
           </p>
           <p className="mt-0.5 text-xs text-ink-muted">
-            Check VIPS says you&rsquo;re bidding this same base, fleet and seat before you submit.
+            Check VIPS says you&rsquo;re bidding this same domicile, fleet and seat before you submit.
           </p>
           {fullOrder.length > 0 && (
             <ol className="mt-2 flex flex-wrap gap-1.5 font-mono text-xs">

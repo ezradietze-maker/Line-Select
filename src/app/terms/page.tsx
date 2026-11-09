@@ -83,7 +83,7 @@ export default function TermsPage() {
           </p>
           <p className="mt-3">
             The Service&rsquo;s PDF parser is automated and, while tested against real bid packs,
-            can make mistakes on a bid pack it has not seen before &mdash; a different base, a
+            can make mistakes on a bid pack it has not seen before &mdash; a different domicile, a
             different format, or a printing quirk can all produce a wrong number. Any line the
             Service could not fully verify is labeled &ldquo;estimated&rdquo; in the interface,
             but the absence of that label is not a guarantee of accuracy either.

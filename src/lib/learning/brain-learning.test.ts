@@ -65,7 +65,7 @@ describe("fleet notes that decide for themselves", () => {
     const level = m.levels["pack:ANC|B777|CAP|commuter"];
     expect(level.notes?.on).toBe(true);
     const notes = fleetNotes(resolveBrainCohort(m, cohort))!;
-    expect(notes).toMatch(/From 14 commuting pilots in this same base, fleet and seat/);
+    expect(notes).toMatch(/From 14 commuting pilots in this same domicile, fleet and seat/);
     expect(notes).toMatch(/\[baseCommutesNeeded\] — 100% of them confirmed it, typical weight 1\.00, a dealbreaker for 100%/);
     expect(notes).toMatch(/Credit per day away from home: 100% said it should count less/);
     expect(notes).toMatch(/HNL liked \(avg 1\.0, 14 pilots\); CAN disliked/);

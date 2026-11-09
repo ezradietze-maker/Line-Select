@@ -1,6 +1,7 @@
 import { formatValue } from "@/lib/brain/describe";
 import { tripHeadline } from "@/lib/brain/line-text";
 import { tripLabel } from "@/lib/brain/trip-sort";
+import { namedDomicile } from "@/lib/domicile-name";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
@@ -85,7 +86,7 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
       const byUtility = [...pool].sort((a, b) => at(a)!.utility - at(b)!.utility || rankOf.get(a.lineNumber)! - rankOf.get(b.lineNumber)!);
       for (const r of [byUtility[byUtility.length - 1], byUtility[0]]) {
         const line = lineOf.get(r.lineNumber)!;
-        add({ kind: "line", ref: line.lineNumber, title: `Line ${line.lineNumber}`, fact: formatValue(at(r)!.value!, def), priority: c.label, criterionId: c.id, summary: lineBrief(line), rank: rankOf.get(line.lineNumber) });
+        add({ kind: "line", ref: line.lineNumber, title: `Line ${line.lineNumber}`, fact: namedDomicile(formatValue(at(r)!.value!, def), bidPack.base), priority: c.label, criterionId: c.id, summary: lineBrief(line), rank: rankOf.get(line.lineNumber) });
       }
     }
     // A trip that shows it, where one trip can: the trip from their best lines that does worst on it.
@@ -100,7 +101,7 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
         const worst = shown.sort((a, b) => a.r!.utility - b.r!.utility)[0];
         const trip: Trip | undefined = tripOf.get(worst.t.key);
         const value = tripValueText(worst.r!);
-        if (trip && value) add({ kind: "trip", ref: worst.t.key, title: tripLabel(bidPack, trip), fact: value, priority: c.label, criterionId: c.id, summary: tripHeadline(bidPack, trip) });
+        if (trip && value) add({ kind: "trip", ref: worst.t.key, title: tripLabel(bidPack, trip), fact: namedDomicile(value, bidPack.base), priority: c.label, criterionId: c.id, summary: tripHeadline(bidPack, trip) });
       }
     }
   }

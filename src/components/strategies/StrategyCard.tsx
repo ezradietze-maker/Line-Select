@@ -61,7 +61,7 @@ function AwardHistoryBadge() {
   return (
     <span
       className="inline-flex shrink-0 items-center rounded-full border border-brand/30 bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand"
-      title="Based on real, self-reported hold outcomes from pilots near your seniority for this exact base/aircraft/seat — not the usual rarity estimate."
+      title="Based on real, self-reported hold outcomes from pilots near your seniority for this exact domicile/aircraft/seat — not the usual rarity estimate."
     >
       Real reports
     </span>

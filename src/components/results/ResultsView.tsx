@@ -1021,7 +1021,7 @@ export function ResultsView({
 
       {flightsWaiting && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent">
-          <span>Real commute flights for your top lines just came in &mdash; backups, and when you&rsquo;d really get home.</span>
+          <span>Real commute flights for your top lines just came in &mdash; other flights you could take, and when you&rsquo;d really get home.</span>
           <Button
             variant="secondary"
             className="!px-3 !py-1.5"

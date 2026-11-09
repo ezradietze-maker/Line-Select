@@ -595,7 +595,7 @@ function implicitMissPhrase(label: string, weight: number, below: boolean): stri
 function hitPhrase(key: DimensionKey, weight: number): string {
   switch (key) {
     case "daysOff":
-      return weight > 0 ? "plenty of days off" : "a compact, duty-heavy schedule";
+      return weight > 0 ? "plenty of days off" : "fewer days off";
     case "tripLength":
       return weight > 0 ? "long trips" : "short, quick trips";
     case "international":
@@ -615,7 +615,7 @@ function hitPhrase(key: DimensionKey, weight: number): string {
     case "circadianHealth":
       return "trips that stay easy on your sleep and body clock";
     case "landings":
-      return weight > 0 ? "plenty of landings for proficiency and comfort" : "a lighter landing count for fatigue management";
+      return weight > 0 ? "plenty of landings" : "fewer landings";
     case "hotelStandby":
       return weight > 0 ? "hotel standby days, as you'd want" : "no hotel standby";
   }
@@ -1064,7 +1064,7 @@ function dealbreakerViolatedFor(
     if (binding.variableId === "redEyeDeparturesPerTrip") {
       const anyRedEye = line.trips.some(hasRedEyeLeg);
       const violated = binding.direction < 0 ? anyRedEye : !anyRedEye;
-      return violated ? { statement: fact.statement, label: "Red-eye departures" } : null;
+      return violated ? { statement: fact.statement, label: "Night legs" } : null;
     }
     const value = implicitValues?.[binding.variableId];
     if (value === undefined) return null;

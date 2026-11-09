@@ -48,7 +48,7 @@ export function ColorKey({ variant, className = "" }: { variant: "calendar" | "t
           label="Hotel van (GT)"
         />
       )}
-      <Item swatch={<Line tone="bg-rest" />} label="Rest hotel at a hub" />
+      <Item swatch={<Line tone="bg-rest" />} label="Crew-rest hotel at a hub" />
       {!trip && (
         <>
           <Item

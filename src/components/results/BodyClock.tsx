@@ -51,7 +51,7 @@ export function BodyClockReasons({ result, facts }: { result: BodyClockScore; fa
     <div className="space-y-2">
       {facts && <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-readout">{facts}</div>}
       {result.factors.length === 0 ? (
-        <p className="text-xs text-ink-muted">Nothing here disrupts the body clock: no night work, early reports, short sleeps, flips or time-zone shifts.</p>
+        <p className="text-xs text-ink-muted">Nothing here disrupts the body clock: no night work, early reports, short sleeps, going between day and night flying, or time-zone shifts.</p>
       ) : (
         <ul className="space-y-1.5">
           {result.factors.map((f) => (

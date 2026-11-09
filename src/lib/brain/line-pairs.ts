@@ -1,3 +1,4 @@
+import { namedDomicile } from "@/lib/domicile-name";
 import { formatValue } from "@/lib/brain/describe";
 import { lineSummary } from "@/lib/brain/line-text";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
@@ -117,7 +118,7 @@ export function pickLinePairs(bidPack: BidPack, model: PilotModel, pack: PackMet
     trades.add(p.trade);
     const lineA = bidPack.lines.find((l) => l.id === p.a.lineId)!;
     const lineB = bidPack.lines.find((l) => l.id === p.b.lineId)!;
-    const differences: LinePairDifference[] = p.shown.map((x) => ({ label: x.ra.label, metric: x.ra.metric, a: v(x.ra), b: v(x.rb), better: x.d > 0 ? "a" : "b" }));
+    const differences: LinePairDifference[] = p.shown.map((x) => ({ label: namedDomicile(x.ra.label, bidPack.base), metric: x.ra.metric, a: namedDomicile(v(x.ra), bidPack.base), b: namedDomicile(v(x.rb), bidPack.base), better: x.d > 0 ? "a" : "b" }));
     const side = (s: "a" | "b") =>
       differences
         .filter((x) => x.better === s)

@@ -14,6 +14,7 @@ import {
   type SortContext,
   type SortDef,
 } from "@/lib/line-sorts";
+import { namedDomicile } from "@/lib/domicile-name";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import type { MonthDepartureOptions } from "@/lib/month-detail";
@@ -24,6 +25,8 @@ import type { PreferenceProfile } from "@/types/preferences";
 export interface LineSort {
   choice: SortChoice;
   def: SortDef;
+  /** The pack's domicile, to name it in the menu. */
+  base: string;
   /** The pilot's own ranked order: the only one a drag means anything in. */
   isRanking: boolean;
   choose: (next: SortChoice) => void;
@@ -60,7 +63,8 @@ export function useLineSort(
     return buildSortContext(bidPack, profile, pack, departureOptions);
   }, [facts, flights, bidPack, profile, departureOptions]);
 
-  const def = resolveSort(choice, ctx);
+  const resolved = resolveSort(choice, ctx);
+  const def = useMemo(() => ({ ...resolved, label: namedDomicile(resolved.label, bidPack.base), definition: namedDomicile(resolved.definition, bidPack.base) }), [resolved, bidPack.base]);
   const isRanking = def.id === MATCH_SORT && !(choice.id === MATCH_SORT && choice.reversed);
   const choose = useCallback(
     (next: SortChoice) => {
@@ -74,5 +78,5 @@ export function useLineSort(
   const valueFor = useCallback((lineId: string) => (ctx ? sortValueForLine(def, choice, ctx, lineId) : null), [def, choice, ctx]);
   const key = `${choice.id}/${choice.reversed ? "r" : ""}/${choice.city ?? ""}/${choice.region ?? ""}`;
 
-  return { choice, def, isRanking, choose, ctx, prepare, apply, valueFor, key };
+  return { choice, def, isRanking, choose, ctx, prepare, apply, valueFor, key, base: bidPack.base };
 }

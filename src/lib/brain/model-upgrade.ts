@@ -1,4 +1,5 @@
-import type { DayPart } from "@/lib/metrics/catalog";
+import { METRICS_BY_ID, type DayPart } from "@/lib/metrics/catalog";
+import { avoidedPhrases } from "./pilot-words";
 import type { PilotModel } from "@/types/pilot-model";
 
 /**
@@ -138,18 +139,26 @@ const JOIN_FROM = /\b(you can|you could|that you can|to) (actually |easily )?joi
 /**
  * The words an earlier brain wrote into a saved model — its summary and its priorities' names — in a pilot's terms
  * ("deadheads you can catch from home", not "join from home"). The ex-pilot pointed out the made-up phrase (Oct 2026);
- * the brain no longer writes it, but models saved before then still showed it. The pilot's own quoted words are left as
- * they said them.
+ * the brain no longer writes it, but models saved before then still showed it. A priority named in any word that's in
+ * neither the pack nor his own talk ("Avoid red-eyes", Nov 2026) takes its measure's own name instead, unless the pilot
+ * brought that word up themselves (`pilotSaid`, their answers). The pilot's own quoted words are left as they said them.
+ * Only names change: nothing is re-scored.
  */
-export function modelInPilotWords(model: PilotModel): PilotModel;
-export function modelInPilotWords(model: PilotModel | null | undefined): PilotModel | null | undefined;
-export function modelInPilotWords(model: PilotModel | null | undefined): PilotModel | null | undefined {
+export function modelInPilotWords(model: PilotModel, pilotSaid?: string[]): PilotModel;
+export function modelInPilotWords(model: PilotModel | null | undefined, pilotSaid?: string[]): PilotModel | null | undefined;
+export function modelInPilotWords(model: PilotModel | null | undefined, pilotSaid: string[] = []): PilotModel | null | undefined {
   if (!model) return model;
+  const theirs = pilotSaid.join(" ");
   const fix = (s: string) => s.replace(JOIN_FROM, (_, lead: string, adv: string | undefined, how: string | undefined) => `${lead} ${adv ?? ""}catch ${how ?? ""}from`);
+  const name = (c: PilotModel["criteria"][number]) => {
+    const label = fix(c.label);
+    const own = METRICS_BY_ID.get(c.metric)?.label;
+    return own && avoidedPhrases(label, theirs).length && !avoidedPhrases(own, theirs).length ? own : label;
+  };
   const synopsis = model.synopsis ? fix(model.synopsis) : model.synopsis;
-  const changed = synopsis !== model.synopsis || model.criteria.some((c) => fix(c.label) !== c.label);
+  const changed = synopsis !== model.synopsis || model.criteria.some((c) => name(c) !== c.label);
   if (!changed) return model;
-  return { ...model, synopsis, criteria: model.criteria.map((c) => ({ ...c, label: fix(c.label) })) };
+  return { ...model, synopsis, criteria: model.criteria.map((c) => ({ ...c, label: name(c) })) };
 }
 
 /** A pilot judging a layover by a whole free day in the city: "a full day in a decent layover city", "the whole day to explore". */

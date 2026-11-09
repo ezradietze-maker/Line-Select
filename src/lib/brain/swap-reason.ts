@@ -1,4 +1,5 @@
 import { structuredCall, type BrainUsage } from "@/lib/brain/llm";
+import { neverSayForPrompt } from "@/lib/brain/pilot-words";
 
 /**
  * A pilot's own words for why they swapped two lines, matched to something the brain can count: one of their
@@ -45,7 +46,9 @@ const SYSTEM = `A pilot reordered their bid lines: they put one line above anoth
 - "notMeasurable": the reason is real but nothing on either list can show it (a city's hotel they dislike for a personal reason, a date with family that isn't a day off, a crew-member they fly with). Say it back in a few words.
 - "unclear": you can't tell what they mean.
 
-For "notMeasurable" and "unclear", give an empty id. Give "direction" only for a measure; otherwise "none". Pick from the lists only: never invent an id. Prefer a priority over a measure when both fit. Use the numbers: the reason they give should be one where the line they put higher really is better for them. If the two lines are the same on the thing they name, still match it — the app will say so. Keep "summary" under 15 words, in plain words, no jargon.`;
+For "notMeasurable" and "unclear", give an empty id. Give "direction" only for a measure; otherwise "none". Pick from the lists only: never invent an id. Prefer a priority over a measure when both fit. Use the numbers: the reason they give should be one where the line they put higher really is better for them. If the two lines are the same on the thing they name, still match it — the app will say so. Keep "summary" under 15 words, in plain words, no jargon.
+
+In summary: ${neverSayForPrompt()}`;
 
 const SCHEMA = {
   type: "object",

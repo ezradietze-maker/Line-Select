@@ -1,3 +1,4 @@
+import { airportCityName } from "@/lib/airport-city-names";
 import { citySearchName } from "@/lib/hotels/airport-names";
 import { METRICS, type MetricDef } from "@/lib/metrics/catalog";
 import { nextMonthName } from "@/lib/bid-month";
@@ -63,7 +64,7 @@ export function buildPackBrief(bidPack: BidPack, pack: PackMetrics = prepareMetr
   }).join("\n");
   const cityTable = cities.map((c) => `- ${c.code} ${c.name} (${c.region}): ${c.layovers} layovers, ${Math.round(c.totalHours)}h total, on ${c.lines} of ${bidPack.lines.length} lines`).join("\n");
   return [
-    `BID PACK: ${bidPack.month} · base ${bidPack.base} · ${bidPack.aircraft} ${bidPack.seat} · ${bidPack.lines.length} lines · ${bidPack.bidPeriodDays}-day bid period starting ${bidPack.bidPeriodStart ?? "?"}.`,
+    `BID PACK: ${bidPack.month} · domicile ${bidPack.base}${airportCityName(bidPack.base) ? ` (${airportCityName(bidPack.base)}: call it that, never "base")` : ""} · ${bidPack.aircraft} ${bidPack.seat} · ${bidPack.lines.length} lines · ${bidPack.bidPeriodDays}-day bid period starting ${bidPack.bidPeriodStart ?? "?"}.`,
     `BID MONTH: ${bidPack.bidPeriodDays >= 35 ? "a five-week" : "a four-week"} bid month (eight of the year's twelve are four weeks, four are five). Every measure below counts this bid month alone. A line's last trip can run past its end into the ${nextMonthName(bidPack)} bid month — the pack prints that carry-over apart, as C/O credit and block — and what it flies there, its landings and the commute home after it, are that month's, not counted here. A run of nights or a trip's length is still the whole trip's. A pilot's numbers ("three departures is fine") are for a four-week month; a five-week month's counts are judged at four weeks' worth. Never call a line a "five-week line".`,
     `METRICS YOU CAN BIND A PRIORITY TO (ranges are across this pack's lines, with default params; "minute of day" is minutes after local midnight):\n${menu}`,
     `LAYOVER CITIES IN THIS PACK (most layovers first):\n${cityTable}`,

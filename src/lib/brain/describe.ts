@@ -22,7 +22,7 @@ const SINGULAR: Record<string, string> = { duties: "duty", hours: "hour", days: 
  * can sit beside a priority written as a wish ("Prefer single-leg duties") without the pair turning into nonsense
  * ("Prefer single-leg duties: 0 legs"). One form, or [one, many], or [one, many, none] where "no …" would read badly
  * ("no layovers with no real night"); otherwise a count of none reads "no …". Measures not listed
- * read by their unit. Each reads as something a line has ("it has a 04:30 show at base"), so it fits any sentence.
+ * read by their unit. Each reads as something a line has ("it has a 04:30 show at the domicile"), so it fits any sentence.
  */
 const READS: Record<string, string | [string, string] | [string, string, string]> = {
   creditHours: "{n} credit hours",
@@ -33,8 +33,8 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   homeAwayHours: "{n} hours away from home",
   tripsJoinedFromHome: ["{n} trip with a front-end deadhead from home", "{n} trips with a front-end deadhead from home"],
   tripsEndingStraightHome: ["{n} trip you can deviate home from", "{n} trips you can deviate home from"],
-  fewestBackupFlights: ["{n} backup flight on the tightest trip", "{n} backup flights on the tightest trip"],
-  tripsShortOnBackups: ["{n} trip short on backup flights", "{n} trips short on backup flights"],
+  fewestBackupFlights: ["{n} other flight to commute on for the tightest trip", "{n} other flights to commute on for the tightest trip"],
+  tripsShortOnBackups: ["{n} trip short on flights to commute on", "{n} trips short on flights to commute on"],
   longestTripHome: "up to {n} hours to get home",
   daysOff: ["{n} day off", "{n} days off"],
   longestDaysOffBlock: ["{n} day off in a row", "{n} days off in a row"],
@@ -46,7 +46,7 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   realBreakNights: ["{n} night at home in real breaks", "{n} nights at home in real breaks"],
   nightsHome: ["{n} night in your own bed", "{n} nights in your own bed"],
   longestHomeStretch: ["{n} night at home in a row", "{n} nights at home in a row"],
-  baseHotelNights: ["{n} night at base", "{n} nights at base"],
+  baseHotelNights: ["{n} night in the domicile city", "{n} nights in the domicile city"],
   avgTripDays: "{n} days a trip on average",
   longestTripDays: "a {n}-day longest trip",
   dutyPeriods: ["{n} duty period", "{n} duty periods"],
@@ -55,7 +55,7 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   maxLegsInADuty: "up to {n} legs in a duty",
   singleLegDutyShare: "{n} of duties single-leg",
   avgLegsPerDuty: ["{n} leg per duty", "{n} legs per duty"],
-  longDuties: ["{n} long duty day", "{n} long duty days"],
+  longDuties: ["{n} long duty period", "{n} long duty periods"],
   maxDutyHours: "a {n}-hour longest duty",
   frontDeadheadTrips: ["{n} trip with a front-end deadhead", "{n} trips with a front-end deadhead"],
   backDeadheadTrips: ["{n} trip with a back-end deadhead", "{n} trips with a back-end deadhead"],
@@ -63,8 +63,8 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   midTripDeadheads: ["{n} mid-trip deadhead", "{n} mid-trip deadheads"],
   frontSlackHours: "{n} hours between the front-end deadhead and the flying",
   backSlackHours: "{n} hours between the last flight and the deadhead home",
-  earliestBaseReport: "a {n} show at base",
-  latestBaseRelease: "a {n} release back at base",
+  earliestBaseReport: "a {n} show at the domicile",
+  latestBaseRelease: "back at the domicile as late as {n}",
   avgLayoverHours: "{n}-hour layovers on average",
   layoversInRange: ["{n} layover in that range", "{n} layovers in that range"],
   shortLayovers: ["{n} short layover", "{n} short layovers"],
@@ -81,10 +81,10 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   layoverShareInRegions: "{n} of layovers in those regions",
   hardestTripBodyClock: "{n}/100 on the body clock for the hardest trip",
   bodyClockScore: "{n}/100 on the body clock",
-  redEyeLegs: ["{n} red-eye leg", "{n} red-eye legs"],
+  redEyeLegs: ["{n} night leg", "{n} night legs"],
   creditPerBlockHour: "{n} credit hours for each hour flown",
   workDays: ["{n} day given to work", "{n} days given to work"],
-  deIcingExposure: ["{n} takeoff in freezing weather", "{n} takeoffs in freezing weather", "no takeoffs in freezing weather"],
+  deIcingExposure: ["{n} takeoff where you'd likely de-ice", "{n} takeoffs where you'd likely de-ice", "no takeoffs where you'd likely de-ice"],
   nightsWorked: ["{n} night worked", "{n} nights worked"],
   nightHubTurnRuns: ["{n} night hub turn in a run of 3+ nights", "{n} night hub turns in runs of 3+ nights", "no weeks of night hub turns"],
   longestHubTurnRun: ["night hub turns one at a time", "{n} night hub turns in a row", "no night hub turns"],
@@ -92,17 +92,17 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   restHotelHubTurns: ["{n} hub turn with a crew-rest hotel", "{n} hub turns with a crew-rest hotel"],
   dayHubTurns: ["{n} day hub turn", "{n} day hub turns"],
   longestNightStreak: ["nights worked one at a time", "{n} nights worked in a row", "no nights worked"],
-  deepNightHours: "{n} hours worked in the small hours",
+  deepNightHours: "{n} hours worked on the backside of the clock",
   dayFlyingShare: "{n} of the flying in daytime",
-  redEyeFinishes: ["{n} trip ending on a red-eye", "{n} trips ending on a red-eye"],
-  allNighterStreak: ["all-nighters one at a time", "{n} all-nighters in a row", "no all-nighters"],
-  backToBackRedEyes: ["{n} back-to-back red-eye duty", "{n} back-to-back red-eye duties"],
+  redEyeFinishes: ["{n} trip ending with a night leg", "{n} trips ending with a night leg"],
+  allNighterStreak: ["duties through the night one at a time", "{n} duties through the night in a row", "no duties through the night"],
+  backToBackRedEyes: ["{n} back-to-back duty through the night", "{n} back-to-back duties through the night"],
   timezoneHoursCrossed: "{n} hours of time zones crossed",
   earlyReports: ["{n} early report", "{n} early reports"],
   hotelStandbyDays: ["{n} hotel standby day", "{n} hotel standby days"],
   tripStandbyDays: ["{n} standby day on trips", "{n} standby days on trips"],
   standbyDaysByCity: ["{n} standby day", "{n} standby days"],
-  baseStandbyDays: ["{n} standby day at base", "{n} standby days at base"],
+  baseStandbyDays: ["{n} standby day at the domicile", "{n} standby days at the domicile"],
 };
 
 /** On one trip, where the line's words talk about its trips ("a 6-day longest trip", "on the hardest trip"). */
@@ -110,9 +110,9 @@ const ONE_TRIP_READS: Record<string, string | [string, string]> = {
   longestTripDays: ["{n} day", "{n} days"],
   avgTripDays: ["{n} day", "{n} days"],
   hardestTripBodyClock: "{n}/100 on the body clock",
-  fewestBackupFlights: ["{n} backup flight", "{n} backup flights"],
-  earliestBaseReport: "shows at base at {n}",
-  latestBaseRelease: "back at base at {n}",
+  fewestBackupFlights: ["{n} other flight to commute on", "{n} other flights to commute on"],
+  earliestBaseReport: "shows at the domicile at {n}",
+  latestBaseRelease: "back at the domicile at {n}",
 };
 
 /** A spread of the measures whose words don't start with the number ("a 6-day longest trip"), said as a spread. */
@@ -121,8 +121,8 @@ const RANGE_READS: Record<string, string> = {
   longestTripDays: "longest trips of {n} days",
   maxLegsInADuty: "{n} legs at most in a duty",
   maxDutyHours: "longest duties of {n} hours",
-  earliestBaseReport: "earliest shows at base from {n}",
-  latestBaseRelease: "latest releases back at base from {n}",
+  earliestBaseReport: "earliest shows at the domicile from {n}",
+  latestBaseRelease: "back at the domicile as late as {n}",
 };
 
 /** Units whose zero is a number, not "none". */

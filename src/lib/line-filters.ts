@@ -287,7 +287,7 @@ const FILTER_PARTS: FilterPart[] = [
   {
     key: "noRedEyesOnly",
     active: (f) => f.noRedEyesOnly,
-    label: () => "No red-eyes",
+    label: () => "No night legs",
     clear: { noRedEyesOnly: false },
     matches: (l) => !l.trips.some(hasRedEyeLeg),
   },

@@ -157,7 +157,7 @@ export function SleepScienceInfo() {
                 <span className="text-ink-faint">(Waterhouse et al., The Lancet, 2007.)</span>
               </li>
               <li>
-                <span className="font-medium text-ink">02:00–06:00 body time is the window of circadian low</span> — when sleep drive peaks and alertness bottoms out. A duty that flies through it gets a nap
+                <span className="font-medium text-ink">02:00–06:00 body time is the backside of the clock</span> — when sleep drive peaks and alertness bottoms out. A duty that flies through it gets a nap
                 planned before it. <span className="text-ink-faint">(FAA and ICAO fatigue guidance.)</span>
               </li>
               <li>
@@ -169,20 +169,20 @@ export function SleepScienceInfo() {
                 before a night duty cuts its fatigue. <span className="text-ink-faint">(Rosekind et al., NASA, 1994.)</span>
               </li>
               <li>
-                <span className="font-medium text-ink">After an all-nighter, sleep twice.</span> A recovery sleep on arrival plus a main sleep in your body&rsquo;s night beats one long daytime sleep, which
+                <span className="font-medium text-ink">After a duty through the night, sleep twice.</span> A recovery sleep on arrival plus a main sleep in your body&rsquo;s night beats one long daytime sleep, which
                 your body clock cuts short — so daytime main sleeps are planned as four cycles with a nap before you go.{" "}
                 <span className="text-ink-faint">(Minors &amp; Waterhouse&rsquo;s anchor sleep; Åkerstedt&rsquo;s shift-work studies.)</span>
               </li>
               <li>
                 <span className="font-medium text-ink">When you fall asleep sets how long you sleep.</span> In at dawn after a night of flying, sleep straight away — a sleep put off until midday runs
-                short. A crew-rest hotel on a hub sit counts as a nap, and your hours awake run from it.{" "}
+                short. A crew-rest hotel on a hub turn counts as a nap, and your hours awake run from it.{" "}
                 <span className="text-ink-faint">(Åkerstedt &amp; Gillberg&rsquo;s displaced-sleep studies.)</span>
               </li>
             </ul>
             <div className="rounded-lg border border-border bg-canvas p-3 text-xs">
               <div className="font-medium text-ink">What it assumes</div>
               <p className="mt-1">
-                At home you keep a normal day (asleep about 23:00–07:00 base time). You&rsquo;re in the hotel 45 minutes after block-in, asleep 20 minutes later, and up 90 minutes before report — or 45
+                At home you keep a normal day (asleep about 23:00–07:00 domicile time). You&rsquo;re in the hotel 45 minutes after landing, asleep 20 minutes later, and up 90 minutes before report — or 45
                 before a printed hotel pickup. If your home routine is different (a night-sort regular, say), shift the plan to match.
               </p>
             </div>

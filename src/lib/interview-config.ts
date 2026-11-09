@@ -31,7 +31,7 @@ export const QUICK_QUESTIONS: SliderQuestionConfig[] = [
     key: "tripLength",
     question: "Short trips or long trips?",
     helpText:
-      "This is about how many days a single trip runs, report to release. Right after this, there's a separate question about how many total duty periods you want in the month — those aren't the same thing.",
+      "This is about how many days a single trip runs, report to the end of its last leg. Right after this, there's a separate question about how many total duty periods you want in the month — those aren't the same thing.",
     lowLabel: "Prefer short trips",
     highLabel: "Prefer long trips",
     centerLabel: "No strong preference",
@@ -162,10 +162,10 @@ export const DEEP_SLIDERS: SliderQuestionConfig[] = [
   },
   {
     key: "daysOff",
-    question: "Days off — a compact schedule, or as many as you can get?",
+    question: "Days off — fine with fewer, or as many as you can get?",
     helpText:
       "This is about overall days off for the month, not any single trip's length.",
-    lowLabel: "Fine with a compact schedule, fewer days off",
+    lowLabel: "Fine with fewer days off",
     highLabel: "Wants more days off / a lighter schedule",
     centerLabel: "No strong preference",
   },
@@ -180,11 +180,11 @@ export const DEEP_SLIDERS: SliderQuestionConfig[] = [
   },
   {
     key: "landings",
-    question: "More landings for currency, or fewer for a lighter workload?",
+    question: "More landings, or fewer for a lighter workload?",
     helpText:
-      "Some pilots want more landings for proficiency and currency comfort; others, especially managing fatigue, want fewer.",
+      "Some pilots want more landings; others, especially when they're tired, want fewer.",
     lowLabel: "Fewer landings — keep workload light",
-    highLabel: "More landings — proficiency/currency comfort",
+    highLabel: "More landings",
     centerLabel: "No strong preference",
   },
   {
@@ -250,7 +250,7 @@ export const DUTY_PERIODS_CONFIG: TargetSliderQuestionConfig = {
   key: "dutyPeriods",
   question: "How many duty periods do you want in a month?",
   helpText:
-    "A duty period is one report-to-release stretch, counted the way your bid pack prints it on each line (\"NO. DP'S\") — hotel standby days included. A handful of short trips bunched together can still add up to a lot of them, even if it only reads as \"a couple trips.\" This is about how many times you actually report, not how many trips it gets counted as.",
+    "A duty period is one duty, from report to the end of its last leg, counted the way your bid pack prints it on each line (\"NO. DP'S\") — hotel standby days included. A handful of short trips bunched together can still add up to a lot of them, even if it only reads as \"a couple trips.\" This is about how many times you actually report, not how many trips it gets counted as.",
   unitSingular: "duty period",
   unitPlural: "duty periods",
   formatValue: (v) => String(Math.round(v)),
@@ -398,7 +398,7 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
     },
     optionB: {
       label: "Two 2-day trips",
-      description: "Same total credit, more time back at base in between.",
+      description: "Same total credit, more time back at the domicile in between.",
     },
     positiveOption: "A",
   },
@@ -408,11 +408,11 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
     prompt: "Given a free choice for one layover, which would you actually pick?",
     optionA: {
       label: "An international layover",
-      description: "A long overnight somewhere overseas.",
+      description: "A long international layover.",
     },
     optionB: {
       label: "An all-domestic week",
-      description: "Shorter hops, your own bed more nights.",
+      description: "Shorter trips, your own bed more nights.",
     },
     positiveOption: "A",
   },
@@ -433,7 +433,7 @@ export const TRADEOFF_QUESTIONS: TradeoffQuestionConfig[] = [
   {
     id: "credit-vs-downtime",
     dimension: "creditHours",
-    prompt: "On one specific duty day, would you rather have...",
+    prompt: "On one specific duty period, would you rather have...",
     helpText:
       "The same trade-off as the pay-vs-lifestyle question earlier, just narrowed down to a single day instead of the whole month.",
     optionA: {

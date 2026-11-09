@@ -16,6 +16,7 @@ import {
   type SortChoice,
   type SortDef,
 } from "@/lib/line-sorts";
+import { namedDomicile } from "@/lib/domicile-name";
 import type { LineScore } from "@/lib/scoring";
 import type { LineSort } from "@/lib/use-line-sort";
 import type { Region } from "@/lib/metrics/trip-facts";
@@ -68,7 +69,7 @@ function SortDialog({ sort, lines, onClose }: { sort: LineSort; lines: LineScore
   const [picked, setPicked] = useState<Pick<SortChoice, "city" | "region">>({ city: sort.choice.city, region: sort.choice.region });
   // A flip belongs to the sort it was set on: the next one looked at starts from its own better end.
   const [flippedId, setFlippedId] = useState(sort.choice.reversed ? sort.choice.id : null);
-  const offered = useMemo(() => LINE_SORTS.filter((d) => sortAvailable(d, ctx)), [ctx]);
+  const offered = useMemo(() => LINE_SORTS.filter((d) => sortAvailable(d, ctx)).map((d) => ({ ...d, label: namedDomicile(d.label, sort.base), definition: namedDomicile(d.definition, sort.base) })), [ctx, sort.base]);
   const found = useMemo(() => searchSorts(offered, query), [offered, query]);
   const [activeId, setActiveId] = useState(sort.def.id);
   const active = found.find((d) => d.id === activeId) ?? found[0] ?? null;

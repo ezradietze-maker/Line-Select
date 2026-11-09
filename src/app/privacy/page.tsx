@@ -166,7 +166,7 @@ export default function PrivacyPage() {
             If you tap the microphone to dictate an answer, the sound from your microphone is sent
             straight from your browser to AssemblyAI, a speech-to-text provider, which sends the words
             back as you speak. Along with it goes a list of words to listen for: pilot terms and the
-            airports, base and aircraft in your bid pack &mdash; nothing about you. The sound never
+            airports, domicile and aircraft in your bid pack &mdash; nothing about you. The sound never
             passes through our server and we don&rsquo;t record or store it; the only thing kept is the
             text that lands in your answer, like anything you type. AssemblyAI handles the audio under
             its own terms and data-retention policy. The microphone only listens while it&rsquo;s on,
@@ -251,7 +251,7 @@ export default function PrivacyPage() {
         <Section title="9. Award history, and how the Service learns from many pilots">
           <p>
             If you report what you actually held for a bid period, we store your seniority number,
-            the base/aircraft/seat, the month, the outcome (line, reserve, or other), the held
+            the domicile/aircraft/seat, the month, the outcome (line, reserve, or other), the held
             line&rsquo;s shape, which of your own ranked choices it was, and, if you check in after the month,
             how it flew compared with what you expected. Other pilots only ever
             see these as anonymous numbers. On our server the report is also tagged with a one-way
@@ -260,8 +260,7 @@ export default function PrivacyPage() {
             share your ranking, Section 7) can be checked against what you really got.
           </p>
           <p className="mt-3">
-            One exception, only if you say yes when you log an award: once at least five pilots in your
-            base, aircraft and seat have agreed for that month, signed-in pilots see your seniority number
+            One exception, only if you say yes when you log an award: once at least five pilots in your domicile, aircraft and seat have agreed for that month, signed-in pilots see your seniority number
             beside the line you held (&ldquo;Held by seniority #N&rdquo;, marked as from pilots who shared).
             Your name and employee number are never stored or shown, but anyone with the seniority list can
             match that number to you. Everything else stays in group numbers, shown only once at least five
@@ -272,7 +271,7 @@ export default function PrivacyPage() {
           </p>
           <p className="mt-3">
             When you finish the interview, a numeric summary of it is stored: your
-            base/aircraft/seat and month, whether you commute, a broad seniority band (top, middle,
+            domicile/aircraft/seat and month, whether you commute, a broad seniority band (top, middle,
             or bottom third), where each preference landed, how many questions it took, and which
             topics each question covered. It never contains your words &mdash; not your answers, not
             your bidding story &mdash; nor your seniority number, cities, or dates. If you&rsquo;re
@@ -283,7 +282,7 @@ export default function PrivacyPage() {
           <p className="mt-3">
             The story-driven interview stores a similar summary: the same group details, how many
             questions and line-versus-line choices it took, which kinds of priorities you ended up with
-            and how much each counted (for example &ldquo;commutes to base &mdash; strongest&rdquo;),
+            and how much each counted (for example &ldquo;commutes to the domicile &mdash; strongest&rdquo;),
             your ratings of layover cities (the airport codes and how much you like each), and
             whether you marked each priority right, more, less or not mattering at the end. It still
             never contains your words, your seniority number or your dates.

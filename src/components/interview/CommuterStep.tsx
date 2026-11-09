@@ -1,6 +1,7 @@
 "use client";
 
 import { ChoiceStep } from "@/components/interview/ChoiceStep";
+import { airportCityName } from "@/lib/airport-city-names";
 
 interface CommuterStepProps {
   value: boolean | null;
@@ -13,13 +14,14 @@ interface CommuterStepProps {
   children?: React.ReactNode;
 }
 
-const PROMPT = "Do you commute to base, or live locally?";
+/** The question, with the domicile by its city; the transcript the brain reads says the same. */
+export const commuterPrompt = (base: string) => `Do you commute to ${airportCityName(base) ?? "the domicile"}, or live locally?`;
 
 export function CommuterStep({ value, onChange, declined = false, base, eyebrow, children }: CommuterStepProps) {
   return (
     <ChoiceStep
       eyebrow={eyebrow}
-      prompt={PROMPT}
+      prompt={commuterPrompt(base)}
       helpText="This changes what actually matters in a schedule — an early or late report, or one extra trip, can mean a hotel night or a missed flight home for a commuter."
       options={[
         { label: "I commute in", description: "I fly or drive in from somewhere else to work my trips." },

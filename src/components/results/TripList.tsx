@@ -43,7 +43,7 @@ const zoneTag = (mode: TimeMode) => (mode === "zulu" ? "(Z)" : "(L)");
 const LABEL = "font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint";
 
 const LAYOVER_TOOLTIP =
-  "Layover / hotel — real time from block-in to hotel pickup for the next departure. Not exactly when you’ll sleep, since that’s down to you and the jet lag.";
+  "Layover / hotel — real time from landing to hotel pickup for the next duty period. Not exactly when you’ll sleep, since that’s down to you and the time zones.";
 
 const STANDBY_TOOLTIP =
   "Hotel standby — you sit on call at the layover hotel for the day. It pays the guaranteed standby credit, but no flight is flown unless you’re called out.";
@@ -71,7 +71,7 @@ function TripInsights({ trip, bidPeriodStart, base }: { trip: Trip; bidPeriodSta
     chips.push({
       label: "Hub turns",
       value: `×${hubs.all} · ${hubs.hubs.join(", ")}${hubs.night === hubs.all ? ", nights" : hubs.night ? `, ${hubs.night} at night` : ", by day"}${hubs.withRestHotel ? " · crew-rest hotel" : ""}`,
-      title: "Flying into a sort hub, sitting while the packages are sorted, then flying back out. A night hub turn sits through the small hours; on long sits the crew gets a crew-rest hotel, a short airport stay for a nap.",
+      title: "Flying into a sort hub, sitting while the packages are sorted, then flying back out. A night hub turn sits in the hub between midnight and 5am; on long hub turns the crew gets a crew-rest hotel, a short airport stay for a nap.",
     });
   }
 
@@ -97,7 +97,7 @@ function TripInsights({ trip, bidPeriodStart, base }: { trip: Trip; bidPeriodSta
     chips.push({
       label: "Avg sleep window",
       value: `${a.avgSleepOpportunityHours.toFixed(1)}h`,
-      title: "Block-in to the hotel pickup for the next duty, averaged over the trip’s layovers — the real window at the hotel, from the pack’s own printed pickup times.",
+      title: "Landing to the hotel pickup for the next duty period, averaged over the trip’s layovers — the real window at the hotel, from the pack’s own printed pickup times.",
     });
   }
 
@@ -111,10 +111,10 @@ function TripInsights({ trip, bidPeriodStart, base }: { trip: Trip; bidPeriodSta
 
   if (a.backToBackRedEyeDuties > 0) {
     chips.push({
-      label: "Back-to-back red-eyes",
+      label: "Back-to-back night legs",
       value: String(a.backToBackRedEyeDuties),
       tone: "warn",
-      title: "Consecutive duty periods that each include a red-eye (00:00-05:00 local) departure or arrival — compounding fatigue risk rather than one bad night followed by recovery.",
+      title: "Consecutive duty periods that each have a leg leaving or landing between midnight and 5am local — harder on the body clock than one bad night followed by recovery.",
     });
   }
 
@@ -215,7 +215,7 @@ function TripHeader({
 
       <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-4">
         <Readout label="Report" value={first?.onDuty ? `${first.onDuty} ${zoneTag(mode)}` : REPORT_LABELS[trip.reportTime]} note={stamp(startDate, 1)} title={`${REPORT_LABELS[trip.reportTime]} report, ${zone}${startDate ? ` — ${startDate.weekday} ${startDate.day} ${startDate.month}` : ""}`} />
-        <Readout label="Last in" value={last?.lastIn ? `${last.lastIn} ${zoneTag(mode)}` : block === null && trip.landings === 0 ? "no flying" : "—"} note={stamp(endDate, days.length)} title={`Last block-in of the trip, ${zone}${endDate ? ` — ${endDate.weekday} ${endDate.day} ${endDate.month}` : ""}`} />
+        <Readout label="Last in" value={last?.lastIn ? `${last.lastIn} ${zoneTag(mode)}` : block === null && trip.landings === 0 ? "no flying" : "—"} note={stamp(endDate, days.length)} title={`Last landing of the trip, ${zone}${endDate ? ` — ${endDate.weekday} ${endDate.day} ${endDate.month}` : ""}`} />
         <Readout label="TAFB" value={hm(trip.tafbHours * 60)} title="Time away from base" />
         <Readout label="Operating block" value={block !== null ? hm(block) : trip.landings === 0 ? "none" : "—"} />
         <Readout label="DH block" value={deadhead > 0 ? hm(deadhead) : "none"} tone={deadhead > 0 ? "text-deadhead" : "text-readout"} />
@@ -267,7 +267,7 @@ function TripLegendInfo() {
               <div className="font-medium text-ink">Reading a day</div>
               <ul className="mt-1.5 space-y-2">
                 <li>
-                  Each row is one day, midnight at the left to midnight at the right, on the base&rsquo;s clock &mdash; the
+                  Each row is one day, midnight at the left to midnight at the right, on the domicile&rsquo;s clock &mdash; the
                   same days as the month calendar, every day the same height. Under the date,{" "}
                   <span className="font-mono font-semibold text-report">Rpt 13:47L</span> is when the trip reports, and{" "}
                   <span className="font-mono font-semibold text-gt">P/U 02:15L</span> the hotel pickup that starts a later
@@ -279,12 +279,12 @@ function TripLegendInfo() {
                   along; <span className="font-mono">CAB</span> a ride between airports by road. A <span className="font-medium text-standby">violet</span> bar
                   is hotel standby ({STANDBY_TOOLTIP.split(" — ")[1]}). A flight still in the air at midnight runs off the right edge and on into the next row.
                 </li>
-                <li>The grey band around the flying is the whole duty period, report to release &mdash; a long band with little flying in it is a long wait, like a hub turn.</li>
+                <li>The grey band around the flying is the whole duty period, report to the end of its last leg &mdash; a long band with little flying in it is a long wait, like a hub turn.</li>
                 <li>
                   <span className="font-medium text-layover">Green line.</span> {LAYOVER_TOOLTIP} It runs under the flying, with the city, the layover&rsquo;s
                   length to the hour and the hotel (<span className="font-mono font-semibold text-layover">L/O SEA 16h</span>). The{" "}
                   <span className="font-medium text-gt">cyan</span> marks at its ends are the hotel van (GT): from the airport after landing, and back at the
-                  pickup. A <span className="font-medium text-rest">gold</span> line is a crew-rest hotel during a long sit at a hub, inside the same duty.
+                  pickup. A <span className="font-medium text-rest">gold</span> line is a crew-rest hotel during a long hub turn, inside the same duty.
                 </li>
                 <li>
                   <span className="font-medium text-ink">Tap any day</span> for everything the pairing says about it: each duty&rsquo;s report or pickup,
@@ -305,7 +305,7 @@ function TripLegendInfo() {
                 <li><span className="font-medium text-ink">Time zones.</span> Total time-zone distance crossed, and which way the trip nets out.</li>
                 <li><span className="font-medium text-ink">Avg sleep window.</span> Layover time minus the pickup/ground gap around it &mdash; closer to usable rest than the printed layover.</li>
                 <li><span className="font-medium text-ink">Duty ÷ flying.</span> Duty time divided by block time &mdash; higher means more sitting and connecting.</li>
-                <li><span className="font-medium text-ink">Back-to-back red-eyes.</span> Consecutive duties that each fly between midnight and 5am.</li>
+                <li><span className="font-medium text-ink">Back-to-back night legs.</span> Consecutive duties that each fly between midnight and 5am.</li>
               </ul>
             </div>
             <div>

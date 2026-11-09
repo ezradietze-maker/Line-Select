@@ -32,11 +32,12 @@ export function packAirports(pack: BidPack | null): string[] {
 }
 
 /**
- * The word list for one pilot: the glossary's terms and how else pilots say them, then the pack's base and aircraft,
+ * The word list for one pilot: the glossary's jargon and how else pilots say it, then the pack's base and aircraft,
  * then its airports — each as its code and its city — most-flown first, cut at `MAX_TERMS`.
  */
 export function dictationWords(pack: BidPack | null): string[] {
-  const pilot = PILOT_WORDS.flatMap((w) => [w.term, ...(w.alsoSaid ?? [])]).filter((t) => !t.includes("/"));
+  // Pilot jargon only: everyday words ("credit", "hotel") the service hears anyway would crowd out the pack's airports.
+  const pilot = PILOT_WORDS.filter((w) => !w.everyday).flatMap((w) => [w.term, ...(w.alsoSaid ?? [])]).filter((t) => !t.includes("/"));
   const aircraft = pack ? [spokenAircraft(pack.aircraft)] : [];
   const airports = packAirports(pack).flatMap((code) => {
     const city = airportCityName(code);

@@ -129,7 +129,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-10-30",
     title: "Body clock score",
-    body: "Every line and trip scored 1–100 for how gentle it is on your body clock — night work, early shows, flips, time zones — with the reasons a tap away.",
+    body: "Every line and trip scored 1–100 for how gentle it is on your body clock — night work, early shows, going between day and night flying, time zones — with the reasons a tap away.",
     href: "/results",
   },
   {

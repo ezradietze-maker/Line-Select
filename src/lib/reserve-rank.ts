@@ -57,7 +57,7 @@ interface Features {
 const BASE_WEIGHT: Features = { daysOff: 1, longestOff: 0.6, weekendDaysOff: 0.3 };
 /** A date they need outweighs every other reason, short of two lines that both stand it. */
 const NEEDED_DATE_COST = 5;
-/** The notice a commuter needs to get to base is worth about as much as the whole of the rest. */
+/** The notice a commuter needs to get to the domicile is worth about as much as the whole of the rest. */
 const COMMUTER_R24_BONUS = 1;
 
 function readLine(r: ReserveLine, pack: Pick<BidPack, "bidPeriodDays" | "bidPeriodStart">, neededDates: Set<string>) {
@@ -100,7 +100,7 @@ function weightsFrom(model: PilotModel | null | undefined): Features {
 function reasonFor(line: RankedReserveLine, commuter: boolean): string {
   const parts: string[] = [];
   if (line.neededDatesOnCall.length) parts.push(`stands ${line.neededDatesOnCall.length === 1 ? "a date" : `${line.neededDatesOnCall.length} dates`} you need`);
-  if (commuter && line.reserveType === "24hr") parts.push("24 hours' notice to get to base");
+  if (commuter && line.reserveType === "24hr") parts.push("24 hours' notice to get to the domicile");
   if (line.daysOff !== null) parts.push(`${line.daysOff} days off, ${line.longestOff} in a row`);
   if (line.weekendDaysOff !== null && line.daysOff !== null) parts.push(`${line.weekendDaysOff} weekend days off`);
   if (line.carryOverDays) parts.push(`${line.carryOverDays} day${line.carryOverDays === 1 ? "" : "s"} carry into next month`);

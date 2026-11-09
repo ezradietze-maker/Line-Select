@@ -62,7 +62,7 @@ export interface BodyClockScore {
 }
 
 const SCIENCE: Record<BodyClockFactorId, string> = {
-  night: "02:00–06:00 on your body clock is the window of circadian low — alertness is at its lowest; FAA Part 117 is built around it, and night-shift risk runs ~30% above days (Folkard & Tucker 2003).",
+  night: "02:00–06:00 on your body clock is the backside of the clock — alertness is at its lowest; FAA Part 117 is built around it, and night-shift risk runs ~30% above days (Folkard & Tucker 2003).",
   nightRun: "Each night in a row adds risk — about +6%, +17% and +36% on the 2nd, 3rd and 4th (Folkard & Tucker 2003) — and day sleep after a night runs 1–4 hours short, so sleep debt builds (Åkerstedt).",
   early: "A report before 07:00 on your body clock cuts the sleep before it short — about 15 minutes less for each hour earlier (Roach et al. 2012).",
   awake: "Past 16 hours awake, performance drops fast: 17 hours is like a 0.05% blood alcohol level, 24 like 0.10% (Dawson & Reid, Nature 1997).",
@@ -83,7 +83,7 @@ const LABEL: Record<BodyClockFactorId, string> = {
   early: "Early reports",
   awake: "Long time awake",
   sleep: "Short sleep on layovers",
-  flips: "Day/night flips",
+  flips: "Going between day and night flying",
   shift: "Shifting the body clock",
   recovery: "Little recovery between trips",
 };

@@ -188,7 +188,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
       </ol>
       {!compact && (
         <p className="mt-1 text-[10.5px] leading-snug text-ink-faint">
-          {mode === "zulu" ? "Bars and times in Zulu." : `Bars on ${base ?? "the base"}'s clock, as long as each flight; times are local where they happen, as the bid pack prints them.`}
+          {mode === "zulu" ? "Bars and times in Zulu." : `Bars on ${base ?? "the domicile"}'s clock, as long as each flight; times are local where they happen, as the bid pack prints them.`}
         </p>
       )}
     </div>

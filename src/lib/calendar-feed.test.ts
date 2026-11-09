@@ -197,7 +197,7 @@ describe("the feed's output", () => {
       window: [0, 1],
     };
     const ev = parsed(renderFeed([month({ flights: { [answer.id]: answer } })], { homeDays: false })).find((e) => e.summary.startsWith("Trip 27"))!;
-    expect(ev.description).toContain("Commute in: SAN > SEA > MEM, AS 608 + FX 100 (jumpseat): leaves Tue Sep 29 06:00, lands Tue Sep 29 17:00 (2 backups)");
+    expect(ev.description).toContain("Commute in: SAN > SEA > MEM, AS 608 + FX 100 (jumpseat): leaves Tue Sep 29 06:00, lands Tue Sep 29 17:00 (2 others to fall back on)");
   });
 
   it("never shows another pilot: only this pack's line, and the seniority list isn't touched", () => {

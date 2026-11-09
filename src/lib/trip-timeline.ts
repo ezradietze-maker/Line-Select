@@ -248,8 +248,8 @@ function groundSegment(duty: TripDutyPeriod, isFirstDuty: boolean, previousLayov
     kind: "ground",
     label: isFirstDuty ? "Report" : "Ground transport",
     detail: isFirstDuty
-      ? `Report ${formatHHMM(duty.reportTimeLocal)} → block-off ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}`
-      : `Hotel pickup → block-off ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}${via}`,
+      ? `Report ${formatHHMM(duty.reportTimeLocal)} → departs ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}`
+      : `Hotel pickup → departs ${formatHHMM(firstLeg.depTimeLocal)} · ${durationLabel}${via}`,
     inlineStart: "",
     inlineEnd: "",
     startMinutes: duty.startMinutes,

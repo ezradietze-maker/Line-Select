@@ -7,6 +7,7 @@ import { TripCommuteFlights } from "@/components/results/TripCommuteFlights";
 import { FlipText } from "@/components/ui/FlipText";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { WorldMap } from "@/components/ui/WorldMap";
+import { namedDomicile } from "@/lib/domicile-name";
 import { coordinatesForAirport } from "@/lib/airport-coordinates";
 import { isDaylight, nightPath, project } from "@/lib/globe/flat-map";
 import { timezoneForAirport } from "@/lib/airport-timezones";
@@ -108,8 +109,8 @@ function WorldClock({ bidPack, profile }: { bidPack: BidPack | null; profile: Pr
           const t = DateTime.fromMillis(at, { zone });
           const sun = cityDaylight(c, t.toISODate()!);
           const daylight = sun ? t.toFormat("HH:mm") >= sun.sunrise && t.toFormat("HH:mm") < sun.sunset : null;
-          const tag = c === base ? "base" : c === home ? "home" : null;
-          return <ClockTile key={c} code={c} name={cityName(c)} time={t} note={tag ? `${tag}${c === base ? "" : ` · ${offsetWords(baseOffset(zone)).replace(" from base", "")}`}` : offsetWords(baseOffset(zone))} daylight={daylight} />;
+          const tag = c === base ? "domicile" : c === home ? "home" : null;
+          return <ClockTile key={c} code={c} name={cityName(c)} time={t} note={tag ? `${tag}${c === base ? "" : ` · ${offsetWords(baseOffset(zone)).replace(" from the domicile", "")}`}` : namedDomicile(offsetWords(baseOffset(zone)), base)} daylight={daylight} />;
         })}
       </ul>
     </section>
@@ -219,11 +220,11 @@ function CommutePlanner({ bidPack, profile }: { bidPack: BidPack | null; profile
           <Link href="/preferences" className="text-accent underline decoration-dotted underline-offset-4">
             interview
           </Link>{" "}
-          first &mdash; it&rsquo;s where your home airport and commute buffers come from.
+          first &mdash; it&rsquo;s where your home airport and the time you leave before show come from.
         </p>
       ) : !params ? (
         <p className="mt-1 text-sm text-ink-muted">
-          You live at base, so there&rsquo;s no commute to plan. If you commute, add your home airport in{" "}
+          You live in the domicile city, so there&rsquo;s no commute to plan. If you commute, add your home airport in{" "}
           <Link href="/preferences" className="text-accent underline decoration-dotted underline-offset-4">
             Preferences
           </Link>
@@ -233,7 +234,7 @@ function CommutePlanner({ bidPack, profile }: { bidPack: BidPack | null; profile
         <>
           <p className="mt-1 text-sm text-ink-muted">
             Real airline flights from {params.homeAirports.join(" or ")} to each trip&rsquo;s report at {bidPack.base} &mdash; or straight to where its flying starts after a
-            front-end deadhead &mdash; and back home after release, with backups. Your top {ranked.length} lines are covered.
+            front-end deadhead &mdash; and back home after the last duty period, with the other flights you could take. Your top {ranked.length} lines are covered.
           </p>
           <label className="mt-4 block text-sm">
             <span className="text-ink-muted">Line</span>

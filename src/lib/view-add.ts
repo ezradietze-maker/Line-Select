@@ -152,7 +152,7 @@ export function fitCheck(trip: Trip, schedule: Busy[], vacations: VacationPeriod
   if (seven.hours > 144 && !seven.unsure) illegal.push(`It would run ${Math.round(seven.hours / 24)} days without 24 hours off (CBA 2026 12.C.1.b, 12.D.1.i).`);
   else if (seven.hours > 120) check.push(`It would run ${Math.round(seven.hours / 24)} days without 24 hours off; check 1-in-7 (CBA 2026 12.C.1.b, 12.D.1.i).`);
   const ten = stretchThrough(candidate, schedule, true);
-  if (!ten.international && ten.hours > 192) check.push(`It would run ${Math.round(ten.hours / 24)} days without 24 hours at base; check 1-in-10 (CBA 2026 12.C.1.c).`);
+  if (!ten.international && ten.hours > 192) check.push(`It would run ${Math.round(ten.hours / 24)} days without 24 hours at the domicile; check 1-in-10 (CBA 2026 12.C.1.c).`);
   return { illegal, check };
 }
 

@@ -1,3 +1,4 @@
+import { namedDomicile } from "@/lib/domicile-name";
 import { formatValue } from "@/lib/brain/describe";
 import { cityMarks } from "@/lib/city-ratings";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
@@ -107,7 +108,7 @@ const CITY_METRICS = new Set(["layoverValue", "layoverHoursInCities", "layoversI
  * better than the pack's average line on, in the order they weigh them: "♥ HNL ♡ IND", "3 departures from home",
  * "18 days off". Anyone else gets the plain facts (`buildLineFactChips`) that aren't against what they asked for.
  */
-export function buildLineFeatures(line: Line, profile: PreferenceProfile, criterionResults: CriterionResult[] | undefined, limit = FEATURES_SHOWN, month: number | null = null): LineFactChip[] {
+export function buildLineFeatures(line: Line, profile: PreferenceProfile, criterionResults: CriterionResult[] | undefined, limit = FEATURES_SHOWN, month: number | null = null, base: string | null = null): LineFactChip[] {
   if (!criterionResults?.length) {
     const chips = buildLineFactChips(line, profile, month).filter((c) => c.tone !== "warn");
     return [...chips.filter((c) => c.tone === "good"), ...chips.filter((c) => c.tone !== "good")].slice(0, limit);
@@ -119,7 +120,7 @@ export function buildLineFeatures(line: Line, profile: PreferenceProfile, criter
   for (const r of [...criterionResults].filter((x) => x.value !== null && x.contribution >= GOOD_CONTRIBUTION).sort((a, b) => b.weight - a.weight || b.contribution - a.contribution)) {
     const def = METRICS_BY_ID.get(r.metric);
     if (!def) continue;
-    let main = formatValue(r.value!, def);
+    let main = namedDomicile(formatValue(r.value!, def), base);
     if (CITY_METRICS.has(r.metric)) {
       // The cities themselves, loved before liked — the pilot reads "HNL", not "62 hours in cities you like".
       const liked = [...lineCities.filter((c) => marks[c] === "love").map((c) => `♥ ${c}`), ...lineCities.filter((c) => marks[c] === "like").map((c) => `♡ ${c}`)];

@@ -26,7 +26,7 @@ function summary(s: TripScore): string {
 
 /**
  * The trip's own score for this pilot — from the same priorities that rank their lines — with what drives it, one tap
- * away. Counts a line adds up over a month (commutes, red-eyes, nights worked) are the trip's own, set against the
+ * away. Counts a line adds up over a month (commutes, night legs, nights worked) are the trip's own, set against the
  * pack's other trips, so the panel says so; priorities one trip can't show (days off) are named rather than dropped.
  */
 export function TripScorePanel({ score }: { score: TripScore }) {
@@ -71,7 +71,7 @@ export function TripScorePanel({ score }: { score: TripScore }) {
           </ul>
           <p className="mt-3 text-[11px] leading-relaxed text-ink-faint">
             Scored on the same priorities that rank your lines; the % is how much each one counts on this trip.
-            {hasCounts && " Things a line adds up over the month — commutes, red-eyes, nights worked — count as this trip’s own, against the pack’s other trips; a monthly number you gave sits at the same place among trips as among lines."}
+            {hasCounts && " Things a line adds up over the month — commutes, night legs, nights worked — count as this trip’s own, against the pack’s other trips; a monthly number you gave sits at the same place among trips as among lines."}
             {score.notApplicable.length > 0 && ` ${score.notApplicable.map((n) => n.label).join(" and ")} ${score.notApplicable.length === 1 ? "depends" : "depend"} on how a line strings its trips together, so ${score.notApplicable.length === 1 ? "it counts" : "they count"} in the line’s score, not a trip’s.`}
           </p>
         </div>

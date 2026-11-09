@@ -30,9 +30,9 @@ export const PILOT_FACTS = [
   {
     id: "minHomeHours",
     kind: "hours",
-    ask: "For a commuter: the hours at home that make going home between two trips worth it, door to door (\"I only go home if I'll be there at least a day\"). Under that, they'd stay at base or in the hotel.",
+    ask: "For a commuter: the hours at home that make going home between two trips worth it, door to door (\"I only go home if I'll be there at least a day\"). Under that, they'd stay in the domicile city or in the hotel.",
   },
-  { id: "hasCrashPad", kind: "yesNo", ask: "Keeps a crash pad, apartment or place of their own at base, so a night there costs them nothing extra." },
+  { id: "hasCrashPad", kind: "yesNo", ask: "Keeps a crash pad, apartment or place of their own in the domicile city, so a night there costs them nothing extra." },
   {
     id: "minBreakNights",
     kind: "nights",

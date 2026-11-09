@@ -129,7 +129,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
         Load your bid pack
       </Heading>
       <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-muted">
-        The PDF for your base, aircraft, and month. Line Select reads the pairing schedules and line grids straight from
+        The PDF for your domicile, aircraft, and month. Line Select reads the pairing schedules and line grids straight from
         it &mdash; nothing is typed in by hand.
       </p>
 

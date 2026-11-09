@@ -50,7 +50,7 @@ function Getting({ label, a, to }: { label: string; a: TravelAnswer; to: string 
   const b = backupsOf(a);
   return (
     <Row label={label} warn={b < 2}>
-      {b === 0 ? `Only one flight into ${to} makes it — no backup` : `${b + 1} flights into ${to} make it — ${b} backup${b === 1 ? "" : "s"}`}
+      {b === 0 ? `Only one flight into ${to} makes it — no other to fall back on` : `${b + 1} flights into ${to} make it — ${b} other${b === 1 ? "" : "s"} to fall back on`}
       <Jumpseats a={a} />
       <span className="text-ink-muted"> &middot; last that makes it leaves {at(a.lastDeparture, a.best?.[0].from)}</span>
       {a.best && (

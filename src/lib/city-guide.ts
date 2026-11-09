@@ -55,10 +55,10 @@ export function hoursFromBase(code: string, base: string, at: number = Date.now(
 /** "+3h", "−5h", "same time", "+5½h" — how a pilot says a time difference. */
 export function offsetWords(hours: number | null): string {
   if (hours === null) return "";
-  if (hours === 0) return "same time as base";
+  if (hours === 0) return "same time as the domicile";
   const whole = Math.trunc(Math.abs(hours));
   const half = Math.abs(hours) % 1 >= 0.5 ? "½" : Math.abs(hours) % 1 >= 0.25 ? "¼" : "";
-  return `${hours > 0 ? "+" : "−"}${whole}${half}h from base`;
+  return `${hours > 0 ? "+" : "−"}${whole}${half}h from the domicile`;
 }
 
 /** A city's sunrise and sunset on a local date, as local clock times ("07:12"), with the hours of daylight. */

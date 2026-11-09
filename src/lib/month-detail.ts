@@ -299,7 +299,7 @@ function describeDay(day: LineMonthDay, d: Omit<DetailedDay, "title">, clock: "L
   if (d.landings > 0) parts.push(`${d.landings} landing${d.landings === 1 ? "" : "s"}`);
   if (d.hasDeadhead) parts.push("deadhead");
   if (d.hasStandby) parts.push("standby");
-  if (d.redEye) parts.push("red-eye");
+  if (d.redEye) parts.push("night leg");
   if (d.earlyReport) parts.push("early report");
   if (d.releaseTime) parts.push(`lands ${d.releaseTime} (${clock})${d.releaseLocalDate ? ` ${localDay(d.releaseLocalDate)} local` : ""}, trip ends`);
   if (d.layoverCode) parts.push(`layover in ${d.layoverCode}${d.layoverRest ? ` (${d.layoverRest})` : ""}`);

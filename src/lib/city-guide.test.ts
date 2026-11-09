@@ -14,9 +14,9 @@ describe("the city guide", () => {
 
   it("says the time difference the way a pilot does", () => {
     expect(hoursFromBase("HNL", "MEM", Date.UTC(2026, 9, 15))).toBe(-5);
-    expect(offsetWords(-5)).toBe("−5h from base");
-    expect(offsetWords(10.5)).toBe("+10½h from base");
-    expect(offsetWords(0)).toBe("same time as base");
+    expect(offsetWords(-5)).toBe("−5h from the domicile");
+    expect(offsetWords(10.5)).toBe("+10½h from the domicile");
+    expect(offsetWords(0)).toBe("same time as the domicile");
   });
 
   it("gives a city's sunrise and sunset on its own clock", () => {

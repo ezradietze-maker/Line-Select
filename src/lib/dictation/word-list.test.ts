@@ -32,6 +32,12 @@ describe("dictation word list", () => {
     expect(list.some((t) => t.includes("/"))).toBe(false);
   });
 
+  it("leaves room for the pack's airports", () => {
+    const words = dictationWords(null);
+    expect(words.length).toBeLessThan(MAX_TERMS / 2);
+    expect(words).not.toContain("credit");
+  });
+
   it("works without a pack", () => {
     expect(dictationWords(null)).toContain("double deadhead");
   });

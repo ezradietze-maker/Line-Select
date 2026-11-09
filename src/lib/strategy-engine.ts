@@ -372,7 +372,7 @@ export function generateStrategies(
       steps: [
         under.length ? `Find where the ${under.length} lines under ${hm(rlg)} sit on your list. Anything you'd rank below them, rank reserve above instead.` : "No regular line pays less than reserve this month, so reserve only wins on lifestyle.",
         info.reserveReportStatus
-          ? `The pack's reserve report status is ${info.reserveReportStatus}${options.isCommuter ? " — if that's hours from a call to report, a commuter would need to be at base for every reserve day" : " — how quickly you must report after a call; check you can live with it"}.`
+          ? `The pack's reserve report status is ${info.reserveReportStatus}${options.isCommuter ? " — if that's hours from a call to report, a commuter would need to be at the domicile for every reserve day" : " — how quickly you must report after a call; check you can live with it"}.`
           : "Check the pack's reserve report status — how quickly you must report after a call — before you bid reserve.",
         types ? `Of the ${bidPack.reserveLines?.length} reserve lines (${types}), RA and RB are named apart from 24-hour R — usually a narrower call window for the same guarantee. Prefer them if you get the choice.` : "If you get a choice of reserve type, prefer the narrowest call window — the guarantee is the same.",
       ],

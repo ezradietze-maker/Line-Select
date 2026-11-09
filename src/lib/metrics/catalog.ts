@@ -461,7 +461,7 @@ export const METRICS: MetricDef[] = [
     label: "Time away from home",
     unit: "hours",
     category: "time",
-    description: "Hours from leaving home to getting back home — including the commute to base, or flying straight to where a trip starts on a front-end deadhead and straight home after a back-end one.",
+    description: "Hours from leaving home to getting back home — including the commute to the domicile, or flying straight to where a trip starts on a front-end deadhead and straight home after a back-end one.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours"],
     defaults: { ...DEFAULT_HOME_PARAMS },
     line: (_l, trips, c, p) => {
@@ -489,7 +489,7 @@ export const METRICS: MetricDef[] = [
     label: "Trips that start with a deadhead from home",
     unit: "trips",
     category: "commute",
-    description: "Trips that start with a deadhead the pilot can catch from home (a front-end deadhead from home) rather than commuting to base.",
+    description: "Trips that start with a deadhead the pilot can catch from home (a front-end deadhead from home) rather than commuting to the domicile.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours"],
     defaults: { ...DEFAULT_HOME_PARAMS },
     line: (_l, trips, c, p) => homeAway(trips, c, p)?.filter((a) => a.start === "deviate").length ?? null,
@@ -499,7 +499,7 @@ export const METRICS: MetricDef[] = [
     label: "Trips you can deviate home from",
     unit: "trips",
     category: "commute",
-    description: "Trips the pilot can deviate home from: heading home after the last operated leg beats riding back to base and commuting.",
+    description: "Trips the pilot can deviate home from: heading home after the last operated leg beats riding back to the domicile and commuting.",
     params: ["homeAirports", "backRestHours"],
     defaults: { ...DEFAULT_HOME_PARAMS },
     line: (_l, trips, c, p) => homeAway(trips, c, p)?.filter((a) => a.end === "deviate").length ?? null,
@@ -508,11 +508,11 @@ export const METRICS: MetricDef[] = [
   // ---- Real airline flights, for commuters (only for lines whose trips were looked up) ----
   {
     id: "fewestBackupFlights",
-    label: "Fewest backup flights to a trip",
+    label: "Fewest other flights you could commute on",
     unit: "flights",
     category: "commute",
     description:
-      "Across the month's trips, the fewest real airline flights beyond the one you'd plan on that still get you to work in time — to base, or straight to where a trip's flying starts — from published schedules, with your buffers. Unknown for lines whose flights haven't been looked up.",
+      "Across the month's trips, the fewest real airline flights beyond the one you'd plan on that still get you to work in time — to the domicile, or straight to where a trip's flying starts — from published schedules, with the time you leave before show. Unknown for lines whose flights haven't been looked up.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours"],
     line: (_l, trips, c) => {
       const ts = tripFlights(trips, c);
@@ -522,10 +522,10 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "tripsShortOnBackups",
-    label: "Trips short on backup flights",
+    label: "Trips short on other flights to commute on",
     unit: "trips",
     category: "commute",
-    description: "Trips where fewer real airline flights than the backups you want (n; your stated minimum by default, else 2) still get you to work in time. Unknown for lines whose flights haven't been looked up.",
+    description: "Trips where fewer real airline flights than you want to have (n; your stated minimum by default, else 2) still get you to work in time. Unknown for lines whose flights haven't been looked up.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "n"],
     line: (_l, trips, c, p) => {
       const ts = tripFlights(trips, c);
@@ -539,7 +539,7 @@ export const METRICS: MetricDef[] = [
     unit: "hours",
     category: "commute",
     description:
-      "The most hours, across the month's trips, from the end of the work (the last operated flight or standby) until the first real airline flight lands you home — from base, or straight from where the flying ends. Unknown for lines whose flights haven't been looked up.",
+      "The most hours, across the month's trips, from the end of the work (the last operated flight or standby) until the first real airline flight lands you home — from the domicile, or straight from where the flying ends. Unknown for lines whose flights haven't been looked up.",
     params: ["homeAirports", "backRestHours"],
     line: (_l, trips, c) => {
       const ts = tripFlights(trips, c);
@@ -566,7 +566,7 @@ export const METRICS: MetricDef[] = [
     label: "Single days off",
     unit: "days",
     category: "calendar",
-    description: "Days off standing alone between two working days — scattered singles instead of real blocks ('a single day off between trips is useless'). Days off in runs of two or more don't count.",
+    description: "Days off standing alone between two working days — scattered singles instead of real breaks ('a single day off between trips is useless'). Days off in runs of two or more don't count.",
     line: (l, _t, c) => singleDaysOff(l, c.bidPeriodDays),
   },
   {
@@ -611,14 +611,14 @@ export const METRICS: MetricDef[] = [
     },
   },
   { id: "weekendDaysOff", label: "Weekend days off", unit: "days", category: "calendar", description: "Saturdays and Sundays off.", line: (l, _t, c) => weekendDaysOff(l, c.bidPeriodStart) },
-  { id: "tripCount", label: "Trips", unit: "trips", category: "calendar", description: "Number of trips in the month. For a pilot who lives at base; a commuter's are counted in homeDepartures. A trip running into the next bid month counts by the share of it in this one.", perMonth: true, belowFine: BELOW_FINE_COUNTS, line: (l, _t, c) => l.trips.reduce((n, t) => n + monthShare(t, tripStartUtc(c, t), c), 0) },
+  { id: "tripCount", label: "Trips", unit: "trips", category: "calendar", description: "Number of trips in the month. For a pilot who lives in the domicile city; a commuter's are counted in homeDepartures. A trip running into the next bid month counts by the share of it in this one.", perMonth: true, belowFine: BELOW_FINE_COUNTS, line: (l, _t, c) => l.trips.reduce((n, t) => n + monthShare(t, tripStartUtc(c, t), c), 0) },
   {
     id: "homeDepartures",
     label: "Departures",
     unit: "departures",
     category: "calendar",
     description:
-      "How many times the pilot leaves home to fly — trips flown without going home in between count once (a \"series of trips\" or \"trip sequence\"). For a commuter, two trips are one departure unless there would be at least minHomeHours (default 24) at home between them, counted door to door: deadheading home from where one trip's flying ends, or commuting home from base, then back out for the next. For a pilot who lives at base, only trips that turn within a few hours at base are joined. A departure running into the next bid month counts by the share of it in this one (0.6 when three of its five days are this month's).",
+      "How many times the pilot leaves home to fly — trips flown without going home in between count once (a \"series of trips\" or \"trip sequence\"). For a commuter, two trips are one departure unless there would be at least minHomeHours (default 24) at home between them, counted door to door: deadheading home from where one trip's flying ends, or commuting home from the domicile, then back out for the next. For a pilot who lives in the domicile city, only trips that turn within a few hours there are joined. A departure running into the next bid month counts by the share of it in this one (0.6 when three of its five days are this month's).",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
     badEndAtWorst: true,
     perMonth: true,
@@ -631,7 +631,7 @@ export const METRICS: MetricDef[] = [
     unit: "days",
     category: "calendar",
     description:
-      "Calendar days each departure touches, from the day the pilot leaves home to the day they're back, both counted — commute days and all: a two-day trip with a commute either side takes four (\"there are four days that I'm thinking about work — for just 12 hours of pay\"). Counted on the clock at home; for a pilot who lives at base, from report to release. A departure running into the next bid month counts its days in this one. For a pilot who talks about days lost to work rather than hours away.",
+      "Calendar days each departure touches, from the day the pilot leaves home to the day they're back, both counted — commute days and all: a two-day trip with a commute either side takes four (\"there are four days that I'm thinking about work — for just 12 hours of pay\"). Counted on the clock at home; for a pilot who lives in the domicile city, from report to the end of the last duty period. A departure running into the next bid month counts its days in this one. For a pilot who talks about days lost to work rather than hours away.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
     perMonth: true,
     line: (_l, trips, c, p) => {
@@ -666,7 +666,7 @@ export const METRICS: MetricDef[] = [
     label: "Nights in your own bed",
     unit: "nights",
     category: "calendar",
-    description: "Nights spent at home in the bid period, door to door — every night not away on a trip, commuting, or at base.",
+    description: "Nights spent at home in the bid period, door to door — every night not away on a trip, commuting, or in the domicile city.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
     line: (_l, trips, c, p) => homeTimeOf(trips, c, p)?.nightsHome ?? null,
   },
@@ -681,11 +681,11 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "departureCommutes",
-    label: "Commutes to or from base",
+    label: "Commutes to or from the domicile",
     unit: "commutes",
     category: "commute",
     description:
-      "Commutes to or from base the month really takes, counted per departure (trips flown without going home count once): 0–2 each, none at an end that starts or finishes on a deadhead the pilot can catch from home or ride home on. A pilot who lives at base has none.",
+      "Commutes to or from the domicile the month really takes, counted per departure (trips flown without going home count once): 0–2 each, none at an end that starts or finishes on a deadhead the pilot can catch from home or ride home on. A pilot who lives in the domicile city has none.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
     badEndAtWorst: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((s, d) => s + d.baseCommutes, 0),
@@ -693,11 +693,11 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "baseHotelNights",
-    label: "Nights at base",
+    label: "Nights in the domicile city",
     unit: "nights",
     category: "commute",
     description:
-      "Nights a commuter without a crash pad spends at base: the night before a report too early to commute in that morning (unless the first duty is short enough to jumpseat in the evening before and nap at the hub), nights waiting at base between trips of one departure, and the night after a release too late to get home.",
+      "Nights a commuter without a crash pad spends in the domicile city: the night before a report too early to commute in that morning (unless the first duty is short enough to jumpseat in the evening before and nap at the hub), nights waiting there between trips of one departure, and the night after a duty period that ends too late to get home.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours", "hasCrashPad"],
     badEndAtWorst: true,
     line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((s, d) => s + d.baseNights.reduce((a, b) => a + b.nights, 0), 0),
@@ -707,7 +707,7 @@ export const METRICS: MetricDef[] = [
   { id: "longestTripDays", label: "Longest trip", unit: "days", category: "calendar", description: "Length of the longest trip.", trip: { measure: (f) => f.trip.days, aggregate: "max" } },
 
   // ---- Duty structure ----
-  { id: "dutyPeriods", label: "Duty periods", unit: "duties", category: "duty", description: "Report-to-release stretches in the month.", line: (l) => lineDutyPeriods(l) },
+  { id: "dutyPeriods", label: "Duty periods", unit: "duties", category: "duty", description: "Duty periods in the month, as the pack prints them (NO. DP'S).", line: (l) => lineDutyPeriods(l) },
   { id: "landings", label: "Landings", unit: "landings", category: "duty", description: "Operated landings in the month.", line: (l) => l.totalLandings },
   {
     id: "dutiesWithManyLegs",
@@ -756,20 +756,20 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "longDuties",
-    label: "Long duty days",
+    label: "Long duty periods",
     unit: "duties",
     category: "duty",
-    description: "Duty periods longer than N hours, report to last block-in (default 12).",
+    description: "Duty periods longer than N hours, report to the last leg's arrival (default 12).",
     params: ["minHours"],
     defaults: { minHours: 12 },
     trip: { measure: (f, p) => f.duties.filter((d) => d.legs.length > 0 && (d.end - d.start) / 60 > (p.minHours ?? 12)).length, aggregate: "sum" },
   },
   {
     id: "maxDutyHours",
-    label: "Longest duty day",
+    label: "Longest duty period",
     unit: "hours",
     category: "duty",
-    description: "The longest duty period, report to last block-in.",
+    description: "The longest duty period, report to the last leg's arrival.",
     trip: { measure: (f) => Math.max(0, ...f.duties.filter((d) => d.legs.length).map((d) => (d.end - d.start) / 60)), aggregate: "max" },
   },
 
@@ -779,7 +779,7 @@ export const METRICS: MetricDef[] = [
     label: "Trips that start with a deadhead",
     unit: "trips",
     category: "commute",
-    description: "Trips whose first leg is a deadhead — a commuter can often fly straight from home to where the flying starts, skipping the base.",
+    description: "Trips whose first leg is a deadhead — a commuter can often fly straight from home to where the flying starts, skipping the domicile.",
     trip: { measure: (f) => (f.front ? 1 : 0), aggregate: "sum" },
   },
   {
@@ -795,12 +795,12 @@ export const METRICS: MetricDef[] = [
     label: "Double-deadhead trips",
     unit: "trips",
     category: "commute",
-    description: "Trips that start and end with a deadhead — no commute to or from base at either end.",
+    description: "Trips that start and end with a deadhead — no commute to or from the domicile at either end.",
     trip: { measure: (f) => (f.front && f.back ? 1 : 0), aggregate: "sum" },
   },
   {
     id: "baseCommutesNeeded",
-    label: "Commutes to or from base, trip by trip",
+    label: "Commutes to or from the domicile, trip by trip",
     unit: "commutes",
     category: "commute",
     description:
@@ -825,7 +825,7 @@ export const METRICS: MetricDef[] = [
     label: "Time between the front-end deadhead and the flying",
     unit: "hours",
     category: "commute",
-    description: "Average hours between a front-end deadhead's arrival and the first operated departure — room to arrive later or have backup flights.",
+    description: "Average hours between a front-end deadhead's arrival and the first operated departure — room to arrive later or have other flights to commute on.",
     trip: { measure: (f) => f.front?.slackHours ?? null, aggregate: "mean" },
   },
   {
@@ -838,11 +838,11 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "earliestBaseReport",
-    label: "Earliest report at base",
+    label: "Earliest report at the domicile",
     unit: "minute of day",
     category: "commute",
     description:
-      "Earliest local report time at base on a trip that starts with operated flying (a commuter must be there in time). A line whose every trip starts on a deadhead has no report at base to make: it counts as 23:59, the easiest there is.",
+      "Earliest local report time at the domicile on a trip that starts with operated flying (a commuter must be there in time). A line whose every trip starts on a deadhead has no report there to make: it counts as 23:59, the easiest there is.",
     line: (_l, trips) => {
       const flying = trips.filter((t) => !t.noFlying);
       const reports = flying.filter((t) => !t.front).map((t) => t.duties[0]?.reportLocalMinute).filter((m): m is number => m !== null && m !== undefined);
@@ -852,11 +852,11 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "latestBaseRelease",
-    label: "Latest arrival back at base",
+    label: "Latest arrival back at the domicile",
     unit: "minute of day",
     category: "commute",
     description:
-      "Latest local block-in at base on a trip that ends with operated flying (a commuter then needs a flight home). The night runs on past midnight: an arrival before 05:00 counts as later than the evening before it (02:30 is measured as 26:30, i.e. 1590 minutes); from 05:00 it's morning, with flights home. A line whose every trip ends on a deadhead has no flight home to catch from base: it counts as 05:00, the earliest there is.",
+      "Latest local arrival at the domicile on a trip that ends with operated flying (a commuter then needs a flight home). The night runs on past midnight: an arrival before 05:00 counts as later than the evening before it (02:30 is measured as 26:30, i.e. 1590 minutes); from 05:00 it's morning, with flights home. A line whose every trip ends on a deadhead has no flight home to catch from the domicile: it counts as 05:00, the earliest there is.",
     line: (_l, trips) => {
       const flying = trips.filter((t) => !t.noFlying);
       if (flying.length && flying.every((t) => t.back)) return NO_BASE_RELEASE;
@@ -1029,7 +1029,7 @@ export const METRICS: MetricDef[] = [
     label: "Hardest trip on the body clock",
     unit: "score (1–100, 100 gentlest)",
     category: "body",
-    description: "Body-clock score of the line's hardest trip: night work, nights in a row, early reports, time awake, layover sleep, day/night flips and time zones.",
+    description: "Body-clock score of the line's hardest trip: night work, nights in a row, early reports, time awake, layover sleep, going between day and night flying, and time zones.",
     line: (_l, _t, c, _p, trips) => {
       const scores = tripBodyClocks(trips, c);
       return scores.length ? Math.min(...scores) : null;
@@ -1041,7 +1041,7 @@ export const METRICS: MetricDef[] = [
     unit: "score (1–100, 100 gentlest)",
     category: "body",
     description:
-      "How gentle the line is on the body clock, 1–100: night work, nights in a row, early reports, time awake, layover sleep, day/night flips, time zones and recovery between trips (see lib/body-clock-score.ts). On one trip, that trip's own score.",
+      "How gentle the line is on the body clock, 1–100: night work, nights in a row, early reports, time awake, layover sleep, going between day and night flying, time zones and recovery between trips (see lib/body-clock-score.ts). On one trip, that trip's own score.",
     line: (_l, _t, c, _p, trips) => {
       // A trip read on its own (trip scores hand over the trip's line and just that trip) gets its own score, the same
       // number its trip shows — the old stars were always the trip's own. A line's trips are scored whole: a run of
@@ -1052,15 +1052,15 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "redEyeLegs",
-    label: "Red-eye legs",
+    label: "Night legs",
     unit: "legs",
     category: "body",
-    description: "Operated legs flying through the night: at least an hour of the local small hours (00:00–05:00) — a leg in just after midnight, or out just before five, isn't one.",
+    description: "Operated legs flying through the night: at least an hour between midnight and 5am local (00:00–05:00) — a leg in just after midnight, or out just before five, isn't one.",
     trip: { measure: (f) => f.operatedLegs.filter((l) => legDeepNightMinutes(l) >= RED_EYE_MINUTES).length, aggregate: "sum" },
   },
   {
     id: "deIcingExposure",
-    label: "Takeoffs in freezing weather",
+    label: "Takeoffs where you'd likely de-ice",
     unit: "takeoffs",
     category: "duty",
     description:
@@ -1073,7 +1073,7 @@ export const METRICS: MetricDef[] = [
     label: "Nights worked",
     unit: "nights",
     category: "body",
-    description: "Nights with at least half an hour of the small hours (00:00–05:00, on the home-base clock or the local one) spent on operated flying or hotel standby — standby through the night keeps a pilot on a night schedule as surely as flying does.",
+    description: "Nights with at least half an hour between midnight and 5am (00:00–05:00, on the domicile's clock or the local one) spent on operated flying or hotel standby — standby through the night keeps a pilot on a night schedule as surely as flying does.",
     line: (_l, trips) => nightsOfLine(trips)?.length ?? null,
   },
   {
@@ -1082,7 +1082,7 @@ export const METRICS: MetricDef[] = [
     unit: "hub turns",
     category: "body",
     description:
-      "Night hub turns that come three or more nights in a row — a week of flying into a sort hub in the evening, sitting through the sort and flying back out before dawn. The back-of-the-clock work pilots call onerous, where one now and then is fine. For a pilot who talks about hub turning, use this rather than the general night measures.",
+      "Night hub turns that come three or more nights in a row — a week of flying into a sort hub in the evening, sitting through the sort and flying back out before dawn. Work on the backside of the clock that pilots call onerous, where one now and then is fine. For a pilot who talks about hub turning, use this rather than the general night measures.",
     badEndAtWorst: true,
     // A week of night turns starting this month is this month's, counted whole — into the next month if it goes on there
     // (cut at midnight, a five-night week reads as three; counted whole, the ex-pilot's sort on 7 readings went 96.3% →
@@ -1103,7 +1103,7 @@ export const METRICS: MetricDef[] = [
     label: "Night hub turns",
     unit: "hub turns",
     category: "body",
-    description: "Every hub turn whose sit at the sort hub runs through the small hours (00:00–05:00 local), however they fall.",
+    description: "Every hub turn whose time in the sort hub runs between midnight and 5am (00:00–05:00 local), however they fall.",
     line: (_l, trips, c) => hubTurnsOfLine(trips, c).night,
   },
   {
@@ -1112,7 +1112,7 @@ export const METRICS: MetricDef[] = [
     unit: "hub turns",
     category: "duty",
     description:
-      "Hub turns with a sit long enough (about 4 hours or more) that the crew gets a short airport hotel for a nap before the outbound leg. Some pilots like the nap; others find the leg after it feels like a whole extra duty period and would rather have a shorter sit. Direction as they say.",
+      "Hub turns with long enough in the hub (about 4 hours or more) that the crew gets a short airport hotel for a nap before the outbound leg. Some pilots like the nap; others find the leg after it feels like a whole extra duty period and would rather have a shorter hub turn. Direction as they say.",
     line: (_l, trips, c) => hubTurnsOfLine(trips, c).withRestHotel,
   },
   {
@@ -1120,7 +1120,7 @@ export const METRICS: MetricDef[] = [
     label: "Day hub turns",
     unit: "hub turns",
     category: "duty",
-    description: "Hub turns by day: flying into a sort hub (base included) and sitting several hours on the ground before flying back out, without a night at a hotel.",
+    description: "Hub turns by day: flying into a sort hub (the domicile included) and sitting several hours on the ground before flying back out, without a night at a hotel.",
     line: (_l, trips, c) => hubTurnsOfLine(trips, c).day,
   },
   {
@@ -1128,7 +1128,7 @@ export const METRICS: MetricDef[] = [
     label: "Hub turns",
     unit: "hub turns",
     category: "duty",
-    description: "Every hub turn: a leg into a sort hub (MEM, IND, OAK, EWR, AFW, GSO, ANC, CDG, CAN), a sit through the sort, then a leg back out. Only for a pilot who minds hub turns as such — most mind the night weeks, not the occasional one.",
+    description: "Every hub turn: a leg into a sort hub (MEM, IND, OAK, EWR, AFW, GSO, ANC, CDG, CAN), sitting while the packages are sorted, then a leg back out. Only for a pilot who minds hub turns as such — most mind the night weeks, not the occasional one.",
     line: (_l, trips, c) => hubTurnsOfLine(trips, c).all,
   },
   {
@@ -1136,7 +1136,7 @@ export const METRICS: MetricDef[] = [
     label: "Most nights in a row worked",
     unit: "nights",
     category: "body",
-    description: "The longest run of consecutive nights worked across the month, across trips — 'two all-nighters in a row is my limit'.",
+    description: "The longest run of consecutive nights worked across the month, across trips.",
     line: (_l, _t, _c, _p, trips) => {
       const nights = nightsOfLine(trips);
       if (!nights) return null;
@@ -1151,7 +1151,7 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "deepNightHours",
-    label: "Hours worked in the small hours",
+    label: "Hours worked on the backside of the clock",
     unit: "hours",
     category: "body",
     description: "Total hours of operated flying and on-call standby between 00:00 and 05:00 local across the month.",
@@ -1178,11 +1178,11 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "redEyeFinishes",
-    label: "Trips that end on a red-eye",
+    label: "Trips that end with a night leg",
     unit: "trips",
     category: "body",
     description:
-      "Trips whose last operated leg flies through the night and lands at dawn (03:00–07:00 local, after at least an hour of the small hours) — finishing a trip on an all-nighter ('the 5 am red-eye into base'). A late leg that's in by 01:30 doesn't count.",
+      "Trips whose last operated leg flies through the night and lands at dawn (03:00–07:00 local, after at least an hour between midnight and 5am) — finishing a trip flying through the night. A late leg that's in by 01:30 doesn't count.",
     trip: {
       measure: (f) => {
         const last = f.operatedLegs[f.operatedLegs.length - 1];
@@ -1194,11 +1194,11 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "allNighterStreak",
-    label: "Most all-nighters in a row",
+    label: "Most duties through the night in a row",
     unit: "duties",
     category: "body",
     description:
-      "The longest run of consecutive all-nighter duties on a trip — duties whose flying spans at least 3 of the 5 small hours (00:00–05:00 local). 'Two all-nighters in a row is my limit.' Early launches and late arrivals don't count.",
+      "The longest run of consecutive duties through the night on a trip — duties whose flying spans at least 3 of the 5 hours from midnight to 5am (00:00–05:00 local). Early reports and late arrivals don't count.",
     trip: {
       measure: (f) => {
         let best = 0;
@@ -1214,11 +1214,11 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "backToBackRedEyes",
-    label: "Back-to-back red-eye duties",
+    label: "Back-to-back duties through the night",
     unit: "duties",
     category: "body",
     description:
-      "Consecutive all-nighter duties: duties whose flying runs, first departure to last arrival, across at least 3 of the 5 small hours (00:00–05:00 local) — back-to-back all-nighters. A late leg in at 01:30, or an early launch at 04:15, isn't one.",
+      "Consecutive duties through the night: duties whose flying runs, first leg out to last arrival, across at least 3 of the 5 hours from midnight to 5am (00:00–05:00 local). A late leg in at 01:30, or an early leg out at 04:15, isn't one.",
     trip: {
       measure: (f) => {
         const allNighter = f.duties.filter((d) => d.operatedLegs > 0).map(isAllNighter);
@@ -1256,7 +1256,7 @@ export const METRICS: MetricDef[] = [
     label: "Hotel standby days",
     unit: "days",
     category: "standby",
-    description: "All hotel standby days, at base or on a trip — on call, paid, not flying.",
+    description: "All hotel standby days, at the domicile or on a trip — on call, paid, not flying.",
     trip: { measure: (f) => tripStandbyDays(f.trip), aggregate: "sum" },
   },
   {
@@ -1264,7 +1264,7 @@ export const METRICS: MetricDef[] = [
     label: "Standby days on trips",
     unit: "days",
     category: "standby",
-    description: "Hotel standby days at a layover city away from base, in the middle of a trip — on call instead of flying, without sitting at base.",
+    description: "Hotel standby days at a layover city away from the domicile, in the middle of a trip — on call instead of flying, without sitting at the domicile.",
     line: (_l, trips, ctx) => standbyDaysWhere(trips, (city) => city !== ctx.base),
   },
   {
@@ -1273,7 +1273,7 @@ export const METRICS: MetricDef[] = [
     unit: "days",
     category: "standby",
     description:
-      "Hotel standby days, each worth 1 + the pilot's score for that city (−1 … +1): a standby day in a city they love counts 2, a neutral city 1, a city they avoid 0. For a commuter with no crash pad, a day at base counts 0 — it's a hotel in the base city, away from home (\"I don't want to do reserve in Memphis, given that I don't live there and don't have a crash pad there\"); baseStandbyDays counts those days on their own.",
+      "Hotel standby days, each worth 1 + the pilot's score for that city (−1 … +1): a standby day in a city they love counts 2, a neutral city 1, a city they avoid 0. For a commuter with no crash pad, a day at the domicile counts 0 — it's a hotel in that city, away from home (\"I don't want to do reserve in Memphis, given that I don't live there and don't have a crash pad there\"); baseStandbyDays counts those days on their own.",
     params: ["cityScores"],
     line: (_l, trips, ctx, p) => {
       const commuter = !!p.homeAirports?.some((a) => a && a !== ctx.base) && !p.homeAirports?.includes(ctx.base);
@@ -1284,10 +1284,10 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "baseStandbyDays",
-    label: "Standby days at base",
+    label: "Standby days at the domicile",
     unit: "days",
     category: "standby",
-    description: "Hotel standby days at the base itself — a commuter spends them in the base city, away from home.",
+    description: "Hotel standby days at the domicile itself — a commuter spends them in that city, away from home.",
     line: (_l, trips, ctx) => standbyDaysWhere(trips, (city) => city === ctx.base),
   },
 ];

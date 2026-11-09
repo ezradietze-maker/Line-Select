@@ -1,5 +1,6 @@
 import { structuredCall, type BrainUsage } from "@/lib/brain/llm";
 import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
+import { neverSayForPrompt } from "./pilot-words";
 
 /**
  * "Ask your pack": a pilot's plain question about their bid pack ("lines with Honolulu and no weekends worked") read as
@@ -81,9 +82,11 @@ const SYSTEM = `You turn a FedEx pilot's question about their bid pack into a pr
 The pack brief lists every measure you can use (its id, unit and what it counts, and this pack's range), and the pack's layover cities. For each thing the pilot asks for:
 - Pick the measure that counts it most directly, with its params (cities as the brief's codes; weekdays 1 = Monday … 7 = Sunday; dates as YYYY-MM-DD inside this bid period; n for a leg count; minHours/maxHours for a layover window).
 - Set op and value: "no X" / "without X" → equals 0; "at least / more than" → atLeast (more than 3 → atLeast 4 for whole counts); "at most / fewer than / under" → atMost (fewer than 3 → atMost 2); "with X" / "has X" for a count → atLeast 1.
-- label: the condition in a pilot's plain words ("no weekends worked", "Honolulu layovers", "3 departures or fewer"). Never an id, unit name or the words "metric" or "criterion".
+- label: the condition in a pilot's plain words ("no weekends worked", "Honolulu layovers", "3 departures or fewer"). Never an id, unit name or the words "metric" or "criterion". The measures' names are for you to find them, not words to write.
 "Best", "most", "least", "highest" with no number → a sort (desc for most, asc for least) instead of a condition, or alongside the conditions. If the pilot only asks to rank, conditions is empty and sort is set.
-Use only measure ids from the brief, exactly as written. If nothing in the brief can measure what they ask (pay rates, seniority, who else bids a line), set cannotAnswer to one plain sentence on why — naming the closest thing the pack can measure, if there is one ("The pack has no pay rates — credit per day away is the closest it measures.") — and leave conditions empty and sort null. summary: one plain sentence restating what's being looked for, in pilot terms. Never write "I" or "me": say what the pack has, not what you can do.`;
+Use only measure ids from the brief, exactly as written. If nothing in the brief can measure what they ask (pay rates, seniority, who else bids a line), set cannotAnswer to one plain sentence on why — naming the closest thing the pack can measure, if there is one ("The pack has no pay rates — credit per day away is the closest it measures.") — and leave conditions empty and sort null. summary: one plain sentence restating what's being looked for, in pilot terms. Never write "I" or "me": say what the pack has, not what you can do.
+
+In label, summary and cannotAnswer: ${neverSayForPrompt()}`;
 
 /** Reads a question into a query. `packBrief` is the pack's measure menu (`buildPackBrief`), the same the brain reads. */
 export async function readAskQuery(input: { question: string; packBrief: string; apiKey?: string; model?: string }): Promise<{ query: AskQuery; usage: BrainUsage }> {

@@ -465,7 +465,7 @@ function findLegalityConflicts(trip: Trip, span: Span, blocks: Block[], election
         pairingNumber: trip.pairingNumber,
         rule: "one-in-10",
         section: "CBA 2026 12.C.1.c, 25.E.1.d",
-        detail: `would run ${name(ten.hours)} from your carry-in without 24 hours off at base`,
+        detail: `would run ${name(ten.hours)} from your carry-in without 24 hours off at the domicile`,
         certainty: beyond && !ten.unsure ? "clear" : "check",
         waivedBy: "1-in-10",
         waived: elections.waive1in10,

@@ -333,7 +333,7 @@ const describeLevel = (level: string) =>
     ? "FedEx pilots who've taken this interview"
     : level.startsWith("seat:")
       ? `${level.includes("|commuter") ? "commuting " : level.includes("|local") ? "local " : ""}${level.includes("CAP") ? "captains" : "first officers"}`
-      : `${level.includes("|commuter") ? "commuting " : level.includes("|local") ? "local " : ""}pilots in this same base, fleet and seat`;
+      : `${level.includes("|commuter") ? "commuting " : level.includes("|local") ? "local " : ""}pilots in this same domicile, fleet and seat`;
 
 /**
  * What pilots like this one tend to care about and how they correct the brain, as a few plain lines for the brain's

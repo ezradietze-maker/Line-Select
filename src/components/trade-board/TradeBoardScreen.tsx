@@ -192,7 +192,7 @@ export function TradeBoardScreen({
       <div className="mx-auto w-full max-w-3xl">
         <PageHeader eyebrow={packEyebrow(bidPack)} title="Trade Board" />
         {barKnown ? (
-          <EmptyState className="mt-8" title="Coming when your seat has enough pilots" description="The board opens for a base, aircraft and seat once enough pilots are using Line Select there, so you'd find real offers on it. Nothing to do until then." />
+          <EmptyState className="mt-8" title="Coming when your seat has enough pilots" description="The board opens for a domicile, aircraft and seat once enough pilots are using Line Select there, so you'd find real offers on it. Nothing to do until then." />
         ) : (
           <SkeletonCards shape="offer" className="mt-8" />
         )}

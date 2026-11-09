@@ -1,3 +1,4 @@
+import { namedDomicile } from "@/lib/domicile-name";
 import { formatValue } from "@/lib/brain/describe";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { METRICS_BY_ID, type MetricCategory } from "@/lib/metrics/catalog";
@@ -34,17 +35,17 @@ const CATEGORY_OF: Record<MetricCategory, SatisfactionCategory> = {
 const NOTABLE = 0.3;
 
 /** What a line has on one priority, said so it reads on its own ("18 days off", "4 long duty days"); its name when unmeasured. */
-function valueText(r: CriterionResult): string {
+function valueText(r: CriterionResult, base: string): string {
   const def = METRICS_BY_ID.get(r.metric);
-  return r.value === null || !def ? r.label : formatValue(r.value, def);
+  return namedDomicile(r.value === null || !def ? r.label : formatValue(r.value, def), base);
 }
 
-function explanationFor(s: V2LineScore): string {
+function explanationFor(s: V2LineScore, base: string): string {
   const ups = s.results.filter((r) => r.contribution >= NOTABLE).sort((a, b) => b.contribution - a.contribution).slice(0, 2);
   const downs = s.results.filter((r) => r.contribution <= -NOTABLE).sort((a, b) => a.contribution - b.contribution).slice(0, 1);
   const parts: string[] = [];
-  if (ups.length) parts.push(`Strong for you: ${ups.map(valueText).join(" and ")}.`);
-  if (downs.length) parts.push(`Weaker: ${valueText(downs[0])}.`);
+  if (ups.length) parts.push(`Strong for you: ${ups.map((r) => valueText(r, base)).join(" and ")}.`);
+  if (downs.length) parts.push(`Weaker: ${valueText(downs[0], base)}.`);
   return parts.join(" ") || "About average for you on everything you care about.";
 }
 
@@ -94,13 +95,13 @@ export function applyPilotModel(scores: LineScore[], bidPack: BidPack, model: Pi
         s.results
           .filter((r) => sign * r.contribution >= NOTABLE)
           .sort((a, b) => sign * (b.contribution - a.contribution))
-          .map((r) => ({ label: valueText(r), matchPercent: Math.round(Math.max(0, r.utility) * 100) }));
+          .map((r) => ({ label: valueText(r, bidPack.base), matchPercent: Math.round(Math.max(0, r.utility) * 100) }));
       return {
         ...ls,
         // Shown 0–100. Past the bad end of a scale a line's raw score goes below 0; the order (by the raw score) keeps it.
         score: Math.max(0, s.score),
         rawScore: s.score,
-        explanation: explanationFor(s),
+        explanation: explanationFor(s, bidPack.base),
         contributors: named(1),
         criterionResults: s.results,
         detractors: named(-1),
