@@ -86,7 +86,7 @@ export function validateAnswer(raw: RawAnswer, context: { question: string; fact
   // The years and dates that name the versions and phases come from the chart: "the 2026 wording", "June 29, 2026".
   const allowed = new Set(["2015", "2026", "2027", "29", ...[...quotes.map((q) => q.quote), context.question, context.facts ?? ""].flatMap((t) => t.match(NUMBER) ?? [])]);
   for (const n of words.match(NUMBER) ?? []) {
-    if (!allowed.has(n)) return { ok: false, reason: `the answer says ${n}, which isn't in the quotes` };
+    if (!allowed.has(n)) return { ok: false, reason: `the answer says ${n}, which isn't in the quotes. Quote the contract's words that hold ${n}, or leave ${n} out of the answer` };
   }
   return { ok: true, answer: raw.answer.trim(), quotes };
 }

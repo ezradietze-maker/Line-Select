@@ -23,7 +23,7 @@ interface Question {
   expect?: string[];
   notFound?: boolean;
   /** A follow-up: what the chat asked just before. */
-  earlier?: { question: string; sections: string[] };
+  earlier?: { question: string; answer?: string; sections: string[] };
 }
 
 const args = process.argv.slice(2);
@@ -36,7 +36,7 @@ const covers = (expected: string, id: string) => id === expected || id.startsWit
 
 async function one(q: Question) {
   const started = Date.now();
-  const history = q.earlier ? [{ question: q.earlier.question, answer: "", sections: q.earlier.sections }] : undefined;
+  const history = q.earlier ? [{ question: q.earlier.question, answer: q.earlier.answer ?? "", sections: q.earlier.sections }] : undefined;
   const r = await askContract({ question: q.q, bidMonth: currentBidMonth(), model, history });
   const cited = r.answer.found ? r.answer.quotes.map((x) => x.section) : [];
   const madeUp = cited.filter((id) => !contractNode(id));
