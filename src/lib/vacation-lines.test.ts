@@ -182,6 +182,13 @@ describe("pilotVacations", () => {
     const q = pack([], { seniorityList: [{ bidNumber: 1, seniority: 100, vacations: [vac(29)] }] });
     expect(pilotVacations(q, { seniorityNumber: 100 }, null).vacations).toHaveLength(1);
   });
+  it("7.G.1: next month's vacation still takes off a trip that runs into it", () => {
+    const carrying = line([trip("1", 26, { tafb: 90 })]);
+    const v = vac(29);
+    const q = pack([carrying], { seniorityList: [{ bidNumber: 1, seniority: 100, vacations: [v] }] });
+    expect(pilotVacations(q, { seniorityNumber: 100 }, null).vacations).toEqual([v]);
+    expect(flyVacationsOnLine(carrying, q, [on(v)]).removed).toHaveLength(1);
+  });
   it("a pilot with none has none", () => {
     expect(pilotVacations(p, { seniorityNumber: 200 }, null)).toMatchObject({ known: true, vacations: [] });
   });

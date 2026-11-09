@@ -1,14 +1,14 @@
 import { DateTime } from "luxon";
 import { describe, expect, it } from "vitest";
 import { NO_ELECTIONS, type CarryInTrip } from "@/lib/phase-in";
-import { MAX_CHOICES, buildViewAdd, fitCheck, lineWithAdded, overageCH, parseOpenTimeList, viewAddCopyText, workStretches } from "@/lib/view-add";
+import { MAX_CHOICES, buildViewAdd, busyFromCarry, busyFromTrip, fitCheck, lineWithAdded, overageCH, parseOpenTimeList, twoTripDutyLimitHours, viewAddCopyText, workStretches, type Busy } from "@/lib/view-add";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
 const ZONE = "America/Chicago";
 const HOUR = 3_600_000;
 
-function trip(num: string, startDayIndex: number, opts: { tafb?: number; credit?: number; airports?: string[] } = {}): Trip {
+function trip(num: string, startDayIndex: number, opts: { tafb?: number; credit?: number; airports?: string[]; report?: string } = {}): Trip {
   const tafb = opts.tafb ?? 30;
   const airports = opts.airports ?? ["MEM", "IND"];
   return {
@@ -25,7 +25,7 @@ function trip(num: string, startDayIndex: number, opts: { tafb?: number; credit?
     tafbHours: tafb,
     departures: 1,
     dutyPeriods: 1,
-    schedule: [{ reportTimeLocal: "0800", startMinutes: 0, legs: [{ flightNumber: "1", equipment: "76", isDeadhead: false, depAirport: airports[0], depTimeLocal: "0900", depTimeGmt: "1400", arrAirport: airports[1], arrTimeLocal: "1100", arrTimeGmt: "1600", blockHours: 2, startMinutes: 60, endMinutes: tafb * 60, depTimeZulu: "", arrTimeZulu: "" }], layover: null }],
+    schedule: [{ reportTimeLocal: opts.report ?? "0800", startMinutes: 0, legs: [{ flightNumber: "1", equipment: "76", isDeadhead: false, depAirport: airports[0], depTimeLocal: "0900", depTimeGmt: "1400", arrAirport: airports[1], arrTimeLocal: "1100", arrTimeGmt: "1600", blockHours: 2, startMinutes: 60, endMinutes: tafb * 60, depTimeZulu: "", arrTimeZulu: "" }], layover: null }],
     zuluAnchor: "",
     startDayIndex,
   };
@@ -42,40 +42,73 @@ function pack(lines: Line[], openPairings: Trip[], month: keyof typeof START = "
   return { id: "p", month, base: "MEM", aircraft: "B767", seat: "CAP", bidPeriodDays: 28, bidPeriodStart: START[month], lines, openPairings };
 }
 
-const busy = (t: Trip) => {
-  const start = DateTime.fromISO(`${START.DEC26}T08:00`, { zone: ZONE }).plus({ days: t.startDayIndex! }).toMillis();
-  const span = { start, end: start + t.tafbHours * HOUR };
-  return { label: `trip ${t.pairingNumber}`, span, duties: [span], dutiesKnown: true, international: false, tafbHours: t.tafbHours, allDeadheadFirst: false };
-};
+const busy = (t: Trip): Busy => busyFromTrip(t, pack([], []))!;
 
 describe("fitCheck: can it go on the schedule", () => {
   const p = pack([], []);
   it("an overlap rules it out", () => {
     expect(fitCheck(trip("2", 5), [busy(trip("1", 5))], [], p).illegal[0]).toContain("overlaps trip 1");
   });
-  it("CBA 2026 12.C.6.a: under 9:30 of domestic rest from December 2026 rules it out", () => {
-    const earlier = busy(trip("1", 4, { tafb: 14 }));
-    expect(fitCheck(trip("2", 5), [earlier], [], p).illegal).toEqual([]);
-    const close = busy(trip("1", 4, { tafb: 15.5 }));
-    expect(fitCheck(trip("2", 5), [close], [], p).illegal[0]).toContain("12.C.6.a");
+  it("CBA 2026 12.C.6.a: 9:30 of domestic rest from December 2026 is two separate duties", () => {
+    const f = fitCheck(trip("2", 5), [busy(trip("1", 4, { tafb: 14.5 }))], [], p);
+    expect(f.illegal).toEqual([]);
+    expect(f.check).toEqual([]);
   });
-  it("CBA 2026 12.D.7: an international trip needs 12 hours", () => {
+  it("CBA 2026 12.C.4.e: under the rest it's one duty, legal up to the two-trip limit, and flagged", () => {
+    const f = fitCheck(trip("2", 5, { tafb: 3 }), [busy(trip("1", 4, { tafb: 6, report: "2300" }))], [], p);
+    expect(f.illegal).toEqual([]);
+    expect(f.check.join()).toContain("hub turns");
+  });
+  it("CBA 2026 12.C.4.e: past 13:30 as one duty it's out", () => {
+    const f = fitCheck(trip("2", 5, { tafb: 8 }), [busy(trip("1", 4, { tafb: 7, report: "2300" }))], [], p);
+    expect(f.illegal.join()).toContain("12.C.4.e");
+  });
+  it("CBA 2026 12.C.4.j: under 1:30 between block-in and block-out it's out", () => {
+    const f = fitCheck(trip("2", 5), [busy(trip("1", 4, { tafb: 23.8 }))], [], p);
+    expect(f.illegal.join()).toContain("12.C.4.j");
+  });
+  it("two-trip limits: 13:30 day, 13 night, 9 critical", () => {
+    expect(twoTripDutyLimitHours(600)).toBe(13.5);
+    expect(twoTripDutyLimitHours(1200)).toBe(13);
+    expect(twoTripDutyLimitHours(120)).toBe(9);
+  });
+  it("CBA 2026 12.D.7: an international duty needs 12 hours", () => {
     const t = trip("2", 5, { airports: ["MEM", "HKG"] });
-    const close = busy(trip("1", 4, { tafb: 13 }));
-    expect(fitCheck(t, [close], [], p).illegal[0]).toContain("12.D.7");
+    expect(fitCheck(t, [busy(trip("1", 4, { tafb: 13 }))], [], p).illegal[0]).toContain("12.D.7");
+  });
+  it("CBA 2026 12.D.7.c: 17 hours after an international duty over 12 on duty", () => {
+    const long = busy(trip("1", 3, { airports: ["MEM", "HKG"], tafb: 34 }));
+    expect(fitCheck(trip("2", 5), [long], [], p).illegal.join()).toContain("12.D.7.c");
+  });
+  it("CBA 2026 12.C.6.b: 13 hours after over 8 domestic block is out; 13 to 17 is a question", () => {
+    const heavy = (tafb: number): Busy => ({ ...busy(trip("1", 4, { tafb })), lastDutyBlockHours: 9 });
+    expect(fitCheck(trip("2", 5), [heavy(12)], [], p).illegal.join()).toContain("12.C.6.b");
+    expect(fitCheck(trip("2", 5), [heavy(9)], [], p).check.join()).toContain("exception pairing");
+  });
+  it("CBA 2026 25.L.1.d: an R-day wants 12 hours, not a domestic rest", () => {
+    const r = busyFromCarry({ kind: "rdays", id: "r", label: "Your R-days", firstDay: "2026-12-03", days: 1, rp: "A" }, ZONE)!;
+    // RP-A ends 13:30 on day 3; a report at 08:00 on day 4 is 18:30 later, and at 23:30 on day 3 only 10.
+    expect(fitCheck(trip("2", 4), [r], [], p).illegal).toEqual([]);
+    expect(fitCheck({ ...trip("2", 3), schedule: trip("2", 3).schedule.map((d) => ({ ...d, reportTimeLocal: "2330" })) }, [r], [], p).illegal.join()).toContain("25.L.1.d");
   });
   it("CBA 2026 7.A.3: nothing during vacation", () => {
     const start = DateTime.fromISO(`${START.DEC26}T01:30`, { zone: ZONE }).plus({ days: 4 });
     const v: VacationPeriod = { from: start.toUTC().toISO()!, to: start.plus({ days: 7 }).toUTC().toISO()!, days: 7 };
     expect(fitCheck(trip("2", 5), [], [v], p).illegal[0]).toContain("7.A.3");
   });
-  it("CBA 2026 12.C.1.b: past 144 hours with no 24 hours off rules it out; 120 to 144 only flags (question 21)", () => {
+  it("CBA 2026 7.G.1: a vacation inside a long international trip's buffer is flagged", () => {
+    const t = trip("2", 1, { airports: ["MEM", "HKG"], tafb: 130 });
+    const start = DateTime.fromISO(`${START.DEC26}T08:00`, { zone: ZONE }).plus({ days: 1 }).plus({ hours: 140 });
+    const v: VacationPeriod = { from: start.toUTC().toISO()!, to: start.plus({ days: 7 }).toUTC().toISO()!, days: 7 };
+    expect(fitCheck(t, [], [v], p).check.join()).toContain("48-hour international buffer");
+  });
+  it("CBA 2026 12.C.1.b: past 144 hours with no 24 hours off rules it out; the October lines reach 144 and never pass it", () => {
     const run = [0, 1, 2, 3, 4, 5].map((d) => busy(trip(String(d), d, { tafb: 10 })));
     expect(fitCheck(trip("9", 6, { tafb: 10 }), run, [], p).illegal.join()).toContain("12.C.1.b");
-    const shorter = [0, 1, 2, 3].map((d) => busy(trip(String(d), d, { tafb: 10 })));
-    const f = fitCheck(trip("9", 5, { tafb: 10 }), [...shorter, busy(trip("4", 4, { tafb: 10 }))], [], p);
+    const shorter = [0, 1, 2, 3, 4].map((d) => busy(trip(String(d), d, { tafb: 10 })));
+    const f = fitCheck(trip("9", 5, { tafb: 10 }), shorter, [], p);
     expect(f.illegal).toEqual([]);
-    expect(f.check.join()).toContain("1-in-7");
+    expect(f.check.join()).not.toContain("1-in-7");
   });
   it("CBA 2026 12.D.1.d: buffers only flag on a make-up trip (question 27)", () => {
     const t = trip("2", 5, { airports: ["MEM", "HKG"], tafb: 130 });

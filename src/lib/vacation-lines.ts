@@ -3,7 +3,7 @@ import { carriedDaysOf, dayIndices, flyPack, lineAsFlown, withPrintedLines, type
 import { deriveSeniorityInput } from "@/lib/seniority-derive";
 import { placeInPack } from "@/lib/strategy-engine";
 import { tripReportUtc } from "@/lib/trip-anchor";
-import { CH_PER_VACATION_DAY, chargedToBank, vacationRemovals, type RemovedTrip } from "@/lib/vacation-slide";
+import { CH_PER_VACATION_DAY, chargedToBank, monthReachEnd, vacationRemovals, vacationSpan, type RemovedTrip } from "@/lib/vacation-slide";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
@@ -50,8 +50,6 @@ export interface VacationLine {
   reason: string | null;
 }
 
-const spanOf = (v: VacationPeriod): Span => ({ start: Date.parse(v.from), end: Date.parse(v.to) });
-
 const name = (t: Trip) => (t.pairingNumber ? `trip ${t.pairingNumber}` : "a trip");
 
 /** One line with the pilot's vacations on it. `carriedDays`: days a carry-in is still flying, which a vacation can't make free here. */
@@ -67,7 +65,7 @@ export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenV
   const removed: RemovedTrip[] = [];
   let keepFlyingCH = 0;
   for (const { vacation, choice } of active) {
-    const hit = vacationRemovals(flown, pack, spanOf(vacation), { slid: false });
+    const hit = vacationRemovals(flown, pack, vacationSpan(vacation), { slid: false });
     removed.push(...hit);
     if (choice === "keep-flying") keepFlyingCH += chargedToBank(hit);
     flown = lineAsFlown(flown, pack, hit.map((r) => r.trip), spans, carriedDays, { creditPaid: choice === "use", alsoOff: daysOf(vacation, pack) });
@@ -92,7 +90,7 @@ export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenV
 }
 
 function daysOf(v: VacationPeriod, pack: BidPack): Set<number> {
-  return new Set(dayIndices(spanOf(v), pack));
+  return new Set(dayIndices(vacationSpan(v), pack));
 }
 
 /** The whole pack with the pilot's vacations on it, and what happened to each line (by line id). The same pack back when nothing's in play. */
@@ -123,12 +121,15 @@ export function rankedAsFlown<T extends { line: Line; score: number }>(scored: T
   return printed.map((s) => ({ ...s, score: Math.round(s.score * (1 - lossOf(s)) * 10) / 10 })).sort((a, b) => b.score - a.score);
 }
 
-/** Whether a vacation can touch this bid month: in it, or close enough that a trip's buffer reaches it (CBA 2026 12.D.1.d, 48 hours after a trip and 24 before). */
-function touchesMonth(v: VacationPeriod, pack: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays">): boolean {
-  if (!pack.bidPeriodStart) return false;
-  const start = Date.parse(`${pack.bidPeriodStart}T00:00:00Z`);
-  const end = start + pack.bidPeriodDays * 86_400_000;
-  return Date.parse(v.from) - 48 * 3_600_000 < end && Date.parse(v.to) + 24 * 3_600_000 > start;
+/**
+ * Whether a vacation can touch this bid month's trips: during them, or close enough that a trip's buffer reaches it (CBA 2026
+ * 12.D.1.d, 48 hours after a trip and 24 before). A trip carrying into next month can run into next month's vacation, and
+ * 7.G.1 takes it off all the same.
+ */
+function touchesMonth(v: VacationPeriod, pack: BidPack): boolean {
+  const reach = monthReachEnd(pack);
+  if (reach === null || !pack.bidPeriodStart) return false;
+  return Date.parse(v.from) - 48 * 3_600_000 < reach && Date.parse(v.to) + 24 * 3_600_000 > Date.parse(`${pack.bidPeriodStart}T00:00:00Z`);
 }
 
 export interface PilotVacations {

@@ -3,6 +3,9 @@ import {
   NO_ELECTIONS,
   baseDayStartMinutes,
   dayIndices,
+  dutyIsInternational,
+  scheduledDutyLimitHours,
+  tripBaseSpans,
   flownUnderInternationalRules,
   flyLine,
   flyPack,
@@ -210,21 +213,52 @@ describe("flyLine: a conflict drops the new trip (CBA 2026 25.F.3, 25.F.5)", () 
     expect(f.kept).toEqual([]);
   });
 
-  it("12.C.6.a: from December 2026 under 9:30 of domestic rest is a conflict", () => {
-    expect(fly(dec, [carryEndingBefore(dec, 9.25)]).dropped[0]?.findings[0].rule).toBe("rest");
-    expect(fly(dec, [carryEndingBefore(dec, 9.5)]).dropped).toEqual([]);
+  it("12.C.6.a: from December 2026 under 9:30 of domestic rest is a question, not a drop: it could be one duty (12.C.4.e, 25.F.2)", () => {
+    const under = fly(dec, [carryEndingBefore(dec, 9.25)]);
+    expect(under.dropped).toEqual([]);
+    expect(under.kept[0]).toMatchObject({ rule: "rest", certainty: "check" });
+    expect(under.reason).toContain("legal only as one duty");
+    expect(fly(dec, [carryEndingBefore(dec, 9.5)]).kept).toEqual([]);
   });
 
-  it("12.C.6.a: before December 2026 the same 9:15 of rest is legal", () => {
+  it("12.C.6.a: before December 2026 the same 9:15 of rest needs no question", () => {
     const nov = pack([line([trip("213", 0)])], "NOV26");
-    expect(fly(nov, [carryEndingBefore(nov, 9.25)]).dropped).toEqual([]);
-    expect(fly(nov, [carryEndingBefore(nov, 8.75)]).dropped[0]?.findings[0].rule).toBe("rest");
+    expect(fly(nov, [carryEndingBefore(nov, 9.25)]).kept).toEqual([]);
+    expect(fly(nov, [carryEndingBefore(nov, 8.75)]).kept[0]?.rule).toBe("rest");
   });
 
   it("12.C.6.a: an all-deadhead next duty needs only 8:30 from December 2026", () => {
     const p = pack([line([trip("213", 0, { deadhead: true })])]);
-    expect(fly(p, [carryEndingBefore(p, 8.75)]).dropped).toEqual([]);
-    expect(fly(p, [carryEndingBefore(p, 8.25)]).dropped[0]?.findings[0].rule).toBe("rest");
+    expect(fly(p, [carryEndingBefore(p, 8.75)]).kept).toEqual([]);
+    expect(fly(p, [carryEndingBefore(p, 8.25)]).kept[0]?.rule).toBe("rest");
+  });
+
+  it("25.F.2, 12.C.4: a carry-in whose duties we know is fine as one duty inside the limit", () => {
+    const p = pack([line([trip("213", 0, { tafb: 3 })])]);
+    const release = DateTime.fromISO(`${p.bidPeriodStart}T08:00`, { zone: ZONE }).minus({ hours: 2 });
+    const duty = { start: release.minus({ hours: 3 }).toUTC().toISO()!, end: release.toUTC().toISO()! };
+    const carry: CarryInTrip = { kind: "trip", id: "c", label: "Trip 900", report: duty.start, release: duty.end, international: false, duties: [duty] };
+    expect(fly(p, [carry])).toMatchObject({ dropped: [], kept: [] });
+  });
+
+  it("25.F.2, 12.C.4: past the longest limit as one duty it's a clear drop, even typed in", () => {
+    const p = pack([line([trip("213", 0, { tafb: 17 })])]);
+    expect(fly(p, [carryEndingBefore(p, 2)]).dropped[0]?.findings[0].rule).toBe("rest");
+  });
+
+  it("12.D.7.c: a known long international last duty needs 17 hours", () => {
+    const p = pack([line([trip("213", 0)])]);
+    const release = DateTime.fromISO(`${p.bidPeriodStart}T08:00`, { zone: ZONE }).minus({ hours: 13 });
+    const duty = { start: release.minus({ hours: 14 }).toUTC().toISO()!, end: release.toUTC().toISO()! };
+    const carry: CarryInTrip = { kind: "trip", id: "c", label: "Trip 900", report: duty.start, release: duty.end, international: true, duties: [duty], lastDutyBlockHours: 9 };
+    expect(fly(p, [carry]).dropped[0]?.findings[0].section).toContain("12.D.7.c");
+  });
+
+  it("12.D.7.c: typed in, its last duty isn't known, so it's a question", () => {
+    const p = pack([line([trip("213", 0)])]);
+    const f = fly(p, [carryEndingBefore(p, 13, { international: true })]);
+    expect(f.dropped).toEqual([]);
+    expect(f.kept[0].section).toContain("12.D.7.c");
   });
 
   it("12.D.7.a, b: an international duty needs 12 hours before it, whichever side is international", () => {
@@ -377,12 +411,11 @@ describe("1-in-7 across the month change (CBA 2026 12.C.1.b, 12.D.1.i)", () => {
     expect(f.dropped[0]?.findings.map((x) => x.rule)).toContain("one-in-7");
     expect(f.dropped[0]?.findings[0].certainty).toBe("clear");
   });
-  it("between 120 and 144 hours is a question, not a drop (question 21)", () => {
+  it("between 120 and 144 hours is fine: the October lines reach 144 and never pass it (question 21)", () => {
     const p = pack([line([trip("213", 0, { duties: [10, 10], rest: 14 })])]);
     const f = fly(p, [knownCarry(p)]);
     expect(f.dropped).toEqual([]);
-    expect(f.kept.map((x) => x.rule)).toContain("one-in-7");
-    expect(f.kept.find((x) => x.rule === "one-in-7")?.certainty).toBe("check");
+    expect(f.kept.map((x) => x.rule)).not.toContain("one-in-7");
   });
   it("a 24-hour layover inside the new trip is the relief", () => {
     const p = pack([line([trip("213", 0, { duties: [10, 10, 10], rest: 30 })])]);
@@ -425,6 +458,37 @@ describe("1-in-10 across the month change (CBA 2026 12.C.1.c, 25.E.1.d)", () => 
   });
 });
 
+describe("duty-level rules (CBA 2026 12.D.1.a, 12.C.4)", () => {
+  it("12.D.1.a: an Asian trip's last leg into Canada or the 48 from outside is an international duty", () => {
+    const t = trip("1", 0, { airports: ["YVR", "MEM"] });
+    expect(dutyIsInternational({ ...t, schedule: [...trip("2", 0, { airports: ["MEM", "HKG"] }).schedule, ...t.schedule] }, t.schedule[0])).toBe(true);
+  });
+  it("12.D.1.a: a duty inside the 48 isn't, on any trip", () => {
+    const home = trip("1", 0, { airports: ["IND", "MEM"] });
+    expect(dutyIsInternational({ ...home, schedule: [...trip("2", 0, { airports: ["MEM", "HKG"] }).schedule, ...home.schedule] }, home.schedule[0])).toBe(false);
+  });
+  it("12.C.4.a-d: 13 day, 11:30 night, 9 critical, with the blends", () => {
+    expect(scheduledDutyLimitHours(600)).toBe(13);
+    expect(scheduledDutyLimitHours(1200)).toBe(11.5);
+    expect(scheduledDutyLimitHours(120)).toBe(9);
+    expect(scheduledDutyLimitHours(315)).toBe(12);
+    expect(scheduledDutyLimitHours(960)).toBe(12.25);
+    expect(scheduledDutyLimitHours(1425)).toBe(10.25);
+    expect(scheduledDutyLimitHours(30)).toBe(9.5);
+  });
+  it("12.C.1.c: 24 hours at base inside a trip is relief", () => {
+    const t = trip("1", 0, { airports: ["MEM", "MEM"], duties: [10, 10], rest: 30 });
+    t.schedule[0].layover!.city = "MEM";
+    expect(tripBaseSpans(t, 0, "MEM")).toHaveLength(2);
+    expect(tripBaseSpans(t, 0, "IND")).toHaveLength(1);
+  });
+  it("12.D.1.d.i: before December 2026 the 24-hour buffer has no domestic-parameters exception (Phase 2)", () => {
+    const t = (m: "NOV26" | "DEC26") => pack([line([trip("300", 0, { tafb: 130, airports: ["MEM", "YYZ"] })])], m);
+    expect(fly(t("NOV26"), [carryEndingBefore(t("NOV26"), 20)]).dropped[0]?.findings[0].rule).toBe("buffer-before");
+    expect(fly(t("DEC26"), [carryEndingBefore(t("DEC26"), 20)]).dropped).toEqual([]);
+  });
+});
+
 describe("25.F.3.a: drop the carryover instead (every bid period)", () => {
   it("advises it when a new trip over 120 hours TAFB collides with a carryover under 72", () => {
     const p = pack([line([trip("300", 0, { tafb: 130 }), trip("214", 15)])]);
@@ -439,6 +503,12 @@ describe("25.F.3.a: drop the carryover instead (every bid period)", () => {
   it("doesn't when the new trip is 120 hours or under", () => {
     const p = pack([line([trip("300", 0, { tafb: 120 })])]);
     expect(fly(p, [carryEndingBefore(p, -2, { tafb: 48 })]).advice.join(" ")).not.toContain("25.F.3.a");
+  });
+  it("names only the carry-in in the way, \"to avoid a phase-in conflict\"", () => {
+    const p = pack([line([trip("300", 0, { tafb: 130 })])]);
+    const inWay = carryEndingBefore(p, -2, { tafb: 80, id: "a", label: "Trip 901" });
+    const earlier = carryEndingBefore(p, 200, { tafb: 48, id: "b", label: "Trip 902" });
+    expect(fly(p, [earlier, inWay]).advice.join(" ")).not.toContain("Trip 902");
   });
   it("counts a carried-in R-day block under 3 days", () => {
     const p = pack([line([trip("300", 0, { tafb: 130 })])]);

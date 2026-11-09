@@ -204,13 +204,21 @@ describe('CBA 2026 25.L.1.d: "prohibited if it would create a conflict", on the 
     expect(only(board(p, rowFor(clash, p), { line: l }))).toMatchObject({ verdict: "no" });
   });
 
-  it("short rest rules it out, on the bid period's number", () => {
-    // 30 hours of TAFB from 0800 ends 1400 next day; a 2200 show is 8 hours later: under 9:30 and under 9.
-    const close = trip("213", 11, { report: "2200", tafb: 10 });
+  it("under the legal rest, CBA 2026 12.C.4.e: too long as one duty with the trip before it rules it out", () => {
+    // 30 hours of TAFB from 0800 ends 1400 next day; a 1500 show is under any rest, so the two would have to be one duty.
+    const close = trip("213", 11, { report: "1500", tafb: 10 });
     const p = pack([l], [close]);
     const t = only(board(p, rowFor(close, p), { line: l }));
     expect(t.verdict).toBe("no");
-    expect(t.findings.find((f) => f.level === "no")?.text).toContain("12.C.6.a");
+    expect(t.findings.find((f) => f.level === "no")?.text).toContain("12.C.4");
+  });
+
+  it("under the legal rest with 4 hours on the ground, it's a question: a day room can lift the limit (CBA 2026 12.C.4.d.iv)", () => {
+    const close = trip("213", 11, { report: "2200", tafb: 10 });
+    const p = pack([l], [close]);
+    const t = only(board(p, rowFor(close, p), { line: l }));
+    expect(t.verdict).toBe("check");
+    expect(t.findings.find((f) => f.level === "check")?.text).toContain("12.C.4.d.iv");
   });
 
   it("a clear trip passes", () => {

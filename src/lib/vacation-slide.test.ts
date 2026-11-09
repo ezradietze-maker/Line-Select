@@ -149,6 +149,42 @@ describe("vacationRemovals (CBA 2026 7.G.1, 7.E.2.c, 12.D.1.d)", () => {
   });
 });
 
+describe("corrections from the contract review", () => {
+  it("7.E.2.b: this window can slide next month's vacation onto a trip carrying over, and only that", () => {
+    const carrying = line([trip("1", 26, { tafb: 140 })]);
+    const p = pack([carrying], "DEC26");
+    const jan = (() => {
+      const from = DateTime.fromISO("2027-01-01T01:30", { zone: ZONE });
+      return { from: from.toUTC().toISO()!, to: from.plus({ days: 7 }).minus({ minutes: 1 }).toUTC().toISO()!, days: 7 };
+    })();
+    expect(slideChecks(jan, p).find((c) => c.offset === -1)?.carryoverOnly).toBe(true);
+    expect(vacationsInReach([jan], p)).toHaveLength(1);
+    const found = findVacationSlides({ pack: p, order: ["1001"], vacation: jan });
+    expect(found.across.every((a) => a.offset === 0 || a.helps >= 0)).toBe(true);
+    const none = line([trip("1", 3)]);
+    const f2 = findVacationSlides({ pack: pack([none], "DEC26"), order: ["1001"], vacation: jan });
+    expect(f2.lines[0].best).toEqual([]);
+  });
+  it("7.E.2.c applies to a slide, not an expansion", () => {
+    const span = { start: Date.parse(vac(10).from), end: Date.parse(vac(10).to) };
+    const t = trip("1", 8, { airports: ["MEM", "HKG"], tafb: 20 });
+    expect(vacationRemovals(line([t]), pack([]), span, { slid: false })).toEqual([]);
+  });
+  it("7.E.2.c: last activity an international duty, though the leg ends inside the 48", () => {
+    const t = trip("1", 8, { airports: ["YVR", "MEM"], tafb: 20 });
+    const asia = { ...t, schedule: [...trip("2", 8, { airports: ["MEM", "HKG"], tafb: 1 }).schedule, ...t.schedule] };
+    const span = { start: Date.parse(vac(10).from), end: Date.parse(vac(10).to) };
+    expect(vacationRemovals(line([asia]), pack([]), span, { slid: true }).map((r) => r.rule)).toEqual(["after-international"]);
+  });
+  it("7.E.3.d: an expansion can't reach a trip on New Year's Eve, even when it ends past the month", () => {
+    const start = DateTime.fromISO(START.DEC26);
+    const end = DateTime.fromISO("2026-12-27").diff(start, "days").days;
+    const l = line([trip("1", end, { credit: 12, tafb: 130 })]);
+    const f = findVacationSlides({ pack: pack([l], "DEC26"), order: ["1001"], vacation: vac(end - 9, 7, "DEC26") });
+    expect(f.lines[0].best.some((o) => o.expandAfter > 0)).toBe(false);
+  });
+});
+
 describe("findVacationSlides", () => {
   const model = (metric: string): PilotModel => ({ criteria: [{ id: "c", label: "x", metric, weight: 1, shape: { kind: "more" }, tier: "major", confidence: 1 }] }) as unknown as PilotModel;
   const a = line([trip("1", 5, { credit: 15 }), trip("2", 16, { credit: 25 })], "1001");
