@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { LiveFeedNotWiredError, fetchLiveOpenTime, snapshotFromLive, stubFedexClient } from "@/lib/fedex-connect/fedex-client";
-import { liveOpenTimeSource } from "@/lib/fedex-connect/live-source";
+import { LiveFeedNotWiredError, readLoggedInList, stubFedexScanner } from "@/lib/fedex-connect/fedex-client";
+import { liveOpenTimeSource, snapshotFromLive } from "@/lib/fedex-connect/live-source";
 import { parseOpenTimePaste } from "@/lib/open-time/parse";
 
 const ref = { userId: "u1", handle: "h1" };
 const LIST = ["213 14OCT", "Trip 37 Oct 15 CH 12.5", "9999 12/31"].join("\n");
 
-describe("live source", () => {
+describe("live open-time source", () => {
   it("reads fixture text into the same rows the paste parser would produce", async () => {
     const snap = await liveOpenTimeSource({ ref, fixture: LIST }).read();
     const viaPaste = parseOpenTimePaste(LIST);
@@ -15,13 +15,14 @@ describe("live source", () => {
     expect(snap.source).toBe("fixture");
   });
 
-  it("stub throws LiveFeedNotWiredError when asked to read live (no fixture)", async () => {
-    await expect(fetchLiveOpenTime(ref)).rejects.toBeInstanceOf(LiveFeedNotWiredError);
-    await expect(stubFedexClient.fetchLiveOpenTime(ref)).rejects.toBeInstanceOf(LiveFeedNotWiredError);
+  it("stub scanner throws LiveFeedNotWiredError when asked to read live (no fixture), on either screen", async () => {
+    await expect(readLoggedInList(ref, "open-time")).rejects.toBeInstanceOf(LiveFeedNotWiredError);
+    await expect(readLoggedInList(ref, "view-add-makeup")).rejects.toBeInstanceOf(LiveFeedNotWiredError);
+    await expect(stubFedexScanner.readList(ref, "open-time")).rejects.toBeInstanceOf(LiveFeedNotWiredError);
   });
 
   it("labels a wired live response 'live'", () => {
-    const snap = snapshotFromLive({ origin: "live", readAt: 1, text: LIST });
+    const snap = snapshotFromLive({ screen: "open-time", origin: "live", readAt: 1, text: LIST });
     expect(snap.source).toBe("live");
   });
 });

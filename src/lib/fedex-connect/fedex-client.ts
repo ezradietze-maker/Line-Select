@@ -3,11 +3,11 @@
  *  THE ONE HARD BLOCKER — READ THIS BEFORE TOUCHING THIS FILE.
  * ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  *
- * This is the ONLY place a real FedEx request will ever be made. Right now it makes NONE. `fetchLiveOpenTime` is a STUB.
+ * This is the ONLY place a real FedEx request will ever be made. Right now it makes NONE. `readLoggedInList` is a STUB.
  *
  * Nobody on this project has FedEx access, and Claude cannot and must not sign in to FedEx or enter any credentials. So
  * the real request/response details are UNKNOWN:
- *   - the actual VIPS / CrewNAV endpoints and their response shapes,
+ *   - the actual VIPS / CrewNAV endpoints and their response shapes (open time AND the View/Add make-up screen),
  *   - the size of the per-pilot daily open-time quota,
  *   - how long a FedEx session lasts, and whether a session even works from a server's address.
  *
@@ -17,13 +17,13 @@
  *   - hard-code endpoints you guessed. Endpoints get filled in from a real pilot's own captured traffic (phase 1),
  *     scrubbed of session tokens and other pilots' names, stored only in `private/`.
  *
- * When this is wired in a later discovery session, the real calls go BELOW the marked line, behind the same typed
- * interface, respecting the poller's quota/back-off (see `poller.ts`) and the five hard limits in `types.ts`.
+ * One scanner, two screens. Open Time and View/Add both read the SAME kind of thing — a list of open trips on a
+ * logged-in VIPS page — so there is ONE "read a logged-in list page" capability here (`readLoggedInList`), told which
+ * screen to read. There is no second scanner. When this is wired in a later discovery session, the real calls go BELOW
+ * the marked line, behind the same typed interface, respecting the poller's quota/back-off (see `poller.ts`) and the
+ * five hard limits in `types.ts`.
  * ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  */
-
-import type { OpenTimeSnapshot } from "@/lib/open-time/source";
-import { parseOpenTimePaste } from "@/lib/open-time/parse";
 
 /**
  * FedEx's own pilot sign-in page (PurpleID on Okta). Opening this is the PILOT'S OWN browser action — their click opens
@@ -32,6 +32,15 @@ import { parseOpenTimePaste } from "@/lib/open-time/parse";
  * the pilot clicks, and only shown once the live feed is actually wired.
  */
 export const FEDEX_SIGN_IN_URL = "https://pilot.fedex.com/";
+
+/**
+ * Which logged-in VIPS list page to read. Both produce the same kind of list (open trips, one per line), read by the
+ * same parser the pasted list uses — only the screen differs.
+ *   - "open-time":       the Open Time screen (CBA 2026 25.L / 25.G), used all month to pick up / trade / drop one trip.
+ *   - "view-add-makeup": the View/Add make-up input screen (CBA 2026 25.E.4), used during the View/Add window to win
+ *     back phase-in or vacation make-up hours.
+ */
+export type VipsListScreen = "open-time" | "view-add-makeup";
 
 /**
  * An opaque handle to a pilot's live FedEx session. NEVER the password. With a device-extension (method A) this is
@@ -45,16 +54,18 @@ export interface FedexSessionRef {
 }
 
 /**
- * The raw result of reading open time from FedEx. Its true shape is UNKNOWN (VIPS may render HTML, text, or something
- * else) and is settled in phase 1. For now it carries the list as text, which flows through the SAME parser the pasted
- * list uses — so a live list scores and reads exactly like a pasted one. Structured fields are optional and additive.
+ * The raw result of reading one logged-in list page from FedEx. Its true shape is UNKNOWN (VIPS may render HTML, text,
+ * or something else) and is settled in phase 1. For now it carries the list as text, which flows through the SAME parser
+ * the pasted list uses — so a live list reads exactly like a pasted one on either screen.
  */
-export interface LiveOpenTimeResponse {
+export interface LiveListResponse {
+  /** Which screen this was read from. */
+  screen: VipsListScreen;
   /** "fixture" today; "live" once wired. */
   origin: "fixture" | "live";
   /** When FedEx's data was true (epoch ms). */
   readAt: number;
-  /** The open-time list as text, read by the existing parser. The live wiring fills this from the real response. */
+  /** The list as text, read by the existing parser. The live wiring fills this from the real response. */
   text: string;
 }
 
@@ -66,39 +77,37 @@ export class LiveFeedNotWiredError extends Error {
   }
 }
 
-/** The injected interface the poller and live source depend on, so wiring the real client never changes their code. */
-export interface FedexClient {
-  fetchLiveOpenTime(ref: FedexSessionRef): Promise<LiveOpenTimeResponse>;
+/** The injected interface the live sources depend on, so wiring the real scanner never changes their code. One scanner, both screens. */
+export interface FedexScanner {
+  readList(ref: FedexSessionRef, screen: VipsListScreen): Promise<LiveListResponse>;
 }
 
 /**
- * STUB. Returns fixture text for dev, or throws when asked to go live. The real implementation replaces the body below
- * the marked line in a later discovery session — behind this exact signature.
+ * STUB. Reads one logged-in VIPS list page. Returns fixture text for dev, or throws when asked to go live. The real
+ * implementation replaces the body below the marked line in a later discovery session — behind this exact signature,
+ * for BOTH screens.
  *
  * @param ref       the pilot's session handle (never a password).
- * @param fixture   dev-only open-time text to return instead of calling FedEx. Supplied by `lib/fedex-connect/fixtures.ts`.
+ * @param screen    which list page to read (open time, or the View/Add make-up screen).
+ * @param fixture   dev-only list text to return instead of calling FedEx. Supplied by `lib/fedex-connect/fixtures.ts`.
  */
-export async function fetchLiveOpenTime(ref: FedexSessionRef, fixture?: string): Promise<LiveOpenTimeResponse> {
+export async function readLoggedInList(ref: FedexSessionRef, screen: VipsListScreen, fixture?: string): Promise<LiveListResponse> {
   void ref; // the session handle is unused until the real calls exist.
 
   if (fixture !== undefined) {
-    return { origin: "fixture", readAt: Date.now(), text: fixture };
+    return { screen, origin: "fixture", readAt: Date.now(), text: fixture };
   }
 
   // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   //  REAL FEDEX CALLS GO BELOW THIS LINE — and only after phase-1 discovery with a current pilot. Nothing here yet.
-  //  Whatever lands here must: honour the poller's quota and back-off, never retry past the quota, decrypt the session
-  //  via `lib/server/fedex-session.ts` (never log it), and never send a credential. Until then, we throw.
+  //  One place reads both screens: switch on `screen` to hit the right VIPS page. Whatever lands here must honour the
+  //  poller's quota and back-off, never retry past the quota, decrypt the session via `lib/server/fedex-session.ts`
+  //  (never log it), and never send a credential. Until then, we throw.
   // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   throw new LiveFeedNotWiredError();
 }
 
-/** Turn a raw live response into the snapshot the open-time engine reads — the same parser the paste uses, so same results. */
-export function snapshotFromLive(response: LiveOpenTimeResponse): OpenTimeSnapshot {
-  return { source: response.origin === "live" ? "live" : "fixture", readAt: response.readAt, ...parseOpenTimePaste(response.text) };
-}
-
-/** The default client used across the app: the stub. Swapped for the real one, behind `FedexClient`, after discovery. */
-export const stubFedexClient: FedexClient = {
-  fetchLiveOpenTime: (ref) => fetchLiveOpenTime(ref),
+/** The default scanner used across the app: the stub. Swapped for the real one, behind `FedexScanner`, after discovery. */
+export const stubFedexScanner: FedexScanner = {
+  readList: (ref, screen) => readLoggedInList(ref, screen),
 };

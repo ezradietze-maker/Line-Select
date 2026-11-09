@@ -17,7 +17,16 @@ import type { AuditEntry } from "@/lib/fedex-connect/types";
  * session with a current pilot), so the panel shows "coming soon / needs setup" and reads nothing from FedEx. A truthful
  * consent screen and a big Disconnect control, as the plan requires.
  */
-export function ConnectFedexPanel({ signedIn }: { signedIn: boolean }) {
+interface ConnectFedexPanelProps {
+  signedIn: boolean;
+  /**
+   * What this screen would read, in the pilot's words, for the panel's one-line description and the coming-soon notice.
+   * The connection itself is one per pilot and serves every screen; only the wording differs. Defaults to open time.
+   */
+  reads?: string;
+}
+
+export function ConnectFedexPanel({ signedIn, reads = "your open time" }: ConnectFedexPanelProps) {
   const { connection, loading, busy, error, acceptConsent, disconnect } = useFedexConnection(signedIn);
   const [showConsent, setShowConsent] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -41,8 +50,8 @@ export function ConnectFedexPanel({ signedIn }: { signedIn: boolean }) {
         <div className="min-w-0">
           <h2 className="text-sm font-medium text-ink">Connect FedEx for live updates</h2>
           <p className="mt-1 text-xs text-ink-muted">
-            Read your open time straight from FedEx and score it for you, instead of pasting the list. You sign in on
-            FedEx&rsquo;s own page &mdash; we never see your password.
+            Read {reads} straight from FedEx, instead of pasting the list. You sign in on FedEx&rsquo;s own page &mdash;
+            we never see your password. One connection serves Open Time and View/Add both.
           </p>
         </div>
         {!connected && signedIn && (
@@ -57,8 +66,8 @@ export function ConnectFedexPanel({ signedIn }: { signedIn: boolean }) {
         <span className="block font-medium text-ink">Coming soon &mdash; still being set up.</span>
         <span className="mt-1 block text-xs">
           The live FedEx feed isn&rsquo;t switched on yet. It needs a setup step with a current pilot before it can read
-          anything. You can accept the terms now, but no open time is read from FedEx until this is finished. For now,
-          paste your list above.
+          anything. You can accept the terms now, but nothing is read from FedEx until this is finished. For now, paste
+          your list above.
         </span>
       </Notice>
 
