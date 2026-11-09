@@ -377,6 +377,22 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
+        <Section title="13a. If you connect your FedEx account (optional, and not enabled yet)">
+          <p>
+            We are building an optional feature that would let you connect your own FedEx pilot account so the Service can
+            read your open time, and later your own schedule, and score it for you. It is{" "}
+            <span className="font-medium text-ink">not enabled</span> as of the date above, so today nothing described here
+            happens. If you choose to turn it on once it exists: you sign in on FedEx&rsquo;s own page, and{" "}
+            <span className="font-medium text-ink">we never see or store your FedEx password</span>. If any session needed
+            to keep the connection is ever held on our side, it is encrypted at rest, kept out of our logs, isolated from
+            the rest of the Service, and deleted when you disconnect or when it expires &mdash; and with a device-based
+            option it stays on your device and we hold nothing. We read only your open time and your own schedule, we never
+            store another pilot&rsquo;s name beyond showing it on your own trip, and you can see a log of every time your
+            connection was used. FedEx has not approved this feature; connecting is your choice and at your own risk, and
+            you can disconnect at any time to delete what is held for it.
+          </p>
+        </Section>
+
         <Section title="14. What we don’t do">
           <ul className="list-disc space-y-1.5 pl-5">
             <li>We don&rsquo;t sell or rent your personal information to anyone.</li>

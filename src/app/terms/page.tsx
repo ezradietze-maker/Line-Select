@@ -59,6 +59,25 @@ export default function TermsPage() {
           </p>
         </Section>
 
+        <Section title="2a. Connecting your FedEx account (optional, and not enabled yet)">
+          <p>
+            We are building an optional feature that would let you connect your own FedEx pilot account so the Service can
+            read your open time (and later your own schedule) and score it for you, instead of you pasting the list. This
+            feature is <span className="font-medium text-ink">not enabled</span> as of the date above, and until it is, the
+            section above remains the whole story: Send to VIPS is the only way anything here reaches FedEx. If and when you
+            choose to turn the connection on, these additional terms apply, and only then. You would sign in on
+            FedEx&rsquo;s own page, yourself &mdash; we never render a password field, never see or store your FedEx
+            password, and never bypass FedEx&rsquo;s two-factor sign-in. We never pick up, trade, or drop a trip for you;
+            every action stays yours to confirm in FedEx&rsquo;s own systems. You can disconnect at any time, which deletes
+            anything held for the connection. Connecting is optional and at your own risk:
+            <span className="font-medium text-ink"> FedEx has not approved, endorsed, or authorized this Service or this
+            feature, we have not reviewed FedEx&rsquo;s computer-use policy that applies to pilots, and your own FedEx
+            policies and obligations apply to you.</span> You are solely responsible for deciding whether connecting is
+            permitted for you, and for any consequence of doing so. If FedEx objects to or blocks this access, the feature
+            pauses.
+          </p>
+        </Section>
+
         <Section title="3. What the Service does">
           <p>
             The Service lets you upload a bid pack PDF, answers questions about your scheduling

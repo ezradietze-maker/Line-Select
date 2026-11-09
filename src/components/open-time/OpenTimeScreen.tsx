@@ -3,6 +3,7 @@
 import { DateTime } from "luxon";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { ConnectFedexPanel } from "@/components/fedex-connect/ConnectFedexPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -369,6 +370,8 @@ function OpenTimeBuilder({ bidPack, seniority, profile, userId }: { bidPack: Bid
         </div>
         <p className="mt-2 text-xs text-ink-faint">Your list stays on this device. Line Select never signs in to VIPS or reads it for you.</p>
       </section>
+
+      <ConnectFedexPanel signedIn={!!userId} />
 
       {board && <Board board={board} commuteEnd={commuteEnd} />}
     </div>
