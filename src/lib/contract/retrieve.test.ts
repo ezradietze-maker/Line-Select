@@ -13,6 +13,7 @@ describe("finding the sections for a question", () => {
   it("shows the search in the pilot's words, then the contract's", () => {
     expect(searchWords("How long is the SWW?")).toEqual(["long", "SWW", "secondary working window"]);
     expect(searchWords("what is it")).toEqual([]);
+    expect(searchWords("What's the minimum rest? I can't find it")).toEqual(["minimum", "rest", "find", "rest period"]);
   });
 
   it("reads a follow-up with the section the last answer came from first", () => {

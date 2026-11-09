@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { QuoteCard } from "@/components/contract/QuoteCard";
 import { useTyped } from "@/components/contract/useTyped";
 import { WorkingSteps } from "@/components/contract/WorkingSteps";
@@ -49,10 +49,11 @@ function NotFound({ answer, onOpen }: { answer: Extract<ContractAnswer, { found:
 
 function Reply({ answer, instant, onOpen, onTyped }: { answer: ContractAnswer; instant: boolean; onOpen: (section: string) => void; onTyped: () => void }) {
   const [typed, setTyped] = useState(instant);
-  const onDone = useCallback(() => {
-    setTyped(true);
-    onTyped();
-  }, [onTyped]);
+  const onDone = useCallback(() => setTyped(true), []);
+  // After the quotes have rendered, not as they're about to: the page has to be tall enough for the scroll to get there.
+  useEffect(() => {
+    if (typed) onTyped();
+  }, [typed, onTyped]);
   const shown = useTyped(answer.answer, { totalMs: Math.min(2200, 500 + answer.answer.length * 6), instant, onDone });
   return (
     <div className="space-y-3">

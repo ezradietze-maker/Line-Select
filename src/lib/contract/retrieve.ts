@@ -6,7 +6,7 @@ import type { ContractNode } from "./types";
 /** Keyword search over the contract's pieces, with the pilot's words translated into the contract's (BM25, hand-rolled: no paid or hosted search). */
 
 const STOP = new Set(
-  "a an and are as at be been but by can could did do does for from get got had has have how i if in into is it its just me my of on or our shall should so than that the their them then there they this to under up was we were what when where which who why will with would you your about any some".split(" "),
+  "a an and are as at be been but by can could did do does for from get got had has have how i if in into is it its just me my of on or our shall should so than that the their them then there they this to under up was we were what when where which who why will with would you your about any some whats hows whens wheres whos im ive id ill dont doesnt didnt cant wont isnt arent".split(" "),
 );
 
 const stem = (w: string): string => {
