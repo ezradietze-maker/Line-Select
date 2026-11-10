@@ -6,7 +6,14 @@ import type { PilotModel } from "@/types/pilot-model";
  * Anthropic SDK to every pilot's phone.
  */
 
-export const SWEEP_QUESTION = "Anything else that matters when you bid? (Topics you hadn't raised.)";
+export const SWEEP_QUESTION = "Is there anything else you look at when you bid? (Topics you hadn't raised.)";
+/** How it read before Nov 2026, so an interview saved then still reads as swept. */
+const OLD_SWEEP_QUESTION = "Anything else that matters when you bid? (Topics you hadn't raised.)";
+
+/** Whether a question in the transcript is the "anything else" sweep. */
+export function isSweepQuestion(question: string): boolean {
+  return question === SWEEP_QUESTION || question === OLD_SWEEP_QUESTION;
+}
 
 /**
  * Questions before a settled ranking may end the interview on its own: more for a pilot with more that matters to them —

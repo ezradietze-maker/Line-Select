@@ -28,11 +28,15 @@ describe("the hub-turn question", () => {
     const first = nextHubTurnQuestion(p, null, pm, [])!;
     expect(first.transcript.startsWith(HUB_TURNS_LEAD)).toBe(true);
     // The plain week, not the one with the nap — that's asked about on its own.
-    expect(first.helpText).toContain("Trip #10");
-    expect(first.helpText).toContain("4 nights in a row");
+    // Asked plainly, with the trip itself shown under the question.
+    expect(first.prompt).toBe("How do you feel about night hub turns?");
+    expect(first.examples[0].title).toContain("Trip #10");
+    expect(first.examples[0].fact).toContain("4 nights in a row");
+    expect(first.transcript).toContain("Trip #10");
     const second = nextHubTurnQuestion(p, null, pm, [{ question: first.transcript }])!;
     expect(second.transcript.startsWith(REST_HOTEL_LEAD)).toBe(true);
-    expect(second.helpText).toContain("DELTA BY MARRIOTT");
+    expect(second.examples[0].fact).toContain("DELTA BY MARRIOTT");
+    expect(second.examples[0].fact).toMatch(/^about \d/);
     expect(nextHubTurnQuestion(p, null, pm, [{ question: first.transcript }, { question: second.transcript }])).toBeNull();
   });
 

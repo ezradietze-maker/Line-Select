@@ -883,9 +883,9 @@ export function ResultsView({
           ? "Noted — that's something a bid pack can't show, so it's kept with your priorities as you said it."
           : reply.kind === "limit"
             ? reply.action === "keep"
-              ? "Kept as a dealbreaker."
+              ? "Kept as a limit."
               : reply.action === "drop"
-                ? "No longer a dealbreaker — it still counts as one of your priorities."
+                ? "No longer a limit — it still counts as one of your priorities."
                 : "Limit moved to let that line through."
             : `Thanks${reply.option.criterionId ? "" : ` — added ${reply.option.label.toLowerCase()} to your priorities`}.`;
     setLearnMessage([said, moved ? `Now ${moved}.` : null].filter(Boolean).join(" "));

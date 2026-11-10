@@ -92,8 +92,6 @@ export type InterviewStep =
       priorityIds?: string[];
       /** How the question goes into the transcript when it differs from the prompt (e.g. with its options). */
       transcript?: string;
-      /** For a bid check: the line asked about and the line its verdict is recorded against (see `bid-check.ts`). */
-      bidCheck?: { line: string; alt: string; kind?: "top" | "middle" };
       /** For trip grades: the trips to grade (see `trip-sort.ts`). */
       tripScreen?: import("./trip-sort").TripGradeScreen;
       usage?: BrainUsage;
@@ -107,17 +105,31 @@ You're a line pilot who has bid for years, talking to a colleague — not a surv
 WHAT MAKES A GOOD QUESTION
 - It comes from them: one of the open threads (prefer the highest priority one), or something in their latest answer worth one follow-up. Quote or echo their own words. Never ask a generic checklist question about a topic they haven't raised — topics they never mentioned are covered later on a separate screen.
 - It is grounded in their pack: use the real cities, numbers and lines in the pack brief ("Sydney only shows up on 4 lines here, and two of them…").
-- It shows them, not asks them to imagine. Pilots answer real lines far better than generic questions about what they'd trade. Every question about one of their priorities shows one or two of the EXAMPLES YOU MAY SHOW (set examples to their ids): real lines or trips from their own pack at the two ends of the one thing you're asking about — what more and less of it look like — with their figure. Name them in the question with that figure, briefly ("2031 gets you two departures; 2044 takes four — where does it start to cost you?"). Take them from the group of the priority the question is about — never attach another priority's example because it names a line you mention. Prefer lines near the top of their list. Leave examples empty only for a line-pair question (the pair is the example) or when no example shows what you're asking.
+- It shows them, not asks them to imagine. Pilots answer real lines far better than generic questions about what they'd trade. Every question about one of their priorities shows one or two of the EXAMPLES YOU MAY SHOW (set examples to their ids): real lines or trips from their own pack at the two ends of the one thing you're asking about — what more and less of it look like — with their figure. Name them with that figure in helpText, briefly ("2031 gets you two departures; 2044 takes four."), under the plain question ("Where does the number of departures start to cost you?"). Take them from the group of the priority the question is about — never attach another priority's example because it names a line you mention. Prefer lines near the top of their list. Leave examples empty only for a line-pair question (the pair is the example) or when no example shows what you're asking.
 - Never ask them to price one priority in another ("how many extra commutes would that layover be worth?", "how much layover would you give up for an easy commute?") — pilots can't answer that in general, only between real lines. To learn how two priorities trade, offer a line pair that pulls them apart; if none is offered, ask about something else.
 - Never invent a line or trip, and never describe a made-up one ("a line with a Honolulu trip and a week of hub turns"). Name only lines and trips from the examples, the line pairs, or what they've already been shown. If no real line shows a trade, don't ask it.
 - It moves the ranking: ask about trade-offs, thresholds and how much something matters relative to their other priorities — not trivia, not things a bid pack can't show, not things they already answered.
 - Prefer open questions that let them tell you what they want, in their own words — including things the brain hasn't modelled yet. Most of the interview should be these.
-- It is short (one or two sentences), plain, and in the pack's words and pilots' (PILOT WORDS below). Match their tone.
+- It is plain, and in the pack's words and pilots' (PILOT WORDS below), the way ASK IT THE WAY YOU'D SAY IT describes. Match their tone.
 - Never re-ask a settled thread or a question already asked in any wording. If an answer was vague, at most one follow-up on that thread, then move on.
 - Never follow a line choice with a made-up version of the same trade ("if a line had more weekends but a 4-day trip…") — their real choice already answered it.
-- Numbers: when a priority's number is still fuzzy AND pinning it would change their ranking ("not too much credit", "a real break at home"), one question asking for the number is worth it — in their terms ("How many days in a row at home before it feels like a real break?"). For something they want less of, ask for both ends in that one question: where it starts to cost them, and where a line becomes one they'd hardly bid ("How many commutes before it starts to bother you — and how many before you'd hardly bid the line?"). One number alone gets read as both. Once they've given the numbers, don't ask about them again. Don't ask where a line becomes one they wouldn't bid at all ("too low to bid it") — the Dealbreakers question covers what's absolute, and asking again turns a preference into a rule.
+- Numbers: when a priority's number is still fuzzy AND pinning it would change their ranking ("not too much credit", "a real break at home"), one question asking for the number is worth it — in their terms ("How many days in a row at home before it feels like a real break?"). For something they want less of, ask where it starts to cost them first ("How many commutes before it starts to bother you?"); where a line drops to the bottom of their list is its own next question, never folded into the first. Once they've given the numbers, don't ask about them again. Don't ask where a line becomes one they wouldn't bid at all ("too low to bid it") — the bottom-of-the-list question covers that, and asking again turns a preference into a rule.
+- Commuters are asked separately, in two fixed questions, how much time they leave before a report and how many other flights they'd want. Never ask either.
 - Never ask about filing grievances, "re-bid windows", or whether they'd bid a line they might not hold — every line gets ranked regardless.
 - A bid month is four weeks (eight of the year's) or five (four of them); this pack's is in the brief. A line's last trip can run past its end into the next bid month: that carry-over ("C/O" in the pack) is the next month's, and every count here is the bid month's alone. Say a line "carries 6:08 C/O into November" or "runs two days into November" — never call it a "five-week line".
+
+ASK IT THE WAY YOU'D SAY IT
+The owner read a question that packed two lines, two kinds of deadhead, shortening a trip and "what would tip it" into one sentence, and couldn't follow it; the same thing said plainly was "WAY better". So:
+- prompt is the plain question: one sentence a pilot would say out loud, about 20 words at most, asking ONE thing ("Would you rather have great layovers, or an easier commute?").
+- helpText carries the details under it: the real lines or trips and their figures, as "for example", in a sentence or two.
+- Never two questions in one ("…, and what would tip it?", "…, and how early do you leave?"). If both matter, ask the first; the second is the next question.
+- Compare only real lines or trips, by number. Never set one against an imaginary one ("over one with weaker layovers").
+- Times and lengths the way you'd say them: "lands just before 1 am", "sits about 2½ hours", not "00:59" or "2h36".
+- More questions is fine when it keeps each one simple. Don't stack.
+How the owner wants them to read:
+- prompt "Which line would you bid higher: 1004 or 1024?" — helpText "1004 has only two departures and lots of time in cities you like, but it's hard on your body clock. 1024 has three trips that start with a deadhead you can catch from home, and it's easy on your body clock."
+- prompt "How many days in a row at home do you need before it feels like a real break?" — helpText "For example, line 1011 gives you 16 days off in long stretches. Line 1013 gives you 15, but chopped up by short stays at home."
+- prompt "Would you rather have great layovers, or an easier commute?" — helpText "Line 1005 has the best layovers in the pack, but you'd still commute to Memphis for its 11-day trip. Line 1024 has plainer layovers, but its trips start with a deadhead from LAX you could catch from home. Which would you bid higher?"
 
 PILOT WORDS
 Say things the way the pack prints them and a pilot says them. A word this pilot brought up themselves can be said back to them — if they call it a sign-in, say sign-in — but only because they said it. Their priorities' names and the fleet notes don't count as their words. Otherwise:
@@ -127,12 +139,11 @@ Write as you'd say it out loud: whole, plain sentences, never a label and a numb
 QUESTION KINDS
 - free-text: the default. Open questions that let them explain.
 - choice: when 2–4 concrete options make it quicker to answer (they can still add a note). Options must be mutually exclusive and in their terms.
-- line-pair: when one of the offered line pairs would show how they weigh several of their priorities against each other. Set pairIndex to that pair's index. Each pair differs on 3–5 things they care about (listed with real numbers), each line winning some; the pilot sees both lines in full and that list of differences right under the question. The prompt names the two or three differences that matter most to them, in their terms, and asks which they'd bid higher — at most 40 words ("2031 pays more and keeps you to two commutes; 2044 has the weekends and the beach layovers. Which goes higher on your bid?"). A real choice teaches the ranking more than any description, but it's a tool, not the format: about one question in four, never more than one in three. Never offer the same pair twice.
+- line-pair: when one of the offered line pairs would show how they weigh several of their priorities against each other. Set pairIndex to that pair's index. Each pair differs on 3–5 things they care about (listed with real numbers), each line winning some; the pilot sees both lines in full and that list of differences right under the question. The prompt asks which they'd bid higher, naming both lines ("Which line would you bid higher: 2031 or 2044?"); helpText says, in a sentence or two, the two or three differences that matter most to them, in their terms ("2031 pays more and keeps you to two commutes. 2044 has the weekends and the beach layovers."). A real choice teaches the ranking more than any description, but it's a tool, not the format: about one question in four, never more than one in three. Never offer the same pair twice.
 
 PACING
 - Never two line-pair questions in a row — a run of them feels like a quiz. Mix in their own words.
 - After a line choice, if what tipped it isn't clear from their answer and it would change the ranking, one open follow-up on why is worth asking.
-- A "Bid check" question asks whether a line near the top of their ranking really belongs there. If they say it doesn't and didn't say why, ask once what rules it out.
 - In a monthly check-in (see PILOT), start with whatever they said has changed or is new this month, then this pack's own tensions; don't re-cover what last month's interview settled unless this pack makes it newly relevant.
 
 FLEET NOTES
@@ -236,6 +247,13 @@ function renderExamples(examples: QuestionExample[]): string {
 }
 
 /** A question about a made-up line or trip ("if a line instead had…", "say a trip…", "imagine a line…"). */
+/** A real line set against one that doesn't exist: "would you take that over one with weaker layovers". */
+const AGAINST_IMAGINED = /\b(?:over|than|instead of)\s+(?:one|a line|a trip|another line|another trip)\s+(?:with|that|where)\b/i;
+/** A second question tacked on: "…, and what would tip it?", "…, and how early do you leave?" */
+const THEN_ANOTHER = /[,;—–-]\s*(?:and|or)\s+(?:what|how|which|why|where|when|would|do|does|is|are)\b[^?]*\?\s*$/i;
+/** The plain question's length; the lines and figures go in helpText. */
+const MAX_PROMPT_WORDS = 25;
+
 const HYPOTHETICAL = /\b(?:if|what if|say|imagine|suppose)\s+(?:a|another|some|the)?\s*(?:line|trip)\s+(?:instead\s+)?(?:had|has|were|was|with|that|came|paid|gave)\b|\bimagine\b|\bsuppose\b|\bhypothetical/i;
 
 /** Line numbers a question names (four-digit numbers), and trip numbers ("trip 93", "Trip #93", "trips 93 and 98"). */
@@ -279,8 +297,13 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   // it's dropped rather than asked again (see `nextInterviewStep`).
   const invented = attempt === 0 ? inventedLimit(step.ack ?? "", input.exchanges.at(-1)?.answer ?? "") : null;
   if (invented) return `Your reply says “${invented}”, but their answer stated no limit — say what they said as the preference it is, in their terms.`;
-  if (step.kind !== "line-pair" && HYPOTHETICAL.test(`${step.prompt} ${step.helpText}`))
+  if (step.kind !== "line-pair" && (HYPOTHETICAL.test(`${step.prompt} ${step.helpText}`) || AGAINST_IMAGINED.test(step.prompt)))
     return "That describes a made-up line or trip. Ask about the real lines or trips in the examples, or offer a line pair.";
+  // One plain question, details under it — the owner couldn't follow one that stacked several (Nov 2026). Not on the
+  // last try: a long question mustn't end the interview.
+  if (attempt < 2 && (step.prompt.match(/\?/g) ?? []).length > 1) return "That asks more than one thing. Ask the first as its own plain question; the other can be the next question.";
+  if (attempt < 2 && THEN_ANOTHER.test(step.prompt)) return "That asks two things in one (\"…, and what would…\"). Ask the first on its own; the other can be the next question.";
+  if (attempt < 2 && step.prompt.split(/\s+/).length > MAX_PROMPT_WORDS) return `Put the question in one plain sentence of ${MAX_PROMPT_WORDS} words or fewer, and the lines and figures in helpText.`;
   // Show, don't ask in the abstract — once: a question no example fits may still go without one.
   if (attempt === 0 && step.kind !== "line-pair" && !(step.examples ?? []).length && offered.size)
     return "Show one or two of the EXAMPLES YOU MAY SHOW with this question (set examples and name them with their figure) — or, if none shows what you're asking, ask it again as it is.";
@@ -306,7 +329,7 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
 }
 
 /** The "anything else?" screen's question, as the transcript records it — both the app and the simulator use it. */
-import { minTurnsFor, SWEEP_QUESTION } from "./interview-pace";
+import { isSweepQuestion, minTurnsFor, SWEEP_QUESTION } from "./interview-pace";
 export { minTurnsFor, SWEEP_QUESTION };
 
 /**
@@ -317,7 +340,7 @@ export { minTurnsFor, SWEEP_QUESTION };
 export function rankingHasSettled(input: Pick<InterviewStepInput, "turn" | "rankingShifts" | "model" | "threads" | "exchanges">): boolean {
   const shifts = input.rankingShifts ?? [];
   // Right after the "anything else?" screen they may have just raised something new — it gets its follow-ups first.
-  if (input.exchanges.at(-1)?.question === SWEEP_QUESTION) return false;
+  if (isSweepQuestion(input.exchanges.at(-1)?.question ?? "")) return false;
   if (input.turn < minTurnsFor(input.model) || shifts.length < 2 || shifts.slice(-2).some((n) => n > 1)) return false;
   if (unprobedCriteria(input).length > 0) return false;
   const importantOpen = (input.model?.threads ?? []).some((t) => (input.threads[t.id]?.status ?? t.status) === "open" && t.priority >= 0.5);

@@ -25,7 +25,7 @@ const STEPS: { eyebrow: string; title: string; body: string; Visual: ComponentTy
   {
     eyebrow: "03 · Rank",
     title: "Every line scored against you — with the reason.",
-    body: "A 0–100 score for each line, weighted by how much each thing matters to you, and a plain-English reason for every one. Dealbreakers are treated as dealbreakers.",
+    body: "A 0–100 score for each line, weighted by how much each thing matters to you, and a plain-English reason for every one. A limit you set puts a line at the bottom of your list.",
     Visual: RankVisual,
   },
   {

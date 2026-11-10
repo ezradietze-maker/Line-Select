@@ -1,9 +1,11 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
+import type { QuestionExample } from "@/lib/brain/question-examples";
 import { tripLabel } from "@/lib/brain/trip-sort";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import { hubTurnsOf, summarizeHubTurns, type HubTurn } from "@/lib/metrics/hub-turns";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
+import { tripKey } from "@/lib/scoring-v2/trip-score";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -21,8 +23,28 @@ export interface HubTurnQuestion {
   prompt: string;
   helpText: string;
   options: string[];
+  /** The trip it's about, drawn under the question the way the interview draws every trip. */
+  examples: QuestionExample[];
   /** How it goes into the transcript: the question with the example it showed, so the brain reads the answer against it. */
   transcript: string;
+}
+
+/** "about 2½ hours", "about 4 hours": a sit said the way a pilot would. */
+function aboutHours(hours: number): string {
+  const halves = Math.round(hours * 2) / 2;
+  const whole = Math.floor(halves);
+  return `about ${whole || ""}${halves % 1 ? "½" : ""} hour${halves > 1 ? "s" : ""}`.replace("about  ", "about ");
+}
+
+/** The trip as a card under the question: what it's shown for, and the figure. */
+function tripCard(bidPack: BidPack, x: { trip: Trip; turns: HubTurn[] }, kind: "night" | "rest"): QuestionExample {
+  const t = x.turns.find((h) => (kind === "rest" ? h.restHotel : h.night)) ?? x.turns[0];
+  const runs = summarizeHubTurns(x.turns).longestRun;
+  const fact =
+    kind === "rest"
+      ? `${aboutHours(t.sitHours)} in ${t.hub}, with a nap at the ${t.restHotel}`
+      : `${runs > 1 ? `${runs} nights in a row` : "a night"} in ${t.hub}, sitting ${aboutHours(t.sitHours)} while the packages are sorted`;
+  return { id: "H1", kind: "trip", ref: tripKey(x.trip), title: tripLabel(bidPack, x.trip), fact, priority: kind === "rest" ? "Crew-rest hotel" : "Night hub turns", summary: describe(bidPack, x, kind) };
 }
 
 const clock = (ms: number, airport: string) => DateTime.fromMillis(ms, { zone: timezoneForAirport(airport) ?? "UTC" }).toFormat("HH:mm");
@@ -87,19 +109,19 @@ export function nextHubTurnQuestion(bidPack: BidPack, model: PilotModel | null, 
       return (s.inWeeks ? 100 * s.longestRun + s.inWeeks : s.night) - (s.withRestHotel ? 0.5 : 0);
     });
     if (!x) return null;
-    const prompt = "How do you feel about night hub turns like this one?";
+    const prompt = "How do you feel about night hub turns?";
     const example_ = describe(bidPack, x, "night");
-    const helpText = `${example_} In this pack, ${linesWithWeeks} of ${bidPack.lines.length} lines have a week or more of night hub turns.`;
+    const helpText = `${linesWithWeeks} of the ${bidPack.lines.length} lines in this pack have a week or more of them. Here's one of those trips:`;
     const options = ["They don't bother me", "A night or two is fine — a week of them isn't", "I'd rather avoid them"];
-    return { prompt, helpText, options, transcript: `${HUB_TURNS_LEAD} ${prompt} (Example: ${example_} ${linesWithWeeks} of ${bidPack.lines.length} lines here have a week or more of them.) Options: ${options.join(" / ")}` };
+    return { prompt, helpText, options, examples: [tripCard(bidPack, x, "night")], transcript: `${HUB_TURNS_LEAD} ${prompt} (Example: ${example_} ${linesWithWeeks} of ${bidPack.lines.length} lines here have a week or more of them.) Options: ${options.join(" / ")}` };
   }
   if (!asked(exchanges, REST_HOTEL_LEAD)) {
     const x = example(bidPack, model, pack, (turns) => turns.filter((h) => h.restHotel).length);
     if (!x) return null;
-    const prompt = "Some long hub turns come with a crew-rest hotel, a short airport stay for a nap. Would you rather have that, or a shorter hub turn with no hotel?";
+    const prompt = "On a long hub turn, would you rather get a crew-rest hotel for a nap, or have a shorter hub turn with no hotel?";
     const example_ = describe(bidPack, x, "rest");
     const options = ["I'd take the nap", "A shorter hub turn, no hotel", "No preference"];
-    return { prompt, helpText: example_, options, transcript: `${REST_HOTEL_LEAD} ${prompt} (Example: ${example_}) Options: ${options.join(" / ")}` };
+    return { prompt, helpText: "Here's a trip with one:", options, examples: [tripCard(bidPack, x, "rest")], transcript: `${REST_HOTEL_LEAD} ${prompt} (Example: ${example_}) Options: ${options.join(" / ")}` };
   }
   return null;
 }

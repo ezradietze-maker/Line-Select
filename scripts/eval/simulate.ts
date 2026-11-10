@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { airportCityName } from "@/lib/airport-city-names";
 import { expandBidPack } from "@/lib/bidpack-storage";
 import { buildPilotModel, type InterviewExchange } from "@/lib/brain/build-model";
-import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
+import { nextCommuteQuestion } from "@/lib/brain/commute-questions";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { dealbreakerQuestion } from "@/lib/brain/dealbreakers";
 import { nextHubTurnQuestion } from "@/lib/brain/hub-turn-question";
@@ -139,11 +139,11 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
     turn++;
   }
 
-  // Then, as in the app: anything that rules a line out.
+  // Then, as in the app: anything that would put a line at the bottom of their list.
   {
     const q = dealbreakerQuestion(pack, model, pm);
     const a = await sim<{ answer: string }>(`Question: ${q.prompt}\n(${q.helpText})`, { type: "object", additionalProperties: false, required: ["answer"], properties: { answer: { type: "string" } } });
-    say(`\nQ${turn + 1} [dealbreakers] ${q.prompt}\n   (${q.helpText})\nA: ${a.answer}`);
+    say(`\nQ${turn + 1} [bottom of the list] ${q.prompt}\n   (${q.helpText})\nA: ${a.answer}`);
     asked.push({ kind: "dealbreaker", words: q.prompt.split(/\s+/).length, ack: "" });
     exchanges = [...exchanges, { turn: exchanges.length, question: q.transcript, answer: a.answer }];
     turn++;
@@ -152,13 +152,23 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   // Then, as in the app: hub turning by name with a real trip from the pack, and the crew-rest hotel when there are some.
   for (let hub = nextHubTurnQuestion(pack, model, pm, exchanges); hub; hub = nextHubTurnQuestion(pack, model, pm, exchanges)) {
     const pick = await sim<{ pick: string; note: string }>(
-      `Question: ${hub.prompt}\n(${hub.helpText})\nPick one, and optionally add a short note.`,
+      // The pilot sees the trip drawn under the question; the simulated one reads it.
+      `Question: ${hub.prompt}\n(${hub.helpText} ${hub.examples.map((e) => e.summary).join(" ")})\nPick one, and optionally add a short note.`,
       { type: "object", additionalProperties: false, required: ["pick", "note"], properties: { pick: { type: "string", enum: hub.options }, note: { type: "string" } } }
     );
     const answerText = `${pick.pick}${pick.note.trim() ? `. ${pick.note.trim()}` : ""}`;
     say(`\nQ${turn + 1} [hub turns] ${hub.prompt}\n   (${hub.helpText})\nA: ${answerText}`);
     asked.push({ kind: "choice", words: hub.prompt.split(/\s+/).length, ack: "" });
     exchanges = [...exchanges, { turn: exchanges.length, question: hub.transcript, answer: answerText }];
+    turn++;
+  }
+
+  // Then, as in the app: a commuter's time before a report, and other flights they'd want — one question each.
+  for (let q = nextCommuteQuestion(persona.isCommuter ?? null, exchanges); q; q = nextCommuteQuestion(persona.isCommuter ?? null, exchanges)) {
+    const a = await sim<{ answer: string }>(`Question: ${q.prompt}\n(${q.helpText})`, { type: "object", additionalProperties: false, required: ["answer"], properties: { answer: { type: "string" } } });
+    say(`\nQ${turn + 1} [commute] ${q.prompt}\nA: ${a.answer}`);
+    asked.push({ kind: "free-text", words: q.prompt.split(/\s+/).length, ack: "" });
+    exchanges = [...exchanges, { turn: exchanges.length, question: q.prompt, answer: a.answer }];
     turn++;
   }
 
@@ -211,25 +221,6 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
         say(`\nQ${turn + 1} [trip grades, screen ${shownScreens.length + 1}${foreseen !== null ? `, last screen foreseen ${Math.round(foreseen * 100)}%` : ""}]\nA: ${answerText}`);
         asked.push({ kind: "trip-grades", words: 12, ack: "" });
         exchanges = [...exchanges, { turn: exchanges.length, question: tripGradesTranscript(screen), answer: answerText }];
-        turn++;
-        continue;
-      }
-      // As in the app: before wrapping up, is a line near the top one they'd really bid there?
-      const checked = checkedLines(exchanges);
-      const check = checked.length < MAX_BID_CHECKS ? bidCheckQuestion(pack, model, choices, pm, checked, checkedKinds(exchanges), checkedWeakSpots(exchanges)) : null;
-      if (check) {
-        const lineText = (n: string) => lineSummary(pack, pack.lines.find((l) => l.lineNumber === n)!);
-        const pick = await sim<{ pick: string; note: string }>(
-          `Question: ${check.prompt}\n(${check.helpText})\n\nLine ${check.line}: ${lineText(check.line)}\n\nPick one, and optionally add a short note on why.`,
-          { type: "object", additionalProperties: false, required: ["pick", "note"], properties: { pick: { type: "string", enum: check.options }, note: { type: "string" } } }
-        );
-        const i = check.options.indexOf(pick.pick);
-        const verdict = bidCheckChoice(check, i, pick.note);
-        if (verdict) choices.push(verdict);
-        const answerText = `${pick.pick}${pick.note.trim() ? `. ${pick.note.trim()}` : ""}`;
-        say(`\nQ${turn + 1} [${check.kind} check · #${check.rank} ${check.line} vs ${check.alt}] ${check.prompt}\nA: ${answerText}`);
-        asked.push({ kind: "bid-check", words: check.prompt.split(/\s+/).length, ack: "" });
-        exchanges = [...exchanges, { turn: exchanges.length, question: check.transcript, answer: answerText }];
         turn++;
         continue;
       }

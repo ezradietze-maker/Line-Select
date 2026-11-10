@@ -201,7 +201,7 @@ export function noteLines(stats: BrainLevelStats): NoteLine[] {
   const lines: NoteLine[] = [];
   for (const [metric, m] of Object.entries(stats.metrics)) {
     if (shareLowerBound(m.pilots, n) < 0.25) continue;
-    const hard = shareLowerBound(m.hard, n) >= 0.2 ? `, a dealbreaker for ${Math.round((m.hard / n) * 100)}%` : "";
+    const hard = shareLowerBound(m.hard, n) >= 0.2 ? `, a limit for ${Math.round((m.hard / n) * 100)}%` : "";
     lines.push({
       key: `common:${metric}`,
       section: "common",

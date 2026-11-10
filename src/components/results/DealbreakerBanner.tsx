@@ -23,7 +23,7 @@ export function DealbreakerBanner({ violations }: DealbreakerBannerProps) {
         </svg>
         <div className="min-w-0">
           <div className="text-xs font-semibold uppercase tracking-wide text-danger">
-            Violates {violations.length === 1 ? "something" : "things"} you said {violations.length === 1 ? "was" : "were"} a dealbreaker
+            Goes past {violations.length === 1 ? "a limit" : "limits"} you set, so it sits at the bottom of your list
           </div>
           <ul className="mt-1 space-y-0.5">
             {violations.map((v, i) => (

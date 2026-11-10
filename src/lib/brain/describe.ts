@@ -266,8 +266,8 @@ export function describeModel(model: PilotModel): DescribedCriterion[] {
         shape: describeShape(c.shape, def),
         dealbreaker: c.hardLimit
           ? c.hardLimit.op === "max" && c.hardLimit.value === 0
-            ? "Dealbreaker: any at all rules a line out"
-            : `Dealbreaker: ${c.hardLimit.op === "max" ? "more than" : "fewer than"} ${formatValue(c.hardLimit.value, def)} rules a line out`
+            ? "Limit: any at all puts a line at the bottom of your list"
+            : `Limit: ${c.hardLimit.op === "max" ? "more than" : "fewer than"} ${formatValue(c.hardLimit.value, def)} puts a line at the bottom of your list`
           : null,
         quotes: c.evidence.map((e) => e.quote),
         confidence: c.confidence,

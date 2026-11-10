@@ -27,7 +27,7 @@ export function ScoreRing({ score, size = 56, capped = false }: ScoreRingProps) 
       value={score}
       size={size}
       tone={scoreTone(score)}
-      label={`Satisfaction Index ${Math.round(score)} out of 100${capped ? ", held down by a dealbreaker" : ""}`}
+      label={`Satisfaction Index ${Math.round(score)} out of 100${capped ? ", held down by a limit you set" : ""}`}
       limit={capped ? DEALBREAKER_SCORE_CAP : undefined}
       readoutClassName={size >= 56 ? "text-base font-semibold" : "text-sm font-semibold"}
     />

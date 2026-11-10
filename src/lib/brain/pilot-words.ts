@@ -144,6 +144,8 @@ export const AVOIDED: { name: string; phrase: RegExp; say: string }[] = [
   { name: "stints", phrase: /\bstints?\b/i, say: "separate times" },
   { name: "takeoffs in freezing weather", phrase: /\btakeoffs? in freezing\b/i, say: "takeoffs where you'd likely de-ice" },
   { name: "compact schedule", phrase: /\bcompact,? (?:\w+[- ])?schedule\b/i, say: "fewer days off" },
+  // The owner's call (Nov 2026), after the ex-pilot: pilots rank lines rather than throw them out, and a limit sinks a line.
+  { name: "dealbreaker", phrase: /\bdeal[- ]?breakers?\b/i, say: "a limit that puts a line at the bottom of their list" },
   { name: "landings for currency", phrase: /\bproficiency\b|\bcurrency comfort\b|\bfor currency\b/i, say: "more landings" },
 ];
 

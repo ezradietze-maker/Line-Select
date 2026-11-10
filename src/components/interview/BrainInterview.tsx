@@ -28,10 +28,10 @@ import { withHomeFacts } from "@/lib/brain/model-upgrade";
 import { requestModelBuild, requestNextStep, type StepResponse } from "@/lib/brain/client";
 import { fitTripWeights, fitWeightsToChoices } from "@/lib/brain/fit-choices";
 import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tripGradesAnswer, tripGradesTranscript, wantsAnotherScreen, type TripGradeScreen } from "@/lib/brain/trip-sort";
-import { bidCheckChoice, bidCheckQuestion, checkedKinds, checkedLines, checkedWeakSpots, MAX_BID_CHECKS } from "@/lib/brain/bid-check";
+import { nextCommuteQuestion } from "@/lib/brain/commute-questions";
 import { askedDealbreakers, dealbreakerQuestion } from "@/lib/brain/dealbreakers";
 import { nextHubTurnQuestion } from "@/lib/brain/hub-turn-question";
-import { minTurnsFor, SWEEP_QUESTION } from "@/lib/brain/interview-pace";
+import { isSweepQuestion, minTurnsFor, SWEEP_QUESTION } from "@/lib/brain/interview-pace";
 import type { LinePairCandidate, ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
 import { pickQuestionExamples } from "@/lib/brain/question-examples";
@@ -525,9 +525,17 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     // the crew-rest hotel when it has those long sits (lib/brain/hub-turn-question.ts).
     const hub = !checkInRef.current ? nextHubTurnQuestion(bidPack, m, pm, all) : null;
     if (hub) {
-      setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: hub.prompt, helpText: hub.helpText, options: hub.options, transcript: hub.transcript });
+      setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: hub.prompt, helpText: hub.helpText, options: hub.options, examples: hub.examples, transcript: hub.transcript });
       setChoiceSelection(null);
       setChoiceNote("");
+      setPhase("question");
+      return;
+    }
+    // Then, for a commuter, the time they leave before a report and how many other flights they want — each its own
+    // question (lib/brain/commute-questions.ts).
+    const commute = !checkInRef.current ? nextCommuteQuestion(isCommuter, all) : null;
+    if (commute) {
+      setQuestion({ done: false, settled: [], threadId: null, kind: "free-text", prompt: commute.prompt, helpText: commute.helpText, transcript: commute.prompt });
       setPhase("question");
       return;
     }
@@ -545,16 +553,6 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         if (tripScreen) {
           const asked = tripGradesTranscript(tripScreen);
           setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: asked, transcript: asked, tripScreen });
-          setPhase("question");
-          return;
-        }
-        // Then: is a line near the top of their list one they'd really bid there? (lib/brain/bid-check.ts)
-        const checked = checkedLines(all);
-        const check = !checkInRef.current && m && checked.length < MAX_BID_CHECKS ? bidCheckQuestion(bidPack, m, ch, pm, checked, checkedKinds(all), checkedWeakSpots(all)) : null;
-        if (check) {
-          setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: check.prompt, helpText: check.helpText, options: check.options, transcript: check.transcript, bidCheck: { line: check.line, alt: check.alt, kind: check.kind } });
-          setChoiceSelection(null);
-          setChoiceNote("");
           setPhase("question");
           return;
         }
@@ -610,9 +608,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       setModel(picked);
     }
     const all = [...exchanges, { turn: exchanges.length, question: asked, answer: text }];
-    // A bid check's verdict is a line choice too: the line it asked about against the best one below it without its weak spot.
-    const verdict = question.bidCheck && choiceSelection !== null ? bidCheckChoice(question.bidCheck, choiceSelection, choiceNote) : null;
-    const ch = choice ? [...choices, choice] : verdict ? [...choices, verdict] : choices;
+    const ch = choice ? [...choices, choice] : choices;
     const nextTurn = turn + 1;
     const trade = question.kind === "line-pair" ? question.pair?.trade : undefined;
     if (trade) {
@@ -634,7 +630,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (!last) return;
     setHistory((h) => h.slice(0, -1));
     // Back past the "anything else?" answer, which keeps no step of its own: that screen comes round again.
-    if (exchanges.slice(last.exchanges.length).some((e) => e.question === SWEEP_QUESTION)) {
+    if (exchanges.slice(last.exchanges.length).some((e) => isSweepQuestion(e.question))) {
       setSweepDone(false);
       turnLimitRef.current = MAX_TURNS;
       setTurnLimit(MAX_TURNS);

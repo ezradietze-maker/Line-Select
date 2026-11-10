@@ -240,7 +240,7 @@ const named = (r: TripCriterionResult) => {
 
 function scoreReasons(score: TripScore | undefined): string[] {
   if (!score) return [];
-  if (score.violations.length) return [`Breaks your dealbreaker: ${score.violations.map((v) => v.label).join(", ")}`];
+  if (score.violations.length) return [`Goes past your limit: ${score.violations.map((v) => v.label).join(", ")}`];
   const ups = score.results.filter((r) => r.contribution >= NOTABLE).sort((a, b) => b.contribution - a.contribution).slice(0, 2);
   const down = score.results.filter((r) => r.contribution <= -NOTABLE).sort((a, b) => a.contribution - b.contribution)[0];
   return [...ups.map(named), ...(down ? [`but ${named(down)}`] : [])];

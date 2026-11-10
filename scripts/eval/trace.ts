@@ -15,7 +15,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expandBidPack } from "@/lib/bidpack-storage";
 import { buildPilotModel, type InterviewExchange } from "@/lib/brain/build-model";
-import { bidCheckChoice } from "@/lib/brain/bid-check";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
@@ -75,7 +74,7 @@ export function choiceTurns(exchanges: InterviewExchange[], choices: LineChoice[
 }
 
 /**
- * A run's line choices with its bid-check verdicts mapped the way the app maps them today (`bidCheckChoice`) — older
+ * A run's line choices with its bid-check verdicts mapped the way the app last mapped them — older
  * runs recorded some verdicts ("Lower") as choices the app no longer makes.
  */
 export function currentChoices(exchanges: InterviewExchange[], choices: LineChoice[]): LineChoice[] {
@@ -85,7 +84,10 @@ export function currentChoices(exchanges: InterviewExchange[], choices: LineChoi
     if (!e) return true;
     const options = e.question.match(/\(options: (.*)\)$/)?.[1].split(" / ") ?? [];
     const i = options.findIndex((o) => e.answer.startsWith(o));
-    return bidCheckChoice({ line: "x", alt: "y", kind: / is #\d+ of \d+ on your list/.test(e.question) ? "middle" : "top" }, i) !== null;
+    // Which answers made a choice, as the app mapped them before bid checks were dropped (Nov 2026): a middle check's
+    // first and third options, a top check's first and fourth.
+    const middle = / is #\d+ of \d+ on your list/.test(e.question);
+    return middle ? i === 0 || i === 2 : i === 0 || i === 3;
   });
 }
 

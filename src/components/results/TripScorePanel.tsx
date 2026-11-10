@@ -15,7 +15,7 @@ const named = (r: TripCriterionResult) => {
 };
 
 function summary(s: TripScore): string {
-  if (s.violations.length) return `Breaks your dealbreaker: ${s.violations.map((v) => v.label).join(", ")}.`;
+  if (s.violations.length) return `Goes past your limit: ${s.violations.map((v) => v.label).join(", ")}.`;
   const ups = s.results.filter((r) => r.contribution >= NOTABLE).sort((a, b) => b.contribution - a.contribution).slice(0, 2);
   const down = s.results.filter((r) => r.contribution <= -NOTABLE).sort((a, b) => a.contribution - b.contribution)[0];
   const parts: string[] = [];

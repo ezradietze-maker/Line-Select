@@ -8,17 +8,20 @@ import type { PilotModel } from "@/types/pilot-model";
 
 /**
  * Asked early, the same way for every pilot, without a model call: is there
- * anything that rules a line out no matter what else it has? Most pilots have
- * a line they'd never bid — eight commutes, a 14-day trip, a report before
- * 0400 — and a weight can't say that: enough pay always buys it back. A
- * number here becomes a hard limit (`Criterion.hardLimit`, which caps a
- * line's score) when the brain next reads the interview. The question shows
- * their own top priorities' real ranges in this pack, so the answer comes in
- * the pack's terms.
+ * anything that would put a line at the bottom of their list, whatever else it
+ * has? Asked that way, not as what "rules a line out": the ex-pilot ranks lines
+ * rather than throwing any out (Oct 2026), and a pilot's limit — eight commutes,
+ * a 14-day trip, a report before 0400 — sinks a line, it doesn't hide it. A
+ * weight can't say that: enough pay always buys it back. A number here becomes
+ * a hard limit (`Criterion.hardLimit`, which caps a line's score) when the brain
+ * next reads the interview. The question shows their own top priorities' real
+ * ranges in this pack, so the answer comes in the pack's terms.
  */
 
-/** How the question opens — how the transcript (and the brain) recognizes it. */
-export const DEALBREAKER_LEAD = "Dealbreakers:";
+/** How the question opens in the transcript — how the brain recognizes it. */
+export const DEALBREAKER_LEAD = "Bottom of the list:";
+/** How it opened before Nov 2026, so an interview saved then still reads as having asked it. */
+const OLD_LEAD = "Dealbreakers:";
 
 /** How many of their priorities' ranges to show. */
 const SHOWN = 4;
@@ -51,12 +54,12 @@ function rangesFor(bidPack: BidPack, model: PilotModel, pack: PackMetrics): { la
 
 export function dealbreakerQuestion(bidPack: BidPack, model: PilotModel | null, pack: PackMetrics): DealbreakerQuestion {
   const ranges = model ? rangesFor(bidPack, model, pack) : [];
-  const prompt = "Is there anything that rules a line out for you, no matter how good the rest of it is?";
+  const prompt = "Is there anything that would put a line at the bottom of your list?";
   // Each range says what it counts ("1 to 8 commutes"), so the pilot reads them as a sentence; the brain gets which
   // priority each belongs to.
   const helpText = ranges.length
-    ? `Give the number if there is one. This pack's lines run ${listed(ranges.map((r) => r.range))}. "Nothing's an absolute" is a fine answer too.`
-    : `Give the number if there is one — more than a few commutes, a trip over so many days, a show time before a certain hour. "Nothing's an absolute" is a fine answer too.`;
+    ? `If there's a number, tell us, like "more than 3 commutes". In this pack, lines run ${listed(ranges.map((r) => r.range))}. It's fine to say nothing does.`
+    : `If there's a number, tell us, like "more than 3 commutes" or "a show before 0400". It's fine to say nothing does.`;
   return { prompt, helpText, transcript: `${DEALBREAKER_LEAD} ${prompt}${ranges.length ? ` (This pack: ${ranges.map((r) => `${r.label}: ${r.range}`).join("; ")}.)` : ""}` };
 }
 
@@ -67,5 +70,5 @@ function listed(xs: string[]): string {
 
 /** Whether the interview has already asked it. */
 export function askedDealbreakers(exchanges: { question: string }[]): boolean {
-  return exchanges.some((e) => e.question.startsWith(DEALBREAKER_LEAD));
+  return exchanges.some((e) => e.question.startsWith(DEALBREAKER_LEAD) || e.question.startsWith(OLD_LEAD));
 }

@@ -61,7 +61,7 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
 
   const heading =
     question.kind === "limit"
-      ? `Line ${question.higher} breaks your limit on ${question.label.toLowerCase()} (${question.amounts}). Is that still a dealbreaker?`
+      ? `Line ${question.higher} breaks your limit on ${question.label.toLowerCase()} (${question.amounts}). Should that still put it at the bottom of your list?`
       : `Why does line ${question.higher} beat ${question.lower} for you?`;
 
   return (
@@ -86,7 +86,7 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
             Yes, keep it
           </button>
           <button type="button" className={chip} onClick={() => onReply({ kind: "limit", action: "drop" })}>
-            No, it&rsquo;s not a dealbreaker
+            No, it doesn&rsquo;t have to
           </button>
           <button type="button" className={chip} onClick={() => onReply({ kind: "limit", action: "raise" })}>
             {question.op === "max" ? "Raise" : "Lower"} it to {Number.isInteger(question.value) ? question.value : Math.round(question.value * 10) / 10}

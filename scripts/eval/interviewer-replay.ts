@@ -1,12 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { BID_CHECK_LEAD } from "@/lib/brain/bid-check";
 import { DEALBREAKER_LEAD } from "@/lib/brain/dealbreakers";
 import { HUB_TURNS_LEAD, REST_HOTEL_LEAD } from "@/lib/brain/hub-turn-question";
 import { nextInterviewStep, SWEEP_QUESTION, type InterviewStepInput, type ThreadState } from "@/lib/brain/interviewer";
 import { pickLinePairs } from "@/lib/brain/line-pairs";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
 import { avoidedPhrases, inventedLimit } from "@/lib/brain/pilot-words";
-import { PRIORITY_ORDER_LEAD } from "@/lib/brain/priority-order";
+import { OLD_PRIORITY_ORDER_LEAD, PRIORITY_ORDER_LEAD } from "@/lib/brain/priority-order";
+import { COMMUTE_TIME_QUESTION, OTHER_FLIGHTS_QUESTION } from "@/lib/brain/commute-questions";
 import { pickQuestionExamples } from "@/lib/brain/question-examples";
 import { TRIP_GRADES_LEAD } from "@/lib/brain/trip-sort";
 import type { InterviewExchange } from "@/lib/brain/build-model";
@@ -43,7 +43,8 @@ const label = flag("label") ?? "latest";
 const PERSONAS = ALL_PERSONAS.map((p) => p.id).sort((a, b) => b.length - a.length);
 
 /** The fixed questions, which the interviewer didn't write. */
-const FIXED = [DEALBREAKER_LEAD, HUB_TURNS_LEAD, REST_HOTEL_LEAD, BID_CHECK_LEAD, PRIORITY_ORDER_LEAD, TRIP_GRADES_LEAD, SWEEP_QUESTION];
+/** The fixed questions' openings, now and as they read before Nov 2026 (bid checks were asked then too). */
+const FIXED = [DEALBREAKER_LEAD, "Dealbreakers:", HUB_TURNS_LEAD, REST_HOTEL_LEAD, "Bid check:", PRIORITY_ORDER_LEAD, OLD_PRIORITY_ORDER_LEAD, COMMUTE_TIME_QUESTION, OTHER_FLIGHTS_QUESTION, TRIP_GRADES_LEAD, SWEEP_QUESTION];
 /** Opening exchanges before the first question: story, commute, cities. */
 const OPENING = 3;
 

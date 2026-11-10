@@ -222,7 +222,7 @@ export function ConfirmPreferencesScreen({
                 <span>
                   {f.statement}
                   {f.severity === "dealbreaker" && (
-                    <span className="ml-1.5 inline-flex rounded-full bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">Dealbreaker</span>
+                    <span className="ml-1.5 inline-flex rounded-full bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">Limit</span>
                   )}
                   {f.recurringWeekday && (
                     <span className="ml-1.5 inline-flex rounded-full bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent">

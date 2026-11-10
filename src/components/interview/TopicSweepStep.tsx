@@ -43,13 +43,13 @@ interface TopicSweepStepProps {
 export function TopicSweepStep({ topics, eyebrow, onContinue }: TopicSweepStepProps) {
   const [picked, setPicked] = useState<string[]>([]);
   const [note, setNote] = useState("");
-  const title = "Anything else that matters when you bid?";
+  const title = "Is there anything else you look at when you bid?";
   return (
     <div>
       <QuestionPrompt
         eyebrow={eyebrow}
         title={title}
-        help="You haven’t brought these up. Tap any that matter to you — skip the ones that don’t."
+        help="Here are some things you haven’t mentioned yet. Pick any that matter to you."
       />
       <RevealControls title={title} className="mt-6">
         <div className="flex flex-wrap gap-2" role="group" aria-label="Topics that matter">

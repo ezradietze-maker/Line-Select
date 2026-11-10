@@ -11,7 +11,9 @@ import type { PilotModel } from "@/types/pilot-model";
  */
 
 /** How the question opens — how the transcript (and the interviewer's own guard against repeats) recognizes it. */
-export const PRIORITY_ORDER_LEAD = "When these pull against each other";
+export const PRIORITY_ORDER_LEAD = "If you can't have all of these";
+/** How it opened before Nov 2026, so an interview saved then still reads as having asked it. */
+export const OLD_PRIORITY_ORDER_LEAD = "When these pull against each other";
 export const ABOUT_EQUAL = "They matter about the same";
 
 /**
@@ -77,7 +79,7 @@ export function priorityOrderQuestion(model: PilotModel | null): PriorityOrderQu
     .slice(0, SHOWN);
   if (top.length < 2) return null;
   return {
-    prompt: `${PRIORITY_ORDER_LEAD}, which would you give up last?`,
+    prompt: `${PRIORITY_ORDER_LEAD}, which one matters most to you?`,
     helpText: "From your story, these matter most to you. Add a note if the order is different.",
     options: [...top.map((c) => c.label), ABOUT_EQUAL],
     criterionIds: top.map((c) => c.id),

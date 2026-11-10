@@ -41,7 +41,7 @@ describe("saying the model back in plain words", () => {
     expect(describeShape({ kind: "perOccurrence", costEach: 0.25 }, { unit: "duties" })).toBe("Each one costs about 25% of this priority");
   });
 
-  it("orders priorities by their real share of the score, and states dealbreakers", () => {
+  it("orders priorities by their real share of the score, and states limits", () => {
     const model: PilotModel = {
       version: 2, home: null, threads: [], notMeasurable: [], synopsis: "",
       criteria: [
@@ -52,6 +52,6 @@ describe("saying the model back in plain words", () => {
     };
     const d = describeModel(model);
     expect(d.map((c) => [c.id, c.influence])).toEqual([["b", 80], ["a", 20]]);
-    expect(d[0]).toMatchObject({ measuredAs: "Wanted dates not off (2026-10-10)", dealbreaker: "Dealbreaker: any at all rules a line out", quotes: ["my daughter's wedding"] });
+    expect(d[0]).toMatchObject({ measuredAs: "Wanted dates not off (2026-10-10)", dealbreaker: "Limit: any at all puts a line at the bottom of your list", quotes: ["my daughter's wedding"] });
   });
 });

@@ -61,7 +61,7 @@ export function PilotProfileSummary({ profile, bare = false }: PilotProfileSumma
                 )}
                 {f.severity === "dealbreaker" && (!!f.recurringWeekday || !!f.specificDates?.length) && (
                   <span className="ml-1.5 inline-flex items-center rounded-full bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">
-                    Dealbreaker
+                    Limit
                   </span>
                 )}
                 {!f.recurringWeekday && f.specificDates && f.specificDates.length > 0 && (

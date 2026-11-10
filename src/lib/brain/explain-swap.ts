@@ -177,7 +177,7 @@ export function describeSwap(e: SwapExplanation, higherLine: string, lowerLine: 
   const had = e.against ? `I had ${lowerLine} higher on ${name(e.against)} (${e.against.amounts.split(" vs ").reverse().join(" vs ")}).` : "";
   switch (e.verdict) {
     case "limit":
-      return `${higherLine} breaks your limit on ${e.limit!.toLowerCase()}, so your priorities stay as they were — if that limit isn't a real dealbreaker, change it under Your priorities.`;
+      return `${higherLine} breaks your limit on ${e.limit!.toLowerCase()}, so your priorities stay as they were — if that limit shouldn't sink a line, change it under Your priorities.`;
     case "agreed":
       return "That's the order I'd have expected.";
     case "clear": {

@@ -168,6 +168,30 @@ describe("pilot words", () => {
     expect(await nextInterviewStep(asked)).toMatchObject({ done: false, prompt: "How many nights of flying a month?" });
   });
 
+  it("sends back a question that stacks two asks, and takes the plain one", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "Would you take line 1005's long trip over line 1024's, and what would tip it?" }),
+      step({ threadId: "china", prompt: "How many days off do you want? And how many in a row?" }),
+      step({ threadId: "china", prompt: "Would you rather have great layovers, or an easier commute?", helpText: "Line 1005 has the best layovers; line 1024 starts with a deadhead from LAX." })
+    );
+    expect(await nextInterviewStep(input())).toMatchObject({ done: false, prompt: "Would you rather have great layovers, or an easier commute?" });
+    expect(proposals).toHaveLength(0);
+  });
+
+  it("sends back a real line set against an imaginary one", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "Would you take line 1005 over one with weaker layovers?" }),
+      step({ threadId: "china", prompt: "Which would you bid higher: 1005 or 1024?" })
+    );
+    expect(await nextInterviewStep(input())).toMatchObject({ done: false, prompt: "Which would you bid higher: 1005 or 1024?" });
+  });
+
+  it("puts a long question's figures under it", async () => {
+    const long = "Line 1005 has 175 hours in cities you like but its 11-day trip starts and ends with deadheads through SFO and PHX so how do you see it?";
+    proposals.push(step({ threadId: "china", prompt: long }), step({ threadId: "china", prompt: "How do you see line 1005's 11-day trip?", helpText: "175 hours in cities you like, with deadheads through SFO and PHX." }));
+    expect(await nextInterviewStep(input())).toMatchObject({ prompt: "How do you see line 1005's 11-day trip?" });
+  });
+
   it("never lets a wording slip end the interview", async () => {
     proposals.push(...[0, 1, 2].map(() => step({ threadId: "china", prompt: "How much layover value would you give up?" })));
     expect(await nextInterviewStep(input())).toMatchObject({ done: false, prompt: "How much layover value would you give up?" });
@@ -207,11 +231,11 @@ describe("replies never invent a limit", () => {
   });
 
   it("keeps a limit the pilot did state, and a denial of one", async () => {
-    const stated = input({ exchanges: [{ turn: 0, question: "Dealbreakers?", answer: "Two all-nighters in a row is my absolute limit — I won't bid three, no matter what." }] });
+    const stated = input({ exchanges: [{ turn: 0, question: "Is there anything that would put a line at the bottom of your list?", answer: "Two all-nighters in a row is my absolute limit — I won't bid three, no matter what." }] });
     proposals.push(step({ threadId: "china", ack: "Three in a row is the hard no — got it.", prompt: "How about spread out?" }));
     expect(await nextInterviewStep(stated)).toMatchObject({ ack: "Three in a row is the hard no — got it." });
-    proposals.push(step({ threadId: "china", ack: "Commutes cost you, but nothing's a dealbreaker — got it.", prompt: "How about spread out?" }));
-    expect(await nextInterviewStep(ranksNotFilters)).toMatchObject({ ack: "Commutes cost you, but nothing's a dealbreaker — got it." });
+    proposals.push(step({ threadId: "china", ack: "Commutes cost you, but nothing's an absolute — got it.", prompt: "How about spread out?" }));
+    expect(await nextInterviewStep(ranksNotFilters)).toMatchObject({ ack: "Commutes cost you, but nothing's an absolute — got it." });
   });
 });
 
