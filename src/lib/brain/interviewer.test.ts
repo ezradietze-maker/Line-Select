@@ -278,9 +278,9 @@ describe("real examples with every question", () => {
   });
 
   it("never shows an example it wasn't offered", async () => {
-    proposals.push(step({ threadId: "china", prompt: "1004 has two departures — enough?", examples: ["E9"] }), step({ threadId: "china", prompt: "1004 has two departures — enough?", examples: ["E1"] }));
+    proposals.push(step({ threadId: "china", prompt: "Trip 88 has two commutes — too many?", examples: ["E9"] }), step({ threadId: "china", prompt: "Trip 88 has two commutes — too many?", examples: ["E3"] }));
     const r = await nextInterviewStep(input({ examples, packNumbers }));
-    expect(r).toMatchObject({ done: false, examples: [examples[0]] });
+    expect(r).toMatchObject({ done: false, examples: [examples[2]] });
   });
 
   it("shows examples of one priority only — the one the question is about", async () => {
@@ -300,6 +300,52 @@ describe("real examples with every question", () => {
     );
     const r = await nextInterviewStep(input({ examples, packNumbers }));
     expect(r).toMatchObject({ done: false, prompt: "1004 gets you two departures; 1008 takes four. Where does it start to cost you?" });
+  });
+
+  it("shows every line a question names, even one it didn't pick as an example", async () => {
+    proposals.push(step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "For example, line 1004 has two; line 1008 has four.", examples: ["E3"] }));
+    const r = await nextInterviewStep(input({ examples, packNumbers }));
+    // The lines it names take the place of the trip: lines or a trip, never both.
+    expect(r).toMatchObject({ done: false, examples: [examples[0], examples[1]] });
+  });
+
+  it("shows lines in pairs — asks once for the other end, then adds it", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two.", examples: ["E1"] }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two.", examples: ["E1"] })
+    );
+    const r = await nextInterviewStep(input({ examples, packNumbers }));
+    expect(proposals).toHaveLength(0);
+    expect(r).toMatchObject({ done: false, examples: [examples[0], examples[1]] });
+  });
+
+  it("never weighs one thing against a list of others", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "How much does one long trip and one short trip matter next to layovers and days off?", examples: ["E1", "E2"] }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", examples: ["E1", "E2"] })
+    );
+    const r = await nextInterviewStep(input({ examples, packNumbers }));
+    expect(r).toMatchObject({ done: false, prompt: "How many departures before it bothers you?" });
+  });
+
+  it("asks again for a question showing a line and a trip together", async () => {
+    const withTrip = [...examples, { id: "E4", kind: "trip" as const, ref: "93@2", title: "Trip #93 · Oct 1", fact: "1 departure", priority: "Few departures", criterionId: "deps", summary: "MEM → ANC → MEM" }];
+    proposals.push(
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", examples: ["E2", "E4"] }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", examples: ["E1", "E2"] })
+    );
+    const r = await nextInterviewStep(input({ examples: withTrip, packNumbers }));
+    expect(proposals).toHaveLength(0);
+    expect(r).toMatchObject({ done: false, examples: [examples[0], examples[1]] });
+  });
+
+  it("never names a line it has no example of to show", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1011 has five.", examples: ["E1"] }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1008 has four.", examples: ["E1", "E2"] })
+    );
+    const r = await nextInterviewStep(input({ examples, packNumbers }));
+    expect(r).toMatchObject({ done: false, helpText: "Line 1004 has two; line 1008 has four." });
   });
 
   it("puts no examples on a line choice — the two lines are the example", async () => {

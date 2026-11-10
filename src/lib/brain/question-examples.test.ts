@@ -28,6 +28,15 @@ describe("examples for the interview's questions", () => {
     for (const e of ex.filter((x) => x.kind === "trip")) expect(trips.has(e.ref)).toBe(true);
   });
 
+  it("never offers a trip or line that's mostly hotel standby, unless the priority is about standby", () => {
+    const pack = structuredClone(SAMPLE_BID_PACK);
+    const best = pickQuestionExamples(pack, model([crit("Days off", "daysOff")]), pm)[0].ref;
+    for (const t of pack.lines.find((l) => l.lineNumber === best)!.trips) t.standbyDays = t.days;
+    const ex = pickQuestionExamples(pack, model([crit("Days off", "daysOff")]), prepareMetrics(pack));
+    expect(ex.length).toBeGreaterThan(0);
+    expect(ex.some((e) => e.ref === best)).toBe(false);
+  });
+
   it("offers nothing without priorities, and says what was shown in the transcript", () => {
     expect(pickQuestionExamples(SAMPLE_BID_PACK, model([]), pm)).toEqual([]);
     expect(examplesTranscript([{ title: "Line 1004", fact: "2 departures", priority: "Few departures" }])).toBe(" (Examples shown: Line 1004 — 2 departures (Few departures).)");

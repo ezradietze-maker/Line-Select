@@ -105,7 +105,7 @@ You're a line pilot who has bid for years, talking to a colleague — not a surv
 WHAT MAKES A GOOD QUESTION
 - It comes from them: one of the open threads (prefer the highest priority one), or something in their latest answer worth one follow-up. Quote or echo their own words. Never ask a generic checklist question about a topic they haven't raised — topics they never mentioned are covered later on a separate screen.
 - It is grounded in their pack: use the real cities, numbers and lines in the pack brief ("Sydney only shows up on 4 lines here, and two of them…").
-- It shows them, not asks them to imagine. Pilots answer real lines far better than generic questions about what they'd trade. Every question about one of their priorities shows one or two of the EXAMPLES YOU MAY SHOW (set examples to their ids): real lines or trips from their own pack at the two ends of the one thing you're asking about — what more and less of it look like — with their figure. Name them with that figure in helpText, briefly ("2031 gets you two departures; 2044 takes four."), under the plain question ("Where does the number of departures start to cost you?"). Take them from the group of the priority the question is about — never attach another priority's example because it names a line you mention. Prefer lines near the top of their list. Leave examples empty only for a line-pair question (the pair is the example) or when no example shows what you're asking.
+- It shows them, not asks them to imagine. Pilots answer real lines far better than generic questions about what they'd trade. Every question about one of their priorities shows EXAMPLES YOU MAY SHOW (set examples to their ids): two lines from their own pack at the two ends of the one thing you're asking about — what more and less of it look like — with their figure, or one trip when a single trip shows it. Lines or a trip, never both. Name them with that figure in helpText, briefly ("2031 gets you two departures; 2044 takes four."), under the plain question ("Where does the number of departures start to cost you?"). Take them from the group of the priority the question is about — never attach another priority's example because it names a line you mention. Prefer lines near the top of their list. Leave examples empty only for a line-pair question (the pair is the example) or when no example shows what you're asking.
 - Never ask them to price one priority in another ("how many extra commutes would that layover be worth?", "how much layover would you give up for an easy commute?") — pilots can't answer that in general, only between real lines. To learn how two priorities trade, offer a line pair that pulls them apart; if none is offered, ask about something else.
 - Never invent a line or trip, and never describe a made-up one ("a line with a Honolulu trip and a week of hub turns"). Name only lines and trips from the examples, the line pairs, or what they've already been shown. If no real line shows a trade, don't ask it.
 - It moves the ranking: ask about trade-offs, thresholds and how much something matters relative to their other priorities — not trivia, not things a bid pack can't show, not things they already answered.
@@ -173,7 +173,7 @@ const SCHEMA = {
     helpText: { type: "string", description: "Optional one-line hint under the question; empty for none." },
     options: { type: "array", items: { type: "string" }, description: "2–4 options for a choice question; empty otherwise." },
     pairIndex: { type: "integer", description: "The offered line pair for a line-pair question; -1 otherwise." },
-    examples: { type: "array", items: { type: "string" }, description: "1–2 ids from EXAMPLES YOU MAY SHOW, shown with the question; empty for a line-pair question." },
+    examples: { type: "array", items: { type: "string" }, description: "Ids from EXAMPLES YOU MAY SHOW, shown with the question: two lines of one priority, or one trip; empty for a line-pair question." },
   },
 } as const;
 
@@ -251,6 +251,8 @@ function renderExamples(examples: QuestionExample[]): string {
 const AGAINST_IMAGINED = /\b(?:over|than|instead of)\s+(?:one|a line|a trip|another line|another trip)\s+(?:with|that|where)\b/i;
 /** A second question tacked on: "…, and what would tip it?", "…, and how early do you leave?" */
 const THEN_ANOTHER = /[,;—–-]\s*(?:and|or)\s+(?:what|how|which|why|where|when|would|do|does|is|are)\b[^?]*\?\s*$/i;
+/** One thing weighed against a list: "how much does it matter next to layovers and days off?" */
+const WEIGHED_AGAINST_SEVERAL = /\b(?:next to|compared (?:to|with)|versus|vs\.?|against)\s+[^?]*?(?:,|\band\b)/i;
 /** The plain question's length; the lines and figures go in helpText. */
 const MAX_PROMPT_WORDS = 25;
 
@@ -266,6 +268,40 @@ function namedNumbers(text: string): { lines: string[]; trips: string[] } {
 const couldBeTime = (n: string) => Number(n.slice(0, 2)) < 24 && Number(n.slice(2)) < 60;
 /** Or a year ("2026"). */
 const couldBeYear = (n: string) => /^20\d\d$/.test(n);
+
+/** The real lines a question names, each once. */
+function namedPackLines(step: Pick<RawStep, "prompt" | "helpText">, input: Pick<InterviewStepInput, "packNumbers">): string[] {
+  const lines = new Set(input.packNumbers?.lines ?? []);
+  return [...new Set(namedNumbers(`${step.prompt} ${step.helpText}`).lines.filter((n) => lines.has(n)))];
+}
+
+/** The offered line at the other end of a shown line's priority. */
+function otherEnd(e: QuestionExample, offered: QuestionExample[]): QuestionExample | undefined {
+  return offered.find((x) => x.kind === "line" && x.ref !== e.ref && priorityOf(x) === priorityOf(e));
+}
+
+/**
+ * What a question shows, so it makes sense on its own (the owner, Nov 2026, twice):
+ * - every line it names — "line 1005 has one trip, line 1055 has five" came with only 1005 shown;
+ * - lines in pairs, both ends of the priority — one 13-day line and a 13-day trip showed nothing to compare;
+ * - lines or one trip, never both.
+ */
+function examplesToShow(step: Pick<RawStep, "prompt" | "helpText" | "examples">, input: Pick<InterviewStepInput, "examples" | "packNumbers">): QuestionExample[] {
+  const offered = input.examples ?? [];
+  const chosen = [...new Set(step.examples ?? [])].slice(0, 2).flatMap((id) => offered.filter((e) => e.id === id));
+  const priorities = new Set(chosen.map(priorityOf));
+  const lines = chosen.filter((e) => e.kind === "line");
+  const add = (e: QuestionExample | undefined) => {
+    if (e && lines.length < 3 && !lines.some((x) => x.ref === e.ref)) lines.push(e);
+  };
+  // A named line's example comes from the shown priority where there is one.
+  for (const n of namedPackLines(step, input)) {
+    const ofLine = offered.filter((e) => e.kind === "line" && e.ref === n);
+    if (!lines.some((x) => x.ref === n)) add(ofLine.find((x) => priorities.has(priorityOf(x))) ?? ofLine[0]);
+  }
+  if (lines.length === 1) add(otherEnd(lines[0], offered));
+  return lines.length ? lines : chosen.filter((e) => e.kind === "trip").slice(0, 1);
+}
 
 /** Why a proposed question can't be asked, if it can't. `attempt` counts proposals this turn (0 = the first). */
 function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<string>, attempt = 0): string | null {
@@ -287,6 +323,20 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   // The examples show the one priority the question is about, at its two ends — never a line picked for another reason.
   const priorities = new Set((step.examples ?? []).map((id) => { const e = (input.examples ?? []).find((x) => x.id === id); return e ? priorityOf(e) : id; }));
   if (priorities.size > 1) return "Both examples have to show the same priority — the one your question is about — at its two ends. Pick them from one group.";
+  // Lines come in pairs, so the pilot sees what more and less of it look like (see `examplesToShow`) — asked once to
+  // name both, then the other end is added anyway.
+  if (attempt === 0 && step.kind !== "line-pair") {
+    const shown = (step.examples ?? []).flatMap((id) => (input.examples ?? []).filter((e) => e.id === id));
+    const lines = shown.filter((e) => e.kind === "line");
+    const other = lines.length === 1 ? otherEnd(lines[0], input.examples ?? []) : undefined;
+    if (other) return `Lines are shown in pairs, the two ends of the priority: show ${other.id} (${other.title} — ${other.fact}) with ${lines[0].id} and name both.`;
+    if (lines.length && shown.some((e) => e.kind === "trip")) return "Show lines or one trip, not both: the two lines already show it.";
+  }
+  // Every line it names is shown under it (see `examplesToShow`); a line with no example to show can't be named.
+  if (step.kind !== "line-pair" && attempt < 2) {
+    const unseen = namedPackLines(step, input).find((n) => !(input.examples ?? []).some((e) => e.kind === "line" && e.ref === n));
+    if (unseen) return `Line ${unseen} isn't one of the EXAMPLES YOU MAY SHOW, so the pilot couldn't see it — name only lines you show.`;
+  }
   // The pack's words and pilots' only — a word that's in neither ("red-eye", "layover value") goes back to be said
   // properly, unless the pilot brought it up themselves.
   const theirs = input.exchanges.map((e) => e.answer).join(" ");
@@ -303,6 +353,7 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   // last try: a long question mustn't end the interview.
   if (attempt < 2 && (step.prompt.match(/\?/g) ?? []).length > 1) return "That asks more than one thing. Ask the first as its own plain question; the other can be the next question.";
   if (attempt < 2 && THEN_ANOTHER.test(step.prompt)) return "That asks two things in one (\"…, and what would…\"). Ask the first on its own; the other can be the next question.";
+  if (attempt < 2 && WEIGHED_AGAINST_SEVERAL.test(step.prompt)) return "That weighs one thing against several (\"next to layovers and days off\"). Ask about the one thing on its own; to weigh several, offer a line pair.";
   if (attempt < 2 && step.prompt.split(/\s+/).length > MAX_PROMPT_WORDS) return `Put the question in one plain sentence of ${MAX_PROMPT_WORDS} words or fewer, and the lines and figures in helpText.`;
   // Show, don't ask in the abstract — once: a question no example fits may still go without one.
   if (attempt === 0 && step.kind !== "line-pair" && !(step.examples ?? []).length && offered.size)
@@ -390,7 +441,7 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
     const pair = step.kind === "line-pair" ? input.linePairs.find((p) => p.index === step.pairIndex) : undefined;
     const options = step.options.map((o) => o.trim()).filter(Boolean).slice(0, 4);
     const kind = step.kind === "choice" && options.length < 2 ? "free-text" : step.kind;
-    const shown = kind === "line-pair" ? [] : [...new Set(step.examples ?? [])].slice(0, 2).flatMap((id) => (input.examples ?? []).filter((e) => e.id === id));
+    const shown = kind === "line-pair" ? [] : examplesToShow(step, input);
     return {
       done: false,
       settled,

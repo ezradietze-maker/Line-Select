@@ -1101,8 +1101,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     phase === "story" || phase === "checkin" ? (hasSeniorityStep ? "seniority" : null) : phase === "commuter" ? "story" : phase === "cities" ? (checkIn ? "checkin" : "commuter") : null;
 
   return (
-    // Two lines side by side need the pack's whole month across, so that question gets the page's width.
-    <div className={`mx-auto w-full ${phase === "question" && question?.kind === "line-pair" ? "max-w-6xl" : "max-w-2xl"}`}>
+    // Any question showing lines (two side by side, or examples) needs the pack's whole month across, so it gets the page's width.
+    <div className={`mx-auto w-full ${phase === "question" && (question?.kind === "line-pair" || question?.examples?.some((e) => e.kind === "line")) ? "max-w-6xl" : "max-w-2xl"}`}>
       <InterviewProgress base={bidPack.base} fraction={progress} left={inOpening ? "Getting started" : phase === "review" ? "Your priorities" : `${turn} answered`} right={inOpening ? (checkIn ? "About 3–5 min" : "About 20–30 min") : phase === "review" ? "Last step" : checkIn ? "Monthly check-in" : "Story-driven"} />
 
       {resume && inOpening && (

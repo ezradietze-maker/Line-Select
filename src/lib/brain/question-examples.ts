@@ -5,6 +5,7 @@ import { namedDomicile } from "@/lib/domicile-name";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
+import { lineStandbyDays, tripStandbyDays } from "@/lib/standby";
 import { scoreTripsV2, tripKey, tripReadingOf, tripValueText } from "@/lib/scoring-v2/trip-score";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
@@ -50,6 +51,13 @@ const MIN_GAP = 0.3;
 const MAX_PER_ITEM = 2;
 const MAX_EXAMPLES = 24;
 
+/**
+ * A trip that's mostly hotel standby ("standby ×11 at ANC") isn't what a pilot means by a trip — shown for "how long a
+ * trip", it read as nonsense to the owner (Nov 2026). Neither is a line made of them. Offered only for a standby priority.
+ */
+const mostlyStandbyTrip = (t: Trip) => tripStandbyDays(t) * 2 >= Math.max(1, t.days);
+const mostlyStandbyLine = (l: Line) => lineStandbyDays(l) * 2 >= Math.max(1, l.trips.reduce((n, t) => n + t.days, 0));
+
 function lineBrief(line: Line): string {
   return `${line.trips.length} ${line.trips.length === 1 ? "trip" : "trips"}, ${line.daysOff} days off, ${line.totalCreditHours.toFixed(1)} credit`;
 }
@@ -77,7 +85,8 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
     const def = METRICS_BY_ID.get(c.metric);
     if (!def) continue;
     const at = (r: (typeof ranked)[number]) => r.results.find((x) => x.criterionId === c.id);
-    const measured = (rs: typeof ranked) => rs.filter((r) => at(r)?.value !== null && at(r) !== undefined);
+    const aboutStandby = def.category === "standby";
+    const measured = (rs: typeof ranked) => rs.filter((r) => at(r)?.value !== null && at(r) !== undefined && (aboutStandby || !mostlyStandbyLine(lineOf.get(r.lineNumber)!)));
     // The two ends of this priority among their best lines — or the whole pack when their best lines don't differ on it.
     let pool = measured(ranked.slice(0, FROM_TOP));
     const spread = (rs: typeof ranked) => (rs.length ? Math.max(...rs.map((r) => at(r)!.utility)) - Math.min(...rs.map((r) => at(r)!.utility)) : 0);
@@ -93,7 +102,7 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
     const reading = tripReadingOf(def);
     if (reading && reading !== "none" && reading !== "dates") {
       const shown = [...trips.values()]
-        .filter((t) => topTrips.has(t.key))
+        .filter((t) => topTrips.has(t.key) && (aboutStandby || !mostlyStandbyTrip(tripOf.get(t.key)!)))
         .map((t) => ({ t, r: t.results.find((x) => x.criterionId === c.id) }))
         .filter((x) => x.r && x.r.value !== null);
       const span = shown.length ? Math.max(...shown.map((x) => x.r!.utility)) - Math.min(...shown.map((x) => x.r!.utility)) : 0;
