@@ -43,7 +43,7 @@ export function RouteArc({ from, to }: { from: string; to: string }) {
   const [bx, by] = project({ lat: b[0], lon: b[1] });
   return (
     <WorldMap label={`The great-circle route from ${from} to ${to}`}>
-      <path d={pathThrough(points)} fill="none" stroke="var(--color-accent)" strokeWidth={1.4} strokeLinecap="round" pathLength={1} className={reduce ? "" : "route-draw"} vectorEffect="non-scaling-stroke" />
+      <path d={pathThrough(points)} fill="none" stroke="var(--color-accent)" strokeWidth={1.2} strokeLinecap="round" pathLength={1} className={reduce ? "" : "route-draw"} />
       <circle cx={ax} cy={ay} r={2.4} fill="var(--color-ink)" />
       <circle cx={bx} cy={by} r={2.8} fill="var(--color-accent)" />
       <g ref={plane} style={{ opacity: 0 }}>

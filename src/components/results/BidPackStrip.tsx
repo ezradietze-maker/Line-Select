@@ -138,7 +138,7 @@ export function StripViewToggle({ view, onChange }: { view: StripViewMode; onCha
       className={`relative rounded-full px-3 py-1 text-xs font-medium transition-colors duration-300 ${view === value ? "text-canvas" : "text-ink-muted hover:text-ink"}`}
     >
       {view === value && <PillHighlight group={group} className="absolute inset-0 rounded-full bg-ink" />}
-      <span className="relative">{label}</span>
+      <span className="relative z-10">{label}</span>
     </button>
   );
   return (

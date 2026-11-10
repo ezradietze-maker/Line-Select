@@ -66,6 +66,8 @@ export function LayoverRouteMap({ base, cities }: { base: string; cities: string
   const { origin, stops, view } = placed;
   // Sizes in the map's own units, kept the same on screen however far it's zoomed in.
   const unit = view[2] / 360;
+  // One after another, but the whole map's drawn inside a couple of seconds, however many cities a pack has.
+  const step = Math.min(70, 1400 / stops.length);
 
   return (
     <div className="relative">
@@ -77,12 +79,13 @@ export function LayoverRouteMap({ base, cities }: { base: string; cities: string
             fill="none"
             stroke={i < 3 ? "var(--color-accent)" : "var(--color-ink-muted)"}
             strokeOpacity={i < 3 ? 1 : 0.55}
-            strokeWidth={i < 3 ? 1.5 : 1}
+            // In the map's own units, not non-scaling-stroke: with that, the browser measures the draw-in's dashes in
+            // screen pixels, and on a map scaled up the finished line stays broken.
+            strokeWidth={(i < 3 ? 1.5 : 1) * unit}
             strokeLinecap="round"
-            vectorEffect="non-scaling-stroke"
             pathLength={1}
             className={reduce ? "" : "route-draw"}
-            style={reduce ? undefined : { animationDelay: `${200 + i * 70}ms` }}
+            style={reduce ? undefined : { animationDelay: `${200 + i * step}ms` }}
           />
         ))}
         {stops.map((s, i) => (
@@ -93,27 +96,34 @@ export function LayoverRouteMap({ base, cities }: { base: string; cities: string
             r={(i < 3 ? 2.6 : 1.8) * unit}
             fill={i < 3 ? "var(--color-accent)" : "var(--color-ink-muted)"}
             className={reduce ? "" : "route-dot"}
-            style={reduce ? undefined : { animationDelay: `${900 + i * 70}ms` }}
+            style={reduce ? undefined : { animationDelay: `${900 + i * step}ms` }}
           />
         ))}
         <circle cx={origin.x} cy={origin.y} r={3.2 * unit} fill="var(--color-ink)" />
         <circle cx={origin.x} cy={origin.y} r={3.2 * unit} fill="none" stroke="var(--color-ink)" strokeWidth={1} vectorEffect="non-scaling-stroke" className={reduce ? "" : "beacon-ring"} />
       </WorldMap>
       {/* The most-flown three named, in HTML over the map so the codes read the same size on any screen. */}
-      {stops.slice(0, 3).map((s, i) => (
-        <span
-          key={s.code}
-          aria-hidden
-          className={`pointer-events-none absolute -translate-x-1/2 font-mono text-[10px] font-semibold tracking-wider text-accent ${reduce ? "" : "route-dot"}`}
-          style={{
-            left: `${((s.x - view[0]) / view[2]) * 100}%`,
-            top: `calc(${((s.y - view[1]) / view[3]) * 100}% - 18px)`,
-            animationDelay: reduce ? undefined : `${900 + i * 70}ms`,
-          }}
-        >
-          {s.code}
-        </span>
-      ))}
+      {stops.slice(0, 3).map((s, i) => {
+        const left = ((s.x - view[0]) / view[2]) * 100;
+        const top = ((s.y - view[1]) / view[3]) * 100;
+        // Two close together (Toronto and Newark, from Memphis) would print over each other above their dots: each takes its own side instead.
+        const near = stops.slice(0, 3).find((o) => o !== s && Math.abs(o.x - s.x) / view[2] < 0.16 && Math.abs(o.y - s.y) / view[3] < 0.22);
+        const side = !near ? "above" : s.x < near.x ? "west" : "east";
+        return (
+          <span
+            key={s.code}
+            aria-hidden
+            className={`pointer-events-none absolute font-mono text-[10px] font-semibold tracking-wider text-accent ${side === "above" ? "-translate-x-1/2" : side === "west" ? "-translate-x-full" : ""} ${reduce ? "" : "route-dot"}`}
+            style={{
+              left: side === "above" ? `${left}%` : `calc(${left}% ${side === "west" ? "-" : "+"} 7px)`,
+              top: side === "above" ? `calc(${top}% - 18px)` : `calc(${top}% - 7px)`,
+              animationDelay: reduce ? undefined : `${900 + i * step}ms`,
+            }}
+          >
+            {s.code}
+          </span>
+        );
+      })}
     </div>
   );
 }

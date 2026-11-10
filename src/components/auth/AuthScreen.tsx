@@ -354,7 +354,7 @@ function TabButton({
       className={`relative rounded-md py-2 text-sm font-medium transition-colors duration-300 ${active ? "text-ink" : "text-ink-faint hover:text-ink-muted"}`}
     >
       {active && <PillHighlight group="auth-mode" className="absolute inset-0 rounded-md bg-surface shadow-sm" />}
-      <span className="relative">{children}</span>
+      <span className="relative z-10">{children}</span>
     </button>
   );
 }

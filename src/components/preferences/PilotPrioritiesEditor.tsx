@@ -219,7 +219,7 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
                       className={`relative rounded-full border px-2.5 py-1 text-xs transition-colors duration-300 ${i === level ? "border-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
                     >
                       {i === level && <PillHighlight group={`priority-level-${d.id}`} />}
-                      <span className="relative">{l.label}</span>
+                      <span className="relative z-10">{l.label}</span>
                     </button>
                   ))}
                   <button type="button" onClick={() => drop(c)} className="ml-auto text-xs text-ink-faint underline decoration-dotted underline-offset-4 hover:text-danger">

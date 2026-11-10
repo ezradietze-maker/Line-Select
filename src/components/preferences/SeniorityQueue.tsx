@@ -25,14 +25,15 @@ export function SeniorityQueue({ ahead, total }: { ahead: number; total: number 
   return (
     <div className="mt-5" aria-hidden>
       {/* Clipped sideways only: the "You" label hangs below the row. On a phone the planes behind are left off and the
-          runway is shorter, so the line ahead and the runway fit. */}
+          runway is shorter, so the line ahead and the runway fit; yours is then first in the row, so its label starts
+          at the plane's edge instead of centring past the clip. */}
       <div className="flex items-center gap-1 overflow-x-clip pb-4 sm:gap-1.5">
         {Array.from({ length: behind }, (_, k) => (
           <Plane key={k} className="hidden text-ink-faint sm:block" delay={next()} opacity={0.3 + (0.4 * (k + 1)) / behind} />
         ))}
         <span className="relative flex">
           <Plane className="text-accent drop-shadow-[0_0_5px_var(--glow-strong)]" delay={next()} />
-          <span className="absolute left-1/2 top-full mt-1 -translate-x-1/2 font-mono text-[9.5px] uppercase tracking-[0.14em] text-accent">You</span>
+          <span className="absolute left-0 top-full mt-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-accent sm:left-1/2 sm:-translate-x-1/2">You</span>
         </span>
         <span className="mx-1 h-px w-3 bg-hairline" />
         {long ? (

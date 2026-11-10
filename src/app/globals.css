@@ -475,6 +475,18 @@
   select:focus-visible,
   textarea:not([data-no-ring]):focus-visible {
     box-shadow: 0 0 0 2px var(--color-focus-ring);
+    /* The ring replaces the browser's own blue outline. Transparent, not none: forced-colors mode draws it, and drops the shadow. */
+    outline: 2px solid transparent;
+  }
+  /* Links and buttons take the same color, rather than the browser's blue against the page's amber. */
+  a:focus-visible,
+  button:focus-visible,
+  summary:focus-visible,
+  [role="button"]:focus-visible,
+  [role="tab"]:focus-visible,
+  [role="radio"]:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
   }
   /* Headings break into even lines instead of leaving one word stranded on the last. */
   h1,
@@ -1363,8 +1375,9 @@ body:has([data-bottom-bar]) .back-to-top {
 
 /* The loading instrument: an attitude indicator's horizon rocking through a gentle bank. */
 .attitude-roll {
+  /* The dial is drawn around 0,0 (viewBox -12 -12 24 24): that's its centre. "center" here would be 12,12, its corner. */
   transform-box: view-box;
-  transform-origin: center;
+  transform-origin: 0 0;
   animation: attitude-roll 2.4s ease-in-out infinite;
 }
 @keyframes attitude-roll {

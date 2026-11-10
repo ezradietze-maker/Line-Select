@@ -21,8 +21,9 @@ import { AppStateProvider, useAppState } from "@/lib/app-state";
 import { navTargetForPath } from "@/lib/nav-target";
 
 // Only ever shown in a dialog someone opens — fetched then, not shipped with every screen.
-const FeedbackForm = dynamic(() => import("@/components/feedback/FeedbackForm").then((m) => m.FeedbackForm));
-const HowItWorksContent = dynamic(() => import("@/components/results/HowItWorks").then((m) => m.HowItWorksContent));
+// `loading` gives each a Suspense boundary of its own, so opening one for the first time can't suspend the page behind it.
+const FeedbackForm = dynamic(() => import("@/components/feedback/FeedbackForm").then((m) => m.FeedbackForm), { loading: () => null });
+const HowItWorksContent = dynamic(() => import("@/components/results/HowItWorks").then((m) => m.HowItWorksContent), { loading: () => null });
 
 const HIDDEN_SIDEBAR_PATHS = ["/", "/auth"];
 

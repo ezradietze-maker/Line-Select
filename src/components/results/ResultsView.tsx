@@ -102,7 +102,9 @@ import { setRankingSnapshot } from "@/lib/ranking-snapshot";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
-const LineComparisonModal = dynamic(() => import("@/components/results/LineComparisonModal").then((m) => m.LineComparisonModal));
+// `loading` gives it a Suspense boundary of its own: without one, the first open suspends up to the whole page's, which
+// blanks the rankings and loses the pilot's place on the list.
+const LineComparisonModal = dynamic(() => import("@/components/results/LineComparisonModal").then((m) => m.LineComparisonModal), { loading: () => null });
 
 /** The pieces a card only shows when opened, fetched while the pilot is still reading the list, so opening one never waits. */
 function warmUpDetails() {
@@ -1091,7 +1093,7 @@ export function ResultsView({
                 className={`relative px-3 py-2 font-medium transition-colors duration-300 ${view === "all" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
               >
                 {view === "all" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                <span className="relative">All lines</span>
+                <span className="relative z-10">All lines</span>
               </button>
               <button
                 type="button"
@@ -1102,7 +1104,7 @@ export function ResultsView({
                 className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 ${view === "shortlist" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
               >
                 {view === "shortlist" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                <span className="relative">
+                <span className="relative z-10">
                   Shortlist (<FlipText text={String(validMarks.starred.length)} />)
                 </span>
               </button>
@@ -1115,7 +1117,7 @@ export function ResultsView({
                   className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
                 >
                   {view === "realistic" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                  <span className="relative">Realistic ({realisticIds.size})</span>
+                  <span className="relative z-10">Realistic ({realisticIds.size})</span>
                 </button>
               )}
             </div>

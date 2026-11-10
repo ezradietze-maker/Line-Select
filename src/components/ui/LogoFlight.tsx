@@ -11,8 +11,9 @@ import { LOGO_S_PATH, LOGO_VIEWBOX } from "@/lib/logo-geometry";
  */
 export function LogoFlight({ className = "h-9 w-9" }: { className?: string }) {
   const reduce = useReducedMotion();
-  // SMIL refers to elements by id; colons from useId aren't allowed there.
-  const id = `logo-flight-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  // SMIL refers to elements by id: "a-b.begin" reads as an offset, not an id with a hyphen, and useId's colons aren't
+  // allowed at all, so letters and digits only. With a hyphen here the plane flew, but its fade-in never started.
+  const id = `logoFlight${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const motionRef = useRef<SVGAnimateMotionElement>(null);
   const flying = useRef(false);
   function fly() {
