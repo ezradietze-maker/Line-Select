@@ -328,6 +328,59 @@ describe("real examples with every question", () => {
     expect(r).toMatchObject({ done: false, prompt: "How many departures before it bothers you?" });
   });
 
+  it("shows only what the question's thread is about — lines picked for another priority go back, or are left off", async () => {
+    const onCommutes = { ...model, threads: [...model.threads.filter((t) => t.id !== "china"), { id: "china", topic: "IND layovers", why: "w", priority: 0.5, status: "open" as const, criteria: ["commutes"], timesAsked: 0 }] };
+    proposals.push(
+      step({ threadId: "china", prompt: "How much would you give up to avoid IND?", examples: ["E1", "E2"] }),
+      step({ threadId: "china", prompt: "How much would you give up to avoid IND?", examples: ["E1", "E2"] }),
+      step({ threadId: "china", prompt: "How much would you give up to avoid IND?", examples: ["E1", "E2"] })
+    );
+    const r = await nextInterviewStep(input({ examples, packNumbers, model: onCommutes }));
+    expect(proposals).toHaveLength(0);
+    expect(r).toMatchObject({ done: false, prompt: "How much would you give up to avoid IND?" });
+    if (r.done) throw new Error("expected a question");
+    expect(r.examples).toBeUndefined();
+  });
+
+  it("never names a line shown only for another priority than the question's", async () => {
+    const onDeps = { ...model, threads: [...model.threads.filter((t) => t.id !== "china"), { id: "china", topic: "Departures", why: "w", priority: 0.5, status: "open" as const, criteria: ["deps"], timesAsked: 0 }] };
+    const elsewhere = [...examples, { id: "E4", kind: "line" as const, ref: "1011", title: "Line 1011", fact: "2 commutes", priority: "Avoid commutes", criterionId: "commutes", summary: "s" }];
+    proposals.push(
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1011 has two commutes.", examples: ["E1", "E2"] }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1008 has four.", examples: ["E1", "E2"] })
+    );
+    const r = await nextInterviewStep(input({ examples: elsewhere, packNumbers, model: onDeps }));
+    expect(r).toMatchObject({ done: false, helpText: "Line 1004 has two; line 1008 has four." });
+  });
+
+  it("shows the trip it names, and asks again when it names one it doesn't show", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "How many commutes before it bothers you?", helpText: "Trip 88 takes two, line 1004 has two departures.", examples: ["E1", "E2"] }),
+      step({ threadId: "china", prompt: "How many commutes before it bothers you?", helpText: "Trip 88 takes two commutes.", examples: ["E3"] })
+    );
+    const r = await nextInterviewStep(input({ examples, packNumbers }));
+    expect(proposals).toHaveLength(0);
+    expect(r).toMatchObject({ done: false, examples: [examples[2]] });
+  });
+
+  it("on its last try, still shows every line it names — a line no example covers, bare", async () => {
+    const same = step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1018 has five.", examples: ["E1", "E2"] });
+    proposals.push(same, same, same);
+    const r = await nextInterviewStep(input({ examples, packNumbers }));
+    if (r.done) throw new Error("expected a question");
+    expect(r.examples?.map((e) => [e.ref, e.fact])).toEqual([["1004", "2 departures"], ["1008", "4 departures"], ["1018", ""]]);
+    expect(r.transcript).toContain("; Line 1018.)");
+  });
+
+  it("never sends help text that corrects itself partway", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "1004 has two on 1008's side. Correction: 1008 has four.", examples: ["E1", "E2"] }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "1004 has two; 1008 has four.", examples: ["E1", "E2"] })
+    );
+    const r = await nextInterviewStep(input({ examples, packNumbers }));
+    expect(r).toMatchObject({ done: false, helpText: "1004 has two; 1008 has four." });
+  });
+
   it("asks again for a question showing a line and a trip together", async () => {
     const withTrip = [...examples, { id: "E4", kind: "trip" as const, ref: "93@2", title: "Trip #93 · Oct 1", fact: "1 departure", priority: "Few departures", criterionId: "deps", summary: "MEM → ANC → MEM" }];
     proposals.push(

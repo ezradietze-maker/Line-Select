@@ -43,7 +43,9 @@ function rangesFor(bidPack: BidPack, model: PilotModel, pack: PackMetrics): { la
     .flatMap((c) => {
       const def = METRICS_BY_ID.get(c.metric);
       const values = scored.flatMap((s) => s.results.filter((r) => r.criterionId === c.id && r.value !== null).map((r) => r.value as number));
-      if (!def || values.length < 2) return [];
+      // A clock time's range reads as nonsense: "earliest shows from 00:33 to 23:59", "back as late as 05:00 to 04:07"
+      // (past midnight). The example in the question already shows a time limit can be given.
+      if (!def || def.unit === "minute of day" || values.length < 2) return [];
       const lo = Math.min(...values);
       const hi = Math.max(...values);
       if (lo === hi) return [];
