@@ -6,7 +6,7 @@ import type { ContractNode } from "./types";
 /** Keyword search over the contract's pieces, with the pilot's words translated into the contract's (BM25, hand-rolled: no paid or hosted search). */
 
 const STOP = new Set(
-  "a an and are as at be been but by can could did do does for from get got had has have how i if in into is it its just me my of on or our shall should so than that the their them then there they this to under up was we were what when where which who why will with would you your about any some".split(" "),
+  "a an and are as at be been but by can could did do does for from get got had has have how i if in into is it its just me my of on or our shall should so than that the their them then there they this to under up was we were what when where which who why will with would you your about any some whats hows whens wheres whos im ive id ill dont doesnt didnt cant wont isnt arent".split(" "),
 );
 
 const stem = (w: string): string => {
@@ -162,20 +162,33 @@ export function retrievePassages(question: string, budgetChars: number, earlier?
   return { passages, hits };
 }
 
-/** A passage as the model sees it: each piece on its own line with its exact id, the 2015 wording beside any that changed. */
+/** A passage as the model sees it: each piece on its own line, its id and any notes in the square brackets and only the contract's words after them; the 2015 wording beside any that changed. */
 export function renderPassage(id: string, bidMonth: string): string {
   const lines: string[] = [];
+  const scheduled = (n: ContractNode) => {
+    const a = n.changed ? applicabilityOf(n.id, bidMonth) : null;
+    return a?.kind === "scheduled" ? a : null;
+  };
   const when = (n: ContractNode) => {
-    if (!n.changed) return "";
-    const a = applicabilityOf(n.id, bidMonth);
-    if (a.kind !== "scheduled") return "";
-    if (a.manual) return ` (in force since June 29, 2026, applied by hand until automated by ${a.startsLabel})`;
-    return a.inForce ? ` (in force for this bid period, since ${a.startsLabel})` : ` (not in force yet for this bid period: starts by ${a.startsLabel}; the 2015 wording applies until then)`;
+    const a = scheduled(n);
+    if (!a) return "";
+    if (a.manual) return ` | in force since June 29, 2026, applied by hand until automated by ${a.startsLabel}`;
+    return a.inForce ? ` | in force for this bid period, since ${a.startsLabel}` : ` | not in force yet for this bid period: starts by ${a.startsLabel}; the 2015 wording applies until then`;
+  };
+  // A 2015 line can hold a whole deleted paragraph, such as First Fly's old 75% limit under 25.M.6.b.iv. Saying it has
+  // been replaced keeps the model from reading a deleted rule as the current one.
+  const was = (n: ContractNode) => {
+    const a = scheduled(n);
+    if (!a) return "2015 wording";
+    return a.manual || a.inForce ? "2015 wording | replaced: no longer the rule" : "2015 wording | still the rule for this bid period";
   };
   const walk = (n: ContractNode) => {
     const now = n.text;
-    if (now) lines.push(`[${n.id}]${when(n)} ${now}`);
-    if (n.changed && versionText(n, "2015").trim() && versionText(n, "2015") !== now) lines.push(`[${n.id}] (2015 wording) ${versionText(n, "2015")}`);
+    if (now) lines.push(`[${n.id}${when(n)}] ${now}`);
+    // Every line of it, or a deleted paragraph further down reads as unmarked, and as the current rule.
+    if (n.changed && versionText(n, "2015").trim() && versionText(n, "2015") !== now) {
+      for (const line of versionText(n, "2015").split("\n")) if (line.trim()) lines.push(`[${n.id} | ${was(n)}] ${line}`);
+    }
     for (const c of childrenOf(n.id)) walk(c);
   };
   const node = contractNode(id);

@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const llm = vi.hoisted(() => ({ structuredCall: vi.fn() }));
 vi.mock("@/lib/brain/llm", async (real) => ({ ...(await real<typeof import("@/lib/brain/llm")>()), structuredCall: llm.structuredCall }));
-const limits = vi.hoisted(() => ({ day: { ok: true }, hour: { ok: true } }));
+const limits = vi.hoisted(() => {
+  const state = { day: { ok: true }, hour: { ok: true }, checkDaily: vi.fn(async () => state.day) };
+  return state;
+});
 vi.mock("@/lib/server/rate-limit", async (real) => ({
   ...(await real<typeof import("@/lib/server/rate-limit")>()),
-  checkRateLimit: vi.fn(async () => limits.day),
+  checkRateLimit: limits.checkDaily,
   checkRequestLimit: vi.fn(async () => limits.hour),
 }));
 const spend = vi.hoisted(() => ({ check: { ok: true } as { ok: boolean; scope?: string }, recordSpend: vi.fn(async () => {}), signedIn: true }));
@@ -86,7 +89,7 @@ describe("POST /api/contract/ask, streamed", () => {
     const all = await messages(await POST(streamReq({ question: "and what can I do during it?", history })));
     const sent = llm.structuredCall.mock.calls[0][0];
     expect(sent.user.fresh).toContain("<earlier_conversation>");
-    expect(sent.user.cached).toContain("[25.E.6]");
+    expect(sent.user.cached).toContain("[25.E.6");
     expect(sent.system).toContain("Earlier answers are not evidence");
     expect(all.map((m) => m.text)).toContain("Keeping your earlier question in mind.");
     // 999 comes only from the earlier answer, so it doesn't count as backed up.
@@ -168,6 +171,16 @@ describe("POST /api/contract/ask", () => {
     spend.check = { ok: false, scope: "pilot" };
     expect((await POST(req({ question: "q?" }))).status).not.toBe(200);
     expect(llm.structuredCall).not.toHaveBeenCalled();
+  });
+
+  it("gives a signed-in pilot 40 questions a day and a guest 5", async () => {
+    llm.structuredCall.mockResolvedValue(reply({ found: false, answer: "", quotes: [] }));
+    limits.checkDaily.mockClear();
+    await POST(req({ question: "How long is the SWW?" }));
+    expect(limits.checkDaily).toHaveBeenCalledWith("contract-ask-day", "u:1", 40, 86_400);
+    spend.signedIn = false;
+    await POST(req({ question: "How long is the SWW?" }));
+    expect(limits.checkDaily).toHaveBeenLastCalledWith("contract-ask-day", "u:1", 5, 86_400);
   });
 
   it("turns down an empty or oversized question and oversized facts", async () => {

@@ -3,6 +3,7 @@
 import { DateTime } from "luxon";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { ConnectFedexPanel } from "@/components/fedex-connect/ConnectFedexPanel";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Notice } from "@/components/ui/Notice";
@@ -253,6 +254,8 @@ function ViewAddBuilder({ bidPack, seniority, profile, userId }: { bidPack: BidP
           <p className="mt-1 text-ink-faint">We don&rsquo;t send this for you yet: a current pilot has to confirm VIPS&rsquo;s form first. Our reading of the contract, not an official award.</p>
         </div>
       </section>
+
+      <ConnectFedexPanel signedIn={!!userId} reads="your View/Add make-up list" />
     </div>
   );
 }

@@ -1,0 +1,8 @@
+[
+  { "id": "ff1", "q": "How does First Fly work for reserves now?", "expect": ["25.M.4", "25.M.6.a", "25.M.6.b", "25.M.6"] },
+  { "id": "ff2", "q": "Is there still a 75% of RLG limit on first fly?", "expect": ["25.M.6", "25.M.4"] },
+  { "id": "ff3", "q": "What are the first fly rules on reserve for trips under 60 hours TAFB?", "expect": ["25.M.6.a", "25.M.6"] },
+  { "id": "ff4", "q": "What about first fly for trips over 60 hours TAFB?", "expect": ["25.M.6.b"] },
+  { "id": "ff5", "q": "When do I have to submit first fly by and how long does it last?", "expect": ["25.M.4"] },
+  { "id": "ff6", "q": "Can I set first fly for a specific trip?", "expect": ["25.M.4"] }
+]
