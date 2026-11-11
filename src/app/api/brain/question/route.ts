@@ -4,6 +4,8 @@ import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { nextInterviewStep, type LinePairCandidate, type LinePairDifference, type ThreadState } from "@/lib/brain/interviewer";
 import type { QuestionExample } from "@/lib/brain/question-examples";
+import type { TopicCandidate } from "@/lib/brain/question-topics";
+import type { TripPairCandidate } from "@/lib/brain/trip-pairs";
 import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
@@ -65,6 +67,48 @@ function readExamples(value: unknown): QuestionExample[] {
     }));
 }
 
+/** The trip pairs the client offers for a trip choice (see `trip-pairs.ts`). */
+function readTripPairs(value: unknown): TripPairCandidate[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, 4)
+    .filter((p): p is Record<string, unknown> => isJsonObject(p))
+    .filter((p) => typeof p.index === "number" && isText(p.a, 40) && isText(p.b, 40) && isText(p.labelA, 80) && isText(p.labelB, 80) && isText(p.tension, 1200) && isText(p.summaryA, 2000) && isText(p.summaryB, 2000))
+    .map((p) => ({
+      index: p.index as number,
+      a: p.a as string,
+      b: p.b as string,
+      labelA: p.labelA as string,
+      labelB: p.labelB as string,
+      trade: isText(p.trade, 200) ? (p.trade as string) : "",
+      tension: p.tension as string,
+      differences: (Array.isArray(p.differences) ? p.differences : [])
+        .slice(0, 6)
+        .filter((d): d is Record<string, unknown> => isJsonObject(d) && isText(d.label, 120) && isText(d.a, 80) && isText(d.b, 80) && (d.better === "a" || d.better === "b"))
+        .map((d) => ({ label: d.label as string, a: d.a as string, b: d.b as string, better: d.better as "a" | "b" })),
+      summaryA: p.summaryA as string,
+      summaryB: p.summaryB as string,
+    }));
+}
+
+/** The topics the client worked out are worth asking now (see `question-topics.ts`). */
+function readTopics(value: unknown): TopicCandidate[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, 6)
+    .filter((t): t is Record<string, unknown> => isJsonObject(t))
+    .filter((t) => isText(t.id, 40) && isText(t.label, 80) && typeof t.moves === "number" && Array.isArray(t.priorities) && Array.isArray(t.exampleIds))
+    .map((t) => ({
+      id: t.id as string,
+      label: t.label as string,
+      moves: Math.max(0, Math.min(20, Math.round(t.moves as number))),
+      unclear: t.unclear === "number" || t.unclear === "feature" ? (t.unclear as "number" | "feature") : ("weight" as const),
+      priorities: (t.priorities as unknown[]).filter((x): x is string => isText(x, 200)).slice(0, 8),
+      exampleIds: (t.exampleIds as unknown[]).filter((x): x is string => isText(x, 8)).slice(0, 8),
+      ...(isJsonObject(t.feature) && isText(t.feature.metric, 60) && isText(t.feature.label, 120) ? { feature: { metric: t.feature.metric as string, label: t.feature.label as string } } : {}),
+    }));
+}
+
 /** The pack's line and trip numbers, so a question can't name one that doesn't exist; undefined when not sent. */
 function readPackNumbers(value: unknown): { lines: string[]; trips: string[] } | undefined {
   if (!isJsonObject(value) || !Array.isArray(value.lines) || !Array.isArray(value.trips)) return undefined;
@@ -110,7 +154,7 @@ async function respond(request: Request) {
 
   try {
     const notes = await fleetNotesFor(readCohort(body.cohort));
-    const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), examples: readExamples(body.examples), packNumbers: readPackNumbers(body.packNumbers), turn: body.turn, maxTurns, fleetNotes: notes, rankingShifts });
+    const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), examples: readExamples(body.examples), packNumbers: readPackNumbers(body.packNumbers), tripPairs: readTripPairs(body.tripPairs), topics: readTopics(body.topics), lastTopic: isText(body.lastTopic, 40) ? (body.lastTopic as string) : null, turn: body.turn, maxTurns, fleetNotes: notes, rankingShifts });
     const { usage, ...rest } = step;
     if (usage) await Promise.all([recordSpend(spender, usage.costUsd), noteActivity("interview-question")]);
     if (usage) console.log("[brain-question]", { turn: body.turn, done: step.done, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });

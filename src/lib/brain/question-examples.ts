@@ -110,7 +110,8 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
         const worst = shown.sort((a, b) => a.r!.utility - b.r!.utility)[0];
         const trip: Trip | undefined = tripOf.get(worst.t.key);
         const value = tripValueText(worst.r!);
-        if (trip && value) add({ kind: "trip", ref: worst.t.key, title: tripLabel(bidPack, trip), fact: namedDomicile(value, bidPack.base), priority: c.label, criterionId: c.id, summary: tripHeadline(bidPack, trip) });
+        // A bare "yes" or "no" under a question reads as nonsense ("Trip #83 — no"): a trip only shows a figure it can say.
+        if (trip && value && value !== "yes" && value !== "no") add({ kind: "trip", ref: worst.t.key, title: tripLabel(bidPack, trip), fact: namedDomicile(value, bidPack.base), priority: c.label, criterionId: c.id, summary: tripHeadline(bidPack, trip) });
       }
     }
   }
