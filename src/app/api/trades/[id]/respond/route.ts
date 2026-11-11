@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
-import { findTradeOffer, updateTradeOffer } from "@/lib/server/db";
+import { findTradeOffer, respondToTradeOffer } from "@/lib/server/db";
 import { offerForViewer } from "@/lib/server/trade-view";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { sanitizeTripSnapshot } from "@/lib/server/trade-validation";
@@ -50,17 +50,11 @@ export async function POST(
     );
   }
 
-  const updated = await updateTradeOffer(
-    id,
-    {
-      status: "pending",
-      responderUserId: user.id,
-      responderDisplayName: user.displayName,
-      responderTrip,
-      respondedAt: new Date().toISOString(),
-    },
-    ["open"]
-  );
+  // Refused when either trip is already in a trade one of the two pilots agreed: it's spoken for (`respondToTradeOffer`).
+  const updated = await respondToTradeOffer(id, user, responderTrip);
+  if (updated === "traded") {
+    return NextResponse.json({ error: "One of these trips is already in a trade agreed this month." }, { status: 409 });
+  }
   if (!updated) {
     return NextResponse.json({ error: "This offer isn't open anymore." }, { status: 409 });
   }

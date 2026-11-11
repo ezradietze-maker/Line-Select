@@ -1,0 +1,8 @@
+-- Two award reports sent at once could each find nothing to replace, and both be stored. Keep the newest of each pilot's reports for a pack (the one a later report would have replaced the others with), so the unique index below can be made.
+DELETE FROM "award_history_records" AS "older" USING "award_history_records" AS "newer" WHERE "older"."pilot_hash" IS NOT NULL AND "older"."pack_key" IS NOT NULL AND "older"."pilot_hash" = "newer"."pilot_hash" AND "older"."pack_key" = "newer"."pack_key" AND ("older"."submitted_at", "older"."id") < ("newer"."submitted_at", "newer"."id");--> statement-breakpoint
+CREATE INDEX "award_history_pack_idx" ON "award_history_records" USING btree ("pack_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "award_history_pilot_pack_idx" ON "award_history_records" USING btree ("pilot_hash","pack_key") WHERE "award_history_records"."pilot_hash" is not null and "award_history_records"."pack_key" is not null;--> statement-breakpoint
+CREATE INDEX "bid_packs_pack_id_prefix_idx" ON "bid_packs" USING btree ("pack_id" text_pattern_ops);--> statement-breakpoint
+CREATE INDEX "trade_offers_board_idx" ON "trade_offers" USING btree ("base","aircraft","seat","month","status");--> statement-breakpoint
+CREATE INDEX "trade_offers_offering_user_idx" ON "trade_offers" USING btree ("offering_user_id");--> statement-breakpoint
+CREATE INDEX "trade_offers_responder_user_idx" ON "trade_offers" USING btree ("responder_user_id");

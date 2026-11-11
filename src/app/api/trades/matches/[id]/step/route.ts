@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { isUuid } from "@/lib/server/db";
 import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { markStepDone } from "@/lib/server/trade-suggestions";
@@ -17,7 +18,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const step = isJsonObject(body) ? body.step : null;
   if (!Number.isInteger(step)) return NextResponse.json({ error: "Which step?" }, { status: 400 });
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: "We couldn't find that trade." }, { status: 404 });
+  // The strict check, as in `answer`: a malformed id is not found, not a database error that emails the owner.
+  if (!isUuid(id)) return NextResponse.json({ error: "We couldn't find that trade." }, { status: 404 });
   try {
     const result = await markStepDone(id, user.id, step as number);
     if (!result.ok) {

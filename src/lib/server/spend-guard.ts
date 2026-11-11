@@ -31,11 +31,18 @@ export function spendCaps() {
     guest: dollars("SPEND_GUEST_DAILY_USD", 2),
     /** All the guests on one address together — a crew room's worth, so clearing cookies doesn't buy a fresh guest allowance. */
     guestAddress: dollars("SPEND_GUEST_ADDRESS_DAILY_USD", 10),
+    /**
+     * All the signed-in pilots on one address together. Accounts cost nothing to make, so without this one address could
+     * make a dozen and spend the site's whole ceiling, pausing paid features for everyone. Room for a few pilots in one
+     * crew room using the AI hard on the same day.
+     */
+    pilotAddress: dollars("SPEND_PILOT_ADDRESS_DAILY_USD", 30),
     /** Flight lookups have their own allowance beside the AI's, so neither can use up the other; the site's ceiling covers both. */
     flights: {
       pilot: dollars("SPEND_FLIGHTS_PILOT_DAILY_USD", 2),
       guest: dollars("SPEND_FLIGHTS_GUEST_DAILY_USD", 0.5),
       guestAddress: dollars("SPEND_FLIGHTS_GUEST_ADDRESS_DAILY_USD", 2.5),
+      pilotAddress: dollars("SPEND_FLIGHTS_PILOT_ADDRESS_DAILY_USD", 7.5),
     },
   };
 }
@@ -52,8 +59,9 @@ interface SpendOptions {
 }
 
 /**
- * Who a call is charged to: the signed-in account; or for a guest, their device (the address when there's no device
- * cookie), and also the address all guests on it share (`addressKey`).
+ * Who a call is charged to: the signed-in account, or for a guest their device (the address when there's no device
+ * cookie); and also the address everyone of their kind on it shares (`addressKey`): guests together, and signed-in
+ * pilots together, each with its own ceiling (`guestAddress`, `pilotAddress`).
  */
 export interface Spender {
   key: string;
@@ -61,9 +69,14 @@ export interface Spender {
   addressKey?: string;
 }
 
+/** A signed-in pilot, charged to their account and to the address all signed-in pilots on it share. */
+export function pilotSpender(userId: string, request: Request): Spender {
+  return { key: `u:${userId}`, signedIn: true, addressKey: `pilot-address:${clientIp(request)}` };
+}
+
 export async function spenderFor(request: Request): Promise<Spender> {
   const user = await getCurrentServerUser().catch(() => null);
-  if (user) return { key: `u:${user.id}`, signedIn: true };
+  if (user) return pilotSpender(user.id, request);
   const ip = clientIp(request);
   const device = deviceIdFrom(request);
   return { key: device ? `device:${device}` : `ip:${ip}`, signedIn: false, addressKey: `address:${ip}` };
@@ -80,6 +93,11 @@ const chargedTo = (key: string, feature?: SpendFeature) => (feature ? `${feature
 /** What the whole site spent on one UTC day (`YYYY-MM-DD`), in dollars — for the daily summary. */
 export async function siteSpentOn(day: string): Promise<number> {
   return ((await getJson<number>(siteKey(day))) ?? 0) / MICRO;
+}
+
+/** The ceiling for everyone of this spender's kind on their address together. */
+function addressCap(spender: Spender, limits: { guestAddress: number; pilotAddress: number }): number {
+  return spender.signedIn ? limits.pilotAddress : limits.guestAddress;
 }
 
 /** `leftUsd`, asked for with a `feature`, is how much more can be spent today — so a call that buys many things at once can stop in time. */
@@ -100,7 +118,7 @@ export async function checkSpend(spender: Spender, { siteOnly = false, feature, 
   ]);
   const siteLeft = caps.site * MICRO - (site ?? 0);
   const mineLeft = (spender.signedIn ? limits.pilot : limits.guest) * MICRO - (mine ?? 0);
-  const addressLeft = limits.guestAddress * MICRO - (address ?? 0);
+  const addressLeft = addressCap(spender, limits) * MICRO - (address ?? 0);
   if (siteLeft <= 0) return { ok: false, scope: "site" };
   if (mineLeft <= 0 || addressLeft <= 0) return { ok: false, scope: "pilot" };
   return feature ? { ok: true, leftUsd: Math.min(siteLeft, mineLeft, addressLeft) / MICRO } : { ok: true };
@@ -130,7 +148,7 @@ function countersFor(spender: Spender, feature: SpendFeature | undefined, day: s
   return [
     { key: siteKey(day), cap: caps.site * MICRO },
     { key: whoKey(day, chargedTo(spender.key, feature)), cap: (spender.signedIn ? limits.pilot : limits.guest) * MICRO },
-    ...(spender.addressKey ? [{ key: whoKey(day, chargedTo(spender.addressKey, feature)), cap: limits.guestAddress * MICRO }] : []),
+    ...(spender.addressKey ? [{ key: whoKey(day, chargedTo(spender.addressKey, feature)), cap: addressCap(spender, limits) * MICRO }] : []),
   ];
 }
 

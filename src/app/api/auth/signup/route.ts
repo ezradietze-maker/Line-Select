@@ -2,16 +2,25 @@ import { NextResponse } from "next/server";
 import { AUTH_LIMITS, signUpProblem } from "@/lib/auth-limits";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { SESSION_COOKIE, sessionCookieOptions, signUp } from "@/lib/server/auth";
-import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 
+/** New accounts one address may make. */
+const SIGNUPS_PER_ADDRESS = { hour: 3, day: 10 };
+
 export async function POST(request: Request) {
   const refused = crossSiteRefusal(request);
   if (refused) return refused;
-  const { ok } = await checkRequestLimit("auth-signup", request, 5, 60 * 60);
-  if (!ok) return rateLimitedResponse();
+  // Per address, whatever the device: a new device costs nothing, and each account brings its own daily AI allowance,
+  // so the old per-device limit let one address make 50 accounts an hour. A crew room's few new pilots a day still fit.
+  const ip = clientIp(request);
+  const [hour, day] = await Promise.all([
+    checkRateLimit("auth-signup-address-hour", ip, SIGNUPS_PER_ADDRESS.hour, 60 * 60),
+    checkRateLimit("auth-signup-address-day", ip, SIGNUPS_PER_ADDRESS.day, 24 * 60 * 60),
+  ]);
+  if (!hour.ok || !day.ok) return rateLimitedResponse();
 
   let body: { email?: string; password?: string; displayName?: string };
   try {

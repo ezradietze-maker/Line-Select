@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { and, count, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
-import { offersFreedByTrade } from "@/lib/trades/offer-trips";
+import { alreadyTraded, offersFreedByTrade } from "@/lib/trades/offer-trips";
+import { packIdFor } from "@/lib/pack-id";
 import { db } from "@/lib/server/postgres";
 import {
   awardHistoryRecords,
@@ -20,12 +21,13 @@ import {
   users,
 } from "@/lib/server/schema";
 import type { AwardHistoryRecord } from "@/types/award-history";
+import type { Seat } from "@/types/bidpack";
 import type { StoredCredential, UserAccount } from "@/types/auth";
 import type { CandidateVariable } from "@/types/candidate-variable";
 import type { FeedbackSubmission } from "@/types/feedback";
 import type { InterviewCandidateFact } from "@/types/interview-candidate-fact";
 import type { PreferenceProfile } from "@/types/preferences";
-import type { BidPackMetaSnapshot, TradeHolding, TradeOffer, TradeOfferStatus, TradeSettings } from "@/types/trade";
+import type { BidPackMetaSnapshot, TradeHolding, TradeOffer, TradeOfferStatus, TradeSettings, TripSnapshot } from "@/types/trade";
 
 /**
  * Real tables behind Postgres (`schema.ts`/`postgres.ts`) — replaces the old
@@ -69,7 +71,7 @@ function isUniqueViolation(err: unknown): boolean {
  * lookup below checks this first rather than letting Postgres reject it.
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function isUuid(value: string): boolean {
+export function isUuid(value: string): boolean {
   return UUID_RE.test(value);
 }
 
@@ -298,25 +300,85 @@ export async function findTradeOffer(id: string): Promise<TradeOffer | null> {
   return row ? toTradeOffer(row) : null;
 }
 
-export async function createTradeOffer(offer: TradeOffer): Promise<void> {
-  await db.insert(tradeOffers).values({
-    id: offer.id,
-    createdAt: new Date(offer.createdAt),
-    base: offer.bidPackMeta.base,
-    aircraft: offer.bidPackMeta.aircraft,
-    seat: offer.bidPackMeta.seat,
-    month: offer.bidPackMeta.month,
-    offeringUserId: offer.offeringUserId,
-    offeringDisplayName: offer.offeringDisplayName,
-    offeredTrip: offer.offeredTrip,
-    wantedPairingNumber: offer.wantedPairingNumber,
-    note: offer.note,
-    status: offer.status,
-    responderUserId: offer.responderUserId,
-    responderDisplayName: offer.responderDisplayName,
-    responderTrip: offer.responderTrip,
-    respondedAt: offer.respondedAt ? new Date(offer.respondedAt) : null,
-    resolvedAt: offer.resolvedAt ? new Date(offer.resolvedAt) : null,
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Any fixed number: the class of this app's per pilot, seat and month trade locks (two-key advisory locks, apart from the learning run's one-key lock). */
+const TRADE_LOCK_CLASS = 4_820_113;
+
+/**
+ * Queues everything that could give away one of these pilots' trips in this seat's month (posting an offer, proposing
+ * on one, agreeing one) behind any other under way, until the transaction ends. Row locks alone can't: they only lock
+ * offers that already exist, and an offer posted a moment after an accept isn't one of them. Taken in one order, so
+ * two transactions never wait on each other.
+ */
+async function lockPilotsInSeat(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[]): Promise<void> {
+  const keys = [...new Set(pilots)].map((p) => [p, meta.base, meta.aircraft, meta.seat, meta.month].join("|")).sort();
+  for (const key of keys) await tx.execute(sql`select pg_advisory_xact_lock(${TRADE_LOCK_CLASS}::int, hashtext(${key}))`);
+}
+
+/** The trades these pilots have agreed in this seat's month: the trips in them are spoken for (`alreadyTraded`). */
+async function agreedTrades(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[]): Promise<TradeOffer[]> {
+  const rows = await tx
+    .select()
+    .from(tradeOffers)
+    .where(and(offersForSeat(meta), eq(tradeOffers.status, "accepted"), or(inArray(tradeOffers.offeringUserId, pilots), inArray(tradeOffers.responderUserId, pilots))));
+  return rows.map(toTradeOffer);
+}
+
+/** Posts an offer, unless the pilot has already agreed to trade that trip away this month. False when refused for that. */
+export async function createTradeOffer(offer: TradeOffer): Promise<boolean> {
+  if (!isUuid(offer.offeringUserId)) return false;
+  return db.transaction(async (tx) => {
+    await lockPilotsInSeat(tx, offer.bidPackMeta, [offer.offeringUserId]);
+    if (alreadyTraded(await agreedTrades(tx, offer.bidPackMeta, [offer.offeringUserId]), offer.bidPackMeta, offer.offeringUserId, offer.offeredTrip)) return false;
+    await tx.insert(tradeOffers).values({
+      id: offer.id,
+      createdAt: new Date(offer.createdAt),
+      base: offer.bidPackMeta.base,
+      aircraft: offer.bidPackMeta.aircraft,
+      seat: offer.bidPackMeta.seat,
+      month: offer.bidPackMeta.month,
+      offeringUserId: offer.offeringUserId,
+      offeringDisplayName: offer.offeringDisplayName,
+      offeredTrip: offer.offeredTrip,
+      wantedPairingNumber: offer.wantedPairingNumber,
+      note: offer.note,
+      status: offer.status,
+      responderUserId: offer.responderUserId,
+      responderDisplayName: offer.responderDisplayName,
+      responderTrip: offer.responderTrip,
+      respondedAt: offer.respondedAt ? new Date(offer.respondedAt) : null,
+      resolvedAt: offer.resolvedAt ? new Date(offer.resolvedAt) : null,
+    });
+    return true;
+  });
+}
+
+/**
+ * A pilot's proposal on an open offer, with their own trip. "traded" when either trip is already in a trade one of the
+ * two pilots agreed this month; null when the offer isn't open any more (another pilot's proposal got there first).
+ */
+export async function respondToTradeOffer(
+  id: string,
+  responder: { id: string; displayName: string },
+  responderTrip: TripSnapshot,
+  now = new Date()
+): Promise<TradeOffer | "traded" | null> {
+  if (!isUuid(id) || !isUuid(responder.id)) return null;
+  return db.transaction(async (tx) => {
+    const [row] = await tx.select().from(tradeOffers).where(eq(tradeOffers.id, id)).limit(1);
+    if (!row || row.status !== "open") return null;
+    const meta = bidPackMetaOf(row);
+    const pilots = [row.offeringUserId, responder.id];
+    await lockPilotsInSeat(tx, meta, pilots);
+    const agreed = await agreedTrades(tx, meta, pilots);
+    if (alreadyTraded(agreed, meta, row.offeringUserId, row.offeredTrip) || alreadyTraded(agreed, meta, responder.id, responderTrip)) return "traded";
+    const [updated] = await tx
+      .update(tradeOffers)
+      .set({ status: "pending", responderUserId: responder.id, responderDisplayName: responder.displayName, responderTrip, respondedAt: now })
+      .where(and(eq(tradeOffers.id, id), eq(tradeOffers.status, "open")))
+      .returning();
+    return updated ? toTradeOffer(updated) : null;
   });
 }
 
@@ -354,16 +416,19 @@ export async function updateTradeOffer(
 /**
  * Accepts a pending offer, and in the same transaction frees every other offer that gave away either of its trips
  * (`offersFreedByTrade`): the pilots' other offers of them are withdrawn, and a proposal one of them made with one is
- * taken off that offer, which opens again. Every offer either pilot is on in that seat and month is locked first, in
- * one order, so two accepts that share a trip queue up rather than both going through. Null when the offer isn't
- * pending, or its proposal isn't the one `expectedRespondedAt` names (one taken off and replaced since it was seen).
+ * taken off that offer, which opens again. Both pilots' locks for that seat and month are taken first
+ * (`lockPilotsInSeat`), then every offer either is on is locked, in one order, so two accepts that share a trip queue
+ * up rather than both going through. Null when the offer isn't pending, or its proposal isn't the one
+ * `expectedRespondedAt` names (one taken off and replaced since it was seen); "traded" when either trip is already in
+ * a trade one of the pilots agreed.
  */
-export async function acceptTradeOffer(id: string, expectedRespondedAt: string | null, now = new Date()): Promise<TradeOffer | null> {
+export async function acceptTradeOffer(id: string, expectedRespondedAt: string | null, now = new Date()): Promise<TradeOffer | "traded" | null> {
   if (!isUuid(id)) return null;
   return db.transaction(async (tx) => {
     const [first] = await tx.select().from(tradeOffers).where(eq(tradeOffers.id, id)).limit(1);
     if (!first?.responderUserId || first.status !== "pending") return null;
     const pilots = [first.offeringUserId, first.responderUserId];
+    await lockPilotsInSeat(tx, bidPackMetaOf(first), pilots);
     const rows = await tx
       .select()
       .from(tradeOffers)
@@ -373,7 +438,14 @@ export async function acceptTradeOffer(id: string, expectedRespondedAt: string |
     const locked = rows.find((r) => r.id === id);
     if (!locked || locked.status !== "pending" || locked.responderUserId !== first.responderUserId) return null;
     if (expectedRespondedAt && locked.respondedAt?.toISOString() !== expectedRespondedAt) return null;
-    const { withdraw, reopen } = offersFreedByTrade(toTradeOffer(locked), rows.filter((r) => r.id !== id).map(toTradeOffer));
+    const offer = toTradeOffer(locked);
+    const others = rows.filter((r) => r.id !== id).map(toTradeOffer);
+    const given = [
+      { pilot: locked.offeringUserId, trip: locked.offeredTrip },
+      ...(locked.responderTrip ? [{ pilot: first.responderUserId, trip: locked.responderTrip }] : []),
+    ];
+    if (given.some((g) => alreadyTraded(others, offer.bidPackMeta, g.pilot, g.trip))) return "traded";
+    const { withdraw, reopen } = offersFreedByTrade(offer, others);
     const [row] = await tx.update(tradeOffers).set({ status: "accepted", resolvedAt: now }).where(eq(tradeOffers.id, id)).returning();
     if (withdraw.length > 0) await tx.update(tradeOffers).set({ status: "withdrawn", resolvedAt: now }).where(inArray(tradeOffers.id, withdraw));
     if (reopen.length > 0) {
@@ -419,6 +491,7 @@ const AWARD_ROW = {
   daysOff: awardHistoryRecords.daysOff,
   totalCreditHours: awardHistoryRecords.totalCreditHours,
   holderShown: awardHistoryRecords.holderShown,
+  submittedAt: awardHistoryRecords.submittedAt,
 };
 
 /** The rows group numbers are worked out from. Server-side only: `lib/server/award-aggregate.ts` is what a client gets to see of them. */
@@ -459,53 +532,57 @@ export async function createAwardHistoryRecord(
   record: AwardHistoryRecord,
   link: { pilotHash?: string | null; packKey?: string | null; awardedChoice?: number | null; monthFeel?: string | null; brainVersion?: number | null; notesUsed?: boolean | null; holderShown?: boolean } = {}
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    // One report per pilot per pack: a corrected award replaces the earlier one rather than standing beside it
-    // in the history everyone's holdability estimates are checked against.
-    let replaced: Pick<typeof awardHistoryRecords.$inferSelect, "monthFeel" | "checkedInAt" | "brainVersion" | "notesUsed" | "holderShown" | "seniorityRank"> | undefined;
-    if (link.pilotHash && link.packKey) {
-      [replaced] = await tx
-        .delete(awardHistoryRecords)
-        .where(and(eq(awardHistoryRecords.pilotHash, link.pilotHash), eq(awardHistoryRecords.packKey, link.packKey)))
-        .returning({
-          monthFeel: awardHistoryRecords.monthFeel,
-          checkedInAt: awardHistoryRecords.checkedInAt,
-          brainVersion: awardHistoryRecords.brainVersion,
-          notesUsed: awardHistoryRecords.notesUsed,
-          holderShown: awardHistoryRecords.holderShown,
-          seniorityRank: awardHistoryRecords.seniorityRank,
-        });
-    }
-    // A report that leaves out how the month flew, which brain ranked it, or the pilot's yes to showing their number
-    // (Strategies' form asks none of these) keeps what the report it replaces said: otherwise reporting the award there
-    // after the Logbook took the pilot's "Held by" share away. Their number stays shown only for a line at the same
-    // seniority number they agreed to show.
-    const keptHolder = !!replaced?.holderShown && record.outcome === "line" && !!record.lineNumber && replaced.seniorityRank === record.seniorityRank;
-    const monthFeel = link.monthFeel === undefined ? (replaced?.monthFeel ?? null) : link.monthFeel;
-    const checkedInAt = link.monthFeel === undefined ? (replaced?.checkedInAt ?? null) : link.monthFeel ? new Date() : null;
-    await tx.insert(awardHistoryRecords).values({
-      pilotHash: link.pilotHash ?? null,
-      packKey: link.packKey ?? null,
-      awardedChoice: link.awardedChoice ?? null,
-      holderShown: link.holderShown ?? keptHolder,
-      id: record.id,
-      base: record.base,
-      aircraft: record.aircraft,
-      seat: record.seat,
-      month: record.month,
-      seniorityRank: record.seniorityRank,
-      seniorityTotalPilots: record.seniorityTotalPilots,
-      outcome: record.outcome,
-      lineNumber: record.lineNumber,
-      daysOff: record.daysOff,
-      totalCreditHours: record.totalCreditHours,
-      totalTafbHours: record.totalTafbHours,
-      submittedAt: new Date(record.submittedAt),
-      monthFeel,
-      checkedInAt,
-      brainVersion: link.brainVersion === undefined ? (replaced?.brainVersion ?? null) : link.brainVersion,
-      notesUsed: link.notesUsed === undefined ? (replaced?.notesUsed ?? null) : link.notesUsed,
-    });
+  const t = awardHistoryRecords;
+  const now = new Date();
+  const report = {
+    id: record.id,
+    base: record.base,
+    aircraft: record.aircraft,
+    seat: record.seat,
+    month: record.month,
+    seniorityRank: record.seniorityRank,
+    seniorityTotalPilots: record.seniorityTotalPilots,
+    outcome: record.outcome,
+    lineNumber: record.lineNumber,
+    daysOff: record.daysOff,
+    totalCreditHours: record.totalCreditHours,
+    totalTafbHours: record.totalTafbHours,
+    submittedAt: new Date(record.submittedAt),
+    awardedChoice: link.awardedChoice ?? null,
+  };
+  const insert = db.insert(t).values({
+    ...report,
+    pilotHash: link.pilotHash ?? null,
+    packKey: link.packKey ?? null,
+    holderShown: link.holderShown ?? false,
+    monthFeel: link.monthFeel ?? null,
+    checkedInAt: link.monthFeel ? now : null,
+    brainVersion: link.brainVersion ?? null,
+    notesUsed: link.notesUsed ?? null,
+  });
+  if (!link.pilotHash || !link.packKey) {
+    await insert;
+    return;
+  }
+  // One report per pilot per pack: a corrected award replaces the earlier one rather than standing beside it in the
+  // history everyone's holdability estimates are checked against. One statement against the unique index, so two
+  // reports sent at once can't both find nothing to replace and both be stored.
+  //
+  // A report that leaves out how the month flew, which brain ranked it, or the pilot's yes to showing their number
+  // (Strategies' form asks none of these) keeps what the report it replaces said: otherwise reporting the award there
+  // after the Logbook took the pilot's "Held by" share away. Their number stays shown only for a line at the same
+  // seniority number they agreed to show.
+  const isLine = record.outcome === "line" && !!record.lineNumber;
+  await insert.onConflictDoUpdate({
+    target: [t.pilotHash, t.packKey],
+    targetWhere: sql`${t.pilotHash} is not null and ${t.packKey} is not null`,
+    set: {
+      ...report,
+      holderShown: link.holderShown ?? (isLine ? sql`${t.holderShown} and ${t.seniorityRank} = ${record.seniorityRank}` : false),
+      ...(link.monthFeel !== undefined && { monthFeel: link.monthFeel, checkedInAt: link.monthFeel ? now : null }),
+      ...(link.brainVersion !== undefined && { brainVersion: link.brainVersion }),
+      ...(link.notesUsed !== undefined && { notesUsed: link.notesUsed }),
+    },
   });
 }
 
@@ -582,6 +659,22 @@ export async function getTradeHolding(userId: string, packId: string): Promise<T
   if (!isUuid(userId)) return null;
   const [row] = await db.select().from(tradeHoldings).where(and(eq(tradeHoldings.userId, userId), eq(tradeHoldings.packId, packId))).limit(1);
   return row ? holdingOf(row) : null;
+}
+
+/**
+ * Whether this seat's month is one the pilot flies: a holding they confirmed in it, or the uploaded pack on their
+ * account. Only then do they see other pilots' offers on its board: a seat named in a request proves nothing.
+ */
+export async function pilotHasSeatMonth(userId: string, meta: BidPackMetaSnapshot): Promise<boolean> {
+  if (!isUuid(userId)) return false;
+  const [held] = await db
+    .select({ id: tradeHoldings.id })
+    .from(tradeHoldings)
+    .where(and(eq(tradeHoldings.userId, userId), eq(tradeHoldings.base, meta.base), eq(tradeHoldings.aircraft, meta.aircraft), eq(tradeHoldings.seat, meta.seat), eq(tradeHoldings.month, meta.month)))
+    .limit(1);
+  if (held) return true;
+  const [pack] = await db.select({ packId: bidPacks.packId }).from(bidPacks).where(eq(bidPacks.userId, userId)).limit(1);
+  return pack?.packId === packIdFor({ ...meta, seat: meta.seat as Seat });
 }
 
 /** What a pilot holds, confirmed on the pack whose fingerprint is given (null when their account doesn't have it yet). */

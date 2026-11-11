@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import * as mod from "@/lib/server/db";
 import * as forecastStore from "@/lib/server/forecast-store";
 import { db } from "@/lib/server/postgres";
 import * as suggestions from "@/lib/server/trade-suggestions";
-import { awardHistoryRecords, feedbackSubmissions, users } from "@/lib/server/schema";
+import { awardHistoryRecords, feedbackSubmissions, tradeOffers, users } from "@/lib/server/schema";
 import { DEFAULT_WEIGHTS } from "@/types/preferences";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { FeedbackSubmission } from "@/types/feedback";
@@ -439,12 +439,53 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       await propose(cOffer, b, trip("27", 6));
       const pending = (await mod.findTradeOffer(x.id))!;
       expect(await mod.acceptTradeOffer(x.id, "2000-01-01T00:00:00.000Z")).toBeNull();
-      expect((await mod.acceptTradeOffer(x.id, pending.respondedAt))?.status).toBe("accepted");
+      expect(await mod.acceptTradeOffer(x.id, pending.respondedAt)).toMatchObject({ status: "accepted" });
       expect((await mod.findTradeOffer(sameTripAgain.id))?.status).toBe("withdrawn");
       expect((await mod.findTradeOffer(sameDifferentDay.id))?.status).toBe("open");
       const reopened = await mod.findTradeOffer(cOffer.id);
       expect(reopened).toMatchObject({ status: "open", responderUserId: null, responderTrip: null });
       expect(await mod.acceptTradeOffer(x.id, null)).toBeNull();
+    });
+
+    it("after an accept, won't let either traded trip be offered, proposed or agreed again", async () => {
+      const [a, b, c] = [await makeUser("again-a"), await makeUser("again-b"), await makeUser("again-c")];
+      const x = await offer(a, trip("13", 2));
+      await propose(x, b, trip("27", 6));
+      expect(await mod.acceptTradeOffer(x.id, null)).toMatchObject({ status: "accepted" });
+
+      // Posted again afterwards: refused, while another day of the pairing is fine.
+      const again = { ...x, id: randomUUID(), status: "open" as const, responderUserId: null, responderDisplayName: null, responderTrip: null, respondedAt: null };
+      expect(await mod.createTradeOffer(again)).toBe(false);
+      expect(await mod.findTradeOffer(again.id)).toBeNull();
+      expect(await mod.createTradeOffer({ ...again, offeredTrip: trip("13", 9) })).toBe(true);
+
+      // Proposed on someone else's offer: refused, for either pilot's traded trip; another trip is fine.
+      const cOffer = await offer(c, trip("40", 4));
+      expect(await mod.respondToTradeOffer(cOffer.id, { id: b.id, displayName: "B" }, trip("27", 6))).toBe("traded");
+      expect(await mod.respondToTradeOffer(cOffer.id, { id: a.id, displayName: "A" }, trip("13", 2))).toBe("traded");
+      expect((await mod.findTradeOffer(cOffer.id))?.status).toBe("open");
+      expect(await mod.respondToTradeOffer(cOffer.id, { id: a.id, displayName: "A" }, trip("14", 3))).toMatchObject({ status: "pending", responderUserId: a.id });
+      // And one taken already is just not open.
+      expect(await mod.respondToTradeOffer(cOffer.id, { id: b.id, displayName: "B" }, trip("28", 3))).toBeNull();
+
+      // An offer of a traded trip left pending some other way still can't be agreed.
+      const stale = await offer(a, trip("50", 1));
+      await db.update(tradeOffers).set({ offeredTrip: trip("13", 2) }).where(eq(tradeOffers.id, stale.id));
+      await propose(stale, c, trip("41", 7));
+      expect(await mod.acceptTradeOffer(stale.id, null)).toBe("traded");
+      expect((await mod.findTradeOffer(stale.id))?.status).toBe("pending");
+    });
+
+    it("shows other pilots' offers only on a seat's month the pilot holds or has the pack for", async () => {
+      const [held, packed, stranger] = [await makeUser("seat-held"), await makeUser("seat-packed"), await makeUser("seat-stranger")];
+      await mod.saveTradeHolding(held.id, { packId: `uploaded-${meta.base}-b777-cap-oct26`.toLowerCase(), bidPackMeta: meta, lineNumber: "1", trips: [] });
+      await mod.saveBidPackRecord(packed.id, `uploaded-${meta.base}-${meta.aircraft}-${meta.seat}-${meta.month}`.toLowerCase(), Buffer.from("x"));
+      await mod.saveBidPackRecord(stranger.id, `uploaded-${meta.base}-${meta.aircraft}-fo-${meta.month}`.toLowerCase(), Buffer.from("x"));
+      expect(await mod.pilotHasSeatMonth(held.id, meta)).toBe(true);
+      expect(await mod.pilotHasSeatMonth(packed.id, meta)).toBe(true);
+      expect(await mod.pilotHasSeatMonth(stranger.id, meta)).toBe(false);
+      expect(await mod.pilotHasSeatMonth(held.id, { ...meta, month: "NOV26" })).toBe(false);
+      expect(await mod.pilotHasSeatMonth("not-a-uuid", meta)).toBe(false);
     });
   });
 
@@ -553,6 +594,21 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       [row] = await db.select().from(awardHistoryRecords).where(eq(awardHistoryRecords.pilotHash, c));
       expect(row).toMatchObject({ holderShown: false, monthFeel: null, brainVersion: 27 });
       expect(await mod.deleteAwardShares(c)).toBe(1);
+    });
+
+    it("keeps one report when two arrive at once, and the database refuses a second row", async () => {
+      const d = `d-${stamp}`;
+      await Promise.all([share(d, "JAN27", "1", false), share(d, "JAN27", "2", false), share(d, "JAN27", "3", false)]);
+      expect(await mod.listAwardRowsForPack(packKey("JAN27"))).toHaveLength(1);
+      const [row] = await db.select().from(awardHistoryRecords).where(eq(awardHistoryRecords.pilotHash, d));
+      await expect(db.insert(awardHistoryRecords).values({ ...row, id: randomUUID() })).rejects.toThrow();
+      // Reports not linked to a pilot and pack aren't one per anything.
+      const unlinked = { id: randomUUID(), ...seat, month: "JAN27", seniorityRank: 5, seniorityTotalPilots: 100, outcome: "line" as const, lineNumber: "9", daysOff: 15, totalCreditHours: 70, totalTafbHours: 200, submittedAt: new Date().toISOString() };
+      await mod.createAwardHistoryRecord(unlinked);
+      await mod.createAwardHistoryRecord({ ...unlinked, id: randomUUID() });
+      expect((await mod.listAwardRowsForSeat(seat)).filter((r) => r.lineNumber === "9")).toHaveLength(2);
+      await db.delete(awardHistoryRecords).where(and(eq(awardHistoryRecords.base, seat.base), isNull(awardHistoryRecords.pilotHash)));
+      expect(await mod.deleteAwardShares(d)).toBe(1);
     });
 
     it("counts recent pilots with a real pack of this seat, and no other", async () => {
