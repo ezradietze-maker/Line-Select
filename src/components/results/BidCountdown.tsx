@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { packBidClose, type BidCloseSource, type CalendarPack } from "@/lib/bid-calendar";
-import { setBidDeadline, useBidDeadlineOverride } from "@/lib/bid-deadline-storage";
+import { setBidDeadline } from "@/lib/bid-deadline-storage";
+import { useBidDeadlineOverride } from "@/lib/use-bid-deadline";
 
 /*
  * Counts down to the close the pack itself prints on its bid calendar (or, from the December 2026 bid period,

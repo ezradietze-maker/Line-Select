@@ -1,5 +1,3 @@
-import { useSyncExternalStore } from "react";
-
 /**
  * A pilot-entered bid-close date/time, per bid pack. Deliberately not
  * derived from anything printed in the pack — `BidPack` only carries
@@ -48,10 +46,3 @@ export function subscribeBidDeadline(onChange: () => void): () => void {
   };
 }
 
-/**
- * The pilot's own bid close for this pack, kept up to date: read once in render, a time set on another part of the
- * screen never reached what read it (the calendar link kept sending the old one). Null on the server and first paint.
- */
-export function useBidDeadlineOverride(bidPackId: string | null): string | null {
-  return useSyncExternalStore(subscribeBidDeadline, () => (bidPackId ? getBidDeadline(bidPackId) : null), () => null);
-}
