@@ -18,7 +18,7 @@ const FREE_FEATURES = [
 
 export default function PricingPage() {
   const router = useRouter();
-  const { user, bidPack, handleTrySample } = useAppState();
+  const { ready, user, bidPack, handleTrySample } = useAppState();
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -52,7 +52,11 @@ export default function PricingPage() {
           ))}
         </ul>
         <div className="mt-5">
-          {bidPack && !user && isSamplePack(bidPack) ? (
+          {/* The page's words are in the server's HTML; what to offer waits for the pilot's pack and account, or a
+              signed-in pilot was offered the sample for a moment. */}
+          {!ready ? (
+            <div aria-hidden data-pricing-placeholder className="skeleton-pulse h-[42px] w-52 rounded-md bg-border" />
+          ) : bidPack && !user && isSamplePack(bidPack) ? (
             // An account doesn't keep the sample pack, so there's no progress on it to save: signing in leads to
             // uploading their own.
             <>

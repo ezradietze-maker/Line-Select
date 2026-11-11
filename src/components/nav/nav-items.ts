@@ -56,8 +56,13 @@ export const NAV_ITEMS: NavItem[] = [
   { target: "hotel-ratings", label: "Hotel Ratings", tabLabel: "Hotels", section: "crew", icon: BuildingIcon },
 ];
 
-/** Why a destination can't be opened yet, or undefined when it can. */
-export function disabledReason(target: NavTarget, hasProfile: boolean, hasBidPack: boolean): string | undefined {
+/**
+ * Why a destination can't be opened yet, or undefined when it can. Nothing is ruled out before the pilot's saved state
+ * has loaded (`ready`): a public page draws its nav at once, and until then it doesn't know whether this pilot has a
+ * pack, so a signed-in pilot saw their own destinations greyed out as a guest's for a moment.
+ */
+export function disabledReason(target: NavTarget, hasProfile: boolean, hasBidPack: boolean, ready = true): string | undefined {
+  if (!ready) return undefined;
   if (target === "results" && !hasProfile) return "Set your preferences first to see your ranked lines.";
   if (target === "strategies" && !hasBidPack) return "Upload a bid pack first to see strategies.";
   if (target === "view-add" && !hasBidPack) return "Upload a bid pack first to build your View/Add list.";

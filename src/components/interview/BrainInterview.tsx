@@ -54,7 +54,7 @@ import { isLearnablePack } from "@/lib/learning/corrections";
 import { postBrainOutcome } from "@/lib/learning/learning-client";
 import { parseAirportCode } from "@/lib/interview-story";
 import { loadStoryDraft, saveStoryDraft } from "@/lib/interview-draft";
-import { openingSteps, stepDepth, stepFromSearch, urlForStep, type OpeningStep } from "@/lib/interview-opening";
+import { openingSteps, popMove, stateForEntry, stepDepth, stepEntryOf, stepFromSearch, stepsBetween, urlForStep, type OpeningStep } from "@/lib/interview-opening";
 import { clearServerDraft, fetchServerDraft, saveServerDraft } from "@/lib/interview-draft-sync";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
@@ -225,9 +225,21 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const unwinding = useRef(false);
   /** The pilot has moved past the first opening step (or resumed past it): from then on the opening is saved as a draft. */
   const openingStarted = useRef(false);
+  /** This visit to the page, and where its newest entry the pilot is on sits in the tab's history (`StepEntry`). */
+  const visitRef = useRef("");
+  const ownAt = useRef(0);
+  /** An entry of this visit's own for a step, pushed after the one the pilot is on. */
+  function pushStep(step: OpeningStep, steps: readonly OpeningStep[]) {
+    ownAt.current += 1;
+    window.history.pushState(stateForEntry({ visit: visitRef.current, step, at: ownAt.current }), "", urlForStep(window.location.pathname, window.location.search, step, steps));
+  }
+  /** The entry the pilot is on, made this visit's and named for a step. */
+  function replaceStep(step: OpeningStep, steps: readonly OpeningStep[]) {
+    window.history.replaceState(stateForEntry({ visit: visitRef.current, step, at: ownAt.current }), "", urlForStep(window.location.pathname, window.location.search, step, steps));
+  }
   /** On to the next opening step, with an entry of its own for Back to return to. */
   function stepTo(next: OpeningStep) {
-    window.history.pushState(null, "", urlForStep(window.location.pathname, window.location.search, next, stepsRef.current));
+    pushStep(next, stepsRef.current);
     openingStarted.current = true;
     setPhase(next);
   }
@@ -243,17 +255,27 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     window.history.go(-depth);
   }
   useEffect(() => {
-    // Arriving on a step's address (a reload, or Forward back into the interview) starts at the first step: the address says so too.
-    // (No state of our own: the router adds its own and follows the new address.)
-    if (new URLSearchParams(window.location.search).has("step")) window.history.replaceState(null, "", urlForStep(window.location.pathname, window.location.search, stepsRef.current[0], stepsRef.current));
-    function onPop() {
+    // Arriving (a reload, coming back, or Forward into the interview) starts at the first step, and the entry it starts
+    // on becomes this visit's first: the address says the first step too. Entries an earlier visit left, ahead or
+    // behind, are stepped over below.
+    visitRef.current = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    ownAt.current = stepEntryOf(window.history.state)?.at ?? window.history.length - 1;
+    replaceStep(stepsRef.current[0], stepsRef.current);
+    function onPop(e: PopStateEvent) {
+      const entry = stepEntryOf(e.state);
+      const move = popMove(entry, visitRef.current, ownAt.current, window.history.length);
+      if (move.kind === "go") {
+        if (move.by !== 0) window.history.go(move.by);
+        return;
+      }
+      if (entry) ownAt.current = entry.at;
       if (unwinding.current) {
         unwinding.current = false;
         return;
       }
       // Only among the opening steps: once the questions have begun, their own Back takes back an answer.
       if (!(stepsRef.current as readonly string[]).includes(phaseRef.current)) return;
-      setPhase(stepFromSearch(window.location.search, stepsRef.current));
+      setPhase(move.kind === "show" && stepsRef.current.includes(move.step) ? move.step : stepFromSearch(window.location.search, stepsRef.current));
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -534,7 +556,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     shiftsRef.current = [];
     // The story takes the check-in's place, in the address as on screen: the same entry, at the same depth.
     const full = openingSteps(false, hasSeniorityStep);
-    window.history.replaceState(null, "", urlForStep(window.location.pathname, window.location.search, "story", full));
+    replaceStep("story", full);
     setPhase("story");
   }
 
@@ -924,10 +946,19 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const story = d.exchanges.find((e) => e.turn === 0 && e.question === OPENING_QUESTION);
     readStory.current = story ? story.answer : null;
     if (story && !d.model) setResumeRead(d.exchanges);
-    // One history entry for each step up to theirs, as if they'd stepped there, so Back still goes a step at a time.
+    // One history entry for each step up to theirs, as if they'd stepped there, so Back still goes a step at a time —
+    // from the step they're on now, so steps they'd already taken this visit aren't pushed a second time.
     const resumedSteps = openingSteps(resumedCheckIn, hasSeniorityStep);
     const step = d.step && resumedSteps.includes(d.step) ? d.step : resumedSteps[0];
-    for (const s of resumedSteps.slice(1, stepDepth(step, resumedSteps) + 1)) window.history.pushState(null, "", urlForStep(window.location.pathname, window.location.search, s, resumedSteps));
+    const here = (stepsRef.current as readonly string[]).includes(phaseRef.current) ? stepDepth(phaseRef.current as OpeningStep, stepsRef.current) : 0;
+    const { push, back } = stepsBetween(here, step, resumedSteps);
+    for (const s of push) pushStep(s, resumedSteps);
+    if (!push.length && !back) replaceStep(step, resumedSteps);
+    if (back) {
+      // Back over this visit's own entries to theirs; the step is set here, so that Back isn't the pilot's.
+      unwinding.current = true;
+      window.history.go(-back);
+    }
     stepsRef.current = resumedSteps;
     setPhase(step);
   }

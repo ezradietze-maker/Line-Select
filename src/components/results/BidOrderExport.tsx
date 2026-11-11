@@ -9,13 +9,15 @@ import type { LineScore } from "@/lib/scoring";
 
 type CopiedKind = "plain" | "annotated" | "shortlist" | null;
 
-/** `rank` is the line's true position in the full ranking, not its index in `entries` — so a filtered export still shows real priority order (with gaps), not a renumbered subset. */
+/** `rank` is the line's true position in the full ranking, not its index in `entries` — so an export with hidden or Not bid lines left out still shows real priority order (with gaps), not a renumbered subset. */
 export interface BidOrderEntry {
   lineScore: LineScore;
   rank: number;
   /** The line's own specific facts (days off vs. your target, favorite cities…) — what "copy with notes" appends. Falls back to the model's one-sentence explanation. */
   note?: string;
 }
+
+const countLines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
 
 /** A note shown for `ms`, then gone. Showing it again starts the clock over — an earlier timer never cuts the new one short. */
 function useFlash<T>(ms: number): [T | null, (value: T | null) => void] {
@@ -37,6 +39,7 @@ export function BidOrderExport({
   bidMonth,
   packLabel,
   leftOut,
+  leftOutWhy = null,
   presend,
   topLineNumber,
 }: {
@@ -49,8 +52,10 @@ export function BidOrderExport({
   bidMonth: string;
   /** e.g. "OCT26 · MEM · MD11 · FO" — shown in the VIPS dialog to check against VIPS's own "You are bidding as…". */
   packLabel: string;
-  /** Lines in the pack that `entries` leaves out (hidden or filtered) — the VIPS dialog warns they won't be bid. */
+  /** Lines in the pack that `entries` leaves out (hidden or Not bid) — the VIPS dialog warns they won't be bid. */
   leftOut: number;
+  /** Which those are, in words ("the 2 lines you hid"): said under the buttons and on them once copied. */
+  leftOutWhy?: string | null;
   /** What the VIPS dialog's checks read beyond the order. */
   presend: PresendContext;
   /** The pilot's #1, whatever the filters show: what their calendar link follows. */
@@ -114,7 +119,8 @@ export function BidOrderExport({
               <span aria-hidden className="climb-out pointer-events-none absolute -right-1 top-0">
                 <PlaneIcon className="h-4 w-4 rotate-45" />
               </span>
-              Copied &mdash; cleared to bid
+              {/* "Cleared to bid" only for the whole pack: with lines left out, the button says how many went. */}
+              {leftOut > 0 ? `Copied ${countLines(entries.length)} — ${leftOut} left out` : <>Copied &mdash; cleared to bid</>}
             </>
           ) : (
             "Copy line order"
@@ -157,7 +163,7 @@ export function BidOrderExport({
           }
           className={`${secondary} ${showMore ? "" : "hidden sm:inline-flex"}`}
         >
-          {copied === "annotated" ? "Copied" : "Copy with notes"}
+          {copied === "annotated" ? (leftOut > 0 ? `Copied ${countLines(entries.length)} — ${leftOut} left out` : "Copied") : "Copy with notes"}
         </button>
         <button
           type="button"
@@ -190,6 +196,12 @@ export function BidOrderExport({
       <p className="mt-2 hidden text-xs leading-relaxed text-ink-faint sm:block">
         Send to VIPS opens pilot.fedex.com with this order filled in &mdash; you sign in there, and nothing is sent until you do. Or copy the order and enter it yourself.
       </p>
+      {/* On a phone too: what's left out matters as much there. */}
+      {leftOutWhy && (
+        <p className="mt-2 text-xs leading-relaxed text-ink-muted" data-left-out>
+          Copy and Send to VIPS take your whole ranked order, {countLines(entries.length)}, and leave out {leftOutWhy}.
+        </p>
+      )}
       {calendarError && <p className="mt-2 text-xs text-danger">{calendarError}</p>}
       <CalendarSubscribe topLineNumber={topLineNumber} />
       {vipsOpen && (

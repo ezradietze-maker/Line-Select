@@ -129,6 +129,8 @@ function Chrome({ children }: { children: React.ReactNode }) {
     hasProfile: !!profile,
     hasBidPack: !!bidPack,
     user,
+    // A public page draws before the pilot's state has loaded: the nav holds its account area and greyed-out items until it has.
+    ready,
     inboxUnreadCount,
     pack: bidPack ? { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month } : null,
     onNavigate: (target: NavTarget) => {

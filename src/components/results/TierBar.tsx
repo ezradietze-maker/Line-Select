@@ -97,9 +97,18 @@ export function TierMoveRow({ tiers, lineId }: { tiers: LineTiers; lineId: strin
   );
 }
 
+/** The page's one undo history, across tier changes and swaps alike (see `lib/order-history.ts`). */
+export interface OrderUndo {
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
 /** Tiers above the list: what's in each, undo and redo, the scratch area, and the bar for moving a selection. */
-export function TierBar({ tiers, lines }: { tiers: LineTiers; lines: LineScore[] }) {
-  const { state, selected, undo, redo } = tiers;
+export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: LineScore[]; history: OrderUndo }) {
+  const { state, selected } = tiers;
+  const { undo, redo } = history;
   const [managing, setManaging] = useState(false);
   const counts = new Map<string, number>();
   for (const id of Object.keys(state.assigned)) counts.set(state.assigned[id], (counts.get(state.assigned[id]) ?? 0) + 1);
@@ -136,10 +145,10 @@ export function TierBar({ tiers, lines }: { tiers: LineTiers; lines: LineScore[]
           </span>
         )}
         <span className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={undo} disabled={!tiers.canUndo} className={small}>
+          <button type="button" onClick={undo} disabled={!history.canUndo} className={small}>
             Undo
           </button>
-          <button type="button" onClick={redo} disabled={!tiers.canRedo} className={small}>
+          <button type="button" onClick={redo} disabled={!history.canRedo} className={small}>
             Redo
           </button>
           <button type="button" onClick={() => setManaging(true)} className={small}>
@@ -193,20 +202,36 @@ export function TierBar({ tiers, lines }: { tiers: LineTiers; lines: LineScore[]
 
 function ManageTiers({ tiers, onClose }: { tiers: LineTiers; onClose: () => void }) {
   const [name, setName] = useState("");
+  // Names as typed, by tier. Saved on Enter, on leaving the box, and on closing however it's closed: Esc used to drop
+  // a name the X kept, since only the X's click took focus out of the box first.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const addRef = useRef<HTMLInputElement>(null);
   const field = "w-full rounded-md border border-hairline bg-canvas/50 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none";
+  const save = (tierId: string) => {
+    const typed = drafts[tierId]?.trim();
+    const current = tiers.state.tiers.find((t) => t.id === tierId)?.name;
+    if (typed && current !== undefined && typed !== current) tiers.rename(tierId, typed);
+  };
+  const close = () => {
+    for (const id of Object.keys(drafts)) save(id);
+    onClose();
+  };
   return (
-    <Modal title="Rename or add tiers" onClose={onClose}>
+    <Modal title="Rename or add tiers" onClose={close}>
       <ul className="space-y-2">
         {tiers.state.tiers.map((t) => (
           <li key={t.id} className="flex items-center gap-2">
             <input
-              defaultValue={t.name}
+              value={drafts[t.id] ?? t.name}
               aria-label={`Name for the tier now called ${t.name}`}
               maxLength={30}
-              onBlur={(e) => {
-                if (e.target.value.trim() && e.target.value.trim() !== t.name) tiers.rename(t.id, e.target.value);
+              onChange={(e) => setDrafts((d) => ({ ...d, [t.id]: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                save(t.id);
               }}
+              onBlur={() => save(t.id)}
               className={field}
             />
             {!DEFAULT_TIERS.some((d) => d.id === t.id) && (

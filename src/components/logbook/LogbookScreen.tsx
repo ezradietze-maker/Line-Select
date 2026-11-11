@@ -420,6 +420,8 @@ function MonthEntry({
 }) {
   const [checking, setChecking] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  // One click away from losing a month with no way back: asked first, as withdrawing every share is.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [feel, setFeel] = useState<MonthFeel | null>(m.checkIn?.feel ?? null);
   const [best, setBest] = useState(m.checkIn?.bestTrip ?? "");
   const [worst, setWorst] = useState(m.checkIn?.worstTrip ?? "");
@@ -519,10 +521,25 @@ function MonthEntry({
             Change the award
           </button>
         )}
-        <button type="button" onClick={onDelete} className="text-ink-faint underline decoration-dotted underline-offset-4 hover:text-danger">
-          Delete
-        </button>
+        {!confirmingDelete && (
+          <button type="button" onClick={() => setConfirmingDelete(true)} className="text-ink-faint underline decoration-dotted underline-offset-4 hover:text-danger">
+            Delete
+          </button>
+        )}
       </div>
+      {confirmingDelete && (
+        <div role="group" aria-label={`Delete ${m.month} from your logbook`} className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+          <span>
+            Delete {m.month} from your logbook? It can&rsquo;t be undone{m.sharedAt ? "; a shared award stays shared until you withdraw it" : ""}.
+          </span>
+          <Button variant="danger" onClick={onDelete}>
+            Yes, delete
+          </Button>
+          <Button variant="ghost" autoFocus onClick={() => setConfirmingDelete(false)}>
+            Cancel
+          </Button>
+        </div>
+      )}
     </article>
   );
 }

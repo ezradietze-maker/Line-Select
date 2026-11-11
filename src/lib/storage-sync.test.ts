@@ -85,14 +85,30 @@ describe("saving a signed-in pilot's profile", () => {
   });
 
   it("marks a failed save with the version it was sent against, after the save ahead of it landed", async () => {
+    // As the real queue in preference-profile-client.ts runs them: the second save waits for the first, and the first
+    // moves the server's version only when it lands, after the second save has already been started.
     let version = "v1";
     client.serverProfileVersion.mockImplementation(() => version);
+    let landFirst!: () => void;
+    const firstLanded = new Promise<void>((resolve) => {
+      landFirst = resolve;
+    });
     client.saveServerProfile.mockImplementationOnce(async () => {
+      await firstLanded;
       version = "v2";
       return { kind: "saved" };
     });
-    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
-    await Promise.all([saveProfileForUser("pilot-1", profile("a")), saveProfileForUser("pilot-1", profile("b"))]);
+    client.saveServerProfile.mockImplementationOnce(async () => {
+      await firstLanded;
+      return { kind: "failed" };
+    });
+    const first = saveProfileForUser("pilot-1", profile("a"));
+    const second = saveProfileForUser("pilot-1", profile("b"));
+    // Both under way and neither landed: a mark taken now would name v1.
+    expect(client.saveServerProfile).toHaveBeenCalledTimes(2);
+    expect(version).toBe("v1");
+    landFirst();
+    await Promise.all([first, second]);
     expect(JSON.parse(local.get("line-select:profile-unsynced:pilot-1:v1")!)).toEqual({ base: "v2" });
   });
 
