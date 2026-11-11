@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { packBidClose, type BidCloseSource, type CalendarPack } from "@/lib/bid-calendar";
-import { getBidDeadline, setBidDeadline } from "@/lib/bid-deadline-storage";
+import { setBidDeadline, useBidDeadlineOverride } from "@/lib/bid-deadline-storage";
 
 /*
  * Counts down to the close the pack itself prints on its bid calendar (or, from the December 2026 bid period,
@@ -20,14 +20,14 @@ function toLocalInputValue(iso: string): string {
 
 /** This pack's bid close: the pilot's own, from this device's storage, else the pack's printed one. */
 export function useBidDeadline(pack: CalendarPack) {
+  // Watched rather than read once, so the calendar link and anything else showing it change with it.
+  const own = useBidDeadlineOverride(pack.id);
   const [loaded, setLoaded] = useState(false);
-  const [own, setOwn] = useState<string | null>(null);
   useEffect(() => {
-    // One-time load of a value that lives outside React's own state (localStorage) — not derived from props, so there's no cascading-render concern despite the lint rule's default suspicion.
+    // Only after mount is this device's storage read (the server and first paint can't): until then the time isn't known.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOwn(getBidDeadline(pack.id));
     setLoaded(true);
-  }, [pack.id]);
+  }, []);
   const fromPack = packBidClose(pack);
   const source: BidCloseSource | null = own ? "pilot" : (fromPack?.source ?? null);
   return {
@@ -38,12 +38,10 @@ export function useBidDeadline(pack: CalendarPack) {
     packClose: fromPack,
     save(iso: string) {
       setBidDeadline(pack.id, iso);
-      setOwn(iso);
     },
     /** Back to the pack's time (or to none, when the pack has no calendar). */
     clear() {
       setBidDeadline(pack.id, null);
-      setOwn(null);
     },
   };
 }

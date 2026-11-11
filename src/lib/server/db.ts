@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
+import { offersFreedByTrade } from "@/lib/trades/offer-trips";
 import { db } from "@/lib/server/postgres";
 import {
   awardHistoryRecords,
@@ -24,7 +25,7 @@ import type { CandidateVariable } from "@/types/candidate-variable";
 import type { FeedbackSubmission } from "@/types/feedback";
 import type { InterviewCandidateFact } from "@/types/interview-candidate-fact";
 import type { PreferenceProfile } from "@/types/preferences";
-import type { TradeHolding, TradeOffer, TradeOfferStatus, TradeSettings } from "@/types/trade";
+import type { BidPackMetaSnapshot, TradeHolding, TradeOffer, TradeOfferStatus, TradeSettings } from "@/types/trade";
 
 /**
  * Real tables behind Postgres (`schema.ts`/`postgres.ts`) — replaces the old
@@ -262,9 +263,33 @@ function toTradeOffer(row: typeof tradeOffers.$inferSelect): TradeOffer {
   };
 }
 
-export async function listTradeOffers(): Promise<TradeOffer[]> {
-  const rows = await db.select().from(tradeOffers).orderBy(desc(tradeOffers.createdAt));
-  return rows.map(toTradeOffer);
+const offersForSeat = (meta: BidPackMetaSnapshot) =>
+  and(eq(tradeOffers.base, meta.base), eq(tradeOffers.aircraft, meta.aircraft), eq(tradeOffers.seat, meta.seat), eq(tradeOffers.month, meta.month));
+
+/**
+ * One seat's board for one month, as one pilot may see it: every offer they posted or proposed on, whatever its status,
+ * and, when `othersOpen`, other pilots' open offers. Never other seats' offers, nor others' trades in progress. Each
+ * part is the newest `limit`.
+ */
+export async function listTradeOffersForSeat(meta: BidPackMetaSnapshot, viewerId: string, opts: { othersOpen: boolean; limit: number }): Promise<TradeOffer[]> {
+  if (!isUuid(viewerId)) return [];
+  const [own, open] = await Promise.all([
+    db
+      .select()
+      .from(tradeOffers)
+      .where(and(offersForSeat(meta), or(eq(tradeOffers.offeringUserId, viewerId), eq(tradeOffers.responderUserId, viewerId))))
+      .orderBy(desc(tradeOffers.createdAt))
+      .limit(opts.limit),
+    opts.othersOpen
+      ? db
+          .select()
+          .from(tradeOffers)
+          .where(and(offersForSeat(meta), eq(tradeOffers.status, "open"), ne(tradeOffers.offeringUserId, viewerId)))
+          .orderBy(desc(tradeOffers.createdAt))
+          .limit(opts.limit)
+      : [],
+  ]);
+  return [...own, ...open].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).map(toTradeOffer);
 }
 
 export async function findTradeOffer(id: string): Promise<TradeOffer | null> {
@@ -324,6 +349,41 @@ export async function updateTradeOffer(
     .where(and(eq(tradeOffers.id, id), inArray(tradeOffers.status, expectedStatuses)))
     .returning();
   return row ? toTradeOffer(row) : null;
+}
+
+/**
+ * Accepts a pending offer, and in the same transaction frees every other offer that gave away either of its trips
+ * (`offersFreedByTrade`): the pilots' other offers of them are withdrawn, and a proposal one of them made with one is
+ * taken off that offer, which opens again. Every offer either pilot is on in that seat and month is locked first, in
+ * one order, so two accepts that share a trip queue up rather than both going through. Null when the offer isn't
+ * pending, or its proposal isn't the one `expectedRespondedAt` names (one taken off and replaced since it was seen).
+ */
+export async function acceptTradeOffer(id: string, expectedRespondedAt: string | null, now = new Date()): Promise<TradeOffer | null> {
+  if (!isUuid(id)) return null;
+  return db.transaction(async (tx) => {
+    const [first] = await tx.select().from(tradeOffers).where(eq(tradeOffers.id, id)).limit(1);
+    if (!first?.responderUserId || first.status !== "pending") return null;
+    const pilots = [first.offeringUserId, first.responderUserId];
+    const rows = await tx
+      .select()
+      .from(tradeOffers)
+      .where(and(offersForSeat(bidPackMetaOf(first)), or(inArray(tradeOffers.offeringUserId, pilots), inArray(tradeOffers.responderUserId, pilots))))
+      .orderBy(tradeOffers.id)
+      .for("update");
+    const locked = rows.find((r) => r.id === id);
+    if (!locked || locked.status !== "pending" || locked.responderUserId !== first.responderUserId) return null;
+    if (expectedRespondedAt && locked.respondedAt?.toISOString() !== expectedRespondedAt) return null;
+    const { withdraw, reopen } = offersFreedByTrade(toTradeOffer(locked), rows.filter((r) => r.id !== id).map(toTradeOffer));
+    const [row] = await tx.update(tradeOffers).set({ status: "accepted", resolvedAt: now }).where(eq(tradeOffers.id, id)).returning();
+    if (withdraw.length > 0) await tx.update(tradeOffers).set({ status: "withdrawn", resolvedAt: now }).where(inArray(tradeOffers.id, withdraw));
+    if (reopen.length > 0) {
+      await tx
+        .update(tradeOffers)
+        .set({ status: "open", responderUserId: null, responderDisplayName: null, responderTrip: null, respondedAt: null })
+        .where(inArray(tradeOffers.id, reopen));
+    }
+    return toTradeOffer(row);
+  });
 }
 
 // ---- Candidate variables ----
@@ -391,6 +451,10 @@ export async function countRecentPilotsWithPack(packIdPrefix: string, since: Dat
   return row?.n ?? 0;
 }
 
+/**
+ * Stores one pilot's award report. In `link`, a field left undefined is one the report didn't say: a replaced report's
+ * answer stands (see below). Null or false is an answer.
+ */
 export async function createAwardHistoryRecord(
   record: AwardHistoryRecord,
   link: { pilotHash?: string | null; packKey?: string | null; awardedChoice?: number | null; monthFeel?: string | null; brainVersion?: number | null; notesUsed?: boolean | null; holderShown?: boolean } = {}
@@ -398,16 +462,32 @@ export async function createAwardHistoryRecord(
   await db.transaction(async (tx) => {
     // One report per pilot per pack: a corrected award replaces the earlier one rather than standing beside it
     // in the history everyone's holdability estimates are checked against.
+    let replaced: Pick<typeof awardHistoryRecords.$inferSelect, "monthFeel" | "checkedInAt" | "brainVersion" | "notesUsed" | "holderShown" | "seniorityRank"> | undefined;
     if (link.pilotHash && link.packKey) {
-      await tx
+      [replaced] = await tx
         .delete(awardHistoryRecords)
-        .where(and(eq(awardHistoryRecords.pilotHash, link.pilotHash), eq(awardHistoryRecords.packKey, link.packKey)));
+        .where(and(eq(awardHistoryRecords.pilotHash, link.pilotHash), eq(awardHistoryRecords.packKey, link.packKey)))
+        .returning({
+          monthFeel: awardHistoryRecords.monthFeel,
+          checkedInAt: awardHistoryRecords.checkedInAt,
+          brainVersion: awardHistoryRecords.brainVersion,
+          notesUsed: awardHistoryRecords.notesUsed,
+          holderShown: awardHistoryRecords.holderShown,
+          seniorityRank: awardHistoryRecords.seniorityRank,
+        });
     }
+    // A report that leaves out how the month flew, which brain ranked it, or the pilot's yes to showing their number
+    // (Strategies' form asks none of these) keeps what the report it replaces said: otherwise reporting the award there
+    // after the Logbook took the pilot's "Held by" share away. Their number stays shown only for a line at the same
+    // seniority number they agreed to show.
+    const keptHolder = !!replaced?.holderShown && record.outcome === "line" && !!record.lineNumber && replaced.seniorityRank === record.seniorityRank;
+    const monthFeel = link.monthFeel === undefined ? (replaced?.monthFeel ?? null) : link.monthFeel;
+    const checkedInAt = link.monthFeel === undefined ? (replaced?.checkedInAt ?? null) : link.monthFeel ? new Date() : null;
     await tx.insert(awardHistoryRecords).values({
       pilotHash: link.pilotHash ?? null,
       packKey: link.packKey ?? null,
       awardedChoice: link.awardedChoice ?? null,
-      holderShown: link.holderShown ?? false,
+      holderShown: link.holderShown ?? keptHolder,
       id: record.id,
       base: record.base,
       aircraft: record.aircraft,
@@ -421,10 +501,10 @@ export async function createAwardHistoryRecord(
       totalCreditHours: record.totalCreditHours,
       totalTafbHours: record.totalTafbHours,
       submittedAt: new Date(record.submittedAt),
-      monthFeel: link.monthFeel ?? null,
-      checkedInAt: link.monthFeel ? new Date() : null,
-      brainVersion: link.brainVersion ?? null,
-      notesUsed: link.notesUsed ?? null,
+      monthFeel,
+      checkedInAt,
+      brainVersion: link.brainVersion === undefined ? (replaced?.brainVersion ?? null) : link.brainVersion,
+      notesUsed: link.notesUsed === undefined ? (replaced?.notesUsed ?? null) : link.notesUsed,
     });
   });
 }

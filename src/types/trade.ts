@@ -29,6 +29,14 @@ export interface TripSnapshot {
   tafbHours: number;
   landings: number;
   deadheadLegs: number;
+  /**
+   * Which trip on which day, as `tripInstanceKey` names it: the same pairing flies on several days, and only the date
+   * says which one is meant. Missing from offers posted before it was kept.
+   */
+  tripId?: string;
+  startDayIndex?: number | null;
+  /** The day it starts, YYYY-MM-DD, when the pack places it on one. */
+  date?: string | null;
 }
 
 export interface BidPackMetaSnapshot {

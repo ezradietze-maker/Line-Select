@@ -202,18 +202,26 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
   const [finding, setFinding] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The server turned the last check away for asking too often: said, rather than the list silently going stale. */
+  const [limited, setLimited] = useState(false);
+
+  const take = useCallback((next: SuggestionsState | "limited" | null) => {
+    if (next === "limited") return setLimited(true);
+    if (!next) return;
+    setLimited(false);
+    setState(next);
+  }, []);
 
   const refresh = useCallback(async () => {
-    const next = await fetchSuggestions(packId);
-    if (next) setState(next);
-  }, [packId]);
+    take(await fetchSuggestions(packId));
+  }, [packId, take]);
 
   useEffect(() => {
     let cancelled = false;
     const load = () => {
       if (document.visibilityState === "hidden") return;
       void fetchSuggestions(packId).then((next) => {
-        if (!cancelled && next) setState(next);
+        if (!cancelled) take(next);
       });
     };
     load();
@@ -222,7 +230,7 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
       cancelled = true;
       clearInterval(timer);
     };
-  }, [packId]);
+  }, [packId, take]);
 
   async function find() {
     setFinding(true);
@@ -253,7 +261,13 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
     setBusy(false);
   }
 
-  if (!state) return null;
+  const limitedNotice = limited && (
+    <Notice tone="info" className="mt-3">
+      Line Select is open in several windows, so these trades stopped updating for a few minutes. Close the extra windows
+      and they pick up again on their own.
+    </Notice>
+  );
+  if (!state) return limitedNotice || null;
   const list = onlyWaiting ? state.suggestions.filter((s) => s.status === "proposed" && s.you.answer === "waiting") : state.suggestions;
   if (onlyWaiting && list.length === 0) return null;
   const { ready } = state;
@@ -262,6 +276,7 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
     <section className="mt-8">
       <SectionHeading count={list.length}>Trades found for you</SectionHeading>
       {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
+      {limitedNotice}
       <div className="mt-3 space-y-3">
         {list.map((s) => (
           <SuggestionCard key={s.id} s={s} busy={busy} onAnswer={(answer, reason) => {

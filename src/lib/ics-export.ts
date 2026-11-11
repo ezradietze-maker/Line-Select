@@ -54,8 +54,11 @@ export interface IcsExportResult {
  * doc comment — a whole line is placed together or not at all), there's
  * nothing honest to export, so this returns `ok: false` with a plain-English
  * reason instead of guessing at dates.
+ *
+ * Each event is named (UID) by the bid month, the pairing and its date, as the calendar link names its trips: line ids
+ * repeat every month (`line-101`), so a UID built from one made importing December's file move November's events.
  */
-export function buildLineCalendar(line: Line, bidPeriodStart: string | null): IcsExportResult {
+export function buildLineCalendar(line: Line, bidPeriodStart: string | null, bidMonth: string): IcsExportResult {
   const placementIsReal = bidPeriodStart !== null && line.trips.every((t) => t.startDayIndex !== null);
   if (!placementIsReal) {
     return {
@@ -68,7 +71,7 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null): Ic
   const base = DateTime.fromISO(bidPeriodStart!, { zone: "utc" });
   const stamp = DateTime.utc().toFormat("yyyyLLdd'T'HHmmss'Z'");
 
-  const events = line.trips.map((trip, i) => {
+  const events = line.trips.map((trip) => {
     const start = base.plus({ days: trip.startDayIndex! });
     const end = start.plus({ days: trip.days });
     const reportTime = trip.schedule[0]?.reportTimeLocal;
@@ -86,7 +89,7 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null): Ic
 
     return [
       "BEGIN:VEVENT",
-      `UID:line-select-${line.id}-${i}@line-select.local`,
+      `UID:line-trip-${bidMonth}-${trip.pairingNumber ?? trip.id}-${start.toFormat("yyyy-LL-dd")}@lineselect`,
       `DTSTAMP:${stamp}`,
       `DTSTART;VALUE=DATE:${start.toFormat("yyyyLLdd")}`,
       `DTEND;VALUE=DATE:${end.toFormat("yyyyLLdd")}`,
@@ -96,6 +99,7 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null): Ic
     ].join("\r\n");
   });
 
+  // RFC 5545 3.1: every line ends in CRLF, the last one too.
   const content = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -103,7 +107,7 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null): Ic
     "CALSCALE:GREGORIAN",
     ...events,
     "END:VCALENDAR",
-  ].join("\r\n");
+  ].join("\r\n") + "\r\n";
 
   return { ok: true, content };
 }
@@ -113,8 +117,11 @@ export const icsUtc = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g
 /**
  * The bid deadline as a calendar event with two alarms — the day before and an hour before — so a pilot's own phone
  * reminds them whether or not Line Select is open. `deadline` is the instant the pilot typed in, never a guess.
+ *
+ * Named (UID) by the pack, not the time: a corrected close then replaces the event already imported instead of adding
+ * a second one. It lasts 15 minutes, as RFC 5545 needs an end after the start.
  */
-export function buildDeadlineReminderIcs(deadline: string, label: string, now: number = Date.now()): string {
+export function buildDeadlineReminderIcs(packId: string, deadline: string, label: string, now: number = Date.now()): string {
   const at = new Date(deadline).getTime();
   const lines = [
     "BEGIN:VCALENDAR",
@@ -122,10 +129,10 @@ export function buildDeadlineReminderIcs(deadline: string, label: string, now: n
     "PRODID:-//Line Select//Bid deadline//EN",
     "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
-    `UID:bid-deadline-${at}@lineselect`,
+    `UID:bid-close-${packId}@lineselect`,
     `DTSTAMP:${icsUtc(now)}`,
     `DTSTART:${icsUtc(at)}`,
-    `DTEND:${icsUtc(at)}`,
+    "DURATION:PT15M",
     `SUMMARY:${escapeIcsText(`Bid closes — ${label}`)}`,
     `DESCRIPTION:${escapeIcsText("Enter your line order before bidding closes. Line Select doesn't submit anything for you.")}`,
     "BEGIN:VALARM",

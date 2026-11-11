@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
-import { findTradeOffer, updateTradeOffer } from "@/lib/server/db";
+import { acceptTradeOffer, findTradeOffer } from "@/lib/server/db";
+import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { offerForViewer } from "@/lib/server/trade-view";
 
 export const runtime = "nodejs";
 
+/** Agrees a proposed trade. Both trips are then spoken for, so every other offer giving one of them is freed (`acceptTradeOffer`). */
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const user = await getCurrentServerUser();
@@ -26,13 +28,12 @@ export async function POST(
     return NextResponse.json({ error: "This offer isn't waiting on a response." }, { status: 409 });
   }
 
-  const updated = await updateTradeOffer(
-    id,
-    { status: "accepted", resolvedAt: new Date().toISOString() },
-    ["pending"]
-  );
+  // The proposal the pilot saw, so one taken off and replaced by another pilot's in the meantime isn't agreed unseen.
+  const body = await readJsonBody(request, 1_000);
+  const respondedAt = isJsonObject(body) && typeof body.respondedAt === "string" ? body.respondedAt.slice(0, 40) : null;
+  const updated = await acceptTradeOffer(id, respondedAt);
   if (!updated) {
-    return NextResponse.json({ error: "This offer isn't waiting on a response." }, { status: 409 });
+    return NextResponse.json({ error: "This offer isn't waiting on that proposal any more. Have another look at it." }, { status: 409 });
   }
   return NextResponse.json({ offer: offerForViewer(updated, user.id) });
 }
