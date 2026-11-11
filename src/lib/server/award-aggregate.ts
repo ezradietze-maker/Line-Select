@@ -45,6 +45,14 @@ function inWholeSteps<T extends Pick<AwardRow, "submittedAt">>(rows: T[]): T[] {
   return [...rows].sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime()).slice(0, kept);
 }
 
+/**
+ * An average of at least the bar's worth of known values: of five reports with only one saying its days off, the
+ * "average" was that one pilot's.
+ */
+function groupAverage(values: (number | null)[]): number | null {
+  return values.filter((v) => v !== null).length >= MIN_SHARED_PILOTS ? average(values, 1) : null;
+}
+
 /** A count, to the nearest step, and nothing at all short of the bar: an exact count says when each report came in. */
 function roughCount(rows: Pick<AwardRow, "pilotHash">[]): number {
   return distinctPilots(rows) < MIN_SHARED_PILOTS ? 0 : Math.round(rows.length / AWARD_STEP) * AWARD_STEP;
@@ -62,8 +70,8 @@ export function summarizeBands(rows: AwardRow[]): AwardSummaryResponse {
     const counted = inWholeSteps(inBand);
     return {
       reports: roughCount(inBand),
-      avgDaysOff: enoughLines ? average(lines.map((r) => r.daysOff), 1) : null,
-      avgCreditHours: enoughLines ? average(lines.map((r) => r.totalCreditHours), 1) : null,
+      avgDaysOff: enoughLines ? groupAverage(lines.map((r) => r.daysOff)) : null,
+      avgCreditHours: enoughLines ? groupAverage(lines.map((r) => r.totalCreditHours)) : null,
       lineRate: distinctPilots(counted) >= MIN_SHARED_PILOTS ? Math.round((counted.filter((r) => r.outcome === "line").length / counted.length) * 100) / 100 : null,
     };
   });

@@ -578,6 +578,9 @@ export async function createAwardHistoryRecord(
     targetWhere: sql`${t.pilotHash} is not null and ${t.packKey} is not null`,
     set: {
       ...report,
+      // Its place in the order stays where the first report put it: moved to newest by a correction or a re-share, it
+      // dropped out of the whole steps the group numbers are made from, and the change gave its values away.
+      submittedAt: sql`${t.submittedAt}`,
       holderShown: link.holderShown ?? (isLine ? sql`${t.holderShown} and ${t.seniorityRank} = ${record.seniorityRank}` : false),
       ...(link.monthFeel !== undefined && { monthFeel: link.monthFeel, checkedInAt: link.monthFeel ? now : null }),
       ...(link.brainVersion !== undefined && { brainVersion: link.brainVersion }),

@@ -592,8 +592,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setPhase("asking");
     setError(null);
     const m = modelRef.current;
-    const compared = new Set(ch.map((c) => `${c.preferred}|${c.other}`));
-    for (const e of all) for (const x of e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)) compared.add(`${x[1]}|${x[2]}`);
+    // This pack's choices only: line numbers repeat from pack to pack (every First Officer pack starts at 2001), so in a
+    // check-in last month's line pairs blocked this month's lines of the same numbers.
+    const compared = new Set(ch.filter((c) => !c.packId || c.packId === bidPack.id).map((c) => `${c.preferred}|${c.other}`));
+    for (const e of all.slice(all.length - t)) for (const x of e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)) compared.add(`${x[1]}|${x[2]}`);
     // The first question, asked the same way for everyone: which of their top priorities they'd give up last — in
     // their words, before any line choice can reorder them (see lib/brain/priority-order.ts).
     const priority = t === 0 && !checkInRef.current ? priorityOrderQuestion(m) : null;
@@ -632,9 +634,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const linePairs: LinePairCandidate[] = m ? pickLinePairs(bidPack, m, pm, compared, 3, tradesRef.current) : [];
     // Real lines and trips at both ends of their main priorities, for the question to show — and the topics still worth
     // asking: what's unclear and would move their top 20 most (lib/brain/question-topics.ts).
-    const { topics, examples } = m ? pickTopics(bidPack, m, pm, askedTopics(th), pickQuestionExamples(bidPack, m, pm)) : { topics: [], examples: [] };
+    const { topics, examples } = m ? pickTopics(bidPack, m, pm, askedTopics(th), pickQuestionExamples(bidPack, m, pm), undefined, all) : { topics: [], examples: [] };
     // And two real trips that pull their priorities apart, for a trip choice (lib/brain/trip-pairs.ts).
-    const tripPairs = m ? pickTripPairs(bidPack, m, pm, askedTripPairs(all), tradesRef.current) : [];
+    const tripPairs = m ? pickTripPairs(bidPack, m, pm, askedTripPairs(all.slice(all.length - t)), tradesRef.current) : [];
     try {
       const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, model: m, threads: th, linePairs, tripPairs, examples, packNumbers, topics, lastTopic: question?.topic ?? null, turn: t, maxTurns: turnLimitRef.current, rankingShifts: shiftsRef.current });
       const settledThreads = { ...th };
@@ -758,12 +760,16 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       return;
     }
     const all = [...exchanges, { turn: exchanges.length, question: SWEEP_QUESTION, answer: [picked.length ? `These matter to me too: ${picked.join(", ")}.` : "", note].filter(Boolean).join(" ") }];
+    // An answer like any other: not counted, the interviewer took it for part of the opening story, and a priority the
+    // first questions had already probed read as unprobed again.
+    const nextTurn = turn + 1;
     setExchanges(all);
+    setTurn(nextTurn);
     // A follow-up or two on what they picked, then done.
-    const limit = Math.min(MAX_TURNS, turn + AFTER_SWEEP);
+    const limit = Math.min(MAX_TURNS, nextTurn + AFTER_SWEEP);
     turnLimitRef.current = limit;
     setTurnLimit(limit);
-    await askNext(all, threads, choices, turn, true);
+    await askNext(all, threads, choices, nextTurn, true);
   }
 
   async function finishInterview(all: InterviewExchange[], ch: LineChoice[]) {
@@ -859,12 +865,14 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   // answer isn't lost to a phone locking while that question is worked out (resuming then asks it again).
   useEffect(() => {
     if ((phase !== "question" && phase !== "sweep" && phase !== "asking") || exchanges.length === 0) return;
-    const d: DraftState = { version: 1, savedAt: Date.now(), phase: phase === "sweep" ? "sweep" : "question", exchanges, threads, choices, tripChoices, pastTrades, model, question: phase === "asking" ? null : question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn };
+    // With which cities the story suggested and which the pilot changed: without them, a city set back to neutral on
+    // the city screen came back as the story's "love" after a resume, and was saved that way.
+    const d: DraftState = { version: 1, savedAt: Date.now(), phase: phase === "sweep" ? "sweep" : "question", exchanges, threads, choices, tripChoices, pastTrades, model, question: phase === "asking" ? null : question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, touchedCities: [...touchedCities.current], homeCity, sweepDone, turnLimit, checkIn };
     try {
       window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify(d));
     } catch {}
     if (userId) saveServerDraft(bidPack.id, d);
-  }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
+  }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, homeCity, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
 
   // The opening steps too, once the pilot has moved past the first: leaving for another screen and coming back lost the
   // commute answer and every city grade. Kept on this device only — it's minutes of work, and on the account it could
@@ -908,6 +916,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setSeniorityText(d.seniorityText);
     setCityRatings(d.cityRatings);
     setCityPreferences(d.cityPreferences);
+    setStorySuggested(d.storySuggested ?? {});
+    touchedCities.current = new Set(d.touchedCities ?? []);
+    setHomeCity(d.homeCity ?? null);
     setSweepDone(d.sweepDone);
     turnLimitRef.current = d.turnLimit ?? MAX_TURNS;
     setTurnLimit(turnLimitRef.current);

@@ -245,6 +245,8 @@ export function isProbed(c: PilotModel["criteria"][number], openingCount: number
 
 /** How many exchanges came before the first interview question — the opening steps (and, in a check-in, last month's). */
 const openingCountOf = (input: Pick<InterviewStepInput, "exchanges" | "turn">) => Math.max(0, input.exchanges.length - input.turn);
+/** The questions asked in this interview, past the opening and any record carried from last month. */
+const thisSession = (input: Pick<InterviewStepInput, "exchanges" | "turn">) => input.exchanges.slice(openingCountOf(input));
 
 /** Important criteria the interview has only from the opening story. */
 export function unprobedCriteria(input: Pick<InterviewStepInput, "exchanges" | "turn" | "model">): PilotModel["criteria"] {
@@ -306,10 +308,15 @@ const MAX_PROMPT_WORDS = 25;
 
 const HYPOTHETICAL = /\b(?:if|what if|say|imagine|suppose)\s+(?:a|another|some|the)?\s*(?:line|trip)\s+(?:instead\s+)?(?:had|has|were|was|with|that|came|paid|gave)\b|\bimagine\b|\bsuppose\b|\bhypothetical/i;
 
-/** Line numbers a question names (four-digit numbers), and trip numbers ("trip 93", "Trip #93", "trips 93 and 98"). */
+/**
+ * Line numbers a question names (four-digit numbers), and trip numbers ("trip 93", "Trip #93", "trips 93 and 98", "#4017").
+ * A trip's number is taken out before lines are looked for: captains' trips run to four digits (trip 4001), and read as
+ * lines, every real one was refused as a made-up line, so a captain's trip choices were never asked.
+ */
 function namedNumbers(text: string): { lines: string[]; trips: string[] } {
-  const lines = [...text.matchAll(/\b(\d{4})\b/g)].map((m) => m[1]);
-  const trips = [...text.matchAll(/\btrips?\s+#?\s*(\d{1,4})(?:\s*(?:,|and|&)\s*#?\s*(\d{1,4}))*/gi)].flatMap((m) => [...m[0].matchAll(/\d{1,4}/g)].map((x) => x[0]));
+  const tripMentions = /\btrips?\s+#?\s*\d{1,4}(?:\s*(?:,|and|&|or)\s*#?\s*\d{1,4})*|#\s*\d{1,4}\b/gi;
+  const trips = [...text.matchAll(tripMentions)].flatMap((m) => [...m[0].matchAll(/\d{1,4}/g)].map((x) => x[0]));
+  const lines = [...text.replace(tripMentions, " ").matchAll(/\b(\d{4})\b/g)].map((m) => m[1]);
   return { lines, trips };
 }
 /** A four-digit number that could be a clock time ("0430", "1755") rather than a line. */
@@ -508,7 +515,7 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
     if (step.kind === "trip-pair") {
       const tp = (input.tripPairs ?? []).find((p) => p.index === step.tripPairIndex);
       if (!tp) return "That trip pair index doesn't exist.";
-      if (askedTripPairs(input.exchanges).has(`${tp.a}|${tp.b}`)) return "Those two trips were already compared.";
+      if (askedTripPairs(thisSession(input)).has(`${tp.a}|${tp.b}`)) return "Those two trips were already compared.";
       if (interview.filter((e) => TRIP_PAIR_QUESTION.test(e.question)).length >= MAX_TRIP_PAIRS) return `Trip choices are already ${MAX_TRIP_PAIRS} — the trip grades at the end cover more trips at once. Ask something else.`;
     } else {
       const pair = input.linePairs.find((p) => p.index === step.pairIndex);
@@ -541,7 +548,9 @@ export function rankingHasSettled(input: Pick<InterviewStepInput, "turn" | "rank
 export async function nextInterviewStep(input: InterviewStepInput): Promise<InterviewStep> {
   if (rankingHasSettled(input)) return { done: true, reason: "The last answers stopped changing the ranking.", settled: [] };
   const conversation = input.exchanges.map((e) => `[${e.turn}] Q: ${e.question}\nA: ${e.answer}`).join("\n\n");
-  const pairsUsed = new Set(input.exchanges.flatMap((e) => [...e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)].map((m) => `${m[1]}|${m[2]}`)));
+  // This session's questions only: in a check-in the record carries last month's, and line and trip numbers repeat
+  // from pack to pack, so last month's pairs refused this month's of the same numbers.
+  const pairsUsed = new Set(thisSession(input).flatMap((e) => [...e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)].map((m) => `${m[1]}|${m[2]}`)));
   const pairs = input.linePairs.length
     ? input.linePairs
         .map((p) => {

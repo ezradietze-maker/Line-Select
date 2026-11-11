@@ -1,11 +1,11 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { newCloseRuleApplies } from "@/lib/bid-calendar";
-import { lineCarryOver, splitTrip } from "@/lib/bid-month";
+import { bidMonthEnd, lineCarryOver, splitTrip } from "@/lib/bid-month";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { tripDutyPeriods } from "@/lib/duty-periods";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
-import { dayTripsOf, runDaysOf, runOfDay, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { dayTripsOf, namedWithHours, rejoinRunDays, runDaysOf, runOfDay, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { VipsBidAnswers } from "@/lib/vips-bid";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
@@ -676,7 +676,18 @@ export function lineAsFlown(asGiven: Line, pack: BidPack, dropped: Trip[], given
   let carryBlock = line.carryOverBlockHours;
   let landings = line.totalLandings;
   let duties = line.totalDutyPeriods;
+  const monthEnd = bidMonthEnd(pack);
   for (const t of dropped) {
+    // A day of a run that reports after the month's end is all next month's: its credit comes off the carry-over, not
+    // this month's, which it was never part of.
+    const report = tripReportUtc(pack, t);
+    if (runOfDay(t) && monthEnd !== null && report !== null && report >= monthEnd) {
+      if (!opts.creditPaid && carryCredit !== undefined) carryCredit = Math.max(0, carryCredit - t.creditHours);
+      if (carryBlock !== undefined) carryBlock = Math.max(0, carryBlock - operatedHours(t));
+      landings -= t.landings;
+      if (duties !== undefined) duties -= tripDutyPeriods(t);
+      continue;
+    }
     const carries = !!carryOver && carryOver.trips.includes(t.pairingNumber) && !!splitTrip(t, pack)?.carry;
     const inMonth = splitTrip(t, pack, carries ? (line.carryOverCreditHours ?? 0) : 0)?.inMonth ?? t;
     if (!opts.creditPaid) credit -= inMonth.creditHours;
@@ -692,7 +703,8 @@ export function lineAsFlown(asGiven: Line, pack: BidPack, dropped: Trip[], given
   }
   return {
     ...line,
-    trips: kept,
+    // A run with a day taken off is its stretches of days left, each a shorter run (`rejoinRunDays`).
+    trips: rejoinRunDays(kept),
     daysOff: off ? off.size : printedOff!,
     totalCreditHours: Math.max(0, Math.round(credit * 100) / 100),
     totalTafbHours: Math.max(0, tafb),
@@ -735,7 +747,7 @@ function minDaysOptions(flown: Line, pack: BidPack, needed: number, spanOf: Map<
 function reasonFor(f: Omit<FlownLine, "reason" | "line">): string | null {
   const parts: string[] = [];
   if (f.dropped.length) {
-    const names = f.dropped.map((d) => `${tripName(d.trip)} (${d.makeUpCH.toFixed(1)} CH)`).join(" and ");
+    const names = namedWithHours(f.dropped.map((d) => ({ trip: d.trip, creditHours: d.makeUpCH })), tripName);
     parts.push(`Your carry-in drops ${names}, without pay but make-up eligible`);
     const gained = (f.longestOffAfter ?? 0) - (f.longestOffBefore ?? 0);
     if (f.daysOffAfter > f.daysOffBefore) parts.push(`${f.daysOffAfter - f.daysOffBefore} more day${f.daysOffAfter - f.daysOffBefore === 1 ? "" : "s"} off${gained > 0 ? `, ${f.longestOffAfter} in a row` : ""}`);
@@ -815,7 +827,7 @@ export function flyLine(line: Line, pack: BidPack, carryIn: CarryInItem[], elect
   const flown = lineAsFlown(line, pack, droppedTrips, spanOf, carriedDays);
   const needed = minimumDaysOff(pack.bidPeriodDays);
   const short = needed !== null && flown.daysOff < needed;
-  const minDays = short ? { needed: needed!, have: flown.daysOff, options: minDaysOptions(flown, pack, needed!, spanOf, carriedDays) } : null;
+  const minDays = short ? { needed: needed!, have: flown.daysOff, options: minDaysOptions(flown, pack, needed!, withDaySpans(flown.trips, spanOf), carriedDays) } : null;
   if (minDays) {
     const best = minDays.options[0];
     const how = best ? ` ${best.pairingNumbers.map((n) => tripName({ pairingNumber: n })).join(" and ")} would bring it back (CBA 2026 ${best.section}).` : "";

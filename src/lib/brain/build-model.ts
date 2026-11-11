@@ -446,7 +446,7 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
   const parsed = parsePilotModel(data, input.prior);
   // Full days in the cities they like share the city priority, when they judge layovers that way (`modelToFullDays`).
   // And a chosen weekday's part of the day, from the words quoted for it ("Wednesday nights", `modelToWeekdayParts`).
-  const read: PilotModel = { ...modelToWeekdayParts(modelToFullDays(parsed.model, input.exchanges.map((e) => e.answer))), readUpTo: input.exchanges.length };
+  const read: PilotModel = { ...modelToWeekdayParts(modelToFullDays(parsed.model, input.exchanges.map((e) => e.answer), { rebalance: true })), readUpTo: input.exchanges.length };
   const answers = input.exchanges.map((e) => e.answer).join(" ");
   const fixed = await fixModelWords(factsRead ? applyPilotFacts(read, factsRead.facts) : read, answers, { apiKey: input.apiKey });
   const model = fixed.model;

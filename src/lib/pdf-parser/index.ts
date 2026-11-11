@@ -303,7 +303,44 @@ export async function parseBidPackPdf(
     warnings,
     errors,
     looksLikeScannedPdf: false,
+    problems: completenessProblems(bidPacksBySeat, infoBySeat),
   };
+}
+
+const SEAT_NAME = { CAP: "Captain", FO: "First Officer" } as const;
+
+/**
+ * Checked against the pack's own info page: on every real pack so far its regular and reserve line counts are exactly
+ * what's read, so a difference means pages are missing (a file cut short, a page dropped) or two packs were joined.
+ */
+export function completenessProblems(
+  packs: Partial<Record<"CAP" | "FO", BidPack>>,
+  info: Partial<Record<"CAP" | "FO", BidPackInfo>> | null
+): { seat: "CAP" | "FO" | null; message: string }[] {
+  const out: { seat: "CAP" | "FO" | null; message: string }[] = [];
+  for (const seat of ["CAP", "FO"] as const) {
+    const pack = packs[seat];
+    const counted = info?.[seat];
+    const name = SEAT_NAME[seat];
+    if (!pack) {
+      if (counted?.totalRegularLines) out.push({ seat, message: `The pack lists ${counted.totalRegularLines} ${name} lines, but this file has none of them. Upload the whole pack to rank ${name} lines.` });
+      continue;
+    }
+    if (counted?.totalRegularLines && pack.lines.length < counted.totalRegularLines) {
+      out.push({ seat, message: `This file has ${pack.lines.length} of the ${counted.totalRegularLines} ${name} lines the pack lists. Pages look to be missing: upload the whole pack.` });
+    }
+    if (counted?.totalReserveLines && (pack.reserveLines?.length ?? 0) < counted.totalReserveLines) {
+      out.push({ seat, message: `This file has ${pack.reserveLines?.length ?? 0} of the ${counted.totalReserveLines} ${name} reserve lines the pack lists.` });
+    }
+    const seen = new Set<string>();
+    const twice = new Set<string>();
+    for (const l of pack.lines) (seen.has(l.lineNumber) ? twice : seen).add(l.lineNumber);
+    if (twice.size) {
+      const some = [...twice].slice(0, 3).join(", ");
+      out.push({ seat, message: `${name} line${twice.size === 1 ? "" : "s"} ${some}${twice.size > 3 ? ` and ${twice.size - 3} more` : ""} appear${twice.size === 1 ? "s" : ""} twice. The file may hold a page twice, or two packs joined: upload the pack on its own.` });
+    }
+  }
+  return out;
 }
 
 /** Where a seat's lines place each pairing number, repeats counted. */

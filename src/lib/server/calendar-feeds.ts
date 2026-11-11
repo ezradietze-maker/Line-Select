@@ -15,6 +15,7 @@ import { db } from "@/lib/server/postgres";
 import { calendarFeeds } from "@/lib/server/schema";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
+import { dayTripsOf } from "@/lib/trip-anchor";
 
 /**
  * Pilots' calendar subscriptions. The link's token is 32 random bytes, stored only as a SHA-256 hash: a slow salted hash
@@ -164,8 +165,8 @@ export async function syncFeed(userId: string, choice: FeedChoice, now = Date.no
   const month = buildFeedMonth(pack, { lineNumber, lineSource, pilotClose: choice.pilotClose, flights, now });
   // A trip with no date to place it on is left off the calendar, which the pilot can't see from there: heard about here.
   const line = lineNumber ? pack.lines.find((l) => l.lineNumber === lineNumber) : null;
-  if (lineNumber && (!line || month.trips.length < line.trips.length)) {
-    await reportProblem("calendar-feed", new Error("Trips left off a calendar"), { what: "feed build", packId: pack.id, lineNumber, trips: `${month.trips.length} of ${line?.trips.length ?? "no line"}` });
+  if (lineNumber && (!line || month.trips.length < line.trips.flatMap(dayTripsOf).length)) {
+    await reportProblem("calendar-feed", new Error("Trips left off a calendar"), { what: "feed build", packId: pack.id, lineNumber, trips: `${month.trips.length} of ${line ? line.trips.flatMap(dayTripsOf).length : "no line"}` });
   }
   // Turned off while this was being built: nothing is written, so the trips turning off cleared stay gone.
   return (await updateLiveFeed(userId, row, (r) => ({ months: withFeedMonth(r.months, month) }))) ? "ok" : "off";

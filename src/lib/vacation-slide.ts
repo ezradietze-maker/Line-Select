@@ -270,7 +270,9 @@ function expansions(line: Line, pack: BidPack, vacation: VacationPeriod, slide: 
   const limit = vacation.days * CH_PER_VACATION_DAY + EXPANSION_OVER_CH;
   if (base.chargedCH > limit) return [];
   const taken = new Set(base.removed.map((r) => r.trip));
-  const rest = line.trips.flatMap((t) => {
+  // Day by day for a run, as the removals are: whole, a run with one day taken started before the vacation ended, so
+  // it was neither the trip after nor the one before, and the legal day-longer expansion was never offered.
+  const rest = line.trips.flatMap(dayTripsOf).flatMap((t) => {
     const s = tripSpan(t, pack);
     return s && !taken.has(t) ? [{ t, s }] : [];
   });
@@ -338,7 +340,8 @@ const BEST_PER_LINE = 3;
 const BEST_ACROSS = 3;
 
 function sameOutcome(a: SlideOption, b: SlideOption): boolean {
-  const ids = (o: SlideOption) => o.removed.map((r) => r.trip.id).sort().join();
+  // By trip and day: a run's days share its id, so taking off its first day and its second read as the same option.
+  const ids = (o: SlideOption) => o.removed.map((r) => `${r.trip.id}@${r.trip.startDayIndex}`).sort().join();
   return ids(a) === ids(b) && (a.line.gridOffDays ?? []).join() === (b.line.gridOffDays ?? []).join();
 }
 
