@@ -42,7 +42,9 @@ function request(cookie = `ls_device=${DEVICE}`) {
   });
 }
 
-const allowed = () => answerTravelNeeds.mock.lastCall![2].maxBoards as number;
+const lastAllowed = vi.hoisted(() => ({ boards: 0 }));
+/** How many boards the last lookup was allowed in all, asked for as it went. */
+const allowed = () => lastAllowed.boards;
 const spentBy = (who: string) => (store.get(`line-select:spend:who:${new Date().toISOString().slice(0, 10)}:flights:${who}`) ?? 0) / 1_000_000;
 const siteSpent = () => (store.get(`line-select:spend:site:${new Date().toISOString().slice(0, 10)}`) ?? 0) / 1_000_000;
 
@@ -50,9 +52,17 @@ beforeEach(() => {
   store.clear();
   auth.user = null;
   lookup.wants = 10_000;
-  answerTravelNeeds.mockReset().mockImplementation(async (_n: unknown, _j: unknown, o: { maxBoards: number }) => {
-    const fetched = Math.min(lookup.wants, o.maxBoards);
-    return { answers: [], stats: { fetched, cached: 0, skipped: lookup.wants - fetched, boardsLeft: o.maxBoards - fetched } };
+  // Asks for boards a few at a time, as the real lookup does, until it has all it wants or none are left.
+  answerTravelNeeds.mockReset().mockImplementation(async (_n: unknown, _j: unknown, o: { maxBoards: number; moreBoards?: (want: number) => Promise<number> }) => {
+    let have = o.maxBoards;
+    while (have < lookup.wants && o.moreBoards) {
+      const got = await o.moreBoards(Math.min(10, lookup.wants - have));
+      if (got <= 0) break;
+      have += got;
+    }
+    lastAllowed.boards = have;
+    const fetched = Math.min(lookup.wants, have);
+    return { answers: [], stats: { fetched, cached: 0, skipped: lookup.wants - fetched, boardsLeft: have - fetched } };
   });
   delete process.env.SPEND_SITE_DAILY_USD;
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -85,6 +95,14 @@ describe("/api/flights/travel spending", () => {
     expect(siteSpent()).toBe(0);
     // What was held for the lookup is all given back.
     expect([...store].filter(([k]) => k.includes(":spend:")).every(([, v]) => v === 0)).toBe(true);
+  });
+
+  it("gives two small lookups at the same moment what each needs, not all of it to the first", async () => {
+    auth.user = { id: "pilot-1" };
+    lookup.wants = 20;
+    const results = await Promise.all([POST(request()), POST(request())]);
+    for (const r of results) expect((await r.json()).partial).toBeUndefined();
+    expect(spentBy("u:pilot-1")).toBeCloseTo(40 * COST);
   });
 
   it("lets two lookups at the same moment share the allowance, not each spend all of it", async () => {

@@ -14,6 +14,7 @@ import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import { busyFromCarry, fitCheck, lineWithAdded, pairingDate, pastedMatches, scheduleAsFlown, tripKey } from "@/lib/view-add";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
+import { prepareMetrics } from "@/lib/metrics/compute";
 
 /**
  * Open time, read for one pilot: every row of a snapshot matched to its trip in the pack, checked against the pilot's line
@@ -330,7 +331,11 @@ export function evaluateOpenTime(snapshot: OpenTimeSnapshot, s: OpenTimeSituatio
     for (const e of evaluated) if (e.verdict !== "no") after.set(e.key, { ...lineWithAdded(kept, [e.trip], pack), id: `open-time-${e.key}` });
     if (model && after.size) {
       const base = { ...kept, id: "open-time-base" };
-      const lineScores = new Map(scorePackV2({ ...pack, lines: [...pack.lines, base, ...after.values()] }, model, s.flights ? { flights: s.flights } : {}).map((l) => [l.lineId, l.uncapped]));
+      // The pack's own lines set the scale (see View/Add's `scoreLines`): the pilot's line with a trip added can't move it.
+      const all = { ...pack, lines: [...pack.lines, base, ...after.values()] };
+      const lineScores = new Map(
+        scorePackV2(all, model, { pack: prepareMetrics(all), referenceLines: pack.lines.length, ...(s.flights ? { flights: s.flights } : {}) }).map((l) => [l.lineId, l.uncapped])
+      );
       const from = lineScores.get(base.id) ?? 0;
       const moves = new Map([...after].map(([key, l]) => [key, (lineScores.get(l.id) ?? from) - from]));
       const middle = median([...moves.values()]);

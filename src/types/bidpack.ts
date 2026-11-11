@@ -172,6 +172,11 @@ export interface Trip {
   startDayIndex: number | null;
   /** Set on a trip cut at its bid month's end (`lib/bid-month.ts`): the rest of it, and its commute home, run into the next month. */
   carriesIntoNextMonth?: boolean;
+  /**
+   * Set on a run of the same day trip on consecutive days kept as one trip: the index in `schedule` where each day
+   * starts (a day can be two duties with a hotel between). See `runDaysOf` in `lib/trip-anchor.ts`.
+   */
+  runStarts?: number[];
 }
 
 export interface Line {

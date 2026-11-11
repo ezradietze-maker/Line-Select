@@ -99,15 +99,19 @@ export async function POST(request: Request) {
   const spender = await spenderFor(request);
   const allowed = await checkSpend(spender, { feature: "flights" });
   const costPerBoard = boardCostUsd();
-  // Taken before the lookup and the rest given back after, so lookups at the same moment share what's left.
-  // Given back on the day it was taken, though the lookup runs past midnight.
+  // Taken a few boards at a time as the lookup needs them, so lookups running together share what's left; what isn't
+  // used is given back after, on the day it was taken, though the lookup runs past midnight.
   const day = new Date();
-  const reserved = allowed.ok ? await reserveSpend(spender, Math.floor((allowed.leftUsd ?? 0) / costPerBoard) * costPerBoard, { feature: "flights", now: day }) : 0;
-  const maxBoards = Math.floor(reserved / costPerBoard + 1e-9);
+  let reserved = 0;
+  const moreBoards = async (want: number) => {
+    const got = await reserveSpend(spender, want * costPerBoard, { feature: "flights", now: day });
+    reserved += got;
+    return Math.floor(got / costPerBoard + 1e-9);
+  };
   try {
-    const { answers, stats } = await answerTravelNeeds(needs, jumpseats, { maxBoards });
+    const { answers, stats } = await answerTravelNeeds(needs, jumpseats, allowed.ok ? { maxBoards: 0, moreBoards } : { maxBoards: 0 });
     await releaseSpend(spender, reserved - stats.fetched * costPerBoard, { feature: "flights", now: day });
-    console.log("[flights]", { needs: needs.length, jumpseats: jumpseats.length, answered: answers.length, ...stats });
+    console.log("[flights]", { needs: needs.length, jumpseats: jumpseats.length, answered: answers.length, fetched: stats.fetched, cached: stats.cached, skipped: stats.skipped });
     // Boards held back (the allowance ran out) can only have hidden flights: a "no" in these answers isn't certain.
     return NextResponse.json({ configured: true, answers, ...(stats.skipped > 0 ? { partial: true } : {}) });
   } catch (e) {

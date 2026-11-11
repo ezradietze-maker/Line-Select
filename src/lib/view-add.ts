@@ -9,6 +9,7 @@ import { flyVacationsOnLine } from "@/lib/vacation-lines";
 import { vacationSpan } from "@/lib/vacation-slide";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
+import { prepareMetrics } from "@/lib/metrics/compute";
 
 /**
  * The View/Add window: what a pilot owed make-up should bid, in order (CBA 2026 25.E.4). Bids are "only by: (a) Specific
@@ -559,11 +560,13 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
     }
   }
 
-  // Each candidate alone, on the pilot's own model when there is one: the variations score with the pack, so scores compare.
+  // Each candidate alone, on the pilot's own model when there is one: the variations score with the pack, so scores
+  // compare. The pack's own lines set the scale, as for a line after a trade: candidates with more credit than any line
+  // became the top of it, and which trip ranked first could flip, and solo and combination scores were on two scales.
   const scoreLines = (variants: { id: string; line: Line }[]): Map<string, number> => {
     if (!model || !variants.length) return new Map();
-    const lines = variants.map((v) => ({ ...v.line, id: v.id }));
-    return new Map(scorePackV2({ ...pack, lines: [...pack.lines, ...lines] }, model).map((s) => [s.lineId, s.score]));
+    const all = { ...pack, lines: [...pack.lines, ...variants.map((v) => ({ ...v.line, id: v.id }))] };
+    return new Map(scorePackV2(all, model, { pack: prepareMetrics(all), referenceLines: pack.lines.length }).map((s) => [s.lineId, s.score]));
   };
   const solo = legal.map((c) => ({ ...c, line: lineWithAdded(flown.line, [c.trip], pack) }));
   const soloScores = scoreLines(solo.map((s) => ({ id: tripKey(s.trip), line: s.line })));

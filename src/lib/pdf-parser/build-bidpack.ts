@@ -271,6 +271,8 @@ function mergeConsecutiveOneDayTrips(run: Trip[]): Trip {
     international: run.some((t) => t.international),
     layoverCities: run.flatMap((t) => t.layoverCities),
     layoverDetails: run.flatMap((t) => t.layoverDetails),
+    // Where each day starts in the schedule below: a day can be more than one duty.
+    runStarts: run.map((_, i) => run.slice(0, i).reduce((n, t) => n + t.schedule.length, 0)),
     // Each day's report sits as far after the first's as it really does — a day apart, give or take a clock change.
     schedule: run.flatMap((trip, i) =>
       shiftScheduleByMinutes(trip.schedule, Math.round((Date.parse(trip.zuluAnchor) - Date.parse(first.zuluAnchor)) / 60_000) || i * 1440, first.zuluAnchor)

@@ -21,6 +21,7 @@ import {
 } from "@/lib/scoring-v2/score";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 import type { Criterion, CriterionShape, PilotModel } from "@/types/pilot-model";
+import { fourWeekFactor } from "@/lib/metrics/line-length";
 
 /**
  * Trip scores: every trip in the pack scored 0–100 against the same pilot model that ranks the lines — the same
@@ -216,13 +217,23 @@ function datesReading(def: MetricDef, f: TripFacts, pack: PackMetrics, p: Metric
 
 /**
  * A count criterion's anchors, moved from lines to trips by their place in the pack: "five commutes is too many", when
- * that's worse than 70% of lines, becomes the count worse than 70% of trips. Shapes without anchors are unchanged.
+ * that's worse than 70% of lines, becomes the count worse than 70% of trips. A sweet spot or a range moves the same way:
+ * "around 75 credit" compared as written against one trip's credit made every ordinary trip miss. Shapes without
+ * anchors are unchanged.
  */
 function countShapeForTrips(c: Criterion, bidPack: BidPack, pack: PackMetrics, home: MetricParams, tripValues: (number | null)[]): CriterionShape {
   const shape = c.shape;
-  const anchored = (shape.kind === "less" && (shape.fineAt !== undefined || shape.worstAt !== undefined)) || (shape.kind === "more" && shape.enoughAt !== undefined);
+  const anchored =
+    (shape.kind === "less" && (shape.fineAt !== undefined || shape.worstAt !== undefined)) ||
+    (shape.kind === "more" && shape.enoughAt !== undefined) ||
+    shape.kind === "target" ||
+    (shape.kind === "range" && (shape.min !== undefined || shape.max !== undefined));
   if (!anchored) return shape;
-  const lines = measureAll(c.metric, bidPack.lines, pack, { ...home, ...c.params }).filter((v): v is number => v !== null);
+  // At four weeks' worth, as lines are judged (`scorePackV2`): in a five-week month a line's raw count is higher.
+  const factor = METRICS_BY_ID.get(c.metric)?.perMonth ? fourWeekFactor(bidPack) : 1;
+  const lines = measureAll(c.metric, bidPack.lines, pack, { ...home, ...c.params })
+    .filter((v): v is number => v !== null)
+    .map((v) => v * factor);
   const trips = tripValues.filter((v): v is number => v !== null).sort((a, b) => a - b);
   if (!lines.length || !trips.length) return shape;
   const share = (x: number) => lines.filter((v) => v <= x).length / lines.length;
@@ -249,6 +260,17 @@ function countShapeForTrips(c: Criterion, bidPack: BidPack, pack: PackMetrics, h
   if (shape.kind === "more") {
     const enoughAt = move(shape.enoughAt);
     return { kind: "more", ...(enoughAt !== undefined && enoughAt > trips[0] ? { enoughAt } : {}) };
+  }
+  if (shape.kind === "target") {
+    const ideal = atShare(share(shape.ideal));
+    // The tolerance as the trip counts either side of it span, never nothing.
+    const tolerance = Math.max((atShare(share(shape.ideal + shape.tolerance)) - atShare(share(shape.ideal - shape.tolerance))) / 2, 0.5);
+    return { kind: "target", ideal, tolerance };
+  }
+  if (shape.kind === "range") {
+    const min = move(shape.min);
+    const max = move(shape.max);
+    return { kind: "range", ...(min !== undefined ? { min } : {}), ...(max !== undefined && (min === undefined || max > min) ? { max } : {}) };
   }
   return shape;
 }

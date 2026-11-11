@@ -101,7 +101,9 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
     if (pending && local) {
       setServerProfileVersion(pending.base);
       const sent = await saveProfileForUser(userId, local);
-      if (sent.sync === "saved" || sent.sync === "merged") return sent.profile;
+      // Still not through (the server busy, say): it stays this device's, marked, rather than be replaced by the
+      // server's older copy and lost. Later saves from here go against the copy it was made from too.
+      return sent.profile;
     }
     // Backfilled like a local copy: a server copy saved by an older version lacks the newer weights and lists too.
     const profile = normalizeProfile(server.profile);
@@ -131,9 +133,10 @@ export type ProfileSync = "local" | "saved" | "merged" | "failed";
 export async function saveProfileForUser(userId: string | null, profile: PreferenceProfile): Promise<{ savedLocally: boolean; sync: ProfileSync; profile: PreferenceProfile }> {
   const savedLocally = saveProfile(userId, profile);
   if (!userId) return { savedLocally, sync: "local", profile };
-  const base = serverProfileVersion();
   const outcome = await sendForUser(userId, profile);
-  if (outcome.sync === "failed") markUnsynced(userId, base);
+  // Read after the save had its turn: saves wait for one another, so before it a save just ahead of this one hadn't
+  // landed yet, and the mark named a version older than the one this save was sent against.
+  if (outcome.sync === "failed") markUnsynced(userId, serverProfileVersion());
   else clearUnsynced(userId);
   return { savedLocally, ...outcome };
 }

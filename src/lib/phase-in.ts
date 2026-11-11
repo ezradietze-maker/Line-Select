@@ -5,10 +5,11 @@ import { lineCarryOver, splitTrip } from "@/lib/bid-month";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { tripDutyPeriods } from "@/lib/duty-periods";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
-import { dayTripHours, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { runDaysOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { VipsBidAnswers } from "@/lib/vips-bid";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
+import { prepareMetrics } from "@/lib/metrics/compute";
 
 /**
  * Bid Period Phase-In: what last month's carry-in does to each line of the new month (CBA 2026 25.F). A pilot's current
@@ -284,11 +285,11 @@ function carryBlock(item: CarryInItem, zone: string): Block | null {
 export function tripSpans(trip: Trip, report: number): Span[] {
   const release = report + tripReleaseHours(trip) * HOUR;
   if (!trip.schedule.length) return [{ start: report, end: release }];
-  const lastIndex = trip.schedule.length - 1;
+  // In a run of day trips, each day's last duty ends at that day's release, not the run's.
+  const dayEnd = new Map((runDaysOf(trip) ?? []).map((day) => [day.last, report + (day.startMinutes / 60 + day.hours) * HOUR]));
   return trip.schedule.map((d, i) => ({
     start: report + d.startMinutes * MINUTE,
-    // A duty with no layover after it before the last is a day of a run of day trips: it ends that day.
-    end: d.layover ? report + d.layover.startMinutes * MINUTE : i === lastIndex ? release : report + d.startMinutes * MINUTE + dayTripHours(trip) * HOUR,
+    end: d.layover ? report + d.layover.startMinutes * MINUTE : (dayEnd.get(i) ?? release),
   }));
 }
 
@@ -864,9 +865,12 @@ export function recommendVipsAnswers(input: { pack: BidPack; order: string[]; ca
     });
     if (!changes.length) return { key, answer: false, reason: `None of your top ${top.length} lines has a conflict this would avoid.`, section };
     if (!model) return { key, answer: null, reason: `It would keep a trip on ${changes.length} of your top ${top.length} lines. We need your priorities to weigh that against the days off.`, section };
-    const scores = (p: BidPack) => new Map(scorePackV2(p, model).map((s) => [s.lineNumber, s.score]));
-    const withIt = scores(on.pack);
-    const without = scores(off.pack);
+    // Both ways scored on one scale, the lines as flown without the waiver setting it: scored as two packs, each had its
+    // own, and a line could read better or worse for no reason but the other lines.
+    const all = { ...off.pack, lines: [...off.pack.lines, ...on.pack.lines.map((l) => ({ ...l, id: `${l.id}::waived` }))] };
+    const scored = scorePackV2(all, model, { pack: prepareMetrics(all), referenceLines: off.pack.lines.length });
+    const withIt = new Map(scored.filter((s) => s.lineId.endsWith("::waived")).map((s) => [s.lineNumber, s.score]));
+    const without = new Map(scored.filter((s) => !s.lineId.endsWith("::waived")).map((s) => [s.lineNumber, s.score]));
     const lean = top.reduce((sum, n, i) => sum + ((withIt.get(n) ?? 0) - (without.get(n) ?? 0)) / (i + 1), 0);
     return lean > 0
       ? { key, answer: true, reason: `It keeps a trip on ${changes.length} of your top ${top.length} lines, and your priorities score those lines higher with the trip.`, section }

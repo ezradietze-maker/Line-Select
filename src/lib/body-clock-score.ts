@@ -312,7 +312,10 @@ export function lineBodyClockScore(trips: Trip[], homeBaseOffsetMinutes: number 
     const lastLeg = trip.schedule.at(-1)?.legs.at(-1);
     const next = ordered[i + 1];
     const gapHours = next && lastLeg ? (at(next, 0) - at(trip, lastLeg.endMinutes)) / 3_600_000 : Infinity;
-    if (next && t.disruptive && Number.isFinite(gapHours)) {
+    // Only between trips placed on their dates: trips without one all share the month's anchor, so the gap read as
+    // none, the first in pack order took a full recovery charge, and the score changed with the trips' order.
+    const placed = trip.startDayIndex !== null && next?.startDayIndex !== null && next?.startDayIndex !== undefined;
+    if (next && placed && t.disruptive && Number.isFinite(gapHours)) {
       // Nights at home: a night is 22:00–08:00; the gap holds about one per 24 hours past the first 10.
       const homeNights = Math.max(0, Math.floor((gapHours - 10) / 24) + (gapHours >= 10 ? 1 : 0));
       if (homeNights < 2) {
