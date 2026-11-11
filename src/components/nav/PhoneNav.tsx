@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AccountMenu } from "@/components/nav/AccountMenu";
+import { AccountMenu, AccountPlaceholder } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { FeedbackIcon, InfoIcon, type NavProps } from "@/components/nav/LeftNav";
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
@@ -43,6 +43,7 @@ export function PhoneNav({
   hasProfile,
   hasBidPack,
   user,
+  ready,
   inboxUnreadCount = 0,
   pack,
   onNavigate,
@@ -134,7 +135,7 @@ export function PhoneNav({
           )}
           {TAB_TARGETS.map((target, i) => {
             const item = NAV_ITEMS.find((n) => n.target === target)!;
-            const reason = disabledReason(target, hasProfile, hasBidPack);
+            const reason = disabledReason(target, hasProfile, hasBidPack, ready);
             const isActive = tabIndex === i;
             return (
               <button
@@ -241,17 +242,21 @@ export function PhoneNav({
             </div>
 
             <div className="mt-3">
-              <AccountMenu
-                user={user}
-                onSignIn={() => {
-                  setMoreOpen(false);
-                  onSignIn();
-                }}
-                onLogout={() => {
-                  setMoreOpen(false);
-                  onLogout();
-                }}
-              />
+              {ready ? (
+                <AccountMenu
+                  user={user}
+                  onSignIn={() => {
+                    setMoreOpen(false);
+                    onSignIn();
+                  }}
+                  onLogout={() => {
+                    setMoreOpen(false);
+                    onLogout();
+                  }}
+                />
+              ) : (
+                <AccountPlaceholder />
+              )}
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Heading } from "@/components/ui/Heading";
+import { FOCUSABLE, nextStop, tabStops } from "@/lib/focus-trap";
 
 interface ModalProps {
   title: string;
@@ -18,6 +19,39 @@ interface ModalProps {
  */
 const openDialogs: object[] = [];
 
+/**
+ * The control last pressed, and when. Safari doesn't focus a button it clicks, so a dialog opened by a click found
+ * focus on the page's body and, closed, gave it back there; the press says which button opened it.
+ */
+let lastPressed: { el: HTMLElement; at: number } | null = null;
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      const el = e.target instanceof Element ? e.target.closest<HTMLElement>(FOCUSABLE) : null;
+      if (el) lastPressed = { el, at: Date.now() };
+    },
+    true
+  );
+}
+/** A press longer ago than this didn't open the dialog. */
+const PRESS_OPENS_WITHIN_MS = 2000;
+
+/** What can take focus in `root` now: shown, enabled, reachable by Tab, one stop per radio group. */
+function focusStops(root: HTMLElement): HTMLElement[] {
+  const candidates = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => el.tabIndex >= 0 && !(el as HTMLButtonElement).disabled && !el.closest("[inert]") && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden"
+  );
+  return tabStops(candidates, (el) => (el instanceof HTMLInputElement && el.type === "radio" && el.name ? { radioGroup: el.name, checked: el.checked } : {}));
+}
+
+/** Where focus goes back to: the opener, or when that's gone (a menu that closed), the first control near where it was. */
+function returnFocus(opener: HTMLElement | null, ancestors: HTMLElement[]) {
+  if (opener?.isConnected) return opener.focus();
+  const near = ancestors.find((a) => a.isConnected);
+  if (near) focusStops(near)[0]?.focus();
+}
+
 export function Modal({ title, onClose, children, wide = false }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -29,7 +63,15 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
     const me = {};
     openDialogs.push(me);
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && openDialogs[openDialogs.length - 1] === me) onCloseRef.current();
+      if (openDialogs[openDialogs.length - 1] !== me) return;
+      if (e.key === "Escape") onCloseRef.current();
+      else if (e.key === "Tab" && !e.defaultPrevented && dialogRef.current) {
+        // Round the dialog's own controls, never out to the page behind. Moved by hand, as the ⌘K palette does:
+        // Safari's own Tab skips buttons and left the dialog after a few presses.
+        e.preventDefault();
+        const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        nextStop(focusStops(dialogRef.current), active, e.shiftKey)?.focus();
+      }
     }
     document.addEventListener("keydown", handleKey);
     document.body.style.overflow = "hidden";
@@ -40,16 +82,18 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
     };
   }, []);
 
-  // Move focus into the dialog on open, and back to whatever triggered it
-  // once it closes — without this, a keyboard or screen-reader user's focus
-  // silently stays on (or disappears from) the page underneath, with no
-  // indication a dialog is even open.
+  // Move focus into the dialog on open, and back to whatever opened it once it closes — without this, a keyboard or
+  // screen-reader user's focus silently stays on (or disappears from) the page underneath, with no indication a dialog
+  // is even open. The opener is taken now, at open: the focused control, or the one just pressed when nothing is.
   useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const active = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    const pressed = lastPressed && lastPressed.el.isConnected && Date.now() - lastPressed.at < PRESS_OPENS_WITHIN_MS ? lastPressed.el : null;
+    const opener = active && !dialogRef.current?.contains(active) ? active : pressed;
+    const ancestors: HTMLElement[] = [];
+    // A few levels only: much further out, the "first control near it" is the top of the page.
+    for (let a = opener?.parentElement ?? null; a && a !== document.body && ancestors.length < 4; a = a.parentElement) ancestors.push(a);
     dialogRef.current?.focus();
-    return () => {
-      previouslyFocused?.focus?.();
-    };
+    return () => returnFocus(opener, ancestors);
   }, []);
 
   // Rendered at the end of <body>, not where it's used: a screen is its own layer (its entrance animation makes one),

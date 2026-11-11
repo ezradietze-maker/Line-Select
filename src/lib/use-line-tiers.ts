@@ -76,7 +76,9 @@ export function useLineTiers(
   bidPackId: string,
   lineIds: string[],
   rankedList: LineScore[],
-  teach: { current: TeachTiers | null }
+  teach: { current: TeachTiers | null },
+  /** Told of every change the pilot can undo (not undo and redo themselves): the page keeps one history across tiers and swaps. */
+  onRecord?: () => void
 ): LineTiers {
   const owner = `${userId}|${bidPackId}`;
   const valid = useMemo(() => new Set(lineIds), [lineIds]);
@@ -100,11 +102,12 @@ export function useLineTiers(
   }, [state, history, rankedList]);
 
   const commit = useCallback(
-    (next: TierState, nextHistory: TierHistory, message: string, added: LineChoice[], retract: string[]) => {
+    (next: TierState, nextHistory: TierHistory, message: string, added: LineChoice[], retract: string[], recorded = true) => {
       latest.current = { ...latest.current, state: next, history: nextHistory };
       setLoaded({ owner, state: next, history: nextHistory });
       saveTiers(userId, bidPackId, next);
       setSaid(message);
+      if (recorded) onRecord?.();
       if (added.length || retract.length) {
         const removed = teach.current?.(added, retract);
         for (const [moveId, choices] of Object.entries(removed ?? {})) {
@@ -121,7 +124,7 @@ export function useLineTiers(
         }
       }
     },
-    [owner, userId, bidPackId, teach]
+    [owner, userId, bidPackId, teach, onRecord]
   );
 
   const numberOf = useCallback((id: string) => latest.current.rankedList.find((r) => r.line.id === id)?.line.lineNumber, []);
@@ -208,7 +211,7 @@ export function useLineTiers(
       const r = step(h, s);
       if (!r) return;
       const { retract, add: back } = lessonChanges(s, r.state);
-      commit(r.state, r.history, word, back.flatMap((m) => lessons.current.get(m) ?? []), retract);
+      commit(r.state, r.history, word, back.flatMap((m) => lessons.current.get(m) ?? []), retract, false);
       setSelected(new Set());
     },
     [commit]
