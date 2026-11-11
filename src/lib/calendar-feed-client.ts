@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { fetchServerBidPackMeta, saveServerBidPack } from "@/lib/bidpack-server";
 import { bidPackSavedAt } from "@/lib/bidpack-storage";
-import { getBidDeadline } from "@/lib/bid-deadline-storage";
+import { getBidDeadline, useBidDeadlineOverride } from "@/lib/bid-deadline-storage";
 import type { LineSource } from "@/lib/calendar-feed";
 import { isSamplePack } from "@/lib/fake-trade-offers";
 import type { BidPack } from "@/types/bidpack";
@@ -118,8 +118,8 @@ export function useCalendarFeedSync(pack: BidPack | null, profile: PreferencePro
   const choice = pack ? feedChoiceFor(pack, profile, topLineNumber) : null;
   const lineNumber = choice?.lineNumber ?? null;
   const lineSource = choice?.lineSource ?? null;
-  // Read here so a deadline the pilot sets or clears is sent too: it's on the calendar, but wasn't one of the effect's deps.
-  const deadline = pack ? getBidDeadline(pack.id) : null;
+  // Watched, so a deadline the pilot sets or clears anywhere on the page is sent too: it's on the calendar.
+  const deadline = useBidDeadlineOverride(pack?.id ?? null);
   useEffect(() => {
     if (!userId || !pack || !lineSource || isSamplePack(pack)) return;
     const day = new Date().toISOString().slice(0, 10);

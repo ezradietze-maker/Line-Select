@@ -14,6 +14,7 @@ import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { TextField } from "@/components/ui/TextField";
 import { HoldingPanel } from "@/components/trade-board/HoldingPanel";
 import { TradeSuggestions } from "@/components/trade-board/TradeSuggestions";
+import { useAppState } from "@/lib/app-state";
 import { isSamplePack, withExampleOffer } from "@/lib/fake-trade-offers";
 import { sameBidPack } from "@/lib/inbox";
 import {
@@ -21,14 +22,17 @@ import {
   declineOffer,
   fetchTradeBoardOpen,
   fetchTradeOffers,
+  formatTripDate,
   postTradeOffer,
   respondToOffer,
+  tripDate,
   tripToSnapshot,
   withdrawOffer,
 } from "@/lib/trade-client";
+import { tripInstanceKey } from "@/lib/trades/legality";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
-import type { TripSnapshot, TradeOffer } from "@/types/trade";
+import type { TradeHolding, TripSnapshot, TradeOffer } from "@/types/trade";
 
 function formatHours(hours: number): string {
   // Whole minutes first, so 20.999 h reads 21:00 rather than 20:60.
@@ -36,7 +40,7 @@ function formatHours(hours: number): string {
   return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
-/** Every trip in a bid pack, paired with which of the pilot's own lines it currently lives on. */
+/** A trip the pilot could offer or propose, paired with the line it's on. */
 interface LineTripEntry {
   /** Unique per (line, trip) — `trip.id` alone isn't enough, since the same real pairing can recur across several of a pilot's lines and would collide as a React key / form value. */
   entryKey: string;
@@ -50,13 +54,32 @@ function allTrips(bidPack: BidPack): LineTripEntry[] {
   );
 }
 
-/** How a pilot identifies a trip: by its own pairing number when known, since that's the recognizable, recurring identifier — falling back to "Line X's trip" for an estimated trip with no confirmed pairing. */
-function tripLabel(entry: LineTripEntry): string {
+/**
+ * The trips this pilot holds, to offer or propose: what they confirmed holding, else the line their Logbook says they
+ * were awarded. Listing every trip in the pack let a pilot offer one they don't have. Trips they marked as ones they
+ * can't trade are left out. The sample pack is the demo, where nothing is held, so any of its trips will do there.
+ */
+function pilotTrips(bidPack: BidPack, holding: TradeHolding | null, awardedLine: string | null): LineTripEntry[] {
+  if (holding) {
+    const byKey = new Map(bidPack.lines.flatMap((l) => l.trips.map((t) => [tripInstanceKey(t), { lineNumber: l.lineNumber, trip: t }] as const)));
+    return holding.trips.flatMap((h) => {
+      const found = h.lock ? undefined : byKey.get(tripInstanceKey(h));
+      return found ? [{ entryKey: tripInstanceKey(h), lineNumber: holding.lineNumber ?? found.lineNumber, trip: found.trip }] : [];
+    });
+  }
+  const line = awardedLine ? bidPack.lines.find((l) => l.lineNumber === awardedLine) : undefined;
+  if (line) return line.trips.map((trip) => ({ entryKey: tripInstanceKey(trip), lineNumber: line.lineNumber, trip }));
+  return isSamplePack(bidPack) ? allTrips(bidPack) : [];
+}
+
+/** How a pilot identifies a trip: by its own pairing number when known, since that's the recognizable, recurring identifier — falling back to "Line X's trip" for an estimated trip with no confirmed pairing. The date says which day of the pairing. */
+function tripLabel(entry: LineTripEntry, bidPeriodStart: string | null): string {
   const base = entry.trip.pairingNumber
     ? `Pairing ${entry.trip.pairingNumber}`
     : `Line ${entry.lineNumber}'s trip`;
+  const date = formatTripDate(tripDate(bidPeriodStart, entry.trip.startDayIndex));
   const cities = entry.trip.layoverCities.length > 0 ? entry.trip.layoverCities.join(" → ") : "no layovers";
-  return `${base} — ${entry.trip.days}-day${entry.trip.international ? " intl" : ""}, ${cities} (Line ${entry.lineNumber})`;
+  return `${base}${date ? `, ${date}` : ""} — ${entry.trip.days}-day${entry.trip.international ? " intl" : ""}, ${cities} (Line ${entry.lineNumber})`;
 }
 
 /** Above this many open offers, an unfiltered scroll stops being the fastest way to find a specific pairing or city — worth showing a search box. Below it, the box would just be clutter over a handful of cards. */
@@ -103,14 +126,27 @@ export function TradeBoardScreen({
   const [busy, setBusy] = useState(false);
   const [sends, setSends] = useState(0);
   const [search, setSearch] = useState("");
+  const { profile } = useAppState();
+  /** What the pilot confirmed holding, as the panel above loaded or saved it, for the pack it was loaded for. */
+  const [held, setHeld] = useState<{ packId: string; holding: TradeHolding | null } | null>(null);
+  const holding = bidPack && held?.packId === bidPack.id ? held.holding : null;
+  const awardedLine = bidPack ? ((profile?.logbook ?? []).find((m) => m.bidPackId === bidPack.id && m.lineNumber)?.lineNumber ?? null) : null;
+  const myTrips = bidPack ? pilotTrips(bidPack, holding, awardedLine) : [];
 
+  // One seat's board for one month: the server sends nothing else.
+  const boardKey = bidPack ? [bidPack.base, bidPack.aircraft, bidPack.seat, bidPack.month].join("|") : null;
   const refresh = useCallback(async () => {
+    if (!boardKey) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    const data = await fetchTradeOffers();
+    const [base, aircraft, seat, month] = boardKey.split("|");
+    const data = await fetchTradeOffers({ base, aircraft, seat, month });
     setLoadFailed(data === null);
     if (data) setOffers(data);
     setLoading(false);
-  }, []);
+  }, [boardKey]);
 
   const signedIn = !!user;
   useEffect(() => {
@@ -229,12 +265,13 @@ export function TradeBoardScreen({
         </InfoBanner>
       )}
       {user && !bidPack && <InfoBanner>Upload your bid pack to post an offer or propose a trade.</InfoBanner>}
-      {user && bidPack && !isSamplePack(bidPack) && <HoldingPanel bidPack={bidPack} />}
+      {user && bidPack && !isSamplePack(bidPack) && <HoldingPanel bidPack={bidPack} onHolding={(h) => setHeld({ packId: bidPack.id, holding: h })} />}
       {user && bidPack && !isSamplePack(bidPack) && <TradeSuggestions packId={bidPack.id} />}
 
       {showPostForm && bidPack && (
         <PostOfferForm
           bidPack={bidPack}
+          trips={myTrips}
           busy={busy}
           onCancel={() => setShowPostForm(false)}
           onSubmit={(input) => runAction(() => postTradeOffer(input), () => setSends((n) => n + 1))}
@@ -256,7 +293,7 @@ export function TradeBoardScreen({
                   offer={offer}
                   currentUserId={user?.id}
                   busy={busy}
-                  onAccept={() => runAction(() => acceptOffer(offer.id))}
+                  onAccept={() => runAction(() => acceptOffer(offer.id, offer.respondedAt))}
                   onDecline={() => runAction(() => declineOffer(offer.id))}
                 />
               ))}
@@ -317,11 +354,12 @@ export function TradeBoardScreen({
                     key={offer.id}
                     offer={offer}
                     bidPack={bidPack}
+                    trips={myTrips}
                     busy={busy}
                     onCancel={() => setRespondingTo(null)}
                     onSubmit={(entry) =>
                       runAction(() =>
-                        respondToOffer(offer.id, tripToSnapshot(entry.trip, entry.lineNumber))
+                        respondToOffer(offer.id, tripToSnapshot(entry.trip, entry.lineNumber, bidPack.bidPeriodStart))
                       )
                     }
                   />
@@ -411,9 +449,10 @@ export const STATUS_LABELS: Record<TradeOffer["status"], string> = {
   withdrawn: "Withdrawn",
 };
 
-/** "Pairing 13" when known, else a plain fallback naming which line it's from. */
+/** "Pairing 13, Nov 5" when known, else a plain fallback naming which line it's from. The date says which day of the pairing (offers posted before it was kept have none). */
 function offerTripName(trip: TripSnapshot): string {
-  return trip.pairingNumber ? `Pairing ${trip.pairingNumber}` : `a trip from Line ${trip.lineNumber}`;
+  const date = formatTripDate(trip.date);
+  return `${trip.pairingNumber ? `Pairing ${trip.pairingNumber}` : `a trip from Line ${trip.lineNumber}`}${date ? `, ${date}` : ""}`;
 }
 
 export function OfferCard({
@@ -526,13 +565,25 @@ export function OfferCard({
   );
 }
 
+/** Said when the pilot has no trips to offer: the board only lists trips they hold. */
+function NoTripsYet() {
+  return (
+    <p className="text-sm text-ink-muted">
+      Confirm what you hold above, or log your award in your Logbook, and your trips are listed here to choose from.
+    </p>
+  );
+}
+
 function PostOfferForm({
   bidPack,
+  trips,
   busy,
   onCancel,
   onSubmit,
 }: {
   bidPack: BidPack;
+  /** The pilot's own trips (`pilotTrips`). */
+  trips: LineTripEntry[];
   busy: boolean;
   onCancel: () => void;
   onSubmit: (input: {
@@ -542,8 +593,9 @@ function PostOfferForm({
     note: string | null;
   }) => void;
 }) {
-  const trips = allTrips(bidPack);
-  const [entryKey, setEntryKey] = useState(trips[0]?.entryKey ?? "");
+  const [pickedKey, setEntryKey] = useState(trips[0]?.entryKey ?? "");
+  // The list can change while the form is open (what the pilot holds loads, or they update it): the first trip then.
+  const entryKey = trips.some((t) => t.entryKey === pickedKey) ? pickedKey : (trips[0]?.entryKey ?? "");
   const [wantedPairingNumber, setWantedPairingNumber] = useState("");
   const [note, setNote] = useState("");
 
@@ -558,7 +610,7 @@ function PostOfferForm({
         seat: bidPack.seat,
         month: bidPack.month,
       },
-      offeredTrip: tripToSnapshot(entry.trip, entry.lineNumber),
+      offeredTrip: tripToSnapshot(entry.trip, entry.lineNumber, bidPack.bidPeriodStart),
       wantedPairingNumber: wantedPairingNumber.trim() || null,
       note: note.trim() || null,
     });
@@ -573,18 +625,22 @@ function PostOfferForm({
         <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="offer-trip">
           Which trip are you offering?
         </label>
-        <select
-          id="offer-trip"
-          value={entryKey}
-          onChange={(e) => setEntryKey(e.target.value)}
-          className="w-full rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
-        >
-          {trips.map((entry) => (
-            <option key={entry.entryKey} value={entry.entryKey}>
-              {tripLabel(entry)}
-            </option>
-          ))}
-        </select>
+        {trips.length === 0 ? (
+          <NoTripsYet />
+        ) : (
+          <select
+            id="offer-trip"
+            value={entryKey}
+            onChange={(e) => setEntryKey(e.target.value)}
+            className="w-full rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
+          >
+            {trips.map((entry) => (
+              <option key={entry.entryKey} value={entry.entryKey}>
+                {tripLabel(entry, bidPack.bidPeriodStart)}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <TextField
@@ -616,20 +672,24 @@ function PostOfferForm({
 function RespondForm({
   offer,
   bidPack,
+  trips,
   busy,
   onCancel,
   onSubmit,
 }: {
   offer: TradeOffer;
   bidPack: BidPack;
+  /** The pilot's own trips (`pilotTrips`). */
+  trips: LineTripEntry[];
   busy: boolean;
   onCancel: () => void;
   onSubmit: (entry: LineTripEntry) => void;
 }) {
   const eligibleTrips = offer.wantedPairingNumber
-    ? allTrips(bidPack).filter((t) => t.trip.pairingNumber === offer.wantedPairingNumber)
-    : allTrips(bidPack);
-  const [entryKey, setEntryKey] = useState(eligibleTrips[0]?.entryKey ?? "");
+    ? trips.filter((t) => t.trip.pairingNumber === offer.wantedPairingNumber)
+    : trips;
+  const [pickedKey, setEntryKey] = useState(eligibleTrips[0]?.entryKey ?? "");
+  const entryKey = eligibleTrips.some((t) => t.entryKey === pickedKey) ? pickedKey : (eligibleTrips[0]?.entryKey ?? "");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -649,10 +709,13 @@ function RespondForm({
         Offering their {offerTripName(offer.offeredTrip)} in exchange for one of your trips.
       </p>
 
-      {eligibleTrips.length === 0 ? (
+      {trips.length === 0 ? (
+        <div className="mt-3">
+          <NoTripsYet />
+        </div>
+      ) : eligibleTrips.length === 0 ? (
         <p className="mt-3 text-sm text-danger">
-          You don&rsquo;t have Pairing {offer.wantedPairingNumber} in your bid pack, so you
-          can&rsquo;t propose this trade.
+          You don&rsquo;t hold Pairing {offer.wantedPairingNumber}, so you can&rsquo;t propose this trade.
         </p>
       ) : (
         <div className="mt-3">
@@ -667,7 +730,7 @@ function RespondForm({
           >
             {eligibleTrips.map((entry) => (
               <option key={entry.entryKey} value={entry.entryKey}>
-                {tripLabel(entry)}
+                {tripLabel(entry, bidPack.bidPeriodStart)}
               </option>
             ))}
           </select>

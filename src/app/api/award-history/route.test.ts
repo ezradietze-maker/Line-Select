@@ -60,7 +60,8 @@ describe("what's stored", () => {
   it("only shows a holder when the pilot said yes, and only for a line", async () => {
     mocks.user.mockResolvedValue(pilot);
     await POST(post(report));
-    expect(mocks.create.mock.calls[0][1]).toMatchObject({ holderShown: false });
+    // Not said: the report this replaces keeps its answer (see the next test).
+    expect((mocks.create.mock.calls[0][1] as { holderShown?: boolean }).holderShown).toBeUndefined();
     await POST(post({ ...report, holderShown: "true" }));
     expect(mocks.create.mock.calls[1][1]).toMatchObject({ holderShown: false });
     await POST(post({ ...report, holderShown: true }));
@@ -69,6 +70,20 @@ describe("what's stored", () => {
     expect(mocks.create.mock.calls[3][1]).toMatchObject({ holderShown: false });
     await POST(post({ ...report, seniorityRank: 500, holderShown: true }));
     expect(mocks.create.mock.calls[4][1]).toMatchObject({ holderShown: false });
+  });
+
+  it("leaves out what a report didn't say, so the one it replaces keeps it", async () => {
+    mocks.user.mockResolvedValue(pilot);
+    // Strategies' form: no answer on the number, how the month flew, or which brain ranked it.
+    await POST(post(report));
+    const link = mocks.create.mock.calls[0][1] as Record<string, unknown>;
+    for (const key of ["holderShown", "monthFeel", "brainVersion", "notesUsed"]) expect(link[key]).toBeUndefined();
+    // The Logbook's: each said, even when the answer is none.
+    await POST(post({ ...report, holderShown: false, monthFeel: null, brainVersion: 27, notesUsed: false }));
+    expect(mocks.create.mock.calls[1][1]).toMatchObject({ holderShown: false, monthFeel: null, brainVersion: 27, notesUsed: false });
+    // A reserve month never shows a number, said or not.
+    await POST(post({ ...report, outcome: "reserve", lineNumber: null }));
+    expect(mocks.create.mock.calls[2][1]).toMatchObject({ holderShown: false });
   });
 });
 

@@ -34,6 +34,7 @@ export function BidOrderExport({
   entries,
   shortlistEntries = [],
   bidPeriodStart,
+  bidMonth,
   packLabel,
   leftOut,
   presend,
@@ -44,6 +45,8 @@ export function BidOrderExport({
   shortlistEntries?: BidOrderEntry[];
   /** Threaded through to `buildLineCalendar` — the top pick's calendar export only works when the bid pack's own trip placement is real (see that function's own doc comment). */
   bidPeriodStart: string | null;
+  /** The pack's month as printed ("NOV26"): each trip's calendar event is named by it, since line ids repeat every month. */
+  bidMonth: string;
   /** e.g. "OCT26 · MEM · MD11 · FO" — shown in the VIPS dialog to check against VIPS's own "You are bidding as…". */
   packLabel: string;
   /** Lines in the pack that `entries` leaves out (hidden or filtered) — the VIPS dialog warns they won't be bid. */
@@ -72,7 +75,7 @@ export function BidOrderExport({
   function downloadTopPickCalendar() {
     const topPick = entries[0];
     if (!topPick) return;
-    const result = buildLineCalendar(topPick.lineScore.line, bidPeriodStart);
+    const result = buildLineCalendar(topPick.lineScore.line, bidPeriodStart, bidMonth);
     if (!result.ok) {
       setCalendarError(result.reason ?? "Couldn't build a calendar file for this line.");
       return;

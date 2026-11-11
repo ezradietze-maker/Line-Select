@@ -100,11 +100,14 @@ export async function POST(request: Request) {
   const clientChoice = Number.isInteger(body.awardedChoice) && (body.awardedChoice as number) > 0 && (body.awardedChoice as number) <= 2000 ? (body.awardedChoice as number) : null;
   const fromForecast = isLine ? await awardedChoiceFromPrediction(pilotHash, packKey, record.lineNumber).catch(() => null) : null;
   // After the month, a re-share carries how it flew, and every share which brain ranked the lines — the real-outcome signal.
-  const monthFeel = body.monthFeel === "better" || body.monthFeel === "asExpected" || body.monthFeel === "worse" ? body.monthFeel : null;
-  const brainVersion = Number.isInteger(body.brainVersion) && (body.brainVersion as number) > 0 && (body.brainVersion as number) < 10_000 ? (body.brainVersion as number) : null;
-  const notesUsed = typeof body.notesUsed === "boolean" ? body.notesUsed : null;
+  // A field the report leaves out stays undefined, so the report it replaces keeps its answer (`createAwardHistoryRecord`).
+  const said = (key: keyof typeof body) => body[key] !== undefined;
+  const monthFeel = !said("monthFeel") ? undefined : body.monthFeel === "better" || body.monthFeel === "asExpected" || body.monthFeel === "worse" ? body.monthFeel : null;
+  const brainVersion = !said("brainVersion") ? undefined : Number.isInteger(body.brainVersion) && (body.brainVersion as number) > 0 && (body.brainVersion as number) < 10_000 ? (body.brainVersion as number) : null;
+  const notesUsed = !said("notesUsed") ? undefined : typeof body.notesUsed === "boolean" ? body.notesUsed : null;
   // Only for a line, and only when the pilot said yes to showing their number beside it.
-  const holderShown = isLine && !!record.lineNumber && body.holderShown === true && record.seniorityRank >= 1 && record.seniorityRank <= record.seniorityTotalPilots;
+  const canShowHolder = isLine && !!record.lineNumber && record.seniorityRank >= 1 && record.seniorityRank <= record.seniorityTotalPilots;
+  const holderShown = !canShowHolder ? false : !said("holderShown") ? undefined : body.holderShown === true;
   await createAwardHistoryRecord(record, { pilotHash, packKey, awardedChoice: isLine ? (fromForecast ?? clientChoice) : null, monthFeel, brainVersion, notesUsed, holderShown });
   afterResponse(() => maybeLearn("awards"));
   return NextResponse.json({ record });

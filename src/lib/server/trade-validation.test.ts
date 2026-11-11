@@ -48,6 +48,20 @@ describe("trade snapshot validation", () => {
     expect(sanitizeTripSnapshot({ ...good(), pairingNumber: null })!.pairingNumber).toBeNull();
   });
 
+  it("keeps which day the trip flies, and still takes an offer sent without it", () => {
+    const dated = tripToSnapshot({ ...SAMPLE_BID_PACK.lines[0].trips[0], startDayIndex: 4 }, "9001", "2026-11-01");
+    expect(dated.date).toBe("2026-11-05");
+    expect(sanitizeTripSnapshot(dated)).toEqual(dated);
+    const undated = { ...dated };
+    delete undated.tripId;
+    delete undated.startDayIndex;
+    delete undated.date;
+    expect(sanitizeTripSnapshot(undated)).toEqual(undated);
+    for (const bad of [{ ...dated, date: "Nov 5" }, { ...dated, startDayIndex: 1.5 }, { ...dated, startDayIndex: 400 }, { ...dated, tripId: "" }]) {
+      expect(sanitizeTripSnapshot(bad)).toBeNull();
+    }
+  });
+
   it("validates the bid pack summary the same way", () => {
     expect(sanitizeBidPackMeta({ base: "MEM", aircraft: "B777", seat: "CAP", month: "OCT26", extra: 1 })).toEqual({ base: "MEM", aircraft: "B777", seat: "CAP", month: "OCT26" });
     expect(sanitizeBidPackMeta({ base: "MEM" })).toBeNull();

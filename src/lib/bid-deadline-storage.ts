@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from "react";
+
 /**
  * A pilot-entered bid-close date/time, per bid pack. Deliberately not
  * derived from anything printed in the pack — `BidPack` only carries
@@ -22,6 +24,9 @@ export function getBidDeadline(bidPackId: string): string | null {
   }
 }
 
+/** Told to the page when a pilot sets or clears one, so everything showing it (the countdown, the calendar link) follows. */
+const CHANGED = "line-select:bid-deadline-changed";
+
 export function setBidDeadline(bidPackId: string, iso: string | null): void {
   if (typeof window === "undefined") return;
   try {
@@ -30,4 +35,23 @@ export function setBidDeadline(bidPackId: string, iso: string | null): void {
   } catch {
     // ignore, same as the rest of this storage family
   }
+  window.dispatchEvent(new Event(CHANGED));
+}
+
+/** Calls `onChange` when a deadline is set or cleared here or in another tab. */
+export function subscribeBidDeadline(onChange: () => void): () => void {
+  window.addEventListener(CHANGED, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(CHANGED, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+/**
+ * The pilot's own bid close for this pack, kept up to date: read once in render, a time set on another part of the
+ * screen never reached what read it (the calendar link kept sending the old one). Null on the server and first paint.
+ */
+export function useBidDeadlineOverride(bidPackId: string | null): string | null {
+  return useSyncExternalStore(subscribeBidDeadline, () => (bidPackId ? getBidDeadline(bidPackId) : null), () => null);
 }

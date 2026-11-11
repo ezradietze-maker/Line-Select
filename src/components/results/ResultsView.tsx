@@ -1163,6 +1163,7 @@ export function ResultsView({
               entries={bidOrderEntries}
               shortlistEntries={shortlistEntries}
               bidPeriodStart={bidPack.bidPeriodStart}
+              bidMonth={bidPack.month}
               packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
               leftOut={bidPack.lines.length - exportable.length}
               presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds }}

@@ -8,13 +8,8 @@ import type { BidPackMetaSnapshot, TradeStepView, TradeSuggestionMember, TradeSu
 const HOUR = 3_600_000;
 
 function tradeTrip(pack: BidPack, trip: Trip, lineNumber: string): TradeTrip {
-  let date: string | null = null;
-  if (pack.bidPeriodStart && trip.startDayIndex !== null) {
-    const d = new Date(`${pack.bidPeriodStart}T12:00:00Z`);
-    d.setUTCDate(d.getUTCDate() + trip.startDayIndex);
-    date = d.toISOString().slice(0, 10);
-  }
-  return { ...tripToSnapshot(trip, lineNumber), id: trip.id, startDayIndex: trip.startDayIndex ?? 0, date };
+  const snapshot = tripToSnapshot(trip, lineNumber, pack.bidPeriodStart);
+  return { ...snapshot, id: trip.id, startDayIndex: trip.startDayIndex ?? 0, date: snapshot.date ?? null };
 }
 
 /** Names a trade whichever pilot it's listed from: the same pilots giving the same trips is the same trade. */

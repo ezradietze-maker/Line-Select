@@ -38,7 +38,7 @@ describe("bid deadline reminders", () => {
   });
 
   it("writes a calendar event with alarms a day and an hour before", () => {
-    const ics = buildDeadlineReminderIcs(deadline, "MEM MD11 CAP OCT26", at - 86_400_000 * 5);
+    const ics = buildDeadlineReminderIcs("uploaded-mem-md11-cap-oct26", deadline, "MEM MD11 CAP OCT26", at - 86_400_000 * 5);
     expect(ics).toContain("DTSTART:20261022T230000Z");
     expect(ics).toContain("TRIGGER:-P1D");
     expect(ics).toContain("TRIGGER:-PT1H");
