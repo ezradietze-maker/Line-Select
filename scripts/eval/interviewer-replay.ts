@@ -130,7 +130,7 @@ const measure = (ack: string, prompt: string, examples: boolean, input: Turn["in
     else {
       const m = measure(s.value.ack ?? "", s.value.prompt, !!s.value.examples?.length, t.input);
       row.after.push(m);
-      rows.push(`${t.run} turn ${t.input.turn}\n  was: ${t.asked ? `(${t.asked.ack}) ${t.asked.prompt}` : "—"}\n  now: (${s.value.ack ?? ""}) ${s.value.prompt}${m.invented ? `   ← invents “${m.invented}”` : ""}${m.madeUp.length ? `   ← made-up “${m.madeUp.join("”, “")}”` : ""}`);
+      rows.push(`${t.run} turn ${t.input.turn}\n  was: ${t.asked ? `(${t.asked.ack}) ${t.asked.prompt}` : "—"}\n  now: (${s.value.ack ?? ""}) ${s.value.prompt}${m.invented ? `   ← invents “${m.invented}”` : ""}${m.madeUp.length ? `   ← made-up “${m.madeUp.join("”, “")}”` : ""}${s.value.helpText ? `\n       ${s.value.helpText}` : ""}${s.value.examples?.length ? `\n  shown: ${s.value.examples.map((e) => `${e.title} — ${e.fact}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}${s.value.threadId ? ` · thread ${s.value.threadId}` : ""}` : ""}`);
     }
     tally.set(t.run, row);
   });

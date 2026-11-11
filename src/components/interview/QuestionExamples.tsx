@@ -20,6 +20,8 @@ function splitFact(example: QuestionExample): { what: string; figure: string } {
 /** What the question shows a line or trip for, and its figure: "Few departures · 2 departures". */
 function Figure({ example }: { example: QuestionExample }) {
   const { what, figure } = splitFact(example);
+  // A line shown only because the question names it has no figure; the strip says the rest.
+  if (!figure) return example.rank ? <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">#{example.rank} on your list</p> : <p className="text-ink-muted">Named in the question</p>;
   return (
     <p className="leading-snug">
       {what ? <span className="text-ink-muted">{what} &middot; </span> : null}

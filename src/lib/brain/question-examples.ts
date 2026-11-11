@@ -29,7 +29,7 @@ export interface QuestionExample {
   ref: string;
   /** "Line 1016", "Trip #10 · Oct 4". */
   title: string;
-  /** The line's or trip's figure on the priority, said so it reads on its own: "5 departures", "2 commutes on this trip". */
+  /** The line's or trip's figure on the priority, said so it reads on its own: "5 departures", "2 commutes on this trip". Empty for a line shown only because the question names it. */
   fact: string;
   /** The priority it shows, as their reading names it ("Few departures"). */
   priority?: string;
@@ -119,5 +119,5 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
 
 /** How the examples go into the transcript after the question, so the brain reads what the pilot was shown, and for which priority. */
 export function examplesTranscript(examples: Pick<QuestionExample, "title" | "fact" | "priority">[]): string {
-  return examples.length ? ` (Examples shown: ${examples.map((e) => `${e.title} — ${e.fact}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}.)` : "";
+  return examples.length ? ` (Examples shown: ${examples.map((e) => `${e.title}${e.fact ? ` — ${e.fact}` : ""}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}.)` : "";
 }
