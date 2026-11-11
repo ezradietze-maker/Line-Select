@@ -106,9 +106,14 @@ export function quickBriefProfile({
   seniorityNumber: number | null;
   prior: PreferenceProfile | null;
 }): PreferenceProfile {
-  // As the full interview does (and every refit after): the city seasons and hotel areas the pilot spoke of reach the
-  // city measures here, or the first drag reorders lines for reasons that have nothing to do with it.
-  const homed = withHomeFacts(applyCityRatings(model, {}), { hasCrashPad: null, minHomeHours: null });
+  // A quick brief asks nothing about cities or home, so what the pilot said about them before still stands: their city
+  // grades, and whether they keep a crash pad and how long they need at home. On the model as the full interview puts
+  // them (and every refit after does, from the profile), or the first drag reorders lines for reasons that have nothing
+  // to do with it.
+  const cityRatings = prior?.cityRatings ?? {};
+  const hasCrashPad = prior?.hasCrashPad ?? null;
+  const minHomeHours = isCommuter ? (prior?.minHomeHours ?? null) : null;
+  const homed = withHomeFacts(applyCityRatings(model, cityRatings), { hasCrashPad, minHomeHours });
   return {
     ...carriedOver(prior),
     source: "quick",
@@ -118,10 +123,11 @@ export function quickBriefProfile({
     explicitTargets: {},
     isCommuter,
     commuteFrom: parseAirportCode(commuteFrom),
-    hasCrashPad: null,
+    hasCrashPad,
+    ...(minHomeHours ? { minHomeHours } : {}),
     seniorityNumber,
-    cityPreferences: {},
-    cityRatings: {},
+    cityPreferences: prior?.cityPreferences ?? {},
+    cityRatings,
     completedAt: new Date().toISOString(),
     implicitWeights: {},
     implicitConfidence: {},

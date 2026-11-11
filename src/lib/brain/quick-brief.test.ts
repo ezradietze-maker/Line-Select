@@ -74,11 +74,29 @@ describe("quickBriefProfile", () => {
     expect(p.pilotModel).toBeDefined();
   });
 
-  it("keeps only what's still the pilot's from before", () => {
-    const prior = { strategyReactions: { "reserve-pays-more": "used" }, cityRatings: { SAN: { score: 2 } } } as never;
-    const p = quickBriefProfile({ bidPack: { id: "pack" }, model, exchanges, isCommuter: null, commuteFrom: "", seniorityNumber: null, prior });
+  it("keeps what's still the pilot's from before: what it doesn't ask about cities and home still stands", () => {
+    const prior = {
+      strategyReactions: { "reserve-pays-more": "used" },
+      cityRatings: { SAN: { score: 2 } },
+      cityPreferences: { SAN: "love" },
+      hasCrashPad: true,
+      minHomeHours: 36,
+      explicitTargets: { daysOff: 14 },
+    } as never;
+    const p = quickBriefProfile({ bidPack: { id: "pack" }, model, exchanges, isCommuter: true, commuteFrom: "san", seniorityNumber: null, prior });
     expect(p.strategyReactions).toEqual({ "reserve-pays-more": "used" });
-    expect(p.cityRatings).toEqual({});
+    expect(p.cityRatings).toEqual({ SAN: { score: 2 } });
+    expect(p.cityPreferences).toEqual({ SAN: "love" });
+    expect(p.hasCrashPad).toBe(true);
+    expect(p.minHomeHours).toBe(36);
+    // The older interview's targets are its own, and don't carry.
+    expect(p.explicitTargets).toEqual({});
+  });
+
+  it("drops the hours needed at home for a pilot who no longer commutes", () => {
+    const prior = { minHomeHours: 36, hasCrashPad: true } as never;
+    const p = quickBriefProfile({ bidPack: { id: "pack" }, model, exchanges, isCommuter: false, commuteFrom: "", seniorityNumber: null, prior });
+    expect(p.minHomeHours).toBeUndefined();
   });
 
   it("keeps the logbook and bid checklist: they're the pilot's months, not the interview's", () => {
