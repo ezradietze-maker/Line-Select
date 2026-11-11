@@ -3,7 +3,7 @@ import { failedCallCost, structuredCall } from "@/lib/brain/llm";
 import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { checkSpend, recordSpend, spendLimitResponse, type Spender } from "@/lib/server/spend-guard";
+import { checkSpend, pilotSpender, recordSpend, spendLimitResponse } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
 
   const { ok } = await checkRateLimit("classify-preference", user.id, 60, 60 * 60);
   if (!ok) return rateLimitedResponse();
-  const spender: Spender = { key: `u:${user.id}`, signedIn: true };
+  const spender = pilotSpender(user.id, request);
   const allowed = await checkSpend(spender);
   if (!allowed.ok) return spendLimitResponse(allowed);
 

@@ -8,6 +8,7 @@ import { avoidedPhrases, inventedLimit } from "@/lib/brain/pilot-words";
 import { OLD_PRIORITY_ORDER_LEAD, PRIORITY_ORDER_LEAD } from "@/lib/brain/priority-order";
 import { COMMUTE_TIME_QUESTION, OTHER_FLIGHTS_QUESTION } from "@/lib/brain/commute-questions";
 import { pickQuestionExamples } from "@/lib/brain/question-examples";
+import { askedTopics, pickTopics } from "@/lib/brain/question-topics";
 import { TRIP_GRADES_LEAD } from "@/lib/brain/trip-sort";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import type { PilotModel } from "@/types/pilot-model";
@@ -61,7 +62,9 @@ function turnsOf(run: string): Turn[] {
   const recorded = `.cache/eval/sim/${run}.steps.json`;
   if (existsSync(recorded)) {
     const steps = JSON.parse(readFileSync(recorded, "utf8")) as { input: Omit<InterviewStepInput, "packBrief">; asked: { ack: string; prompt: string } | null }[];
-    return steps.map((s) => ({ run, input: s.input, asked: s.asked }));
+    // A run recorded before topics existed gets them worked out as the app would now (none counted as asked yet).
+    const r = loadRun(persona, tag)!;
+    return steps.map((s) => ({ run, input: s.input.topics || !s.input.model ? s.input : { ...s.input, ...pickTopics(r.pack, s.input.model, r.pm, askedTopics(s.input.threads), s.input.examples ?? []) }, asked: s.asked }));
   }
   // Rebuilt from the transcript: each question the interviewer wrote, and everything before it.
   const r = loadRun(persona, tag)!;
@@ -130,7 +133,7 @@ const measure = (ack: string, prompt: string, examples: boolean, input: Turn["in
     else {
       const m = measure(s.value.ack ?? "", s.value.prompt, !!s.value.examples?.length, t.input);
       row.after.push(m);
-      rows.push(`${t.run} turn ${t.input.turn}\n  was: ${t.asked ? `(${t.asked.ack}) ${t.asked.prompt}` : "—"}\n  now: (${s.value.ack ?? ""}) ${s.value.prompt}${m.invented ? `   ← invents “${m.invented}”` : ""}${m.madeUp.length ? `   ← made-up “${m.madeUp.join("”, “")}”` : ""}${s.value.helpText ? `\n       ${s.value.helpText}` : ""}${s.value.examples?.length ? `\n  shown: ${s.value.examples.map((e) => `${e.title} — ${e.fact}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}${s.value.threadId ? ` · thread ${s.value.threadId}` : ""}` : ""}`);
+      rows.push(`${t.run} turn ${t.input.turn}\n  was: ${t.asked ? `(${t.asked.ack}) ${t.asked.prompt}` : "—"}\n  now: ${s.value.questionKind ? `[${s.value.questionKind}${s.value.topic ? ` · ${s.value.topic}` : ""}] ` : ""}(${s.value.ack ?? ""}) ${s.value.prompt}${m.invented ? `   ← invents “${m.invented}”` : ""}${m.madeUp.length ? `   ← made-up “${m.madeUp.join("”, “")}”` : ""}${s.value.helpText ? `\n       ${s.value.helpText}` : ""}${s.value.examples?.length ? `\n  shown: ${s.value.examples.map((e) => `${e.title} — ${e.fact}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}${s.value.threadId ? ` · thread ${s.value.threadId}` : ""}` : ""}`);
     }
     tally.set(t.run, row);
   });

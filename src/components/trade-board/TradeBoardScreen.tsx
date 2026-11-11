@@ -30,6 +30,7 @@ import {
   withdrawOffer,
 } from "@/lib/trade-client";
 import { tripInstanceKey } from "@/lib/trades/legality";
+import { alreadyTraded } from "@/lib/trades/offer-trips";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { TradeHolding, TripSnapshot, TradeOffer } from "@/types/trade";
@@ -57,9 +58,16 @@ function allTrips(bidPack: BidPack): LineTripEntry[] {
 /**
  * The trips this pilot holds, to offer or propose: what they confirmed holding, else the line their Logbook says they
  * were awarded. Listing every trip in the pack let a pilot offer one they don't have. Trips they marked as ones they
- * can't trade are left out. The sample pack is the demo, where nothing is held, so any of its trips will do there.
+ * can't trade are left out, and so are those already in a trade they agreed this month: the server refuses those.
+ * The sample pack is the demo, where nothing is held, so any of its trips will do there.
  */
-function pilotTrips(bidPack: BidPack, holding: TradeHolding | null, awardedLine: string | null): LineTripEntry[] {
+function pilotTrips(bidPack: BidPack, holding: TradeHolding | null, awardedLine: string | null, offers: readonly TradeOffer[], userId: string | null): LineTripEntry[] {
+  const held = heldTrips(bidPack, holding, awardedLine);
+  if (!userId) return held;
+  return held.filter((e) => !alreadyTraded(offers, bidPack, userId, tripToSnapshot(e.trip, e.lineNumber)));
+}
+
+function heldTrips(bidPack: BidPack, holding: TradeHolding | null, awardedLine: string | null): LineTripEntry[] {
   if (holding) {
     const byKey = new Map(bidPack.lines.flatMap((l) => l.trips.map((t) => [tripInstanceKey(t), { lineNumber: l.lineNumber, trip: t }] as const)));
     return holding.trips.flatMap((h) => {
@@ -131,7 +139,7 @@ export function TradeBoardScreen({
   const [held, setHeld] = useState<{ packId: string; holding: TradeHolding | null } | null>(null);
   const holding = bidPack && held?.packId === bidPack.id ? held.holding : null;
   const awardedLine = bidPack ? ((profile?.logbook ?? []).find((m) => m.bidPackId === bidPack.id && m.lineNumber)?.lineNumber ?? null) : null;
-  const myTrips = bidPack ? pilotTrips(bidPack, holding, awardedLine) : [];
+  const myTrips = bidPack ? pilotTrips(bidPack, holding, awardedLine, offers, user?.id ?? null) : [];
 
   // One seat's board for one month: the server sends nothing else.
   const boardKey = bidPack ? [bidPack.base, bidPack.aircraft, bidPack.seat, bidPack.month].join("|") : null;

@@ -150,8 +150,10 @@ export function fitWeightsToChoices(
   const top = Math.max(...raw) || 1;
   const fitted: PilotModel = { ...model, criteria: model.criteria.map((c, i) => ({ ...c, weight: raw[i] / top })) };
   const agreedAfter = agreement(fitted);
-  // Only keep the fit if it explains the choices at least as well.
-  if (agreedAfter < agreedBefore) return { model, changes: [], agreedBefore, agreedAfter: agreedBefore, heldByLimit };
+  // Only keep the fit if it explains more of the choices. One that explains no more only moves weights the choices
+  // didn't ask to move: across 100 saved simulated interviews that was a coin flip against the judge (29 helped, 28
+  // hurt), and on the ex-pilot's own sort it never helped and cost 1.4 points on average (Nov 2026).
+  if (agreedAfter <= agreedBefore) return { model, changes: [], agreedBefore, agreedAfter: agreedBefore, heldByLimit };
   return { model: fitted, changes: shareChanges(model, fitted), agreedBefore, agreedAfter, heldByLimit };
 }
 

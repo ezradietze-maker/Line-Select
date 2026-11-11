@@ -132,7 +132,9 @@ type ValueDef = Pick<MetricDef, "unit"> & { id?: string };
 
 /** Just the number, in its unit's format: "64" (a 1–100 score), "50%", "02:30", "6.5". */
 function numberOf(value: number, def: Pick<MetricDef, "unit">): string {
-  if (def.unit === "minute of day") return clock(value);
+  // A landing past midnight is measured as later than the evening before it (02:30 counts as 26:30): say so, or "as late
+  // as 05:00 vs 04:07" reads backwards.
+  if (def.unit === "minute of day") return value >= 1440 ? `${clock(value)} the next morning` : clock(value);
   if (def.unit === "share") return `${Math.round(value * 100)}%`;
   if (def.unit.startsWith("score")) return String(Math.round(value));
   // A departure or trip running into the next month counts by its share of this one (catalog `monthShare`); a pilot

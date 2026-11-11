@@ -25,8 +25,10 @@ vi.mock("@/lib/server/postgres", () => {
     }),
     update: () => ({
       set: (s: Record<string, unknown>) => ({
-        where: async (w: (r: Record<string, unknown>) => boolean) => {
-          for (const r of store.rows.filter(w)) Object.assign(r, snake(s));
+        where: (w: (r: Record<string, unknown>) => boolean) => {
+          const hit = store.rows.filter(w);
+          for (const r of hit) Object.assign(r, snake(s));
+          return Object.assign(Promise.resolve(), { returning: async () => hit.map((r) => ({ id: r.id })) });
         },
       }),
     }),
@@ -165,6 +167,31 @@ describe("syncFeed", () => {
     await syncFeed(USER, choice);
     expect(paid.answerTravelNeeds).toHaveBeenCalledTimes(1);
     expect(paid.answerTravelNeeds.mock.calls[0][2]).toEqual({ maxBoards: 0 });
+  });
+
+  it("leaves the trips off a link turned off while it was building", async () => {
+    const { token } = await startFeed(USER);
+    // The pilot turns the link off after the build read the live row, but before it writes.
+    dbFns.getPreferenceProfile.mockImplementation(async () => {
+      await revokeFeed(USER);
+      return null;
+    });
+    expect(await syncFeed(USER, choice)).toBe("off");
+    expect(store.rows[0].months).toEqual([]);
+    expect(await feedForToken(token)).toBeNull();
+    expect((await setFeedOptions(USER, { homeDays: true })).on).toBe(false);
+  });
+
+  it("puts the month on a new link made while it was building", async () => {
+    await startFeed(USER);
+    let second = "";
+    dbFns.getPreferenceProfile.mockImplementationOnce(async () => {
+      second = (await startFeed(USER)).token;
+      return null;
+    });
+    expect(await syncFeed(USER, choice)).toBe("ok");
+    expect(store.rows[0].months).toEqual([]);
+    expect((await feedForToken(second))!.months[0].lineNumber).toBe("1004");
   });
 
   it("a flight problem doesn't stop the feed", async () => {

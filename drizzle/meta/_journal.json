@@ -71,6 +71,13 @@
       "when": 1794349537316,
       "tag": "0009_trade_pack_fingerprints",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794434351415,
+      "tag": "0010_award_dedupe_and_indexes",
+      "breakpoints": true
     }
   ]
 }

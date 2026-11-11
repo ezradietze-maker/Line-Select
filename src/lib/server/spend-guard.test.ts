@@ -23,7 +23,7 @@ vi.mock("@/lib/server/email", () => ({
   },
 }));
 
-const { checkSpend, recordSpend, spenderFor, spendLimitResponse } = await import("./spend-guard");
+const { checkSpend, pilotSpender, recordSpend, spenderFor, spendLimitResponse } = await import("./spend-guard");
 
 const pilot = { key: "u:pilot-1", signedIn: true };
 const otherPilot = { key: "u:pilot-2", signedIn: true };
@@ -100,6 +100,22 @@ describe("spend guard", () => {
     expect(await checkSpend({ key: "device:x", signedIn: false, addressKey: "address:198.51.100.7" }, { now: day })).toEqual({ ok: true });
   });
 
+  it("charges a signed-in pilot to their address too, apart from its guests", () => {
+    const req = new Request("https://example.com", { headers: { "x-forwarded-for": "198.51.100.4" } });
+    expect(pilotSpender("p1", req)).toEqual({ key: "u:p1", signedIn: true, addressKey: "pilot-address:198.51.100.4" });
+  });
+
+  it("stops accounts made on one address at $30 between them, well short of the site's $100", async () => {
+    const account = (n: number) => ({ key: `u:fake-${n}`, signedIn: true, addressKey: "pilot-address:203.0.113.5" });
+    for (let n = 0; n < 3; n++) await recordSpend(account(n), 8, { now: day });
+    expect(await checkSpend(account(3), { now: day })).toEqual({ ok: true });
+    await recordSpend(account(3), 6, { now: day });
+    expect(await checkSpend(account(4), { now: day })).toEqual({ ok: false, scope: "pilot" });
+    // Pilots elsewhere, and guests on that address, aren't touched.
+    expect(await checkSpend({ key: "u:elsewhere", signedIn: true, addressKey: "pilot-address:198.51.100.7" }, { now: day })).toEqual({ ok: true });
+    expect(await checkSpend({ key: "device:g", signedIn: false, addressKey: "address:203.0.113.5" }, { now: day })).toEqual({ ok: true });
+  });
+
   it("answers a stopped call with a 429 the app already shows", async () => {
     const res = spendLimitResponse({ ok: false, scope: "site" });
     expect(res.status).toBe(429);
@@ -123,6 +139,14 @@ describe("a feature's own allowance", () => {
     expect(await checkSpend(pilot, { feature: "flights", now: day })).toEqual({ ok: true, leftUsd: 2 });
     await recordSpend(pilot, 0.5, { feature: "flights", now: day });
     expect(await checkSpend(pilot, { feature: "flights", now: day })).toEqual({ ok: true, leftUsd: 1.5 });
+  });
+
+  it("has its own ceiling for the signed-in pilots on one address", async () => {
+    const account = (n: number) => ({ key: `u:fake-${n}`, signedIn: true, addressKey: "pilot-address:203.0.113.5" });
+    for (let n = 0; n < 3; n++) await recordSpend(account(n), 2, { feature: "flights", now: day });
+    expect(await checkSpend(account(3), { feature: "flights", now: day })).toEqual({ ok: true, leftUsd: 1.5 });
+    await recordSpend(account(3), 1.5, { feature: "flights", now: day });
+    expect(await checkSpend(account(4), { feature: "flights", now: day })).toEqual({ ok: false, scope: "pilot" });
   });
 
   it("still counts toward the site's ceiling, and stops at it", async () => {

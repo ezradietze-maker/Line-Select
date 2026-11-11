@@ -12,6 +12,7 @@ import { MinHomeHoursPicker, minHomeHoursSentence } from "@/components/interview
 import { FreeTextAnswerBox } from "@/components/interview/FreeTextAnswerBox";
 import { InterviewProgress, StepNav } from "@/components/interview/InterviewChrome";
 import { LinePairStep } from "@/components/interview/LinePairStep";
+import { TripPairStep } from "@/components/interview/TripPairStep";
 import { TripSortStep } from "@/components/interview/TripSortStep";
 import { PriorityReviewStep } from "@/components/interview/PriorityReviewStep";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
@@ -30,6 +31,8 @@ import { requestModelBuild, requestNextStep, type StepResponse } from "@/lib/bra
 import { fitTripWeights, fitWeightsToChoices } from "@/lib/brain/fit-choices";
 import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tripGradesAnswer, tripGradesTranscript, wantsAnotherScreen, type TripGradeScreen } from "@/lib/brain/trip-sort";
 import { nextCommuteQuestion } from "@/lib/brain/commute-questions";
+import { askedTopics, pickTopics, topicThread } from "@/lib/brain/question-topics";
+import { askedTripPairs, pickTripPairs } from "@/lib/brain/trip-pairs";
 import { askedDealbreakers, dealbreakerQuestion } from "@/lib/brain/dealbreakers";
 import { nextHubTurnQuestion } from "@/lib/brain/hub-turn-question";
 import { isSweepQuestion, minTurnsFor, SWEEP_QUESTION } from "@/lib/brain/interview-pace";
@@ -597,8 +600,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       setPhase("question");
       return;
     }
-    // Then, for a commuter, the time they leave before a report and how many other flights they want — each its own
-    // question (lib/brain/commute-questions.ts).
+    // Then, for a commuter, the time they leave before a report (lib/brain/commute-questions.ts).
     const commute = !checkInRef.current ? nextCommuteQuestion(isCommuter, all) : null;
     if (commute) {
       setQuestion({ done: false, settled: [], threadId: null, kind: "free-text", prompt: commute.prompt, helpText: commute.helpText, transcript: commute.prompt });
@@ -606,10 +608,13 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       return;
     }
     const linePairs: LinePairCandidate[] = m ? pickLinePairs(bidPack, m, pm, compared, 3, tradesRef.current) : [];
-    // Real lines and trips at both ends of their main priorities, for the question to show.
-    const examples = m ? pickQuestionExamples(bidPack, m, pm) : [];
+    // Real lines and trips at both ends of their main priorities, for the question to show — and the topics still worth
+    // asking: what's unclear and would move their top 20 most (lib/brain/question-topics.ts).
+    const { topics, examples } = m ? pickTopics(bidPack, m, pm, askedTopics(th), pickQuestionExamples(bidPack, m, pm)) : { topics: [], examples: [] };
+    // And two real trips that pull their priorities apart, for a trip choice (lib/brain/trip-pairs.ts).
+    const tripPairs = m ? pickTripPairs(bidPack, m, pm, askedTripPairs(all), tradesRef.current) : [];
     try {
-      const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, model: m, threads: th, linePairs, examples, packNumbers, turn: t, maxTurns: turnLimitRef.current, rankingShifts: shiftsRef.current });
+      const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, model: m, threads: th, linePairs, tripPairs, examples, packNumbers, topics, lastTopic: question?.topic ?? null, turn: t, maxTurns: turnLimitRef.current, rankingShifts: shiftsRef.current });
       const settledThreads = { ...th };
       for (const id of step.settled) settledThreads[id] = { ...(settledThreads[id] ?? { timesAsked: 0 }), status: "settled" };
       if (step.done) {
@@ -627,6 +632,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         return;
       }
       if (step.threadId) settledThreads[step.threadId] = { status: settledThreads[step.threadId]?.status ?? "open", timesAsked: (settledThreads[step.threadId]?.timesAsked ?? 0) + 1 };
+      // Each topic is asked once (a second time only to clear up its answer).
+      if (step.topic) settledThreads[topicThread(step.topic)] = { status: "open", timesAsked: (settledThreads[topicThread(step.topic)]?.timesAsked ?? 0) + 1 };
       setThreads(settledThreads);
       setQuestion(step);
       setChoiceSelection(null);
@@ -676,7 +683,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const all = [...exchanges, { turn: exchanges.length, question: asked, answer: text }];
     const ch = choice ? [...choices, choice] : choices;
     const nextTurn = turn + 1;
-    const trade = question.kind === "line-pair" ? question.pair?.trade : undefined;
+    const trade = question.kind === "line-pair" ? question.pair?.trade : question.kind === "trip-pair" ? question.tripPair?.trade : undefined;
     if (trade) {
       tradesRef.current = [...pastTrades, trade];
       setPastTrades(tradesRef.current);
@@ -1169,6 +1176,22 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
           </div>
         );
       }
+      if (q.kind === "trip-pair" && q.tripPair) {
+        return (
+          <div key={`${q.tripPair.a}-${q.tripPair.b}-${turn}`}>
+            {ack}
+            <TripPairStep
+              prompt={q.prompt}
+              helpText={q.helpText}
+              eyebrow={questionEyebrow}
+              pair={q.tripPair}
+              bidPack={bidPack}
+              onAnswer={(choice, text) => answer(text, null, choice ? [choice] : [])}
+              onSkip={() => void answer("(skipped)")}
+            />
+          </div>
+        );
+      }
       if (q.kind === "line-pair" && q.pair) {
         return (
           <div key={`${q.pair.a}-${q.pair.b}-${turn}`}>
@@ -1241,7 +1264,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
   return (
     // Any question showing lines (two side by side, or examples) needs the pack's whole month across, so it gets the page's width.
-    <div className={`mx-auto w-full ${phase === "question" && (question?.kind === "line-pair" || question?.examples?.some((e) => e.kind === "line")) ? "max-w-6xl" : "max-w-2xl"}`}>
+    <div className={`mx-auto w-full ${phase === "question" && (question?.kind === "line-pair" || question?.kind === "trip-pair" || question?.examples?.some((e) => e.kind === "line")) ? "max-w-6xl" : "max-w-2xl"}`}>
       <InterviewProgress base={bidPack.base} fraction={progress} left={inOpening ? "Getting started" : phase === "review" ? "Your priorities" : `${turn} answered`} right={inOpening ? (checkIn ? "About 3–5 min" : "About 20–30 min") : phase === "review" ? "Last step" : checkIn ? "Monthly check-in" : "Story-driven"} />
 
       {resume && inOpening && (

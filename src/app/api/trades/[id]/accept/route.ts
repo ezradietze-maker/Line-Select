@@ -32,6 +32,9 @@ export async function POST(
   const body = await readJsonBody(request, 1_000);
   const respondedAt = isJsonObject(body) && typeof body.respondedAt === "string" ? body.respondedAt.slice(0, 40) : null;
   const updated = await acceptTradeOffer(id, respondedAt);
+  if (updated === "traded") {
+    return NextResponse.json({ error: "One of these trips is already in a trade agreed this month." }, { status: 409 });
+  }
   if (!updated) {
     return NextResponse.json({ error: "This offer isn't waiting on that proposal any more. Have another look at it." }, { status: 409 });
   }

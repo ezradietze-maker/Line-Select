@@ -4,11 +4,16 @@ const proposals: unknown[] = [];
 vi.mock("@/lib/brain/llm", () => ({
   structuredCall: vi.fn(async () => ({ data: proposals.shift(), usage: { model: "m", inputTokens: 0, outputTokens: 0, costUsd: 0.01, ms: 5 } })),
 }));
+/** What the second reader says about each question, in turn; it passes everything once these run out. */
+const reviews: { ok: boolean; problem: string }[] = [];
+vi.mock("@/lib/brain/question-review", () => ({
+  reviewQuestion: vi.fn(async () => ({ ...(reviews.shift() ?? { ok: true, problem: "" }), usage: { model: "h", inputTokens: 0, outputTokens: 0, costUsd: 0.001, ms: 2 } })),
+}));
 
 import { nextInterviewStep, rankingHasSettled, SWEEP_QUESTION, type InterviewStepInput } from "@/lib/brain/interviewer";
 import type { PilotModel } from "@/types/pilot-model";
 
-const step = (over: Record<string, unknown>) => ({ settled: [], done: false, reason: "r", threadId: "", kind: "free-text", ack: "", prompt: "", helpText: "", options: [], pairIndex: -1, examples: [], ...over });
+const step = (over: Record<string, unknown>) => ({ settled: [], done: false, reason: "r", threadId: "", questionKind: over.kind === "line-pair" ? "real-choice" : "their-number", theirWords: "", kind: "free-text", ack: "", prompt: "", helpText: "", options: [], pairIndex: -1, examples: [], ...over });
 const model: PilotModel = {
   version: 2, home: null, criteria: [], notMeasurable: [], synopsis: "s",
   threads: [
@@ -259,8 +264,8 @@ describe("real examples with every question", () => {
     expect(r.transcript).toBe("1004 gets you two departures; 1008 takes four. Where does it start to cost you? (Examples shown: Line 1004 — 2 departures (Few departures); Line 1008 — 4 departures (Few departures).)");
   });
 
-  it("asks once for examples when a question comes without them, then lets a question no example fits go as it is", async () => {
-    proposals.push(step({ threadId: "china", prompt: "Does Shanghai bother you as much as Guangzhou?" }), step({ threadId: "china", prompt: "Does Shanghai bother you as much as Guangzhou?" }));
+  it("lets a question no example fits go without one — lines shown for something else confuse the pilot", async () => {
+    proposals.push(step({ threadId: "china", prompt: "Does Shanghai bother you as much as Guangzhou?" }));
     const r = await nextInterviewStep(input({ examples, packNumbers }));
     expect(r).toMatchObject({ done: false, prompt: "Does Shanghai bother you as much as Guangzhou?" });
     if (r.done) throw new Error("expected a question");
@@ -343,15 +348,13 @@ describe("real examples with every question", () => {
     expect(r.examples).toBeUndefined();
   });
 
-  it("never names a line shown only for another priority than the question's", async () => {
+  it("shows a named line without another priority's figure", async () => {
     const onDeps = { ...model, threads: [...model.threads.filter((t) => t.id !== "china"), { id: "china", topic: "Departures", why: "w", priority: 0.5, status: "open" as const, criteria: ["deps"], timesAsked: 0 }] };
     const elsewhere = [...examples, { id: "E4", kind: "line" as const, ref: "1011", title: "Line 1011", fact: "2 commutes", priority: "Avoid commutes", criterionId: "commutes", summary: "s" }];
-    proposals.push(
-      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1011 has two commutes.", examples: ["E1", "E2"] }),
-      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1008 has four.", examples: ["E1", "E2"] })
-    );
+    proposals.push(step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1011 has five.", examples: ["E1", "E2"] }));
     const r = await nextInterviewStep(input({ examples: elsewhere, packNumbers, model: onDeps }));
-    expect(r).toMatchObject({ done: false, helpText: "Line 1004 has two; line 1008 has four." });
+    if (r.done) throw new Error("expected a question");
+    expect(r.examples?.map((e) => [e.ref, e.fact])).toEqual([["1004", "2 departures"], ["1008", "4 departures"], ["1011", ""]]);
   });
 
   it("shows the trip it names, and asks again when it names one it doesn't show", async () => {
@@ -371,6 +374,21 @@ describe("real examples with every question", () => {
     if (r.done) throw new Error("expected a question");
     expect(r.examples?.map((e) => [e.ref, e.fact])).toEqual([["1004", "2 departures"], ["1008", "4 departures"], ["1018", ""]]);
     expect(r.transcript).toContain("; Line 1018.)");
+  });
+
+  it("never asks a commuter what their home airport, their time before a report and real flights already answer", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "What's the earliest show in Anchorage that still lets you come up from Seattle the same day?" }),
+      step({ threadId: "china", prompt: "How late can a trip land in Anchorage before you can't get home to Seattle that night?" }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", examples: ["E1", "E2"] })
+    );
+    const r = await nextInterviewStep(input({ examples, packNumbers }));
+    expect(r).toMatchObject({ done: false, prompt: "How many departures before it bothers you?" });
+    proposals.push(
+      step({ threadId: "china", prompt: "You said a 10:52 show works for coming up same day. What makes that one work?" }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", examples: ["E1", "E2"] })
+    );
+    expect(await nextInterviewStep(input({ examples, packNumbers }))).toMatchObject({ done: false, prompt: "How many departures before it bothers you?" });
   });
 
   it("never sends help text that corrects itself partway", async () => {
@@ -393,13 +411,11 @@ describe("real examples with every question", () => {
     expect(r).toMatchObject({ done: false, examples: [examples[0], examples[1]] });
   });
 
-  it("never names a line it has no example of to show", async () => {
-    proposals.push(
-      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1011 has five.", examples: ["E1"] }),
-      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1008 has four.", examples: ["E1", "E2"] })
-    );
+  it("shows a line it names that no example covers, bare", async () => {
+    proposals.push(step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two; line 1011 has five.", examples: ["E1", "E2"] }));
     const r = await nextInterviewStep(input({ examples, packNumbers }));
-    expect(r).toMatchObject({ done: false, helpText: "Line 1004 has two; line 1008 has four." });
+    if (r.done) throw new Error("expected a question");
+    expect(r.examples?.map((e) => [e.ref, e.fact])).toEqual([["1004", "2 departures"], ["1008", "4 departures"], ["1011", ""]]);
   });
 
   it("puts no examples on a line choice — the two lines are the example", async () => {
@@ -411,3 +427,173 @@ describe("real examples with every question", () => {
   });
 });
 
+describe("the four kinds of question, each with its rule", () => {
+  const examples = [
+    { id: "E1", kind: "line" as const, ref: "1004", title: "Line 1004", fact: "2 departures", priority: "Few departures", criterionId: "deps", summary: "2 trips", rank: 12 },
+    { id: "E2", kind: "line" as const, ref: "1008", title: "Line 1008", fact: "4 departures", priority: "Few departures", criterionId: "deps", summary: "4 trips", rank: 20 },
+  ];
+  const packNumbers = { lines: ["1004", "1008", "1011", "1018"], trips: ["88", "93"] };
+  beforeEach(() => {
+    proposals.length = 0;
+  });
+
+  it("asks about their own words only when they said them", async () => {
+    proposals.push(
+      step({ threadId: "china", questionKind: "their-words", theirWords: "a real break at home", prompt: "What do you mean by a real break?" }),
+      step({ threadId: "china", questionKind: "their-words", theirWords: "single legs", prompt: "When you say single legs, is a two-leg duty one you'd avoid?" })
+    );
+    const r = await nextInterviewStep(input());
+    expect(r).toMatchObject({ done: false, questionKind: "their-words", prompt: "When you say single legs, is a two-leg duty one you'd avoid?" });
+  });
+
+  it("shows a line or trip with a feature question", async () => {
+    proposals.push(
+      step({ threadId: "china", topic: "standby", questionKind: "feature", kind: "choice", prompt: "How do you feel about hotel standby?", options: ["I like it", "I'd rather fly"] }),
+      step({ threadId: "china", topic: "standby", questionKind: "feature", kind: "choice", prompt: "How do you feel about hotel standby?", helpText: "Line 1011 is one trip with 11 days of hotel standby.", options: ["I like it", "I'd rather fly"] })
+    );
+    const topics = [{ id: "standby", label: "Hotel standby", moves: 16, unclear: "feature" as const, priorities: [], feature: { metric: "hotelStandbyDays", label: "Hotel standby days" }, exampleIds: [] }];
+    const r = await nextInterviewStep(input({ packNumbers: { lines: ["1011"], trips: [] }, topics }));
+    expect(r).toMatchObject({ done: false, questionKind: "feature", helpText: "Line 1011 is one trip with 11 days of hotel standby." });
+    if (r.done) throw new Error("expected a question");
+    expect(r.examples?.map((e) => e.ref)).toEqual(["1011"]);
+  });
+
+  it("never asks a trade in words — only as a real choice", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "How much credit would you give up to have one fewer departure?" }),
+      step({ threadId: "china", prompt: "Would a trip that starts with a deadhead from Seattle be worth more to you than a normal trip?" }),
+      step({ threadId: "china", questionKind: "real-choice", kind: "line-pair", pairIndex: 0, prompt: "Which line would you bid higher: 1011 or 1018?" })
+    );
+    const r = await nextInterviewStep(input({ packNumbers: { lines: ["1011", "1018"], trips: [] } }));
+    expect(r).toMatchObject({ done: false, kind: "line-pair", questionKind: "real-choice" });
+  });
+
+  it("makes every real choice a line pair", async () => {
+    proposals.push(
+      step({ threadId: "china", questionKind: "real-choice", kind: "free-text", prompt: "Would you rather have 1011 or 1018?" }),
+      step({ threadId: "china", questionKind: "real-choice", kind: "line-pair", pairIndex: 0, prompt: "Which line would you bid higher: 1011 or 1018?" })
+    );
+    const r = await nextInterviewStep(input({ packNumbers: { lines: ["1011", "1018"], trips: [] } }));
+    expect(r).toMatchObject({ done: false, kind: "line-pair", prompt: "Which line would you bid higher: 1011 or 1018?" });
+  });
+
+  it("never shows examples of a different priority from what the question asks", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "How much do you care about being home Wednesday nights?", examples: ["E1", "E2"] }),
+      step({ threadId: "china", prompt: "How much do you care about being home Wednesday nights?" })
+    );
+    const r = await nextInterviewStep(input({ examples, packNumbers }));
+    expect(proposals).toHaveLength(0);
+    if (r.done) throw new Error("expected a question");
+    expect(r.examples).toBeUndefined();
+  });
+
+  it("shows a named line bare when its only figure is for something else", async () => {
+    proposals.push(step({ threadId: "china", prompt: "How short is too short for a layover?", helpText: "Line 1004 has five short layovers." }));
+    const r = await nextInterviewStep(input({ examples, packNumbers }));
+    if (r.done) throw new Error("expected a question");
+    expect(r.examples?.map((e) => [e.ref, e.fact])).toEqual([["1004", ""]]);
+  });
+
+  it("asks about one of the topics worth asking, each once — the one just answered again only to clear it up", async () => {
+    const topics = [{ id: "standby", label: "Hotel standby", moves: 16, unclear: "feature" as const, priorities: [], feature: { metric: "hotelStandbyDays", label: "Hotel standby days" }, exampleIds: [] }];
+    proposals.push(
+      step({ threadId: "china", topic: "home", prompt: "How many nights at home in a row make a real break?" }),
+      step({ threadId: "china", topic: "standby", questionKind: "feature", prompt: "How do you feel about hotel standby?", helpText: "Line 1011 has eleven days of it." })
+    );
+    const r = await nextInterviewStep(input({ packNumbers, topics }));
+    expect(r).toMatchObject({ done: false, topic: "standby" });
+    proposals.push(step({ threadId: "china", topic: "home", questionKind: "their-number", prompt: "Roughly how many nights at home make a real break?" }));
+    const again = await nextInterviewStep(input({ packNumbers, topics, lastTopic: "home", threads: { ...input().threads, "topic:home": { status: "open", timesAsked: 1 } } }));
+    expect(again).toMatchObject({ done: false, topic: "home" });
+  });
+
+  it("never asks how they feel about something they raised themselves — what's unclear is how much", async () => {
+    const topics = [{ id: "commute", label: "Getting to and from work", moves: 8, unclear: "weight" as const, priorities: ["Front-end deadheads from the West Coast"], exampleIds: [] }];
+    proposals.push(
+      step({ threadId: "china", topic: "commute", questionKind: "feature", prompt: "How do you feel about trips that start with a deadhead from the West Coast?", helpText: "Line 1011 has three." }),
+      step({ threadId: "china", topic: "", questionKind: "real-choice", kind: "line-pair", pairIndex: 0, prompt: "Which line would you bid higher: 1011 or 1018?" })
+    );
+    const r = await nextInterviewStep(input({ packNumbers, topics }));
+    expect(r).toMatchObject({ done: false, kind: "line-pair" });
+  });
+
+  it("never asks a commuter which reports make them go in the night before", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "Which kinds of trips make you go in the night before for a Memphis hotel?" }),
+      step({ threadId: "china", prompt: "What reports are early enough that you'd take a hotel?" }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?" })
+    );
+    expect(await nextInterviewStep(input({ packNumbers }))).toMatchObject({ done: false, prompt: "How many departures before it bothers you?" });
+  });
+
+  it("never asks how many other flights they'd want, or how long before a report or deadhead they'd arrive", async () => {
+    proposals.push(
+      step({ threadId: "china", prompt: "Out of San Diego, how many flights home from Memphis that still work would you want on a trip's last day?" }),
+      step({ threadId: "china", prompt: "On a front-end deadhead, how many hours before the deadhead leaves would you want to be at the airport?" }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?" })
+    );
+    expect(await nextInterviewStep(input({ packNumbers }))).toMatchObject({ done: false, prompt: "How many departures before it bothers you?" });
+  });
+
+  it("offers a trip choice, recorded with both trips — never right after another choice, and at most two", async () => {
+    const tripPairs = [{ index: 0, a: "50@3", b: "104@4", labelA: "Trip #50 · Oct 1", labelB: "Trip #104 · Oct 2", trade: "landings|longLayoverHours", tension: "Trip #50 is better on fewer landings; Trip #104 on longer layovers", differences: [], summaryA: "a", summaryB: "b" }];
+    proposals.push(step({ threadId: "china", questionKind: "real-choice", kind: "trip-pair", tripPairIndex: 0, prompt: "Which trip would you rather fly: #50 on Oct 1 or #104 on Oct 2?" }));
+    const r = await nextInterviewStep(input({ packNumbers: { lines: [], trips: ["50", "104"] }, tripPairs }));
+    expect(r).toMatchObject({ done: false, kind: "trip-pair", questionKind: "real-choice", tripPair: tripPairs[0] });
+    if (r.done) throw new Error("expected a question");
+    expect(r.transcript).toBe("Which trip would you rather fly: #50 on Oct 1 or #104 on Oct 2? [Trip #50 · Oct 1 {50@3} vs Trip #104 · Oct 2 {104@4}: Trip #50 is better on fewer landings; Trip #104 on longer layovers]");
+
+    const afterChoice = input({ packNumbers: { lines: [], trips: ["50", "104"] }, tripPairs, exchanges: [...input().exchanges, { turn: 2, question: "Which line? [Line 1011 vs Line 1018: x]", answer: "1011" }] });
+    proposals.push(
+      step({ threadId: "china", questionKind: "real-choice", kind: "trip-pair", tripPairIndex: 0, prompt: "Which trip would you rather fly: #50 or #104?" }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?" })
+    );
+    expect(await nextInterviewStep(afterChoice)).toMatchObject({ prompt: "How many departures before it bothers you?" });
+
+    const two = [1, 2].map((i) => ({ turn: i + 1, question: `Which trip? [Trip #${i} · Oct ${i} {${i}@1} vs Trip #${i + 10} · Oct ${i} {${i + 10}@1}: x]`, answer: "a" }));
+    const full = input({ turn: 4, packNumbers: { lines: [], trips: ["50", "104"] }, tripPairs, exchanges: [...input().exchanges, two[0], { turn: 3, question: "q", answer: "a" }, two[1], { turn: 5, question: "q2", answer: "b" }] });
+    proposals.push(
+      step({ threadId: "china", questionKind: "real-choice", kind: "trip-pair", tripPairIndex: 0, prompt: "Which trip would you rather fly: #50 or #104?" }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?" })
+    );
+    expect(await nextInterviewStep(full)).toMatchObject({ prompt: "How many departures before it bothers you?" });
+  });
+
+  it("sends a question back when the second reader finds something wrong, and never checks the last try", async () => {
+    reviews.push({ ok: false, problem: "The help text puts 2014's show time on 2020." });
+    proposals.push(
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "2014 shows at 8:58 am." }),
+      step({ threadId: "china", prompt: "How many departures before it bothers you?", helpText: "Line 1004 has two." })
+    );
+    const r = await nextInterviewStep(input({ packNumbers }));
+    expect(r).toMatchObject({ done: false, helpText: "Line 1004 has two." });
+    expect(reviews).toHaveLength(0);
+    if (r.done) throw new Error("expected a question");
+    expect(r.usage?.costUsd).toBeCloseTo(0.022);
+  });
+
+  it("never matches examples on a city name alone, and never asks what makes two departures", async () => {
+    const memExamples = [
+      { id: "E1", kind: "line" as const, ref: "1004", title: "Line 1004", fact: "no commutes", priority: "Fewer commutes to and from Memphis", criterionId: "c", summary: "s" },
+      { id: "E2", kind: "line" as const, ref: "1008", title: "Line 1008", fact: "3 commutes", priority: "Fewer commutes to and from Memphis", criterionId: "c", summary: "s" },
+    ];
+    proposals.push(
+      step({ threadId: "china", prompt: "How many nights in a Memphis hotel would you put up with?", examples: ["E1", "E2"] }),
+      step({ threadId: "china", prompt: "How many hours at home between trips make them two departures instead of one?" }),
+      step({ threadId: "china", prompt: "How many nights in a Memphis hotel would you put up with?" })
+    );
+    const r = await nextInterviewStep(input({ examples: memExamples, packNumbers }));
+    expect(proposals).toHaveLength(0);
+    if (r.done) throw new Error("expected a question");
+    expect(r.examples).toBeUndefined();
+  });
+
+  it("asks a feature question only about a feature they never mentioned", async () => {
+    proposals.push(
+      step({ threadId: "china", questionKind: "feature", kind: "choice", prompt: "How do you feel about three-leg duty periods?", helpText: "Line 1011 has them.", options: ["Fine", "Avoid"] }),
+      step({ threadId: "china", questionKind: "their-words", theirWords: "single legs", prompt: "When you say single legs, is a two-leg duty one you'd avoid?" })
+    );
+    expect(await nextInterviewStep(input({ packNumbers: { lines: ["1011"], trips: [] } }))).toMatchObject({ questionKind: "their-words" });
+  });
+});

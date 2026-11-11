@@ -66,6 +66,9 @@ export async function requestNextStep(
     linePairs: LinePairCandidate[];
     examples?: import("./question-examples").QuestionExample[];
     packNumbers?: { lines: string[]; trips: string[] };
+    tripPairs?: import("./trip-pairs").TripPairCandidate[];
+    topics?: import("./question-topics").TopicCandidate[];
+    lastTopic?: string | null;
     turn: number;
     maxTurns: number;
     rankingShifts?: number[];

@@ -13,6 +13,8 @@ import { airportCityName } from "@/lib/airport-city-names";
 import { expandBidPack } from "@/lib/bidpack-storage";
 import { buildPilotModel, type InterviewExchange } from "@/lib/brain/build-model";
 import { nextCommuteQuestion } from "@/lib/brain/commute-questions";
+import { askedTopics, pickTopics, topicThread } from "@/lib/brain/question-topics";
+import { askedTripPairs, pickTripPairs } from "@/lib/brain/trip-pairs";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { dealbreakerQuestion } from "@/lib/brain/dealbreakers";
 import { nextHubTurnQuestion } from "@/lib/brain/hub-turn-question";
@@ -173,13 +175,16 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   }
 
   let limit = MAX_TURNS;
+  let lastTopic: string | null = null;
   const packNumbers = { lines: pack.lines.map((l) => l.lineNumber), trips: [...new Set(pack.lines.flatMap((l) => l.trips.map((t) => t.pairingNumber ?? t.id)))] };
   for (;;) {
     const compared = new Set(choices.map((c) => `${c.preferred}|${c.other}`));
     const pairs = pickLinePairs(pack, model, pm, compared, 3, pastTrades);
     // As in the app: real lines and trips at both ends of their main priorities, for the question to show.
-    const examples = pickQuestionExamples(pack, model, pm);
-    const stepInput = { pilotContext: context, exchanges, model, threads: structuredClone(threads), linePairs: pairs, examples, packNumbers, turn, maxTurns: limit, rankingShifts: [...shifts] };
+    // And the topics still worth asking: what's unclear and would move their top 20 most.
+    const { topics, examples } = pickTopics(pack, model, pm, askedTopics(threads), pickQuestionExamples(pack, model, pm));
+    const tripPairs = pickTripPairs(pack, model, pm, askedTripPairs(exchanges), pastTrades);
+    const stepInput = { pilotContext: context, exchanges, model, threads: structuredClone(threads), linePairs: pairs, tripPairs, examples, packNumbers, topics, lastTopic, turn, maxTurns: limit, rankingShifts: [...shifts] };
     const step = await nextInterviewStep({ packBrief: brief, ...stepInput });
     // Each turn's input, for re-asking the interviewer alone later (scripts/eval/interviewer-replay.ts).
     steps.push({ input: stepInput, asked: step.done ? null : { ack: step.ack ?? "", prompt: step.prompt, kind: step.kind } });
@@ -187,6 +192,10 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
     spendBy.interviewer += step.usage?.costUsd ?? 0;
     qTimes.push(step.usage?.ms ?? 0);
     for (const id of step.settled) threads[id] = { ...(threads[id] ?? { timesAsked: 0 }), status: "settled" };
+    if (!step.done) {
+      lastTopic = step.topic ?? null;
+      if (step.topic) threads[topicThread(step.topic)] = { status: "open", timesAsked: (threads[topicThread(step.topic)]?.timesAsked ?? 0) + 1 };
+    }
     if (step.done) {
       say(`\n— interviewer: done (${step.reason})`);
       // As in the app: before wrapping up, how would they feel about flying a screen of real trips? Two screens, a third
@@ -238,14 +247,31 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
       continue;
     }
     if (step.threadId) threads[step.threadId] = { status: threads[step.threadId]?.status ?? "open", timesAsked: (threads[step.threadId]?.timesAsked ?? 0) + 1 };
-    say(`\nQ${turn + 1} [${step.kind}${step.threadId ? ` · ${step.threadId}` : ""}] ${step.prompt}${step.options ? `\n   options: ${step.options.join(" / ")}` : ""}${step.examples?.length ? `\n   shown: ${step.examples.map((e) => `${e.title} — ${e.fact}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}` : ""}`);
+    say(`\nQ${turn + 1} [${step.kind}${step.questionKind ? ` · ${step.questionKind}` : ""}${step.topic ? ` · topic ${step.topic}` : ""}${step.threadId ? ` · ${step.threadId}` : ""}] ${step.prompt}${step.options ? `\n   options: ${step.options.join(" / ")}` : ""}${step.examples?.length ? `\n   shown: ${step.examples.map((e) => `${e.title} — ${e.fact}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}` : ""}`);
     const entry: (typeof asked)[number] = { kind: step.kind, words: step.prompt.split(/\s+/).filter(Boolean).length, ack: (step as { ack?: string }).ack ?? "", examples: step.examples?.length ?? 0 };
     if (entry.ack) say(`   (ack) ${entry.ack}`);
     asked.push(entry);
     // As the app records it: the question, and the examples it showed.
     let askedText = step.transcript ?? step.prompt;
     let answerText: string;
-    if (step.kind === "line-pair" && step.pair) {
+    if (step.kind === "trip-pair" && step.tripPair) {
+      const p = step.tripPair;
+      pastTrades.push(p.trade);
+      say(`   trips: ${p.tension}`);
+      const byKey = new Map(pack.lines.flatMap((l) => l.trips).map((t) => [tripKey(t), t]));
+      const table = p.differences.length ? `\n\nWhere they differ:\n${p.differences.map((d) => `- ${d.label}: ${p.labelA} ${d.a}, ${p.labelB} ${d.b}`).join("\n")}` : "";
+      const pick = await sim<{ pick: "a" | "b" | "tie"; strength: "slightly" | "strongly"; why: string }>(
+        `Question: ${step.prompt}${step.helpText ? `\n(${step.helpText})` : ""}${table}\n\nTrip A — ${p.labelA}:\n${tripText(pack, byKey.get(p.a)!)}\n\nTrip B — ${p.labelB}:\n${tripText(pack, byKey.get(p.b)!)}\n\nWhich would you rather fly — just these two trips, not the lines they're on? Say how strongly, and why in a sentence.`,
+        { type: "object", additionalProperties: false, required: ["pick", "strength", "why"], properties: { pick: { type: "string", enum: ["a", "b", "tie"] }, strength: { type: "string", enum: ["slightly", "strongly"] }, why: { type: "string" } } }
+      );
+      if (pick.pick === "tie") answerText = `Couldn't choose between ${p.labelA} and ${p.labelB} — about the same to me. Why: ${pick.why}`;
+      else {
+        const [preferred, other] = pick.pick === "a" ? [p.a, p.b] : [p.b, p.a];
+        const [better, worse] = pick.pick === "a" ? [p.labelA, p.labelB] : [p.labelB, p.labelA];
+        tripChoices.push({ preferred, other, strength: pick.strength, why: pick.why });
+        answerText = `I'd rather fly ${better} than ${worse} (${pick.strength === "strongly" ? "easily" : "just"}). Why: ${pick.why}`;
+      }
+    } else if (step.kind === "line-pair" && step.pair) {
       const p = step.pair;
       pastTrades.push(p.trade);
       say(`   pair: ${p.tension}`);

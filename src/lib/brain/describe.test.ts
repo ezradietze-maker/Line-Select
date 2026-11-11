@@ -8,6 +8,7 @@ describe("saying the model back in plain words", () => {
     expect(formatValue(3, { unit: "commutes" })).toBe("3 commutes");
     expect(formatValue(0.5, { unit: "share" })).toBe("50%");
     expect(formatValue(150, { unit: "minute of day" })).toBe("02:30");
+    expect(formatValue(1740, { unit: "minute of day" })).toBe("05:00 the next morning");
     expect(formatValue(63.6, { unit: "score (1–100, 100 gentlest)" })).toBe("64");
   });
 

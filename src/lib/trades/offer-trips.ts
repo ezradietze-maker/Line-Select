@@ -22,14 +22,29 @@ export function sameTrip(a: TripSnapshot, b: TripSnapshot): boolean {
 const sameMeta = (a: BidPackMetaSnapshot, b: BidPackMetaSnapshot) =>
   a.base === b.base && a.aircraft === b.aircraft && a.seat === b.seat && a.month === b.month;
 
+/** What each pilot on an offer gives away in it: the offering pilot their trip, and a proposing pilot theirs. */
+function tripsGivenIn(offer: TradeOffer): { pilot: string; trip: TripSnapshot }[] {
+  const given = [{ pilot: offer.offeringUserId, trip: offer.offeredTrip }];
+  if (offer.responderUserId && offer.responderTrip) given.push({ pilot: offer.responderUserId, trip: offer.responderTrip });
+  return given;
+}
+
+/**
+ * Whether this pilot has already agreed to trade this trip away, in one of `offers` from the same seat's month. Freeing
+ * the other offers at the moment of an accept (`offersFreedByTrade`) isn't enough on its own: an offer posted, or a
+ * proposal made, with the trip afterwards would let it be agreed with a second pilot.
+ */
+export function alreadyTraded(offers: readonly TradeOffer[], meta: BidPackMetaSnapshot, pilot: string, trip: TripSnapshot): boolean {
+  return offers.some((o) => o.status === "accepted" && sameMeta(o.bidPackMeta, meta) && tripsGivenIn(o).some((g) => g.pilot === pilot && sameTrip(g.trip, trip)));
+}
+
 /**
  * Once a trade is agreed, both its trips are spoken for. The pilots' other offers of those trips are withdrawn, and a
  * proposal either of them made with one on someone else's offer is taken off it, leaving that offer open again for
  * other pilots. Without this one trip could be agreed with two pilots.
  */
 export function offersFreedByTrade(accepted: TradeOffer, others: readonly TradeOffer[]): { withdraw: string[]; reopen: string[] } {
-  const gone: { pilot: string; trip: TripSnapshot }[] = [{ pilot: accepted.offeringUserId, trip: accepted.offeredTrip }];
-  if (accepted.responderUserId && accepted.responderTrip) gone.push({ pilot: accepted.responderUserId, trip: accepted.responderTrip });
+  const gone = tripsGivenIn(accepted);
   const withdraw: string[] = [];
   const reopen: string[] = [];
   for (const o of others) {
