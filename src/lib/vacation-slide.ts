@@ -1,9 +1,11 @@
 import { DateTime } from "luxon";
-import { eventInstant, newCloseRuleApplies, packBidClose } from "@/lib/bid-calendar";
+import { newCloseRuleApplies, packBidClose } from "@/lib/bid-calendar";
+import { bidTimeline } from "@/lib/bid-timeline";
 import { longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
 import { baseDayStartMinutes, dayIndices, dutyIsInternational, flownUnderInternationalRules, lineAsFlown, touchesOutside48, zoneOf, type Span } from "@/lib/phase-in";
+import { prepareMetrics } from "@/lib/metrics/compute";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
-import { tripReportUtc } from "@/lib/trip-anchor";
+import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -64,7 +66,7 @@ export function monthReachEnd(pack: BidPack): number | null {
   for (const l of pack.lines) {
     for (const t of l.trips) {
       const report = tripReportUtc(pack, t);
-      if (report !== null) end = Math.max(end, report + t.tafbHours * HOUR);
+      if (report !== null) end = Math.max(end, report + tripReleaseHours(t) * HOUR);
     }
   }
   return end;
@@ -133,7 +135,7 @@ export interface RemovedTrip {
 
 function tripSpan(trip: Trip, pack: BidPack): Span | null {
   const report = tripReportUtc(pack, trip);
-  return report === null ? null : { start: report, end: report + trip.tafbHours * HOUR };
+  return report === null ? null : { start: report, end: report + tripReleaseHours(trip) * HOUR };
 }
 
 /** CBA 2026 7.E.2.c: "a trip in which the last activity is an international duty period", except a trip under 12.D.1.c.i. */
@@ -351,6 +353,8 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
   const { pack, order, vacation, model } = input;
   const checks = slideChecks(vacation, pack);
   const legal = checks.filter((c) => c.legal);
+  // No bid month dates, so not even the vacation as awarded can be placed: nothing to compare a slide with.
+  if (!legal.some((c) => c.offset === 0)) return { vacation, illegal: checks.filter((c) => !c.legal), lines: [], across: [], byModel: !!model };
   const byNumber = new Map(pack.lines.map((l) => [l.lineNumber, l]));
   const top = order.slice(0, TOP_LINES).flatMap((n, i) => {
     const line = byNumber.get(n);
@@ -372,7 +376,9 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
   // Score them all with the pack, each a line of its own, so the model's spreads hold across them.
   if (model) {
     const variants = rows.flatMap((r) => r.options.map((o, i) => ({ ...o.line, id: `${r.line.id}::${i}` })));
-    const scored = new Map(scorePackV2({ ...pack, lines: [...pack.lines, ...variants] }, model).map((s) => [s.lineId, s.score]));
+    // The pack's own lines set the scale, as for a line after a trade: a slide can't move the yardstick it's judged on.
+    const all = { ...pack, lines: [...pack.lines, ...variants] };
+    const scored = new Map(scorePackV2(all, model, { pack: prepareMetrics(all), referenceLines: pack.lines.length }).map((s) => [s.lineId, s.score]));
     for (const r of rows) r.options.forEach((o, i) => (o.score = scored.get(`${r.line.id}::${i}`) ?? null));
   }
   const better = (a: SlideOption, b: SlideOption) => (model ? (b.score ?? 0) - (a.score ?? 0) || compareWithoutModel(a, b) : compareWithoutModel(a, b));
@@ -434,17 +440,16 @@ export function typedVacation(firstDay: string, days: number, pack: Pick<BidPack
 
 /** Where and when to enter it: CBA 2026 25.E.2.b, from the pack's own calendar when it prints it. */
 export function slideWhere(pack: BidPack): { opens: string | null; closes: string | null; rule: string } {
-  const seat = pack.seat === "CAP" ? /\bCap/i : /F\s*\/\s*O/i;
-  const find = (word: RegExp) => {
-    const event = (pack.bidCalendar ?? []).find((e) => /Conflict\s+Input/i.test(e.text) && word.test(e.text) && seat.test(e.text) && e.text.startsWith(pack.month));
-    return event ? eventInstant(event, pack.base) : null;
-  };
+  // The printed cells, each under its bid: most of them ("CAP Conflict Input Window Opens") don't name the month, so
+  // matching on a "DEC26" at the start found none.
+  const printed = bidTimeline(pack).filter((e) => e.source === "pack" && e.bidMonth === pack.month);
+  const find = (kind: "conflict-open" | "conflict-close") => printed.find((e) => e.kind === kind)?.at ?? null;
   const rule = newCloseRuleApplies(pack.month)
     ? "It opens 5 hours after your bid closes and runs at least 48 hours (CBA 2026 25.E.2)."
     : "It opens at 1700 CT on the day your bid closes and runs at least 48 hours (CBA 25.E.2).";
-  const opens = find(/Opens/i);
+  const opens = find("conflict-open");
   // From December 2026 it's counted from the close (CBA 2026 25.E.2, Phase 2).
-  if (opens || !newCloseRuleApplies(pack.month)) return { opens, closes: find(/Closes/i), rule };
+  if (opens || !newCloseRuleApplies(pack.month)) return { opens, closes: find("conflict-close"), rule };
   const close = packBidClose(pack);
-  return { opens: close ? new Date(Date.parse(close.iso) + 5 * HOUR).toISOString() : null, closes: find(/Closes/i), rule };
+  return { opens: close ? new Date(Date.parse(close.iso) + 5 * HOUR).toISOString() : null, closes: find("conflict-close"), rule };
 }

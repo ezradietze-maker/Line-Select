@@ -13,7 +13,9 @@ const stem = (w: string): string => {
   if (w.length > 5 && w.endsWith("ing")) return w.slice(0, -3);
   if (w.length > 4 && w.endsWith("ied")) return `${w.slice(0, -3)}y`;
   if (w.length > 4 && w.endsWith("ed")) return w.slice(0, -2);
-  if (w.length > 4 && w.endsWith("es")) return w.slice(0, -2);
+  // A plural meets its singular: "duties" → duty, "boxes" → box, but "lines" → line, not "lin" ("line" keeps its e).
+  if (w.length > 4 && w.endsWith("ies")) return `${w.slice(0, -3)}y`;
+  if (w.length > 4 && /(?:s|x|z|ch|sh)es$/.test(w)) return w.slice(0, -2);
   if (w.length > 3 && w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1);
   return w;
 };
@@ -153,7 +155,9 @@ export function retrievePassages(question: string, budgetChars: number, earlier?
   const passages: string[] = [];
   let used = 0;
   for (const id of ranked) {
-    if (passages.some((p) => id.startsWith(`${p}.`))) continue;
+    // Not one inside a passage already chosen, nor a broader one around it: sent beside each other, the same words were
+    // paid for twice. The narrower one ranked higher, so it's the one that stays.
+    if (passages.some((p) => id.startsWith(`${p}.`) || p.startsWith(`${id}.`))) continue;
     const size = fullText(id).length * (changedInside(id) ? 1.4 : 1);
     if (used + size > budgetChars && passages.length) continue;
     passages.push(id);

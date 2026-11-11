@@ -2,7 +2,7 @@ import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { jumpseatsFor } from "@/lib/flights/client";
 import type { TravelAnswer } from "@/lib/flights/itineraries";
-import { travelNeedsForTrip, tripStartUtc, type TravelNeed } from "@/lib/flights/needs";
+import { travelNeedsForTrip, type TravelNeed } from "@/lib/flights/needs";
 import type { CommuteStatus, FilterContext } from "@/lib/line-filters";
 import { groupDepartures } from "@/lib/metrics/departures";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
@@ -67,12 +67,25 @@ export function canCheckCommute(bidPack: Pick<BidPack, "base">, homeAirport: str
  * 00:40 got the pilot home the day they were released.
  */
 const NIGHT_RUNS_UNTIL_HOURS = 5;
-const nightDay = (ms: number, zone: string) => DateTime.fromMillis(ms, { zone }).minus({ hours: NIGHT_RUNS_UNTIL_HOURS }).toISODate();
+/** By the clock, not five real hours back, which a daylight-saving change moves by one. */
+const nightDay = (ms: number, zone: string) => {
+  const t = DateTime.fromMillis(ms, { zone });
+  return (t.hour < NIGHT_RUNS_UNTIL_HOURS ? t.minus({ days: 1 }) : t).toISODate();
+};
 const calendarDay = (ms: number, zone: string) => DateTime.fromMillis(ms, { zone }).toISODate();
-/** A flight leaving home this day still makes a report (or a first flown leg) at `report` without a night away first. Report days go by the pack's clock at base, as it prints them. */
-export const leavesOnReportDay = (departure: number, report: number, homeZone: string, baseZone: string) => calendarDay(departure, homeZone) === nightDay(report, baseZone);
+/** The earliest a way in can leave home: the start of the report's day, at home. Report days go by the pack's clock at base, as it prints them. */
+const reportDayOpens = (report: number, homeZone: string, baseZone: string) => DateTime.fromISO(nightDay(report, baseZone)!, { zone: homeZone }).toMillis();
+/** The latest a way home can land: 05:00 at home the morning after the release's day. */
+const releaseDayCloses = (release: number, homeZone: string, baseZone: string) =>
+  DateTime.fromISO(calendarDay(release, baseZone)!, { zone: homeZone }).plus({ days: 1 }).set({ hour: NIGHT_RUNS_UNTIL_HOURS }).toMillis();
+/**
+ * A flight leaving home then still makes a report (or a first flown leg) at `report` without a night away first. The
+ * same window the way was asked about: read with a different day rule on each side, a flight at 00:15 for a 04:30
+ * report, or one landing at 02:00 after a release just past midnight, read as the wrong day and made a "no".
+ */
+export const leavesOnReportDay = (departure: number, report: number, homeZone: string, baseZone: string) => departure >= reportDayOpens(report, homeZone, baseZone);
 /** A flight landing home then gets the pilot home the day they were released. */
-export const landsOnReleaseDay = (arrival: number, release: number, homeZone: string, baseZone: string) => nightDay(arrival, homeZone) === calendarDay(release, baseZone);
+export const landsOnReleaseDay = (arrival: number, release: number, homeZone: string, baseZone: string) => arrival < releaseDayCloses(release, homeZone, baseZone);
 
 interface Way {
   need: TravelNeed;
@@ -100,12 +113,12 @@ function waysOfTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Tri
     if (goingIn !== (direction === "in")) continue;
     if (goingIn) {
       const day = n.arriveBy! + s.arriveBeforeReportHours * HOUR;
-      const opens = DateTime.fromISO(nightDay(day, baseZone)!, { zone: homeZone }).toMillis();
+      const opens = reportDayOpens(day, homeZone, baseZone);
       ways.push({ need: { ...n, departAfter: opens, departBefore: n.arriveBy!, maxDetour: COMMUTE_MAX_DETOUR }, day, impossible: opens >= n.arriveBy! });
     } else {
       const departAfter = n.kind === "homeFromBase" ? n.departAfter + extra : n.departAfter;
       const day = departAfter - s.releaseToDepartureHours * HOUR;
-      const closes = DateTime.fromISO(calendarDay(day, baseZone)!, { zone: homeZone }).plus({ days: 1, hours: NIGHT_RUNS_UNTIL_HOURS }).toMillis();
+      const closes = releaseDayCloses(day, homeZone, baseZone);
       ways.push({ need: { ...n, departAfter, departBefore: closes, maxDetour: COMMUTE_MAX_DETOUR }, day, impossible: departAfter >= closes });
     }
   }

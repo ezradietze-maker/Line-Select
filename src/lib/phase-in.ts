@@ -5,7 +5,7 @@ import { lineCarryOver, splitTrip } from "@/lib/bid-month";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { tripDutyPeriods } from "@/lib/duty-periods";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
-import { tripReportUtc } from "@/lib/trip-anchor";
+import { dayTripHours, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { VipsBidAnswers } from "@/lib/vips-bid";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
@@ -282,11 +282,13 @@ function carryBlock(item: CarryInItem, zone: string): Block | null {
 
 /** A trip's duties as real instants. Its layovers are what's between them. */
 export function tripSpans(trip: Trip, report: number): Span[] {
-  const release = report + trip.tafbHours * HOUR;
+  const release = report + tripReleaseHours(trip) * HOUR;
   if (!trip.schedule.length) return [{ start: report, end: release }];
-  return trip.schedule.map((d) => ({
+  const lastIndex = trip.schedule.length - 1;
+  return trip.schedule.map((d, i) => ({
     start: report + d.startMinutes * MINUTE,
-    end: d.layover ? report + d.layover.startMinutes * MINUTE : release,
+    // A duty with no layover after it before the last is a day of a run of day trips: it ends that day.
+    end: d.layover ? report + d.layover.startMinutes * MINUTE : i === lastIndex ? release : report + d.startMinutes * MINUTE + dayTripHours(trip) * HOUR,
   }));
 }
 
@@ -300,7 +302,7 @@ export function tripBaseSpans(trip: Trip, report: number, base: string): Span[] 
       from = report + d.layover.endMinutes * MINUTE;
     }
   }
-  out.push({ start: from, end: report + trip.tafbHours * HOUR });
+  out.push({ start: from, end: report + tripReleaseHours(trip) * HOUR });
   return out;
 }
 
@@ -751,7 +753,7 @@ export function flyLine(line: Line, pack: BidPack, carryIn: CarryInItem[], elect
   if (line.estimated || placed.some((p) => p.report === null)) return { line, unchecked: true, ...blank, reason: null };
 
   const spanOf = new Map<Trip, Span>();
-  for (const p of placed) spanOf.set(p.trip, { start: p.report!, end: p.report! + p.trip.tafbHours * HOUR });
+  for (const p of placed) spanOf.set(p.trip, { start: p.report!, end: p.report! + tripReleaseHours(p.trip) * HOUR });
   const ordered = [...placed].sort((a, b) => a.report! - b.report!);
 
   const dropped: DroppedTrip[] = [];

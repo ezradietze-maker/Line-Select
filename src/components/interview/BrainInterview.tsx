@@ -25,6 +25,7 @@ import { StepTransition } from "@/components/ui/StepTransition";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { withHomeFacts } from "@/lib/brain/model-upgrade";
+import { carriedOver } from "@/lib/brain/quick-brief";
 import { requestModelBuild, requestNextStep, type StepResponse } from "@/lib/brain/client";
 import { fitTripWeights, fitWeightsToChoices } from "@/lib/brain/fit-choices";
 import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tripGradesAnswer, tripGradesTranscript, wantsAnotherScreen, type TripGradeScreen } from "@/lib/brain/trip-sort";
@@ -237,7 +238,12 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [tripChoices, setTripChoices] = useState<TripChoice[]>([]);
   /** The trade behind every line pair already put to the pilot, so no trade is asked about more than twice. */
   const [pastTrades, setPastTrades] = useState<string[]>([]);
-  const [model, setModel] = useState<PilotModel | null>(() => (checkIn ? (priorProfile?.brainInterview?.reviewedModel ?? priorProfile?.pilotModel ?? null) : null));
+  const [model, setModel] = useState<PilotModel | null>(() => {
+    const prior = checkIn ? (priorProfile?.brainInterview?.reviewedModel ?? priorProfile?.pilotModel ?? null) : null;
+    // It read last month's whole record; what's carried is shorter once that passes the limit, so this month's answers
+    // would sit below where it read up to and never be marked new. It has read all that's carried.
+    return prior && lastTime && prior.readUpTo !== undefined ? { ...prior, readUpTo: Math.min(prior.readUpTo, carryForward(lastTime.exchanges).length) } : prior;
+  });
   const [question, setQuestion] = useState<Extract<StepResponse, { done: false }> | null>(null);
   const [turn, setTurn] = useState(0);
   const [history, setHistory] = useState<Snapshot[]>([]);
@@ -712,7 +718,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     // A clean profile: the older interview's facts, targets and weights would otherwise add their own dealbreakers and
     // notes to lines this model ranks. Only what's still the pilot's carries over.
     const profile: PreferenceProfile = {
-      ...(priorProfile?.strategyReactions ? { strategyReactions: priorProfile.strategyReactions } : {}),
+      ...carriedOver(priorProfile),
       weights: { ...DEFAULT_WEIGHTS },
       deepRoundCompleted: false,
       tradeoffAnswers: [],

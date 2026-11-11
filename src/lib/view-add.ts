@@ -4,7 +4,7 @@ import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { parseOpenTimePaste } from "@/lib/open-time/parse";
 import { carriedDaysOf, dayIndices, dutyIsInternational, flownUnderInternationalRules, flyLine, operatedBlockHours, phaseInRules, reservePeriodSpan, tripBaseSpans, tripSpans, zoneOf, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
-import { tripReportUtc } from "@/lib/trip-anchor";
+import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import { flyVacationsOnLine } from "@/lib/vacation-lines";
 import { vacationSpan } from "@/lib/vacation-slide";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
@@ -75,7 +75,7 @@ export function busyFromTrip(trip: Trip, pack: BidPack): Busy | null {
   const firstLeg = first?.legs[0];
   const busy: Busy = {
     label: trip.pairingNumber ? `trip ${trip.pairingNumber}` : "a trip",
-    span: { start: report, end: report + trip.tafbHours * HOUR },
+    span: { start: report, end: report + tripReleaseHours(trip) * HOUR },
     duties: tripSpans(trip, report),
     dutiesKnown: trip.schedule.length > 0,
     endsInternational: dutyIsInternational(trip, last),
@@ -384,6 +384,8 @@ export function pairingDate(trip: Trip, pack: BidPack): string | null {
 export interface PastedEntry {
   raw: string;
   tripNumber: string;
+  /** Every number on the line that could be the trip's ("213 14OCT 1430": 213 or 1430); `tripNumber` is the first. */
+  tripNumbers?: string[];
   /** Month and day, as far as the line says. */
   month: number;
   day: number;
@@ -399,7 +401,7 @@ export interface PastedEntry {
 export function parseOpenTimeList(text: string): { entries: PastedEntry[]; notRead: string[] } {
   const { rows, unread } = parseOpenTimePaste(text);
   return {
-    entries: rows.map((r) => ({ raw: r.raw, tripNumber: r.tripNumbers[0], month: r.month, day: r.day, ...(r.year ? { year: r.year } : {}) })),
+    entries: rows.map((r) => ({ raw: r.raw, tripNumber: r.tripNumbers[0], tripNumbers: r.tripNumbers, month: r.month, day: r.day, ...(r.year ? { year: r.year } : {}) })),
     notRead: unread.map((u) => u.raw),
   };
 }
@@ -461,6 +463,8 @@ export interface ViewAddPlan {
   /** Pasted lines we couldn't read or find in the pack. */
   notRead: string[];
   notInPack: string[];
+  /** Pasted lines matched to the pack's trip a day from the date they print, or to one of two dates: check them against VIPS. */
+  dateChecks: string[];
   /** The list came from the pack alone, before VIPS's own open time was pasted. */
   fromPackOnly: boolean;
   byModel: boolean;
@@ -505,20 +509,34 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
   // The pool: VIPS's own list when pasted, the pack's open trips until then. A trip the carry-in dropped from this line can be bid back only if it can fly, which the fit check settles.
   const pasted = parseOpenTimeList(input.pasted ?? "");
   const notInPack: string[] = [];
+  const unclear: string[] = [];
+  const dateChecks: string[] = [];
   const textOf = new Map<string, string>();
   const fromPackOnly = pasted.entries.length === 0;
   let pool: Trip[];
   if (fromPackOnly) {
     pool = pack.openPairings ?? [];
   } else {
-    const universe = [...(pack.openPairings ?? []), ...pack.lines.flatMap((l) => l.trips)];
+    // A run of day trips as its days: a pasted day is that day, not the whole run (see `dayTripsOf`).
+    const universe = [...(pack.openPairings ?? []), ...pack.lines.flatMap((l) => l.trips)].flatMap(dayTripsOf);
     const found = new Map<string, Trip>();
     for (const e of pasted.entries) {
-      const t = pastedMatches(e, universe, pack)[0]?.trip;
-      if (!t) {
+      // Whichever of the line's numbers flies that day, as Open Time reads it: the first number isn't always the trip.
+      const options = (e.tripNumbers?.length ? e.tripNumbers : [e.tripNumber])
+        .map((n) => ({ n, matches: pastedMatches({ ...e, tripNumber: n }, universe, pack) }))
+        .filter((o) => o.matches.length);
+      if (options.length > 1) {
+        unclear.push(`${e.raw} (${options.map((o) => o.n).join(" and ")} both fly that day)`);
+        continue;
+      }
+      const matches = options[0]?.matches;
+      if (!matches) {
         notInPack.push(e.raw);
         continue;
       }
+      // The same pairing a day either side, or only a day off the date printed: taken, and said so.
+      if (matches.length > 1 || matches[0].gap > 0) dateChecks.push(e.raw);
+      const t = matches[0].trip;
       found.set(tripKey(t), t);
       textOf.set(tripKey(t), e.raw);
     }
@@ -557,6 +575,9 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
   const candidates = ranked.slice(0, MAX_CANDIDATES);
   const found: ViewAddCombo[] = [];
   let tried = 0;
+  // Each first trip gets its share of what's left to try: spent depth-first from the top-ranked trip, the whole budget
+  // went on combinations holding it, and the best one without it was never reached.
+  let limit = MAX_COMBOS_TRIED;
   const walk = (from: number, chosen: typeof candidates, busy: Busy[], total: number) => {
     if (chosen.length) {
       tried++;
@@ -565,7 +586,11 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
     }
     if (chosen.length === MAX_COMBO_TRIPS || total >= target) return;
     for (let i = from; i < candidates.length; i++) {
-      if (tried >= MAX_COMBOS_TRIED) return;
+      if (!chosen.length) limit = tried + Math.ceil((MAX_COMBOS_TRIED - tried) / (candidates.length - i));
+      if (tried >= limit) {
+        if (chosen.length) return;
+        continue;
+      }
       const c = candidates[i];
       // CBA 2026 25.L.6.e: each trip against what's still owed.
       if (c.trip.creditHours > Math.min(target - total, onePayCode) + over) continue;
@@ -614,7 +639,7 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
     choices.push({ trip: null, text: label, creditHours: 0, daysOffAfter: flown.line.daysOff, why: "As you typed it: we can't see reserve blocks or simulator events in the pack (CBA 2026 25.E.4.a.iv).", check: [], inBest: false, score: null });
   }
 
-  return { flown, targetCH: target, overCH: over, combos, choices, ruledOut, notRead: pasted.notRead, notInPack, fromPackOnly, byModel: !!model };
+  return { flown, targetCH: target, overCH: over, combos, choices, ruledOut, notRead: [...pasted.notRead, ...unclear], notInPack, dateChecks, fromPackOnly, byModel: !!model };
 }
 
 /** The list as plain text, for pasting into VIPS. */

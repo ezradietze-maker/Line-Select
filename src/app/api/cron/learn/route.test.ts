@@ -3,6 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const runner = vi.hoisted(() => ({ runLearningCycle: vi.fn(async (trigger: string) => ({ trigger, results: [] })), maybeLearn: vi.fn() }));
 vi.mock("@/lib/server/learning-runner", () => runner);
 vi.mock("@/lib/server/learning-store", () => ({ listRecentRuns: vi.fn(async () => []), loadActiveModel: vi.fn(async () => null) }));
+const runs = vi.hoisted(() => new Map<string, number>());
+vi.mock("@/lib/server/kv", () => ({
+  incrementCounter: async (key: string) => {
+    runs.set(key, (runs.get(key) ?? 0) + 1);
+    return runs.get(key)!;
+  },
+}));
 
 import { GET as cron } from "./route";
 import { GET as status, POST as runNow } from "@/app/api/learning/status/route";
@@ -22,6 +29,15 @@ describe("learning triggers", () => {
     const res = await cron(new Request("http://x/api/cron/learn", { headers: { authorization: "Bearer s3cret" } }));
     expect(res.status).toBe(200);
     expect(runner.runLearningCycle).toHaveBeenCalledWith("schedule");
+  });
+
+  it("runs once when the same call is delivered twice", async () => {
+    vi.stubEnv("CRON_SECRET", "s3cret");
+    runs.clear();
+    const call = () => cron(new Request("http://x/api/cron/learn", { headers: { authorization: "Bearer s3cret" } }));
+    await call();
+    expect(await (await call()).json()).toEqual({ skipped: "this run is already under way" });
+    expect(runner.runLearningCycle).toHaveBeenCalledTimes(1);
   });
 
   it("never runs when no cron secret is configured", async () => {

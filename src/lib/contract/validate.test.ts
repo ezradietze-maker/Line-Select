@@ -10,6 +10,17 @@ describe("the contract validator", () => {
     expect(check(good)).toEqual({ ok: true, answer: good.answer, quotes: [{ section: "25.E.6", quote: QUOTE, version: "2026" }] });
   });
 
+  it("holds a number written in words to the quotes, like one in digits", () => {
+    expect(check({ ...good, answer: "It runs at least twelve hours." })).toMatchObject({ ok: false, reason: expect.stringContaining("12") });
+    expect(check({ ...good, answer: "It starts June 29 and runs 115 hours." }).ok).toBe(true);
+    expect(check({ ...good, answer: "It runs 29 hours." }).ok).toBe(false);
+  });
+
+  it("rejects an answer that names a section it doesn't quote", () => {
+    expect(check({ ...good, answer: "Under 25.E.6 it runs at least 115 hours." }).ok).toBe(true);
+    expect(check({ ...good, answer: "Under 25.E.5 it runs at least 115 hours." })).toMatchObject({ ok: false, reason: expect.stringContaining("quotes nothing from it") });
+  });
+
   it("rejects a made-up section", () => {
     expect(check({ ...good, quotes: [{ ...good.quotes[0], section: "25.E.42" }] })).toMatchObject({ ok: false, reason: expect.stringContaining("no section 25.E.42") });
     expect(check({ ...good, quotes: [{ ...good.quotes[0], section: "13.B.2" }] }).ok).toBe(false);

@@ -1,4 +1,4 @@
-import { clearServerProfile, fetchServerProfile, saveServerProfile } from "@/lib/preference-profile-client";
+import { clearServerProfile, fetchServerProfile, saveServerProfile, serverProfileVersion, setServerProfileVersion } from "@/lib/preference-profile-client";
 import { mergeAfterConflict } from "@/lib/profile-merge";
 import { migrateProfile } from "@/lib/profile-migration";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
@@ -94,6 +94,15 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
   if (!userId) return loadProfile(null);
   const server = await fetchServerProfile();
   if (server.kind === "found") {
+    // A save that never reached the server (no signal, then the app was closed) goes up now, against the copy it was
+    // made from, rather than being replaced by the older copy there.
+    const pending = unsyncedBase(userId);
+    const local = pending ? loadProfile(userId) : null;
+    if (pending && local) {
+      setServerProfileVersion(pending.base);
+      const sent = await saveProfileForUser(userId, local);
+      if (sent.sync === "saved" || sent.sync === "merged") return sent.profile;
+    }
     // Backfilled like a local copy: a server copy saved by an older version lacks the newer weights and lists too.
     const profile = normalizeProfile(server.profile);
     saveProfile(userId, profile);
@@ -122,13 +131,50 @@ export type ProfileSync = "local" | "saved" | "merged" | "failed";
 export async function saveProfileForUser(userId: string | null, profile: PreferenceProfile): Promise<{ savedLocally: boolean; sync: ProfileSync; profile: PreferenceProfile }> {
   const savedLocally = saveProfile(userId, profile);
   if (!userId) return { savedLocally, sync: "local", profile };
+  const base = serverProfileVersion();
+  const outcome = await sendForUser(userId, profile);
+  if (outcome.sync === "failed") markUnsynced(userId, base);
+  else clearUnsynced(userId);
+  return { savedLocally, ...outcome };
+}
+
+async function sendForUser(userId: string, profile: PreferenceProfile): Promise<{ sync: ProfileSync; profile: PreferenceProfile }> {
   const saved = await saveServerProfile(profile);
-  if (saved.kind === "saved") return { savedLocally, sync: "saved", profile };
-  if (saved.kind === "failed" || !saved.profile) return { savedLocally, sync: "failed", profile };
+  if (saved.kind === "saved") return { sync: "saved", profile };
+  if (saved.kind === "failed" || !saved.profile) return { sync: "failed", profile };
   const merged = mergeAfterConflict(normalizeProfile(saved.profile), profile);
   saveProfile(userId, merged);
   const again = await saveServerProfile(merged);
-  return { savedLocally, sync: again.kind === "saved" ? "merged" : "failed", profile: merged };
+  return { sync: again.kind === "saved" ? "merged" : "failed", profile: merged };
+}
+
+/**
+ * A save kept on this device only, with the server version it was made from: the first one that failed, so a run of
+ * them is sent against the copy they all started from.
+ */
+const unsyncedKey = (userId: string) => `line-select:profile-unsynced:${userId}:v1`;
+function markUnsynced(userId: string, base: string | null): void {
+  try {
+    if (!window.localStorage.getItem(unsyncedKey(userId))) window.localStorage.setItem(unsyncedKey(userId), JSON.stringify({ base }));
+  } catch {
+    // Storage unavailable: then nothing was kept on the device to send either.
+  }
+}
+function clearUnsynced(userId: string): void {
+  try {
+    window.localStorage.removeItem(unsyncedKey(userId));
+  } catch {
+    // Nothing to clear.
+  }
+}
+function unsyncedBase(userId: string): { base: string | null } | null {
+  try {
+    const raw = window.localStorage.getItem(unsyncedKey(userId));
+    const parsed = raw ? (JSON.parse(raw) as { base?: unknown }) : null;
+    return parsed ? { base: typeof parsed.base === "string" ? parsed.base : null } : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

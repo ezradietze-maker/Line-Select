@@ -2,7 +2,7 @@ import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { carriedDaysOf, dayIndices, flyPack, lineAsFlown, withPrintedLines, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
 import { deriveSeniorityInput } from "@/lib/seniority-derive";
 import { placeInPack } from "@/lib/strategy-engine";
-import { tripReportUtc } from "@/lib/trip-anchor";
+import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import { CH_PER_VACATION_DAY, chargedToBank, monthReachEnd, vacationRemovals, vacationSpan, type RemovedTrip } from "@/lib/vacation-slide";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -60,7 +60,7 @@ export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenV
   const reports = line.trips.map((t) => tripReportUtc(pack, t));
   if (line.estimated || reports.some((r) => r === null)) return { ...blank, unchecked: true };
 
-  const spans = new Map<Trip, Span>(line.trips.map((t, i) => [t, { start: reports[i]!, end: reports[i]! + t.tafbHours * 3_600_000 }]));
+  const spans = new Map<Trip, Span>(line.trips.map((t, i) => [t, { start: reports[i]!, end: reports[i]! + tripReleaseHours(t) * 3_600_000 }]));
   let flown = line;
   const removed: RemovedTrip[] = [];
   let keepFlyingCH = 0;

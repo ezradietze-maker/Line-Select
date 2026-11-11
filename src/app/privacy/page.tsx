@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "November 8, 2026";
+const LAST_UPDATED = "November 10, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -128,7 +128,7 @@ export default function PrivacyPage() {
             These features use Anthropic&rsquo;s Claude API: the interview, Ask your pack, Ask the contract, reading the reason you
             type for swapping or correcting lines, and the plain-language summaries on the Hotel Ratings page.
             Each one sends Anthropic only what that turn needs: your interview answers and relevant bid pack
-            context (for the interview); your question and a short summary of the pack (for Ask your pack); your question, the last few questions and answers in that chat, and, if it names a line, that line&rsquo;s figures and carry-in conflicts (for Ask the contract); what
+            context (for the interview); your question and a short summary of the pack (for Ask your pack); your question, the last few questions and answers in that chat, which bid month, domicile, aircraft and seat your pack is for and how long its bid month runs, and, if it names a line, that line&rsquo;s figures and carry-in conflicts (for Ask the contract); what
             you typed, the lines involved and your list of priorities (for a reason); or a hotel&rsquo;s public
             review text (for hotel summaries). We do not attach your name, email, or account identity to these
             requests, though anything you type goes as you wrote it. Anthropic processes this data under its own
@@ -387,7 +387,9 @@ export default function PrivacyPage() {
             the rest of the Service, and deleted when you disconnect or when it expires &mdash; and with a device-based
             option it stays on your device and we hold nothing. We read only your open time and your own schedule, we never
             store another pilot&rsquo;s name beyond showing it on your own trip, and you can see a log of every time your
-            connection was used. FedEx has not approved this feature; connecting is your choice and at your own risk, and
+            connection was used. That record of the connection (when you agreed to it, and the log of its uses) is kept
+            for up to 180 days after it last changed, and we delete it sooner if you ask, including when you ask us to
+            delete your account. FedEx has not approved this feature; connecting is your choice and at your own risk, and
             you can disconnect at any time to delete what is held for it.
           </p>
         </Section>

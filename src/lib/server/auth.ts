@@ -155,10 +155,10 @@ export async function resetPasswordWithRecoveryCode(email: string, recoveryCode:
   }
 
   const credential = await findCredentialByEmail(normalized);
-  const matches =
-    !!credential?.recoveryHash &&
-    !!credential.recoverySalt &&
-    timingSafeStringEqual(await hashPassword(normalizeRecoveryCode(recoveryCode), credential.recoverySalt), credential.recoveryHash);
+  // Hashed whether or not there's a code to check it against, as sign-in does: answering faster for an email with no
+  // account (or no code) would say which emails have one.
+  const attempt = await hashPassword(normalizeRecoveryCode(recoveryCode), credential?.recoverySalt ?? NO_ACCOUNT_SALT);
+  const matches = !!credential?.recoveryHash && !!credential.recoverySalt && timingSafeStringEqual(attempt, credential.recoveryHash);
   if (!credential || !matches) {
     return { ok: false, error: RESET_FAILURE_MESSAGE };
   }

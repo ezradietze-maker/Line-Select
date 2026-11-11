@@ -28,4 +28,16 @@ describe("signing out on a shared computer", () => {
     expect(store.getItem("line-select:contract-chat:pilot-1:v1")).toBeNull();
     expect(store.getItem("line-select:contract-chat:pilot-2:v1")).toBe("[{}]");
   });
+
+  it("removes what was kept under no id: the employee number, home airport and flights", () => {
+    store.setItem("line-select:vips-employee-number:v1", "123456");
+    store.setItem("line-select:commute-settings:v1", "{}");
+    store.setItem("line-select:flights:v5:abc", "{}");
+    store.setItem("line-select:theme:v1", "dark");
+    forgetPilotOnDevice("pilot-1");
+    expect(store.getItem("line-select:vips-employee-number:v1")).toBeNull();
+    expect(store.getItem("line-select:commute-settings:v1")).toBeNull();
+    expect(store.getItem("line-select:flights:v5:abc")).toBeNull();
+    expect(store.getItem("line-select:theme:v1")).toBe("dark");
+  });
 });

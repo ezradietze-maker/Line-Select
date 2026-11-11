@@ -247,6 +247,16 @@ describe("what a move teaches", () => {
     for (const l of lessons) expect(l.choices.some((c) => (c.preferred === "E" && c.other === "F") || (c.preferred === "F" && c.other === "E"))).toBe(false);
   });
 
+  it("teaches the pair in a swap of tiers: the line going up over the one coming down, once", () => {
+    const tiered = moveToTier(EMPTY_TIERS, ["b"], "best");
+    const before = applyTiers(LIST, moveToTier(tiered, ["f"], "good"), same);
+    const after = applyTiers(LIST, swapTiers(moveToTier(tiered, ["f"], "good"), "f", "b"), same);
+    const lessons = lessonsFromMove(before, after, ["f", "b"], num, "m", undefined, true);
+    const all = lessons.flatMap((l) => l.choices.map((c) => `${c.preferred}>${c.other}`));
+    expect(all.filter((c) => c === "F>B")).toHaveLength(1);
+    expect(all).not.toContain("B>F");
+  });
+
   it("gives one swap's evidence, half on the line it came to rest above", () => {
     const after = applyTiers(LIST, moveToTier(EMPTY_TIERS, ["e"], "best"), same);
     const [lesson] = lessonsFromMove(LIST, after, ["e"], num, "m");

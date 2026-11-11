@@ -22,7 +22,7 @@ beforeEach(() => {
 describe("/api/calendar-feed", () => {
   it("is for signed-in pilots only", async () => {
     auth.getCurrentServerUser.mockResolvedValue(null);
-    for (const res of [await GET(), await POST(req("POST", {})), await PATCH(req("PATCH", { homeDays: true })), await PUT(req("PUT", choice)), await DELETE()]) expect(res.status).toBe(401);
+    for (const res of [await GET(), await POST(req("POST", {})), await PATCH(req("PATCH", { homeDays: true })), await PUT(req("PUT", choice)), await DELETE(req("DELETE"))]) expect(res.status).toBe(401);
     expect(feeds.startFeed).not.toHaveBeenCalled();
   });
 
@@ -53,7 +53,7 @@ describe("/api/calendar-feed", () => {
   });
 
   it("turns off", async () => {
-    expect(await (await DELETE()).json()).toEqual({ on: false });
+    expect(await (await DELETE(req("DELETE"))).json()).toEqual({ on: false });
     expect(feeds.revokeFeed).toHaveBeenCalledWith("u1");
   });
 

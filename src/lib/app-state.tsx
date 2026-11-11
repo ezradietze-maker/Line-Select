@@ -26,6 +26,7 @@ import type { TradeOffer } from "@/types/trade";
 import type { ToastItem } from "@/components/ui/Toast";
 import { isPackId, legacyPackIdFor, moveKeptUnderOldId, packIdFor } from "@/lib/pack-id";
 import { forgetPilotOnDevice } from "@/lib/device-data";
+import { adoptGuestDrafts } from "@/lib/interview-draft";
 
 /**
  * Whether this device was signed in when the app last checked — not a credential (the session cookie is), just a
@@ -659,6 +660,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         saveSeniority(newUser.id, state.seniority);
         theirSeniority = state.seniority;
       }
+      adoptGuestDrafts(newUser.id);
     }
 
     setState({

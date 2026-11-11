@@ -83,7 +83,13 @@ describe("/api/flights/travel spending", () => {
     lookup.wants = 0;
     await POST(request());
     expect(siteSpent()).toBe(0);
-    expect([...store.keys()].some((k) => k.includes(":spend:"))).toBe(false);
+    // What was held for the lookup is all given back.
+    expect([...store].filter(([k]) => k.includes(":spend:")).every(([, v]) => v === 0)).toBe(true);
+  });
+
+  it("lets two lookups at the same moment share the allowance, not each spend all of it", async () => {
+    await Promise.all([POST(request()), POST(request())]);
+    expect(spentBy(`device:${DEVICE}`)).toBeLessThanOrEqual(0.5 + 1e-9);
   });
 
   it("charges what was really fetched, to the pilot and the site but not their AI allowance", async () => {

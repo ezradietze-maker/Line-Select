@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { isJsonObject } from "@/lib/server/json-body";
+import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
 import { getConnection, isLiveWired, saveConnection, withAudit } from "@/lib/server/fedex-session";
 import { CONSENT_VERSION } from "@/lib/fedex-connect/consent";
@@ -22,12 +24,16 @@ export async function POST(request: Request) {
   const user = await getCurrentServerUser();
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
 
-  let body: { consentVersion?: string };
+  if (!(await checkRateLimit("fedex-connect", user.id, 30, 60 * 60)).ok) return rateLimitedResponse();
+
+  let body: unknown;
   try {
-    body = (await request.json()) as { consentVersion?: string };
+    body = await request.json();
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
+  // `null` and `[]` are JSON too.
+  if (!isJsonObject(body)) return NextResponse.json({ error: "Bad request." }, { status: 400 });
   if (body.consentVersion !== CONSENT_VERSION) {
     return NextResponse.json({ error: "The consent has changed. Please read it again." }, { status: 409 });
   }

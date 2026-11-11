@@ -9,12 +9,16 @@ vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: async () => ({ ok: !
 vi.mock("@/lib/server/db", () => ({
   getTradeHolding: async (u: string, p: string) => held.get(`${u}|${p}`) ?? null,
   getTradeSettings: async () => ({ suggestMe: true, emailMatches: false }),
-  saveTradeHolding: async (u: string, h: { packId: string }) => {
+  saveTradeHolding: async (u: string, h: { packId: string }, fingerprint: string | null) => {
+    fingerprinted.push(fingerprint);
     held.set(`${u}|${h.packId}`, h);
     return h;
   },
   deleteTradeHolding: async (u: string, p: string) => void held.delete(`${u}|${p}`),
 }));
+
+const fingerprinted = vi.hoisted(() => [] as unknown[]);
+vi.mock("@/lib/server/trade-pack", () => ({ accountPackFingerprint: async () => "fp-1" }));
 
 const lapsed: unknown[][] = [];
 vi.mock("@/lib/server/trade-suggestions", () => ({ lapseSuggestionsFor: async (...args: unknown[]) => void lapsed.push(args) }));
@@ -37,6 +41,8 @@ describe("/api/trades/holding", () => {
   it("keeps what a pilot confirms, for that pack", async () => {
     expect((await put()).status).toBe(200);
     expect((await (await GET(new Request(url))).json()).holding).toEqual(body);
+    // With the copy of the pack it was confirmed on.
+    expect(fingerprinted.at(-1)).toBe("fp-1");
     expect((await (await GET(new Request("https://example.com/api/trades/holding?pack=other"))).json()).holding).toBeNull();
   });
 

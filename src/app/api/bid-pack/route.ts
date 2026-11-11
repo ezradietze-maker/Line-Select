@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { deleteBidPackRecord, getBidPackRecord, saveBidPackRecord } from "@/lib/server/db";
+import { tradePackFingerprint } from "@/lib/server/pack-fingerprint";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { restoreBidPack } from "@/lib/bidpack-storage";
+import type { BidPack } from "@/types/bidpack";
 
 export const runtime = "nodejs";
 
@@ -49,8 +52,15 @@ export async function PUT(request: Request) {
   }
   // The demo pack is the same for everyone; there's nothing of the pilot's to keep.
   if (pack.id.startsWith("sample")) return NextResponse.json({ saved: false });
+  // What trades are matched on (see `tradePackFingerprint`). A pack that can't be read for it isn't one.
+  let fingerprint: string;
   try {
-    await saveBidPackRecord(user.id, pack.id, bytes);
+    fingerprint = tradePackFingerprint(restoreBidPack(pack as unknown as Parameters<typeof restoreBidPack>[0]) as BidPack);
+  } catch {
+    return NextResponse.json({ error: "That isn't a bid pack." }, { status: 400 });
+  }
+  try {
+    await saveBidPackRecord(user.id, pack.id, bytes, fingerprint);
   } catch (e) {
     await reportProblem("profile-save", e, { what: "bid pack" });
     return NextResponse.json({ error: "Couldn't save your bid pack just now." }, { status: 503 });

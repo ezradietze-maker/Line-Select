@@ -19,6 +19,7 @@ import { samplePaste } from "@/lib/open-time/sample";
 import type { OpenTimeSnapshot } from "@/lib/open-time/source";
 import { placeInPack } from "@/lib/strategy-engine";
 import { startingSettings } from "@/lib/use-commute-check";
+import { vacationId } from "@/lib/vacation-lines";
 import { vacationsInReach } from "@/lib/vacation-slide";
 import { tripKey } from "@/lib/view-add";
 import type { BidPack, Trip } from "@/types/bidpack";
@@ -225,8 +226,14 @@ function OpenTimeBuilder({ bidPack, seniority, profile, userId }: { bidPack: Bid
     const n = Number(v);
     return v && v.trim() !== "" && Number.isFinite(n) && n >= 0 ? n : 0;
   };
+  const signed = (v: string | undefined) => {
+    const n = Number(v);
+    return v && v.trim() !== "" && Number.isFinite(n) ? n : 0;
+  };
 
   const score = (text: string) => {
+    // A new list starts with no flight check said about it: the last one's "stopped partway" isn't about this one.
+    setCommuteEnd(null);
     const entered: Banks = {};
     for (const { code } of BANKS) entered[code] = number(banks[code]);
     const carry = loadCarryIn(userId, bidPack.id);
@@ -237,11 +244,13 @@ function OpenTimeBuilder({ bidPack, seniority, profile, userId }: { bidPack: Bid
         line,
         carryIn: carry.items,
         elections: carry.elections,
-        vacations: seniority ? vacationsInReach(placeInPack(bidPack, seniority).me?.vacations ?? [], bidPack) : [],
+        // Not one the pilot has said they aren't taking (traded away, 7.E.1.a): its days are open to them.
+        vacations: seniority ? vacationsInReach(placeInPack(bidPack, seniority).me?.vacations ?? [], bidPack).filter((v) => carry.vacationChoices?.[vacationId(v)] !== "not-taking") : [],
         model: profile?.pilotModel,
         banks: entered,
         giveUp: line && giveUpKey ? { key: giveUpKey, as: giveUpAs, assignedAs } : null,
-        tradedSoFarCH: number(tradedSoFar),
+        // Net of earlier trades (CBA 2026 25.L.8.a): a trade that lowered the line counts against one that raises it.
+        tradedSoFarCH: signed(tradedSoFar),
         flights: cachedFlightAnswers(bidPack, profile?.pilotModel) ?? undefined,
       },
     });
@@ -346,8 +355,9 @@ function OpenTimeBuilder({ bidPack, seniority, profile, userId }: { bidPack: Bid
                 </select>
               </label>
               <label>
-                CH your trades have added so far this month
-                <input className={`${FIELD} mt-1 block w-full`} value={tradedSoFar} onChange={(e) => setTradedSoFar(e.target.value)} placeholder="0" inputMode="decimal" />
+                CH your trades have added so far this month (a minus if they took some off)
+                {/* Plain text keyboard: a phone's number pad has no minus sign. */}
+                <input className={`${FIELD} mt-1 block w-full`} value={tradedSoFar} onChange={(e) => setTradedSoFar(e.target.value)} placeholder="0" inputMode="text" />
               </label>
             </div>
           </details>

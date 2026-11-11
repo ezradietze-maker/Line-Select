@@ -1,4 +1,5 @@
 import type { InterviewExchange } from "@/lib/brain/build-model";
+import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { withHomeFacts } from "@/lib/brain/model-upgrade";
 import { parseAirportCode } from "@/lib/interview-story";
 import type { BidPack } from "@/types/bidpack";
@@ -105,9 +106,11 @@ export function quickBriefProfile({
   seniorityNumber: number | null;
   prior: PreferenceProfile | null;
 }): PreferenceProfile {
-  const homed = withHomeFacts(model, { hasCrashPad: null, minHomeHours: null });
+  // As the full interview does (and every refit after): the city seasons and hotel areas the pilot spoke of reach the
+  // city measures here, or the first drag reorders lines for reasons that have nothing to do with it.
+  const homed = withHomeFacts(applyCityRatings(model, {}), { hasCrashPad: null, minHomeHours: null });
   return {
-    ...(prior?.strategyReactions ? { strategyReactions: prior.strategyReactions } : {}),
+    ...carriedOver(prior),
     source: "quick",
     weights: { ...DEFAULT_WEIGHTS },
     deepRoundCompleted: false,
@@ -126,5 +129,18 @@ export function quickBriefProfile({
     interviewTranscript: [],
     pilotModel: homed,
     brainInterview: { exchanges, choices: [], reviewedModel: homed, packId: bidPack.id },
+  };
+}
+
+/**
+ * What a new interview, check-in or quick brief keeps from the profile it replaces: what belongs to the pilot rather
+ * than to one interview. Without it, each month's check-in erased the logbook (and the carry-in it gives next month)
+ * and the bid checklist.
+ */
+export function carriedOver(prior: PreferenceProfile | null | undefined): Pick<PreferenceProfile, "strategyReactions" | "logbook" | "bidChecklist"> {
+  return {
+    ...(prior?.strategyReactions ? { strategyReactions: prior.strategyReactions } : {}),
+    ...(prior?.logbook?.length ? { logbook: prior.logbook } : {}),
+    ...(prior?.bidChecklist ? { bidChecklist: prior.bidChecklist } : {}),
   };
 }

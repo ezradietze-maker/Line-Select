@@ -95,6 +95,8 @@ export function suggestionForViewer(s: TradeSuggestionRecord, viewerId: string, 
       bGives: trip(before[step.b]),
       done: i < s.stepsDone,
       yours,
+      youAreA: step.a === me.position,
+      youAreB: step.b === me.position,
       canMarkDone: yours && status === "accepted" && i === s.stepsDone,
       youHoldAfter: yours ? trip(after[me.position]) : null,
     };

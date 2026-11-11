@@ -98,8 +98,11 @@ export type TradeSuggestionStatus = "proposed" | "accepted" | "cancelled" | "don
 /** Why a pilot said no, if they said: what shapes what they're offered next. */
 export type TradeDeclineReason = "trip" | "notWorthIt" | "notNow" | "wrongHolding";
 
-/** A pilot said no; or someone's trips changed or their account went, so the trade no longer stands. */
-export type TradeCancelReason = "declined" | "changed";
+/**
+ * A pilot said no; or someone's trips changed or their account went, so the trade no longer stands; or not everyone
+ * answered in time (`ANSWER_DAYS`), and those who did are free for other trades.
+ */
+export type TradeCancelReason = "declined" | "changed" | "unanswered";
 
 /** One priority a trade moves, as a pilot would read it. */
 export interface TradeReason {
@@ -162,6 +165,9 @@ export interface TradeStepView {
   done: boolean;
   /** This pilot is one of the two. */
   yours: boolean;
+  /** Which of the two this pilot is: by position, as names are free text and two pilots can share one. */
+  youAreA: boolean;
+  youAreB: boolean;
   /** The next step to do, and this pilot can mark it done. */
   canMarkDone: boolean;
   /** What this pilot holds after this step, when they're in it. */

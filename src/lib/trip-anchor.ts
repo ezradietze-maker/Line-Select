@@ -18,6 +18,54 @@ import type { Trip, TripDutyPeriod } from "@/types/bidpack";
  * October) draws every flight an hour off its printed local time.
  */
 
+/**
+ * Hours from a trip's first report to its release: TAFB as printed. Except a run of the same day trip on consecutive
+ * days, which the parser keeps as one trip (`mergeConsecutiveOneDayTrips`): its TAFB is the days' sum, so report plus
+ * TAFB ended a three-day run part way through its first night, and its second and third days were free to View/Add,
+ * Open Time, vacation and carry-in. Such a run is known by its last day reporting after that sum would have it home.
+ */
+export function tripReleaseHours(trip: Pick<Trip, "tafbHours" | "schedule">): number {
+  const last = trip.schedule[trip.schedule.length - 1];
+  if (!last || trip.schedule.length < 2 || last.startMinutes / 60 < trip.tafbHours) return trip.tafbHours;
+  return last.startMinutes / 60 + dayTripHours(trip);
+}
+
+/** One day's report to release in such a run: its days are the same pairing, so each is the same length. */
+export function dayTripHours(trip: Pick<Trip, "tafbHours" | "schedule">): number {
+  return trip.tafbHours / Math.max(1, trip.schedule.length);
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Such a run as the day trips it is, for matching a trip someone pasted (open time, View/Add): a pilot picks up the
+ * one day, and kept whole it was scored as all three, with the first day's deadline. Any other trip is as it is.
+ */
+export function dayTripsOf(trip: Trip): Trip[] {
+  if (tripReleaseHours(trip) === trip.tafbHours) return [trip];
+  const n = trip.schedule.length;
+  return trip.schedule.map((duty, i) => {
+    const shift = duty.startMinutes;
+    const back = (m: number) => m - shift;
+    const legs = duty.legs.map((l) => ({ ...l, startMinutes: back(l.startMinutes), endMinutes: back(l.endMinutes) }));
+    return {
+      ...trip,
+      days: 1,
+      startDayIndex: trip.startDayIndex === null ? null : trip.startDayIndex + i,
+      creditHours: round2(trip.creditHours / n),
+      tafbHours: round2(trip.tafbHours / n),
+      landings: legs.filter((l) => !l.isDeadhead).length,
+      departures: legs.filter((l) => !l.isDeadhead).length,
+      deadheadLegs: legs.filter((l) => l.isDeadhead).length,
+      dutyPeriods: 1,
+      layoverCities: [],
+      layoverDetails: [],
+      zuluAnchor: trip.zuluAnchor ? new Date(Date.parse(trip.zuluAnchor) + shift * 60_000).toISOString() : trip.zuluAnchor,
+      schedule: [{ ...duty, startMinutes: 0, legs, layover: null }],
+    };
+  });
+}
+
 /** The trip's first report as a real instant (epoch ms), or null without a grid date, a known base zone or a printed report time. */
 export function tripReportUtc(bidPack: { bidPeriodStart: string | null; base: string }, trip: Pick<Trip, "startDayIndex" | "schedule">): number | null {
   if (!bidPack.bidPeriodStart || trip.startDayIndex === null || !trip.schedule[0]) return null;

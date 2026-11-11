@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { isSamplePack } from "@/lib/fake-trade-offers";
 import { useAppState } from "@/lib/app-state";
-import { feedLinks, fetchFeedStatus, forgetFeedSync, makeFeedLink, setFeedHomeDays, syncFeedChoice, turnOffFeed, useCalendarFeedSync, type FeedStatusView } from "@/lib/calendar-feed-client";
+import { feedChoiceFor, feedLinks, fetchFeedStatus, forgetFeedSync, makeFeedLink, setFeedHomeDays, syncFeedChoice, turnOffFeed, useCalendarFeedSync, type FeedStatusView } from "@/lib/calendar-feed-client";
 
 /**
  * A private subscription link for the pilot's calendar app: their bid dates and their awarded or #1 line, kept up to
@@ -56,8 +56,12 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
       setStatus(made);
       setCopied(false);
       forgetFeedSync();
-      if (bidPack) {
-        const result = await syncFeedChoice(bidPack, profile, topLineNumber);
+      // From a screen that doesn't know the #1 (the Logbook) and no award logged: sending now would put up a month with
+      // no line and call it done. My Rankings sends it, as the link is new.
+      if (bidPack && !feedChoiceFor(bidPack, profile, topLineNumber)) {
+        setNotice("Your link works. Your #1 line's trips appear on it after your next visit to My Rankings.");
+      } else if (bidPack) {
+        const result = await syncFeedChoice(bidPack, profile, topLineNumber, user?.id ?? null);
         if (result === "pack-not-saved") setNotice("Your link works, but your bid pack couldn't be saved to your account just now. Your trips will appear after your next visit to My Rankings.");
         if (result === "failed") setNotice("Your link works, but your line didn't reach it yet. It will on your next visit to My Rankings.");
         if (result === "ok") setStatus(await fetchFeedStatus());

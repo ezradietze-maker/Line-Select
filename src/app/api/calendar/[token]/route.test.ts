@@ -6,7 +6,7 @@ const feeds = vi.hoisted(() => ({ feedForToken: vi.fn() }));
 vi.mock("@/lib/server/calendar-feeds", async (original) => ({ ...(await original<typeof import("@/lib/server/calendar-feeds")>()), feedForToken: feeds.feedForToken }));
 vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
 const rate = vi.hoisted(() => ({ checkRateLimit: vi.fn() }));
-vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: rate.checkRateLimit, rateLimitedResponse: () => new Response(null, { status: 429 }) }));
+vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: rate.checkRateLimit, clientIp: () => "203.0.113.9", rateLimitedResponse: () => new Response(null, { status: 429 }) }));
 const paid = vi.hoisted(() => ({ answerTravelNeeds: vi.fn() }));
 vi.mock("@/lib/server/flight-schedules", () => ({ answerTravelNeeds: paid.answerTravelNeeds, flightDataConfigured: () => true }));
 
@@ -67,7 +67,13 @@ describe("GET /api/calendar/[token]", () => {
     rate.checkRateLimit.mockResolvedValue({ ok: false });
     expect((await call(TOKEN)).status).toBe(429);
     expect(feeds.feedForToken).not.toHaveBeenCalled();
-    expect(rate.checkRateLimit.mock.calls[0][1]).not.toContain(TOKEN);
+    expect(rate.checkRateLimit.mock.calls.every((c) => !String(c[1]).includes(TOKEN))).toBe(true);
+  });
+
+  it("limits each address too, as every guess at a link is a new link", async () => {
+    rate.checkRateLimit.mockImplementation(async (bucket: string) => ({ ok: bucket !== "calendar-feed:address" }));
+    expect((await call("b".repeat(43))).status).toBe(429);
+    expect(feeds.feedForToken).not.toHaveBeenCalled();
   });
 
   it("answers 304 when the calendar already has this version", async () => {

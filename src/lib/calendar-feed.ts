@@ -4,7 +4,7 @@ import { bidTimeline, type TimelineEvent } from "@/lib/bid-timeline";
 import { backupsOf, type TravelAnswer } from "@/lib/flights/itineraries";
 import { flightsForTrip, type FlightAnswers } from "@/lib/flights/trip-travel";
 import { escapeIcsText, foldLine, icsUtc } from "@/lib/ics-export";
-import { tripReportUtc } from "@/lib/trip-anchor";
+import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Line, Trip, TripDutyPeriod } from "@/types/bidpack";
 
 /**
@@ -108,7 +108,7 @@ function feedTrip(pack: Pick<BidPack, "month" | "base" | "bidPeriodStart">, line
   if (start === null) return null;
   const last = trip.schedule[trip.schedule.length - 1]?.legs.at(-1);
   // TAFB as printed runs report to release; the last landing stands in on the rare trip without one.
-  const end = trip.tafbHours > 0 ? start + trip.tafbHours * 3_600_000 : last ? start + last.endMinutes * 60_000 : start + 3_600_000;
+  const end = trip.tafbHours > 0 ? start + tripReleaseHours(trip) * 3_600_000 : last ? start + last.endMinutes * 60_000 : start + 3_600_000;
   const zone = timezoneForAirport(pack.base) ?? "UTC";
   const local = (ms: number) => DateTime.fromMillis(ms, { zone }).toFormat("ccc LLL d HH:mm");
   const name = trip.pairingNumber ? `Trip ${trip.pairingNumber}` : `Line ${line.lineNumber} trip`;

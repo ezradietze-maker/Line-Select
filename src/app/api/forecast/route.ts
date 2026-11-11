@@ -18,6 +18,7 @@ const MAX_PILOTS = 3000;
 /** Shared rankings ahead of the asked place before any are used — fewer, and one could be picked out (see the POST). */
 const MIN_SHARERS_AHEAD = 3;
 const SERVER_SIMULATIONS = 400;
+const DEFAULT_DROPOUT = 0.08;
 
 interface Body {
   packKey?: unknown;
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
   if (!Number.isInteger(seniorityNumber) || (seniorityNumber as number) < 1 || (seniorityNumber as number) > 999999) return NextResponse.json({ error: "Enter a valid seniority number." }, { status: 400 });
   if (!Array.isArray(ranking) || ranking.length === 0 || ranking.length > L || !ranking.every((i) => Number.isInteger(i) && i >= 0 && i < L)) return NextResponse.json({ error: "Malformed ranking." }, { status: 400 });
 
-  const list = (seniorityList as number[][]).map(([bidNumber, seniority, pay]) => ({ bidNumber, seniority, ...(pay === 1 ? { pay: true } : {}) }));
+  const sentList = (seniorityList as number[][]).map(([bidNumber, seniority, pay]) => ({ bidNumber, seniority, ...(pay === 1 ? { pay: true } : {}) }));
   const lineFeatures: LineFeatures = { lineIds, lineNumbers, values: Float64Array.from(features as number[]), lineCount: L };
   const seniority = seniorityNumber as number;
 
@@ -76,8 +77,16 @@ export async function POST(request: Request) {
   // anyone with fewer than a few sharers ahead of the place they ask about, could put one known pilot alone ahead of
   // them and read that pilot's first choice off which line drops to 0% open. Only signed-in pilots, and only when
   // several sharers sit ahead, so no one ranking can be picked out.
-  const askedAt = resolveBidPosition(list, seniority).bidNumber;
-  const known = user && sharing.known.filter((k) => k.bidNumber < askedAt).length >= MIN_SHARERS_AHEAD ? sharing.known : [];
+  // Counted only among those the caller's list has bidding: marking everyone else PAY (or leaving them off) left one
+  // sharer the only one bidding ahead, however many were counted.
+  const askedAt = resolveBidPosition(sentList, seniority).bidNumber;
+  const bidding = new Set(sentList.map((e) => e.bidNumber));
+  const known = user && sharing.known.filter((k) => k.bidNumber < askedAt && bidding.has(k.bidNumber)).length >= MIN_SHARERS_AHEAD ? sharing.known : [];
+  // With shared rankings in it, who bids isn't the caller's to choose: no one is left out as PAY, and pilots drop out
+  // at no less than the usual rate, so a list built round one sharer can't single out their first choice.
+  const list = known.length ? sentList.map(({ bidNumber, seniority: s }) => ({ bidNumber, seniority: s })) : sentList;
+  const sentDropout = isFiniteNumber(dropoutRate) ? Math.min(0.5, Math.max(0, dropoutRate)) : DEFAULT_DROPOUT;
+  const dropout = known.length ? Math.max(DEFAULT_DROPOUT, sentDropout) : sentDropout;
 
   // What the fleet has learned: starting beliefs from past months at this
   // seat, and a correction from how past forecasts compared with real awards.
@@ -95,7 +104,7 @@ export async function POST(request: Request) {
     features: lineFeatures,
     seniorityList: list,
     regularLines: isFiniteNumber(regularLines) ? regularLines : L,
-    dropoutRate: isFiniteNumber(dropoutRate) ? Math.min(0.5, Math.max(0, dropoutRate)) : 0.08,
+    dropoutRate: dropout,
     seniorityNumber: seniority,
     myRanking: ranking as number[],
     known,

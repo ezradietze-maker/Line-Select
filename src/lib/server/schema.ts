@@ -118,6 +118,11 @@ export const tradeHoldings = pgTable(
     lineNumber: text("line_number"),
     trips: jsonb("trips").notNull().$type<HeldTrip[]>(),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * The pack these trips were confirmed on (`tradePackFingerprint`): a group is matched on one pack, and only the
+     * holdings confirmed on it. Null for one confirmed before this was kept, until it's filled from the pilot's account.
+     */
+    packFingerprint: text("pack_fingerprint"),
   },
   (t) => [uniqueIndex("trade_holdings_user_pack_idx").on(t.userId, t.packId), index("trade_holdings_group_idx").on(t.base, t.aircraft, t.seat, t.month)]
 );
@@ -263,6 +268,8 @@ export const bidPacks = pgTable("bid_packs", {
     .references(() => users.id, { onDelete: "cascade" }),
   packId: text("pack_id").notNull(),
   data: bytea("data").notNull(),
+  /** What trades are worked out from in it (`tradePackFingerprint`). Null for a pack saved before this was kept, until it's worked out. */
+  fingerprint: text("fingerprint"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

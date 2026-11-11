@@ -195,7 +195,9 @@ export function lessonsFromMove(
   moved: string[],
   numberOf: (lineId: string) => string | undefined,
   moveId: string,
-  packId?: string
+  packId?: string,
+  /** The two lines traded places (a drag onto a line in another tier): the one that went up passed the other. */
+  swapped = false
 ): TierLesson[] {
   const was = new Map(before.map((id, i) => [id, i]));
   const movedSet = new Set(moved);
@@ -207,8 +209,9 @@ export function lessonsFromMove(
     if (from === undefined || to === -1 || from === to || !number) return;
     const up = to < from;
     // The lines between where it was and where it landed, nearest its new place first. The others moved in the same
-    // gesture were put together, and say nothing about each other.
-    const passed = (up ? after.slice(to + 1) : after.slice(0, to).reverse()).filter((id) => !movedSet.has(id) && (up ? was.get(id)! < from : was.get(id)! > from));
+    // gesture were put together, and say nothing about each other, except in a swap, where the pair is the point: the
+    // line going up is taught over the other (once, not again from the one going down).
+    const passed = (up ? after.slice(to + 1) : after.slice(0, to).reverse()).filter((id) => (!movedSet.has(id) || (swapped && up)) && (up ? was.get(id)! < from : was.get(id)! > from));
     const pairs = evenly(passed, MAX_PAIRS_PER_LINE).flatMap((id) => {
       const other = numberOf(id);
       return other ? [up ? { favored: number, overtaken: other } : { favored: other, overtaken: number }] : [];

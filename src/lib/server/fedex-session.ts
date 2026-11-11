@@ -19,6 +19,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { getJson, setJson } from "@/lib/server/kv";
 import type { AuditEntry, FedexConnection } from "@/lib/fedex-connect/types";
 import { emptyConnection } from "@/lib/fedex-connect/types";
+import { CONSENT_VERSION } from "@/lib/fedex-connect/consent";
 
 const KEY_PREFIX = "fedex-conn:";
 /** How long a connection record lingers in the store with no activity. Session material carries its own, shorter expiry. */
@@ -65,15 +66,34 @@ function keyFor(userId: string): string {
 
 /** The pilot's connection, or a blank one. Expired session material is dropped here, so a read never returns a dead session. */
 export async function getConnection(userId: string): Promise<FedexConnection> {
+  return (await readConnection(userId)).conn;
+}
+
+/**
+ * The connection, and whether reading it changed it — a session that has since expired, or consent given to wording
+ * that has since changed (`CONSENT_VERSION`), which has to be accepted again before anything goes on. Each change goes
+ * in the audit.
+ */
+export async function readConnection(userId: string): Promise<{ conn: FedexConnection; changed: boolean }> {
   const stored = await getJson<FedexConnection>(keyFor(userId));
-  if (!stored) return emptyConnection(userId);
-  const conn: FedexConnection = { ...emptyConnection(userId), ...stored, userId };
+  if (!stored) return { conn: emptyConnection(userId), changed: false };
+  let conn: FedexConnection = { ...emptyConnection(userId), ...stored, userId };
+  let changed = false;
   if (conn.sessionExpiresAt !== null && Date.now() >= conn.sessionExpiresAt) {
     conn.encryptedSession = null;
     conn.sessionExpiresAt = null;
     if (conn.status === "connected") conn.status = "expired";
+    conn = withAudit(conn, { at: Date.now(), action: "expired", detail: "Your FedEx session expired, so it was deleted." });
+    changed = true;
   }
-  return conn;
+  if (conn.consentVersion !== null && conn.consentVersion !== CONSENT_VERSION) {
+    conn = withAudit(
+      { ...conn, status: "none", encryptedSession: null, sessionExpiresAt: null, consentVersion: null, consentAt: null },
+      { at: Date.now(), action: "consent-changed", detail: "What the connection does was reworded. Read it and accept again to carry on." },
+    );
+    changed = true;
+  }
+  return { conn, changed };
 }
 
 export async function saveConnection(conn: FedexConnection): Promise<void> {
@@ -93,7 +113,8 @@ export function withAudit(conn: FedexConnection, entry: AuditEntry): FedexConnec
 export async function disconnect(userId: string): Promise<FedexConnection> {
   const conn = await getConnection(userId);
   const cleared = withAudit(
-    { ...conn, status: "none", method: "undecided", encryptedSession: null, sessionExpiresAt: null, quota: { day: null, used: 0 } },
+    // Consent goes with it: disconnecting is how a pilot withdraws it.
+    { ...conn, status: "none", method: "undecided", encryptedSession: null, sessionExpiresAt: null, quota: { day: null, used: 0 }, consentVersion: null, consentAt: null },
     { at: Date.now(), action: "disconnect", detail: "You disconnected FedEx. Anything held for the connection was deleted." },
   );
   await saveConnection(cleared);

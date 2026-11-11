@@ -81,6 +81,14 @@ describe("quickBriefProfile", () => {
     expect(p.cityRatings).toEqual({});
   });
 
+  it("keeps the logbook and bid checklist: they're the pilot's months, not the interview's", () => {
+    const logbook = [{ id: "oct", bidPackId: "oct-pack", month: "OCT26", outcome: "line", lineNumber: "2001" }];
+    const prior = { logbook, bidChecklist: { "oct-pack": { enteredAt: "2026-09-20T00:00:00Z" } } } as never;
+    const p = quickBriefProfile({ bidPack: { id: "pack" }, model, exchanges, isCommuter: null, commuteFrom: "", seniorityNumber: null, prior });
+    expect(p.logbook).toEqual(logbook);
+    expect(p.bidChecklist).toEqual({ "oct-pack": { enteredAt: "2026-09-20T00:00:00Z" } });
+  });
+
   it("the drag learner works on it: a line dragged over another moves the weights and is kept", () => {
     const criterion = (id: string, metric: string, kind: "more" | "less") => ({ id, metric, shape: { kind }, tier: "major", weight: 0.5, confidence: 0.5, label: id, evidence: [], status: "settled" });
     const real = { ...model, criteria: [criterion("off", "daysOff", "more"), criterion("credit", "creditHours", "more")] } as unknown as PilotModel;

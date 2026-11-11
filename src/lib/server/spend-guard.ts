@@ -123,6 +123,49 @@ export async function recordSpend(spender: Spender, usd: number, { siteOnly = fa
   }
 }
 
+/** The counters a call is charged to, each with its ceiling in millionths of a dollar. */
+function countersFor(spender: Spender, feature: SpendFeature | undefined, day: string): { key: string; cap: number }[] {
+  const caps = spendCaps();
+  const limits = feature ? caps[feature] : caps;
+  return [
+    { key: siteKey(day), cap: caps.site * MICRO },
+    { key: whoKey(day, chargedTo(spender.key, feature)), cap: (spender.signedIn ? limits.pilot : limits.guest) * MICRO },
+    ...(spender.addressKey ? [{ key: whoKey(day, chargedTo(spender.addressKey, feature)), cap: limits.guestAddress * MICRO }] : []),
+  ];
+}
+
+/**
+ * Takes up to `usd` of what's left, before a call that buys many things at once (flight boards): what two such calls
+ * at the same moment take can't add up past a ceiling, as each spending all that `checkSpend` said was left could.
+ * Returns what was taken; `releaseSpend` gives back what the call didn't use. Nothing is taken if it can't be counted.
+ */
+export async function reserveSpend(spender: Spender, usd: number, { feature, now = new Date() }: Omit<SpendOptions, "siteOnly"> = {}): Promise<number> {
+  if (!(usd > 0)) return 0;
+  const amount = Math.floor(usd * MICRO);
+  const counters = countersFor(spender, feature, today(now));
+  try {
+    const totals = await Promise.all(counters.map((c) => addToCounter(c.key, amount, DAY_SECONDS)));
+    const over = Math.max(0, ...totals.map((t, i) => t - counters[i].cap));
+    const kept = Math.max(0, amount - over);
+    if (kept < amount) await Promise.all(counters.map((c) => addToCounter(c.key, kept - amount, DAY_SECONDS)));
+    return kept / MICRO;
+  } catch (e) {
+    console.error("[spend] not reserved", e);
+    return 0;
+  }
+}
+
+/** Gives back the part of a `reserveSpend` the call didn't spend. Never throws. */
+export async function releaseSpend(spender: Spender, usd: number, { feature, now = new Date() }: Omit<SpendOptions, "siteOnly"> = {}): Promise<void> {
+  const amount = Math.floor(usd * MICRO);
+  if (!(amount > 0)) return;
+  try {
+    await Promise.all(countersFor(spender, feature, today(now)).map((c) => addToCounter(c.key, -amount, DAY_SECONDS)));
+  } catch (e) {
+    console.error("[spend] not released", e);
+  }
+}
+
 /** One email a day, the first time the site's ceiling is reached, to `ALERT_EMAIL` (when email is set up). */
 async function alertSiteCapReached(day: string, spentUsd: number): Promise<void> {
   if ((await incrementCounter(`line-select:spend:alerted:${day}`, DAY_SECONDS)) !== 1) return;

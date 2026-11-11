@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   active: vi.fn<() => Promise<{ sampleSize: number } | null>>(async () => null),
 }));
 vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: mocks.user }));
-vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: async () => ({ ok: true }), rateLimitedResponse: () => new Response(null, { status: 429 }) }));
+vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: async () => ({ ok: true }), checkRequestLimit: async () => ({ ok: true }), rateLimitedResponse: () => new Response(null, { status: 429 }) }));
 vi.mock("@/lib/server/db", () => ({ listAwardRowsForSeat: mocks.rows, listAwardRowsForPack: mocks.packRows, createAwardHistoryRecord: mocks.create, deleteAwardShares: mocks.remove }));
 vi.mock("@/lib/server/learning-store", () => ({ awardedChoiceFromPrediction: async () => null, loadActiveModel: mocks.active }));
 vi.mock("@/lib/server/learning-runner", () => ({ maybeLearn: async () => {} }));

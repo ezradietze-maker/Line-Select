@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
 import { db } from "@/lib/server/postgres";
 import {
@@ -459,16 +459,33 @@ export async function savePreferenceProfile(userId: string, profile: PreferenceP
 }
 
 /** A pilot's latest bid pack, stored gzipped (see `bidPacks` in schema.ts). */
-export async function getBidPackRecord(userId: string): Promise<{ packId: string; data: Buffer; updatedAt: string } | null> {
+export async function getBidPackRecord(userId: string): Promise<{ packId: string; data: Buffer; updatedAt: string; fingerprint: string | null } | null> {
   if (!isUuid(userId)) return null;
   const [row] = await db.select().from(bidPacks).where(eq(bidPacks.userId, userId)).limit(1);
-  return row ? { packId: row.packId, data: row.data, updatedAt: row.updatedAt.toISOString() } : null;
+  return row ? { packId: row.packId, data: row.data, updatedAt: row.updatedAt.toISOString(), fingerprint: row.fingerprint ?? null } : null;
 }
 
-export async function saveBidPackRecord(userId: string, packId: string, data: Buffer): Promise<void> {
+export async function saveBidPackRecord(userId: string, packId: string, data: Buffer, fingerprint: string | null = null): Promise<void> {
   if (!isUuid(userId)) return;
   const now = new Date();
-  await db.insert(bidPacks).values({ userId, packId, data, updatedAt: now }).onConflictDoUpdate({ target: bidPacks.userId, set: { packId, data, updatedAt: now } });
+  await db
+    .insert(bidPacks)
+    .values({ userId, packId, data, fingerprint, updatedAt: now })
+    .onConflictDoUpdate({ target: bidPacks.userId, set: { packId, data, fingerprint, updatedAt: now } });
+}
+
+/** Keeps a fingerprint worked out for a pack saved before they were kept, if the account still holds that pack. */
+export async function setBidPackFingerprint(userId: string, packId: string, fingerprint: string): Promise<void> {
+  if (!isUuid(userId)) return;
+  await db.update(bidPacks).set({ fingerprint }).where(and(eq(bidPacks.userId, userId), eq(bidPacks.packId, packId), isNull(bidPacks.fingerprint)));
+}
+
+/** A pack with this fingerprint from any of these pilots' accounts: the one a group is matched on. */
+export async function bidPackRecordWithFingerprint(userIds: string[], fingerprint: string): Promise<{ userId: string; packId: string; data: Buffer } | null> {
+  const ids = userIds.filter(isUuid);
+  if (!ids.length) return null;
+  const [row] = await db.select().from(bidPacks).where(and(inArray(bidPacks.userId, ids), eq(bidPacks.fingerprint, fingerprint))).limit(1);
+  return row ? { userId: row.userId, packId: row.packId, data: row.data } : null;
 }
 
 export async function deleteBidPackRecord(userId: string): Promise<void> {
@@ -487,16 +504,26 @@ export async function getTradeHolding(userId: string, packId: string): Promise<T
   return row ? holdingOf(row) : null;
 }
 
-export async function saveTradeHolding(userId: string, holding: Omit<TradeHolding, "confirmedAt">): Promise<TradeHolding | null> {
+/** What a pilot holds, confirmed on the pack whose fingerprint is given (null when their account doesn't have it yet). */
+export async function saveTradeHolding(userId: string, holding: Omit<TradeHolding, "confirmedAt">, packFingerprint: string | null = null): Promise<TradeHolding | null> {
   if (!isUuid(userId)) return null;
   const { packId, bidPackMeta, lineNumber, trips } = holding;
   const now = new Date();
   const [row] = await db
     .insert(tradeHoldings)
-    .values({ userId, packId, ...bidPackMeta, lineNumber, trips, confirmedAt: now })
-    .onConflictDoUpdate({ target: [tradeHoldings.userId, tradeHoldings.packId], set: { ...bidPackMeta, lineNumber, trips, confirmedAt: now } })
+    .values({ userId, packId, ...bidPackMeta, lineNumber, trips, packFingerprint, confirmedAt: now })
+    .onConflictDoUpdate({ target: [tradeHoldings.userId, tradeHoldings.packId], set: { ...bidPackMeta, lineNumber, trips, packFingerprint, confirmedAt: now } })
     .returning();
   return holdingOf(row);
+}
+
+/** Fills in the pack a holding confirmed before fingerprints were kept was confirmed on. */
+export async function setHoldingFingerprint(userId: string, packId: string, packFingerprint: string): Promise<void> {
+  if (!isUuid(userId)) return;
+  await db
+    .update(tradeHoldings)
+    .set({ packFingerprint })
+    .where(and(eq(tradeHoldings.userId, userId), eq(tradeHoldings.packId, packId), isNull(tradeHoldings.packFingerprint)));
 }
 
 export async function deleteTradeHolding(userId: string, packId: string): Promise<void> {

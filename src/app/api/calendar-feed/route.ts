@@ -4,12 +4,16 @@ import { getCurrentServerUser } from "@/lib/server/auth";
 import { feedStatus, revokeFeed, setFeedOptions, startFeed, syncFeed, type FeedChoice } from "@/lib/server/calendar-feeds";
 import { isJsonObject } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
-async function signedIn() {
+/** A change comes from the site's own pages only: another site can't make, change or turn off a pilot's link. */
+async function signedIn(change?: Request) {
+  const refused = change ? crossSiteRefusal(change) : null;
+  if (refused) return { error: refused };
   const user = await getCurrentServerUser();
   if (!user) return { error: NextResponse.json({ error: "Sign in to use a calendar link." }, { status: 401 }) };
   if (!(await checkRateLimit("calendar-feed-manage", user.id, 120, 60 * 60)).ok) return { error: rateLimitedResponse() };
@@ -39,7 +43,7 @@ export async function GET() {
 
 /** Makes a link, replacing any old one. The one time the link is ever sent. */
 export async function POST(request: Request) {
-  const { user, error } = await signedIn();
+  const { user, error } = await signedIn(request);
   if (error) return error;
   const body = await bodyOf(request);
   const options = typeof body?.homeDays === "boolean" ? { homeDays: body.homeDays } : undefined;
@@ -52,7 +56,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const { user, error } = await signedIn();
+  const { user, error } = await signedIn(request);
   if (error) return error;
   const body = await bodyOf(request);
   if (typeof body?.homeDays !== "boolean") return NextResponse.json({ error: "Invalid option." }, { status: 400 });
@@ -75,7 +79,7 @@ function readChoice(body: Record<string, unknown> | null): FeedChoice | null {
 
 /** The pilot's choice has changed in the browser: which line this pack's month shows. Quietly does nothing with no live link. */
 export async function PUT(request: Request) {
-  const { user, error } = await signedIn();
+  const { user, error } = await signedIn(request);
   if (error) return error;
   const choice = readChoice(await bodyOf(request));
   if (!choice) return NextResponse.json({ error: "Invalid choice." }, { status: 400 });
@@ -87,8 +91,8 @@ export async function PUT(request: Request) {
   }
 }
 
-export async function DELETE() {
-  const { user, error } = await signedIn();
+export async function DELETE(request: Request) {
+  const { user, error } = await signedIn(request);
   if (error) return error;
   try {
     await revokeFeed(user.id);

@@ -69,7 +69,7 @@ export async function fetchWaitingSuggestions(packId: string): Promise<number | 
   }
 }
 
-export type FindOutcome = { status: "ran"; found: number; pilots: number } | { status: "busy" } | { status: "not-ready" } | { status: "closed" };
+export type FindOutcome = { status: "ran"; found: number; pilots: number } | { status: "busy" } | { status: "not-ready" } | { status: "closed" } | { status: "pack-differs" };
 
 export async function findTradesNow(packId: string): Promise<FindOutcome | null> {
   try {

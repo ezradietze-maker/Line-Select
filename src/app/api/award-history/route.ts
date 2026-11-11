@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
-import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRateLimit, checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { summarizeBands } from "@/lib/server/award-aggregate";
 import { createAwardHistoryRecord, deleteAwardShares, listAwardRowsForSeat } from "@/lib/server/db";
 import { forecastPackKey } from "@/lib/forecast/forecast";
@@ -28,6 +28,7 @@ function isIntOrNull(value: unknown, max: number): value is number | null {
  */
 
 export async function GET(request: Request) {
+  if (!(await checkRequestLimit("award-history-read", request, 120, 60 * 60)).ok) return rateLimitedResponse();
   const { searchParams } = new URL(request.url);
   const base = searchParams.get("base");
   const aircraft = searchParams.get("aircraft");

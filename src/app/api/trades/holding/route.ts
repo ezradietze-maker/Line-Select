@@ -4,6 +4,7 @@ import { getCurrentServerUser } from "@/lib/server/auth";
 import { deleteTradeHolding, getTradeHolding, getTradeSettings, saveTradeHolding } from "@/lib/server/db";
 import { readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { accountPackFingerprint } from "@/lib/server/trade-pack";
 import { lapseSuggestionsFor } from "@/lib/server/trade-suggestions";
 import { readHolding } from "@/lib/trades/holding";
 
@@ -35,7 +36,8 @@ export async function PUT(request: Request) {
   const holding = readHolding(await readJsonBody(request, MAX_BODY));
   if (!holding) return NextResponse.json({ error: "That isn't a list of trips from your bid pack." }, { status: 400 });
   try {
-    const saved = await saveTradeHolding(user.id, holding);
+    // Which copy of the pack it was confirmed on, so it's only matched with others confirmed on the same one.
+    const saved = await saveTradeHolding(user.id, holding, await accountPackFingerprint(user.id, holding.packId));
     // Every suggestion on this pack was worked out from what they held before.
     await lapseSuggestionsFor(user.id, holding.packId);
     return NextResponse.json({ holding: saved });

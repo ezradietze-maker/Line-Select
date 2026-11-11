@@ -30,9 +30,25 @@ const DATE_FORMS: { re: RegExp; read: (m: RegExpMatchArray) => ReadDate }[] = [
   { re: /(?<![\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d/])/g, read: (m) => ({ month: Number(m[1]), day: Number(m[2]), year: fullYear(m[3]) }) },
 ];
 
-/** The dates in a line, in the order they're written. The first is the trip's; a second is its release, and goes unused. */
-function datesIn(line: string): { index: number; text: string; date: ReadDate }[] {
-  return DATE_FORMS.flatMap(({ re, read }) => [...line.matchAll(re)].map((m) => ({ index: m.index, text: m[0], date: read(m) }))).sort((a, b) => a.index - b.index);
+/**
+ * The dates in a line, in the order they're written. The first is the trip's; a second is its release, and goes unused.
+ * Where two ways of reading overlap ("12 Oct 15" is "12 Oct" or "Oct 15"), the first one written wins and the other
+ * goes. A four-digit "year" more than a year from now is a report time ("14OCT 2030"), left in the row.
+ */
+function datesIn(line: string, now = new Date()): { index: number; text: string; date: ReadDate }[] {
+  const thisYear = now.getFullYear();
+  const all = DATE_FORMS.flatMap(({ re, read }) =>
+    [...line.matchAll(re)].map((m) => {
+      const date = read(m);
+      if (date.year !== undefined && Math.abs(date.year - thisYear) > 1 && /20\d{2}$/.test(m[0])) {
+        return { index: m.index, text: m[0].replace(/[ ,-]*20\d{2}$/, ""), date: { ...date, year: undefined } };
+      }
+      return { index: m.index, text: m[0], date };
+    })
+  ).sort((a, b) => a.index - b.index || b.text.length - a.text.length);
+  const kept: typeof all = [];
+  for (const d of all) if (!kept.some((k) => d.index < k.index + k.text.length && k.index < d.index + d.text.length)) kept.push(d);
+  return kept;
 }
 
 const DURATION = String.raw`\d{1,3}[:.]\d{1,2}|\d{1,4}`;
@@ -79,7 +95,9 @@ const FROZEN = /\b(?:FROZEN|FRZN|CRS ONLY)\b/i;
 const timeLike = (n: string) => n.length === 4 && Number(n.slice(0, 2)) < 24 && Number(n.slice(2)) < 60;
 
 function readRow(raw: string, line: string): OpenTimeRow | UnreadRow {
-  const dates = datesIn(line);
+  // A labelled trip number isn't a date's day: "Trip 12 Oct 15" is trip 12 on Oct 15, not trip 15 on Oct 12.
+  const labelled = line.match(TRIP);
+  const dates = datesIn(labelled ? line.replace(labelled[0], " ".repeat(labelled[0].length)) : line);
   const hasDigit = /\d/.test(line);
   if (STANDBY.test(line)) return { raw, why: "Looks like a standby. Only trips are scored so far." };
   if (!dates.length) return { raw, why: hasDigit ? "No date we could read." : "No trip number or date in it." };
