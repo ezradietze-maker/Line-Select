@@ -25,6 +25,7 @@ import { tripKey } from "@/lib/view-add";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
+import { dayTripsOf } from "@/lib/trip-anchor";
 
 const FIELD = "rounded-md border border-hairline bg-canvas/60 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none";
 /** Each up to four questions to the flight server: enough to decide on, and a list of hundreds shouldn't run up the boards. */
@@ -330,7 +331,7 @@ function OpenTimeBuilder({ bidPack, seniority, profile, userId }: { bidPack: Bid
                 Your trip
                 <select className={`${FIELD} mt-1 block w-full`} value={giveUpKey} onChange={(e) => setGiveUpKey(e.target.value)}>
                   <option value="">None: just pick it up</option>
-                  {line.trips.map((t) => (
+                  {line.trips.flatMap(dayTripsOf).map((t) => (
                     <option key={tripKey(t)} value={tripKey(t)}>
                       {tripLabel(t)}, {t.creditHours.toFixed(1)} CH
                     </option>

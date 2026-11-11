@@ -4,7 +4,7 @@ import { bidTimeline, type TimelineEvent } from "@/lib/bid-timeline";
 import { backupsOf, type TravelAnswer } from "@/lib/flights/itineraries";
 import { flightsForTrip, type FlightAnswers } from "@/lib/flights/trip-travel";
 import { escapeIcsText, foldLine, icsUtc } from "@/lib/ics-export";
-import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Line, Trip, TripDutyPeriod } from "@/types/bidpack";
 
 /**
@@ -173,7 +173,8 @@ export function buildFeedMonth(pack: BidPack, input: FeedMonthInput): FeedMonth 
     builtAt: input.now ?? Date.now(),
     lineNumber: line?.lineNumber ?? null,
     lineSource: source,
-    trips: line && source ? line.trips.flatMap((t) => feedTrip(pack, line, source, t, input.flights) ?? []) : [],
+    // A run of day trips as its days: one event spanning the nights at home between them read as days away.
+    trips: line && source ? line.trips.flatMap(dayTripsOf).flatMap((t) => feedTrip(pack, line, source, t, input.flights) ?? []) : [],
     homeDays: line ? homeDaysOf(pack, line) : [],
     timeline: bidTimeline(pack, input.pilotClose ?? null),
   };

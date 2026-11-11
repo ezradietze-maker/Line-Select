@@ -5,7 +5,7 @@ import { lineCarryOver, splitTrip } from "@/lib/bid-month";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { tripDutyPeriods } from "@/lib/duty-periods";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
-import { runDaysOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { dayTripsOf, runDaysOf, runOfDay, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { VipsBidAnswers } from "@/lib/vips-bid";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
@@ -279,6 +279,27 @@ function carryBlock(item: CarryInItem, zone: string): Block | null {
     reserve: { rpEnd: last.end, dayEnd: lastDay.plus({ days: 1, minutes: baseDayStartMinutes(zone) }).toMillis() },
     baseSpans: [{ start: first.start, end: last.end }],
   };
+}
+
+/**
+ * The spans the caller gave, with a span for each day of a run worked out from its run's, and the reverse: callers
+ * measure either the line's trips or their days.
+ */
+function withDaySpans(trips: Trip[], given: Map<Trip, Span>): Map<Trip, Span> {
+  const spans = new Map(given);
+  for (const t of trips) {
+    if (spans.has(t)) continue;
+    const of = runOfDay(t);
+    const run = of ? spans.get(of.run) : undefined;
+    if (of && run) {
+      const start = run.start + of.day.startMinutes * MINUTE;
+      spans.set(t, { start, end: start + of.day.hours * HOUR });
+      continue;
+    }
+    const days = dayTripsOf(t).map((d) => spans.get(d));
+    if (days.length > 1 && days.every((d) => d)) spans.set(t, { start: days[0]!.start, end: days[days.length - 1]!.end });
+  }
+  return spans;
 }
 
 /** A trip's duties as real instants. Its layovers are what's between them. */
@@ -632,8 +653,12 @@ function freedDays(dropped: Trip[], kept: Trip[], pack: BidPack, spanOf: Map<Tri
  * trips' share of this month. Credit too, unless `creditPaid`: a trip a vacation removes is still paid, from the vacation
  * bank (CBA 2026 7.G.1). `alsoOff` adds days off beyond the trips' own: the vacation days themselves.
  */
-export function lineAsFlown(line: Line, pack: BidPack, dropped: Trip[], spanOf: Map<Trip, Span>, carriedDays: Set<number>, opts: { creditPaid?: boolean; alsoOff?: Set<number> } = {}): Line {
+export function lineAsFlown(asGiven: Line, pack: BidPack, dropped: Trip[], givenSpans: Map<Trip, Span>, carriedDays: Set<number>, opts: { creditPaid?: boolean; alsoOff?: Set<number> } = {}): Line {
   const gone = new Set(dropped);
+  // One day of a run of day trips dropped (a vacation or a carry-in conflict hits only that day): the run is its days
+  // from here, and the rest of them stay on the line. A run with none of its days dropped stays as it was.
+  const line = { ...asGiven, trips: asGiven.trips.flatMap((t) => (dayTripsOf(t).some((d) => gone.has(d) && d !== t) ? dayTripsOf(t) : [t])) };
+  const spanOf = withDaySpans(line.trips, givenSpans);
   const kept = line.trips.filter((t) => !gone.has(t));
   const carryOver = lineCarryOver(line, pack);
   const freed = freedDays(dropped, kept, pack, spanOf, carriedDays);
@@ -753,9 +778,12 @@ export function flyLine(line: Line, pack: BidPack, carryIn: CarryInItem[], elect
   if (!carryBlocks.length) return { line, unchecked: false, ...blank, reason: null };
   if (line.estimated || placed.some((p) => p.report === null)) return { line, unchecked: true, ...blank, reason: null };
 
-  const spanOf = new Map<Trip, Span>();
-  for (const p of placed) spanOf.set(p.trip, { start: p.report!, end: p.report! + tripReleaseHours(p.trip) * HOUR });
-  const ordered = [...placed].sort((a, b) => a.report! - b.report!);
+  // Day by day for a run of day trips: CBA 2026 25.F.5 drops "the trip(s)" in conflict, and each day is its own trip.
+  const days = line.trips.flatMap(dayTripsOf).map((t) => ({ trip: t, report: tripReportUtc(pack, t) }));
+  const daySpans = new Map<Trip, Span>();
+  for (const p of days) if (p.report !== null) daySpans.set(p.trip, { start: p.report, end: p.report + tripReleaseHours(p.trip) * HOUR });
+  const spanOf = withDaySpans(line.trips, daySpans);
+  const ordered = days.filter((p) => p.report !== null).sort((a, b) => a.report! - b.report!);
 
   const dropped: DroppedTrip[] = [];
   const kept: PhaseInFinding[] = [];

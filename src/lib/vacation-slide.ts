@@ -5,7 +5,7 @@ import { longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
 import { baseDayStartMinutes, dayIndices, dutyIsInternational, flownUnderInternationalRules, lineAsFlown, touchesOutside48, zoneOf, type Span } from "@/lib/phase-in";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
-import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -154,7 +154,9 @@ function endsInternational(trip: Trip): boolean {
 export function vacationRemovals(line: Line, pack: BidPack, vacation: Span, opts: { slid: boolean; waiveFrontBuffer?: boolean }): RemovedTrip[] {
   const waivable = frontBufferWaivable(pack.month);
   const out: RemovedTrip[] = [];
-  for (const trip of line.trips) {
+  // Day by day for a run of day trips: 7.G.1 removes "trip(s) in conflict", and each day is its own trip, so a vacation
+  // over one day of a run takes that day and charges its hours, not the run's.
+  for (const trip of line.trips.flatMap(dayTripsOf)) {
     const span = tripSpan(trip, pack);
     if (!span) continue;
     const intl = flownUnderInternationalRules(trip);

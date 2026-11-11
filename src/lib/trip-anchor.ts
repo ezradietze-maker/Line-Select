@@ -63,6 +63,27 @@ const MINUTES_PER_DAY = 1440;
  * own date. Any other trip is as it is.
  */
 export function dayTripsOf(trip: Trip): Trip[] {
+  const known = piecesOf.get(trip);
+  if (known) return known;
+  const pieces = splitRun(trip);
+  piecesOf.set(trip, pieces);
+  if (pieces.length > 1) pieces.forEach((piece, i) => runOf.set(piece, { run: trip, day: runDaysOf(trip)![i] }));
+  return pieces;
+}
+
+/**
+ * Kept per trip, so a day is the same object each time it's asked for: the tools that take one day off a line (a
+ * vacation, a carry-in conflict, a trip given up in open time) find it again among the line's days.
+ */
+const piecesOf = new WeakMap<Trip, Trip[]>();
+const runOf = new WeakMap<Trip, { run: Trip; day: RunDay }>();
+
+/** The run a day came from (see `dayTripsOf`), and which day it is; null for any other trip. */
+export function runOfDay(trip: Trip): { run: Trip; day: RunDay } | null {
+  return runOf.get(trip) ?? null;
+}
+
+function splitRun(trip: Trip): Trip[] {
   const days = runDaysOf(trip);
   if (!days) return [trip];
   const perDay = (n: number) => round2(n / days.length);
