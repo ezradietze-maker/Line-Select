@@ -271,6 +271,8 @@ function mergeConsecutiveOneDayTrips(run: Trip[]): Trip {
     international: run.some((t) => t.international),
     layoverCities: run.flatMap((t) => t.layoverCities),
     layoverDetails: run.flatMap((t) => t.layoverDetails),
+    // Where each day starts in the schedule below: a day can be more than one duty.
+    runStarts: run.map((_, i) => run.slice(0, i).reduce((n, t) => n + t.schedule.length, 0)),
     // Each day's report sits as far after the first's as it really does — a day apart, give or take a clock change.
     schedule: run.flatMap((trip, i) =>
       shiftScheduleByMinutes(trip.schedule, Math.round((Date.parse(trip.zuluAnchor) - Date.parse(first.zuluAnchor)) / 60_000) || i * 1440, first.zuluAnchor)
@@ -318,9 +320,13 @@ function consolidateRepeatedSingleDayTrips(trips: Trip[]): Trip[] {
   return result;
 }
 
-/** A trip's date as the pairing pages print dates (GMT month-day, 1002 = Oct 2): the day its first report falls on in GMT. */
-function tripGmtMonthDay(reportUtcMs: number): number {
-  const d = new Date(reportUtcMs);
+/**
+ * A trip's date as the pairing pages print dates (GMT month-day, 1002 = Oct 2): the day its first leg departs in GMT,
+ * as the EFFECTIVE line dates a pairing. Not the report's: a trip reporting at 2319Z and leaving at 0019Z is the next
+ * day's, and dated by its report it took the copy (and hotels) printed for another date.
+ */
+function tripGmtMonthDay(reportUtcMs: number, trip: Pick<Trip, "schedule">): number {
+  const d = new Date(reportUtcMs + (trip.schedule[0]?.legs[0]?.startMinutes ?? 0) * 60_000);
   return (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
 }
 
@@ -334,7 +340,7 @@ const inRange = (d: number, from: number, to: number) => (from <= to ? d >= from
  */
 export function resolveLayoverVariants(trip: Trip, reportUtcMs: number): Trip {
   if (!trip.schedule.some((d) => d.layover?.variants?.length)) return trip;
-  const date = tripGmtMonthDay(reportUtcMs);
+  const date = tripGmtMonthDay(reportUtcMs, trip);
   const schedule: TripDutyPeriod[] = trip.schedule.map((d) => ({ ...d, layover: d.layover ? { ...d.layover } : null }));
   schedule.forEach((duty, i) => {
     const lay = duty.layover;
@@ -390,7 +396,7 @@ function copyForItsDate(trip: Trip, chosen: ParsedPairing, copies: ParsedPairing
   if (copies.length < 2) return trip;
   const at = tripReportUtc(pack, trip);
   if (at === null) return trip;
-  const date = tripGmtMonthDay(at);
+  const date = tripGmtMonthDay(at, trip);
   const covers = (p: ParsedPairing) => {
     const r = effectiveRange(p.effectiveText);
     return r !== null && inRange(date, r.from, r.to);

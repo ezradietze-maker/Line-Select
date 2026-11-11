@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-const server = vi.hoisted(() => ({ saveServerBidPack: vi.fn() }));
+const server = vi.hoisted(() => ({ saveServerBidPack: vi.fn(), fetchServerBidPackMeta: vi.fn(async () => null as { packId: string; savedAt: number } | null) }));
 vi.mock("@/lib/bidpack-server", () => server);
 import { feedChoiceFor, feedLinks, syncFeedChoice } from "@/lib/calendar-feed-client";
 import type { BidPack } from "@/types/bidpack";
@@ -68,6 +68,14 @@ describe("syncFeedChoice", () => {
     const fetchMock = answers("pack-not-saved");
     server.saveServerBidPack.mockResolvedValue(false);
     expect(await syncFeedChoice(pack, null, "1004")).toBe("pack-not-saved");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't put back an older pack over a newer one the account holds", async () => {
+    const fetchMock = answers("pack-not-saved");
+    server.fetchServerBidPackMeta.mockResolvedValueOnce({ packId: "newer", savedAt: Date.now() });
+    expect(await syncFeedChoice(pack, null, "1004", "u1")).toBe("pack-not-saved");
+    expect(server.saveServerBidPack).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

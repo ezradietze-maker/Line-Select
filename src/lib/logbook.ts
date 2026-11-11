@@ -1,6 +1,6 @@
 import { monthLine, tripCarryOver } from "@/lib/bid-month";
 import { flownUnderInternationalRules, operatedBlockHours } from "@/lib/phase-in";
-import { tripReportUtc } from "@/lib/trip-anchor";
+import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { AwardHistorySubmission } from "@/types/award-history";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { CarriedTrip, LoggedMonth, MonthFeel } from "@/types/logbook";
@@ -20,7 +20,7 @@ function carriedOut(line: Line, pack: Pick<BidPack, "base" | "bidPeriodStart" | 
     if (report === null || !tripCarryOver(trip, pack)) return [];
     const iso = (ms: number) => new Date(ms).toISOString();
     const at = (minutes: number) => report + minutes * 60_000;
-    const release = report + trip.tafbHours * 3_600_000;
+    const release = report + tripReleaseHours(trip) * 3_600_000;
     return [
       {
         label: trip.pairingNumber ? `Trip ${trip.pairingNumber}` : "Your carry-in trip",

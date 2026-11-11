@@ -6,7 +6,6 @@ import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
 const ZONE = "America/Chicago";
-const HOUR = 3_600_000;
 
 function trip(num: string, startDayIndex: number, opts: { tafb?: number; credit?: number; airports?: string[]; report?: string } = {}): Trip {
   const tafb = opts.tafb ?? 30;

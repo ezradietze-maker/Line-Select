@@ -38,6 +38,14 @@ describe("finding trades", () => {
     expect(trades[0].plan.steps).toHaveLength(1);
   });
 
+  it("stops at its deadline and says what it found is partial", () => {
+    wants(1, 2);
+    wants(2, 1);
+    const late = findTrades(pack, [pilot(1), pilot(2)], { now, deadline: Date.now() - 1 });
+    expect(late.trades).toEqual([]);
+    expect(late.truncated).toBe(true);
+  });
+
   it("offers nothing when only one side gains", () => {
     wants(1, 2);
     expect(findTrades(pack, [pilot(1), pilot(2)], { now }).trades).toEqual([]);

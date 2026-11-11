@@ -39,7 +39,26 @@ export type ServerProfileSave =
   | { kind: "conflict"; profile: PreferenceProfile | null }
   | { kind: "failed" };
 
-export async function saveServerProfile(profile: PreferenceProfile): Promise<ServerProfileSave> {
+/** What the server's copy was when this tab last heard: for a save kept on this device to be sent against later. */
+export const serverProfileVersion = () => serverVersion;
+export function setServerProfileVersion(version: string | null): void {
+  serverVersion = version;
+}
+
+/**
+ * Saves go one at a time, each with the version the one before it got back. Sent together, the second carried the
+ * same version as the first, was refused once the first landed, and its edit was lost to a "merge" with this tab's own
+ * save, under a banner saying another device had made it.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+export function saveServerProfile(profile: PreferenceProfile): Promise<ServerProfileSave> {
+  const run = queue.then(() => sendProfile(profile));
+  queue = run.catch(() => {});
+  return run;
+}
+
+async function sendProfile(profile: PreferenceProfile): Promise<ServerProfileSave> {
   try {
     const res = await fetch("/api/preference-profile", {
       method: "PUT",

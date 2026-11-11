@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
 
-const client = vi.hoisted(() => ({ fetchServerProfile: vi.fn(), saveServerProfile: vi.fn(), clearServerProfile: vi.fn() }));
+const client = vi.hoisted(() => ({ fetchServerProfile: vi.fn(), saveServerProfile: vi.fn(), clearServerProfile: vi.fn(), serverProfileVersion: vi.fn(), setServerProfileVersion: vi.fn() }));
 vi.mock("@/lib/preference-profile-client", () => client);
 
 const local = new Map<string, string>();
@@ -59,6 +59,41 @@ describe("saving a signed-in pilot's profile", () => {
     expect(r.profile.completedAt).toBe("theirs");
     expect(r.profile.logbook?.map((e) => e.id)).toEqual(["NOV26", "OCT26"]);
     expect(client.saveServerProfile).toHaveBeenLastCalledWith(r.profile);
+  });
+
+  it("sends a save kept on this device, next time the app opens, rather than replacing it with the older copy", async () => {
+    client.serverProfileVersion.mockReturnValue("v1");
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    await saveProfileForUser("pilot-1", profile("logged offline"));
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: profile("before") });
+    client.saveServerProfile.mockResolvedValue({ kind: "saved" });
+    expect((await loadProfileForUser("pilot-1"))?.completedAt).toBe("logged offline");
+    expect(client.setServerProfileVersion).toHaveBeenCalledWith("v1");
+    // Sent, so the next open takes the server's copy as usual.
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: profile("later, from another device") });
+    expect((await loadProfileForUser("pilot-1"))?.completedAt).toBe("later, from another device");
+  });
+
+  it("keeps a save that still can't get through on the device, marked, rather than taking the server's copy", async () => {
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    await saveProfileForUser("pilot-1", profile("logged offline"));
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: profile("before") });
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    expect((await loadProfileForUser("pilot-1"))?.completedAt).toBe("logged offline");
+    client.saveServerProfile.mockResolvedValue({ kind: "saved" });
+    expect((await loadProfileForUser("pilot-1"))?.completedAt).toBe("logged offline");
+  });
+
+  it("marks a failed save with the version it was sent against, after the save ahead of it landed", async () => {
+    let version = "v1";
+    client.serverProfileVersion.mockImplementation(() => version);
+    client.saveServerProfile.mockImplementationOnce(async () => {
+      version = "v2";
+      return { kind: "saved" };
+    });
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    await Promise.all([saveProfileForUser("pilot-1", profile("a")), saveProfileForUser("pilot-1", profile("b"))]);
+    expect(JSON.parse(local.get("line-select:profile-unsynced:pilot-1:v1")!)).toEqual({ base: "v2" });
   });
 
   it("keeps a guest on this device only", async () => {

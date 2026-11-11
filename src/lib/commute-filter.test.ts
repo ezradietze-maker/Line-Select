@@ -198,6 +198,23 @@ describe("whose day a time belongs to", () => {
     expect(landsOnReleaseDay(mt("15T07:45:00"), ct("15T00:39:00"), home, base)).toBe(true);
     expect(landsOnReleaseDay(mt("15T07:45:00"), ct("14T23:56:00"), home, base)).toBe(false);
   });
+
+  it("counts a flight just after a release or before a report in the small hours, with the same day on both sides", () => {
+    // Released 00:02 in Memphis and home at 02:02: the release's own day, though the clock at home is still last night.
+    expect(landsOnReleaseDay(mt("13T02:02:00"), ct("13T00:02:00"), home, base)).toBe(true);
+    // Leaving home at 00:15 for a 04:30 report: the night before that report, so no night at base.
+    expect(leavesOnReportDay(mt("14T00:15:00"), ct("14T04:30:00"), home, base)).toBe(true);
+  });
+
+  it("keeps 05:00 at 05:00 across a daylight-saving change", () => {
+    const at = (iso: string) => Date.parse(iso);
+    // 2026-11-01, clocks go back: a 04:30 landing after an Oct 31 release is still that night, as it is a week later.
+    expect(landsOnReleaseDay(at("2026-11-01T04:30:00-07:00"), at("2026-10-31T22:00:00-05:00"), home, base)).toBe(true);
+    expect(landsOnReleaseDay(at("2026-11-08T04:30:00-07:00"), at("2026-11-07T22:00:00-06:00"), home, base)).toBe(true);
+    // 2027-03-14, clocks go forward: a 05:30 report is a morning report, as it is a week later.
+    expect(leavesOnReportDay(at("2027-03-13T19:00:00-07:00"), at("2027-03-14T05:30:00-05:00"), home, base)).toBe(false);
+    expect(leavesOnReportDay(at("2027-03-20T19:00:00-06:00"), at("2027-03-21T05:30:00-05:00"), home, base)).toBe(false);
+  });
 });
 
 describe.skipIf(!seats.length)("each way is asked about its own day", () => {

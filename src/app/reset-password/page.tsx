@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { resetPasswordWithToken } from "@/lib/auth";
+import { AUTH_LIMITS } from "@/lib/auth-limits";
 
 export default function ResetPasswordPage() {
   return (
@@ -59,8 +60,9 @@ function ResetPasswordForm() {
               This page needs the link from your reset email. Open the link in the email itself, or request a new one
               from the sign-in screen.
             </p>
-            <Link href="/" className="text-sm font-medium text-brand hover:underline">
-              Go to Line Select
+            {/* The sign-in screen's own reset view: "/" sends a pilot with a pack straight on to their rankings. */}
+            <Link href="/auth?view=forgot" className="text-sm font-medium text-brand hover:underline">
+              Request a new link
             </Link>
           </div>
         ) : (
@@ -74,6 +76,7 @@ function ResetPasswordForm() {
               placeholder="At least 8 characters"
               required
               minLength={8}
+              maxLength={AUTH_LIMITS.password}
             />
             <TextField
               label="Confirm new password"
@@ -83,6 +86,7 @@ function ResetPasswordForm() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={8}
+              maxLength={AUTH_LIMITS.password}
             />
             {error && <ErrorBanner>{error}</ErrorBanner>}
             <Button type="submit" disabled={submitting} className="w-full">

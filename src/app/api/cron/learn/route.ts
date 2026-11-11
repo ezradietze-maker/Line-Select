@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { secretMatches } from "@/lib/server/secret";
 import { sendDailySummary } from "@/lib/server/alerts";
+import { incrementCounter } from "@/lib/server/kv";
 import { runLearningCycle } from "@/lib/server/learning-runner";
 import { runDailyMatching, tradeSummaryText } from "@/lib/server/trade-matching";
 import { weeklySection } from "@/lib/server/weekly-summary";
@@ -18,6 +19,10 @@ export async function GET(request: Request) {
   if (!secret || !secretMatches(request.headers.get("authorization"), `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
+  // A call delivered twice runs once: only the learning had a lock, so trades ran again and the email went twice. Held
+  // for a quarter of an hour, not the day, so the owner can still run it again by hand later.
+  const day = new Date().toISOString().slice(0, 10);
+  if ((await incrementCounter(`line-select:cron-learn:${day}`, 15 * 60)) > 1) return NextResponse.json({ skipped: "this run is already under way" });
   const summary = await runLearningCycle("schedule");
   // The morning email: yesterday's numbers and what this run did. Its arriving each day is the sign this run happens.
   // Mondays (UTC) it also carries the week: what the brain learned and whether it's helping.

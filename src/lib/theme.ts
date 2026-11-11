@@ -5,7 +5,7 @@ import { RAIL_BOOTSTRAP } from "@/lib/rail-key";
  * saved bid pack — a returning pilot the landing page is about to redirect.
  * The landing page renders in the server HTML for everyone else (so its
  * headline paints immediately), and is hidden by CSS only for them, instead
- * of flashing the pitch before the redirect. See `app/page.tsx`.
+ * of flashing the pitch before the redirect. See `components/welcome/LandingPage.tsx`.
  */
 const RETURNING_BOOTSTRAP = `
   try {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { tradeBoardIsOpen } from "@/lib/server/trade-board-bar";
 import type { Seat } from "@/types/bidpack";
 
@@ -9,6 +10,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const user = await getCurrentServerUser();
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!(await checkRateLimit("trade-board-status", user.id, 240, 60 * 60)).ok) return rateLimitedResponse();
   const { searchParams } = new URL(request.url);
   const base = searchParams.get("base");
   const aircraft = searchParams.get("aircraft");

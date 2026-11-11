@@ -126,9 +126,12 @@ export function lookUpFlights(bidPack: BidPack, model: PilotModel | undefined | 
       const j = (await res.json().catch(() => null)) as {
         configured?: boolean;
         answers?: TravelAnswer[];
+        partial?: boolean;
       } | null;
       if (!j?.configured || !Array.isArray(j.answers)) break;
-      for (const a of j.answers) answers[a.id] = a;
+      // Some boards were held back (the day's allowance ran out): a "no flights" may only be a board not looked at, so
+      // it isn't kept, and is asked again next time. A way that was found stands.
+      for (const a of j.answers) if (!j.partial || a.options > 0) answers[a.id] = a;
     }
     if (Object.keys(answers).length === Object.keys(known).length) return Object.keys(known).length ? known : null;
     save(key, answers);

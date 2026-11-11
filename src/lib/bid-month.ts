@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { lineDutyPeriods, tripDutyPeriods } from "@/lib/duty-periods";
-import { tripReportUtc } from "@/lib/trip-anchor";
+import { runDaysOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 
 /**
@@ -95,7 +95,7 @@ export function splitTrip(trip: Trip, pack: PackDates, carryOverCredit = 0): { i
   const end = bidMonthEnd(pack);
   const anchor = tripReportUtc(pack, trip);
   if (end === null || anchor === null) return null;
-  const tripEnd = anchor + trip.tafbHours * HOUR;
+  const tripEnd = anchor + tripReleaseHours(trip) * HOUR;
   const report = (d: Trip["schedule"][number]) => anchor + d.startMinutes * 60_000;
   const kept = trip.schedule.filter((d) => report(d) < end);
   const lastLanding = Math.max(anchor, ...trip.schedule.flatMap((d) => d.legs.map((l) => anchor + l.endMinutes * 60_000)));
@@ -103,13 +103,23 @@ export function splitTrip(trip: Trip, pack: PackDates, carryOverCredit = 0): { i
   if (kept.length === trip.schedule.length && lastLanding <= end) return { inMonth: trip, carry: null };
   if (kept.length === 0) return null;
   const gone = trip.schedule.slice(kept.length);
+  // A run of day trips has the nights at home between its days: only each day's own hours past the month's end are
+  // carried, not the clock time from the end to the run's last release.
+  const days = runDaysOf(trip);
+  const carriedTafb = days
+    ? days.reduce((n, day) => {
+        const from = anchor + day.startMinutes * 60_000;
+        const to = from + day.hours * HOUR;
+        return n + Math.max(0, to - Math.max(from, end)) / HOUR;
+      }, 0)
+    : Math.max(0, (tripEnd - end) / HOUR);
   const carry: TripCarryOver = {
     // Calendar days after the month's end the trip is still flying on, the day it lands back counted.
     days: dayPastEnd(lastLanding, end, pack),
     dutyPeriods: gone.length,
     landings: gone.reduce((n, d) => n + d.legs.filter(operated).length, 0),
     blockHours: gone.reduce((n, d) => n + d.legs.filter(operated).reduce((a, l) => a + (l.blockHours ?? 0), 0), 0),
-    tafbHours: Math.max(0, (tripEnd - end) / HOUR),
+    tafbHours: carriedTafb,
   };
   const keptLegs = kept.flatMap((d) => d.legs);
   const inMonth: Trip = {
@@ -126,6 +136,12 @@ export function splitTrip(trip: Trip, pack: PackDates, carryOverCredit = 0): { i
     layoverCities: kept.flatMap((d) => (d.layover ? [d.layover.city] : [])),
     carriesIntoNextMonth: true,
   };
+  // The days of a run it keeps, so its own release is still its last kept day's.
+  if (trip.runStarts) {
+    const keptStarts = trip.runStarts.filter((s) => s < kept.length);
+    if (keptStarts.length > 1) inMonth.runStarts = keptStarts;
+    else delete inMonth.runStarts;
+  }
   uncut.set(inMonth, trip);
   return { inMonth, carry };
 }
@@ -142,7 +158,7 @@ function split(line: Line, pack: PackDates): { month: Line; carry: LineCarryOver
   if (end !== null && !line.estimated) {
     const starts = line.trips.map((t) => tripReportUtc(pack, t));
     // The line's printed C/O credit belongs to the trip still flying at the month's end.
-    const carrying = line.trips.findIndex((t, i) => starts[i] !== null && starts[i]! < end && starts[i]! + t.tafbHours * HOUR > end);
+    const carrying = line.trips.findIndex((t, i) => starts[i] !== null && starts[i]! < end && starts[i]! + tripReleaseHours(t) * HOUR > end);
     const parts = line.trips.map((t, i) => {
       // A trip reporting after the month's end (rare: one the grid still shows) is all next month's.
       if (starts[i] !== null && starts[i]! >= end) return null;
@@ -154,7 +170,7 @@ function split(line: Line, pack: PackDates): { month: Line; carry: LineCarryOver
     const dropped = droppedAt.map((i) => line.trips[i]);
     if (carried.length || dropped.length) {
       // A whole trip past the month's end: every day it flies, and all its block and time away, are the next month's.
-      const droppedDays = droppedAt.map((i) => dayPastEnd(starts[i]! + line.trips[i].tafbHours * HOUR, end, pack));
+      const droppedDays = droppedAt.map((i) => dayPastEnd(starts[i]! + tripReleaseHours(line.trips[i]) * HOUR, end, pack));
       const droppedBlock = dropped.reduce((n, t) => n + t.schedule.flatMap((d) => d.legs).filter(operated).reduce((a, l) => a + (l.blockHours ?? 0), 0), 0);
       const sum = (f: (c: TripCarryOver) => number) => carried.reduce((a, p) => a + f(p.carry), 0);
       // The pack's own counts, less what's carried: they count landings and duty periods across the carry-over.

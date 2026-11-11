@@ -20,7 +20,17 @@ export function sanitizeTripSnapshot(value: unknown): TripSnapshot | null {
   if (!num(v.days, 1, 30) || !num(v.creditHours, 0, 400) || !num(v.tafbHours, 0, 1000) || !num(v.landings, 0, 200) || !num(v.deadheadLegs, 0, 200)) return null;
   if (typeof v.international !== "boolean" || !REPORT_TIMES.has(v.reportTime as string)) return null;
   if (!Array.isArray(v.layoverCities) || v.layoverCities.length > 40 || !v.layoverCities.every((c) => short(c, 6))) return null;
+  // Which trip on which day. Optional, as an app still open from before they were sent leaves them out.
+  if (v.tripId !== undefined && !short(v.tripId, 80)) return null;
+  if (v.startDayIndex !== undefined && v.startDayIndex !== null && !(num(v.startDayIndex, 0, 62) && Number.isInteger(v.startDayIndex))) return null;
+  if (v.date !== undefined && v.date !== null && !(typeof v.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.date))) return null;
+  const day = {
+    ...(v.tripId !== undefined && { tripId: v.tripId as string }),
+    ...(v.startDayIndex !== undefined && { startDayIndex: v.startDayIndex as number | null }),
+    ...(v.date !== undefined && { date: v.date as string | null }),
+  };
   return {
+    ...day,
     lineNumber: v.lineNumber,
     pairingNumber: v.pairingNumber as string | null,
     days: v.days,

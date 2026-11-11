@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
@@ -36,10 +36,15 @@ function tripText(pack: BidPack, trip: Trip): string {
 /**
  * "What you hold": a pilot confirms their trips for this bid pack, which is what lets the site look for trades that suit
  * them. The site can't see VIPS, so the pilot says, starting from the award in their Logbook, and updates it after a
- * trade. Trips they can't trade are marked here.
+ * trade. Trips they can't trade are marked here. `onHolding` hears what they hold each time it loads or changes: the
+ * board's own forms offer only those trips.
  */
-export function HoldingPanel({ bidPack }: { bidPack: BidPack }) {
+export function HoldingPanel({ bidPack, onHolding }: { bidPack: BidPack; onHolding?: (holding: TradeHolding | null) => void }) {
   const { profile } = useAppState();
+  const onHoldingRef = useRef(onHolding);
+  useEffect(() => {
+    onHoldingRef.current = onHolding;
+  }, [onHolding]);
   const [loaded, setLoaded] = useState(false);
   const [holding, setHolding] = useState<TradeHolding | null>(null);
   const [settings, setSettings] = useState<TradeSettings>({ suggestMe: true, emailMatches: false });
@@ -62,6 +67,7 @@ export function HoldingPanel({ bidPack }: { bidPack: BidPack }) {
       if (cancelled) return;
       if (state) {
         setHolding(state.holding);
+        onHoldingRef.current?.(state.holding);
         setSettings(state.settings);
       } else setError("Couldn't load what you hold just now.");
       setLoaded(true);
@@ -99,6 +105,7 @@ export function HoldingPanel({ bidPack }: { bidPack: BidPack }) {
     setBusy(false);
     if (!saved) return setError("Couldn't save what you hold. Check your connection and try again.");
     setHolding(saved);
+    onHoldingRef.current?.(saved);
     setEditing(false);
   }
 
@@ -109,6 +116,7 @@ export function HoldingPanel({ bidPack }: { bidPack: BidPack }) {
     setBusy(false);
     if (!ok) return setError("Couldn't remove that. Check your connection and try again.");
     setHolding(null);
+    onHoldingRef.current?.(null);
     setEditing(false);
   }
 

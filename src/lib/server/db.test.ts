@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import * as mod from "@/lib/server/db";
 import * as forecastStore from "@/lib/server/forecast-store";
 import { db } from "@/lib/server/postgres";
 import * as suggestions from "@/lib/server/trade-suggestions";
-import { feedbackSubmissions, users } from "@/lib/server/schema";
+import { awardHistoryRecords, feedbackSubmissions, users } from "@/lib/server/schema";
 import { DEFAULT_WEIGHTS } from "@/types/preferences";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { FeedbackSubmission } from "@/types/feedback";
@@ -396,6 +396,58 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
     });
   });
 
+  describe("the trade board", () => {
+    const meta = { base: `T${randomUUID().slice(0, 6)}`, aircraft: "B777", seat: "CAP", month: "OCT26" };
+    const trip = (pairingNumber: string, startDayIndex: number) => ({
+      lineNumber: "1", pairingNumber, days: 3, layoverCities: ["ANC"], international: false, reportTime: "early" as const,
+      creditHours: 15, tafbHours: 60, landings: 4, deadheadLegs: 0, tripId: `p${pairingNumber}`, startDayIndex, date: null,
+    });
+    const offer = async (by: { id: string }, offered: ReturnType<typeof trip>, over: Partial<TradeOffer> = {}) => {
+      const o: TradeOffer = {
+        id: randomUUID(), bidPackMeta: meta, offeringUserId: by.id, offeringDisplayName: "Pilot", offeredTrip: offered, wantedPairingNumber: null, note: null,
+        status: "open", createdAt: new Date().toISOString(), responderUserId: null, responderDisplayName: null, responderTrip: null, respondedAt: null, resolvedAt: null, ...over,
+      };
+      await mod.createTradeOffer(o);
+      return o;
+    };
+    const propose = (o: TradeOffer, by: { id: string }, t: ReturnType<typeof trip>) =>
+      mod.updateTradeOffer(o.id, { status: "pending", responderUserId: by.id, responderDisplayName: "Responder", responderTrip: t, respondedAt: new Date().toISOString() }, ["open"]);
+
+    it("shows a pilot their seat's open offers and their own, never another seat's or others' trades in progress", async () => {
+      const [me, other, third] = [await makeUser("board-me"), await makeUser("board-other"), await makeUser("board-third")];
+      const mine = await offer(me, trip("1", 0), { status: "withdrawn" });
+      const theirs = await offer(other, trip("2", 1));
+      const inProgress = await offer(other, trip("3", 2));
+      await propose(inProgress, third, trip("4", 3));
+      await offer(other, trip("5", 4), { bidPackMeta: { ...meta, seat: "FO" } });
+      await offer(other, trip("6", 5), { bidPackMeta: { ...meta, month: "NOV26" } });
+      const ids = (await mod.listTradeOffersForSeat(meta, me.id, { othersOpen: true, limit: 50 })).map((o) => o.id);
+      expect(ids.sort()).toEqual([mine.id, theirs.id].sort());
+      // Before the seat's board opens, only their own.
+      expect((await mod.listTradeOffersForSeat(meta, me.id, { othersOpen: false, limit: 50 })).map((o) => o.id)).toEqual([mine.id]);
+    });
+
+    it("on an accept, frees every other offer giving either trip, so one trip can't be agreed twice", async () => {
+      const [a, b, c] = [await makeUser("accept-a"), await makeUser("accept-b"), await makeUser("accept-c")];
+      const x = await offer(a, trip("13", 2));
+      const sameTripAgain = await offer(a, trip("13", 2));
+      const sameDifferentDay = await offer(a, trip("13", 9));
+      const cOffer = await offer(c, trip("40", 4));
+      await propose(x, b, trip("27", 6));
+      await propose(sameTripAgain, c, trip("41", 7));
+      // B also offered their trip to C.
+      await propose(cOffer, b, trip("27", 6));
+      const pending = (await mod.findTradeOffer(x.id))!;
+      expect(await mod.acceptTradeOffer(x.id, "2000-01-01T00:00:00.000Z")).toBeNull();
+      expect((await mod.acceptTradeOffer(x.id, pending.respondedAt))?.status).toBe("accepted");
+      expect((await mod.findTradeOffer(sameTripAgain.id))?.status).toBe("withdrawn");
+      expect((await mod.findTradeOffer(sameDifferentDay.id))?.status).toBe("open");
+      const reopened = await mod.findTradeOffer(cOffer.id);
+      expect(reopened).toMatchObject({ status: "open", responderUserId: null, responderTrip: null });
+      expect(await mod.acceptTradeOffer(x.id, null)).toBeNull();
+    });
+  });
+
   describe("forecast ranking store: a bid position can't be taken from its holder", () => {
     it("rejects a second pilot claiming the same bid position, and lets the original pilot update their own", async () => {
       const packKey = `test-pack-${randomUUID()}`;
@@ -485,6 +537,22 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.deleteAwardShares(a)).toBe(0);
       expect((await mod.listAwardRowsForSeat(seat)).map((r) => r.lineNumber)).toEqual(["4"]);
       expect(await mod.deleteAwardShares(b)).toBe(1);
+    });
+
+    it("keeps what a corrected report leaves out from the one it replaces", async () => {
+      const c = `c-${stamp}`;
+      const report = (line: string, rank: number) => ({ id: randomUUID(), ...seat, month: "DEC26", seniorityRank: rank, seniorityTotalPilots: 100, outcome: "line" as const, lineNumber: line, daysOff: 15, totalCreditHours: 70, totalTafbHours: 200, submittedAt: new Date().toISOString() });
+      // The Logbook's share says everything; Strategies' form then reports the award without those answers.
+      await mod.createAwardHistoryRecord(report("1", 5), { pilotHash: c, packKey: packKey("DEC26"), holderShown: true, monthFeel: "better", brainVersion: 27, notesUsed: true });
+      await mod.createAwardHistoryRecord(report("1", 5), { pilotHash: c, packKey: packKey("DEC26") });
+      let [row] = await db.select().from(awardHistoryRecords).where(eq(awardHistoryRecords.pilotHash, c));
+      expect(row).toMatchObject({ holderShown: true, monthFeel: "better", brainVersion: 27, notesUsed: true });
+      expect(row.checkedInAt).not.toBeNull();
+      // An answer given replaces it, and a different seniority number isn't shown on the pilot's earlier yes.
+      await mod.createAwardHistoryRecord(report("1", 6), { pilotHash: c, packKey: packKey("DEC26"), monthFeel: null });
+      [row] = await db.select().from(awardHistoryRecords).where(eq(awardHistoryRecords.pilotHash, c));
+      expect(row).toMatchObject({ holderShown: false, monthFeel: null, brainVersion: 27 });
+      expect(await mod.deleteAwardShares(c)).toBe(1);
     });
 
     it("counts recent pilots with a real pack of this seat, and no other", async () => {

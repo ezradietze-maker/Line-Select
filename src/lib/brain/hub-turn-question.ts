@@ -111,9 +111,13 @@ export function nextHubTurnQuestion(bidPack: BidPack, model: PilotModel | null, 
     if (!x) return null;
     const prompt = "How do you feel about night hub turns?";
     const example_ = describe(bidPack, x, "night");
-    const helpText = `${linesWithWeeks} of the ${bidPack.lines.length} lines in this pack have a week or more of them. Here's one of those trips:`;
+    // Asked also when no line has a week of them but plenty have some: then it's those that are counted.
+    const count = linesWithWeeks
+      ? `${linesWithWeeks} of the ${bidPack.lines.length} lines in this pack have a week or more of them`
+      : `${perLine.filter((s) => s.night > 0).length} of the ${bidPack.lines.length} lines in this pack have night hub turns`;
+    const helpText = `${count}. Here's one of those trips:`;
     const options = ["They don't bother me", "A night or two is fine — a week of them isn't", "I'd rather avoid them"];
-    return { prompt, helpText, options, examples: [tripCard(bidPack, x, "night")], transcript: `${HUB_TURNS_LEAD} ${prompt} (Example: ${example_} ${linesWithWeeks} of ${bidPack.lines.length} lines here have a week or more of them.) Options: ${options.join(" / ")}` };
+    return { prompt, helpText, options, examples: [tripCard(bidPack, x, "night")], transcript: `${HUB_TURNS_LEAD} ${prompt} (Example: ${example_} ${count}.) Options: ${options.join(" / ")}` };
   }
   if (!asked(exchanges, REST_HOTEL_LEAD)) {
     const x = example(bidPack, model, pack, (turns) => turns.filter((h) => h.restHotel).length);

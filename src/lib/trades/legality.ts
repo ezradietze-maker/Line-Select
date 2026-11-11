@@ -1,5 +1,5 @@
 import { bidMonthEnd } from "@/lib/bid-month";
-import { tripReportUtc } from "@/lib/trip-anchor";
+import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 
 /**
@@ -32,9 +32,16 @@ export function tripInstanceKey(trip: Pick<Trip, "id" | "startDayIndex">): strin
 
 /** Report to release as real instants. Null when the pack doesn't place the trip on a date. */
 export function tripSpan(pack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Trip): { start: number; end: number } | null {
+  // Kept per pack and trip: matching asks for the same trips' spans millions of times, and a pack isn't changed in place.
+  let spans = spanCache.get(pack);
+  if (!spans) spanCache.set(pack, (spans = new WeakMap()));
+  if (spans.has(trip)) return spans.get(trip)!;
   const start = tripReportUtc(pack, trip);
-  return start === null ? null : { start, end: start + trip.tafbHours * HOUR };
+  const span = start === null ? null : { start, end: start + tripReleaseHours(trip) * HOUR };
+  spans.set(trip, span);
+  return span;
 }
+const spanCache = new WeakMap<object, WeakMap<Trip, { start: number; end: number } | null>>();
 
 /**
  * How long before a trip's show a trade must go in. CBA 2026 25.L.9.a.ii: "at least 2 hours prior to showtime of the first

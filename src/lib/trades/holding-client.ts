@@ -50,9 +50,11 @@ export interface SuggestionsState {
   ready: { holding: boolean; suggestMe: boolean; interview: boolean };
 }
 
-export async function fetchSuggestions(packId: string): Promise<SuggestionsState | null> {
+/** The trades suggested on one pack; "limited" when the server says this pilot has asked too often for now, null on any other failure. */
+export async function fetchSuggestions(packId: string): Promise<SuggestionsState | "limited" | null> {
   try {
     const res = await fetch(`/api/trades/matches?pack=${encodeURIComponent(packId)}`, { credentials: "same-origin", cache: "no-store" });
+    if (res.status === 429) return "limited";
     return res.ok ? ((await res.json()) as SuggestionsState) : null;
   } catch {
     return null;
@@ -69,7 +71,7 @@ export async function fetchWaitingSuggestions(packId: string): Promise<number | 
   }
 }
 
-export type FindOutcome = { status: "ran"; found: number; pilots: number } | { status: "busy" } | { status: "not-ready" } | { status: "closed" };
+export type FindOutcome = { status: "ran"; found: number; pilots: number } | { status: "busy" } | { status: "not-ready" } | { status: "closed" } | { status: "pack-differs" };
 
 export async function findTradesNow(packId: string): Promise<FindOutcome | null> {
   try {

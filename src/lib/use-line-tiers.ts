@@ -29,8 +29,12 @@ import {
 import type { LineScore } from "@/lib/scoring";
 import type { LineChoice } from "@/types/pilot-model";
 
-/** Hands what a tier move taught to the brain: choices to add and moves whose choices no longer count. */
-export type TeachTiers = (add: LineChoice[], retract: string[]) => void;
+/**
+ * Hands what a tier move taught to the brain: choices to add and moves whose choices no longer count. Gives back the
+ * choices each retracted move had, as the brain held them, so an undo can put them back: after a reload, the moves the
+ * saved tiers name were taught in an earlier visit, and this hook never saw their choices.
+ */
+export type TeachTiers = (add: LineChoice[], retract: string[]) => Record<string, LineChoice[]> | void;
 
 export interface LineTiers {
   state: TierState;
@@ -101,7 +105,21 @@ export function useLineTiers(
       setLoaded({ owner, state: next, history: nextHistory });
       saveTiers(userId, bidPackId, next);
       setSaid(message);
-      if (added.length || retract.length) teach.current?.(added, retract);
+      if (added.length || retract.length) {
+        const removed = teach.current?.(added, retract);
+        for (const [moveId, choices] of Object.entries(removed ?? {})) {
+          if (!choices.length || lessons.current.has(moveId)) continue;
+          // As first taught: whether a later move set one aside is worked out again when it's given back.
+          lessons.current.set(
+            moveId,
+            choices.map((c) => {
+              const back = { ...c };
+              delete back.supersededBy;
+              return back;
+            })
+          );
+        }
+      }
     },
     [owner, userId, bidPackId, teach]
   );
@@ -110,7 +128,7 @@ export function useLineTiers(
 
   /** A change to which tier lines are in: what it says is read off the list before and after. */
   const changeLines = useCallback(
-    (change: (s: TierState) => TierState, moved: string[], teaches: boolean, message: string) => {
+    (change: (s: TierState) => TierState, moved: string[], teaches: boolean, message: string, swapped = false) => {
       const { state: s, history: h, rankedList: list } = latest.current;
       const idOf = (r: LineScore) => r.line.id;
       let next = change(s);
@@ -127,7 +145,7 @@ export function useLineTiers(
       if (teaches) {
         const before = applyTiers(list, s, idOf).map(idOf);
         const after = applyTiers(list, next, idOf).map(idOf);
-        for (const l of lessonsFromMove(before, after, moved, numberOf, newMoveId(), bidPackId)) {
+        for (const l of lessonsFromMove(before, after, moved, numberOf, newMoveId(), bidPackId, swapped)) {
           lessons.current.set(l.moveId, l.choices);
           added.push(...l.choices);
           taught[l.lineId] = l.moveId;
@@ -162,7 +180,7 @@ export function useLineTiers(
     [changeLines, numberOf]
   );
   const unpark = useCallback((ids: string[]) => changeLines((s) => bringBack(s, ids), [], false, ids.length === 1 ? `Line ${numberOf(ids[0]) ?? ""} is back in the list.` : `${ids.length} lines are back in the list.`), [changeLines, numberOf]);
-  const swap = useCallback((a: string, b: string) => changeLines((s) => swapTiers(s, a, b), [a, b], true, `Lines ${numberOf(a) ?? ""} and ${numberOf(b) ?? ""} traded tiers.`), [changeLines, numberOf]);
+  const swap = useCallback((a: string, b: string) => changeLines((s) => swapTiers(s, a, b), [a, b], true, `Lines ${numberOf(a) ?? ""} and ${numberOf(b) ?? ""} traded tiers.`, true), [changeLines, numberOf]);
 
   // Names and the tier list change without saying anything about any line.
   const changeNames = useCallback(

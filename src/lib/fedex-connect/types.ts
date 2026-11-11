@@ -39,7 +39,7 @@ export type ConnectionStatus =
 export interface AuditEntry {
   /** Epoch ms. Shown as e.g. "used your connection at 14:02 to read open time". */
   at: number;
-  action: "consent" | "connect" | "read-open-time" | "read-schedule" | "disconnect" | "expired" | "quota-reached" | "error";
+  action: "consent" | "consent-changed" | "connect" | "read-open-time" | "read-schedule" | "disconnect" | "expired" | "quota-reached" | "error";
   /** Short, pilot-readable detail. No tokens, no other pilots' names. */
   detail: string;
 }

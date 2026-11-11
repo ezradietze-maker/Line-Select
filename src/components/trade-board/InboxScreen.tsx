@@ -33,13 +33,20 @@ export function InboxScreen({ bidPack, user, polledOffers, onGoToTradeBoard }: I
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
 
+  // One seat's board for one month: the server sends nothing else.
+  const boardKey = bidPack ? [bidPack.base, bidPack.aircraft, bidPack.seat, bidPack.month].join("|") : null;
   const refresh = useCallback(async () => {
+    if (!boardKey) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    const data = await fetchTradeOffers();
+    const [base, aircraft, seat, month] = boardKey.split("|");
+    const data = await fetchTradeOffers({ base, aircraft, seat, month });
     setLoadFailed(data === null);
     if (data) setOffers(data);
     setLoading(false);
-  }, []);
+  }, [boardKey]);
 
   const signedIn = !!user;
   useEffect(() => {

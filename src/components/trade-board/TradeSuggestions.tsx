@@ -69,15 +69,19 @@ function SuggestionCard({
   const others = s.pilots.filter((p) => !p.isYou);
   const waitingOn = others.filter((p) => !p.accepted).map((p) => p.name);
   const { value } = s.you;
-  const you = s.pilots.find((p) => p.isYou)?.name;
-  const who = (name: string) => (name === you ? "You" : name);
 
   // A trade that's off says so and no more: what it would have done is no use now.
   if (s.status === "cancelled" || s.status === "expired") {
     return (
       <div className="panel-glass p-4 text-sm text-ink-muted">
         <span className="font-medium text-ink">{s.size === 2 ? `Swap with ${others[0]?.name}` : `Chain of ${s.size} pilots`}:</span> {tripName(s.you.give)} for {tripName(s.you.take)}.{" "}
-        {s.status === "expired" ? "Its deadline has passed." : s.cancelReason === "declined" ? "A pilot on it said no, so it's off." : "Someone's trips changed, so it no longer stands."}
+        {s.status === "expired"
+          ? "Its deadline has passed."
+          : s.cancelReason === "declined"
+            ? "A pilot on it said no, so it's off."
+            : s.cancelReason === "unanswered"
+              ? "Not everyone answered in time, so it's off and you're free for other trades."
+              : "Someone's trips changed, so it no longer stands."}
       </div>
     );
   }
@@ -111,8 +115,8 @@ function SuggestionCard({
         <div className="mt-3 text-sm text-ink-muted">
           <div className="font-mono text-[11px] uppercase tracking-wide text-ink-faint">Who&rsquo;s on it</div>
           <ul className="mt-1 space-y-0.5">
-            {s.pilots.map((p) => (
-              <li key={p.name}>
+            {s.pilots.map((p, i) => (
+              <li key={i}>
                 {p.isYou ? "You" : p.name} {p.isYou ? "give" : "gives"} {tripName(p.gives)}
               </li>
             ))}
@@ -167,9 +171,9 @@ function SuggestionCard({
               <li key={i} className={`text-sm ${step.yours ? "text-ink" : "text-ink-muted"}`}>
                 <div>
                   {i + 1}.{" "}
-                  {step.pilotB === you
+                  {step.youAreB
                     ? `You trade ${tripName(step.bGives)} with ${step.pilotA} for ${tripName(step.aGives)}`
-                    : `${who(step.pilotA)} ${step.pilotA === you ? "trade" : "trades"} ${tripName(step.aGives)} with ${step.pilotB} for ${tripName(step.bGives)}`}
+                    : `${step.youAreA ? "You trade" : `${step.pilotA} trades`} ${tripName(step.aGives)} with ${step.pilotB} for ${tripName(step.bGives)}`}
                   {step.done && <span className="ml-2 text-good">Done</span>}
                 </div>
                 {step.yours && step.youHoldAfter && <div className="text-xs text-ink-muted">After this you hold {tripName(step.youHoldAfter)}.</div>}
@@ -198,18 +202,26 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
   const [finding, setFinding] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The server turned the last check away for asking too often: said, rather than the list silently going stale. */
+  const [limited, setLimited] = useState(false);
+
+  const take = useCallback((next: SuggestionsState | "limited" | null) => {
+    if (next === "limited") return setLimited(true);
+    if (!next) return;
+    setLimited(false);
+    setState(next);
+  }, []);
 
   const refresh = useCallback(async () => {
-    const next = await fetchSuggestions(packId);
-    if (next) setState(next);
-  }, [packId]);
+    take(await fetchSuggestions(packId));
+  }, [packId, take]);
 
   useEffect(() => {
     let cancelled = false;
     const load = () => {
       if (document.visibilityState === "hidden") return;
       void fetchSuggestions(packId).then((next) => {
-        if (!cancelled && next) setState(next);
+        if (!cancelled) take(next);
       });
     };
     load();
@@ -218,7 +230,7 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
       cancelled = true;
       clearInterval(timer);
     };
-  }, [packId]);
+  }, [packId, take]);
 
   async function find() {
     setFinding(true);
@@ -230,6 +242,8 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
     if (outcome.status === "busy") return setMessage("Another pilot's search is running for this seat. Try again in a moment.");
     if (outcome.status === "closed") return setMessage("Trades open once enough pilots in your seat are using Line Select.");
     if (outcome.status === "not-ready") return setMessage("Your account doesn't have this bid pack yet. Give it a moment to save, then try again.");
+    if (outcome.status === "pack-differs")
+      return setMessage("Your copy of this bid pack doesn't match the one most pilots in your seat confirmed their trips on. Upload the pack again, then confirm what you hold.");
     setMessage(
       outcome.found > 0
         ? `Found ${outcome.found} new trade${outcome.found === 1 ? "" : "s"} in your seat. Any that include you are listed here.`
@@ -247,7 +261,13 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
     setBusy(false);
   }
 
-  if (!state) return null;
+  const limitedNotice = limited && (
+    <Notice tone="info" className="mt-3">
+      Line Select is open in several windows, so these trades stopped updating for a few minutes. Close the extra windows
+      and they pick up again on their own.
+    </Notice>
+  );
+  if (!state) return limitedNotice || null;
   const list = onlyWaiting ? state.suggestions.filter((s) => s.status === "proposed" && s.you.answer === "waiting") : state.suggestions;
   if (onlyWaiting && list.length === 0) return null;
   const { ready } = state;
@@ -256,6 +276,7 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
     <section className="mt-8">
       <SectionHeading count={list.length}>Trades found for you</SectionHeading>
       {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
+      {limitedNotice}
       <div className="mt-3 space-y-3">
         {list.map((s) => (
           <SuggestionCard key={s.id} s={s} busy={busy} onAnswer={(answer, reason) => {

@@ -147,6 +147,11 @@ export async function syncFeed(userId: string, choice: FeedChoice, now = Date.no
   const lineSource = logged ? "awarded" : choice.lineSource;
   const flights = await cachedCommute(pack, lineNumber, profile);
   const month = buildFeedMonth(pack, { lineNumber, lineSource, pilotClose: choice.pilotClose, flights, now });
+  // A trip with no date to place it on is left off the calendar, which the pilot can't see from there: heard about here.
+  const line = lineNumber ? pack.lines.find((l) => l.lineNumber === lineNumber) : null;
+  if (lineNumber && (!line || month.trips.length < line.trips.length)) {
+    await reportProblem("calendar-feed", new Error("Trips left off a calendar"), { what: "feed build", packId: pack.id, lineNumber, trips: `${month.trips.length} of ${line?.trips.length ?? "no line"}` });
+  }
   await db.update(calendarFeeds).set({ months: withFeedMonth(row.months, month) }).where(eq(calendarFeeds.id, row.id));
   return "ok";
 }

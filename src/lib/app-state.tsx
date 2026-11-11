@@ -18,6 +18,7 @@ import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
 import { askToKeepStorage, clearProfile, clearProfileForUser, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
+import { loadSeenOfferIds, newArrivals, saveSeenOfferIds, type ToastBaseline } from "@/lib/trade-seen-storage";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
@@ -26,6 +27,8 @@ import type { TradeOffer } from "@/types/trade";
 import type { ToastItem } from "@/components/ui/Toast";
 import { isPackId, legacyPackIdFor, moveKeptUnderOldId, packIdFor } from "@/lib/pack-id";
 import { forgetPilotOnDevice } from "@/lib/device-data";
+import { adoptGuestDrafts } from "@/lib/interview-draft";
+import { landingAfterSignIn, landingPathFor } from "@/lib/landing-path";
 
 /**
  * Whether this device was signed in when the app last checked — not a credential (the session cookie is), just a
@@ -119,11 +122,6 @@ async function accountBidPack(userId: string): Promise<BidPack | null> {
   return keep;
 }
 
-function landingPathFor(bidPack: BidPack | null, profile: PreferenceProfile | null): string {
-  if (!bidPack) return "/";
-  return profile ? "/results" : "/preferences";
-}
-
 interface AppStateValue extends DataState {
   interviewKey: number;
   demoOffer: TradeOffer | null;
@@ -191,14 +189,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [demoOffer, setDemoOffer] = useState<TradeOffer | null>(null);
   const [waitingTrades, setWaitingTrades] = useState(0);
   const [realOffers, setRealOffers] = useState<TradeOffer[]>([]);
-  const [seenOfferIds, setSeenOfferIds] = useState<Set<string>>(new Set());
+  /** Whose board, and which pack's, `realOffers` is: until the first poll for this pilot and pack, it isn't theirs. */
+  const [realOffersKey, setRealOffersKey] = useState<string | null>(null);
+  /** The offers this pilot has looked at in the Inbox, kept on this device (`trade-seen-storage.ts`), and whose they are. */
+  const [seen, setSeen] = useState<{ userId: string | null; ids: Set<string> }>({ userId: null, ids: new Set() });
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   /** How the signed-in pilot's last profile save went (see `persistProfile`). */
   const [profileSync, setProfileSync] = useState<"ok" | "merged" | "failed">("ok");
   const showSignedOutRef = useRef<() => void>(() => {});
   const latestProfileRef = useRef<PreferenceProfile | null>(null);
   const realOffersRef = useRef<TradeOffer[]>([]);
-  const knownNotifiableIdsRef = useRef<Set<string> | null>(null);
+  const toastBaselineRef = useRef<ToastBaseline | null>(null);
   const pathname = usePathname();
   const onTradeBoard = pathname === "/trade-board";
   const onInbox = pathname === "/inbox";
@@ -296,11 +297,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!user || !bidPack) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setRealOffers([]);
+      setRealOffersKey(null);
       setWaitingTrades(0);
       return;
     }
     let cancelled = false;
     let last = "";
+    const key = `${user.id}|${bidPack.id}`;
+    // Only this pack's seat and month: the server sends no other seat's offers.
+    const board = { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month };
     async function poll() {
       // Not while the tab is in the background, and no state change when nothing changed — an unchanged poll used to
       // re-render the whole app every ten seconds.
@@ -309,13 +314,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const waiting = await fetchWaitingSuggestions(bidPack.id);
         if (!cancelled && waiting !== null) setWaitingTrades(waiting);
       }
-      const data = await fetchTradeOffers();
+      const data = await fetchTradeOffers(board);
       // A failed poll keeps what was last seen: an empty list would read as every offer withdrawn.
       if (!data) return;
       const signature = JSON.stringify(data);
       if (cancelled || signature === last) return;
       last = signature;
       setRealOffers(data);
+      setRealOffersKey(key);
     }
     poll();
     const intervalId = setInterval(poll, 10000);
@@ -329,8 +335,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     realOffersRef.current = realOffers;
   }, [realOffers]);
 
+  const viewerId = user?.id ?? null;
+  const offersKey = user && bidPack ? `${user.id}|${bidPack.id}` : null;
+  const offersLoaded = offersKey !== null && realOffersKey === offersKey;
+
   const notifiableOffers = useMemo(() => {
-    if (!bidPack || !user) return [];
+    // Not until this pilot's board for this pack is in: the last pilot's or pack's offers would count as theirs.
+    if (!bidPack || !user || !offersLoaded) return [];
     const visible = realOffers.filter((o) => sameBidPack(o, bidPack));
     // Example offers never notify — a real pilot shouldn't get a toast or an
     // unread badge for a trade offer that doesn't exist.
@@ -338,44 +349,57 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const byId = new Map<string, TradeOffer>();
     for (const offer of [...needsResponse, ...directInterest]) byId.set(offer.id, offer);
     return [...byId.values()];
-  }, [realOffers, bidPack, user]);
+  }, [realOffers, bidPack, user, offersLoaded]);
+
+  const seenOfferIds = seen.userId === viewerId ? seen.ids : null;
+
+  useEffect(() => {
+    // The seen list belongs to the account: read from this device when the pilot changes (a guest has none).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSeen({ userId: viewerId, ids: viewerId ? loadSeenOfferIds(viewerId) : new Set() });
+  }, [viewerId]);
+
+  useEffect(() => {
+    if (seen.userId) saveSeenOfferIds(seen.userId, seen.ids);
+  }, [seen]);
 
   // A suggested trade waiting on the pilot counts until they answer it: unlike an offer, opening the Inbox doesn't deal with it.
-  const inboxUnreadCount = notifiableOffers.filter((o) => !seenOfferIds.has(o.id)).length + waitingTrades;
+  // Nothing counts until this pilot's seen list has been read, or every offer would flash up as unread first.
+  const inboxUnreadCount = (seenOfferIds ? notifiableOffers.filter((o) => !seenOfferIds.has(o.id)).length : 0) + waitingTrades;
 
   useEffect(() => {
     // Only the Inbox counts as "checked" — the Trade Board shows the same
     // offers, but browsing it isn't the same deliberate act as opening your
     // notifications, so a Trade Board visit alone shouldn't clear the badge.
     onInboxRef.current = onInbox;
-    if (!onInbox) return;
+    if (!onInbox || !viewerId) return;
     if (notifiableOffers.length === 0) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSeenOfferIds((prev) => {
+    setSeen((prev) => {
+      if (prev.userId !== viewerId) return prev;
       let changed = false;
-      const next = new Set(prev);
+      const next = new Set(prev.ids);
       for (const offer of notifiableOffers) {
         if (!next.has(offer.id)) {
           next.add(offer.id);
           changed = true;
         }
       }
-      return changed ? next : prev;
+      return changed ? { userId: prev.userId, ids: next } : prev;
     });
-  }, [notifiableOffers, onInbox]);
+  }, [notifiableOffers, onInbox, viewerId]);
 
   useEffect(() => {
     // Toasts only a brand-new arrival (never the pre-existing backlog found
     // on first load), and only while the pilot isn't already looking at the
     // Inbox itself — the Trade Board still gets toasts, since browsing it
-    // no longer counts as having checked notifications (see above).
-    const currentIds = new Set(notifiableOffers.map((o) => o.id));
-    if (knownNotifiableIdsRef.current === null) {
-      knownNotifiableIdsRef.current = currentIds;
-      return;
-    }
-    const newOnes = notifiableOffers.filter((o) => !knownNotifiableIdsRef.current!.has(o.id));
-    knownNotifiableIdsRef.current = currentIds;
+    // no longer counts as having checked notifications (see above). The
+    // backlog is whatever the first poll for this pilot and pack finds
+    // (`newArrivals`), so nothing is compared before that poll is in.
+    if (!offersLoaded || !offersKey) return;
+    const { baseline, fresh } = newArrivals(toastBaselineRef.current, offersKey, notifiableOffers.map((o) => o.id));
+    toastBaselineRef.current = baseline;
+    const newOnes = notifiableOffers.filter((o) => fresh.includes(o.id));
     if (newOnes.length === 0 || onInboxRef.current) return;
     setToasts((prev) => [
       ...prev,
@@ -390,7 +414,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             : `${offer.offeringDisplayName} wants your Pairing ${offer.wantedPairingNumber}`,
       })),
     ]);
-  }, [notifiableOffers]);
+  }, [notifiableOffers, offersLoaded, offersKey]);
 
   useEffect(() => {
     latestProfileRef.current = state.profile;
@@ -453,7 +477,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         status: "accepted",
         responderUserId: user.id,
         responderDisplayName: user.displayName,
-        responderTrip: tripToSnapshot(responder.trip, responder.lineNumber),
+        responderTrip: tripToSnapshot(responder.trip, responder.lineNumber, bidPack.bidPeriodStart),
         respondedAt: now,
         resolvedAt: now,
       };
@@ -659,6 +683,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         saveSeniority(newUser.id, state.seniority);
         theirSeniority = state.seniority;
       }
+      adoptGuestDrafts(newUser.id);
     }
 
     setState({
@@ -673,7 +698,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       bidPackSaveFailed: packSaveFailed,
       profileSaveFailed: false,
     });
-    router.push(landingPathFor(theirBidPack, theirProfile));
+    router.push(landingAfterSignIn(theirBidPack, theirProfile, state.user ? null : state.bidPack));
   }
 
   async function handleContinueAsGuest() {

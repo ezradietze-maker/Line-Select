@@ -36,6 +36,21 @@ const BARE_SECTION = /\bSection\s+(\d{1,2})\b(?!\.[A-Z])/g;
 /** A number as written in a contract or an answer: 115, 9:30, 1700, 2.25. */
 const NUMBER = /\d+(?::\d+|\.\d+)*/g;
 
+const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+const SPELLED = new RegExp(`\\b(?:(${TENS.slice(2).join("|")})(?:[- ](${ONES.slice(1, 10).join("|")}))?|(${ONES.join("|")}))\\b`, "gi");
+
+/**
+ * Every number a text holds, written in digits or in words: the contract writes "twelve (12)", and an answer saying
+ * "twelve hours" makes the same claim as "12 hours" — it has to be backed the same way.
+ */
+function numbersIn(text: string): string[] {
+  const spelled = [...text.matchAll(SPELLED)].map((m) =>
+    m[3] !== undefined ? String(ONES.indexOf(m[3].toLowerCase())) : String(TENS.indexOf(m[1].toLowerCase()) * 10 + (m[2] ? ONES.indexOf(m[2].toLowerCase()) : 0))
+  );
+  return [...(text.match(NUMBER) ?? []), ...spelled];
+}
+
 /** The deepest piece whose words hold the quote, so a quote cited to 25.E lands on 25.E.6. */
 export function narrowestPiece(id: string, quote: string, version: ContractVersion): string {
   const wanted = normalizeForMatch(quote);
@@ -75,17 +90,24 @@ export function validateAnswer(raw: RawAnswer, context: { question: string; fact
   }
   if (!quotes.length) return { ok: false, reason: "no quote long enough to check" };
 
+  // A section named in the answer must be one it quotes (or holds, or sits in): naming one it didn't quote passed it
+  // off as backed when it wasn't.
+  const quoted = [...quotes.map((q) => q.section), ...raw.quotes.flatMap((q) => findNode(q.section)?.id ?? [])];
   for (const ref of raw.answer.match(SECTION_REF) ?? []) {
-    if (!findNode(ref)) return { ok: false, reason: `the answer names ${ref}, which doesn't exist` };
+    const node = findNode(ref);
+    if (!node) return { ok: false, reason: `the answer names ${ref}, which doesn't exist` };
+    if (!quoted.some((s) => s === node.id || s.startsWith(`${node.id}.`) || node.id.startsWith(`${s}.`))) {
+      return { ok: false, reason: `the answer names ${node.id} but quotes nothing from it. Quote it, or leave its name out` };
+    }
   }
   for (const m of raw.answer.matchAll(BARE_SECTION)) {
     if (!DOCS.some((d) => d.id === m[1])) return { ok: false, reason: `the answer names Section ${m[1]}, which we don't have` };
   }
 
-  const words = raw.answer.replace(SECTION_REF, " ").replace(BARE_SECTION, " ").replace(/\bPhase \d\b/g, " ");
   // The years and dates that name the versions and phases come from the chart: "the 2026 wording", "June 29, 2026".
-  const allowed = new Set(["2015", "2026", "2027", "29", ...[...quotes.map((q) => q.quote), context.question, context.facts ?? ""].flatMap((t) => t.match(NUMBER) ?? [])]);
-  for (const n of words.match(NUMBER) ?? []) {
+  const words = raw.answer.replace(SECTION_REF, " ").replace(BARE_SECTION, " ").replace(/\bPhase \d\b/g, " ").replace(/\bJune 29\b/g, " ");
+  const allowed = new Set(["2015", "2026", "2027", ...[...quotes.map((q) => q.quote), context.question, context.facts ?? ""].flatMap(numbersIn)]);
+  for (const n of numbersIn(words)) {
     if (!allowed.has(n)) return { ok: false, reason: `the answer says ${n}, which isn't in the quotes. Quote the contract's words that hold ${n}, or leave ${n} out of the answer` };
   }
   return { ok: true, answer: raw.answer.trim(), quotes };

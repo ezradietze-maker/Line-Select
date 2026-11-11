@@ -44,11 +44,6 @@ async function respond(request: Request, remember: Remember | null): Promise<Res
   const { ok } = await checkRequestLimit("contract-ask", request, 20, 60 * 60);
   if (!ok) return rateLimitedResponse();
   const spender = await spenderFor(request);
-  const daily = await checkRateLimit("contract-ask-day", spender.key, spender.signedIn ? DAILY_PILOT : DAILY_GUEST, DAY);
-  if (!daily.ok) {
-    const error = spender.signedIn ? "That's today's questions used up. They come back tomorrow." : "That's today's questions for guests. Sign in to ask more.";
-    return NextResponse.json({ error }, { status: 429 });
-  }
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "Questions aren't set up on this server." }, { status: 503 });
   const allowed = await checkSpend(spender);
@@ -61,6 +56,13 @@ async function respond(request: Request, remember: Remember | null): Promise<Res
   if (body.facts !== undefined && !isText(body.facts, MAX_FACTS_CHARS)) return NextResponse.json({ error: "Those pack details are too long." }, { status: 400 });
   const earlier = history(body.history);
   if (!earlier) return NextResponse.json({ error: "That conversation is too long. Start a new chat." }, { status: 400 });
+  // Counted only once the question will really be asked: a day's questions spent on refusals ("resting", too long)
+  // left a pilot locked out after the AI came back.
+  const daily = await checkRateLimit("contract-ask-day", spender.key, spender.signedIn ? DAILY_PILOT : DAILY_GUEST, DAY);
+  if (!daily.ok) {
+    const error = spender.signedIn ? "That's today's questions used up. They come back tomorrow." : "That's today's questions for guests. Sign in to ask more.";
+    return NextResponse.json({ error }, { status: 429 });
+  }
   const bidMonth = typeof body.bidMonth === "string" && /^20\d{2}-(0[1-9]|1[0-2])$/.test(body.bidMonth) ? body.bidMonth : currentBidMonth();
   const input: AskInput = { question: (body.question as string).trim(), history: earlier, facts: body.facts as string | undefined, bidMonth, apiKey };
 

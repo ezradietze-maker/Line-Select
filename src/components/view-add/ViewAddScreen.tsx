@@ -108,6 +108,11 @@ function Plan({ plan }: { plan: ViewAddPlan }) {
           {plan.notRead.length > 0 && `Couldn't read: ${plan.notRead.join("; ")}.`}
         </p>
       )}
+      {plan.dateChecks.length > 0 && (
+        <p className="text-xs text-warn">
+          Check the date against VIPS — the pack has these a day from the date shown, or on two days next to each other, and we took the nearest: {plan.dateChecks.join("; ")}.
+        </p>
+      )}
       {plan.ruledOut.length > 0 && (
         <details className="text-xs text-ink-muted">
           <summary className="cursor-pointer">{plural(plan.ruledOut.length, "trip")} ruled out</summary>

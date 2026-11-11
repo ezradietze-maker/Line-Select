@@ -65,6 +65,8 @@ export interface MatchOptions {
   excludeSwap?: (pilotId: string, give: Trip, take: Trip) => boolean;
   /** A pilot who has said a trade wasn't worth it needs more than the usual gain. */
   minGainFor?: (pilotId: string) => number | undefined;
+  /** When to stop looking (epoch ms, by the clock): what was found by then is kept, and the result says it's partial. */
+  deadline?: number;
 }
 
 interface Node {
@@ -77,7 +79,16 @@ interface Edge {
   value: SwapValue;
 }
 
-function buildGraph(pack: BidPack, pilots: readonly PilotHolding[], now: number, minGain: number, excludeSwap: MatchOptions["excludeSwap"], minGainFor: MatchOptions["minGainFor"]) {
+function buildGraph(
+  pack: BidPack,
+  pilots: readonly PilotHolding[],
+  now: number,
+  minGain: number,
+  excludeSwap: MatchOptions["excludeSwap"],
+  minGainFor: MatchOptions["minGainFor"],
+  deadline = Infinity
+) {
+  let late = false;
   const nodes: Node[] = [];
   pilots.forEach((p, pilot) => {
     const vacations = vacationsOf(pack, p.seniority);
@@ -85,6 +96,8 @@ function buildGraph(pack: BidPack, pilots: readonly PilotHolding[], now: number,
   });
   const edges: Edge[][] = nodes.map(() => []);
   pilots.forEach((p, pilot) => {
+    // Out of time: the pilots not reached yet want nothing this run, and the result says it's partial.
+    if (late || (late = Date.now() > deadline)) return;
     const vacations = vacationsOf(pack, p.seniority);
     const trips = sortedTrips(p.line);
     const mine = nodes.map((n, i) => ({ n, i })).filter(({ n }) => n.pilot === pilot);
@@ -117,7 +130,7 @@ function buildGraph(pack: BidPack, pilots: readonly PilotHolding[], now: number,
     list.sort((a, b) => b.value.gain - a.value.gain);
     list.length = Math.min(list.length, MAX_OPTIONS_PER_TRIP);
   }
-  return { nodes, edges };
+  return { nodes, edges, late };
 }
 
 /**
@@ -126,12 +139,13 @@ function buildGraph(pack: BidPack, pilots: readonly PilotHolding[], now: number,
  * crowded corner of the graph must not hide the swap two other pilots could make, and a pile of long chains must not hide
  * a short one.
  */
-function listCycles(nodes: Node[], edges: Edge[][], maxChain: number, maxCycles: number): { cycles: Edge[][]; truncated: boolean } {
+function listCycles(nodes: Node[], edges: Edge[][], maxChain: number, maxCycles: number, deadline = Infinity): { cycles: Edge[][]; truncated: boolean } {
   const cycles: Edge[][] = [];
   let truncated = false;
   const share = Math.max(1, Math.floor(maxCycles / Math.max(1, nodes.length * (maxChain - 1))));
   for (let length = 2; length <= maxChain; length++) {
     for (let start = 0; start < nodes.length; start++) {
+      if (Date.now() > deadline) return { cycles, truncated: true };
       const pilots = new Set([nodes[start].pilot]);
       const path: Edge[] = [];
       let found = 0;
@@ -165,12 +179,18 @@ function listCycles(nodes: Node[], edges: Edge[][], maxChain: number, maxCycles:
 /** The cycle as a suggestion with its order of trades, or null when no order is legal throughout. */
 function toSuggestion(pack: BidPack, pilots: readonly PilotHolding[], nodes: Node[], cycle: Edge[], start: number): TradeSuggestion | null {
   const chain = [start, ...cycle.slice(0, -1).map((e) => e.to)];
+  // Every order tried asks about the same few pilots and trips: each answered once.
+  const known = new Map<number, boolean>();
   const legal = (pilotAt: number, tripAt: number) => {
+    const key = pilotAt * chain.length + tripAt;
+    const seen = known.get(key);
+    if (seen !== undefined) return seen;
     const p = pilots[nodes[chain[pilotAt]].pilot];
     const own = nodes[chain[pilotAt]].trip;
     const trip = nodes[chain[tripAt]].trip;
-    if (tripSpan(pack, trip) === null) return false;
-    return canHold(pack, p.line.trips.filter((t) => t !== own), trip, vacationsOf(pack, p.seniority));
+    const ok = tripSpan(pack, trip) !== null && canHold(pack, p.line.trips.filter((t) => t !== own), trip, vacationsOf(pack, p.seniority));
+    known.set(key, ok);
+    return ok;
   };
   const plan = planChain(chain.length, legal);
   if (!plan) return null;
@@ -215,13 +235,21 @@ function bestSet(options: TradeSuggestion[]): { chosen: TradeSuggestion[]; compl
 
 export function findTrades(pack: BidPack, pilots: readonly PilotHolding[], options: MatchOptions = {}): MatchResult {
   const maxChain = Math.min(options.maxChain ?? MAX_CHAIN_PILOTS, MAX_CHAIN_PILOTS);
-  const { nodes, edges } = buildGraph(pack, pilots, options.now ?? Date.now(), options.minGain ?? MIN_GAIN, options.excludeSwap, options.minGainFor);
-  const { cycles, truncated } = listCycles(nodes, edges, maxChain, options.maxCycles ?? MAX_CYCLES);
+  const deadline = options.deadline ?? Infinity;
+  const { nodes, edges, late } = buildGraph(pack, pilots, options.now ?? Date.now(), options.minGain ?? MIN_GAIN, options.excludeSwap, options.minGainFor, deadline);
+  const listed = listCycles(nodes, edges, maxChain, options.maxCycles ?? MAX_CYCLES, deadline);
+  let truncated = late || listed.truncated;
   const startOf = (cycle: Edge[]) => cycle[cycle.length - 1].to;
-  const suggestions = cycles
-    .map((c) => toSuggestion(pack, pilots, nodes, c, startOf(c)))
-    .filter((s): s is TradeSuggestion => s !== null)
-    .sort((a, b) => b.worth - a.worth);
+  const suggestions: TradeSuggestion[] = [];
+  for (const c of listed.cycles) {
+    if (Date.now() > deadline) {
+      truncated = true;
+      break;
+    }
+    const s = toSuggestion(pack, pilots, nodes, c, startOf(c));
+    if (s) suggestions.push(s);
+  }
+  suggestions.sort((a, b) => b.worth - a.worth);
   const { chosen, complete } = bestSet(suggestions);
   return { trades: chosen, options: suggestions, truncated: truncated || !complete };
 }

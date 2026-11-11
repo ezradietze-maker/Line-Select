@@ -35,10 +35,10 @@ const groupIs = (meta: BidPackMetaSnapshot) => and(eq(tradeHoldings.base, meta.b
 const suggestionGroupIs = (meta: BidPackMetaSnapshot) => and(eq(tradeSuggestions.base, meta.base), eq(tradeSuggestions.aircraft, meta.aircraft), eq(tradeSuggestions.seat, meta.seat), eq(tradeSuggestions.month, meta.month));
 
 /** Everyone in a base, aircraft, seat and month who has confirmed what they hold, with what the matching needs. */
-export async function listMatchingGroup(meta: BidPackMetaSnapshot): Promise<{ rows: MatchingRow[]; names: Map<string, string> }> {
+export async function listMatchingGroup(meta: BidPackMetaSnapshot): Promise<{ rows: MatchingRow[]; names: Map<string, string>; fingerprints: Map<string, string | null> }> {
   const holdings = await db.select().from(tradeHoldings).where(groupIs(meta));
   const ids = holdings.map((h) => h.userId);
-  if (!ids.length) return { rows: [], names: new Map() };
+  if (!ids.length) return { rows: [], names: new Map(), fingerprints: new Map() };
   const [settings, profiles, people] = await Promise.all([
     db.select().from(tradePreferences).where(inArray(tradePreferences.userId, ids)),
     db.select().from(preferenceProfiles).where(inArray(preferenceProfiles.userId, ids)),
@@ -51,7 +51,7 @@ export async function listMatchingGroup(meta: BidPackMetaSnapshot): Promise<{ ro
     const s = settingsBy.get(h.userId);
     return { userId: h.userId, holding, settings: { suggestMe: s?.suggestMe ?? true, emailMatches: s?.emailMatches ?? false }, profile: profileBy.get(h.userId) ?? null };
   });
-  return { rows, names: new Map(people.map((p) => [p.id, p.displayName])) };
+  return { rows, names: new Map(people.map((p) => [p.id, p.displayName])), fingerprints: new Map(holdings.map((h) => [h.userId, h.packFingerprint ?? null])) };
 }
 
 /**
@@ -60,20 +60,42 @@ export async function listMatchingGroup(meta: BidPackMetaSnapshot): Promise<{ ro
  * a trade wasn't worth it needs more than that trade's gain next time.
  */
 export async function matchingHistory(meta: BidPackMetaSnapshot, now: Date) {
-  const empty = { busyPilots: new Set<string>(), signatures: new Set<string>(), declined: new Set<string>(), refusedTrips: new Set<string>(), minGains: new Map<string, number>() };
+  const empty = {
+    busyPilots: new Set<string>(),
+    signatures: new Set<string>(),
+    declined: new Set<string>(),
+    refusedTrips: new Set<string>(),
+    minGains: new Map<string, number>(),
+    /** Pilots who said a trade wasn't what they hold, and when: not matched again until they confirm what they do hold. */
+    holdingDoubted: new Map<string, Date>(),
+  };
   const rows = await db.select().from(tradeSuggestions).where(suggestionGroupIs(meta));
   if (!rows.length) return empty;
   const members = await db.select().from(tradeSuggestionMembers).where(inArray(tradeSuggestionMembers.suggestionId, rows.map((r) => r.id)));
   const bySuggestion = new Map<string, MemberRow[]>();
   for (const m of members) bySuggestion.set(m.suggestionId, [...(bySuggestion.get(m.suggestionId) ?? []), m]);
-  const { busyPilots, declined, refusedTrips, minGains } = empty;
+  const { busyPilots, declined, refusedTrips, minGains, holdingDoubted } = empty;
+  const recently = (at: Date | null) => !!at && now.getTime() - at.getTime() <= NOT_NOW_DAYS * DAY_MS;
   for (const r of rows) {
     const part = (bySuggestion.get(r.id) ?? []).sort((a, b) => a.position - b.position);
     const open = (r.status === "proposed" || r.status === "accepted") && (r.stepsDone > 0 || r.expiresAt > now);
     if (open) for (const m of part) busyPilots.add(m.userId);
     part.forEach((m, i) => {
-      if (m.answer !== "declined") return;
       const take = part[(i + 1) % part.length].give;
+      // Never answered, so it lapsed: as "not right now" for them, or the same trade comes straight back and holds
+      // everyone who said yes for the same silent pilot again.
+      if (r.cancelReason === "unanswered" && m.answer === "waiting") {
+        if (recently(r.resolvedAt)) declined.add(swapKey(m.userId, m.give, take));
+        return;
+      }
+      if (m.answer !== "declined") return;
+      // What they held was wrong: nothing to say about the swap, but nothing to match them on until they fix it.
+      if (m.declineReason === "wrongHolding") {
+        if (m.answeredAt && m.answeredAt > (holdingDoubted.get(m.userId) ?? new Date(0))) holdingDoubted.set(m.userId, m.answeredAt);
+        return;
+      }
+      // "Not right now" is for now: the swap can come back once a few days have gone by.
+      if (m.declineReason === "notNow" && !recently(m.answeredAt)) return;
       declined.add(swapKey(m.userId, m.give, take));
       if (m.declineReason === "trip") refusedTrips.add(refusedTripKey(m.userId, take));
       if (m.declineReason === "notWorthIt") minGains.set(m.userId, Math.max(minGains.get(m.userId) ?? 0, m.value.gain + NOT_WORTH_IT_MARGIN));
@@ -84,15 +106,37 @@ export async function matchingHistory(meta: BidPackMetaSnapshot, now: Date) {
 
 /** How much more than a declined trade's gain the next one must offer a pilot who said it wasn't worth it. */
 const NOT_WORTH_IT_MARGIN = 1;
+const DAY_MS = 24 * 3_600_000;
+/** How long "Not right now" holds a swap back. */
+const NOT_NOW_DAYS = 3;
+/**
+ * How long a suggested trade waits for everyone's answer. Emails are off by default, so a pilot who never comes back
+ * would otherwise keep the rest (some of whom said yes) out of every other trade until the trip's own deadline.
+ */
+export const ANSWER_DAYS = 3;
+
+/** Calls off this group's suggested trades that have waited `ANSWER_DAYS` for an answer, freeing their pilots. */
+export async function lapseUnanswered(meta: BidPackMetaSnapshot, now: Date): Promise<void> {
+  await db
+    .update(tradeSuggestions)
+    .set({ status: "cancelled", cancelReason: "unanswered", signature: null, resolvedAt: now })
+    .where(and(suggestionGroupIs(meta), eq(tradeSuggestions.status, "proposed"), lt(tradeSuggestions.createdAt, new Date(now.getTime() - ANSWER_DAYS * DAY_MS))));
+}
 
 export const refusedTripKey = (userId: string, trip: { id: string; startDayIndex: number | null }) => `${userId}|${tripInstanceKey(trip)}`;
 
 export const swapKey = (userId: string, give: { id: string; startDayIndex: number | null }, take: { id: string; startDayIndex: number | null }) =>
   `${userId}|${tripInstanceKey(give)}|${tripInstanceKey(take)}`;
 
-/** Stores a found trade. False if the same trade was stored first by another lookup. */
-export async function saveSuggestion(s: ReturnType<typeof suggestionToStore>): Promise<boolean> {
+/**
+ * Stores a found trade. False if the same trade was stored first by another lookup, or (given `foundFrom`, when the run
+ * read the group) if it no longer stands: a pilot on it changed what they hold since then, gave up the trip, turned
+ * suggestions off or was put on another trade. The holdings stay locked until it's stored, so a change made meanwhile
+ * waits and then lapses it as usual.
+ */
+export async function saveSuggestion(s: ReturnType<typeof suggestionToStore>, foundFrom?: Date): Promise<boolean> {
   return db.transaction(async (tx) => {
+    if (foundFrom && !(await stillStands(tx, s, foundFrom))) return false;
     const [row] = await tx
       .insert(tradeSuggestions)
       .values({ signature: s.signature, packId: s.packId, ...s.bidPackMeta, steps: s.steps, expiresAt: s.expiresAt })
@@ -102,6 +146,28 @@ export async function saveSuggestion(s: ReturnType<typeof suggestionToStore>): P
     await tx.insert(tradeSuggestionMembers).values(s.members.map((m) => ({ ...m, suggestionId: row.id })));
     return true;
   });
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function stillStands(tx: Tx, s: ReturnType<typeof suggestionToStore>, foundFrom: Date): Promise<boolean> {
+  const ids = s.members.map((m) => m.userId);
+  const held = await tx.select().from(tradeHoldings).where(and(inArray(tradeHoldings.userId, ids), eq(tradeHoldings.packId, s.packId))).for("update");
+  const byUser = new Map(held.map((h) => [h.userId, h]));
+  const holdsIt = s.members.every((m) => {
+    const h = byUser.get(m.userId);
+    return !!h && h.confirmedAt <= foundFrom && h.trips.some((t) => tripInstanceKey(t) === tripInstanceKey(m.give));
+  });
+  if (!holdsIt) return false;
+  const [off] = await tx.select({ userId: tradePreferences.userId }).from(tradePreferences).where(and(inArray(tradePreferences.userId, ids), eq(tradePreferences.suggestMe, false))).limit(1);
+  if (off) return false;
+  const [busy] = await tx
+    .select({ userId: tradeSuggestionMembers.userId })
+    .from(tradeSuggestionMembers)
+    .innerJoin(tradeSuggestions, eq(tradeSuggestions.id, tradeSuggestionMembers.suggestionId))
+    .where(and(inArray(tradeSuggestionMembers.userId, ids), eq(tradeSuggestions.packId, s.packId), inArray(tradeSuggestions.status, ["proposed", "accepted"]), or(gt(tradeSuggestions.stepsDone, 0), gt(tradeSuggestions.expiresAt, new Date()))))
+    .limit(1);
+  return !busy;
 }
 
 /** This pilot's open trades on this pack, and those that finished or lapsed lately. */
@@ -137,7 +203,13 @@ export async function answerSuggestion(id: string, userId: string, answer: Exclu
     const after = members.map((m) => (m.id === me.id ? { ...m, answer } : m));
     const next =
       answer === "declined"
-        ? { status: "cancelled" as const, cancelReason: "declined" as const, resolvedAt: now }
+        ? {
+            status: "cancelled" as const,
+            cancelReason: "declined" as const,
+            resolvedAt: now,
+            // Kept, the signature would stop this exact trade ever being suggested again; these reasons don't mean never.
+            ...(declineReason === "notNow" || declineReason === "wrongHolding" ? { signature: null } : {}),
+          }
         : after.every((m) => m.answer === "accepted")
           ? { status: "accepted" as const }
           : null;

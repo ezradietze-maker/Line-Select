@@ -563,6 +563,8 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
     `Choose the next question, or decide the interview is done.`,
   ].filter(Boolean).join("\n\n");
 
+  // At the limit the answer is "done" whatever the call says: don't pay for one.
+  if (input.turn >= input.maxTurns) return { done: true, reason: "That's every question this interview asks.", settled: [] };
   let usage: BrainUsage | undefined;
   for (let attempt = 0; attempt < 3; attempt++) {
     const spent = usage?.costUsd ?? 0;

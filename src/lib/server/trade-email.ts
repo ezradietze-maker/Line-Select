@@ -29,9 +29,10 @@ export async function emailNewTrade(trade: ReturnType<typeof suggestionToStore>,
     for (const m of trade.members) {
       const to = targets.get(m.userId);
       if (!to) continue;
-      if (!(await checkRateLimit("trade-email-pilot", m.userId, MAX_PER_PILOT_DAY, 24 * 60 * 60)).ok) continue;
+      // The site's hour first: an email it stops must not use up one of the pilot's own for the day.
       const hour = now.toISOString().slice(0, 13);
       if ((await incrementCounter(`line-select:trade-email:${hour}`, 2 * 60 * 60)) > MAX_PER_HOUR) break;
+      if (!(await checkRateLimit("trade-email-pilot", m.userId, MAX_PER_PILOT_DAY, 24 * 60 * 60)).ok) continue;
       const take = trade.members[(m.position + 1) % trade.members.length].give;
       const size = trade.members.length;
       const ok = await sendEmail({

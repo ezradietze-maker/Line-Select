@@ -1,18 +1,20 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
-import { eventInstant } from "@/lib/bid-calendar";
+import { bidTimeline } from "@/lib/bid-timeline";
 import { commuteOfTrip, type CommuteAnswers, type CommuteSettings, type TripCommute } from "@/lib/commute-filter";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { banksFor, checkAssignedAs, checkContingency, checkDeadline, checkDrop, checkFrozen, checkPriority, checkRDays, checkRealTime, checkStaffing, checkTradeLimit, isSimilarFootprint, openTimeRules, realTimeTiming, type AssignedAs, type BankOption, type Banks, type OpenTimeRules, type RuleFinding, type RuleLevel, type TripTimes } from "@/lib/open-time/rules";
 import type { OpenTimeRow, OpenTimeSnapshot, UnreadRow } from "@/lib/open-time/source";
-import { flyLine, lineAsFlown, reservePeriodSpan, zoneOf, type CarryInItem, type PhaseInElections, type Span } from "@/lib/phase-in";
+import { carriedDaysOf, flyLine, lineAsFlown, reservePeriodSpan, zoneOf, type CarryInItem, type PhaseInElections, type Span } from "@/lib/phase-in";
+import { flyVacationsOnLine } from "@/lib/vacation-lines";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { scoreTripsV2, tripValueText, type TripCriterionResult, type TripScore } from "@/lib/scoring-v2/trip-score";
-import { tripReportUtc } from "@/lib/trip-anchor";
+import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import { busyFromCarry, fitCheck, lineWithAdded, pairingDate, pastedMatches, scheduleAsFlown, tripKey } from "@/lib/view-add";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
+import { prepareMetrics } from "@/lib/metrics/compute";
 
 /**
  * Open time, read for one pilot: every row of a snapshot matched to its trip in the pack, checked against the pilot's line
@@ -150,7 +152,7 @@ function verdictOf(findings: RuleFinding[]): Verdict {
 
 function timesOf(trip: Trip, pack: BidPack): (Span & TripTimes) | null {
   const show = tripReportUtc(pack, trip);
-  return show === null ? null : { show, tafbHours: trip.tafbHours, start: show, end: show + trip.tafbHours * HOUR };
+  return show === null ? null : { show, tafbHours: trip.tafbHours, start: show, end: show + tripReleaseHours(trip) * HOUR };
 }
 
 /** The line without a trip given up, or as it is. */
@@ -166,10 +168,10 @@ function lineGivingUp(line: Line, given: Trip | null, pack: BidPack): Line {
 
 /** The pack's own open time release for this seat, when it prints one: CBA 2026 25.G.2.a says "Each bid period package will indicate when open time will be released." */
 export function openTimePublishedAt(pack: BidPack): number | null {
-  const seat = pack.seat === "CAP" ? /\bCap/i : /F\s*\/\s*O/i;
-  const event = (pack.bidCalendar ?? []).find((e) => /Open\s*Time/i.test(e.text) && e.text.toUpperCase().startsWith(pack.month.toUpperCase()) && (!/\b(Cap|F\/O)\b/i.test(e.text) || seat.test(e.text)));
-  const at = event ? eventInstant(event, pack.base) : null;
-  return at ? Date.parse(at) : null;
+  // As the bid timeline reads it: real covers print "OT Release CAP 2000 LBT F/O 2200 LBT", naming neither the month
+  // nor "Open Time", and each seat its own time.
+  const event = bidTimeline(pack).find((e) => e.kind === "open-time" && e.source === "pack" && e.bidMonth === pack.month);
+  return event ? Date.parse(event.at) : null;
 }
 
 /** The findings on one trip for this pilot's schedule, banks and any trip they'd give up. */
@@ -282,20 +284,25 @@ const VERDICT_RANK: Record<Verdict, number> = { open: 0, check: 0, late: 1, no: 
 export function evaluateOpenTime(snapshot: OpenTimeSnapshot, s: OpenTimeSituation): OpenTimeBoard {
   const { pack, line, carryIn, elections, model } = s;
   const rules = openTimeRules(pack.month);
-  const flown = line ? flyLine(line, pack, carryIn, elections) : null;
+  // The vacation's trips come off the line too (CBA 2026 7.G.1), as View/Add flies it: still on it, they blocked open
+  // trips that fit around the vacation.
+  const carried = line ? flyLine(line, pack, carryIn, elections) : null;
+  const flown = carried
+    ? { ...carried, line: flyVacationsOnLine(carried.line, pack, (s.vacations ?? []).map((vacation) => ({ vacation, choice: "use" as const })), carriedDaysOf(pack, carryIn)).line }
+    : null;
   const flownLine = flown?.line ?? null;
   const given = s.giveUp && flownLine ? (flownLine.trips.find((t) => tripKey(t) === s.giveUp!.key) ?? null) : null;
 
   // Open trips, and trips on other pilots' lines: another pilot's drop or conflict puts those in open time.
   const universe = new Map<string, Trip[]>();
   const seen = new Set<string>();
-  for (const t of [...(pack.openPairings ?? []), ...pack.lines.flatMap((l) => l.trips)]) {
+  for (const t of [...(pack.openPairings ?? []), ...pack.lines.flatMap((l) => l.trips)].flatMap(dayTripsOf)) {
     if (!t.pairingNumber || seen.has(tripKey(t))) continue;
     seen.add(tripKey(t));
     universe.set(t.pairingNumber, [...(universe.get(t.pairingNumber) ?? []), t]);
   }
 
-  const onLineKeys = new Set(flownLine?.trips.map(tripKey) ?? []);
+  const onLineKeys = new Set(flownLine?.trips.flatMap(dayTripsOf).map(tripKey) ?? []);
   const unread: UnreadRow[] = [...snapshot.unread];
   const notInPack: UnreadRow[] = [];
   const onLine: OpenTimeRow[] = [];
@@ -324,7 +331,11 @@ export function evaluateOpenTime(snapshot: OpenTimeSnapshot, s: OpenTimeSituatio
     for (const e of evaluated) if (e.verdict !== "no") after.set(e.key, { ...lineWithAdded(kept, [e.trip], pack), id: `open-time-${e.key}` });
     if (model && after.size) {
       const base = { ...kept, id: "open-time-base" };
-      const lineScores = new Map(scorePackV2({ ...pack, lines: [...pack.lines, base, ...after.values()] }, model, s.flights ? { flights: s.flights } : {}).map((l) => [l.lineId, l.uncapped]));
+      // The pack's own lines set the scale (see View/Add's `scoreLines`): the pilot's line with a trip added can't move it.
+      const all = { ...pack, lines: [...pack.lines, base, ...after.values()] };
+      const lineScores = new Map(
+        scorePackV2(all, model, { pack: prepareMetrics(all), referenceLines: pack.lines.length, ...(s.flights ? { flights: s.flights } : {}) }).map((l) => [l.lineId, l.uncapped])
+      );
       const from = lineScores.get(base.id) ?? 0;
       const moves = new Map([...after].map(([key, l]) => [key, (lineScores.get(l.id) ?? from) - from]));
       const middle = median([...moves.values()]);

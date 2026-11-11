@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandQuestion, renderPassage, retrievePassages, searchWords } from "./retrieve";
+import { expandQuestion, renderPassage, retrievePassages, searchWords, tokens } from "./retrieve";
 
 const retrieved = (q: string) => retrievePassages(q, 40_000).passages;
 
@@ -8,6 +8,19 @@ describe("finding the sections for a question", () => {
     expect(retrieved("how long is the sww")).toContain("25.E.6");
     expect(retrieved("what's the limit on an MUV over my bank")).toContain("7.G.5");
     expect(expandQuestion("does a carry-in hit my PNP").phrases).toEqual(expect.arrayContaining(["phase-in", "priority non-premium"]));
+  });
+
+  it("reads a plural as its singular", () => {
+    for (const [one, many] of [["line", "lines"], ["rule", "rules"], ["schedule", "schedules"], ["duty", "duties"], ["minute", "minutes"], ["box", "boxes"]]) {
+      expect(tokens(many)).toEqual(tokens(one));
+    }
+  });
+
+  it("never sends a passage beside one inside it", () => {
+    for (const q of ["What is the bid line guarantee?", "rules for reserve lines", "what's the limit on an MUV over my bank"]) {
+      const ps = retrieved(q);
+      expect(ps.filter((a) => ps.some((b) => a !== b && a.startsWith(`${b}.`)))).toEqual([]);
+    }
   });
 
   it("shows the search in the pilot's words, then the contract's", () => {

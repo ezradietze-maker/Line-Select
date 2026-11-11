@@ -26,6 +26,7 @@ import { StepTransition } from "@/components/ui/StepTransition";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { withHomeFacts } from "@/lib/brain/model-upgrade";
+import { carriedOver } from "@/lib/brain/quick-brief";
 import { requestModelBuild, requestNextStep, type StepResponse } from "@/lib/brain/client";
 import { fitTripWeights, fitWeightsToChoices } from "@/lib/brain/fit-choices";
 import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tripGradesAnswer, tripGradesTranscript, wantsAnotherScreen, type TripGradeScreen } from "@/lib/brain/trip-sort";
@@ -53,6 +54,7 @@ import { isLearnablePack } from "@/lib/learning/corrections";
 import { postBrainOutcome } from "@/lib/learning/learning-client";
 import { parseAirportCode } from "@/lib/interview-story";
 import { loadStoryDraft, saveStoryDraft } from "@/lib/interview-draft";
+import { openingSteps, stepDepth, stepFromSearch, urlForStep, type OpeningStep } from "@/lib/interview-opening";
 import { clearServerDraft, fetchServerDraft, saveServerDraft } from "@/lib/interview-draft-sync";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
@@ -138,7 +140,14 @@ interface Snapshot {
 interface DraftState {
   version: 1;
   savedAt: number;
-  phase: "question" | "sweep";
+  /** "opening": still on the steps before the questions (kept on this device only), at `step`. */
+  phase: "question" | "sweep" | "opening";
+  step?: OpeningStep;
+  /** The opening steps' own state, so going back to them reads as the pilot left them. */
+  commuteDeclined?: boolean;
+  storySuggested?: Record<string, CitySentiment>;
+  touchedCities?: string[];
+  homeCity?: string | null;
   exchanges: InterviewExchange[];
   threads: Record<string, ThreadState>;
   choices: LineChoice[];
@@ -202,8 +211,54 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   // For the steps that run before a re-render: resuming a draft asks its next question straight away.
   const checkInRef = useRef(checkIn);
   checkInRef.current = checkIn;
-  const afterSeniority: Phase = checkIn ? "checkin" : "story";
+  const afterSeniority: OpeningStep = checkIn ? "checkin" : "story";
   const [phase, setPhase] = useState<Phase>(hasSeniorityStep ? "seniority" : afterSeniority);
+
+  // The opening steps each get a history entry, so the browser's Back (or a swipe back on a phone) goes back a step
+  // rather than out to Preferences, where coming back started the interview over.
+  const steps = openingSteps(checkIn, hasSeniorityStep);
+  const stepsRef = useRef(steps);
+  stepsRef.current = steps;
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  /** Set while the opening's entries are being stepped back over on the way to the questions: that Back isn't the pilot's. */
+  const unwinding = useRef(false);
+  /** The pilot has moved past the first opening step (or resumed past it): from then on the opening is saved as a draft. */
+  const openingStarted = useRef(false);
+  /** On to the next opening step, with an entry of its own for Back to return to. */
+  function stepTo(next: OpeningStep) {
+    window.history.pushState(null, "", urlForStep(window.location.pathname, window.location.search, next, stepsRef.current));
+    openingStarted.current = true;
+    setPhase(next);
+  }
+  /**
+   * Past the opening: its entries are stepped back over, so Back from a question leaves the interview (its answers kept
+   * in the draft) instead of landing on a step that's already behind them.
+   */
+  function leaveOpening() {
+    const from = phaseRef.current as OpeningStep;
+    const depth = (stepsRef.current as readonly string[]).includes(from) ? stepDepth(from, stepsRef.current) : 0;
+    if (depth === 0) return;
+    unwinding.current = true;
+    window.history.go(-depth);
+  }
+  useEffect(() => {
+    // Arriving on a step's address (a reload, or Forward back into the interview) starts at the first step: the address says so too.
+    // (No state of our own: the router adds its own and follows the new address.)
+    if (new URLSearchParams(window.location.search).has("step")) window.history.replaceState(null, "", urlForStep(window.location.pathname, window.location.search, stepsRef.current[0], stepsRef.current));
+    function onPop() {
+      if (unwinding.current) {
+        unwinding.current = false;
+        return;
+      }
+      // Only among the opening steps: once the questions have begun, their own Back takes back an answer.
+      if (!(stepsRef.current as readonly string[]).includes(phaseRef.current)) return;
+      setPhase(stepFromSearch(window.location.search, stepsRef.current));
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   const [confirming, setConfirming] = useState(false);
   const confirmedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -240,7 +295,12 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [tripChoices, setTripChoices] = useState<TripChoice[]>([]);
   /** The trade behind every line pair already put to the pilot, so no trade is asked about more than twice. */
   const [pastTrades, setPastTrades] = useState<string[]>([]);
-  const [model, setModel] = useState<PilotModel | null>(() => (checkIn ? (priorProfile?.brainInterview?.reviewedModel ?? priorProfile?.pilotModel ?? null) : null));
+  const [model, setModel] = useState<PilotModel | null>(() => {
+    const prior = checkIn ? (priorProfile?.brainInterview?.reviewedModel ?? priorProfile?.pilotModel ?? null) : null;
+    // It read last month's whole record; what's carried is shorter once that passes the limit, so this month's answers
+    // would sit below where it read up to and never be marked new. It has read all that's carried.
+    return prior && lastTime && prior.readUpTo !== undefined ? { ...prior, readUpTo: Math.min(prior.readUpTo, carryForward(lastTime.exchanges).length) } : prior;
+  });
   const [question, setQuestion] = useState<Extract<StepResponse, { done: false }> | null>(null);
   const [turn, setTurn] = useState(0);
   const [history, setHistory] = useState<Snapshot[]>([]);
@@ -300,7 +360,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       .then((d) => {
         const server = usableDraft(d);
         // Resumed or started fresh before it came back: that choice stands — not overwritten by the account's copy.
-        if (live && server && !draftChosen.current) setResume((local) => (local && local.savedAt >= server.savedAt ? local : server));
+        // A partway interview on the account outranks this device's opening steps, however recent: it's further along.
+        if (live && server && !draftChosen.current) setResume((local) => (local && local.phase !== "opening" && local.savedAt >= server.savedAt ? local : server));
       });
     return () => {
       live = false;
@@ -421,14 +482,14 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const first = [{ turn: 0, question: OPENING_QUESTION, answer: text }];
     setExchanges(first);
     void startBuild(first);
-    setPhase("commuter");
+    stepTo("commuter");
   }
 
   function skipStory() {
     if (readStory.current !== null) restartReading();
     readStory.current = null;
     setExchanges([]);
-    setPhase("commuter");
+    stepTo("commuter");
   }
 
   /** The check-in's two answers join last month's record; the city step comes next. */
@@ -439,7 +500,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       { turn: start.length, question: `${CHECK_IN_CHANGED_Q}${bidPack.month} bid pack): has anything changed since last month?`, answer: changed || NOTHING_CHANGED },
       { turn: start.length + 1, question: `${CHECK_IN_DATES_Q} in this bid period (${periodLabel})?`, answer: dates || NO_DATES },
     ]);
-    setPhase("cities");
+    stepTo("cities");
   }
 
   /** What the check-in already holds, for going back to it: the pilot's own words, not the stand-ins for a blank box. */
@@ -457,6 +518,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setSweepDone(true);
     turnLimitRef.current = CHECK_IN_TURNS;
     setTurnLimit(CHECK_IN_TURNS);
+    leaveOpening();
     setPhase("reading");
     setError(null);
     await startBuild(all);
@@ -470,6 +532,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     modelRef.current = null;
     topRef.current = null;
     shiftsRef.current = [];
+    // The story takes the check-in's place, in the address as on screen: the same entry, at the same depth.
+    const full = openingSteps(false, hasSeniorityStep);
+    window.history.replaceState(null, "", urlForStep(window.location.pathname, window.location.search, "story", full));
     setPhase("story");
   }
 
@@ -484,6 +549,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       { turn: base.length + 1, question: "How do you feel about each layover city in your pack?", answer: ratingsText || NO_CITY_RATINGS },
     ];
     setExchanges(opening);
+    leaveOpening();
     setPhase("reading");
     setError(null);
     // With no story there's nothing to read yet; with one, wait for the read started when it was sent.
@@ -719,7 +785,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     // A clean profile: the older interview's facts, targets and weights would otherwise add their own dealbreakers and
     // notes to lines this model ranks. Only what's still the pilot's carries over.
     const profile: PreferenceProfile = {
-      ...(priorProfile?.strategyReactions ? { strategyReactions: priorProfile.strategyReactions } : {}),
+      ...carriedOver(priorProfile),
       weights: { ...DEFAULT_WEIGHTS },
       deepRoundCompleted: false,
       tradeoffAnswers: [],
@@ -778,8 +844,24 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (userId) saveServerDraft(bidPack.id, d);
   }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
 
+  // The opening steps too, once the pilot has moved past the first: leaving for another screen and coming back lost the
+  // commute answer and every city grade. Kept on this device only — it's minutes of work, and on the account it could
+  // stand over a partway interview from another device. Not while a saved interview is still on offer, which it would
+  // overwrite.
+  useEffect(() => {
+    if (!openingStarted.current || resume || !(steps as readonly string[]).includes(phase)) return;
+    const d: DraftState = { version: 1, savedAt: Date.now(), phase: "opening", step: phase as OpeningStep, exchanges, threads, choices: [], model, question: null, turn: 0, isCommuter, commuteDeclined, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, touchedCities: [...touchedCities.current], homeCity, sweepDone: false, checkIn };
+    try {
+      window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify(d));
+    } catch {}
+    // `steps` follows `checkIn`, which is in the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, resume, exchanges, threads, model, isCommuter, commuteDeclined, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, homeCity, checkIn, userId, bidPack.id]);
+
   function resumeDraft(d: DraftState) {
     draftChosen.current = true;
+    if (d.phase === "opening") return resumeOpening(d);
+    leaveOpening();
     // A pilot who chose "Start over" on a check-in resumes the full interview, not the check-in.
     if (d.checkIn !== undefined) {
       setCheckIn(d.checkIn);
@@ -813,6 +895,50 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     // Asked once the draft's answers have rendered: asked now, the request would carry this screen's commute and cohort, not the draft's.
     else setResumeAsk(d);
   }
+
+  /** Back to the opening step they left, with what they'd answered on it and the steps before. */
+  function resumeOpening(d: DraftState) {
+    const resumedCheckIn = d.checkIn ?? checkIn;
+    setCheckIn(resumedCheckIn);
+    checkInRef.current = resumedCheckIn;
+    setExchanges(d.exchanges);
+    setThreads(d.threads);
+    setModel(d.model);
+    modelRef.current = d.model;
+    builtUpTo.current = d.model ? d.exchanges.length : 0;
+    setIsCommuter(d.isCommuter);
+    setCommuteDeclined(!!d.commuteDeclined);
+    setCommuteFrom(d.commuteFrom);
+    setHasCrashPad(d.hasCrashPad);
+    setMinHomeHours(d.minHomeHours ?? null);
+    setSeniorityText(d.seniorityText);
+    setCityRatings(d.cityRatings);
+    setCityPreferences(d.cityPreferences);
+    setStorySuggested(d.storySuggested ?? {});
+    touchedCities.current = new Set(d.touchedCities ?? []);
+    setHomeCity(d.homeCity ?? null);
+    if (d.homeCity && d.cityPreferences[d.homeCity] === "love" && !d.cityRatings[d.homeCity]) autoLovedHome.current = d.homeCity;
+    setResume(null);
+    openingStarted.current = true;
+    // The story they'd sent, read again in the background (unless the draft kept its reading), as when it was first sent.
+    const story = d.exchanges.find((e) => e.turn === 0 && e.question === OPENING_QUESTION);
+    readStory.current = story ? story.answer : null;
+    if (story && !d.model) setResumeRead(d.exchanges);
+    // One history entry for each step up to theirs, as if they'd stepped there, so Back still goes a step at a time.
+    const resumedSteps = openingSteps(resumedCheckIn, hasSeniorityStep);
+    const step = d.step && resumedSteps.includes(d.step) ? d.step : resumedSteps[0];
+    for (const s of resumedSteps.slice(1, stepDepth(step, resumedSteps) + 1)) window.history.pushState(null, "", urlForStep(window.location.pathname, window.location.search, s, resumedSteps));
+    stepsRef.current = resumedSteps;
+    setPhase(step);
+  }
+  /** A resumed story's reading, started once the draft's commute answers have rendered (the read carries them). */
+  const [resumeRead, setResumeRead] = useState<InterviewExchange[] | null>(null);
+  useEffect(() => {
+    if (!resumeRead) return;
+    setResumeRead(null);
+    void startBuild(resumeRead);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeRead]);
   const [resumeAsk, setResumeAsk] = useState<DraftState | null>(null);
   useEffect(() => {
     if (!resumeAsk) return;
@@ -842,7 +968,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       return (
         <div>
           <SeniorityStep value={seniorityText} onChange={setSeniorityText} list={bidPack.seniorityList ?? []} seat={bidPack.seat} eyebrow={eyebrow("Your place in the bid")} />
-          <StepNav onNext={() => setPhase(afterSeniority)} nextLabel={typed === "" ? "Skip for now" : "Next"} disabled={typed !== "" && parseSeniorityInput(typed) === null} />
+          <StepNav onNext={() => stepTo(afterSeniority)} nextLabel={typed === "" ? "Skip for now" : "Next"} disabled={typed !== "" && parseSeniorityInput(typed) === null} />
         </div>
       );
     }
@@ -942,7 +1068,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
               }
               setCityPreferences(next);
               setHomeCity(isHome);
-              setPhase("cities");
+              stepTo("cities");
             }}
             nextLabel="Next"
             // "Prefer not to say" is an answer too; only not having answered at all holds Next back.
@@ -1119,6 +1245,19 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     return null;
   })();
 
+  // Each new screen opens at its top. The page kept the last one's scroll, so on a phone a step opened scrolled past its
+  // own question, its heading under the top bar. Only when the panel's top is out of sight: no jump on a tall screen.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const screenKey = `${phase}-${turn}`;
+  const shownScreen = useRef(screenKey);
+  useEffect(() => {
+    if (shownScreen.current === screenKey) return;
+    shownScreen.current = screenKey;
+    const panel = panelRef.current;
+    if (!panel || panel.getBoundingClientRect().top >= (parseFloat(getComputedStyle(panel).scrollMarginTop) || 0)) return;
+    panel.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }, [screenKey]);
+
   const canGoBack = phase === "question" && history.length > 0;
   const backInOpening: Phase | null =
     phase === "story" || phase === "checkin" ? (hasSeniorityStep ? "seniority" : null) : phase === "commuter" ? "story" : phase === "cities" ? (checkIn ? "checkin" : "commuter") : null;
@@ -1133,7 +1272,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
           <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Saved progress</div>
           <div className="mt-1.5 font-display text-lg font-semibold text-ink">Pick up where you left off?</div>
           <p className="mt-1 text-sm text-ink-muted">
-            You were partway through — {resume.turn} question{resume.turn === 1 ? "" : "s"} answered.
+            {resume.phase === "opening"
+              ? "You were on the first steps. Your answers so far are kept."
+              : `You were partway through — ${resume.turn} question${resume.turn === 1 ? "" : "s"} answered.`}
           </p>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <Button onClick={() => resumeDraft(resume)}>Resume</Button>
@@ -1154,11 +1295,13 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         </div>
       )}
 
-      <div className="panel-glass p-6 sm:p-10">
+      {/* Scrolled to, it stops clear of the phone's top bar (57px), and just short of the top on a wider screen. */}
+      <div ref={panelRef} className="panel-glass scroll-mt-[4.5rem] p-6 sm:p-10 md:scroll-mt-6">
         {(canGoBack || backInOpening) && (
           <button
             type="button"
-            onClick={() => (canGoBack ? goBack() : backInOpening && setPhase(backInOpening))}
+            // In the opening, the same as the browser's Back: a step back through the entries each step added.
+            onClick={() => (canGoBack ? goBack() : backInOpening && ((steps as readonly string[]).includes(phase) && stepDepth(phase as OpeningStep, steps) > 0 ? window.history.back() : setPhase(backInOpening)))}
             className="-ml-1 mb-5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint transition-colors hover:text-ink"
           >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -1168,7 +1311,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
           </button>
         )}
         {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-        <StepTransition screenKey={`${phase}-${turn}`} direction={1}>
+        <StepTransition screenKey={screenKey} direction={1}>
           {content}
         </StepTransition>
       </div>

@@ -67,7 +67,7 @@ describe("the 2026 contract's close rule (25.C.4, Phase 2)", () => {
 
 describe("effectiveBidClose", () => {
   beforeEach(() => {
-    vi.stubGlobal("window", { localStorage: memoryStorage() });
+    vi.stubGlobal("window", Object.assign(new EventTarget(), { localStorage: memoryStorage() }));
   });
 
   it("uses the pilot's own time over the pack's", () => {

@@ -5,7 +5,7 @@ import type { TravelNeed } from "@/lib/flights/needs";
 import { answerTravelNeeds, boardCostUsd, flightDataConfigured } from "@/lib/server/flight-schedules";
 import { isJsonObject } from "@/lib/server/json-body";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { checkSpend, recordSpend, spenderFor } from "@/lib/server/spend-guard";
+import { checkSpend, releaseSpend, reserveSpend, spenderFor } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 // The first look at a month's flights fetches a few hundred departure boards; after that it's cached.
@@ -99,15 +99,23 @@ export async function POST(request: Request) {
   const spender = await spenderFor(request);
   const allowed = await checkSpend(spender, { feature: "flights" });
   const costPerBoard = boardCostUsd();
-  const maxBoards = allowed.ok ? Math.floor((allowed.leftUsd ?? 0) / costPerBoard) : 0;
+  // Taken a few boards at a time as the lookup needs them, so lookups running together share what's left; what isn't
+  // used is given back after, on the day it was taken, though the lookup runs past midnight.
+  const day = new Date();
+  let reserved = 0;
+  const moreBoards = async (want: number) => {
+    const got = await reserveSpend(spender, want * costPerBoard, { feature: "flights", now: day });
+    reserved += got;
+    return Math.floor(got / costPerBoard + 1e-9);
+  };
   try {
-    const { answers, stats } = await answerTravelNeeds(needs, jumpseats, { maxBoards });
-    await recordSpend(spender, stats.fetched * costPerBoard, { feature: "flights" });
-    console.log("[flights]", { needs: needs.length, jumpseats: jumpseats.length, answered: answers.length, ...stats });
+    const { answers, stats } = await answerTravelNeeds(needs, jumpseats, allowed.ok ? { maxBoards: 0, moreBoards } : { maxBoards: 0 });
+    await releaseSpend(spender, reserved - stats.fetched * costPerBoard, { feature: "flights", now: day });
+    console.log("[flights]", { needs: needs.length, jumpseats: jumpseats.length, answered: answers.length, fetched: stats.fetched, cached: stats.cached, skipped: stats.skipped });
     // Boards held back (the allowance ran out) can only have hidden flights: a "no" in these answers isn't certain.
     return NextResponse.json({ configured: true, answers, ...(stats.skipped > 0 ? { partial: true } : {}) });
   } catch (e) {
-    await reportProblem("flights", e);
+    await Promise.all([releaseSpend(spender, reserved, { feature: "flights", now: day }), reportProblem("flights", e)]);
     return NextResponse.json({ error: "Couldn't look up flights just now." }, { status: 502 });
   }
 }

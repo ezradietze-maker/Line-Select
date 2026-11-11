@@ -70,6 +70,10 @@ interface BoardStats {
   cached: number;
   skipped: number;
   boardsLeft: number;
+  /** Asks for more boards when `boardsLeft` runs out (how many it wants, how many it got): see `moreBoards`. */
+  more?: (want: number) => Promise<number>;
+  /** A request for more already on its way, shared by the workers waiting on it. */
+  asking?: Promise<void> | null;
 }
 
 interface Block {
@@ -338,6 +342,7 @@ async function loadRealBoards(
   const worker = async () => {
     while (i < missing.length) {
       const b = missing[i++];
+      if (stats.boardsLeft <= 0 && stats.more) await askForMore(stats, missing.length - i + 1);
       if (unitsLeft <= UNITS_FLOOR || stats.boardsLeft <= 0) {
         stats.skipped++;
         continue;
@@ -390,11 +395,34 @@ const windowEnd = (n: TravelNeed) => n.arriveBy ?? n.departBefore + CONNECT_AHEA
  * the boards of the hubs the origins actually fly to, for one-stop connections. The bid pack's own FedEx flights
  * (`jumpseats`) count alongside the airlines.
  */
+/** A few boards at a time: asked for all at once, one lookup took a pilot's whole allowance from another running alongside. */
+const BOARDS_PER_ASK = 10;
+
+async function askForMore(stats: BoardStats, wanted: number): Promise<void> {
+  const more = stats.more;
+  if (!more) return;
+  stats.asking ??= more(Math.min(BOARDS_PER_ASK, wanted))
+    .then((got) => {
+      stats.boardsLeft += got;
+      // None left to give: stop asking, and answer from what's cached.
+      if (got <= 0) stats.more = undefined;
+    })
+    .catch(() => {
+      stats.more = undefined;
+    })
+    .finally(() => {
+      stats.asking = null;
+    });
+  await stats.asking;
+}
+
 export interface AnswerOptions {
   /** Connecting airports looked through per need (default 3). Audits raise it to see what the default misses. */
   maxHubs?: number;
   /** New boards this lookup may fetch (default no limit, audits being the only callers without one). Cached boards don't count. */
   maxBoards?: number;
+  /** Past `maxBoards`, asks for more as they're needed: how many it wants, how many it may have. */
+  moreBoards?: (want: number) => Promise<number>;
 }
 
 export async function answerTravelNeeds(
@@ -407,7 +435,7 @@ export async function answerTravelNeeds(
   /** Every airport's departures over a need's window, exactly as the answers saw them — for audits. */
   departuresFor: (n: TravelNeed) => (airport: string) => ScheduledFlight[] | undefined;
 }> {
-  const stats: BoardStats = { fetched: 0, cached: 0, skipped: 0, boardsLeft: options.maxBoards ?? Infinity };
+  const stats: BoardStats = { fetched: 0, cached: 0, skipped: 0, boardsLeft: options.maxBoards ?? (options.moreBoards ? 0 : Infinity), more: options.moreBoards };
   const originBlocks = needs.flatMap((n) => n.from.flatMap((a) => blocksFor(a, n.departAfter, n.departBefore)));
   const { boards } = await loadBoards(originBlocks, stats);
   // Where the trip ends: its own board tells whether the provider's data there has a gap, and if so the flights into it

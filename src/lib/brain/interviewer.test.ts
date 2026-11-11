@@ -89,8 +89,9 @@ describe("the interviewer's guard rails", () => {
     proposals.push(step({ kind: "choice", options: ["Only one"], prompt: "Pick?" }));
     expect(await nextInterviewStep(input())).toMatchObject({ kind: "free-text" });
 
-    proposals.push(step({ prompt: "Anything?" }));
+    // At the limit it's done without asking the model: no call is paid for.
     expect(await nextInterviewStep(input({ turn: 20 }))).toMatchObject({ done: true });
+    expect(proposals).toHaveLength(0);
 
     proposals.push(...[1, 2, 3].map(() => step({ threadId: "buffers", prompt: "Buffer again?" })));
     expect(await nextInterviewStep(input())).toMatchObject({ done: true, reason: "No new question left to ask." });

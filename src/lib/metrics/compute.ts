@@ -73,12 +73,22 @@ function aggregate(values: number[], how: Aggregation): number | null {
   }
 }
 
+/**
+ * What an estimated line (its grid didn't match its pairings, so it holds one stand-in trip with no schedule) can still
+ * be measured on: the totals the pack prints for the line, and the days off its grid shows.
+ */
+const FROM_PRINTED_LINE = new Set(["creditHours", "tafbHours", "daysOff", "dutyPeriods", "landings", "longestDaysOffBlock", "singleDaysOff", "requestedDatesWorked", "weekdaysOff", "weekendDaysOff"]);
+
 /** One measurement for one line, in its real unit — null when the pack has nothing real to measure it from (an estimated line, a trip with no schedule). */
 export function measureLine(def: MetricDef, asPrinted: Line, pack: PackMetrics, params: MetricParams = {}): number | null {
   const p = { ...def.defaults, ...params, base: pack.ctx.base, bidPeriodStart: pack.ctx.bidPeriodStart };
   const line = pack.monthLines.get(asPrinted.id) ?? asPrinted;
   const trips = pack.factsByLine.get(line.id) ?? [];
   const whole = pack.tripFactsByLine.get(line.id) ?? trips;
+  // Measured from its stand-in trip, an estimated line read as the best there is: no commutes, no nights, no time away.
+  if (line.estimated && !FROM_PRINTED_LINE.has(def.id)) return null;
+  // Likewise a line with a flying trip whose schedule wasn't read: what's counted from trips would leave it out.
+  if (def.line && !FROM_PRINTED_LINE.has(def.id) && line.trips.some((t) => t.schedule.length === 0 && t.creditHours > 0)) return null;
   if (def.line) return def.line(line, trips, pack.ctx, p, whole);
   if (!def.trip) return null;
   if (line.estimated) return null;

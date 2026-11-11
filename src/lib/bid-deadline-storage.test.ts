@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getBidDeadline, setBidDeadline } from "@/lib/bid-deadline-storage";
+import { getBidDeadline, setBidDeadline, subscribeBidDeadline } from "@/lib/bid-deadline-storage";
 
 function memoryStorage() {
   const map = new Map<string, string>();
@@ -12,7 +12,7 @@ function memoryStorage() {
 
 describe("bid deadline storage", () => {
   beforeEach(() => {
-    vi.stubGlobal("window", { localStorage: memoryStorage() });
+    vi.stubGlobal("window", Object.assign(new EventTarget(), { localStorage: memoryStorage() }));
   });
 
   it("is null until a pilot sets one", () => {
@@ -29,5 +29,16 @@ describe("bid deadline storage", () => {
     setBidDeadline("pack-1", "2026-10-10T17:00:00.000Z");
     setBidDeadline("pack-1", null);
     expect(getBidDeadline("pack-1")).toBeNull();
+  });
+
+  it("tells whoever is watching when one is set or cleared, so the calendar link follows", () => {
+    const heard = vi.fn();
+    const stop = subscribeBidDeadline(heard);
+    setBidDeadline("pack-1", "2026-10-10T17:00:00.000Z");
+    setBidDeadline("pack-1", null);
+    expect(heard).toHaveBeenCalledTimes(2);
+    stop();
+    setBidDeadline("pack-1", "2026-10-11T17:00:00.000Z");
+    expect(heard).toHaveBeenCalledTimes(2);
   });
 });

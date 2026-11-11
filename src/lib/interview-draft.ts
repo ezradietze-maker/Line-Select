@@ -93,6 +93,28 @@ function storyDraftKey(userId: string | null): string {
   return `line-select:story-draft:${userId ?? "guest"}:v1`;
 }
 
+/**
+ * A guest who signs in partway through the interview: their story and answers so far become the account's, as their
+ * pack and profile do, or signed in the interview looks only under the account and they'd start again. An account
+ * that already has a draft of its own keeps it.
+ */
+export function adoptGuestDrafts(userId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const store = window.localStorage;
+    const guest = "line-select:brain-interview:guest:";
+    const keys = Array.from({ length: store.length }, (_, i) => store.key(i)).filter((k): k is string => !!k && (k.startsWith(guest) || k === storyDraftKey(null)));
+    for (const key of keys) {
+      const theirs = key === storyDraftKey(null) ? storyDraftKey(userId) : key.replace(guest, `line-select:brain-interview:${userId}:`);
+      const value = store.getItem(key);
+      if (value !== null && store.getItem(theirs) === null) store.setItem(theirs, value);
+      store.removeItem(key);
+    }
+  } catch {
+    // Storage unavailable: there was no draft kept to bring over.
+  }
+}
+
 export function saveStoryDraft(userId: string | null, bidPackId: string, text: string): void {
   if (typeof window === "undefined") return;
   try {

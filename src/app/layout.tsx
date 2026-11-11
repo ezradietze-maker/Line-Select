@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, IBM_Plex_Sans_Condensed, Public_Sans } from "next/font/g
 import { AppShell } from "@/components/app/AppShell";
 import { CrashReporting } from "@/components/CrashReporting";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
+import { SITE_URL } from "@/lib/site-pages";
 import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
@@ -30,6 +31,9 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  // What each page's canonical link and the share card's image are built on: the site's real address, never a
+  // deployment's own vercel.app one.
+  metadataBase: new URL(SITE_URL),
   // Each screen names its own tab ("My Rankings · Line Select") — see the small layout.tsx beside each page.
   title: { default: "Line Select — Bid Line Matching for FedEx Pilots", template: "%s · Line Select" },
   description:

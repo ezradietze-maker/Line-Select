@@ -22,6 +22,9 @@ export function getBidDeadline(bidPackId: string): string | null {
   }
 }
 
+/** Told to the page when a pilot sets or clears one, so everything showing it (the countdown, the calendar link) follows. */
+const CHANGED = "line-select:bid-deadline-changed";
+
 export function setBidDeadline(bidPackId: string, iso: string | null): void {
   if (typeof window === "undefined") return;
   try {
@@ -30,4 +33,16 @@ export function setBidDeadline(bidPackId: string, iso: string | null): void {
   } catch {
     // ignore, same as the rest of this storage family
   }
+  window.dispatchEvent(new Event(CHANGED));
 }
+
+/** Calls `onChange` when a deadline is set or cleared here or in another tab. */
+export function subscribeBidDeadline(onChange: () => void): () => void {
+  window.addEventListener(CHANGED, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(CHANGED, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+

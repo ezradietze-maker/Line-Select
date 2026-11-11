@@ -14,8 +14,11 @@ const state = vi.hoisted(() => ({
   saved: [] as unknown[],
   emailed: [] as unknown[],
   failSeat: null as string | null,
-  history: { busyPilots: new Set<string>(), signatures: new Set<string>(), declined: new Set<string>(), refusedTrips: new Set<string>(), minGains: new Map<string, number>() },
+  history: { busyPilots: new Set<string>(), signatures: new Set<string>(), declined: new Set<string>(), refusedTrips: new Set<string>(), minGains: new Map<string, number>(), holdingDoubted: new Map<string, Date>() },
   options: [] as Record<string, (...a: never[]) => unknown>[],
+  fingerprints: new Map<string, string | null>(),
+  matched: [] as unknown[],
+  available: [] as { pilotId: string }[],
 }));
 
 vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
@@ -27,17 +30,28 @@ vi.mock("@/lib/server/trade-email", () => ({
     return 1;
   },
 }));
+const record = (u: string) => ({ userId: u, packId: "uploaded-mem-md11-fo-dec26", data: gzipSync(JSON.stringify(state.packs.get(u))), fingerprint: null });
 vi.mock("@/lib/server/db", () => ({
   getTradeHolding: async () => ({ bidPackMeta: meta("FO") }),
-  getBidPackRecord: async (u: string) => (state.packs.has(u) ? { packId: "uploaded-mem-md11-fo-dec26", data: gzipSync(JSON.stringify(state.packs.get(u))) } : null),
+  getBidPackRecord: async (u: string) => (state.packs.has(u) ? record(u) : null),
+  setBidPackFingerprint: async () => {},
+  setHoldingFingerprint: async () => {},
+  // Any account in the list whose pack has the fingerprint asked for.
+  bidPackRecordWithFingerprint: async (ids: string[], fingerprint: string) => {
+    const { tradePackFingerprint } = await import("@/lib/server/pack-fingerprint");
+    const { restoreBidPack } = await import("@/lib/bidpack-storage");
+    const u = ids.find((id) => state.packs.has(id) && tradePackFingerprint(restoreBidPack(state.packs.get(id) as never)) === fingerprint);
+    return u ? record(u) : null;
+  },
 }));
 vi.mock("@/lib/server/trade-suggestions", () => ({
   listActiveGroups: async (min: number) => (min === 2 ? state.groups : []),
   listMatchingGroup: async (m: BidPackMetaSnapshot) => {
     if (m.seat === state.failSeat) throw new Error("boom");
-    return { rows: state.rows, names: new Map() };
+    return { rows: state.rows, names: new Map(), fingerprints: new Map(state.fingerprints) };
   },
   matchingHistory: async () => state.history,
+  lapseUnanswered: async () => {},
   saveSuggestion: async (s: unknown) => {
     state.saved.push(s);
     return true;
@@ -46,10 +60,16 @@ vi.mock("@/lib/server/trade-suggestions", () => ({
   refusedTripKey: (u: string, t: { id: string }) => `${u}|${t.id}`,
   swapKey: (u: string, g: { id: string }, t: { id: string }) => `${u}|${g.id}|${t.id}`,
 }));
-vi.mock("@/lib/trades/holding", () => ({ pilotsForMatching: () => [{ pilotId: "a" }, { pilotId: "b" }] }));
+vi.mock("@/lib/trades/holding", () => ({
+  pilotsForMatching: (_p: unknown, rows: unknown[]) => {
+    state.matched = rows;
+    return [{ pilotId: "a" }, { pilotId: "b" }];
+  },
+}));
 vi.mock("@/lib/trades/match", () => ({
-  findTrades: (_p: unknown, _a: unknown, options: Record<string, (...a: never[]) => unknown>) => {
+  findTrades: (_p: unknown, available: { pilotId: string }[], options: Record<string, (...a: never[]) => unknown>) => {
     state.options.push(options);
+    state.available = available;
     return { trades: state.trades };
   },
 }));
@@ -67,13 +87,15 @@ beforeEach(() => {
   state.groups = [meta("FO")];
   state.open = new Set(["FO"]);
   state.packs = new Map([["u1", packOf()]]);
-  state.rows = [{ userId: "u1", holding: { packId: "uploaded-mem-md11-fo-dec26" } }];
+  state.rows = [{ userId: "u1", holding: { packId: "uploaded-mem-md11-fo-dec26", confirmedAt: "2026-12-01T00:00:00.000Z" } }];
+  state.fingerprints = new Map();
+  state.matched = [];
   state.trades = [trade];
   state.saved = [];
   state.emailed = [];
   state.failSeat = null;
   state.options = [];
-  state.history = { busyPilots: new Set(), signatures: new Set(), declined: new Set(), refusedTrips: new Set(), minGains: new Map() };
+  state.history = { busyPilots: new Set(), signatures: new Set(), declined: new Set(), refusedTrips: new Set(), minGains: new Map(), holdingDoubted: new Map() };
 });
 
 describe("the daily run", () => {
@@ -124,6 +146,14 @@ describe("the daily run", () => {
     expect(minGainFor("a")).toBeUndefined();
   });
 
+  it("leaves out a pilot who said a trade wasn't what they hold, until they confirm what they do", async () => {
+    state.history.holdingDoubted.set("a", new Date("2026-12-02T00:00:00Z"));
+    state.rows = [{ userId: "u1", holding: { packId: "uploaded-mem-md11-fo-dec26", confirmedAt: "2026-12-01T00:00:00.000Z" } }];
+    // The mocked group holds pilots "a" and "b"; "a" has no holding confirmed since saying so.
+    await runDailyMatching(now);
+    expect(state.available.map((p) => p.pilotId)).toEqual(["b"]);
+  });
+
   it("doesn't store the same trade twice", async () => {
     state.history.signatures.add("sig");
     expect(await runDailyMatching(now)).toMatchObject({ found: 0 });
@@ -143,6 +173,20 @@ describe("a pilot pressing Find trades", () => {
 
   it("runs the search otherwise", async () => {
     expect(await runMatching("u1", "uploaded-mem-md11-fo-dec26", now.getTime())).toEqual({ status: "ran", found: 1, pilots: 2 });
+  });
+
+  it("is told when what they hold was confirmed on a different copy of the pack from most of their seat", async () => {
+    const { tradePackFingerprint } = await import("@/lib/server/pack-fingerprint");
+    const { restoreBidPack } = await import("@/lib/bidpack-storage");
+    const group = tradePackFingerprint(restoreBidPack(packOf() as never));
+    const confirmedAt = "2026-12-01T00:00:00.000Z";
+    state.packs = new Map([["u1", packOf()], ["u2", packOf()], ["u3", packOf()]]);
+    state.rows = ["u1", "u2", "u3"].map((userId) => ({ userId, holding: { packId: "uploaded-mem-md11-fo-dec26", confirmedAt } }));
+    state.fingerprints = new Map([["u1", "edited"], ["u2", group], ["u3", group]]);
+    expect(await runMatching("u1", "uploaded-mem-md11-fo-dec26", now.getTime())).toEqual({ status: "pack-differs" });
+    // Matched without them: only what was confirmed on the group's pack.
+    expect(await runMatching("u2", "uploaded-mem-md11-fo-dec26", now.getTime())).toMatchObject({ status: "ran" });
+    expect((state.matched as { userId: string }[]).map((r) => r.userId)).toEqual(["u2", "u3"]);
   });
 });
 

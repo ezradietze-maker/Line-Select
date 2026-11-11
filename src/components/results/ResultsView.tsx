@@ -436,7 +436,10 @@ export function ResultsView({
 
   // What a tier move teaches goes the way a swap's does: after it's painted, on the newest profile.
   useEffect(() => {
-    teachTiersRef.current = (add, retract) =>
+    teachTiersRef.current = (add, retract) => {
+      // Read now, before the learning below runs: what each retracted move taught, for an undo to give back.
+      const held = profileRef.current.brainInterview?.choices ?? [];
+      const removed = Object.fromEntries(retract.map((id) => [id, held.filter((c) => c.dragId === id)]));
       afterPaint(() => {
         const current = profileRef.current;
         if (!current.pilotModel) return;
@@ -447,6 +450,8 @@ export function ResultsView({
         profileRef.current = next;
         onUpdateProfile(next);
       });
+      return removed;
+    };
   }, [bidPack, onUpdateProfile]);
 
   const updatePlacements = useCallback(
@@ -580,6 +585,8 @@ export function ResultsView({
   const [flashId, setFlashId] = useState<string | null>(null);
   // The ask already answered, while the address catches up — so more cards mounting doesn't scroll back to it.
   const focusDone = useRef<string | null>(null);
+  // Filters are cleared once per ask: cleared on every pass, a line they couldn't bring back kept wiping each new one.
+  const focusCleared = useRef<string | null>(null);
   const focusTarget = focusLine && hotelsSettled ? ranked.find((r) => r.line.lineNumber === focusLine) ?? null : null;
   const focusIndex = focusTarget ? sorted.indexOf(focusTarget) : -1;
   useEffect(() => {
@@ -590,11 +597,22 @@ export function ResultsView({
       return;
     }
     if (focusIndex === -1) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // A line set aside is never listed: asked for by name, it comes back.
+      if (tiers.setAside.has(focusTarget.line.id)) {
+        tiers.unpark([focusTarget.line.id]);
+        return;
+      }
+      if (focusCleared.current === focusLine) {
+        focusDone.current = focusLine;
+        onFocusHandled?.();
+        return;
+      }
+      focusCleared.current = focusLine;
       setFilters(EMPTY_FILTERS);
       setSearch("");
       setHotelFilter(null);
       setView("all");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (hiddenSet.has(focusTarget.line.id)) setShowHidden(true);
       return;
     }
@@ -609,7 +627,7 @@ export function ResultsView({
     setFlashId(focusTarget.line.id);
     focusDone.current = focusLine;
     onFocusHandled?.();
-  }, [focusLine, hotelsSettled, focusTarget, focusIndex, shown, listKey, mountedCount, hiddenSet, reduceMotion, onFocusHandled]);
+  }, [focusLine, hotelsSettled, focusTarget, focusIndex, shown, listKey, mountedCount, hiddenSet, reduceMotion, onFocusHandled, tiers]);
   // Every line's strip has the pack's day columns, laid out the same at the list's width, so they line up under one header.
   const columns = useMemo(() => packColumns(bidPack.bidPeriodStart, bidPack.bidPeriodDays, packColumnCount(bidPack)), [bidPack]);
   const [listRef, listWidth] = useMeasuredWidth<HTMLDivElement>(768);
@@ -1145,6 +1163,7 @@ export function ResultsView({
               entries={bidOrderEntries}
               shortlistEntries={shortlistEntries}
               bidPeriodStart={bidPack.bidPeriodStart}
+              bidMonth={bidPack.month}
               packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
               leftOut={bidPack.lines.length - exportable.length}
               presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds }}

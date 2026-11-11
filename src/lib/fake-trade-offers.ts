@@ -78,7 +78,7 @@ export function generateFakeOffer(
     },
     offeringUserId: "demo-pilot",
     offeringDisplayName: name,
-    offeredTrip: tripToSnapshot(offered.trip, offered.lineNumber),
+    offeredTrip: tripToSnapshot(offered.trip, offered.lineNumber, bidPack.bidPeriodStart),
     wantedPairingNumber,
     note: null,
     status: "open",

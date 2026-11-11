@@ -276,6 +276,25 @@ describe("slideWhere (CBA 2026 25.E.2.b)", () => {
     const p = { ...pack([]), bidCalendar: [event("2026-09-11", "OCT26 F/O Conflict Input Closes 0700 CT"), event("2026-09-09", "OCT26 CAP Conflict Input Closes 0700 CT")] };
     expect(slideWhere(p).closes).toContain("2026-09-09");
   });
+  it("reads cells that don't name the month, under the bid opened above them", () => {
+    const p = {
+      ...pack([]),
+      bidCalendar: [
+        { date: "2026-09-03", text: "OCT26 Bid Opens 1700 CT", time: "17:00", zone: "CT" as const },
+        { date: "2026-09-08", text: "CAP Conflict Input Window Opens 1700 CT", time: "17:00", zone: "CT" as const },
+        event("2026-09-10", "CAP Conflict Input Window Closes 0700 CT"),
+      ],
+    };
+    expect(slideWhere(p).opens).toBe("2026-09-08T22:00:00.000Z");
+    expect(slideWhere(p).closes).toBe("2026-09-10T12:00:00.000Z");
+  });
+  it("finds no slides, and doesn't break, on a pack without the bid month's dates", () => {
+    const p = { ...pack([line([trip("1", 5)])]), bidPeriodStart: undefined } as unknown as BidPack;
+    const v = { from: "2026-10-10T05:00:00.000Z", to: "2026-10-16T04:59:00.000Z", days: 6 };
+    const slides = findVacationSlides({ pack: p, order: ["1001"], vacation: v });
+    expect(slides.lines).toEqual([]);
+    expect(slides.across).toEqual([]);
+  });
   it("25.E.2: the rule changes with December 2026", () => {
     expect(slideWhere(pack([])).rule).toContain("1700 CT");
     expect(slideWhere(pack([], "DEC26")).rule).toContain("5 hours after");

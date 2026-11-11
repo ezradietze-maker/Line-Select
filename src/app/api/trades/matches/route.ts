@@ -11,12 +11,16 @@ import { suggestionForViewer } from "@/lib/trades/suggestions";
 export const runtime = "nodejs";
 export const maxDuration = 90;
 
+/** Reads of suggested trades one pilot may make in an hour (see GET). */
+export const MATCHES_READ_LIMIT = 2_700;
+
 /** The trades suggested to this pilot on one pack. Only ever their own view of them (`suggestionForViewer`). */
 export async function GET(request: Request) {
   const user = await getCurrentServerUser();
   if (!user) return NextResponse.json({ error: "Sign in to see suggested trades." }, { status: 401 });
-  // The app asks every few seconds for its Inbox badge.
-  if (!(await checkRateLimit("trade-matches-read", user.id, 900, 60 * 60)).ok) return rateLimitedResponse();
+  // Each open window asks every 10 seconds for its Inbox badge (360 an hour) and, on the Trade Board, every 20 for the
+  // trades themselves (180): enough here for five windows. 900 was used up by two, and their trades stopped updating.
+  if (!(await checkRateLimit("trade-matches-read", user.id, MATCHES_READ_LIMIT, 60 * 60)).ok) return rateLimitedResponse();
   const url = new URL(request.url);
   const pack = url.searchParams.get("pack")?.slice(0, 200);
   if (!pack) return NextResponse.json({ error: "Which bid pack?" }, { status: 400 });
