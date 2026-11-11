@@ -8,18 +8,37 @@ import { LogoMark, Wordmark } from "@/components/ui/Logo";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { fetchEmailResetEnabled, login, requestResetEmail, resetPassword, signUp } from "@/lib/auth";
+import { AUTH_LIMITS } from "@/lib/auth-limits";
 import type { UserAccount } from "@/types/auth";
 import { PillHighlight } from "@/components/ui/PillHighlight";
 
 type Mode = "login" | "signup" | "reset" | "forgot";
+const MODES: readonly Mode[] = ["login", "signup", "reset", "forgot"];
+
+/** The tab's name for each view, so a tab left on "create account" doesn't still say Sign In. */
+const TAB_TITLES: Record<Mode, string> = { login: "Sign In", signup: "Create Account", forgot: "Reset Password", reset: "Reset Password" };
+
+export function authTabTitle(mode: Mode): string {
+  return `${TAB_TITLES[mode]} · Line Select`;
+}
+
+/** The view a link asks for (`/auth?view=forgot`, from the reset page), or signing in. */
+export function authModeFor(view: string | null): Mode {
+  return MODES.find((m) => m === view) ?? "login";
+}
 
 interface AuthScreenProps {
   onAuthenticated: (user: UserAccount) => void;
   onContinueAsGuest: () => void;
+  /** The view it opens on: signing in, unless a link asked for another. */
+  initialMode?: Mode;
 }
 
-export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenProps) {
-  const [mode, setMode] = useState<Mode>("login");
+export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "login" }: AuthScreenProps) {
+  const [mode, setMode] = useState<Mode>(initialMode);
+  useEffect(() => {
+    document.title = authTabTitle(mode);
+  }, [mode]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -192,6 +211,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="e.g. J. Rodriguez"
               required
+              maxLength={AUTH_LIMITS.displayName}
             />
           )}
           <TextField
@@ -202,6 +222,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
             required
+            maxLength={AUTH_LIMITS.email}
           />
           {mode === "reset" && (
             <TextField
@@ -227,6 +248,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
             placeholder={mode === "login" ? undefined : "At least 8 characters"}
             required
             minLength={mode === "login" ? undefined : 8}
+            maxLength={AUTH_LIMITS.password}
           />
           )}
           {(mode === "signup" || mode === "reset") && (
@@ -238,6 +260,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest }: AuthScreenPro
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={8}
+              maxLength={AUTH_LIMITS.password}
             />
           )}
 

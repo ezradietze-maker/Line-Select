@@ -27,6 +27,7 @@ import type { ToastItem } from "@/components/ui/Toast";
 import { isPackId, legacyPackIdFor, moveKeptUnderOldId, packIdFor } from "@/lib/pack-id";
 import { forgetPilotOnDevice } from "@/lib/device-data";
 import { adoptGuestDrafts } from "@/lib/interview-draft";
+import { landingAfterSignIn, landingPathFor } from "@/lib/landing-path";
 
 /**
  * Whether this device was signed in when the app last checked — not a credential (the session cookie is), just a
@@ -118,11 +119,6 @@ async function accountBidPack(userId: string): Promise<BidPack | null> {
   const keep = remote && remote.bidPeriodStart && local.bidPeriodStart && remote.bidPeriodStart > local.bidPeriodStart ? remote : local;
   saveBidPack(userId, keep);
   return keep;
-}
-
-function landingPathFor(bidPack: BidPack | null, profile: PreferenceProfile | null): string {
-  if (!bidPack) return "/";
-  return profile ? "/results" : "/preferences";
 }
 
 interface AppStateValue extends DataState {
@@ -675,7 +671,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       bidPackSaveFailed: packSaveFailed,
       profileSaveFailed: false,
     });
-    router.push(landingPathFor(theirBidPack, theirProfile));
+    router.push(landingAfterSignIn(theirBidPack, theirProfile, state.user ? null : state.bidPack));
   }
 
   async function handleContinueAsGuest() {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { AUTH_LIMITS, signUpProblem } from "@/lib/auth-limits";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { SESSION_COOKIE, sessionCookieOptions, signUp } from "@/lib/server/auth";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -21,8 +22,10 @@ export async function POST(request: Request) {
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
   const { email, password, displayName } = body;
-  if (!isText(email, 200) || !isText(password, 500) || !isText(displayName, 80)) {
-    return NextResponse.json({ error: "Email, password, and display name are required." }, { status: 400 });
+  // Says which field is missing or too long, at the same lengths the form stops at.
+  const problem = signUpProblem(email, password, displayName);
+  if (problem || !isText(email, AUTH_LIMITS.email) || !isText(password, AUTH_LIMITS.password) || !isText(displayName, AUTH_LIMITS.displayName)) {
+    return NextResponse.json({ error: problem ?? "Email, password, and display name are required." }, { status: 400 });
   }
 
   const result = await signUp(email, password, displayName);

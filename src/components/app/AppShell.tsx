@@ -19,6 +19,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { ToastStack } from "@/components/ui/Toast";
 import { AppStateProvider, useAppState } from "@/lib/app-state";
 import { navTargetForPath } from "@/lib/nav-target";
+import { waitsForSavedState } from "@/lib/site-pages";
 
 // Only ever shown in a dialog someone opens — fetched then, not shipped with every screen.
 // `loading` gives each a Suspense boundary of its own, so opening one for the first time can't suspend the page behind it.
@@ -144,8 +145,11 @@ function Chrome({ children }: { children: React.ReactNode }) {
   // The sign-in page has no app frame to sketch, so it shows the mark while
   // saved state loads. The landing page renders straight away instead — its
   // headline is the first thing a new visitor sees, so it can't wait on
-  // JavaScript (it handles returning pilots itself; see app/page.tsx).
-  if (!ready && !showSidebar && pathname !== "/") {
+  // JavaScript (it handles returning pilots itself; see LandingPage.tsx). So do
+  // the pages that read the same to everyone (Privacy, Pricing, a wrong link):
+  // only the pilot's own screens wait for what this device has saved.
+  const waiting = !ready && waitsForSavedState(pathname);
+  if (waiting && !showSidebar) {
     return (
       <div className="flex min-h-[80vh] flex-1 items-center justify-center" role="status" aria-label="Loading Line Select">
         <LogoMark className="skeleton-pulse h-16 w-16" detailed />
@@ -153,7 +157,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!ready && pathname !== "/") {
+  if (waiting) {
     return (
       <div className={`app-shell flex min-h-full flex-1 flex-col md:flex-row ${showSidebar ? "" : "no-nav"}`}>
         {showSidebar && (

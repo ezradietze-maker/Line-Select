@@ -21,29 +21,34 @@ const POINTS: Point[] = [
     title: "How your score is built",
     body: (
       <>
-        Line Select reads your own uploaded bid pack PDF and compares each
-        line&rsquo;s real attributes &mdash; days off, trip length,
-        duty periods, international mix, layover cities, report-time lean,
-        credit hours, deadhead legs, and layover hotel quality &mdash;
-        against the targets implied by your answers, then blends them into a
-        single 0-100 score weighted by how strongly you felt about each one.
+        Line Select reads your own uploaded bid pack PDF and measures each
+        line&rsquo;s real makeup &mdash; days off and when they fall, trip
+        length, duty periods, show times, flying on the backside of the clock,
+        credit, deadheads, layover cities and hotels, and your time away from
+        home if you commute &mdash; then scores it 0&ndash;100 against the
+        priorities your interview set, each counting as much as it matters
+        to you.
       </>
     ),
   },
   {
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-3.5-3.5M12 15l3.5-3.5" />
-        <path strokeLinecap="round" d="M5 19h14" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16v11H9l-5 4V5z" />
+        <path strokeLinecap="round" d="M8 9.5h8M8 12.5h5" />
       </svg>
     ),
-    title: "Exact targets override sliders",
+    title: "Your priorities come from your own story",
     body: (
       <>
-        Several questions let you pin an exact number instead of just leaning
-        a slider &mdash; days off, duty periods, and (in the deeper round)
-        credit hours &mdash; and that exact target is used directly instead
-        of the rough midpoint a slider alone implies.
+        The interview starts with how you bid, start to finish, in your own
+        words; then your commute and how you feel about each layover city.
+        Every question after that comes from what you said, using your
+        pack&rsquo;s real lines and trips. When two of your priorities pull
+        against each other, it puts two real lines side by side and asks which
+        you&rsquo;d bid, and you can grade a few trips &mdash; those answers
+        set how much each priority counts. You check your priorities before
+        anything is ranked.
       </>
     ),
   },
@@ -83,13 +88,17 @@ const POINTS: Point[] = [
         itself isn&rsquo;t stored once parsing finishes. The extracted line
         data and your preferences are then stored on this device, and on the
         server too if you create an account. Beyond the upload itself, the
-        server sees: your interview answers (sent to an AI provider to write
-        the next question), hotel names (looked up on Google), your
-        seniority number and line ranking if you ask for a bid forecast
-        (numbers only, never the pack), a numeric summary of your finished
-        interview (never your words) that helps it ask future pilots better
-        questions, and anything you post to the Trade Board or send as
-        feedback. The Privacy Policy has the full list.
+        server sees: your interview answers, your questions to Ask your pack
+        and Ask the contract, and the reason you type for swapping or
+        correcting lines (each sent to an AI provider to answer it); hotel
+        names (looked up on Google); if you commute, the airports you fly
+        from, the times around your trips and the pack&rsquo;s own flights, to
+        look up real commuting flights; your seniority number and line
+        ranking if you ask for a bid forecast (numbers only, never the pack);
+        a numeric summary of your finished interview (never your words) that
+        helps it ask future pilots better questions; and anything you post
+        to the Trade Board or send as feedback. The Privacy Policy has the
+        full list.
       </>
     ),
   },

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useAppState } from "@/lib/app-state";
+import { isSamplePack } from "@/lib/fake-trade-offers";
 
 const FREE_FEATURES = [
   "The full adaptive preference interview",
@@ -51,7 +52,14 @@ export default function PricingPage() {
           ))}
         </ul>
         <div className="mt-5">
-          {bidPack ? (
+          {bidPack && !user && isSamplePack(bidPack) ? (
+            // An account doesn't keep the sample pack, so there's no progress on it to save: signing in leads to
+            // uploading their own.
+            <>
+              <Button onClick={() => router.push("/auth")}>Sign in</Button>
+              <p className="mt-2 text-xs leading-relaxed text-ink-faint">The sample pack stays on this device. Once you&rsquo;re signed in, you&rsquo;ll upload your own bid pack.</p>
+            </>
+          ) : bidPack ? (
             <Button onClick={() => router.push(user ? "/results" : "/auth")}>
               {user ? "Go to your rankings" : "Sign in to save your progress"}
             </Button>
