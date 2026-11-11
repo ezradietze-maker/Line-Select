@@ -60,6 +60,7 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // Fresh each time it opens.
   const [wasOpen, setWasOpen] = useState(open);
@@ -137,33 +138,66 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
     const previouslyFocused = document.activeElement as HTMLElement | null;
     inputRef.current?.focus();
     document.body.style.overflow = "hidden";
+    // It's modal: focus that lands on the page behind (a screen reader's cursor, a click through) comes back to the box.
+    const keepFocusIn = (e: FocusEvent) => {
+      if (e.target instanceof Node && !dialogRef.current?.contains(e.target)) inputRef.current?.focus();
+    };
+    document.addEventListener("focusin", keepFocusIn);
     return () => {
+      document.removeEventListener("focusin", keepFocusIn);
       document.body.style.overflow = "";
       previouslyFocused?.focus?.();
     };
   }, [open]);
+
+  // Its keys are heard wherever focus is while it's open, not only inside the box: once Tab had taken focus out (in
+  // Safari, on the very first Tab, since its Tab skips buttons), Esc no longer closed it.
+  useEffect(() => {
+    if (!open) return;
+    /** The option with focus, when one has it rather than the search box. */
+    const focusedOption = () => {
+      const el = document.activeElement;
+      return el instanceof HTMLElement && el.getAttribute("role") === "option" && listRef.current?.contains(el) ? Number(el.dataset.index) : null;
+    };
+    /** The highlight moves; so does focus when it's on an option, or Enter would open the one it left. */
+    const move = (by: number) => {
+      if (!results.length) return;
+      const next = (active + by + results.length) % results.length;
+      setCursor(next);
+      if (focusedOption() !== null) listRef.current?.querySelector<HTMLElement>(`[data-index="${next}"]`)?.focus();
+    };
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        // Only the palette closes, not a dialog it was opened over.
+        e.stopPropagation();
+        onClose();
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        move(e.key === "ArrowDown" ? 1 : -1);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        // The option Tab moved focus to, when it's on one; otherwise the highlighted one.
+        results[focusedOption() ?? active]?.run();
+      } else if (e.key === "Tab") {
+        // Round the search box and the options, never out to the page behind. Moved by hand: Safari's own Tab skips
+        // the options and leaves.
+        e.preventDefault();
+        const stops = [inputRef.current, ...(listRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])].filter((el): el is HTMLElement => !!el);
+        const at = stops.indexOf(document.activeElement as HTMLElement);
+        stops[at === -1 ? 0 : (at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length]?.focus();
+      }
+    }
+    // Capturing, so it's heard first, wherever focus is.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open, results, active, onClose]);
 
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
   if (!open) return null;
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setCursor((c) => (results.length ? (Math.min(c, results.length - 1) + 1) % results.length : 0));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setCursor((c) => (results.length ? (Math.min(c, results.length - 1) - 1 + results.length) % results.length : 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      results[active]?.run();
-    }
-  }
 
   let lastGroup: string | null = null;
   return (
@@ -173,7 +207,7 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
         role="dialog"
         aria-modal="true"
         aria-label="Jump to a line or screen"
-        onKeyDown={onKeyDown}
+        ref={dialogRef}
         className="animate-palette-in relative w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-elevated-lg"
       >
         <div className="flex items-center gap-3 border-b border-hairline px-4">
@@ -214,6 +248,8 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
                     aria-selected={i === active}
                     data-index={i}
                     onMouseMove={() => setCursor(i)}
+                    // Tabbed to, it's the one lit and the one Enter opens.
+                    onFocus={() => setCursor(i)}
                     onClick={c.run}
                     className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
                       i === active ? "bg-accent-wash text-on-wash" : "text-ink-muted"
