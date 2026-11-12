@@ -177,7 +177,9 @@ export function SendToVipsDialog({
     }
     setVipsEmployeeNumber(normalized);
     setVipsAnswers(complete);
-    setSent(true);
+    // After the browser has taken the post: swapped in during the submit event, the next screen took the form off the
+    // page before it was sent, and nothing reached VIPS.
+    setTimeout(() => setSent(true), 0);
   }
 
   if (sent) {

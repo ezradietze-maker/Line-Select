@@ -4,13 +4,14 @@ import type { NextConfig } from "next";
  * Where the page may load from and talk to. Scripts stay 'unsafe-inline': Next's own inline scripts would otherwise
  * need a per-request nonce, which makes every page render on demand (node_modules/next/dist/docs/01-app/02-guides/
  * content-security-policy.md) — slower on hotel Wi-Fi, for little gain while nothing on the page renders others'
- * HTML. Everything else is strict: no framing, no plugins, no <base> tricks, forms post here only, and data goes
+ * HTML. Everything else is strict: no framing, no plugins, no <base> tricks, forms post here or to VIPS only, and data goes
  * only to analytics, the weather service and the dictation service.
  */
 const isDev = process.env.NODE_ENV !== "production";
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' https://*.posthog.com${isDev ? " 'unsafe-eval'" : ""}`,
+  // No script from PostHog's servers: the SDK is bundled, and told not to fetch any (posthog-loader.ts).
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
@@ -20,7 +21,9 @@ const contentSecurityPolicy = [
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",
-  "form-action 'self'",
+  // Send to VIPS posts the bid to pilot.fedex.com, which may pass it through FedEx's PurpleID sign-in (Okta) first: with
+  // 'self' alone the browser blocked the post and the pilot's bid never reached VIPS.
+  "form-action 'self' https://*.fedex.com https://*.okta.com",
 ].join("; ");
 
 const securityHeaders = [

@@ -15,7 +15,8 @@ import { loadPosthog, posthogConfigured } from "@/lib/posthog-loader";
  * the env var set) — this is instrumentation, not a feature, and should
  * never be the thing that breaks the app.
  */
-if (posthogConfigured && typeof window !== "undefined") {
+// Not while the address holds a reset link's token: started then, PostHog kept the link as the visit's first address.
+if (posthogConfigured && typeof window !== "undefined" && !new URLSearchParams(window.location.search).has("token")) {
   const start = () => void loadPosthog();
   if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(start, { timeout: 5000 });
   else window.setTimeout(start, 2000);
