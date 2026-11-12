@@ -1,5 +1,5 @@
 import { clearServerProfile, fetchServerProfile, saveServerProfile, serverProfileVersion, setServerProfileVersion } from "@/lib/preference-profile-client";
-import { mergeAfterConflict } from "@/lib/profile-merge";
+import { mergeAfterConflict, sameProfile } from "@/lib/profile-merge";
 import { migrateProfile } from "@/lib/profile-migration";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
 
@@ -8,6 +8,35 @@ const GUEST_KEY = "line-select:preference-profile:guest:v1";
 function profileKey(userId: string | null): string {
   return userId ? `line-select:preference-profile:${userId}:v1` : GUEST_KEY;
 }
+
+/** The key a guest's profile is kept under, for a tab to hear another tab change it. */
+export const GUEST_PROFILE_KEY = GUEST_KEY;
+
+/**
+ * The copy of the profile this tab last read from, or saved to, where it's kept: the account for a signed-in pilot,
+ * this device for a guest. A save refused because another device (or tab) saved first is merged against it, so what
+ * this tab changed since can be told from what the other one did (see `mergeAfterConflict`). Normalized like the
+ * app's own copy, so a filled-in default doesn't read as an edit.
+ */
+let lastKnown: { userId: string | null; profile: PreferenceProfile } | null = null;
+
+function remember(userId: string | null, profile: PreferenceProfile): void {
+  lastKnown = { userId, profile: normalizeProfile(profile) };
+}
+function lastKnownFor(userId: string | null): PreferenceProfile | null {
+  return lastKnown && lastKnown.userId === userId ? lastKnown.profile : null;
+}
+/** Signed out: what this tab last knew of the account's copy isn't what any later save starts from. */
+export function forgetLastKnownProfile(): void {
+  lastKnown = null;
+}
+
+/**
+ * Bumped each time a pilot's profile is cleared from this device (signing out, starting over): a save still waiting on
+ * the server checks it before writing its merged copy back here, as the pack's saves do (`cleared` in bidpack-storage).
+ */
+const clearedProfiles = new Map<string, number>();
+const clearCount = (userId: string | null) => clearedProfiles.get(profileKey(userId)) ?? 0;
 
 /**
  * Backfills fields that didn't exist yet when a profile was saved (the
@@ -70,6 +99,8 @@ export function saveProfile(
 
 export function clearProfile(userId: string | null): void {
   if (typeof window === "undefined") return;
+  clearedProfiles.set(profileKey(userId), clearCount(userId) + 1);
+  if (lastKnown?.userId === userId) lastKnown = null;
   try {
     window.localStorage.removeItem(profileKey(userId));
   } catch {
@@ -91,8 +122,16 @@ export function clearProfile(userId: string | null): void {
  * newer one saved from another.
  */
 export async function loadProfileForUser(userId: string | null): Promise<PreferenceProfile | null> {
-  if (!userId) return loadProfile(null);
+  if (!userId) {
+    const guest = loadProfile(null);
+    if (guest) remember(null, guest);
+    else forgetLastKnownProfile();
+    return guest;
+  }
+  // Signed out while the server was asked: what it sends back isn't kept here (see `clearedProfiles`).
+  const asOf = clearCount(userId);
   const server = await fetchServerProfile();
+  if (clearCount(userId) !== asOf) return null;
   if (server.kind === "found") {
     // A save that never reached the server (no signal, then the app was closed) goes up now, against the copy it was
     // made from, rather than being replaced by the older copy there.
@@ -100,6 +139,8 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
     const local = pending ? loadProfile(userId) : null;
     if (pending && local) {
       setServerProfileVersion(pending.base);
+      // Which copy it was made from isn't known, only that copy's version: refused, the newer one is kept as before.
+      forgetLastKnownProfile();
       const sent = await saveProfileForUser(userId, local);
       // Still not through (the server busy, say): it stays this device's, marked, rather than be replaced by the
       // server's older copy and lost. Later saves from here go against the copy it was made from too.
@@ -108,6 +149,7 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
     // Backfilled like a local copy: a server copy saved by an older version lacks the newer weights and lists too.
     const profile = normalizeProfile(server.profile);
     saveProfile(userId, profile);
+    remember(userId, profile);
     return profile;
   }
   const localProfile = loadProfile(userId);
@@ -117,12 +159,22 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
   if (pending && localProfile) setServerProfileVersion(pending.base);
   if (server.kind === "none" && localProfile) {
     const saved = await saveServerProfile(localProfile);
+    if (clearCount(userId) !== asOf) return null;
     // Through now, so the "kept on this device" mark goes: left, sign-out kept the pilot's data on the device.
-    if (saved.kind === "saved") clearUnsynced(userId);
+    if (saved.kind === "saved") {
+      clearUnsynced(userId);
+      remember(userId, localProfile);
+    }
     if (saved.kind === "conflict" && saved.profile) {
-      const merged = mergeAfterConflict(normalizeProfile(saved.profile), localProfile);
+      const newer = normalizeProfile(saved.profile);
+      const merged = mergeAfterConflict(newer, localProfile);
       saveProfile(userId, merged);
-      if ((await saveServerProfile(merged)).kind === "saved") clearUnsynced(userId);
+      remember(userId, newer);
+      const again = await saveServerProfile(merged);
+      if (clearCount(userId) === asOf && again.kind === "saved") {
+        clearUnsynced(userId);
+        remember(userId, merged);
+      }
       return merged;
     }
   }
@@ -137,9 +189,12 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
 export type ProfileSync = "local" | "saved" | "merged" | "failed";
 
 export async function saveProfileForUser(userId: string | null, profile: PreferenceProfile): Promise<{ savedLocally: boolean; sync: ProfileSync; profile: PreferenceProfile }> {
+  if (!userId) return saveGuestProfile(profile);
   const savedLocally = saveProfile(userId, profile);
-  if (!userId) return { savedLocally, sync: "local", profile };
-  const outcome = await sendForUser(userId, profile);
+  const asOf = clearCount(userId);
+  const outcome = await sendForUser(userId, profile, asOf);
+  // Signed out (or started over) while it was on its way: nothing of it is written back to this device.
+  if (clearCount(userId) !== asOf) return { savedLocally, ...outcome };
   // Read after the save had its turn: saves wait for one another, so before it a save just ahead of this one hadn't
   // landed yet, and the mark named a version older than the one this save was sent against.
   if (outcome.sync === "failed") markUnsynced(userId, serverProfileVersion());
@@ -147,14 +202,50 @@ export async function saveProfileForUser(userId: string | null, profile: Prefere
   return { savedLocally, ...outcome };
 }
 
-async function sendForUser(userId: string, profile: PreferenceProfile): Promise<{ sync: ProfileSync; profile: PreferenceProfile }> {
+async function sendForUser(userId: string, profile: PreferenceProfile, asOf: number): Promise<{ sync: ProfileSync; profile: PreferenceProfile }> {
   const saved = await saveServerProfile(profile);
-  if (saved.kind === "saved") return { sync: "saved", profile };
+  const stillHere = () => clearCount(userId) === asOf;
+  if (saved.kind === "saved") {
+    if (stillHere()) remember(userId, profile);
+    return { sync: "saved", profile };
+  }
   if (saved.kind === "failed" || !saved.profile) return { sync: "failed", profile };
-  const merged = mergeAfterConflict(normalizeProfile(saved.profile), profile);
+  const newer = normalizeProfile(saved.profile);
+  const merged = mergeAfterConflict(newer, normalizeProfile(profile), lastKnownFor(userId));
+  if (!stillHere()) return { sync: "failed", profile: merged };
   saveProfile(userId, merged);
+  // The account holds the newer copy now, and the version this tab sends next is that one's: refused again, it's the
+  // copy the merged one is compared against.
+  remember(userId, newer);
   const again = await saveServerProfile(merged);
+  if (again.kind === "saved" && stillHere()) remember(userId, merged);
   return { sync: again.kind === "saved" ? "merged" : "failed", profile: merged };
+}
+
+/**
+ * A guest's profile lives on this device only, and two tabs open on it each hold their own copy: one tab's save written
+ * whole over the other's threw away a month just logged there. So a save first reads what's kept here, and if another
+ * tab changed it since this tab last read or wrote it, the two are merged as two devices' are (`mergeAfterConflict`),
+ * and the merged copy is what's saved and shown.
+ */
+function saveGuestProfile(profile: PreferenceProfile): { savedLocally: boolean; sync: ProfileSync; profile: PreferenceProfile } {
+  const stored = loadProfile(null);
+  const known = lastKnownFor(null);
+  const toSave = stored && known && !sameProfile(stored, known) ? mergeAfterConflict(stored, normalizeProfile(profile), known) : profile;
+  const savedLocally = saveProfile(null, toSave);
+  if (savedLocally) remember(null, toSave);
+  return { savedLocally, sync: "local", profile: toSave };
+}
+
+/**
+ * The guest's profile as another tab just saved it, for a tab sitting idle to show: remembered as the copy this tab
+ * last read, so its next save starts from it. Null when there's none kept, or it's the copy this tab already has.
+ */
+export function guestProfileChangedElsewhere(): PreferenceProfile | null {
+  const stored = loadProfile(null);
+  if (!stored || sameProfile(stored, lastKnownFor(null))) return null;
+  remember(null, stored);
+  return stored;
 }
 
 /**

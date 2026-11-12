@@ -1,4 +1,5 @@
 import { clearBidPack } from "@/lib/bidpack-storage";
+import { clearProfile } from "@/lib/storage";
 
 /**
  * Kept under no pilot's id, but just as much theirs: the employee number and answers for VIPS, the home airport and
@@ -21,8 +22,10 @@ const isGuestsOwn = (k: string) => k.includes(":guest:") && !k.startsWith("line-
  */
 export function forgetPilotOnDevice(userId: string): void {
   if (typeof window === "undefined" || !userId) return;
-  // Through the pack's own clear, so a save still compressing when they sign out doesn't write it back afterwards.
+  // Through the pack's and the profile's own clears, so a save still compressing, or one the account refused and that's
+  // being merged with its newer copy, doesn't write it back afterwards.
   clearBidPack(userId);
+  clearProfile(userId);
   try {
     const store = window.localStorage;
     const keys = Array.from({ length: store.length }, (_, i) => store.key(i)).filter((k): k is string => !!k && k.startsWith("line-select:") && (k.includes(userId) || UNSCOPED.some((p) => k.startsWith(p)) || isGuestsOwn(k)));

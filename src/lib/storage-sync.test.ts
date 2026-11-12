@@ -9,13 +9,14 @@ vi.stubGlobal("window", {
   localStorage: { getItem: (k: string) => local.get(k) ?? null, setItem: (k: string, v: string) => void local.set(k, v), removeItem: (k: string) => void local.delete(k) },
 });
 
-const { hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } = await import("./storage");
+const { clearProfile, forgetLastKnownProfile, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } = await import("./storage");
 
 const profile = (completedAt: string, logbook: PreferenceProfile["logbook"] = []): PreferenceProfile => ({ weights: { ...DEFAULT_WEIGHTS }, deepRoundCompleted: false, tradeoffAnswers: [], explicitTargets: {}, isCommuter: null, hasCrashPad: null, seniorityNumber: null, cityPreferences: {}, completedAt, implicitWeights: {}, implicitConfidence: {}, discoveredFacts: [], interviewTranscript: [], logbook });
 const KEY = "line-select:preference-profile:pilot-1:v1";
 
 beforeEach(() => {
   local.clear();
+  forgetLastKnownProfile();
   for (const f of Object.values(client)) f.mockReset();
   client.saveServerProfile.mockResolvedValue({ kind: "saved" });
 });
@@ -141,5 +142,67 @@ describe("saving a signed-in pilot's profile", () => {
     const r = await saveProfileForUser(null, profile("guest"));
     expect(r.sync).toBe("local");
     expect(client.saveServerProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe("a save refused because another device saved first", () => {
+  it("keeps this device's edit and the other device's change, against the copy the save started from", async () => {
+    const start = profile("2026-11-07T00:00:00Z");
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: start });
+    const loaded = (await loadProfileForUser("pilot-1"))!;
+    const theirs = { ...start, minHomeHours: 20 };
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: theirs }).mockResolvedValueOnce({ kind: "saved" });
+    const r = await saveProfileForUser("pilot-1", { ...loaded, seniorityNumber: 1234 });
+    expect(r.sync).toBe("merged");
+    expect(r.profile.seniorityNumber).toBe(1234);
+    expect(r.profile.minHomeHours).toBe(20);
+    // Saved, the merged copy is what the next refused save is compared against.
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: { ...r.profile, hasCrashPad: true } }).mockResolvedValueOnce({ kind: "saved" });
+    const again = await saveProfileForUser("pilot-1", { ...r.profile, isCommuter: true });
+    expect(again.profile).toMatchObject({ seniorityNumber: 1234, minHomeHours: 20, hasCrashPad: true, isCommuter: true });
+  });
+
+  it("writes nothing back to the device once the pilot has signed out", async () => {
+    let refuse!: (v: unknown) => void;
+    client.saveServerProfile.mockImplementationOnce(() => new Promise((resolve) => (refuse = resolve)));
+    const saving = saveProfileForUser("pilot-1", profile("mine"));
+    clearProfile("pilot-1");
+    refuse({ kind: "conflict", profile: profile("theirs") });
+    await saving;
+    expect(local.has(KEY)).toBe(false);
+    expect(hasUnsyncedProfile("pilot-1")).toBe(false);
+  });
+});
+
+describe("a guest with two tabs open", () => {
+  const GUEST = "line-select:preference-profile:guest:v1";
+  const logged = { id: "OCT26", base: "MEM", aircraft: "MD11", seat: "CAP", month: "OCT26", outcome: "line" as const, loggedAt: "2026-10-03T00:00:00Z" };
+
+  it("keeps a month logged in the other tab when this one saves an edit", async () => {
+    local.set(GUEST, JSON.stringify(profile("2026-11-07T00:00:00Z")));
+    const mine = (await loadProfileForUser(null))!;
+    // The other tab logs a month.
+    local.set(GUEST, JSON.stringify({ ...mine, logbook: [logged] }));
+    const r = await saveProfileForUser(null, { ...mine, seniorityNumber: 1234 });
+    expect(r.sync).toBe("local");
+    expect(r.profile.logbook?.map((e) => e.id)).toEqual(["OCT26"]);
+    expect(r.profile.seniorityNumber).toBe(1234);
+    expect(JSON.parse(local.get(GUEST)!)).toMatchObject({ seniorityNumber: 1234, logbook: [{ id: "OCT26" }] });
+  });
+
+  it("saves this tab's copy as it is when no other tab changed it", async () => {
+    local.set(GUEST, JSON.stringify(profile("2026-11-07T00:00:00Z")));
+    const mine = (await loadProfileForUser(null))!;
+    const edited = { ...mine, seniorityNumber: 1234 };
+    expect((await saveProfileForUser(null, edited)).profile).toBe(edited);
+  });
+
+  it("hands an idle tab the other tab's change once", async () => {
+    local.set(GUEST, JSON.stringify(profile("2026-11-07T00:00:00Z")));
+    const mine = (await loadProfileForUser(null))!;
+    expect(guestProfileChangedElsewhere()).toBeNull();
+    local.set(GUEST, JSON.stringify({ ...mine, logbook: [logged] }));
+    expect(guestProfileChangedElsewhere()?.logbook?.map((e) => e.id)).toEqual(["OCT26"]);
+    expect(guestProfileChangedElsewhere()).toBeNull();
   });
 });

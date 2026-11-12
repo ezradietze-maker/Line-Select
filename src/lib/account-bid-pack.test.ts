@@ -87,8 +87,20 @@ describe("a signed-in pilot's pack on a device a guest's pack is still on", () =
     const store = storageWithRoom(Infinity);
     store.map.set(GUEST_KEY, JSON.stringify(compactBidPack(SAMPLE_BID_PACK)));
     vi.stubGlobal("window", { localStorage: store });
-    vi.stubGlobal("fetch", async () => new Response("{}", { status: 404 }));
-    expect(await accountBidPack("u1")).toEqual({ pack: null, saveFailed: false });
+    vi.stubGlobal("fetch", async () => new Response(null, { status: 204 }));
+    expect(await accountBidPack("u1")).toEqual({ pack: null, saveFailed: false, noneOnAccount: true });
     expect(store.map.has(GUEST_KEY)).toBe(true);
+  });
+
+  it("never says the account has none when it couldn't ask", async () => {
+    vi.stubGlobal("window", { localStorage: storageWithRoom(Infinity) });
+    for (const answer of [async () => new Response("{}", { status: 500 }), async () => new Response("{}", { status: 401 }), async () => { throw new TypeError("offline"); }]) {
+      vi.stubGlobal("fetch", answer);
+      expect(await accountBidPack("u1")).toEqual({ pack: null, saveFailed: false, noneOnAccount: false });
+    }
+    // A browser that can't unzip the account's pack can't tell either.
+    vi.stubGlobal("DecompressionStream", undefined);
+    vi.stubGlobal("fetch", async () => new Response(null, { status: 204 }));
+    expect((await accountBidPack("u1")).noneOnAccount).toBe(false);
   });
 });
