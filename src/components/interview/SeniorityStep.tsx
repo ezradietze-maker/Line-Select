@@ -53,7 +53,7 @@ export function SeniorityStep({ value, onChange, list, seat, eyebrow }: Seniorit
           value={value}
           onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, "").slice(0, 6))}
           placeholder="e.g. 1234"
-          className="text-readout mt-2 block w-56 rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-2xl tracking-wider placeholder:text-ink-faint/60 focus:border-accent focus:shadow-[0_0_0_4px_var(--glow-soft)] focus:outline-none"
+          className="text-readout mt-2 block w-full max-w-56 rounded-xl border border-field-edge bg-canvas/60 px-4 py-3 text-2xl tracking-wider placeholder:text-ink-faint/60 focus:border-accent focus:shadow-[0_0_0_2px_var(--color-focus-ring),0_0_0_6px_var(--glow-soft)] focus:outline-none"
         />
         <div className="mt-3 min-h-[3rem] text-sm" aria-live="polite">
           {position && position.exact && (

@@ -713,28 +713,34 @@ export function ResultsView({
       if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       if (document.querySelector('[role="dialog"]')) return;
       if (!keyableIds.length) return;
+      // The line the keys act on: the one with the keyboard's focus in it (a pilot who tabbed to a card), else the j / k cursor.
+      const focusedId = t instanceof HTMLElement ? t.closest<HTMLElement>("[data-line-id]")?.dataset.lineId : undefined;
+      const onId = focusedId && keyableIds.includes(focusedId) ? focusedId : keyedId;
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
         const next = stepCursor(keyableIds, keyedId, e.key === "j" ? 1 : -1);
         if (!next) return;
         setKeyId(next);
         document.getElementById(`line-${next}`)?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-      } else if ((e.key === "o" || e.key === "Enter") && keyedId) {
+      } else if ((e.key === "o" || e.key === "Enter") && onId) {
         if (e.key === "Enter" && t instanceof HTMLElement && t.closest("button, a")) return;
         e.preventDefault();
-        toggleOpen(keyedId);
-      } else if (e.key === "s" && keyedId) {
-        updateMarks((m) => toggleStar(m, keyedId));
-      } else if (e.key === "c" && keyedId) {
-        toggleCompare(keyedId);
-      } else if (e.key === "x" && keyedId) {
-        tiers.toggleSelected(keyedId);
-      } else if (/^[0-9]$/.test(e.key) && keyedId) {
+        toggleOpen(onId);
+      } else if (e.key === "s" && onId) {
+        // The star changes without a sound, so the change is said: a screen reader user can't see it.
+        const number = displayed.find((r) => r.line.id === onId)?.line.lineNumber ?? "";
+        tiers.say(starredSet.has(onId) ? `Line ${number} removed from shortlist` : `Line ${number} shortlisted`);
+        updateMarks((m) => toggleStar(m, onId));
+      } else if (e.key === "c" && onId) {
+        toggleCompare(onId);
+      } else if (e.key === "x" && onId) {
+        tiers.toggleSelected(onId);
+      } else if (/^[0-9]$/.test(e.key) && onId) {
         // 1–9 move the line (or the selection it's in) to that tier; 0 takes it out of any.
         const tier = e.key === "0" ? null : tiers.state.tiers[Number(e.key) - 1]?.id;
         if (tier === undefined) return;
         e.preventDefault();
-        tiers.move(tiers.selected.has(keyedId) ? [...tiers.selected] : [keyedId], tier);
+        tiers.move(tiers.selected.has(onId) ? [...tiers.selected] : [onId], tier);
       } else if (e.key === "?") {
         setShowKeys((v) => !v);
       } else if (e.key === "Escape") {
@@ -1241,28 +1247,28 @@ export function ResultsView({
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Line #"
                 aria-label="Find a line by number"
-                className="w-full rounded-md border border-hairline bg-canvas/50 px-3 py-2 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-faint focus:border-accent focus:outline-none"
+                className="w-full rounded-md border border-field-edge bg-canvas/50 px-3 py-2 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-faint focus:border-accent focus:outline-none"
               />
             </div>
             <SortMenu sort={lineSort} lines={listable} />
-            <div className="ml-auto flex overflow-hidden rounded-md border border-hairline text-sm" role="tablist" aria-label="Which lines to show">
+            {/* Buttons that say which one is on, not tabs: tabs promised arrow keys and a panel of their own, and the list below is the same list filtered.
+                Their focus ring is drawn inside: the rounded box clips anything outside it. */}
+            <div className="ml-auto flex overflow-hidden rounded-md border border-hairline text-sm" role="group" aria-label="Which lines to show">
               <button
                 type="button"
-                role="tab"
-                aria-selected={view === "all"}
+                aria-pressed={view === "all"}
                 onClick={() => setView("all")}
-                className={`relative px-3 py-2 font-medium transition-colors duration-300 ${view === "all" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
+                className={`relative px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "all" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
               >
                 {view === "all" && <PillHighlight group="results-view" className={VIEW_PILL} />}
                 <span className="relative z-10">All lines</span>
               </button>
               <button
                 type="button"
-                role="tab"
-                aria-selected={view === "shortlist"}
+                aria-pressed={view === "shortlist"}
                 data-shortlist-tab
                 onClick={() => setView("shortlist")}
-                className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 ${view === "shortlist" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
+                className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "shortlist" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
               >
                 {view === "shortlist" && <PillHighlight group="results-view" className={VIEW_PILL} />}
                 <span className="relative z-10">
@@ -1272,10 +1278,9 @@ export function ResultsView({
               {forecastLines && (
                 <button
                   type="button"
-                  role="tab"
-                  aria-selected={view === "realistic"}
+                  aria-pressed={view === "realistic"}
                   onClick={() => setView("realistic")}
-                  className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
+                  className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
                 >
                   {view === "realistic" && <PillHighlight group="results-view" className={VIEW_PILL} />}
                   <span className="relative z-10">Realistic ({realisticIds.size})</span>
@@ -1406,6 +1411,7 @@ export function ResultsView({
                   {headings.get(lineScore.line.id) && <TierHeadingRow heading={headings.get(lineScore.line.id)!} />}
                   <motion.div
                     id={`line-${lineScore.line.id}`}
+                    data-line-id={lineScore.line.id}
                     {...selectableCardProps(tiers, lineScore.line.id, listedIds)}
                     className={`scroll-mt-20 md:scroll-mt-6 ${flashId === lineScore.line.id ? "line-flash" : ""} ${keyedId === lineScore.line.id ? "line-keyed" : ""} ${tiers.selected.has(lineScore.line.id) ? "rounded-xl ring-2 ring-accent" : ""}`}
                     layout={dragEnabled && layoutArmed && order.moved.has(lineScore.line.id) ? "position" : false}

@@ -19,6 +19,15 @@ export interface BidOrderEntry {
 
 const countLines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
 
+/** What a copy button's new words say, for a screen reader: what went to the clipboard, and what was left out. */
+function copiedSaying(kind: CopiedKind, lines: number, shortlisted: number, leftOut: number): string | null {
+  const out = leftOut > 0 ? `, ${leftOut} left out` : "";
+  if (kind === "plain") return leftOut > 0 ? `Line order copied: ${countLines(lines)}${out}` : "Line order copied — cleared to bid";
+  if (kind === "annotated") return `Copied with notes: ${countLines(lines)}${out}`;
+  if (kind === "shortlist") return `Shortlist copied: ${countLines(shortlisted)}`;
+  return null;
+}
+
 /** A note shown for `ms`, then gone. Showing it again starts the clock over — an earlier timer never cuts the new one short. */
 function useFlash<T>(ms: number): [T | null, (value: T | null) => void] {
   const [value, setValue] = useState<T | null>(null);
@@ -203,6 +212,11 @@ export function BidOrderExport({
         </p>
       )}
       {calendarError && <p className="mt-2 text-xs text-danger">{calendarError}</p>}
+      {/* The buttons above change their words when they've worked; this says it out loud, since a changed label alone is silent. */}
+      <span role="status" className="sr-only">
+        {copiedSaying(copied, entries.length, shortlistEntries.length, leftOut) ??
+          (savedFrom ? `Saved — trips from ${savedFrom.month} ${savedFrom.day}` : calendarError ?? "")}
+      </span>
       <CalendarSubscribe topLineNumber={topLineNumber} />
       {vipsOpen && (
         <SendToVipsDialog

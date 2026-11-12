@@ -16,5 +16,11 @@ export default function QuickBriefPage() {
 
   if (!bidPack) return null;
 
-  return <QuickBrief bidPack={bidPack} priorProfile={profile} onComplete={handleBrainInterviewComplete} onFullInterview={handleStartInterview} />;
+  return (
+    <>
+      {/* The page's name for a screen reader's heading list: the question on it is the big heading. */}
+      <h1 className="sr-only">Quick start</h1>
+      <QuickBrief bidPack={bidPack} priorProfile={profile} onComplete={handleBrainInterviewComplete} onFullInterview={handleStartInterview} />
+    </>
+  );
 }

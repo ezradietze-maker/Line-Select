@@ -249,7 +249,7 @@ export function PreferencesScreen({
           </p>
         </div>
         {!freshBidPack && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {onShowRankings && (
               <Button
                 onClick={() => {
@@ -301,7 +301,7 @@ export function PreferencesScreen({
           <section className="panel-glass mt-6 p-5 sm:p-6">
             <SectionHeading>Your place in the bid</SectionHeading>
             <div className="mt-4 flex flex-wrap items-end gap-4">
-              <div>
+              <div className="min-w-0 max-w-full">
                 <label htmlFor="prefs-seniority" className="text-sm font-medium text-ink">Seniority number</label>
                 <input
                   id="prefs-seniority"
@@ -311,7 +311,7 @@ export function PreferencesScreen({
                   value={shown}
                   onChange={(e) => setSeniorityDraft(e.target.value.replace(/[^\d]/g, "").slice(0, 6))}
                   placeholder="e.g. 1234"
-                  className="mt-1.5 block w-40 rounded-lg border border-hairline bg-canvas/60 px-3 py-2 font-mono text-base text-readout placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
+                  className="mt-1.5 block w-40 max-w-full rounded-lg border border-field-edge bg-canvas/60 px-3 py-2 font-mono text-base text-readout placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
                 />
               </div>
               <p className="max-w-sm text-sm text-ink-muted" aria-live="polite">

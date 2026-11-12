@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   CALENDAR_ACCENT_PRESETS,
   applyCalendarAccent,
@@ -9,6 +9,7 @@ import {
 } from "@/lib/calendar-theme";
 import { applyThemeAttribute, getStoredTheme, setStoredTheme, THEME_CHANGE_EVENT, type ThemeMode } from "@/lib/theme";
 import { MoonIcon, PaletteIcon } from "@/components/ui/icons";
+import { radioKeyProps } from "@/components/ui/radio-keys";
 
 /** Whether a theme choice shows dark: the red-light night counts, and "system" follows the device. */
 function isDark(mode: ThemeMode): boolean {
@@ -85,6 +86,8 @@ export function AppearanceMenu() {
   // Light to dark: the sun sets and the moon rises in the button; dark to light, the other way round.
   const [sky, setSky] = useState<{ to: "dark" | "light"; n: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
 
   useEffect(() => {
     const storedTheme = getStoredTheme();
@@ -102,11 +105,16 @@ export function AppearanceMenu() {
 
   useEffect(() => {
     if (!open) return;
+    // Into the panel at the mode that's on: each group of choices is one Tab stop, and the arrows move along it.
+    ref.current?.querySelector<HTMLElement>('[role="radio"][tabindex="0"]')?.focus();
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      // Back to the button that opened it: closing used to leave the keyboard at the top of the page.
+      buttonRef.current?.focus();
     }
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
@@ -131,14 +139,25 @@ export function AppearanceMenu() {
 
   // A pilot's own calendar color when they've picked one; otherwise the chrome's own accent (amber on the charcoal sidebar).
   const accentCss = accent ?? "var(--color-accent)";
+  const themeIndex = Math.max(0, THEME_OPTIONS.findIndex((o) => o.mode === mode));
+  const accentIndex = Math.max(0, CALENDAR_ACCENT_PRESETS.findIndex((p) => p.value === accent));
 
   return (
-    <div className="relative shrink-0" ref={ref}>
+    <div
+      className="relative shrink-0"
+      ref={ref}
+      // Tabbing out of the panel closes it, as a click outside does. (A click that focuses nothing says no target: left open.)
+      onBlur={(e) => {
+        if (open && e.relatedTarget instanceof Node && !e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+      }}
+    >
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
+        aria-controls={open ? panelId : undefined}
         title="Appearance"
         className="relative flex h-9 w-9 items-center justify-center rounded-full border transition-transform hover:scale-105"
         style={{
@@ -169,12 +188,18 @@ export function AppearanceMenu() {
       </button>
 
       {open && (
+        // A small panel of two sets of choices, not a menu: it held radio groups, which a menu can't, so a screen reader
+        // announced choices it then wouldn't let the arrows reach.
         <div
-          role="menu"
+          id={panelId}
+          role="dialog"
+          aria-labelledby={`${panelId}-title`}
           className="absolute right-0 top-full z-40 mt-2 w-52 rail-collapsed:left-0 rail-collapsed:right-auto animate-fade-in overflow-hidden rounded-lg border border-border bg-surface shadow-elevated-lg"
         >
           <div className="border-b border-border px-4 py-3">
-            <div className="text-sm font-medium text-ink">Appearance</div>
+            <div id={`${panelId}-title`} className="text-sm font-medium text-ink">
+              Appearance
+            </div>
             <div className="text-xs text-ink-faint">Saved to this device only.</div>
           </div>
 
@@ -186,12 +211,13 @@ export function AppearanceMenu() {
                 aria-label="Color theme"
                 className="inline-flex w-full items-center gap-0.5 rounded-full border border-border bg-canvas p-0.5"
               >
-                {THEME_OPTIONS.map((opt) => (
+                {THEME_OPTIONS.map((opt, i) => (
                   <button
                     key={opt.mode}
                     type="button"
                     role="radio"
                     aria-checked={mode === opt.mode}
+                    {...radioKeyProps(i, THEME_OPTIONS.length, themeIndex, (n) => chooseTheme(THEME_OPTIONS[n].mode))}
                     title={opt.title ?? opt.label}
                     onClick={() => chooseTheme(opt.mode)}
                     className={`flex flex-1 items-center justify-center rounded-full py-1.5 transition-colors ${
@@ -210,7 +236,7 @@ export function AppearanceMenu() {
                 Calendar accent
               </div>
               <div role="radiogroup" aria-label="Calendar accent color" className="flex items-center gap-1.5">
-                {CALENDAR_ACCENT_PRESETS.map((preset) => {
+                {CALENDAR_ACCENT_PRESETS.map((preset, i) => {
                   const swatchCss = preset.value ?? "var(--color-calendar-accent)";
                   const isSelected = accent === preset.value;
                   return (
@@ -219,6 +245,7 @@ export function AppearanceMenu() {
                       type="button"
                       role="radio"
                       aria-checked={isSelected}
+                      {...radioKeyProps(i, CALENDAR_ACCENT_PRESETS.length, accentIndex, (n) => chooseAccent(CALENDAR_ACCENT_PRESETS[n].value))}
                       title={preset.label}
                       onClick={() => chooseAccent(preset.value)}
                       className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-110"

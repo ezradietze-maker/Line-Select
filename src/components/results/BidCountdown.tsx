@@ -128,7 +128,7 @@ export function BidDeadlineEditor({
           type="datetime-local"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          className="rounded-md border border-hairline bg-canvas/60 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none"
+          className="rounded-md border border-field-edge bg-canvas/60 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none"
         />
         <Button
           type="button"

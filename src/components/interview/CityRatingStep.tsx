@@ -58,7 +58,8 @@ function CityNote({ value, onChange, label }: { value: string; onChange: (v: str
 
 function GradePills({ value, onPick, label, small }: { value: CityRatingScore | 0 | undefined; onPick: (s: CityRatingScore | 0 | undefined) => void; label: string; small?: boolean }) {
   return (
-    <div className="grid grid-cols-5 gap-1" role="group" aria-label={label}>
+    // Five across while the words fit; with large text a grade goes to the next row whole, never cut off in a narrow box.
+    <div className="flex flex-wrap gap-1" role="group" aria-label={label}>
       {CITY_RATING_STEPS.map((step) => {
         const on = value === step.score;
         return (
@@ -67,7 +68,7 @@ function GradePills({ value, onPick, label, small }: { value: CityRatingScore | 
             type="button"
             aria-pressed={on}
             onClick={() => onPick(on ? undefined : step.score)}
-            className={`rounded-md border px-1 ${small ? "py-1 text-[11px]" : "py-1.5 text-xs"} font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+            className={`flex-1 whitespace-nowrap rounded-md border px-1 ${small ? "py-1 text-[11px]" : "py-1.5 text-xs"} font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
               on ? GRADE_STYLE[step.score] : "border-border text-ink-muted hover:border-border-strong hover:text-ink"
             }`}
           >
@@ -369,7 +370,7 @@ export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons,
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Find a city (${cities.length} in this pack)`}
             aria-label="Find a layover city"
-            className="mt-2 w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40"
+            className="mt-2 w-full rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
           />
         )}
 

@@ -679,7 +679,7 @@ function PostOfferForm({
             id="offer-trip"
             value={entryKey}
             onChange={(e) => setEntryKey(e.target.value)}
-            className="w-full rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
+            className="w-full rounded-md border border-field-edge bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
           >
             {trips.map((entry) => (
               <option key={entry.entryKey} value={entry.entryKey}>
@@ -773,7 +773,7 @@ function RespondForm({
             id={`respond-trip-${offer.id}`}
             value={entryKey}
             onChange={(e) => setEntryKey(e.target.value)}
-            className="w-full rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
+            className="w-full rounded-md border border-field-edge bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
           >
             {eligibleTrips.map((entry) => (
               <option key={entry.entryKey} value={entry.entryKey}>

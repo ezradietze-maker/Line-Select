@@ -111,7 +111,7 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
         actions={
           <label className="flex items-center gap-2 text-sm text-ink-muted">
             Sort
-            <select value={sort} onChange={(e) => setSort(e.target.value as SortBy)} className="rounded-md border border-hairline bg-surface px-2.5 py-1.5 text-sm text-ink">
+            <select value={sort} onChange={(e) => setSort(e.target.value as SortBy)} className="rounded-md border border-field-edge bg-surface px-2.5 py-1.5 text-sm text-ink">
               <option value="lines">Most flown</option>
               <option value="rating">Your rating</option>
               <option value="name">Name</option>

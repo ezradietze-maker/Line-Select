@@ -206,7 +206,7 @@ export function HoldingPanel({
                 id="held-line"
                 value={lineNumber ?? ""}
                 onChange={(e) => chooseLine(e.target.value || null)}
-                className="w-full rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
+                className="w-full rounded-md border border-field-edge bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
               >
                 <option value="">Choose a line, or add trips below</option>
                 {lines.map((l) => (
@@ -237,7 +237,7 @@ export function HoldingPanel({
                       <select
                         value={h.lock ?? ""}
                         onChange={(e) => setDraft(draft.map((d) => (d === h ? { ...d, lock: (e.target.value || null) as TradeLock | null } : d)))}
-                        className="max-w-full rounded-md border border-border-strong bg-surface px-2 py-1 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
+                        className="max-w-full rounded-md border border-field-edge bg-surface px-2 py-1 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
                       >
                         <option value="">I can trade it</option>
                         {locks.map((l) => (

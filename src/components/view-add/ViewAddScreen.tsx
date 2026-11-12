@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { ConnectFedexPanel } from "@/components/fedex-connect/ConnectFedexPanel";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FIELD } from "@/components/ui/field";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { eventInstant } from "@/lib/bid-calendar";
@@ -18,7 +19,6 @@ import type { BidPack, Trip } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 
-const FIELD = "rounded-md border border-hairline bg-canvas/60 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none";
 const CHOICES_SHOWN = 15;
 const VIPS_MENU = "https://pilot.fedex.com/vips-bin/vipscgi?webmenu?all";
 

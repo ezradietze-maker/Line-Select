@@ -1068,7 +1068,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
                 value={commuteFrom}
                 onChange={(e) => setCommuteFrom(e.target.value.replace(/[^a-z]/gi, "").toUpperCase().slice(0, 3))}
                 placeholder="e.g. CLT"
-                className="mb-5 block w-28 rounded-lg border border-hairline bg-canvas/60 px-3 py-2 font-mono text-base uppercase tracking-wider text-readout placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
+                className="mb-5 block w-28 rounded-lg border border-field-edge bg-canvas/60 px-3 py-2 font-mono text-base uppercase tracking-wider text-readout placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
               />
               <div className="text-sm font-medium text-ink">{namedDomicile("Got a crash pad in the domicile city?", bidPack.base)}</div>
               <div className="mt-3 flex flex-wrap gap-2">

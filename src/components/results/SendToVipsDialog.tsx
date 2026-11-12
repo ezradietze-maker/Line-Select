@@ -307,7 +307,7 @@ export function SendToVipsDialog({
                 <span className="mt-0.5 block text-ink-faint" data-vips-note={q.key}>
                   {notes[q.key].meaning}
                   {notes[q.key].forThisOrder ? ` ${notes[q.key].forThisOrder}` : ""}{" "}
-                  <a href={contractQuestionHref(q.text)} target="_blank" rel="noopener" className="text-accent underline-offset-2 hover:underline">What does the contract say?</a>
+                  <a href={contractQuestionHref(q.text)} target="_blank" rel="noopener" className="text-accent underline underline-offset-2">What does the contract say?</a>
                 </span>
                 {advised && (
                   <span className="mt-0.5 block text-ink" data-vips-advised={q.key}>
