@@ -31,17 +31,20 @@ export function ConnectFedexPanel({ signedIn, reads = "your open time" }: Connec
   const [showConsent, setShowConsent] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  /** The consent save just failed: its error is shown in the dialog, not behind it on the dimmed page. */
+  const [consentFailed, setConsentFailed] = useState(false);
 
   const status = connection?.status ?? "none";
   const connected = status === "coming-soon" || status === "connected" || status === "expired";
   const liveWired = connection?.liveWired ?? false;
 
   const onAccept = async () => {
+    setConsentFailed(false);
     const ok = await acceptConsent();
     if (ok) {
       setShowConsent(false);
       setAccepted(false);
-    }
+    } else setConsentFailed(true);
   };
 
   return (
@@ -114,11 +117,13 @@ export function ConnectFedexPanel({ signedIn, reads = "your open time" }: Connec
         <ConsentModal
           accepted={accepted}
           busy={busy}
+          error={consentFailed ? error : null}
           onToggle={setAccepted}
           onAccept={onAccept}
           onClose={() => {
             setShowConsent(false);
             setAccepted(false);
+            setConsentFailed(false);
           }}
         />
       )}
@@ -141,7 +146,7 @@ export function ConnectFedexPanel({ signedIn, reads = "your open time" }: Connec
   );
 }
 
-function ConsentModal({ accepted, busy, onToggle, onAccept, onClose }: { accepted: boolean; busy: boolean; onToggle: (v: boolean) => void; onAccept: () => void; onClose: () => void }) {
+function ConsentModal({ accepted, busy, error, onToggle, onAccept, onClose }: { accepted: boolean; busy: boolean; error: string | null; onToggle: (v: boolean) => void; onAccept: () => void; onClose: () => void }) {
   return (
     <Modal title="Connect your FedEx account" onClose={onClose}>
       <div className="space-y-4 text-sm leading-relaxed text-ink-muted">
@@ -160,6 +165,11 @@ function ConsentModal({ accepted, busy, onToggle, onAccept, onClose }: { accepte
           <input type="checkbox" checked={accepted} onChange={(e) => onToggle(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand" />
           <span>I&rsquo;ve read the above. I understand FedEx hasn&rsquo;t approved this, that I haven&rsquo;t seen FedEx&rsquo;s policy, and that connecting is at my own risk.</span>
         </label>
+        {error && (
+          <Notice tone="warn" role="alert">
+            <span className="text-xs">{error}</span>
+          </Notice>
+        )}
       </div>
       <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse">
         <Button variant="primary" disabled={!accepted || busy} onClick={onAccept}>

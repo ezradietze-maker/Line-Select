@@ -39,7 +39,16 @@ function tripText(pack: BidPack, trip: Trip): string {
  * trade. Trips they can't trade are marked here. `onHolding` hears what they hold each time it loads or changes: the
  * board's own forms offer only those trips.
  */
-export function HoldingPanel({ bidPack, onHolding }: { bidPack: BidPack; onHolding?: (holding: TradeHolding | null) => void }) {
+export function HoldingPanel({
+  bidPack,
+  onHolding,
+  onSaved,
+}: {
+  bidPack: BidPack;
+  onHolding?: (holding: TradeHolding | null) => void;
+  /** Hears each change saved here (what they hold, removed, "Include me…"): the trades found for them depend on it. */
+  onSaved?: () => void;
+}) {
   const { profile } = useAppState();
   const onHoldingRef = useRef(onHolding);
   useEffect(() => {
@@ -106,6 +115,7 @@ export function HoldingPanel({ bidPack, onHolding }: { bidPack: BidPack; onHoldi
     if (!saved) return setError("Couldn't save what you hold. Check your connection and try again.");
     setHolding(saved);
     onHoldingRef.current?.(saved);
+    onSaved?.();
     setEditing(false);
   }
 
@@ -117,6 +127,7 @@ export function HoldingPanel({ bidPack, onHolding }: { bidPack: BidPack; onHoldi
     if (!ok) return setError("Couldn't remove that. Check your connection and try again.");
     setHolding(null);
     onHoldingRef.current?.(null);
+    onSaved?.();
     setEditing(false);
   }
 
@@ -126,7 +137,7 @@ export function HoldingPanel({ bidPack, onHolding }: { bidPack: BidPack; onHoldi
     if (!(await saveTradeSettings(next))) {
       setSettings(settings);
       setError("Couldn't save that. Check your connection and try again.");
-    }
+    } else onSaved?.();
   }
 
   const heldKeys = new Set(draft.map(tripInstanceKey));

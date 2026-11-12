@@ -11,6 +11,11 @@ interface ModalProps {
   children: React.ReactNode;
   /** Wider max-width for content that genuinely needs the room (e.g. two things shown side by side) — most modals stay at the default single-column width. */
   wide?: boolean;
+  /**
+   * Only the dialog's own button closes it: no Escape, no tap outside, no X. For a dialog whose content can't be shown
+   * again once closed (a new recovery code, which has already replaced the old one on the server).
+   */
+  locked?: boolean;
 }
 
 /**
@@ -18,6 +23,13 @@ interface ModalProps {
  * one answers Escape, and the page underneath stays locked until the last one closes.
  */
 const openDialogs: object[] = [];
+
+/**
+ * Whether a dialog is open over the page. A sheet that closes on Escape asks first: a dialog opened from inside it
+ * (the recovery code, from the phone's More sheet) answers that Escape itself, and the sheet closing under it took the
+ * dialog with it, a new recovery code and all.
+ */
+export const dialogOpen = () => openDialogs.length > 0;
 
 /**
  * The control last pressed, and when. Safari doesn't focus a button it clicks, so a dialog opened by a click found
@@ -52,19 +64,23 @@ function returnFocus(opener: HTMLElement | null, ancestors: HTMLElement[]) {
   if (near) focusStops(near)[0]?.focus();
 }
 
-export function Modal({ title, onClose, children, wide = false }: ModalProps) {
+export function Modal({ title, onClose, children, wide = false, locked = false }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
+  const lockedRef = useRef(locked);
   useEffect(() => {
     onCloseRef.current = onClose;
-  }, [onClose]);
+    lockedRef.current = locked;
+  }, [onClose, locked]);
 
   useEffect(() => {
     const me = {};
     openDialogs.push(me);
     function handleKey(e: KeyboardEvent) {
       if (openDialogs[openDialogs.length - 1] !== me) return;
-      if (e.key === "Escape") onCloseRef.current();
+      if (e.key === "Escape") {
+        if (!lockedRef.current) onCloseRef.current();
+      }
       else if (e.key === "Tab" && !e.defaultPrevented && dialogRef.current) {
         // Round the dialog's own controls, never out to the page behind. Moved by hand, as the ⌘K palette does:
         // Safari's own Tab skips buttons and left the dialog after a few presses.
@@ -100,13 +116,7 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
   // and a dialog drawn inside it sat under the phone's top bar and tab bar however high its z-index.
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 px-4 py-10 backdrop-blur-[2px] sm:items-center">
-      <button
-        type="button"
-        aria-label="Close"
-        onClick={onClose}
-        className="fixed inset-0 cursor-default"
-        tabIndex={-1}
-      />
+      {!locked && <button type="button" aria-label="Close" onClick={onClose} className="fixed inset-0 cursor-default" tabIndex={-1} />}
       <div
         ref={dialogRef}
         role="dialog"
@@ -117,16 +127,21 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <Heading as="h2" className="text-base text-ink">{title}</Heading>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-7 w-7 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-canvas hover:text-ink"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
-              <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          {locked ? (
+            // Holds the X's room, so a dialog that locks part-way keeps its height.
+            <span aria-hidden="true" className="h-7 w-7" />
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-canvas hover:text-ink"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+                <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
         <div className="max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
       </div>

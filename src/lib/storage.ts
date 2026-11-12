@@ -111,6 +111,10 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
     return profile;
   }
   const localProfile = loadProfile(userId);
+  // Unreachable with a save still kept here: the retries the app runs (see `hasUnsyncedProfile`) go against the copy it
+  // was made from, as above, not against no copy at all.
+  const pending = server.kind === "unreachable" ? unsyncedBase(userId) : null;
+  if (pending && localProfile) setServerProfileVersion(pending.base);
   if (server.kind === "none" && localProfile) {
     const saved = await saveServerProfile(localProfile);
     if (saved.kind === "conflict" && saved.profile) {
@@ -169,6 +173,14 @@ function clearUnsynced(userId: string): void {
   } catch {
     // Nothing to clear.
   }
+}
+/**
+ * Whether this device holds a save that never reached the account. The app reads it after loading the profile: then
+ * the "kept on this device" notice shows and the retries run, and signing out leaves this device's copy alone (it's
+ * the only one).
+ */
+export function hasUnsyncedProfile(userId: string): boolean {
+  return unsyncedBase(userId) !== null;
 }
 function unsyncedBase(userId: string): { base: string | null } | null {
   try {

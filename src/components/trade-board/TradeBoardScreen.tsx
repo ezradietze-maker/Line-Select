@@ -90,6 +90,9 @@ function tripLabel(entry: LineTripEntry, bidPeriodStart: string | null): string 
   return `${base}${date ? `, ${date}` : ""} — ${entry.trip.days}-day${entry.trip.international ? " intl" : ""}, ${cities} (Line ${entry.lineNumber})`;
 }
 
+/** How long after a board check that got no answer it's asked again on its own. */
+const BAR_RETRY_MS = 30_000;
+
 /** Above this many open offers, an unfiltered scroll stops being the fastest way to find a specific pairing or city — worth showing a search box. Below it, the box would just be clutter over a handful of cards. */
 const SEARCH_THRESHOLD = 4;
 
@@ -134,7 +137,9 @@ export function TradeBoardScreen({
   const [busy, setBusy] = useState(false);
   const [sends, setSends] = useState(0);
   const [search, setSearch] = useState("");
-  const { profile } = useAppState();
+  const { profile, refreshTradeActivity } = useAppState();
+  /** Bumped when the holding panel saves, so the trades found below are asked for again straight away. */
+  const [suggestionsKey, setSuggestionsKey] = useState(0);
   /** What the pilot confirmed holding, as the panel above loaded or saved it, for the pack it was loaded for. */
   const [held, setHeld] = useState<{ packId: string; holding: TradeHolding | null } | null>(null);
   const holding = bidPack && held?.packId === bidPack.id ? held.holding : null;
@@ -182,7 +187,9 @@ export function TradeBoardScreen({
   // A real pack's board stays hidden until its seat has enough pilots (`lib/server/trade-board-bar.ts`). The sample pack
   // is the demo, and with no pack there's no seat to ask about.
   const barSeat = signedIn && bidPack && !isSamplePack(bidPack) ? `${bidPack.base}|${bidPack.aircraft}|${bidPack.seat}` : null;
-  const [barAnswer, setBarAnswer] = useState<{ seat: string; open: boolean } | null>(null);
+  const [barAnswer, setBarAnswer] = useState<{ seat: string; open: boolean | null } | null>(null);
+  /** Bumped to ask again: the pilot's Try again, or the timer below after a check that got no answer. */
+  const [barTry, setBarTry] = useState(0);
   useEffect(() => {
     if (!barSeat) return;
     let cancelled = false;
@@ -193,7 +200,14 @@ export function TradeBoardScreen({
     return () => {
       cancelled = true;
     };
-  }, [barSeat]);
+  }, [barSeat, barTry]);
+  // No answer: asked again on its own after a while, as the app's other checks are, not left on the error for good.
+  const barUnanswered = !!barSeat && barAnswer?.seat === barSeat && barAnswer.open === null;
+  useEffect(() => {
+    if (!barUnanswered) return;
+    const timer = setTimeout(() => setBarTry((n) => n + 1), BAR_RETRY_MS);
+    return () => clearTimeout(timer);
+  }, [barUnanswered, barTry]);
 
   const realVisibleOffers = bidPack ? offers.filter((o) => sameBidPack(o, bidPack)) : offers;
   const visibleOffers = withExampleOffer(demoOffer, realVisibleOffers, bidPack, user?.id);
@@ -227,20 +241,33 @@ export function TradeBoardScreen({
     setShowPostForm(false);
     setRespondingTo(null);
     onDone?.();
+    // The Inbox badge counts proposals waiting on this pilot: asked for now, not at the app's next poll.
+    refreshTradeActivity();
     await refresh();
   }
 
   // Offers a pilot already has in play stay in front of them whatever the bar says.
   const barKnown = !!barSeat && barAnswer?.seat === barSeat;
-  const barClosed = barKnown && !barAnswer.open && !loading && needsResponse.length === 0 && myActivity.length === 0;
+  const barClosed = barKnown && barAnswer.open !== true && !loading && needsResponse.length === 0 && myActivity.length === 0;
   if (barSeat && (!barKnown || barClosed)) {
     return (
       <div className="mx-auto w-full max-w-3xl">
         <PageHeader eyebrow={packEyebrow(bidPack)} title="Trade Board" />
-        {barKnown ? (
-          <EmptyState className="mt-8" title="Coming when your seat has enough pilots" description="The board opens for a domicile, aircraft and seat once enough pilots are using Line Select there, so you'd find real offers on it. Nothing to do until then." />
-        ) : (
+        {!barKnown ? (
           <SkeletonCards shape="offer" className="mt-8" />
+        ) : barAnswer.open === null ? (
+          <EmptyState
+            className="mt-8"
+            title="Couldn’t load the board"
+            description="Check your connection. It tries again on its own in a moment."
+            actionLabel="Try again"
+            onAction={() => {
+              setBarAnswer(null);
+              setBarTry((n) => n + 1);
+            }}
+          />
+        ) : (
+          <EmptyState className="mt-8" title="Coming when your seat has enough pilots" description="The board opens for a domicile, aircraft and seat once enough pilots are using Line Select there, so you'd find real offers on it. Nothing to do until then." />
         )}
       </div>
     );
@@ -273,8 +300,8 @@ export function TradeBoardScreen({
         </InfoBanner>
       )}
       {user && !bidPack && <InfoBanner>Upload your bid pack to post an offer or propose a trade.</InfoBanner>}
-      {user && bidPack && !isSamplePack(bidPack) && <HoldingPanel bidPack={bidPack} onHolding={(h) => setHeld({ packId: bidPack.id, holding: h })} />}
-      {user && bidPack && !isSamplePack(bidPack) && <TradeSuggestions packId={bidPack.id} />}
+      {user && bidPack && !isSamplePack(bidPack) && <HoldingPanel bidPack={bidPack} onHolding={(h) => setHeld({ packId: bidPack.id, holding: h })} onSaved={() => setSuggestionsKey((n) => n + 1)} />}
+      {user && bidPack && !isSamplePack(bidPack) && <TradeSuggestions packId={bidPack.id} refreshKey={suggestionsKey} />}
 
       {showPostForm && bidPack && (
         <PostOfferForm
@@ -607,6 +634,16 @@ function PostOfferForm({
   const [wantedPairingNumber, setWantedPairingNumber] = useState("");
   const [note, setNote] = useState("");
 
+  // The form opens below the holding panel and any trades found, well down the page, and the button that opened it is
+  // gone: brought into view, with focus on its first field, or it opened out of sight with focus nowhere.
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form) return;
+    form.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    form.querySelector<HTMLElement>("select, input, textarea")?.focus({ preventScroll: true });
+  }, []);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const entry = trips.find((t) => t.entryKey === entryKey);
@@ -626,8 +663,10 @@ function PostOfferForm({
 
   return (
     <form
+      ref={formRef}
       onSubmit={handleSubmit}
-      className="panel-glass glow-soft mt-6 space-y-4 p-5"
+      aria-label="Post a trade offer"
+      className="panel-glass glow-soft mt-6 scroll-mt-20 space-y-4 p-5 md:scroll-mt-6"
     >
       <div>
         <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="offer-trip">

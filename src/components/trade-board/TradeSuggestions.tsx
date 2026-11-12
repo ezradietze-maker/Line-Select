@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { useAppState } from "@/lib/app-state";
 import { answerSuggestion, fetchSuggestions, findTradesNow, markTradeStepDone, type SuggestionsState } from "@/lib/trades/holding-client";
 import type { TradeDeclineReason, TradeReason, TradeSuggestionView, TradeTrip } from "@/types/trade";
 
@@ -196,7 +197,17 @@ function SuggestionCard({
  * "Trades found for you": trades that leave everyone on them better off, by each pilot's own priorities. Everyone answers
  * here, and each pilot then submits their own trades in VIPS: nothing here touches FedEx. `onlyWaiting` is the Inbox's view.
  */
-export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: string; onlyWaiting?: boolean }) {
+export function TradeSuggestions({
+  packId,
+  onlyWaiting = false,
+  refreshKey = 0,
+}: {
+  packId: string;
+  onlyWaiting?: boolean;
+  /** Changed by the screen when what the pilot holds, or "Include me…", was just saved: the list is asked for again then. */
+  refreshKey?: number;
+}) {
+  const { refreshTradeActivity } = useAppState();
   const [state, setState] = useState<SuggestionsState | null>(null);
   const [busy, setBusy] = useState(false);
   const [finding, setFinding] = useState(false);
@@ -230,7 +241,7 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
       cancelled = true;
       clearInterval(timer);
     };
-  }, [packId, take]);
+  }, [packId, take, refreshKey]);
 
   async function find() {
     setFinding(true);
@@ -257,6 +268,8 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
     setError(null);
     const result = await action();
     if (!result.ok) setError(result.error ?? "That didn't save. Check your connection and try again.");
+    // The Inbox badge counts trades waiting on this pilot: asked for now, not at the app's next poll.
+    if (result.ok) refreshTradeActivity();
     await refresh();
     setBusy(false);
   }

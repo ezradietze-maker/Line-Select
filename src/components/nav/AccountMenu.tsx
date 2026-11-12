@@ -148,7 +148,9 @@ function RecoveryCodeModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal title="Account recovery code" onClose={onClose}>
+    // Once the request is sent the old code may already be gone, and a new one is shown only once: from then on only
+    // the confirmed button closes the dialog, never a stray Escape or tap outside.
+    <Modal title="Account recovery code" onClose={onClose} locked={submitting || !!code}>
       {code ? (
         <RecoveryCodePanel code={code} reason="new" onDone={onClose} doneLabel="Done" />
       ) : (
