@@ -1,3 +1,5 @@
+import { saveOrReport } from "@/lib/local-save-failed";
+
 /**
  * Where the pilot put lines by hand on their ranked list. Dropping one line on another swaps the two, and that's the
  * pilot's own word on the order: it stays, whatever the brain makes of it. The brain still learns from the swap (see
@@ -70,11 +72,7 @@ export function loadPlacements(userId: string | null, bidPackId: string): Placem
   }
 }
 
-export function savePlacements(userId: string | null, bidPackId: string, placements: Placement[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(placementsKey(userId, bidPackId), JSON.stringify(placements));
-  } catch {
-    // storage unavailable — placements just won't persist this session
-  }
+/** Whether the browser kept them; when it didn't, the pilot is told they won't survive a refresh (`saveOrReport`). */
+export function savePlacements(userId: string | null, bidPackId: string, placements: Placement[]): boolean {
+  return saveOrReport(placementsKey(userId, bidPackId), JSON.stringify(placements));
 }

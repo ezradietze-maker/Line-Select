@@ -1,4 +1,5 @@
 import { choicesFromDrag } from "@/lib/brain/profile-model";
+import { saveOrReport } from "@/lib/local-save-failed";
 import type { LineChoice } from "@/types/pilot-model";
 
 /**
@@ -278,11 +279,7 @@ export function loadTiers(userId: string | null, bidPackId: string): TierState {
   }
 }
 
-export function saveTiers(userId: string | null, bidPackId: string, s: TierState): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(tiersKey(userId, bidPackId), JSON.stringify(s));
-  } catch {
-    // storage unavailable — tiers just won't persist this session
-  }
+/** Whether the browser kept them; when it didn't, the pilot is told they won't survive a refresh (`saveOrReport`). */
+export function saveTiers(userId: string | null, bidPackId: string, s: TierState): boolean {
+  return saveOrReport(tiersKey(userId, bidPackId), JSON.stringify(s));
 }
