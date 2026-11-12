@@ -192,8 +192,12 @@ export function choicesFromSwap(order: string[], dragId: string, packId?: string
  * Without a drag to name, it's dropped.
  */
 export function addDragChoices(existing: LineChoice[], added: LineChoice[]): LineChoice[] {
+  // A drag's choices given back while the profile still holds them (an undo and a redo pressed together) replace them:
+  // added again beside them, the one swap counted twice.
+  let base = existing;
+  for (const id of new Set(added.map((c) => c.dragId))) if (id) base = withoutDrag(base, id);
   const reversedBy = new Map(added.map((c) => [`${c.other}>${c.preferred}`, c.dragId]));
-  const kept = existing.flatMap((c) => {
+  const kept = base.flatMap((c) => {
     const key = `${c.preferred}>${c.other}`;
     if (!c.direct || c.supersededBy || !reversedBy.has(key)) return [c];
     const by = reversedBy.get(key);

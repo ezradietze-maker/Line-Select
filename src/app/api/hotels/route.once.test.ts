@@ -10,6 +10,12 @@ vi.mock("@/lib/server/kv", () => ({
     store.set(k, n);
     return n;
   },
+  takeLock: async (k: string) => {
+    if (store.has(k)) return false;
+    store.set(k, 1);
+    return true;
+  },
+  deleteKey: async (k: string) => void store.delete(k),
   addToCounter: async (k: string, a: number) => {
     const n = ((store.get(k) as number) ?? 0) + a;
     store.set(k, n);
@@ -58,5 +64,21 @@ describe("the same uncached hotel asked for at once", () => {
     const results = await Promise.all(Array.from({ length: 10 }, () => GET(req()).then((r) => r.json())));
     expect(results.every((r) => r.hotel)).toBe(true);
     expect(googleCalls).toBe(alone);
+  });
+
+  it("lets go when Google fails, so the retry and the copies waiting don't sit out the full wait", async () => {
+    await rememberPackHotels({ trips: [{ city: "MEM", hotelName: "HILTON" }] });
+    const working = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (...a) => {
+      await new Promise((r) => setTimeout(r, 50));
+      if (googleCalls++ === 0) return { ok: false, status: 503, json: async () => ({}), text: async () => "down" } as unknown as Response;
+      return working(...a);
+    });
+    const started = Date.now();
+    const [first, waiting] = await Promise.all([GET(req()).then((r) => r.json()), new Promise((r) => setTimeout(r, 10)).then(() => GET(req()).then((r) => r.json()))]);
+    expect(first.hotel).toBeNull();
+    expect(waiting.hotel).toBeTruthy();
+    expect((await GET(req()).then((r) => r.json())).hotel).toBeTruthy();
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 });

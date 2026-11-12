@@ -528,7 +528,10 @@ export interface DutyClock {
  * plan never disagree about where the pilot's body is. Also the body clock's offset at the end of the trip, which the
  * pilot carries home. Empty when the trip has no printed GMT times.
  */
-export function dutyClocks(trip: Trip, homeBaseOffsetMinutes: number | null): { duties: DutyClock[]; homeOffset: number; endOffset: number; plans: LayoverSleepPlan[] } | null {
+export function dutyClocks(
+  trip: Trip,
+  homeBaseOffsetMinutes: number | null
+): { duties: DutyClock[]; homeOffset: number; endOffset: number; homeEndOffset: number; plans: LayoverSleepPlan[] } | null {
   if (!trip.schedule.length) return null;
   const zOff = zuluOffset(trip);
   if (zOff === null) return null;
@@ -552,5 +555,9 @@ export function dutyClocks(trip: Trip, homeBaseOffsetMinutes: number | null): { 
       if (plan.blocks.length) wake = Math.max(...plan.blocks.map((b) => b.end));
     }
   });
-  return { duties, homeOffset, endOffset: body, plans: planned };
+  // Home time when it lands back: a trip across the clock change (Nov 1, Mar 14) comes home to the other one.
+  const first = trip.schedule[0].legs[0];
+  const last = trip.schedule.at(-1)?.legs.at(-1);
+  const homeEndOffset = (first && last && first.depAirport === last.arrAirport ? offsetOf(last.arrTimeLocal, last.arrTimeGmt) : null) ?? homeOffset;
+  return { duties, homeOffset, endOffset: body, homeEndOffset, plans: planned };
 }

@@ -87,6 +87,30 @@ export async function incrementCounter(key: string, ttlSeconds: number): Promise
   return next;
 }
 
+/**
+ * Takes a lock that lets itself go after `ttlSeconds` — whether this caller got it. One SET NX EX, so the lock and its
+ * end are made together: an INCR whose EXPIRE call got lost left a lock that never ended.
+ */
+export async function takeLock(key: string, ttlSeconds: number): Promise<boolean> {
+  if (redis) return (await redis.set(key, 1, { nx: true, ex: ttlSeconds })) === "OK";
+  if ((await getJson<number>(key)) !== null) return false;
+  await setJson(key, 1, { ttlSeconds });
+  return true;
+}
+
+export async function deleteKey(key: string): Promise<void> {
+  if (redis) {
+    await redis.del(key);
+    return;
+  }
+  try {
+    const file = localPath(key);
+    if (existsSync(file)) writeFileSync(file, JSON.stringify({ value: null, expiresAt: 0 }), "utf8");
+  } catch {
+    // Expires on its own.
+  }
+}
+
 /** Like `incrementCounter`, by a whole `amount` at once (INCRBY) — the running total after adding it. */
 export async function addToCounter(key: string, amount: number, ttlSeconds: number): Promise<number> {
   if (redis) {

@@ -255,6 +255,9 @@ function CityPanel({ facts: f, bidPack, profile, mark, now }: { facts: CityFacts
             </span>
           ) : rating?.untried ? (
             <span className="text-ink-muted">You haven&rsquo;t been to {f.code}, and you&rsquo;d try it.</span>
+          ) : rating ? (
+            // Rated, and neutral — for the year, or for this month's season — so it carries no mark.
+            <span className="text-ink-muted">You&rsquo;re neutral on {f.code}</span>
           ) : (
             <span className="text-ink-muted">You haven&rsquo;t rated {f.code}.</span>
           )}
@@ -265,7 +268,7 @@ function CityPanel({ facts: f, bidPack, profile, mark, now }: { facts: CityFacts
         {Object.keys(rating?.hotels ?? {}).length > 0 && <p className="mt-1 text-sm text-ink-muted">Its hotels apart{hotelWords(rating!.hotels, gradeLabel).replace(/^;/, ":")}.</p>}
         {rating?.note && <p className="mt-1.5 rounded-md bg-canvas/60 px-3 py-2 text-sm italic text-ink-muted">&ldquo;{rating.note}&rdquo;</p>}
         <Link href="/preferences" className="mt-2 inline-block text-sm font-medium text-accent underline decoration-dotted underline-offset-4">
-          {mark ? "Change your rating" : "Rate it"} in Preferences
+          {mark || rating ? "Change your rating" : "Rate it"} in Preferences
         </Link>
       </section>
     </div>
@@ -307,7 +310,8 @@ function Weather({ code, bidPack, stays, now }: { code: string; bidPack: BidPack
       {typical === undefined ? (
         <p className="mt-1 text-sm text-ink-faint">Looking it up…</p>
       ) : typical === null ? (
-        <p className="mt-1 text-sm text-ink-faint">No weather on record for {code}.</p>
+        // Placed on the map, the city has weather on record: it was the weather service that couldn't be reached.
+        <p className="mt-1 text-sm text-ink-faint">{coordinatesForAirport(code) && bidPack.bidPeriodStart ? `Couldn't reach the weather for ${code} just now. It'll show when you're back online.` : `No weather on record for ${code}.`}</p>
       ) : (
         <p className="mt-1 text-sm text-ink">
           Over this bid month&rsquo;s dates last year: highs around <span className="font-semibold">{typical.avgHighF}°F</span>, lows around{" "}

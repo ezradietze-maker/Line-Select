@@ -190,10 +190,14 @@ function afterPaint(fn: () => void) {
  * A line not drawn yet, off the screen: its room in the list, and its number, so the list reads in order to a screen
  * reader, Find in page finds the line, and a link or a key can scroll to it. Drawn in full once it's near the screen.
  */
-function LineStandIn({ id, lineNumber, height }: { id: string; lineNumber: string; height: number }) {
+function LineStandIn({ id, line, height }: { id: string; line: LineScore["line"]; height: number }) {
+  // Its trips' numbers and layover cities too, as its strip prints them: Find in page looks for those as often as for
+  // a line's number, and a page of 25 lines draws only the few on screen.
+  const trips = [...new Set(line.trips.flatMap((t) => [t.pairingNumber ?? "", ...t.layoverCities]).filter(Boolean))].join(" ");
   return (
-    <div id={`line-${id}`} className="panel-glass scroll-mt-20 px-4 py-3 font-mono text-[12px] font-semibold leading-[14px] tracking-wide text-ink-faint md:scroll-mt-6" style={{ height }}>
-      LINE {lineNumber}
+    <div id={`line-${id}`} className="panel-glass scroll-mt-20 overflow-hidden px-4 py-3 font-mono text-[12px] leading-[14px] tracking-wide text-ink-faint md:scroll-mt-6" style={{ height }}>
+      <div className="font-semibold">LINE {line.lineNumber}</div>
+      {trips && <div className="mt-2 opacity-70">{trips}</div>}
     </div>
   );
 }
@@ -318,6 +322,8 @@ export function ResultsView({
   // The latest swap, with the profile from just before it and just after: undoing it while nothing else has changed
   // puts back exactly what the pilot had.
   const [lastSwap, setLastSwap] = useState<{ id: string; before: PreferenceProfile; after: PreferenceProfile } | null>(null);
+  /** What each swap taught, as last taken out of the profile: an undo pressed before a redo's lesson went back in found none. */
+  const swapLessons = useRef(new Map<string, LineChoice[]>());
   // ⌘Z, Undo and Redo: one history, newest first, across tier changes and swaps (see `lib/order-history.ts`). Kept for
   // one pilot and pack, as the tiers' own is; mirrored in a ref, so two quick presses each take the step the one
   // before left.
@@ -790,6 +796,8 @@ export function ResultsView({
   // Keys for working down the list at a desk: j / k move between lines, o opens one, s shortlists, c compares, ? shows the keys.
   // The cursor is a line, not a place in the list: a tier key moves the line, and the cursor goes with it.
   const [keyId, setKeyId] = useState<string | null>(null);
+  // The line with the keyboard's focus in it, kept drawn wherever the page scrolls: undrawn, its focus fell to the page.
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
   // Every listed line, drawn or not: j and k scroll the next one into view, which draws it.
   const keyableIds = displayedIds;
@@ -841,9 +849,10 @@ export function ResultsView({
     // Tabbing or clicking into another card takes the cursor there, so the ring and the keys stay on the same line. With
     // no cursor showing, a click puts none up.
     function onFocusIn(e: FocusEvent) {
-      if (keyId === null || !(e.target instanceof HTMLElement)) return;
-      const id = e.target.closest<HTMLElement>("[data-line-id]")?.dataset.lineId;
-      if (id && id !== keyId && keyableIds.includes(id)) setKeyId(id);
+      if (!(e.target instanceof HTMLElement)) return;
+      const id = e.target.closest<HTMLElement>("[data-line-id]")?.dataset.lineId ?? null;
+      if (id !== focusId) setFocusId(id);
+      if (keyId !== null && id && id !== keyId && keyableIds.includes(id)) setKeyId(id);
     }
     window.addEventListener("keydown", onKey);
     window.addEventListener("focusin", onFocusIn);
@@ -1054,14 +1063,17 @@ export function ResultsView({
     const placement = placementsList.current().find((x) => x.id === id);
     if (!placement) return null;
     const current = profileRef.current;
-    // What it taught, as first taught (whether a later swap set one aside is worked out again when it's given back).
-    const lesson = (current.brainInterview?.choices ?? [])
+    // What it taught, as first taught (whether a later swap set one aside is worked out again when it's given back). Read
+    // off the profile, or — when a redo pressed just before hasn't put it back in yet — as it was last taken out.
+    const held = (current.brainInterview?.choices ?? [])
       .filter((c) => c.dragId === id)
       .map((c) => {
         const back = { ...c };
         delete back.supersededBy;
         return back;
       });
+    if (held.length) swapLessons.current.set(id, held);
+    const lesson = held.length ? held : (swapLessons.current.get(id) ?? []);
     const exact: SwapStep["exact"] = lastSwap?.id === id && lastSwap.after === current ? { before: lastSwap.before, after: lastSwap.after } : undefined;
     updatePlacements((p) => p.filter((x) => x.id !== id));
     setLearnMessage(null);
@@ -1075,7 +1087,8 @@ export function ResultsView({
       const now = profileRef.current;
       let next: PreferenceProfile | null = null;
       if (exact && now === exact.after) next = exact.before;
-      else if (now.pilotModel && lesson.length) next = withModel(now, bidPack, { choices: withoutDrag(now.brainInterview?.choices ?? [], id) }, packMetricsRef.current ?? undefined).profile;
+      // Only while the profile still holds what it taught: a redo and this undo pressed together may have left it out.
+      else if (now.pilotModel && (now.brainInterview?.choices ?? []).some((c) => c.dragId === id)) next = withModel(now, bidPack, { choices: withoutDrag(now.brainInterview?.choices ?? [], id) }, packMetricsRef.current ?? undefined).profile;
       if (next && next !== now) {
         profileRef.current = next;
         onUpdateProfile(next);
@@ -1086,13 +1099,19 @@ export function ResultsView({
 
   /** The swap back where the pilot had put it, and what it taught back with it — that, as with a swap, once it's painted. */
   function putBackSwap(step: SwapStep) {
-    const { placement, lesson = [], exact } = step;
+    const { placement, exact } = step;
+    const lesson = step.lesson?.length ? step.lesson : (swapLessons.current.get(placement.id) ?? []);
     updatePlacements((p) => [...p.filter((x) => x.id !== placement.id), placement]);
     const numberOf = (lineId: string) => bidPack.lines.find((l) => l.id === lineId)?.lineNumber ?? "";
     setLearnMessage(`Swapped ${numberOf(placement.order[0])} and ${numberOf(placement.order[placement.order.length - 1])} again.`);
     afterPaint(() => {
       if (!placementsList.current().some((x) => x.id === placement.id)) return;
       const current = profileRef.current;
+      // Still holding what it taught (an undo pressed with it never took it out): nothing to give back, or it's counted twice.
+      if ((current.brainInterview?.choices ?? []).some((c) => c.dragId === placement.id)) {
+        setLastSwap(null);
+        return;
+      }
       let next: PreferenceProfile | null = null;
       if (exact && current === exact.before) next = exact.after;
       else if (current.pilotModel && lesson.length) next = withModel(current, bidPack, { choices: addDragChoices(current.brainInterview?.choices ?? [], lesson) }, packMetricsRef.current ?? undefined).profile;
@@ -1538,8 +1557,8 @@ export function ResultsView({
                   const open = openIds.has(id);
                   const rank = rankById.get(id) ?? 0;
                   // Drawn: near the screen, or open, being dragged (and the lines either side of it, which a keyboard
-                  // swap lands on) or just asked for — they're kept, wherever the page is.
-                  const drawn = rows.drawn(index) || open || (activeIndex !== -1 && Math.abs(index - activeIndex) <= 1) || id === flashId;
+                  // swap lands on), just asked for, or with the keyboard's focus in it — they're kept, wherever the page is.
+                  const drawn = rows.drawn(index) || open || (activeIndex !== -1 && Math.abs(index - activeIndex) <= 1) || id === flashId || id === focusId;
                   return (
                     <div key={id} data-row className="space-y-1.5">
                       {heading && <TierHeadingRow heading={heading} />}
@@ -1608,7 +1627,7 @@ export function ResultsView({
                           <CarryInLineNote flown={carry.flown.lines.get(id)} vacation={carry.flown.vacationLines.get(id)} />
                         </motion.div>
                       ) : (
-                        <LineStandIn id={id} lineNumber={lineScore.line.lineNumber} height={rows.heightOf(id)} />
+                        <LineStandIn id={id} line={lineScore.line} height={rows.heightOf(id)} />
                       )}
                     </div>
                   );

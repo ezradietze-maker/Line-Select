@@ -3,7 +3,7 @@ import { reportProblem } from "@/lib/server/alerts";
 import { airportSearchName, citySearchName } from "@/lib/hotels/airport-names";
 import { isPlausibleMatch, pickBestMatch, readHotelName } from "@/lib/hotels/hotel-names";
 import { cacheKey, getCachedHotel, setCachedHotel } from "@/lib/server/hotel-cache";
-import { incrementCounter } from "@/lib/server/kv";
+import { deleteKey, getJson, takeLock } from "@/lib/server/kv";
 import { checkRateLimit, checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { isPackHotel } from "@/lib/server/pack-hotels";
 import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
@@ -359,8 +359,12 @@ export async function GET(request: Request) {
   // run through by the thousand (made up, or from an uploaded PDF) would otherwise pause the interview for everyone.
   // One lookup per hotel at a time: the same uncached hotel asked for at once (two tabs, two pilots opening a fresh
   // pack, or one guest's requests in parallel) paid Google for each copy and counted each against the site's day.
-  // The others wait for the first one's answer in the cache, and look it up themselves only if it never comes.
-  if ((await incrementCounter(`hotel-lock:${key}`, LOOKUP_LOCK_SECONDS)) > 1) {
+  // The others wait for the first one's answer in the cache, and look it up themselves only if it never comes. The first
+  // lets go once it has answered, found or not: a lookup that failed kept the others waiting the full time for an answer
+  // that was never coming, and a retry after it too.
+  const lock = `hotel-lock:${key}`;
+  const holding = await takeLock(lock, LOOKUP_LOCK_SECONDS);
+  if (!holding) {
     for (let waited = 0; waited < LOOKUP_WAIT_MS; waited += LOOKUP_POLL_MS) {
       await new Promise((r) => setTimeout(r, LOOKUP_POLL_MS));
       const found = await usableCached();
@@ -368,36 +372,42 @@ export async function GET(request: Request) {
         const result: HotelLookupResult = { code, hotelName, hotel: found, error: null };
         return NextResponse.json(result);
       }
+      // Let go without an answer in the cache: the lookup failed, or rested for the day. Asking now beats waiting on.
+      if (!(await getJson(lock))) break;
     }
   }
-  if (!(await checkRateLimit("hotels-site", "all", hotelSiteLookupsPerDay(), 24 * 60 * 60)).ok) {
-    const result: HotelLookupResult = { code, hotelName, hotel: null, error: "Hotel ratings are resting until tomorrow." };
-    return NextResponse.json(result);
-  }
-
-  let charged = false;
-  const charge = async () => {
-    if (charged) return;
-    charged = true;
-    await recordSpend(spender, LOOKUP_COST_USD, { siteOnly: true });
-  };
   try {
-    const { hotel, complete } = await findHotelOnGoogle(code, hotelName, apiKey, process.env.ANTHROPIC_API_KEY);
-    await charge();
-    await setCachedHotel(key, hotel, complete ? undefined : INCOMPLETE_CACHE_SECONDS);
-    const result: HotelLookupResult = { code, hotelName, hotel, error: null };
-    return NextResponse.json(result);
-  } catch (e) {
-    // The detail (Google's own error body) goes to the server log, not the pilot.
-    await reportProblem("hotels", e, { code });
-    // The searches that ran before the failure were still billed — once.
-    await charge().catch(() => {});
-    const result: HotelLookupResult = {
-      code,
-      hotelName,
-      hotel: null,
-      error: "Couldn't reach Google Places.",
+    if (!(await checkRateLimit("hotels-site", "all", hotelSiteLookupsPerDay(), 24 * 60 * 60)).ok) {
+      const result: HotelLookupResult = { code, hotelName, hotel: null, error: "Hotel ratings are resting until tomorrow." };
+      return NextResponse.json(result);
+    }
+
+    let charged = false;
+    const charge = async () => {
+      if (charged) return;
+      charged = true;
+      await recordSpend(spender, LOOKUP_COST_USD, { siteOnly: true });
     };
-    return NextResponse.json(result);
+    try {
+      const { hotel, complete } = await findHotelOnGoogle(code, hotelName, apiKey, process.env.ANTHROPIC_API_KEY);
+      await charge();
+      await setCachedHotel(key, hotel, complete ? undefined : INCOMPLETE_CACHE_SECONDS);
+      const result: HotelLookupResult = { code, hotelName, hotel, error: null };
+      return NextResponse.json(result);
+    } catch (e) {
+      // The detail (Google's own error body) goes to the server log, not the pilot.
+      await reportProblem("hotels", e, { code });
+      // The searches that ran before the failure were still billed — once.
+      await charge().catch(() => {});
+      const result: HotelLookupResult = {
+        code,
+        hotelName,
+        hotel: null,
+        error: "Couldn't reach Google Places.",
+      };
+      return NextResponse.json(result);
+    }
+  } finally {
+    if (holding) await deleteKey(lock).catch(() => {});
   }
 }

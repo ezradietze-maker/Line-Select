@@ -42,6 +42,18 @@ describe("sleep plan", () => {
     expect(dutyClocks(open, EST)?.homeOffset).toBe(EST);
   });
 
+  it("brings the body home to home time as it is when the trip lands, across the clock change", () => {
+    // Leaves Memphis on CDT (-5), lands back on CST (-6): home is an hour earlier than it left.
+    const CDT = -5 * H;
+    const CST = -6 * H;
+    const across = dutyClocks(trip(leg("MEM", "IND", 20 * H, 22 * H, CDT, -4 * H), leg("IND", "MEM", 38 * H, 40 * H, -5 * H, CST)), CDT);
+    expect(across?.homeOffset).toBe(CDT);
+    expect(across?.homeEndOffset).toBe(CST);
+    // On one clock throughout, it lands to the home time it left.
+    const same = dutyClocks(trip(leg("MEM", "IND", 20 * H, 22 * H, CDT, -4 * H), leg("IND", "MEM", 38 * H, 40 * H, -4 * H, CDT)), CDT);
+    expect(same?.homeEndOffset).toBe(CDT);
+  });
+
   it("knows sleep comes easiest in the body's night and hardest just before bedtime", () => {
     expect(sleepPropensity(3 * H)).toBe(1);
     expect(sleepPropensity(20 * H)).toBeLessThan(0.2);

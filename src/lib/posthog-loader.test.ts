@@ -25,4 +25,17 @@ describe("what an event's addresses carry to PostHog", () => {
     });
     expect(out.$set_once).toEqual({ $initial_current_url: "https://line-select.app/reset-password" });
   });
+
+  it("cuts addresses inside an event's own parts, and a page's own address, too", () => {
+    const event = {
+      event: "$web_vitals",
+      properties: {
+        $web_vitals_LCP_event: { value: 900, $current_url: "https://line-select.app/contract?q=Can%20I%20drop", attribution: { navigationURL: "/contract?q=x" } },
+        readings: [{ url: "results?line=2163" }],
+      },
+    } as unknown as CaptureResult;
+    const out = withoutQueries(event)!.properties as Record<string, unknown>;
+    expect(out.$web_vitals_LCP_event).toEqual({ value: 900, $current_url: "https://line-select.app/contract", attribution: { navigationURL: "/contract" } });
+    expect(out.readings).toEqual([{ url: "results" }]);
+  });
 });

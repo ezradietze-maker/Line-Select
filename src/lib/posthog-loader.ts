@@ -13,16 +13,25 @@ const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
 let loading: Promise<PostHog | null> | null = null;
 
+/** An address: whole, from the site's root, or a page's own (`results?line=…`). */
+const ADDRESS = /^(?:https?:\/\/|\/|[\w.-]+(?:\/[\w.-]*)*\?[\w-]+=)/;
+
 /**
  * Every address in an event with its query and fragment cut off: a reset link's `?token=`, and the pack's own words a
- * page's address can carry (`?hotel=` a hotel's name, `?line=`, `?city=`), which the Privacy Policy says PostHog never
- * gets. The path is kept.
+ * page's address can carry (`?hotel=` a hotel's name, `?line=`, `?city=`, a contract question's `?q=`), which the
+ * Privacy Policy says PostHog never gets. The path is kept. Addresses inside an event's own parts too: page speed sends
+ * each reading with the page's address in it.
  */
 export function withoutQueries(event: CaptureResult | null): CaptureResult | null {
   if (!event) return event;
-  const scrub = (props: Record<string, unknown> | undefined) => {
-    if (!props) return;
-    for (const [k, v] of Object.entries(props)) if (typeof v === "string" && /^(?:https?:\/\/|\/)/.test(v) && /[?#]/.test(v)) props[k] = v.replace(/[?#][^]*$/, "");
+  const scrub = (props: unknown, depth = 0) => {
+    if (!props || typeof props !== "object" || depth > 4) return;
+    const parts = props as Record<string, unknown>;
+    for (const [k, v] of Object.entries(parts)) {
+      if (typeof v === "string") {
+        if (ADDRESS.test(v) && /[?#]/.test(v)) parts[k] = v.replace(/[?#][^]*$/, "");
+      } else scrub(v, depth + 1);
+    }
   };
   scrub(event.properties);
   scrub(event.$set);
@@ -49,7 +58,9 @@ export function loadPosthog(): Promise<PostHog | null> {
         before_send: withoutQueries,
         // The first address of a visit is kept on the device and sent with the person's details, outside before_send.
         mask_personal_data_properties: true,
-        custom_personal_data_properties: ["token", "hotel", "hotelCity", "line", "city"],
+        custom_personal_data_properties: ["token", "hotel", "hotelCity", "line", "city", "q"],
+        // Its random id kept in this browser's storage, not in a cookie that went along with every request to the site.
+        persistence: "localStorage",
         // No scripts from PostHog's servers, and no feature flags (the app uses none): each /flags request carried the
         // person's details, the first address among them.
         disable_external_dependency_loading: true,

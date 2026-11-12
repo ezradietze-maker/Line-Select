@@ -162,7 +162,7 @@ export function QuickBrief({
             </button>
           ))}
         </div>
-        {isCommuter && <TextField className="mt-3 max-w-40" label="Home airport" value={commuteFrom} maxLength={4} autoComplete="off" onChange={(e) => setCommuteFrom(e.target.value.toUpperCase())} placeholder="e.g. SAN" />}
+        {isCommuter && <TextField className="mt-3 max-w-40" label="Home airport" value={commuteFrom} maxLength={3} autoComplete="off" autoCapitalize="characters" onChange={(e) => setCommuteFrom(e.target.value.replace(/[^a-z]/gi, "").toUpperCase().slice(0, 3))} placeholder="e.g. SAN" />}
       </section>
 
       <section className="mt-6 grid gap-4 sm:grid-cols-2">

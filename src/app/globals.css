@@ -1247,6 +1247,11 @@ body:has([data-bottom-bar]) .back-to-top {
   .cal-grid > * {
     opacity: 1 !important;
   }
+  /* Every line drawn for printing starts its fade-in, and the page is printed before it runs: 483 of 489 printed blank. */
+  [data-line-id] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
   .panel-glass,
   [id^="line-"] {
     box-shadow: none !important;
