@@ -801,12 +801,14 @@ export function ResultsView({
       if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       if (document.querySelector('[role="dialog"]')) return;
       if (!keyableIds.length) return;
-      // The line the keys act on: the one with the keyboard's focus in it (a pilot who tabbed to a card), else the j / k cursor.
-      const focusedId = t instanceof HTMLElement ? t.closest<HTMLElement>("[data-line-id]")?.dataset.lineId : undefined;
-      const onId = focusedId && keyableIds.includes(focusedId) ? focusedId : keyedId;
+      // The line the keys act on: the j / k cursor, else the one with the keyboard's focus in it (a pilot who tabbed or
+      // clicked into a card). Focus first, a press of j after a click moved the ring while s still starred the clicked line.
+      const focused = t instanceof HTMLElement ? t.closest<HTMLElement>("[data-line-id]")?.dataset.lineId : undefined;
+      const focusedId = focused && keyableIds.includes(focused) ? focused : null;
+      const onId = keyedId ?? focusedId;
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
-        const next = stepCursor(keyableIds, keyedId, e.key === "j" ? 1 : -1);
+        const next = stepCursor(keyableIds, onId, e.key === "j" ? 1 : -1);
         if (!next) return;
         setKeyId(next);
         document.getElementById(`line-${next}`)?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
@@ -836,8 +838,19 @@ export function ResultsView({
         setShowKeys(false);
       }
     }
+    // Tabbing or clicking into another card takes the cursor there, so the ring and the keys stay on the same line. With
+    // no cursor showing, a click puts none up.
+    function onFocusIn(e: FocusEvent) {
+      if (keyId === null || !(e.target instanceof HTMLElement)) return;
+      const id = e.target.closest<HTMLElement>("[data-line-id]")?.dataset.lineId;
+      if (id && id !== keyId && keyableIds.includes(id)) setKeyId(id);
+    }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("focusin", onFocusIn);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("focusin", onFocusIn);
+    };
   });
 
   useEffect(() => {
