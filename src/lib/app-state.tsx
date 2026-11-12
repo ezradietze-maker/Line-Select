@@ -16,7 +16,7 @@ import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/post
 import { clearPendingProfile, loadPendingProfile, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
-import { askToKeepStorage, clearProfile, clearProfileForUser, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
+import { askToKeepStorage, clearProfile, clearProfileForUser, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import { loadSeenOfferIds, newArrivals, saveSeenOfferIds, type ToastBaseline } from "@/lib/trade-seen-storage";
 import type { BidPack } from "@/types/bidpack";
@@ -131,6 +131,8 @@ interface AppStateValue extends DataState {
   tradeOffers: TradeOffer[];
   /** How the signed-in pilot's last profile save went: "merged" with a newer copy from another device, or "failed" (kept on this device, retried). */
   profileSync: "ok" | "merged" | "failed";
+  /** Asks for the offers and the waiting trades now, not at the next poll: after the pilot answers one, so the Inbox badge is right straight away. */
+  refreshTradeActivity: () => void;
   handleDismissProfileSync: () => void;
   handleAcceptDemoOffer: () => void;
   handleParsed: (result: ParseBidPackResult) => void;
@@ -199,6 +201,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const showSignedOutRef = useRef<() => void>(() => {});
   const latestProfileRef = useRef<PreferenceProfile | null>(null);
   const realOffersRef = useRef<TradeOffer[]>([]);
+  /** The trade poll below, for a screen to run straight after an answer (`refreshTradeActivity`). */
+  const tradePollRef = useRef<(() => Promise<void>) | null>(null);
   const toastBaselineRef = useRef<ToastBaseline | null>(null);
   const pathname = usePathname();
   const onTradeBoard = pathname === "/trade-board";
@@ -247,7 +251,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       if (currentUser) identifyPilot(currentUser.id);
       if (assumedGuest && !currentUser) return;
       const resolved = await stateFor(currentUser);
-      if (!cancelled) setState(resolved);
+      if (cancelled) return;
+      setState(resolved);
+      // An edit kept on this device that the load couldn't send either (still no signal, the server busy): the notice
+      // shows and the retries below run, as for a save that failed in this visit.
+      if (currentUser && hasUnsyncedProfile(currentUser.id)) setProfileSync("failed");
     }
     bootstrap();
     return () => {
@@ -324,9 +332,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setRealOffersKey(key);
     }
     poll();
+    tradePollRef.current = poll;
     const intervalId = setInterval(poll, 10000);
     return () => {
       cancelled = true;
+      if (tradePollRef.current === poll) tradePollRef.current = null;
       clearInterval(intervalId);
     };
   }, [user, bidPack]);
@@ -686,6 +696,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       adoptGuestDrafts(newUser.id);
     }
 
+    if (hasUnsyncedProfile(newUser.id)) setProfileSync("failed");
     setState({
       ready: true,
       profile: theirProfile,
@@ -724,8 +735,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
     // What this device kept for them goes too — the next person here mustn't find their pack or their own words. Not
-    // while an edit is still waiting to reach their account: then this device holds the only copy.
-    if (user && profileSync !== "failed") forgetPilotOnDevice(user.id);
+    // while an edit is still waiting to reach their account: then this device holds the only copy. The mark is read
+    // too, not just this visit's state, so an edit left from an earlier visit is kept as well.
+    if (user && profileSync !== "failed" && !hasUnsyncedProfile(user.id)) forgetPilotOnDevice(user.id);
     await showSignedOut();
   }
 
@@ -762,6 +774,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     inboxUnreadCount,
     tradeOffers: realOffers,
     profileSync,
+    refreshTradeActivity: () => void tradePollRef.current?.(),
     handleDismissProfileSync,
     handleAcceptDemoOffer,
     handleParsed,

@@ -7,6 +7,7 @@ import { FeedbackIcon, InfoIcon, type NavProps } from "@/components/nav/LeftNav"
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
 import { SearchIcon } from "@/components/ui/icons";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
+import { dialogOpen } from "@/components/ui/Modal";
 
 /** The four destinations a pilot reaches for every month get a tab of their own; the crew tools share "More". */
 const TAB_TARGETS: NavTarget[] = ["upload", "preferences", "results", "strategies"];
@@ -64,7 +65,8 @@ export function PhoneNav({
     const moreButton = moreButtonRef.current;
     sheetRef.current?.querySelector<HTMLElement>("button:not([disabled])")?.focus();
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setMoreOpen(false);
+      // Not while a dialog opened from the sheet is up: that Escape is the dialog's (`dialogOpen`).
+      if (e.key === "Escape" && !dialogOpen()) setMoreOpen(false);
     }
     document.addEventListener("keydown", onKey);
     return () => {

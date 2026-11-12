@@ -70,7 +70,16 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
 
   const changeHomeDays = (next: boolean) => {
     setHomeDays(next);
-    if (status?.on) void act(async () => setStatus(await setFeedHomeDays(next)));
+    if (!status?.on) return;
+    void act(async () => {
+      try {
+        setStatus(await setFeedHomeDays(next));
+      } catch (e) {
+        // Refused: the box shows what the link still does, not what was asked for.
+        setHomeDays(!next);
+        throw e;
+      }
+    });
   };
 
   const turnOff = () =>
