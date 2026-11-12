@@ -147,6 +147,12 @@ describe("vacationRemovals (CBA 2026 7.G.1, 7.E.2.c, 12.D.1.d)", () => {
     const removed = vacationRemovals(line([trip("1", 10, { credit: 18.2 }), trip("2", 13, { credit: 20 })]), pack([]), spanOf(vac(10)), { slid: false });
     expect(chargedToBank(removed)).toBeCloseTo(38.2);
   });
+  it("charges a trip in conflict with two vacations once", () => {
+    const l = line([trip("1", 10, { credit: 18.2 })]);
+    const twice = [vac(9, 2), vac(11, 2)].flatMap((v) => vacationRemovals(l, pack([]), spanOf(v), { slid: false }));
+    expect(twice).toHaveLength(2);
+    expect(chargedToBank(twice)).toBeCloseTo(18.2);
+  });
 });
 
 describe("corrections from the contract review", () => {

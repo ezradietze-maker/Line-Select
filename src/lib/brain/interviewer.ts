@@ -313,20 +313,25 @@ const HYPOTHETICAL = /\b(?:if|what if|say|imagine|suppose)\s+(?:a|another|some|t
  * A trip's number is taken out before lines are looked for: captains' trips run to four digits (trip 4001), and read as
  * lines, every real one was refused as a made-up line, so a captain's trip choices were never asked.
  */
-function namedNumbers(text: string, knownTrips?: ReadonlySet<string>): { lines: string[]; trips: string[] } {
+export function namedNumbers(text: string, knownTrips?: ReadonlySet<string>): { lines: string[]; trips: string[] } {
   // "trip 4017", "trips 93 and 98", "Trip 4017 vs 3042": a trip whatever its number. A bare "#4017" is a trip only when
   // the pack has that trip: "#" also means a place ("your #1 priority", "#12 on their list"), and taken for a trip
   // every such question was refused as naming a made-up trip.
   const tripWords = /\btrips?\s+#?\s*\d{1,4}(?:\s*(?:,|and|&|or|vs\.?|versus)\s*#?\s*\d{1,4})*/gi;
+  // "Line #2001", "lines 2001 and 2014": lines, even where the pack also has a trip 2001 (first officers' line and trip
+  // numbers overlap by the hundreds).
+  const lineWords = /\blines?\s+#?\s*\d{4}(?:\s*(?:,|and|&|or|vs\.?|versus)\s*#?\s*\d{4})*/gi;
   const bare = /#\s*(\d{1,4})\b/g;
   const trips = [...text.matchAll(tripWords)].flatMap((m) => [...m[0].matchAll(/\d{1,4}/g)].map((x) => x[0]));
   let rest = text.replace(tripWords, " ");
+  const lines = [...rest.matchAll(lineWords)].flatMap((m) => [...m[0].matchAll(/\d{4}/g)].map((x) => x[0]));
+  rest = rest.replace(lineWords, " ");
   rest = rest.replace(bare, (all, n: string) => {
     if (!knownTrips?.has(n)) return all;
     trips.push(n);
     return " ";
   });
-  const lines = [...rest.matchAll(/\b(\d{4})\b/g)].map((m) => m[1]);
+  lines.push(...[...rest.matchAll(/\b(\d{4})\b/g)].map((m) => m[1]));
   return { lines, trips };
 }
 /** A four-digit number that could be a clock time ("0430", "1755") rather than a line. */

@@ -15,8 +15,9 @@ async function packFromAccount(userId: string): Promise<AccountPack | null> {
   if (!pack) return null;
   // Saved to the account before ids named the aircraft: what this device kept under the older id follows it.
   if (pack.id === packIdFor(pack)) moveKeptUnderOldId(legacyPackIdFor(pack), pack.id, userId);
-  // A guest's pack left on the device goes first. Beside it the account's own didn't fit, so it was fetched again on
-  // every load and missing with no signal ("Upload a bid pack first"); this device is the account's now.
+  if (await saveBidPack(userId, pack)) return { pack, saveFailed: false };
+  // Refused: a guest's pack left on the device goes, and it's tried again. Gzipped, the two nearly always fit side by
+  // side, and the guest's upload stays for signing out or "Continue as guest" without parsing it again.
   clearBidPack(null);
   return { pack, saveFailed: !(await saveBidPack(userId, pack)) };
 }

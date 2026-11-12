@@ -179,7 +179,13 @@ export function vacationRemovals(line: Line, pack: BidPack, vacation: Span, opts
 
 /** CBA 2026 7.G.1: "The SCH value of the removed trip(s) shall be deducted from the pilot's vacation credit hour bank." */
 export function chargedToBank(removed: RemovedTrip[]): number {
-  return Math.round(removed.reduce((a, r) => a + r.trip.creditHours, 0) * 100) / 100;
+  // Each trip once: one in conflict with two vacations comes off the line once, and is charged once.
+  const seen = new Set<string>();
+  const once = removed.filter((r) => {
+    const key = `${r.trip.id}@${r.trip.startDayIndex}`;
+    return !seen.has(key) && !!seen.add(key);
+  });
+  return Math.round(once.reduce((a, r) => a + r.trip.creditHours, 0) * 100) / 100;
 }
 
 /** The pack's fourth Thursday of November, and the other days CBA 2026 7.E.3.d names, as "MM-DD". */

@@ -1,3 +1,5 @@
+import { clearBidPack } from "@/lib/bidpack-storage";
+
 /**
  * Kept under no pilot's id, but just as much theirs: the employee number and answers for VIPS, the home airport and
  * commute settings, and the flights looked up from it.
@@ -11,6 +13,8 @@ const UNSCOPED = ["line-select:vips-employee-number:v1", "line-select:vips-answe
  */
 export function forgetPilotOnDevice(userId: string): void {
   if (typeof window === "undefined" || !userId) return;
+  // Through the pack's own clear, so a save still compressing when they sign out doesn't write it back afterwards.
+  clearBidPack(userId);
   try {
     const store = window.localStorage;
     const keys = Array.from({ length: store.length }, (_, i) => store.key(i)).filter((k): k is string => !!k && k.startsWith("line-select:") && (k.includes(userId) || UNSCOPED.some((p) => k.startsWith(p))));

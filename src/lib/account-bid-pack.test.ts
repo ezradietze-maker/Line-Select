@@ -66,6 +66,15 @@ describe("a signed-in pilot's pack on a device a guest's pack is still on", () =
     expect((await loadBidPack("u1"))?.lines).toHaveLength(accountPack.lines.length);
   });
 
+  it("keeps the guest's own upload beside the account's when both fit, for signing out or Continue as guest", async () => {
+    const store = storageWithRoom(Infinity);
+    store.map.set(GUEST_KEY, JSON.stringify(compactBidPack(SAMPLE_BID_PACK)));
+    vi.stubGlobal("window", { localStorage: store });
+    serveAccountPack();
+    expect((await accountBidPack("u1")).pack?.id).toBe(accountPack.id);
+    expect((await loadBidPack(null))?.id).toBe(SAMPLE_BID_PACK.id);
+  });
+
   it("says so when the browser won't keep the account's pack at all", async () => {
     vi.stubGlobal("window", { localStorage: storageWithRoom(100) });
     serveAccountPack();
