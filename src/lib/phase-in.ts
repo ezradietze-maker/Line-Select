@@ -688,6 +688,24 @@ export function lineAsFlown(asGiven: Line, pack: BidPack, dropped: Trip[], given
       if (duties !== undefined) duties -= tripDutyPeriods(t);
       continue;
     }
+    // The day of a run still flying at the month's end: of the line's C/O it carries only what the run's later days
+    // don't. Given the whole C/O, this one day took it all off and left the later days carrying nothing.
+    const of = runOfDay(t);
+    if (of && monthEnd !== null && report !== null && report < monthEnd && report + tripReleaseHours(t) * HOUR > monthEnd) {
+      const later = dayTripsOf(of.run).reduce((n, d) => n + ((tripReportUtc(pack, d) ?? 0) >= monthEnd ? d.creditHours : 0), 0);
+      const share = Math.max(0, Math.min(t.creditHours, (asGiven.carryOverCreditHours ?? 0) - later));
+      const dayInMonth = splitTrip(t, pack, share)?.inMonth ?? t;
+      if (!opts.creditPaid) {
+        credit -= t.creditHours - share;
+        if (carryCredit !== undefined) carryCredit = Math.max(0, carryCredit - share);
+      }
+      tafb -= dayInMonth.tafbHours;
+      if (block !== undefined) block -= operatedHours(dayInMonth);
+      if (carryBlock !== undefined) carryBlock = Math.max(0, carryBlock - (operatedHours(t) - operatedHours(dayInMonth)));
+      landings -= t.landings;
+      if (duties !== undefined) duties -= tripDutyPeriods(t);
+      continue;
+    }
     const carries = !!carryOver && carryOver.trips.includes(t.pairingNumber) && !!splitTrip(t, pack)?.carry;
     const inMonth = splitTrip(t, pack, carries ? (line.carryOverCreditHours ?? 0) : 0)?.inMonth ?? t;
     if (!opts.creditPaid) credit -= inMonth.creditHours;

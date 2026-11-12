@@ -123,7 +123,9 @@ export function splitTrip(trip: Trip, pack: PackDates, carryOverCredit = 0): { i
         const to = from + day.hours * HOUR;
         return n + Math.max(0, to - Math.max(from, end)) / HOUR;
       }, 0)
-    : Math.max(0, (tripEnd - end) / HOUR);
+    : // From its report, for a trip that reports after midnight inside the first-duty grace: from the end, it carried
+      // more hours away than the trip has.
+      Math.max(0, (tripEnd - Math.max(end, anchor)) / HOUR);
   const carry: TripCarryOver = {
     // Calendar days after the month's end the trip is still flying on, the day it lands back counted.
     days: dayPastEnd(lastLanding, end, pack),

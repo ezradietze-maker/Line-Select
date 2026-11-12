@@ -117,10 +117,12 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
   if (pending && localProfile) setServerProfileVersion(pending.base);
   if (server.kind === "none" && localProfile) {
     const saved = await saveServerProfile(localProfile);
+    // Through now, so the "kept on this device" mark goes: left, sign-out kept the pilot's data on the device.
+    if (saved.kind === "saved") clearUnsynced(userId);
     if (saved.kind === "conflict" && saved.profile) {
       const merged = mergeAfterConflict(normalizeProfile(saved.profile), localProfile);
       saveProfile(userId, merged);
-      await saveServerProfile(merged);
+      if ((await saveServerProfile(merged)).kind === "saved") clearUnsynced(userId);
       return merged;
     }
   }

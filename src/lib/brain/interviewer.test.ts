@@ -121,6 +121,12 @@ describe("four-digit trip numbers", () => {
     expect(await refusalOf("Which would you rather fly: #4017 or #3042?")).not.toContain("no line");
   });
 
+  it("leaves a place on a list alone: '#1 priority' and 'Line #1011' aren't trips", async () => {
+    expect(await refusalOf("Is a short commute your #1 priority?")).not.toContain("no trip");
+    expect(await refusalOf("What do you make of Line #1011's layovers?")).not.toContain("no trip");
+    expect(await refusalOf("Trip 4017 vs 3042: which would you rather fly?")).not.toContain("no line");
+  });
+
   it("still refuses a line or a trip that isn't in the pack", async () => {
     expect(await refusalOf("What about line 1999?")).toContain("There's no line 1999");
     expect(await refusalOf("What about trip 5555?")).toContain("There's no trip 5555");
