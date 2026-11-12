@@ -1,8 +1,16 @@
 // v2: starts a fresh cache, so any reset-password page an older worker kept (with its link) is dropped on update.
 const CACHE_NAME = "line-select-shell-v2";
 
-self.addEventListener("install", () => {
+/**
+ * Pages kept from the first visit: the worker installs after that visit's page has loaded, so without these the app
+ * didn't open offline until a second visit. Their build files come with them as the page asks for them.
+ */
+const SHELL_PAGES = ["/", "/results"];
+
+self.addEventListener("install", (event) => {
   self.skipWaiting();
+  // Best effort: a page that can't be fetched now is cached on its next visit, as before.
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => Promise.all(SHELL_PAGES.map((p) => cache.add(p).catch(() => {})))));
 });
 
 self.addEventListener("activate", (event) => {
@@ -70,8 +78,33 @@ self.addEventListener("fetch", (event) => {
     caches.match(event.request).then((cached) => {
       const network = fetch(event.request).then((r) => cacheCopy(event.request, r));
       if (!cached) return network.catch(() => Response.error());
-      const timeout = new Promise((resolve) => setTimeout(() => resolve(cached), NETWORK_TIMEOUT_MS));
+      // Kept to compare with: the copy served is read by the page, and a read body can't be read again.
+      const kept = cached.clone();
+      let servedCached = false;
+      const timeout = new Promise((resolve) =>
+        setTimeout(() => {
+          servedCached = true;
+          resolve(cached);
+        }, NETWORK_TIMEOUT_MS)
+      );
+      // The last visit's copy shown on a slow link: when the network's arrives from a newer deploy, the page is told,
+      // so the pilot isn't left running old code against the live server.
+      if (event.request.mode === "navigate") event.waitUntil(network.then((fresh) => servedCached && fresh && tellIfNewer(kept, fresh, event.resultingClientId || event.clientId)).catch(() => {}));
       return Promise.race([network.catch(() => cached), timeout]);
     })
   );
 });
+
+/** A page's build, by the build files it loads: two copies of the same deploy name the same ones. */
+function buildOf(html) {
+  return [...new Set(html.match(/\/_next\/static\/[^"'\s)]+\.js/g) || [])].sort().join(" ");
+}
+
+function tellIfNewer(cached, fresh, clientId) {
+  return Promise.all([cached.text(), fresh.clone().text()]).then(([a, b]) => {
+    if (buildOf(a) === buildOf(b)) return;
+    return self.clients.matchAll({ type: "window" }).then((list) => {
+      for (const c of list) if (!clientId || c.id === clientId) c.postMessage({ type: "line-select:newer-page" });
+    });
+  });
+}
