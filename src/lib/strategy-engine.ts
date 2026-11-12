@@ -1,10 +1,11 @@
+import { CH_PER_VACATION_DAY, chargedToBank, vacationLabel, vacationRemovals, vacationSpan } from "@/lib/vacation-slide";
+import { timezoneForAirport } from "@/lib/airport-timezones";
 import type { AwardHistorySummary } from "@/lib/award-history";
 import { forecastBid } from "@/lib/forecast/forecast";
-import { tripStartUtc } from "@/lib/flights/needs";
 import { formatHoursValue } from "@/lib/interview-config";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import type { LineScore } from "@/lib/scoring";
-import type { BidPack, Line, SeniorityEntry, Trip, VacationPeriod } from "@/types/bidpack";
+import type { BidPack, Line, SeniorityEntry, VacationPeriod } from "@/types/bidpack";
 import type {
   FeasibilityTier,
   SeniorityInput,
@@ -154,15 +155,6 @@ function rec(line: Line, headline: string, detail: string, p: number | null, not
   };
 }
 
-/** A trip's span in absolute time, for checking it against a vacation. */
-function tripSpan(bidPack: BidPack, trip: Trip): [number, number] | null {
-  const start = tripStartUtc(bidPack, trip);
-  if (start === null) return null;
-  const f = computeTripFacts(trip);
-  const end = Math.max(0, ...f.duties.map((d) => d.end), ...f.layovers.map((l) => l.end));
-  return [start, start + end * 60_000];
-}
-
 /** "0428" and "428" are the same flight: digits only, no leading zeros. */
 const flightKey = (n: string) => String(Number(n.replace(/\D/g, "")) || n);
 
@@ -308,6 +300,8 @@ export function generateStrategies(
   }
 
   // ---- Aim for a secondary line ----
+  /** Past the regular lines by under this share of them: as likely to hold a regular line as not, the forecast says. */
+  const NEAR_CUTOFF_SHARE = 0.03;
   if (st.secondary > 0) {
     const slot = position - st.regular;
     const fit: StrategyFit = st.band === "secondary" ? "now" : st.band === "regular" && st.marginToRegular <= 8 ? "maybe" : st.band === "reserve" ? "maybe" : "later";
@@ -316,12 +310,14 @@ export function generateStrategies(
       name: "Aim for a secondary line",
       tagline: `${plural(st.secondary, "secondary line")} come out after the regular award — ${st.band === "secondary" ? `you're #${slot} in line for them` : "the line holders above you don't need them"}.`,
       mechanism:
-        "Secondary lines are built after the regular award from the flying no regular line covered, and released on the pack calendar's \"Secondary Lines Release\" day. Pilots who already hold a regular line don't need one, so the pool goes to the pilots below the regular cutoff, in seniority order — the lines senior pilots never had to want. For a pilot just past the cutoff, that's a real line instead of reserve.",
+        "A secondary line is something you ask for in the monthly bid itself (9952, any secondary line), and it's built after the award from flying no regular line covered. The pilots awarded one build their lines in seniority order during the Secondary Working Window (SWW), from the preferences each enters in VIPS; a pilot who enters none gets the default preferences (CBA 2026 25.D.2.b, h–j; 25.E.6.a). The \"Secondary Lines Release\" on the pack calendar is when the finished lines are published (25.C.11), not a time to bid. For a pilot just past the regular cutoff, that's a line you shape yourself instead of reserve.",
       benefits: [],
       fit,
       fitReason:
         st.band === "secondary"
-          ? `Your place puts you #${slot} of ${st.secondary} for secondary lines — most of them will still be open at your turn.`
+          ? slot <= Math.max(1, Math.ceil(st.regular * NEAR_CUTOFF_SHARE))
+            ? `You're ${plural(slot, "place")} past the regular lines: a few pilots above you passing on one and you'd hold a regular line instead, so bid your full list and have a secondary line behind it.`
+            : `Your place puts you #${slot} of ${st.secondary} for secondary lines — most of them will still be open at your turn.`
           : st.band === "regular" && st.marginToRegular <= 8
             ? `You're only ${plural(st.marginToRegular, "place")} inside the regular lines — a few pilots above you bidding differently and this becomes your month.`
             : st.band === "regular"
@@ -329,16 +325,17 @@ export function generateStrategies(
               : `You're ${plural(position - st.regular - st.secondary, "place")} past the secondary lines — they'd reach you only if pilots above you choose reserve.`,
       steps: [
         "Bid your full regular list anyway — every pilot above you who goes reserve moves you up a place.",
-        `Mark the "Secondary Lines Release" day on the pack calendar and be ready to bid the moment they're out.`,
-        "Rank secondary lines the same way: what you'd fly over reserve, best first. Compare each against the reserve guarantee — a secondary line under it pays less than reserve would.",
-        "If no secondary line suits you, staying on reserve is a choice, not a failure (see \"When reserve pays more than a line\").",
+        "End the monthly bid with 9952 (any secondary line) before reserve, so a secondary line is what you get if your list runs out.",
+        "In View/Add, enter your vacation days, known absences and carryover for the secondary line (CBA 2026 25.E.4.b).",
+        "In the SWW, build your line or enter your preferences in VIPS. Vacation slides and the other vacation choices are open only in its first hours (25.E.6.b), so do them first.",
+        "If no secondary line would suit you, staying on reserve is a choice, not a failure (see \"When reserve pays more than a line\").",
       ],
       facts: [
         { label: "Secondary lines this month", value: String(st.secondary) },
         { label: "Your place for them", value: st.band === "secondary" ? `#${slot} of ${st.secondary}` : st.band === "regular" ? "not needed if you hold a regular line" : `#${slot} — past the ${st.secondary}` },
         ...(info?.rlgHours ? [{ label: "Reserve guarantee to beat", value: hm(info.rlgHours) }] : []),
       ],
-      risk: "How secondary lines are built, who may bid them and in what order are FedEx and contract rules this app doesn't have — confirm with your PSIT before counting on one. Their trips aren't in the pack, so they can't be previewed here.",
+      risk: "The trips a secondary line can be built from aren't in the pack, so they can't be previewed here, and the default preferences are set by the SIG/SLRWG, not printed in it.",
       lines: [],
       isProcessTip: true,
     });
@@ -374,7 +371,9 @@ export function generateStrategies(
         info.reserveReportStatus
           ? `The pack's reserve report status is ${info.reserveReportStatus}${options.isCommuter ? " — if that's hours from a call to report, a commuter would need to be at the domicile for every reserve day" : " — how quickly you must report after a call; check you can live with it"}.`
           : "Check the pack's reserve report status — how quickly you must report after a call — before you bid reserve.",
-        types ? `Of the ${bidPack.reserveLines?.length} reserve lines (${types}), RA and RB are named apart from 24-hour R — usually a narrower call window for the same guarantee. Prefer them if you get the choice.` : "If you get a choice of reserve type, prefer the narrowest call window — the guarantee is the same.",
+        types
+          ? `Of the ${bidPack.reserveLines?.length} reserve lines (${types}): RP-A and RP-B are 12-hour reserve periods with a short report time, R-24 gives at least 24 hours' notice of an assignment (CBA 2026 25.M.2.a, 25.M.3.a). ${options.isCommuter ? "As a commuter, the notice of R-24 is usually what makes reserve workable from home — that's how your reserve order ranks them." : "A shorter period suits a pilot near the domicile; the longer notice suits one who isn't."}`
+          : "If you get a choice of reserve type, weigh a short reserve period against the notice you'd get of a trip.",
       ],
       facts: [
         { label: "Reserve line guarantee", value: hm(rlg), tone: "good" },
@@ -393,24 +392,19 @@ export function generateStrategies(
   {
     const bounds = periodBounds(bidPack);
     const mine = st.vacations;
+    // What the vacation takes off each line, as CBA 2026 7.G.1 does it: every trip in conflict, whole, buffers included,
+    // its full credit drawn from the vacation bank (`vacationRemovals`) — not a share of each trip by the hours inside,
+    // which ranked the wrong lines and never said when the bank would be overdrawn.
+    const value = mine.reduce((n, v) => n + v.days * CH_PER_VACATION_DAY, 0);
     const overlaps =
       mine.length && bounds
         ? lines
-            .map((l) => {
-              let credit = 0;
-              // Each trip counts for the share of it that falls inside the vacation, not its whole credit.
-              for (const t of l.trips) {
-                const span = tripSpan(bidPack, t);
-                if (!span || span[1] <= span[0]) continue;
-                const inside = mine.reduce((sum, v) => sum + Math.max(0, Math.min(span[1], Date.parse(v.to)) - Math.max(span[0], Date.parse(v.from))), 0);
-                credit += t.creditHours * Math.min(1, inside / (span[1] - span[0]));
-              }
-              return { l, credit };
-            })
+            .map((l) => ({ l, credit: chargedToBank(mine.flatMap((v) => vacationRemovals(l, bidPack, vacationSpan(v), { slid: false }))) }))
             .filter((x) => x.credit > 0)
             .sort((a, b) => b.credit - a.credit)
         : [];
-    const fmtV = (v: VacationPeriod) => `${new Date(v.from).toUTCString().slice(5, 11)}–${new Date(v.to).toUTCString().slice(5, 11)}`;
+    const zone = timezoneForAirport(bidPack.base) ?? "UTC";
+    const fmtV = (v: VacationPeriod) => vacationLabel(v, zone).replace(/ \(\d+ days?\)$/, "");
     strategies.push({
       id: "vacation-overlap",
       name: "Put your vacation under a line's biggest trips",
@@ -438,7 +432,13 @@ export function generateStrategies(
         : [{ label: "Vacation slot trades", value: "30 days before the month" }],
       risk: "Whether trips under vacation are paid, dropped or rebuilt, and how the adjustment window works, are set by FedEx and the contract — this may not work the way it reads. Confirm with the vacation desk or your PSIT before bidding around it.",
       lines: overlaps.slice(0, 5).map(({ l, credit }) =>
-        rec(l, `About ${hm(credit)} of trip credit falls inside your vacation`, `${l.daysOff} days off on the line before vacation · ${hm(l.totalCreditHours)} credit.`, openAt(l), openAt(l) !== null ? `About ${pct(openAt(l)!)} likely still open at your turn.` : "")
+        rec(
+          l,
+          `${hm(credit)} of trips come off for your vacation${credit > value ? ` — ${hm(credit - value)} more than its ${hm(value)}, drawn from your bank (CBA 2026 7.G.5)` : ""}`,
+          `${l.daysOff} days off on the line before vacation · ${hm(l.totalCreditHours)} credit.`,
+          openAt(l),
+          openAt(l) !== null ? `About ${pct(openAt(l)!)} likely still open at your turn.` : ""
+        )
       ),
     });
   }
@@ -452,16 +452,16 @@ export function generateStrategies(
         name: "Start next month with credit in the bank",
         tagline: `${plural(co.length, "line")} end with a trip that runs past month-end — up to ${hm(co[0].carryOverCreditHours!)} of credit carried into next month.`,
         mechanism:
-          "A trip that starts late in the month and finishes in the next counts its later part toward next month (the line's C/O). You start next month with that credit already flown, so a lighter line next month still makes your hours. For a pilot who wants next month's time off, a carry-over at the end of this one is the way to front-load it.",
+          "A trip that starts late in the month and finishes in the next carries its later part into next month (the line's C/O). That remainder is added to next month's guarantee, or paid on top of a reserve guarantee (CBA 2026 4.G.3.b.ii), so it's extra pay — but the carried-in trip takes next month's first days, and a trip awarded next month that conflicts with it is dropped without pay and made up (25.F.3, 25.F.5).",
         benefits: [],
         fit: "maybe",
-        fitReason: "Useful when you already know next month matters more than this one.",
+        fitReason: "Worth it for extra pay, if giving up the first days of next month suits you.",
         steps: [
           "Look at the lines below: their last trip runs into next month.",
-          "Next month, bid knowing you start with that credit — a lighter line still gets you there.",
+          "Next month, bid knowing those first days are taken: a line with a trip on them would see it dropped and made up.",
         ],
         facts: [{ label: "Lines with carry-over credit", value: `${co.length} of ${lines.length}` }],
-        risk: "How carry-over credit counts, and what happens when next month's award collides with the carried-over trip, are contract rules this app doesn't have.",
+        risk: "A conflict between the carried-in trip and next month's award is settled in the Conflict Input Window; which trip you'd rather keep can matter more than the credit.",
         lines: co.slice(0, 5).map((l) => rec(l, `${hm(l.carryOverCreditHours!)} carried into next month`, `${hm(l.totalCreditHours)} credit this month · ${l.daysOff} days off.`, openAt(l), openAt(l) !== null ? `About ${pct(openAt(l)!)} likely still open at your turn.` : "")),
       });
     }
@@ -508,8 +508,8 @@ export function generateStrategies(
       fitReason: holds ? "You'll hold a line — the windows after are where you shape it." : "Without a regular line, the later windows are where your month gets built.",
       steps: [
         "Conflict input: if training or vacation collides with your award, say so here.",
-        "View/add: look at what's left once everyone's award is out, and add what you'd take.",
-        holds ? "Open time: pick up trips on your days off for credit" + (ot ? ` — open time goes out to your seat at ${ot} local on release day` : "") + "." : "Secondary release: bid secondary lines the moment they're out (see \"Aim for a secondary line\").",
+        "View/Add: if you're owed make-up, bid for it here (CBA 2026 25.E.4.a); with a secondary line, enter your vacation days, known absences and carryover (25.E.4.b).",
+        holds ? "Open time: pick up trips on your days off for credit" + (ot ? ` — open time goes out to your seat at ${ot} local on release day` : "") + "." : "SWW: build your secondary line or enter your preferences, vacation choices first (see \"Aim for a secondary line\").",
         "Trade after the award: a trip that doesn't fit can be swapped on the trade board.",
       ],
       facts: [

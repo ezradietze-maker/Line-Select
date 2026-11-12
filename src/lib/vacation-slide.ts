@@ -443,6 +443,13 @@ export function typedVacation(firstDay: string, days: number, pack: Pick<BidPack
   return { from: start.toUTC().toISO()!, to: start.plus({ days }).minus({ minutes: 1 }).toUTC().toISO()!, days };
 }
 
+/** A vacation's days on the base's calendar: its first day, and its last (it ends at 0129 the morning after). */
+export function vacationLabel(v: VacationPeriod, zone: string): string {
+  const first = DateTime.fromISO(v.from, { zone });
+  const last = DateTime.fromMillis(Date.parse(v.to) - 2 * HOUR, { zone });
+  return `${first.toFormat("LLL d")} to ${last.toFormat("LLL d")} (${v.days} day${v.days === 1 ? "" : "s"})`;
+}
+
 /** Where and when to enter it: CBA 2026 25.E.2.b, from the pack's own calendar when it prints it. */
 export function slideWhere(pack: BidPack): { opens: string | null; closes: string | null; rule: string } {
   // The printed cells, each under its bid: most of them ("CAP Conflict Input Window Opens") don't name the month, so

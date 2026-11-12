@@ -917,22 +917,37 @@ export function recommendVipsAnswers(input: { pack: BidPack; order: string[]; ca
       : { key, answer: false, reason: `It would keep a trip on ${changes.length} of your top ${top.length} lines, but your priorities score them higher without it (more days off, and you pick the make-up).`, section };
   };
 
+  const buffer = compare("waiveBufferPhaseIn", "CBA 2026 25.E.1.c, 25.F.4, 12.D.1.d.iii", "buffer");
+  const tenRule = compare("waive1in10", "CBA 2026 25.E.1.d, 12.C.1.c", "1-in-10");
+
+  // Judged on the lines as they'd fly with the waivers recommended above: judged without them, a waiver that keeps a
+  // trip could leave the line under the minimum days off while this said it wouldn't.
   const protect = (): VipsRecommendation => {
     const section = "CBA 2026 25.E.1.a, 25.F.7";
-    const short = top.filter((n) => {
-      const line = pack.lines.find((l) => l.lineNumber === n);
-      return !!line && !!off.lines.get(line.id)?.minDays;
-    });
+    const waived = buffer.answer === true || tenRule.answer === true;
+    const asAnswered = waived ? flyPack(pack, carryIn, { ...NO_ELECTIONS, waiveBufferPhaseIn: buffer.answer === true, waive1in10: tenRule.answer === true }) : off;
+    const shortIn = (flown: typeof off) =>
+      top.filter((n) => {
+        const line = pack.lines.find((l) => l.lineNumber === n);
+        return !!line && !!flown.lines.get(line.id)?.minDays;
+      });
+    const short = shortIn(asAnswered);
+    const byWaiver = waived && short.length > shortIn(off).length;
     if (short.length)
-      return { key: "protectMinDays", answer: true, reason: `Your carry-in leaves ${short.length} of your top ${top.length} lines under the minimum days off; this lets you drop a trip and make it up.`, section };
+      return {
+        key: "protectMinDays",
+        answer: true,
+        reason: `Your carry-in leaves ${short.length} of your top ${top.length} lines under the minimum days off${byWaiver ? " with the waiver we'd say yes to above, which keeps a trip" : ""}; this lets you drop a trip and make it up.`,
+        section,
+      };
     const carried = carryIn.length ? `Your carry-in doesn't put your top ${top.length} lines under the minimum, but this` : "This";
     return { key: "protectMinDays", answer: null, reason: `${carried} also covers recurrent training, which we can't see.`, section };
   };
 
   return [
     recurrent,
-    compare("waiveBufferPhaseIn", "CBA 2026 25.E.1.c, 25.F.4, 12.D.1.d.iii", "buffer"),
-    compare("waive1in10", "CBA 2026 25.E.1.d, 12.C.1.c", "1-in-10"),
+    buffer,
+    tenRule,
     protect(),
   ];
 }

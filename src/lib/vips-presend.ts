@@ -141,12 +141,17 @@ function catchAllCheck(input: PresendInput): PresendCheck | null {
     band === "reserve"
       ? "Your place on the list lands on a reserve line, so what you bid after your list decides your month."
       : band === "secondary"
-        ? "Your place on the list lands past the regular lines, on a secondary line."
+        ? none !== null && none < 0.5
+          ? // Just past the cutoff, the forecast still has pilots ahead passing on a regular line: said "on a secondary line"
+            // beside "very unlikely to run out", the two read as opposite answers.
+            "Your place on the list is just past the regular lines, so a few pilots ahead of you passing on one decides whether you hold one or a secondary line."
+          : "Your place on the list lands past the regular lines, on a secondary line."
         : band === "regular"
           ? "Your place on the list holds a regular line. A catch-all is there in case pilots ahead of you bid differently than expected."
           : "Without your place on the list, the safe ending covers every case.";
   const reserve = names.length ? ` Named reserve lines go before 9954, in your order: ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}.` : "";
-  const skipRegular = wanted.includes("regular") ? " Leave out 9950 if you'd rather have a secondary line than one you've left off your list." : "";
+  // Lines left off the list on purpose (ranked under reserve, say, because they pay less than it) come back with 9950.
+  const skipRegular = wanted.includes("regular") ? " Leave out 9950 if you'd rather have a secondary line or reserve than a line you've left off your list." : "";
   return {
     id: "catch-all",
     level: band === "reserve" || band === "secondary" ? "warn" : "info",
