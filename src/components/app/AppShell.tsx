@@ -276,7 +276,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
             {profileSync === "merged" && (
               <div role="status" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-ink">
                 <span>
-                  Your profile was updated on another device, so this is that latest version. Logbook entries from both are kept.
+                  Your profile was updated on another device too, so this has the changes from both. Logbook entries from both are kept.
                 </span>
                 <button type="button" onClick={handleDismissProfileSync} className="shrink-0 font-medium underline decoration-dotted underline-offset-4">
                   Dismiss

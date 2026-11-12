@@ -6,7 +6,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { checkSession, logout as logoutAccount } from "@/lib/auth";
 import { accountBidPack } from "@/lib/account-bid-pack";
 import { clearServerBidPack, saveServerBidPack } from "@/lib/bidpack-server";
-import { clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
+import { clearBidPack, clearGuestUpload, guestUploadedPackId, loadBidPack, markGuestUpload, saveBidPack } from "@/lib/bidpack-storage";
+import { withGuestRecords } from "@/lib/profile-merge";
 import { generateFakeOffer, isSamplePack } from "@/lib/fake-trade-offers";
 import { clearTradeHolding, fetchWaitingSuggestions } from "@/lib/trades/holding-client";
 import { computeInboxSections, sameBidPack } from "@/lib/inbox";
@@ -17,7 +18,7 @@ import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/post
 import { clearPendingProfile, loadPendingProfile, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
-import { askToKeepStorage, clearProfile, clearProfileForUser, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
+import { askToKeepStorage, clearProfile, clearProfileForUser, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import { loadSeenOfferIds, newArrivals, saveSeenOfferIds, type ToastBaseline } from "@/lib/trade-seen-storage";
 import type { BidPack } from "@/types/bidpack";
@@ -223,6 +224,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // dropping a signed-in pilot to an empty guest view until the connection comes back.
       const currentUser = session.reachable ? session.user : readLastUser();
       if (session.reachable) writeSignedInHint(currentUser);
+      // Signed in already: a guest pack still on the device was uploaded before this account signed in, not for it.
+      if (currentUser) clearGuestUpload();
       if (currentUser) identifyPilot(currentUser.id);
       if (assumedGuest && !currentUser) return;
       const resolved = await stateFor(currentUser);
@@ -407,6 +410,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   // A save to the account that didn't get through is tried again when the connection comes back, and each minute.
   const userId = user?.id ?? null;
+  /** Who's signed in now, for a save that comes back after they've signed out (`persistProfile`). */
+  const userIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
+
+  useEffect(() => {
+    // A guest's profile lives only on this device, so a month logged in another tab is shown in this one too, rather
+    // than this tab's older copy being what the next edit here starts from.
+    if (!state.ready || userId) return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== GUEST_PROFILE_KEY || e.newValue === null) return;
+      const changed = guestProfileChangedElsewhere();
+      if (changed) setState((s) => (s.user ? s : { ...s, profile: changed }));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [state.ready, userId]);
   useEffect(() => {
     if (profileSync !== "failed" || !userId) return;
     const retry = async () => {
@@ -501,8 +522,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void saveBidPack(user?.id ?? null, newBidPack).then((saved) => {
       if (!saved) setState((s) => (s.bidPack === newBidPack ? { ...s, bidPackSaveFailed: true } : s));
     });
-    // A signed-in pilot's pack also goes to their account, so a new device or a cleared browser gets it back.
+    // A signed-in pilot's pack also goes to their account, so a new device or a cleared browser gets it back. A guest's
+    // own upload is marked, so the account they sign in to next can take it over (see `handleAuthenticated`).
     if (user) void saveServerBidPack(newBidPack);
+    else if (!isSamplePack(newBidPack)) markGuestUpload(newBidPack.id);
     clearPendingProfile(user?.id ?? null);
     setState((s) => ({
       ...s,
@@ -552,11 +575,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
    * device ("merged", and the merged profile is what's shown from then on).
    */
   function persistProfile(profile: PreferenceProfile) {
-    const signedIn = !!user?.id;
-    void saveProfileForUser(user?.id ?? null, profile).then((r) => {
-      if (!r.savedLocally && !signedIn) setState((s) => ({ ...s, profileSaveFailed: true }));
+    const savedFor = user?.id ?? null;
+    void saveProfileForUser(savedFor, profile).then((r) => {
+      // Signed in or out while it was saving: it's no longer the profile on screen, and says nothing about the new one.
+      if (userIdRef.current !== savedFor) return;
+      const stillTheirs = (s: DataState) => (s.user?.id ?? null) === savedFor;
+      if (!savedFor) {
+        // Merged with what another tab saved since this one last read it: the merged copy is what's shown.
+        const merged = r.profile !== profile;
+        if (r.savedLocally && !merged) return;
+        setState((s) => (!stillTheirs(s) ? s : { ...s, ...(r.savedLocally ? {} : { profileSaveFailed: true }), ...(merged && s.profile === profile ? { profile: r.profile } : {}) }));
+        return;
+      }
       if (r.sync === "merged") {
-        setState((s) => ({ ...s, profile: r.profile }));
+        setState((s) => (stillTheirs(s) ? { ...s, profile: r.profile } : s));
         setProfileSync("merged");
       } else if (r.sync === "failed") setProfileSync("failed");
       else if (r.sync === "saved") setProfileSync((p) => (p === "failed" ? "ok" : p));
@@ -662,11 +694,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     let theirProfile = await loadProfileForUser(newUser.id);
     let theirSeniority = loadSeniority(newUser.id);
     let packSaveFailed = account.saveFailed;
+    // Read once and cleared: whatever this sign-in does with the guest's upload, the next one mustn't take it over too.
+    const guestUpload = guestUploadedPackId();
+    clearGuestUpload();
 
     // A guest who uploaded a pack and answered the interview, then makes an account so it "follows them to a new device", must not land on an empty app. An account that has nothing of its own adopts what the guest was just working on; one that already has data keeps it untouched.
     if (!state.user) {
       // What the account takes over stops being the guest's, so signing out later really does take it off the screen.
-      if (!theirBidPack && state.bidPack && !state.bidPack.id.startsWith("sample")) {
+      // Only a pack this guest uploaded here, and only to an account the server said holds none: a fetch that failed
+      // would put it over the account's own, and a guest pack shown after an earlier account signed out isn't this
+      // pilot's to take.
+      const guestsOwnUpload = state.bidPack && !isSamplePack(state.bidPack) && state.bidPack.id === guestUpload;
+      if (!theirBidPack && account.noneOnAccount && guestsOwnUpload && state.bidPack) {
         // The guest's copy goes first: two copies of a big pack don't fit in the browser's storage together.
         clearBidPack(null);
         if (!(await saveBidPack(newUser.id, state.bidPack))) {
@@ -679,6 +718,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       if (!theirProfile && state.profile) {
         if ((await saveProfileForUser(newUser.id, state.profile)).savedLocally) clearProfile(null);
         theirProfile = state.profile;
+      } else if (theirProfile && state.profile) {
+        // The account's own profile stands, but the months the guest logged and the checklist they ticked join it:
+        // otherwise they'd sit hidden on the device behind the account's, and go with it at sign-out.
+        const withGuest = withGuestRecords(theirProfile, state.profile);
+        if (withGuest !== theirProfile) theirProfile = (await saveProfileForUser(newUser.id, withGuest)).profile;
       }
       if (!theirSeniority && state.seniority) {
         saveSeniority(newUser.id, state.seniority);
@@ -736,6 +780,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   async function showSignedOut() {
     setProfileSync("ok");
     writeSignedInHint(null);
+    // The account's copy isn't what a guest's next save starts from, and the guest pack shown now (kept from before the
+    // account signed in) isn't one for the next account to take over.
+    forgetLastKnownProfile();
+    clearGuestUpload();
     resetPilotIdentity();
     const guestBidPack = await loadBidPack(null);
     const guestProfile = await loadProfileForUser(null);

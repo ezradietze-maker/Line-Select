@@ -263,6 +263,37 @@ export function bidPackSavedAt(userId: string | null): number {
   }
 }
 
+/**
+ * Which pack a guest uploaded on this device since anyone last signed in or out here. Signing in to an account with no
+ * pack of its own takes that one over; the guest pack still on the device after an earlier account signed out (kept for
+ * whoever uploaded it) is someone else's, and isn't handed to the next account signed in.
+ */
+const GUEST_UPLOAD_KEY = "line-select:guest-upload:v1";
+
+export function markGuestUpload(packId: string): void {
+  try {
+    window.localStorage.setItem(GUEST_UPLOAD_KEY, packId);
+  } catch {
+    // Not kept: then signing in just doesn't take the pack over, and it stays the guest's.
+  }
+}
+
+export function guestUploadedPackId(): string | null {
+  try {
+    return window.localStorage.getItem(GUEST_UPLOAD_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function clearGuestUpload(): void {
+  try {
+    window.localStorage.removeItem(GUEST_UPLOAD_KEY);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
 export function clearBidPack(userId: string | null): void {
   if (typeof window === "undefined") return;
   cleared.set(bidPackKey(userId), (cleared.get(bidPackKey(userId)) ?? 0) + 1);
