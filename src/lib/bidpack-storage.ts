@@ -158,36 +158,97 @@ export function restoreBidPack(stored: BidPack | CompactPack): BidPack {
   return normalizeBidPack(expandBidPack(stored));
 }
 
-/** Returns false when the browser refused the write (storage full or unavailable), so the caller can tell the pilot their pack won't survive a refresh. */
-export function saveBidPack(userId: string | null, bidPack: BidPack): boolean {
-  if (typeof window === "undefined") return false;
+/**
+ * How a pack is written to the browser: the compact pack gzipped, as base64 behind a marker. The biggest real pack is
+ * about 4.2 million characters compacted, four-fifths of the roughly 5 million a browser allows a site, so with the
+ * pilot's profile and looked-up flights beside it the small saves after it (a tier move, a star, a swap, the sort) were
+ * refused and gone on the next load. Gzipped it's a small fraction of that, and base64 is plain ASCII, which no browser
+ * counts double. Packs written before (plain JSON, compact or not) still load, and are rewritten this way when they do.
+ */
+const GZIP_MARK = "gz1:";
+
+async function gzipToText(text: string): Promise<string> {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  // In slices: a whole pack's bytes spread into one call is more arguments than a browser takes.
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return GZIP_MARK + btoa(binary);
+}
+
+async function gunzipText(stored: string): Promise<string> {
+  const binary = atob(stored.slice(GZIP_MARK.length));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).text();
+}
+
+/** The text a pack is stored as: gzipped where the browser can, plain JSON where it can't (as every pack was before). */
+async function encodePack(pack: BidPack): Promise<string> {
+  const json = JSON.stringify(compactBidPack(pack));
+  return typeof CompressionStream === "undefined" ? json : gzipToText(json);
+}
+
+/**
+ * Compressing takes a moment, so each key's reads and writes run one after another in the order they were asked for: a
+ * pack saved while an older one is still being written is the one kept, and a load never reads half a write. Clearing
+ * is instant, so a write still waiting from before a clear checks it wasn't cleared since (`cleared`).
+ */
+const queues = new Map<string, Promise<unknown>>();
+const cleared = new Map<string, number>();
+
+function inTurn<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const run = (queues.get(key) ?? Promise.resolve()).then(task);
+  queues.set(key, run.catch(() => undefined));
+  return run;
+}
+
+/** Writes the pack unless its key was cleared after `asOf`; false when the browser refused it. */
+async function writePack(userId: string | null, pack: BidPack, asOf: number, stamp: boolean): Promise<boolean> {
+  const key = bidPackKey(userId);
   try {
-    window.localStorage.setItem(bidPackKey(userId), JSON.stringify(compactBidPack(bidPack)));
-    window.localStorage.setItem(savedAtKey(userId), String(Date.now()));
+    const text = await encodePack(pack);
+    // Started over (or signed out) while this waited: the pack isn't wanted here any more.
+    if ((cleared.get(key) ?? 0) !== asOf) return true;
+    window.localStorage.setItem(key, text);
+    if (stamp) window.localStorage.setItem(savedAtKey(userId), String(Date.now()));
     return true;
   } catch {
     return false;
   }
 }
 
-export function loadBidPack(userId: string | null): BidPack | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(bidPackKey(userId));
-    if (!raw) return null;
-    const stored = expandBidPack(JSON.parse(raw) as BidPack | CompactPack);
-    const pack = normalizeBidPack(stored);
-    // Saved under the id it had before ids named the aircraft: what the device kept under that id follows it.
-    if (pack.id !== stored.id) {
-      moveKeptUnderOldId(stored.id, pack.id, userId);
-      // Rewritten under its new id but not re-stamped: it wasn't saved any later than before, and a stamp of "now"
-      // would make it look newer than a pack saved to the account since (see `bidPackSavedAt`).
-      window.localStorage.setItem(bidPackKey(userId), JSON.stringify(compactBidPack(pack)));
+/** Resolves false when the browser refused the write (storage full or unavailable), so the caller can tell the pilot their pack won't survive a refresh. */
+export function saveBidPack(userId: string | null, bidPack: BidPack): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  const key = bidPackKey(userId);
+  const asOf = cleared.get(key) ?? 0;
+  return inTurn(key, () => writePack(userId, bidPack, asOf, true));
+}
+
+export function loadBidPack(userId: string | null): Promise<BidPack | null> {
+  if (typeof window === "undefined") return Promise.resolve(null);
+  const key = bidPackKey(userId);
+  return inTurn(key, async () => {
+    try {
+      const asOf = cleared.get(key) ?? 0;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+      const gzipped = raw.startsWith(GZIP_MARK);
+      const stored = expandBidPack(JSON.parse(gzipped ? await gunzipText(raw) : raw) as BidPack | CompactPack);
+      const pack = normalizeBidPack(stored);
+      // Saved under the id it had before ids named the aircraft: what the device kept under that id follows it.
+      if (pack.id !== stored.id) moveKeptUnderOldId(stored.id, pack.id, userId);
+      // Rewritten under its new id, or gzipped if it was saved before packs were, but not re-stamped: it wasn't saved
+      // any later than before, and a stamp of "now" would make it look newer than a pack saved to the account since (see
+      // `bidPackSavedAt`). If the browser refuses, the copy already there still loads next time.
+      if (pack.id !== stored.id || (!gzipped && typeof CompressionStream !== "undefined")) await writePack(userId, pack, asOf, false);
+      return pack;
+    } catch {
+      return null;
     }
-    return pack;
-  } catch {
-    return null;
-  }
+  });
 }
 
 /** When this device saved its pack (ms); 0 for a pack saved before that was kept, or none. */
@@ -202,6 +263,7 @@ export function bidPackSavedAt(userId: string | null): number {
 
 export function clearBidPack(userId: string | null): void {
   if (typeof window === "undefined") return;
+  cleared.set(bidPackKey(userId), (cleared.get(bidPackKey(userId)) ?? 0) + 1);
   try {
     window.localStorage.removeItem(bidPackKey(userId));
     window.localStorage.removeItem(savedAtKey(userId));

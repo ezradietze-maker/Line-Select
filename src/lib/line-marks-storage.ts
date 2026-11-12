@@ -1,3 +1,4 @@
+import { saveOrReport } from "@/lib/local-save-failed";
 import { EMPTY_MARKS, type LineMarks } from "@/lib/results-list";
 
 /**
@@ -25,11 +26,7 @@ export function loadLineMarks(userId: string | null, bidPackId: string): LineMar
   }
 }
 
-export function saveLineMarks(userId: string | null, bidPackId: string, marks: LineMarks): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(marksKey(userId, bidPackId), JSON.stringify(marks));
-  } catch {
-    // storage unavailable — marks just won't persist this session
-  }
+/** Whether the browser kept them; when it didn't, the pilot is told they won't survive a refresh (`saveOrReport`). */
+export function saveLineMarks(userId: string | null, bidPackId: string, marks: LineMarks): boolean {
+  return saveOrReport(marksKey(userId, bidPackId), JSON.stringify(marks));
 }
