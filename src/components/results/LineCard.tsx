@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { memo, useCallback, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { CategoryBars } from "@/components/results/CategoryBars";
@@ -58,6 +58,9 @@ const RouteMap = dynamic(() => import("@/components/results/RouteMap").then((m) 
  * fits, not just get appended to the bottom of one.
  */
 type DetailTab = "calendar" | "breakdown" | "circadian" | "route" | "reviews";
+
+/** Each line's open tab and trip details, by line: kept while its card isn't drawn (see `LineCard`). */
+const cardViews = new Map<string, { expanded: boolean; activeTab: DetailTab }>();
 
 /** What a card shows only once it's opened. Handed over for an open card alone: a closed card shows just its strip, so the
  * pilot's profile, trip scores or flights changing never re-renders it. */
@@ -148,9 +151,13 @@ export const LineCard = memo(function LineCard({
   actions,
   details,
 }: LineCardProps) {
-  // Kept on the card rather than in what opens under it, so a line closed and opened again shows the tab it was on.
-  const [expanded, setExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
+  // Kept on the card rather than in what opens under it, so a line closed and opened again shows the tab it was on — and
+  // kept by line too, as a closed card scrolled far off isn't drawn, and came back drawn afresh on the first tab.
+  const [expanded, setExpanded] = useState(() => cardViews.get(line.id)?.expanded ?? false);
+  const [activeTab, setActiveTab] = useState<DetailTab>(() => cardViews.get(line.id)?.activeTab ?? "calendar");
+  useEffect(() => {
+    cardViews.set(line.id, { expanded, activeTab });
+  }, [line.id, expanded, activeTab]);
   const [showEveryDimension, setShowEveryDimension] = useState(false);
   const reduceMotion = useReducedMotion();
   const onToggleOpen = useCallback(() => actions.toggleOpen(line.id), [actions, line.id]);

@@ -938,7 +938,9 @@ export function ResultsView({
     const announcements: Announcements = {
       onDragStart: ({ active }) => `Picked up ${say(active.id)}. Up and down arrows choose the line to swap with, Space swaps, Escape cancels.`,
       onDragOver: ({ active, over }) => (over && over.id !== active.id ? `Over ${say(over.id)}.` : `Back at ${say(active.id)}.`),
-      onDragEnd: ({ active, over }) => (over && over.id !== active.id ? `Swapped ${say(active.id)} with ${say(over.id)}.` : `Put back. ${say(active.id)} hasn't moved.`),
+      // Said after `handleDragEnd` has run, so a drop it turned down isn't called a swap.
+      onDragEnd: ({ active, over }) =>
+        over && over.id !== active.id && !dropRefused.current ? `Swapped ${say(active.id)} with ${say(over.id)}.` : `Put back. ${say(active.id)} hasn't moved.`,
       onDragCancel: ({ active }) => `Cancelled. ${say(active.id)} hasn't moved.`,
     };
     return { announcements, screenReaderInstructions: { draggable: "To swap this line with another, press Space, use the up and down arrows to choose the other line, then press Space again. Escape cancels." } };
@@ -948,15 +950,58 @@ export function ResultsView({
   // Drag-to-swap only means something in the pilot's own ranking order — in any other sort the visual order isn't the ranked order the judgment is built from.
   const dragEnabled = lineSort.isRanking;
 
+  // Where the finger or mouse is during a drag, to check the line it's dropped on is the one under it.
+  const pointerAt = useRef<{ x: number; y: number } | null>(null);
+  const dropRefused = useRef(false);
+  useEffect(() => {
+    if (activeId === null) return;
+    const onMove = (e: PointerEvent | TouchEvent) => {
+      const p = "touches" in e ? e.touches[0] : e;
+      if (p) pointerAt.current = { x: p.clientX, y: p.clientY };
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("touchmove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("touchmove", onMove);
+    };
+  }, [activeId]);
+
   function handleDragStart(event: DragStartEvent) {
     setLayoutArmed(true);
+    pointerAt.current = null;
     setActiveId(String(event.active.id));
+  }
+
+  /** Let go, or Escape, or the window resized under a finger (dnd-kit cancels then): the list stops holding for it. */
+  function handleDragCancel() {
+    setActiveId(null);
+  }
+
+  /**
+   * Whether a drop by finger or mouse is onto the line under it. The lines are measured as the drag starts and only the
+   * ones drawn then can be dropped on; held at an edge till the page scrolls, every line on screen was one not drawn yet,
+   * and the drop went onto the nearest one drawn, a screen away, and was kept as a swap.
+   */
+  function droppedOnIt(event: DragEndEvent, overId: string): boolean {
+    if (!(event.activatorEvent instanceof PointerEvent || event.activatorEvent instanceof MouseEvent || (typeof TouchEvent !== "undefined" && event.activatorEvent instanceof TouchEvent))) return true;
+    const at = pointerAt.current;
+    const card = document.querySelector<HTMLElement>(`[data-line-id="${CSS.escape(overId)}"]`);
+    if (!at || !card) return !!card && !at;
+    const r = card.getBoundingClientRect();
+    return at.x >= r.left && at.x <= r.right && at.y >= r.top && at.y <= r.bottom;
   }
 
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null);
     const { active, over } = event;
+    dropRefused.current = false;
     if (!over || active.id === over.id) return;
+    if (!droppedOnIt(event, String(over.id))) {
+      dropRefused.current = true;
+      tiers.say("Not moved: let go over a line to swap with it.");
+      return;
+    }
 
     // Positions in the list as shown: with filters, a view or hidden lines, a line only jumps over the ones on
     // screen, and the lines the pilot couldn't see say nothing about the move.
@@ -1523,6 +1568,7 @@ export function ResultsView({
             modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
             // This is a swap-on-drop interaction, not a live-reordering sortable
             // list — no card moves or resizes until the drop actually happens,
             // so every droppable's rect is still valid for the whole gesture.
