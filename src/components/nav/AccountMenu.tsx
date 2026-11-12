@@ -91,6 +91,14 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
             <div className="text-sm font-medium text-ink">{user.displayName}</div>
             <div className="truncate text-xs text-ink-faint">{user.email}</div>
           </div>
+          <a
+            href="/membership"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="block w-full px-4 py-2.5 text-left text-sm text-ink hover:bg-canvas"
+          >
+            Membership
+          </a>
           <button
             type="button"
             role="menuitem"
