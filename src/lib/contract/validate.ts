@@ -4,7 +4,7 @@ import type { ContractVersion } from "./types";
 /**
  * The hard rule of the contract box: no made-up section, no misquote, enforced here and not left to the model. Every
  * section number must exist in the index, every quote must be in that section word for word, and every number in the
- * short answer must come from the quotes, the question or the pilot's own pack. Anything else turns into "not found".
+ * short answer must come from the quotes, the lines and trips the question names, or the pilot's own pack. Anything else turns into "not found".
  */
 
 export interface RawAnswer {
@@ -27,6 +27,25 @@ export function normalizeForMatch(text: string): string {
     .toLowerCase();
 }
 
+/**
+ * Whether a section's text holds the quote word for word, with no number cut in two at either end: matched anywhere,
+ * "…in writing at least 3" was found inside "at least 30 days", and its 3 then backed an answer of "3 days".
+ */
+export function holdsQuote(text: string, quote: string): boolean {
+  const hay = normalizeForMatch(text);
+  const wanted = normalizeForMatch(quote);
+  if (!wanted) return false;
+  const digit = /\d/;
+  for (let at = hay.indexOf(wanted); at >= 0; at = hay.indexOf(wanted, at + 1)) {
+    const before = hay.slice(Math.max(0, at - 2), at);
+    const after = hay.slice(at + wanted.length, at + wanted.length + 2);
+    const cutBefore = digit.test(wanted[0]) && (digit.test(before.slice(-1)) || (/^\d[.:]$/.test(before) && before.length === 2));
+    const cutAfter = digit.test(wanted[wanted.length - 1]) && (digit.test(after[0] ?? "") || /^[.:]\d$/.test(after));
+    if (!cutBefore && !cutAfter) return true;
+  }
+  return false;
+}
+
 /** Fewer words than this prove nothing by being found ("SMU", "New Year's Day"), so they're left out, not trusted. */
 const MIN_QUOTE_WORDS = 4;
 
@@ -38,6 +57,8 @@ const NUMBER = /\d+(?::\d+|\.\d+)*/g;
 
 const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
 const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+/** "One" that counts nothing: "no one can drop…", "one of the days", "one another". */
+const ONE_AS_A_WORD = /\b(?:no|any|every|each|the|this|that|which)[- ]one\b|\bone (?:of|another|or more|who|that|which)\b/gi;
 const SPELLED = new RegExp(`\\b(?:(${TENS.slice(2).join("|")})(?:[- ](${ONES.slice(1, 10).join("|")}))?|(${ONES.join("|")}))\\b`, "gi");
 
 /**
@@ -45,7 +66,7 @@ const SPELLED = new RegExp(`\\b(?:(${TENS.slice(2).join("|")})(?:[- ](${ONES.sli
  * "twelve hours" makes the same claim as "12 hours" — it has to be backed the same way.
  */
 function numbersIn(text: string): string[] {
-  const spelled = [...text.matchAll(SPELLED)].map((m) =>
+  const spelled = [...text.replace(ONE_AS_A_WORD, " ").matchAll(SPELLED)].map((m) =>
     m[3] !== undefined ? String(ONES.indexOf(m[3].toLowerCase())) : String(TENS.indexOf(m[1].toLowerCase()) * 10 + (m[2] ? ONES.indexOf(m[2].toLowerCase()) : 0))
   );
   return [...(text.match(NUMBER) ?? []), ...spelled];
@@ -53,19 +74,17 @@ function numbersIn(text: string): string[] {
 
 /** The deepest piece whose words hold the quote, so a quote cited to 25.E lands on 25.E.6. */
 export function narrowestPiece(id: string, quote: string, version: ContractVersion): string {
-  const wanted = normalizeForMatch(quote);
   for (const child of childrenOf(id)) {
-    if (normalizeForMatch(fullText(child.id, version)).includes(wanted)) return narrowestPiece(child.id, quote, version);
+    if (holdsQuote(fullText(child.id, version), quote)) return narrowestPiece(child.id, quote, version);
   }
   return id;
 }
 
 /** Where a quote's words really are, to tell the model when it mislabels one. It never changes a label itself: words the model took for the current rule may be a deleted one. */
 export function whereIsQuote(quote: string): { section: string; version: ContractVersion } | null {
-  const wanted = normalizeForMatch(quote);
   for (const n of NODES) {
     for (const version of ["2026", "2015"] as const) {
-      if (normalizeForMatch(versionText(n, version)).includes(wanted)) return { section: n.id, version };
+      if (holdsQuote(versionText(n, version), quote)) return { section: n.id, version };
     }
   }
   return null;
@@ -80,7 +99,7 @@ export function validateAnswer(raw: RawAnswer, context: { question: string; fact
   for (const q of raw.quotes) {
     const node = findNode(q.section);
     if (!node) return { ok: false, reason: `no section ${q.section}` };
-    if (!normalizeForMatch(fullText(node.id, q.version)).includes(normalizeForMatch(q.quote))) {
+    if (!holdsQuote(fullText(node.id, q.version), q.quote)) {
       const actually = whereIsQuote(q.quote);
       const hint = actually ? ` Those words are in the ${actually.version} wording of ${actually.section}.` : "";
       return { ok: false, reason: `not word for word in ${node.id} (${q.version}): "${q.quote.slice(0, 80)}".${hint}` };
@@ -106,7 +125,10 @@ export function validateAnswer(raw: RawAnswer, context: { question: string; fact
 
   // The years and dates that name the versions and phases come from the chart: "the 2026 wording", "June 29, 2026".
   const words = raw.answer.replace(SECTION_REF, " ").replace(BARE_SECTION, " ").replace(/\bPhase \d\b/g, " ").replace(/\bJune 29\b/g, " ");
-  const allowed = new Set(["2015", "2026", "2027", ...[...quotes.map((q) => q.quote), context.question, context.facts ?? ""].flatMap(numbersIn)]);
+  // From the question, only the lines and trips it names: any number in it let "Is minimum rest 8 hours?" have its 8
+  // confirmed against a quote that says 9:30.
+  const asked = [...context.question.matchAll(/\b(?:lines?|trips?)\s*#?\s*(\d{1,4})\b|#\s*(\d{1,4})\b|\b(\d{4})\b/gi)].map((m) => m[1] ?? m[2] ?? m[3]);
+  const allowed = new Set(["2015", "2026", "2027", ...asked, ...[...quotes.map((q) => q.quote), context.facts ?? ""].flatMap(numbersIn)]);
   for (const n of numbersIn(words)) {
     if (!allowed.has(n)) return { ok: false, reason: `the answer says ${n}, which isn't in the quotes. Quote the contract's words that hold ${n}, or leave ${n} out of the answer` };
   }

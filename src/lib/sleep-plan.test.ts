@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { driftBodyClock, planTripSleep, sleepPropensity } from "@/lib/sleep-plan";
+import { driftBodyClock, dutyClocks, planTripSleep, sleepPropensity } from "@/lib/sleep-plan";
 import { buildTimelineDays } from "@/lib/trip-timeline";
 import type { Trip, TripLeg } from "@/types/bidpack";
 
@@ -32,6 +32,16 @@ const EST = -5 * H; // Memphis / Atlanta in October (CDT/EDT differ, but one zon
 const localHour = (m: number, off: number) => (((m + off) % 1440) + 1440) % 1440 / 60;
 
 describe("sleep plan", () => {
+  it("starts the body on home time as of the trip's own day, across the clock change", () => {
+    // The pack's offset was read in October (CDT, -5); this trip leaves after Nov 1, on CST (-6).
+    const CST = -6 * H;
+    const t = trip(leg("MEM", "ATL", 20 * H, 22 * H, CST, EST), leg("ATL", "MEM", 38 * H, 40 * H, EST, CST));
+    expect(dutyClocks(t, EST)?.homeOffset).toBe(CST);
+    // A trip that doesn't start and end at the same airport shows no home time of its own: the pack's.
+    const open = trip(leg("ATL", "MEM", 20 * H, 22 * H, EST, CST), leg("MEM", "IND", 38 * H, 40 * H, CST, EST));
+    expect(dutyClocks(open, EST)?.homeOffset).toBe(EST);
+  });
+
   it("knows sleep comes easiest in the body's night and hardest just before bedtime", () => {
     expect(sleepPropensity(3 * H)).toBe(1);
     expect(sleepPropensity(20 * H)).toBeLessThan(0.2);

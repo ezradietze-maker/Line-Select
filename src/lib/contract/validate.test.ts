@@ -78,4 +78,20 @@ describe("the contract validator", () => {
     expect(narrowestPiece("25.E", QUOTE, "2026")).toBe("25.E.6");
     expect(check({ ...good, quotes: [{ ...good.quotes[0], section: "25.E" }] })).toMatchObject({ ok: true, quotes: [{ section: "25.E.6" }] });
   });
+
+  it("refuses a quote cut off inside a number, at either end", () => {
+    const cut = (quote: string, answer: string) => check({ found: true, answer, quotes: [{ section: "25.E.6", quote, version: "2026" }] });
+    expect(cut("The SWW is a period of not less than 11", "At least 11 hours.").ok).toBe(false);
+    expect(cut("5 hours beginning at 1700 CT the day following", "5 hours.").ok).toBe(false);
+    expect(cut("The SWW is a period of not less than 115", "At least 115 hours.").ok).toBe(true);
+  });
+
+  it("lets through only the lines and trips a question names, not a number it suggests", () => {
+    expect(check({ ...good, answer: "Yes, it runs 100 hours." }, "Is the SWW 100 hours?").ok).toBe(false);
+    expect(check({ ...good, answer: "For trip 93 the SWW still runs 115 hours." }, "What about trip 93?").ok).toBe(true);
+  });
+
+  it("doesn't read 'no one' as a number", () => {
+    expect(check({ ...good, answer: "No one can shorten it below 115 hours." }).ok).toBe(true);
+  });
 });

@@ -8,6 +8,7 @@ describe("finding the sections for a question", () => {
     expect(retrieved("how long is the sww")).toContain("25.E.6");
     expect(retrieved("what's the limit on an MUV over my bank")).toContain("7.G.5");
     expect(expandQuestion("does a carry-in hit my PNP").phrases).toEqual(expect.arrayContaining(["phase-in", "priority non-premium"]));
+    expect(retrieved("Do I get paid for a deadhead?").some((id) => id === "8.A.1" || id.startsWith("8.A.1."))).toBe(true);
   });
 
   it("reads a plural as its singular", () => {

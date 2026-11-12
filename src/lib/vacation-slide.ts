@@ -282,11 +282,17 @@ function expansions(line: Line, pack: BidPack, vacation: VacationPeriod, slide: 
     const s = tripSpan(t, pack);
     return s && !taken.has(t) ? [{ t, s }] : [];
   });
-  const daysBetween = (a: number, b: number) => Math.ceil((b - a) / (24 * HOUR));
+  // Base days, counted on the base's calendar: as 24 hours each, a day across the spring clock change (23 hours) came up
+  // one short, the expansion missed the trip after it, and the option was never offered.
+  const daysToReach = (from: number, past: (at: number) => boolean, dir: 1 | -1) => {
+    let n = 1;
+    while (n < 60 && !past(DateTime.fromMillis(from, { zone }).plus({ days: dir * n }).toMillis())) n++;
+    return n;
+  };
   const next = rest.filter((x) => x.s.start >= slide.span.end && x.s.start < period.end).sort((a, b) => a.s.start - b.s.start)[0];
   const prior = rest.filter((x) => x.s.end <= slide.span.start && x.s.start >= period.start).sort((a, b) => b.s.end - a.s.end)[0];
-  const after = next ? Math.max(1, daysBetween(slide.span.end, next.s.start)) : 0;
-  const before = prior ? Math.max(1, daysBetween(prior.s.end, slide.span.start)) : 0;
+  const after = next ? daysToReach(slide.span.end, (at) => at > next.s.start, 1) : 0;
+  const before = prior ? daysToReach(slide.span.start, (at) => at < prior.s.end, -1) : 0;
   const tries: [number, number][] = [
     [before, 0],
     [0, after],
@@ -298,8 +304,9 @@ function expansions(line: Line, pack: BidPack, vacation: VacationPeriod, slide: 
     if ((b > 0 && !prior) || (a > 0 && !next)) continue;
     const start = DateTime.fromMillis(slide.span.start, { zone }).minus({ days: b }).toMillis();
     const end = DateTime.fromMillis(slide.span.end, { zone }).plus({ days: a }).toMillis();
-    // What's before this month was last month's window.
-    if (start < period.start) continue;
+    // Days added before this month were last month's window to ask for. A vacation awarded from last month into this one
+    // still expands forward here: it "may expand within either bid period" (7.E.3.c).
+    if (b > 0 && start < period.start) continue;
     const option = optionFor(line, pack, vacation, { start, end }, slide.offset, b, a);
     if (option.chargedCH > limit) continue;
     const added = option.removed.filter((r) => !taken.has(r.trip));

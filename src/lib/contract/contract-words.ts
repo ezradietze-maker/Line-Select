@@ -53,6 +53,8 @@ export const CONTRACT_WORDS: Record<string, string[]> = {
   va: ["view/add"],
   dh: ["deadhead"],
   deadheading: ["deadhead"],
+  // "Do I get paid for a deadhead?": 8.A.1 says "pay and credit", and no ending rule turns "paid" into "pay".
+  paid: ["pay"],
   deviate: ["deviation"],
   deviating: ["deviation"],
   layover: ["rest", "layover"],

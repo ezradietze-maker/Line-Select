@@ -3,12 +3,18 @@ import { reportProblem } from "@/lib/server/alerts";
 import { airportSearchName, citySearchName } from "@/lib/hotels/airport-names";
 import { isPlausibleMatch, pickBestMatch, readHotelName } from "@/lib/hotels/hotel-names";
 import { cacheKey, getCachedHotel, setCachedHotel } from "@/lib/server/hotel-cache";
+import { incrementCounter } from "@/lib/server/kv";
 import { checkRateLimit, checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { isPackHotel } from "@/lib/server/pack-hotels";
 import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
 import type { HotelAmenityCategory, HotelAmenitySummary, HotelLookupResult, HotelResult, ReviewSentiment, ReviewSummary, ReviewThemeKey } from "@/types/hotel";
 
 // Reads/writes the local hotel-cache file, which needs Node's fs module.
+/** How long one hotel's lookup holds off copies of it, and how long and how often a copy checks the cache for its answer. */
+const LOOKUP_LOCK_SECONDS = 45;
+const LOOKUP_WAIT_MS = 25_000;
+const LOOKUP_POLL_MS = 500;
+
 /** Uncached Google Places lookups allowed per IP per hour. Raised deliberately to cover a full cold bid pack, accepting the extra Places spend. */
 const HOTEL_LOOKUPS_PER_HOUR = 250;
 /**
@@ -305,8 +311,11 @@ export async function GET(request: Request) {
   }
 
   // A cached match from before matches were checked (another city's hotel, another property) is looked up again.
-  const cachedRaw = await getCachedHotel(key);
-  const cached = cachedRaw && !isPlausibleMatch(code, hotelName, cachedRaw) ? undefined : cachedRaw;
+  const usableCached = async () => {
+    const raw = await getCachedHotel(key);
+    return raw && !isPlausibleMatch(code, hotelName, raw) ? undefined : raw;
+  };
+  const cached = await usableCached();
   if (cached !== undefined) {
     const result: HotelLookupResult = { code, hotelName, hotel: cached, error: null };
     return NextResponse.json(result);
@@ -348,6 +357,19 @@ export async function GET(request: Request) {
   if (!packHotel && !(await checkRateLimit("hotels-unlisted", spender.key, UNLISTED_LOOKUPS_PER_DAY, 24 * 60 * 60)).ok) return rateLimitedResponse();
   // Hotel lookups share the site's daily spending cap with the AI, so they get a ceiling of their own inside it: names
   // run through by the thousand (made up, or from an uploaded PDF) would otherwise pause the interview for everyone.
+  // One lookup per hotel at a time: the same uncached hotel asked for at once (two tabs, two pilots opening a fresh
+  // pack, or one guest's requests in parallel) paid Google for each copy and counted each against the site's day.
+  // The others wait for the first one's answer in the cache, and look it up themselves only if it never comes.
+  if ((await incrementCounter(`hotel-lock:${key}`, LOOKUP_LOCK_SECONDS)) > 1) {
+    for (let waited = 0; waited < LOOKUP_WAIT_MS; waited += LOOKUP_POLL_MS) {
+      await new Promise((r) => setTimeout(r, LOOKUP_POLL_MS));
+      const found = await usableCached();
+      if (found !== undefined) {
+        const result: HotelLookupResult = { code, hotelName, hotel: found, error: null };
+        return NextResponse.json(result);
+      }
+    }
+  }
   if (!(await checkRateLimit("hotels-site", "all", hotelSiteLookupsPerDay(), 24 * 60 * 60)).ok) {
     const result: HotelLookupResult = { code, hotelName, hotel: null, error: "Hotel ratings are resting until tomorrow." };
     return NextResponse.json(result);
