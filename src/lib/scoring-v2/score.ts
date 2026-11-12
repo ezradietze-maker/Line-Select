@@ -176,6 +176,15 @@ export interface ScoreOptions {
   referenceLines?: number;
 }
 
+/**
+ * Each of the model's measures taken on every line and kept, one task a measure — the first ranking's measuring done
+ * ahead, a piece at a time (see `lib/ranking-warm-up.ts`). The ranking then finds them measured.
+ */
+export function measureTasks(bidPack: BidPack, model: PilotModel, pack: PackMetrics): (() => void)[] {
+  const home = homeParams(model);
+  return model.criteria.filter((c) => METRICS_BY_ID.has(c.metric)).map((c) => () => void measureAll(c.metric, bidPack.lines, pack, { ...home, ...c.params }));
+}
+
 export function scorePackV2(bidPack: BidPack, model: PilotModel, options: ScoreOptions = {}): V2LineScore[] {
   const pack = options.pack ?? prepareMetrics(bidPack);
   if (options.travel) pack.ctx.travel = options.travel;

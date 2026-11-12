@@ -1,4 +1,5 @@
 import { saveOrReport } from "@/lib/local-save-failed";
+import type { StoredList } from "@/lib/shared-store";
 
 /**
  * Where the pilot put lines by hand on their ranked list. Dropping one line on another swaps the two, and that's the
@@ -54,25 +55,49 @@ export function prunePlacements(placements: Placement[], validLineIds: Set<strin
     .filter((p) => p.order.length >= 2);
 }
 
-function placementsKey(userId: string | null, bidPackId: string): string {
+export function placementsKey(userId: string | null, bidPackId: string): string {
   return `line-select:line-placements:${userId ?? "guest"}:${bidPackId}:v1`;
 }
 
 export function loadPlacements(userId: string | null, bidPackId: string): Placement[] {
-  if (typeof window === "undefined") return [];
+  return readPlacements(userId, bidPackId) ?? [];
+}
+
+/** What's stored, or null when nothing readable is. */
+function readPlacements(userId: string | null, bidPackId: string): Placement[] | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(placementsKey(userId, bidPackId));
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!Array.isArray(parsed)) return null;
     return parsed.filter(
       (p): p is Placement => !!p && typeof p.id === "string" && Array.isArray(p.order) && p.order.every((x: unknown) => typeof x === "string")
     );
   } catch {
-    return [];
+    return null;
   }
 }
 
 /** Whether the browser kept them; when it didn't, the pilot is told they won't survive a refresh (`saveOrReport`). */
 export function savePlacements(userId: string | null, bidPackId: string, placements: Placement[]): boolean {
   return saveOrReport(placementsKey(userId, bidPackId), JSON.stringify(placements));
+}
+
+/**
+ * Another tab's swaps kept beside this tab's: the swaps this tab took back go, and the ones it made (or put back) go
+ * last, as the newest — placements apply oldest first, so where two tabs moved the same line, the later swap shows.
+ */
+export function mergePlacements(base: Placement[], mine: Placement[], theirs: Placement[]): Placement[] {
+  const before = new Map(base.map((p) => [p.id, JSON.stringify(p)]));
+  const kept = new Set(mine.map((p) => p.id));
+  const gone = new Set(base.filter((p) => !kept.has(p.id)).map((p) => p.id));
+  const added = mine.filter((p) => before.get(p.id) !== JSON.stringify(p));
+  if (gone.size === 0 && added.length === 0) return theirs;
+  const addedIds = new Set(added.map((p) => p.id));
+  return [...theirs.filter((p) => !gone.has(p.id) && !addedIds.has(p.id)), ...added];
+}
+
+/** The pilot's swaps for this pack, for `useSharedList`. */
+export function placementsStore(userId: string | null, bidPackId: string): StoredList<Placement[]> {
+  return { read: () => readPlacements(userId, bidPackId), write: (p) => savePlacements(userId, bidPackId, p), merge: mergePlacements };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { memo, useCallback, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { CategoryBars } from "@/components/results/CategoryBars";
@@ -35,6 +35,7 @@ import { flyStarToShortlist } from "@/lib/fly-star";
 import type { LineForecast } from "@/lib/forecast/forecast";
 import type { HeldByNoteData } from "@/lib/use-held-by";
 import type { TripScore } from "@/lib/scoring-v2/trip-score";
+import type { Line } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
 // Shown only once a card's details are opened — loaded then (and warmed up in idle time by ResultsView), not with the
@@ -58,48 +59,27 @@ const RouteMap = dynamic(() => import("@/components/results/RouteMap").then((m) 
  */
 type DetailTab = "calendar" | "breakdown" | "circadian" | "route" | "reviews";
 
-interface LineCardProps {
+/** What a card shows only once it's opened. Handed over for an open card alone: a closed card shows just its strip, so the
+ * pilot's profile, trip scores or flights changing never re-renders it. */
+export interface LineCardDetails {
   rank: number;
   lineScore: LineScore;
   profile: PreferenceProfile;
   implicitValuesByLine: Record<string, Record<string, number>>;
   /** Real UTC offset derived from the bid pack's own printed times — see lib/circadian.ts. Null when it couldn't be derived (no trip in the pack has a verified schedule departing home base). */
   homeBaseOffsetMinutes: number | null;
-  /** The bid pack's own real start date and period length — see `BidPack.bidPeriodStart`'s doc comment. Threaded down to the mini month calendar. */
-  bidPeriodStart: string | null;
-  bidPeriodDays: number;
   /** Whether this line is currently one of the (at most two) picked for the side-by-side comparison view — see `LineComparisonModal`. */
   isComparing: boolean;
-  onToggleCompare: () => void;
   /** Shortlisted by the pilot. */
   starred: boolean;
-  onToggleStar: () => void;
-  /** Hidden by the pilot — rendered as a one-line placeholder with a restore button, only ever reached when "show hidden lines" is on. */
-  hidden: boolean;
-  onHide: () => void;
-  onRestore: () => void;
-  /** Whether the drag handle is offered — drag-to-swap only means something when the list is in the pilot's own ranking order. */
-  draggable: boolean;
   /** This pilot's chance at the line, when they've given a seniority number and the pack lists the pilots bidding. */
   forecast?: LineForecast | null;
   /** Who held this line, from pilots who shared, and how far the odds have been checked. */
   heldBy?: HeldByNoteData | null;
-  /** The bid pack's own home base code, e.g. "MEM" — the one fixed point every trip on this line starts and ends at, for the Route tab's map. */
-  homeBase: string;
   /** A commuter's looked-up airline flights, shown on the line's trips. */
   flights?: FlightAnswers | null;
   /** Every trip's own score for this pilot (see `lib/scoring-v2/trip-score.ts`), shown on its trips. */
   tripScores?: Map<string, TripScore> | null;
-  /** The pack's day columns and how the list lays its strips out — the same for every line, so they line up. */
-  packColumns: PackColumn[];
-  stripLayout: StripLayout;
-  /** Which strip the list draws: the pack's own, or the Timeline. */
-  stripView: StripViewMode;
-  /** Whether everything about the line is showing under its strip. */
-  open: boolean;
-  onToggleOpen: () => void;
-  /** The pilot swapped this line into its place (see `BidPackStrip`'s tag). */
-  placedByYou?: boolean;
   /** What the list is sorted by and this line's value on it, shown only once it's opened: the strips stay as they are. */
   sortedBy?: string;
   sortedValue?: string | null;
@@ -107,69 +87,73 @@ interface LineCardProps {
   openExtra?: ReactNode;
 }
 
+/**
+ * What a card does: the same functions for every card, each told its line. Made once by the list, so a card's props
+ * change only when what it shows does — and a function made fresh per card each render no longer holds on to that
+ * render's whole list.
+ */
+export interface LineCardActions {
+  toggleOpen: (lineId: string) => void;
+  toggleStar: (lineId: string) => void;
+  toggleCompare: (lineId: string) => void;
+  hide: (lineId: string) => void;
+  restore: (lineId: string) => void;
+}
+
+interface LineCardProps {
+  line: Line;
+  /** The score its strip shows, and whether a limit capped it. */
+  score: number;
+  capped: boolean;
+  /** Number 1 in the pilot's order: the card glows. */
+  topPick: boolean;
+  /** The bid pack's own real start date and period length — see `BidPack.bidPeriodStart`'s doc comment. Threaded down to the mini month calendar. */
+  bidPeriodStart: string | null;
+  bidPeriodDays: number;
+  /** The bid pack's own home base code, e.g. "MEM" — the one fixed point every trip on this line starts and ends at, for the Route tab's map. */
+  homeBase: string;
+  /** Hidden by the pilot — rendered as a one-line placeholder with a restore button, only ever reached when "show hidden lines" is on. */
+  hidden: boolean;
+  /** Whether the drag handle is offered — drag-to-swap only means something when the list is in the pilot's own ranking order. */
+  draggable: boolean;
+  /** The pack's day columns and how the list lays its strips out — the same for every line, so they line up. */
+  packColumns: PackColumn[];
+  stripLayout: StripLayout;
+  /** Which strip the list draws: the pack's own, or the Timeline. */
+  stripView: StripViewMode;
+  /** Whether everything about the line is showing under its strip. */
+  open: boolean;
+  /** The pilot swapped this line into its place (see `BidPackStrip`'s tag). */
+  placedByYou?: boolean;
+  actions: LineCardActions;
+  /** Everything under the strip, for an open card; null for a closed one. */
+  details: LineCardDetails | null;
+}
+
 export const LineCard = memo(function LineCard({
-  placedByYou = false,
-  rank,
-  lineScore,
-  profile,
-  implicitValuesByLine,
-  homeBaseOffsetMinutes,
+  line,
+  score,
+  capped,
+  topPick,
   bidPeriodStart,
   bidPeriodDays,
-  isComparing,
-  onToggleCompare,
-  starred,
-  onToggleStar,
-  hidden,
-  onHide,
-  onRestore,
-  draggable,
-  forecast,
-  heldBy,
   homeBase,
-  flights,
-  tripScores,
+  hidden,
+  draggable,
   packColumns,
   stripLayout,
   stripView,
   open,
-  onToggleOpen,
-  sortedBy,
-  sortedValue,
-  openExtra,
+  placedByYou = false,
+  actions,
+  details,
 }: LineCardProps) {
+  // Kept on the card rather than in what opens under it, so a line closed and opened again shows the tab it was on.
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
   const [showEveryDimension, setShowEveryDimension] = useState(false);
   const reduceMotion = useReducedMotion();
-  const {
-    line,
-    score,
-    explanation,
-    dimensions,
-    categoryScores,
-    contributors,
-    detractors,
-    violatedDealbreakers,
-    nearMissDealbreakers,
-    qualitativeTieIns,
-    counterfactual,
-    historicalNote,
-    cumulativeCircadian,
-    hotelReviewTieIn,
-    recurringCommitmentConflicts,
-    dateCommitmentConflicts,
-    commitmentPenalty,
-  } = lineScore;
-  const implicitFactors = useMemo(
-    () => topImplicitContributions(line.id, implicitValuesByLine, profile, 4),
-    [line.id, implicitValuesByLine, profile]
-  );
-  const isTopPick = rank === 1;
-  function openToTab(tab: DetailTab) {
-    setActiveTab(tab);
-    setExpanded(true);
-  }
+  const onToggleOpen = useCallback(() => actions.toggleOpen(line.id), [actions, line.id]);
 
   // Two separate dnd-kit roles on the same card: the grip is the drag
   // SOURCE, the whole card is a drop TARGET — dropping one card directly
@@ -179,25 +163,6 @@ export const LineCard = memo(function LineCard({
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: line.id });
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
 
-  const bidMonth = bidMonthOf({ bidPeriodStart, bidPeriodDays });
-  const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences, bidMonth), [profile.cityRatings, profile.cityPreferences, bidMonth]);
-  // Kept on just what it reads: a refit after a swap gives a new profile every time, and redoing every card's departure
-  // grouping (date work for each trip) for each one was a large part of the freeze after a swap on a big pack.
-  const { isCommuter, commuteFrom, hasCrashPad, minHomeHours } = profile;
-  const minBreakNights = profile.brainInterview?.reviewedModel?.home?.minBreakNights;
-  const departureOptions = useMemo(
-    () => monthDepartureOptionsFrom(homeBase, { isCommuter, commuteFrom, hasCrashPad, minHomeHours, minBreakNights }, flights),
-    [homeBase, isCommuter, commuteFrom, hasCrashPad, minHomeHours, minBreakNights, flights]
-  );
-  // The line's bid month, and what its last trip carries into the next (counted apart, as the pack prints C/O).
-  const month = useMemo(() => monthLine(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);
-  const carryOver = useMemo(() => lineCarryOver(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);
-  // The line's body-clock score, for its Circadian tab (worked out once a pilot opens it) — its trips whole, as ranked.
-  const bodyClock = useMemo(() => (expanded && activeTab === "circadian" ? lineBodyClockScore(line.trips, homeBaseOffsetMinutes) : null), [expanded, activeTab, line.trips, homeBaseOffsetMinutes]);
-  const chips = useMemo(() => buildLineFeatures(month, profile, lineScore.criterionResults, undefined, bidMonth, departureOptions.base), [month, profile, lineScore.criterionResults, bidMonth, departureOptions.base]);
-  // Times the pilot leaves home: trips flown back to back, never home between, count once — as the calendar's summary counts them.
-  const departureGroups = useMemo(() => groupDepartures(month.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [month.trips, bidPeriodStart, departureOptions]);
-  const departures = departureGroups.length;
   const view = useMemo(
     () =>
       stripView === "pack"
@@ -229,7 +194,7 @@ export const LineCard = memo(function LineCard({
         </span>
         <button
           type="button"
-          onClick={onRestore}
+          onClick={() => actions.restore(line.id)}
           className="font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand-strong"
         >
           Restore
@@ -242,13 +207,13 @@ export const LineCard = memo(function LineCard({
     <div
       ref={setDropRef}
       className={`panel-glass hover-lift overflow-hidden transition-[box-shadow,opacity,border-color] duration-150 ${
-        isTopPick ? "top-pick-glow !border-accent/50 ring-1 ring-accent/20" : "hover:!border-border-strong"
+        topPick ? "top-pick-glow !border-accent/50 ring-1 ring-accent/20" : "hover:!border-border-strong"
       } ${isDragging ? "opacity-40" : ""} ${isOver ? "ring-2 ring-accent" : ""}`}
     >
       <BidPackStrip
         line={line}
         score={score}
-        capped={violatedDealbreakers.length > 0}
+        capped={capped}
         columns={packColumns}
         view={view}
         layout={stripLayout}
@@ -260,7 +225,7 @@ export const LineCard = memo(function LineCard({
 
       {/* Everything else about the line, under its strip when it's opened. */}
       <AnimatePresence initial={false}>
-        {open && (
+        {open && details && (
           <motion.div
             key="line-open"
             initial={{ height: 0, opacity: 0 }}
@@ -269,6 +234,109 @@ export const LineCard = memo(function LineCard({
             transition={reduceMotion ? { duration: 0 } : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden border-t border-hairline"
           >
+            <LineDetails
+              line={line}
+              details={details}
+              actions={actions}
+              bidPeriodStart={bidPeriodStart}
+              bidPeriodDays={bidPeriodDays}
+              homeBase={homeBase}
+              expanded={expanded}
+              setExpanded={setExpanded}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              showEveryDimension={showEveryDimension}
+              setShowEveryDimension={setShowEveryDimension}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+});
+
+/** Everything under an opened line's strip. Its facts are worked out here, so only an opened line pays for them. */
+function LineDetails({
+  line,
+  details,
+  actions,
+  bidPeriodStart,
+  bidPeriodDays,
+  homeBase,
+  expanded,
+  setExpanded,
+  activeTab,
+  setActiveTab,
+  showEveryDimension,
+  setShowEveryDimension,
+}: {
+  line: Line;
+  details: LineCardDetails;
+  actions: LineCardActions;
+  bidPeriodStart: string | null;
+  bidPeriodDays: number;
+  homeBase: string;
+  expanded: boolean;
+  setExpanded: Dispatch<SetStateAction<boolean>>;
+  activeTab: DetailTab;
+  setActiveTab: Dispatch<SetStateAction<DetailTab>>;
+  showEveryDimension: boolean;
+  setShowEveryDimension: Dispatch<SetStateAction<boolean>>;
+}) {
+  const { rank, lineScore, profile, implicitValuesByLine, homeBaseOffsetMinutes, isComparing, starred, forecast, heldBy, flights, tripScores, sortedBy, sortedValue, openExtra } = details;
+  const reduceMotion = useReducedMotion();
+  const {
+    explanation,
+    dimensions,
+    categoryScores,
+    contributors,
+    detractors,
+    violatedDealbreakers,
+    nearMissDealbreakers,
+    qualitativeTieIns,
+    counterfactual,
+    historicalNote,
+    cumulativeCircadian,
+    hotelReviewTieIn,
+    recurringCommitmentConflicts,
+    dateCommitmentConflicts,
+    commitmentPenalty,
+  } = lineScore;
+  const onToggleStar = () => actions.toggleStar(line.id);
+  const onToggleCompare = () => actions.toggleCompare(line.id);
+  const onHide = () => actions.hide(line.id);
+  const implicitFactors = useMemo(
+    () => topImplicitContributions(line.id, implicitValuesByLine, profile, 4),
+    [line.id, implicitValuesByLine, profile]
+  );
+  const isTopPick = rank === 1;
+  function openToTab(tab: DetailTab) {
+    setActiveTab(tab);
+    setExpanded(true);
+  }
+
+  const bidMonth = bidMonthOf({ bidPeriodStart, bidPeriodDays });
+  const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences, bidMonth), [profile.cityRatings, profile.cityPreferences, bidMonth]);
+  // Kept on just what it reads: a refit after a swap gives a new profile every time, and redoing the departure grouping
+  // (date work for each trip) for each one was a large part of the freeze after a swap on a big pack.
+  const { isCommuter, commuteFrom, hasCrashPad, minHomeHours } = profile;
+  const minBreakNights = profile.brainInterview?.reviewedModel?.home?.minBreakNights;
+  const departureOptions = useMemo(
+    () => monthDepartureOptionsFrom(homeBase, { isCommuter, commuteFrom, hasCrashPad, minHomeHours, minBreakNights }, flights),
+    [homeBase, isCommuter, commuteFrom, hasCrashPad, minHomeHours, minBreakNights, flights]
+  );
+  // The line's bid month, and what its last trip carries into the next (counted apart, as the pack prints C/O).
+  const month = useMemo(() => monthLine(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);
+  const carryOver = useMemo(() => lineCarryOver(line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }), [line, bidPeriodStart, bidPeriodDays, departureOptions.base]);
+  // The line's body-clock score, for its Circadian tab (worked out once a pilot opens it) — its trips whole, as ranked.
+  const bodyClock = useMemo(() => (expanded && activeTab === "circadian" ? lineBodyClockScore(line.trips, homeBaseOffsetMinutes) : null), [expanded, activeTab, line.trips, homeBaseOffsetMinutes]);
+  const chips = useMemo(() => buildLineFeatures(month, profile, lineScore.criterionResults, undefined, bidMonth, departureOptions.base), [month, profile, lineScore.criterionResults, bidMonth, departureOptions.base]);
+  // Times the pilot leaves home: trips flown back to back, never home between, count once — as the calendar's summary counts them.
+  const departureGroups = useMemo(() => groupDepartures(month.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [month.trips, bidPeriodStart, departureOptions]);
+  const departures = departureGroups.length;
+
+  return (
+    <>
       {openExtra}
       {sortedValue && (
         <div className="border-b border-hairline px-5 py-2 text-sm text-ink-muted sm:px-6">
@@ -617,12 +685,9 @@ export const LineCard = memo(function LineCard({
           </motion.div>
         )}
       </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    </>
   );
-});
+}
 
 const CHIP_TONE: Record<LineFactChip["tone"], string> = {
   good: "border-good/40 bg-good-soft text-good",

@@ -310,6 +310,18 @@ function computeRawLineValues(line: Line, bidPeriodStart: string | null): Record
   };
 }
 
+const implicitByPack = new WeakMap<BidPack, Record<string, Record<string, number>>>();
+
+/**
+ * `computeImplicitLineValues`, worked out once per pack and kept: they depend on the pack alone, and the results page
+ * works them out ahead of its first ranking (see `lib/ranking-warm-up.ts`). Read-only, as it's shared.
+ */
+export function implicitLineValuesFor(bidPack: BidPack): Record<string, Record<string, number>> {
+  let values = implicitByPack.get(bidPack);
+  if (!values) implicitByPack.set(bidPack, (values = computeImplicitLineValues(bidPack)));
+  return values;
+}
+
 /** Normalized [0,1] implicit-variable values for every line in the bid pack, scaled against the bid pack's own real spread — same convention `scoring.ts` uses for the explicit dimensions. */
 export function computeImplicitLineValues(bidPack: BidPack): Record<string, Record<string, number>> {
   const rawByLine = new Map(bidPack.lines.map((line) => [line.id, computeRawLineValues(line, bidPack.bidPeriodStart)]));

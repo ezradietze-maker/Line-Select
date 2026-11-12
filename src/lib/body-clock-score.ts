@@ -164,6 +164,14 @@ function tripPoints(trip: Trip, homeBaseOffsetMinutes: number | null, nightsLimi
   return result;
 }
 
+/**
+ * Works out a trip's points and keeps them, ahead of the ranking that will ask (see `lib/ranking-warm-up.ts`): on the
+ * biggest pack they're most of the first ranking's work, a sleep plan for every layover of every trip.
+ */
+export function warmTripBodyClock(trip: Trip, homeBaseOffsetMinutes: number | null, nightsLimit: number | null = null): void {
+  tripPoints(trip, homeBaseOffsetMinutes, nightsLimit);
+}
+
 function computeTripPoints(trip: Trip, homeBaseOffsetMinutes: number | null, nightsLimit: number | null): TripPoints | null {
   const clocks = dutyClocks(trip, homeBaseOffsetMinutes);
   if (!clocks || !clocks.duties.length) return null;

@@ -15,20 +15,22 @@ function savedAtKey(userId: string | null): string {
   return `${bidPackKey(userId)}:saved-at`;
 }
 
-function zuluAt(anchorISO: string, minutes: number): string {
-  return new Date(new Date(anchorISO).getTime() + minutes * 60_000).toISOString();
+/** `anchorMs` is the anchor already read (`Date.parse`): read once per trip, not once per leg time, on a pack load. */
+function zuluAt(anchorMs: number, minutes: number): string {
+  return new Date(anchorMs + minutes * 60_000).toISOString();
 }
 
 /** Backfills a trip saved before the Zulu/Local toggle existed — same anchor-plus-elapsed-minutes math `build-bidpack.ts` uses for a freshly-parsed trip, just applied after the fact using the bid pack's own saved month. */
 function backfillZuluFields(trip: Trip, bidPackMonth: string): Trip {
   // A trip with its own anchor just needs any left-out per-leg timestamps rebuilt from it (see `compactBidPack`); one without an anchor predates the Zulu toggle entirely and gets the month's.
   const anchor = trip.zuluAnchor || monthAnchorZulu(bidPackMonth);
+  const anchorMs = Date.parse(anchor);
   const schedule: TripDutyPeriod[] = trip.schedule.map((duty) => ({
     ...duty,
     legs: duty.legs.map((leg) => ({
       ...leg,
-      depTimeZulu: leg.depTimeZulu ?? zuluAt(anchor, leg.startMinutes),
-      arrTimeZulu: leg.arrTimeZulu ?? zuluAt(anchor, leg.endMinutes),
+      depTimeZulu: leg.depTimeZulu ?? zuluAt(anchorMs, leg.startMinutes),
+      arrTimeZulu: leg.arrTimeZulu ?? zuluAt(anchorMs, leg.endMinutes),
     })),
   }));
   return { ...trip, schedule, zuluAnchor: anchor };

@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -30,7 +31,7 @@ import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
 import { CarryInLineNote, CarryInPanel } from "@/components/results/CarryInPanel";
 import { VacationChoicePanel } from "@/components/results/VacationChoicePanel";
-import { LineCard } from "@/components/results/LineCard";
+import { LineCard, type LineCardActions } from "@/components/results/LineCard";
 import { AskPackPanel } from "@/components/results/AskPackPanel";
 import { FirstVisitTour } from "@/components/results/FirstVisitTour";
 import { WheelsDown } from "@/components/results/WheelsDown";
@@ -39,27 +40,30 @@ import { ScoreRing } from "@/components/results/ScoreRing";
 import { BidPackHeader, StripKey, StripViewToggle, stripLayout } from "@/components/results/BidPackStrip";
 import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view-storage";
 import { useMeasuredWidth } from "@/components/results/LegBars";
-import { packColumnCount, packColumns } from "@/lib/bidpack-row";
+import { packColumns } from "@/lib/bidpack-row";
 import { monthLine } from "@/lib/bid-month";
 import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { cachedFlightAnswers, lookUpFlights } from "@/lib/flights/client";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
-import { scoreTripsV2 } from "@/lib/scoring-v2/trip-score";
-import { rankingPack } from "@/lib/scoring-v2/adapter";
+import { scoreTripsV2, type TripScore } from "@/lib/scoring-v2/trip-score";
+import { measuredPack, rankingPack } from "@/lib/scoring-v2/adapter";
+import { columnCountOf, layoverCitiesOf, touchedCitiesOf, useRankingWarmUp } from "@/lib/ranking-warm-up";
 import { fetchAllHotelQualityData, settledHotelQualityData } from "@/lib/hotel-client";
-import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
+import { implicitLineValuesFor } from "@/lib/implicit-dimensions";
 import { useBidForecast } from "@/lib/forecast/use-bid-forecast";
 import { useHeldBy } from "@/lib/use-held-by";
 import { loadPreviousPeriodSnapshot, saveBidPeriodSnapshot, summarizeBidPeriodChange } from "@/lib/bid-period-history";
 import { assessProfileRichness } from "@/lib/interview-engine";
-import { computeFilterOptions } from "@/lib/line-filter-options";
-import { collectLayoverCities, collectTouchedCities, EMPTY_FILTERS, filtersActive, filtersKey, lineMatchesFilters, type FilterContext, type LineFilters } from "@/lib/line-filters";
+import { filterOptionsFor } from "@/lib/line-filter-options";
+import { EMPTY_FILTERS, filtersActive, filtersKey, lineMatchesFilters, type FilterContext, type LineFilters } from "@/lib/line-filters";
 import { useCommuteCheck } from "@/lib/use-commute-check";
 import { loadTopLinesSnapshot, saveTopLinesSnapshot } from "@/lib/line-history-storage";
 import { buildLineFactChips, lineFactsText } from "@/lib/line-summary";
-import { loadLineMarks, saveLineMarks } from "@/lib/line-marks-storage";
+import { lineMarksStore, marksKey } from "@/lib/line-marks-storage";
+import { useSharedList } from "@/lib/shared-store";
+import { useWindowedRows } from "@/lib/use-windowed-rows";
 import { PHRASES } from "@/lib/preference-summary";
 import {
   PAGE_SIZE,
@@ -72,6 +76,7 @@ import {
   restoreLine,
   stepCursor,
   toggleStar,
+  EMPTY_MARKS,
   type LineMarks,
 } from "@/lib/results-list";
 import {
@@ -89,17 +94,16 @@ import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import { rankedAsFlown } from "@/lib/vacation-lines";
 import { useCarryIn } from "@/lib/use-carry-in";
 import { SortMenu, SortNote } from "@/components/results/SortMenu";
-import { selectableCardProps, TierBar, TierHeadingRow, TierMoveRow } from "@/components/results/TierBar";
+import { TierBar, TierHeadingRow, TierMoveRow, useCardPressProps } from "@/components/results/TierBar";
 import { tierHeadings } from "@/lib/line-tiers";
 import { useLineSort } from "@/lib/use-line-sort";
 import { useLineTiers, type TeachTiers } from "@/lib/use-line-tiers";
-import { applyPlacements, loadPlacements, placementFromDrag, prunePlacements, savePlacements, type Placement } from "@/lib/line-placements";
+import { applyPlacements, placementFromDrag, placementsKey, placementsStore, prunePlacements, type Placement } from "@/lib/line-placements";
 import { EMPTY_ORDER_HISTORY, dropSwaps, recordStep, takeRedo, takeUndo, type OrderHistory } from "@/lib/order-history";
 import type { LineChoice } from "@/types/pilot-model";
-import { prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
+import type { PackMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
-import { useProgressiveCount } from "@/lib/use-progressive-count";
 import { FlipText } from "@/components/ui/FlipText";
 import { PillHighlight } from "@/components/ui/PillHighlight";
 import { setRankingSnapshot } from "@/lib/ranking-snapshot";
@@ -182,6 +186,30 @@ function afterPaint(fn: () => void) {
   requestAnimationFrame(() => setTimeout(fn, 0));
 }
 
+/**
+ * A line not drawn yet, off the screen: its room in the list, and its number, so the list reads in order to a screen
+ * reader, Find in page finds the line, and a link or a key can scroll to it. Drawn in full once it's near the screen.
+ */
+function LineStandIn({ id, lineNumber, height }: { id: string; lineNumber: string; height: number }) {
+  return (
+    <div id={`line-${id}`} className="panel-glass scroll-mt-20 px-4 py-3 font-mono text-[12px] font-semibold leading-[14px] tracking-wide text-ink-faint md:scroll-mt-6" style={{ height }}>
+      LINE {lineNumber}
+    </div>
+  );
+}
+
+/** Each line's note for "Copy with notes", worked out when first asked for and kept. */
+function lineNotes(bidPack: BidPack, profile: PreferenceProfile): (line: LineScore["line"]) => string {
+  const notes = new Map<string, string>();
+  return (line) => {
+    const kept = notes.get(line.id);
+    if (kept !== undefined) return kept;
+    const made = lineFactsText(buildLineFactChips(monthLine(line, bidPack), profile, bidMonthOf(bidPack)));
+    notes.set(line.id, made);
+    return made;
+  };
+}
+
 function caresAboutLayoverQuality(profile: PreferenceProfile): boolean {
   const { hotelFood, hotelGym, hotelGrocery, hotelQuiet, hotelQuality } = profile.weights;
   return [hotelFood, hotelGym, hotelGrocery, hotelQuiet, hotelQuality].some((w) => Math.abs(w) > 0);
@@ -219,6 +247,11 @@ interface SwapStep {
 
 /** How long to hold the list back waiting on hotel reviews before showing it anyway. Hotel data changes scores, so showing the list first and then reshuffling it under a pilot who's already reading is worse than a short wait. */
 const HOTEL_WAIT_MS = 6000;
+
+const NO_PLACEMENTS: Placement[] = [];
+const NO_IMPLICIT_VALUES: Record<string, Record<string, number>> = {};
+const NO_CITIES: string[] = [];
+const NO_COLUMNS: ReturnType<typeof packColumns> = [];
 
 /** The chosen one of All lines / Shortlist / Realistic: a lit pad that slides between them. */
 const VIEW_PILL = "absolute inset-0 bg-accent-soft";
@@ -260,7 +293,9 @@ export function ResultsView({
   const [learnMessage, setLearnMessage] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cards animate into their new places after a drag-to-swap — but tracking every card's layout costs a measurement
-  // pass per card as the list mounts, so it's switched on only once a pilot actually starts dragging.
+  // pass per card as the list mounts, so it's switched on only once a pilot actually starts dragging. Once on it stays
+  // on: switching a card's layout tracking off and on again each swap left a listener behind every time, holding that
+  // render's whole list (about 3 MB a swap); which cards it measures is said by `layoutDependency` instead.
   const [layoutArmed, setLayoutArmed] = useState(false);
   const [promptJudgment, setPromptJudgment] = useState<PairwiseJudgment | null>(null);
   const [promptCount, setPromptCount] = useState(0);
@@ -272,9 +307,14 @@ export function ResultsView({
   const [hotelFilter, setHotelFilter] = useState<HotelFilter | null>(initialHotelFilter);
   const [view, setView] = useState<"all" | "shortlist" | "realistic">("all");
   const [showHidden, setShowHidden] = useState(false);
-  const [marks, setMarks] = useState<LineMarks>(() => loadLineMarks(userId, bidPack.id));
-  // Lines the pilot swapped by hand stay where they put them (see `lib/line-placements.ts`).
-  const [placements, setPlacements] = useState<Placement[]>(() => loadPlacements(userId, bidPack.id));
+  // Stars and hidden lines, and the lines the pilot swapped by hand, which stay where they put them (see
+  // `lib/line-placements.ts`). The pilot's own, per pack: reloaded for a new pack, and when the session check finds an
+  // account after the app first showed this device's guest data. Shared with the pack's other tabs, so a star or a
+  // swap made in one isn't written over by another (see `lib/shared-store.ts`).
+  const marksList = useSharedList<LineMarks>(marksKey(userId, bidPack.id), lineMarksStore(userId, bidPack.id), EMPTY_MARKS);
+  const marks = marksList.value;
+  const placementsList = useSharedList<Placement[]>(placementsKey(userId, bidPack.id), placementsStore(userId, bidPack.id), NO_PLACEMENTS);
+  const placements = placementsList.value;
   // The latest swap, with the profile from just before it and just after: undoing it while nothing else has changed
   // puts back exactly what the pilot had.
   const [lastSwap, setLastSwap] = useState<{ id: string; before: PreferenceProfile; after: PreferenceProfile } | null>(null);
@@ -325,14 +365,11 @@ export function ResultsView({
     setHotelFilter(null);
     setView("all");
   }
-  // Stars and hidden lines are the pilot's own: reloaded for a new pack, and when the session check finds an account
-  // after the app first showed this device's guest data — else the guest's marks would be saved over the account's.
-  const marksKey = `${userId}|${bidPack.id}`;
-  const [marksFor, setMarksFor] = useState(marksKey);
-  if (marksKey !== marksFor) {
-    setMarksFor(marksKey);
-    setMarks(loadLineMarks(userId, bidPack.id));
-    setPlacements(loadPlacements(userId, bidPack.id));
+  // The last swap is the last pilot's and pack's (their marks and swaps reload themselves, above).
+  const marksOwner = `${userId}|${bidPack.id}`;
+  const [marksFor, setMarksFor] = useState(marksOwner);
+  if (marksOwner !== marksFor) {
+    setMarksFor(marksOwner);
     setLastSwap(null);
   }
 
@@ -372,30 +409,10 @@ export function ResultsView({
   // or looked up now. Like hotel reviews, ones that land within a moment shape the first ranking; a lookup that takes
   // longer is offered as an update rather than reshuffling the list under the pilot's eyes.
   const pilotModel = profile.pilotModel;
-  const [flights, setFlights] = useState<FlightAnswers | null>(() => (typeof window === "undefined" ? null : cachedFlightAnswers(bidPack, pilotModel)));
+  // `lookedUp`: the flights as they come in. The page ranks with `flights` (below): the same, once they're measured.
+  const [lookedUp, setFlights] = useState<FlightAnswers | null>(() => (typeof window === "undefined" ? null : cachedFlightAnswers(bidPack, pilotModel)));
   const [flightsWaiting, setFlightsWaiting] = useState<FlightAnswers | null>(null);
   const [flightsLooking, setFlightsLooking] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    const mountedAt = Date.now();
-    // A different pack or pilot starts from what's kept for it.
-    const had = cachedFlightAnswers(bidPack, pilotModel);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setFlights(had);
-    setFlightsWaiting(null);
-    setFlightsLooking(true);
-    lookUpFlights(bidPack, pilotModel).then((a) => {
-      if (cancelled) return;
-      setFlightsLooking(false);
-      if (!a) return;
-      if (had && Object.keys(a).length === Object.keys(had).length) return;
-      if (!had && Date.now() - mountedAt < HOTEL_WAIT_MS) setFlights(a);
-      else setFlightsWaiting(a);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [bidPack, pilotModel]);
 
   // The list is held back until hotel data lands (or the wait runs out) so
   // the ranking a pilot starts reading is the ranking they keep — hotel
@@ -404,11 +421,6 @@ export function ResultsView({
   const hotelsSettled = !caresAboutHotel || hotelDone || hotelTimedOut;
   const hotelsArrivedLate = caresAboutHotel && hotelTimedOut && hotelDone;
 
-  // The implicit taxonomy's normalized per-line values only depend on the
-  // bid pack's own trip data, never on the pilot's weights — computed once
-  // per bid pack and reused both by scoring below and by every drag
-  // judgment, rather than recomputed per use.
-  const implicitValuesByLine = useMemo(() => computeImplicitLineValues(bidPack), [bidPack]);
 
   // A legacy static-interview profile has no discoveredFacts at all — its
   // richness genuinely can't be assessed from facts that don't exist, so it
@@ -431,9 +443,52 @@ export function ResultsView({
   const [previousPeriodSnapshot] = useState(() => loadPreviousPeriodSnapshot(userId, bidPack.month));
 
   const carry = useCarryIn(bidPack, userId, profile);
+  // The first ranking's slow part — every trip's body-clock points and facts, each measure on every line — worked out a
+  // slice at a time first, while the page says it's ranking, instead of freezing it for seconds (see
+  // `lib/ranking-warm-up.ts`). Flights that land later are measured the same way before the ranking takes them.
+  const circadianTolerance = typeof profile.explicitTargets.circadianTolerance === "number" ? profile.explicitTargets.circadianTolerance : null;
+  const warmUp = useRankingWarmUp(bidPack, carry.flown.pack, pilotModel, circadianTolerance, lookedUp);
+  const flights = warmUp.flights;
+  // Looked up once the ranking's work is done: picking the lines to look up ranks the pack too, and done first it was
+  // the same multi-second stall, before the page could say anything.
+  const lookUpReady = warmUp.ready;
+  useEffect(() => {
+    if (!lookUpReady) return;
+    let cancelled = false;
+    const mountedAt = Date.now();
+    // A different pack or pilot starts from what's kept for it.
+    const had = cachedFlightAnswers(bidPack, pilotModel);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFlights(had);
+    setFlightsWaiting(null);
+    setFlightsLooking(true);
+    // In a task of its own, after the ranking that just rendered has painted (picking the lines to look up ranks too).
+    const start = window.setTimeout(() =>
+      lookUpFlights(bidPack, pilotModel).then((a) => {
+        if (cancelled) return;
+        setFlightsLooking(false);
+        if (!a) return;
+        if (had && Object.keys(a).length === Object.keys(had).length) return;
+        if (!had && Date.now() - mountedAt < HOTEL_WAIT_MS) setFlights(a);
+        else setFlightsWaiting(a);
+      })
+    );
+    return () => {
+      cancelled = true;
+      window.clearTimeout(start);
+    };
+  }, [bidPack, pilotModel, lookUpReady]);
+  // The list shows once it's ranked and, for a pilot who cares about hotels, their reviews are in.
+  const listReady = warmUp.ready && hotelsSettled;
+
+  // The implicit taxonomy's normalized per-line values only depend on the
+  // bid pack's own trip data, never on the pilot's weights — computed once
+  // per bid pack (with the warm-up, and kept with the pack) and reused both
+  // by scoring below and by every drag judgment, rather than recomputed per use.
+  const implicitValuesByLine = useMemo(() => (warmUp.ready ? implicitLineValuesFor(bidPack) : NO_IMPLICIT_VALUES), [bidPack, warmUp.ready]);
   const scoredLines = useMemo(
-    () => rankedAsFlown(rankLines(carry.flown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, carry.flown),
-    [bidPack, carry.flown, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
+    () => (warmUp.ready ? rankedAsFlown(rankLines(carry.flown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, carry.flown) : []),
+    [warmUp.ready, bidPack, carry.flown, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
   );
   // Placements for lines that no longer exist never leak in, as with marks.
   const validPlacements = useMemo(() => prunePlacements(placements, new Set(bidPack.lines.map((l) => l.id))), [placements, bidPack]);
@@ -449,32 +504,40 @@ export function ResultsView({
   // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order.
   const swappedIds = useMemo(() => new Set(validPlacements.flatMap((p) => [p.order[0], p.order[p.order.length - 1]])), [validPlacements]);
   const rankedIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
-  // Every trip's own score, from the same priorities that rank the lines — shown on each trip in a line's trip list.
-  // On the ranking's own measured pack, so a refit re-scores trips without re-measuring them.
+  // Every trip's own score, from the same priorities that rank the lines — shown on each trip in an opened line's trip
+  // list. On the ranking's own measured pack, so a refit re-scores trips without re-measuring them. Only an open line
+  // shows them, so with none open they're worked out when the page goes idle, not inside the ranking's own render.
+  const scoreTrips = useCallback(
+    (model: NonNullable<typeof pilotModel>) => scoreTripsV2(bidPack, model, { flights: flights ?? undefined, onLineScale: true, pack: rankingPack(bidPack, flights ?? undefined) }),
+    [bidPack, flights]
+  );
+  const [idleTripScores, setIdleTripScores] = useState<{ model: typeof pilotModel; score: typeof scoreTrips; scores: Map<string, TripScore> } | null>(null);
+  const tripScoresHeld = !!pilotModel && idleTripScores?.model === pilotModel && idleTripScores.score === scoreTrips;
+  useEffect(() => {
+    if (!pilotModel || !listReady || tripScoresHeld) return;
+    const work = () => setIdleTripScores({ model: pilotModel, score: scoreTrips, scores: scoreTrips(pilotModel) });
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(work, { timeout: 2000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(work, 300);
+    return () => window.clearTimeout(id);
+  }, [pilotModel, listReady, tripScoresHeld, scoreTrips]);
+  const anyOpen = openIds.size > 0;
   const tripScores = useMemo(
-    () => (pilotModel ? scoreTripsV2(bidPack, pilotModel, { flights: flights ?? undefined, onLineScale: true, pack: rankingPack(bidPack, flights ?? undefined) }) : null),
-    [bidPack, pilotModel, flights]
+    () => (tripScoresHeld ? idleTripScores!.scores : pilotModel && anyOpen ? scoreTrips(pilotModel) : null),
+    [tripScoresHeld, idleTripScores, pilotModel, anyOpen, scoreTrips]
   );
 
-  const updateMarks = useCallback(
-    (fn: (m: LineMarks) => LineMarks) => {
-      setMarks((prev) => {
-        const next = fn(prev);
-        saveLineMarks(userId, bidPack.id, next);
-        return next;
-      });
-    },
-    [userId, bidPack.id]
-  );
+  const updateMarks = marksList.update;
 
-  // The newest profile and placements, for learning that runs after a swap has painted (see `handleDragEnd`).
+  // The newest profile, for learning that runs after a swap has painted (see `handleDragEnd`). The newest placements
+  // are `placementsList.current()`.
   const profileRef = useRef(profile);
-  const placementsRef = useRef(placements);
   const packMetricsRef = useRef<PackMetrics | null>(null);
   useLayoutEffect(() => {
     profileRef.current = profile;
-    placementsRef.current = placements;
-  }, [profile, placements]);
+  }, [profile]);
 
   // What a tier move teaches goes the way a swap's does: after it's painted, on the newest profile.
   useEffect(() => {
@@ -496,17 +559,7 @@ export function ResultsView({
     };
   }, [bidPack, onUpdateProfile]);
 
-  const updatePlacements = useCallback(
-    (fn: (p: Placement[]) => Placement[]) => {
-      setPlacements((prev) => {
-        const next = fn(prev);
-        savePlacements(userId, bidPack.id, next);
-        placementsRef.current = next;
-        return next;
-      });
-    },
-    [userId, bidPack.id]
-  );
+  const updatePlacements = placementsList.update;
 
   // Marks for lines that no longer exist (an older pack under the same id) never leak into counts.
   const validMarks = useMemo(() => pruneMarks(marks, new Set(bidPack.lines.map((l) => l.id))), [marks, bidPack]);
@@ -515,13 +568,24 @@ export function ResultsView({
 
   // Compare's dialog once its code is here; until then a second pick waits for it, with the first line still picked.
   const [Comparison, setComparison] = useState<ComparisonModal | null>(() => comparisonModal);
-  function toggleCompare(lineId: string) {
-    if (!Comparison) void loadComparisonModal().then((c) => setComparison(() => c), () => {});
+  const toggleCompare = useCallback((lineId: string) => {
+    if (!comparisonModal) void loadComparisonModal().then((c) => setComparison(() => c), () => {});
     setCompareIds((prev) => {
       if (prev.includes(lineId)) return prev.filter((id) => id !== lineId);
       return prev.length < 2 ? [...prev, lineId] : [prev[1], lineId];
     });
-  }
+  }, []);
+  // What every card does, made once: a card re-renders only when what it shows changes (see `LineCardActions`).
+  const cardActions = useMemo<LineCardActions>(
+    () => ({
+      toggleOpen,
+      toggleCompare,
+      toggleStar: (id) => updateMarks((m) => toggleStar(m, id)),
+      hide: (id) => updateMarks((m) => hideLine(m, id)),
+      restore: (id) => updateMarks((m) => restoreLine(m, id)),
+    }),
+    [toggleOpen, toggleCompare, updateMarks]
+  );
   const compareLineScores = compareIds
     .map((id) => ranked.find((r) => r.line.id === id))
     .filter((r): r is LineScore => !!r);
@@ -532,10 +596,10 @@ export function ResultsView({
   // "historically preferred" comparison reads — not just a one-time snapshot
   // from the moment they first landed here.
   useEffect(() => {
-    if (!hotelsSettled) return;
+    if (!listReady) return;
     saveTopLinesSnapshot(userId, bidPack.month, ranked);
     saveBidPeriodSnapshot(userId, bidPack.month, ranked);
-  }, [userId, ranked, hotelsSettled, bidPack.month]);
+  }, [userId, ranked, listReady, bidPack.month]);
 
   const bidPeriodChange = useMemo(
     () => summarizeBidPeriodChange(previousPeriodSnapshot, ranked),
@@ -547,19 +611,19 @@ export function ResultsView({
   // whatever subset currently matches the filters.
   const rankById = useMemo(() => new Map(ranked.map((r, i) => [r.line.id, i + 1] as const)), [ranked]);
   useEffect(() => {
-    if (!hotelsSettled) return;
+    if (!listReady) return;
     setRankingSnapshot({ bidPackId: bidPack.id, byLineId: new Map(ranked.map((r, i) => [r.line.id, { rank: i + 1, score: r.score }])) });
-  }, [ranked, hotelsSettled, bidPack.id]);
+  }, [ranked, listReady, bidPack.id]);
 
   // The pilot's chance at every line, given where their seniority number puts them in bid order — held until the ranking has settled, since it's a forecast of *this* ranking.
   const rankingLineIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
   const forecast = useBidForecast({
     bidPack,
-    rankingLineIds: hotelsSettled ? rankingLineIds : [],
+    rankingLineIds: listReady ? rankingLineIds : [],
     implicitValuesByLine,
     seniorityNumber: profile.seniorityNumber,
     userId,
-    enabled: hotelsSettled,
+    enabled: listReady,
   });
   const forecastLines = forecast.result?.forecast.lines ?? null;
   const heldByNotes = useHeldBy(bidPack, userId, profile.seniorityNumber);
@@ -598,22 +662,19 @@ export function ResultsView({
   const listKey = `${lineSort.key}|${search}|${hotelFilter?.city}|${hotelFilter?.hotelName}|${view}|${showHidden}|${filtersKey(filters)}|${ranked.length}`;
   if (pageState.key !== listKey) setPageState({ key: listKey, shown: PAGE_SIZE });
   const shown = pageState.key === listKey ? pageState.shown : PAGE_SIZE;
-  const displayed = sorted.slice(0, shown);
+  const displayed = useMemo(() => sorted.slice(0, shown), [sorted, shown]);
   const listedIds = useMemo(() => sorted.map((r) => r.line.id), [sorted]);
   const headings = useMemo(() => (lineSort.isRanking ? tierHeadings(listedIds, tiers.state) : new Map()), [lineSort.isRanking, listedIds, tiers.state]);
-  // The cards themselves mount a few at a time, so the top of the list paints fast on a phone; `displayed` stays the page's real contents for counts and paging.
-  // A phone shows one card at a time, so it paints the first two and builds the rest in idle time.
-  const [firstBatch] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? 2 : 6));
-  const mountedCount = useProgressiveCount(displayed.length, 6, firstBatch);
+  const displayedIds = useMemo(() => displayed.map((r) => r.line.id), [displayed]);
 
   // Which cards changed place since the last render: only those animate into their new place. Measuring every card's
   // layout on each re-rank was much of the freeze after a swap on a big pack. Adjusted during render, React's documented
-  // pattern for state derived from a change.
-  const orderKey = displayed.map((r) => r.line.id).join(",");
-  const [order, setOrder] = useState({ key: orderKey, moved: new Set<string>() });
+  // pattern for state derived from a change. `turn` counts the changes: a moved card's layout is measured once per move.
+  const orderKey = displayedIds.join(",");
+  const [order, setOrder] = useState({ key: orderKey, moved: new Set<string>(), turn: 0 });
   if (order.key !== orderKey) {
     const before = new Map(order.key.split(",").map((id, i) => [id, i] as const));
-    setOrder({ key: orderKey, moved: new Set(displayed.flatMap((r, i) => (before.has(r.line.id) && before.get(r.line.id) !== i ? [r.line.id] : []))) });
+    setOrder({ key: orderKey, moved: new Set(displayed.flatMap((r, i) => (before.has(r.line.id) && before.get(r.line.id) !== i ? [r.line.id] : []))), turn: order.turn + 1 });
   }
 
   useEffect(() => {
@@ -640,17 +701,17 @@ export function ResultsView({
   }, []);
 
   // A line asked for by number: make sure it's listed (clearing whatever filter or view hides it, and paging far enough
-  // down), wait for its card to mount, then scroll to it and light it up.
+  // down), then scroll to it and light it up. Its row is there from the first render, drawn or standing in.
   const [flashId, setFlashId] = useState<string | null>(null);
   // The ask already answered, while the address catches up — so more cards mounting doesn't scroll back to it.
   const focusDone = useRef<string | null>(null);
   // Filters are cleared once per ask: cleared on every pass, a line they couldn't bring back kept wiping each new one.
   const focusCleared = useRef<string | null>(null);
-  const focusTarget = focusLine && hotelsSettled ? ranked.find((r) => r.line.lineNumber === focusLine) ?? null : null;
+  const focusTarget = focusLine && listReady ? ranked.find((r) => r.line.lineNumber === focusLine) ?? null : null;
   const focusIndex = focusTarget ? sorted.indexOf(focusTarget) : -1;
   useEffect(() => {
     if (!focusLine) focusDone.current = null;
-    if (!focusLine || !hotelsSettled || focusDone.current === focusLine) return;
+    if (!focusLine || !listReady || focusDone.current === focusLine) return;
     if (!focusTarget) {
       onFocusHandled?.();
       return;
@@ -680,15 +741,16 @@ export function ResultsView({
       return;
     }
     const el = document.getElementById(`line-${focusTarget.line.id}`);
-    if (!el) return; // still mounting — runs again as more cards mount
+    if (!el) return; // the page grown to it isn't drawn yet — runs again once it is
     el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
     setOpenIds((prev) => (prev.has(focusTarget.line.id) ? prev : new Set(prev).add(focusTarget.line.id)));
     setFlashId(focusTarget.line.id);
     focusDone.current = focusLine;
     onFocusHandled?.();
-  }, [focusLine, hotelsSettled, focusTarget, focusIndex, shown, listKey, mountedCount, hiddenSet, reduceMotion, onFocusHandled, tiers]);
+  }, [focusLine, listReady, focusTarget, focusIndex, shown, listKey, displayedIds, hiddenSet, reduceMotion, onFocusHandled, tiers]);
   // Every line's strip has the pack's day columns, laid out the same at the list's width, so they line up under one header.
-  const columns = useMemo(() => packColumns(bidPack.bidPeriodStart, bidPack.bidPeriodDays, packColumnCount(bidPack)), [bidPack]);
+  // Counted with the ranking's warm-up: the strips only show once the list does.
+  const columns = useMemo(() => (warmUp.ready ? packColumns(bidPack.bidPeriodStart, bidPack.bidPeriodDays, columnCountOf(bidPack)) : NO_COLUMNS), [bidPack, warmUp.ready]);
   const [listRef, listWidth] = useMeasuredWidth<HTMLDivElement>(768);
   const layout = useMemo(() => stripLayout(listWidth, columns.length), [listWidth, columns.length]);
   const [chosenStripView, setStripView] = useStripView();
@@ -700,11 +762,37 @@ export function ResultsView({
     setStripView(next);
     setNoTimelineSaid(next === "timeline" && stripViewFor(next, bidPack) !== next);
   };
+  // Only the cards near the screen are drawn in full (see `lib/use-windowed-rows.ts`); the page paints its top fast on a
+  // phone, and showing all of a big pack costs no more than showing a page of it. Everything is drawn to print.
+  const [firstBatch] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? 2 : 6));
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    const before = () => flushSync(() => setPrinting(true));
+    const after = () => setPrinting(false);
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
+    return () => {
+      window.removeEventListener("beforeprint", before);
+      window.removeEventListener("afterprint", after);
+    };
+  }, []);
+  // Held still while a line is dragged: the cards it can land on stay drawn where they were measured.
+  const rows = useWindowedRows(listRef, displayedIds, firstBatch, printing, `${stripView}|${listWidth}`, activeId !== null);
+  // The first cards rise in one after another as the list first shows; cards drawn after that just fade in.
+  const [revealing, setRevealing] = useState(true);
+  useEffect(() => {
+    if (!listReady) return;
+    const timer = setTimeout(() => setRevealing(false), 1200);
+    return () => clearTimeout(timer);
+  }, [listReady]);
+  const pressPropsFor = useCardPressProps(tiers, listedIds);
+  const activeIndex = activeId ? displayedIds.indexOf(activeId) : -1;
   // Keys for working down the list at a desk: j / k move between lines, o opens one, s shortlists, c compares, ? shows the keys.
   // The cursor is a line, not a place in the list: a tier key moves the line, and the cursor goes with it.
   const [keyId, setKeyId] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
-  const keyableIds = displayed.slice(0, mountedCount).map((r) => r.line.id);
+  // Every listed line, drawn or not: j and k scroll the next one into view, which draws it.
+  const keyableIds = displayedIds;
   const keyedId = keyId !== null && keyableIds.includes(keyId) ? keyId : null;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -761,15 +849,20 @@ export function ResultsView({
   // Exports follow the pilot's own ranking and tiers, among lines they haven't hidden or marked Not bid: a sort by days
   // off, a search or a filter is for looking, not for what to bid (see `bidOrderLines`).
   const exportable = useMemo(() => bidOrderLines(ranked, hiddenSet, tiers.notBid), [ranked, hiddenSet, tiers.notBid]);
+  // Each line's note for "Copy with notes": the bid month, as each card counts it — not with what the last trip flies in
+  // the next. Only read when copied, so it's worked out then, once per line until the profile changes, rather than for
+  // every line of the pack on every swap.
+  const noteOf = useMemo(() => lineNotes(bidPack, profile), [profile, bidPack]);
   const bidOrderEntries = useMemo<BidOrderEntry[]>(
     () =>
       exportable.lines.map((r) => ({
         lineScore: r,
         rank: rankById.get(r.line.id) ?? 0,
-        // The bid month, as each card counts it — not with what the last trip flies in the next.
-        note: lineFactsText(buildLineFactChips(monthLine(r.line, bidPack), profile, bidMonthOf(bidPack))),
+        get note() {
+          return noteOf(r.line);
+        },
       })),
-    [exportable, rankById, profile, bidPack]
+    [exportable, rankById, noteOf]
   );
   const shortlistEntries = useMemo<BidOrderEntry[]>(
     () => bidOrderEntries.filter((e) => starredSet.has(e.lineScore.line.id)),
@@ -779,15 +872,18 @@ export function ResultsView({
   // Same value on every line (it describes the pilot's profile, not any one line), so it's said once here instead of on all 283 cards.
   const confidenceLevel = ranked[0]?.confidenceLevel ?? null;
 
-  const availableCities = useMemo(() => collectLayoverCities(bidPack.lines), [bidPack]);
-  const touchedCities = useMemo(() => collectTouchedCities(bidPack.lines), [bidPack]);
-  const filterOptions = useMemo(() => computeFilterOptions(bidPack.lines, bidPack.bidPeriodStart), [bidPack]);
+  const availableCities = useMemo(() => (warmUp.ready ? layoverCitiesOf(bidPack) : NO_CITIES), [bidPack, warmUp.ready]);
+  const touchedCities = useMemo(() => (warmUp.ready ? touchedCitiesOf(bidPack) : NO_CITIES), [bidPack, warmUp.ready]);
+  // Worked out with the ranking's warm-up (see `lib/ranking-warm-up.ts`), not in the page's first render.
+  const filterOptions = useMemo(() => (warmUp.ready ? filterOptionsFor(bidPack.lines, bidPack.bidPeriodStart) : null), [bidPack, warmUp.ready]);
 
-  // Measured once per pack, for refitting a pilot model to their drags without re-measuring every trip each time.
+  // Measured once per pack, for refitting a pilot model to their drags without re-measuring every trip each time — the
+  // pack the ranking measured, not measured again for this.
   const hasPilotModel = !!profile.pilotModel;
-  const packFacts = useMemo(() => (hasPilotModel ? prepareMetrics(bidPack) : null), [bidPack, hasPilotModel]);
-  // With the pilot's looked-up flights, as the list on screen is scored: a drag learns from the order they saw.
-  const packMetrics = useMemo(() => (packFacts && flights ? { ...packFacts, ctx: { ...packFacts.ctx, flights } } : packFacts), [packFacts, flights]);
+  const packFacts = useMemo(() => (hasPilotModel && warmUp.ready ? measuredPack(bidPack) : null), [bidPack, hasPilotModel, warmUp.ready]);
+  // With the pilot's looked-up flights (or none), as the list on screen is scored: a drag learns from the order they saw.
+  // A copy with flights of its own: the ranking's pack has whatever flights the last ranking set.
+  const packMetrics = useMemo(() => (packFacts ? { ...packFacts, ctx: { ...packFacts.ctx, flights: flights ?? undefined } } : null), [packFacts, flights]);
   useEffect(() => {
     packMetricsRef.current = packMetrics;
   }, [packMetrics]);
@@ -879,7 +975,7 @@ export function ResultsView({
       setLearnMessage(kept);
       afterPaint(() => {
         const current = profileRef.current;
-        if (!current.pilotModel || !placementsRef.current.some((p) => p.id === swapId)) return;
+        if (!current.pilotModel || !placementsList.current().some((p) => p.id === swapId)) return;
         // Why, from the model the pilot was looking at when they swapped.
         // On the score the list shows — trip grades and each line's lean on its worst trip included.
         const before = new Map(rankLinesWithTrips(bidPack, current.pilotModel, { pack: packMetrics ?? undefined }).map((s) => [s.lineNumber, s]));
@@ -942,7 +1038,7 @@ export function ResultsView({
    * (a profile from the older interview keeps what it learned — its weights carry no record of which drag moved them).
    */
   function takeBackSwap(id: string): SwapStep | null {
-    const placement = placementsRef.current.find((x) => x.id === id);
+    const placement = placementsList.current().find((x) => x.id === id);
     if (!placement) return null;
     const current = profileRef.current;
     // What it taught, as first taught (whether a later swap set one aside is worked out again when it's given back).
@@ -953,40 +1049,46 @@ export function ResultsView({
         delete back.supersededBy;
         return back;
       });
-    let exact: SwapStep["exact"];
+    const exact: SwapStep["exact"] = lastSwap?.id === id && lastSwap.after === current ? { before: lastSwap.before, after: lastSwap.after } : undefined;
     updatePlacements((p) => p.filter((x) => x.id !== id));
     setLearnMessage(null);
-    if (lastSwap?.id === id && lastSwap.after === current) {
-      exact = { before: lastSwap.before, after: lastSwap.after };
-      if (lastSwap.before !== current) {
-        profileRef.current = lastSwap.before;
-        onUpdateProfile(lastSwap.before);
-      }
-    } else if (current.pilotModel && lesson.length) {
-      const next = withModel(current, bidPack, { choices: withoutDrag(current.brainInterview?.choices ?? [], id) }, packMetrics ?? undefined).profile;
-      profileRef.current = next;
-      onUpdateProfile(next);
-    }
     if (lastSwap?.id === id) setLastSwap(null);
     if (swapQuestion?.question.dragId === id) setSwapQuestion(null);
+    // The lines go back at once; what the swap taught comes out once that's painted, as a swap's learning goes in (a
+    // profile put back re-ranks every line, which on the biggest pack and a slow phone was half a second of nothing
+    // happening after the press). Skipped if the swap was put back again in the meantime.
+    afterPaint(() => {
+      if (placementsList.current().some((x) => x.id === id)) return;
+      const now = profileRef.current;
+      let next: PreferenceProfile | null = null;
+      if (exact && now === exact.after) next = exact.before;
+      else if (now.pilotModel && lesson.length) next = withModel(now, bidPack, { choices: withoutDrag(now.brainInterview?.choices ?? [], id) }, packMetricsRef.current ?? undefined).profile;
+      if (next && next !== now) {
+        profileRef.current = next;
+        onUpdateProfile(next);
+      }
+    });
     return { placement, lesson, exact };
   }
 
-  /** The swap back where the pilot had put it, and what it taught back with it. */
+  /** The swap back where the pilot had put it, and what it taught back with it — that, as with a swap, once it's painted. */
   function putBackSwap(step: SwapStep) {
     const { placement, lesson = [], exact } = step;
     updatePlacements((p) => [...p.filter((x) => x.id !== placement.id), placement]);
-    const current = profileRef.current;
-    let next: PreferenceProfile | null = null;
-    if (exact && current === exact.before) next = exact.after;
-    else if (current.pilotModel && lesson.length) next = withModel(current, bidPack, { choices: addDragChoices(current.brainInterview?.choices ?? [], lesson) }, packMetrics ?? undefined).profile;
-    if (next && next !== current) {
-      profileRef.current = next;
-      onUpdateProfile(next);
-    }
-    setLastSwap({ id: placement.id, before: current, after: next ?? current });
     const numberOf = (lineId: string) => bidPack.lines.find((l) => l.id === lineId)?.lineNumber ?? "";
     setLearnMessage(`Swapped ${numberOf(placement.order[0])} and ${numberOf(placement.order[placement.order.length - 1])} again.`);
+    afterPaint(() => {
+      if (!placementsList.current().some((x) => x.id === placement.id)) return;
+      const current = profileRef.current;
+      let next: PreferenceProfile | null = null;
+      if (exact && current === exact.before) next = exact.after;
+      else if (current.pilotModel && lesson.length) next = withModel(current, bidPack, { choices: addDragChoices(current.brainInterview?.choices ?? [], lesson) }, packMetricsRef.current ?? undefined).profile;
+      if (next && next !== current) {
+        profileRef.current = next;
+        onUpdateProfile(next);
+      }
+      setLastSwap({ id: placement.id, before: current, after: next ?? current });
+    });
   }
 
   /** ⌘Z and Undo: the newest change, tier or swap. A swap's lesson goes with it, as a tier move's does. */
@@ -1115,7 +1217,7 @@ export function ResultsView({
         bidPeriodChange={bidPeriodChange}
         forecast={{
           hasList: !!bidPack.seniorityList?.length,
-          forecast: hotelsSettled ? forecast.result?.forecast ?? null : null,
+          forecast: listReady ? forecast.result?.forecast ?? null : null,
           response: forecast.result,
           loading: forecast.loading,
           failed: forecast.failed,
@@ -1129,7 +1231,7 @@ export function ResultsView({
       />
       <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
       <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
-      <FirstVisitTour ready={hotelsSettled} />
+      <FirstVisitTour ready={listReady} />
       <WheelsDown />
       <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />
       {confirmingStartOver && (
@@ -1183,7 +1285,7 @@ export function ResultsView({
         />
       )}
 
-      {flightsLooking && !flights && hotelsSettled && (
+      {flightsLooking && !flights && listReady && (
         <div role="status" className="mt-4 flex items-center gap-2 text-sm text-ink-muted">
           <Spinner size="sm" />
           Looking up real airline flights for your top lines&hellip;
@@ -1213,12 +1315,21 @@ export function ResultsView({
       )}
 
 
-      {!hotelsSettled ? (
+      {!listReady ? (
         <div className="mt-6">
-          <div role="status" className="mb-3 flex items-center gap-2 text-sm text-ink-muted">
-            <Spinner size="sm" />
-            Checking layover hotel reviews so your ranking is right the first time&hellip;
-          </div>
+          {!warmUp.ready ? (
+            // How far along is shown, not said: a screen reader hears the line once, not a number every moment.
+            <div role="status" className="mb-3 flex items-center gap-2 text-sm text-ink-muted">
+              <Spinner size="sm" />
+              Ranking your {bidPack.lines.length} lines&hellip;
+              <span aria-hidden className="font-mono tabular-nums text-ink-faint">{Math.round(warmUp.share * 100)}%</span>
+            </div>
+          ) : (
+            <div role="status" className="mb-3 flex items-center gap-2 text-sm text-ink-muted">
+              <Spinner size="sm" />
+              Checking layover hotel reviews so your ranking is right the first time&hellip;
+            </div>
+          )}
           <SkeletonCards />
         </div>
       ) : (
@@ -1294,16 +1405,18 @@ export function ResultsView({
 
           {/* A small staggered beat behind the header above — the page reads as "header settles, then controls, then the list below" instead of everything landing in one flat instant. */}
           <div className="animate-rise-in print:hidden" style={{ animationDelay: "60ms" }}>
-            <ResultsFilterBar
-              filters={filters}
-              onChange={setFilters}
-              options={filterOptions}
-              availableCities={availableCities}
-              touchedCities={touchedCities}
-              commute={commute}
-              visibleCount={matching.length}
-              totalCount={ranked.length}
-            />
+            {filterOptions && (
+              <ResultsFilterBar
+                filters={filters}
+                onChange={setFilters}
+                options={filterOptions}
+                availableCities={availableCities}
+                touchedCities={touchedCities}
+                commute={commute}
+                visibleCount={matching.length}
+                totalCount={ranked.length}
+              />
+            )}
           </div>
 
           <div className="animate-rise-in print:hidden" style={{ animationDelay: "120ms" }}>
@@ -1406,64 +1519,87 @@ export function ResultsView({
                     : {})}
                 />
               ) : (
-                displayed.slice(0, mountedCount).map((lineScore, index) => (
-                  <Fragment key={lineScore.line.id}>
-                  {headings.get(lineScore.line.id) && <TierHeadingRow heading={headings.get(lineScore.line.id)!} />}
-                  <motion.div
-                    id={`line-${lineScore.line.id}`}
-                    data-line-id={lineScore.line.id}
-                    {...selectableCardProps(tiers, lineScore.line.id, listedIds)}
-                    className={`scroll-mt-20 md:scroll-mt-6 ${flashId === lineScore.line.id ? "line-flash" : ""} ${keyedId === lineScore.line.id ? "line-keyed" : ""} ${tiers.selected.has(lineScore.line.id) ? "rounded-xl ring-2 ring-accent" : ""}`}
-                    layout={dragEnabled && layoutArmed && order.moved.has(lineScore.line.id) ? "position" : false}
-                    initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={
-                      reduceMotion
-                        ? { duration: 0 }
-                        : {
-                            layout: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
-                            opacity: { duration: 0.35, ease: [0.16, 1, 0.3, 1], delay: Math.min(index * 0.035, 0.4) },
-                            y: { duration: 0.35, ease: [0.16, 1, 0.3, 1], delay: Math.min(index * 0.035, 0.4) },
+                displayed.map((lineScore, index) => {
+                  const id = lineScore.line.id;
+                  const heading = headings.get(id);
+                  const open = openIds.has(id);
+                  const rank = rankById.get(id) ?? 0;
+                  // Drawn: near the screen, or open, being dragged (and the lines either side of it, which a keyboard
+                  // swap lands on) or just asked for — they're kept, wherever the page is.
+                  const drawn = rows.drawn(index) || open || (activeIndex !== -1 && Math.abs(index - activeIndex) <= 1) || id === flashId;
+                  return (
+                    <div key={id} data-row className="space-y-1.5">
+                      {heading && <TierHeadingRow heading={heading} />}
+                      {drawn ? (
+                        <motion.div
+                          ref={rows.measure(id)}
+                          id={`line-${id}`}
+                          data-line-id={id}
+                          {...pressPropsFor(id)}
+                          className={`scroll-mt-20 md:scroll-mt-6 ${flashId === id ? "line-flash" : ""} ${keyedId === id ? "line-keyed" : ""} ${tiers.selected.has(id) ? "rounded-xl ring-2 ring-accent" : ""}`}
+                          layout={layoutArmed ? "position" : false}
+                          layoutDependency={dragEnabled && order.moved.has(id) ? order.turn : 0}
+                          // The list's first cards rise in one after another; a card drawn later, as the pilot scrolls
+                          // to it, fades straight in where it stands.
+                          initial={reduceMotion ? false : revealing ? { opacity: 0, y: 10 } : { opacity: 0 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={
+                            reduceMotion
+                              ? { duration: 0 }
+                              : {
+                                  layout: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
+                                  opacity: { duration: revealing ? 0.35 : 0.2, ease: [0.16, 1, 0.3, 1], delay: revealing ? Math.min(index * 0.035, 0.4) : 0 },
+                                  y: { duration: 0.35, ease: [0.16, 1, 0.3, 1], delay: Math.min(index * 0.035, 0.4) },
+                                }
                           }
-                    }
-                  >
-                    <ErrorBoundary>
-                      <LineCard
-                        rank={rankById.get(lineScore.line.id) ?? 0}
-                        lineScore={lineScore}
-                        profile={profile}
-                        implicitValuesByLine={implicitValuesByLine}
-                        homeBaseOffsetMinutes={homeBaseOffsetMinutes}
-                        bidPeriodStart={bidPack.bidPeriodStart}
-                        bidPeriodDays={bidPack.bidPeriodDays}
-                        isComparing={compareIds.includes(lineScore.line.id)}
-                        onToggleCompare={() => toggleCompare(lineScore.line.id)}
-                        starred={starredSet.has(lineScore.line.id)}
-                        onToggleStar={() => updateMarks((m) => toggleStar(m, lineScore.line.id))}
-                        hidden={hiddenSet.has(lineScore.line.id)}
-                        onHide={() => updateMarks((m) => hideLine(m, lineScore.line.id))}
-                        onRestore={() => updateMarks((m) => restoreLine(m, lineScore.line.id))}
-                        draggable={dragEnabled}
-                        forecast={forecastLines?.[lineScore.line.id] ?? null}
-                        heldBy={heldByNotes(lineScore.line.lineNumber)}
-                        homeBase={bidPack.base}
-                        flights={flights}
-                        tripScores={tripScores}
-                        packColumns={columns}
-                        stripLayout={layout}
-                        stripView={stripView}
-                        open={openIds.has(lineScore.line.id)}
-                        onToggleOpen={() => toggleOpen(lineScore.line.id)}
-                        placedByYou={dragEnabled && swappedIds.has(lineScore.line.id)}
-                        sortedBy={openIds.has(lineScore.line.id) ? lineSort.def.label : undefined}
-                        sortedValue={openIds.has(lineScore.line.id) ? lineSort.valueFor(lineScore.line.id) : null}
-                        openExtra={openIds.has(lineScore.line.id) ? <TierMoveRow tiers={tiers} lineId={lineScore.line.id} /> : null}
-                      />
-                    </ErrorBoundary>
-                    <CarryInLineNote flown={carry.flown.lines.get(lineScore.line.id)} vacation={carry.flown.vacationLines.get(lineScore.line.id)} />
-                  </motion.div>
-                  </Fragment>
-                ))
+                        >
+                          <ErrorBoundary>
+                            <LineCard
+                              line={lineScore.line}
+                              score={lineScore.score}
+                              capped={lineScore.violatedDealbreakers.length > 0}
+                              topPick={rank === 1}
+                              bidPeriodStart={bidPack.bidPeriodStart}
+                              bidPeriodDays={bidPack.bidPeriodDays}
+                              homeBase={bidPack.base}
+                              hidden={hiddenSet.has(id)}
+                              draggable={dragEnabled}
+                              packColumns={columns}
+                              stripLayout={layout}
+                              stripView={stripView}
+                              open={open}
+                              placedByYou={dragEnabled && swappedIds.has(id)}
+                              actions={cardActions}
+                              details={
+                                open
+                                  ? {
+                                      rank,
+                                      lineScore,
+                                      profile,
+                                      implicitValuesByLine,
+                                      homeBaseOffsetMinutes,
+                                      isComparing: compareIds.includes(id),
+                                      starred: starredSet.has(id),
+                                      forecast: forecastLines?.[id] ?? null,
+                                      heldBy: heldByNotes(lineScore.line.lineNumber),
+                                      flights,
+                                      tripScores,
+                                      sortedBy: lineSort.def.label,
+                                      sortedValue: lineSort.valueFor(id),
+                                      openExtra: <TierMoveRow tiers={tiers} lineId={id} />,
+                                    }
+                                  : null
+                              }
+                            />
+                          </ErrorBoundary>
+                          <CarryInLineNote flown={carry.flown.lines.get(id)} vacation={carry.flown.vacationLines.get(id)} />
+                        </motion.div>
+                      ) : (
+                        <LineStandIn id={id} lineNumber={lineScore.line.lineNumber} height={rows.heightOf(id)} />
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
             <DragOverlay>{activeLineScore && <DragPreview lineScore={activeLineScore} />}</DragOverlay>
