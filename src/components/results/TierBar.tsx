@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type HTMLAttributes } from "react";
 import { Button } from "@/components/ui/Button";
+import { FIELD } from "@/components/ui/field";
 import { Modal } from "@/components/ui/Modal";
 import { canAddTier, DEFAULT_TIERS, type TierHeading as Heading } from "@/lib/line-tiers";
 import type { LineScore } from "@/lib/scoring";
@@ -144,7 +145,7 @@ export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: Li
             <span className="sm:hidden">. Long-press to pick several</span>.
           </span>
         )}
-        <span className="ml-auto flex items-center gap-1">
+        <span className="ml-auto flex flex-wrap items-center gap-1">
           <button type="button" onClick={undo} disabled={!history.canUndo} className={small}>
             Undo
           </button>
@@ -206,7 +207,7 @@ function ManageTiers({ tiers, onClose }: { tiers: LineTiers; onClose: () => void
   // a name the X kept, since only the X's click took focus out of the box first.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const addRef = useRef<HTMLInputElement>(null);
-  const field = "w-full rounded-md border border-hairline bg-canvas/50 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none";
+  const field = `w-full ${FIELD}`;
   const save = (tierId: string) => {
     const typed = drafts[tierId]?.trim();
     const current = tiers.state.tiers.find((t) => t.id === tierId)?.name;

@@ -240,7 +240,7 @@ function LogAward({
       {outcome === "line" && (
         <label className="mt-4 block text-sm">
           <span className="text-ink-muted">Which line?</span>
-          <select value={lineId} onChange={(e) => setLineId(e.target.value)} className="mt-1 block w-full max-w-sm rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-ink">
+          <select value={lineId} onChange={(e) => setLineId(e.target.value)} className="mt-1 block w-full max-w-sm rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink">
             {ranked.map((l, i) => (
               <option key={l.id} value={l.id}>
                 Line {l.lineNumber} — your #{i + 1}
@@ -488,10 +488,10 @@ function MonthEntry({
             ))}
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            <input value={best} onChange={(e) => setBest(e.target.value)} placeholder="Best trip (e.g. #76, Honolulu)" className="rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-ink" />
-            <input value={worst} onChange={(e) => setWorst(e.target.value)} placeholder="Worst trip" className="rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-ink" />
+            <input value={best} onChange={(e) => setBest(e.target.value)} placeholder="Best trip (e.g. #76, Honolulu)" className="rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink" />
+            <input value={worst} onChange={(e) => setWorst(e.target.value)} placeholder="Worst trip" className="rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink" />
           </div>
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Anything else about the month (optional)" className="w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-ink" />
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Anything else about the month (optional)" className="w-full rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink" />
           <div className="flex gap-2">
             <Button
               disabled={!feel}

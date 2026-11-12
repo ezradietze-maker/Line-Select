@@ -7,6 +7,7 @@ import { ConnectFedexPanel } from "@/components/fedex-connect/ConnectFedexPanel"
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FIELD } from "@/components/ui/field";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { loadCarryIn } from "@/lib/carry-in-storage";
@@ -27,7 +28,6 @@ import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 import { dayTripsOf } from "@/lib/trip-anchor";
 
-const FIELD = "rounded-md border border-hairline bg-canvas/60 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none";
 /** Each up to four questions to the flight server: enough to decide on, and a list of hundreds shouldn't run up the boards. */
 const COMMUTE_TRIPS = 30;
 const SHOWN = 20;

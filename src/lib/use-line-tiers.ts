@@ -62,6 +62,11 @@ export interface LineTiers {
   canRedo: boolean;
   /** What the last move did, for a screen reader and the pilot alike. */
   said: string;
+  /**
+   * Says something else in the same place: the list's other keys (s shortlists a line) speak where the tier moves do,
+   * so the page has one voice and two never talk over each other.
+   */
+  say: (message: string) => void;
 }
 
 let moveCounter = 0;
@@ -268,5 +273,6 @@ export function useLineTiers(
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
     said,
+    say: setSaid,
   };
 }

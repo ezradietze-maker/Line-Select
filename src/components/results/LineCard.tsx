@@ -213,7 +213,8 @@ export const LineCard = memo(function LineCard({
       {...listeners}
       data-drag-handle
       title="Drag onto another line to swap ranks"
-      aria-label="Drag onto another line to swap ranks — teaches the app your preferences"
+      // Its line's number in the name: 110 handles all called the same left a screen reader user guessing which one they're on.
+      aria-label={`Drag line ${line.lineNumber} onto another line to swap ranks — teaches the app your preferences`}
       className="flex h-9 w-6 shrink-0 touch-none cursor-grab items-center justify-center rounded text-ink-faint transition-colors hover:bg-accent-soft/40 hover:text-accent active:cursor-grabbing print:hidden"
     >
       <GripIcon className="h-4 w-4" />

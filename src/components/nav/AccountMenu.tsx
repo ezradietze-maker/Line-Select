@@ -33,16 +33,28 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  /** Closed, with the keyboard back on the button that opened it rather than dropped at the top of the page. */
+  function close() {
+    setOpen(false);
+    buttonRef.current?.focus();
+  }
 
   useEffect(() => {
     if (!open) return;
+    // A menu opens onto its first item; the arrows go from there.
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
       }
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      buttonRef.current?.focus();
     }
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
@@ -66,6 +78,7 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
@@ -91,36 +104,58 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
       </button>
 
       {open && (
-        <div
-          role="menu"
-          className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-[14rem] animate-fade-in overflow-hidden rounded-lg border border-border bg-surface shadow-elevated-lg"
-        >
+        <div className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-[14rem] animate-fade-in overflow-hidden rounded-lg border border-border bg-surface shadow-elevated-lg">
+          {/* Who's signed in sits above the menu, not in it: a menu holds only its items. */}
           <div className="border-b border-border px-4 py-3">
             <div className="text-sm font-medium text-ink">{user.displayName}</div>
             <div className="truncate text-xs text-ink-faint">{user.email}</div>
           </div>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              setRecoveryOpen(true);
+          {/* A real menu: Up and Down move between the items, Home and End go to the ends, Tab leaves and closes it. */}
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label="Account"
+            onKeyDown={(e) => {
+              if (e.key === "Tab") {
+                // From the button, so the Tab itself goes on to whatever comes after (or before) the menu.
+                buttonRef.current?.focus();
+                setOpen(false);
+                return;
+              }
+              const items = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+              const at = items.indexOf(document.activeElement as HTMLElement);
+              const next =
+                e.key === "ArrowDown" ? (at + 1) % items.length : e.key === "ArrowUp" ? (at - 1 + items.length) % items.length : e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : null;
+              if (next === null) return;
+              e.preventDefault();
+              items[next]?.focus();
             }}
-            className="block w-full px-4 py-2.5 text-left text-sm text-ink hover:bg-canvas"
           >
-            Account recovery code
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onLogout();
-            }}
-            className="block w-full px-4 py-2.5 text-left text-sm text-ink hover:bg-canvas"
-          >
-            Log out
-          </button>
+            <button
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              onClick={() => {
+                close();
+                setRecoveryOpen(true);
+              }}
+              className="block w-full px-4 py-2.5 text-left text-sm text-ink hover:bg-canvas focus-visible:bg-canvas"
+            >
+              Account recovery code
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              onClick={() => {
+                close();
+                onLogout();
+              }}
+              className="block w-full px-4 py-2.5 text-left text-sm text-ink hover:bg-canvas focus-visible:bg-canvas"
+            >
+              Log out
+            </button>
+          </div>
         </div>
       )}
       {recoveryOpen && <RecoveryCodeModal onClose={() => setRecoveryOpen(false)} />}

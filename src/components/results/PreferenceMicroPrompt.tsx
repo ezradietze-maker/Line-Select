@@ -142,7 +142,7 @@ export function PreferenceMicroPrompt({
                 value={freeText}
                 onChange={(e) => setFreeText(e.target.value)}
                 placeholder="e.g. I hate layovers under 10 hours"
-                className="flex-1 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40"
+                className="flex-1 rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
               />
               <Button onClick={handleFreeTextSubmit} disabled={busy || !freeText.trim()}>
                 {busy ? "Thinking…" : "Send"}

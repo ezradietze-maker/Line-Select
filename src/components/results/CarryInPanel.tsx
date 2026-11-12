@@ -3,6 +3,7 @@
 import { DateTime } from "luxon";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { FIELD } from "@/components/ui/field";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { carryInFromLogbook } from "@/lib/carry-in-storage";
 import { recommendVipsAnswers, type CarryInItem, type FlownLine, type PhaseInElections, type ReservePeriod, type VipsRecommendation } from "@/lib/phase-in";
@@ -11,7 +12,6 @@ import type { VacationLine } from "@/lib/vacation-lines";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
-const FIELD = "rounded-md border border-hairline bg-canvas/60 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none";
 const TOP_LINES = 20;
 const RESERVE_PERIODS: ReservePeriod[] = ["A", "A+", "B", "B+", "24"];
 

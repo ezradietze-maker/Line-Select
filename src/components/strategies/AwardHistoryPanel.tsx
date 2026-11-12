@@ -169,7 +169,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
               <select
                 value={lineId}
                 onChange={(e) => setLineId(e.target.value)}
-                className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink"
+                className="w-full rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink"
               >
                 {bidPack.lines.map((line) => (
                   <option key={line.id} value={line.id}>

@@ -3,6 +3,7 @@
 import { DateTime } from "luxon";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { FIELD } from "@/components/ui/field";
 import { loadCarryIn } from "@/lib/carry-in-storage";
 import { flyPack, zoneOf } from "@/lib/phase-in";
 import { placeInPack } from "@/lib/strategy-engine";
@@ -12,7 +13,6 @@ import type { BidPack, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 
-const FIELD = "rounded-md border border-hairline bg-canvas/60 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none";
 const VIPS_MENU = "https://pilot.fedex.com/vips-bin/vipscgi?webmenu?all";
 const LINES_SHOWN = 5;
 

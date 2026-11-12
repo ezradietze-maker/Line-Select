@@ -46,7 +46,7 @@ export function NoteBox({ value, onChange, placeholder, ariaLabel, id, maxLength
           disabled={disabled}
           placeholder={placeholder}
           aria-label={ariaLabel}
-          className={`block w-full resize-none rounded-lg border bg-canvas px-3 py-2 pr-11 text-sm leading-relaxed text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none disabled:opacity-60 ${invalid ? "border-danger" : "border-border"}`}
+          className={`block w-full resize-none rounded-lg border bg-canvas px-3 py-2 pr-11 text-sm leading-relaxed text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none disabled:opacity-60 ${invalid ? "border-danger" : "border-field-edge"}`}
         />
         {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
       </div>

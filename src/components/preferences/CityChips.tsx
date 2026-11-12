@@ -48,7 +48,7 @@ export function CityChips({ cities, sentiments, onCycle }: CityChipsProps) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={`Find a city (${cities.length} in this pack)`}
           aria-label="Find a layover city"
-          className="mt-3 w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40"
+          className="mt-3 w-full rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
         />
       )}
 
