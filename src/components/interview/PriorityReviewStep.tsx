@@ -50,8 +50,8 @@ export function PriorityReviewStep({ model, eyebrow, onConfirm, busy }: Priority
                 </p>
                 <span className="shrink-0 font-mono text-xs text-accent">{Math.round(c.influence)}%</span>
               </div>
-              <div className="mt-2 h-1 overflow-hidden rounded-full bg-accent-soft">
-                <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, c.influence * 2)}%` }} />
+              <div className="mt-2 h-1 overflow-hidden rounded-[1px] bg-accent-soft">
+                <div className="draw-x h-full bg-accent" style={{ width: `${Math.min(100, c.influence * 2)}%` }} />
               </div>
               <p className="mt-2 text-xs text-ink-muted">
                 {c.measuredAs} · {c.shape}
@@ -67,7 +67,7 @@ export function PriorityReviewStep({ model, eyebrow, onConfirm, busy }: Priority
                       type="button"
                       aria-pressed={on}
                       onClick={() => setVerdicts((p) => ({ ...p, [c.id]: on ? undefined : x.v }))}
-                      className={`min-h-10 rounded-full border px-3 py-1.5 text-sm transition-colors sm:min-h-0 sm:px-2.5 sm:py-1 sm:text-xs ${on ? x.tone : "border-border text-ink-muted hover:border-border-strong"}`}
+                      className={`min-h-10 rounded-[3px] border px-3 py-1.5 text-sm transition-colors sm:min-h-0 sm:px-2.5 sm:py-1 sm:text-xs ${on ? x.tone : "border-border text-ink-muted hover:border-border-strong"}`}
                     >
                       {x.label}
                     </button>

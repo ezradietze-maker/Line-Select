@@ -16,7 +16,7 @@ export default function WhatsNewPage() {
       <ol className="mt-8 space-y-8">
         {Object.entries(byDate).map(([date, entries]) => (
           <li key={date}>
-            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">
+            <div className="text-2xs text-accent font-medium">
               {new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
             </div>
             <ul className="mt-3 space-y-3">

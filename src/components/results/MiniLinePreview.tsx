@@ -60,7 +60,7 @@ function cellClass(day: DetailedDay, selected: boolean): string {
       return `${base} focus:outline-none bg-brand-soft text-brand${ring}`;
     default:
       // Every day of a trip shares one tint, so a trip reads as one block; what each day holds is printed on it.
-      return `${base} focus:outline-none bg-calendar-accent/[0.13] text-ink hover:bg-calendar-accent/[0.22]${ring}`;
+      return `${base} focus:outline-none bg-trip-wash text-ink hover:bg-trip-wash-strong${ring}`;
   }
 }
 
@@ -108,14 +108,14 @@ function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
   return (
     <>
       <span
-        className="whitespace-nowrap font-mono text-[9px] font-semibold leading-none text-report @min-[4.75rem]:text-[10px]"
+        className="whitespace-nowrap font-mono text-2xs font-semibold leading-none text-report @min-[4.75rem]:text-2xs"
         title={`Reports ${time} ${mode === "zulu" ? "Zulu" : "local"}${day.earlyReport ? " — between 2 and 6am local" : ""}`}
       >
         <span className="hidden @min-[4.75rem]:inline">Rpt </span>
         {time}
         <Zone mode={mode} />
       </span>
-      {day.chain && <span className="hidden whitespace-nowrap font-mono text-[10px] text-ink-muted @min-[8.5rem]:inline" title={chainSentence(day.chain, mode)}>&nbsp;· {turnLabel(day.chain.turnMinutes)} turn</span>}
+      {day.chain && <span className="hidden whitespace-nowrap font-mono text-2xs text-ink-muted @min-[8.5rem]:inline" title={chainSentence(day.chain, mode)}>&nbsp;· {turnLabel(day.chain.turnMinutes)} turn</span>}
     </>
   );
 }
@@ -123,14 +123,14 @@ function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
 /** Where and when the trip ends, on its own last day — "END MEM 23:59L", "+1" when that's after midnight. */
 function End({ finish, mode }: { finish: TripFinish; mode: TimeMode }) {
   return (
-    <span className="flex min-w-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-[9px] leading-none text-ink @min-[4.75rem]:text-[10px]" title={`Trip ends: lands ${finish.city} ${finish.time} (${clockOf(mode)})${finish.nextDay ? ", just after midnight" : ""}`}>
-      <span className="text-[8.5px] font-semibold tracking-wide text-ink-muted">END</span>
+    <span className="flex min-w-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-2xs leading-none text-ink @min-[4.75rem]:text-2xs" title={`Trip ends: lands ${finish.city} ${finish.time} (${clockOf(mode)})${finish.nextDay ? ", just after midnight" : ""}`}>
+      <span className="text-2xs font-semibold tracking-wide text-ink-muted">END</span>
       <span className="font-semibold">{finish.city}</span>
       <span className="hidden @min-[4.75rem]:inline">
         {finish.time}
         <Zone mode={mode} />
       </span>
-      {finish.nextDay && <span className="text-[8.5px] text-ink-muted">+1</span>}
+      {finish.nextDay && <span className="text-2xs text-ink-muted">+1</span>}
     </span>
   );
 }
@@ -187,13 +187,13 @@ function Cell({
       {!isOff && day.tripIndex !== null && day.kind !== "estimated" && <TripRail joinLeft={joinLeft} joinRight={joinRight} standby={day.kind === "standby"} />}
       {day.nextMonth && <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] rounded-b-md bg-carry" />}
       <span className="flex h-3 items-center justify-between gap-0.5">
-        <span className={`text-[11px] tabular-nums ${isOff ? "" : "font-semibold"}`}>
+        <span className={`text-2xs tabular-nums ${isOff ? "" : "font-semibold"}`}>
           {day.label}
-          {day.nextMonth && <span className="ml-0.5 text-[9px] font-semibold uppercase tracking-wide text-carry">{day.nextMonth.slice(0, 3)}</span>}
+          {day.nextMonth && <span className="ml-0.5 text-2xs font-semibold uppercase tracking-wide text-carry">{day.nextMonth.slice(0, 3)}</span>}
         </span>
         {day.isTripStart && day.tripNumber && (
           <>
-            <span className="hidden whitespace-nowrap rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar @min-[4.75rem]:inline" title={day.tripCreditHours !== null ? `Trip #${day.tripNumber}, ${hm(day.tripCreditHours * 60)} credit hours` : undefined}>
+            <span className="hidden whitespace-nowrap rounded bg-calendar-accent px-0.5 font-mono text-2xs font-semibold text-on-calendar @min-[4.75rem]:inline" title={day.tripCreditHours !== null ? `Trip #${day.tripNumber}, ${hm(day.tripCreditHours * 60)} credit hours` : undefined}>
               #{day.tripNumber}
               {day.tripCreditHours !== null && (
                 <span className="hidden @min-[5.25rem]:inline">
@@ -204,7 +204,7 @@ function Cell({
             </span>
             {/* On a phone the oval won't fit beside the date: the number alone. In the narrowest cells (a phone's week) even
                 that spills into the next day ("13 #50214"), so it's left to the day's details, a tap away. */}
-            <span className="hidden font-mono text-[9px] font-semibold text-ink @min-[3.25rem]:inline @min-[4.75rem]:hidden">#{day.tripNumber}</span>
+            <span className="hidden font-mono text-2xs font-semibold text-ink @min-[3.25rem]:inline @min-[4.75rem]:hidden">#{day.tripNumber}</span>
           </>
         )}
       </span>
@@ -222,22 +222,22 @@ function Cell({
       ) : (
         !isOff && <span className="flex h-[11px] items-center overflow-hidden">{report}</span>
       )}
-      {day.preReportTime !== null && <span className="hidden text-[10px] leading-tight text-ink-muted @min-[4.75rem]:block">reports next morning</span>}
+      {day.preReportTime !== null && <span className="hidden text-2xs leading-tight text-ink-muted @min-[4.75rem]:block">reports next morning</span>}
 
       <span className="mt-auto flex min-w-0 flex-col gap-px">
         {standby && (
-          <span className="whitespace-nowrap font-mono text-[10px] font-semibold text-standby">
+          <span className="whitespace-nowrap font-mono text-2xs font-semibold text-standby">
             SBY<span className="hidden @min-[3.25rem]:inline"> {standby.from}</span>
           </span>
         )}
         {isOff && day.offRun && day.offRun.length > 1 && day.offRun.isFirst && (
-          <span className="text-[10px] font-medium leading-tight">
+          <span className="text-2xs font-medium leading-tight">
             {day.offRun.length}
             <span className="hidden @min-[4.75rem]:inline"> days</span> off
           </span>
         )}
         {day.fullDay && (
-          <span className="whitespace-nowrap text-[10px] font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
+          <span className="whitespace-nowrap text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
             Full day{day.fullDay.barely ? <span className="font-normal">, barely</span> : null}
           </span>
         )}
@@ -292,39 +292,39 @@ export function MonthLegend({ className = "" }: { className?: string }) {
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted ${className}`}>
       <span className="inline-flex items-center gap-1">
-        <span className="relative inline-flex h-4 items-start rounded-[3px] bg-calendar-accent/[0.13] px-0.5 text-[10px] font-semibold leading-none text-ink">
-          26<span className="ml-0.5 text-[8px] uppercase text-carry">Nov</span>
+        <span className="relative inline-flex h-4 items-start rounded-[3px] bg-trip-wash px-0.5 text-2xs font-semibold leading-none text-ink">
+          26<span className="ml-0.5 text-2xs uppercase text-carry">Nov</span>
           <span aria-hidden className="absolute inset-x-0 bottom-0 h-[2px] rounded-b-[3px] bg-carry" />
         </span>
         Carry-over: flown in the next bid month, not counted in this one
       </span>
       <span className="inline-flex items-center gap-1">
-        <span className="text-[10px] font-semibold text-layover">Full day</span>
+        <span className="text-2xs font-semibold text-layover">Full day</span>
         A whole day free in a layover city, between two full nights
       </span>
       <span className="inline-flex items-center gap-1">
-        <span className="rounded bg-calendar-accent px-0.5 font-mono text-[10px] font-semibold text-on-calendar">
+        <span className="rounded bg-calendar-accent px-0.5 font-mono text-2xs font-semibold text-on-calendar">
           #111 <CreditHours hours={17.78} className="font-normal opacity-85" />
         </span>
         Trip and its credit hours
       </span>
       <span className="inline-flex items-center gap-1">
-        <span className="font-mono text-[11px] font-semibold text-report">
+        <span className="font-mono text-2xs font-semibold text-report">
           Rpt 06:30
           <Zone />
         </span>
         L local, Z Zulu
       </span>
       <span className="inline-flex items-center gap-1">
-        <span className="font-mono text-[10px] font-semibold leading-none text-layover">
+        <span className="font-mono text-2xs font-semibold leading-none text-layover">
           SEA<span className="font-normal"> 16h</span>
         </span>
         Layover, to the hour
       </span>
       <span className="inline-flex items-center gap-1"><span className="text-good">♥</span>love <span className="text-good">♡</span>like <span className="text-warn">✕</span>dislike</span>
       <span className="inline-flex items-center gap-1">
-        <span className="font-mono text-[11px]">
-          <span className="text-[9px] font-semibold text-ink-muted">END </span>
+        <span className="font-mono text-2xs">
+          <span className="text-2xs font-semibold text-ink-muted">END </span>
           <span className="font-semibold">MEM</span> 19:05
           <Zone />
         </span>
@@ -361,7 +361,7 @@ function DayNumbers({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
   if (day.dutyStartLocalDate) parts.push(`duty starts ${shortDate(day.dutyStartLocalDate)} local`);
   if (day.releaseLocalDate) parts.push(`lands ${shortDate(day.releaseLocalDate)} local`);
   if (parts.length === 0) return null;
-  return <p className="mt-1 font-mono text-[11px] text-readout">{parts.join(" · ")}</p>;
+  return <p className="mt-1 font-mono text-2xs text-readout">{parts.join(" · ")}</p>;
 }
 
 /** A trip's tail on a day the grid gives to something else: the end of one trip on the day the next one starts, or a landing just after midnight on a day off. */
@@ -397,7 +397,7 @@ function DayDetail({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
       <div className="flex items-center gap-1.5 font-medium text-ink">
         {day.title.split(" — ")[0]}
         {day.layoverCode && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-good/15 px-1.5 py-px font-mono text-[10px] font-semibold text-good">
+          <span className="inline-flex items-center gap-1 rounded-[3px] bg-good/15 px-1.5 py-px font-mono text-2xs font-semibold text-good">
             <BedIcon className="h-3 w-3" />
             {day.layoverCode}
             {day.layoverRest ? ` · ${day.layoverRest}` : ""}
@@ -478,7 +478,7 @@ function fmtRuns(runs: number[]): string {
 function SummaryItem({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {
   return (
     <div className="min-w-0">
-      <dt className="truncate text-[10px] uppercase tracking-wide text-ink-faint">{label}</dt>
+      <dt className="truncate text-2xs text-ink-faint font-medium">{label}</dt>
       <dd className={`break-words font-mono text-xs font-medium ${tone || "text-readout"}`}>{value}</dd>
     </div>
   );
@@ -520,7 +520,7 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
       )}
       {s.base && (
         <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <dt className="inline font-sans text-[10px] uppercase tracking-wide text-ink-faint">Commuting · </dt>
+          <dt className="inline font-sans text-2xs text-ink-faint font-medium">Commuting · </dt>
           <dd className="inline">
           {s.base.commutes} {s.base.code} commute{s.base.commutes === 1 ? "" : "s"} · {s.base.nights === 0 ? `no nights in ${s.base.code}` : `${s.base.nights} night${s.base.nights === 1 ? "" : "s"} in ${s.base.code}`}
           {s.base.jumpseatIns > 0 ? ` · ${s.base.jumpseatIns} jumpseat-in${s.base.jumpseatIns === 1 ? "" : "s"}` : ""}
@@ -529,7 +529,7 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
       )}
       {s.carryOver && (
         <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <dt className="inline font-sans text-[10px] uppercase tracking-wide text-carry">Carries into {s.carryOver.month} · </dt>
+          <dt className="inline font-sans text-2xs text-carry font-medium">Carries into {s.carryOver.month} · </dt>
           <dd className="inline">
           {s.carryOver.days} day{s.carryOver.days === 1 ? "" : "s"}
           {s.carryOver.dutyPeriods > 0 ? ` · ${s.carryOver.dutyPeriods} duty period${s.carryOver.dutyPeriods === 1 ? "" : "s"}` : ""}
@@ -542,7 +542,7 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
       )}
       {s.home && (
         <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <dt className="inline font-sans text-[10px] uppercase tracking-wide text-ink-faint">At home · </dt>
+          <dt className="inline font-sans text-2xs text-ink-faint font-medium">At home · </dt>
           <dd className="inline">
           {s.home.between.length ? `${s.home.between.map((b) => `${Math.round(b.hours)}h`).join(", ")} between departures · ` : ""}
           {s.home.nightsHome} night{s.home.nightsHome === 1 ? "" : "s"} in your own bed
@@ -556,7 +556,7 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
       )}
       {s.hubTurns && (
         <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <dt className="inline font-sans text-[10px] uppercase tracking-wide text-ink-faint">Hub turns · </dt>
+          <dt className="inline font-sans text-2xs text-ink-faint font-medium">Hub turns · </dt>
           <dd className="inline">
           {s.hubTurns.all} at {s.hubTurns.hubs.join(", ")}
           {s.hubTurns.night ? ` · ${s.hubTurns.night === s.hubTurns.all ? "all" : s.hubTurns.night} at night` : " · by day"}
@@ -566,7 +566,7 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
         </div>
       )}
       {s.daysOff !== s.printedDaysOff && (
-        <div className="col-span-2 text-[11px] leading-snug text-ink-faint sm:col-span-3">
+        <div className="col-span-2 text-2xs leading-snug text-ink-faint sm:col-span-3">
           <dt className="sr-only">Note</dt>
           <dd>
           The bid pack prints {s.printedDaysOff} days off for this line; the calendar draws {s.daysOff} from the trips&rsquo; dates, so a day at either end of a trip can differ.
@@ -574,7 +574,7 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
         </div>
       )}
       <div className="col-span-2 min-w-0 sm:col-span-3">
-        <dt className="text-[10px] uppercase tracking-wide text-ink-faint">
+        <dt className="text-2xs text-ink-faint font-medium">
           Layovers · {s.layoverNights} night{s.layoverNights === 1 ? "" : "s"}
           {s.internationalLayoverNights > 0 ? ` (${s.internationalLayoverNights} international)` : ""}
           {s.fullDays > 0 ? ` · ${s.fullDays} full day${s.fullDays === 1 ? "" : "s"}` : ""}
@@ -653,7 +653,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
     <div>
       {!compact && (
         <div className="mb-1.5 flex items-center justify-between gap-2 print:hidden">
-          <span className="min-w-0 text-[11px] leading-tight text-ink-faint">
+          <span className="min-w-0 text-2xs leading-tight text-ink-faint">
             {mode === "zulu" ? "Zulu days, midnight to midnight Z · times Z" : `${departureOptions?.base ? `${departureOptions.base}'s` : "The domicile's"} calendar days · times local`}
           </span>
           <TimeModeToggle mode={mode} onChange={setMode} />
@@ -662,7 +662,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
       {!compact && <ColorKey variant="calendar" className="mb-1.5" />}
       <div role="group" aria-label={`Bid month at a glance${mode === "zulu" ? ", in Zulu" : ""}. ${month.summary.daysOff} days off, ${month.summary.dutyPeriods} duty periods.`}>
         {month.weekdayHeaders && (
-          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-ink-faint" aria-hidden>
+          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-2xs font-medium text-ink-faint" aria-hidden>
             {month.weekdayHeaders.map((d) => (
               <span key={d} className={d === "Sat" || d === "Sun" ? "text-ink-muted" : ""}>{d}</span>
             ))}
@@ -687,7 +687,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
         </div>
       </div>
 
-      {selectedDay ? <DayDetail day={selectedDay} mode={mode} /> : <p className="mt-1.5 text-[11px] text-ink-faint print:hidden">Tap a day for everything on it.</p>}
+      {selectedDay ? <DayDetail day={selectedDay} mode={mode} /> : <p className="mt-1.5 text-2xs text-ink-faint print:hidden">Tap a day for everything on it.</p>}
 
       {!compact && <Summary s={month.summary} line={line} bodyClock={bodyClock} />}
 

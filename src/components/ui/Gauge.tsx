@@ -1,7 +1,8 @@
 "use client";
 
-import { motion, useReducedMotion, useSpring, useTransform } from "motion/react";
+import { motion, useSpring, useTransform } from "motion/react";
 import { useEffect } from "react";
+import { useMediaQuery } from "@/lib/use-media-query";
 
 /**
  * A 270° dial with a gap at the bottom — the classic altimeter/airspeed
@@ -16,7 +17,9 @@ const GAUGE_SWEEP = 270;
 
 function polarPoint(cx: number, cy: number, r: number, angleDeg: number): [number, number] {
   const rad = (angleDeg * Math.PI) / 180;
-  return [cx + r * Math.sin(rad), cy - r * Math.cos(rad)];
+  // Rounded: the server's and the browser's sin/cos differ in the last digits, which React reports as a hydration mismatch.
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  return [round(cx + r * Math.sin(rad)), round(cy - r * Math.cos(rad))];
 }
 
 /** The gauge's own arc, from its zero point to its full-scale point — drawn once and reused for both the static track and (via the dash trick below) the live fill. */
@@ -74,12 +77,13 @@ export function Gauge({ value, max = 100, size = 56, tone, label, limit, readout
   const radius = size / 2 - strokeWidth / 2 - tickGap - majorTickLen - 0.5;
   const tickOuter = radius + strokeWidth / 2 + tickGap;
 
-  const reduceMotion = useReducedMotion();
+  // Read the way the server can match (it renders the moving version at zero), then live. Under reduced motion the
+  // reading is drawn straight from the value, not through the spring: a jumped spring left every dial at 0.
+  const still = useMediaQuery("(prefers-reduced-motion: reduce)", false);
   const animated = useSpring(0, { stiffness: 100, damping: 20 });
   useEffect(() => {
-    if (reduceMotion) animated.jump(clamped);
-    else animated.set(clamped);
-  }, [clamped, reduceMotion, animated]);
+    if (!still) animated.set(clamped);
+  }, [clamped, still, animated]);
 
   const trackPath = arcPath(cx, cy, radius);
   const arcLength = (radius * (GAUGE_SWEEP * Math.PI)) / 180;
@@ -90,7 +94,7 @@ export function Gauge({ value, max = 100, size = 56, tone, label, limit, readout
     const angle = GAUGE_START + fraction * GAUGE_SWEEP;
     const [x1, y1] = polarPoint(cx, cy, tickOuter, angle);
     const [x2, y2] = polarPoint(cx, cy, tickOuter + len, angle);
-    return <line key={key} x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={width} strokeLinecap="round" />;
+    return <line key={key} x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={width} strokeLinecap="butt" />;
   }
 
   return (
@@ -98,15 +102,15 @@ export function Gauge({ value, max = 100, size = 56, tone, label, limit, readout
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
         {MAJOR_TICKS.map((f) => tick(f, majorTickLen, `M${f}`, "var(--color-border-strong)", 1.2))}
         {showMinorTicks && MINOR_TICKS.map((f) => tick(f, minorTickLen, `m${f}`, "var(--color-border-strong)", 0.8))}
-        <path d={trackPath} fill="none" stroke={tone.track} strokeWidth={strokeWidth} strokeLinecap="round" />
+        <path d={trackPath} fill="none" stroke={tone.track} strokeWidth={strokeWidth} strokeLinecap="butt" />
         <motion.path
           d={trackPath}
           fill="none"
           stroke={tone.stroke}
           strokeWidth={strokeWidth}
-          strokeLinecap="round"
+          strokeLinecap="butt"
           strokeDasharray={arcLength}
-          style={{ strokeDashoffset: dashOffset }}
+          style={{ strokeDashoffset: still ? arcLength * (1 - clamped / max) : dashOffset }}
         />
         {limit !== undefined &&
           (() => {
@@ -114,11 +118,11 @@ export function Gauge({ value, max = 100, size = 56, tone, label, limit, readout
             const angle = GAUGE_START + (Math.min(max, Math.max(0, limit)) / max) * GAUGE_SWEEP;
             const [x1, y1] = polarPoint(cx, cy, radius - strokeWidth, angle);
             const [x2, y2] = polarPoint(cx, cy, tickOuter + majorTickLen, angle);
-            return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--color-danger)" strokeWidth={2} strokeLinecap="round" />;
+            return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--color-danger)" strokeWidth={2} strokeLinecap="butt" />;
           })()}
       </svg>
-      <div className={`absolute inset-0 flex items-center justify-center font-mono tabular-nums ${tone.text} ${readoutClassName}`} aria-hidden>
-        <motion.span>{rounded}</motion.span>
+      <div className={`absolute inset-0 flex items-center justify-center font-display tabular-nums ${tone.text} ${readoutClassName}`} aria-hidden>
+        {still ? <span>{clamped.toFixed(decimals)}</span> : <motion.span>{rounded}</motion.span>}
       </div>
     </div>
   );

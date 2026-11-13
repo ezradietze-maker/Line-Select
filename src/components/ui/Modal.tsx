@@ -115,7 +115,7 @@ export function Modal({ title, onClose, children, wide = false, locked = false }
   // Rendered at the end of <body>, not where it's used: a screen is its own layer (its entrance animation makes one),
   // and a dialog drawn inside it sat under the phone's top bar and tab bar however high its z-index.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 px-4 py-10 backdrop-blur-[2px] sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[rgb(6_11_22/0.6)] px-4 py-10 sm:items-center">
       {!locked && <button type="button" aria-label="Close" onClick={onClose} className="fixed inset-0 cursor-default" tabIndex={-1} />}
       <div
         ref={dialogRef}
@@ -123,7 +123,7 @@ export function Modal({ title, onClose, children, wide = false, locked = false }
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className={`relative w-full animate-fade-in rounded-xl border border-border bg-surface shadow-elevated-lg outline-none ${wide ? "max-w-3xl" : "max-w-lg"}`}
+        className={`relative w-full animate-fade-in rounded-[6px] border border-border-strong bg-surface shadow-elevated-lg outline-none ${wide ? "max-w-3xl" : "max-w-lg"}`}
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <Heading as="h2" className="text-base text-ink">{title}</Heading>
@@ -135,7 +135,7 @@ export function Modal({ title, onClose, children, wide = false, locked = false }
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="flex h-7 w-7 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-canvas hover:text-ink"
+              className="flex h-7 w-7 items-center justify-center rounded-[3px] text-ink-faint transition-colors hover:bg-ink/[0.06] hover:text-ink"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
                 <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />

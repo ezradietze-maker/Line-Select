@@ -55,17 +55,17 @@ export function PilotProfileSummary({ profile, bare = false }: PilotProfileSumma
               <span>
                 {f.statement}
                 {f.recurringWeekday && (
-                  <span className="ml-1.5 inline-flex items-center rounded-full bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
+                  <span className="ml-1.5 inline-flex items-center rounded-[3px] bg-brand-soft px-1.5 py-0.5 text-2xs font-medium text-brand">
                     Checked against every line&rsquo;s {weekdayPlural(f.recurringWeekday)}
                   </span>
                 )}
                 {f.severity === "dealbreaker" && (!!f.recurringWeekday || !!f.specificDates?.length) && (
-                  <span className="ml-1.5 inline-flex items-center rounded-full bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">
+                  <span className="ml-1.5 inline-flex items-center rounded-[3px] bg-danger-soft px-1.5 py-0.5 text-2xs font-medium text-danger">
                     Limit
                   </span>
                 )}
                 {!f.recurringWeekday && f.specificDates && f.specificDates.length > 0 && (
-                  <span className="ml-1.5 inline-flex items-center rounded-full bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
+                  <span className="ml-1.5 inline-flex items-center rounded-[3px] bg-brand-soft px-1.5 py-0.5 text-2xs font-medium text-brand">
                     Checked against every line&rsquo;s calendar
                   </span>
                 )}

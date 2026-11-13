@@ -9,7 +9,7 @@ const landXY = () => (land ??= landPoints().map((p) => project(p)));
 const FULL_VIEW = [0, 0, MAP_W, MAP_H] as const;
 
 /**
- * A small dotted world map — the same land as the landing page's globe, laid flat — with whatever's drawn over it in
+ * A small dotted world map — the land mask laid flat — with whatever's drawn over it in
  * the map's own 360 × 180 frame (`children`: arcs, the night side, city dots). The land is painted once on a canvas,
  * in the theme's own faint ink, and again when the theme changes. `view` ([x, y, width, height] in that frame) shows
  * just part of it, larger; it may run past the date line, where the land carries on round.

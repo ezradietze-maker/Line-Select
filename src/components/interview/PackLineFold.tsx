@@ -64,11 +64,11 @@ export function PackLineFold({
             className="overflow-hidden border-t border-hairline"
           >
             <div className="p-4 sm:p-5">
-              {heading ? <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">{heading}</p> : null}
+              {heading ? <p className="text-2xs text-ink-faint font-medium">{heading}</p> : null}
               <p className="mt-0.5 font-display text-xl font-semibold text-ink">Line {lineNumber}</p>
               <p className="mb-3 font-mono text-xs text-ink-muted">{lineFigures(bidPack, line)}</p>
               <MiniLinePreview line={line} bidPeriodStart={bidPack.bidPeriodStart} bidPeriodDays={bidPack.bidPeriodDays} />
-              <p className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">Its trips</p>
+              <p className="mt-4 text-2xs text-ink-faint font-medium">Its trips</p>
               <ul className="mt-2 space-y-2">
                 {/* The same pairing can be flown twice in a month, so its id alone isn't a unique key. */}
                 {line.trips.map((t, i) => (

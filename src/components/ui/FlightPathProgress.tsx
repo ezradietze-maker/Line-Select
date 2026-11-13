@@ -22,9 +22,8 @@ interface FlightPathProgressProps {
 }
 
 /**
- * Progress drawn as a flight: a dashed route still to fly, the flown part
- * lit solid, and a small aircraft at the current position. Reads at a glance
- * like a nav display rather than a loading bar.
+ * Progress as steps along a ruled line: the way still to go a plain rule, the part done the green centreline, each
+ * step a tick that's stamped green as it's passed, and a small location sign (yellow on black) where you are now.
  *
  * Animates `left`/`width` on leaf elements only — no transform on a
  * container — per globals.css's warning about transforms breaking
@@ -46,11 +45,11 @@ export function FlightPathProgress({ fraction, label, origin, destination, waypo
       aria-valuenow={Math.round(f * 100)}
     >
       {stops && (
-        <div className="relative h-3 font-mono text-[9px] uppercase tracking-[0.14em]" aria-hidden>
+        <div className="relative h-3 text-2xs font-medium" aria-hidden>
           {stops.map((s) => (
             <span
               key={s.label}
-              className={`absolute top-0 whitespace-nowrap transition-colors duration-300 ${s.wideOnly ? "hidden sm:block" : ""} ${s.at <= 0.02 ? "" : s.at >= 0.98 ? "-translate-x-full" : "-translate-x-1/2"} ${s.at <= f ? "text-accent" : "text-ink-faint"}`}
+              className={`absolute top-0 whitespace-nowrap transition-colors duration-300 ${s.wideOnly ? "hidden sm:block" : ""} ${s.at <= 0.02 ? "" : s.at >= 0.98 ? "-translate-x-full" : "-translate-x-1/2"} ${s.at <= f ? "text-ink" : "text-ink-faint"}`}
               style={{ left: `${s.at * 100}%` }}
             >
               {s.label}
@@ -59,40 +58,35 @@ export function FlightPathProgress({ fraction, label, origin, destination, waypo
         </div>
       )}
       <div className="relative h-7" aria-hidden>
-        {/* The route still to fly. */}
-        <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-border-strong" />
-        {/* The route already flown. */}
+        {/* The way still to go: a plain rule. */}
+        <div className="absolute inset-x-0 top-1/2 border-t border-border-strong" />
+        {/* The part done: the green centreline. */}
         <motion.div
-          className="absolute left-0 top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-accent shadow-[0_0_10px_var(--glow-strong)]"
+          className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 bg-good"
           initial={false}
           animate={{ width: `${f * 100}%` }}
           transition={transition}
         />
         {points.map((p) => (
           <div
-            // Remounted as the plane passes it, so it pings once.
+            // Remounted as it's passed, so it's stamped once (Mark).
             key={`${p}-${p <= f}`}
-            className={`absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border transition-colors duration-300 ${
-              p <= f ? "waypoint-ping border-accent bg-accent" : "border-border-strong bg-canvas"
+            className={`absolute top-1/2 h-3 w-[3px] -translate-x-1/2 -translate-y-1/2 transition-colors duration-300 ${
+              p <= f ? "waypoint-ping bg-good" : "bg-border-strong"
             }`}
             style={{ left: `${p * 100}%` }}
           />
         ))}
+        {/* Where you are now: a small location sign on the line. */}
         <motion.div
-          className="absolute top-1/2 -ml-3 -mt-3 h-6 w-6 text-accent drop-shadow-[0_0_6px_var(--glow-strong)]"
+          className="absolute top-1/2 -ml-[7px] -mt-[7px] h-[14px] w-[14px] rounded-[2px] bg-on-sign ring-2 ring-inset ring-sign"
           initial={false}
           animate={{ left: `${f * 100}%` }}
           transition={transition}
-        >
-          {/* A short contrail behind it, once it's under way. */}
-          {f > 0.04 && <span className="absolute right-[18px] top-1/2 h-[3px] w-10 -translate-y-1/2 rounded-full bg-gradient-to-r from-transparent to-[var(--glow-strong)]" />}
-          <svg viewBox="0 0 24 24" className="relative h-6 w-6" fill="currentColor">
-            <path d="M21 12c0-.8-.7-1.2-1.6-1.2H15L10.3 3.6H8.5l2.3 7.2H6.2L4.6 8.6H3.2l1 3.4-1 3.4h1.4l1.6-2.2h4.6l-2.3 7.2h1.8l4.7-7.2h4.4c.9 0 1.6-.4 1.6-1.2z" />
-          </svg>
-        </motion.div>
+        />
       </div>
       {(origin || destination) && (
-        <div className="mt-1 flex justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint" aria-hidden>
+        <div className="mt-1 flex justify-between text-2xs text-ink-faint font-medium" aria-hidden>
           <span>{origin}</span>
           <span>{destination}</span>
         </div>

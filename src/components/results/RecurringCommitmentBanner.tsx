@@ -35,7 +35,7 @@ export function RecurringCommitmentBanner({ conflicts, dateConflicts = [], penal
           <path strokeLinecap="round" d="M12 7v5l3.5 2" />
         </svg>
         <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-wide text-warn">
+          <div className="text-xs font-semibold text-warn">
             Conflicts with something you mentioned
             {penalty > 0 && <span className="font-normal normal-case tracking-normal"> &middot; ranked {Math.round(penalty)} points lower</span>}
           </div>

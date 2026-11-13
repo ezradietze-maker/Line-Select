@@ -124,7 +124,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Step 1 &middot; Load</div>
+      <div className="text-2xs text-accent font-medium">Step 1 &middot; Load</div>
       <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">
         Load your bid pack
       </Heading>
@@ -156,7 +156,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
               }`}
             />
             <div
-              className={`relative flex h-16 w-16 items-center justify-center rounded-2xl border border-hairline bg-surface-raised transition-transform duration-300 ${
+              className={`relative flex h-16 w-16 items-center justify-center rounded-[4px] border border-border bg-surface-raised transition-transform duration-300 ${
                 dragActive ? "-translate-y-1 scale-105 text-accent" : "text-ink-muted"
               }`}
               aria-hidden
@@ -175,7 +175,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
             <Button type="button" variant="secondary" className="relative mt-3" onClick={() => inputRef.current?.click()}>
               Choose a file
             </Button>
-            <p className="relative mt-4 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">PDF only &middot; up to {MAX_MB}MB</p>
+            <p className="relative mt-4 text-2xs text-ink-faint font-medium">PDF only &middot; up to {MAX_MB}MB</p>
             <input
               ref={inputRef}
               type="file"
@@ -267,7 +267,7 @@ function AlreadyUploaded({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Flight plan loaded</div>
+      <div className="text-2xs text-accent font-medium">Flight plan loaded</div>
       <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">
         Your bid pack
       </Heading>
@@ -279,12 +279,12 @@ function AlreadyUploaded({
               {bidPack.base} <span className="text-ink-faint">&middot;</span> {bidPack.aircraft}{" "}
               <span className="text-ink-faint">&middot;</span> <span className="text-accent">{bidPack.seat}</span>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-2xs text-ink-faint font-medium">
               <span className="rounded border border-hairline px-1.5 py-0.5">{bidPack.month}</span>
               {period && <span>{period}</span>}
             </div>
           </div>
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-good/40 bg-good-soft px-2.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.14em] text-good">
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-[3px] border border-good/40 bg-good-soft px-2 py-1 text-2xs text-good font-medium">
             <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 12.5l4.5 4.5L19 7.5" />
             </svg>
@@ -300,7 +300,7 @@ function AlreadyUploaded({
             ["Layover cities", <NumberTicker key="c" value={stats.cityCount} />],
           ].map(([label, value]) => (
             <div key={label as string} className="bg-panel p-4">
-              <dt className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">{label}</dt>
+              <dt className="text-2xs text-ink-faint font-medium">{label}</dt>
               <dd className="text-readout mt-1 text-2xl font-semibold">{value}</dd>
             </div>
           ))}
@@ -309,7 +309,7 @@ function AlreadyUploaded({
         {stats.topCities.length > 0 && (
           <div className="border-t border-hairline p-5">
             <LayoverRouteMap base={bidPack.base} cities={stats.allCities} />
-            <div className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
+            <div className="mt-4 text-2xs text-ink-faint font-medium">
               Most-flown layovers
               {stats.internationalPct !== null && <span> &middot; {stats.internationalPct}% of lines fly international</span>}
             </div>

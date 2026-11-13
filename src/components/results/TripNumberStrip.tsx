@@ -59,7 +59,7 @@ export function TripNumberStrip({ trips, departures, carryOver }: { trips: Trip[
 
   return (
     <div role="group" className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1.5" aria-label="Trip numbers on this line">
-      <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">Trips</span>
+      <span className="text-xs font-medium text-ink-muted">Trips</span>
       {runs.map((run, i) =>
         run.length > 1 ? (
           <span

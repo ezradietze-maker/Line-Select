@@ -23,8 +23,9 @@ export function ToastStack({ toasts, onDismiss, onClick }: ToastStackProps) {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className="animate-toast-in panel-glass flex items-start gap-2 p-4"
+          className="animate-toast-in panel-glass relative flex items-start gap-2 overflow-hidden border-border-strong p-4 pl-5 shadow-elevated-lg"
         >
+          <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-accent" />
           <button
             type="button"
             onClick={() => onClick(toast.id)}
@@ -37,7 +38,7 @@ export function ToastStack({ toasts, onDismiss, onClick }: ToastStackProps) {
             type="button"
             onClick={() => onDismiss(toast.id)}
             aria-label="Dismiss notification"
-            className="shrink-0 rounded-md p-1 text-ink-faint hover:bg-black/[0.05] hover:text-ink"
+            className="shrink-0 rounded-[3px] p-1 text-ink-faint hover:bg-ink/[0.06] hover:text-ink"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
               <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />

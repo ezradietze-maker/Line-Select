@@ -63,7 +63,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Step 1 &middot; Confirm</div>
+      <div className="text-2xs text-accent font-medium">Step 1 &middot; Confirm</div>
       <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">Does this look right?</Heading>
       {/* What the pack's own info page says should be here and isn't: said up front, not among the parsing details. */}
       {(result.problems ?? []).length > 0 && (
@@ -95,7 +95,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
               </>
             )}
           </div>
-          <span className="rounded border border-hairline px-2 py-1 font-mono text-xs uppercase tracking-[0.14em] text-ink-muted">
+          <span className="rounded border border-hairline px-2 py-1 text-xs text-ink-muted font-medium">
             {result.meta.month}
           </span>
         </div>
@@ -242,7 +242,7 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">{label}</div>
+      <div className="text-2xs text-ink-faint font-medium">{label}</div>
       <div className="text-readout mt-1 text-2xl font-semibold">{value}</div>
     </div>
   );

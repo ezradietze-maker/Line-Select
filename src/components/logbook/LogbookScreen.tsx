@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { ConfirmEmailButton } from "@/components/auth/ConfirmEmail";
 import { Button } from "@/components/ui/Button";
 import { NumberTicker } from "@/components/ui/NumberTicker";
-import { NightGlobe } from "@/components/welcome/NightGlobe";
+import { LayoverRouteMap } from "@/components/upload/LayoverRouteMap";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { CalendarSubscribe } from "@/components/results/CalendarSubscribe";
 import { MIN_SHARED_PILOTS, ownListEntry, submitAwardHistory, withdrawAwardShares } from "@/lib/award-history";
@@ -21,7 +21,7 @@ import type { LoggedMonth, MonthFeel } from "@/types/logbook";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 
-const LABEL = "font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint";
+const LABEL = "text-2xs text-ink-faint font-medium";
 const hm = (h: number | null | undefined) => (typeof h === "number" ? hmMinutes(h * 60) : "—");
 const FEELS: { feel: MonthFeel; label: string }[] = [
   { feel: "better", label: "Better than I expected" },
@@ -370,29 +370,25 @@ function WhySharing({ canWithdraw, onWithdrawAll }: { canWithdraw: boolean; onWi
 function Stats({ stats, base }: { stats: ReturnType<typeof logbookStats>; base: string | null }) {
   const last = stats.seniority.at(-1);
   const first = stats.seniority[0];
-  // Your own globe: base to every city you've laid over in.
-  const pairs = useMemo(() => (base ? stats.cities.filter((c) => c.code !== base).slice(0, 24).map((c) => [base, c.code] as [string, string]) : []), [base, stats.cities]);
+  // Your own route map: base to every city you've laid over in, most-flown first.
+  const routeCities = useMemo(() => (base ? stats.cities.filter((c) => c.code !== base).slice(0, 24).map((c) => c.code) : []), [base, stats.cities]);
   return (
     <section className="panel-glass mt-6 p-5">
-      <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center">
-        <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-5">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Stat label="Months logged" value={stats.months} format={(n) => String(Math.round(n))} />
           <Stat label="Avg credit" value={stats.avgCreditHours} format={hm} />
           <Stat label="Avg days off" value={stats.avgDaysOff} format={(n) => n.toFixed(1)} />
           <Stat label="Held a top-5 pick" value={stats.topFiveShare === null ? null : stats.topFiveShare * 100} format={(n) => `${Math.round(n)}%`} />
         </div>
-        {pairs.length > 0 && (
-          <div className="mx-auto w-48 sm:w-full">
-            <NightGlobe pairs={pairs} readout={false} />
-          </div>
-        )}
+        {base && routeCities.length > 0 && <LayoverRouteMap base={base} cities={routeCities} labels={false} />}
       </div>
       {stats.cities.length > 0 && (
         <div className="mt-5">
           <div className={LABEL}>Where you&rsquo;ve laid over</div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {stats.cities.slice(0, 12).map((c) => (
-              <Link key={c.code} href={`/cities?city=${c.code}`} className="rounded-full border border-hairline bg-canvas/60 px-2.5 py-1 text-xs text-ink-muted hover:border-border-strong hover:text-ink">
+              <Link key={c.code} href={`/cities?city=${c.code}`} className="rounded-[3px] border border-hairline bg-canvas/60 px-2.5 py-1 text-xs text-ink-muted hover:border-border-strong hover:text-ink">
                 <span className="font-mono font-semibold text-ink">{c.code}</span> {cityName(c.code)} &times;{c.layovers}
               </Link>
             ))}

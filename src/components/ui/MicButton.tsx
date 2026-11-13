@@ -28,7 +28,7 @@ export function MicButton({ listening, onClick, size = "md", className = "" }: M
       aria-pressed={listening}
       aria-label={listening ? "Stop dictating" : "Dictate with your microphone"}
       title={listening ? "Stop dictating" : "Dictate with your microphone"}
-      className={`inline-flex shrink-0 items-center justify-center rounded-full border transition-colors ${dimension} ${
+      className={`inline-flex shrink-0 items-center justify-center rounded-[4px] border transition-colors ${dimension} ${
         listening
           ? "border-danger/40 bg-danger-soft text-danger"
           : "border-border bg-surface text-ink-faint hover:border-border-strong hover:text-ink-muted"

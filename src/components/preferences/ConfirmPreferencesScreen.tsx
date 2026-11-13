@@ -19,7 +19,7 @@ import { MAGNITUDE_ONLY_KEYS } from "@/lib/rank-learning";
 import { weekdayPlural } from "@/lib/scoring";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
-const SECTION_HEADING = "font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint";
+const SECTION_HEADING = "text-2xs text-ink-faint font-medium";
 
 interface ConfirmPreferencesScreenProps {
   profile: PreferenceProfile;
@@ -81,14 +81,14 @@ export function ConfirmPreferencesScreen({
   return (
     <div className="mx-auto w-full max-w-3xl">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Here&rsquo;s what we heard</span>
+        <span className="text-2xs text-accent font-medium">Here&rsquo;s what we heard</span>
         {profile.isCommuter !== null && (
-          <span className="rounded-full bg-brand-soft px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-brand">
+          <span className="rounded-[3px] bg-brand-soft px-3 py-1 text-2xs font-medium text-brand">
             {profile.isCommuter ? "Commuter" : "Local"}
           </span>
         )}
         {profile.isCommuter === true && profile.hasCrashPad !== null && (
-          <span className="rounded-full border border-border-strong px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+          <span className="rounded-[3px] border border-border-strong px-3 py-1 text-2xs font-medium text-ink-faint">
             {profile.hasCrashPad ? "Has a crash pad" : "No crash pad"}
           </span>
         )}
@@ -179,7 +179,7 @@ export function ConfirmPreferencesScreen({
             {selectedAmenities.map((a) => (
               <span
                 key={a.key}
-                className="rounded-full border border-brand/30 bg-brand-soft px-3 py-1 text-xs font-medium text-brand"
+                className="rounded-[3px] border border-brand/30 bg-brand-soft px-3 py-1 text-xs font-medium text-brand"
               >
                 {a.label}
               </span>
@@ -195,7 +195,7 @@ export function ConfirmPreferencesScreen({
             {lovedCities.map((code) => (
               <span
                 key={code}
-                className="rounded-full border border-good/30 bg-good-soft px-3 py-1 text-xs font-medium text-good"
+                className="rounded-[3px] border border-good/30 bg-good-soft px-3 py-1 text-xs font-medium text-good"
               >
                 &hearts; {code}
               </span>
@@ -203,7 +203,7 @@ export function ConfirmPreferencesScreen({
             {avoidedCities.map((code) => (
               <span
                 key={code}
-                className="rounded-full border border-danger/30 bg-danger-soft px-3 py-1 text-xs font-medium text-danger"
+                className="rounded-[3px] border border-danger/30 bg-danger-soft px-3 py-1 text-xs font-medium text-danger"
               >
                 &times; {code}
               </span>
@@ -222,15 +222,15 @@ export function ConfirmPreferencesScreen({
                 <span>
                   {f.statement}
                   {f.severity === "dealbreaker" && (
-                    <span className="ml-1.5 inline-flex rounded-full bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">Limit</span>
+                    <span className="ml-1.5 inline-flex rounded-[3px] bg-danger-soft px-1.5 py-0.5 text-2xs font-medium text-danger">Limit</span>
                   )}
                   {f.recurringWeekday && (
-                    <span className="ml-1.5 inline-flex rounded-full bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent">
+                    <span className="ml-1.5 inline-flex rounded-[3px] bg-accent-soft px-1.5 py-0.5 text-2xs font-medium text-accent">
                       Checked against every line&rsquo;s {weekdayPlural(f.recurringWeekday)}
                     </span>
                   )}
                   {!f.recurringWeekday && f.specificDates && f.specificDates.length > 0 && (
-                    <span className="ml-1.5 inline-flex rounded-full bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent">
+                    <span className="ml-1.5 inline-flex rounded-[3px] bg-accent-soft px-1.5 py-0.5 text-2xs font-medium text-accent">
                       Checked against every line&rsquo;s calendar
                     </span>
                   )}

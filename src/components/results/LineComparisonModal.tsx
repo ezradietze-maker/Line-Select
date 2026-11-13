@@ -112,7 +112,7 @@ export function LineComparisonModal({
         {bodyClocks.map((b, i) => scoreCell(b.hardest, i))}
         <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Recovery across the month</div>
         {lineScores.map((ls) => (
-          <div key={ls.line.id} className={`text-center text-[11px] leading-tight ${ls.cumulativeCircadian?.hasCompoundingRisk ? "text-warn" : "text-ink-muted"}`}>
+          <div key={ls.line.id} className={`text-center text-2xs leading-tight ${ls.cumulativeCircadian?.hasCompoundingRisk ? "text-warn" : "text-ink-muted"}`}>
             {ls.cumulativeCircadian?.summary ?? "Not confirmable"}
           </div>
         ))}

@@ -47,7 +47,7 @@ export function TargetSliderStep({ config, range, value, onChange, eyebrow }: Ta
           {isSet ? (
             <>
               <div className="mb-5 text-center" aria-hidden>
-                <span className="text-readout text-glow font-display text-5xl font-semibold">{config.formatValue(currentValue)}</span>
+                <span className="text-readout font-display text-5xl font-semibold">{config.formatValue(currentValue)}</span>
                 <span className="ml-2 text-sm text-ink-muted">{unit(currentValue)}</span>
               </div>
               {stops ? (
@@ -100,7 +100,7 @@ export function TargetSliderStep({ config, range, value, onChange, eyebrow }: Ta
                   hideValue
                 />
               )}
-              <p className="mt-3 text-center font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
+              <p className="mt-3 text-center text-2xs text-ink-faint font-medium">
                 This pack&rsquo;s lines run {config.formatValue(min)}&ndash;{config.formatValue(max)}
               </p>
             </>

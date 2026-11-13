@@ -6,9 +6,9 @@ import type { ReactNode } from "react";
  */
 export function NotamStrip({ headline, children, className = "" }: { headline: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <details className={`group rounded-lg border border-warn/30 bg-warn-soft/40 text-sm ${className}`}>
-      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] [&::-webkit-details-marker]:hidden">
-        <span className="shrink-0 rounded-[3px] bg-warn px-1.5 py-px font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-canvas">Notam</span>
+    <details className={`group rounded-[4px] border border-warn/35 bg-warn-soft/40 text-sm ${className}`}>
+      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-[4px] px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] [&::-webkit-details-marker]:hidden">
+        <span className="shrink-0 rounded-[2px] bg-sign px-1.5 py-px font-display text-2xs font-bold text-on-sign">Notam</span>
         <span className="min-w-0 flex-1 font-medium text-warn">{headline}</span>
         <span className="shrink-0 text-xs text-ink-muted underline decoration-dotted underline-offset-4">
           <span className="group-open:hidden">Read more</span>

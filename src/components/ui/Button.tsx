@@ -5,12 +5,13 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_CLASSES: Record<NonNullable<ButtonProps["variant"]>, string> = {
-  primary:
-    "bg-brand text-on-brand shadow-sm hover:bg-brand-strong hover:shadow-md disabled:opacity-40 disabled:hover:bg-brand disabled:hover:shadow-sm disabled:hover:translate-y-0",
-  secondary:
-    "bg-surface border border-border-strong text-ink hover:border-brand hover:text-brand hover:shadow-sm disabled:opacity-40 disabled:hover:translate-y-0",
-  ghost: "text-ink-muted hover:text-ink disabled:opacity-40 disabled:hover:translate-y-0",
-  danger: "bg-danger text-on-danger shadow-sm hover:opacity-90 hover:shadow-md disabled:opacity-40 disabled:hover:translate-y-0",
+  // A direction sign: yellow on navy by day, black on yellow at night.
+  // Disabled, it goes grey rather than a faded yellow (which turns olive on navy).
+  primary: "bg-brand text-on-brand hover:bg-brand-strong disabled:bg-border-strong disabled:text-ink-faint disabled:hover:bg-border-strong",
+  // Quiet: a ruled outline that firms up on hover, so the one sign on the screen stays the one that stands out.
+  secondary: "border border-border-strong bg-surface text-ink hover:border-ink disabled:opacity-40 disabled:hover:border-border-strong",
+  ghost: "text-ink-muted hover:bg-ink/[0.05] hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent",
+  danger: "bg-danger text-on-danger hover:opacity-90 disabled:opacity-40",
 };
 
 export function Button({
@@ -21,7 +22,7 @@ export function Button({
   return (
     <button
       {...props}
-      className={`press inline-flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all duration-150 ease-out hover:-translate-y-px active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${VARIANT_CLASSES[variant]} ${className}`}
+      className={`press inline-flex items-center justify-center gap-2 rounded-[4px] px-4 py-2.5 font-display text-sm font-bold tracking-[0.01em] transition-colors duration-150 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] ${VARIANT_CLASSES[variant]} ${className}`}
     />
   );
 }

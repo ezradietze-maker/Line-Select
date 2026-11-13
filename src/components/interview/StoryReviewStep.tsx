@@ -96,7 +96,7 @@ export function StoryReviewStep({ facts, onRemove, onRestore, onConfirm, onEdit,
           if (items.length === 0) return null;
           return (
             <section key={g.id} aria-label={g.label}>
-              <h3 className="mb-2 font-mono text-[10.5px] font-medium uppercase tracking-[0.18em] text-ink-faint">{g.label}</h3>
+              <h3 className="mb-2 text-2xs font-medium text-ink-faint">{g.label}</h3>
               <ul className="space-y-1.5">
                 {items.map((cluster) => {
                   const f = cluster[0];
@@ -117,7 +117,7 @@ export function StoryReviewStep({ facts, onRemove, onRestore, onConfirm, onEdit,
                         {tags.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1.5">
                             {tags.map((t) => (
-                              <span key={t} className="rounded border border-hairline px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted">
+                              <span key={t} className="rounded border border-hairline px-1.5 py-0.5 font-mono text-2xs text-ink-muted">
                                 {t}
                               </span>
                             ))}

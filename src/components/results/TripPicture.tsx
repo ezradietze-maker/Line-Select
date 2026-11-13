@@ -90,11 +90,11 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
     <div className="min-w-0">
       {dayDetail && (
         <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-[11px] text-ink-faint">Tap a day for everything the pairing says about it.</span>
+          <span className="text-2xs text-ink-faint">Tap a day for everything the pairing says about it.</span>
           <button
             type="button"
             onClick={() => setOpen(allOpen ? new Set() : new Set(days.map((d) => d.dayNumber)))}
-            className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-ink-muted hover:text-ink"
+            className="flex shrink-0 items-center gap-1 text-2xs font-medium text-ink-muted hover:text-ink"
             aria-expanded={allOpen}
           >
             {allOpen ? "Close every day" : "Open every day"}
@@ -103,12 +103,12 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
         </div>
       )}
       <div className={`grid ${grid} items-end gap-x-2`} aria-hidden>
-        <span className="whitespace-nowrap font-mono text-[10px] text-ink-faint">{mode === "zulu" ? "Zulu" : base ? `${base} time` : ""}</span>
+        <span className="whitespace-nowrap font-mono text-2xs text-ink-faint">{mode === "zulu" ? "Zulu" : base ? `${base} time` : ""}</span>
         <div ref={trackRef} className="relative h-3.5">
           {hours.map((h) => (
             <span
               key={h}
-              className={`absolute top-0 font-mono text-[10px] leading-none text-ink-faint ${h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2"}`}
+              className={`absolute top-0 font-mono text-2xs leading-none text-ink-faint ${h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2"}`}
               style={{ left: `${(h / 24) * 100}%` }}
             >
               {String(h % 24).padStart(2, "0")}
@@ -127,23 +127,23 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
           const row = (
             <>
               <span className="flex min-w-0 flex-col items-start leading-tight">
-                <span className="flex items-center gap-1 truncate text-[11px] font-semibold text-ink">
+                <span className="flex items-center gap-1 truncate text-2xs font-semibold text-ink">
                   {date ? `${date.weekday} ${date.day}` : `Day ${day.dayNumber}`}
                   {nextMonth && (
-                    <span className="text-[9px] font-semibold uppercase tracking-wide text-carry" title={`The ${nextMonth} bid month's — carried over, not counted in this one`}>
+                    <span className="text-2xs font-semibold uppercase tracking-wide text-carry" title={`The ${nextMonth} bid month's — carried over, not counted in this one`}>
                       {nextMonth.slice(0, 3)}
                     </span>
                   )}
                   {dayDetail && <ChevronDownIcon className={`h-2.5 w-2.5 shrink-0 text-ink-faint transition-transform ${isOpen ? "rotate-180" : ""}`} />}
                 </span>
                 {start && (
-                  <span className={`truncate font-mono text-[10px] font-semibold ${start.kind === "report" ? "text-report" : "text-gt"}`} title={start.kind === "report" ? "Report" : "Hotel pickup — the van from the layover hotel"}>
+                  <span className={`truncate font-mono text-2xs font-semibold ${start.kind === "report" ? "text-report" : "text-gt"}`} title={start.kind === "report" ? "Report" : "Hotel pickup — the van from the layover hotel"}>
                     {start.kind === "report" ? "Rpt" : "P/U"} {start.clock}
                     <Zone mode={mode} />
                   </span>
                 )}
                 {fullDay && (
-                  <span className="truncate text-[10px] font-semibold text-layover" title={`A full day free in ${fullDay.city}${fullDay.barely ? " — just barely: up before 6 the next morning" : ""}`}>
+                  <span className="truncate text-2xs font-semibold text-layover" title={`A full day free in ${fullDay.city}${fullDay.barely ? " — just barely: up before 6 the next morning" : ""}`}>
                     Full day{fullDay.barely ? <span className="font-normal">, barely</span> : null}
                   </span>
                 )}
@@ -174,7 +174,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
                   onClick={() => toggle(day.dayNumber)}
                   aria-expanded={isOpen}
                   aria-label={`${date ? `${date.weekday} ${date.day}` : `Day ${day.dayNumber}`} — ${isOpen ? "hide" : "show"} everything on this day`}
-                  className={`grid w-full ${grid} items-center gap-x-2 rounded-md py-1 text-left transition-colors hover:bg-calendar-accent/[0.05] ${isOpen ? "bg-calendar-accent/[0.05]" : ""}`}
+                  className={`grid w-full ${grid} items-center gap-x-2 rounded-md py-1 text-left transition-colors hover:bg-trip-wash ${isOpen ? "bg-trip-wash" : ""}`}
                 >
                   {row}
                 </button>
@@ -187,7 +187,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
         })}
       </ol>
       {!compact && (
-        <p className="mt-1 text-[10.5px] leading-snug text-ink-faint">
+        <p className="mt-1 text-2xs leading-snug text-ink-faint">
           {mode === "zulu" ? "Bars and times in Zulu." : `Bars on ${base ?? "the domicile"}'s clock, as long as each flight; times are local where they happen, as the bid pack prints them.`}
         </p>
       )}

@@ -21,6 +21,28 @@ function formatSignedValue(value: number): string {
   return rounded > 0 ? `+${rounded}` : `${rounded}`;
 }
 
+/**
+ * A printed tick scale under a slider's track, like an instrument's: a tick every step, taller at the ends, the middle
+ * and the quarters. Inset by half the thumb so the end ticks sit under the thumb at each end.
+ */
+export function PrintedScale({ count }: { count: number }) {
+  return (
+    <div className="relative mx-2 mt-1 h-2" aria-hidden>
+      {Array.from({ length: count + 1 }, (_, i) => {
+        const major = i === 0 || i === count || i * 2 === count;
+        const quarter = (i * 4) % count === 0;
+        return (
+          <span
+            key={i}
+            className={`absolute top-0 w-px -translate-x-1/2 ${major ? "h-2 bg-ink-faint" : quarter ? "h-1.5 bg-border-strong" : "h-1 bg-border-strong"}`}
+            style={{ left: `${(i / count) * 100}%` }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 /** Within this of center while dragging, the thumb settles on exactly "no preference" — a detent, so a pilot who means "doesn't matter" doesn't have to land on a pixel. Keyboard steps are left alone, so arrowing off center still works one step at a time. */
 const CENTER_DETENT = 5;
 
@@ -49,7 +71,7 @@ export function Slider({
     <div>
       <div className="mb-2 flex items-center justify-end">
         <span
-          className={`rounded-full px-2.5 py-0.5 font-mono text-xs font-semibold tabular-nums transition-colors ${
+          className={`rounded-[3px] px-2 py-0.5 font-mono text-xs font-semibold tabular-nums transition-colors ${
             magnitude < 10
               ? "bg-canvas text-ink-faint"
               : "bg-brand-soft text-brand"
@@ -59,24 +81,15 @@ export function Slider({
         </span>
       </div>
       <div className="relative py-2">
-        {/* Quarter-point graduations, same instrument vocabulary as the score gauge and match bars — the center tick (below) stays taller since it's the one that actually means something (no preference). */}
-        {[25, 75].map((pct) => (
-          <div
-            key={pct}
-            className="pointer-events-none absolute top-1/2 h-2.5 w-px -translate-y-1/2 bg-border-strong/60"
-            style={{ left: `${pct}%` }}
-            aria-hidden
-          />
-        ))}
         <div
-          className="pointer-events-none absolute left-1/2 top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-border-strong"
+          className="pointer-events-none absolute left-1/2 top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 bg-border-strong"
           aria-hidden
         />
         {readOnly ? (
           <div
             role="img"
             aria-label={`${ariaLabel}: ${formatSignedValue(value)}, ${strength}`}
-            className="h-1.5 w-full rounded-full"
+            className="h-1.5 w-full rounded-[2px]"
             style={{
               background: `linear-gradient(to right, var(--color-border-strong) 0%, var(--color-border-strong) ${fillStart}%, var(--color-brand) ${fillStart}%, var(--color-brand) ${fillEnd}%, var(--color-border-strong) ${fillEnd}%, var(--color-border-strong) 100%)`,
             }}
@@ -104,6 +117,7 @@ export function Slider({
           />
         )}
       </div>
+      <PrintedScale count={20} />
       {/* The side being leaned toward lights up, so the answer reads in words, not just as a thumb position. */}
       <div className="mt-2 flex items-start justify-between gap-3 text-xs">
         <span className={`max-w-[40%] transition-colors duration-200 ${value <= -10 ? "font-medium text-accent" : "text-ink-muted"}`}>{lowLabel}</span>

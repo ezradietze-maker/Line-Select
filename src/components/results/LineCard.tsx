@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { memo, useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { DURATION, EASE } from "@/lib/motion-tokens";
 import { CategoryBars } from "@/components/results/CategoryBars";
 import { CircadianInfo } from "@/components/results/CircadianInfo";
 import { BodyClockBadge, BodyClockReasons } from "@/components/results/BodyClock";
@@ -218,7 +219,7 @@ export const LineCard = memo(function LineCard({
     <div
       ref={setDropRef}
       className={`panel-glass hover-lift overflow-hidden transition-[box-shadow,opacity,border-color] duration-150 ${
-        topPick ? "top-pick-glow !border-accent/50 ring-1 ring-accent/20" : "hover:!border-border-strong"
+        topPick ? "top-pick-glow !border-sign-edge" : "hover:!border-border-strong"
       } ${isDragging ? "opacity-40" : ""} ${isOver ? "ring-2 ring-accent" : ""}`}
     >
       <BidPackStrip
@@ -232,9 +233,10 @@ export const LineCard = memo(function LineCard({
         open={open}
         onToggle={onToggleOpen}
         placedByYou={placedByYou}
+        top={topPick}
       />
 
-      {/* Everything else about the line, under its strip when it's opened. */}
+      {/* Everything else about the line, opening out of its strip when it's tapped (Hand-off). */}
       <AnimatePresence initial={false}>
         {open && details && (
           <motion.div
@@ -242,7 +244,7 @@ export const LineCard = memo(function LineCard({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={reduceMotion ? { duration: 0 } : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            transition={reduceMotion ? { duration: 0 } : { duration: DURATION.handoff, ease: EASE.emphasized }}
             className="overflow-hidden border-t border-hairline"
           >
             <LineDetails
@@ -355,11 +357,14 @@ function LineDetails({
         </div>
       )}
       {isTopPick && (
-        <div className="flex items-center gap-1.5 border-b border-accent/20 bg-gradient-to-r from-accent-soft to-transparent px-5 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-accent sm:px-6">
-          <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-hidden>
-            <path d="M12 2l2.6 6.5 7 .5-5.3 4.5 1.7 6.9L12 16.9 5.9 20.4l1.7-6.9L2.4 9l7-.5L12 2z" />
-          </svg>
-          Top pick
+        <div className="flex items-center border-b border-border px-5 py-1.5 sm:px-6">
+          {/* A location sign: yellow on black. */}
+          <span className="mark-in inline-flex items-center gap-1.5 rounded-[2px] bg-on-sign px-1.5 py-0.5 font-display text-2xs font-bold text-sign">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-hidden>
+              <path d="M12 2l2.6 6.5 7 .5-5.3 4.5 1.7 6.9L12 16.9 5.9 20.4l1.7-6.9L2.4 9l7-.5L12 2z" />
+            </svg>
+            Top pick
+          </span>
         </div>
       )}
       <DealbreakerBanner violations={violatedDealbreakers} />
@@ -376,7 +381,7 @@ function LineDetails({
                 <span className="font-mono text-xs font-semibold text-ink-faint">#{rank}</span>
                 <span className="font-display text-lg font-semibold tracking-tight text-ink">Line {line.lineNumber}</span>
               </div>
-              <div className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.03em] text-ink-muted sm:text-[11.5px] sm:tracking-[0.08em]">
+              <div className="mt-0.5 text-2xs text-ink-muted sm:text-xs font-medium">
                 <CreditHours hours={line.totalCreditHours} className="whitespace-nowrap" />
                 {" · "}
                 {lineScore.estimated ? (
@@ -451,7 +456,7 @@ function LineDetails({
             <div>
               {chips.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">Features</span>
+                  <span className="text-xs font-medium text-ink-muted">Features</span>
                   <ul className="contents" aria-label="This line's best features for you">
                     {chips.map((chip, i) => (
                       <FactChip key={i} chip={chip} />
@@ -512,7 +517,7 @@ function LineDetails({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={reduceMotion ? { duration: 0 } : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            transition={reduceMotion ? { duration: 0 } : { duration: DURATION.handoff, ease: EASE.emphasized }}
             className="overflow-hidden border-t border-hairline"
           >
             <div className="px-4 pt-2 sm:px-5">
@@ -565,7 +570,7 @@ function LineDetails({
 
                   {contributors.length > 0 && (
                     <div>
-                      <div className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                      <div className="text-2xs font-medium text-ink-faint">
                         What&rsquo;s working
                       </div>
                       <ul className="mt-1 space-y-1">
@@ -581,7 +586,7 @@ function LineDetails({
 
                   {detractors.length > 0 && (
                     <div>
-                      <div className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                      <div className="text-2xs font-medium text-ink-faint">
                         What&rsquo;s not
                       </div>
                       <ul className="mt-1 space-y-1">
@@ -597,7 +602,7 @@ function LineDetails({
 
                   {nearMissDealbreakers.length > 0 && (
                     <div>
-                      <div className="text-[11px] font-medium uppercase tracking-wide text-warn">
+                      <div className="text-2xs font-medium text-warn">
                         Close call{nearMissDealbreakers.length > 1 ? "s" : ""}
                       </div>
                       <ul className="mt-1 space-y-1">
@@ -619,7 +624,7 @@ function LineDetails({
                   <button
                     type="button"
                     onClick={() => setShowEveryDimension((v) => !v)}
-                    className="flex items-center gap-1.5 text-[11px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
+                    className="flex items-center gap-1.5 text-2xs font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
                     aria-expanded={showEveryDimension}
                   >
                     See every dimension
@@ -636,7 +641,7 @@ function LineDetails({
                   {showEveryDimension && implicitFactors.length > 0 && (
                     <div>
                       <div
-                        className="text-[11px] font-medium uppercase tracking-wide text-ink-faint"
+                        className="text-2xs font-medium text-ink-faint"
                         title="Patterns the model found predict what you pick — either from dragging lines up or down here, or from how you answered the interview."
                       >
                         Also factored in
@@ -708,7 +713,7 @@ const CHIP_TONE: Record<LineFactChip["tone"], string> = {
 
 function FactChip({ chip }: { chip: LineFactChip }) {
   return (
-    <li className={`inline-flex items-baseline gap-1.5 rounded-full border px-3 py-1 text-[13px] ${CHIP_TONE[chip.tone]}`}>
+    <li className={`inline-flex items-baseline gap-1.5 rounded-[3px] border px-3 py-1 text-[13px] ${CHIP_TONE[chip.tone]}`}>
       <span className="font-semibold">{chip.main}</span>
       {chip.note && <span className="font-normal opacity-90">{chip.note}</span>}
     </li>

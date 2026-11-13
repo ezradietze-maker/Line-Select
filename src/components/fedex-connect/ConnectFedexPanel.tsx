@@ -179,7 +179,7 @@ function ConsentModal({ accepted, busy, error, onToggle, onAccept, onClose }: { 
           Cancel
         </Button>
       </div>
-      <p className="mt-3 text-[11px] text-ink-faint">Consent version {CONSENT_VERSION}. You can withdraw it any time by disconnecting.</p>
+      <p className="mt-3 text-2xs text-ink-faint">Consent version {CONSENT_VERSION}. You can withdraw it any time by disconnecting.</p>
     </Modal>
   );
 }

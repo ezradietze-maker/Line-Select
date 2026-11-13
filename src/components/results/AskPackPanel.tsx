@@ -85,7 +85,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
           {asking ? (
             // Reading the question: the search glass becomes a small radar, sweeping.
             <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 overflow-hidden rounded-full border border-accent/50">
-              <span className="absolute inset-0 animate-[spin_1.6s_linear_infinite] rounded-full motion-reduce:animate-none" style={{ background: "conic-gradient(from 0deg, transparent 0deg 270deg, var(--color-accent) 360deg)" }} />
+              <span className="absolute inset-0 animate-[spin_1.6s_linear_infinite] rounded-[3px] motion-reduce:animate-none" style={{ background: "conic-gradient(from 0deg, transparent 0deg 270deg, var(--color-accent) 360deg)" }} />
             </span>
           ) : (
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
@@ -116,7 +116,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
                 setQuestion(ex);
                 void ask(ex);
               }}
-              className="rounded-full border border-hairline px-2.5 py-1 text-ink-muted hover:border-border-strong hover:text-ink disabled:pointer-events-none disabled:opacity-50"
+              className="rounded-[3px] border border-hairline px-2.5 py-1 text-ink-muted hover:border-border-strong hover:text-ink disabled:pointer-events-none disabled:opacity-50"
             >
               {ex}
             </button>

@@ -22,7 +22,7 @@ export function DealbreakerBanner({ violations }: DealbreakerBannerProps) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 3h.01M10.3 3.9L2.7 17a2 2 0 001.7 3h15.2a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
         </svg>
         <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-wide text-danger">
+          <div className="text-xs font-semibold text-danger">
             Goes past {violations.length === 1 ? "a limit" : "limits"} you set, so it sits at the bottom of your list
           </div>
           <ul className="mt-1 space-y-0.5">

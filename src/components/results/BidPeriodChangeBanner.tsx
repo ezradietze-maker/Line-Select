@@ -12,7 +12,7 @@ export function BidPeriodChangeBanner({ summary, bare = false }: BidPeriodChange
 
   return (
     <div className={bare ? "" : "mt-4 rounded-xl border border-border bg-surface p-4 shadow-elevated sm:p-5"}>
-      {!bare && <div className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Since {summary.previousMonth}</div>}
+      {!bare && <div className="text-xs font-semibold text-ink-faint">Since {summary.previousMonth}</div>}
       {summary.sameTopLine ? (
         <p className="mt-1 text-sm leading-relaxed text-ink">
           Line {summary.currentTopLine} is your top pick again this month &mdash; scored {summary.currentTopScore} now,

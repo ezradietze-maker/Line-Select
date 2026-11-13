@@ -131,7 +131,7 @@ function SortDialog({ sort, lines, onClose }: { sort: LineSort; lines: LineScore
                 const labelId = `${baseId}-group-${g.id}`;
                 return (
                   <div key={g.id} role="group" aria-labelledby={labelId} className="mb-2">
-                    <div id={labelId} className="sticky top-0 bg-surface py-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    <div id={labelId} className="sticky top-0 bg-surface py-1 text-xs font-semibold text-ink-muted">
                       {g.label}
                     </div>
                     {inGroup.map((d) => (
@@ -195,7 +195,7 @@ function SortDialog({ sort, lines, onClose }: { sort: LineSort; lines: LineScore
               </div>
             </fieldset>
 
-            <div className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">On top</div>
+            <div className="mt-3 text-xs font-semibold text-ink-muted">On top</div>
             <ol className="mt-1 space-y-1" aria-live="polite">
               {preview.top.map((t) => (
                 <li key={t.lineNumber} className="flex items-baseline justify-between gap-2">

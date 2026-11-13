@@ -23,7 +23,7 @@ export function CircadianInfo() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
+        className="inline-flex items-center gap-1 text-2xs font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
       >
         What&rsquo;s in the body-clock score?
       </button>

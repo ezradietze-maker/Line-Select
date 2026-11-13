@@ -43,7 +43,7 @@ export function MatchBar({ dimension }: MatchBarProps) {
           </span>
         </div>
         <div
-          className="mt-1.5 h-2 rounded-full bg-warn-soft"
+          className="mt-1.5 h-2 rounded-[1px] bg-warn-soft"
           style={{
             backgroundImage:
               "repeating-linear-gradient(135deg, var(--color-warn) 0, var(--color-warn) 3px, transparent 3px, transparent 7px)",
@@ -65,7 +65,7 @@ export function MatchBar({ dimension }: MatchBarProps) {
           {showsPreference ? `${matchPct}% aligned` : "not weighted"}
         </span>
       </div>
-      <div className="relative mt-2 h-2 rounded-full bg-brand-soft shadow-[inset_0_1px_2px_rgba(0,0,0,0.18)]">
+      <div className="relative mt-2 h-2 rounded-[1px] bg-brand-soft">
         {/* Graduation marks at the quarter points — a plain flat bar reads as a web progress indicator; a scaled one reads as an instrument. */}
         <div className="absolute inset-0" aria-hidden>
           {[25, 50, 75].map((pct) => (
@@ -73,7 +73,7 @@ export function MatchBar({ dimension }: MatchBarProps) {
           ))}
         </div>
         <div
-          className="relative h-2 rounded-full bg-gradient-to-b from-brand-strong to-brand transition-all"
+          className="draw-x relative h-2 bg-brand transition-all"
           style={{ width: `${Math.round(dimension.value * 100)}%` }}
         />
         {showsPreference && (

@@ -30,9 +30,9 @@ export function CategoryBars({ categoryScores }: CategoryBarsProps) {
               <span className="font-medium text-ink">{label}</span>
               <span className="font-mono text-ink-faint">{Math.round(score)}%</span>
             </div>
-            <div className="mt-1 h-1.5 rounded-full bg-canvas">
+            <div className="mt-1 h-1.5 rounded-[1px] bg-canvas">
               <div
-                className={`bar-fill h-1.5 rounded-full transition-all ${toneFor(score)}`}
+                className={`bar-fill h-1.5 transition-all ${toneFor(score)}`}
                 style={{ width: `${Math.round(score)}%` }}
               />
             </div>

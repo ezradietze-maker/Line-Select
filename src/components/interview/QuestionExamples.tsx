@@ -21,12 +21,12 @@ function splitFact(example: QuestionExample): { what: string; figure: string } {
 function Figure({ example }: { example: QuestionExample }) {
   const { what, figure } = splitFact(example);
   // A line shown only because the question names it has no figure; the strip says the rest.
-  if (!figure) return example.rank ? <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">#{example.rank} on your list</p> : <p className="text-ink-muted">Named in the question</p>;
+  if (!figure) return example.rank ? <p className="text-2xs text-ink-faint font-medium">#{example.rank} on your list</p> : <p className="text-ink-muted">Named in the question</p>;
   return (
     <p className="leading-snug">
       {what ? <span className="text-ink-muted">{what} &middot; </span> : null}
       <span className="font-semibold text-accent">{figure}</span>
-      {example.rank ? <span className="ml-2 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">#{example.rank} on your list</span> : null}
+      {example.rank ? <span className="ml-2 text-2xs text-ink-faint font-medium">#{example.rank} on your list</span> : null}
     </p>
   );
 }

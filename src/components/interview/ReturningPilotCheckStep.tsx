@@ -62,7 +62,7 @@ export function ReturningPilotCheckStep({
                 <button
                   type="button"
                   onClick={() => changed && onToggleFact(fact.id)}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  className={`rounded-[3px] border px-2.5 py-1 text-xs font-medium transition-colors ${
                     !changed
                       ? "border-brand bg-brand-soft text-brand"
                       : "border-border text-ink-faint hover:text-ink-muted"
@@ -73,7 +73,7 @@ export function ReturningPilotCheckStep({
                 <button
                   type="button"
                   onClick={() => !changed && onToggleFact(fact.id)}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  className={`rounded-[3px] border px-2.5 py-1 text-xs font-medium transition-colors ${
                     changed
                       ? "border-warn bg-warn-soft text-warn"
                       : "border-border text-ink-faint hover:text-ink-muted"
@@ -106,7 +106,7 @@ export function ReturningPilotCheckStep({
               key={tag}
               type="button"
               onClick={() => onLifeEventChange(lifeEvent === tag ? "" : tag)}
-              className={`rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-all ${
+              className={`rounded-[3px] border-2 px-3 py-1.5 text-sm font-medium transition-all ${
                 lifeEvent === tag
                   ? "border-brand bg-brand-soft text-brand"
                   : "border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink"

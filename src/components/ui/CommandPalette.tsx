@@ -208,7 +208,7 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
         aria-modal="true"
         aria-label="Jump to a line or screen"
         ref={dialogRef}
-        className="animate-palette-in relative w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-elevated-lg"
+        className="animate-palette-in relative w-full max-w-lg overflow-hidden rounded-[8px] border border-border bg-surface shadow-elevated-lg"
       >
         <div className="flex items-center gap-3 border-b border-hairline px-4">
           <SearchIcon className="h-4 w-4 shrink-0 text-ink-faint" />
@@ -226,7 +226,7 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
             aria-activedescendant={results[active] ? `palette-${results[active].id}` : undefined}
             className="h-12 w-full bg-transparent text-[15px] text-ink placeholder:text-ink-faint focus:outline-none"
           />
-          <kbd className="hidden shrink-0 rounded border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-ink-faint sm:block">esc</kbd>
+          <kbd className="hidden shrink-0 rounded border border-hairline px-1.5 py-0.5 font-mono text-2xs text-ink-faint sm:block">esc</kbd>
         </div>
         <div ref={listRef} id="palette-results" role="listbox" aria-label="Results" className="max-h-[min(60vh,26rem)] overflow-y-auto p-1.5">
           {results.length === 0 ? (
@@ -240,7 +240,7 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
               const Icon = c.icon;
               return (
                 <div key={c.id}>
-                  {header && <div className="px-3 pb-1 pt-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">{header}</div>}
+                  {header && <div className="px-3 pb-1 pt-2.5 text-2xs text-ink-faint font-medium">{header}</div>}
                   <button
                     type="button"
                     id={`palette-${c.id}`}
@@ -251,14 +251,14 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
                     // Tabbed to, it's the one lit and the one Enter opens.
                     onFocus={() => setCursor(i)}
                     onClick={c.run}
-                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-                      i === active ? "bg-accent-wash text-on-wash" : "text-ink-muted"
+                    className={`flex w-full items-center gap-3 rounded-[4px] px-3 py-2.5 text-left text-sm transition-colors ${
+                      i === active ? "bg-accent-wash text-on-wash ring-[1.5px] ring-inset ring-accent" : "text-ink-muted"
                     }`}
                   >
                     {Icon ? (
                       <Icon className="h-4 w-4 shrink-0" />
                     ) : c.standing ? (
-                      <span className={`w-9 shrink-0 font-mono text-[11px] tabular-nums ${i === active ? "text-on-wash" : "text-ink-faint"}`}>#{c.standing.rank}</span>
+                      <span className={`w-9 shrink-0 font-mono text-2xs tabular-nums ${i === active ? "text-on-wash" : "text-ink-faint"}`}>#{c.standing.rank}</span>
                     ) : (
                       <span className="h-4 w-4 shrink-0" aria-hidden />
                     )}
@@ -267,19 +267,19 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
                       {c.group === "Lines" ? <FlipText text={c.label} delay={Math.min(i, 8) * 45} stagger={22} /> : c.label}
                     </span>
                     {c.standing && (
-                      <span className="shrink-0 rounded-md border border-hairline px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums" title="Score">
+                      <span className="shrink-0 rounded-md border border-hairline px-1.5 py-0.5 font-mono text-2xs font-semibold tabular-nums" title="Score">
                         {c.group === "Lines" ? <FlipText text={String(Math.round(c.standing.score))} delay={Math.min(i, 8) * 45 + 160} stagger={30} /> : Math.round(c.standing.score)}
                       </span>
                     )}
-                    {c.hint && <span className={`hidden shrink-0 font-mono text-[11px] tabular-nums sm:block ${i === active ? "text-on-wash" : "text-ink-faint"}`}>{c.hint}</span>}
-                    {i === active && <span className="shrink-0 font-mono text-[11px] text-on-wash" aria-hidden>↵</span>}
+                    {c.hint && <span className={`hidden shrink-0 font-mono text-2xs tabular-nums sm:block ${i === active ? "text-on-wash" : "text-ink-faint"}`}>{c.hint}</span>}
+                    {i === active && <span className="shrink-0 font-mono text-2xs text-on-wash" aria-hidden>↵</span>}
                   </button>
                 </div>
               );
             })
           )}
         </div>
-        <div className="flex items-center gap-4 border-t border-hairline px-4 py-2 font-mono text-[10px] text-ink-faint">
+        <div className="flex items-center gap-4 border-t border-hairline px-4 py-2 font-mono text-2xs text-ink-faint">
           <span>↑↓ move</span>
           <span>↵ open</span>
           <span className="ml-auto hidden sm:inline">⌘K anywhere</span>
