@@ -41,6 +41,7 @@ vi.mock("@/lib/server/db", () => ({
   findSession: vi.fn(),
   findUserByEmail: vi.fn(async (email: string) => store.users.find((u) => u.email === email) ?? null),
   findUserById: vi.fn(async (id: string) => store.users.find((u) => u.id === id) ?? null),
+  isUnconfirmedSignUp: vi.fn(async () => false),
   updateCredential: vi.fn(async (userId: string, patch: object) => {
     const i = store.credentials.findIndex((c) => c.userId === userId);
     if (i !== -1) store.credentials[i] = { ...store.credentials[i], ...patch };

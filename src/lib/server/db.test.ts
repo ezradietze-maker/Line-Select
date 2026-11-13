@@ -717,6 +717,47 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.findUserById(confirmed.id)).not.toBeNull();
     });
 
+    it("the clear-out leaves an account anyone has used: a session, a saved pack or a profile", async () => {
+      const weekAgo = new Date(Date.now() - 8 * 24 * 3600_000).toISOString();
+      const made = async (label: string) => {
+        const id = randomUUID();
+        const email = `${label}-${id}@test.line-select.invalid`;
+        await mod.createUserWithCredential({ id, email, displayName: "P", createdAt: weekAgo, plan: "free", emailVerified: false }, { userId: id, email, passwordHash: "00", salt: "00" });
+        createdUserIds.push(id);
+        await mod.saveVerificationToken({ tokenHash: hashOf(`used-${id}`), userId: id, expiresAt: new Date(Date.now() - 7 * 24 * 3600_000).toISOString(), signUp: true });
+        return id;
+      };
+      const withSession = await made("session");
+      const token = randomUUID().replace(/-/g, "");
+      await mod.createSession({ token, userId: withSession, expiresAt: new Date(Date.now() + 20 * 24 * 3600_000).toISOString() });
+      const withPack = await made("pack");
+      await mod.saveBidPackRecord(withPack, "MEM-777-CA-2026-12", Buffer.from("pack"));
+      const withProfile = await made("profile");
+      await mod.savePreferenceProfile(withProfile, fakeProfile());
+      const untouched = await made("untouched");
+      await mod.deleteUnconfirmedSignUps(new Date(Date.now() - 7 * 24 * 3600_000));
+      expect(await mod.findUserById(untouched)).toBeNull();
+      for (const id of [withSession, withPack, withProfile]) expect(await mod.findUserById(id)).not.toBeNull();
+      expect(await mod.findSession(token)).not.toBeNull();
+      expect(await mod.getBidPackRecord(withPack)).not.toBeNull();
+    });
+
+    it("know whether an account is a sign-up waiting on its link, and a link can be looked at, or spent without confirming", async () => {
+      const waiting = await makeUser("waiting", { confirmed: false });
+      const older = await makeUser("older", { confirmed: false });
+      await mod.saveVerificationToken({ tokenHash: hashOf(`w-${waiting.id}`), userId: waiting.id, expiresAt: new Date(Date.now() + 60_000).toISOString(), signUp: true, deviceHash: "d" });
+      await mod.saveVerificationToken({ tokenHash: hashOf(`o-${older.id}`), userId: older.id, expiresAt: new Date(Date.now() + 60_000).toISOString(), signUp: false });
+      expect(await mod.isUnconfirmedSignUp(waiting.id)).toBe(true);
+      expect(await mod.isUnconfirmedSignUp(older.id)).toBe(false);
+      expect(await mod.peekVerificationToken(hashOf(`w-${waiting.id}`))).toEqual({ status: "valid", userId: waiting.id, deviceHash: "d" });
+      expect(await mod.voidVerificationToken(hashOf(`w-${waiting.id}`))).toBe(waiting.id);
+      expect(await mod.voidVerificationToken(hashOf(`w-${waiting.id}`))).toBeNull();
+      expect(await mod.peekVerificationToken(hashOf(`w-${waiting.id}`))).toEqual({ status: "used", userId: waiting.id });
+      expect((await mod.findUserById(waiting.id))?.emailVerified).toBe(false);
+      await mod.markEmailVerified(waiting.id);
+      expect(await mod.isUnconfirmedSignUp(waiting.id)).toBe(false);
+    });
+
     it("don't count toward the Trade Board's bar", async () => {
       const prefix = `uploaded-u${randomUUID().slice(0, 8)}-md11-cap-`;
       const yes = await makeUser("bar-yes");

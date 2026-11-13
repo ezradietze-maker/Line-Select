@@ -34,7 +34,7 @@ vi.mock("@/lib/server/email", () => ({
   },
 }));
 
-const { checkSpend, pilotSpender, recordSpend, spenderFor, spenderForUser, spendLimitResponse, startPaidCall } = await import("./spend-guard");
+const { checkSpend, pilotSpender, recordSpend, spendCaps, spenderFor, spenderForUser, spendLimitResponse, startPaidCall } = await import("./spend-guard");
 
 const pilot = { key: "u:pilot-1", signedIn: true };
 const otherPilot = { key: "u:pilot-2", signedIn: true };
@@ -279,5 +279,26 @@ describe("a paid call's hold", () => {
   it("counts toward what checkSpend sees while it runs, so hotel and flight checks see it too", async () => {
     expect((await startPaidCall(guest, 2, { now: day })).ok).toBe(true);
     expect(await checkSpend(guest, { now: day })).toEqual({ ok: false, scope: "pilot" });
+  });
+});
+
+describe("guest spending from one IPv6 connection", () => {
+  it("shares one address's ceiling across its /64, so rotating addresses can't spend the site's day", async () => {
+    let spent = 0;
+    // 11 addresses in one /64, five device cookies each.
+    for (let a = 1; a <= 11; a++) {
+      for (let d = 0; d < 5; d++) {
+        const req = new Request("https://app.example.com/api/brain/build", { headers: { "x-forwarded-for": `2001:db8:1234:5678::${a.toString(16)}`, cookie: `ls_device=${String(a * 10 + d).padStart(8, "0")}-aaaa-4aaa-8aaa-aaaaaaaaaaaa` } });
+        for (let call = 0; call < 10; call++) {
+          const paid = await startPaidCall(await spenderFor(req), 0.5);
+          if (!paid.ok) break;
+          await paid.finish(0.5);
+          spent += 0.5;
+        }
+      }
+    }
+    expect(spent).toBeLessThanOrEqual(spendCaps().guestAddress);
+    const other = await startPaidCall(await spenderFor(new Request("https://app.example.com/", { headers: { "x-forwarded-for": "203.0.113.50" } })), 0.01);
+    expect(other.ok).toBe(true);
   });
 });

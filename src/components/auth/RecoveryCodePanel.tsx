@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 interface RecoveryCodePanelProps {
   code: string;
   /** Why it's being shown — changes only the opening line. */
-  reason: "signup" | "reset" | "new";
+  reason: "signup" | "reset" | "new" | "first";
   onDone: () => void;
   doneLabel?: string;
 }
@@ -15,6 +15,7 @@ const INTRO: Record<RecoveryCodePanelProps["reason"], string> = {
   signup: "Your account is ready. One more thing before you start:",
   reset: "Your password is changed and you're signed in. Your old recovery code no longer works — here's your new one:",
   new: "Here's your new recovery code. Any earlier one no longer works:",
+  first: "You're signed in. Your account didn't have a recovery code yet, so here's one:",
 };
 
 /**

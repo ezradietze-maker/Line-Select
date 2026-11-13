@@ -90,11 +90,58 @@ export async function checkRequestLimit(bucket: string, request: Request, limit:
   return { ok: mine.ok && address.ok };
 }
 
-/** Best-effort caller IP for rate-limiting anonymous routes — read from the headers most hosts (Vercel included) set on the incoming request. */
+/**
+ * Best-effort caller address for rate limits and allowances, read from the headers most hosts (Vercel included) set on
+ * the incoming request. An IPv6 address is cut to its /64: one home or phone connection is handed a whole /64 and can
+ * use any address in it, so counted one by one it was billions of addresses, each with its own limits (the lockout's
+ * address ceiling, spending per address, sign-ups per address). An IPv4 address is kept whole.
+ */
 export function clientIp(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return request.headers.get("x-real-ip") ?? "unknown";
+  const raw = forwarded ? forwarded.split(",")[0] : request.headers.get("x-real-ip");
+  return raw ? addressGroup(raw) : "unknown";
+}
+
+const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+
+/**
+ * The key one sender's address is counted under: an IPv4 address as it is; IPv6 as its first 64 bits, written
+ * `2001:db8:1:2::/64` whatever way the address was spelled (zeros left out, `::` anywhere, upper case). An IPv4 address
+ * written as IPv6 (`::ffff:203.0.113.5`) is the IPv4 address. Anything else is kept as it came, trimmed.
+ */
+export function addressGroup(raw: string): string {
+  let ip = raw.trim().toLowerCase();
+  // "[2001:db8::1]:443" and "203.0.113.5:443": the port isn't part of who's asking.
+  const bracketed = ip.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (bracketed) ip = bracketed[1];
+  else if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(ip)) ip = ip.slice(0, ip.lastIndexOf(":"));
+  if (IPV4.test(ip)) return ip;
+  if (!ip.includes(":")) return ip;
+  ip = ip.split("%")[0];
+  const mapped = ip.match(/^(?:0{0,4}:){0,5}(?:0{0,4}:)?ffff:(\d{1,3}(?:\.\d{1,3}){3})$/) ?? ip.match(/^::(?:ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (mapped) return mapped[1];
+  const hextets = expandIpv6(ip);
+  if (!hextets) return ip;
+  return `${hextets.slice(0, 4).map((h) => h.replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+
+/** The eight groups of an IPv6 address, or null when it isn't one. An embedded IPv4 tail counts as the last two. */
+function expandIpv6(ip: string): string[] | null {
+  const tail = ip.match(/(\d{1,3}(?:\.\d{1,3}){3})$/);
+  let text = ip;
+  if (tail) {
+    const parts = tail[1].split(".").map(Number);
+    if (parts.some((p) => p > 255)) return null;
+    text = ip.slice(0, -tail[1].length) + `${((parts[0] << 8) | parts[1]).toString(16)}:${((parts[2] << 8) | parts[3]).toString(16)}`;
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return null;
+  const all = [...left, ...Array(halves.length === 2 ? missing : 0).fill("0"), ...right];
+  return all.every((h) => /^[0-9a-f]{1,4}$/.test(h)) ? all : null;
 }
 
 export function rateLimitedResponse(): NextResponse {
