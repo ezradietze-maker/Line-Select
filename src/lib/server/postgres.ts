@@ -19,6 +19,39 @@ import * as schema from "@/lib/server/schema";
  */
 type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>;
 
+/**
+ * The pool, made safe for a dropped network. A pooled client's socket can fail
+ * while no query is running on it (Neon idles out, Wi-Fi drops): pg then emits
+ * `error` on the client, and pg-pool re-emits it on the pool. An EventEmitter
+ * `error` with no listener is thrown as an uncaught exception, which took the
+ * dev server down on Nov 13 (`read ETIMEDOUT`) and would kill a serverless
+ * function. So the pool and every client it makes get a listener that only
+ * logs: pg-pool has already dropped an idle client by then, and a checked-out
+ * one is dropped on release because it's no longer queryable. A query that's
+ * running when the socket fails is unaffected: its promise rejects with the
+ * error, and the route returns its own error response as for any other failure.
+ *
+ * keepAlive finds a dead socket instead of waiting on it forever; the timeouts
+ * stop a request hanging on an unreachable database and let idle connections go
+ * before Neon closes them from its side.
+ */
+export function createPool(connectionString: string): Pool {
+  const pool = new Pool({
+    connectionString,
+    max: 10,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 30_000,
+  });
+  pool.on("connect", (client) =>
+    client.on("error", (err) => console.error("[postgres] connection dropped; the pool will open a new one:", err.message))
+  );
+  // The client's own listener above has already logged it.
+  pool.on("error", () => {});
+  return pool;
+}
+
 let instance: DrizzleDb | null = null;
 
 function getDb(): DrizzleDb {
@@ -30,7 +63,7 @@ function getDb(): DrizzleDb {
         "See HANDOFF.md for how this project's database is provisioned."
     );
   }
-  const pool = new Pool({ connectionString, max: 10 });
+  const pool = createPool(connectionString);
   instance = drizzle(pool, { schema });
   return instance;
 }
