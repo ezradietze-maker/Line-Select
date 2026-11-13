@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { failedCallCost } from "@/lib/brain/llm";
-import { askContract, MAX_FACTS_CHARS, MAX_HISTORY_ANSWER_CHARS, MAX_HISTORY_TURNS, MAX_QUESTION_CHARS, type AskInput, type HistoryTurn } from "@/lib/contract/ask";
+import { askContract, askContractCeilingUsd, MAX_FACTS_CHARS, MAX_HISTORY_ANSWER_CHARS, MAX_HISTORY_TURNS, MAX_QUESTION_CHARS, type AskInput, type HistoryTurn } from "@/lib/contract/ask";
 import { currentBidMonth } from "@/lib/contract/phases";
 import { afterResponse } from "@/lib/server/after-response";
 import { reportProblem } from "@/lib/server/alerts";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { onceForRequest, onceForStream, type Remember } from "@/lib/server/replay";
-import { checkSpend, recordSpend, spenderFor, spendLimitResponse, type Spender } from "@/lib/server/spend-guard";
+import { spenderFor, spendLimitResponse, startPaidCall, type PaidCall } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -46,8 +46,6 @@ async function respond(request: Request, remember: Remember | null): Promise<Res
   const spender = await spenderFor(request);
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "Questions aren't set up on this server." }, { status: 503 });
-  const allowed = await checkSpend(spender);
-  if (!allowed.ok) return spendLimitResponse(allowed);
 
   const body = await readJsonBody(request, 20_000);
   if (!isJsonObject(body) || !isText(body.question, MAX_QUESTION_CHARS) || !(body.question as string).trim()) {
@@ -56,38 +54,48 @@ async function respond(request: Request, remember: Remember | null): Promise<Res
   if (body.facts !== undefined && !isText(body.facts, MAX_FACTS_CHARS)) return NextResponse.json({ error: "Those pack details are too long." }, { status: 400 });
   const earlier = history(body.history);
   if (!earlier) return NextResponse.json({ error: "That conversation is too long. Start a new chat." }, { status: 400 });
+  const bidMonth = typeof body.bidMonth === "string" && /^20\d{2}-(0[1-9]|1[0-2])$/.test(body.bidMonth) ? body.bidMonth : currentBidMonth();
+  const input: AskInput = { question: (body.question as string).trim(), history: earlier, facts: body.facts as string | undefined, bidMonth, apiKey };
+  const paid = await startPaidCall(spender, askContractCeilingUsd(input));
+  if (!paid.ok) return spendLimitResponse(paid);
   // Counted only once the question will really be asked: a day's questions spent on refusals ("resting", too long)
   // left a pilot locked out after the AI came back.
-  const daily = await checkRateLimit("contract-ask-day", spender.key, spender.signedIn ? DAILY_PILOT : DAILY_GUEST, DAY);
+  const daily = await checkRateLimit("contract-ask-day", spender.key, spender.signedIn ? DAILY_PILOT : DAILY_GUEST, DAY).catch(async (e) => {
+    await paid.finish(0);
+    throw e;
+  });
   if (!daily.ok) {
+    await paid.finish(0);
     const error = spender.signedIn ? "That's today's questions used up. They come back tomorrow." : "That's today's questions for guests. Sign in to ask more.";
     return NextResponse.json({ error }, { status: 429 });
   }
-  const bidMonth = typeof body.bidMonth === "string" && /^20\d{2}-(0[1-9]|1[0-2])$/.test(body.bidMonth) ? body.bidMonth : currentBidMonth();
-  const input: AskInput = { question: (body.question as string).trim(), history: earlier, facts: body.facts as string | undefined, bidMonth, apiKey };
 
-  return remember ? stream(input, spender, remember) : plain(input, spender);
+  return remember ? stream(input, paid, remember) : plain(input, paid);
 }
 
-/** Asks, records what it cost, and gives back what the pilot should see. */
-async function run(input: AskInput, spender: Spender) {
+/** Asks, settles what it cost against the hold taken for it, and gives back what the pilot should see. */
+async function run(input: AskInput, paid: PaidCall) {
+  let spent = 0;
   try {
     const r = await askContract(input);
-    await recordSpend(spender, r.usage.costUsd);
+    spent = r.usage.costUsd;
     console.log("[contract-ask]", { found: r.answer.found, rejected: r.rejected, costUsd: +r.usage.costUsd.toFixed(5), ms: r.usage.ms });
     return { answer: r.answer };
   } catch (e) {
-    await Promise.all([recordSpend(spender, failedCallCost(e)), reportProblem("contract-ask", e)]);
+    spent = failedCallCost(e);
+    await reportProblem("contract-ask", e);
     return null;
+  } finally {
+    await paid.finish(spent);
   }
 }
 
-async function plain(input: AskInput, spender: Spender): Promise<Response> {
-  const reply = await run(input, spender);
+async function plain(input: AskInput, paid: PaidCall): Promise<Response> {
+  const reply = await run(input, paid);
   return reply ? NextResponse.json(reply) : NextResponse.json({ error: FAILED }, { status: 502 });
 }
 
-function stream(input: AskInput, spender: Spender, remember: Remember): Response {
+function stream(input: AskInput, paid: PaidCall, remember: Remember): Response {
   const encoder = new TextEncoder();
   let gone = false;
   const body = new ReadableStream<Uint8Array>({
@@ -98,7 +106,7 @@ function stream(input: AskInput, spender: Spender, remember: Remember): Response
       // The question is paid for once it's asked, so it runs to the end even if the phone drops: the reply it remembers
       // is what a resend of this request gets, instead of paying again.
       const work = (async () => {
-        const reply = await run({ ...input, onStep: (text) => send({ type: "step", text }) }, spender);
+        const reply = await run({ ...input, onStep: (text) => send({ type: "step", text }) }, paid);
         await remember(reply ? 200 : 502, reply).catch(() => {});
         send(reply ? { type: "answer", answer: reply.answer } : { type: "error", error: FAILED });
         if (!gone) controller.close();

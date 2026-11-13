@@ -19,12 +19,11 @@ function pack(extra: Partial<BidPack> = {}, vacationFor?: number): BidPack {
     bidNumber: i + 1,
     seniority: (i + 1) * 10,
     ...(PAY_BIDS.has(i + 1) ? { pay: true } : {}),
-    ...(vacationFor === i + 1 ? { vacations: [{ from: "2026-09-30T06:30:00Z", to: "2026-10-07T06:29:00Z", days: 7 }] } : {}),
+    ...(vacationFor === i + 1 ? { vacations: [{ from: "2027-09-01T06:30:00Z", to: "2027-09-08T06:29:00Z", days: 7 }] } : {}),
   }));
   const lowest = Math.min(...SAMPLE_BID_PACK.lines.map((l) => l.totalCreditHours));
   return {
     ...SAMPLE_BID_PACK,
-    bidPeriodStart: SAMPLE_BID_PACK.bidPeriodStart ?? "2026-09-28",
     seniorityList: list,
     info: {
       rlgHours: lowest + 1,

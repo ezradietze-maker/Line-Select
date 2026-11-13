@@ -12,21 +12,25 @@ import {
   lessonsFromMove,
   linesThatWouldMove,
   loadTiers,
+  mergeTiers,
   moveToTier,
   notBidIds,
   pruneTiers,
   pushHistory,
+  readTiers,
   redoTiers,
   removeTier,
   renameTier,
   saveTiers,
   setAsideLines,
   swapTiers,
+  tiersKey,
   undoTiers,
   type TierHistory,
   type TierState,
 } from "@/lib/line-tiers";
 import type { LineScore } from "@/lib/scoring";
+import { sameStored, useOtherTabWrites } from "@/lib/shared-store";
 import type { LineChoice } from "@/types/pilot-model";
 
 /**
@@ -62,6 +66,11 @@ export interface LineTiers {
   canRedo: boolean;
   /** What the last move did, for a screen reader and the pilot alike. */
   said: string;
+  /**
+   * Says something else in the same place: the list's other keys (s shortlists a line) speak where the tier moves do,
+   * so the page has one voice and two never talk over each other.
+   */
+  say: (message: string) => void;
 }
 
 let moveCounter = 0;
@@ -76,35 +85,62 @@ export function useLineTiers(
   bidPackId: string,
   lineIds: string[],
   rankedList: LineScore[],
-  teach: { current: TeachTiers | null }
+  teach: { current: TeachTiers | null },
+  /** Told of every change the pilot can undo (not undo and redo themselves): the page keeps one history across tiers and swaps. */
+  onRecord?: () => void
 ): LineTiers {
   const owner = `${userId}|${bidPackId}`;
   const valid = useMemo(() => new Set(lineIds), [lineIds]);
-  const [loaded, setLoaded] = useState(() => ({ owner, state: pruneTiers(loadTiers(userId, bidPackId), valid), history: EMPTY_HISTORY as TierHistory }));
+  // `synced`: the tiers as this tab last read or wrote them, which another tab's writes are merged against (see
+  // `lib/shared-store.ts`).
+  const [loaded, setLoaded] = useState(() => {
+    const kept = pruneTiers(loadTiers(userId, bidPackId), valid);
+    return { owner, state: kept, history: EMPTY_HISTORY as TierHistory, synced: kept };
+  });
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
   const [said, setSaid] = useState("");
   const lessons = useRef(new Map<string, LineChoice[]>());
   if (loaded.owner !== owner) {
-    setLoaded({ owner, state: pruneTiers(loadTiers(userId, bidPackId), valid), history: EMPTY_HISTORY });
+    const kept = pruneTiers(loadTiers(userId, bidPackId), valid);
+    setLoaded({ owner, state: kept, history: EMPTY_HISTORY, synced: kept });
     setSelected(new Set());
     setAnchor(null);
     setSaid("");
   }
-  const { state, history } = loaded;
+  const { state, history, synced } = loaded;
 
   // The newest of everything, for a move made from a keyboard handler or a callback that was set up a render ago.
-  const latest = useRef({ state, history, rankedList });
+  const latest = useRef({ state, history, rankedList, synced });
   useEffect(() => {
-    latest.current = { state, history, rankedList };
-  }, [state, history, rankedList]);
+    latest.current = { state, history, rankedList, synced };
+  }, [state, history, rankedList, synced]);
+
+  // Another tab moved lines on this pack: its moves show here, and this tab's undo history gets them too, so undoing
+  // here takes back only what was done here.
+  useOtherTabWrites(tiersKey(userId, bidPackId), () => {
+    const stored = readTiers(userId, bidPackId);
+    const { state: s, history: h, synced: base } = latest.current;
+    if (!stored || loaded.owner !== owner) return;
+    const fresh = pruneTiers(stored, valid);
+    if (sameStored(fresh, base)) return;
+    const rebase = (x: TierState) => mergeTiers(base, fresh, x);
+    const next = { state: mergeTiers(base, s, fresh), history: { past: h.past.map(rebase), future: h.future.map(rebase) }, synced: fresh };
+    latest.current = { ...latest.current, ...next };
+    setLoaded({ owner, ...next });
+  });
 
   const commit = useCallback(
-    (next: TierState, nextHistory: TierHistory, message: string, added: LineChoice[], retract: string[]) => {
-      latest.current = { ...latest.current, state: next, history: nextHistory };
-      setLoaded({ owner, state: next, history: nextHistory });
-      saveTiers(userId, bidPackId, next);
+    (wanted: TierState, nextHistory: TierHistory, message: string, added: LineChoice[], retract: string[], recorded = true) => {
+      // Into what's stored now: a tab that hadn't seen another's move doesn't write over it.
+      const base = latest.current.synced;
+      const stored = readTiers(userId, bidPackId);
+      const next = mergeTiers(base, wanted, stored ? pruneTiers(stored, valid) : base);
+      const nowSynced = saveTiers(userId, bidPackId, next) ? next : base;
+      latest.current = { ...latest.current, state: next, history: nextHistory, synced: nowSynced };
+      setLoaded({ owner, state: next, history: nextHistory, synced: nowSynced });
       setSaid(message);
+      if (recorded) onRecord?.();
       if (added.length || retract.length) {
         const removed = teach.current?.(added, retract);
         for (const [moveId, choices] of Object.entries(removed ?? {})) {
@@ -121,7 +157,7 @@ export function useLineTiers(
         }
       }
     },
-    [owner, userId, bidPackId, teach]
+    [owner, userId, bidPackId, valid, teach, onRecord]
   );
 
   const numberOf = useCallback((id: string) => latest.current.rankedList.find((r) => r.line.id === id)?.line.lineNumber, []);
@@ -208,7 +244,7 @@ export function useLineTiers(
       const r = step(h, s);
       if (!r) return;
       const { retract, add: back } = lessonChanges(s, r.state);
-      commit(r.state, r.history, word, back.flatMap((m) => lessons.current.get(m) ?? []), retract);
+      commit(r.state, r.history, word, back.flatMap((m) => lessons.current.get(m) ?? []), retract, false);
       setSelected(new Set());
     },
     [commit]
@@ -265,5 +301,6 @@ export function useLineTiers(
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
     said,
+    say: setSaid,
   };
 }

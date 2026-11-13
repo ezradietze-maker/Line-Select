@@ -35,6 +35,20 @@ export function costOf(model: string, u: Anthropic.Beta.BetaUsage): number {
   return (u.input_tokens * p.in + cacheWrite * p.in * 1.25 + cacheRead * p.cacheRead + u.output_tokens * p.out) / 1e6;
 }
 
+/**
+ * The most one structured call can cost, held against the spend ceilings before it's made (see `startPaidCall`): all
+ * of `maxTokens` written (thinking counts in it), and its input read fresh at the cache-write price at a token for every
+ * two characters — prose and pack text run nearer four. A little is added for the prompt's framing.
+ */
+export function callCeilingUsd(model: string | undefined, inputChars: number, maxTokens: number): number {
+  const p = PRICES[model ?? BRAIN_MODEL] ?? PRICES["claude-fable-5-1"];
+  const inputTokens = Math.ceil((inputChars + 2_000) / 2);
+  return (inputTokens * p.in * 1.25 + maxTokens * p.out) / 1e6;
+}
+
+/** The characters a schema adds to a call's input. */
+export const schemaChars = (schema: unknown) => JSON.stringify(schema).length;
+
 export interface StructuredCallOptions {
   apiKey?: string;
   model?: string;

@@ -1,0 +1,922 @@
+<title>Line Select Redesign</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible+Next:wght@400;600;700&family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Jost:wght@400;500;600;700&family=Azeret+Mono:wght@400;600&family=Overpass:wght@600;800;900&family=Overpass+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column (~1080px) for the proposal; the theme previewer and logo sheet break out to full column width as working specimens. */
+:root {
+  --bg: #f3f4f5;
+  --surface: #ffffff;
+  --ink: #14161a;
+  --muted: #565d67;
+  --rule: #d7dbe0;
+  --accent: #1f3b63;
+  --mark: #f2cd4b;
+  --mark-ink: #2e2400;
+  --keep: #2a6f4c;
+  --redo: #1f3b63;
+  --retire: #8a3324;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Atkinson Hyperlegible Next", "Segoe UI", system-ui, sans-serif;
+  --mono: "Atkinson Hyperlegible Mono", ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101215; --surface: #171a1e; --ink: #e8eaed; --muted: #a3aab4; --rule: #2b3037;
+    --accent: #a9c2e8; --mark: #e2bf47; --mark-ink: #221a00; --keep: #6cc596; --redo: #a9c2e8; --retire: #ec8a78;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101215; --surface: #171a1e; --ink: #e8eaed; --muted: #a3aab4; --rule: #2b3037;
+  --accent: #a9c2e8; --mark: #e2bf47; --mark-ink: #221a00; --keep: #6cc596; --redo: #a9c2e8; --retire: #ec8a78;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 400 16px/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 96px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 72px; }
+section { display: grid; gap: 20px; min-width: 0; }
+h1, h2, h3, h4 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.12; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 760; font-variation-settings: "wdth" 88; letter-spacing: -0.01em; }
+h2 { font-size: clamp(1.6rem, 3vw, 2.1rem); font-weight: 720; font-variation-settings: "wdth" 92; }
+h3 { font-size: 1.25rem; font-weight: 700; }
+h4 { font-size: 1rem; font-weight: 700; }
+p { margin: 0; max-width: 68ch; }
+.lede { font-size: 1.15rem; color: var(--ink); }
+.muted { color: var(--muted); }
+.small { font-size: 0.9rem; }
+code, .num { font-family: var(--mono); font-size: 0.92em; }
+a { color: var(--accent); }
+.rule { border: 0; border-top: 1px solid var(--rule); margin: 0; }
+.tag { display: inline-block; font: 600 0.78rem/1 var(--body); padding: 5px 8px; border-radius: 4px; background: var(--mark); color: var(--mark-ink); vertical-align: middle; }
+.cols { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.box { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 20px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+ul.clean { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+ul.clean li { max-width: 66ch; }
+.head { display: grid; gap: 18px; }
+.promise { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.promise div { border-top: 3px solid var(--ink); padding-top: 10px; display: grid; gap: 4px; }
+.promise b { font-family: var(--display); font-size: 1.05rem; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.95rem; }
+
+/* Diagnosis */
+.diag { display: grid; gap: 0; border-top: 1px solid var(--rule); }
+.diag > div { display: grid; grid-template-columns: 8.5rem 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.diag .n { font: 600 1.5rem/1.1 var(--mono); }
+@media (max-width: 560px) { .diag > div { grid-template-columns: 1fr; gap: 4px; } }
+
+/* ---------- Theme previewer ---------- */
+.switcher { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); padding: 3px; gap: 3px; flex-wrap: wrap; }
+.seg button { font: 600 0.92rem/1 var(--body); color: var(--ink); background: transparent; border: 0; padding: 9px 13px; border-radius: 5px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.seg button:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seglabel { font-size: 0.85rem; color: var(--muted); margin-right: 4px; }
+
+.pv-frame { border-radius: 12px; overflow: hidden; border: 1px solid var(--rule); max-width: 100%; }
+.pv {
+  view-transition-name: pv;
+  display: grid; grid-template-columns: 196px 1fr; min-height: 470px;
+  background: var(--p-bg); color: var(--p-ink); font-family: var(--body); font-size: 14px; line-height: 1.45;
+}
+.pv * { transition: none; }
+.pv-side { background: var(--p-side); color: var(--p-side-ink); padding: 16px 12px; display: grid; align-content: start; gap: 14px; border-right: 1px solid var(--p-side-line); }
+.pv-brand { display: flex; align-items: center; gap: 9px; padding: 0 4px; }
+.pv-brand svg { width: 30px; height: 30px; flex: none; }
+.pv-word { font-family: var(--p-display); font-weight: var(--p-word-weight); font-size: 15px; letter-spacing: var(--p-word-track); text-transform: var(--p-word-case); }
+.pv-nav { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.pv-nav li { padding: 7px 10px; border-radius: var(--p-r-ctl); display: flex; align-items: center; gap: 9px; font-size: 13.5px; }
+.pv-nav li::before { content: ""; width: 7px; height: 7px; border: 1.5px solid currentColor; border-radius: var(--p-dot-r); opacity: 0.7; flex: none; }
+.pv-nav li.on { background: var(--p-nav-on-bg); color: var(--p-nav-on-ink); box-shadow: var(--p-nav-on-shadow); font-weight: 600; }
+.pv-nav li.on::before { background: var(--p-nav-on-dot); border-color: var(--p-nav-on-dot); opacity: 1; }
+.pv-main { padding: 22px 24px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+.pv-head { display: grid; gap: 12px; }
+.pv-title { font-family: var(--p-display); font-size: 26px; font-weight: var(--p-title-weight); letter-spacing: var(--p-title-track); text-transform: var(--p-title-case); line-height: 1.05; display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.pv-title svg { width: 42px; height: 42px; flex: none; }
+.pv-brief { display: flex; flex-wrap: wrap; gap: var(--p-brief-gap); }
+.pv-brief div { padding: 5px 10px 6px; border: var(--p-brief-border); background: var(--p-brief-bg); border-radius: var(--p-r-ctl); display: grid; gap: 0; min-width: 64px; }
+.pv-brief span { font-size: 11px; color: var(--p-muted); }
+.pv-brief b { font-family: var(--p-data); font-weight: 600; font-size: 13.5px; }
+.pv-notice { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--p-r-ctl); background: var(--p-note-bg); color: var(--p-note-ink); border: var(--p-note-border); font-size: 13.5px; }
+.pv-notice i { width: 14px; height: 14px; flex: none; background: var(--p-note-mark); border-radius: var(--p-dot-r); }
+.pv-notice b { font-family: var(--p-data); }
+.pv-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--p-row-gap); }
+.pv-row { background: var(--p-row-bg); border: var(--p-row-border); border-radius: var(--p-r-row); box-shadow: var(--p-row-shadow); display: grid; grid-template-columns: var(--p-holder) 1fr; overflow: hidden; }
+.pv-row .hold { background: var(--p-hold); }
+.pv-row.top .hold { background: var(--p-hold-top); }
+.pv-row .body { display: grid; gap: 8px; padding: 10px 12px; min-width: 0; }
+.pv-fields { display: grid; grid-template-columns: 34px 88px 64px 1fr; align-items: center; }
+.pv-fields > * { padding: 0 10px; border-left: var(--p-field-rule); min-width: 0; }
+.pv-fields > *:first-child { border-left: 0; padding-left: 0; }
+.pv-rank { font-family: var(--p-data); font-weight: 600; font-size: 13px; color: var(--p-muted); }
+.pv-line { font-family: var(--p-display); font-weight: 700; font-size: 16px; white-space: nowrap; }
+.pv-score { justify-self: start; font-family: var(--p-score-font); font-weight: 800; font-size: 17px; line-height: 1; padding: 6px 7px; min-width: 40px; text-align: center; border-radius: var(--p-r-score); background: var(--p-score-bg); color: var(--p-score-ink); border: var(--p-score-border); }
+.pv-row.top .pv-score { background: var(--p-score-top-bg); color: var(--p-score-top-ink); border: var(--p-score-top-border); }
+.pv-facts { font-size: 12.5px; color: var(--p-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-facts b { color: var(--p-ink); font-family: var(--p-data); font-weight: 600; }
+.pv-chip { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: var(--p-r-ctl); background: var(--p-chip-bg); color: var(--p-chip-ink); margin-left: 6px; vertical-align: 1px; }
+.pv-days { position: relative; height: 18px; border-radius: 2px; background: repeating-linear-gradient(90deg, var(--p-day-line) 0 1px, transparent 1px calc(100% / 31)); background-color: var(--p-day-bg); }
+.pv-trip { position: absolute; top: 3px; bottom: 3px; display: flex; gap: 1px; border-radius: 2px; overflow: hidden; }
+.pv-trip i { display: block; height: 100%; }
+.pv-trip .leg { background: var(--p-leg); }
+.pv-trip .lay { background: var(--p-lay); background-image: var(--p-lay-pattern); }
+.pv-trip .dh { background: var(--p-dh); background-image: var(--p-dh-pattern); }
+.pv-trip .rep { position: absolute; left: 0; top: -3px; bottom: -3px; width: 2px; background: var(--p-rep); }
+.pv-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--p-muted); }
+.pv-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.pv-legend i { width: 14px; height: 7px; border-radius: 1px; display: inline-block; }
+.pv-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.pv-btn { font: 700 13.5px/1 var(--p-btn-font); padding: 10px 14px; border-radius: var(--p-r-ctl); border: var(--p-btn2-border); background: var(--p-btn2-bg); color: var(--p-btn2-ink); letter-spacing: var(--p-btn-track); text-transform: var(--p-btn-case); cursor: default; }
+.pv-btn.primary { background: var(--p-btn-bg); color: var(--p-btn-ink); border: var(--p-btn-border); }
+.pv-progress { display: flex; gap: 6px; align-items: center; }
+.pv-progress i { height: 4px; flex: 1; background: var(--p-prog-off); border-radius: 2px; }
+.pv-progress i.on { background: var(--p-prog-on); }
+.pv-samplenote { font-size: 11px; color: var(--p-muted); }
+@media (max-width: 720px) {
+  .pv { grid-template-columns: 1fr; }
+  .pv-side { display: none; }
+  .pv-fields { grid-template-columns: 30px 76px 56px; }
+  .pv-facts { grid-column: 1 / -1; border-left: 0 !important; padding: 6px 0 0 !important; white-space: normal; }
+}
+
+/* Direction A: Strip Bay */
+.pv[data-dir="a"] {
+  --p-display: "Archivo", Arial, sans-serif; --p-data: "Atkinson Hyperlegible Mono", ui-monospace, monospace; --p-score-font: "Archivo", Arial, sans-serif; --p-btn-font: "Archivo", Arial, sans-serif;
+  --p-word-weight: 760; --p-word-track: 0.04em; --p-word-case: uppercase; --p-title-weight: 760; --p-title-track: 0; --p-title-case: none; --p-btn-track: 0.02em; --p-btn-case: none;
+  --p-r-ctl: 4px; --p-r-row: 3px; --p-r-score: 3px; --p-dot-r: 1px; --p-holder: 12px; --p-row-gap: 8px; --p-brief-gap: 6px;
+}
+.pv[data-dir="a"] .pv-title { font-variation-settings: "wdth" 82; }
+.pv[data-dir="a"] .pv-word { font-variation-settings: "wdth" 75; }
+.pv[data-dir="a"][data-mode="day"] {
+  --p-bg: #e3e8e5; --p-ink: #15191a; --p-muted: #4b5553; --p-side: #cfd6d2; --p-side-ink: #1b2120; --p-side-line: #bcc5c0;
+  --p-nav-on-bg: #fbfbf7; --p-nav-on-ink: #15191a; --p-nav-on-shadow: inset 4px 0 0 #e9b92e, 0 1px 0 rgb(0 0 0 / 0.12); --p-nav-on-dot: #15191a;
+  --p-brief-border: 1px solid #c3cbc7; --p-brief-bg: #f0f3f1;
+  --p-note-bg: #fbf1c9; --p-note-ink: #3a2e00; --p-note-border: 1px solid #e6cf72; --p-note-mark: #d9a417;
+  --p-row-bg: #fcfcf8; --p-row-border: 1px solid #c8cfcb; --p-row-shadow: 0 1px 0 rgb(20 30 25 / 0.14), 0 3px 8px -4px rgb(20 30 25 / 0.18);
+  --p-hold: #b9c3be; --p-hold-top: #e9b92e; --p-field-rule: 1px solid #d9dfdb;
+  --p-score-bg: transparent; --p-score-ink: #15191a; --p-score-border: 1.5px solid #15191a;
+  --p-score-top-bg: #15191a; --p-score-top-ink: #fcfcf8; --p-score-top-border: 1.5px solid #15191a;
+  --p-chip-bg: #f6e3a1; --p-chip-ink: #3a2e00;
+  --p-day-bg: #eef1ef; --p-day-line: #d6dcd9;
+  --p-leg: #1d4ed8; --p-lay: #037049; --p-dh: #ae1d6d; --p-rep: #b5400f; --p-lay-pattern: none; --p-dh-pattern: none;
+  --p-btn-bg: #15191a; --p-btn-ink: #fcfcf8; --p-btn-border: 1px solid #15191a; --p-btn2-bg: #fcfcf8; --p-btn2-ink: #15191a; --p-btn2-border: 1px solid #b9c3be;
+  --p-prog-off: #c3cbc7; --p-prog-on: #15191a;
+}
+.pv[data-dir="a"][data-mode="night"] {
+  --p-bg: #111614; --p-ink: #e6ece9; --p-muted: #9ba8a3; --p-side: #0b0f0e; --p-side-ink: #d5ddd9; --p-side-line: #1f2725;
+  --p-nav-on-bg: #1e2624; --p-nav-on-ink: #f2f5f3; --p-nav-on-shadow: inset 4px 0 0 #d8ae35; --p-nav-on-dot: #d8ae35;
+  --p-brief-border: 1px solid #2a3431; --p-brief-bg: #161d1b;
+  --p-note-bg: #2c2610; --p-note-ink: #f1dc94; --p-note-border: 1px solid #4a3f17; --p-note-mark: #d8ae35;
+  --p-row-bg: #1a211f; --p-row-border: 1px solid #2a3431; --p-row-shadow: 0 1px 0 rgb(0 0 0 / 0.5);
+  --p-hold: #33403c; --p-hold-top: #d8ae35; --p-field-rule: 1px solid #2a3431;
+  --p-score-bg: transparent; --p-score-ink: #e6ece9; --p-score-border: 1.5px solid #6d7a75;
+  --p-score-top-bg: #d8ae35; --p-score-top-ink: #1a1503; --p-score-top-border: 1.5px solid #d8ae35;
+  --p-chip-bg: #3d3414; --p-chip-ink: #f1dc94;
+  --p-day-bg: #141a18; --p-day-line: #232c29;
+  --p-leg: #7ea6ff; --p-lay: #3ad49b; --p-dh: #f475b5; --p-rep: #ff8d45; --p-lay-pattern: none; --p-dh-pattern: none;
+  --p-btn-bg: #d8ae35; --p-btn-ink: #1a1503; --p-btn-border: 1px solid #d8ae35; --p-btn2-bg: transparent; --p-btn2-ink: #e6ece9; --p-btn2-border: 1px solid #3a4743;
+  --p-prog-off: #2a3431; --p-prog-on: #d8ae35;
+}
+
+/* Direction B: Approach Plate */
+.pv[data-dir="b"] {
+  --p-display: "Jost", "Futura", "Century Gothic", sans-serif; --p-data: "Azeret Mono", ui-monospace, monospace; --p-score-font: "Azeret Mono", ui-monospace, monospace; --p-btn-font: "Jost", "Futura", sans-serif;
+  --p-word-weight: 500; --p-word-track: 0.01em; --p-word-case: none; --p-title-weight: 500; --p-title-track: -0.01em; --p-title-case: none; --p-btn-track: 0.01em; --p-btn-case: none;
+  --p-r-ctl: 0; --p-r-row: 0; --p-r-score: 0; --p-dot-r: 50%; --p-holder: 0px; --p-row-gap: 0; --p-brief-gap: 0;
+}
+.pv[data-dir="b"] .pv-brief div + div { border-left-width: 0; }
+.pv[data-dir="b"] .pv-row .body { padding: 12px 2px; }
+.pv[data-dir="b"][data-mode="day"] {
+  --p-bg: #ffffff; --p-ink: #0c0c0d; --p-muted: #55585c; --p-side: #ffffff; --p-side-ink: #0c0c0d; --p-side-line: #0c0c0d;
+  --p-nav-on-bg: #0c0c0d; --p-nav-on-ink: #ffffff; --p-nav-on-shadow: none; --p-nav-on-dot: #ffffff;
+  --p-brief-border: 1px solid #0c0c0d; --p-brief-bg: #ffffff;
+  --p-note-bg: #ffffff; --p-note-ink: #0c0c0d; --p-note-border: 1px solid #0c0c0d; --p-note-mark: #0c0c0d;
+  --p-row-bg: transparent; --p-row-border: 0; --p-row-shadow: inset 0 -1px 0 #0c0c0d;
+  --p-hold: transparent; --p-hold-top: transparent; --p-field-rule: 1px solid #c9cbcd;
+  --p-score-bg: #ffffff; --p-score-ink: #0c0c0d; --p-score-border: 1.5px solid #0c0c0d;
+  --p-score-top-bg: #0c0c0d; --p-score-top-ink: #ffffff; --p-score-top-border: 1.5px solid #0c0c0d;
+  --p-chip-bg: #0c0c0d; --p-chip-ink: #ffffff;
+  --p-day-bg: #ffffff; --p-day-line: #e2e3e4;
+  --p-leg: #1d4ed8; --p-lay: #037049; --p-dh: #ae1d6d; --p-rep: #b5400f; --p-lay-pattern: none; --p-dh-pattern: none;
+  --p-btn-bg: #0c0c0d; --p-btn-ink: #ffffff; --p-btn-border: 1.5px solid #0c0c0d; --p-btn2-bg: #ffffff; --p-btn2-ink: #0c0c0d; --p-btn2-border: 1.5px solid #0c0c0d;
+  --p-prog-off: #d5d6d8; --p-prog-on: #0c0c0d;
+}
+.pv[data-dir="b"][data-mode="night"] {
+  --p-bg: #0a0a0b; --p-ink: #f1f1ef; --p-muted: #a2a4a7; --p-side: #0a0a0b; --p-side-ink: #f1f1ef; --p-side-line: #f1f1ef;
+  --p-nav-on-bg: #f1f1ef; --p-nav-on-ink: #0a0a0b; --p-nav-on-shadow: none; --p-nav-on-dot: #0a0a0b;
+  --p-brief-border: 1px solid #f1f1ef; --p-brief-bg: #0a0a0b;
+  --p-note-bg: #0a0a0b; --p-note-ink: #f1f1ef; --p-note-border: 1px solid #f1f1ef; --p-note-mark: #f1f1ef;
+  --p-row-bg: transparent; --p-row-border: 0; --p-row-shadow: inset 0 -1px 0 #5d5f62;
+  --p-hold: transparent; --p-hold-top: transparent; --p-field-rule: 1px solid #36383b;
+  --p-score-bg: #0a0a0b; --p-score-ink: #f1f1ef; --p-score-border: 1.5px solid #f1f1ef;
+  --p-score-top-bg: #f1f1ef; --p-score-top-ink: #0a0a0b; --p-score-top-border: 1.5px solid #f1f1ef;
+  --p-chip-bg: #f1f1ef; --p-chip-ink: #0a0a0b;
+  --p-day-bg: #0a0a0b; --p-day-line: #232426;
+  --p-leg: #7ea6ff; --p-lay: #3ad49b; --p-dh: #f475b5; --p-rep: #ff8d45; --p-lay-pattern: none; --p-dh-pattern: none;
+  --p-btn-bg: #f1f1ef; --p-btn-ink: #0a0a0b; --p-btn-border: 1.5px solid #f1f1ef; --p-btn2-bg: #0a0a0b; --p-btn2-ink: #f1f1ef; --p-btn2-border: 1.5px solid #f1f1ef;
+  --p-prog-off: #2c2d30; --p-prog-on: #f1f1ef;
+}
+
+/* Direction C: Ramp at Night */
+.pv[data-dir="c"] {
+  --p-display: "Overpass", "Arial Narrow", Arial, sans-serif; --p-data: "Overpass Mono", ui-monospace, monospace; --p-score-font: "Overpass", Arial, sans-serif; --p-btn-font: "Overpass", Arial, sans-serif;
+  --p-word-weight: 900; --p-word-track: 0.02em; --p-word-case: uppercase; --p-title-weight: 800; --p-title-track: 0; --p-title-case: none; --p-btn-track: 0.03em; --p-btn-case: uppercase;
+  --p-r-ctl: 3px; --p-r-row: 6px; --p-r-score: 2px; --p-dot-r: 50%; --p-holder: 0px; --p-row-gap: 8px; --p-brief-gap: 6px;
+}
+.pv[data-dir="c"][data-mode="night"] {
+  --p-bg: #0a1120; --p-ink: #eef1f6; --p-muted: #9ba7bc; --p-side: #060b16; --p-side-ink: #d9dfea; --p-side-line: #17213a;
+  --p-nav-on-bg: #000000; --p-nav-on-ink: #ffcc00; --p-nav-on-shadow: inset 0 0 0 1.5px #ffcc00; --p-nav-on-dot: #ffcc00;
+  --p-brief-border: 1px solid #22304f; --p-brief-bg: #0f1829;
+  --p-note-bg: #ffcc00; --p-note-ink: #000000; --p-note-border: 0; --p-note-mark: #000000;
+  --p-row-bg: #111b2e; --p-row-border: 1px solid #1d2a45; --p-row-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+  --p-hold: transparent; --p-hold-top: transparent; --p-field-rule: 1px solid #1d2a45;
+  --p-score-bg: #000000; --p-score-ink: #ffcc00; --p-score-border: 1.5px solid #ffcc00;
+  --p-score-top-bg: #ffcc00; --p-score-top-ink: #000000; --p-score-top-border: 1.5px solid #ffcc00;
+  --p-chip-bg: #0f3a26; --p-chip-ink: #5fe39f;
+  --p-day-bg: #0c1424; --p-day-line: #18233b;
+  --p-leg: #6f9bff; --p-lay: #34d399; --p-dh: #ff6fb5; --p-rep: #ff9248; --p-lay-pattern: none; --p-dh-pattern: none;
+  --p-btn-bg: #ffcc00; --p-btn-ink: #000000; --p-btn-border: 0; --p-btn2-bg: #000000; --p-btn2-ink: #ffcc00; --p-btn2-border: 1.5px solid #ffcc00;
+  --p-prog-off: #1b2742; --p-prog-on: #34d399;
+}
+.pv[data-dir="c"][data-mode="day"] {
+  --p-bg: #eceff3; --p-ink: #0a1120; --p-muted: #4a5568; --p-side: #0a1120; --p-side-ink: #d9dfea; --p-side-line: #0a1120;
+  --p-nav-on-bg: #000000; --p-nav-on-ink: #ffcc00; --p-nav-on-shadow: inset 0 0 0 1.5px #ffcc00; --p-nav-on-dot: #ffcc00;
+  --p-brief-border: 1px solid #c9d0da; --p-brief-bg: #ffffff;
+  --p-note-bg: #ffcc00; --p-note-ink: #000000; --p-note-border: 0; --p-note-mark: #000000;
+  --p-row-bg: #ffffff; --p-row-border: 1px solid #d3d9e2; --p-row-shadow: 0 1px 2px rgb(10 17 32 / 0.08);
+  --p-hold: transparent; --p-hold-top: transparent; --p-field-rule: 1px solid #e1e5eb;
+  --p-score-bg: #000000; --p-score-ink: #ffcc00; --p-score-border: 1.5px solid #000000;
+  --p-score-top-bg: #ffcc00; --p-score-top-ink: #000000; --p-score-top-border: 1.5px solid #000000;
+  --p-chip-bg: #d7f5e5; --p-chip-ink: #0b5a36;
+  --p-day-bg: #f4f6f9; --p-day-line: #e0e4ea;
+  --p-leg: #1d4ed8; --p-lay: #037049; --p-dh: #ae1d6d; --p-rep: #b5400f; --p-lay-pattern: none; --p-dh-pattern: none;
+  --p-btn-bg: #ffcc00; --p-btn-ink: #000000; --p-btn-border: 1.5px solid #000000; --p-btn2-bg: #000000; --p-btn2-ink: #ffcc00; --p-btn2-border: 1.5px solid #000000;
+  --p-prog-off: #d3d9e2; --p-prog-on: #0b8a52;
+}
+.pv[data-dir="c"] .pv-side .pv-word { color: #ffcc00; }
+
+/* Red-light: shared by all three directions. Everything is red on black; data keeps its meaning through shade plus pattern. */
+.pv[data-mode="red"] {
+  --p-bg: #080101; --p-ink: #ff5b4d; --p-muted: #b8463b; --p-side: #050000; --p-side-ink: #e8493c; --p-side-line: #2a0805;
+  --p-nav-on-bg: #2a0805; --p-nav-on-ink: #ff6b5e; --p-nav-on-shadow: inset 0 0 0 1px #7a1a12; --p-nav-on-dot: #ff5b4d;
+  --p-brief-border: 1px solid #3a0d09; --p-brief-bg: #0e0202;
+  --p-note-bg: #1d0503; --p-note-ink: #ff6b5e; --p-note-border: 1px solid #5a130d; --p-note-mark: #ff3b2f;
+  --p-row-bg: #120302; --p-row-border: 1px solid #330b07; --p-row-shadow: none;
+  --p-hold: #3a0d09; --p-hold-top: #ff3b2f; --p-field-rule: 1px solid #2a0805;
+  --p-score-bg: transparent; --p-score-ink: #ff5b4d; --p-score-border: 1.5px solid #8a1f15;
+  --p-score-top-bg: #ff3b2f; --p-score-top-ink: #080101; --p-score-top-border: 1.5px solid #ff3b2f;
+  --p-chip-bg: #2a0805; --p-chip-ink: #ff6b5e;
+  --p-day-bg: #0e0202; --p-day-line: #250704;
+  --p-leg: #ff4433; --p-lay: #7d1a12; --p-dh: #c32a1f; --p-rep: #ffb0a8;
+  --p-lay-pattern: repeating-linear-gradient(135deg, transparent 0 2px, rgb(255 90 77 / 0.55) 2px 3px);
+  --p-dh-pattern: repeating-linear-gradient(90deg, transparent 0 3px, #080101 3px 5px);
+  --p-btn-bg: #ff3b2f; --p-btn-ink: #080101; --p-btn-border: 1px solid #ff3b2f; --p-btn2-bg: transparent; --p-btn2-ink: #ff5b4d; --p-btn2-border: 1px solid #5a130d;
+  --p-prog-off: #2a0805; --p-prog-on: #ff3b2f;
+}
+.pv[data-mode="red"] .pv-side .pv-word { color: #ff5b4d; }
+
+::view-transition-old(pv) { animation: none; }
+::view-transition-new(pv) { animation: sweep 460ms var(--ease) both; }
+@keyframes sweep { from { clip-path: circle(0% at var(--sx, 50%) var(--sy, 0%)); } to { clip-path: circle(150% at var(--sx, 50%) var(--sy, 0%)); } }
+
+/* Direction write-ups */
+.dir-card { display: grid; gap: 14px; grid-template-columns: 1.2fr 1fr; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 22px; }
+.dir-card > * { min-width: 0; }
+@media (max-width: 760px) { .dir-card { grid-template-columns: 1fr; } }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatches span { display: grid; gap: 3px; font-size: 11px; color: var(--muted); width: 66px; }
+.swatches i { height: 30px; border-radius: 4px; border: 1px solid var(--rule); display: block; }
+.facts { display: grid; grid-template-columns: 7.5rem 1fr; gap: 6px 14px; font-size: 0.95rem; margin: 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+.typespec { display: grid; gap: 2px; }
+.typespec .d { font-size: 1.6rem; line-height: 1.1; }
+
+/* Logos */
+.logo-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.logo-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px; display: grid; gap: 14px; align-content: start; }
+.logo-card.current { opacity: 0.92; }
+.logo-stage { display: grid; grid-template-columns: 1fr; border-radius: 8px; overflow: hidden; border: 1px solid var(--rule); }
+.logo-stage > div { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 16px 8px; }
+.logo-stage .lt { background: #f4f5f2; }
+.logo-stage .dk { background: #0d0f12; }
+.logo-stage svg.big { width: 76px; height: 76px; }
+.sizes { display: flex; align-items: end; gap: 6px; }
+.sizes svg:nth-child(1) { width: 32px; height: 32px; }
+.sizes svg:nth-child(2) { width: 16px; height: 16px; }
+.wordmark { display: flex; align-items: center; min-height: 46px; padding: 8px 12px; border-radius: 6px; background: #f4f5f2; border: 1px solid var(--rule); color: #111; overflow: hidden; }
+
+/* Motion demos */
+.demos { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.demo { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px; display: grid; gap: 12px; align-content: start; }
+.demo-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.demo-stage { background: var(--bg); border-radius: 8px; padding: 14px; min-height: 150px; display: grid; align-content: center; gap: 7px; overflow: hidden; }
+.replay { font: 600 0.85rem/1 var(--body); border: 1px solid var(--rule); background: var(--surface); color: var(--ink); padding: 7px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.strip { display: grid; grid-template-columns: 8px 44px 1fr 38px; align-items: center; background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; height: 34px; font-size: 0.88rem; box-shadow: 0 1px 0 rgb(0 0 0 / 0.08); }
+.strip > * { padding: 0 8px; }
+.strip .h { height: 100%; padding: 0; background: var(--rule); }
+.strip.top .h { background: var(--mark); }
+.strip b { font-family: var(--display); }
+.strip .s { font-family: var(--mono); font-weight: 600; text-align: right; }
+.strip .f { color: var(--muted); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.markword { position: relative; display: inline-block; font-family: var(--display); font-weight: 700; font-size: 1.3rem; padding: 6px 14px; }
+.markword svg { position: absolute; inset: -6px -10px; width: calc(100% + 20px); height: calc(100% + 12px); overflow: visible; }
+.handoff .detail { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 320ms var(--ease); }
+.handoff .detail > div { overflow: hidden; }
+.handoff.open .detail { grid-template-rows: 1fr; }
+.handoff .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; }
+.handoff .detail p { padding: 10px 12px; font-size: 0.85rem; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .handoff .detail { transition: none; } }
+
+/* Tables */
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--display); font-weight: 700; font-size: 0.85rem; color: var(--muted); background: var(--bg); position: sticky; top: 0; }
+tr:last-child td { border-bottom: 0; }
+td.where { color: var(--muted); font-size: 0.85rem; }
+td:first-child { white-space: nowrap; }
+.group td { background: var(--bg); font-family: var(--display); font-weight: 700; color: var(--ink); }
+.v { font: 700 0.75rem/1 var(--body); padding: 4px 7px; border-radius: 4px; border: 1.5px solid currentColor; white-space: nowrap; }
+.v.keep { color: var(--keep); } .v.redo { color: var(--redo); } .v.retire { color: var(--retire); }
+
+/* Steps */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: s; border-top: 1px solid var(--rule); }
+.steps > li { counter-increment: s; display: grid; grid-template-columns: 3rem 1fr; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--rule); }
+.steps > li::before { content: counter(s); font: 700 1.5rem/1 var(--mono); color: var(--muted); padding-top: 2px; }
+.steps h4 { font-size: 1.1rem; margin-bottom: 6px; }
+.steps dl { display: grid; grid-template-columns: 4.5rem 1fr; gap: 4px 12px; margin: 8px 0 0; font-size: 0.93rem; }
+.steps dt { color: var(--muted); }
+.steps dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .steps > li { grid-template-columns: 1fr; gap: 6px; } .steps dl { grid-template-columns: 1fr; } .steps dt { margin-top: 6px; } }
+.decide { display: grid; gap: 10px; counter-reset: d; }
+.decide div { display: grid; grid-template-columns: 2rem 1fr; gap: 10px; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; }
+.decide div::before { counter-increment: d; content: counter(d); font: 700 1.2rem/1.3 var(--mono); color: var(--muted); }
+</style>
+
+<main class="wrap">
+
+<header class="head">
+  <p class="muted small">Line Select · redesign proposal · November 11, 2026</p>
+  <h1>A new look for Line Select, built from the pilot's own world</h1>
+  <p class="lede">Three complete themes to choose from, a new logo, a new set of animations, and a step-by-step plan that reaches every page. Every change is to how the site looks. The words on the site and everything read from the bid pack stay exactly as they are.</p>
+  <div class="promise">
+    <div><b>Words stay the same</b><span class="muted small">A test records the text of every page before the work starts and checks it again at the end. Any difference fails the build.</span></div>
+    <div><b>Bid pack untouched</b><span class="muted small">Scores, rankings, trip pictures and pack data come from the same code. Only colours, type, shapes and motion change.</span></div>
+    <div><b>Same pages, same places</b><span class="muted small">All 24 pages, links, buttons, shortcuts and features keep working where pilots expect them.</span></div>
+    <div><b>You approve each step</b><span class="muted small">I describe each step in full before starting it and wait for your OK.</span></div>
+  </div>
+  <nav class="toc small" aria-label="Contents">
+    <a href="#why">Why it looks AI-made</a><a href="#themes">The three themes</a><a href="#logo">Logo</a><a href="#modes">How themes work</a><a href="#motion">Animations</a><a href="#pages">Every page</a><a href="#plan">Build plan</a><a href="#decide">Your decisions</a>
+  </nav>
+</header>
+
+<section id="why">
+  <h2>Why it looks AI-made today</h2>
+  <p>I measured the code and the live site. The look comes from a handful of habits that most AI-built sites share. Fixing these is what makes the new design feel made by a person.</p>
+  <div class="diag">
+    <div><span class="n">1 palette</span><p><b>Charcoal with a glowing amber accent.</b> This is one of the most common dark looks on generated sites right now. It also makes every page feel the same.</p></div>
+    <div><span class="n">86</span><p><b>Small, wide-spaced capital labels</b> like "INDEPENDENT PROTOTYPE" and the numbered "01 · LOAD" markers. They decorate rather than inform.</p></div>
+    <div><span class="n">303</span><p><b>Uses of the typewriter-style font.</b> It is meant for times and numbers but appears on labels and headings too, which reads as a "techy" costume.</p></div>
+    <div><span class="n">55</span><p><b>Separate CSS animations</b>, plus 25 files using the motion library. Many are novelty touches (paper plane, turbulence shake, seatbelt sign, twinkling stars, sun and moon). Together they feel busy and unplanned.</p></div>
+    <div><span class="n">253</span><p><b>Hand-set pixel text sizes</b>, some as small as 8px. Small grey text on dark grey is the hardest thing on the site to read in a crew room or a cockpit.</p></div>
+    <div><span class="n">Glass</span><p><b>Every box is the same glowing glass card</b> with a hairline edge, so nothing stands out as more important. The 3D globe on the front page adds a heavy library to the first load without saying anything about bidding.</p></div>
+  </div>
+  <p class="muted small">The good news: the site already routes almost all colour through shared settings (2,211 uses against 16 hard-coded colours), so a full re-skin is practical without touching the wording or the logic.</p>
+</section>
+
+<section id="themes">
+  <h2>The three themes</h2>
+  <p>Each theme comes from a real object in a pilot's working life, so it has its own shapes, type and colours, not just a new paint job. Each has a Day version, a Night version, and the red-light mode the site already offers for the cockpit at night. Pick a theme and a mode below. The screen is a sample of My Rankings with made-up lines.</p>
+
+  <div class="switcher">
+    <div><span class="seglabel">Theme</span>
+      <div class="seg" id="dirSeg" role="group" aria-label="Theme">
+        <button type="button" data-dir="a" aria-pressed="true">A · Strip Bay</button>
+        <button type="button" data-dir="b" aria-pressed="false">B · Approach Plate</button>
+        <button type="button" data-dir="c" aria-pressed="false">C · Ramp at Night</button>
+      </div>
+    </div>
+    <div><span class="seglabel">Mode</span>
+      <div class="seg" id="modeSeg" role="group" aria-label="Mode">
+        <button type="button" data-mode="day" aria-pressed="true">Day</button>
+        <button type="button" data-mode="night" aria-pressed="false">Night</button>
+        <button type="button" data-mode="red" aria-pressed="false">Red-light</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pv-frame">
+    <div class="pv" id="pv" data-dir="a" data-mode="day">
+      <aside class="pv-side">
+        <div class="pv-brand"><span id="pvLogo"></span><span class="pv-word">Line Select</span></div>
+        <ul class="pv-nav">
+          <li>Upload Bid Pack</li><li>Preferences</li><li class="on">My Rankings</li><li>Strategies</li><li>View/Add</li><li>Open Time</li><li>Cities</li><li>Logbook</li>
+        </ul>
+      </aside>
+      <div class="pv-main">
+        <div class="pv-head">
+          <div class="pv-title"><span>My Rankings</span><span id="pvOrn"></span></div>
+          <div class="pv-brief">
+            <div><span>Base</span><b>MEM</b></div><div><span>Seat</span><b>CAP</b></div><div><span>Fleet</span><b>777</b></div><div><span>Bid month</span><b>DEC</b></div><div><span>Lines</span><b>232</b></div>
+          </div>
+          <div class="pv-progress" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+        </div>
+        <div class="pv-notice"><i></i><span>Bid closes in <b>2d 6h</b></span></div>
+        <ol class="pv-rows" id="pvRows"></ol>
+        <div class="pv-legend" id="pvLegend"></div>
+        <div class="pv-actions"><span class="pv-btn primary" id="pvPrimary">Send to VIPS</span><span class="pv-btn">Compare lines</span></div>
+        <span class="pv-samplenote">Sample lines for illustration only.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="dir-card" id="dirA">
+    <div style="display:grid;gap:12px">
+      <h3>A · Strip Bay <span class="tag">Recommended</span></h3>
+      <p>Air traffic controllers keep each flight on a paper strip in a coloured holder, racked in order and moved by hand. Ranking bid lines is the same job. In this theme every line is a strip: a holder colour on the left shows its tier, ruled fields keep rank, line, score and key facts lined up down the page, and sorting or dragging moves the strips like re-racking a board.</p>
+      <dl class="facts">
+        <dt>Feels like</dt><dd>Tactile, organised, calm. Light console green-grey in daylight, dark console at night.</dd>
+        <dt>Shapes</dt><dd>Near-square corners, ruled field dividers, a real paper shadow under each strip. No glow.</dd>
+        <dt>Accent</dt><dd>Strip-holder yellow, used only as a fill (holders, the active page, the top pick), never as glowing text.</dd>
+        <dt>Signature</dt><dd>Strips slide into their slot and re-rack when you sort.</dd>
+        <dt>Best for</dt><dd>Dense pages: rankings, View/Add, open time, trade board. It handles the most data per screen of the three.</dd>
+        <dt>Watch out</dt><dd>Strip bays are controller furniture. Pilots know them but don't use them daily.</dd>
+      </dl>
+    </div>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="swatches"><span><i style="background:#e3e8e5"></i>Console</span><span><i style="background:#fcfcf8"></i>Strip</span><span><i style="background:#15191a"></i>Ink</span><span><i style="background:#e9b92e"></i>Holder</span><span><i style="background:#111614"></i>Night</span></div>
+      <div class="typespec"><span class="d" style="font-family:Archivo,Arial,sans-serif;font-weight:760;font-variation-settings:'wdth' 82">Headings in Archivo</span><span class="muted small">Variable width: condensed for strip fields, regular for headings.</span></div>
+      <div class="typespec"><span style="font-family:'Atkinson Hyperlegible Next',sans-serif;font-size:1.05rem">Body text in Atkinson Hyperlegible Next</span><span class="muted small">Designed by the Braille Institute for low-vision reading. Shared by all three themes.</span></div>
+      <div class="typespec"><span style="font-family:'Atkinson Hyperlegible Mono',monospace">0745L  78:40  MEM–ANC</span><span class="muted small">Times and numbers only, in Atkinson Hyperlegible Mono.</span></div>
+    </div>
+  </div>
+
+  <div class="dir-card" id="dirB">
+    <div style="display:grid;gap:12px">
+      <h3>B · Approach Plate</h3>
+      <p>An approach chart is black ink on white, drawn with precise lines, with a boxed briefing strip across the top. This theme keeps the whole site in black and white so the only colour on screen is your schedule: flights, deadheads, layovers and report times. Page headers become briefing strips of boxed facts, and the chosen item is shown inverted, white on black.</p>
+      <dl class="facts">
+        <dt>Feels like</dt><dd>Premium, exact, quiet. The most "modern" of the three.</dd>
+        <dt>Shapes</dt><dd>Square corners, one-pixel rules, no cards or shadows. Space and lines do the grouping.</dd>
+        <dt>Accent</dt><dd>None. Black and white only, so the ex-pilot's calendar colours stand out on their own.</dd>
+        <dt>Signature</dt><dd>Linework draws in: routes, rules and the minimum-altitude circle sketch themselves once.</dd>
+        <dt>Best for</dt><dd>Reading and comparing. It's the easiest theme to read for long sessions.</dd>
+        <dt>Watch out</dt><dd>Needs very precise spacing to avoid looking unfinished. Less warmth than A or C.</dd>
+      </dl>
+    </div>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="swatches"><span><i style="background:#ffffff"></i>Paper</span><span><i style="background:#0c0c0d"></i>Ink</span><span><i style="background:#c9cbcd"></i>Rule</span><span><i style="background:#0a0a0b"></i>Night</span><span><i style="background:#f1f1ef"></i>Night ink</span></div>
+      <div class="typespec"><span class="d" style="font-family:Jost,Futura,sans-serif;font-weight:500">Headings in Jost</span><span class="muted small">A geometric face in the Futura tradition that chart lettering grew from.</span></div>
+      <div class="typespec"><span style="font-family:'Atkinson Hyperlegible Next',sans-serif;font-size:1.05rem">Body text in Atkinson Hyperlegible Next</span><span class="muted small">Same body face in every theme.</span></div>
+      <div class="typespec"><span style="font-family:'Azeret Mono',monospace">0745L  78:40  MEM–ANC</span><span class="muted small">Times and numbers in Azeret Mono.</span></div>
+    </div>
+  </div>
+
+  <div class="dir-card" id="dirC">
+    <div style="display:grid;gap:12px">
+      <h3>C · Ramp at Night</h3>
+      <p>The Memphis hub at 2 a.m.: a deep navy sky and airfield lighting with fixed meanings. Blue edge lights mark boundaries, green centreline lights mark the path, yellow-on-black signs say where you are and black-on-yellow signs say where to go. In this theme the site uses those same rules. The page you're on is a location sign, main buttons are direction signs, progress is a green centreline, and red is kept for stop.</p>
+      <dl class="facts">
+        <dt>Feels like</dt><dd>Bold, dramatic, unmistakably aviation. Dark first, with a concrete-grey day version.</dd>
+        <dt>Shapes</dt><dd>Sign panels with crisp borders, slightly rounded dark panels for lines, heavy road-sign lettering.</dd>
+        <dt>Accent</dt><dd>Airfield sign yellow, always as a solid panel with black text, never as a glow.</dd>
+        <dt>Signature</dt><dd>Approach lights run in sequence toward the logo on the front page and while the pack loads.</dd>
+        <dt>Best for</dt><dd>First impressions and night use. The front page and logo are the strongest of the three.</dd>
+        <dt>Watch out</dt><dd>Closest to today's dark look, though navy and solid signs read very differently from charcoal and glow.</dd>
+      </dl>
+    </div>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="swatches"><span><i style="background:#0a1120"></i>Night sky</span><span><i style="background:#111b2e"></i>Panel</span><span><i style="background:#ffcc00"></i>Sign yellow</span><span><i style="background:#34d399"></i>Centreline</span><span><i style="background:#eceff3"></i>Day</span></div>
+      <div class="typespec"><span class="d" style="font-family:Overpass,Arial,sans-serif;font-weight:800">Headings in Overpass</span><span class="muted small">Based on Highway Gothic, the lettering of US road and airfield signs.</span></div>
+      <div class="typespec"><span style="font-family:'Atkinson Hyperlegible Next',sans-serif;font-size:1.05rem">Body text in Atkinson Hyperlegible Next</span><span class="muted small">Same body face in every theme.</span></div>
+      <div class="typespec"><span style="font-family:'Overpass Mono',monospace">0745L  78:40  MEM–ANC</span><span class="muted small">Times and numbers in Overpass Mono.</span></div>
+    </div>
+  </div>
+
+  <p class="muted small"><b>Why I recommend A.</b> The site's main job is ranking and reordering lines, and a strip bay is the physical form of exactly that, so sorting, dragging, comparing and the View/Add list all get a natural look. It holds the most data per screen, it reads well in daylight when most bidding happens, and it is the furthest from today's look. Choose C if you want the most dramatic first impression, or B if you want the calmest, most premium feel.</p>
+</section>
+
+<section id="logo">
+  <h2>Logo</h2>
+  <p>Each theme comes with its own mark. Any of them can be paired with any theme if you prefer. Every mark is built from simple shapes so it stays sharp at 16 pixels in a browser tab and on a phone home screen. The current mark is shown last for comparison.</p>
+  <div class="logo-grid">
+    <div class="logo-card">
+      <h3>A · Racked</h3>
+      <div class="logo-stage"><div class="lt" data-logo="a" data-tone="light"></div><div class="dk" data-logo="a" data-tone="dark"></div></div>
+      <div class="wordmark" id="wmA"></div>
+      <p class="small">Three strips in a rack, with the middle one pulled out and marked in holder yellow: the line you select. The ruled fields drop away at small sizes.</p>
+    </div>
+    <div class="logo-card">
+      <h3>B · Profile</h3>
+      <div class="logo-stage"><div class="lt" data-logo="b" data-tone="light"></div><div class="dk" data-logo="b" data-tone="dark"></div></div>
+      <div class="wordmark" id="wmB"></div>
+      <p class="small">The profile view from an approach chart: a descent to the runway and the climb-out after it. Together the two strokes read as a check mark over a runway: selected. Black and white, like the theme.</p>
+    </div>
+    <div class="logo-card">
+      <h3>C · Location sign</h3>
+      <div class="logo-stage"><div class="lt" data-logo="c" data-tone="light"></div><div class="dk" data-logo="c" data-tone="dark"></div></div>
+      <div class="wordmark" id="wmC" style="background:#0d0f12"></div>
+      <p class="small">An airfield location sign: yellow letters and border on black. Every pilot reads it instantly. The wordmark adds a black-on-yellow direction sign beside it.</p>
+    </div>
+    <div class="logo-card current">
+      <h3 class="muted">Today · LS runway</h3>
+      <div class="logo-stage"><div class="lt" data-logo="now" data-tone="light"></div><div class="dk" data-logo="now" data-tone="dark"></div></div>
+      <p class="small muted">A runway L and procedure-turn S on a glossy charcoal plate. The idea is good, but the plate, gloss and amber stroke match the generic look we're moving away from.</p>
+    </div>
+  </div>
+  <p class="small muted">The new logo replaces the sidebar mark, the phone header, the browser tab icon, the home-screen app icon, the link preview card shown when someone shares the site, and the loading animation. The real logo will be drawn as outlines, so it never depends on a font loading.</p>
+</section>
+
+<section id="modes">
+  <h2>How the themes work</h2>
+  <div class="cols">
+    <div class="box"><h4>One look, three modes</h4><p class="small">Whichever theme you choose becomes the site's identity. Pilots then pick Day, Night or Red-light from the Appearance menu, or leave it on System to follow their phone. The menu shows a small live preview of each mode.</p></div>
+    <div class="box"><h4>Switching</h4><p class="small">The new mode sweeps across from the switch in under half a second (try the Mode buttons above). The saved choice is applied before the page draws, so there's never a flash of the wrong colours. With reduced motion turned on, the switch is instant.</p></div>
+    <div class="box"><h4>Calendar colours keep their meaning</h4><p class="small">Flight, deadhead, layover and report time stay the colours the ex-pilot chose in every mode, adjusted only for brightness on each background. In red-light everything is red, so deadheads become dashed and layovers hatched to stay readable.</p></div>
+    <div class="box"><h4>Built on the existing switches</h4><p class="small">The site already stores the mode on the page and swaps shared colour settings. The redesign changes those settings' values, the fonts and the shapes. Pilots' saved mode and personal calendar colour carry over unchanged.</p></div>
+    <div class="box"><h4>Readable first</h4><p class="small">No text below 11px. Every text colour is checked against its background (4.5 to 1 or better). The site declares its colours to the browser so Safari and phones stop guessing at a dark version.</p></div>
+    <div class="box"><h4>Phone and browser chrome</h4><p class="small">The phone's address bar, the home-screen icon and the link preview all follow the new theme and mode.</p></div>
+  </div>
+</section>
+
+<section id="motion">
+  <h2>Animations</h2>
+  <p>Today's 55 separate effects become five motions that every page shares. Each one shows something real, like a line moving to its new rank, instead of decorating. Every motion respects the phone's reduced-motion setting.</p>
+  <div class="demos">
+    <div class="demo" id="demoRack">
+      <div class="demo-top"><h4>Rack</h4><button class="replay" type="button">Replay</button></div>
+      <div class="demo-stage">
+        <div class="strip top"><span class="h"></span><b>114</b><span class="f">14 off · 78:40</span><span class="s">92</span></div>
+        <div class="strip"><span class="h"></span><b>207</b><span class="f">13 off · 81:15</span><span class="s">88</span></div>
+        <div class="strip"><span class="h"></span><b>031</b><span class="f">15 off · 74:05</span><span class="s">85</span></div>
+      </div>
+      <p class="small muted">How things arrive. Items slide a short way into their slot, one after another. Replaces fade-in, rise-in, slide-in, drop-in and the calendar cell reveal.</p>
+    </div>
+    <div class="demo" id="demoRerack">
+      <div class="demo-top"><h4>Re-rack</h4><button class="replay" type="button">Sort by credit</button></div>
+      <div class="demo-stage" id="rerackList">
+        <div class="strip top" data-score="92" data-credit="78:40"><span class="h"></span><b>114</b><span class="f">78:40 credit</span><span class="s">92</span></div>
+        <div class="strip" data-score="88" data-credit="81:15"><span class="h"></span><b>207</b><span class="f">81:15 credit</span><span class="s">88</span></div>
+        <div class="strip" data-score="85" data-credit="74:05"><span class="h"></span><b>031</b><span class="f">74:05 credit</span><span class="s">85</span></div>
+      </div>
+      <p class="small muted">How order changes. When you sort, filter or drag, each line glides to its new place so you can follow it. Replaces the flash on the rankings and the seniority queue roll.</p>
+    </div>
+    <div class="demo" id="demoDraw">
+      <div class="demo-top"><h4>Draw</h4><button class="replay" type="button">Replay</button></div>
+      <div class="demo-stage">
+        <svg viewBox="0 0 300 90" width="100%" height="90" aria-hidden="true">
+          <circle cx="20" cy="70" r="4" fill="var(--ink)"/><circle cx="150" cy="18" r="4" fill="var(--ink)"/><circle cx="280" cy="55" r="4" fill="var(--ink)"/>
+          <path class="drawme" d="M20 70 Q80 10 150 18 T280 55" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+          <text x="20" y="88" font-size="11" fill="var(--muted)" font-family="Atkinson Hyperlegible Mono, monospace">MEM</text>
+          <text x="138" y="10" font-size="11" fill="var(--muted)" font-family="Atkinson Hyperlegible Mono, monospace">ANC</text>
+          <text x="264" y="76" font-size="11" fill="var(--muted)" font-family="Atkinson Hyperlegible Mono, monospace">NRT</text>
+        </svg>
+        <div style="height:8px;background:var(--rule);border-radius:2px;overflow:hidden"><div class="fillme" style="height:100%;width:72%;background:var(--ink)"></div></div>
+      </div>
+      <p class="small muted">How pictures appear. Routes, score bars, gauges and trip bars draw once along their own path. Replaces the route, bar, tick and gauge effects and the "takeoff" trip bars.</p>
+    </div>
+    <div class="demo" id="demoMark">
+      <div class="demo-top"><h4>Mark</h4><button class="replay" type="button">Replay</button></div>
+      <div class="demo-stage" style="justify-items:center">
+        <span class="markword">Top pick
+          <svg viewBox="0 0 120 50" preserveAspectRatio="none" aria-hidden="true"><path class="markme" d="M10 30 C 8 8, 104 4, 112 22 C 118 40, 30 50, 8 34 C 2 28, 20 14, 40 12" fill="none" stroke="var(--retire)" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </span>
+      </div>
+      <p class="small muted">How state changes are confirmed. A quick hand-drawn mark, like a grease pencil on a strip, when you add a line, copy a bid or set a top pick. Replaces the checkmark tick, seatbelt sign and calendar flip.</p>
+    </div>
+    <div class="demo" id="demoHandoff">
+      <div class="demo-top"><h4>Hand-off</h4><button class="replay" type="button">Open line</button></div>
+      <div class="demo-stage">
+        <div class="handoff" id="handoff">
+          <div class="card">
+            <div class="strip top" style="border:0;box-shadow:none"><span class="h"></span><b>114</b><span class="f">14 off · 78:40</span><span class="s">92</span></div>
+            <div class="detail"><div><p>The line's full detail opens out of the same strip you tapped, so you never lose your place. Moving between pages uses the same idea.</p></div></div>
+          </div>
+        </div>
+      </div>
+      <p class="small muted">How you move from a list to detail and between pages. The thing you tapped grows into the next view. Replaces the current page-panel slide.</p>
+    </div>
+    <div class="demo">
+      <div class="demo-top"><h4>One signature moment per theme</h4></div>
+      <p class="small">The front page gets the only showpiece animation, chosen by theme. <b>A:</b> the sample pack's lines rack themselves into ranked order beside the headline. <b>B:</b> routes from Memphis draw out across a plan view. <b>C:</b> approach lights run in sequence toward the logo. Each replaces the 3D globe, so the front page loads faster.</p>
+      <p class="small muted">Everywhere else stays quiet. The only repeating animation left on the site is the deadline pulse when a bid closes in under 24 hours.</p>
+    </div>
+  </div>
+
+  <h3>Every animation on the site today, and what happens to it</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Today</th><th>Where</th><th>New</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td>Fade, rise, slide-in, drop-in, cell reveal, taxi-in</td><td class="where">Most pages, calendars, Strategies, Ask Pack, Cities, feedback</td><td>Rack</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Bar fill, tick draw, route draw, route dot</td><td class="where">Category bars, copy button, pricing, hotel map, city sky, layover map</td><td>Draw</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Line flash</td><td class="where">My Rankings</td><td>Re-rack, then Mark on the line that moved</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Queue roll</td><td class="where">Seniority queue</td><td>Re-rack</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Takeoff</td><td class="where">Bid-pack strips, calendar day bars, status panel</td><td>Trip bars Draw left to right instead</td><td><span class="v retire">Retire</span></td></tr>
+        <tr><td>Climb-out, calendar flip</td><td class="where">Bid order export</td><td>Mark when the bid is copied</td><td><span class="v retire">Retire</span></td></tr>
+        <tr><td>Split-flap digits</td><td class="where">Flip text (scores, countdown)</td><td>Digits roll once when a number changes</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Number ticker</td><td class="where">Scores, counts</td><td>Kept, on the shared timing</td><td><span class="v keep">Keep</span></td></tr>
+        <tr><td>Sun set, moon rise</td><td class="where">Appearance menu</td><td>Theme sweep from the switch</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Wheels-down sequence</td><td class="where">Results ready moment</td><td>The theme's signature, short version</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Attitude roll</td><td class="where">Spinner</td><td>Theme spinner: a strip shuttling (A), a profile line drawing (B), lights sequencing (C)</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Blip</td><td class="where">Bid pack loading</td><td>Pack pages stack up as rows while they're read</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Waypoint ping</td><td class="where">Flight path progress (interview)</td><td>Steps along a ruled line, current step marked</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Radar sweep, scope return</td><td class="where">Empty states</td><td>A still drawing in the theme, outline drawn once</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Pin drop, pin ping</td><td class="where">Hotel map</td><td>Pins Rack in; one ping on the selected hotel only</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Beacon, beacon ring</td><td class="where">Side and phone nav, layover map</td><td>Gone from nav; one "you are here" pulse kept on the map</td><td><span class="v retire">Retire</span></td></tr>
+        <tr><td>Twinkling stars</td><td class="where">Sidebar</td><td>Removed</td><td><span class="v retire">Retire</span></td></tr>
+        <tr><td>Paper plane</td><td class="where">Paper plane graphic</td><td>Removed</td><td><span class="v retire">Retire</span></td></tr>
+        <tr><td>Plane climb</td><td class="where">Back to top button</td><td>Plain arrow with the shared hover</td><td><span class="v retire">Retire</span></td></tr>
+        <tr><td>Typing effect and caret</td><td class="where">Typed eyebrow labels</td><td>Text appears at once; the labels lose their spaced capitals</td><td><span class="v retire">Retire</span></td></tr>
+        <tr><td>Holding pattern</td><td class="where">Page not found</td><td>A still theme drawing</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Seatbelt sign, turbulence shake</td><td class="where">Error page</td><td>A calm error panel, no shaking</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>3D night globe</td><td class="where">Front page</td><td>The theme's signature moment; removes the 3D library</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Logo flight</td><td class="where">Logo animation</td><td>The new logo builds itself once (a strip slides out, the profile line draws, or the sign lights up)</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>City sky</td><td class="where">Cities</td><td>Local-time sky kept, redrawn in the theme</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Weather glyphs</td><td class="where">Cities</td><td>Kept, redrawn at the theme's line weight</td><td><span class="v keep">Keep</span></td></tr>
+        <tr><td>Story visuals</td><td class="where">Front page sections</td><td>Redrawn as theme pictures of real screens</td><td><span class="v redo">Redo</span></td></tr>
+        <tr><td>Skeleton shimmer</td><td class="where">Loading cards</td><td>Kept, recoloured</td><td><span class="v keep">Keep</span></td></tr>
+        <tr><td>Toast, sheet up, command palette</td><td class="where">Notices, phone sheets, Jump to line</td><td>Kept, on the shared timing</td><td><span class="v keep">Keep</span></td></tr>
+        <tr><td>Navigation progress bar</td><td class="where">Top of page while loading</td><td>Kept, restyled per theme</td><td><span class="v keep">Keep</span></td></tr>
+        <tr><td>Final call pulse</td><td class="where">Deadline banner, tab title</td><td>Kept as the one repeating animation</td><td><span class="v keep">Keep</span></td></tr>
+        <tr><td>Page panel slide</td><td class="where">Moving between pages</td><td>Hand-off</td><td><span class="v redo">Redo</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="pages">
+  <h2>Every page</h2>
+  <p>What changes on each page, written for theme A. In B or C the same parts get that theme's shapes. Nothing is added or removed from any page, and no wording changes.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Page</th><th>What changes</th></tr></thead>
+      <tbody>
+        <tr class="group"><td colspan="2">Around every page</td></tr>
+        <tr><td>Sidebar and phone tab bar</td><td>Console-coloured sidebar; the current page is a raised strip with a holder-yellow edge. Redrawn icon set at one line weight. Bid pack summary becomes a small briefing row.</td></tr>
+        <tr><td>Account and Appearance menus</td><td>Appearance menu shows live previews of Day, Night and Red-light.</td></tr>
+        <tr><td>Jump to line, toasts, dialogs</td><td>Same layout, new surfaces and type; dialogs open with Hand-off.</td></tr>
+        <tr><td>Page headers and footer</td><td>Spaced-capital eyebrows become plain labels. Headings in the new display face with a real size scale.</td></tr>
+        <tr class="group"><td colspan="2">Front door</td></tr>
+        <tr><td>Home (/)</td><td>The 3D globe is replaced by the signature hero: sample lines racking into order next to the headline. "01 · LOAD" style numbering goes; each section gets a picture of the real screen it describes.</td></tr>
+        <tr><td>How it works</td><td>The steps keep their numbers (they are a real sequence), each with a small strip diagram.</td></tr>
+        <tr><td>Pricing</td><td>Plans set as ruled strips side by side; included items confirmed with Mark.</td></tr>
+        <tr><td>What's new</td><td>A dated log, dates in the number face, newest at the top.</td></tr>
+        <tr><td>Privacy, Terms</td><td>Long-reading layout: comfortable line length, larger body text, contents list that follows you.</td></tr>
+        <tr><td>Sign in, reset password</td><td>One centred strip card; the logo builds once.</td></tr>
+        <tr><td>Not found, error</td><td>Still theme drawings (an empty strip holder), calm wording layout.</td></tr>
+        <tr class="group"><td colspan="2">Setting up</td></tr>
+        <tr><td>Upload Bid Pack</td><td>The drop zone becomes an empty slot in the rack. While reading, pack pages stack up as rows. Layover route map redrawn in theme linework.</td></tr>
+        <tr><td>Your bid pack (preview)</td><td>Counts in the number face inside a briefing row; trips and cities as tidy ruled lists.</td></tr>
+        <tr><td>Interview</td><td>One question strip at a time. Line and trip pairs shown as two strips side by side. Progress as steps along a ruled line. Mic button and thinking panel restyled, quieter.</td></tr>
+        <tr><td>Preferences, quick start, confirm</td><td>Priorities as racked strips (drag uses Re-rack). Sliders get a printed tick scale. City chips become small tags.</td></tr>
+        <tr class="group"><td colspan="2">Your bid</td></tr>
+        <tr><td>My Rankings</td><td>The biggest change. Each line is a strip: holder colour for tier, ruled fields for rank, line, score and key facts, the bid-pack strip beneath. The card drop-down opens with Hand-off. Sorting and filters Re-rack. Score ring becomes a boxed score. Calendar and trip pictures retuned per mode. Compare lines, deadline banner and Send to VIPS dialog restyled.</td></tr>
+        <tr><td>Strategies</td><td>Strategy cards as strips; award history as a ruled table; vacation panel in the new surfaces.</td></tr>
+        <tr><td>View/Add</td><td>The list is a rack: adding or removing a line slides it in or out.</td></tr>
+        <tr><td>Open Time</td><td>Trips as strips; contract checks shown as marks in their own field.</td></tr>
+        <tr class="group"><td colspan="2">Your flying</td></tr>
+        <tr><td>Cities</td><td>City cards with the local-time sky redrawn; weather glyphs at the theme's line weight.</td></tr>
+        <tr><td>Logbook</td><td>A ruled table like a paper logbook, numbers lined up in columns.</td></tr>
+        <tr><td>Tools</td><td>Tool tiles as even strips with one icon style.</td></tr>
+        <tr><td>Ask the Contract</td><td>Your questions on strip paper; answers with quote cards styled as contract excerpts, section numbers in the number face; working steps as a quiet progress line.</td></tr>
+        <tr class="group"><td colspan="2">Crew</td></tr>
+        <tr><td>Trade Board</td><td>Trade chains drawn as linked strips; holdings as a ruled list.</td></tr>
+        <tr><td>Inbox</td><td>A list with an unread holder colour.</td></tr>
+        <tr><td>Hotel Ratings</td><td>Pin map redrawn in the theme; ratings as filled ticks.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="plan">
+  <h2>Build plan</h2>
+  <p>Twelve steps, in this order. Each one is finished, checked and shown to you before the next starts. All work happens on a separate branch with a preview link, so the live site doesn't change until you approve the whole thing.</p>
+  <ol class="steps">
+    <li><div><h4>Choose and record the starting point</h4><p>You pick the theme and logo. I then capture the current site so we can prove nothing but the look changed.</p>
+      <dl><dt>Builds</dt><dd>Screenshots of every page in Day, Dark and Red-light, desktop and phone, in Chrome and Safari's engine. A "words lock" file with the visible text of every page.</dd><dt>Files</dt><dd>New scripts in <code>scripts/redesign/</code></dd><dt>Done when</dt><dd>Baseline saved and the words-lock test passes against today's site.</dd></dl></div></li>
+    <li><div><h4>Colours</h4><p>New values for the shared colour settings in all three modes. Names stay the same, so the whole site changes at once.</p>
+      <dl><dt>Files</dt><dd><code>src/app/globals.css</code>, plus the 16 hard-coded colours in 5 files moved onto the shared settings</dd><dt>Checks</dt><dd>Every text colour against its background (4.5 to 1 or better); colour-blind check of the calendar colours; ex-pilot OK on any calendar colour retune</dd><dt>Done when</dt><dd>Every page renders in the new colours with no unreadable text.</dd></dl></div></li>
+    <li><div><h4>Type</h4><p>New fonts, a fixed size scale, nothing below 11px, the number font used only for numbers and times, spaced-capital labels turned into plain labels by changing styling only (the letters in the code stay the same).</p>
+      <dl><dt>Files</dt><dd><code>src/app/layout.tsx</code>, <code>globals.css</code>, <code>Heading.tsx</code>, <code>SectionHeading.tsx</code>, <code>PageHeader.tsx</code>, <code>TypedEyebrow.tsx</code>, and the components with hand-set sizes</dd><dt>Done when</dt><dd>Words lock still passes; no text below 11px.</dd></dl></div></li>
+    <li><div><h4>Logo and icons</h4><p>The new mark and wordmark, browser icon, home-screen icon, link preview card and the phone's address bar colour.</p>
+      <dl><dt>Files</dt><dd><code>logo-geometry.ts</code>, <code>Logo.tsx</code>, <code>LogoFlight.tsx</code>, <code>app/icon.tsx</code>, <code>apple-icon.tsx</code>, <code>icons/</code>, <code>opengraph-image.tsx</code>, <code>manifest.ts</code>, <code>favicon.ico</code></dd><dt>Done when</dt><dd>Mark checked at 16, 32, 180 and 512 pixels on light and dark.</dd></dl></div></li>
+    <li><div><h4>Site frame</h4><p>Sidebar, phone tab bar, account and appearance menus (with the live mode previews), Jump to line, footer.</p>
+      <dl><dt>Files</dt><dd><code>AppShell.tsx</code>, <code>LeftNav.tsx</code>, <code>PhoneNav.tsx</code>, <code>AccountMenu.tsx</code>, <code>AppearanceMenu.tsx</code>, <code>CommandPalette.tsx</code></dd><dt>Done when</dt><dd>Every page's frame matches the theme on desktop and phone.</dd></dl></div></li>
+    <li><div><h4>Shared building blocks</h4><p>Buttons, tabs, dialogs, fields, sliders, notices, toasts, empty states, loading cards, spinner, score displays, and the glass card replaced by the theme's strip and panel.</p>
+      <dl><dt>Files</dt><dd><code>src/components/ui/</code> (Button, Tabs, Modal, ConfirmModal, TextField, Slider, RangeSlider, Notice, NoteBox, ErrorBanner, Toast, EmptyState, SkeletonCards, Spinner, GlowCard, Gauge, ProgressDots, PillHighlight, icons) and <code>results/ScoreRing.tsx</code></dd><dt>Done when</dt><dd>One reference page shows every block in all three modes.</dd></dl></div></li>
+    <li><div><h4>Animation system</h4><p>The five shared motions and one timing scale, then every animation in the table above moved onto them, retired or redone.</p>
+      <dl><dt>Files</dt><dd><code>globals.css</code>, <code>ScreenTransition.tsx</code>, <code>StepTransition.tsx</code>, <code>FlipText.tsx</code>, <code>NumberTicker.tsx</code>, and each component listed in the table</dd><dt>Done when</dt><dd>Every row of the table is done; reduced motion turns everything still.</dd></dl></div></li>
+    <li><div><h4>Front door pages</h4><p>Home with the new hero (and the 3D library removed), How it works, Pricing, What's new, Privacy, Terms, sign in, reset password, not found and error.</p>
+      <dl><dt>Files</dt><dd><code>components/welcome/</code>, those pages under <code>src/app/</code>, <code>components/auth/</code></dd><dt>Done when</dt><dd>Words lock passes; home page loads faster than today.</dd></dl></div></li>
+    <li><div><h4>Setting-up pages</h4><p>Upload, your bid pack, the interview, preferences, quick start and confirm.</p>
+      <dl><dt>Files</dt><dd><code>components/upload/</code>, <code>components/interview/</code>, <code>components/preferences/</code></dd><dt>Done when</dt><dd>A full run from upload to finished interview with the sample pack looks right in all three modes.</dd></dl></div></li>
+    <li><div><h4>My Rankings</h4><p>The largest step: line strips, calendar and trip pictures, sorting and filters, the drop-down, compare, deadline banner and Send to VIPS.</p>
+      <dl><dt>Files</dt><dd><code>components/results/</code></dd><dt>Done when</dt><dd>Rankings order and scores identical to before on the sample pack and a real one; words lock passes.</dd></dl></div></li>
+    <li><div><h4>Everything else</h4><p>Strategies, View/Add, Open Time, Cities, Logbook, Tools, Ask the Contract, Trade Board, Inbox, Hotel Ratings.</p>
+      <dl><dt>Files</dt><dd><code>components/strategies/</code>, <code>view-add/</code>, <code>open-time/</code>, <code>cities/</code>, <code>logbook/</code>, <code>tools/</code>, <code>contract/</code>, <code>trade-board/</code>, <code>hotels/</code></dd><dt>Done when</dt><dd>Every page matches the theme in all three modes.</dd></dl></div></li>
+    <li><div><h4>Final proof and launch</h4><p>Before and after screenshots side by side for every page. Words lock shows zero text changes. The pilot-language guard, type check, lint and tests all pass, and GitHub's checks go green. Then it merges to the live site with your OK.</p>
+      <dl><dt>Done when</dt><dd>You've reviewed the preview link and approved it.</dd></dl></div></li>
+  </ol>
+</section>
+
+<section id="decide">
+  <h2>What I need from you</h2>
+  <div class="decide">
+    <div><p><b>Which theme?</b> A Strip Bay (recommended), B Approach Plate or C Ramp at Night.</p></div>
+    <div><p><b>Which logo?</b> The one that comes with your theme, or any of the others.</p></div>
+    <div><p><b>May the calendar colours be retuned for brightness?</b> Same colours and meanings, adjusted per mode. I'd like the ex-pilot's OK on this since he chose them.</p></div>
+    <div><p><b>Keep all three modes?</b> Day, Night and Red-light. I recommend keeping all three.</p></div>
+  </div>
+  <p class="muted small">Once you choose, I'll describe step 1 in full and wait for your go-ahead before building anything.</p>
+</section>
+
+</main>
+
+<script>
+(function () {
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var NS = "http://www.w3.org/2000/svg";
+
+  // ---------- Logos ----------
+  function ticks(cx, cy, r, step, longEvery, lenS, lenL, color, w) {
+    var s = "";
+    for (var a = 0; a < 360; a += step) {
+      var rad = (a - 90) * Math.PI / 180, len = a % longEvery === 0 ? lenL : lenS;
+      var x1 = cx + Math.cos(rad) * r, y1 = cy + Math.sin(rad) * r;
+      var x2 = cx + Math.cos(rad) * (r - len), y2 = cy + Math.sin(rad) * (r - len);
+      s += '<line x1="' + x1.toFixed(2) + '" y1="' + y1.toFixed(2) + '" x2="' + x2.toFixed(2) + '" y2="' + y2.toFixed(2) + '" stroke="' + color + '" stroke-width="' + w + '" stroke-linecap="round"/>';
+    }
+    return s;
+  }
+  function logoSVG(kind, tone, small) {
+    var light = tone === "light";
+    if (kind === "a") {
+      var tile = light ? "#15191a" : "#e9ece9", strip = light ? "#fcfcf8" : "#15191a", dim = light ? "rgba(252,252,248,0.42)" : "rgba(21,25,26,0.4)", hold = "#e9b92e";
+      var rule = small ? "" : '<line x1="34" y1="28.5" x2="34" y2="35.5" stroke="' + tile + '" stroke-width="1.4"/><line x1="44" y1="28.5" x2="44" y2="35.5" stroke="' + tile + '" stroke-width="1.4"/>';
+      return '<svg viewBox="0 0 64 64" xmlns="' + NS + '"><rect width="64" height="64" rx="13" fill="' + tile + '"/>' +
+        '<rect x="11" y="14" width="34" height="9" rx="1.6" fill="' + dim + '"/>' +
+        '<rect x="19" y="27.5" width="35" height="9" rx="1.6" fill="' + strip + '"/><rect x="19" y="27.5" width="8" height="9" rx="1.6" fill="' + hold + '"/><rect x="24" y="27.5" width="3" height="9" fill="' + hold + '"/>' + rule +
+        '<rect x="11" y="41" width="34" height="9" rx="1.6" fill="' + dim + '"/></svg>';
+    }
+    if (kind === "b") {
+      var bg = light ? "#ffffff" : "#0a0a0b", ink = light ? "#0c0c0d" : "#f1f1ef";
+      var ground = small ? "" : '<line x1="9" y1="50" x2="55" y2="50" stroke="' + ink + '" stroke-width="1.2"/><path d="M8 16.5 L12 21.5" stroke="' + ink + '" stroke-width="1.4" stroke-dasharray="2 2"/>';
+      return '<svg viewBox="0 0 64 64" xmlns="' + NS + '"><rect width="64" height="64" rx="4" fill="' + bg + '" stroke="' + ink + '" stroke-width="' + (small ? 3 : 2) + '"/>' + ground +
+        '<path d="M13 22 L27 41 L53 13" fill="none" stroke="' + ink + '" stroke-width="' + (small ? 7 : 5) + '" stroke-linejoin="miter" stroke-linecap="butt"/>' +
+        '<rect x="19" y="' + (small ? 47 : 47.5) + '" width="16" height="' + (small ? 6 : 5) + '" fill="' + ink + '"/></svg>';
+    }
+    if (kind === "c") {
+      return '<svg viewBox="0 0 64 64" xmlns="' + NS + '"><rect width="64" height="64" rx="8" fill="#000"/>' +
+        '<rect x="5.5" y="5.5" width="53" height="53" rx="3" fill="none" stroke="#ffcc00" stroke-width="' + (small ? 4 : 2.6) + '"/>' +
+        '<path d="M16 19 V45 H29" fill="none" stroke="#ffcc00" stroke-width="5.6" stroke-linecap="square"/>' +
+        '<path d="M48 22.5 C47 19.5 44.5 18.5 41.5 18.5 C37.5 18.5 34.8 20.6 34.8 24 C34.8 31 48.4 28.4 48.4 37.6 C48.4 42.4 45 45.6 40.6 45.6 C37 45.6 34.4 44 33.4 40.8" fill="none" stroke="#ffcc00" stroke-width="5.4" stroke-linecap="square"/></svg>';
+    }
+    // Today's mark, from src/lib/logo-geometry.ts
+    var p1 = light ? "#33363b" : "#2a2c31", p2 = light ? "#1f2023" : "#141517", lk = light ? "#f1f1ef" : "#ececea", ac = light ? "#e3a43c" : "#ebb357";
+    var id = "g" + Math.random().toString(36).slice(2, 7);
+    return '<svg viewBox="0 0 64 64" xmlns="' + NS + '"><defs><radialGradient id="' + id + '" cx="30%" cy="22%" r="95%"><stop offset="0" stop-color="' + p1 + '"/><stop offset="1" stop-color="' + p2 + '"/></radialGradient></defs>' +
+      '<rect width="64" height="64" rx="15" fill="url(#' + id + ')"/><rect x="0.5" y="0.5" width="63" height="63" rx="14.5" fill="none" stroke="rgba(235,179,87,0.3)"/>' +
+      '<path d="M16 13 V44 H48" fill="none" stroke="' + lk + '" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.92"/>' +
+      '<path d="M45 12 H33.5 A6.25 6.25 0 0 0 33.5 24.5 H36 A6.25 6.25 0 0 1 36 37 H24.5" fill="none" stroke="' + ac + '" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  document.querySelectorAll("[data-logo]").forEach(function (el) {
+    var k = el.getAttribute("data-logo"), t = el.getAttribute("data-tone");
+    el.innerHTML = logoSVG(k, t, false).replace("<svg ", '<svg class="big" ') + '<div class="sizes">' + logoSVG(k, t, false) + logoSVG(k, t, true) + "</div>";
+  });
+  document.getElementById("wmA").innerHTML = '<span style="display:flex;align-items:center;gap:10px">' + logoSVG("a", "light", false).replace("<svg ", '<svg width="30" height="30" ') +
+    '<span style="font-family:Archivo,Arial,sans-serif;font-weight:780;font-variation-settings:\'wdth\' 75;letter-spacing:0.05em;font-size:19px">LINE<span style="display:inline-block;width:1.5px;height:16px;background:#b9c3be;margin:0 9px;vertical-align:-2px"></span>SELECT</span></span>';
+  document.getElementById("wmB").innerHTML = '<span style="display:flex;align-items:center;gap:10px">' + logoSVG("b", "light", false).replace("<svg ", '<svg width="30" height="30" ') +
+    '<span style="font-family:Jost,Futura,sans-serif;font-weight:500;font-size:21px;letter-spacing:0.01em">Line Select</span></span>';
+  document.getElementById("wmC").innerHTML = '<span style="display:flex;align-items:stretch;gap:3px;height:32px">' + logoSVG("c", "dark", false).replace("<svg ", '<svg width="32" height="32" ') +
+    '<span style="display:flex;align-items:center;gap:8px;background:#ffcc00;color:#000;padding:0 10px;border-radius:3px;font-family:Overpass,Arial,sans-serif;font-weight:900;font-size:16px;letter-spacing:0.03em">LINE SELECT <svg width="16" height="12" viewBox="0 0 16 12"><path d="M0 6 H13 M8 1 L13 6 L8 11" fill="none" stroke="#000" stroke-width="2.6"/></svg></span></span>';
+
+  // ---------- Theme previewer ----------
+  var pv = document.getElementById("pv");
+  var rows = [
+    { rank: 1, line: "Line 114", score: 92, top: true, facts: [["14", "days off"], ["78:40", "credit"], ["4", "trips"]],
+      trips: [[2, 3, [["leg", 2], ["lay", 3], ["leg", 2]]], [9, 4, [["leg", 1], ["lay", 2], ["leg", 1], ["dh", 1], ["lay", 2], ["leg", 1]]], [18, 3, [["leg", 2], ["lay", 2], ["leg", 2]]], [26, 3, [["dh", 1], ["leg", 1], ["lay", 3], ["leg", 2]]]] },
+    { rank: 2, line: "Line 207", score: 88, facts: [["13", "days off"], ["81:15", "credit"], ["5", "trips"]],
+      trips: [[1, 2, [["leg", 2], ["lay", 2], ["leg", 1]]], [6, 3, [["leg", 1], ["lay", 3], ["leg", 2]]], [12, 4, [["leg", 2], ["lay", 2], ["dh", 1], ["lay", 2], ["leg", 1]]], [20, 3, [["leg", 2], ["lay", 2], ["leg", 2]]], [27, 3, [["leg", 1], ["lay", 3], ["dh", 1]]]] },
+    { rank: 3, line: "Line 031", score: 85, facts: [["15", "days off"], ["74:05", "credit"], ["4", "trips"]],
+      trips: [[3, 4, [["leg", 2], ["lay", 3], ["leg", 1], ["lay", 2], ["leg", 1]]], [11, 3, [["leg", 2], ["lay", 3], ["leg", 1]]], [19, 4, [["dh", 1], ["leg", 1], ["lay", 3], ["leg", 2]]], [28, 2, [["leg", 2], ["lay", 1], ["leg", 1]]]] }
+  ];
+  document.getElementById("pvRows").innerHTML = rows.map(function (r) {
+    var trips = r.trips.map(function (t) {
+      var segs = t[2].map(function (s) { return '<i class="' + s[0] + '" style="flex:' + s[1] + '"></i>'; }).join("");
+      return '<span class="pv-trip" style="left:calc(' + (t[0] - 1) + ' * 100% / 31);width:calc(' + t[1] + ' * 100% / 31 - 1px)"><span class="rep"></span>' + segs + "</span>";
+    }).join("");
+    var facts = r.facts.map(function (f) { return "<b>" + f[0] + "</b> " + f[1]; }).join(" · ");
+    return '<li class="pv-row' + (r.top ? " top" : "") + '"><span class="hold"></span><div class="body"><div class="pv-fields"><span class="pv-rank">#' + r.rank + '</span><span class="pv-line">' + r.line + '</span><span><span class="pv-score">' + r.score + '</span></span><span class="pv-facts">' + facts + (r.top ? '<span class="pv-chip">Top pick</span>' : "") + '</span></div><div class="pv-days" aria-hidden="true">' + trips + "</div></div></li>";
+  }).join("");
+  document.getElementById("pvLegend").innerHTML = [["leg", "Flying"], ["dh", "Deadhead"], ["lay", "Layover"], ["rep", "Report"]].map(function (l) {
+    var st = l[0] === "rep" ? "width:3px;height:11px;background:var(--p-rep)" : "background:var(--p-" + l[0] + ");background-image:var(--p-" + l[0] + "-pattern, none)";
+    return '<span><i style="' + st + '"></i>' + l[1] + "</span>";
+  }).join("");
+
+  function ornament(dir) {
+    if (dir === "b") return '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="27" fill="none" stroke="var(--p-ink)" stroke-width="1.2"/><line x1="32" y1="5" x2="32" y2="59" stroke="var(--p-ink)" stroke-width="1"/><line x1="8.6" y1="45.5" x2="55.4" y2="18.5" stroke="var(--p-ink)" stroke-width="1"/></svg>';
+    if (dir === "c") return '<svg viewBox="0 0 64 64" aria-hidden="true">' + [0, 1, 2, 3, 4].map(function (i) { return '<circle cx="' + (8 + i * 12) + '" cy="32" r="3.4" fill="var(--p-prog-on)" opacity="' + (0.25 + i * 0.18) + '"/>'; }).join("") + "</svg>";
+    return "";
+  }
+  function paint() {
+    var dir = pv.getAttribute("data-dir"), mode = pv.getAttribute("data-mode");
+    var tone = (mode === "day") ? "light" : "dark";
+    var html = logoSVG(dir, tone, false);
+    if (mode === "red") html = html.replace(/#ffcc00|#e9b92e/gi, "#ff3b2f").replace(/#e9ece9|#f1f1ef|#fcfcf8/gi, "#ff5b4d").replace(/#15191a|#0a0a0b|#0c0c0d|#000"/gi, function (m) { return m.slice(-1) === '"' ? '#080101"' : "#080101"; });
+    document.getElementById("pvLogo").innerHTML = html;
+    document.getElementById("pvOrn").innerHTML = ornament(dir);
+    document.getElementById("pvPrimary").textContent = dir === "c" ? "Send to VIPS →" : "Send to VIPS";
+  }
+  function setState(attr, value, btn) {
+    var apply = function () { pv.setAttribute(attr, value); paint(); };
+    var segId = attr === "data-dir" ? "dirSeg" : "modeSeg";
+    document.querySelectorAll("#" + segId + " button").forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
+    if (!reduce && document.startViewTransition && btn) {
+      var br = btn.getBoundingClientRect(), pr = pv.getBoundingClientRect();
+      document.documentElement.style.setProperty("--sx", Math.max(0, br.left + br.width / 2 - pr.left) + "px");
+      document.documentElement.style.setProperty("--sy", Math.max(0, br.top - pr.top) + "px");
+      document.startViewTransition(apply);
+    } else apply();
+  }
+  document.querySelectorAll("#dirSeg button").forEach(function (b) { b.addEventListener("click", function () { setState("data-dir", b.dataset.dir, b); }); });
+  document.querySelectorAll("#modeSeg button").forEach(function (b) { b.addEventListener("click", function () { setState("data-mode", b.dataset.mode, b); }); });
+  paint();
+
+  // ---------- Motion demos ----------
+  var ease = "cubic-bezier(0.2, 0.8, 0.2, 1)";
+  function rack(root) {
+    if (reduce) return;
+    root.querySelectorAll(".strip").forEach(function (el, i) {
+      el.animate([{ transform: "translateX(-16px)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 360, delay: i * 70, easing: ease, fill: "backwards" });
+    });
+  }
+  var rackDemo = document.getElementById("demoRack");
+  rackDemo.querySelector(".replay").addEventListener("click", function () { rack(rackDemo); });
+
+  var list = document.getElementById("rerackList"), byCredit = false;
+  document.querySelector("#demoRerack .replay").addEventListener("click", function () {
+    var items = Array.prototype.slice.call(list.children);
+    var first = items.map(function (el) { return el.getBoundingClientRect().top; });
+    byCredit = !byCredit;
+    var key = function (el) { return byCredit ? parseFloat(el.dataset.credit.replace(":", ".")) : parseFloat(el.dataset.score); };
+    items.slice().sort(function (a, b) { return key(b) - key(a); }).forEach(function (el) { list.appendChild(el); });
+    this.textContent = byCredit ? "Sort by score" : "Sort by credit";
+    if (reduce) return;
+    items.forEach(function (el, i) {
+      var dy = first[i] - el.getBoundingClientRect().top;
+      if (dy) el.animate([{ transform: "translateY(" + dy + "px)" }, { transform: "none" }], { duration: 420, easing: ease });
+    });
+  });
+
+  var drawDemo = document.getElementById("demoDraw");
+  function draw() {
+    var p = drawDemo.querySelector(".drawme"), len = p.getTotalLength();
+    var f = drawDemo.querySelector(".fillme");
+    if (reduce) return;
+    p.style.strokeDasharray = len;
+    p.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: 900, easing: ease, fill: "backwards" });
+    f.animate([{ transform: "scaleX(0)", transformOrigin: "left" }, { transform: "scaleX(1)", transformOrigin: "left" }], { duration: 700, delay: 150, easing: ease, fill: "backwards" });
+  }
+  drawDemo.querySelector(".replay").addEventListener("click", draw);
+
+  var markDemo = document.getElementById("demoMark");
+  function mark() {
+    var p = markDemo.querySelector(".markme"), len = p.getTotalLength();
+    if (reduce) return;
+    p.style.strokeDasharray = len;
+    p.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: 520, easing: "cubic-bezier(0.5, 0, 0.3, 1)", fill: "backwards" });
+  }
+  markDemo.querySelector(".replay").addEventListener("click", mark);
+
+  var ho = document.getElementById("handoff");
+  document.querySelector("#demoHandoff .replay").addEventListener("click", function () {
+    ho.classList.toggle("open");
+    this.textContent = ho.classList.contains("open") ? "Close line" : "Open line";
+  });
+
+  // Play each demo once when it first scrolls into view (everything is already visible at rest).
+  if ("IntersectionObserver" in window && !reduce) {
+    var played = new WeakSet();
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting || played.has(e.target)) return;
+        played.add(e.target);
+        if (e.target === rackDemo) rack(rackDemo);
+        if (e.target === drawDemo) draw();
+        if (e.target === markDemo) mark();
+      });
+    }, { threshold: 0.6 });
+    [rackDemo, drawDemo, markDemo].forEach(function (d) { io.observe(d); });
+  }
+})();
+</script>

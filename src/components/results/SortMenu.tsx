@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { FIELD } from "@/components/ui/field";
 import { Modal } from "@/components/ui/Modal";
 import {
   betterLabel,
@@ -26,6 +27,7 @@ export function SortMenu({ sort, lines }: { sort: LineSort; lines: LineScore[] }
   const [open, setOpen] = useState(false);
   return (
     <>
+      {/* Edged like the line search beside it, and with the app's own focus ring: focus:outline-none took the ring away. */}
       <button
         type="button"
         aria-haspopup="dialog"
@@ -33,7 +35,7 @@ export function SortMenu({ sort, lines }: { sort: LineSort; lines: LineScore[] }
           sort.prepare();
           setOpen(true);
         }}
-        className="flex min-h-10 items-center gap-1.5 rounded-md border border-hairline bg-canvas/50 px-2.5 py-2 text-left text-sm text-ink transition-colors hover:border-accent focus:border-accent focus:outline-none"
+        className="flex min-h-10 items-center gap-1.5 rounded-md border border-field-edge bg-canvas/50 px-2.5 py-2 text-left text-sm text-ink transition-colors hover:border-accent focus-visible:border-accent"
       >
         <span className="text-ink-muted">Sort:</span>
         <span className="max-w-[11rem] truncate font-medium sm:max-w-[16rem]">{sort.def.label}</span>
@@ -116,7 +118,7 @@ function SortDialog({ sort, lines, onClose }: { sort: LineSort; lines: LineScore
           }
         }}
         placeholder="Search: credit, layover, hub turn…"
-        className="w-full rounded-md border border-hairline bg-canvas/50 px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
+        className={`w-full ${FIELD} placeholder:text-ink-faint`}
       />
       <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div id={`${baseId}-list`} role="listbox" aria-label="Measures" className="max-h-[30vh] overflow-y-auto pr-1 sm:max-h-[48vh]">
@@ -153,7 +155,7 @@ function SortDialog({ sort, lines, onClose }: { sort: LineSort; lines: LineScore
                 <select
                   value={city}
                   onChange={(e) => setPicked({ ...picked, city: e.target.value })}
-                  className="rounded-md border border-hairline bg-surface px-2 py-1.5 font-mono text-sm text-ink focus:border-accent focus:outline-none"
+                  className="rounded-md border border-field-edge bg-surface px-2 py-1.5 font-mono text-sm text-ink focus:border-accent focus:outline-none"
                 >
                   {ctx.cities.map((c) => (
                     <option key={c}>{c}</option>
@@ -167,7 +169,7 @@ function SortDialog({ sort, lines, onClose }: { sort: LineSort; lines: LineScore
                 <select
                   value={picked.region ?? SORT_REGIONS[0].id}
                   onChange={(e) => setPicked({ ...picked, region: e.target.value as Region })}
-                  className="rounded-md border border-hairline bg-surface px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
+                  className="rounded-md border border-field-edge bg-surface px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
                 >
                   {SORT_REGIONS.map((r) => (
                     <option key={r.id} value={r.id}>

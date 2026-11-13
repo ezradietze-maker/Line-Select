@@ -1,3 +1,4 @@
+import { saveOrReport } from "@/lib/local-save-failed";
 import { groupDepartures } from "@/lib/metrics/departures";
 import { homeParams } from "@/lib/scoring-v2/score";
 import type { MetricParams } from "@/lib/metrics/catalog";
@@ -501,11 +502,7 @@ export function loadSortChoice(userId: string | null, bidPackId: string): SortCh
   }
 }
 
-export function saveSortChoice(userId: string | null, bidPackId: string, choice: SortChoice): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(sortKey(userId, bidPackId), JSON.stringify(choice));
-  } catch {
-    // storage unavailable — the sort just won't be remembered
-  }
+/** Whether the browser kept it; when it didn't, the pilot is told it won't survive a refresh (`saveOrReport`). */
+export function saveSortChoice(userId: string | null, bidPackId: string, choice: SortChoice): boolean {
+  return saveOrReport(sortKey(userId, bidPackId), JSON.stringify(choice));
 }

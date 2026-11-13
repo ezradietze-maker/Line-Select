@@ -212,13 +212,13 @@ function HotelRatingsList({
               }}
               placeholder="Find a city or hotel"
               aria-label="Find a city or hotel"
-              className="min-w-0 flex-1 rounded-lg border border-hairline bg-canvas/50 px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
+              className="min-w-0 flex-1 rounded-lg border border-field-edge bg-canvas/50 px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
             />
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
               aria-label="Sort hotels"
-              className="rounded-lg border border-hairline bg-canvas/50 px-3 py-2.5 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
+              className="rounded-lg border border-field-edge bg-canvas/50 px-3 py-2.5 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
             >
               {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
                 <option key={k} value={k}>
@@ -320,7 +320,7 @@ function HotelCard({
                 <span className="rounded border border-accent/40 bg-accent-soft/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold tracking-wider text-accent">
                   {group.code}
                 </span>
-                <span className="font-display text-base font-semibold text-ink">{group.hotelName}</span>
+                <span className="min-w-0 font-display text-base font-semibold text-ink wrap-anywhere">{group.hotelName}</span>
               </div>
               {hotel === undefined ? (
                 <p className="mt-1 text-xs text-ink-faint">Looking up&hellip;</p>

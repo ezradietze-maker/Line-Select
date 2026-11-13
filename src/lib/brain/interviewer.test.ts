@@ -10,7 +10,7 @@ vi.mock("@/lib/brain/question-review", () => ({
   reviewQuestion: vi.fn(async () => ({ ...(reviews.shift() ?? { ok: true, problem: "" }), usage: { model: "h", inputTokens: 0, outputTokens: 0, costUsd: 0.001, ms: 2 } })),
 }));
 
-import { nextInterviewStep, rankingHasSettled, SWEEP_QUESTION, type InterviewStepInput } from "@/lib/brain/interviewer";
+import { namedNumbers, nextInterviewStep, rankingHasSettled, SWEEP_QUESTION, type InterviewStepInput } from "@/lib/brain/interviewer";
 import type { PilotModel } from "@/types/pilot-model";
 
 const step = (over: Record<string, unknown>) => ({ settled: [], done: false, reason: "r", threadId: "", questionKind: over.kind === "line-pair" ? "real-choice" : "their-number", theirWords: "", kind: "free-text", ack: "", prompt: "", helpText: "", options: [], pairIndex: -1, examples: [], ...over });
@@ -100,6 +100,42 @@ describe("the interviewer's guard rails", () => {
   it("only passes on settled ids for threads that exist", async () => {
     proposals.push(step({ done: true, settled: ["china", "made-up"] }));
     expect(await nextInterviewStep(input())).toMatchObject({ done: true, settled: ["china"] });
+  });
+});
+
+describe("four-digit trip numbers", () => {
+  beforeEach(() => void (proposals.length = 0));
+  const packNumbers = { lines: ["1011", "1018"], trips: ["4017", "3042", "93"] };
+  /** Why the interviewer turned a question down, as it told the model on the next try. */
+  async function refusalOf(prompt: string): Promise<string> {
+    const { structuredCall } = await import("@/lib/brain/llm");
+    const calls = (structuredCall as unknown as { mock: { calls: { user: { fresh: string } }[][] } }).mock.calls;
+    const before = calls.length;
+    proposals.push(step({ prompt }), step({ prompt: "Anything else about your month?" }));
+    await nextInterviewStep(input({ packNumbers }));
+    return calls.length > before + 1 ? (calls[before + 1][0].user.fresh.split("Your last proposal can't be used:")[1] ?? "") : "";
+  }
+
+  it("takes a captain's four-digit trip as a trip, not a made-up line", async () => {
+    expect(await refusalOf("What do you make of the layover on trip 4017?")).not.toContain("no line");
+    expect(await refusalOf("Which would you rather fly: #4017 or #3042?")).not.toContain("no line");
+  });
+
+  it("leaves a place on a list alone: '#1 priority' and 'Line #1011' aren't trips", async () => {
+    expect(await refusalOf("Is a short commute your #1 priority?")).not.toContain("no trip");
+    expect(await refusalOf("What do you make of Line #1011's layovers?")).not.toContain("no trip");
+    expect(await refusalOf("Trip 4017 vs 3042: which would you rather fly?")).not.toContain("no line");
+  });
+
+  it("reads 'Line #N' as a line where the pack also has a trip N (first officers' numbers overlap)", async () => {
+    const overlap = { lines: ["2001"], trips: ["2001"] };
+    expect(namedNumbers("What do you make of Line #2001's layovers?", new Set(overlap.trips))).toEqual({ lines: ["2001"], trips: [] });
+    expect(namedNumbers("Lines 2001 and 2014, or trip #2001?", new Set(overlap.trips))).toEqual({ lines: ["2001", "2014"], trips: ["2001"] });
+  });
+
+  it("still refuses a line or a trip that isn't in the pack", async () => {
+    expect(await refusalOf("What about line 1999?")).toContain("There's no line 1999");
+    expect(await refusalOf("What about trip 5555?")).toContain("There's no trip 5555");
   });
 });
 

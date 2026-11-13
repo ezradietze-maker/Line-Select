@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmEmailButton } from "@/components/auth/ConfirmEmail";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
@@ -32,6 +33,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
   const lineId = bidPack.lines.some((l) => l.id === pickedLineId) ? pickedLineId : (bidPack.lines[0]?.id ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
   const [history, setHistory] = useState<HoldHistorySummary | null>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
 
@@ -89,8 +91,10 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
     setSubmitting(false);
     if (!result.ok) {
       setError(result.error ?? "Something went wrong. Try again.");
+      setNeedsConfirm(!!result.confirmEmail);
       return;
     }
+    setNeedsConfirm(false);
     setSubmitted(true);
     setFormOpen(false);
     setHistoryVersion((v) => v + 1);
@@ -116,15 +120,17 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
         <EmptyState
           compact
           description={
+            // Counts come rounded, and as none at all until enough pilots have reported (`summarizeBands`), so a
+            // pilot's own report can't be picked out of them.
             summary.nearbyCount === 0
-              ? "No reports near your seniority yet — be the first."
-              : `${summary.nearbyCount} nearby report${summary.nearbyCount === 1 ? "" : "s"} so far — not quite enough yet to show a reliable pattern.`
+              ? "Not enough reports near your seniority yet to show a pattern — yours helps."
+              : `About ${summary.nearbyCount} nearby reports so far — not quite enough yet to show a reliable pattern.`
           }
           className="mt-4"
         />
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Stat label="Nearby reports" value={String(summary.nearbyCount)} />
+          <Stat label="Nearby reports" value={`About ${summary.nearbyCount}`} />
           <Stat label="Avg days off held" value={summary.avgDaysOff.toFixed(1)} />
           <Stat label="Avg credit hours held" value={summary.avgCreditHours?.toFixed(1) ?? "—"} />
           {summary.lineRate !== null && (
@@ -167,7 +173,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
               <select
                 value={lineId}
                 onChange={(e) => setLineId(e.target.value)}
-                className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink"
+                className="w-full rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink"
               >
                 {bidPack.lines.map((line) => (
                   <option key={line.id} value={line.id}>
@@ -177,7 +183,17 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
               </select>
             )}
 
-            {error && <p className="text-xs text-danger">{error}</p>}
+            {error && (
+              <p className="text-xs text-danger">
+                {error}
+                {needsConfirm && (
+                  <>
+                    {" "}
+                    <ConfirmEmailButton />
+                  </>
+                )}
+              </p>
+            )}
 
             <div className="flex gap-2">
               <Button

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ConfirmEmailNotice } from "@/components/auth/ConfirmEmail";
 import { LeftNav } from "@/components/nav/LeftNav";
 import { NAV_ITEMS, disabledReason, type NavTarget } from "@/components/nav/nav-items";
 import { PhoneNav } from "@/components/nav/PhoneNav";
@@ -67,9 +68,11 @@ function Chrome({ children }: { children: React.ReactNode }) {
     bidPackSaveFailed,
     profileSaveFailed,
     profileSync,
+    listSaveFailed,
     handleLogout,
     handleDismissBidPackSaveWarning,
     handleDismissProfileSaveWarning,
+    handleDismissListSaveWarning,
     handleDismissProfileSync,
     handleDismissToast,
     handleToastClick,
@@ -129,6 +132,8 @@ function Chrome({ children }: { children: React.ReactNode }) {
     hasProfile: !!profile,
     hasBidPack: !!bidPack,
     user,
+    // A public page draws before the pilot's state has loaded: the nav holds its account area and greyed-out items until it has.
+    ready,
     inboxUnreadCount,
     pack: bidPack ? { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month } : null,
     onNavigate: (target: NavTarget) => {
@@ -194,6 +199,24 @@ function Chrome({ children }: { children: React.ReactNode }) {
   // pages left the footer floating mid-screen.
   return (
     <div className={`app-shell flex min-h-full flex-1 flex-col ${showSidebar ? "" : "no-nav"}`}>
+      {/* The first Tab stop, seen only once it has the keyboard: past the nav to the screen, rather than through every
+          destination first on every page. Focus is moved by hand so the address doesn't pick up a #main. The screen takes
+          focus only for that moment: left focusable, every click on its text (every click on a button, in Safari) put
+          the focus on the whole screen, and dialogs then went back to it instead of the button that opened them. */}
+      <a
+        href="#main"
+        onClick={(e) => {
+          e.preventDefault();
+          const main = document.getElementById("main");
+          if (!main) return;
+          main.tabIndex = -1;
+          main.addEventListener("blur", () => main.removeAttribute("tabindex"), { once: true });
+          main.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:border focus:border-border focus:bg-surface focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-ink focus:shadow-elevated-lg"
+      >
+        Skip to content
+      </a>
       {showSidebar && (
         <>
           <LeftNav {...navProps} />
@@ -208,7 +231,13 @@ function Chrome({ children }: { children: React.ReactNode }) {
           {/* The landing page is full-bleed — its hero and globe run edge to edge. */}
           {/* Screens sit at the top, not centered: centered, a short screen and a long one put the title at different
               heights, and every move between them jumped. */}
-          <main className={pathname === "/" ? "flex flex-1 flex-col" : pathname === "/contract" ? "flex flex-1 flex-col px-4 pt-4" : "flex flex-1 flex-col px-4 py-10 sm:py-14"}>
+          {/* Focused only by the skip link, for a moment; it isn't a control, so no ring of its own. */}
+          <main
+            id="main"
+            className={`outline-none ${pathname === "/" ? "flex flex-1 flex-col" : pathname === "/contract" ? "flex flex-1 flex-col px-4 pt-4" : "flex flex-1 flex-col px-4 py-10 sm:py-14"}`}
+          >
+            {/* Signed in with an address not confirmed yet: only `false`, never a missing answer (an account kept on this device from before). */}
+            {user?.emailVerified === false && showSidebar && pathname !== "/confirm-email" && <ConfirmEmailNotice key={user.id} user={user} />}
             {bidPackSaveFailed && (
               <div role="alert" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
                 <span>
@@ -231,6 +260,17 @@ function Chrome({ children }: { children: React.ReactNode }) {
                 </button>
               </div>
             )}
+            {listSaveFailed && (
+              <div role="alert" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
+                <span>
+                  Your browser is out of room, so your latest changes to your lines (tiers, shortlist, swaps or sort) work
+                  right now but will be gone if you refresh or close this tab.
+                </span>
+                <button type="button" onClick={handleDismissListSaveWarning} className="shrink-0 font-medium underline decoration-dotted underline-offset-4">
+                  Dismiss
+                </button>
+              </div>
+            )}
             {profileSync === "failed" && (
               <div role="status" className="mx-auto mb-4 w-full max-w-3xl rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
                 Couldn&rsquo;t save to your account just now. It&rsquo;s kept on this device and will try again when the connection is back.
@@ -239,7 +279,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
             {profileSync === "merged" && (
               <div role="status" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-ink">
                 <span>
-                  Your profile was updated on another device, so this is that latest version. Logbook entries from both are kept.
+                  Your profile was updated on another device too, so this has the changes from both. Logbook entries from both are kept.
                 </span>
                 <button type="button" onClick={handleDismissProfileSync} className="shrink-0 font-medium underline decoration-dotted underline-offset-4">
                   Dismiss

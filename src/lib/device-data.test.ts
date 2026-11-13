@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { loadBidPack, saveBidPack } from "./bidpack-storage";
 import { forgetPilotOnDevice } from "./device-data";
+import { SAMPLE_BID_PACK } from "./sample-bidpack";
 
 function fakeStorage() {
   const items = new Map<string, string>();
@@ -39,5 +41,18 @@ describe("signing out on a shared computer", () => {
     expect(store.getItem("line-select:commute-settings:v1")).toBeNull();
     expect(store.getItem("line-select:flights:v5:abc")).toBeNull();
     expect(store.getItem("line-select:theme:v1")).toBe("dark");
+  });
+
+  it("removes what they did as a guest before signing in, and the feed sent, but keeps the guest's pack", () => {
+    for (const k of ["line-select:seniority:guest:v1", "line-select:preference-profile:guest:v1", "line-select:contract-chat:guest:v1", "line-select:brain-interview:guest:pack-1:v1", "line-select:calendar-feed-sent:v1", "line-select:bidpack:guest:v1"]) store.setItem(k, "x");
+    forgetPilotOnDevice("pilot-1");
+    expect([...Array(store.length).keys()].map((i) => store.key(i))).toEqual(["line-select:bidpack:guest:v1"]);
+  });
+
+  it("keeps a pack save still compressing from writing it back after sign-out", async () => {
+    const saving = saveBidPack("pilot-1", SAMPLE_BID_PACK);
+    forgetPilotOnDevice("pilot-1");
+    await saving;
+    expect(await loadBidPack("pilot-1")).toBeNull();
   });
 });

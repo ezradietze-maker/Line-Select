@@ -52,6 +52,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
   const handedOff = useRef(false);
   const [emailResetEnabled, setEmailResetEnabled] = useState(false);
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
+  const [checkEmailAt, setCheckEmailAt] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +68,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
     setMode(next);
     setError(null);
     setLinkSentTo(null);
+    setCheckEmailAt(null);
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -109,6 +111,12 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
           ? await resetPassword(email, recoveryCode, password)
           : await signUp(email, password, displayName);
 
+    // Signing up with email set up: nobody is signed in until the link in the email is opened.
+    if (mode === "signup" && result.ok && result.checkEmail) {
+      setSubmitting(false);
+      setCheckEmailAt(email.trim());
+      return;
+    }
     if (!result.ok || !result.user) {
       setSubmitting(false);
       setError(result.error ?? "Something went wrong. Try again.");
@@ -186,7 +194,27 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
           </>
         )}
 
-        {mode === "forgot" && linkSentTo ? (
+        {mode === "signup" && checkEmailAt ? (
+          // The same words whether or not the address already had an account: what differs is only in the email.
+          <div className="space-y-4">
+            <h2 className="text-base font-semibold text-ink">Check your email to finish signing up</h2>
+            <p className="rounded-lg border border-border bg-canvas px-4 py-3 text-sm leading-relaxed text-ink">
+              We&rsquo;ve sent an email to <span className="break-all font-medium">{checkEmailAt}</span>. Open the link in it to
+              confirm the address and sign in. It works for 24 hours, once.
+            </p>
+            <p className="text-sm leading-relaxed text-ink-muted">
+              Nothing there after a few minutes? Check your spam folder. You can also log in with the password you just chose
+              and send the link again from inside the app. An account that isn&rsquo;t confirmed within 7 days is removed.
+            </p>
+            <button
+              type="button"
+              onClick={() => switchMode("login")}
+              className="block w-full text-center text-sm text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink"
+            >
+              Back to log in
+            </button>
+          </div>
+        ) : mode === "forgot" && linkSentTo ? (
           <div className="space-y-4">
             <p className="rounded-lg border border-border bg-canvas px-4 py-3 text-sm leading-relaxed text-ink">
               If there&rsquo;s an account for <span className="font-medium">{linkSentTo}</span>, a reset link is on its
@@ -354,7 +382,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
         trade offers can be seen by other pilots, and so your bid pack,
         your interview (finished or partway) and your preferences follow you
         to a new device or browser once you&rsquo;re signed in &mdash; and if
-        you forget your password, the recovery code you get when you sign up
+        you forget your password, the recovery code you get when you set up your account
         is your way back in.
       </p>
     </div>

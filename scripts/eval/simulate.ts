@@ -182,7 +182,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
 
     // As in the app: real lines and trips at both ends of their main priorities, for the question to show.
     // And the topics still worth asking: what's unclear and would move their top 20 most.
-    const { topics, examples } = pickTopics(pack, model, pm, askedTopics(threads), pickQuestionExamples(pack, model, pm));
+    const { topics, examples } = pickTopics(pack, model, pm, askedTopics(threads), pickQuestionExamples(pack, model, pm), undefined, exchanges);
     const weightTopic = topics.find((x) => x.unclear === "weight" && x.criterionIds?.length);
     const pairs = pickLinePairs(pack, model, pm, compared, 3, pastTrades, weightTopic ? { ids: weightTopic.criterionIds!, label: weightTopic.label.toLowerCase() } : undefined);
     const tripPairs = pickTripPairs(pack, model, pm, askedTripPairs(exchanges), pastTrades);

@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { timezoneForAirport } from "@/lib/airport-timezones";
 import { tripDutyPeriods } from "@/lib/duty-periods";
 import type { DayPlacement } from "@/lib/pdf-parser/line-grid-days";
 import type { ParsedLineSummary, ParsedPairing } from "@/lib/pdf-parser/types";
@@ -409,11 +410,47 @@ function copyForItsDate(trip: Trip, chosen: ParsedPairing, copies: ParsedPairing
   return { ...pairingToTrip(own, bidPackMonth), startDayIndex: trip.startDayIndex };
 }
 
+const hhmmIn = (ms: number, zone: string) => DateTime.fromMillis(ms, { zone }).toFormat("HHmm");
+
+/**
+ * Local times from the GMT the pack prints, in each airport's own zone. Around a clock change the pack prints some local
+ * times with the old offset (Dublin on Oct 27: pickup 0550Z printed 0650 local, an hour after the real 0550), while
+ * its GMT is right; shown as printed, the pickup and some landings read an hour off. Only a time the GMT settles is
+ * changed: a printed GMT that doesn't match where the trip puts it is left alone.
+ */
+export function localTimesFromGmt(trip: Trip, reportUtcMs: number): Trip {
+  let changed = false;
+  const schedule = trip.schedule.map((duty) => {
+    const legs = duty.legs.map((leg) => {
+      const fix = (iso: string, printed: string, airport: string) => {
+        const zone = timezoneForAirport(airport);
+        const ms = Date.parse(iso);
+        if (!zone || !Number.isFinite(ms) || !/^\d{4}$/.test(printed)) return printed;
+        return hhmmIn(ms, zone);
+      };
+      const depTimeLocal = fix(leg.depTimeZulu, leg.depTimeLocal, leg.depAirport);
+      const arrTimeLocal = fix(leg.arrTimeZulu, leg.arrTimeLocal, leg.arrAirport);
+      if (depTimeLocal === leg.depTimeLocal && arrTimeLocal === leg.arrTimeLocal) return leg;
+      changed = true;
+      return { ...leg, depTimeLocal, arrTimeLocal };
+    });
+    const lay = duty.layover;
+    const zone = lay ? timezoneForAirport(lay.city) : null;
+    const pickupAt = lay ? reportUtcMs + lay.endMinutes * 60_000 : NaN;
+    // The pickup sits at the next duty's start; its printed GMT says whether that's the moment it is.
+    const pickupLocal = lay?.pickupTimeLocal && lay.pickupTimeGmt && zone && hhmmIn(pickupAt, "UTC") === lay.pickupTimeGmt ? hhmmIn(pickupAt, zone) : lay?.pickupTimeLocal;
+    if (lay && pickupLocal !== lay.pickupTimeLocal) changed = true;
+    const layover = lay && pickupLocal !== lay.pickupTimeLocal ? { ...lay, pickupTimeLocal: pickupLocal } : lay;
+    return legs === duty.legs && layover === lay ? duty : { ...duty, legs, layover };
+  });
+  return changed ? { ...trip, schedule } : trip;
+}
+
 /** Once the grid has dated a trip: its dated hotels, and its anchor on its own real date (see `trip-anchor.ts`). */
 export function settleOnItsDate(trip: Trip, bidPack: { bidPeriodStart: string | null; base: string }): Trip {
   const at = tripReportUtc(bidPack, trip);
   if (at === null) return trip;
-  const settled = anchorTripAt(resolveLayoverVariants(trip, at), at);
+  const settled = localTimesFromGmt(anchorTripAt(resolveLayoverVariants(trip, at), at), at);
   // Its length in days on the base's own calendar — the one the grid counts — not in the local dates it passes through,
   // which a trip across the date line lives one more of.
   const homeDays = buildHomeDays(settled, "local").length;

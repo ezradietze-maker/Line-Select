@@ -5,7 +5,7 @@ import type { BidPack, Line, Trip } from "@/types/bidpack";
 const fly = vi.hoisted(() => ({ result: null as unknown }));
 vi.mock("@/lib/phase-in", async (real) => ({ ...(await real<typeof import("@/lib/phase-in")>()), flyLine: vi.fn(() => fly.result) }));
 
-const { bidMonthOfPack, contractQuestionHref, linesNamed, packFacts } = await import("./pack-facts");
+const { bidMonthOfPack, contractQuestionHref, linesNamed, packFacts, tripsNamed } = await import("./pack-facts");
 
 const line = (lineNumber: string): Line => ({ id: lineNumber, lineNumber, trips: [], daysOff: 14, totalCreditHours: 72.5, totalTafbHours: 200, totalLandings: 8, totalDepartures: 8 }) as Line;
 const pack = { id: "p", month: "DEC26", base: "MEM", aircraft: "B767", seat: "FO", bidPeriodDays: 28, bidPeriodStart: null, lines: [line("2016"), line("2024")] } as BidPack;
@@ -49,6 +49,9 @@ describe("what the pilot's pack adds to a question", () => {
     expect(linesNamed("would line 2016 conflict?")).toEqual(["2016"]);
     expect(linesNamed("lines 2016 and 2024, or Line #3001")).toEqual(["2016", "2024", "3001"]);
     expect(linesNamed("can I trade 2016 hours of pay?")).toEqual([]);
+    expect(linesNamed("Can a line 120 hours long be built? Do lines 100 CH or more get extra pay? A line 200-hour TAFB?")).toEqual([]);
+    expect(linesNamed("does line 1800 still post? and line 2016 changes?")).toEqual(["1800", "2016"]);
+    expect(tripsNamed("trip 301 checks out")).toEqual(["301"]);
   });
 
   it("states a named line's printed figures, and only those", () => {
@@ -56,6 +59,18 @@ describe("what the pilot's pack adds to a question", () => {
     expect(facts).toContain("Line 2024 as printed: 14 days off, 72.5 CH");
     expect(facts).not.toContain("Line 2016");
     expect(facts).toContain("hasn't entered any carry-in");
+  });
+
+  it("says a named trip is in the pack only when it is, and never reads a count of days as a trip", () => {
+    expect(tripsNamed("can I drop trip 301, or trips 302 and 4410?")).toEqual(["301", "302", "4410"]);
+    expect(tripsNamed("do trips 3 days long count? what about a trip 4-day?")).toEqual([]);
+    const withTrips = { ...pack, lines: [{ ...line("2016"), trips: [{ pairingNumber: "301" } as Trip] }] } as BidPack;
+    const facts = packFacts("can I drop trip 301 or trip 999?", withTrips)!;
+    expect(facts).toContain("Trip 301 is in this pack.");
+    expect(facts).not.toContain("999");
+    expect(facts).not.toContain("carry-in");
+    expect(packFacts("do trips 3 days long count?", withTrips)).toBeUndefined();
+    expect(packFacts("can I drop trip 999?", withTrips)).toBeUndefined();
   });
 
   it("says when a line isn't in the pack, and adds nothing to other questions", () => {

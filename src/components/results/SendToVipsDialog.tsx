@@ -90,7 +90,7 @@ export function SendToVipsDialog({
   lineScores: LineScore[];
   /** Month, base, fleet and seat of the pack these lines came from, to check against VIPS's own "You are bidding as…". */
   packLabel: string;
-  /** Lines in the pack this order doesn't include (hidden, or outside the current filters) — they won't be bid. */
+  /** Lines in the pack this order doesn't include (hidden, or put in Not bid) — they won't be bid. */
   leftOut: number;
   presend: PresendContext;
   onClose: () => void;
@@ -136,6 +136,10 @@ export function SendToVipsDialog({
     [bidPack, lineNumbers, leftOut, lineScores, profile, savedSeniority, forecast, reserveLines, anyLines, reserveAdded, openedAt, answers, carryIn]
   );
   const stopped = checks.some((c) => c.level === "stop");
+  // Lines that won't be bid are said at the top, by the order itself, not under the questions where they read as an
+  // afterthought.
+  const leftOutCheck = checks.find((c) => c.id === "left-out") ?? null;
+  const laterChecks = checks.filter((c) => c !== leftOutCheck);
   const notes = useMemo(() => vipsQuestionNotes(bidPack, lineNumbers), [bidPack, lineNumbers]);
 
   // Named reserve lines sit between the secondary and reserve catch-alls, so the order goes in whole.
@@ -173,7 +177,9 @@ export function SendToVipsDialog({
     }
     setVipsEmployeeNumber(normalized);
     setVipsAnswers(complete);
-    setSent(true);
+    // After the browser has taken the post: swapped in during the submit event, the next screen took the form off the
+    // page before it was sent, and nothing reached VIPS.
+    setTimeout(() => setSent(true), 0);
   }
 
   if (sent) {
@@ -186,7 +192,7 @@ export function SendToVipsDialog({
           </p>
           <p>
             Then open <strong>Monthly Bid Review</strong> in VIPS and check it lists your {build.ok ? build.lines.length : ""}{" "}
-            choices in this order. You can send again any time before the bid closes; the last one VIPS accepts is the
+            {build.ok && build.lines.length === 1 ? "choice" : "choices"} in this order. You can send again any time before the bid closes; the last one VIPS accepts is the
             one that counts.
           </p>
           <div className="flex flex-wrap gap-2 pt-1">
@@ -219,11 +225,16 @@ export function SendToVipsDialog({
       >
         <section>
           <p className="font-medium">
-            {packLabel} &middot; {fullOrder.length} choices
+            {packLabel} &middot; {fullOrder.length} {fullOrder.length === 1 ? "choice" : "choices"}
           </p>
           <p className="mt-0.5 text-xs text-ink-muted">
             Check VIPS says you&rsquo;re bidding this same domicile, fleet and seat before you submit.
           </p>
+          {leftOutCheck && (
+            <ul className="mt-2">
+              <CheckRow check={leftOutCheck} onFix={applyFix} />
+            </ul>
+          )}
           {fullOrder.length > 0 && (
             <ol className="mt-2 flex flex-wrap gap-1.5 font-mono text-xs">
               {fullOrder.slice(0, PREVIEW_COUNT).map((n, i) => (
@@ -298,7 +309,7 @@ export function SendToVipsDialog({
                 <span className="mt-0.5 block text-ink-faint" data-vips-note={q.key}>
                   {notes[q.key].meaning}
                   {notes[q.key].forThisOrder ? ` ${notes[q.key].forThisOrder}` : ""}{" "}
-                  <a href={contractQuestionHref(q.text)} target="_blank" rel="noopener" className="text-accent underline-offset-2 hover:underline">What does the contract say?</a>
+                  <a href={contractQuestionHref(q.text)} target="_blank" rel="noopener" className="text-accent underline underline-offset-2">What does the contract say?</a>
                 </span>
                 {advised && (
                   <span className="mt-0.5 block text-ink" data-vips-advised={q.key}>
@@ -348,11 +359,11 @@ export function SendToVipsDialog({
 
         {!build.ok && <p className="text-xs text-danger">{build.reason}</p>}
 
-        {checks.length > 0 && (
+        {laterChecks.length > 0 && (
           <section aria-label="Before you send">
             <h3 className="font-medium">Before you send</h3>
             <ul className="mt-1.5 space-y-1.5">
-              {checks.map((c) => (
+              {laterChecks.map((c) => (
                 <CheckRow key={c.id} check={c} onFix={applyFix} />
               ))}
             </ul>

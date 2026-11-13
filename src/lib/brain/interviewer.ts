@@ -1,10 +1,10 @@
 import type { PilotModel } from "@/types/pilot-model";
 import type { InterviewExchange } from "./build-model";
-import { structuredCall, withSpent, type BrainUsage } from "./llm";
+import { callCeilingUsd, schemaChars, structuredCall, withSpent, type BrainUsage } from "./llm";
 import { avoidedPhrases, insteadOf, inventedLimit, pilotWordsForPrompt } from "./pilot-words";
 import { workedExamplesForPrompt, type QuestionKind } from "./interview-examples";
 import { examplesTranscript, type QuestionExample } from "./question-examples";
-import { reviewQuestion } from "./question-review";
+import { reviewCeilingUsd, reviewQuestion } from "./question-review";
 import { askedTopics, type TopicCandidate } from "./question-topics";
 import { askedTripPairs, TRIP_PAIR_QUESTION, tripPairTranscript, type TripPairCandidate } from "./trip-pairs";
 
@@ -252,6 +252,8 @@ export function isProbed(c: PilotModel["criteria"][number], openingCount: number
 
 /** How many exchanges came before the first interview question — the opening steps (and, in a check-in, last month's). */
 const openingCountOf = (input: Pick<InterviewStepInput, "exchanges" | "turn">) => Math.max(0, input.exchanges.length - input.turn);
+/** The questions asked in this interview, past the opening and any record carried from last month. */
+const thisSession = (input: Pick<InterviewStepInput, "exchanges" | "turn">) => input.exchanges.slice(openingCountOf(input));
 
 /** Important criteria the interview has only from the opening story. */
 export function unprobedCriteria(input: Pick<InterviewStepInput, "exchanges" | "turn" | "model">): PilotModel["criteria"] {
@@ -320,10 +322,30 @@ const MAX_PROMPT_WORDS = 25;
 
 const HYPOTHETICAL = /\b(?:if|what if|say|imagine|suppose)\s+(?:a|another|some|the)?\s*(?:line|trip)\s+(?:instead\s+)?(?:had|has|were|was|with|that|came|paid|gave)\b|\bimagine\b|\bsuppose\b|\bhypothetical/i;
 
-/** Line numbers a question names (four-digit numbers), and trip numbers ("trip 93", "Trip #93", "trips 93 and 98"). */
-function namedNumbers(text: string): { lines: string[]; trips: string[] } {
-  const lines = [...text.matchAll(/\b(\d{4})\b/g)].map((m) => m[1]);
-  const trips = [...text.matchAll(/\btrips?\s+#?\s*(\d{1,4})(?:\s*(?:,|and|&)\s*#?\s*(\d{1,4}))*/gi)].flatMap((m) => [...m[0].matchAll(/\d{1,4}/g)].map((x) => x[0]));
+/**
+ * Line numbers a question names (four-digit numbers), and trip numbers ("trip 93", "Trip #93", "trips 93 and 98", "#4017").
+ * A trip's number is taken out before lines are looked for: captains' trips run to four digits (trip 4001), and read as
+ * lines, every real one was refused as a made-up line, so a captain's trip choices were never asked.
+ */
+export function namedNumbers(text: string, knownTrips?: ReadonlySet<string>): { lines: string[]; trips: string[] } {
+  // "trip 4017", "trips 93 and 98", "Trip 4017 vs 3042": a trip whatever its number. A bare "#4017" is a trip only when
+  // the pack has that trip: "#" also means a place ("your #1 priority", "#12 on their list"), and taken for a trip
+  // every such question was refused as naming a made-up trip.
+  const tripWords = /\btrips?\s+#?\s*\d{1,4}(?:\s*(?:,|and|&|or|vs\.?|versus)\s*#?\s*\d{1,4})*/gi;
+  // "Line #2001", "lines 2001 and 2014": lines, even where the pack also has a trip 2001 (first officers' line and trip
+  // numbers overlap by the hundreds).
+  const lineWords = /\blines?\s+#?\s*\d{4}(?:\s*(?:,|and|&|or|vs\.?|versus)\s*#?\s*\d{4})*/gi;
+  const bare = /#\s*(\d{1,4})\b/g;
+  const trips = [...text.matchAll(tripWords)].flatMap((m) => [...m[0].matchAll(/\d{1,4}/g)].map((x) => x[0]));
+  let rest = text.replace(tripWords, " ");
+  const lines = [...rest.matchAll(lineWords)].flatMap((m) => [...m[0].matchAll(/\d{4}/g)].map((x) => x[0]));
+  rest = rest.replace(lineWords, " ");
+  rest = rest.replace(bare, (all, n: string) => {
+    if (!knownTrips?.has(n)) return all;
+    trips.push(n);
+    return " ";
+  });
+  lines.push(...[...rest.matchAll(/\b(\d{4})\b/g)].map((m) => m[1]));
   return { lines, trips };
 }
 /** A four-digit number that could be a clock time ("0430", "1755") rather than a line. */
@@ -334,7 +356,7 @@ const couldBeYear = (n: string) => /^20\d\d$/.test(n);
 /** The real lines a question names, each once. */
 function namedPackLines(step: Pick<RawStep, "prompt" | "helpText">, input: Pick<InterviewStepInput, "packNumbers">): string[] {
   const lines = new Set(input.packNumbers?.lines ?? []);
-  return [...new Set(namedNumbers(`${step.prompt} ${step.helpText}`).lines.filter((n) => lines.has(n)))];
+  return [...new Set(namedNumbers(`${step.prompt} ${step.helpText}`, new Set(input.packNumbers?.trips ?? [])).lines.filter((n) => lines.has(n)))];
 }
 
 /** The offered examples a question may show: those of the priorities its thread is about, when it names any. */
@@ -350,7 +372,9 @@ function otherEnd(e: QuestionExample, offered: QuestionExample[]): QuestionExamp
 
 /** The offered trip a question names by number ("trip 97"), if any. */
 function namedTripExamples(step: Pick<RawStep, "prompt" | "helpText">, offered: QuestionExample[]): { n: string; example?: QuestionExample }[] {
-  return [...new Set(namedNumbers(`${step.prompt} ${step.helpText}`).trips)].map((n) => ({ n, example: offered.find((e) => e.kind === "trip" && new RegExp(`^Trip #${n}\\b`).test(e.title)) }));
+  // A bare "#N" counts here when it's one of the offered trips.
+  const offeredTrips = new Set(offered.flatMap((e) => (e.kind === "trip" ? (e.title.match(/^Trip #(\d+)/)?.slice(1) ?? []) : [])));
+  return [...new Set(namedNumbers(`${step.prompt} ${step.helpText}`, offeredTrips).trips)].map((n) => ({ n, example: offered.find((e) => e.kind === "trip" && new RegExp(`^Trip #${n}\\b`).test(e.title)) }));
 }
 
 /**
@@ -435,7 +459,7 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   if (step.questionKind === "real-choice" && !isChoiceKind(step.kind)) return "A real choice is an offered line pair or trip pair: set kind line-pair (and pairIndex) or trip-pair (and tripPairIndex) — or write one of the other kinds.";
   if (isChoiceKind(step.kind) && step.questionKind !== "real-choice") return "A line pair or trip pair is a real-choice question: set questionKind real-choice.";
   if (attempt < 2 && step.questionKind === "their-words" && !saidByThem(step.theirWords, input)) return "A their-words question asks about words they said: copy their exact words, from their answers, into theirWords — or write another kind.";
-  if (attempt < 2 && step.questionKind === "feature" && !(step.examples ?? []).length && !namedPackLines(step, input).length && !namedNumbers(`${step.prompt} ${step.helpText}`).trips.length)
+  if (attempt < 2 && step.questionKind === "feature" && !(step.examples ?? []).length && !namedPackLines(step, input).length && !namedNumbers(`${step.prompt} ${step.helpText}`, new Set(input.packNumbers?.trips ?? [])).trips.length)
     return "A feature question shows a line or trip that has the feature: set examples, or name the real line in helpText.";
   if (attempt < 2 && !isChoiceKind(step.kind) && !examplesOnTopic(step, input)) return "The examples you chose show a different priority from what the question asks. Show examples of exactly what you're asking about, or none.";
   // A feature question is for a feature they never mentioned — one they did is asked about in their words or a choice.
@@ -451,7 +475,7 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   if (attempt < 2 && !isChoiceKind(step.kind) && TRADE_IN_WORDS.test(step.prompt)) return "That asks them to trade one thing for another in words, which pilots can't answer in general. Offer a line pair that pulls the two apart, or ask about one thing.";
   // Only real lines and trips: a number that names nothing in their pack is an invented one.
   if (input.packNumbers) {
-    const named = namedNumbers(`${step.prompt} ${step.helpText}`);
+    const named = namedNumbers(`${step.prompt} ${step.helpText}`, new Set(input.packNumbers.trips));
     const lines = new Set(input.packNumbers.lines);
     const trips = new Set(input.packNumbers.trips);
     const fakeLine = named.lines.find((n) => !lines.has(n) && !couldBeTime(n) && !couldBeYear(n));
@@ -534,7 +558,7 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
     if (step.kind === "trip-pair") {
       const tp = (input.tripPairs ?? []).find((p) => p.index === step.tripPairIndex);
       if (!tp) return "That trip pair index doesn't exist.";
-      if (askedTripPairs(input.exchanges).has(`${tp.a}|${tp.b}`)) return "Those two trips were already compared.";
+      if (askedTripPairs(thisSession(input)).has(`${tp.a}|${tp.b}`)) return "Those two trips were already compared.";
       if (interview.filter((e) => TRIP_PAIR_QUESTION.test(e.question)).length >= MAX_TRIP_PAIRS) return `Trip choices are already ${MAX_TRIP_PAIRS} — the trip grades at the end cover more trips at once. Ask something else.`;
     } else {
       const pair = input.linePairs.find((p) => p.index === step.pairIndex);
@@ -564,10 +588,27 @@ export function rankingHasSettled(input: Pick<InterviewStepInput, "turn" | "rank
   return !importantOpen;
 }
 
+const MAX_TOKENS = 4000;
+/** Tries at a question before giving up, each read once more by the reviewer but the last. */
+const ATTEMPTS = 3;
+
+/**
+ * The most `nextInterviewStep` can cost, held against the spend ceilings before it's asked: every try, each with its
+ * review. What the prompt writes out from the request is counted as the request's JSON, which runs longer.
+ */
+export function interviewStepCeilingUsd(input: InterviewStepInput): number {
+  const rest = JSON.stringify({ ...input, packBrief: undefined, apiKey: undefined }).length;
+  // Each try after the first carries what was wrong with the one before.
+  const one = callCeilingUsd(INTERVIEWER_MODEL, SYSTEM.length + schemaChars(SCHEMA) + input.packBrief.length + rest + ATTEMPTS * 1_000, MAX_TOKENS);
+  return ATTEMPTS * one + (ATTEMPTS - 1) * reviewCeilingUsd();
+}
+
 export async function nextInterviewStep(input: InterviewStepInput): Promise<InterviewStep> {
   if (rankingHasSettled(input)) return { done: true, reason: "The last answers stopped changing the ranking.", settled: [] };
   const conversation = input.exchanges.map((e) => `[${e.turn}] Q: ${e.question}\nA: ${e.answer}`).join("\n\n");
-  const pairsUsed = new Set(input.exchanges.flatMap((e) => [...e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)].map((m) => `${m[1]}|${m[2]}`)));
+  // This session's questions only: in a check-in the record carries last month's, and line and trip numbers repeat
+  // from pack to pack, so last month's pairs refused this month's of the same numbers.
+  const pairsUsed = new Set(thisSession(input).flatMap((e) => [...e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)].map((m) => `${m[1]}|${m[2]}`)));
   const pairs = input.linePairs.length
     ? input.linePairs
         .map((p) => {
@@ -592,10 +633,10 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
   // At the limit the answer is "done" whatever the call says: don't pay for one.
   if (input.turn >= input.maxTurns) return { done: true, reason: "That's every question this interview asks.", settled: [] };
   let usage: BrainUsage | undefined;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     const spent = usage?.costUsd ?? 0;
     // A later attempt failing still leaves the earlier, rejected ones paid for.
-    const r = await structuredCall<RawStep>({ apiKey: input.apiKey, model: INTERVIEWER_MODEL, system: SYSTEM, user: { cached: input.packBrief, fresh }, schema: SCHEMA as unknown as Record<string, unknown>, effort: "medium", maxTokens: 4000 }).catch((e) => {
+    const r = await structuredCall<RawStep>({ apiKey: input.apiKey, model: INTERVIEWER_MODEL, system: SYSTEM, user: { cached: input.packBrief, fresh }, schema: SCHEMA as unknown as Record<string, unknown>, effort: "medium", maxTokens: MAX_TOKENS }).catch((e) => {
       throw withSpent(e, spent);
     });
     usage = usage ? { ...r.usage, costUsd: usage.costUsd + r.usage.costUsd, ms: usage.ms + r.usage.ms } : r.usage;

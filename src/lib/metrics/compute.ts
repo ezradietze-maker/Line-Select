@@ -24,21 +24,21 @@ export interface PackMetrics {
   tripFactsByLine: Map<string, TripFacts[]>;
 }
 
+/** A trip's facts, kept with the trip: worked out ahead of the first ranking (see `lib/ranking-warm-up.ts`), or here. */
+const factsByTrip = new WeakMap<Line["trips"][number], TripFacts>();
+
+export function tripFactsOf(t: Line["trips"][number]): TripFacts {
+  let f = factsByTrip.get(t);
+  if (!f) factsByTrip.set(t, (f = computeTripFacts(t)));
+  return f;
+}
+
 export function prepareMetrics(bidPack: BidPack): PackMetrics {
   const monthLines = new Map<string, Line>();
   const factsByLine = new Map<string, TripFacts[]>();
   const tripFactsByLine = new Map<string, TripFacts[]>();
-  const memo = new Map<string, TripFacts>();
-  const factsOf = (t: Line["trips"][number]) => {
-    // The same pairing appears in many lines with the same schedule — compute its facts once.
-    const key = `${t.id}|${t.schedule.length}|${t.carriesIntoNextMonth ? t.creditHours : ""}`;
-    let f = memo.get(key);
-    if (!f || f.trip !== t) {
-      f = computeTripFacts(t);
-      memo.set(key, f);
-    }
-    return f;
-  };
+  // The same pairing appears in many lines with the same schedule, as the same trip — its facts are worked out once.
+  const factsOf = tripFactsOf;
   for (const line of bidPack.lines) {
     const month = monthLine(line, bidPack);
     monthLines.set(line.id, month);

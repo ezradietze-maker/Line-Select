@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { onceForRequest } from "@/lib/server/replay";
 import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
-import { BRAIN_PROMPT_VERSION, buildPilotModel } from "@/lib/brain/build-model";
-import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
+import { BRAIN_PROMPT_VERSION, buildModelCeilingUsd, buildPilotModel } from "@/lib/brain/build-model";
+import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, exchangesProblem, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
+import { spenderFor, spendLimitResponse, startPaidCall } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 // Reading a whole interview and writing the pilot's model takes up to a couple of minutes on a long one.
@@ -28,27 +28,32 @@ async function respond(request: Request) {
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "The interview isn't configured on this server." }, { status: 503 });
-  const spender = await spenderFor(request);
-  const allowed = await checkSpend(spender);
-  if (!allowed.ok) return spendLimitResponse(allowed);
-
   const body = await readJsonBody(request, MAX_BRAIN_BODY);
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   const exchanges = readExchanges(body.exchanges);
   if (!isText(body.packBrief, MAX_PACK_BRIEF) || !isText(body.pilotContext, MAX_CONTEXT) || !exchanges) {
-    return NextResponse.json({ error: "Missing interview input." }, { status: 400 });
+    return NextResponse.json({ error: (!exchanges && exchangesProblem(body.exchanges)) || "Missing interview input." }, { status: 400 });
   }
   const prior = body.prior === undefined || body.prior === null ? null : readModel(body.prior);
 
+  // Fleet notes never fail or hold up the read (`fleetNotesFor`), and they go into the prompt, so they're read first.
+  const notes = await fleetNotesFor(readCohort(body.cohort));
+  const input = { apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, prior, effort: "high" as const, fleetNotes: notes };
+  const paid = await startPaidCall(await spenderFor(request), buildModelCeilingUsd(input));
+  if (!paid.ok) return spendLimitResponse(paid);
+  let spent = 0;
   try {
-    const notes = await fleetNotesFor(readCohort(body.cohort));
-    const r = await buildPilotModel({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, prior, effort: "high", fleetNotes: notes });
-    await Promise.all([recordSpend(spender, r.usage.costUsd), noteActivity("brain-read")]);
+    const r = await buildPilotModel(input);
+    spent = r.usage.costUsd;
+    await noteActivity("brain-read");
     console.log("[brain-build]", { exchanges: exchanges.length, criteria: r.model.criteria.length, dropped: r.dropped.length, costUsd: +r.usage.costUsd.toFixed(3), ms: r.usage.ms });
     // Stamped so what pilots later say about their month can be traced to the brain, and the notes, that ranked it.
     return NextResponse.json({ model: { ...r.model, brainVersion: BRAIN_PROMPT_VERSION, notesUsed: !!notes || !!prior?.notesUsed }, dropped: r.dropped });
   } catch (e) {
-    await Promise.all([recordSpend(spender, failedCallCost(e)), reportProblem("brain-build", e, { exchanges: exchanges.length })]);
+    spent = failedCallCost(e);
+    await reportProblem("brain-build", e, { exchanges: exchanges.length });
     return NextResponse.json({ error: "Couldn't read your answers just now. Please try again." }, { status: 502 });
+  } finally {
+    await paid.finish(spent);
   }
 }

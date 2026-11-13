@@ -11,9 +11,10 @@ import { siteSpentOn, spendCaps } from "@/lib/server/spend-guard";
  * the daily run itself still happens.
  */
 
-export type ProblemKind = "brain-build" | "brain-question" | "brain-ask" | "contract-ask" | "swap-reason" | "dictation" | "hotels" | "flights" | "trades" | "parse-bidpack" | "profile-save" | "forecast" | "learning" | "browser" | "calendar-feed";
+export type ProblemKind = "brain-build" | "brain-question" | "brain-ask" | "contract-ask" | "swap-reason" | "dictation" | "hotels" | "flights" | "trades" | "parse-bidpack" | "profile-save" | "forecast" | "learning" | "browser" | "calendar-feed" | "accounts" | "billing";
 
 const LABELS: Record<ProblemKind, string> = {
+  accounts: "Signing up and confirming emails",
   "brain-build": "Brain reads (the interview's model)",
   "brain-question": "Interview questions",
   "brain-ask": "Ask your pack",
@@ -29,6 +30,7 @@ const LABELS: Record<ProblemKind, string> = {
   learning: "Fleet learning",
   browser: "The app in pilots' browsers",
   "calendar-feed": "Calendar links",
+  billing: "Membership / billing",
 };
 
 /** Failures of one kind in a clock hour that send an email. */
@@ -55,6 +57,39 @@ export async function reportProblem(kind: ProblemKind, error: unknown, context: 
     const capture = posthogServer?.captureExceptionImmediate(error instanceof Error ? error : new Error(describe(error)), undefined, { kind, ...context });
     const [inHour] = await Promise.all([incrementCounter(hourKey(kind, now), 2 * HOUR_SECONDS), incrementCounter(dayKey(kind, day(now)), KEEP_SECONDS), capture]);
     if (inHour === ALERT_THRESHOLD) await sendAlert(kind, inHour, describe(error));
+  } catch (e) {
+    console.error("[alerts] couldn't record a problem", e);
+  }
+}
+
+const senderKey = (kind: ProblemKind, now: Date, sender: string) => `${hourKey(kind, now)}:from:${sender}`;
+const sendersKey = (kind: ProblemKind, now: Date) => `${hourKey(kind, now)}:senders`;
+
+/**
+ * A failure reported by a browser, which anyone can send (`/api/client-error`). Logged, tracked and counted for the
+ * day like any other, but the email goes on the hour's third different sender, not third report, so one sender can
+ * neither set it off nor, by sending three first, use up the hour's one email before a real one. And the email carries
+ * only fixed words and the count, never what was sent: that's anyone's to write, and the owner would read it as the
+ * site's own words. What was sent is in PostHog, marked as from a browser. Never throws.
+ */
+export async function reportBrowserProblem(error: unknown, context: Record<string, unknown>, sender: string, now = new Date()): Promise<void> {
+  const kind: ProblemKind = "browser";
+  console.error(`[${kind}]`, error, context);
+  try {
+    const capture = posthogServer?.captureExceptionImmediate(error instanceof Error ? error : new Error(describe(error)), undefined, { kind, sentBy: "browser", ...context });
+    const [fromThisSender] = await Promise.all([incrementCounter(senderKey(kind, now, sender), 2 * HOUR_SECONDS), incrementCounter(dayKey(kind, day(now)), KEEP_SECONDS), capture]);
+    if (fromThisSender !== 1) return;
+    const senders = await incrementCounter(sendersKey(kind, now), 2 * HOUR_SECONDS);
+    if (senders !== ALERT_THRESHOLD) return;
+    const to = alertAddress();
+    if (!to) return;
+    await sendEmail({
+      to,
+      subject: `Line Select: ${LABELS[kind].toLowerCase()} failing`,
+      text:
+        `${LABELS[kind]}: ${senders} different addresses reported a failure in the last hour. You'll get at most one email about this per hour.\n\n` +
+        `What they sent isn't in this email: browsers send it, so anyone could have written it. PostHog's error tracking has each report, with the page it came from.`,
+    });
   } catch (e) {
     console.error("[alerts] couldn't record a problem", e);
   }

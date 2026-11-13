@@ -1,4 +1,4 @@
-import type { BidPackMetaSnapshot, TripSnapshot } from "@/types/trade";
+import type { BidPackMetaSnapshot, TradeHolding, TripSnapshot } from "@/types/trade";
 
 const REPORT_TIMES = new Set(["early", "afternoon", "evening"]);
 
@@ -49,4 +49,20 @@ export function sanitizeBidPackMeta(value: unknown): BidPackMetaSnapshot | null 
   const v = value as Record<string, unknown>;
   if (!short(v.base, 12) || !short(v.aircraft, 20) || !short(v.seat, 8) || !short(v.month, 12)) return null;
   return { base: v.base, aircraft: v.aircraft, seat: v.seat, month: v.month };
+}
+
+/** Said when a pilot posts to, or answers an offer on, a board for a seat's month they don't fly (`pilotHasSeatMonth`). */
+export const NOT_YOUR_SEAT = "You can only trade in a bid pack you fly. Save that bid pack to your account, or mark what you hold in it, first.";
+/** Said when the trip offered isn't one of those they marked as theirs. */
+export const NOT_YOUR_TRIP = "That trip isn't one you've marked as yours in this bid pack.";
+
+/**
+ * Whether a pilot who has confirmed what they hold in a pack may offer or give this trip: one of their held trips,
+ * on its date, that they haven't marked as one they can't trade. The board only lists those (`pilotTrips`), so a
+ * trip outside them was made up. With no holding confirmed there's nothing to check it against, and any trip passes,
+ * as before holdings were kept.
+ */
+export function tripIsHeld(holding: Pick<TradeHolding, "trips"> | null, trip: Pick<TripSnapshot, "tripId" | "startDayIndex">): boolean {
+  if (!holding) return true;
+  return holding.trips.some((h) => h.lock === null && h.id === trip.tripId && h.startDayIndex === trip.startDayIndex);
 }

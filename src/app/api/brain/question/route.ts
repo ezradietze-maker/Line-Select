@@ -2,15 +2,15 @@ import { NextResponse } from "next/server";
 import { onceForRequest } from "@/lib/server/replay";
 import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
-import { nextInterviewStep, type LinePairCandidate, type LinePairDifference, type ThreadState } from "@/lib/brain/interviewer";
+import { interviewStepCeilingUsd, nextInterviewStep, type LinePairCandidate, type LinePairDifference, type ThreadState } from "@/lib/brain/interviewer";
 import type { QuestionExample } from "@/lib/brain/question-examples";
 import type { TopicCandidate } from "@/lib/brain/question-topics";
 import type { TripPairCandidate } from "@/lib/brain/trip-pairs";
-import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
+import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, exchangesProblem, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
+import { spenderFor, spendLimitResponse, startPaidCall } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -138,15 +138,11 @@ async function respond(request: Request) {
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "The interview isn't configured on this server." }, { status: 503 });
-  const spender = await spenderFor(request);
-  const allowed = await checkSpend(spender);
-  if (!allowed.ok) return spendLimitResponse(allowed);
-
   const body = await readJsonBody(request, MAX_BRAIN_BODY);
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   const exchanges = readExchanges(body.exchanges);
   if (!isText(body.packBrief, MAX_PACK_BRIEF) || !isText(body.pilotContext, MAX_CONTEXT) || !exchanges || typeof body.turn !== "number") {
-    return NextResponse.json({ error: "Missing interview input." }, { status: 400 });
+    return NextResponse.json({ error: (!exchanges && exchangesProblem(body.exchanges)) || "Missing interview input." }, { status: 400 });
   }
   const model = body.model === null || body.model === undefined ? null : readModel(body.model);
   const maxTurns = Math.min(MAX_TURNS, typeof body.maxTurns === "number" ? body.maxTurns : MAX_TURNS);
@@ -154,15 +150,24 @@ async function respond(request: Request) {
     ? body.rankingShifts.filter((n): n is number => typeof n === "number" && Number.isFinite(n)).slice(-20).map((n) => Math.max(0, Math.min(50, Math.round(n))))
     : [];
 
+  // Fleet notes never fail or hold up the interview (`fleetNotesFor`), and they go into the prompt, so they're read first.
+  const notes = await fleetNotesFor(readCohort(body.cohort));
+  const input = { apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), examples: readExamples(body.examples), packNumbers: readPackNumbers(body.packNumbers), tripPairs: readTripPairs(body.tripPairs), topics: readTopics(body.topics), lastTopic: isText(body.lastTopic, 40) ? (body.lastTopic as string) : null, turn: body.turn, maxTurns, fleetNotes: notes, rankingShifts };
+  const paid = await startPaidCall(await spenderFor(request), interviewStepCeilingUsd(input));
+  if (!paid.ok) return spendLimitResponse(paid);
+  let spent = 0;
   try {
-    const notes = await fleetNotesFor(readCohort(body.cohort));
-    const step = await nextInterviewStep({ apiKey, packBrief: body.packBrief, pilotContext: body.pilotContext, exchanges, model, threads: readThreads(body.threads), linePairs: readPairs(body.linePairs), examples: readExamples(body.examples), packNumbers: readPackNumbers(body.packNumbers), tripPairs: readTripPairs(body.tripPairs), topics: readTopics(body.topics), lastTopic: isText(body.lastTopic, 40) ? (body.lastTopic as string) : null, turn: body.turn, maxTurns, fleetNotes: notes, rankingShifts });
+    const step = await nextInterviewStep(input);
     const { usage, ...rest } = step;
-    if (usage) await Promise.all([recordSpend(spender, usage.costUsd), noteActivity("interview-question")]);
+    spent = usage?.costUsd ?? 0;
+    if (usage) await noteActivity("interview-question");
     if (usage) console.log("[brain-question]", { turn: body.turn, done: step.done, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json(rest);
   } catch (e) {
-    await Promise.all([recordSpend(spender, failedCallCost(e)), reportProblem("brain-question", e, { turn: body.turn })]);
+    spent = failedCallCost(e);
+    await reportProblem("brain-question", e, { turn: body.turn });
     return NextResponse.json({ error: "Couldn't come up with the next question just now. Please try again." }, { status: 502 });
+  } finally {
+    await paid.finish(spent);
   }
 }

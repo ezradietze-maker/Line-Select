@@ -10,6 +10,15 @@ const CHANGED = "line-select:strip-view-changed";
 /** The newer timeline first; the pack's own look is a tap away for a pilot who reads lines the paper way. */
 const DEFAULT_VIEW: StripViewMode = "timeline";
 
+/**
+ * The strip a pack can draw. The timeline puts every duty at its real time from the bid period's first day, so a pack
+ * that prints no bid period dates (the sample is one) has nothing to put on it: it shows the Bid pack row instead,
+ * rather than every line blank.
+ */
+export function stripViewFor(view: StripViewMode, pack: { bidPeriodStart: string | null }): StripViewMode {
+  return pack.bidPeriodStart ? view : "pack";
+}
+
 export function loadStripView(): StripViewMode {
   if (typeof window === "undefined") return DEFAULT_VIEW;
   try {

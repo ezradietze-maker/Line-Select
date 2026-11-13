@@ -5,6 +5,7 @@ import { TripGlance } from "@/components/interview/TripGlance";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
+import { MAX_NOTE } from "@/lib/brain/answer-limits";
 import { TRIP_GRADES, type TripGrade, type TripGradeScreen } from "@/lib/brain/trip-sort";
 import { tripKey } from "@/lib/scoring-v2/trip-score";
 import type { BidPack, Trip } from "@/types/bidpack";
@@ -99,7 +100,7 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
           })}
         </ul>
 
-        <NoteBox value={why} onChange={setWhy} placeholder="What decided your grades? (optional)" ariaLabel="What decided your grades" className="mt-4" />
+        <NoteBox value={why} onChange={setWhy} placeholder="What decided your grades? (optional)" ariaLabel="What decided your grades" maxLength={MAX_NOTE} className="mt-4" />
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
         <div className="mt-4 flex items-center justify-between gap-3">

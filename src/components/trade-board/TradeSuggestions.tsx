@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { TripSnapshotStats } from "@/components/trade-board/TradeBoardScreen";
 import { Button } from "@/components/ui/Button";
+import { ConfirmEmailRefusal } from "@/components/auth/ConfirmEmail";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { useAppState } from "@/lib/app-state";
 import { answerSuggestion, fetchSuggestions, findTradesNow, markTradeStepDone, type SuggestionsState } from "@/lib/trades/holding-client";
 import type { TradeDeclineReason, TradeReason, TradeSuggestionView, TradeTrip } from "@/types/trade";
 
@@ -196,12 +198,24 @@ function SuggestionCard({
  * "Trades found for you": trades that leave everyone on them better off, by each pilot's own priorities. Everyone answers
  * here, and each pilot then submits their own trades in VIPS: nothing here touches FedEx. `onlyWaiting` is the Inbox's view.
  */
-export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: string; onlyWaiting?: boolean }) {
+export function TradeSuggestions({
+  packId,
+  onlyWaiting = false,
+  refreshKey = 0,
+}: {
+  packId: string;
+  onlyWaiting?: boolean;
+  /** Changed by the screen when what the pilot holds, or "Include me…", was just saved: the list is asked for again then. */
+  refreshKey?: number;
+}) {
+  const { refreshTradeActivity } = useAppState();
   const [state, setState] = useState<SuggestionsState | null>(null);
   const [busy, setBusy] = useState(false);
   const [finding, setFinding] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The last action was refused because the pilot's email isn't confirmed: the error is shown with the button to confirm. */
+  const [needsConfirm, setNeedsConfirm] = useState(false);
   /** The server turned the last check away for asking too often: said, rather than the list silently going stale. */
   const [limited, setLimited] = useState(false);
 
@@ -230,15 +244,20 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
       cancelled = true;
       clearInterval(timer);
     };
-  }, [packId, take]);
+  }, [packId, take, refreshKey]);
 
   async function find() {
     setFinding(true);
     setError(null);
+    setNeedsConfirm(false);
     setMessage(null);
     const outcome = await findTradesNow(packId);
     setFinding(false);
     if (!outcome) return setError("Couldn't look for trades just now. Try again in a moment.");
+    if ("confirmEmail" in outcome) {
+      setNeedsConfirm(true);
+      return setError(outcome.confirmEmail);
+    }
     if (outcome.status === "busy") return setMessage("Another pilot's search is running for this seat. Try again in a moment.");
     if (outcome.status === "closed") return setMessage("Trades open once enough pilots in your seat are using Line Select.");
     if (outcome.status === "not-ready") return setMessage("Your account doesn't have this bid pack yet. Give it a moment to save, then try again.");
@@ -252,11 +271,15 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
     await refresh();
   }
 
-  async function run(action: () => Promise<{ ok: boolean; error?: string }>) {
+  async function run(action: () => Promise<{ ok: boolean; error?: string; confirmEmail?: boolean }>) {
     setBusy(true);
     setError(null);
+    setNeedsConfirm(false);
     const result = await action();
     if (!result.ok) setError(result.error ?? "That didn't save. Check your connection and try again.");
+    setNeedsConfirm(!result.ok && !!result.confirmEmail);
+    // The Inbox badge counts trades waiting on this pilot: asked for now, not at the app's next poll.
+    if (result.ok) refreshTradeActivity();
     await refresh();
     setBusy(false);
   }
@@ -275,7 +298,7 @@ export function TradeSuggestions({ packId, onlyWaiting = false }: { packId: stri
   return (
     <section className="mt-8">
       <SectionHeading count={list.length}>Trades found for you</SectionHeading>
-      {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
+      {error && (needsConfirm ? <ConfirmEmailRefusal className="mt-3" message={error} /> : <ErrorBanner className="mt-3">{error}</ErrorBanner>)}
       {limitedNotice}
       <div className="mt-3 space-y-3">
         {list.map((s) => (

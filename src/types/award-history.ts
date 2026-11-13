@@ -45,7 +45,7 @@ export type AwardHistorySubmission = Omit<AwardHistoryRecord, "id" | "submittedA
 
 /** Group numbers for one fixed slice of a seat's seniority list. The averages stay null until enough different pilots stand behind them. */
 export interface AwardBand {
-  /** How many reports fall in this slice, across every month. */
+  /** About how many reports fall in this slice, across every month: to the nearest 5, and 0 until enough different pilots have reported. */
   reports: number;
   avgDaysOff: number | null;
   avgCreditHours: number | null;

@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import type { FeedMonth, FeedOptions } from "@/lib/calendar-feed";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
 import type { InterviewOutcome } from "@/lib/learning/interview-outcome";
+import type { CarryInItem } from "@/lib/phase-in";
 import type { BidPackMetaSnapshot, HeldTrip, TradeAnswer, TradeCancelReason, TradeDeclineReason, TradeSuggestionStatus, TradeTrip, TradeValue, TripSnapshot } from "@/types/trade";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -35,6 +36,12 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   /** "free" | "pro" — a future paid-tier hook, not enforced anywhere yet. */
   plan: text("plan").notNull().default("free"),
+  /**
+   * When the pilot proved this address is theirs: a link from a confirm email, or an emailed password reset. Null
+   * until then, accounts from before this existed included. An account costs nothing to make, so only confirmed ones
+   * share, trade, or count as one more pilot anywhere (`server/verified-pilots.ts`).
+   */
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
 });
 
 export const credentials = pgTable("credentials", {
@@ -71,6 +78,30 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
+/**
+ * The link in a confirm-your-email message, kept only as a hash like a reset token. One per pilot: a new link
+ * replaces the last. It stays after use (`usedAt`) so a second click can be told "already used" rather than "no such
+ * link". `signUp` marks a link first sent by signing up, whose account the daily run removes if it's never confirmed;
+ * accounts from before confirming existed never had one, so they're never removed that way.
+ */
+export const emailVerificationTokens = pgTable("email_verification_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  signUp: boolean("sign_up").notNull().default(false),
+  /**
+   * A hash of the device that asked for the link (its `ls_device` cookie). Opening the link signs in only there: sent
+   * on to someone else, a link to an account its sender made would otherwise sign them in to that account, and what
+   * they did next (uploading their pack, the interview) would go to it.
+   */
+  deviceHash: text("device_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** "open" | "pending" | "accepted" | "declined" | "withdrawn" — kept as text (see `types/trade.ts`) rather than a Postgres enum so adding a status never needs a migration. */
 export const tradeOffers = pgTable(
   "trade_offers",
@@ -95,7 +126,14 @@ export const tradeOffers = pgTable(
     respondedAt: timestamp("responded_at", { withTimezone: true }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   },
-  (t) => [index("trade_offers_status_idx").on(t.status)]
+  (t) => [
+    index("trade_offers_status_idx").on(t.status),
+    // One seat's board for one month, by status: the board's own query and every accept's.
+    index("trade_offers_board_idx").on(t.base, t.aircraft, t.seat, t.month, t.status),
+    // A pilot's own offers and proposals, and the rows a deleted account takes with it.
+    index("trade_offers_offering_user_idx").on(t.offeringUserId),
+    index("trade_offers_responder_user_idx").on(t.responderUserId),
+  ]
 );
 
 /**
@@ -123,6 +161,8 @@ export const tradeHoldings = pgTable(
      * holdings confirmed on it. Null for one confirmed before this was kept, until it's filled from the pilot's account.
      */
     packFingerprint: text("pack_fingerprint"),
+    /** What the pilot carries in from last month (`TradeHolding.carryIn`); null when their browser didn't say. */
+    carryIn: jsonb("carry_in").$type<CarryInItem[]>(),
   },
   (t) => [uniqueIndex("trade_holdings_user_pack_idx").on(t.userId, t.packId), index("trade_holdings_group_idx").on(t.base, t.aircraft, t.seat, t.month)]
 );
@@ -243,6 +283,11 @@ export const awardHistoryRecords = pgTable(
   (t) => [
     index("award_history_base_aircraft_seat_idx").on(t.base, t.aircraft, t.seat),
     index("award_history_pilot_idx").on(t.pilotHash),
+    // One pack's awards, for "held by".
+    index("award_history_pack_idx").on(t.packKey),
+    // One report per pilot per pack: a corrected one replaces it (`createAwardHistoryRecord`), and two sent at once
+    // can't both stand.
+    uniqueIndex("award_history_pilot_pack_idx").on(t.pilotHash, t.packKey).where(sql`${t.pilotHash} is not null and ${t.packKey} is not null`),
   ]
 );
 
@@ -262,16 +307,22 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () =>
  * Each signed-in pilot's latest bid pack, so it follows them to a new device and survives the browser clearing its
  * storage. Stored gzipped in the browser's compact format (`compactBidPack`): the biggest pack is about 3 MB as JSON.
  */
-export const bidPacks = pgTable("bid_packs", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  packId: text("pack_id").notNull(),
-  data: bytea("data").notNull(),
-  /** What trades are worked out from in it (`tradePackFingerprint`). Null for a pack saved before this was kept, until it's worked out. */
-  fingerprint: text("fingerprint"),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const bidPacks = pgTable(
+  "bid_packs",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    packId: text("pack_id").notNull(),
+    data: bytea("data").notNull(),
+    /** What trades are worked out from in it (`tradePackFingerprint`). Null for a pack saved before this was kept, until it's worked out. */
+    fingerprint: text("fingerprint"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // The packs whose id starts with a seat's (`countRecentPilotsWithPack`, asked on every board view): text_pattern_ops
+  // lets a prefix search use the index whatever the database's collation.
+  (t) => [index("bid_packs_pack_id_prefix_idx").on(t.packId.op("text_pattern_ops"))]
+);
 
 export const preferenceProfiles = pgTable("preference_profiles", {
   userId: uuid("user_id")
@@ -479,4 +530,26 @@ export const learningRuns = pgTable("learning_runs", {
   finishedAt: timestamp("finished_at", { withTimezone: true }),
   trigger: text("trigger").notNull(),
   summary: jsonb("summary").notNull().$type<Record<string, unknown>>(),
+});
+
+/**
+ * A pilot's paid membership, mirrored from Stripe by the webhook. Kept in its
+ * own table rather than as columns on `users` so every billing concern is
+ * isolated and a pilot who never subscribed simply has no row. `users.plan`
+ * stays the fast gate the rest of the app reads; the webhook keeps it in step
+ * with `status` (trialing/active → "pro", anything else → "free").
+ */
+export const subscriptions = pgTable("subscriptions", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  stripeCustomerId: text("stripe_customer_id").notNull().unique(),
+  /** Absent until a checkout actually creates a subscription at Stripe. */
+  stripeSubscriptionId: text("stripe_subscription_id").unique(),
+  /** Stripe's own status: "trialing" | "active" | "past_due" | "canceled" | "incomplete" | … */
+  status: text("status").notNull(),
+  priceId: text("price_id"),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

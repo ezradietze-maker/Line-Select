@@ -40,7 +40,7 @@ const TITLE = "Walk us through your whole bidding process, start to finish.";
 export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, error, maxLength, eyebrow }: BiddingStoryStepProps) {
   const reduce = useReducedMotion();
   const remaining = maxLength - value.length;
-  const dictation = useDictation(value, (next) => onChange(next.slice(0, maxLength)));
+  const dictation = useDictation(value, (next) => onChange(next.slice(0, maxLength)), { maxLength });
   const mentioned = useMemo(() => storyTopicsMentioned(value), [value]);
   const depth = storyDepth(value);
   const area = useRef<HTMLTextAreaElement>(null);

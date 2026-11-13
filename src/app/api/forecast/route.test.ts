@@ -90,7 +90,7 @@ const lineIds = lineNumbers.map((n) => `line-${n}`);
 // Line i differs from line 0 in one feature, enough for the simulation to have something to rank.
 const features = Array.from({ length: LINES * FEATURE_COUNT }, (_, i) => Math.sin(i * 1.7) * 1.2);
 const seniorityList = Array.from({ length: 20 }, (_, i) => [i + 1, (i + 1) * 5]);
-const USER = { id: "user-1", email: "a@example.com", displayName: "A", createdAt: "", plan: "free" as const };
+const USER = { id: "user-1", email: "a@example.com", displayName: "A", createdAt: "", plan: "free" as const, emailVerified: true };
 
 function request(body: object, method = "POST") {
   return new Request("http://localhost/api/forecast", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -210,6 +210,37 @@ describe("/api/forecast", () => {
     await POST(request(goodBody({ share: true })));
     await new Promise((r) => setTimeout(r, 0));
     expect(learningStore.savedPredictions).toHaveLength(1);
+  });
+
+  it("keeps a pack's line features only from a signed-in pilot: a guest's could be a made-up order, stored first", async () => {
+    learningStore.savedFeatures.length = 0;
+    await POST(request(goodBody({ lineNumbers: [...lineNumbers].reverse() })));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(learningStore.savedFeatures).toHaveLength(0);
+    authMocks.getCurrentServerUser.mockResolvedValue(USER);
+    await POST(request(goodBody()));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(learningStore.savedFeatures).toHaveLength(1);
+  });
+
+  it("keeps nothing from an account whose email isn't confirmed: no ranking, no forecast, no line features", async () => {
+    learningStore.savedFeatures.length = 0;
+    authMocks.getCurrentServerUser.mockResolvedValue({ ...USER, emailVerified: false });
+    const data = await (await POST(request(goodBody({ share: true })))).json();
+    expect(data.shared).toBe("unconfirmed");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(forecastStore.blobs.size).toBe(0);
+    expect(learningStore.savedPredictions).toHaveLength(0);
+    expect(learningStore.savedFeatures).toHaveLength(0);
+  });
+
+  it("gives an account whose email isn't confirmed no one else's shared ranking, as for a guest", async () => {
+    for (const [id, seniority] of [["user-a", 10], ["user-b", 15], ["user-c", 25]] as const) {
+      authMocks.getCurrentServerUser.mockResolvedValue({ ...USER, id });
+      await POST(request(goodBody({ share: true, seniorityNumber: seniority, ranking: [3, 4, 5, 0, 1, 2, 6, 7, 8, 9, 10, 11] })));
+    }
+    authMocks.getCurrentServerUser.mockResolvedValue({ ...USER, emailVerified: false });
+    expect((await (await POST(request(goodBody({ seniorityNumber: 50 })))).json()).forecast.knownAhead).toBe(0);
   });
 
   it("refuses to delete for someone who isn't signed in", async () => {

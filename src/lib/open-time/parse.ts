@@ -84,7 +84,8 @@ const TAFB = "TAFB";
 const REPORT = /\b(?:RPT|RPRT|REPORT|SHOW(?:\s?TIME)?)\b[\s:=@]*(\d{1,2}):?(\d{2})[LZ]?\b/i;
 const RELEASE = /\b(?:REL|RLS|RELEASE)\b[\s:=@]*\d{1,2}:?\d{2}[LZ]?\b/i;
 const TRIP = /\b(?:TRIP|SEQ|SEQUENCE|PAIRING|PAIR|PRG)\b\s*(?:NO\.?|NUM(?:BER)?)?\s*[:#=]?\s*(\d{1,5})\b|#\s*(\d{1,5})\b/i;
-const COUNTS = /\b\d{1,2}[ -]?(?:DAYS?|DY|DYS|LEGS?|LDGS?|LANDINGS?|DPS?|HRS?|HOURS?)\b/gi;
+// A count either side of its label: "3 LDGS", and the label first, "LDGS 3", which was read as trip 3.
+const COUNTS = /\b\d{1,2}[ -]?(?:DAYS?|DY|DYS|LEGS?|LDGS?|LANDINGS?|DPS?|HRS?|HOURS?)\b|\b(?:DAYS?|DY|DYS|LEGS?|LDGS?|LANDINGS?|DPS?)[ :-]?\d{1,2}\b/gi;
 /** A time or a figure written so it can't be a trip number: 09:15, 12.5, 0915Z. */
 const NOT_A_TRIP = /\b\d{1,3}:\d{2}\b|\b\d+\.\d+\b|\b\d{3,4}[LZ]\b/gi;
 const STANDBY = /\b(?:BAS|BHS|STANDBY|STBY|SBY)\b/i;

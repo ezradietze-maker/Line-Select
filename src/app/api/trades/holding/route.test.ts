@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-let user: { id: string } | null = null;
+let user: { id: string; emailVerified?: boolean } | null = null;
 const held = new Map<string, unknown>();
 let limited = false;
+let accountPack: string | null = "uploaded-mem-md11-fo-oct26";
 vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => user }));
 vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
 vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: async () => ({ ok: !limited }), rateLimitedResponse: () => new Response(null, { status: 429 }) }));
@@ -15,6 +16,7 @@ vi.mock("@/lib/server/db", () => ({
     return h;
   },
   deleteTradeHolding: async (u: string, p: string) => void held.delete(`${u}|${p}`),
+  getBidPackRecord: async () => (accountPack ? { packId: accountPack, data: Buffer.from(""), updatedAt: "", fingerprint: null } : null),
 }));
 
 const fingerprinted = vi.hoisted(() => [] as unknown[]);
@@ -31,9 +33,10 @@ const body = { packId: PACK, bidPackMeta: { base: "MEM", aircraft: "MD11", seat:
 const put = (b: unknown = body) => PUT(new Request(url, { method: "PUT", body: JSON.stringify(b) }));
 
 beforeEach(() => {
-  user = { id: "pilot-1" };
+  user = { id: "pilot-1", emailVerified: true };
   held.clear();
   limited = false;
+  accountPack = PACK;
   lapsed.length = 0;
 });
 
@@ -48,7 +51,7 @@ describe("/api/trades/holding", () => {
 
   it("keeps each pilot's apart", async () => {
     await put();
-    user = { id: "pilot-2" };
+    user = { id: "pilot-2", emailVerified: true };
     expect((await (await GET(new Request(url))).json()).holding).toBeNull();
   });
 
@@ -76,6 +79,21 @@ describe("/api/trades/holding", () => {
   it("refuses the sample pack and anything malformed", async () => {
     expect((await put({ ...body, packId: "sample-bidpack" })).status).toBe(400);
     expect((await put({ ...body, trips: [] })).status).toBe(400);
+    expect(held.size).toBe(0);
+  });
+
+  it("refuses a seat that isn't the pack's, and the older id that doesn't name the aircraft", async () => {
+    // An MD11 FO pack's id with a B777 captain's seat would open that seat's board to them.
+    expect((await put({ ...body, bidPackMeta: { base: "MEM", aircraft: "B777", seat: "CAP", month: "OCT26" } })).status).toBe(400);
+    expect((await put({ ...body, packId: "uploaded-mem-fo-oct26" })).status).toBe(400);
+    expect(held.size).toBe(0);
+  });
+
+  it("takes only the pack on the pilot's account", async () => {
+    accountPack = "uploaded-mem-md11-fo-nov26";
+    expect((await put()).status).toBe(409);
+    accountPack = null;
+    expect((await put()).status).toBe(409);
     expect(held.size).toBe(0);
   });
 

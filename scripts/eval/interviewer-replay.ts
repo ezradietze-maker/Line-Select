@@ -68,7 +68,7 @@ function turnsOf(run: string): Turn[] {
     // first pair built around the top topic whose weight is unclear.
     return steps.map((s) => {
       if (!s.input.model) return { run, input: s.input, asked: s.asked };
-      const t = pickTopics(r.pack, s.input.model, r.pm, askedTopics(s.input.threads), (s.input.examples ?? []).filter((e) => !e.id.startsWith("F")));
+      const t = pickTopics(r.pack, s.input.model, r.pm, askedTopics(s.input.threads), (s.input.examples ?? []).filter((e) => !e.id.startsWith("F")), undefined, s.input.exchanges);
       const weightTopic = t.topics.find((x) => x.unclear === "weight" && x.criterionIds?.length);
       const compared = new Set(s.input.exchanges.flatMap((e) => [...e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)].map((m) => `${m[1]}|${m[2]}`)));
       const linePairs = pickLinePairs(r.pack, s.input.model, r.pm, compared, 3, [], weightTopic ? { ids: weightTopic.criterionIds!, label: weightTopic.label.toLowerCase() } : undefined);

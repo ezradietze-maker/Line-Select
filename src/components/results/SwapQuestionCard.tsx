@@ -123,7 +123,7 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
             onChange={(e) => setText(e.target.value)}
             placeholder="In a few words — e.g. “the Honolulu layover”"
             aria-label="Why, in your words"
-            className="min-w-0 flex-1 rounded-md border border-hairline bg-surface px-3 py-1.5 text-sm text-ink"
+            className="min-w-0 flex-1 rounded-md border border-field-edge bg-surface px-3 py-1.5 text-sm text-ink"
             autoFocus
           />
           <button type="submit" className={chip} disabled={busy || !text.trim()}>

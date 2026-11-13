@@ -6,6 +6,7 @@ import { homeParams, scorePackV2 } from "@/lib/scoring-v2/score";
 import type { BidPack } from "@/types/bidpack";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 import type { QuestionExample } from "./question-examples";
+import { HUB_TURNS_LEAD, REST_HOTEL_LEAD } from "@/lib/brain/hub-turn-question";
 
 /**
  * What's worth asking next. The interviewer used to choose its own topic every turn, and asked five near-identical
@@ -84,6 +85,9 @@ export function topicOf(metric: string): string {
 /** Features worth asking about by name when the pilot never mentioned them — the ones the ex-pilot said pilots differ on. */
 const FEATURES = ["hotelStandbyDays", "nightHubTurnRuns", "restHotelHubTurns", "doubleDeadheadTrips", "dutiesWithManyLegs", "longDuties", "eatAndSleepLayovers", "earlyReports", "deIcingExposure"];
 
+/** Features one of the fixed questions asks about by name (see `hub-turn-question.ts`), with how its question starts. */
+const FEATURE_ASKED_BY: Record<string, string> = { nightHubTurnRuns: HUB_TURNS_LEAD, restHotelHubTurns: REST_HOTEL_LEAD };
+
 /** A feature they never mentioned is tried at the weight a passing mention gets — not as if it were a top priority. */
 const FEATURE_WEIGHT = 0.25;
 /** How many of the top lines are compared. */
@@ -138,7 +142,21 @@ const withCriterion = (model: PilotModel, c: Criterion): PilotModel => ({ ...mod
  * pilot's top 20. `asked` counts how often each topic has been asked (from the interview's threads, `topic:<id>`).
  * `examples` is the turn's list of lines and trips to show; examples for unmentioned features are added to it.
  */
-export function pickTopics(bidPack: BidPack, model: PilotModel, pm: PackMetrics, asked: Record<string, number>, examples: QuestionExample[], limit = 3): { topics: TopicCandidate[]; examples: QuestionExample[] } {
+/**
+ * `answered`: the transcript's questions, for features a fixed question has already asked about. The hub-turn and
+ * crew-rest hotel questions ask about night hub turns directly; answered "They don't bother me", no priority comes of
+ * it, and without this they were asked again as a feature the pilot "never mentioned".
+ */
+export function pickTopics(
+  bidPack: BidPack,
+  model: PilotModel,
+  pm: PackMetrics,
+  asked: Record<string, number>,
+  examples: QuestionExample[],
+  limit = 3,
+  answered: readonly { question: string }[] = []
+): { topics: TopicCandidate[]; examples: QuestionExample[] } {
+  const askedAlready = new Set(Object.entries(FEATURE_ASKED_BY).flatMap(([metric, lead]) => (answered.some((e) => e.question.startsWith(lead)) ? [metric] : [])));
   const base = topLines(bidPack, model, pm);
   if (base.length < MIN_LINES) return { topics: [], examples };
   const lineOf = new Map(bidPack.lines.map((l) => [l.lineNumber, l]));
@@ -173,7 +191,7 @@ export function pickTopics(bidPack: BidPack, model: PilotModel, pm: PackMetrics,
     const def = METRICS_BY_ID.get(metric);
     const id = topicOf(metric);
     // Deadheads from home and riding home only mean something to a commuter.
-    if (!def || talkedAbout.has(id) || (asked[id] ?? 0) > 0 || (id === "commute" && model.home?.commuter !== true)) continue;
+    if (!def || askedAlready.has(metric) || talkedAbout.has(id) || (asked[id] ?? 0) > 0 || (id === "commute" && model.home?.commuter !== true)) continue;
     const top = base.slice(0, 30).map((n) => ({ n, v: measure(metric, lineOf.get(n)!, pm, homeParams(model)) })).filter((x): x is { n: string; v: number } => x.v !== null);
     if (top.length < 4 || Math.max(...top.map((x) => x.v)) === Math.min(...top.map((x) => x.v))) continue;
     const trial = (kind: "more" | "less"): Criterion => ({ id: `feature:${metric}`, metric, label: def.label, shape: { kind }, tier: "medium", weight: FEATURE_WEIGHT, confidence: 0.6, evidence: [], status: "open" });

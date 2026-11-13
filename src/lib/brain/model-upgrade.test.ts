@@ -171,15 +171,31 @@ describe("modelToFullDays", () => {
     expect(modelToFullDays(m, ["Long layovers in cities I like are great."])).toBe(m);
   });
 
-  it("sets a reading that bound full days itself to the same share, and gives full days alone their hours", () => {
+  it("sets a fresh reading that bound full days itself to the same share, and gives full days alone their hours", () => {
     const days = crit("days", "fullDaysInLikedCities", { shape: { kind: "more" }, weight: 0.6, params: { cityScores: cities } });
-    const both = modelToFullDays(model(true, [hours, days]), []);
+    const both = modelToFullDays(model(true, [hours, days]), [], { rebalance: true });
     expect(both.criteria.map((c) => c.metric)).toEqual(["layoverValue", "fullDaysInLikedCities"]);
     expect(both.criteria[0].weight).toBeCloseTo(1.6 * (1 - FULL_DAY_SHARE), 10);
     expect(both.criteria[1].weight).toBeCloseTo(1.6 * FULL_DAY_SHARE, 10);
     const alone = modelToFullDays(model(true, [days]), []);
     expect(alone.criteria.map((c) => c.metric)).toEqual(["layoverValue", "fullDaysInLikedCities"]);
     expect(alone.criteria[0].params?.cityScores).toEqual(cities);
+  });
+
+  it("leaves a saved pair as the pilot's pins and drags left it", () => {
+    const pinned = crit("days", "fullDaysInLikedCities", { shape: { kind: "more" }, weight: 1, params: { cityScores: cities } });
+    const saved = model(true, [hours, pinned]);
+    expect(modelToFullDays(saved, [])).toBe(saved);
+  });
+
+  it("keeps a limit on full days on full days, and gives the new hours priority a plain shape", () => {
+    const limited = crit("days", "fullDaysInLikedCities", { shape: { kind: "more", enoughAt: 3 }, weight: 0.6, hardLimit: { op: "min", value: 1 }, params: { cityScores: cities } } as never);
+    const upgraded = modelToFullDays(model(true, [limited]), []);
+    const [asHours, asDays] = upgraded.criteria;
+    expect(asHours.shape).toEqual({ kind: "more" });
+    expect(asHours.hardLimit).toBeUndefined();
+    expect(asDays.hardLimit).toEqual({ op: "min", value: 1 });
+    expect(asDays.shape).toEqual({ kind: "more", enoughAt: 3 });
   });
 });
 

@@ -212,4 +212,10 @@ export interface ParseBidPackResult {
   errors: ParseWarning[];
   /** True if extracted text looked garbled (e.g. a scanned/image-only PDF). */
   looksLikeScannedPdf: boolean;
+  /**
+   * What the pack says it holds and the file doesn't: fewer lines than its info page counts, a seat it lists with no
+   * lines, the same line twice. A file cut short or two packs joined parses without an error, so these are said
+   * plainly on the confirm screen, not among the parsing details. Optional: results made before it existed.
+   */
+  problems?: { seat: "CAP" | "FO" | null; message: string }[];
 }

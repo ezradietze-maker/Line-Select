@@ -14,11 +14,23 @@ export async function fetchTradeHolding(packId: string): Promise<HoldingState | 
   }
 }
 
-/** Saves what the pilot holds; the saved copy, or null when it didn't save. */
-export async function saveTradeHolding(holding: Omit<TradeHolding, "confirmedAt">): Promise<TradeHolding | null> {
+/** Refused because the pilot's email isn't confirmed, with the server's words for it. */
+export interface ConfirmEmailFirst {
+  confirmEmail: string;
+}
+
+async function confirmEmailFirst(res: Response): Promise<ConfirmEmailFirst | null> {
+  if (res.status !== 403) return null;
+  const data = (await res.json().catch(() => null)) as { confirmEmail?: unknown; error?: unknown } | null;
+  return data?.confirmEmail === true && typeof data.error === "string" ? { confirmEmail: data.error } : null;
+}
+
+/** Saves what the pilot holds; the saved copy, the refusal of an unconfirmed account, or null when it didn't save. */
+export async function saveTradeHolding(holding: Omit<TradeHolding, "confirmedAt">): Promise<TradeHolding | ConfirmEmailFirst | null> {
   try {
     const res = await fetch("/api/trades/holding", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(holding) });
-    return res.ok ? ((await res.json()) as { holding: TradeHolding }).holding : null;
+    if (!res.ok) return confirmEmailFirst(res);
+    return ((await res.json()) as { holding: TradeHolding }).holding;
   } catch {
     return null;
   }
@@ -73,20 +85,22 @@ export async function fetchWaitingSuggestions(packId: string): Promise<number | 
 
 export type FindOutcome = { status: "ran"; found: number; pilots: number } | { status: "busy" } | { status: "not-ready" } | { status: "closed" } | { status: "pack-differs" };
 
-export async function findTradesNow(packId: string): Promise<FindOutcome | null> {
+export async function findTradesNow(packId: string): Promise<FindOutcome | ConfirmEmailFirst | null> {
   try {
     const res = await fetch("/api/trades/matches", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ pack: packId }) });
-    return res.ok ? ((await res.json()) as FindOutcome) : null;
+    if (!res.ok) return confirmEmailFirst(res);
+    return (await res.json()) as FindOutcome;
   } catch {
     return null;
   }
 }
 
-async function act(url: string, body: unknown): Promise<{ ok: boolean; error?: string }> {
+async function act(url: string, body: unknown): Promise<{ ok: boolean; error?: string; confirmEmail?: boolean }> {
   try {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
     if (res.ok) return { ok: true };
-    return { ok: false, error: ((await res.json().catch(() => ({}))) as { error?: string }).error };
+    const data = (await res.json().catch(() => ({}))) as { error?: string; confirmEmail?: unknown };
+    return { ok: false, error: data.error, confirmEmail: data.confirmEmail === true };
   } catch {
     return { ok: false };
   }

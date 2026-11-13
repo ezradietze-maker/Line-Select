@@ -16,6 +16,8 @@ export interface AwardRow {
   daysOff: number | null;
   totalCreditHours: number | null;
   holderShown: boolean;
+  /** When it was reported (a corrected report counts from its correction): group numbers take reports in oldest first. */
+  submittedAt: Date;
 }
 
 /** How many different pilots are behind these rows: one pilot over many months is still one pilot. A row with no hash can't be matched to any other, so it counts alone. */
@@ -30,20 +32,50 @@ function average(values: (number | null)[], decimals: number): number | null {
   return Math.round((known.reduce((a, b) => a + b, 0) / known.length) * factor) / factor;
 }
 
-/** Group numbers per slice of the list. A slice short of `MIN_SHARED_PILOTS` says only how many reports it has. */
+/**
+ * How many reports a group number moves by at once. The listing is open to anyone, so if a figure took in each report
+ * as it came, reading it just before and just after one pilot reported would give away what they held. Instead each
+ * figure is worked out from the oldest whole steps of reports only, and moves when a step fills: by this many at once.
+ */
+export const AWARD_STEP = MIN_SHARED_PILOTS;
+
+/** The oldest reports that fill whole steps of `AWARD_STEP`; the newest few wait until there are enough to join together. */
+function inWholeSteps<T extends Pick<AwardRow, "submittedAt">>(rows: T[]): T[] {
+  const kept = Math.floor(rows.length / AWARD_STEP) * AWARD_STEP;
+  return [...rows].sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime()).slice(0, kept);
+}
+
+/**
+ * An average of at least the bar's worth of known values: of five reports with only one saying its days off, the
+ * "average" was that one pilot's.
+ */
+function groupAverage(values: (number | null)[]): number | null {
+  return values.filter((v) => v !== null).length >= MIN_SHARED_PILOTS ? average(values, 1) : null;
+}
+
+/** A count, to the nearest step, and nothing at all short of the bar: an exact count says when each report came in. */
+function roughCount(rows: Pick<AwardRow, "pilotHash">[]): number {
+  return distinctPilots(rows) < MIN_SHARED_PILOTS ? 0 : Math.round(rows.length / AWARD_STEP) * AWARD_STEP;
+}
+
+/**
+ * Group numbers per slice of the list, from whole steps of reports (`AWARD_STEP`), with counts rounded to the step. A
+ * slice short of `MIN_SHARED_PILOTS` different pilots shows nothing, its count included.
+ */
 export function summarizeBands(rows: AwardRow[]): AwardSummaryResponse {
   const bands: AwardBand[] = Array.from({ length: AWARD_BANDS }, (_, band) => {
     const inBand = rows.filter((r) => awardBandOf({ rank: r.seniorityRank, totalPilots: r.seniorityTotalPilots }) === band);
-    const lines = inBand.filter((r) => r.outcome === "line");
+    const lines = inWholeSteps(inBand.filter((r) => r.outcome === "line"));
     const enoughLines = distinctPilots(lines) >= MIN_SHARED_PILOTS;
+    const counted = inWholeSteps(inBand);
     return {
-      reports: inBand.length,
-      avgDaysOff: enoughLines ? average(lines.map((r) => r.daysOff), 1) : null,
-      avgCreditHours: enoughLines ? average(lines.map((r) => r.totalCreditHours), 1) : null,
-      lineRate: distinctPilots(inBand) >= MIN_SHARED_PILOTS ? Math.round((lines.length / inBand.length) * 100) / 100 : null,
+      reports: roughCount(inBand),
+      avgDaysOff: enoughLines ? groupAverage(lines.map((r) => r.daysOff)) : null,
+      avgCreditHours: enoughLines ? groupAverage(lines.map((r) => r.totalCreditHours)) : null,
+      lineRate: distinctPilots(counted) >= MIN_SHARED_PILOTS ? Math.round((counted.filter((r) => r.outcome === "line").length / counted.length) * 100) / 100 : null,
     };
   });
-  return { totalReports: rows.length, bands };
+  return { totalReports: roughCount(rows), bands };
 }
 
 /**

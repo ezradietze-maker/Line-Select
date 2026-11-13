@@ -55,3 +55,42 @@ export function pruneMarks(marks: LineMarks, validLineIds: Set<string>): LineMar
     hidden: marks.hidden.filter((id) => validLineIds.has(id)),
   };
 }
+
+/**
+ * What Copy, Send to VIPS and the calendar take: the whole ranked order as bid, leaving out only the lines the pilot
+ * hid or put in Not bid. Never the search or the filters: those are for looking, and a pilot with "9003" in the
+ * search box copied that one line and was told it was cleared to bid.
+ */
+export function bidOrderLines<T extends { line: { id: string } }>(ranked: T[], hidden: Set<string>, notBid: Set<string>): { lines: T[]; hidden: number; notBid: number } {
+  const lines: T[] = [];
+  let hiddenCount = 0;
+  let notBidCount = 0;
+  for (const r of ranked) {
+    // A hidden line in Not bid counts once, as Not bid: that's the tier the pilot put it in.
+    if (notBid.has(r.line.id)) notBidCount++;
+    else if (hidden.has(r.line.id)) hiddenCount++;
+    else lines.push(r);
+  }
+  return { lines, hidden: hiddenCount, notBid: notBidCount };
+}
+
+/** "the 2 lines you hid and the Not bid line": what an export leaves out, or null when it leaves out nothing. */
+export function leftOutPhrase(hidden: number, notBid: number): string | null {
+  const parts = [
+    hidden ? `the ${hidden === 1 ? "line" : `${hidden} lines`} you hid` : null,
+    notBid ? `the ${notBid === 1 ? "Not bid line" : `${notBid} Not bid lines`}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" and ") : null;
+}
+
+/**
+ * The j / k cursor, one line on. It's kept by line, not by place, so when a line moves (a tier key sends it up the
+ * list) the cursor goes with it and the next key acts on that same line. A cursor whose line has left the list starts
+ * again at the top.
+ */
+export function stepCursor(ids: string[], current: string | null, by: 1 | -1): string | null {
+  if (ids.length === 0) return null;
+  const at = current === null ? -1 : ids.indexOf(current);
+  if (at === -1) return ids[0];
+  return ids[Math.max(0, Math.min(ids.length - 1, at + by))];
+}

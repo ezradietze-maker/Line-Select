@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "November 8, 2026";
+const LAST_UPDATED = "November 11, 2026";
 
 /**
  * A real Terms of Service — not boilerplate copy-pasted from a generator.
@@ -116,8 +116,9 @@ export default function TermsPage() {
             pilots&rsquo; bids, contract and bidding rules the Service does not have access to,
             scheduling decisions made after bidding closes &mdash; that the Service cannot see or
             verify. Every strategy is intended to work within applicable FAA duty and rest rules
-            (including 14 C.F.R. Part 117); the Service does not compute or verify duty or rest
-            legality itself, and you remain solely responsible for ensuring anything you actually
+            (including 14 C.F.R. Part 117). Where the Service checks overlaps, rest or whether a trip is legal on
+            your line (in open time and View/Add, for example), those checks are estimates from the bid pack and
+            the contract, not a guarantee: they can be wrong or incomplete, and you remain solely responsible for ensuring anything you actually
             bid or fly complies with those rules and with your collective bargaining agreement.
           </p>
         </Section>

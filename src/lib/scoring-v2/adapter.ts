@@ -73,10 +73,19 @@ const rankingPacks = new WeakMap<BidPack, PackMetrics>();
 
 /** The measured pack the results rank and score trips with, its flights set to these (or none). */
 export function rankingPack(bidPack: BidPack, flights?: FlightAnswers): PackMetrics {
-  let pack = rankingPacks.get(bidPack);
-  if (!pack) rankingPacks.set(bidPack, (pack = prepareMetrics(bidPack)));
+  const pack = measuredPack(bidPack);
   // Set every time, flights or none, so a ranking never reads the flights of an earlier one.
   pack.ctx.flights = flights;
+  return pack;
+}
+
+/**
+ * The same measured pack, its flights left as the last ranking set them: for a copy with flights of its own (the page's
+ * refits), so the pack is measured once, not once for the ranking and again for them.
+ */
+export function measuredPack(bidPack: BidPack): PackMetrics {
+  let pack = rankingPacks.get(bidPack);
+  if (!pack) rankingPacks.set(bidPack, (pack = prepareMetrics(bidPack)));
   return pack;
 }
 

@@ -61,6 +61,11 @@ describe("buildLineCalendar", () => {
     expect(result.content).toContain("Pairing 42");
   });
 
+  it("keeps a pairing number's line break out of the event id, so it can't write a line of its own", () => {
+    const line = makeLine([makeTrip({ startDayIndex: 0, pairingNumber: "123\r\nATTACH:https://evil.example/x" })]);
+    expect(buildLineCalendar(line, "2026-03-01", "MAR26").content).not.toMatch(/^ATTACH:/m);
+  });
+
   it("computes real calendar dates from bidPeriodStart plus startDayIndex", () => {
     const line = makeLine([makeTrip({ startDayIndex: 4, days: 2 })]);
     const result = buildLineCalendar(line, "2026-03-01", "MAR26");

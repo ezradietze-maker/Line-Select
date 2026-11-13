@@ -82,9 +82,9 @@ function WorldClock({ bidPack, profile }: { bidPack: BidPack | null; profile: Pr
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-ink-muted">What time is it when it&rsquo;s</span>
-          <input type="time" value={pickTime} onChange={(e) => setPickTime(e.target.value)} className="rounded-md border border-hairline bg-surface px-2 py-1.5 font-mono text-sm text-ink" aria-label="Time to convert" />
+          <input type="time" value={pickTime} onChange={(e) => setPickTime(e.target.value)} className="rounded-md border border-field-edge bg-surface px-2 py-1.5 font-mono text-sm text-ink" aria-label="Time to convert" />
           <span className="text-ink-muted">in</span>
-          <select value={pickClock} onChange={(e) => setPickClock(e.target.value)} className="rounded-md border border-hairline bg-surface px-2 py-1.5 text-sm text-ink" aria-label="Whose clock">
+          <select value={pickClock} onChange={(e) => setPickClock(e.target.value)} className="rounded-md border border-field-edge bg-surface px-2 py-1.5 text-sm text-ink" aria-label="Whose clock">
             <option value="Z">Zulu</option>
             {codes.map((c) => (
               <option key={c} value={c}>
@@ -238,7 +238,7 @@ function CommutePlanner({ bidPack, profile }: { bidPack: BidPack | null; profile
           </p>
           <label className="mt-4 block text-sm">
             <span className="text-ink-muted">Line</span>
-            <select value={line?.id ?? ""} onChange={(e) => setLineId(e.target.value)} className="mt-1 block w-full max-w-sm rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-ink">
+            <select value={line?.id ?? ""} onChange={(e) => setLineId(e.target.value)} className="mt-1 block w-full max-w-sm rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink">
               {ranked.map((r, i) => (
                 <option key={r.lineId} value={r.lineId}>
                   Line {r.lineNumber} — your #{i + 1}

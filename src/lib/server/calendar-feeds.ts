@@ -15,6 +15,7 @@ import { db } from "@/lib/server/postgres";
 import { calendarFeeds } from "@/lib/server/schema";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
+import { dayTripsOf } from "@/lib/trip-anchor";
 
 /**
  * Pilots' calendar subscriptions. The link's token is 32 random bytes, stored only as a SHA-256 hash: a slow salted hash
@@ -85,12 +86,27 @@ export async function revokeFeed(userId: string): Promise<void> {
     .where(and(eq(calendarFeeds.userId, userId), isNull(calendarFeeds.revokedAt)));
 }
 
+/**
+ * Writes to the link only while it's still on. A pilot can turn it off, or make a new one, between this reading the row
+ * and writing it: written by id alone, the trips would land on the dead row that turning off had just emptied.
+ */
+async function updateIfLive(id: string, set: Partial<typeof calendarFeeds.$inferInsert>): Promise<boolean> {
+  const updated = await db.update(calendarFeeds).set(set).where(and(eq(calendarFeeds.id, id), isNull(calendarFeeds.revokedAt))).returning({ id: calendarFeeds.id });
+  return updated.length > 0;
+}
+
+/** On whichever link is live, read once more if the one first read was turned off or replaced meanwhile. */
+async function updateLiveFeed(userId: string, first: typeof calendarFeeds.$inferSelect, change: (row: typeof calendarFeeds.$inferSelect) => Partial<typeof calendarFeeds.$inferInsert>) {
+  if (await updateIfLive(first.id, change(first))) return first;
+  const now = await liveFeed(userId);
+  return now && (await updateIfLive(now.id, change(now))) ? now : null;
+}
+
 export async function setFeedOptions(userId: string, options: Partial<FeedOptions>): Promise<FeedStatus> {
   const row = await liveFeed(userId);
   if (!row) return { on: false };
-  const next = { ...row.options, ...options };
-  await db.update(calendarFeeds).set({ options: next }).where(eq(calendarFeeds.id, row.id));
-  return statusOf({ ...row, options: next });
+  const written = await updateLiveFeed(userId, row, (r) => ({ options: { ...r.options, ...options } }));
+  return written ? statusOf({ ...written, options: { ...written.options, ...options } }) : { on: false };
 }
 
 /** What the feed route needs. A revoked or unknown token finds nothing. */
@@ -149,9 +165,9 @@ export async function syncFeed(userId: string, choice: FeedChoice, now = Date.no
   const month = buildFeedMonth(pack, { lineNumber, lineSource, pilotClose: choice.pilotClose, flights, now });
   // A trip with no date to place it on is left off the calendar, which the pilot can't see from there: heard about here.
   const line = lineNumber ? pack.lines.find((l) => l.lineNumber === lineNumber) : null;
-  if (lineNumber && (!line || month.trips.length < line.trips.length)) {
-    await reportProblem("calendar-feed", new Error("Trips left off a calendar"), { what: "feed build", packId: pack.id, lineNumber, trips: `${month.trips.length} of ${line?.trips.length ?? "no line"}` });
+  if (lineNumber && (!line || month.trips.length < line.trips.flatMap(dayTripsOf).length)) {
+    await reportProblem("calendar-feed", new Error("Trips left off a calendar"), { what: "feed build", packId: pack.id, lineNumber, trips: `${month.trips.length} of ${line ? line.trips.flatMap(dayTripsOf).length : "no line"}` });
   }
-  await db.update(calendarFeeds).set({ months: withFeedMonth(row.months, month) }).where(eq(calendarFeeds.id, row.id));
-  return "ok";
+  // Turned off while this was being built: nothing is written, so the trips turning off cleared stay gone.
+  return (await updateLiveFeed(userId, row, (r) => ({ months: withFeedMonth(r.months, month) }))) ? "ok" : "off";
 }

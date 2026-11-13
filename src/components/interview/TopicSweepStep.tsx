@@ -4,6 +4,7 @@ import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
+import { MAX_NOTE } from "@/lib/brain/answer-limits";
 import type { PilotModel } from "@/types/pilot-model";
 
 /**
@@ -68,7 +69,7 @@ export function TopicSweepStep({ topics, eyebrow, onContinue }: TopicSweepStepPr
             );
           })}
         </div>
-        <NoteBox value={note} onChange={setNote} placeholder="Anything else — in your own words (optional)" ariaLabel="Anything else" className="mt-4" />
+        <NoteBox value={note} onChange={setNote} placeholder="Anything else — in your own words (optional)" ariaLabel="Anything else" maxLength={MAX_NOTE} className="mt-4" />
         <div className="mt-4 flex justify-end">
           <Button type="button" onClick={() => onContinue(picked, note.trim())} className="sm:px-6">
             {picked.length || note.trim() ? "Continue" : "Nothing else — build my priorities"}

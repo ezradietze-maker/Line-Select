@@ -16,6 +16,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TextField } from "@/components/ui/TextField";
 import { fetchAwardSummary, summaryForSeniority } from "@/lib/award-history";
 import { rankingAsShown } from "@/lib/ranking-as-shown";
+import { resolveBidPosition } from "@/lib/forecast/forecast";
 import { attachScoreContext, computeStanding, generateStrategies, rankStrategiesByPreference, type Standing } from "@/lib/strategy-engine";
 import { SENIORITY_BANDS } from "@/lib/seniority-bands";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
@@ -115,8 +116,17 @@ function SeniorityGate({
       <SeniorityForm
         bidPack={bidPack}
         initial={seniority}
+        profile={profile}
         onSave={(input) => {
           onSaveSeniority(input);
+          setEditing(false);
+        }}
+        onSaveNumber={(seniorityNumber) => {
+          // Kept with the preferences, as Preferences keeps it: the page then reads the place off the pack's list.
+          if (profile) onUpdateProfile({ ...profile, seniorityNumber });
+          const list = bidPack.seniorityList ?? [];
+          const position = resolveBidPosition(list, seniorityNumber);
+          onSaveSeniority({ rank: position.bidNumber, totalPilots: Math.max(list.length, position.bidNumber), source: position.exact ? "typed" : "between" });
           setEditing(false);
         }}
       />
@@ -141,12 +151,22 @@ function SeniorityGate({
 function SeniorityForm({
   bidPack,
   initial,
+  profile,
   onSave,
+  onSaveNumber,
 }: {
   bidPack: BidPack;
   initial: SeniorityInput | null;
+  profile: PreferenceProfile | null;
   onSave: (input: SeniorityInput) => void;
+  onSaveNumber: (seniorityNumber: number) => void;
 }) {
+  // With the pack's seniority list, the pilot's own seniority number is all it takes: the list says where it bids.
+  // Without one, the place in bid order and the seat's size are asked for, as that's what's worked out from.
+  const fromList = (bidPack.seniorityList?.length ?? 0) > 0;
+  const [number, setNumber] = useState(profile?.seniorityNumber ? String(profile.seniorityNumber) : "");
+  const numberNum = Number(number);
+  const numberValid = number !== "" && Number.isInteger(numberNum) && numberNum >= 1;
   const [rank, setRank] = useState(initial ? String(initial.rank) : "");
   const [totalPilots, setTotalPilots] = useState(initial ? String(initial.totalPilots) : "");
   const rankNum = Number(rank);
@@ -165,37 +185,55 @@ function SeniorityForm({
       <Heading as="h1" className="mt-1.5 text-3xl tracking-tight text-ink sm:text-4xl">Where do you rank?</Heading>
       <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-muted">
         Every strategy below is built from the real lines in your {bidPack.base} {bidPack.aircraft}{" "}
-        {bidPack.seat} pack. Your seniority number just tells Line Select which of those moves are
-        realistic for you versus a reach — nothing here reads your name or employee number, and
-        it&rsquo;s kept with your preferences: on this device, and on your account if you&rsquo;re signed in.
+        {bidPack.seat} pack. Where you bid just tells Line Select which of those moves are
+        realistic for you versus a reach — nothing here reads your name or employee number.{" "}
+        {fromList && profile
+          ? "Your seniority number is kept with your preferences: on this device, and on your account if you’re signed in."
+          : "It’s kept on this device."}
       </p>
 
       <form
         className="panel-glass mt-6 max-w-md space-y-4 p-5"
         onSubmit={(e) => {
           e.preventDefault();
-          if (valid) onSave({ rank: rankNum, totalPilots: totalNum, source: "typed" });
+          if (fromList) {
+            if (numberValid) onSaveNumber(numberNum);
+          } else if (valid) onSave({ rank: rankNum, totalPilots: totalNum, source: "typed" });
         }}
       >
-        <TextField
-          label="Your seniority number in this seat"
-          type="number"
-          min={1}
-          inputMode="numeric"
-          placeholder="e.g. 42"
-          value={rank}
-          onChange={(e) => setRank(e.target.value)}
-        />
-        <TextField
-          label="Total pilots in this seat at your domicile (a rough number is fine)"
-          type="number"
-          min={1}
-          inputMode="numeric"
-          placeholder="e.g. 191"
-          value={totalPilots}
-          onChange={(e) => setTotalPilots(e.target.value)}
-        />
-        <Button type="submit" disabled={!valid} className="w-full">
+        {fromList ? (
+          <TextField
+            label="Your seniority number"
+            type="number"
+            min={1}
+            inputMode="numeric"
+            placeholder="e.g. 4210"
+            value={number}
+            onChange={(e) => setNumber(e.target.value)}
+          />
+        ) : (
+          <>
+            <TextField
+              label="Where you bid in this seat (1 is the most senior)"
+              type="number"
+              min={1}
+              inputMode="numeric"
+              placeholder="e.g. 42"
+              value={rank}
+              onChange={(e) => setRank(e.target.value)}
+            />
+            <TextField
+              label="Total pilots in this seat at your domicile (a rough number is fine)"
+              type="number"
+              min={1}
+              inputMode="numeric"
+              placeholder="e.g. 191"
+              value={totalPilots}
+              onChange={(e) => setTotalPilots(e.target.value)}
+            />
+          </>
+        )}
+        <Button type="submit" disabled={fromList ? !numberValid : !valid} className="w-full">
           Find my strategies
         </Button>
       </form>

@@ -1,3 +1,4 @@
+import { anchorTripAt, tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /**
@@ -17,14 +18,24 @@ import type { BidPack, Trip } from "@/types/bidpack";
  * circadian scoring in lib/circadian.ts runs on this exactly the way it
  * would on real bid pack data, not a shortcut.
  *
- * The same is true of the Zulu/Local toggle's data: every leg's
- * `depTimeZulu`/`arrTimeZulu` below is `SAMPLE_ZULU_ANCHOR` plus that leg's
- * own `startMinutes`/`endMinutes`, hand-computed to match — real,
- * internally-consistent instants, not just enough shape to satisfy the type.
+ * The pack is on real (still fictional) dates, the way an uploaded pack is:
+ * a 28-day bid period from `SAMPLE_BID_PERIOD_START`, and each line's trips
+ * on their own days of it, so its strips, calendar, Timeline and Open Time
+ * work as they do on a real pack. The period sits inside summer time at
+ * every airport here (CDT, PDT, CEST; Honolulu has none), which is what the
+ * printed local/GMT pairs assume.
+ *
+ * Each trip below is written as it flies when it reports on the period's
+ * first day: its `zuluAnchor` is that report at MEM, and every leg's
+ * `depTimeZulu`/`arrTimeZulu` is the anchor plus the leg's own
+ * `startMinutes`/`endMinutes`, hand-computed so the clock matches the
+ * printed GMT. `onDay` moves a trip to the day a line flies it, re-anchored
+ * the same way the parser pins a dated trip (`lib/trip-anchor.ts`).
  */
 
-/** An arbitrary but real UTC instant — see `Trip.zuluAnchor`'s own doc comment for why this isn't a claim about which real calendar date this fictional trip "actually" falls on. */
-const SAMPLE_ZULU_ANCHOR = "2026-09-01T00:00:00.000Z";
+/** The bid period's first day: a Monday, as a FedEx bid period starts. */
+const SAMPLE_BID_PERIOD_START = "2027-08-30";
+const SAMPLE_BASE = "MEM";
 
 const tripA: Trip = {
   id: "sample-A",
@@ -39,13 +50,8 @@ const tripA: Trip = {
   landings: 2,
   tafbHours: 28.75,
   departures: 2,
-  zuluAnchor: SAMPLE_ZULU_ANCHOR,
-  // Null rather than a guessed day — this same trip object is reused
-  // verbatim across several sample lines below at different positions, so
-  // there's no one real day to claim here. The mini calendar's sequential
-  // fallback layout handles this the same way it would a real bid pack
-  // whose grid couldn't be confidently placed.
-  startDayIndex: null,
+  zuluAnchor: "2027-08-30T19:00:00.000Z",
+  startDayIndex: 0,
   schedule: [
     {
       reportTimeLocal: "1400",
@@ -64,8 +70,8 @@ const tripA: Trip = {
           blockHours: 3.5,
           startMinutes: 60,
           endMinutes: 270,
-          depTimeZulu: "2026-09-01T01:00:00.000Z",
-          arrTimeZulu: "2026-09-01T04:30:00.000Z",
+          depTimeZulu: "2027-08-30T20:00:00.000Z",
+          arrTimeZulu: "2027-08-30T23:30:00.000Z",
         },
       ],
       layover: {
@@ -95,8 +101,8 @@ const tripA: Trip = {
           blockHours: 3.5,
           startMinutes: 1515,
           endMinutes: 1725,
-          depTimeZulu: "2026-09-02T01:15:00.000Z",
-          arrTimeZulu: "2026-09-02T04:45:00.000Z",
+          depTimeZulu: "2027-08-31T20:15:00.000Z",
+          arrTimeZulu: "2027-08-31T23:45:00.000Z",
         },
       ],
       layover: null,
@@ -118,8 +124,8 @@ const tripB: Trip = {
   landings: 2,
   tafbHours: 26.75,
   departures: 2,
-  zuluAnchor: SAMPLE_ZULU_ANCHOR,
-  startDayIndex: null,
+  zuluAnchor: "2027-08-30T08:00:00.000Z",
+  startDayIndex: 0,
   schedule: [
     {
       reportTimeLocal: "0300",
@@ -138,8 +144,8 @@ const tripB: Trip = {
           blockHours: 9,
           startMinutes: 60,
           endMinutes: 600,
-          depTimeZulu: "2026-09-01T01:00:00.000Z",
-          arrTimeZulu: "2026-09-01T10:00:00.000Z",
+          depTimeZulu: "2027-08-30T09:00:00.000Z",
+          arrTimeZulu: "2027-08-30T18:00:00.000Z",
         },
       ],
       layover: {
@@ -169,8 +175,8 @@ const tripB: Trip = {
           blockHours: 9,
           startMinutes: 1065,
           endMinutes: 1605,
-          depTimeZulu: "2026-09-01T17:45:00.000Z",
-          arrTimeZulu: "2026-09-02T02:45:00.000Z",
+          depTimeZulu: "2027-08-31T01:45:00.000Z",
+          arrTimeZulu: "2027-08-31T10:45:00.000Z",
         },
       ],
       layover: null,
@@ -192,8 +198,8 @@ const tripC: Trip = {
   landings: 2,
   tafbHours: 44,
   departures: 2,
-  zuluAnchor: SAMPLE_ZULU_ANCHOR,
-  startDayIndex: null,
+  zuluAnchor: "2027-08-30T16:00:00.000Z",
+  startDayIndex: 0,
   schedule: [
     {
       reportTimeLocal: "1100",
@@ -212,8 +218,8 @@ const tripC: Trip = {
           blockHours: 9,
           startMinutes: 60,
           endMinutes: 600,
-          depTimeZulu: "2026-09-01T01:00:00.000Z",
-          arrTimeZulu: "2026-09-01T10:00:00.000Z",
+          depTimeZulu: "2027-08-30T17:00:00.000Z",
+          arrTimeZulu: "2027-08-31T02:00:00.000Z",
         },
       ],
       layover: {
@@ -243,14 +249,20 @@ const tripC: Trip = {
           blockHours: 9,
           startMinutes: 2100,
           endMinutes: 2640,
-          depTimeZulu: "2026-09-02T11:00:00.000Z",
-          arrTimeZulu: "2026-09-02T20:00:00.000Z",
+          depTimeZulu: "2027-09-01T03:00:00.000Z",
+          arrTimeZulu: "2027-09-01T12:00:00.000Z",
         },
       ],
       layover: null,
     },
   ],
 };
+
+/** A trip as a line flies it: on day `dayIndex` of the bid period (0 = its first day), anchored to that day's report at MEM. */
+function onDay(trip: Trip, dayIndex: number): Trip {
+  const dated = { ...trip, startDayIndex: dayIndex };
+  return anchorTripAt(dated, tripReportUtc({ bidPeriodStart: SAMPLE_BID_PERIOD_START, base: SAMPLE_BASE }, dated)!);
+}
 
 function sumTrips(trips: Trip[]) {
   return {
@@ -275,21 +287,20 @@ function buildLine(lineNumber: string, daysOff: number, trips: Trip[]) {
 export const SAMPLE_BID_PACK: BidPack = {
   id: "sample-bidpack",
   month: "SAMPLE",
-  base: "MEM",
+  base: SAMPLE_BASE,
   aircraft: "B777",
   seat: "CAP",
   bidPeriodDays: 28,
-  // Null, not a guessed date — see each sample trip's own startDayIndex
-  // comment for why (the same trip object gets reused at different
-  // positions across several lines below).
-  bidPeriodStart: null,
+  bidPeriodStart: SAMPLE_BID_PERIOD_START,
+  // Each trip on its own day, as a line grid places it. A dated trip is held
+  // by one line only, so no two lines share a pairing on the same day.
   lines: [
-    buildLine("9001", 24, [tripA]),
-    buildLine("9002", 24, [tripB]),
-    buildLine("9003", 23, [tripC]),
-    buildLine("9004", 20, [tripA, tripB]),
-    buildLine("9005", 19, [tripA, tripC]),
-    buildLine("9006", 18, [tripB, tripC]),
+    buildLine("9001", 24, [onDay(tripA, 12)]),
+    buildLine("9002", 24, [onDay(tripB, 12)]),
+    buildLine("9003", 23, [onDay(tripC, 12)]),
+    buildLine("9004", 20, [onDay(tripA, 7), onDay(tripB, 16)]),
+    buildLine("9005", 19, [onDay(tripA, 9), onDay(tripC, 15)]),
+    buildLine("9006", 18, [onDay(tripB, 6), onDay(tripC, 14)]),
   ],
   // Fictional, same as everything else above — a distinct 8000-series
   // numbering block from the 9000-series regular lines, matching how a real

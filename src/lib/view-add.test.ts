@@ -95,11 +95,22 @@ describe("fitCheck: can it go on the schedule", () => {
     const v: VacationPeriod = { from: start.toUTC().toISO()!, to: start.plus({ days: 7 }).toUTC().toISO()!, days: 7 };
     expect(fitCheck(trip("2", 5), [], [v], p).illegal[0]).toContain("7.A.3");
   });
-  it("CBA 2026 7.G.1: a vacation inside a long international trip's buffer is flagged", () => {
+  it("CBA 2026 7.G.1: a vacation inside a long international trip's buffer after it rules it out: that buffer may not be waived", () => {
     const t = trip("2", 1, { airports: ["MEM", "HKG"], tafb: 130 });
     const start = DateTime.fromISO(`${START.DEC26}T08:00`, { zone: ZONE }).plus({ days: 1 }).plus({ hours: 140 });
     const v: VacationPeriod = { from: start.toUTC().toISO()!, to: start.plus({ days: 7 }).toUTC().toISO()!, days: 7 };
-    expect(fitCheck(t, [], [v], p).check.join()).toContain("48-hour international buffer");
+    expect(fitCheck(t, [], [v], p).illegal.join()).toContain("48-hour international buffer");
+  });
+
+  it("CBA 7.G.1: before December 2026 a vacation ending inside the 24 hours before a long trip rules it out; from then a bid line adjustment waives it", () => {
+    const vacationEnding = (month: keyof typeof START) => {
+      const end = DateTime.fromISO(`${START[month]}T08:00`, { zone: ZONE }).plus({ days: 5 }).minus({ hours: 10 });
+      return { from: end.minus({ days: 7 }).toUTC().toISO()!, to: end.toUTC().toISO()!, days: 7 } as VacationPeriod;
+    };
+    const t = trip("2", 5, { airports: ["MEM", "HKG"], tafb: 130 });
+    const nov = pack([], [], "NOV26");
+    expect(fitCheck(t, [], [vacationEnding("NOV26")], nov).illegal.join()).toContain("24-hour international buffer");
+    expect(fitCheck(t, [], [vacationEnding("DEC26")], p).illegal.join()).not.toContain("24-hour international buffer");
   });
   it("CBA 2026 12.C.1.b: past 144 hours with no 24 hours off rules it out; the October lines reach 144 and never pass it", () => {
     const run = [0, 1, 2, 3, 4, 5].map((d) => busy(trip(String(d), d, { tafb: 10 })));

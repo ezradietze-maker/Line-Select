@@ -4,12 +4,14 @@ import { awardHistoryRecords } from "@/lib/server/schema";
 import type { AwardRow } from "@/lib/server/award-aggregate";
 
 const mocks = vi.hoisted(() => ({
-  user: vi.fn<() => Promise<{ id: string; email: string; displayName: string } | null>>(async () => null),
+  user: vi.fn<() => Promise<{ id: string; email: string; displayName: string; emailVerified?: boolean } | null>>(async () => null),
   rows: vi.fn<() => Promise<AwardRow[]>>(async () => []),
   packRows: vi.fn<() => Promise<AwardRow[]>>(async () => []),
   create: vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
   remove: vi.fn<(...args: unknown[]) => Promise<number>>(async () => 3),
   active: vi.fn<() => Promise<{ sampleSize: number } | null>>(async () => null),
+  // Which tags belong to confirmed accounts; null for every one of them.
+  verified: { only: null as Set<string> | null },
 }));
 vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: mocks.user }));
 vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: async () => ({ ok: true }), checkRequestLimit: async () => ({ ok: true }), rateLimitedResponse: () => new Response(null, { status: 429 }) }));
@@ -18,18 +20,23 @@ vi.mock("@/lib/server/learning-store", () => ({ awardedChoiceFromPrediction: asy
 vi.mock("@/lib/server/learning-runner", () => ({ maybeLearn: async () => {} }));
 vi.mock("@/lib/server/after-response", () => ({ afterResponse: () => {} }));
 vi.mock("@/lib/server/forecast-store", async () => ({ hashUser: (await import("@/lib/server/pilot-hash")).hashUser }));
+vi.mock("@/lib/server/verified-pilots", async (real) => ({
+  ...(await real<typeof import("@/lib/server/verified-pilots")>()),
+  verifiedPilotHashes: async () => mocks.verified.only ?? { has: () => true },
+}));
 
 const { GET, POST, DELETE } = await import("./route");
 const { GET: heldBy } = await import("./held-by/route");
 
 const URL_BASE = "https://example.com/api/award-history";
-const pilot = { id: "11111111-1111-4111-8111-111111111111", email: "someone@example.com", displayName: "Some Pilot" };
-const row = (i: number, over: Partial<AwardRow> = {}): AwardRow => ({ pilotHash: `hash${i}`, seniorityRank: i + 1, seniorityTotalPilots: 100, outcome: "line", lineNumber: String(1000 + i), daysOff: 15, totalCreditHours: 70, holderShown: true, ...over });
+const pilot = { id: "11111111-1111-4111-8111-111111111111", email: "someone@example.com", displayName: "Some Pilot", emailVerified: true };
+const row = (i: number, over: Partial<AwardRow> = {}): AwardRow => ({ pilotHash: `hash${i}`, seniorityRank: i + 1, seniorityTotalPilots: 100, outcome: "line", lineNumber: String(1000 + i), daysOff: 15, totalCreditHours: 70, holderShown: true, submittedAt: new Date(Date.UTC(2026, 9, 1) + i * 60_000), ...over });
 const post = (body: unknown) => new Request(URL_BASE, { method: "POST", body: JSON.stringify(body) });
 const report = { base: "MEM", aircraft: "MD11", seat: "CAP", month: "OCT26", seniorityRank: 12, seniorityTotalPilots: 100, outcome: "line", lineNumber: "1033", daysOff: 15, totalCreditHours: 70, totalTafbHours: 200 };
 
 beforeEach(() => {
-  for (const m of Object.values(mocks)) m.mockClear();
+  for (const m of [mocks.user, mocks.rows, mocks.packRows, mocks.create, mocks.remove, mocks.active]) m.mockClear();
+  mocks.verified.only = null;
   mocks.user.mockResolvedValue(null);
   mocks.rows.mockResolvedValue([]);
   mocks.packRows.mockResolvedValue([]);
@@ -100,7 +107,7 @@ describe("the open listing", () => {
   it("holds back a small group", async () => {
     mocks.rows.mockResolvedValue([row(0), row(1), row(2)]);
     const { bands } = await (await get()).json();
-    expect(bands[0]).toEqual({ reports: 3, avgDaysOff: null, avgCreditHours: null, lineRate: null });
+    expect(bands[0]).toEqual({ reports: 0, avgDaysOff: null, avgCreditHours: null, lineRate: null });
   });
 });
 
@@ -134,6 +141,52 @@ describe("who held what", () => {
     mocks.active.mockResolvedValue({ sampleSize: 42 });
     expect((await (await get()).json()).oddsCheckedAgainst).toBe(42);
     expect(mocks.packRows).toHaveBeenCalledWith("oct26|mem|md11|cap");
+  });
+});
+
+describe("an account whose email isn't confirmed", () => {
+  const unconfirmed = { ...pilot, emailVerified: false };
+
+  it("can't share what it held, and is told to confirm its email", async () => {
+    mocks.user.mockResolvedValue(unconfirmed);
+    const res = await POST(post(report));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ confirmEmail: true, error: expect.stringMatching(/^Confirm your email/) });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("can't see who held what", async () => {
+    mocks.user.mockResolvedValue(unconfirmed);
+    mocks.packRows.mockResolvedValue(Array.from({ length: 8 }, (_, i) => row(i)));
+    const res = await heldBy(new Request(`${URL_BASE}/held-by?base=MEM&aircraft=MD11&seat=CAP&month=OCT26`));
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain("1003");
+  });
+
+  it("doesn't count toward group numbers: four confirmed pilots and one not are short of five", async () => {
+    mocks.rows.mockResolvedValue(Array.from({ length: 5 }, (_, i) => row(i)));
+    mocks.verified.only = new Set(["hash0", "hash1", "hash2", "hash3"]);
+    const get = async () => (await GET(new Request(`${URL_BASE}?base=MEM&aircraft=MD11&seat=CAP`))).json();
+    expect((await get()).totalReports).toBe(0);
+    mocks.verified.only.add("hash4");
+    expect((await get()).totalReports).toBe(5);
+  });
+
+  it("doesn't count toward Held by, nor is its claim shown", async () => {
+    mocks.user.mockResolvedValue(pilot);
+    mocks.packRows.mockResolvedValue(Array.from({ length: 6 }, (_, i) => row(i)));
+    mocks.verified.only = new Set(["hash0", "hash1", "hash2", "hash3"]);
+    const get = async () => (await heldBy(new Request(`${URL_BASE}/held-by?base=MEM&aircraft=MD11&seat=CAP&month=OCT26`))).json();
+    expect((await get()).holders).toEqual([]);
+    mocks.verified.only.add("hash4");
+    const holders = (await get()).holders as { lineNumber: string }[];
+    expect(holders.map((h) => h.lineNumber)).toEqual(["1000", "1001", "1002", "1003", "1004"]);
+  });
+
+  it("a report with no tag can't be traced to a confirmed account, so it isn't counted", async () => {
+    mocks.rows.mockResolvedValue([...Array.from({ length: 4 }, (_, i) => row(i)), row(4, { pilotHash: null })]);
+    mocks.verified.only = new Set(["hash0", "hash1", "hash2", "hash3"]);
+    expect((await (await GET(new Request(`${URL_BASE}?base=MEM&aircraft=MD11&seat=CAP`))).json()).totalReports).toBe(0);
   });
 });
 

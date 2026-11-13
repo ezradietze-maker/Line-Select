@@ -4,7 +4,9 @@ import { useState } from "react";
 import { NoteBox } from "@/components/ui/NoteBox";
 import { Button } from "@/components/ui/Button";
 import { PaperPlane } from "@/components/ui/PaperPlane";
+import { useAppState } from "@/lib/app-state";
 import { submitFeedback } from "@/lib/feedback-client";
+import { clearFeedbackDraft, loadFeedbackDraft, saveFeedbackDraft } from "@/lib/feedback-draft";
 import type { FeedbackCategory } from "@/types/feedback";
 
 const CATEGORIES: { value: FeedbackCategory; label: string }[] = [
@@ -20,8 +22,11 @@ interface FeedbackFormProps {
 }
 
 export function FeedbackForm({ page, onClose }: FeedbackFormProps) {
-  const [category, setCategory] = useState<FeedbackCategory>("idea");
-  const [message, setMessage] = useState("");
+  const userId = useAppState().user?.id ?? null;
+  // What they'd typed before the dialog last closed without sending, kept on this device (`feedback-draft.ts`).
+  const [draft] = useState(() => loadFeedbackDraft(userId));
+  const [category, setCategory] = useState<FeedbackCategory>(draft?.category ?? "idea");
+  const [message, setMessage] = useState(draft?.message ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -53,7 +58,18 @@ export function FeedbackForm({ page, onClose }: FeedbackFormProps) {
       setError(result.error ?? "Something went wrong. Try again.");
       return;
     }
+    clearFeedbackDraft(userId);
     setSent(true);
+  }
+
+  function changeCategory(next: FeedbackCategory) {
+    setCategory(next);
+    saveFeedbackDraft(userId, { category: next, message });
+  }
+
+  function changeMessage(next: string) {
+    setMessage(next);
+    saveFeedbackDraft(userId, { category, message: next });
   }
 
   return (
@@ -69,7 +85,7 @@ export function FeedbackForm({ page, onClose }: FeedbackFormProps) {
             <button
               key={c.value}
               type="button"
-              onClick={() => setCategory(c.value)}
+              onClick={() => changeCategory(c.value)}
               className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
                 category === c.value
                   ? "border-brand bg-brand-soft text-brand"
@@ -90,7 +106,7 @@ export function FeedbackForm({ page, onClose }: FeedbackFormProps) {
         <NoteBox
           id="feedback-message"
           value={message}
-          onChange={setMessage}
+          onChange={changeMessage}
           rows={5}
           maxLength={4000}
           placeholder="The more specific, the more useful — what were you doing, what did you expect, what happened instead? (or tap the mic and say it)"

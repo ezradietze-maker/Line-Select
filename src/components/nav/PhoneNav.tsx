@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AccountMenu } from "@/components/nav/AccountMenu";
+import { AccountMenu, AccountPlaceholder } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { FeedbackIcon, InfoIcon, type NavProps } from "@/components/nav/LeftNav";
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
 import { SearchIcon } from "@/components/ui/icons";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
+import { dialogOpen } from "@/components/ui/Modal";
 
 /** The four destinations a pilot reaches for every month get a tab of their own; the crew tools share "More". */
 const TAB_TARGETS: NavTarget[] = ["upload", "preferences", "results", "strategies"];
@@ -43,6 +44,7 @@ export function PhoneNav({
   hasProfile,
   hasBidPack,
   user,
+  ready,
   inboxUnreadCount = 0,
   pack,
   onNavigate,
@@ -63,7 +65,8 @@ export function PhoneNav({
     const moreButton = moreButtonRef.current;
     sheetRef.current?.querySelector<HTMLElement>("button:not([disabled])")?.focus();
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setMoreOpen(false);
+      // Not while a dialog opened from the sheet is up: that Escape is the dialog's (`dialogOpen`).
+      if (e.key === "Escape" && !dialogOpen()) setMoreOpen(false);
     }
     document.addEventListener("keydown", onKey);
     return () => {
@@ -81,25 +84,29 @@ export function PhoneNav({
     <>
       <header
         style={{ viewTransitionName: "app-topbar" }}
-        className="sidebar-scheme sticky top-0 z-30 flex items-center justify-between border-b border-sidebar-border bg-sidebar/95 px-4 py-2.5 backdrop-blur md:hidden"
+        className="sidebar-scheme sticky top-0 z-30 flex flex-wrap items-center justify-between gap-x-2.5 gap-y-2 border-b border-sidebar-border bg-sidebar/95 px-4 py-2.5 backdrop-blur md:hidden"
       >
-        <button type="button" onClick={() => go(homeTarget(hasProfile, hasBidPack))} className="flex items-center gap-2" aria-label="Line Select home">
+        {/* With large text the bar takes two rows rather than run off the side: the page scrolled sideways, and the tab
+            bar's More went off the edge with it. The pack's name gives up its room first. */}
+        <button type="button" onClick={() => go(homeTarget(hasProfile, hasBidPack))} className="flex shrink-0 items-center gap-2" aria-label="Line Select home">
           <LogoMark className="h-8 w-8" />
           <Wordmark className="text-base" />
         </button>
-        <div className="flex items-center gap-2.5">
+        <div className="ml-auto flex min-w-0 items-center gap-2.5">
           {pack && (
-            <span className="flex items-center gap-1.5 font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
+            <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
               {/* The loaded pack's beacon, as on the desktop sidebar. */}
-              <span aria-hidden className="beacon h-1.5 w-1.5 rounded-full bg-good text-good" />
-              {pack.base} &middot; <span className="text-accent">{pack.month}</span>
+              <span aria-hidden className="beacon h-1.5 w-1.5 shrink-0 rounded-full bg-good text-good" />
+              <span className="truncate">
+                {pack.base} &middot; <span className="text-accent">{pack.month}</span>
+              </span>
             </span>
           )}
           <button
             type="button"
             onClick={onOpenPalette}
             aria-label="Jump to a line or screen"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-hairline text-ink-muted transition-colors active:text-ink"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-hairline text-ink-muted transition-colors active:text-ink"
           >
             <SearchIcon className="h-[17px] w-[17px]" />
           </button>
@@ -134,7 +141,7 @@ export function PhoneNav({
           )}
           {TAB_TARGETS.map((target, i) => {
             const item = NAV_ITEMS.find((n) => n.target === target)!;
-            const reason = disabledReason(target, hasProfile, hasBidPack);
+            const reason = disabledReason(target, hasProfile, hasBidPack, ready);
             const isActive = tabIndex === i;
             return (
               <button
@@ -241,17 +248,21 @@ export function PhoneNav({
             </div>
 
             <div className="mt-3">
-              <AccountMenu
-                user={user}
-                onSignIn={() => {
-                  setMoreOpen(false);
-                  onSignIn();
-                }}
-                onLogout={() => {
-                  setMoreOpen(false);
-                  onLogout();
-                }}
-              />
+              {ready ? (
+                <AccountMenu
+                  user={user}
+                  onSignIn={() => {
+                    setMoreOpen(false);
+                    onSignIn();
+                  }}
+                  onLogout={() => {
+                    setMoreOpen(false);
+                    onLogout();
+                  }}
+                />
+              ) : (
+                <AccountPlaceholder />
+              )}
             </div>
           </div>
         </div>

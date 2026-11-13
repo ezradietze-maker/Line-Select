@@ -77,8 +77,9 @@ function columnClass(col: PackColumn): string {
 
 /** What a strip's words, lines and shading mean, once above the list — for whichever strip the pilot is reading. */
 export function StripKey({ view, hint = "Tap a line for everything about it.", className = "" }: { view: StripViewMode; hint?: string; className?: string }) {
+  // An item stays on one line while it fits; a long one wraps on a narrow phone rather than push the page sideways.
   const item = (swatch: ReactNode, label: string) => (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+    <span className="inline-flex items-center gap-1.5 [&>:first-child]:shrink-0">
       {swatch}
       {label}
     </span>

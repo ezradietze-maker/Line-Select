@@ -1,17 +1,29 @@
 import { NextResponse } from "next/server";
 import { AUTH_LIMITS, signUpProblem } from "@/lib/auth-limits";
+import { reportProblem } from "@/lib/server/alerts";
+import { afterResponse } from "@/lib/server/after-response";
 import { isJsonObject, isText } from "@/lib/server/json-body";
-import { SESSION_COOKIE, sessionCookieOptions, signUp } from "@/lib/server/auth";
-import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { SESSION_COOKIE, sessionCookieOptions, signUp, signUpByEmail, signUpInputError } from "@/lib/server/auth";
+import { isEmailConfigured } from "@/lib/server/email";
+import { checkRateLimit, clientIp, deviceIdFrom, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 
+/** New accounts one address may make. */
+const SIGNUPS_PER_ADDRESS = { hour: 3, day: 10 };
+
 export async function POST(request: Request) {
   const refused = crossSiteRefusal(request);
   if (refused) return refused;
-  const { ok } = await checkRequestLimit("auth-signup", request, 5, 60 * 60);
-  if (!ok) return rateLimitedResponse();
+  // Per address, whatever the device: a new device costs nothing, and each account brings its own daily AI allowance,
+  // so the old per-device limit let one address make 50 accounts an hour. A crew room's few new pilots a day still fit.
+  const ip = clientIp(request);
+  const [hour, day] = await Promise.all([
+    checkRateLimit("auth-signup-address-hour", ip, SIGNUPS_PER_ADDRESS.hour, 60 * 60),
+    checkRateLimit("auth-signup-address-day", ip, SIGNUPS_PER_ADDRESS.day, 24 * 60 * 60),
+  ]);
+  if (!hour.ok || !day.ok) return rateLimitedResponse();
 
   let body: { email?: string; password?: string; displayName?: string };
   try {
@@ -28,6 +40,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: problem ?? "Email, password, and display name are required." }, { status: 400 });
   }
 
+  if (isEmailConfigured()) {
+    // The fields are checked here, before anything about the address is looked up; everything after (whether it has
+    // an account, the password's hash, the account, the email) runs once this has answered. So the answer, and how long
+    // it takes, are the same for an address with an account as for one without: sign-up can't be used to find out who
+    // has one, nor to take over an account by its address (`signUpByEmail`).
+    const inputError = signUpInputError(email, password, displayName);
+    if (inputError) return NextResponse.json({ error: inputError }, { status: 400 });
+    const device = deviceIdFrom(request);
+    afterResponse(() => signUpByEmail(email, password, displayName, device).catch((e) => reportProblem("accounts", e, { action: "sign up" })));
+    return NextResponse.json({ checkEmail: true });
+  }
+
+  // No email on this server: nothing could confirm the address, so the account is made and signed in at once, unconfirmed.
   const result = await signUp(email, password, displayName);
   if (!result.ok || !result.user || !result.sessionToken) {
     return NextResponse.json({ error: result.error ?? "Something went wrong." }, { status: 400 });

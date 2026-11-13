@@ -6,6 +6,7 @@ import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
 import { forecastWithCore, resolveBidPosition } from "@/lib/forecast/forecast";
 import { applyCalibration, resolveForecastPrior, type Calibration, type ForecastPriorModel } from "@/lib/learning/forecast-learning";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { isVerified } from "@/lib/server/verified-pilots";
 import { blobKey, hashUser, loadKnownRankings, removeSubmission, saveSubmission } from "@/lib/server/forecast-store";
 import { deleteForecastPrediction, loadActiveModel, parsePackKey, saveForecastPrediction, savePackFeatures } from "@/lib/server/learning-store";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -79,9 +80,11 @@ export async function POST(request: Request) {
   // several sharers sit ahead, so no one ranking can be picked out.
   // Counted only among those the caller's list has bidding: marking everyone else PAY (or leaving them off) left one
   // sharer the only one bidding ahead, however many were counted.
+  // And only confirmed accounts: one made up in a minute is no better than a guest.
   const askedAt = resolveBidPosition(sentList, seniority).bidNumber;
   const bidding = new Set(sentList.map((e) => e.bidNumber));
-  const known = user && sharing.known.filter((k) => k.bidNumber < askedAt && bidding.has(k.bidNumber)).length >= MIN_SHARERS_AHEAD ? sharing.known : [];
+  const confirmed = isVerified(user);
+  const known = confirmed && sharing.known.filter((k) => k.bidNumber < askedAt && bidding.has(k.bidNumber)).length >= MIN_SHARERS_AHEAD ? sharing.known : [];
   // With shared rankings in it, who bids isn't the caller's to choose: no one is left out as PAY, and pilots drop out
   // at no less than the usual rate, so a list built round one sharer can't single out their first choice.
   const list = known.length ? sentList.map(({ bidNumber, seniority: s }) => ({ bidNumber, seniority: s })) : sentList;
@@ -115,9 +118,13 @@ export async function POST(request: Request) {
 
   // Kept for the learning, after the response: this month's line features
   // (numbers only), and for a signed-in pilot who shares, the raw forecast
-  // they were shown — checked against the award they report later.
+  // they were shown — checked against the award they report later. Only a
+  // signed-in pilot's features are kept: the first copy under a key stays, and
+  // a guest's, made up and sent first, would be what every pilot's rankings
+  // and awards for the pack were read against. Likewise only a confirmed account's.
   const position = resolveBidPosition(list, seniority);
   afterResponse(async () => {
+    if (!user || !confirmed) return;
     try {
       const key = blobKey(packKey, lineNumbers);
       await savePackFeatures(key, packKey, lineFeatures);
@@ -138,9 +145,11 @@ export async function POST(request: Request) {
     }
   });
 
-  let shared: "stored" | "not-signed-in" | "not-requested" | "position-taken" | "store-full" | "unlisted" | "failed" = "not-requested";
+  let shared: "stored" | "not-signed-in" | "unconfirmed" | "not-requested" | "position-taken" | "store-full" | "unlisted" | "failed" = "not-requested";
   if (body.share === true) {
     if (!user) shared = "not-signed-in";
+    // Each shared ranking is one more pilot ahead in everyone's forecast: only a confirmed account's is kept.
+    else if (!confirmed) shared = "unconfirmed";
     else if (!position.exact) shared = "unlisted";
     else {
       // The forecast is already worked out: a failed save costs the pilot their share, not the answer.

@@ -1,4 +1,4 @@
-import { structuredCall, type BrainUsage } from "@/lib/brain/llm";
+import { callCeilingUsd, schemaChars, structuredCall, type BrainUsage } from "@/lib/brain/llm";
 import { neverSayForPrompt } from "@/lib/brain/pilot-words";
 
 /**
@@ -67,6 +67,13 @@ function listOf(options: ReasonOption[], higher: string, lower: string): string 
   return options.map((o) => `- ${o.id}: ${o.label} (line ${higher}: ${o.higher}; line ${lower}: ${o.lower})`).join("\n") || "(none)";
 }
 
+const MAX_TOKENS = 1000;
+
+/** The most `readSwapReason` can cost, held against the spend ceilings before it's asked. The lists, as JSON, are longer than as the prompt writes them. */
+export function swapReasonCeilingUsd(input: SwapReasonInput): number {
+  return callCeilingUsd(SWAP_REASON_MODEL, SYSTEM.length + schemaChars(SCHEMA) + JSON.stringify(input).length, MAX_TOKENS);
+}
+
 export async function readSwapReason(input: SwapReasonInput & { apiKey?: string }): Promise<{ reason: SwapReason; usage: BrainUsage }> {
   const { data, usage } = await structuredCall<SwapReason>({
     apiKey: input.apiKey,
@@ -77,7 +84,7 @@ export async function readSwapReason(input: SwapReasonInput & { apiKey?: string 
     },
     schema: SCHEMA as unknown as Record<string, unknown>,
     effort: "low",
-    maxTokens: 1000,
+    maxTokens: MAX_TOKENS,
   });
   return { reason: cleanSwapReason(data, input), usage };
 }
