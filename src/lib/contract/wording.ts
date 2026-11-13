@@ -14,10 +14,14 @@ export function appliesLine(applies: Applicability, version: ContractVersion): s
       return version === "2015"
         ? "The 2015 wording. It was replaced on June 29, 2026, the Agreement's general effective date: the implementation chart doesn't give this change a later date."
         : "In force since June 29, 2026, the Agreement's general effective date: the implementation chart doesn't give this change a later date.";
+    case "undated":
+      return version === "2015"
+        ? "The 2015 wording. The implementation chart doesn't date this change, and it may belong with a change dated later, so it doesn't say when the 2026 wording starts."
+        : "Changed in 2026. The implementation chart doesn't date this change, and it may belong with a change dated later, so it doesn't say when this wording starts.";
     case "mixed":
       return `Parts of this change at different times: ${applies.phases.map((p) => `Phase ${p.phase}, ${p.startsLabel} (${p.refs.slice(0, 4).join(", ")}${p.refs.length > 4 ? "…" : ""})`).join("; ")}.`;
     case "scheduled": {
-      const note = applies.note ? ` Chart note: ${applies.note}.` : "";
+      const note = !applies.note ? "" : applies.note.startsWith("Not on the chart") ? ` ${applies.note}.` : ` Chart note: ${applies.note}.`;
       const phase = `Phase ${applies.phase}`;
       if (version === "2015") {
         if (applies.manual) return `The 2015 wording. The change has been in force since June 29, 2026, applied by hand until it's automated, by ${applies.startsLabel} (${phase}).${note}`;
@@ -37,6 +41,8 @@ export function appliesShort(applies: Applicability): string {
       return "same wording as 2015";
     case "unlisted":
       return "in force since June 29, 2026, the general effective date";
+    case "undated":
+      return "changed in 2026, not dated by the implementation chart";
     case "mixed":
       return "parts change at different times";
     case "scheduled":

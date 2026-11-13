@@ -215,3 +215,100 @@ describe("the contract validator", () => {
     expect(said("Aircraft over 6,000 lbs.", weight)).toBe(false);
   });
 });
+
+describe("the contract validator, held to where each claim is made", () => {
+  type Q = RawAnswer["quotes"][number];
+  const SWW: Q = { section: "25.E.6", version: "2026", quote: QUOTE };
+  const STUDENT: Q = { section: "25.C.13.a", version: "2026", quote: "specific regular lines awarded to LCAs may be designated as student lines." };
+  const BHS: Q = { section: "25.M.3.a.vii", version: "2026", quote: "the Company may assign a pilot once per bid period to base hotel standby for a block or a portion of a block of R-days" };
+  const RES: Q = { section: "25.M.3.b.i", version: "2026", quote: "Except for R-24, pilots shall be scheduled for either R-1.5, R-2, or R-3 status for an entire RP block." };
+  const FACTS = "The pilot's bid pack: OCT26, IND B767 CAP, a 28-day bid period.\nLine 1001 as printed: 15 days off, 78.6 CH, 294.73 hours TAFB, 1 trips.";
+  const ok = (answer: string, quotes: Q[], ctx: { question?: string; facts?: string; bidMonth?: string } = {}) =>
+    validateAnswer({ found: true, answer, quotes }, { question: "q", bidMonth: "2026-11", ...ctx }).ok;
+
+  it("reads a date however it's written, and checks a month with no year", () => {
+    for (const date of ["Oct 2027", "Dec. 2027", "October of 2027", "October 2027", "the July bid period"]) expect(ok(`The 115-hour SWW starts by ${date}.`, [SWW])).toBe(false);
+    expect(ok("The 115-hour SWW does not start until 2027.", [SWW])).toBe(false);
+    expect(ok("The 115-hour SWW starts by Dec. 2026.", [SWW])).toBe(true);
+    expect(ok("The 115-hour SWW starts with the December bid period.", [SWW])).toBe(true);
+    expect(ok("The once-per-bid-period limit has applied since 29 June 2026.", [BHS])).toBe(true);
+    expect(ok("The once-per-bid-period limit has applied since June 29th, 2026.", [BHS])).toBe(true);
+    expect(ok("The once-per-bid-period limit starts with the December bid period.", [BHS])).toBe(false);
+    for (const phase of ["phase 3", "Phase Three", "Phase III", "the third phase"]) expect(ok(`The once-per-bid-period limit is a ${phase} change.`, [BHS])).toBe(false);
+    expect(ok("The 115-hour SWW is a Phase II change.", [SWW])).toBe(true);
+    expect(ok("A phase-in conflict doesn't change the 115-hour SWW.", [SWW])).toBe(true);
+  });
+
+  it("holds a date to the rule its clause speaks of, and the bid month only to the period asked about", () => {
+    expect(ok("The 115-hour SWW starts by the October 2027 bid period.", [SWW, STUDENT])).toBe(false);
+    expect(ok("Student lines start by the October 2027 bid period, and the 115-hour SWW by the December 2026 bid period.", [SWW, STUDENT])).toBe(true);
+    expect(ok("The 115-hour SWW starts by the October 2027 bid period.", [SWW, { ...STUDENT, quote: "student lines" }])).toBe(false);
+    expect(ok("The 115-hour SWW has applied since the November 2026 bid period.", [SWW])).toBe(false);
+    expect(ok("The 115-hour SWW isn't in force for the November 2026 bid period.", [SWW])).toBe(true);
+    const march = "Yes. The 115-hour SWW starts by the December 2026 bid period, so it applies in the March 2027 bid period.";
+    expect(ok(march, [SWW], { question: "Will the 115-hour SWW apply in the March 2027 bid period?" })).toBe(true);
+    expect(ok(march, [SWW])).toBe(false);
+    expect(ok("The 115-hour SWW starts by the March 2027 bid period.", [SWW], { question: "Will the 115-hour SWW apply in the March 2027 bid period?" })).toBe(false);
+    // A rule in force by hand since signing and automated later: each date stays with its own word.
+    const disruption: Q = { section: "25.S.2.a", version: "2026", quote: contractNode("25.S.2.a")!.text.split(/\s+/).slice(0, 12).join(" ") };
+    expect(ok("This has been in force since June 29, 2026, applied by hand until automated by the December 2026 bid period.", [disruption])).toBe(true);
+    expect(ok("This has been in force since December 2026, applied by hand until automated by the June 2026 bid period.", [disruption])).toBe(false);
+  });
+
+  it("lets no pack figure back a rule, however the sentence is cut", () => {
+    const facts = { facts: FACTS };
+    for (const answer of [
+      "Line 1001 meets the contract's minimum of 15 days off.",
+      "Unlike line 1001, the contract requires at least 15 days off in every bid period.",
+      "Line 1001 has 15 days off — the contract requires at least 15 days off.",
+      "Line 1001 has 15 days off: the contract requires at least 15 days off.",
+      "Line 1001\n- 15 days off\n- The contract requires at least 15 days off",
+      "Line 1001 has 15 days off (the contract minimum is 15 days off).",
+      "The contract allows at most 26 work days on line 1001.",
+      "On line 1001 the contract caps duty at 28 days in a row.",
+    ])
+      expect(ok(answer, [SWW], facts)).toBe(false);
+    for (const answer of [
+      "Line 1001 has 15 days off, and 78.6 CH.",
+      "Line 1001 has 15 days off. It has 78.6 CH and 294.73 hours TAFB.",
+      "Line 1001 has 1 trip, which totals 78.6 CH.",
+      "Line 1001\n- 15 days off\n- 78.6 CH",
+      "Line 1001 has 15 days off in a 28-day bid period.",
+    ])
+      expect(ok(answer, [SWW], facts)).toBe(true);
+  });
+
+  it("reads no quantity from a reserve status, and hides none behind one", () => {
+    expect(ok("A reserve pilot's status can be changed with 24 hours' notice.", [RES])).toBe(false);
+    expect(ok("CRS must give 1.5 hours' notice before changing a reserve status.", [RES])).toBe(false);
+    expect(ok("An R-3 pilot must be reachable for R-24 hours.", [RES])).toBe(false);
+    expect(ok("Except for R‑24, reserve pilots hold R-1.5, R-2 or R-3 status for an entire RP block.", [RES])).toBe(true);
+    const nonR24: Q = {
+      section: "25.M.3.a.vii",
+      version: "2026",
+      quote: "If, due to a shortage of non R-24 pilots, an R-24 pilot is needed in the pilot’s base for shorter notification, the Company may assign a pilot once per bid period to base hotel standby",
+    };
+    expect(ok("The Company may hold a reserve pilot on base hotel standby for up to 24 hours once per bid period.", [nonR24])).toBe(false);
+  });
+
+  it("lets a section a quote names in, exactly, and not what's above it", () => {
+    const smu: Q = { section: "25.L.6.f", version: "2026", quote: "If a SMU trip is dropped as provided in Section 25.L.3.a., those CH revert to general make up (M/U)." };
+    expect(ok("Dropped as provided in 25.L.3.a, a SMU trip's CH revert to general make up (M/U).", [smu])).toBe(true);
+    expect(ok("Under Section 25.L.3, a dropped SMU trip's CH revert to general make up (M/U).", [smu])).toBe(false);
+    const cancel: Q = { section: "7.I.1", version: "2026", quote: "The Company will not use vacation cancelations (Section 7.I.2. and 3) in a crew position (including BPO pilots) which has been bought up to the Section 4.A.1. Minimum Bid Period Guarantee." };
+    expect(ok("The Company will not use the cancelations in 7.I.2 and 7.I.3 in a crew position bought up to the Section 4.A.1 guarantee.", [cancel])).toBe(true);
+    expect(ok("The Company will not use the cancelations in 7.I.4 in a crew position bought up to the Section 4.A.1 guarantee.", [cancel])).toBe(false);
+  });
+
+  it("reads 'one' standing for a thing named before as no count", () => {
+    expect(ok("The Company may assign base hotel standby once per bid period, and each one beyond that needs the pilot's consent.", [BHS])).toBe(true);
+    expect(ok("A trip in open time, including a dropped one, may go to base hotel standby once per bid period.", [BHS])).toBe(true);
+    expect(ok("Only one is allowed per block of R-days.", [BHS])).toBe(false);
+    expect(ok("The Company may assign the one day of base hotel standby per bid period.", [BHS])).toBe(false);
+  });
+
+  it("refuses more quotes than an answer needs", () => {
+    expect(validateAnswer({ found: true, answer: "It runs 115 hours.", quotes: Array.from({ length: 31 }, () => SWW) }, { question: "q" })).toMatchObject({ ok: false, reason: expect.stringContaining("at most 30") });
+    expect(ok("It runs 115 hours.", Array.from({ length: 30 }, () => SWW))).toBe(true);
+  });
+});

@@ -38,7 +38,9 @@ export type Applicability =
   | { kind: "unchanged" }
   | { kind: "scheduled"; phase: 1 | 2 | 3 | 4; startsLabel: string; inForce: boolean; manual: boolean; note?: string }
   | { kind: "mixed"; phases: { phase: 1 | 2 | 3 | 4; startsLabel: string; refs: string[] }[] }
-  | { kind: "unlisted" };
+  | { kind: "unlisted" }
+  /** A change the chart doesn't list that ties to one it dates later, too loosely to say which date it takes. */
+  | { kind: "undated" };
 
 export interface AnswerQuote {
   section: string;
