@@ -29,6 +29,7 @@ function lastKnownFor(userId: string | null): PreferenceProfile | null {
 /** Signed out: what this tab last knew of the account's copy isn't what any later save starts from. */
 export function forgetLastKnownProfile(): void {
   lastKnown = null;
+  lastRun = null;
 }
 
 /**
@@ -101,6 +102,7 @@ export function clearProfile(userId: string | null): void {
   if (typeof window === "undefined") return;
   clearedProfiles.set(profileKey(userId), clearCount(userId) + 1);
   if (lastKnown?.userId === userId) lastKnown = null;
+  if (lastRun?.userId === userId) lastRun = null;
   try {
     window.localStorage.removeItem(profileKey(userId));
   } catch {
@@ -184,15 +186,32 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
 /**
  * Where a signed-in pilot's save ended up: on the server ("saved"); merged with a newer copy from another device
  * ("merged" — `profile` is what's now saved, and what the app should show); or only on this device for now
- * ("failed" — retried later). A guest's save is "local".
+ * ("failed" — retried later; `profile` may be a merged copy whose second send failed, and it is what the app should
+ * show and retry with). A guest's save is "local".
  */
 export type ProfileSync = "local" | "saved" | "merged" | "failed";
+
+/**
+ * A signed-in pilot's saves run one at a time, each one whole — sent, refused, merged and sent again — before the next
+ * starts. Run side by side, an edit saved while the one before it was being merged went up first, and the merged copy
+ * (the other device's change with the first edit) then landed over it: the second edit was lost.
+ */
+let saving: Promise<unknown> = Promise.resolve();
+
+/**
+ * The last save this tab ran: what it sent, and what the account ended up with (a merged copy, when it was refused).
+ * The next save was made from what was sent — the screen didn't have the merged copy yet — so it's laid over the merged
+ * copy (`mergeAfterConflict` against what was sent), rather than sent over it and the other device's change lost again.
+ */
+let lastRun: { userId: string; sent: PreferenceProfile; result: PreferenceProfile } | null = null;
 
 export async function saveProfileForUser(userId: string | null, profile: PreferenceProfile): Promise<{ savedLocally: boolean; sync: ProfileSync; profile: PreferenceProfile }> {
   if (!userId) return saveGuestProfile(profile);
   const savedLocally = saveProfile(userId, profile);
   const asOf = clearCount(userId);
-  const outcome = await sendForUser(userId, profile, asOf);
+  const run = saving.then(() => sendInTurn(userId, profile, asOf));
+  saving = run.catch(() => {});
+  const outcome = await run;
   // Signed out (or started over) while it was on its way: nothing of it is written back to this device.
   if (clearCount(userId) !== asOf) return { savedLocally, ...outcome };
   // Read after the save had its turn: saves wait for one another, so before it a save just ahead of this one hadn't
@@ -200,6 +219,23 @@ export async function saveProfileForUser(userId: string | null, profile: Prefere
   if (outcome.sync === "failed") markUnsynced(userId, serverProfileVersion());
   else clearUnsynced(userId);
   return { savedLocally, ...outcome };
+}
+
+async function sendInTurn(userId: string, profile: PreferenceProfile, asOf: number): Promise<{ sync: ProfileSync; profile: PreferenceProfile }> {
+  if (clearCount(userId) !== asOf) return { sync: "failed", profile };
+  const before = lastRun && lastRun.userId === userId && lastRun.result !== lastRun.sent ? lastRun : null;
+  let toSend = profile;
+  if (before) {
+    const rebased = mergeAfterConflict(before.result, normalizeProfile(profile), normalizeProfile(before.sent));
+    if (!sameProfile(rebased, normalizeProfile(profile))) {
+      toSend = rebased;
+      saveProfile(userId, toSend);
+    }
+  }
+  const outcome = await sendForUser(userId, toSend, asOf);
+  if (clearCount(userId) === asOf) lastRun = { userId, sent: profile, result: outcome.profile };
+  // Laid over a merged copy, it's a merged copy too: the app shows it, and says another device's change is in it.
+  return toSend !== profile && outcome.sync === "saved" ? { sync: "merged", profile: outcome.profile } : outcome;
 }
 
 async function sendForUser(userId: string, profile: PreferenceProfile, asOf: number): Promise<{ sync: ProfileSync; profile: PreferenceProfile }> {
@@ -246,6 +282,20 @@ export function guestProfileChangedElsewhere(): PreferenceProfile | null {
   if (!stored || sameProfile(stored, lastKnownFor(null))) return null;
   remember(null, stored);
   return stored;
+}
+
+/**
+ * Once the account holds the guest's logged months and bid checklist, the guest's copy gives them up: left there, every
+ * later sign-in on this device added them to the account again, and brought back a month the pilot had since deleted.
+ */
+export function dropGuestRecords(): void {
+  const guest = loadProfile(null);
+  if (!guest || (!guest.logbook && !guest.bidChecklist)) return;
+  const { logbook: _logbook, bidChecklist: _checklist, ...rest } = guest;
+  void _logbook;
+  void _checklist;
+  // Not remembered as this tab's copy: it's the account's that the next save here starts from.
+  saveProfile(null, rest);
 }
 
 /**

@@ -37,11 +37,12 @@ export async function saveServerBidPack(pack: BidPack): Promise<boolean> {
 export type ServerBidPackLoad = { kind: "found"; pack: BidPack } | { kind: "none" } | { kind: "unreachable" };
 
 export async function fetchServerBidPack(): Promise<ServerBidPackLoad> {
-  if (typeof DecompressionStream === "undefined") return { kind: "unreachable" };
   try {
     const res = await fetch("/api/bid-pack", { credentials: "same-origin", cache: "no-store" });
     if (res.status === 204) return { kind: "none" };
-    if (res.status !== 200) return { kind: "unreachable" };
+    // Asked first even where the browser can't unzip a pack (Safari before 16.4): "none" needs no unzipping, and a
+    // guest who signs up there still has their upload taken over.
+    if (res.status !== 200 || typeof DecompressionStream === "undefined") return { kind: "unreachable" };
     return { kind: "found", pack: restoreBidPack(JSON.parse(await gunzip(await res.arrayBuffer()))) };
   } catch {
     return { kind: "unreachable" };

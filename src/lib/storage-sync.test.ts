@@ -9,7 +9,7 @@ vi.stubGlobal("window", {
   localStorage: { getItem: (k: string) => local.get(k) ?? null, setItem: (k: string, v: string) => void local.set(k, v), removeItem: (k: string) => void local.delete(k) },
 });
 
-const { clearProfile, forgetLastKnownProfile, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } = await import("./storage");
+const { clearProfile, dropGuestRecords, forgetLastKnownProfile, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } = await import("./storage");
 
 const profile = (completedAt: string, logbook: PreferenceProfile["logbook"] = []): PreferenceProfile => ({ weights: { ...DEFAULT_WEIGHTS }, deepRoundCompleted: false, tradeoffAnswers: [], explicitTargets: {}, isCommuter: null, hasCrashPad: null, seniorityNumber: null, cityPreferences: {}, completedAt, implicitWeights: {}, implicitConfidence: {}, discoveredFacts: [], interviewTranscript: [], logbook });
 const KEY = "line-select:preference-profile:pilot-1:v1";
@@ -111,8 +111,8 @@ describe("saving a signed-in pilot's profile", () => {
   });
 
   it("marks a failed save with the version it was sent against, after the save ahead of it landed", async () => {
-    // As the real queue in preference-profile-client.ts runs them: the second save waits for the first, and the first
-    // moves the server's version only when it lands, after the second save has already been started.
+    // Saves run one at a time: the second waits for the first, and the first moves the server's version only when it
+    // lands, after the second save has already been asked for.
     let version = "v1";
     client.serverProfileVersion.mockImplementation(() => version);
     let landFirst!: () => void;
@@ -130,8 +130,8 @@ describe("saving a signed-in pilot's profile", () => {
     });
     const first = saveProfileForUser("pilot-1", profile("a"));
     const second = saveProfileForUser("pilot-1", profile("b"));
-    // Both under way and neither landed: a mark taken now would name v1.
-    expect(client.saveServerProfile).toHaveBeenCalledTimes(2);
+    // Both asked for and neither landed: a mark taken now would name v1. The second isn't sent until the first is done.
+    await vi.waitFor(() => expect(client.saveServerProfile).toHaveBeenCalledTimes(1));
     expect(version).toBe("v1");
     landFirst();
     await Promise.all([first, second]);
@@ -166,6 +166,7 @@ describe("a save refused because another device saved first", () => {
     let refuse!: (v: unknown) => void;
     client.saveServerProfile.mockImplementationOnce(() => new Promise((resolve) => (refuse = resolve)));
     const saving = saveProfileForUser("pilot-1", profile("mine"));
+    await vi.waitFor(() => expect(refuse).toBeTypeOf("function"));
     clearProfile("pilot-1");
     refuse({ kind: "conflict", profile: profile("theirs") });
     await saving;
@@ -176,7 +177,7 @@ describe("a save refused because another device saved first", () => {
 
 describe("a guest with two tabs open", () => {
   const GUEST = "line-select:preference-profile:guest:v1";
-  const logged = { id: "OCT26", base: "MEM", aircraft: "MD11", seat: "CAP", month: "OCT26", outcome: "line" as const, loggedAt: "2026-10-03T00:00:00Z" };
+  const logged = { id: "OCT26", base: "MEM", aircraft: "MD11", seat: "CAP" as const, month: "OCT26", outcome: "line" as const, loggedAt: "2026-10-03T00:00:00Z" };
 
   it("keeps a month logged in the other tab when this one saves an edit", async () => {
     local.set(GUEST, JSON.stringify(profile("2026-11-07T00:00:00Z")));
@@ -195,6 +196,15 @@ describe("a guest with two tabs open", () => {
     const mine = (await loadProfileForUser(null))!;
     const edited = { ...mine, seniorityNumber: 1234 };
     expect((await saveProfileForUser(null, edited)).profile).toBe(edited);
+  });
+
+  it("gives up its logged months and checklist once an account holds them, and keeps the rest", () => {
+    local.set(GUEST, JSON.stringify({ ...profile("2026-11-07T00:00:00Z", [logged]), seniorityNumber: 77, bidChecklist: { oct: { enteredAt: "x" } } }));
+    dropGuestRecords();
+    const kept = JSON.parse(local.get(GUEST)!);
+    expect(kept.logbook).toBeUndefined();
+    expect(kept.bidChecklist).toBeUndefined();
+    expect(kept.seniorityNumber).toBe(77);
   });
 
   it("hands an idle tab the other tab's change once", async () => {

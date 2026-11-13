@@ -98,9 +98,14 @@ describe("a signed-in pilot's pack on a device a guest's pack is still on", () =
       vi.stubGlobal("fetch", answer);
       expect(await accountBidPack("u1")).toEqual({ pack: null, saveFailed: false, noneOnAccount: false });
     }
-    // A browser that can't unzip the account's pack can't tell either.
+  });
+
+  it("still asks where the browser can't unzip a pack: none is none, a pack it can't open isn't", async () => {
+    vi.stubGlobal("window", { localStorage: storageWithRoom(Infinity) });
     vi.stubGlobal("DecompressionStream", undefined);
     vi.stubGlobal("fetch", async () => new Response(null, { status: 204 }));
-    expect((await accountBidPack("u1")).noneOnAccount).toBe(false);
+    expect(await accountBidPack("u1")).toEqual({ pack: null, saveFailed: false, noneOnAccount: true });
+    serveAccountPack();
+    expect(await accountBidPack("u1")).toEqual({ pack: null, saveFailed: false, noneOnAccount: false });
   });
 });
