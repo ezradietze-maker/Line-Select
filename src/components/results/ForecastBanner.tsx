@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmEmailButton } from "@/components/auth/ConfirmEmail";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { LIKELIHOOD_LABEL, type BidForecast, type Likelihood, type LineForecast } from "@/lib/forecast/forecast";
@@ -145,6 +146,11 @@ export function ForecastBanner({
             only ever used to estimate what lines will be taken. Uncheck to remove it.
           </span>
         </label>
+      )}
+      {canShare && sharing && response?.shared === "unconfirmed" && (
+        <p className="mt-1.5 text-xs leading-relaxed text-warn">
+          Not shared yet: confirm your email first, so each shared ranking is a real pilot&rsquo;s. <ConfirmEmailButton />
+        </p>
       )}
     </div>
   );

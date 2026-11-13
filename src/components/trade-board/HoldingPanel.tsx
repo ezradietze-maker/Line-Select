@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { ConfirmEmailRefusal } from "@/components/auth/ConfirmEmail";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { useAppState } from "@/lib/app-state";
@@ -64,6 +65,8 @@ export function HoldingPanel({
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Refused because their email isn't confirmed: said with the button to confirm it. */
+  const [refused, setRefused] = useState<string | null>(null);
 
   const instances = useMemo(() => tripInstances(bidPack), [bidPack]);
   const byKey = useMemo(() => new Map(instances.map((t) => [tripInstanceKey(t), t])), [instances]);
@@ -106,6 +109,7 @@ export function HoldingPanel({
   async function confirm() {
     setBusy(true);
     setError(null);
+    setRefused(null);
     const saved = await saveTradeHolding({
       packId: bidPack.id,
       bidPackMeta: { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month },
@@ -116,6 +120,7 @@ export function HoldingPanel({
     });
     setBusy(false);
     if (!saved) return setError("Couldn't save what you hold. Check your connection and try again.");
+    if ("confirmEmail" in saved) return setRefused(saved.confirmEmail);
     setHolding(saved);
     onHoldingRef.current?.(saved);
     onSaved?.();
@@ -153,6 +158,7 @@ export function HoldingPanel({
     <section className="panel-glass mt-6 p-5">
       <h2 className="font-display text-base font-semibold text-ink">What you hold</h2>
       {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
+      {refused && <ConfirmEmailRefusal className="mt-3" message={refused} />}
 
       {!editing && !holding && (
         <>

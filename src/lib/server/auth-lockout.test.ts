@@ -28,6 +28,7 @@ const db = vi.hoisted(() => ({
   deleteSessionsForUser: vi.fn(async () => {}),
   updateCredential: vi.fn(async () => {}),
   consumeResetToken: vi.fn(async () => USER),
+  markEmailVerified: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/server/db", () => db);
 
@@ -41,7 +42,7 @@ beforeEach(async () => {
   kv.clear();
   const passwordHash = ((await scrypt(PW, SALT, 64)) as Buffer).toString("hex");
   db.findCredentialByEmail.mockResolvedValue({ userId: USER, email: EMAIL, passwordHash, salt: SALT });
-  db.findUserById.mockResolvedValue({ id: USER, email: EMAIL, displayName: "P", createdAt: "", plan: "free" });
+  db.findUserById.mockResolvedValue({ id: USER, email: EMAIL, displayName: "P", createdAt: "", plan: "free", emailVerified: true });
 });
 
 describe("sign-in limits for one account", () => {

@@ -36,6 +36,12 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   /** "free" | "pro" — a future paid-tier hook, not enforced anywhere yet. */
   plan: text("plan").notNull().default("free"),
+  /**
+   * When the pilot proved this address is theirs: a link from a confirm email, or an emailed password reset. Null
+   * until then, accounts from before this existed included. An account costs nothing to make, so only confirmed ones
+   * share, trade, or count as one more pilot anywhere (`server/verified-pilots.ts`).
+   */
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
 });
 
 export const credentials = pgTable("credentials", {
@@ -70,6 +76,30 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
     .unique()
     .references(() => users.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+/**
+ * The link in a confirm-your-email message, kept only as a hash like a reset token. One per pilot: a new link
+ * replaces the last. It stays after use (`usedAt`) so a second click can be told "already used" rather than "no such
+ * link". `signUp` marks a link first sent by signing up, whose account the daily run removes if it's never confirmed;
+ * accounts from before confirming existed never had one, so they're never removed that way.
+ */
+export const emailVerificationTokens = pgTable("email_verification_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  signUp: boolean("sign_up").notNull().default(false),
+  /**
+   * A hash of the device that asked for the link (its `ls_device` cookie). Opening the link signs in only there: sent
+   * on to someone else, a link to an account its sender made would otherwise sign them in to that account, and what
+   * they did next (uploading their pack, the interview) would go to it.
+   */
+  deviceHash: text("device_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /** "open" | "pending" | "accepted" | "declined" | "withdrawn" — kept as text (see `types/trade.ts`) rather than a Postgres enum so adding a status never needs a migration. */

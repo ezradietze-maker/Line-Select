@@ -12,12 +12,16 @@ import {
   findSession,
   findUserByEmail,
   findUserById,
+  markEmailVerified,
   saveResetToken,
+  saveVerificationToken,
   updateCredential,
+  spendVerificationToken,
 } from "@/lib/server/db";
-import { getEmailConfig, sendEmail } from "@/lib/server/email";
+import { getEmailConfig, sendEmail, type EmailConfig } from "@/lib/server/email";
 import { getJson, setJson } from "@/lib/server/kv";
-import { attemptsUsed, clearAttempts, countAttempt, MAX_ATTEMPTS, takeAttempt } from "@/lib/server/rate-limit";
+import { siteMailLeft } from "@/lib/server/mail-allowance";
+import { attemptsUsed, checkRateLimit, clearAttempts, countAttempt, MAX_ATTEMPTS, takeAttempt } from "@/lib/server/rate-limit";
 import type { UserAccount } from "@/types/auth";
 
 const scrypt = promisify(scryptCallback);
@@ -93,37 +97,33 @@ async function storeNewRecoveryCode(userId: string): Promise<string> {
 export const MIN_PASSWORD_LENGTH = 8;
 const PASSWORD_TOO_SHORT = `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
 
+/** What's wrong with a sign-up's own fields, or null. Asked before anything about the address is looked up, so the answer is the same whether or not it has an account. */
+export function signUpInputError(email: string, password: string, displayName: string): string | null {
+  if (!/^\S+@\S+\.\S+$/.test(normalizeEmail(email))) return "Enter a valid email address.";
+  if (password.length < MIN_PASSWORD_LENGTH) return PASSWORD_TOO_SHORT;
+  if (!displayName.trim()) return "Enter a name to display.";
+  return null;
+}
+
+/**
+ * Sign-up when email isn't set up on this server: the account is made and signed in at once, as before confirming
+ * existed, with its recovery code. It can't be confirmed, so it shares and trades nothing (`verified-pilots.ts`). With
+ * no email there's nothing to tell an address's owner, so an address with an account is still refused by name here.
+ */
 export async function signUp(
   email: string,
   password: string,
   displayName: string
 ): Promise<AuthResult> {
   const normalized = normalizeEmail(email);
-  if (!/^\S+@\S+\.\S+$/.test(normalized)) {
-    return { ok: false, error: "Enter a valid email address." };
-  }
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return { ok: false, error: PASSWORD_TOO_SHORT };
-  }
-  if (!displayName.trim()) {
-    return { ok: false, error: "Enter a name to display." };
-  }
+  const inputError = signUpInputError(email, password, displayName);
+  if (inputError) return { ok: false, error: inputError };
   if (await findUserByEmail(normalized)) {
     return { ok: false, error: "An account with that email already exists." };
   }
 
-  const user: UserAccount = {
-    id: randomUUID(),
-    email: normalized,
-    displayName: displayName.trim(),
-    createdAt: new Date().toISOString(),
-    plan: "free",
-  };
-  const salt = randomBytes(16).toString("hex");
-  const passwordHash = await hashPassword(password, salt);
-
-  const created = await createUserWithCredential(user, { userId: user.id, email: normalized, passwordHash, salt });
-  if (!created.ok) {
+  const user = await createAccount(normalized, password, displayName);
+  if (!user) {
     // The pre-check above already caught the common case; this closes the
     // race where two signups for the same email landed at once — the
     // database's own unique constraint is the real guard.
@@ -133,6 +133,151 @@ export async function signUp(
 
   const sessionToken = await startSession(user.id);
   return { ok: true, user, sessionToken, recoveryCode };
+}
+
+/** A new, unconfirmed account; null when the address already has one (two sign-ups for it at once). */
+async function createAccount(normalized: string, password: string, displayName: string): Promise<UserAccount | null> {
+  const user: UserAccount = {
+    id: randomUUID(),
+    email: normalized,
+    displayName: displayName.trim(),
+    createdAt: new Date().toISOString(),
+    plan: "free",
+    emailVerified: false,
+  };
+  const salt = randomBytes(16).toString("hex");
+  const passwordHash = await hashPassword(password, salt);
+  const created = await createUserWithCredential(user, { userId: user.id, email: normalized, passwordHash, salt });
+  return created.ok ? user : null;
+}
+
+// ---- Confirming the address ----
+
+const CONFIRM_LINK_TTL_MS = 24 * 60 * 60 * 1000;
+/** How long an account made by signing up has to be confirmed before the daily run removes it (`deleteUnconfirmedSignUps`). */
+export const UNCONFIRMED_SIGN_UP_DAYS = 7;
+/** Emails signing up may send one address in an hour, whoever asks: enough for a pilot who tries twice, not enough to fill an inbox. */
+const SIGN_UP_MAILS_PER_ADDRESS = 3;
+/** "Send it again", per account and per address it's asked from, in an hour. */
+export const RESENDS_PER_ACCOUNT = 3;
+export const RESENDS_PER_ADDRESS = 10;
+
+const deviceHashOf = (device: string | null | undefined) => (device ? createHash("sha256").update(`line-select-device:${device}`).digest("hex") : null);
+
+/** One fresh link, replacing the account's last, that signs in only on the device that asked for it. False when the email didn't go. */
+async function sendConfirmLink(userId: string, email: string, config: EmailConfig, { signUp, device }: { signUp: boolean; device: string | null | undefined }): Promise<boolean> {
+  const token = randomBytes(32).toString("hex");
+  await saveVerificationToken({ tokenHash: hashResetToken(token), userId, expiresAt: new Date(Date.now() + CONFIRM_LINK_TTL_MS).toISOString(), signUp, deviceHash: deviceHashOf(device) });
+  return sendEmail({
+    to: email,
+    subject: "Confirm your email for Line Select",
+    text:
+      `Open this link to confirm this is your address and finish setting up your Line Select account:\n${config.appUrl}/confirm-email?token=${token}\n\n` +
+      `It works for 24 hours, once.` +
+      (signUp ? ` An account that isn't confirmed within ${UNCONFIRMED_SIGN_UP_DAYS} days is removed.` : "") +
+      `\n\nIf you didn't sign up for Line Select, ignore this email.`,
+  });
+}
+
+/**
+ * Signing up, when email is set up. The route has already answered "Check your email" and this runs after, so the
+ * answer, and how long it took, are the same whether or not the address has an account. Then, by what's there:
+ *
+ * - nothing: a new, unconfirmed account and a confirm link. It isn't signed in until the link is opened, and its
+ *   recovery code is made then, so whoever signed up with someone else's address never sees one.
+ * - a confirmed account: nothing is made or changed; its owner gets a short note saying someone tried.
+ * - an unconfirmed account: maybe someone else's attempt at this address. Its owner gets a reset link: setting a
+ *   password with it confirms the account and replaces its recovery code (`resetPasswordWithEmailToken`), so the
+ *   account is theirs and no one else's.
+ *
+ * Each address gets a few of these an hour at most, and all of them come out of the site's hourly allowance.
+ */
+export async function signUpByEmail(email: string, password: string, displayName: string, device?: string | null): Promise<void> {
+  const config = getEmailConfig();
+  if (!config || signUpInputError(email, password, displayName)) return;
+  const normalized = normalizeEmail(email);
+  if (!(await checkRateLimit("sign-up-mail", normalized, SIGN_UP_MAILS_PER_ADDRESS, 60 * 60)).ok) return;
+
+  const existing = await findUserByEmail(normalized);
+  if (!existing) {
+    const user = await createAccount(normalized, password, displayName);
+    // Null: another sign-up for this address got there a moment before, and its email covers this one.
+    if (user && (await siteMailLeft("sign-up"))) await sendConfirmLink(user.id, normalized, config, { signUp: true, device });
+    return;
+  }
+  if (!(await siteMailLeft("sign-up"))) return;
+  if (existing.emailVerified) {
+    await sendEmail({
+      to: normalized,
+      subject: "Someone tried to sign up for Line Select with your email",
+      text:
+        `Someone tried to make a new Line Select account with this address. You already have one, so nothing was changed.\n\n` +
+        `If it was you, sign in at ${config.appUrl}/auth, or reset your password from there if you've forgotten it.\n\n` +
+        `If it wasn't you, you don't need to do anything.`,
+    });
+    return;
+  }
+  const token = randomBytes(32).toString("hex");
+  await saveResetToken({ tokenHash: hashResetToken(token), userId: existing.id, expiresAt: new Date(Date.now() + RESET_LINK_TTL_MS).toISOString() });
+  await sendEmail({
+    to: normalized,
+    subject: "Finish signing up for Line Select",
+    text:
+      `Someone tried to make a Line Select account with this address. There's already an account for it that was never confirmed.\n\n` +
+      `If it was you, open this link within the hour and choose a password. That confirms the account and makes it yours, and signs out anyone else using it:\n` +
+      `${config.appUrl}/reset-password?token=${token}\n\n` +
+      `If it wasn't you, ignore this email.`,
+  });
+}
+
+export type ResendResult = { sent: true } | { sent: false; reason: "confirmed" | "not-set-up" | "limited" | "failed" };
+
+/** "Send it again", for a signed-in pilot whose address isn't confirmed. Limited per account and per address it's asked from, and out of the site's hourly allowance. */
+export async function resendConfirmEmail(user: UserAccount, from: string, device?: string | null): Promise<ResendResult> {
+  if (user.emailVerified) return { sent: false, reason: "confirmed" };
+  const config = getEmailConfig();
+  if (!config) return { sent: false, reason: "not-set-up" };
+  const [mine, address] = await Promise.all([
+    checkRateLimit("confirm-resend", user.id, RESENDS_PER_ACCOUNT, 60 * 60),
+    checkRateLimit("confirm-resend-address", from, RESENDS_PER_ADDRESS, 60 * 60),
+  ]);
+  if (!mine.ok || !address.ok || !(await siteMailLeft("sign-up"))) return { sent: false, reason: "limited" };
+  return (await sendConfirmLink(user.id, normalizeEmail(user.email), config, { signUp: false, device })) ? { sent: true } : { sent: false, reason: "failed" };
+}
+
+export type ConfirmResult =
+  | {
+      status: "confirmed";
+      user: UserAccount;
+      /** How this device stands now: signed in by this link, signed in already, or left as it was (see `confirmEmail`). */
+      signedIn: "now" | "already" | "other-account" | "no";
+      sessionToken?: string;
+      /** Made now, for an account that had none (every account made by signing up with email): shown once. */
+      recoveryCode?: string;
+    }
+  | { status: "used"; yours: boolean }
+  | { status: "expired" | "invalid" };
+
+/**
+ * Opens a confirm link: the account it was sent for is confirmed. On the device that asked for the link, with nobody
+ * signed in, it signs that account in too. Its own pilot, signed in already, stays so; anyone else signed in here stays
+ * signed in as themselves. On any other device nobody is signed in, and the pilot signs in with their password: a
+ * link the account's maker passed on to someone else would otherwise sign them in to it, and their pack and interview
+ * would go to that account. The recovery code, for an account with none yet, comes back only to its own pilot.
+ */
+export async function confirmEmail(token: string, signedInAs: string | null, device?: string | null): Promise<ConfirmResult> {
+  const result = await spendVerificationToken(hashResetToken(token));
+  if (result.status === "expired" || result.status === "invalid") return { status: result.status };
+  if (result.status === "used") return { status: "used", yours: signedInAs === result.userId };
+  const user = await findUserById(result.userId);
+  if (!user) return { status: "invalid" };
+  if (signedInAs && signedInAs !== user.id) return { status: "confirmed", user, signedIn: "other-account" };
+  const sameDevice = !!result.deviceHash && result.deviceHash === deviceHashOf(device);
+  if (!signedInAs && !sameDevice) return { status: "confirmed", user, signedIn: "no" };
+  const credential = await findCredentialByUserId(user.id);
+  const recoveryCode = credential && !credential.recoveryHash ? await storeNewRecoveryCode(user.id) : undefined;
+  if (signedInAs) return { status: "confirmed", user, signedIn: "already", recoveryCode };
+  return { status: "confirmed", user, signedIn: "now", sessionToken: await startSession(user.id), recoveryCode };
 }
 
 const RESET_RATE_LIMIT_SCOPE = "password-reset";
@@ -221,6 +366,10 @@ export async function requestPasswordResetEmail(email: string, from?: string, de
  * Completes an emailed reset: the token is spent, every old session is signed out, and the pilot is signed straight in.
  * Every count against the account is cleared too, the account-wide ones included: the password someone was guessing at
  * is gone, and a pilot who had to reset because someone kept them out shouldn't find the door still shut.
+ *
+ * The link came to the account's address, so it confirms that address too. An account that wasn't confirmed until now
+ * may have been started by someone else with this address (`signUpByEmail`), so its recovery code is replaced as well,
+ * and the new one comes back to be shown: whoever made the old one can't use it to take the account back.
  */
 export async function resetPasswordWithEmailToken(token: string, newPassword: string, from?: string, device?: string | null): Promise<AuthResult> {
   if (newPassword.length < MIN_PASSWORD_LENGTH) return { ok: false, error: PASSWORD_TOO_SHORT };
@@ -231,10 +380,13 @@ export async function resetPasswordWithEmailToken(token: string, newPassword: st
   const salt = randomBytes(16).toString("hex");
   await updateCredential(userId, { passwordHash: await hashPassword(newPassword, salt), salt });
   await deleteSessionsForUser(userId);
+  const wasUnconfirmed = !user.emailVerified;
+  await markEmailVerified(userId);
+  const recoveryCode = wasUnconfirmed ? await storeNewRecoveryCode(userId) : undefined;
   const normalized = normalizeEmail(user.email);
   await clearAttemptsAfterReset(normalized, from);
   await rememberDevice(normalized, device);
-  return { ok: true, user, sessionToken: await startSession(userId) };
+  return { ok: true, user: { ...user, emailVerified: true }, sessionToken: await startSession(userId), recoveryCode };
 }
 
 /** For a signed-in pilot with no recovery code yet (an account from before they existed) or who wants a fresh one. Re-checks the password first, so a borrowed unlocked laptop can't mint one. */

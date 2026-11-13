@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { NoteBox } from "@/components/ui/NoteBox";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ConfirmEmailButton, ConfirmEmailRefusal } from "@/components/auth/ConfirmEmail";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
 import { NotamStrip } from "@/components/ui/NotamStrip";
@@ -134,6 +135,7 @@ export function TradeBoardScreen({
   const [showPostForm, setShowPostForm] = useState(false);
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNeedsConfirm, setActionNeedsConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sends, setSends] = useState(0);
   const [search, setSearch] = useState("");
@@ -225,13 +227,15 @@ export function TradeBoardScreen({
   const shownOpenOffers =
     openFromOthers.length > SEARCH_THRESHOLD ? openFromOthers.filter((o) => matchesSearch(o, search)) : openFromOthers;
 
-  async function runAction(action: () => Promise<{ ok: boolean; error?: string }>, onDone?: () => void) {
+  async function runAction(action: () => Promise<{ ok: boolean; error?: string; confirmEmail?: boolean }>, onDone?: () => void) {
     setBusy(true);
     setActionError(null);
+    setActionNeedsConfirm(false);
     const result = await action();
     setBusy(false);
     if (!result.ok) {
       setActionError(result.error ?? "Something went wrong. Try again.");
+      setActionNeedsConfirm(!!result.confirmEmail);
       // Refresh anyway — a failure here usually means the offer's real state moved
       // (someone else claimed it, it was withdrawn), so the stale copy on screen
       // needs replacing rather than sitting there inviting the same retry.
@@ -299,6 +303,12 @@ export function TradeBoardScreen({
           Sign in to see what other pilots have posted, and to post an offer or propose a trade.
         </InfoBanner>
       )}
+      {user?.emailVerified === false && (
+        <InfoBanner>
+          <p>Confirm your email to post offers, answer them and see other pilots&rsquo; offers. It&rsquo;s how the board knows each account is a real pilot.</p>
+          <ConfirmEmailButton className="mt-1.5" />
+        </InfoBanner>
+      )}
       {user && !bidPack && <InfoBanner>Upload your bid pack to post an offer or propose a trade.</InfoBanner>}
       {user && bidPack && !isSamplePack(bidPack) && <HoldingPanel bidPack={bidPack} onHolding={(h) => setHeld({ packId: bidPack.id, holding: h })} onSaved={() => setSuggestionsKey((n) => n + 1)} />}
       {user && bidPack && !isSamplePack(bidPack) && <TradeSuggestions packId={bidPack.id} refreshKey={suggestionsKey} />}
@@ -313,7 +323,7 @@ export function TradeBoardScreen({
         />
       )}
 
-      {actionError && <ErrorBanner className="mt-4">{actionError}</ErrorBanner>}
+      {actionError && (actionNeedsConfirm ? <ConfirmEmailRefusal className="mt-4" message={actionError} /> : <ErrorBanner className="mt-4">{actionError}</ErrorBanner>)}
       {loadFailed && <ErrorBanner className="mt-4">Couldn&rsquo;t load the board just now. Check your connection and try again in a moment.</ErrorBanner>}
 
       {loading ? (

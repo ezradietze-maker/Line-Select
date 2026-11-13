@@ -5,6 +5,7 @@ import type { KnownRanking } from "@/lib/forecast/simulate";
 import { hashUser } from "@/lib/server/pilot-hash";
 import { db } from "@/lib/server/postgres";
 import { forecastRankings } from "@/lib/server/schema";
+import { fromVerified, verifiedPilotHashes } from "@/lib/server/verified-pilots";
 
 /**
  * The rankings pilots have shared, per seat and month — what lets the forecast
@@ -54,7 +55,13 @@ export async function loadKnownRankings(
 ): Promise<{ known: KnownRanking[]; total: number }> {
   const key = blobKey(packKey, lineNumbers);
   const me = excludeUserId ? hashUser(excludeUserId) : null;
-  const rows = await db.select().from(forecastRankings).where(inArray(forecastRankings.blobKey, [key, legacyBlobKey(packKey, lineNumbers)]));
+  const [stored, verified] = await Promise.all([
+    db.select().from(forecastRankings).where(inArray(forecastRankings.blobKey, [key, legacyBlobKey(packKey, lineNumbers)])),
+    verifiedPilotHashes(),
+  ]);
+  // Confirmed accounts' rankings only, in what's used and in how many are said to share: a few made-up accounts ahead
+  // of the asked place would otherwise pass the "enough sharers" bar (`MIN_SHARERS_AHEAD`) on their own.
+  const rows = fromVerified(stored, verified, (r) => r.userHash);
   // A pilot or a bid place shared under the new key wins over the same one under the old: one ranking each.
   const current = rows.filter((r) => r.blobKey === key);
   const users = new Set(current.map((r) => r.userHash));

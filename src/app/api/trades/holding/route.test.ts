@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-let user: { id: string } | null = null;
+let user: { id: string; emailVerified?: boolean } | null = null;
 const held = new Map<string, unknown>();
 let limited = false;
 let accountPack: string | null = "uploaded-mem-md11-fo-oct26";
@@ -33,7 +33,7 @@ const body = { packId: PACK, bidPackMeta: { base: "MEM", aircraft: "MD11", seat:
 const put = (b: unknown = body) => PUT(new Request(url, { method: "PUT", body: JSON.stringify(b) }));
 
 beforeEach(() => {
-  user = { id: "pilot-1" };
+  user = { id: "pilot-1", emailVerified: true };
   held.clear();
   limited = false;
   accountPack = PACK;
@@ -51,7 +51,7 @@ describe("/api/trades/holding", () => {
 
   it("keeps each pilot's apart", async () => {
     await put();
-    user = { id: "pilot-2" };
+    user = { id: "pilot-2", emailVerified: true };
     expect((await (await GET(new Request(url))).json()).holding).toBeNull();
   });
 

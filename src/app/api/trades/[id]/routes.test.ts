@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TradeOffer } from "@/types/trade";
 
 const mocks = vi.hoisted(() => ({
-  user: { id: "pilot-1", displayName: "J Pilot" } as { id: string; displayName: string } | null,
+  user: { id: "pilot-1", displayName: "J Pilot", emailVerified: true } as { id: string; displayName: string; emailVerified?: boolean } | null,
   offer: null as unknown,
   respond: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   accept: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -30,7 +30,7 @@ const body = (b: unknown) => new Request("https://example.com/api/trades/o1/x", 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.user = { id: "pilot-1", displayName: "J Pilot" };
+  mocks.user = { id: "pilot-1", displayName: "J Pilot", emailVerified: true };
   mocks.hasSeat = true;
   mocks.holding = null;
 });

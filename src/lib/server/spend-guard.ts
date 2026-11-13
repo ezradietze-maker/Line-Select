@@ -3,6 +3,8 @@ import { getCurrentServerUser } from "@/lib/server/auth";
 import { sendEmail } from "@/lib/server/email";
 import { addToCounter, getJson, incrementCounter, releaseSlot, takeSlot } from "@/lib/server/kv";
 import { clientIp, deviceIdFrom } from "@/lib/server/rate-limit";
+import { isVerified } from "@/lib/server/verified-pilots";
+import type { UserAccount } from "@/types/auth";
 
 /**
  * A dollar ceiling on everything that costs money per call — the AI, dictation, hotel and flight lookups — for the whole site
@@ -77,8 +79,16 @@ export function pilotSpender(userId: string, request: Request): Spender {
 }
 
 export async function spenderFor(request: Request): Promise<Spender> {
-  const user = await getCurrentServerUser().catch(() => null);
-  if (user) return pilotSpender(user.id, request);
+  return spenderForUser(await getCurrentServerUser().catch(() => null), request);
+}
+
+/**
+ * A confirmed pilot gets a pilot's allowance. Anyone else, an account whose address isn't confirmed included, is charged
+ * as a guest on their device: accounts cost nothing to make, so each one bringing a pilot's allowance would let one
+ * person spend many.
+ */
+export function spenderForUser(user: UserAccount | null, request: Request): Spender {
+  if (user && isVerified(user)) return pilotSpender(user.id, request);
   const ip = clientIp(request);
   const device = deviceIdFrom(request);
   return { key: device ? `device:${device}` : `ip:${ip}`, signedIn: false, addressKey: `address:${ip}` };

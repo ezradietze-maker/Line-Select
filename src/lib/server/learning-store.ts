@@ -12,6 +12,7 @@ import { trustedHolders } from "@/lib/server/award-aggregate";
 import { BLOB_KEY_V2_PREFIX, blobKey } from "@/lib/server/forecast-store";
 import { bidPercentile } from "@/lib/learning/cohort";
 import { db } from "@/lib/server/postgres";
+import { fromVerified, verifiedPilotHashes } from "@/lib/server/verified-pilots";
 import {
   awardHistoryRecords,
   forecastPredictions,
@@ -32,6 +33,9 @@ import {
  * Retention is by size, not age: the learning is meant to draw on years of
  * bids, so rows stay until a table passes its cap, and only then are the
  * oldest dropped.
+ *
+ * What a run reads is from confirmed accounts only (`verified-pilots.ts`): each pilot counts once, and made-up
+ * accounts would otherwise be that many pilots. An account's rows count again once it's confirmed.
  */
 
 /** Newest rows the learning reads per run — years of a busy fleet, bounded so a run stays fast. */
@@ -198,11 +202,14 @@ export interface DatedOutcome {
 }
 
 export async function loadOutcomes(): Promise<DatedOutcome[]> {
-  const rows = await db
-    .select({ at: interviewOutcomes.createdAt, payload: interviewOutcomes.payload, pilotHash: interviewOutcomes.pilotHash })
-    .from(interviewOutcomes)
-    .orderBy(desc(interviewOutcomes.createdAt))
-    .limit(MAX_OUTCOMES);
+  const [rows, verified] = await Promise.all([
+    db
+      .select({ at: interviewOutcomes.createdAt, payload: interviewOutcomes.payload, pilotHash: interviewOutcomes.pilotHash })
+      .from(interviewOutcomes)
+      .orderBy(desc(interviewOutcomes.createdAt))
+      .limit(MAX_OUTCOMES),
+    verifiedPilotHashes(),
+  ]);
   // A signed-in pilot who redoes the interview in the same month counts once
   // (their latest), so nobody's answers outweigh everyone else's by retaking it.
   // Guests' rows (stored before only pilots could teach the fleet) are left out.
@@ -210,7 +217,7 @@ export async function loadOutcomes(): Promise<DatedOutcome[]> {
   const latest = rows.filter((r) => {
     // The story-driven interview's outcomes have a different shape; they're learned from separately (`loadBrainOutcomes`).
     if ((r.payload as { v?: number }).v === 2) return false;
-    if (!r.pilotHash) return false;
+    if (!r.pilotHash || !verified.has(r.pilotHash)) return false;
     const key = `${r.pilotHash}|${r.payload.month}|${r.payload.cohort.base}|${r.payload.cohort.aircraft}|${r.payload.cohort.seat}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -224,12 +231,15 @@ const BRAIN_OUTCOME_WINDOW_DAYS = 365;
 
 export async function loadBrainOutcomes(now = new Date()): Promise<BrainOutcome[]> {
   const since = new Date(now.getTime() - BRAIN_OUTCOME_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-  const rows = await db
-    .select({ payload: interviewOutcomes.payload, pilotHash: interviewOutcomes.pilotHash, at: interviewOutcomes.createdAt })
-    .from(interviewOutcomes)
-    .where(and(eq(interviewOutcomes.modelVersion, BRAIN_OUTCOME_VERSION), gt(interviewOutcomes.createdAt, since)))
-    .orderBy(desc(interviewOutcomes.createdAt))
-    .limit(MAX_OUTCOMES);
+  const [rows, verified] = await Promise.all([
+    db
+      .select({ payload: interviewOutcomes.payload, pilotHash: interviewOutcomes.pilotHash, at: interviewOutcomes.createdAt })
+      .from(interviewOutcomes)
+      .where(and(eq(interviewOutcomes.modelVersion, BRAIN_OUTCOME_VERSION), gt(interviewOutcomes.createdAt, since)))
+      .orderBy(desc(interviewOutcomes.createdAt))
+      .limit(MAX_OUTCOMES),
+    verifiedPilotHashes(),
+  ]);
   // Signed-in pilots only, and each pilot's latest per base, aircraft and seat: the groups count pilots, so one
   // pilot interviewing every month still counts once (`MIN_PILOTS`), and no pilot weighs more than any other.
   const seen = new Set<string>();
@@ -237,7 +247,7 @@ export async function loadBrainOutcomes(now = new Date()): Promise<BrainOutcome[
     .map((r) => ({ o: r.payload as unknown as BrainOutcome, pilotHash: r.pilotHash, at: r.at }))
     .filter(({ o, pilotHash }) => {
       if (o.v !== 2) return false;
-      if (!pilotHash) return false;
+      if (!pilotHash || !verified.has(pilotHash)) return false;
       const key = `${pilotHash}|${o.cohort.base}|${o.cohort.aircraft}|${o.cohort.seat}`;
       if (seen.has(key)) return false;
       seen.add(key);
@@ -260,26 +270,35 @@ export interface FlownMonth {
 }
 
 export async function loadFlownMonths(): Promise<FlownMonth[]> {
-  const rows = await db
-    .select({
-      base: awardHistoryRecords.base,
-      aircraft: awardHistoryRecords.aircraft,
-      seat: awardHistoryRecords.seat,
-      month: awardHistoryRecords.month,
-      feel: awardHistoryRecords.monthFeel,
-      brainVersion: awardHistoryRecords.brainVersion,
-      notesUsed: awardHistoryRecords.notesUsed,
-      awardedChoice: awardHistoryRecords.awardedChoice,
-    })
-    .from(awardHistoryRecords)
-    .where(and(isNotNull(awardHistoryRecords.pilotHash), isNotNull(awardHistoryRecords.monthFeel)))
-    .limit(MAX_OUTCOMES);
-  return rows.filter((r): r is FlownMonth => r.feel === "better" || r.feel === "asExpected" || r.feel === "worse");
+  const [all, verified] = await Promise.all([
+    db
+      .select({
+        pilotHash: awardHistoryRecords.pilotHash,
+        base: awardHistoryRecords.base,
+        aircraft: awardHistoryRecords.aircraft,
+        seat: awardHistoryRecords.seat,
+        month: awardHistoryRecords.month,
+        feel: awardHistoryRecords.monthFeel,
+        brainVersion: awardHistoryRecords.brainVersion,
+        notesUsed: awardHistoryRecords.notesUsed,
+        awardedChoice: awardHistoryRecords.awardedChoice,
+      })
+      .from(awardHistoryRecords)
+      .where(and(isNotNull(awardHistoryRecords.pilotHash), isNotNull(awardHistoryRecords.monthFeel)))
+      .limit(MAX_OUTCOMES),
+    verifiedPilotHashes(),
+  ]);
+  return fromVerified(all, verified, (r) => r.pilotHash)
+    .map(({ base, aircraft, seat, month, feel, brainVersion, notesUsed, awardedChoice }) => ({ base, aircraft, seat, month, feel, brainVersion, notesUsed, awardedChoice }))
+    .filter((r): r is FlownMonth => r.feel === "better" || r.feel === "asExpected" || r.feel === "worse");
 }
 
 export async function loadCorrections(): Promise<CorrectionEvent[]> {
-  const rows = await db.select().from(preferenceCorrections).where(isNotNull(preferenceCorrections.pilotHash)).orderBy(desc(preferenceCorrections.createdAt)).limit(MAX_CORRECTIONS);
-  return rows.map((r) => ({ dim: r.dim, src: r.src, from: r.fromValue, to: r.toValue }));
+  const [all, verified] = await Promise.all([
+    db.select().from(preferenceCorrections).where(isNotNull(preferenceCorrections.pilotHash)).orderBy(desc(preferenceCorrections.createdAt)).limit(MAX_CORRECTIONS),
+    verifiedPilotHashes(),
+  ]);
+  return fromVerified(all, verified, (r) => r.pilotHash).map((r) => ({ dim: r.dim, src: r.src, from: r.fromValue, to: r.toValue }));
 }
 
 /** Every stored month of line features with the rankings pilots shared that month. */
@@ -290,10 +309,14 @@ export async function loadPackHistories(): Promise<PackHistory[]> {
   const trusted = await trustedLineOrders(stored.filter((p) => isLegacyBlobKey(p.blobKey)).map((p) => p.blobKey));
   const packs = stored.filter((p) => !isLegacyBlobKey(p.blobKey) || trusted.has(p.blobKey));
   if (packs.length === 0) return [];
-  const rankings = await db
-    .select({ blobKey: forecastRankings.blobKey, ranking: forecastRankings.ranking })
-    .from(forecastRankings)
-    .where(inArray(forecastRankings.blobKey, packs.map((p) => p.blobKey)));
+  const [shared, verified] = await Promise.all([
+    db
+      .select({ blobKey: forecastRankings.blobKey, ranking: forecastRankings.ranking, userHash: forecastRankings.userHash })
+      .from(forecastRankings)
+      .where(inArray(forecastRankings.blobKey, packs.map((p) => p.blobKey))),
+    verifiedPilotHashes(),
+  ]);
+  const rankings = fromVerified(shared, verified, (r) => r.userHash);
   const byBlob = new Map<string, string[]>();
   for (const r of rankings) byBlob.set(r.blobKey, [...(byBlob.get(r.blobKey) ?? []), r.ranking]);
   return packs
@@ -318,17 +341,22 @@ export interface DatedCalibrationCase extends CalibrationCase {
  * Oldest pack first, a pack's forecasts together. A withdrawn share is simply no longer here at the next refit.
  */
 export async function loadCalibrationCases(): Promise<DatedCalibrationCase[]> {
-  const awards = await db
-    .select()
-    .from(awardHistoryRecords)
-    .where(and(isNotNull(awardHistoryRecords.pilotHash), isNotNull(awardHistoryRecords.packKey)))
-    .orderBy(desc(awardHistoryRecords.submittedAt))
-    .limit(MAX_PREDICTIONS);
+  const [stored, verified] = await Promise.all([
+    db
+      .select()
+      .from(awardHistoryRecords)
+      .where(and(isNotNull(awardHistoryRecords.pilotHash), isNotNull(awardHistoryRecords.packKey)))
+      .orderBy(desc(awardHistoryRecords.submittedAt))
+      .limit(MAX_PREDICTIONS),
+    verifiedPilotHashes(),
+  ]);
+  const awards = fromVerified(stored, verified, (a) => a.pilotHash);
   if (awards.length === 0) return [];
-  const predictions = await db
+  const forecasts = await db
     .select()
     .from(forecastPredictions)
     .where(inArray(forecastPredictions.packKey, [...new Set(awards.map((a) => a.packKey!))]));
+  const predictions = fromVerified(forecasts, verified, (p) => p.pilotHash);
   if (predictions.length === 0) return [];
   return calibrationCasesFrom(awards, predictions, await trustedLineOrders(predictions.map((p) => p.blobKey)));
 }

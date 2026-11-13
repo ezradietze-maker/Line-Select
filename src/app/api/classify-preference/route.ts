@@ -3,7 +3,7 @@ import { callCeilingUsd, failedCallCost, schemaChars, structuredCall } from "@/l
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { pilotSpender, spendLimitResponse, startPaidCall } from "@/lib/server/spend-guard";
+import { spenderForUser, spendLimitResponse, startPaidCall } from "@/lib/server/spend-guard";
 
 /** A pilot's reason, as typed in one box; the catalog's variables, with room to grow. */
 const MAX_FREE_TEXT = 1_000;
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
 
   const system = "You match a pilot's own reason for a preference to a list of tracked preference variables.";
   const prompt = buildPrompt(body as ClassifyRequest);
-  const paid = await startPaidCall(pilotSpender(user.id, request), callCeilingUsd(MODEL, system.length + prompt.length + schemaChars(SCHEMA), MAX_TOKENS));
+  const paid = await startPaidCall(spenderForUser(user, request), callCeilingUsd(MODEL, system.length + prompt.length + schemaChars(SCHEMA), MAX_TOKENS));
   if (!paid.ok) return spendLimitResponse(paid);
   let parsed: ClassifyResult;
   let spent = 0;

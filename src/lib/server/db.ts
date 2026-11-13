@@ -1,16 +1,18 @@
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
 import { alreadyTraded, offersFreedBy, offersFreedByTrade, sameTrip, type GivenTrip } from "@/lib/trades/offer-trips";
 import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { packIdFor } from "@/lib/pack-id";
 import { db } from "@/lib/server/postgres";
+import { forgetVerifiedPilots, verifiedUserIds } from "@/lib/server/verified-pilots";
 import {
   awardHistoryRecords,
   bidPackMetaOf,
   bidPacks,
   candidateVariables,
   credentials as credentialsTable,
+  emailVerificationTokens,
   feedbackSubmissions,
   interviewCandidateFacts,
   passwordResetTokens,
@@ -87,6 +89,7 @@ function toUserAccount(row: typeof users.$inferSelect): UserAccount {
     displayName: row.displayName,
     createdAt: row.createdAt.toISOString(),
     plan: row.plan as UserAccount["plan"],
+    emailVerified: !!row.emailVerifiedAt,
   };
 }
 
@@ -198,6 +201,84 @@ export async function consumeResetToken(tokenHash: string): Promise<string | nul
   return row.expiresAt.getTime() > Date.now() ? row.userId : null;
 }
 
+// ---- Confirming an address ----
+
+export interface EmailVerificationToken {
+  tokenHash: string;
+  userId: string;
+  expiresAt: string;
+  /** First sent by signing up: such an account, never confirmed, is removed after a week (`deleteUnconfirmedSignUps`). */
+  signUp?: boolean;
+  /** A hash of the device that asked for it: opening the link signs in there only (see the schema). */
+  deviceHash?: string | null;
+}
+
+/**
+ * One live link per pilot: a new one replaces the last, used or not. Whether the first was sent by signing up stays
+ * as it was, so asking for another doesn't change which accounts the daily clear-out may remove.
+ */
+export async function saveVerificationToken(token: EmailVerificationToken): Promise<void> {
+  const expiresAt = new Date(token.expiresAt);
+  await db
+    .insert(emailVerificationTokens)
+    .values({ tokenHash: token.tokenHash, userId: token.userId, expiresAt, signUp: token.signUp ?? false, deviceHash: token.deviceHash ?? null })
+    .onConflictDoUpdate({
+      target: emailVerificationTokens.userId,
+      set: { tokenHash: token.tokenHash, expiresAt, usedAt: null, deviceHash: token.deviceHash ?? null, createdAt: new Date() },
+    });
+}
+
+export type VerificationResult =
+  | { status: "confirmed"; userId: string; deviceHash: string | null }
+  | { status: "used"; userId: string }
+  | { status: "expired" } | { status: "invalid" };
+
+/**
+ * Spends a confirm link and marks its account confirmed, in one transaction. Single-use by the conditional update: of
+ * two clicks at once, only one finds it unspent. A spent link is kept, so the second click hears "used" rather than
+ * "no such link"; an expired one is never spent.
+ */
+export async function spendVerificationToken(tokenHash: string, now = new Date()): Promise<VerificationResult> {
+  const result = await db.transaction(async (tx): Promise<VerificationResult> => {
+    const [spent] = await tx
+      .update(emailVerificationTokens)
+      .set({ usedAt: now })
+      .where(and(eq(emailVerificationTokens.tokenHash, tokenHash), isNull(emailVerificationTokens.usedAt), gt(emailVerificationTokens.expiresAt, now)))
+      .returning({ userId: emailVerificationTokens.userId, deviceHash: emailVerificationTokens.deviceHash });
+    if (spent) {
+      await tx.update(users).set({ emailVerifiedAt: now }).where(and(eq(users.id, spent.userId), isNull(users.emailVerifiedAt)));
+      return { status: "confirmed", userId: spent.userId, deviceHash: spent.deviceHash ?? null };
+    }
+    const [row] = await tx.select().from(emailVerificationTokens).where(eq(emailVerificationTokens.tokenHash, tokenHash)).limit(1);
+    if (!row) return { status: "invalid" };
+    if (row.usedAt) return { status: "used", userId: row.userId };
+    return { status: "expired" };
+  });
+  if (result.status === "confirmed") forgetVerifiedPilots();
+  return result;
+}
+
+/** An emailed reset proves the address as well as a confirm link does. An earlier confirm's date is left as it was. */
+export async function markEmailVerified(userId: string, now = new Date()): Promise<void> {
+  if (!isUuid(userId)) return;
+  await db.update(users).set({ emailVerifiedAt: now }).where(and(eq(users.id, userId), isNull(users.emailVerifiedAt)));
+  forgetVerifiedPilots();
+}
+
+/**
+ * Removes accounts made by signing up and never confirmed, made before `before`. Only those whose first link was sent
+ * by signing up: accounts from before confirming existed never had one, so they stay however long they go unconfirmed.
+ * Their pack, profile and the rest go with them (every table's link to an account cascades). Returns how many went.
+ */
+export async function deleteUnconfirmedSignUps(before: Date): Promise<number> {
+  const signedUp = db.select({ id: emailVerificationTokens.userId }).from(emailVerificationTokens).where(eq(emailVerificationTokens.signUp, true));
+  const removed = await db
+    .delete(users)
+    .where(and(isNull(users.emailVerifiedAt), lt(users.createdAt, before), inArray(users.id, signedUp)))
+    .returning({ id: users.id });
+  return removed.length;
+}
+
 // ---- Sessions ----
 
 /**
@@ -284,7 +365,8 @@ export async function listTradeOffersForSeat(meta: BidPackMetaSnapshot, viewerId
       ? db
           .select()
           .from(tradeOffers)
-          .where(and(offersForSeat(meta), eq(tradeOffers.status, "open"), ne(tradeOffers.offeringUserId, viewerId)))
+          // From confirmed accounts only: an unconfirmed one can't agree a trade, so its offers would only ever wait.
+          .where(and(offersForSeat(meta), eq(tradeOffers.status, "open"), ne(tradeOffers.offeringUserId, viewerId), inArray(tradeOffers.offeringUserId, verifiedUserIds())))
           .orderBy(desc(tradeOffers.createdAt))
           .limit(opts.limit)
       : [],
@@ -591,12 +673,15 @@ export async function deleteAwardShares(pilotHash: string, packKey?: string): Pr
   return removed.length;
 }
 
-/** How many accounts have had a real pack of this kind on the server since `since`. An uploaded pack's id starts with its base, aircraft and seat. */
+/**
+ * How many confirmed accounts have had a real pack of this kind on the server since `since`. An uploaded pack's id
+ * starts with its base, aircraft and seat. Unconfirmed accounts aren't counted: a dozen made-up ones would open a board.
+ */
 export async function countRecentPilotsWithPack(packIdPrefix: string, since: Date): Promise<number> {
   const [row] = await db
     .select({ n: count() })
     .from(bidPacks)
-    .where(and(sql`starts_with(${bidPacks.packId}, ${packIdPrefix})`, gte(bidPacks.updatedAt, since)));
+    .where(and(sql`starts_with(${bidPacks.packId}, ${packIdPrefix})`, gte(bidPacks.updatedAt, since), inArray(bidPacks.userId, verifiedUserIds())));
   return row?.n ?? 0;
 }
 

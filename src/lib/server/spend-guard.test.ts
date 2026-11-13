@@ -34,7 +34,7 @@ vi.mock("@/lib/server/email", () => ({
   },
 }));
 
-const { checkSpend, pilotSpender, recordSpend, spenderFor, spendLimitResponse, startPaidCall } = await import("./spend-guard");
+const { checkSpend, pilotSpender, recordSpend, spenderFor, spenderForUser, spendLimitResponse, startPaidCall } = await import("./spend-guard");
 
 const pilot = { key: "u:pilot-1", signedIn: true };
 const otherPilot = { key: "u:pilot-2", signedIn: true };
@@ -101,6 +101,15 @@ describe("spend guard", () => {
     expect(await spenderFor(withCookie)).toEqual({ key: `device:${device}`, signedIn: false, addressKey: "address:198.51.100.4" });
     const noCookie = new Request("https://example.com", { headers: { "x-forwarded-for": "198.51.100.4" } });
     expect(await spenderFor(noCookie)).toEqual({ key: "ip:198.51.100.4", signedIn: false, addressKey: "address:198.51.100.4" });
+  });
+
+  it("gives an account whose email isn't confirmed a guest's allowance, and a confirmed one a pilot's", () => {
+    const device = "6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b";
+    const request = new Request("https://example.com", { headers: { "x-forwarded-for": "198.51.100.4", cookie: `ls_device=${device}` } });
+    const account = { id: "pilot-1", email: "p@example.com", displayName: "P", createdAt: "" };
+    expect(spenderForUser({ ...account, emailVerified: false }, request)).toEqual({ key: `device:${device}`, signedIn: false, addressKey: "address:198.51.100.4" });
+    expect(spenderForUser(account, request).signedIn).toBe(false);
+    expect(spenderForUser({ ...account, emailVerified: true }, request)).toEqual(pilotSpender("pilot-1", request));
   });
 
   it("gives each guest in a crew room their own $2, up to $10 for the address", async () => {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { acceptTradeOffer, findTradeOffer } from "@/lib/server/db";
 import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { offerForViewer } from "@/lib/server/trade-view";
@@ -15,6 +16,7 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   }
+  if (!isVerified(user)) return confirmEmailRefusal("agree a trade");
 
   const { id } = await params;
   const offer = await findTradeOffer(id);

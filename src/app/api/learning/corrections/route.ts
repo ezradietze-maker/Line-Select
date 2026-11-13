@@ -3,6 +3,7 @@ import { reportProblem } from "@/lib/server/alerts";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { parseCorrections } from "@/lib/learning/validate";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { isVerified } from "@/lib/server/verified-pilots";
 import { hashUser } from "@/lib/server/forecast-store";
 import { saveCorrections } from "@/lib/server/learning-store";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -24,9 +25,9 @@ export async function POST(request: Request) {
   }
   const events = parseCorrections(body.events);
   if (!events) return NextResponse.json({ error: "Invalid corrections." }, { status: 400 });
-  // Only signed-in pilots teach the fleet, as with interview outcomes.
+  // Only confirmed pilots teach the fleet, as with interview outcomes.
   const user = await getCurrentServerUser();
-  if (!user) return NextResponse.json({ stored: false });
+  if (!user || !isVerified(user)) return NextResponse.json({ stored: false });
   try {
     await saveCorrections(events, { base: (body.base as string).toUpperCase(), aircraft: (body.aircraft as string).toUpperCase(), seat: (body.seat as string).toUpperCase() }, hashUser(user.id));
   } catch (e) {

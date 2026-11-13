@@ -19,6 +19,11 @@ export interface UserAccount {
    * fine; treat an absent value as `"free"` wherever it matters.
    */
   plan?: "free" | "pro";
+  /**
+   * Whether the pilot has confirmed this address is theirs (a link from a confirm email, or an emailed reset). Until
+   * then they use the app for themselves, but share nothing, trade with no one and count as no one (`server/verified-pilots.ts`).
+   */
+  emailVerified?: boolean;
 }
 
 /** Stored server-side alongside the account; password is hashed + salted, never kept in plain text. */

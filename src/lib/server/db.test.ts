@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import * as mod from "@/lib/server/db";
@@ -42,7 +42,8 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
   const createdUserIds: string[] = [];
   const createdFeedbackIds: string[] = [];
 
-  async function makeUser(emailPrefix: string) {
+  /** Confirmed unless asked: only confirmed accounts count as pilots anywhere they're counted (`verified-pilots.ts`). */
+  async function makeUser(emailPrefix: string, { confirmed = true } = {}) {
     const id = randomUUID();
     const email = `${emailPrefix}-${id}@test.line-select.invalid`;
     const created = await mod.createUserWithCredential(
@@ -51,6 +52,7 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
     );
     expect(created.ok).toBe(true);
     createdUserIds.push(id);
+    if (confirmed) await mod.markEmailVerified(id);
     return { id, email };
   }
 
@@ -671,6 +673,77 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       expect(await mod.countRecentPilotsWithPack(prefix, weekAgo)).toBe(1);
       expect(await mod.countRecentPilotsWithPack(prefix, new Date(Date.now() + 60_000))).toBe(0);
+    });
+  });
+
+  describe("accounts whose email isn't confirmed", () => {
+    const hashOf = (token: string) => createHash("sha256").update(token).digest("hex");
+
+    it("start unconfirmed, and a confirm link confirms them once", async () => {
+      const u = await makeUser("unconfirmed", { confirmed: false });
+      expect((await mod.findUserById(u.id))?.emailVerified).toBe(false);
+      const token = randomUUID();
+      await mod.saveVerificationToken({ tokenHash: hashOf(token), userId: u.id, expiresAt: new Date(Date.now() + 60_000).toISOString(), signUp: true, deviceHash: "d" });
+      expect(await mod.spendVerificationToken(hashOf(token))).toEqual({ status: "confirmed", userId: u.id, deviceHash: "d" });
+      expect((await mod.findUserById(u.id))?.emailVerified).toBe(true);
+      expect(await mod.spendVerificationToken(hashOf(token))).toEqual({ status: "used", userId: u.id });
+      expect(await mod.spendVerificationToken(hashOf("made-up"))).toEqual({ status: "invalid" });
+    });
+
+    it("an expired link confirms nothing, and a new one replaces it", async () => {
+      const u = await makeUser("expired", { confirmed: false });
+      await mod.saveVerificationToken({ tokenHash: hashOf("old"), userId: u.id, expiresAt: new Date(Date.now() - 1000).toISOString() });
+      expect(await mod.spendVerificationToken(hashOf("old"))).toEqual({ status: "expired" });
+      await mod.saveVerificationToken({ tokenHash: hashOf(`new-${u.id}`), userId: u.id, expiresAt: new Date(Date.now() + 60_000).toISOString() });
+      expect(await mod.spendVerificationToken(hashOf("old"))).toEqual({ status: "invalid" });
+      expect((await mod.spendVerificationToken(hashOf(`new-${u.id}`))).status).toBe("confirmed");
+    });
+
+    it("the clear-out removes only sign-ups never confirmed and older than the cut-off", async () => {
+      const signedUp = await makeUser("old-sign-up", { confirmed: false });
+      const fromBefore = await makeUser("from-before", { confirmed: false });
+      const confirmed = await makeUser("confirmed-sign-up", { confirmed: false });
+      for (const [u, signUp] of [[signedUp, true], [fromBefore, false], [confirmed, true]] as const) {
+        await mod.saveVerificationToken({ tokenHash: hashOf(`clear-${u.id}`), userId: u.id, expiresAt: new Date(Date.now() + 60_000).toISOString(), signUp });
+      }
+      await mod.markEmailVerified(confirmed.id);
+      // Made just now: nothing is old enough yet.
+      expect(await mod.deleteUnconfirmedSignUps(new Date(Date.now() - 60_000))).toBe(0);
+      await mod.deleteUnconfirmedSignUps(new Date(Date.now() + 60_000));
+      expect(await mod.findUserById(signedUp.id)).toBeNull();
+      expect(await mod.findUserById(fromBefore.id)).not.toBeNull();
+      expect(await mod.findUserById(confirmed.id)).not.toBeNull();
+    });
+
+    it("don't count toward the Trade Board's bar", async () => {
+      const prefix = `uploaded-u${randomUUID().slice(0, 8)}-md11-cap-`;
+      const yes = await makeUser("bar-yes");
+      const no = await makeUser("bar-no", { confirmed: false });
+      await mod.saveBidPackRecord(yes.id, `${prefix}oct26`, Buffer.from("x"));
+      await mod.saveBidPackRecord(no.id, `${prefix}oct26`, Buffer.from("x"));
+      expect(await mod.countRecentPilotsWithPack(prefix, new Date(Date.now() - 60_000))).toBe(1);
+    });
+
+    it("aren't in a matching group, nor count toward one", async () => {
+      const meta = { base: "MEM", aircraft: "MD11", seat: "FO", month: `U${randomUUID().slice(0, 8)}` };
+      const packId = `pack-${meta.month}`;
+      const yes = await makeUser("group-yes");
+      const no = await makeUser("group-no", { confirmed: false });
+      for (const p of [yes, no]) await mod.saveTradeHolding(p.id, { packId, bidPackMeta: meta, lineNumber: null, trips: [] });
+      expect((await suggestions.listMatchingGroup(meta)).rows.map((r) => r.userId)).toEqual([yes.id]);
+      expect(await suggestions.listActiveGroups(2)).not.toContainEqual(meta);
+    });
+
+    it("have their open offers kept off other pilots' boards", async () => {
+      const meta = { base: "MEM", aircraft: "MD11", seat: "FO", month: `B${randomUUID().slice(0, 8)}` };
+      const viewer = await makeUser("viewer");
+      const no = await makeUser("offer-no", { confirmed: false });
+      const yes = await makeUser("offer-yes");
+      for (const p of [no, yes]) {
+        await mod.createTradeOffer({ id: randomUUID(), bidPackMeta: meta, offeringUserId: p.id, offeringDisplayName: "P", offeredTrip: { lineNumber: "1", pairingNumber: "1", days: 1, layoverCities: [], international: false, reportTime: "early", creditHours: 1, tafbHours: 1, landings: 1, deadheadLegs: 0 }, wantedPairingNumber: null, note: null, status: "open", createdAt: new Date().toISOString(), responderUserId: null, responderDisplayName: null, responderTrip: null, respondedAt: null, resolvedAt: null });
+      }
+      const seen = await mod.listTradeOffersForSeat(meta, viewer.id, { othersOpen: true, limit: 50 });
+      expect(seen.map((o) => o.offeringUserId)).toEqual([yes.id]);
     });
   });
 });

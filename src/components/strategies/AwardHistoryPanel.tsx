@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmEmailButton } from "@/components/auth/ConfirmEmail";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
@@ -32,6 +33,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
   const lineId = bidPack.lines.some((l) => l.id === pickedLineId) ? pickedLineId : (bidPack.lines[0]?.id ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
   const [history, setHistory] = useState<HoldHistorySummary | null>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
 
@@ -89,8 +91,10 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
     setSubmitting(false);
     if (!result.ok) {
       setError(result.error ?? "Something went wrong. Try again.");
+      setNeedsConfirm(!!result.confirmEmail);
       return;
     }
+    setNeedsConfirm(false);
     setSubmitted(true);
     setFormOpen(false);
     setHistoryVersion((v) => v + 1);
@@ -179,7 +183,17 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
               </select>
             )}
 
-            {error && <p className="text-xs text-danger">{error}</p>}
+            {error && (
+              <p className="text-xs text-danger">
+                {error}
+                {needsConfirm && (
+                  <>
+                    {" "}
+                    <ConfirmEmailButton />
+                  </>
+                )}
+              </p>
+            )}
 
             <div className="flex gap-2">
               <Button
