@@ -3,7 +3,7 @@ import { onceForRequest } from "@/lib/server/replay";
 import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
 import { BRAIN_PROMPT_VERSION, buildModelCeilingUsd, buildPilotModel } from "@/lib/brain/build-model";
-import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
+import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, exchangesProblem, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -32,7 +32,7 @@ async function respond(request: Request) {
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   const exchanges = readExchanges(body.exchanges);
   if (!isText(body.packBrief, MAX_PACK_BRIEF) || !isText(body.pilotContext, MAX_CONTEXT) || !exchanges) {
-    return NextResponse.json({ error: "Missing interview input." }, { status: 400 });
+    return NextResponse.json({ error: (!exchanges && exchangesProblem(body.exchanges)) || "Missing interview input." }, { status: 400 });
   }
   const prior = body.prior === undefined || body.prior === null ? null : readModel(body.prior);
 

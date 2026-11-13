@@ -5,6 +5,7 @@ import { PackLineFold } from "@/components/interview/PackLineFold";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
+import { MAX_NOTE } from "@/lib/brain/answer-limits";
 import { packColumnCount, packColumns } from "@/lib/bidpack-row";
 import { BidPackHeader, StripKey, stripLayout } from "@/components/results/BidPackStrip";
 import { useMeasuredWidth } from "@/components/results/LegBars";
@@ -161,6 +162,7 @@ export function LinePairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
           onChange={setWhy}
           placeholder={pair.differences?.length ? "Which difference decided it? (optional)" : "What decided it? (optional)"}
           ariaLabel="What decided it"
+          maxLength={MAX_NOTE}
           className="mt-4"
         />
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}

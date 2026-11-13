@@ -23,11 +23,50 @@ export function parseSeniorityInput(text: string): number | null {
   return n >= 1 ? n : null;
 }
 
-export function SeniorityStep({ value, onChange, list, seat, eyebrow }: SeniorityStepProps) {
-  const parsed = parseSeniorityInput(value);
-  const position = parsed !== null ? resolveBidPosition(list, parsed) : null;
-  const seatWord = seat === "CAP" ? "captains" : "first officers";
+/**
+ * What a typed number says against the pack's list: found on it, not on it, or not a seniority number at all ("0").
+ * Null while the box is empty, or when there's no list to check it against.
+ */
+export function checkSeniority(text: string, list: SeniorityEntry[]): { kind: "found" | "not-listed"; bidNumber: number } | { kind: "not-a-number" } | null {
+  const typed = text.trim();
+  if (!typed) return null;
+  const n = parseSeniorityInput(typed);
+  if (n === null) return { kind: "not-a-number" };
+  if (!list.length) return null;
+  const position = resolveBidPosition(list, n);
+  return { kind: position.exact ? "found" : "not-listed", bidNumber: position.bidNumber };
+}
 
+/**
+ * Under a seniority box, wherever it's asked (the interview, the quick start): found, or why the number won't do. A
+ * "0" used to grey out Next with no reason, and the quick start dropped it, or saved a number not on the list, without
+ * a word.
+ */
+export function SeniorityNotice({ value, list, seat, className = "" }: { value: string; list: SeniorityEntry[]; seat: string; className?: string }) {
+  const check = checkSeniority(value, list);
+  const seatWord = seat === "CAP" ? "captains" : "first officers";
+  return (
+    <div className={`text-sm ${className}`} aria-live="polite">
+      {check?.kind === "found" && (
+        <p className="rounded-lg border border-good/30 bg-good-soft px-3 py-2 text-good">
+          Found you: {ordinal(check.bidNumber)} in bid order of {list.length} {seatWord} bidding this month. {check.bidNumber - 1} bid ahead of you.
+        </p>
+      )}
+      {check?.kind === "not-listed" && (
+        <p className="rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-warn">
+          That number isn&rsquo;t on this pack&rsquo;s {seat === "CAP" ? "captain" : "first officer"} list. Check it, or continue and the estimate will place you by where it would fall
+          {/* Past the end of the list, "about 782nd of 781" read as a mistake. */}
+          {check.bidNumber > list.length ? <> (after all {list.length} on the list).</> : <> (about {ordinal(check.bidNumber)} of {list.length}).</>}
+        </p>
+      )}
+      {check?.kind === "not-a-number" && (
+        <p className="rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-warn">Seniority numbers start at 1. Check the number, or leave it blank to skip it.</p>
+      )}
+    </div>
+  );
+}
+
+export function SeniorityStep({ value, onChange, list, seat, eyebrow }: SeniorityStepProps) {
   return (
     <div>
       <QuestionPrompt
@@ -55,18 +94,7 @@ export function SeniorityStep({ value, onChange, list, seat, eyebrow }: Seniorit
           placeholder="e.g. 1234"
           className="text-readout mt-2 block w-full max-w-56 rounded-xl border border-field-edge bg-canvas/60 px-4 py-3 text-2xl tracking-wider placeholder:text-ink-faint/60 focus:border-accent focus:shadow-[0_0_0_2px_var(--color-focus-ring),0_0_0_6px_var(--glow-soft)] focus:outline-none"
         />
-        <div className="mt-3 min-h-[3rem] text-sm" aria-live="polite">
-          {position && position.exact && (
-            <p className="rounded-lg border border-good/30 bg-good-soft px-3 py-2 text-good">
-              Found you: {ordinal(position.bidNumber)} in bid order of {list.length} {seatWord} bidding this month. {position.bidNumber - 1} bid ahead of you.
-            </p>
-          )}
-          {position && !position.exact && (
-            <p className="rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-warn">
-              That number isn&rsquo;t on this pack&rsquo;s {seat === "CAP" ? "captain" : "first officer"} list. Check it, or continue and the estimate will place you by where it would fall (about {ordinal(position.bidNumber)} of {list.length}).
-            </p>
-          )}
-        </div>
+        <SeniorityNotice value={value} list={list} seat={seat} className="mt-3 min-h-[3rem]" />
 
         <p className="mt-2 text-xs text-ink-faint">
           Prefer not to say? Leave it blank &mdash; you can add it any time on your Preferences page.

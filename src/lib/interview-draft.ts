@@ -115,6 +115,16 @@ export function adoptGuestDrafts(userId: string): void {
   }
 }
 
+/** The story kept as it was being written — gone once the interview it was for is finished, or the pilot starts fresh. */
+export function clearStoryDraft(userId: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(storyDraftKey(userId));
+  } catch {
+    // ignore
+  }
+}
+
 export function saveStoryDraft(userId: string | null, bidPackId: string, text: string): void {
   if (typeof window === "undefined") return;
   try {
