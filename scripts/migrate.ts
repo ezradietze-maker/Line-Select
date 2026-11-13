@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { assertSafeForDestructiveOp } from "../src/lib/server/db-guard";
 
 // A standalone script, unlike `next dev`/`next build`, doesn't auto-load
 // .env.local — load it explicitly (harmless if it's absent, e.g. in an
@@ -23,6 +24,11 @@ const connectionString =
 if (!connectionString) {
   throw new Error("No Postgres connection string found — set DATABASE_URL in .env.local first.");
 }
+
+// A migration changes the schema of whatever it connects to. Refuse to do that
+// to the live database from a laptop unless the operator opts in explicitly.
+// See docs/safe-database.md.
+assertSafeForDestructiveOp(connectionString, "npm run db:migrate");
 
 async function main() {
   const pool = new Pool({ connectionString });

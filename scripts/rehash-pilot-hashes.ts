@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { keyedPilotHash, PILOT_HASH_COLUMNS, plainPilotHash } from "../src/lib/server/pilot-hash";
+import { assertSafeForDestructiveOp } from "../src/lib/server/db-guard";
 
 try {
   process.loadEnvFile(".env.local");
@@ -23,6 +24,9 @@ async function main() {
   const connectionString = process.env.POSTGRES_URL_NON_POOLING ?? process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
   if (!connectionString) throw new Error("No Postgres connection string found.");
   const apply = process.argv.includes("--apply");
+  // The --apply run updates every stored pilot hash. Only guard the real write:
+  // a dry run rolls back, but the guard makes the intent explicit either way.
+  if (apply) assertSafeForDestructiveOp(connectionString, "rehash-pilot-hashes --apply");
   const pool = new Pool({ connectionString });
   const client = await pool.connect();
   try {
