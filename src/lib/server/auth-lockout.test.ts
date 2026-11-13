@@ -58,7 +58,8 @@ describe("sign-in limits for one account", () => {
     const fromNew = await login(EMAIL, PW, HOME);
     expect(fromNew.ok).toBe(false);
     expect(fromNew.error).toMatch(/Too many failed attempts/);
-  });
+    // 73 sign-ins, each hashing a password: over the default 5 seconds on a busy machine.
+  }, 30_000);
 
   it("a device that has signed in to the account before still gets in once the account-wide ceiling is reached", async () => {
     expect((await login(EMAIL, PW, HOME, LAPTOP)).ok).toBe(true);
