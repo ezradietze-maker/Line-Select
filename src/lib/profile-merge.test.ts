@@ -116,3 +116,53 @@ describe("withGuestRecords", () => {
     expect(withGuestRecords(account, profile([], "b"))).toBe(account);
   });
 });
+
+describe("mergeAfterConflict answer by answer", () => {
+  const b = { ...profile(undefined, "2026-11-01T00:00:00Z"), brainInterview: { exchanges: [], choices: [], pins: {} } } as PreferenceProfile;
+  const drag = (dragId: string, preferred: string, other: string) => ({ preferred, other, strength: "strongly" as const, direct: true, dragId });
+
+  it("keeps a city graded on the other device when this one graded a different city", () => {
+    const merged = mergeAfterConflict({ ...b, cityPreferences: { ANC: "love" } } as PreferenceProfile, { ...b, cityPreferences: { CDG: "avoid" } } as PreferenceProfile, b);
+    expect(merged.cityPreferences).toEqual({ ANC: "love", CDG: "avoid" });
+  });
+
+  it("keeps each device's own city ratings and hotel grades, and this device's where both graded the same", () => {
+    const start = { ...b, cityRatings: { HNL: { score: 3, hotels: { Hilton: 3 } } } } as unknown as PreferenceProfile;
+    const theirs = { ...start, cityRatings: { HNL: { score: 4, hotels: { Hilton: 3, Hyatt: 1 } }, ANC: { score: 5 } } } as unknown as PreferenceProfile;
+    const mine = { ...start, cityRatings: { HNL: { score: 2, hotels: { Hilton: 5 } }, CDG: { score: 1 } } } as unknown as PreferenceProfile;
+    expect(mergeAfterConflict(theirs, mine, start).cityRatings).toEqual({ HNL: { score: 2, hotels: { Hilton: 5, Hyatt: 1 } }, ANC: { score: 5 }, CDG: { score: 1 } });
+  });
+
+  it("keeps a priority level, a target and a strategy reaction set on each device", () => {
+    const theirs = { ...b, weights: { ...b.weights, daysOff: 80 }, explicitTargets: { creditHours: { min: 70, max: 80 } }, strategyReactions: { "bid-high": "used" } } as unknown as PreferenceProfile;
+    const mine = { ...b, weights: { ...b.weights, tripLength: -40 }, explicitTargets: { daysOff: 15 }, strategyReactions: { "bid-low": "dismissed" } } as unknown as PreferenceProfile;
+    const merged = mergeAfterConflict(theirs, mine, b);
+    expect(merged.weights).toMatchObject({ daysOff: 80, tripLength: -40 });
+    expect(merged.explicitTargets).toEqual({ creditHours: { min: 70, max: 80 }, daysOff: 15 });
+    expect(merged.strategyReactions).toEqual({ "bid-high": "used", "bid-low": "dismissed" });
+  });
+
+  it("keeps a pin set on the other device when this one made a drag, and both drags when each made one", () => {
+    const theirs = { ...b, brainInterview: { ...b.brainInterview!, pins: { daysOff: 1 }, choices: [drag("d0", "2001", "2002")] } } as PreferenceProfile;
+    const mine = { ...b, brainInterview: { ...b.brainInterview!, choices: [drag("d1", "2003", "2004")] } } as PreferenceProfile;
+    const merged = mergeAfterConflict(theirs, mine, b);
+    expect(merged.brainInterview?.pins).toEqual({ daysOff: 1 });
+    expect(merged.brainInterview?.choices.map((c) => c.dragId)).toEqual(["d0", "d1"]);
+  });
+
+  it("keeps a drag undone on either device undone", () => {
+    const start = { ...b, brainInterview: { ...b.brainInterview!, choices: [drag("d0", "2001", "2002"), drag("d1", "2003", "2004")] } } as PreferenceProfile;
+    const theirs = { ...start, brainInterview: { ...start.brainInterview!, choices: [drag("d1", "2003", "2004")] } } as PreferenceProfile;
+    const mine = { ...start, brainInterview: { ...start.brainInterview!, choices: [drag("d0", "2001", "2002"), drag("d2", "2005", "2006")] } } as PreferenceProfile;
+    expect(mergeAfterConflict(theirs, mine, start).brainInterview?.choices.map((c) => c.dragId)).toEqual(["d2"]);
+  });
+
+  it("takes this device's version of a drag it set aside with a later one", () => {
+    const start = { ...b, brainInterview: { ...b.brainInterview!, choices: [drag("d0", "2001", "2002")] } } as PreferenceProfile;
+    const theirs = { ...start, brainInterview: { ...start.brainInterview!, pins: { daysOff: 1 } } } as PreferenceProfile;
+    const mine = { ...start, brainInterview: { ...start.brainInterview!, choices: [{ ...drag("d0", "2001", "2002"), supersededBy: "d1" }, drag("d1", "2002", "2001")] } } as PreferenceProfile;
+    const merged = mergeAfterConflict(theirs, mine, start);
+    expect(merged.brainInterview?.choices).toEqual(mine.brainInterview?.choices);
+    expect(merged.brainInterview?.pins).toEqual({ daysOff: 1 });
+  });
+});

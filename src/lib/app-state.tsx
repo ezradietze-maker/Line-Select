@@ -18,7 +18,7 @@ import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/post
 import { clearPendingProfile, loadPendingProfile, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
-import { askToKeepStorage, clearProfile, clearProfileForUser, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
+import { askToKeepStorage, clearProfile, clearProfileForUser, dropGuestRecords, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import { loadSeenOfferIds, newArrivals, saveSeenOfferIds, type ToastBaseline } from "@/lib/trade-seen-storage";
 import type { BidPack } from "@/types/bidpack";
@@ -75,6 +75,23 @@ function readLastUser(): UserAccount | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A signed-in pilot's save that came back as a different copy (merged with another device's): that copy is shown, and
+ * it's what the retries send. Only while the profile on screen is still the one that was saved — an edit made since
+ * goes up after it, laid over the merged copy (`saveProfileForUser`), and replacing it here would lose it.
+ */
+function showSavedCopy(
+  sent: PreferenceProfile,
+  saved: PreferenceProfile,
+  userId: string | null,
+  latest: { current: PreferenceProfile | null },
+  setState: (update: (s: DataState) => DataState) => void
+): void {
+  if (saved === sent) return;
+  if (latest.current === sent) latest.current = saved;
+  setState((s) => (s.profile === sent && (s.user?.id ?? null) === userId ? { ...s, profile: saved } : s));
 }
 
 interface DataState {
@@ -441,11 +458,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         return;
       }
       void saveProfileForUser(userId, profile).then((r) => {
+        showSavedCopy(profile, r.profile, userId, latestProfileRef, setState);
         if (r.sync === "saved") setProfileSync("ok");
-        else if (r.sync === "merged") {
-          setState((s) => ({ ...s, profile: r.profile }));
-          setProfileSync("merged");
-        }
+        else if (r.sync === "merged") setProfileSync("merged");
       });
     };
     const tryAgain = () => void retry();
@@ -587,10 +602,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setState((s) => (!stillTheirs(s) ? s : { ...s, ...(r.savedLocally ? {} : { profileSaveFailed: true }), ...(merged && s.profile === profile ? { profile: r.profile } : {}) }));
         return;
       }
-      if (r.sync === "merged") {
-        setState((s) => (stillTheirs(s) ? { ...s, profile: r.profile } : s));
-        setProfileSync("merged");
-      } else if (r.sync === "failed") setProfileSync("failed");
+      // Merged — even when the merged copy's own send then failed, so the retries send it and not the copy from before
+      // the merge, which would go up over the other device's change.
+      showSavedCopy(profile, r.profile, savedFor, latestProfileRef, setState);
+      if (r.sync === "merged") setProfileSync("merged");
+      else if (r.sync === "failed") setProfileSync("failed");
       else if (r.sync === "saved") setProfileSync((p) => (p === "failed" ? "ok" : p));
     });
   }
@@ -721,8 +737,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       } else if (theirProfile && state.profile) {
         // The account's own profile stands, but the months the guest logged and the checklist they ticked join it:
         // otherwise they'd sit hidden on the device behind the account's, and go with it at sign-out.
+        // Once the account's copy holds them, the guest's copy gives them up, or the next sign-in here adds them again.
         const withGuest = withGuestRecords(theirProfile, state.profile);
-        if (withGuest !== theirProfile) theirProfile = (await saveProfileForUser(newUser.id, withGuest)).profile;
+        if (withGuest !== theirProfile) {
+          const saved = await saveProfileForUser(newUser.id, withGuest);
+          theirProfile = saved.profile;
+          if (saved.savedLocally) dropGuestRecords();
+        }
       }
       if (!theirSeniority && state.seniority) {
         saveSeniority(newUser.id, state.seniority);
