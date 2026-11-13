@@ -5,6 +5,7 @@ import { NAV_ITEMS, disabledReason, type NavTarget } from "@/components/nav/nav-
 import { FlipText } from "@/components/ui/FlipText";
 import { SearchIcon } from "@/components/ui/icons";
 import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
+import { lockScroll } from "@/lib/scroll-lock";
 import { setStoredTheme, type ThemeMode } from "@/lib/theme";
 import type { Line } from "@/types/bidpack";
 
@@ -137,7 +138,7 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
     if (!open) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
     inputRef.current?.focus();
-    document.body.style.overflow = "hidden";
+    const unlock = lockScroll();
     // It's modal: focus that lands on the page behind (a screen reader's cursor, a click through) comes back to the box.
     const keepFocusIn = (e: FocusEvent) => {
       if (e.target instanceof Node && !dialogRef.current?.contains(e.target)) inputRef.current?.focus();
@@ -145,7 +146,7 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
     document.addEventListener("focusin", keepFocusIn);
     return () => {
       document.removeEventListener("focusin", keepFocusIn);
-      document.body.style.overflow = "";
+      unlock();
       previouslyFocused?.focus?.();
     };
   }, [open]);

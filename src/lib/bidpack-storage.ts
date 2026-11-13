@@ -294,6 +294,14 @@ export function clearGuestUpload(): void {
   }
 }
 
+/**
+ * Another tab started over: a write this tab still has waiting would put the deleted pack back, so it's dropped. What's
+ * kept now stays — by then it may be a new pack uploaded in that tab.
+ */
+export function dropPendingBidPackWrites(userId: string | null): void {
+  cleared.set(bidPackKey(userId), (cleared.get(bidPackKey(userId)) ?? 0) + 1);
+}
+
 export function clearBidPack(userId: string | null): void {
   if (typeof window === "undefined") return;
   cleared.set(bidPackKey(userId), (cleared.get(bidPackKey(userId)) ?? 0) + 1);

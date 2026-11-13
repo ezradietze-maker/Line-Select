@@ -48,9 +48,10 @@ function AuthPageView() {
           >
             {bidPack ? "Back to your lines" : "Upload your bid pack"}
           </Link>
+          {/* Then the form here, to sign in as the other pilot: the landing page was a step further from it. */}
           <button
             type="button"
-            onClick={() => void handleLogout()}
+            onClick={() => void handleLogout({ to: "/auth" })}
             className="mt-4 w-full text-center text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted"
           >
             Sign out to use another account

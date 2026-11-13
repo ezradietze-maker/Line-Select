@@ -27,11 +27,13 @@ const isGuestsOwn = (k: string) => k.includes(":guest:") && !k.startsWith("line-
 const KEPT_ON_START_OVER = ["line-select:contract-chat:", "line-select:feedback-draft:", "line-select:trade-offers-seen:", "line-select:forecast-share:"];
 /** Under no id, but part of the preferences "Start over" deletes: the home airport and commute settings, and the flights found from them. */
 const COMMUTE = ["line-select:commute-settings:v1", "line-select:flights:v5:", "line-select:commute-check:v2:"];
+/** What the device last sent the signed-in pilot's calendar link: the link is turned off with the rest (app-state). */
+const FEED_SENT = "line-select:calendar-feed-sent:v1";
 
 /**
  * "Start over from scratch": everything this device kept of the pilot's bidding, for every pack — the pack and profile,
  * seniority, starred and hidden lines, tiers, swaps, sorts, carry-ins, interview and story drafts, last month's top
- * lines and the months before, the commute settings — so none of it comes back with the same month's pack uploaded again, as the dialog
+ * lines and the months before, the commute settings, what was last sent to their calendar link — so none of it comes back with the same month's pack uploaded again, as the dialog
  * promises. Their sign-in stays (and, for a guest, nothing of an account is touched).
  */
 export function forgetPilotWork(userId: string | null): void {
@@ -43,7 +45,9 @@ export function forgetPilotWork(userId: string | null): void {
     const store = window.localStorage;
     const keys = Array.from({ length: store.length }, (_, i) => store.key(i)).filter(
       (k): k is string =>
-        !!k && k.startsWith("line-select:") && ((k.includes(scope) && !KEPT_ON_START_OVER.some((p) => k.startsWith(p))) || COMMUTE.some((p) => k.startsWith(p)))
+        !!k &&
+        k.startsWith("line-select:") &&
+        ((k.includes(scope) && !KEPT_ON_START_OVER.some((p) => k.startsWith(p))) || COMMUTE.some((p) => k.startsWith(p)) || (userId !== null && k === FEED_SENT))
     );
     for (const key of keys) store.removeItem(key);
   } catch {

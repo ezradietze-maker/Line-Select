@@ -74,6 +74,7 @@ describe("starting over from scratch", () => {
       "line-select:top-lines:pilot-1:v2",
       "line-select:bid-period-history:pilot-1:v1",
       "line-select:commute-settings:v1",
+      "line-select:calendar-feed-sent:v1",
     ])
       store.setItem(k, "x");
     forgetPilotWork("pilot-1");
@@ -87,8 +88,9 @@ describe("starting over from scratch", () => {
   });
 
   it("for a guest, removes the guest's own and their pack", () => {
-    for (const k of ["line-select:bidpack:guest:v1", "line-select:line-marks:guest:pack-a:v1", "line-select:seniority:guest:v1", "line-select:seniority:pilot-1:v1"]) store.setItem(k, "x");
+    // The calendar link is an account's: a guest starting over leaves what was sent for it alone.
+    for (const k of ["line-select:bidpack:guest:v1", "line-select:line-marks:guest:pack-a:v1", "line-select:seniority:guest:v1", "line-select:seniority:pilot-1:v1", "line-select:calendar-feed-sent:v1"]) store.setItem(k, "x");
     forgetPilotWork(null);
-    expect(keys()).toEqual(["line-select:seniority:pilot-1:v1"]);
+    expect(keys()).toEqual(["line-select:calendar-feed-sent:v1", "line-select:seniority:pilot-1:v1"]);
   });
 });
