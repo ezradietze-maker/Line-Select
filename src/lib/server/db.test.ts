@@ -6,6 +6,7 @@ import * as forecastStore from "@/lib/server/forecast-store";
 import { db } from "@/lib/server/postgres";
 import { looksLikeProductionUrl, productionDbOptIn } from "@/lib/server/db-guard";
 import * as suggestions from "@/lib/server/trade-suggestions";
+import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { awardHistoryRecords, feedbackSubmissions, tradeOffers, users } from "@/lib/server/schema";
 import { DEFAULT_WEIGHTS } from "@/types/preferences";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -371,8 +372,12 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       for (const p of [a, b, c]) await suggestions.answerSuggestion(stepping, p.id, "accepted");
       await agreeOnBoard();
       expect(await suggestions.markStepDone(stepping, a.id, 0)).toEqual({ ok: false, reason: "traded" });
+      // And it ends there, its pilots free for other trades, rather than "accepted" with no way on for the month.
+      const ended = (await suggestions.listSuggestionsFor(a.id, packId)).find((r) => r.id === stepping)!;
+      expect(ended).toMatchObject({ status: "cancelled", cancelReason: "changed", stepsDone: 0 });
+      expect(tripsSpokenFor(ended, Date.now())).toEqual([]);
       await undo();
-      expect((await suggestions.markStepDone(stepping, a.id, 0)).ok).toBe(true);
+      expect(await suggestions.markStepDone(stepping, a.id, 0)).toEqual({ ok: false, reason: "not-next" });
     });
 
     it("won't store a trade found before one of its pilots agreed a board trade, whatever trips it moved", async () => {

@@ -320,7 +320,12 @@ export async function markStepDone(id: string, userId: string, stepIndex: number
     const pilot = (position: number) => record.members[position];
     // A trip agreed on the board since (in a race the board's own checks can't see) isn't the trade's to move.
     const moving = [step.a, step.b].map((p) => ({ userId: pilot(p).userId, give: pilot(holds[p]).give }));
-    if (await givesAgreedTrip(tx, record.bidPackMeta, moving)) return { ok: false, reason: "traded" } as const;
+    if (await givesAgreedTrip(tx, record.bidPackMeta, moving)) {
+      // The chain can't go on, and left "accepted" it kept every pilot on it out of other trades for the rest of the
+      // month. It ends here; the steps already done stay done, in VIPS and on each pilot's holding.
+      await tx.update(tradeSuggestions).set({ status: "cancelled", cancelReason: "changed", signature: null, resolvedAt: now }).where(eq(tradeSuggestions.id, id));
+      return { ok: false, reason: "traded" } as const;
+    }
     const swap = async (position: number, other: number) => {
       const giving = pilot(holds[position]).give;
       const taking = pilot(holds[other]).give;
