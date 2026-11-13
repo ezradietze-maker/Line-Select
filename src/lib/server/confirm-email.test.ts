@@ -151,9 +151,9 @@ describe("signing up with email set up", () => {
     expect(taken.recoveryCode).toBeTruthy();
   });
 
-  it("sends one address no more than three emails an hour, however many sign-ups name it", async () => {
-    for (let i = 0; i < 6; i++) await signUpByEmail("busy@example.com", "a long password", "J. Pilot", LAPTOP);
-    expect(mail.sent).toHaveLength(3);
+  it("sends one address no more than five emails an hour, however many sign-ups name it", async () => {
+    for (let i = 0; i < 8; i++) await signUpByEmail("busy@example.com", "a long password", "J. Pilot", LAPTOP);
+    expect(mail.sent).toHaveLength(5);
   });
 
   it("counts every sign-up email against the site's hourly allowance", async () => {
