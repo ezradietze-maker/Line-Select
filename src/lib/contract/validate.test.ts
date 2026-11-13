@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { narrowestPiece, normalizeForMatch, validateAnswer, type RawAnswer } from "./validate";
+import { contractNode } from "./index";
+import { holdsQuote, narrowestPiece, normalizeForMatch, validateAnswer, whereIsQuote, type RawAnswer } from "./validate";
 
 const QUOTE = "The SWW is a period of not less than 115 hours beginning at 1700 CT the day following the posting of the View/Add Processing Window results.";
 const good: RawAnswer = { found: true, answer: "It runs at least 115 hours from 1700 CT.", quotes: [{ section: "25.E.6", quote: QUOTE, version: "2026" }] };
@@ -86,12 +87,70 @@ describe("the contract validator", () => {
     expect(cut("The SWW is a period of not less than 115", "At least 115 hours.").ok).toBe(true);
   });
 
-  it("lets through only the lines and trips a question names, not a number it suggests", () => {
+  it("lets no number through from the question, only a line or trip the pack facts show is real", () => {
     expect(check({ ...good, answer: "Yes, it runs 100 hours." }, "Is the SWW 100 hours?").ok).toBe(false);
-    expect(check({ ...good, answer: "For trip 93 the SWW still runs 115 hours." }, "What about trip 93?").ok).toBe(true);
+    expect(check({ ...good, answer: "Yes, it begins at 1800 CT." }, "Does the SWW begin at 1800 CT?").ok).toBe(false);
+    expect(check({ ...good, answer: "Yes, it runs 3 days." }, "Do trips 3 days long count?").ok).toBe(false);
+    expect(check({ ...good, answer: "Yes, the SWW is 85 hours." }, "Is the line 85 hours?").ok).toBe(false);
+    expect(check({ ...good, answer: "Yes, it runs 2 days." }, "Is the #2 rule that the SWW is 2 days?").ok).toBe(false);
+    expect(check({ ...good, answer: "For trip 93 the SWW still runs 115 hours." }, "What about trip 93?").ok).toBe(false);
+    expect(check({ ...good, answer: "For trip 93 the SWW still runs 115 hours." }, "What about trip 93?", "Trip 93 is in this pack.").ok).toBe(true);
   });
 
-  it("doesn't read 'no one' as a number", () => {
+  it("doesn't read 'no one' as a number, but does read a real count of one", () => {
     expect(check({ ...good, answer: "No one can shorten it below 115 hours." }).ok).toBe(true);
+    expect(check({ ...good, answer: "Anyone, everyone and someone get 115 hours, all with one another." }).ok).toBe(true);
+    expect(check({ ...good, answer: "It runs 115 hours for one of these pilots, not this one." }).ok).toBe(true);
+    expect(check({ ...good, answer: "It gives you the one day off." }).ok).toBe(false);
+    expect(check({ ...good, answer: "It covers only one of your vacations." }).ok).toBe(false);
+    expect(check({ ...good, answer: "At least one of these runs 115 hours." }).ok).toBe(false);
+    expect(check({ ...good, answer: "Each one runs 115 hours." }).ok).toBe(false);
+  });
+
+  it("holds a quote from a pay table, cell by cell", () => {
+    // A row of 3.C.1.a as the index holds it: the year, then a rate for each seat, then the next year.
+    const cells = contractNode("3.C.1.a")!.text.split(/\s+/);
+    const at = cells.findIndex((c, i) => c === "5" && /^\d+\.\d+$/.test(cells[i + 1] ?? ""));
+    const row = cells.slice(at, at + 4).join(" ");
+    const rate = cells[at + 1];
+    const pay = (quote: string, answer = `Year 5 pays ${rate} an hour.`) =>
+      check({ found: true, answer, quotes: [{ section: "3.C.1.a", quote, version: "2026" }] }, "What does a year 5 captain make?");
+    expect(pay(row)).toMatchObject({ ok: true, quotes: [{ section: "3.C.1.a" }] });
+    expect(pay(cells.slice(at - 3, at + 1).join(" "), `Year 4 pays ${cells[at - 2]} an hour.`).ok).toBe(true);
+    expect(whereIsQuote(row)).toEqual({ section: "3.C.1.a", version: "2026" });
+    // Still cut inside a cell, and still no running two cells into a number neither holds.
+    expect(pay(`${row.slice(3)} ${cells[at + 4]}`).ok).toBe(false);
+    expect(pay(`${row} ${cells[at + 4].slice(0, 2)}`).ok).toBe(false);
+    expect(pay(`${cells[at - 2]} ${cells[at - 1]} 5${rate} ${cells[at + 2]}`, `It pays 5${rate} an hour.`)).toMatchObject({ ok: false, reason: expect.stringContaining(`5${rate}`) });
+  });
+
+  it("tells a space between numbers from a number cut in two", () => {
+    expect(holdsQuote("Year 1 386.72 117.54 2 429.64", "1 386.72 117.54 2")).toBe(true);
+    expect(holdsQuote("notified in writing at least 30 days prior", "notified in writing at least 3")).toBe(false);
+    expect(holdsQuote("notified in writing at least 30 days prior", "0 days prior")).toBe(false);
+    expect(holdsQuote("up to 1,000 hours a year", "up to 1")).toBe(false);
+    expect(holdsQuote("paid at 2.25 times the rate", "paid at 2.")).toBe(false);
+    expect(holdsQuote("a rest of 9:30 hours", "a rest of 9")).toBe(false);
+    expect(holdsQuote("between 8-10 hours of rest", "between 8")).toBe(true);
+    // The PDF breaks a line inside a word or a number; a quote reads them whole.
+    expect(holdsQuote("effective on June 29, 202 6; and", "effective on June 29, 2026")).toBe(true);
+    expect(holdsQuote("the pi lot shall", "the pilot shall")).toBe(true);
+  });
+
+  it("reads a length of time or a number with thousands the way the contract writes it", () => {
+    const rest = { section: "12.C.6.a", quote: "A domestic rest period shall be scheduled for not less than 9:30 hours", version: "2026" as const };
+    const rig = { section: "4.F.2.d.ii", quote: "Duty rig is computed as 1 CH for each 1.5 hours on duty", version: "2026" as const };
+    const weight = { section: "1.B.3", quote: "having a MTOGW of greater than 60,000 lbs.", version: "2026" as const };
+    const said = (answer: string, quote: RawAnswer["quotes"][number]) => check({ found: true, answer, quotes: [quote] }, "?").ok;
+    expect(said("At least 9 hours 30 minutes.", rest)).toBe(true);
+    expect(said("At least 9 hours and 30 minutes.", rest)).toBe(true);
+    expect(said("At least 9 hours 15 minutes.", rest)).toBe(false);
+    expect(said("At least 8 hours 30 minutes.", rest)).toBe(false);
+    expect(said("1 CH for every 1 hour 30 minutes on duty.", rig)).toBe(true);
+    expect(said("1 CH for every 1 hour 20 minutes on duty.", rig)).toBe(false);
+    expect(said("Aircraft over 60000 lbs.", weight)).toBe(true);
+    expect(said("Aircraft over 60,000 lbs.", weight)).toBe(true);
+    expect(said("Aircraft over 60 lbs.", weight)).toBe(false);
+    expect(said("Aircraft over 6,000 lbs.", weight)).toBe(false);
   });
 });

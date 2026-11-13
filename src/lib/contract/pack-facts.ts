@@ -26,11 +26,22 @@ export function linesNamed(question: string): string[] {
   return [...new Set(numbers)];
 }
 
+/** "trip 301", "trips 301 and 302", "pairing #4410", but not "trips 3 days long": a count of days isn't a trip. */
+export function tripsNamed(question: string): string[] {
+  const numbers = [...question.matchAll(/\b(?:trips?|pairings?)\s*#?\s*(\d{1,5}(?:\s*(?:,|and|or|&)\s*#?\s*\d{1,5})*)\b(?!\s*-?\s*(?:days?|hours?|hrs?|nights?|legs?|minutes?|mins?|ch|credit|block|%))/gi)].flatMap((m) => m[1].match(/\d{1,5}/g) ?? []);
+  return [...new Set(numbers)];
+}
+
 export function packFacts(question: string, pack: BidPack | null, carryIn: CarryInItem[] = [], elections: PhaseInElections = NO_ELECTIONS): string | undefined {
   if (!pack) return undefined;
   const named = linesNamed(question);
-  if (!named.length) return undefined;
+  // Only the trips really in the pack are said: the contract checker lets a number through when these facts hold it,
+  // so "Trip 3 isn't in this pack" would have backed the 3 of "trips 3 long".
+  const inPack = new Set(pack.lines.flatMap((l) => l.trips.flatMap((t) => (t.pairingNumber ? [t.pairingNumber] : []))));
+  const trips = tripsNamed(question).filter((n) => inPack.has(n));
+  if (!named.length && !trips.length) return undefined;
   const facts = [`The pilot's bid pack: ${pack.month}, ${pack.base} ${pack.aircraft} ${pack.seat}, a ${pack.bidPeriodDays}-day bid period.`];
+  for (const number of trips.slice(0, 4)) facts.push(`Trip ${number} is in this pack.`);
   for (const number of named.slice(0, 4)) {
     const line = pack.lines.find((l) => l.lineNumber === number);
     if (!line) {
@@ -55,6 +66,6 @@ export function packFacts(question: string, pack: BidPack | null, carryIn: Carry
     if (!flown.dropped.length && !flown.kept.length) facts.push(`Line ${number} with the pilot's carry-in: no conflict found.`);
     facts.push(`Line ${number} days off after carry-in: ${flown.daysOffAfter}.`);
   }
-  if (!carryIn.length) facts.push("The pilot hasn't entered any carry-in for this pack, so conflicts with it can't be checked.");
+  if (named.length && !carryIn.length) facts.push("The pilot hasn't entered any carry-in for this pack, so conflicts with it can't be checked.");
   return facts.join("\n").slice(0, 2_000);
 }
