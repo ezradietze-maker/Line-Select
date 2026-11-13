@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { SearchIcon } from "@/components/ui/icons";
-import { runAskQuery, type AskResultLine } from "@/lib/ask-pack-run";
+import { checkAskQuery, cityGradesOf, runAskQuery, type AskResultLine } from "@/lib/ask-pack-run";
 import type { AskQuery } from "@/lib/brain/ask-pack";
 import { formatValue } from "@/lib/brain/describe";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
@@ -32,7 +32,9 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
   const pm = useRef<PackMetrics | null>(packMetrics);
   const brief = useRef<string | null>(null);
   const metrics = () => (pm.current ??= prepareMetrics(bidPack));
-  const home = useMemo(() => (profile.pilotModel ? homeParams(profile.pilotModel) : {}), [profile.pilotModel]);
+  // The pilot's city grades go in with where they live, so "time in cities you like" counts their grades, as the ranking does.
+  const grades = useMemo(() => cityGradesOf(profile.pilotModel, profile.cityRatings), [profile.pilotModel, profile.cityRatings]);
+  const home = useMemo(() => ({ ...(profile.pilotModel ? homeParams(profile.pilotModel) : {}), ...grades }), [profile.pilotModel, grades]);
 
   // Only the latest question's answer is shown, whatever order the replies come back in.
   const latest = useRef(0);
@@ -53,7 +55,9 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
         setError(data?.error ?? "Couldn't read that question just now. Please try again.");
         setAnswer(null);
       } else {
-        setAnswer({ query: data.query, lines: data.query.cannotAnswer ? [] : runAskQuery(data.query, bidPack, metrics(), home, rankedIds) });
+        // Checked against this pack first: a city, region or city grade it can't match is said, never run as 0 on every line.
+        const query = checkAskQuery(data.query, bidPack, metrics(), grades);
+        setAnswer({ query, lines: query.cannotAnswer ? [] : runAskQuery(query, bidPack, metrics(), home, rankedIds) });
       }
     } catch {
       if (id !== latest.current) return;
