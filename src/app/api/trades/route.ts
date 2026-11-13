@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { packIdFor } from "@/lib/pack-id";
 import { createTradeOffer, getTradeHolding, listTradeOffersForSeat, pilotHasSeatMonth } from "@/lib/server/db";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -30,7 +31,9 @@ export async function GET(request: Request) {
   if (!(await checkRateLimit("trade-board-read", user.id, 1800, 60 * 60)).ok) return rateLimitedResponse();
   const meta = sanitizeBidPackMeta(Object.fromEntries(new URL(request.url).searchParams));
   if (!meta) return NextResponse.json({ error: "Which bid pack's board?" }, { status: 400 });
+  // Other pilots' names and notes only for a confirmed account: one made up in a minute could otherwise read them.
   const othersOpen =
+    isVerified(user) &&
     (await pilotHasSeatMonth(user.id, meta)) && (await tradeBoardIsOpen({ base: meta.base, aircraft: meta.aircraft, seat: meta.seat as Seat }));
   const offers = await listTradeOffersForSeat(meta, user.id, { othersOpen, limit: BOARD_LIMIT });
   return NextResponse.json({ offers: offers.map((o) => offerForViewer(o, user.id)) }, { headers: { "Cache-Control": "private, no-store" } });
@@ -41,6 +44,7 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Sign in to post a trade offer." }, { status: 401 });
   }
+  if (!isVerified(user)) return confirmEmailRefusal("post trade offers");
 
   let body: {
     bidPackMeta?: BidPackMetaSnapshot;

@@ -13,6 +13,11 @@ export interface AuthResult {
   user?: UserAccount;
   /** Present only in the response that just created or rotated it — shown to the pilot once, never stored client-side. */
   recoveryCode?: string;
+  /**
+   * Signing up with email set up: nobody is signed in yet, and the pilot finishes from the link in their email. The
+   * same whether or not the address already had an account, which is the point.
+   */
+  checkEmail?: boolean;
 }
 
 async function postJson(url: string, body: unknown): Promise<AuthResult> {
@@ -27,7 +32,7 @@ async function postJson(url: string, body: unknown): Promise<AuthResult> {
     if (!res.ok) {
       return { ok: false, error: data.error ?? "Something went wrong. Try again." };
     }
-    return { ok: true, user: data.user, recoveryCode: data.recoveryCode };
+    return { ok: true, user: data.user, recoveryCode: data.recoveryCode, checkEmail: data.checkEmail === true };
   } catch {
     return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
   }
@@ -94,6 +99,42 @@ export async function createRecoveryCode(password: string): Promise<{ ok: boolea
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: data.error ?? "Something went wrong. Try again." };
     return { ok: true, recoveryCode: data.recoveryCode };
+  } catch {
+    return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
+  }
+}
+
+/** How opening a confirm link went (see `/api/auth/confirm-email`). */
+export type ConfirmEmailOutcome =
+  | { status: "confirmed"; signedIn: "now" | "already" | "no"; user: UserAccount; recoveryCode?: string }
+  | { status: "confirmed"; signedIn: "other-account" }
+  | { status: "used"; yours: boolean }
+  | { status: "expired" | "invalid" | "unreachable" };
+
+export async function confirmEmailLink(token: string): Promise<ConfirmEmailOutcome> {
+  try {
+    const res = await fetch("/api/auth/confirm-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ token }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { status?: string };
+    if (data.status === "confirmed" || data.status === "used" || data.status === "expired" || data.status === "invalid") return data as ConfirmEmailOutcome;
+    return { status: "unreachable" };
+  } catch {
+    return { status: "unreachable" };
+  }
+}
+
+/** "Send it again": a fresh confirm link to the signed-in pilot's address. */
+export async function resendConfirmEmail(): Promise<{ ok: true; email: string } | { ok: true; confirmed: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch("/api/auth/confirm-email/resend", { method: "POST", credentials: "same-origin" });
+    const data = (await res.json().catch(() => ({}))) as { sent?: boolean; email?: string; confirmed?: boolean; error?: string };
+    if (data.sent && data.email) return { ok: true, email: data.email };
+    if (data.confirmed) return { ok: true, confirmed: true };
+    return { ok: false, error: data.error ?? "That didn't send. Try again in a few minutes." };
   } catch {
     return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
   }

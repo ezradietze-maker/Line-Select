@@ -3,7 +3,7 @@ import { isJsonObject, isText } from "@/lib/server/json-body";
 import { requestPasswordResetEmail } from "@/lib/server/auth";
 import { findCredentialByEmail } from "@/lib/server/db";
 import { isEmailConfigured } from "@/lib/server/email";
-import { incrementCounter } from "@/lib/server/kv";
+import { siteMailLeft } from "@/lib/server/mail-allowance";
 import { checkRequestLimit, clientIp, deviceIdFrom, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
 
@@ -34,28 +34,20 @@ export async function POST(request: Request) {
   return NextResponse.json({ emailEnabled });
 }
 
-/** Reset emails the whole site sends in an hour: well above what pilots really ask for, well below the email quota. */
-const RESET_EMAILS_PER_HOUR = 20;
-
 /**
- * Whether the site's hourly allowance of reset emails has room for this one. The limits per address and per account
- * still let one address mail every real account it knows about, about a hundred an hour, and that would spend the
- * email quota every reset (and every alert) depends on, so resets stopped for everyone. Only addresses with an account
- * are counted, the only ones mailed: made-up addresses can't use the hour up. Past the allowance the answer looks the
- * same as ever, so it says nothing about who has an account; the pilot asks again within the hour or uses their
- * recovery code. The send itself is in `requestPasswordResetEmail` (auth.ts); the count is here, before it.
+ * Whether the site's hourly allowance of reset emails (`siteMailLeft`) has room for this one. Only addresses with an
+ * account are counted, the only ones mailed: made-up addresses can't use the hour up. Past the allowance the answer
+ * looks the same as ever, so it says nothing about who has an account; the pilot asks again within the hour or uses
+ * their recovery code. The send itself is in `requestPasswordResetEmail` (auth.ts); the count is here, before it.
  */
 async function resetMailLeft(email: string): Promise<boolean> {
   if (!isEmailConfigured()) return true;
   try {
     if (!(await findCredentialByEmail(email.trim().toLowerCase()))) return true;
-    const hour = new Date().toISOString().slice(0, 13);
-    if ((await incrementCounter(`line-select:reset-mail:${hour}`, 2 * 60 * 60)) <= RESET_EMAILS_PER_HOUR) return true;
-    console.error("[auth] hourly reset-email allowance reached", { hour });
-    return false;
   } catch (e) {
-    // Can't count: the send goes ahead, held by the limits per address and per account as before.
+    // Can't look: the send goes ahead, held by the limits per address and per account as before.
     console.error("[auth] reset-email allowance not checked", e);
     return true;
   }
+  return siteMailLeft("reset");
 }

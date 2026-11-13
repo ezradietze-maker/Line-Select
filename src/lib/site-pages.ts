@@ -15,6 +15,7 @@ export const PUBLIC_PAGES = ["/pricing", "/how-it-works", "/whats-new", "/privac
 export const SAVED_STATE_SCREENS = [
   "/auth",
   "/cities",
+  "/confirm-email",
   "/confirm-preferences",
   "/contract",
   "/hotel-ratings",

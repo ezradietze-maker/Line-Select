@@ -3,6 +3,7 @@ import { reportProblem } from "@/lib/server/alerts";
 import { parseInterviewOutcome } from "@/lib/learning/validate";
 import { afterResponse } from "@/lib/server/after-response";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { isVerified } from "@/lib/server/verified-pilots";
 import { hashUser } from "@/lib/server/forecast-store";
 import { maybeLearn } from "@/lib/server/learning-runner";
 import { saveInterviewOutcome } from "@/lib/server/learning-store";
@@ -30,8 +31,9 @@ export async function POST(request: Request) {
   if (!outcome) return NextResponse.json({ error: "Invalid interview summary." }, { status: 400 });
 
   // Only signed-in pilots teach the fleet: each counts once, and nobody can stand in for a group of pilots who aren't there.
+  // Confirmed accounts only, for the same reason: an unconfirmed one may be one of many made up by one person.
   const user = await getCurrentServerUser();
-  if (!user) return NextResponse.json({ stored: false });
+  if (!user || !isVerified(user)) return NextResponse.json({ stored: false });
   try {
     await saveInterviewOutcome(outcome, hashUser(user.id));
   } catch (e) {

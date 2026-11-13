@@ -11,9 +11,10 @@ import { siteSpentOn, spendCaps } from "@/lib/server/spend-guard";
  * the daily run itself still happens.
  */
 
-export type ProblemKind = "brain-build" | "brain-question" | "brain-ask" | "contract-ask" | "swap-reason" | "dictation" | "hotels" | "flights" | "trades" | "parse-bidpack" | "profile-save" | "forecast" | "learning" | "browser" | "calendar-feed";
+export type ProblemKind = "brain-build" | "brain-question" | "brain-ask" | "contract-ask" | "swap-reason" | "dictation" | "hotels" | "flights" | "trades" | "parse-bidpack" | "profile-save" | "forecast" | "learning" | "browser" | "calendar-feed" | "accounts";
 
 const LABELS: Record<ProblemKind, string> = {
+  accounts: "Signing up and confirming emails",
   "brain-build": "Brain reads (the interview's model)",
   "brain-question": "Interview questions",
   "brain-ask": "Ask your pack",

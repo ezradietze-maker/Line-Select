@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { packIdFor } from "@/lib/pack-id";
 import { deleteTradeHolding, getBidPackRecord, getTradeHolding, getTradeSettings, saveTradeHolding } from "@/lib/server/db";
 import { readJsonBody } from "@/lib/server/json-body";
@@ -34,6 +35,8 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   const user = await getCurrentServerUser();
   if (!user) return NextResponse.json({ error: "Sign in to confirm what you hold." }, { status: 401 });
+  // What a pilot holds is what puts them in the matching, and counts them in their seat.
+  if (!isVerified(user)) return confirmEmailRefusal("mark what you hold for trades");
   if (!(await checkRateLimit("trade-holding-save", user.id, 120, 60 * 60)).ok) return rateLimitedResponse();
   const holding = readHolding(await readJsonBody(request, MAX_BODY));
   if (!holding) return NextResponse.json({ error: "That isn't a list of trips from your bid pack." }, { status: 400 });

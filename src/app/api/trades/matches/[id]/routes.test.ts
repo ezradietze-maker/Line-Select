@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ reportProblem: vi.fn(), answerSuggestion: vi.fn(), markStepDone: vi.fn() }));
-vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => ({ id: "pilot-1", displayName: "J Pilot" }) }));
+vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => ({ id: "pilot-1", displayName: "J Pilot", emailVerified: true }) }));
 vi.mock("@/lib/server/alerts", () => ({ reportProblem: mocks.reportProblem }));
 vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: async () => ({ ok: true }), rateLimitedResponse: () => new Response(null, { status: 429 }) }));
 vi.mock("@/lib/server/trade-suggestions", () => ({ answerSuggestion: mocks.answerSuggestion, markStepDone: mocks.markStepDone }));

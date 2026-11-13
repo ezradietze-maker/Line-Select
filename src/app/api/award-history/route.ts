@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { confirmEmailRefusal, fromVerified, isVerified, verifiedPilotHashes } from "@/lib/server/verified-pilots";
 import { checkRateLimit, checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { summarizeBands } from "@/lib/server/award-aggregate";
 import { createAwardHistoryRecord, deleteAwardShares, listAwardRowsForSeat } from "@/lib/server/db";
@@ -36,7 +37,9 @@ export async function GET(request: Request) {
   if (!base || !aircraft || !seat) {
     return NextResponse.json({ error: "Missing base, aircraft, or seat." }, { status: 400 });
   }
-  return NextResponse.json(summarizeBands(await listAwardRowsForSeat({ base, aircraft, seat })));
+  // Confirmed accounts' reports only: five made-up accounts would otherwise be five pilots behind a group number.
+  const [rows, verified] = await Promise.all([listAwardRowsForSeat({ base, aircraft, seat }), verifiedPilotHashes()]);
+  return NextResponse.json(summarizeBands(fromVerified(rows, verified, (r) => r.pilotHash)));
 }
 
 export async function POST(request: Request) {
@@ -44,6 +47,7 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Sign in to report what you held." }, { status: 401 });
   }
+  if (!isVerified(user)) return confirmEmailRefusal("share what you held");
   // Every report can set off a learning run, and a pilot logs a handful a month at most.
   if (!(await checkRateLimit("award-history", user.id, 20, 60 * 60)).ok) return rateLimitedResponse();
 

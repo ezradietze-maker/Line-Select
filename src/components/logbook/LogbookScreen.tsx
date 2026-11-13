@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { ConfirmEmailButton } from "@/components/auth/ConfirmEmail";
 import { Button } from "@/components/ui/Button";
 import { NumberTicker } from "@/components/ui/NumberTicker";
 import { NightGlobe } from "@/components/welcome/NightGlobe";
@@ -72,7 +73,13 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
         />
       )}
 
-      {notice && <p className="mt-4 rounded-lg border border-warn/40 bg-warn-soft px-4 py-2.5 text-sm text-warn">{notice}</p>}
+      {notice && (
+        <div className="mt-4 rounded-lg border border-warn/40 bg-warn-soft px-4 py-2.5 text-sm text-warn">
+          <p>{notice}</p>
+          {/* A share refused for an unconfirmed address: the way to confirm it, right there. */}
+          {user?.emailVerified === false && <ConfirmEmailButton className="mt-1.5" />}
+        </div>
+      )}
 
       {bidPack && profile && <CalendarSubscribe />}
 

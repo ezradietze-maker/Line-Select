@@ -15,7 +15,7 @@ vi.mock("@/lib/server/kv", () => ({
     return next;
   },
 }));
-const auth = vi.hoisted(() => ({ user: null as { id: string } | null }));
+const auth = vi.hoisted(() => ({ user: null as { id: string; emailVerified?: boolean } | null }));
 vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => auth.user }));
 vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
 vi.mock("@/lib/server/email", () => ({ sendEmail: vi.fn() }));
@@ -73,7 +73,7 @@ describe("/api/flights/travel spending", () => {
     await POST(request());
     const guestBoards = allowed();
     store.clear();
-    auth.user = { id: "pilot-1" };
+    auth.user = { id: "pilot-1", emailVerified: true };
     await POST(request());
     expect(guestBoards).toBeCloseTo(0.5 / COST);
     expect(allowed()).toBeCloseTo(2 / COST);
@@ -98,7 +98,7 @@ describe("/api/flights/travel spending", () => {
   });
 
   it("gives two small lookups at the same moment what each needs, not all of it to the first", async () => {
-    auth.user = { id: "pilot-1" };
+    auth.user = { id: "pilot-1", emailVerified: true };
     lookup.wants = 20;
     const results = await Promise.all([POST(request()), POST(request())]);
     for (const r of results) expect((await r.json()).partial).toBeUndefined();
@@ -111,7 +111,7 @@ describe("/api/flights/travel spending", () => {
   });
 
   it("charges what was really fetched, to the pilot and the site but not their AI allowance", async () => {
-    auth.user = { id: "pilot-1" };
+    auth.user = { id: "pilot-1", emailVerified: true };
     lookup.wants = 300;
     await POST(request());
     expect(spentBy("u:pilot-1")).toBeCloseTo(0.3);
@@ -128,10 +128,10 @@ describe("/api/flights/travel spending", () => {
 
   it("stops new boards for everyone at the site's daily ceiling", async () => {
     process.env.SPEND_SITE_DAILY_USD = "0.01";
-    auth.user = { id: "pilot-1" };
+    auth.user = { id: "pilot-1", emailVerified: true };
     await POST(request());
     expect(allowed()).toBeCloseTo(10);
-    auth.user = { id: "pilot-2" };
+    auth.user = { id: "pilot-2", emailVerified: true };
     await POST(request());
     expect(allowed()).toBe(0);
   });

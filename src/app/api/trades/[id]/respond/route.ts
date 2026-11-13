@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { packIdFor } from "@/lib/pack-id";
 import { findTradeOffer, getTradeHolding, pilotHasSeatMonth, respondToTradeOffer } from "@/lib/server/db";
 import { offerForViewer } from "@/lib/server/trade-view";
@@ -19,6 +20,7 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Sign in to respond to a trade offer." }, { status: 401 });
   }
+  if (!isVerified(user)) return confirmEmailRefusal("answer trade offers");
 
   const { id } = await params;
   const offer = await findTradeOffer(id);

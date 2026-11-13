@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { secretMatches } from "@/lib/server/secret";
-import { sendDailySummary } from "@/lib/server/alerts";
+import { reportProblem, sendDailySummary } from "@/lib/server/alerts";
+import { UNCONFIRMED_SIGN_UP_DAYS } from "@/lib/server/auth";
+import { deleteUnconfirmedSignUps } from "@/lib/server/db";
 import { incrementCounter } from "@/lib/server/kv";
 import { runLearningCycle } from "@/lib/server/learning-runner";
 import { runDailyMatching, tradeSummaryText } from "@/lib/server/trade-matching";
@@ -31,7 +33,23 @@ export async function GET(request: Request) {
   // Trades come after the learning, so a slow run of either can't stop the morning email: this one has its own time limit and never throws.
   const trades = await tradeSummaryText(await runDailyMatching(now), now);
   await sendDailySummary(summary, now, weekly, trades).catch((e) => console.error("[cron] daily summary not sent", e));
+  const removedUnconfirmed = await removeUnconfirmedSignUps(now);
   // A step that failed shows as a failed run on Vercel's cron page, not a quiet success.
   const failed = Array.isArray(summary?.results) && (summary.results as { error?: unknown }[]).some((r) => r.error);
-  return NextResponse.json(summary ?? { skipped: "a run is already in progress" }, { status: failed ? 500 : 200 });
+  return NextResponse.json({ ...(summary ?? { skipped: "a run is already in progress" }), removedUnconfirmed }, { status: failed ? 500 : 200 });
+}
+
+/**
+ * Accounts made by signing up and not confirmed within the week the confirm email gives them: whoever made them never
+ * showed the address was theirs, and the address's owner may want it. Never throws; null when it couldn't run.
+ */
+async function removeUnconfirmedSignUps(now: Date): Promise<number | null> {
+  try {
+    const removed = await deleteUnconfirmedSignUps(new Date(now.getTime() - UNCONFIRMED_SIGN_UP_DAYS * 24 * 60 * 60 * 1000));
+    if (removed) console.log("[cron] removed unconfirmed sign-ups", { removed });
+    return removed;
+  } catch (e) {
+    await reportProblem("accounts", e, { action: "remove unconfirmed sign-ups" });
+    return null;
+  }
 }

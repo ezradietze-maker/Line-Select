@@ -82,9 +82,10 @@ export async function withdrawAwardShares(month?: { base: string; aircraft: stri
   }
 }
 
+/** `confirmEmail`: refused because the pilot's email isn't confirmed; the app shows its "Confirm your email" button. */
 export async function submitAwardHistory(
   submission: AwardHistorySubmission
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; confirmEmail?: boolean }> {
   try {
     const res = await fetch("/api/award-history", {
       method: "POST",
@@ -93,7 +94,7 @@ export async function submitAwardHistory(
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      return { ok: false, error: data?.error ?? "Something went wrong. Try again." };
+      return { ok: false, error: data?.error ?? "Something went wrong. Try again.", confirmEmail: data?.confirmEmail === true };
     }
     return { ok: true };
   } catch {

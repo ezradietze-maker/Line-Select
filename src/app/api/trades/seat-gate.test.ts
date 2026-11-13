@@ -9,7 +9,7 @@ const MD11_FO_PACK = "uploaded-mem-md11-fo-oct26";
 const B777_CAP = { base: "MEM", aircraft: "B777", seat: "CAP", month: "OCT26" };
 
 const state = vi.hoisted(() => ({ saved: [] as { packId: string; bidPackMeta: Record<string, string> }[], created: [] as unknown[], responded: [] as unknown[] }));
-vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => ({ id: PILOT, displayName: "MD11 FO" }) }));
+vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => ({ id: PILOT, displayName: "MD11 FO", emailVerified: true }) }));
 vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
 vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: async () => ({ ok: true }), rateLimitedResponse: () => new Response(null, { status: 429 }) }));
 vi.mock("@/lib/server/trade-board-bar", () => ({ tradeBoardIsOpen: async () => true }));

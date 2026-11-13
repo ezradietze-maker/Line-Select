@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  user: null as { id: string; displayName: string } | null,
+  user: null as { id: string; displayName: string; emailVerified?: boolean } | null,
   open: true,
   limited: false,
   list: vi.fn<(...args: unknown[]) => Promise<unknown[]>>(async () => []),
@@ -32,7 +32,7 @@ const url = (q: string) => new Request(`https://example.com/api/trades?${q}`);
 const SEAT = "base=MEM&aircraft=MD11&seat=CAP&month=NOV26";
 
 beforeEach(() => {
-  mocks.user = { id: "pilot-1", displayName: "J Pilot" };
+  mocks.user = { id: "pilot-1", displayName: "J Pilot", emailVerified: true };
   mocks.open = true;
   mocks.limited = false;
   mocks.hasSeat = true;

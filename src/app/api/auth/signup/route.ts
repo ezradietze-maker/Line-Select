@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { AUTH_LIMITS, signUpProblem } from "@/lib/auth-limits";
+import { reportProblem } from "@/lib/server/alerts";
+import { afterResponse } from "@/lib/server/after-response";
 import { isJsonObject, isText } from "@/lib/server/json-body";
-import { SESSION_COOKIE, sessionCookieOptions, signUp } from "@/lib/server/auth";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { SESSION_COOKIE, sessionCookieOptions, signUp, signUpByEmail, signUpInputError } from "@/lib/server/auth";
+import { isEmailConfigured } from "@/lib/server/email";
+import { checkRateLimit, clientIp, deviceIdFrom, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
@@ -37,6 +40,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: problem ?? "Email, password, and display name are required." }, { status: 400 });
   }
 
+  if (isEmailConfigured()) {
+    // The fields are checked here, before anything about the address is looked up; everything after (whether it has
+    // an account, the password's hash, the account, the email) runs once this has answered. So the answer, and how long
+    // it takes, are the same for an address with an account as for one without: sign-up can't be used to find out who
+    // has one, nor to take over an account by its address (`signUpByEmail`).
+    const inputError = signUpInputError(email, password, displayName);
+    if (inputError) return NextResponse.json({ error: inputError }, { status: 400 });
+    const device = deviceIdFrom(request);
+    afterResponse(() => signUpByEmail(email, password, displayName, device).catch((e) => reportProblem("accounts", e, { action: "sign up" })));
+    return NextResponse.json({ checkEmail: true });
+  }
+
+  // No email on this server: nothing could confirm the address, so the account is made and signed in at once, unconfirmed.
   const result = await signUp(email, password, displayName);
   if (!result.ok || !result.user || !result.sessionToken) {
     return NextResponse.json({ error: result.error ?? "Something went wrong." }, { status: 400 });
