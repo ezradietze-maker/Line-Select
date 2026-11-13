@@ -30,6 +30,16 @@ describe("parseOpenTimePaste", () => {
     }
   });
 
+  it("keeps a short trip number written beside a count, the label first as the pack prints it", () => {
+    expect(parseOpenTimePaste("03OCT 49 LDGS 2").rows[0].tripNumbers).toEqual(["49"]);
+    expect(parseOpenTimePaste("14OCT 47 LDG 2").rows[0].tripNumbers).toEqual(["47"]);
+    // Either way round for hours: both left in, for the trip that flies that date to settle it.
+    expect(parseOpenTimePaste("14OCT 47 HRS 12").rows[0].tripNumbers).toEqual(expect.arrayContaining(["47", "12"]));
+    expect(parseOpenTimePaste("213 14OCT LDGS: 3").rows[0].tripNumbers).toEqual(["213"]);
+    // Too many to be a trip's days: a trip number, not a count.
+    expect(parseOpenTimePaste("14OCT DAYS 47").rows[0].tripNumbers).toEqual(["47"]);
+  });
+
   it("believes a trip number that's labelled", () => {
     for (const text of ["Trip 213 14OCT 1430", "SEQ 213 14OCT 22", "#213 14OCT 22", "Pairing: 213 14OCT 22"]) {
       expect(parseOpenTimePaste(text).rows[0].tripNumbers).toEqual(["213"]);

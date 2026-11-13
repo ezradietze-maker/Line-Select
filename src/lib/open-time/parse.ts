@@ -84,8 +84,21 @@ const TAFB = "TAFB";
 const REPORT = /\b(?:RPT|RPRT|REPORT|SHOW(?:\s?TIME)?)\b[\s:=@]*(\d{1,2}):?(\d{2})[LZ]?\b/i;
 const RELEASE = /\b(?:REL|RLS|RELEASE)\b[\s:=@]*\d{1,2}:?\d{2}[LZ]?\b/i;
 const TRIP = /\b(?:TRIP|SEQ|SEQUENCE|PAIRING|PAIR|PRG)\b\s*(?:NO\.?|NUM(?:BER)?)?\s*[:#=]?\s*(\d{1,5})\b|#\s*(\d{1,5})\b/i;
-// A count either side of its label: "3 LDGS", and the label first, "LDGS 3", which was read as trip 3.
-const COUNTS = /\b\d{1,2}[ -]?(?:DAYS?|DY|DYS|LEGS?|LDGS?|LANDINGS?|DPS?|HRS?|HOURS?)\b|\b(?:DAYS?|DY|DYS|LEGS?|LDGS?|LANDINGS?|DPS?)[ :-]?\d{1,2}\b/gi;
+// A count with its label, either side: the label first as the pack prints it ("LDGS: 3"), taken first, so "49 LDGS 2" is
+// trip 49 with 2 landings, not trip 2; then the number first ("3 LDGS"). A number too big to be that count ("DAYS 47",
+// "47 LDG") is left as a trip number. Hours aren't taken out: "12 HRS 47" is either way round, and both numbers left in
+// let the trip that flies that date be the one found (or the row be flagged when both do).
+const COUNT_LABEL = "DAYS?|DY|DYS|LEGS?|LDGS?|LANDINGS?|DPS?";
+// Not a number with its own label after it: in "3 DAY 4 LEGS" the 4 is the legs', not the day's.
+const LABEL_FIRST = new RegExp(`\\b(${COUNT_LABEL})\\s*[:=-]?\\s*(\\d{1,2})\\b(?![ -]?(?:${COUNT_LABEL})\\b)`, "gi");
+const NUMBER_FIRST = new RegExp(`\\b(\\d{1,2})[ -]?(${COUNT_LABEL})\\b`, "gi");
+/** Whether `n` can be a count of `label`: a trip's days, legs or duty periods run to about 20. */
+const plausibleCount = (_label: string, n: string) => Number(n) <= 20;
+function withoutCounts(text: string): string {
+  return text
+    .replace(LABEL_FIRST, (all, label: string, n: string) => (plausibleCount(label, n) ? " " : all))
+    .replace(NUMBER_FIRST, (all, n: string, label: string) => (plausibleCount(label, n) ? " " : all));
+}
 /** A time or a figure written so it can't be a trip number: 09:15, 12.5, 0915Z. */
 const NOT_A_TRIP = /\b\d{1,3}:\d{2}\b|\b\d+\.\d+\b|\b\d{3,4}[LZ]\b/gi;
 const STANDBY = /\b(?:BAS|BHS|STANDBY|STBY|SBY)\b/i;
@@ -122,7 +135,7 @@ function readRow(raw: string, line: string): OpenTimeRow | UnreadRow {
   const tafb = figure(TAFB);
   const report = take(REPORT);
   take(RELEASE);
-  rest = rest.replace(COUNTS, " ").replace(NOT_A_TRIP, " ");
+  rest = withoutCounts(rest).replace(NOT_A_TRIP, " ");
 
   // Bare whole numbers only: not "FX1234", "MEM-123" or "0800-2000". A zero-led four digits is a time ("0915"), never a trip.
   const bare = [...rest.matchAll(/(?<![A-Za-z0-9\-/.:])\d{1,4}(?![A-Za-z0-9\-/.:])/g)].map((m) => m[0]).filter((n) => !(n.length === 4 && n.startsWith("0")));
