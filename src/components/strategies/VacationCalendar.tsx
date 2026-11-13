@@ -131,7 +131,7 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
           {/* Vacation band */}
           {vacCol && (
             <div className="flex items-center justify-center self-stretch rounded-full bg-accent" style={{ gridColumn: vacCol, gridRow: 1 }} title="Your vacation">
-              <span className="truncate px-1 text-[9px] font-semibold uppercase tracking-wide text-surface-raised">Vacation</span>
+              <span className="truncate px-1 text-[9px] font-semibold text-surface-raised">Vacation</span>
             </div>
           )}
           {/* Weekday + day number */}
@@ -167,7 +167,7 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
       {/* Slide the footprint across the legal offsets. */}
       {slides.length > 1 && (
         <div className="mt-3">
-          <div className="flex items-center justify-between text-[11px] text-ink-faint">
+          <div className="flex items-center justify-between text-2xs text-ink-faint">
             <span>Earlier</span>
             <span className="text-ink-muted">Drag to slide your vacation</span>
             <span>Later</span>
@@ -194,7 +194,7 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
               key={`${o.offset}:${o.expandBefore}:${o.expandAfter}`}
               type="button"
               onClick={() => pickChip(o)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${on ? "border-accent bg-accent text-surface-raised" : "border-hairline text-ink-muted hover:text-ink"}`}
+              className={`rounded-[3px] border px-2.5 py-1 text-2xs transition-colors ${on ? "border-accent bg-accent text-surface-raised" : "border-hairline text-ink-muted hover:text-ink"}`}
             >
               {moveWords(o)}
               {byModel && o.score !== null ? ` · ${o.score.toFixed(0)}` : ""}
@@ -202,7 +202,7 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
           );
         })}
       </div>
-      <p className="mt-2 text-[11px] text-ink-faint">
+      <p className="mt-2 text-2xs text-ink-faint">
         This vacation is worth {value} CH; a slide that takes more than that draws the extra from your bank (CBA 2026 7.G.1). Gold is your vacation; a struck trip comes off your line.
       </p>
     </div>
