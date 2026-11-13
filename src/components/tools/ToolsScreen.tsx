@@ -23,7 +23,7 @@ import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
-const LABEL = "font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint";
+const LABEL = "text-2xs text-ink-faint font-medium";
 
 /** The time now, ticking each minute on the minute. */
 function useNow(): number {
@@ -165,7 +165,7 @@ function ClockTile({ code, name, time, note, daylight = null }: { code: string; 
       <div className="truncate text-xs text-ink-muted">
         {time.toFormat("ccc d")} &middot; {name}
       </div>
-      <div className="truncate text-[11px] text-ink-faint">{note}</div>
+      <div className="truncate text-2xs text-ink-faint">{note}</div>
     </li>
   );
 }

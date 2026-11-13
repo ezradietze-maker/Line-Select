@@ -261,7 +261,7 @@ function HotelRatingsList({
 function Readout({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
   return (
     <div className="px-4 py-3.5">
-      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">{label}</div>
+      <div className="text-2xs text-ink-faint font-medium">{label}</div>
       <div className="mt-1 font-mono text-xl font-semibold tabular-nums text-readout">{value}</div>
       {hint && <div className="mt-0.5 text-xs text-ink-faint">{hint}</div>}
     </div>
@@ -317,7 +317,7 @@ function HotelCard({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded border border-accent/40 bg-accent-soft/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold tracking-wider text-accent">
+                <span className="rounded border border-accent/40 bg-accent-soft/60 px-1.5 py-0.5 font-mono text-2xs font-semibold tracking-wider text-accent">
                   {group.code}
                 </span>
                 <span className="min-w-0 font-display text-base font-semibold text-ink wrap-anywhere">{group.hotelName}</span>
@@ -346,7 +346,7 @@ function HotelCard({
             )}
           </div>
 
-          <div className="mt-2.5 font-mono text-[11.5px] leading-relaxed text-ink-muted">
+          <div className="mt-2.5 font-mono text-xs leading-relaxed text-ink-muted">
             <span className="text-ink-faint">Lines </span>
             {/* With rankings to show, each number opens that line there. */}
             {profile

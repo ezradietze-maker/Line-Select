@@ -6,7 +6,7 @@ interface SkeletonCardsProps {
 }
 
 function Bar({ className }: { className: string }) {
-  return <div className={`rounded bg-hairline ${className}`} />;
+  return <div className={`rounded-[2px] bg-hairline ${className}`} />;
 }
 
 /** A page-shaped placeholder for a list of cards that's about to load — the same outline as the cards that replace it, so nothing jumps when they arrive. */
@@ -19,7 +19,7 @@ export function SkeletonCards({ count = 3, shape = "row", className = "" }: Skel
             <>
               <div className="flex items-start justify-between gap-3">
                 <Bar className="h-4 w-1/2" />
-                <Bar className="h-6 w-16 rounded-full" />
+                <Bar className="h-6 w-16" />
               </div>
               <Bar className="mt-2.5 h-3 w-3/4" />
               <Bar className="mt-4 h-3.5 w-1/3" />

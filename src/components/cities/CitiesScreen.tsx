@@ -27,7 +27,7 @@ import type { CityMark, PreferenceProfile } from "@/types/preferences";
 
 const gradeLabel = (score: number) => CITY_RATING_STEPS.find((x) => x.score === score)?.label ?? String(score);
 
-const LABEL = "font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint";
+const LABEL = "text-2xs text-ink-faint font-medium";
 
 /** The time now, ticking each minute (on the minute), for clocks. */
 function useNow(): number {
@@ -334,7 +334,7 @@ function Weather({ code, bidPack, stays, now }: { code: string; bidPack: BidPack
         </ul>
       )}
       <SeasonsHere code={code} />
-      <p className="mt-1.5 text-[11px] text-ink-faint">Weather from Open-Meteo; seasons from NOAA station records, 2006–2025.</p>
+      <p className="mt-1.5 text-2xs text-ink-faint">Weather from Open-Meteo; seasons from NOAA station records, 2006–2025.</p>
     </section>
   );
 }

@@ -60,7 +60,7 @@ function Reply({ answer, instant, onOpen, onTyped }: { answer: ContractAnswer; i
       <p className={`text-base leading-relaxed ${answer.found ? "text-ink" : "font-medium text-ink"}`}>
         <span aria-hidden>
           {shown}
-          {!typed && <span className="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 animate-pulse bg-accent" />}
+          {!typed && <span className="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 bg-accent" />}
         </span>
         <span className="sr-only">{answer.answer}</span>
       </p>

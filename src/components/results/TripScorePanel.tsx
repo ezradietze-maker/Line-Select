@@ -46,7 +46,7 @@ export function TripScorePanel({ score }: { score: TripScore }) {
       >
         <ScoreRing score={score.score} size={40} capped={score.violations.length > 0} />
         <span className="min-w-0 flex-1">
-          <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">Trip score for you</span>
+          <span className="block text-2xs text-ink-faint font-medium">Trip score for you</span>
           <span className={`block text-xs leading-snug ${score.violations.length ? "text-danger" : "text-ink-muted"}`}>{summary(score)}</span>
         </span>
         <ChevronDownIcon className={`h-3 w-3 shrink-0 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />
@@ -58,18 +58,18 @@ export function TripScorePanel({ score }: { score: TripScore }) {
               <li key={r.criterionId}>
                 <div className="flex items-baseline justify-between gap-3 text-xs">
                   <span className="min-w-0 flex-1 text-ink">{r.label}</span>
-                  <span className="max-w-[50%] text-right font-mono text-[11px] text-ink-muted">{tripValueText(r) ?? "—"}</span>
+                  <span className="max-w-[50%] text-right font-mono text-2xs text-ink-muted">{tripValueText(r) ?? "—"}</span>
                 </div>
                 <div className="mt-1 flex items-center gap-2">
                   <div className="h-1 flex-1 overflow-hidden rounded-full bg-accent-soft" title={`${Math.round(Math.max(0, r.utility) * 100)}% of what you want`}>
                     <div className={`h-full rounded-full ${r.utility >= 0.66 ? "bg-good" : r.utility >= 0.33 ? "bg-accent" : "bg-warn"}`} style={{ width: `${Math.max(2, Math.min(1, Math.max(0, r.utility)) * 100)}%` }} />
                   </div>
-                  <span className="w-8 shrink-0 text-right font-mono text-[10px] text-ink-faint">{Math.round((r.weight / totalWeight) * 100)}%</span>
+                  <span className="w-8 shrink-0 text-right font-mono text-2xs text-ink-faint">{Math.round((r.weight / totalWeight) * 100)}%</span>
                 </div>
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-[11px] leading-relaxed text-ink-faint">
+          <p className="mt-3 text-2xs leading-relaxed text-ink-faint">
             Scored on the same priorities that rank your lines; the % is how much each one counts on this trip.
             {hasCounts && " Things a line adds up over the month — commutes, night legs, nights worked — count as this trip’s own, against the pack’s other trips; a monthly number you gave sits at the same place among trips as among lines."}
             {score.notApplicable.length > 0 && ` ${score.notApplicable.map((n) => n.label).join(" and ")} ${score.notApplicable.length === 1 ? "depends" : "depend"} on how a line strings its trips together, so ${score.notApplicable.length === 1 ? "it counts" : "they count"} in the line’s score, not a trip’s.`}

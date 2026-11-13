@@ -21,7 +21,7 @@ export function ForecastChip({ forecast }: { forecast: LineForecast }) {
   const award = forecast.pAward >= 0.05 ? ` · ${percent(forecast.pAward)} you're awarded it` : "";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${TONE[forecast.likelihood]}`}
+      className={`inline-flex items-center gap-1 rounded-[3px] border px-2 py-0.5 text-xs font-medium ${TONE[forecast.likelihood]}`}
       title={`Chance this line is still open when it's your turn to pick: ${percent(forecast.pAvailable)}. Chance it's the line you're actually awarded from your ranking: ${percent(forecast.pAward)}.`}
     >
       {LIKELIHOOD_LABEL[forecast.likelihood]} · {percent(forecast.pAvailable)} open{award}

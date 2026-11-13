@@ -84,14 +84,14 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
       {label}
     </span>
   );
-  const word = (text: string, tone: string) => <span className={`font-mono text-[10px] font-semibold ${tone}`}>{text}</span>;
+  const word = (text: string, tone: string) => <span className={`font-mono text-2xs font-semibold ${tone}`}>{text}</span>;
   const trip = (
-    <span className="font-mono text-[10px] text-ink">
+    <span className="font-mono text-2xs text-ink">
       <span className="font-semibold">76</span> <span className="text-ink-muted">60:27</span>
     </span>
   );
   return (
-    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-muted ${className}`} role="group" aria-label="How to read a line's strip">
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-ink-muted ${className}`} role="group" aria-label="How to read a line's strip">
       {view === "pack" ? (
         <>
           {item(word("1875", "text-leg"), "flight, on the day it leaves")}
@@ -99,7 +99,7 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
           {item(word("HNL", "text-layover"), "where you lay over")}
           {item(word("HSBY", "text-standby"), "hotel standby")}
           {item(trip, "trip and its credit")}
-          {item(<span aria-hidden className="inline-block h-3 w-5 rounded-[3px] border-t-2 border-calendar-accent bg-calendar-accent/[0.14]" />, "on a trip")}
+          {item(<span aria-hidden className="inline-block h-3 w-5 rounded-[3px] border-t-2 border-calendar-accent bg-trip-wash" />, "on a trip")}
         </>
       ) : (
         <>
@@ -136,14 +136,14 @@ export function StripViewToggle({ view, onChange }: { view: StripViewMode; onCha
       role="radio"
       aria-checked={view === value}
       onClick={() => onChange(value)}
-      className={`relative rounded-full px-3 py-1 text-xs font-medium transition-colors duration-300 ${view === value ? "text-canvas" : "text-ink-muted hover:text-ink"}`}
+      className={`relative rounded-[3px] px-3 py-1 text-xs font-medium transition-colors duration-300 ${view === value ? "text-canvas" : "text-ink-muted hover:text-ink"}`}
     >
-      {view === value && <PillHighlight group={group} className="absolute inset-0 rounded-full bg-ink" />}
+      {view === value && <PillHighlight group={group} className="absolute inset-0 rounded-[3px] bg-ink" />}
       <span className="relative z-10">{label}</span>
     </button>
   );
   return (
-    <div role="radiogroup" aria-label="How lines are shown" className="inline-flex shrink-0 items-center rounded-full border border-hairline bg-surface p-0.5 print:hidden">
+    <div role="radiogroup" aria-label="How lines are shown" className="inline-flex shrink-0 items-center rounded-[3px] border border-hairline bg-surface p-0.5 print:hidden">
       {option("timeline", "Timeline")}
       {option("pack", "Bid pack")}
     </div>
@@ -153,7 +153,7 @@ export function StripViewToggle({ view, onChange }: { view: StripViewMode; onCha
 /** The two header rows over the days: weekday, then date — as the pack prints them once at the top of each page. */
 function DateRows({ columns, layout }: { columns: PackColumn[]; layout: StripLayout }) {
   return (
-    <div className="grid font-mono text-[9px] leading-[11px] text-ink-muted" style={{ gridTemplateColumns: gridColumns(columns.length, layout) }} aria-hidden>
+    <div className="grid font-mono text-2xs leading-[11px] text-ink-muted" style={{ gridTemplateColumns: gridColumns(columns.length, layout) }} aria-hidden>
       {columns.map((c, i) => (
         <div key={i} className={`py-0.5 text-center ${columnClass(c)}`}>
           <div className={c.weekend ? "font-semibold text-ink" : ""}>{c.weekday ?? ""}</div>
@@ -170,7 +170,7 @@ export function BidPackHeader({ columns, layout, label = "Line · score", sticky
   return (
     <div className={`${sticky ? "sticky top-0 z-20" : ""} -mx-px rounded-t-lg border border-hairline bg-canvas/95 backdrop-blur print:static`} style={{ paddingLeft: PAD_X + GRIP_W, paddingRight: PAD_X }}>
       <div className="grid" style={{ gridTemplateColumns: `${LEFT_W}px minmax(0, 1fr) ${CHEVRON_W}px` }}>
-        <div className="self-end pb-0.5 font-mono text-[9px] uppercase tracking-wide text-ink-faint">{label}</div>
+        <div className="self-end pb-0.5 text-2xs text-ink-faint font-medium">{label}</div>
         <DateRows columns={columns} layout={layout} />
         <div />
       </div>
@@ -189,7 +189,7 @@ function DayCell({ col, day, font, labelRoom }: { col: PackColumn; day: PackDay;
     <div className={`relative ${columnClass(col)}`} style={{ height: (PACK_TOKENS_PER_DAY + 1) * ROW_PX + 6 }}>
       {trip && (
         <>
-          <span className={`absolute inset-y-0 left-0 right-0 bg-calendar-accent/[0.14] ${trip.start ? "ml-px rounded-l-[3px]" : ""} ${trip.end ? "mr-px rounded-r-[3px]" : ""}`} />
+          <span className={`absolute inset-y-0 left-0 right-0 bg-trip-wash ${trip.start ? "ml-px rounded-l-[3px]" : ""} ${trip.end ? "mr-px rounded-r-[3px]" : ""}`} />
           <span className={`absolute left-0 right-0 top-0 h-[2px] bg-calendar-accent ${trip.start ? "ml-px rounded-l-full" : ""} ${trip.end ? "mr-px rounded-r-full" : ""}`} />
         </>
       )}
@@ -239,7 +239,7 @@ function Numbers({ line }: { line: Line }) {
     ["C/O", formatHoursValue(line.carryOverBlockHours ?? 0), "OFF", String(line.daysOff)],
   ];
   return (
-    <div className="grid grid-cols-[auto_auto_auto_auto] gap-x-1.5 font-mono text-[10px] leading-[11px]">
+    <div className="grid grid-cols-[auto_auto_auto_auto] gap-x-1.5 font-mono text-2xs leading-[11px]">
       {rows.map(([a, av, b, bv], i) => (
         <div key={i} className="contents">
           <span className="text-ink-faint">{a}</span>
@@ -265,7 +265,7 @@ function SpelledNumbers({ line }: { line: Line }) {
     ["C/O blk", hm(line.carryOverBlockHours ?? 0), "Days off", String(line.daysOff)],
   ];
   return (
-    <div className="grid grid-cols-[auto_auto_auto_auto] items-baseline gap-x-[5px] text-[9.5px] leading-[12px]">
+    <div className="grid grid-cols-[auto_auto_auto_auto] items-baseline gap-x-[5px] text-2xs leading-[12px]">
       {rows.map(([a, av, b, bv], i) => (
         <div key={i} className="contents">
           <span className="text-ink-muted">{a}</span>
@@ -286,8 +286,8 @@ const LEG_COLOR: Record<TimelineLeg["kind"], string> = {
   deadhead: "var(--color-deadhead)",
   standby: "var(--color-standby)",
 };
-/** Plex Mono's advance, per px of font size: how wide a word is drawn. */
-const MONO_ADVANCE = 0.6;
+/** Overpass Mono's advance, per px of font size: how wide a word is drawn (measured: 0.616). */
+const MONO_ADVANCE = 0.616;
 
 /**
  * The Timeline: every word the pack prints for the line, organised by trip, on the base's clock. Each trip is one card
@@ -405,28 +405,30 @@ interface BidPackStripProps {
    * above a higher one — the tag says that's the pilot's order, not a mistake.
    */
   placedByYou?: boolean;
+  /** The pilot's top pick: its score is a location sign. */
+  top?: boolean;
 }
 
-export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle, placedByYou = false }: BidPackStripProps) {
+export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle, placedByYou = false, top = false }: BidPackStripProps) {
   const label = `Line ${line.lineNumber}${score !== null ? `, score ${Math.round(score)}` : tag ? `, option ${tag}` : ""}${placedByYou ? ", placed here by you" : ""} — ${open ? "hide" : "show"} everything about it`;
   const ring = layout.stacked ? 34 : 38;
   const title = (
     <div className="flex min-w-0 items-center gap-2">
       {score !== null ? (
-        <ScoreRing score={score} size={ring} capped={capped} />
+        <ScoreRing score={score} size={ring} capped={capped} top={top} />
       ) : (
         tag && (
-          <span aria-hidden className="flex shrink-0 items-center justify-center rounded-full border-2 border-brand font-display text-base font-semibold text-brand" style={{ width: ring, height: ring }}>
+          <span aria-hidden className="flex shrink-0 items-center justify-center rounded-[3px] border-[1.5px] border-brand font-display text-base font-extrabold text-brand" style={{ width: Math.round(ring * 1.05), height: Math.round(ring * 0.78) }}>
             {tag}
           </span>
         )
       )}
       <div className="min-w-0">
-        <div className="flex items-center gap-1.5 font-mono text-[12px] font-semibold leading-[14px] tracking-wide text-ink">
+        <div className="flex items-center gap-1.5 font-mono text-xs font-semibold leading-[14px] tracking-wide text-ink">
           LINE {line.lineNumber}
           {placedByYou && (
             <span
-              className="whitespace-nowrap rounded-full border border-accent/40 bg-accent-soft px-1.5 py-px text-[9px] font-semibold uppercase leading-[12px] tracking-[0.08em] text-accent"
+              className="whitespace-nowrap rounded-[2px] border border-accent/50 px-1.5 py-px font-sans text-2xs font-semibold leading-[12px] text-accent"
               title="You put this line here. Its score is still Line Select's own match, so it can sit above a line with a higher score."
             >
               Your order

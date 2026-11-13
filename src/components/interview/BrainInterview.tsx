@@ -1181,7 +1181,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
                 value={commuteFrom}
                 onChange={(e) => setCommuteFrom(e.target.value.replace(/[^a-z]/gi, "").toUpperCase().slice(0, 3))}
                 placeholder="e.g. CLT"
-                className="mb-5 block w-28 rounded-lg border border-field-edge bg-canvas/60 px-3 py-2 font-mono text-base uppercase tracking-wider text-readout placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
+                className="mb-5 block w-28 rounded-[4px] border border-field-edge bg-canvas/60 px-3 py-2 font-mono text-base uppercase tracking-wider text-readout placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
               />
               <div className="text-sm font-medium text-ink">{namedDomicile("Got a crash pad in the domicile city?", bidPack.base)}</div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -1194,7 +1194,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
                     type="button"
                     aria-pressed={hasCrashPad === v}
                     onClick={() => setHasCrashPad(v)}
-                    className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${hasCrashPad === v ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
+                    className={`rounded-[3px] border px-3 py-1.5 text-sm transition-colors ${hasCrashPad === v ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
                   >
                     {label}
                   </button>
@@ -1424,7 +1424,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
       {resume && inOpening && !finishedElsewhere && (
         <div className="panel-glass glow-soft mb-5 p-5">
-          <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Saved progress</div>
+          <div className="text-2xs text-accent font-medium">Saved progress</div>
           <div className="mt-1.5 font-display text-lg font-semibold text-ink">Pick up where you left off?</div>
           <p className="mt-1 text-sm text-ink-muted">
             {resume.phase === "opening"
@@ -1464,7 +1464,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
             type="button"
             // In the opening, the same as the browser's Back: a step back through the entries each step added.
             onClick={() => (backFromBuilding ? backFromFinish() : canGoBack ? goBack() : backInOpening && ((steps as readonly string[]).includes(phase) && stepDepth(phase as OpeningStep, steps) > 0 ? window.history.back() : setPhase(backInOpening)))}
-            className="-ml-1 mb-5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint transition-colors hover:text-ink"
+            className="-ml-1 mb-5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-2xs text-ink-faint transition-colors hover:text-ink font-medium"
           >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5m5 5l-5-5 5-5" />

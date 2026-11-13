@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { NoteBox } from "@/components/ui/NoteBox";
 import { Button } from "@/components/ui/Button";
-import { PaperPlane } from "@/components/ui/PaperPlane";
+import { MarkTick } from "@/components/ui/MarkTick";
 import { useAppState } from "@/lib/app-state";
 import { submitFeedback } from "@/lib/feedback-client";
 import { clearFeedbackDraft, loadFeedbackDraft, saveFeedbackDraft } from "@/lib/feedback-draft";
@@ -34,8 +34,8 @@ export function FeedbackForm({ page, onClose }: FeedbackFormProps) {
   if (sent) {
     return (
       <div className="relative py-2 text-center">
-        {/* Folded up and sent. */}
-        <PaperPlane className="-top-2 left-1/2 -ml-3.5" />
+        {/* Mark: sent. */}
+        <MarkTick className="mb-1 text-good" />
         <p className="drop-in text-sm text-ink">Thanks — this goes straight to the person building it.</p>
         <Button variant="secondary" className="mt-4" onClick={onClose}>
           Close

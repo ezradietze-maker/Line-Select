@@ -256,8 +256,8 @@ export function labeledStayPieces(days: TimelineSegment[][]): Set<TimelineSegmen
 /** A layover's length the way the ex-pilot writes it on the calendar: rounded to the hour — "28h", not "27:40". */
 export const layoverHours = (hours: number) => `${Math.round(hours)}h`;
 
-/** Width of a character in the 10px mono the labels are set in, near enough to decide what fits. */
-export const LABEL_CHAR_PX = 6.1;
+/** Width of a character in the 11px mono the labels are set in (Overpass Mono, 0.616em), near enough to decide what fits. */
+export const LABEL_CHAR_PX = 6.8;
 
 /**
  * The most a layover's words can say in `roomPx`: "OAK 28h", then "OAK" — `extraPx` for the pilot's mark after it.

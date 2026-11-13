@@ -161,7 +161,7 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
           <>
             <div className="mb-4 flex items-center justify-between gap-3">
               <h1 className="font-display text-lg font-semibold text-ink">Ask the contract</h1>
-              <button type="button" onClick={newChat} disabled={busy} className="rounded-full border border-hairline px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent/50 hover:text-ink disabled:opacity-50">
+              <button type="button" onClick={newChat} disabled={busy} className="rounded-[3px] border border-hairline px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent/50 hover:text-ink disabled:opacity-50">
                 New chat
               </button>
             </div>
@@ -202,7 +202,7 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
             type="submit"
             aria-label="Ask"
             disabled={busy || !question.trim()}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-on-brand transition-opacity disabled:opacity-40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[4px] bg-brand text-on-brand transition-colors hover:bg-brand-strong disabled:bg-border-strong disabled:text-ink-faint"
           >
             <ArrowUpIcon className="h-5 w-5" />
           </button>

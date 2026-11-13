@@ -12,7 +12,7 @@ function TripTag({ bidPack, trip, carry }: { bidPack: Pick<BidPack, "bidPeriodSt
   const date = tripDateLabel(bidPack, trip.startDayIndex);
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-muted">
-      <span className="rounded-full bg-calendar-accent px-1.5 py-px font-mono text-[11px] font-semibold text-on-calendar">
+      <span className="rounded-[3px] bg-calendar-accent px-1.5 py-px font-mono text-2xs font-semibold text-on-calendar">
         {trip.pairingNumber !== null ? `#${trip.pairingNumber} ` : ""}
         <CreditHours hours={trip.creditHours} className="font-normal opacity-85" />
       </span>
@@ -36,11 +36,11 @@ export function TripGlance({ bidPack, trip, tag = true }: { bidPack: BidPack; tr
         <TripPicture trip={trip} bidPeriodStart={bidPack.bidPeriodStart} carryOver={carry} compact />
       </div>
       <details className="group mt-1">
-        <summary className="cursor-pointer list-none text-[11px] text-ink-faint marker:hidden hover:text-ink-muted">
+        <summary className="cursor-pointer list-none text-2xs text-ink-faint marker:hidden hover:text-ink-muted">
           <span className="group-open:hidden">Show as text</span>
           <span className="hidden group-open:inline">Hide text</span>
         </summary>
-        <ul className="mt-1 space-y-1 border-l-2 border-border-strong pl-2.5 font-mono text-[11px] leading-relaxed text-ink-muted [overflow-wrap:anywhere]">
+        <ul className="mt-1 space-y-1 border-l-2 border-border-strong pl-2.5 font-mono text-2xs leading-relaxed text-ink-muted [overflow-wrap:anywhere]">
           {tripDuties(trip).map((d, i) => (
             <li key={i}>{d}</li>
           ))}

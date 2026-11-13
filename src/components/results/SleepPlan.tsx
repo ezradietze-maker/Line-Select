@@ -63,16 +63,16 @@ function Ribbon({ plan }: { plan: LayoverSleepPlan }) {
             style={{ left: pct(b.start), width: pct(plan.inHotel + (b.end - b.start)) }}
           >
             <MoonIcon className="h-2.5 w-2.5 shrink-0" />
-            <span className="truncate font-mono text-[10px] font-semibold">{hoursOf(b.end - b.start)}</span>
+            <span className="truncate font-mono text-2xs font-semibold">{hoursOf(b.end - b.start)}</span>
           </div>
         ))}
       </div>
       {ticks.map((t) => (
-        <span key={t.at} className="absolute -top-4 -translate-x-1/2 font-mono text-[9px] text-ink-faint" style={{ left: pct(t.at) }} aria-hidden>
+        <span key={t.at} className="absolute -top-4 -translate-x-1/2 font-mono text-2xs text-ink-faint" style={{ left: pct(t.at) }} aria-hidden>
           {t.label}
         </span>
       ))}
-      <div className="mt-1 flex justify-between font-mono text-[10px] text-ink-faint">
+      <div className="mt-1 flex justify-between font-mono text-2xs text-ink-faint">
         <span className="inline-flex items-center gap-1">
           <BedIcon className="h-3 w-3" /> In the hotel {plan.inHotelLocal}
         </span>
@@ -97,9 +97,9 @@ function LayoverPlan({ plan }: { plan: LayoverSleepPlan }) {
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <span className="inline-flex items-baseline gap-2">
           <span className="font-mono text-sm font-semibold text-ink">{plan.city}</span>
-          <span className="font-mono text-[11px] text-ink-muted">{hoursOf(plan.wakeBy - plan.inHotel)} in the hotel</span>
+          <span className="font-mono text-2xs text-ink-muted">{hoursOf(plan.wakeBy - plan.inHotel)} in the hotel</span>
         </span>
-        <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide ${q.tone}`}>
+        <span className={`rounded-[3px] px-2 py-0.5 text-2xs font-semibold ${q.tone}`}>
           {q.label} · {plan.totalSleepHours.toFixed(1)}h
         </span>
       </div>
@@ -135,7 +135,7 @@ export function SleepScienceInfo() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink">
+      <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1 text-2xs font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink">
         <MoonIcon className="h-2.5 w-2.5" />
         How is sleep planned?
       </button>
@@ -206,7 +206,7 @@ export function RestPlan({ plans }: { plans: LayoverSleepPlan[] }) {
           <MoonIcon className="h-3.5 w-3.5" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-sleep">Rest plan</span>
+          <span className="block text-2xs text-sleep font-medium">Rest plan</span>
           <span className="block text-xs text-ink-muted">
             {total.toFixed(0)}h of sleep planned across {plans.length} {plans.length === 1 ? "layover" : "layovers"}
             {short ? ` · ${short} short ${short === 1 ? "rest" : "rests"}` : ""}
@@ -227,7 +227,7 @@ export function RestPlan({ plans }: { plans: LayoverSleepPlan[] }) {
             ))}
           </ul>
           <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-ink-muted">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-ink-muted">
               <span className="inline-flex items-center gap-1">
                 <span className="h-2.5 w-6 rounded-sm" style={{ background: "linear-gradient(to right, color-mix(in srgb, var(--color-sleep) 8%, transparent), color-mix(in srgb, var(--color-sleep) 50%, transparent))" }} />
                 Darker = easier for your body to sleep

@@ -62,7 +62,7 @@ export function TopicSweepStep({ topics, eyebrow, onContinue }: TopicSweepStepPr
                 type="button"
                 aria-pressed={on}
                 onClick={() => setPicked((p) => (on ? p.filter((x) => x !== t.label) : [...p, t.label]))}
-                className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong hover:text-ink"}`}
+                className={`rounded-[3px] border px-3 py-1.5 text-sm transition-colors ${on ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong hover:text-ink"}`}
               >
                 {t.label}
               </button>

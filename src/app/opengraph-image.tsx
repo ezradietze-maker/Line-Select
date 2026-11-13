@@ -2,19 +2,19 @@ import { ImageResponse } from "next/og";
 import { iconMarkup } from "@/lib/icon-svg";
 
 /**
- * The card a shared link shows in a group chat or on social — the mark, the
- * promise, and the independence notice, in the app's night-cockpit colors,
- * with a few great-circle routes drawn across it. Built once at build time.
+ * The card a shared link shows in a group chat or on social — the sign, the
+ * promise, and the independence notice, in the hub-at-night colors, with a
+ * few routes drawn out from the hub across it. Built once at build time.
  */
 export const alt = "Line Select — find the FedEx bid line that actually fits how you want to fly";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-const INK = "#ececea";
-const MUTED = "#a5a7a3";
-const ACCENT = "#ebb357";
-const BG1 = "#26282c";
-const BG2 = "#141517";
+const INK = "#eef1f6";
+const MUTED = "#a9b4c8";
+const ACCENT = "#ffcc00";
+const BG1 = "#152036";
+const BG2 = "#060b16";
 
 export default function OpengraphImage() {
   return new ImageResponse(
@@ -48,11 +48,26 @@ export default function OpengraphImage() {
         </svg>
 
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "64px 72px", width: "100%" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-            {iconMarkup(76)}
-            <div style={{ display: "flex", fontSize: 40, fontWeight: 700, letterSpacing: -0.5 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {iconMarkup(60)}
+            {/* The direction sign beside the location sign, as in the site's own wordmark. */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                height: 60,
+                padding: "0 18px",
+                borderRadius: 6,
+                background: ACCENT,
+                color: "#000000",
+                fontSize: 38,
+                fontWeight: 800,
+                letterSpacing: 1.5,
+                textTransform: "uppercase",
+              }}
+            >
               <span>Line&nbsp;</span>
-              <span style={{ color: ACCENT }}>Select</span>
+              <span>Select</span>
             </div>
           </div>
 
@@ -67,7 +82,7 @@ export default function OpengraphImage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", fontSize: 20, letterSpacing: 3, textTransform: "uppercase", color: MUTED }}>
+          <div style={{ display: "flex", fontSize: 22, color: MUTED }}>
             Independent prototype · Not affiliated with FedEx
           </div>
         </div>

@@ -84,9 +84,9 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
         aria-expanded={open}
         aria-haspopup="menu"
         title={user.displayName}
-        className="flex w-full items-center gap-2.5 rounded-full border border-sidebar-border bg-surface py-1.5 pl-1.5 pr-3 transition-colors hover:border-border-strong rail-collapsed:justify-center rail-collapsed:px-1.5"
+        className="flex w-full items-center gap-2.5 rounded-[4px] border border-border bg-surface py-1.5 pl-1.5 pr-3 transition-colors hover:border-border-strong rail-collapsed:justify-center rail-collapsed:px-1.5"
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand font-mono text-xs font-semibold text-on-brand">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] bg-brand font-mono text-xs font-semibold text-on-brand">
           {initials(user.displayName)}
         </span>
         <span className="flex-1 truncate text-left text-sm font-medium text-ink rail-collapsed:sr-only">
@@ -104,7 +104,7 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-[14rem] animate-fade-in overflow-hidden rounded-lg border border-border bg-surface shadow-elevated-lg">
+        <div className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-[14rem] animate-fade-in overflow-hidden rounded-[6px] border border-border bg-surface shadow-elevated-lg">
           {/* Who's signed in sits above the menu, not in it: a menu holds only its items. */}
           <div className="border-b border-border px-4 py-3">
             <div className="text-sm font-medium text-ink">{user.displayName}</div>

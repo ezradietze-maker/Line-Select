@@ -33,7 +33,7 @@ function Item({ swatch, label }: { swatch: ReactNode; label: string }) {
 export function ColorKey({ variant, className = "" }: { variant: "calendar" | "trip"; className?: string }) {
   const trip = variant === "trip";
   return (
-    <div className={`flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px] text-ink-muted ${className}`} role="group" aria-label="What the colors mean">
+    <div className={`flex flex-wrap items-center gap-x-3.5 gap-y-1 text-2xs text-ink-muted ${className}`} role="group" aria-label="What the colors mean">
       <Item swatch={<LegSample />} label="FX Flight" />
       <Item swatch={<LegSample deadhead />} label="Deadhead" />
       <Item swatch={<Line tone="bg-layover" />} label="Layover" />
@@ -76,12 +76,12 @@ export function ColorKey({ variant, className = "" }: { variant: "calendar" | "t
       <Item swatch={<Line tone="bg-standby" />} label="Hotel standby" />
       <Item
         swatch={
-          <span aria-hidden className="inline-block h-3 w-7 shrink-0 rounded-[3px] bg-calendar-accent/30" />
+          <span aria-hidden className="inline-block h-3 w-7 shrink-0 rounded-[3px] bg-trip-band" />
         }
         label="Duty Period + GT"
       />
-      <Item swatch={<span className="font-mono text-[10px] font-semibold text-report">Rpt</span>} label="Report" />
-      {trip && <Item swatch={<span className="font-mono text-[10px] font-semibold text-gt">P/U</span>} label="Hotel pickup" />}
+      <Item swatch={<span className="font-mono text-2xs font-semibold text-report">Rpt</span>} label="Report" />
+      {trip && <Item swatch={<span className="font-mono text-2xs font-semibold text-gt">P/U</span>} label="Hotel pickup" />}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CalendarSubscribe } from "@/components/results/CalendarSubscribe";
-import { PlaneIcon } from "@/components/ui/icons";
+import { MarkTick } from "@/components/ui/MarkTick";
 import { SendToVipsDialog, type PresendContext } from "@/components/results/SendToVipsDialog";
 import { buildLineCalendar } from "@/lib/ics-export";
 import type { LineScore } from "@/lib/scoring";
@@ -124,10 +124,8 @@ export function BidOrderExport({
         >
           {copied === "plain" ? (
             <>
-              {/* A plane climbing out of the button: the order's on its way to the bid system. */}
-              <span aria-hidden className="climb-out pointer-events-none absolute -right-1 top-0">
-                <PlaneIcon className="h-4 w-4 rotate-45" />
-              </span>
+              {/* Mark: a tick drawn on the button — the order's copied, on its way to the bid system. */}
+              <MarkTick className="-my-0.5 mr-1 align-middle" />
               {/* "Cleared to bid" only for the whole pack: with lines left out, the button says how many went. */}
               {leftOut > 0 ? `Copied ${countLines(entries.length)} — ${leftOut} left out` : <>Copied &mdash; cleared to bid</>}
             </>
@@ -182,10 +180,10 @@ export function BidOrderExport({
         >
           {savedFrom ? (
             <>
-              {/* A page of the calendar flipping down to the first trip's day. */}
-              <span aria-hidden className="calendar-flip inline-flex h-[22px] w-5 flex-col overflow-hidden rounded-[3px] border border-accent/60 bg-canvas text-center leading-none">
-                <span className="bg-accent py-px font-mono text-[6.5px] font-semibold uppercase text-on-brand">{savedFrom.month}</span>
-                <span className="flex flex-1 items-center justify-center font-mono text-[10px] font-semibold text-ink">{savedFrom.day}</span>
+              {/* Mark: the first trip's day, marked in on a calendar page. */}
+              <span aria-hidden className="mark-in inline-flex h-[22px] w-5 flex-col overflow-hidden rounded-[3px] border border-accent/60 bg-canvas text-center leading-none">
+                <span className="bg-accent py-px font-mono text-2xs font-semibold uppercase text-on-brand">{savedFrom.month}</span>
+                <span className="flex flex-1 items-center justify-center font-mono text-2xs font-semibold text-ink">{savedFrom.day}</span>
               </span>
               Saved &mdash; trips from {savedFrom.month} {savedFrom.day}
             </>

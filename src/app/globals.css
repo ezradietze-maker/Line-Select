@@ -10,38 +10,41 @@
 }
 
 :root {
-  /* Charcoal: soft light-grey surfaces under charcoal ink in daylight, a charcoal sidebar, warm amber for what to
-     look at. The dark scheme below is charcoal through and through, with the amber turned up. */
-  --color-canvas: #f1f1ef;
-  --color-surface: #f8f8f6;
-  --color-surface-raised: #fdfdfc;
-  --color-border: #deded9;
-  --color-border-strong: #c3c3bd;
+  /* Ramp at Night, by day: concrete-grey surfaces under navy ink, the navy night-sky sidebar, and airfield sign
+     yellow. Yellow is only ever a solid sign panel (black on yellow, or yellow on black), never a glow. The dark
+     scheme below is the hub at night: navy sky, the same signs, lighting colours with their airfield meanings
+     (blue edge = boundary and focus, green centreline = progress and good, red stop bar = danger). */
+  color-scheme: light;
+  --color-canvas: #eceff3;
+  --color-surface: #f6f7f9;
+  --color-surface-raised: #ffffff;
+  --color-border: #d5dbe3;
+  --color-border-strong: #b4bdca;
   /* A text field's edge: 3:1 against every surface a field sits on, so a pilot can see where to type (WCAG 1.4.11).
      The hairline and border tokens are for cards and rules, too faint to outline a box you type in. */
-  --color-field-edge: #85857f;
+  --color-field-edge: #77818f;
 
   /* Text — ink-muted/ink-faint tuned to hold WCAG AA (4.5:1) against every
      surface they're actually rendered on (canvas, surface, surface-2), not
      just the lightest of the three. */
-  --color-ink: #1f2023;
-  --color-ink-muted: #53555a;
-  --color-ink-faint: #595b60;
+  --color-ink: #0a1120;
+  --color-ink-muted: #434e63;
+  --color-ink-faint: #4b566b;
 
-  /* Brand: charcoal for the solid controls; amber for what to look at. Accent tuned to hold 4.5:1 as text on
-     accent-soft (the "Top pick" banner's own background), not just on the page surface. */
-  --color-brand: #26282c;
-  --color-brand-strong: #17181b;
-  --color-brand-soft: #e5e5e1;
-  --color-accent: #8f5c0c;
-  --color-accent-soft: #f6e7c8;
-  --color-accent-wash: #efd49c;
+  /* Brand: the solid controls. By day a location sign (yellow on black); at night a direction sign (black on
+     yellow). Accent is sign yellow, darkened by day to hold 4.5:1 as text on accent-soft (the "Top pick" banner's
+     own background), not just on the page surface. */
+  --color-brand: #0a1120;
+  --color-brand-strong: #000000;
+  --color-brand-soft: #e1e6ee;
+  --color-accent: #7d6000;
+  --color-accent-soft: #fff4c7;
+  --color-accent-wash: #ffe58a;
   /* Accent text sitting on the accent wash (the active nav item) — adjusted from plain accent so it holds AA contrast on that tint. */
-  --color-on-wash: #5f3d06;
-  /* Text on a solid brand or danger fill (primary buttons, badges). White on
-     daylight's deep brown; the dark themes' brand is a light gold, so text on
-     it goes dark — white there measured 2.3:1. */
-  --color-on-brand: #f6f6f4;
+  --color-on-wash: #3f3000;
+  /* Text on a solid brand or danger fill (primary buttons, badges): sign yellow on daylight's navy-black panel,
+     black on the night's yellow one. */
+  --color-on-brand: #ffcc00;
   --color-on-danger: #ffffff;
   /* Calendar views' own "Flying" segment color — defaults to brand, but is
      the one color a pilot can personalize (see calendar-theme.ts) without
@@ -49,56 +52,66 @@
      as an inline style override, never re-defined per theme block itself,
      so a pilot's choice survives a light/dark switch unchanged. */
   --color-calendar-accent: var(--color-brand);
+  /* The faint fills behind a trip, its duty band, and a trip row hovered: by day, the trip colour mixed in. At night a
+     neutral light wash instead — a warm trip colour (the sign yellow) washed over navy turns olive; the colour itself
+     still shows in each trip's solid bar and badges. */
+  --color-trip-wash: color-mix(in srgb, var(--color-calendar-accent) 13%, transparent);
+  --color-trip-wash-strong: color-mix(in srgb, var(--color-calendar-accent) 22%, transparent);
+  --color-trip-band: color-mix(in srgb, var(--color-calendar-accent) 30%, transparent);
 
-  /* Second accent: a warm, grayer taupe — desaturated relative to brand/accent
-     on purpose, so the two don't read as one hue at two weights. */
-  --color-dispatch: #5a5d63;
-  --color-dispatch-soft: #ebebe8;
-  --color-dispatch-wash: #d6d6d1;
+  /* Second accent: a quiet slate, well away from sign yellow, so the two never read as one hue at two weights. */
+  --color-dispatch: #4b566b;
+  --color-dispatch-soft: #e6eaf0;
+  --color-dispatch-wash: #d3dae4;
 
-  /* Sidebar: a distinct recessed panel, not a copy of the content surface */
-  --color-sidebar: #26282c;
-  --color-sidebar-border: #36393e;
+  /* Sidebar: the navy night sky in both schemes, a distinct panel rather than a copy of the content surface */
+  --color-sidebar: #0a1120;
+  --color-sidebar-border: #1b2740;
 
   /* Semantic — same hues as before the re-theme (status colors carry meaning
      independent of brand identity), each darkened just enough to hold 4.5:1
      against its own "-soft" background at the small sizes these render at
      (banners, badges) — they were a hair under AA before. */
   /* Dark enough for small text on a trip day's shaded calendar cell (4.8:1), not only on the page. */
-  --color-good: #2a6f4c;
-  --color-standby: #7b5ea7;
+  --color-good: #0b6e44;
+  --color-standby: #6a4fae;
   /* Night blue: a suggested sleep on a layover (see lib/sleep-plan.ts). */
-  --color-sleep: #33427a;
-  --color-sleep-soft: #dde2f2;
+  --color-sleep: #2f4596;
+  --color-sleep-soft: #dfe5f7;
   /* Teal: what a line carries into the next bid month (see lib/bid-month.ts). */
-  --color-carry: #2d6a74;
-  --color-carry-soft: #dbeced;
-  --color-good-soft: #e3efe7;
-  --color-warn: #9a4a1f;
-  --color-warn-soft: #f7e6da;
+  --color-carry: #1d6672;
+  --color-carry-soft: #d8edf0;
+  --color-good-soft: #dbf1e6;
+  --color-warn: #9c4508;
+  --color-warn-soft: #fbe7d6;
   /* NOTAM red: saturated and stamped, not a muted salmon — reserved strictly
      for warnings/alerts, never generic UI chrome. */
-  --color-danger: #b3362c;
-  --color-danger-soft: #f8e1dd;
+  --color-danger: #bd2a22;
+  --color-danger-soft: #fbe0dd;
 
   /* The calendar's own picture of a trip (components/results/LegBars.tsx), one vivid color per thing a pilot reads off
      it: a flight, a deadhead, a layover, a report time. Brighter than the rest of the palette on purpose — the
-     ex-pilot asked for them to stand out — but each dark enough for 10px text on a trip day's tan (4.5:1 or better). */
+     ex-pilot asked for them to stand out — but each dark enough for 10px text on a trip day's tan (4.5:1 or better).
+     Their hues and meanings never change between modes; only brightness is tuned to each background. */
   --color-leg: #1d4ed8;
   --color-deadhead: #ae1d6d;
-  --color-layover: #026b48;
+  --color-layover: #02704b;
   --color-report: #ad380a;
   /* The trip's own picture adds two: the hotel van at each end of a layover (GT), and a crew-rest hotel during a long
      sit at a hub (a day room). */
   --color-gt: #0e7490;
-  --color-rest: #9a5a00;
+  --color-rest: #8f5400;
   /* Trips flown back to back without getting home between: one departure, boxed together in the trip list. */
   --color-chain: #4338ca;
 
-  --color-focus-ring: #26282c;
+  --color-focus-ring: #1f5fe0;
+  /* A sign panel (black on yellow) and the edge of the one thing on a screen that matters most. */
+  --color-sign: #ffcc00;
+  --color-on-sign: #000000;
+  --color-sign-edge: #0a1120;
 
-  /* Warm paper shadow — hue 35 (amber-brown), not a generic cool gray. */
-  --shadow-color: 220 6% 14%;
+  /* Navy-tinted shadow, so a lifted panel reads as part of the night sky rather than a generic grey. */
+  --shadow-color: 222 40% 10%;
   --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.06);
   --shadow-md: 0 2px 8px hsl(var(--shadow-color) / 0.08), 0 1px 2px hsl(var(--shadow-color) / 0.06);
   --shadow-lg: 0 12px 32px hsl(var(--shadow-color) / 0.12), 0 2px 6px hsl(var(--shadow-color) / 0.06);
@@ -119,166 +132,175 @@
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* ---- Glass cockpit layer (redesign) ----
-     Instrument-panel surfaces, readout numerals, glows and hairlines. In
-     daylight the "glow" is just a warm shadow — a neon halo on paper would
-     look wrong — so the light values stay quiet on purpose. */
-  --color-panel: #fbfbfa;
-  --color-readout: #1f2023;
-  --color-hairline: rgb(31 32 35 / 0.11);
-  --glow-soft: rgb(227 164 60 / 0.12);
-  --glow-strong: rgb(227 164 60 / 0.24);
-  --panel-highlight: rgb(255 255 255 / 0.6);
-  /* The logo plate and its marks — the one place the mark sits on its own
-     surface, so it carries its own tokens per theme. */
-  --logo-plate-1: #33363b;
-  --logo-plate-2: #1f2023;
-  --logo-ink: #f1f1ef;
-  --logo-accent: #e3a43c;
-  --logo-rim: rgb(227 164 60 / 0.3);
-  --radius-panel: 14px;
-  --radius-control: 10px;
+  /* Panel surfaces, readout numerals and hairlines. The old "glow" tokens are kept by name but no longer glow:
+     glow-soft is a faint edge line and glow-strong a plain drop shadow, in every mode. */
+  --color-panel: #ffffff;
+  --color-readout: #0a1120;
+  --color-hairline: rgb(10 17 32 / 0.1);
+  --glow-soft: rgb(10 17 32 / 0.08);
+  --glow-strong: rgb(10 17 32 / 0.14);
+  --panel-highlight: rgb(255 255 255 / 0.7);
+  /* The logo's sign: black panel, yellow border and letters — the same by day and by night, so only red-light
+     redefines them. */
+  --logo-plate: #000000;
+  --logo-ink: #ffcc00;
+  --radius-panel: 6px;
+  --radius-control: 4px;
   /* Longer, deliberate reveals for instruments (a gauge sweeping up, a route
      drawing in) — distinct from UI feedback timings above. */
   --duration-reveal: 600ms;
   --duration-sweep: 1100ms;
+
+  /* The five motions — Rack (things arrive), Re-rack (order changes), Draw (pictures appear), Mark (a change is
+     confirmed) and Hand-off (moving to detail or another page) — one timing each, shared by every screen. Mirrored
+     for `motion` in lib/motion-tokens.ts. */
+  --motion-rack: 280ms;
+  --motion-rack-step: 40ms;
+  --motion-draw: 700ms;
+  --motion-mark: 320ms;
+  --motion-handoff: 300ms;
+  --ease-rack: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-canvas: #1c1d20;
-    --color-surface: #222428;
-    --color-surface-raised: #2a2c31;
-    --color-border: #33353a;
-    --color-border-strong: #46494f;
-    --color-field-edge: #7e807c;
+    color-scheme: dark;
+    --color-canvas: #0a1120;
+    --color-surface: #0f1829;
+    --color-surface-raised: #152036;
+    --color-border: #1f2c46;
+    --color-border-strong: #2e3e60;
+    --color-field-edge: #66789a;
 
-    --color-ink: #ececea;
-    --color-ink-muted: #a5a7a3;
-    --color-ink-faint: #9a9c98;
+    --color-ink: #eef1f6;
+    --color-ink-muted: #a9b4c8;
+    --color-ink-faint: #9aa6bc;
 
-    --color-brand: #ebb357;
-    --color-brand-strong: #f2c574;
-    --color-brand-soft: #2f2a20;
-    --color-on-brand: #241703;
-    --color-on-danger: #1c1d20;
-    --color-accent: #ebb357;
-    --color-accent-soft: #3a2d14;
-    --color-accent-wash: #57421c;
-    --color-on-wash: #f2cf8e;
+    --color-brand: #ffcc00;
+    --color-brand-strong: #ffd84a;
+    --color-brand-soft: #2a2a1c;
+    --color-on-brand: #0a0a0a;
+    --color-on-danger: #0a1120;
+    --color-accent: #ffcc00;
+    --color-accent-soft: #2b2914;
+    --color-accent-wash: #4d4313;
+    --color-on-wash: #ffe27a;
     --color-calendar-accent: var(--color-brand);
+    --color-trip-wash: rgb(238 241 246 / 0.07);
+    --color-trip-wash-strong: rgb(238 241 246 / 0.12);
+    --color-trip-band: rgb(238 241 246 / 0.16);
 
-    --color-dispatch: #a5a7a3;
-    --color-dispatch-soft: #2a2c31;
-    --color-dispatch-wash: #3a3d42;
+    --color-dispatch: #a9b4c8;
+    --color-dispatch-soft: #152036;
+    --color-dispatch-wash: #22304d;
 
-    --color-sidebar: #141517;
-    --color-sidebar-border: #2a2c30;
+    --color-sidebar: #060b16;
+    --color-sidebar-border: #17213a;
 
-    --color-good: #6cc596;
-    --color-standby: #a48bd0;
-    --color-sleep: #93a4e6;
-    --color-sleep-soft: #1d2238;
-    --color-carry: #7fc0c8;
-    --color-carry-soft: #16292c;
-    --color-good-soft: #173023;
-    --color-warn: #e39a5c;
-    --color-warn-soft: #33241a;
-    --color-danger: #ec7a6c;
-    --color-danger-soft: #3a1c18;
+    --color-good: #3ddc97;
+    --color-standby: #b49cf0;
+    --color-sleep: #a3b3f0;
+    --color-sleep-soft: #172042;
+    --color-carry: #7fd0d9;
+    --color-carry-soft: #0f2a33;
+    --color-good-soft: #0c2a20;
+    --color-warn: #ffa05a;
+    --color-warn-soft: #33220f;
+    --color-danger: #ff6b63;
+    --color-danger-soft: #3a1418;
 
-    --color-leg: #7ea6ff;
-    --color-deadhead: #f475b5;
-    --color-layover: #3ad49b;
-    --color-report: #ff8d45;
-    --color-gt: #38d0f0;
-    --color-rest: #fbbf24;
-    --color-chain: #a5b4fc;
+    --color-leg: #7aa2ff;
+    --color-deadhead: #ff7ab8;
+    --color-layover: #3ee0a1;
+    --color-report: #ff9a52;
+    --color-gt: #46d4f0;
+    --color-rest: #ffc247;
+    --color-chain: #b3bdff;
 
-    --color-focus-ring: #ebb357;
-    --shadow-color: 220 10% 3%;
+    --color-focus-ring: #5b9bff;
+    --color-sign: #ffcc00;
+    --color-on-sign: #000000;
+    --color-sign-edge: #ffcc00;
+    --shadow-color: 222 70% 2%;
 
     /* Dark surfaces need a stronger alpha than light for the grid to read at the same subtlety. */
     --texture-grid-line: transparent;
 
-    --color-panel: #212327;
-    --color-readout: #f2e8d2;
-    --color-hairline: rgb(236 236 234 / 0.09);
-    --glow-soft: rgb(235 179 87 / 0.16);
-    --glow-strong: rgb(235 179 87 / 0.4);
-    --panel-highlight: rgb(236 236 234 / 0.04);
-    --logo-plate-1: #2a2c31;
-    --logo-plate-2: #141517;
-    --logo-ink: #ececea;
-    --logo-accent: #ebb357;
-    --logo-rim: rgb(235 179 87 / 0.3);
+    --color-panel: #0f1829;
+    --color-readout: #f4f6fa;
+    --color-hairline: rgb(238 241 246 / 0.08);
+    --glow-soft: rgb(238 241 246 / 0.1);
+    --glow-strong: rgb(0 0 0 / 0.45);
+    --panel-highlight: rgb(255 255 255 / 0.03);
   }
 }
 
 :root[data-theme="dark"] {
-  --color-canvas: #1c1d20;
-  --color-surface: #222428;
-  --color-surface-raised: #2a2c31;
-  --color-border: #33353a;
-  --color-border-strong: #46494f;
-  --color-field-edge: #7e807c;
+  color-scheme: dark;
+  --color-canvas: #0a1120;
+  --color-surface: #0f1829;
+  --color-surface-raised: #152036;
+  --color-border: #1f2c46;
+  --color-border-strong: #2e3e60;
+  --color-field-edge: #66789a;
 
-  --color-ink: #ececea;
-  --color-ink-muted: #a5a7a3;
-  --color-ink-faint: #9a9c98;
+  --color-ink: #eef1f6;
+  --color-ink-muted: #a9b4c8;
+  --color-ink-faint: #9aa6bc;
 
-  --color-brand: #ebb357;
-  --color-brand-strong: #f2c574;
-  --color-brand-soft: #2f2a20;
-  --color-on-brand: #241703;
-  --color-on-danger: #1c1d20;
-  --color-accent: #ebb357;
-  --color-accent-soft: #3a2d14;
-  --color-accent-wash: #57421c;
-  --color-on-wash: #f2cf8e;
+  --color-brand: #ffcc00;
+  --color-brand-strong: #ffd84a;
+  --color-brand-soft: #2a2a1c;
+  --color-on-brand: #0a0a0a;
+  --color-on-danger: #0a1120;
+  --color-accent: #ffcc00;
+  --color-accent-soft: #2b2914;
+  --color-accent-wash: #4d4313;
+  --color-on-wash: #ffe27a;
   --color-calendar-accent: var(--color-brand);
+  --color-trip-wash: rgb(238 241 246 / 0.07);
+  --color-trip-wash-strong: rgb(238 241 246 / 0.12);
+  --color-trip-band: rgb(238 241 246 / 0.16);
 
-  --color-dispatch: #a5a7a3;
-  --color-dispatch-soft: #2a2c31;
-  --color-dispatch-wash: #3a3d42;
+  --color-dispatch: #a9b4c8;
+  --color-dispatch-soft: #152036;
+  --color-dispatch-wash: #22304d;
 
-  --color-sidebar: #141517;
-  --color-sidebar-border: #2a2c30;
+  --color-sidebar: #060b16;
+  --color-sidebar-border: #17213a;
 
-  --color-good: #6cc596;
-  --color-standby: #a48bd0;
-  --color-sleep: #93a4e6;
-  --color-sleep-soft: #1d2238;
-  --color-carry: #7fc0c8;
-  --color-carry-soft: #16292c;
-  --color-good-soft: #173023;
-  --color-warn: #e39a5c;
-  --color-warn-soft: #33241a;
-  --color-danger: #ec7a6c;
-  --color-danger-soft: #3a1c18;
+  --color-good: #3ddc97;
+  --color-standby: #b49cf0;
+  --color-sleep: #a3b3f0;
+  --color-sleep-soft: #172042;
+  --color-carry: #7fd0d9;
+  --color-carry-soft: #0f2a33;
+  --color-good-soft: #0c2a20;
+  --color-warn: #ffa05a;
+  --color-warn-soft: #33220f;
+  --color-danger: #ff6b63;
+  --color-danger-soft: #3a1418;
 
-  --color-leg: #7ea6ff;
-  --color-deadhead: #f475b5;
-  --color-layover: #3ad49b;
-  --color-report: #ff8d45;
-  --color-gt: #38d0f0;
-  --color-rest: #fbbf24;
-  --color-chain: #a5b4fc;
+  --color-leg: #7aa2ff;
+  --color-deadhead: #ff7ab8;
+  --color-layover: #3ee0a1;
+  --color-report: #ff9a52;
+  --color-gt: #46d4f0;
+  --color-rest: #ffc247;
+  --color-chain: #b3bdff;
 
-  --color-focus-ring: #ebb357;
-  --shadow-color: 220 10% 3%;
+  --color-focus-ring: #5b9bff;
+  --color-sign: #ffcc00;
+  --color-on-sign: #000000;
+  --color-sign-edge: #ffcc00;
+  --shadow-color: 222 70% 2%;
 
-  --color-panel: #212327;
-  --color-readout: #f2e8d2;
-  --color-hairline: rgb(236 236 234 / 0.09);
-  --glow-soft: rgb(235 179 87 / 0.16);
-  --glow-strong: rgb(235 179 87 / 0.4);
-  --panel-highlight: rgb(236 236 234 / 0.04);
-  --logo-plate-1: #2a2c31;
-  --logo-plate-2: #141517;
-  --logo-ink: #ececea;
-  --logo-accent: #ebb357;
-  --logo-rim: rgb(235 179 87 / 0.3);
+  --color-panel: #0f1829;
+  --color-readout: #f4f6fa;
+  --color-hairline: rgb(238 241 246 / 0.08);
+  --glow-soft: rgb(238 241 246 / 0.1);
+  --glow-strong: rgb(0 0 0 / 0.45);
+  --panel-highlight: rgb(255 255 255 / 0.03);
 }
 
 /*
@@ -292,6 +314,7 @@
  * introducing a second hue.
  */
 :root[data-theme="night"] {
+  color-scheme: dark;
   --color-canvas: #0d0404;
   --color-surface: #150606;
   --color-surface-raised: #1c0808;
@@ -300,8 +323,8 @@
   --color-field-edge: #a05c5c;
 
   --color-ink: #ff5c5c;
-  --color-ink-muted: #c25959;
-  --color-ink-faint: #a56a6a;
+  --color-ink-muted: #c95f5f;
+  --color-ink-faint: #ab6e6e;
 
   /* Darker than the focus ring/decorative red on purpose — this is the one
      spot white button text has to sit on top of it, and the brighter glow
@@ -317,6 +340,9 @@
   --color-accent-wash: #4a160a;
   --color-on-wash: var(--color-accent);
   --color-calendar-accent: var(--color-brand);
+  --color-trip-wash: rgb(255 92 92 / 0.08);
+  --color-trip-wash-strong: rgb(255 92 92 / 0.14);
+  --color-trip-band: rgb(255 92 92 / 0.2);
 
   --color-dispatch: #b16e6e;
   --color-dispatch-soft: #2a0f0f;
@@ -347,50 +373,53 @@
   --color-chain: #ff9e7a;
 
   --color-focus-ring: #ff4d4d;
+  --color-sign: #d95757;
+  --color-on-sign: #0d0404;
+  --color-sign-edge: #ff5c5c;
   --shadow-color: 0 70% 2%;
   --texture-grid-line: color-mix(in srgb, var(--color-ink) 3%, transparent);
 
   --color-panel: #120505;
   --color-readout: #ff6b6b;
   --color-hairline: rgb(255 92 92 / 0.12);
-  --glow-soft: rgb(255 59 47 / 0.14);
-  --glow-strong: rgb(255 59 47 / 0.36);
+  --glow-soft: rgb(255 92 92 / 0.12);
+  --glow-strong: rgb(0 0 0 / 0.5);
   --panel-highlight: rgb(255 90 90 / 0.04);
-  --logo-plate-1: #2a0909;
-  --logo-plate-2: #0d0303;
+  --logo-plate: #0d0303;
   --logo-ink: #ff5c5c;
-  --logo-accent: #ff7a3d;
-  --logo-rim: rgb(255 92 92 / 0.28);
 }
 
 :root:not([data-theme="night"]) .sidebar-scheme {
-  /* The charcoal chrome — the desktop sidebar and the phone's bars — in both schemes: inside it, every token reads as
-     on charcoal, so the nav's own classes (text-ink, bg-canvas/40, the amber active row) need no second set. The night
-     theme's red-light sidebar keeps its own. */
-  --color-canvas: #1f2125;
-  --color-surface: #2b2d32;
-  --color-surface-raised: #33363b;
-  --color-border: #3a3d42;
-  --color-border-strong: #4b4e54;
-  --color-field-edge: #8a8c88;
-  --color-ink: #f1f1ef;
-  --color-ink-muted: #b9bbb7;
-  --color-ink-faint: #a9aba7;
-  --color-brand: #ebb357;
-  --color-brand-strong: #f2c574;
-  --color-brand-soft: #3a2d14;
-  --color-on-brand: #241703;
-  --color-accent: #ebb357;
-  --color-accent-soft: #3a2d14;
-  --color-accent-wash: #4a3a1f;
-  --color-on-wash: #f5d596;
-  --color-good: #6cc596;
-  --color-danger: #ec7a6c;
-  --color-on-danger: #1c1d20;
-  --color-readout: #f1f1ef;
-  --color-hairline: rgb(241 241 239 / 0.1);
-  --color-focus-ring: #ebb357;
-  --color-panel: #2b2d32;
+  /* The navy chrome — the desktop sidebar and the phone's bars — in both schemes: inside it, every token reads as
+     on the night sky, so the nav's own classes (text-ink, bg-canvas/40, the active row) need no second set. The
+     active row is a location sign: yellow on black. The night theme's red-light sidebar keeps its own. */
+  --color-canvas: #0d1526;
+  --color-surface: #142039;
+  --color-surface-raised: #1a2844;
+  --color-border: #22304d;
+  --color-border-strong: #31436a;
+  --color-field-edge: #6f82a6;
+  --color-ink: #eef1f6;
+  --color-ink-muted: #b3bdd0;
+  --color-ink-faint: #a3aec3;
+  --color-brand: #ffcc00;
+  --color-brand-strong: #ffd84a;
+  --color-brand-soft: #2b2914;
+  --color-on-brand: #0a0a0a;
+  --color-accent: #ffcc00;
+  --color-accent-soft: #2b2914;
+  --color-accent-wash: #000000;
+  --color-on-wash: #ffcc00;
+  --color-good: #3ddc97;
+  --color-danger: #ff6b63;
+  --color-on-danger: #0a1120;
+  --color-readout: #eef1f6;
+  --color-hairline: rgb(238 241 246 / 0.1);
+  --color-focus-ring: #5b9bff;
+  --color-sign: #ffcc00;
+  --color-on-sign: #000000;
+  --color-sign-edge: #ffcc00;
+  --color-panel: #142039;
   color: var(--color-ink);
 }
 
@@ -416,6 +445,9 @@
   --color-accent-wash: var(--color-accent-wash);
   --color-on-wash: var(--color-on-wash);
   --color-calendar-accent: var(--color-calendar-accent);
+  --color-trip-wash: var(--color-trip-wash);
+  --color-trip-wash-strong: var(--color-trip-wash-strong);
+  --color-trip-band: var(--color-trip-band);
 
   --color-dispatch: var(--color-dispatch);
   --color-dispatch-soft: var(--color-dispatch-soft);
@@ -451,6 +483,13 @@
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
 
+  /* The type scale, smallest first: 2xs 11 · xs 12 · 13 · sm 14 · 15 · base 16 · lg 18 · xl 20 · 2xl 24 · 3xl 30 ·
+     4xl 36 · 5xl 48. Nothing on the site is set below 11px: 9px capitals measured about 8 arcminutes, under what a
+     20/40 reader can see (Legge & Bigelow 2011). 13 and 15 have no names of their own and stay as text-[13px] and
+     text-[15px]. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
   --duration-fast: var(--duration-fast);
   --duration-base: var(--duration-base);
   --duration-slow: var(--duration-slow);
@@ -462,6 +501,21 @@
 
   --radius-panel: var(--radius-panel);
   --radius-control: var(--radius-control);
+
+  /* Ramp at Night corners: near-square everywhere — signs at 3–4px, panels at 6px. Pills (rounded-full) stay round. */
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-md: 4px;
+  --radius-lg: 5px;
+  --radius-xl: 6px;
+  --radius-2xl: 8px;
+  --radius-3xl: 10px;
+  --radius-4xl: 12px;
+
+  --color-sign: var(--color-sign);
+  --color-on-sign: var(--color-on-sign);
+  --color-sign-edge: var(--color-sign-edge);
 }
 
 /*
@@ -543,46 +597,57 @@ html {
   box-shadow: 3px 0 14px -6px hsl(var(--shadow-color) / 0.35);
 }
 
-/* A gentle physical lift on hover — for surfaces (cards) that only had a
-   shadow transition before and read flat next to buttons, which already
-   lift. Kept to a small translate so it reads as "responsive," not bouncy. */
+/* The shared hover for cards that open or select something: the edge firms up. A sign doesn't float, so nothing
+   lifts. */
 .hover-lift {
-  transition: transform var(--duration-base) var(--ease-standard), box-shadow var(--duration-base) var(--ease-standard);
+  transition: border-color var(--duration-base) var(--ease-standard);
 }
 
 .hover-lift:hover {
-  transform: translateY(-3px);
+  border-color: var(--color-border-strong);
 }
 
 /* The one warm halo in the app, reserved for the single top-ranked line so
    it keeps meaning "this is the one" instead of becoming decoration. */
 .top-pick-glow {
-  box-shadow: 0 0 1px hsl(var(--shadow-color) / 0.4), 0 0 48px -20px var(--color-accent);
+  box-shadow: 0 0 0 1.5px var(--color-sign-edge), var(--shadow-sm);
 }
 
-/* ---- Glass cockpit primitives ---- */
+/* ---- Panels ---- */
 
-/* An instrument panel: a deep surface with a faint lit top edge and a
-   precise hairline border — the base for cards in the redesign. */
+/* The base surface for cards: a plain face, a crisp one-pixel border and a small shadow. (The class keeps its old
+   name so every screen picks the panel up without a change.) */
 .panel-glass {
-  background:
-    linear-gradient(180deg, var(--panel-highlight), transparent 38%),
-    var(--color-panel);
-  border: 1px solid var(--color-hairline);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-panel);
-  box-shadow: inset 0 1px 0 var(--panel-highlight), var(--shadow-md);
+  box-shadow: var(--shadow-sm);
 }
 
-/* Instrument light around something that matters — reserved, like
-   `.top-pick-glow`, so it keeps meaning something. */
+/* The one thing on a screen that matters most: a sign edge — black by day, yellow at night — instead of a glow.
+   Reserved, like `.top-pick-glow`, so it keeps meaning something. */
 .glow-soft {
-  box-shadow: 0 0 0 1px var(--glow-soft), 0 10px 44px -14px var(--glow-strong);
+  border-color: var(--color-sign-edge);
+  box-shadow: 0 0 0 0.5px var(--color-sign-edge), var(--shadow-sm);
 }
 
-/* A lit element that also has keyboard focus keeps both: the focus ring
-   stays visible instead of being replaced by the glow. */
+/* Inside a sign panel (a caution notice): every ink reads black on the yellow, and a button in it is a location
+   sign (yellow on black), whatever classes the content brings. */
+.sign-scheme {
+  --color-ink: var(--color-on-sign);
+  --color-ink-muted: var(--color-on-sign);
+  --color-ink-faint: var(--color-on-sign);
+  --color-accent: var(--color-on-sign);
+  --color-warn: var(--color-on-sign);
+  --color-brand: var(--color-on-sign);
+  --color-brand-strong: var(--color-on-sign);
+  --color-on-brand: var(--color-sign);
+  --color-border-strong: var(--color-on-sign);
+}
+
+/* A marked element that also has keyboard focus keeps both: the focus ring sits outside the edge. */
 .glow-soft:focus-visible {
-  box-shadow: 0 0 0 2px var(--color-panel), 0 0 0 4px var(--color-focus-ring), 0 10px 44px -14px var(--glow-strong);
+  box-shadow: 0 0 0 0.5px var(--color-sign-edge), 0 0 0 2.5px var(--color-panel), 0 0 0 4.5px var(--color-focus-ring);
 }
 
 /* Text printed on the calendar's own "Flying" color — that color is the one
@@ -607,8 +672,9 @@ html {
   color: var(--color-readout);
 }
 
+/* Kept by name; the theme lights nothing, so it adds nothing. */
 .text-glow {
-  text-shadow: 0 0 22px var(--glow-strong);
+  text-shadow: none;
 }
 
 /* ---- Slider ---- */
@@ -617,7 +683,7 @@ html {
   -webkit-appearance: none;
   appearance: none;
   height: 6px;
-  border-radius: 999px;
+  border-radius: 2px;
   outline: none;
   cursor: pointer;
   touch-action: pan-y;
@@ -627,47 +693,47 @@ html {
 .line-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: var(--color-surface);
-  border: 3px solid var(--color-brand);
-  /* A ring of instrument light around the thumb — quiet at rest, brighter while held. */
-  box-shadow: var(--shadow-md), 0 0 0 5px var(--glow-soft);
+  /* A small upright sign: the brand colour with a rim of the page between it and the track. */
+  width: 16px;
+  height: 26px;
+  border-radius: 3px;
+  background: var(--color-brand);
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-brand), var(--shadow-sm);
   cursor: grab;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
   margin-top: 0;
 }
 
 .line-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.08);
+  transform: scale(1.04);
 }
 
 .line-slider:active::-webkit-slider-thumb {
   cursor: grabbing;
-  transform: scale(1.15);
-  box-shadow: var(--shadow-lg), 0 0 0 7px var(--glow-soft), 0 0 22px var(--glow-strong);
+  transform: scale(1.06);
+  box-shadow: 0 0 0 1px var(--color-brand), var(--shadow-md);
 }
 
 .line-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: var(--color-surface);
-  border: 3px solid var(--color-brand);
-  box-shadow: var(--shadow-md), 0 0 0 5px var(--glow-soft);
+  width: 16px;
+  height: 26px;
+  border-radius: 3px;
+  background: var(--color-brand);
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-brand), var(--shadow-sm);
   cursor: grab;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
 .line-slider::-moz-range-thumb:hover {
-  transform: scale(1.08);
+  transform: scale(1.04);
 }
 
 .line-slider:active::-moz-range-thumb {
   cursor: grabbing;
-  transform: scale(1.15);
-  box-shadow: var(--shadow-lg), 0 0 0 7px var(--glow-soft), 0 0 22px var(--glow-strong);
+  transform: scale(1.06);
+  box-shadow: 0 0 0 1px var(--color-brand), var(--shadow-md);
 }
 
 .line-slider:focus-visible::-webkit-slider-thumb {
@@ -683,73 +749,95 @@ html {
 /* ---- Motion ---- */
 
 /*
- * Opacity only — deliberately no transform/slide. A property present in one
- * keyframe (e.g. `from`) but not the next (`to`) doesn't resolve to `none`
- * once `animation-fill-mode: both` holds the end state; browsers keep
- * rendering that property's last explicit value indefinitely instead. That
- * makes a "from translateY(4px) to (unset)" animation get stuck at
- * translateY(4px) forever — confirmed empirically, not just a theoretical
- * gotcha — and any non-none transform, even a no-op one, turns the element
- * into a new containing block for `position: fixed` descendants, which
- * silently breaks anything positioned relative to the viewport inside it
- * (a drag-and-drop overlay, in the case that surfaced this). Simplest safe
- * fix: never animate `transform` on a container that might contain
- * fixed-position descendants.
- *
- * Fill `backwards`, not `both`: an opacity animation still holding its end
- * state keeps the element a stacking context, so a `fixed z-50` overlay
- * inside a page (the first-visit tour) sat under the z-30 sidebar.
+ * ---- The five motions ----
+ * Each shows something real happening, on one shared timing (the --motion-* tokens), and each has a still version
+ * under reduced motion. Hand-off is with the route transitions below.
  */
-@keyframes fade-in {
+
+/*
+ * Rack: an item slides a short way up into its slot. Give each item of a list its own animation-delay
+ * (index × --motion-rack-step) and they rack in one after another.
+ *
+ * `.animate-fade-in` is Rack's container form: opacity only, no slide. A transform on a box that holds position:
+ * fixed descendants makes it their containing block, so a drag overlay or a tour inside it would sit in the wrong
+ * place — containers only fade. Fill `backwards`, never `both`: an animation holding its end state keeps the element
+ * a stacking context (a fixed z-50 overlay inside a page sat under the z-30 sidebar), and a keyframe property with no
+ * `to` is held at its `from` value indefinitely under `both`.
+ */
+@keyframes rack-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rack-dist, 8px));
+  }
+}
+@keyframes rack-in-x {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+@keyframes rack-fade {
   from {
     opacity: 0;
   }
-  to {
-    opacity: 1;
-  }
+}
+.rack,
+.animate-rise-in,
+.animate-hero-in,
+.drop-in,
+.taxi-in,
+.pin-drop {
+  animation: rack-in var(--motion-rack) var(--ease-rack) backwards;
+}
+.animate-fade-in {
+  animation: rack-fade var(--motion-rack) var(--ease-rack) backwards;
+}
+/* A row of aircraft, nose to tail (the seniority line-up): racked in from the left. */
+.queue-roll {
+  animation: rack-in-x var(--motion-rack) var(--ease-rack) backwards;
+}
+/* A hotel's pin settles onto the map once the route to it has drawn. */
+.pin-drop {
+  --rack-dist: -6px;
+  animation-delay: 0.55s;
 }
 
-.animate-fade-in {
-  animation: fade-in 0.25s ease backwards;
+/* A line's month racking in, day by day, the first time its card scrolls into view (leaf cells, so the slide is
+   safe). About half a second for the whole grid, so a pilot scrolling past never sees an empty month. */
+.cal-grid:not(.is-revealed) > * {
+  opacity: 0;
+}
+.cal-grid.is-revealed > * {
+  --rack-dist: 4px;
+  animation: rack-in var(--motion-rack) var(--ease-rack) backwards;
+  animation-delay: calc(var(--i, 0) * 6ms);
 }
 
 /*
- * For leaf content only (no fixed-position descendants) — safe to animate
- * transform here, unlike `.animate-fade-in` above. Used for one-off entrance
- * polish (hero copy, feature cards) where a small rise reads as more
- * deliberate than a flat fade.
+ * Draw: a picture appears along its own path, once. Bars and trip bars wipe in left to right (`.draw-x`, and the
+ * score breakdown's `.bar-fill`); routes with pathLength="1" draw along their line (`.route-draw`, below); a gauge
+ * sweeps up to its reading (Gauge.tsx).
  */
-@keyframes rise-in {
+@keyframes wipe-in {
   from {
-    opacity: 0;
-    transform: translateY(10px);
+    clip-path: inset(0 100% 0 0);
   }
   to {
-    opacity: 1;
-    transform: translateY(0);
+    clip-path: inset(0 0 0 0);
   }
 }
-
-.animate-rise-in {
-  animation: rise-in 0.5s var(--ease-emphasized) both;
+.draw-x,
+.bar-fill {
+  animation: wipe-in var(--motion-draw) var(--ease-emphasized) backwards;
 }
 
-/* The landing hero's staggered entrance (each line sets its own delay). */
-.animate-hero-in {
-  animation: rise-in 0.7s var(--ease-emphasized) both;
-}
-
-@keyframes slide-in-left {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-.animate-slide-in-left {
-  animation: slide-in-left 0.2s ease-out both;
+/*
+ * Mark: a change confirmed with one quick stroke, like a grease pencil on a strip — a tag or badge marked in
+ * (`.mark-in`), a tick drawing itself (`.tick-draw`), a waypoint stamped as it's passed (`.waypoint-ping`), a ring
+ * drawn round the line you jumped to (`.line-flash`).
+ */
+.mark-in {
+  animation: wipe-in var(--motion-mark) var(--ease-rack) backwards;
 }
 
 @keyframes skeleton-pulse {
@@ -768,62 +856,26 @@ html {
   animation: skeleton-pulse 1.6s ease-in-out infinite;
 }
 
-/* A line's month laying itself out, day by day, the first time its card
-   scrolls into view. Leaf cells only, so animating transform is safe. */
-@keyframes cell-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px) scale(0.92);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.cal-grid:not(.is-revealed) > * {
-  opacity: 0;
-}
-
-/* Quick enough that a pilot scrolling past never sees an empty month: the whole grid is in place in about half a second. */
-.cal-grid.is-revealed > * {
-  animation: cell-in 0.3s var(--ease-emphasized) both;
-  animation-delay: calc(var(--i, 0) * 6ms);
-}
-
-/* A score breakdown bar filling to its value as it appears. */
-@keyframes bar-fill {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: none;
-  }
-}
-
-.bar-fill {
-  transform-origin: left center;
-  animation: bar-fill 0.7s var(--ease-emphasized) both;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .cal-grid > *,
-  .cal-grid:not(.is-revealed) > * {
-    opacity: 1;
-    animation: none;
-  }
-  .bar-fill {
-    animation: none;
-  }
+  .rack,
   .animate-fade-in,
   .animate-rise-in,
   .animate-hero-in,
-  .animate-slide-in-left,
+  .drop-in,
+  .taxi-in,
+  .pin-drop,
+  .queue-roll,
+  .cal-grid > *,
+  .draw-x,
+  .bar-fill,
+  .mark-in,
   .animate-sheet-up,
   .animate-palette-in,
-  .line-flash,
   .skeleton-pulse {
     animation: none;
+  }
+  .cal-grid:not(.is-revealed) > * {
+    opacity: 1;
   }
   .nav-progress {
     display: none;
@@ -894,16 +946,15 @@ html {
 
 /* A button that physically presses: it sinks a pixel and its shadow goes inward, then springs back. */
 .press:active:not(:disabled) {
-  transform: translateY(1px) scale(0.985);
-  box-shadow: inset 0 2px 4px hsl(var(--shadow-color) / 0.28);
+  transform: translateY(1px);
   transition-duration: 60ms;
 }
 
-/* The tick on a confirmed copy draws itself in. */
+/* Mark: the tick on a confirmed copy draws itself in. */
 .tick-draw {
   stroke-dasharray: 24;
   stroke-dashoffset: 24;
-  animation: tick-draw 0.32s var(--ease-emphasized) 0.04s forwards;
+  animation: tick-draw var(--motion-mark) var(--ease-emphasized) 0.04s forwards;
 }
 @keyframes tick-draw {
   to {
@@ -911,26 +962,15 @@ html {
   }
 }
 
-/* The empty-state radar scope's sweep. */
-.radar-sweep {
-  transform-origin: 24px 24px;
-  animation: radar-sweep 4.5s linear infinite;
-}
-@keyframes radar-sweep {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Toasts rise into the corner. `backwards`, so no transform lingers once they've landed. */
+/* Toasts rack into the corner. `backwards`, so no transform lingers once they've landed. */
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.98);
+    transform: translateY(12px);
   }
 }
 .animate-toast-in {
-  animation: toast-in 0.34s var(--ease-emphasized) backwards;
+  animation: toast-in var(--motion-rack) var(--ease-rack) backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -941,7 +981,6 @@ html {
     animation: none;
     stroke-dashoffset: 0;
   }
-  .radar-sweep,
   .animate-toast-in {
     animation: none;
   }
@@ -999,7 +1038,7 @@ html {
   }
 }
 .animate-sheet-up {
-  animation: sheet-up 0.32s var(--ease-emphasized) backwards;
+  animation: sheet-up var(--motion-handoff) var(--ease-emphasized) backwards;
 }
 
 /* ---------- Command palette, route progress, line flash ---------- */
@@ -1046,8 +1085,8 @@ html {
   height: 2px;
   pointer-events: none;
   transform-origin: left;
-  background: var(--color-accent);
-  box-shadow: 0 0 8px var(--color-accent);
+  /* Progress is the green centreline. */
+  background: var(--color-good);
   animation:
     nav-progress-show 0.15s 0.12s both,
     nav-progress 2.4s cubic-bezier(0.1, 0.7, 0.2, 1) 0.12s both;
@@ -1055,8 +1094,8 @@ html {
 
 /* The line the j / k keys are on. */
 .line-keyed {
-  border-radius: 0.875rem;
-  box-shadow: 0 0 0 2px var(--color-accent);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 0 0 2px var(--color-sign-edge);
 }
 
 /* Clear of a screen's own bar along the bottom (Preferences' "unsaved changes"). */
@@ -1064,77 +1103,81 @@ body:has([data-bottom-bar]) .back-to-top {
   bottom: calc(var(--shell-bottom) + 5.5rem);
 }
 
-/* The line a pilot jumped to: a ring that glows, then fades, so the eye lands on it after the scroll. */
-@keyframes line-flash {
-  0%,
-  35% {
-    box-shadow: 0 0 0 2px var(--color-accent), 0 0 24px -4px var(--color-accent);
+/* Mark: the line a pilot jumped to gets a ring drawn round it, left to right, held a moment, then lifted — so the eye
+   lands on it after the scroll. Under reduced motion the ring is simply there for the same moment. */
+.line-flash {
+  position: relative;
+}
+.line-flash::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--color-sign-edge);
+  border-radius: calc(var(--radius-panel) + 3px);
+  pointer-events: none;
+  animation: mark-ring 2.2s var(--ease-rack) both;
+}
+@keyframes mark-ring {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 1;
+  }
+  14%,
+  75% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
   }
   100% {
-    box-shadow: 0 0 0 2px transparent, 0 0 24px -4px transparent;
+    clip-path: inset(0 0 0 0);
+    opacity: 0;
   }
 }
-.line-flash {
-  border-radius: 0.875rem;
-  animation: line-flash 2.2s var(--ease-standard) both;
+@keyframes mark-ring-still {
+  0%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .line-flash::after {
+    animation: mark-ring-still 2.2s steps(1) both;
+  }
 }
 
 /* ---------- Route transitions (ScreenTransition) ---------- */
 
 /*
- * The panel slide. The outgoing screen clears out first — quickly, a short
- * step toward where it's going — and only then does the incoming one arrive
- * from the direction of travel, so the two are never on screen together
- * (overlapping, two half-faded pages read as a glitch, not a transition).
- * The direction comes from <html data-nav-dir>: sideways along the
- * onboarding spine, vertically between sidebar destinations on a desktop
- * (the rail is a vertical stack of panels) and sideways on a phone (its tab
- * bar is a row). No blur: on a full-page snapshot it costs frames and
- * smears text.
+ * Hand-off: the next page opens out of what you tapped. The outgoing page clears first — quickly — and only then does
+ * the new one open out as a rectangle growing from the point of the tap (<html> --handoff-x / --handoff-y, set by
+ * ScreenTransition; the middle of the window when there was no tap), so the two are never on screen together (two
+ * half-faded pages read as a glitch, not a transition). No blur: on a full-page snapshot it costs frames and smears
+ * text.
+ *
+ * Revealed, not scaled: Safari keeps drawing the live new page under the transition, so a scaled snapshot showed as a
+ * ghost over it. A reveal lands on the same pixels, so Safari sees a clean crossfade.
  */
 :root {
-  --vt-in: 0 8px;
-  --vt-out: 0 -4px;
-  --vt-out-ms: 110ms;
-  --vt-in-ms: 260ms;
-}
-:root[data-nav-dir="forward"] {
-  --vt-in: 28px 0;
-  --vt-out: -16px 0;
-}
-:root[data-nav-dir="back"] {
-  --vt-in: -28px 0;
-  --vt-out: 16px 0;
-}
-:root[data-nav-dir="down"] {
-  --vt-in: 0 22px;
-  --vt-out: 0 -12px;
-}
-:root[data-nav-dir="up"] {
-  --vt-in: 0 -22px;
-  --vt-out: 0 12px;
-}
-@media (max-width: 47.99rem) {
-  :root[data-nav-dir="down"] {
-    --vt-in: 28px 0;
-    --vt-out: -16px 0;
-  }
-  :root[data-nav-dir="up"] {
-    --vt-in: -28px 0;
-    --vt-out: 16px 0;
-  }
+  --handoff-out-ms: 100ms;
 }
 
-@keyframes vt-panel-out {
+@keyframes handoff-out {
   to {
     opacity: 0;
-    translate: var(--vt-out);
   }
 }
-@keyframes vt-panel-in {
+@keyframes handoff-in {
   from {
-    opacity: 0;
-    translate: var(--vt-in);
+    opacity: 0.3;
+    clip-path: inset(
+      var(--handoff-y, 40%) calc(100% - var(--handoff-x, 50%)) calc(100% - var(--handoff-y, 40%)) var(--handoff-x, 50%)
+    );
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0);
   }
 }
 /*
@@ -1148,10 +1191,10 @@ body:has([data-bottom-bar]) .back-to-top {
  * more specific and keep their own rules.
  */
 ::view-transition-old(*) {
-  animation: vt-panel-out var(--vt-out-ms) var(--ease-standard) both;
+  animation: handoff-out var(--handoff-out-ms) var(--ease-standard) both;
 }
 ::view-transition-new(*) {
-  animation: vt-panel-in var(--vt-in-ms) var(--ease-emphasized) var(--vt-out-ms) both;
+  animation: handoff-in var(--motion-handoff) var(--ease-emphasized) var(--handoff-out-ms) both;
 }
 /*
  * React skips the page snapshot when everything that changed is inside a
@@ -1176,7 +1219,7 @@ body:has([data-bottom-bar]) .back-to-top {
   animation: none;
 }
 
-/* The navigation is the fixed reference point: it never slides, and the panels slide underneath it. */
+/* The navigation is the fixed reference point: it never moves, and the pages open out underneath it. */
 ::view-transition-group(app-rail),
 ::view-transition-group(app-topbar),
 ::view-transition-group(app-tabbar) {
@@ -1194,7 +1237,7 @@ body:has([data-bottom-bar]) .back-to-top {
   animation: none;
 }
 
-/* Clicks during the half-second slide reach the new screen instead of being swallowed by the overlay. */
+/* Clicks during the hand-off reach the new screen instead of being swallowed by the overlay. */
 ::view-transition {
   pointer-events: none;
 }
@@ -1206,6 +1249,25 @@ body:has([data-bottom-bar]) .back-to-top {
     animation-duration: 0s !important;
     animation-delay: 0s !important;
   }
+}
+
+/*
+ * Changing appearance (AppearanceMenu): the new mode sweeps across the whole window from the Appearance button, the
+ * old one held still underneath. The nav joins the page snapshot for this one transition — its own names would swap
+ * it at once instead. Never under reduced motion (the menu switches without a transition then).
+ */
+html.theme-sweep [style*="view-transition-name"] {
+  view-transition-name: none !important;
+}
+html.theme-sweep::view-transition-old(root) {
+  animation: none;
+}
+html.theme-sweep::view-transition-new(root) {
+  animation: theme-sweep 520ms var(--ease-standard) both;
+}
+@keyframes theme-sweep {
+  from { clip-path: circle(0 at var(--sweep-x, 0) var(--sweep-y, 0)); }
+  to { clip-path: circle(var(--sweep-r, 150vmax) at var(--sweep-x, 0) var(--sweep-y, 0)); }
 }
 
 /* ---------- Print ---------- */
@@ -1268,68 +1330,16 @@ body:has([data-bottom-bar]) .back-to-top {
 
 /* ---- Small moving touches (each has a still version under reduced motion, at the end) ---- */
 
-/* A split-flap digit: each new character flips down into place, the way a departures board turns over. */
-.flap {
+/* A number rolling once when it changes: each new digit slides up into place, the way a counter turns over. */
+.digit-roll {
   display: inline-block;
-  transform-origin: 50% 0;
-  animation: flap-in 0.32s var(--ease-emphasized) both;
+  animation: digit-roll var(--motion-rack) var(--ease-rack) backwards;
 }
-@keyframes flap-in {
-  0% { transform: perspective(240px) rotateX(-90deg); opacity: 0.2; }
-  60% { transform: perspective(240px) rotateX(12deg); opacity: 1; }
-  100% { transform: perspective(240px) rotateX(0); }
-}
-
-/* A small plane taking off along a bar: rolls left to right, lifts off, climbs away. */
-.takeoff {
-  animation: takeoff 1.6s cubic-bezier(0.45, 0, 0.55, 1) both;
-}
-@keyframes takeoff {
-  0% { left: 0; transform: translate(-50%, -50%) rotate(0deg); opacity: 1; }
-  55% { left: 70%; transform: translate(-50%, -50%) rotate(0deg); }
-  100% { left: 104%; transform: translate(-50%, -260%) rotate(-24deg); opacity: 0; }
-}
-
-/* A plane climbing out of a button. */
-.climb-out {
-  animation: climb-out 1.1s var(--ease-emphasized) both;
-}
-@keyframes climb-out {
-  0% { transform: translate(-6px, 4px) rotate(0deg); opacity: 0; }
-  20% { opacity: 1; }
-  100% { transform: translate(26px, -16px) rotate(-28deg); opacity: 0; }
-}
-
-/* Light and dark: the sun setting, or the moon rising, in the appearance button. */
-.sun-set { animation: sun-set 0.9s var(--ease-standard) both; }
-@keyframes sun-set {
-  from { transform: translateY(-2px); opacity: 1; }
-  to { transform: translateY(14px); opacity: 0; }
-}
-.moon-rise { animation: moon-rise 0.9s var(--ease-standard) both; }
-@keyframes moon-rise {
-  from { transform: translateY(14px); opacity: 0; }
-  to { transform: translateY(-2px); opacity: 1; }
-}
-.celestial-out { animation: celestial-out 0.5s ease 0.9s both; }
-@keyframes celestial-out { to { opacity: 0; } }
-
-/* Things dropping in one after another: give each an animation-delay. */
-.drop-in { animation: drop-in 0.36s var(--ease-emphasized) both; }
-@keyframes drop-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: none; }
-}
-
-/* A plane flying a holding pattern (the not-found page): along a racetrack, nose first. */
-.holding-plane {
-  offset-path: path("M40 15 H120 A20 20 0 0 1 120 55 H40 A20 20 0 0 1 40 15 Z");
-  offset-anchor: center;
-  offset-rotate: auto;
-  animation: holding 9s linear infinite;
-}
-@keyframes holding {
-  to { offset-distance: 100%; }
+@keyframes digit-roll {
+  from {
+    opacity: 0;
+    transform: translateY(0.45em);
+  }
 }
 
 /* The interview landing (results/WheelsDown), 2.4s: the approach, a flare, main wheels first, the nose lowered, a
@@ -1367,73 +1377,63 @@ body:has([data-bottom-bar]) .back-to-top {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .flap, .takeoff, .climb-out, .sun-set, .moon-rise, .celestial-out, .drop-in, .ld-move, .ld-pitch, .ld-smoke, .ld-rabbit, .ld-caption {
+  .digit-roll, .ld-move, .ld-pitch, .ld-smoke, .ld-rabbit, .ld-caption {
     animation: none;
   }
-  .takeoff, .climb-out, .celestial-out { opacity: 0; }
-  .holding-plane { animation: none; offset-distance: 12%; }
 }
 
 /* A route drawing itself in (paths with pathLength="1"). */
 .route-draw {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: route-draw 0.9s var(--ease-emphasized) 0.1s forwards;
+  animation: route-draw var(--motion-draw) var(--ease-emphasized) 0.1s forwards;
 }
 @keyframes route-draw {
   to { stroke-dashoffset: 0; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .route-draw { animation: none; stroke-dashoffset: 0; }
+}
 
 /* ---- Round two of the small touches (still versions under reduced motion at the end of this block) ---- */
 
-/* The loading instrument: an attitude indicator's horizon rocking through a gentle bank. */
-.attitude-roll {
-  /* The dial is drawn around 0,0 (viewBox -12 -12 24 24): that's its centre. "center" here would be 12,12, its corner. */
-  transform-box: view-box;
-  transform-origin: 0 0;
-  animation: attitude-roll 2.4s ease-in-out infinite;
+/* The loading mark: a row of approach lights, each flashing in turn toward the runway — the rabbit. */
+.approach-lights > span {
+  opacity: 0.25;
+  animation: approach-lights 1s linear infinite;
 }
-@keyframes attitude-roll {
-  0%, 100% { transform: rotate(-24deg); }
-  50% { transform: rotate(20deg); }
+@keyframes approach-lights {
+  0%, 18% { opacity: 1; }
+  40%, 100% { opacity: 0.25; }
 }
 
-/* An anti-collision beacon: a short bright flash, then dim. */
-.beacon { animation: beacon 1.8s ease-out infinite; }
-@keyframes beacon {
-  0%, 10% { opacity: 1; box-shadow: 0 0 8px currentColor; }
-  30%, 100% { opacity: 0.45; box-shadow: 0 0 0 transparent; }
+/* The front page's signature (ApproachLights): the sequenced flashers running toward the runway and the sign — three
+   runs on arrival, then the steady lights alone. Not drawn under reduced motion. */
+.rabbit-light {
+  opacity: 0;
+  animation: rabbit 1.6s linear 0.4s 3 both;
+}
+@keyframes rabbit {
+  0%, 5% { opacity: 1; }
+  12%, 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rabbit-light { animation: none; }
 }
 
-/* Final call: the countdown glowing while bidding closes inside a day. */
+/* Final call: the countdown dimming and brightening while bidding closes inside a day — the one repeating animation
+   left on the site. */
 .final-call { animation: final-call 2.6s ease-in-out infinite; }
 @keyframes final-call {
-  0%, 100% { text-shadow: 0 0 0 transparent; }
-  50% { text-shadow: 0 0 14px color-mix(in srgb, currentColor 55%, transparent); }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
-/* A message folded into a paper plane and flown away up and to the right. */
-.paper-plane { animation: paper-plane 1.5s cubic-bezier(0.45, 0, 0.4, 1) both; }
-@keyframes paper-plane {
-  0% { transform: translate(0, 8px) rotate(8deg) scale(0.6); opacity: 0; }
-  15% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
-  45% { transform: translate(70px, -10px) rotate(-6deg) scale(1); }
-  100% { transform: translate(320px, -170px) rotate(-24deg) scale(0.7); opacity: 0; }
-}
 
-/* A radar return: appears small and bright, settles into a dot. */
-.blip { animation: blip 0.9s ease-out both; }
-@keyframes blip {
-  0% { transform: scale(2.6); opacity: 0; }
-  30% { opacity: 1; }
-  100% { transform: scale(1); opacity: 0.85; }
-}
-
-/* A waypoint lighting as the plane passes it. */
-.waypoint-ping { animation: waypoint-ping 0.9s ease-out both; }
-@keyframes waypoint-ping {
-  from { box-shadow: 0 0 0 0 var(--glow-strong); }
-  to { box-shadow: 0 0 0 9px transparent; }
+/* Mark: a waypoint stamped as it's passed. */
+.waypoint-ping { animation: stamp var(--motion-mark) var(--ease-rack) backwards; }
+@keyframes stamp {
+  from { opacity: 0; transform: scale(1.8); }
 }
 
 /* The weather where a city is: rays turning, clouds drifting, rain and snow falling, a flash of lightning. */
@@ -1456,70 +1456,20 @@ body:has([data-bottom-bar]) .back-to-top {
 .wx-fog { animation: wx-fog 3.6s ease-in-out infinite alternate; }
 @keyframes wx-fog { from { transform: translateX(-1.5px); } to { transform: translateX(1.5px); } }
 
-/* Stars over the sidebar's header — in the dark scheme only. */
-.sidebar-stars { display: none; }
-:root[data-theme="dark"] .sidebar-stars { display: block; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .sidebar-stars { display: block; }
-}
-.twinkle { animation: twinkle 3s ease-in-out infinite; }
-@keyframes twinkle {
-  0%, 100% { opacity: 0.15; }
-  50% { opacity: 0.85; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .attitude-roll, .final-call, .paper-plane, .blip, .waypoint-ping, .wx-rays, .wx-cloud, .wx-flash, .wx-fog, .twinkle {
+  .approach-lights > span, .final-call, .waypoint-ping, .wx-rays, .wx-cloud, .wx-flash, .wx-fog {
     animation: none;
   }
-  .attitude-roll { transform: rotate(-10deg); }
-  .beacon { animation: none; opacity: 1; }
+  .approach-lights > span:nth-child(-n + 3) { opacity: 1; }
   .wx-fall, .wx-fall-slow { animation: none; opacity: 0.8; }
-  .paper-plane { opacity: 0; }
-  .twinkle { opacity: 0.5; }
 }
 
 /* ---- Round three: cosmetic touches ---- */
 
-/* A marker taxiing in from the start of its bar to where it's set (`left` inline is where it stops). */
-.taxi-in { animation: taxi-in 1.3s cubic-bezier(0.3, 0, 0.2, 1) 0.2s backwards; }
-@keyframes taxi-in { from { left: 0; } }
-
-/* The empty-state radar: an afterglow trailing the sweep, and a faint return lit as the sweep passes over it. */
-.scope-return { animation: scope-return 4.5s linear infinite; }
-@keyframes scope-return {
-  0%, 30% { opacity: 0; }
-  31% { opacity: 1; }
-  75%, 100% { opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .taxi-in { animation: none; }
-  .scope-return { animation: none; opacity: 0.6; }
-}
-
-/* A readout typing itself out: each character appears on its delay, then a block caret blinks twice and goes. */
-.type-in { animation: type-in 0.01s steps(1) backwards; }
-@keyframes type-in { from { opacity: 0; } }
-.type-caret {
-  display: inline-block;
-  width: 0.55em;
-  height: 1em;
-  margin-left: 2px;
-  vertical-align: -0.12em;
-  background: currentColor;
-  opacity: 0;
-  animation: type-caret 0.9s steps(1) both;
-}
-@keyframes type-caret {
-  0%, 33%, 66% { opacity: 0.8; }
-  16%, 50%, 100% { opacity: 0; }
-}
-
 /* ---- Round five: cosmetic touches (still versions under reduced motion at the end of this block) ---- */
 
 /* The upload page's route map: each city's dot landing once its route has drawn in, and a ring pulsing out of base. */
-.route-dot { transform-box: fill-box; transform-origin: center; animation: route-dot 0.35s var(--ease-emphasized) both; }
+.route-dot { transform-box: fill-box; transform-origin: center; animation: route-dot var(--motion-mark) var(--ease-rack) backwards; }
 @keyframes route-dot {
   from { opacity: 0; transform: scale(0); }
 }
@@ -1534,14 +1484,7 @@ body:has([data-bottom-bar]) .back-to-top {
   .beacon-ring { animation: none; opacity: 0; }
 }
 
-/* The hotel's pin dropping onto its place by the field, a bounce, then a ring spreading out from where it landed. */
-.pin-drop { animation: pin-drop 0.6s 0.55s cubic-bezier(0.3, 0, 0.4, 1) both; }
-@keyframes pin-drop {
-  0% { opacity: 0; transform: translateY(-22px); }
-  60% { opacity: 1; transform: translateY(0); }
-  78% { transform: translateY(-3px); }
-  100% { transform: translateY(0); }
-}
+/* The hotel's pin (racked in with `.pin-drop`, above), then one ring spreading out from where it settled. */
 .pin-ping { opacity: 0; transform-box: fill-box; transform-origin: center; animation: pin-ping 0.9s 0.95s ease-out both; }
 @keyframes pin-ping {
   from { opacity: 0.9; transform: scale(0.6); }
@@ -1549,61 +1492,7 @@ body:has([data-bottom-bar]) .back-to-top {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pin-drop, .pin-ping { animation: none; }
+  .pin-ping { animation: none; }
 }
 
-/* Back to top: the plane climbs away out of the button, and the next one rolls up into place. */
-.plane-climb { animation: plane-climb 0.9s cubic-bezier(0.45, 0, 0.3, 1) both; }
-@keyframes plane-climb {
-  0% { transform: translateY(0); opacity: 1; }
-  42% { transform: translateY(-30px) scale(0.7); opacity: 0; }
-  43% { transform: translateY(14px) scale(1); opacity: 0; }
-  100% { transform: translateY(0); opacity: 1; }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .plane-climb { animation: none; }
-}
-
-/* The seniority line-up: each aircraft rolling forward into its place, nose to tail. */
-.queue-roll { animation: queue-roll 0.5s var(--ease-emphasized) backwards; }
-@keyframes queue-roll {
-  from { opacity: 0; transform: translateX(-14px); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .queue-roll { animation: none; }
-}
-
-/* The crash page: the seatbelt sign chiming on (two blinks, then lit), and a plane bumping through light chop. */
-.seatbelt-sign { opacity: 0.2; animation: seatbelt-sign 1.4s 0.3s steps(1) forwards; }
-@keyframes seatbelt-sign {
-  0% { opacity: 1; filter: drop-shadow(0 0 4px var(--color-accent)); }
-  18% { opacity: 0.2; filter: none; }
-  36%, 100% { opacity: 1; filter: drop-shadow(0 0 4px var(--color-accent)); }
-}
-.turbulence { animation: turbulence 1.6s ease-in-out infinite; }
-@keyframes turbulence {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  14% { transform: translate(0, -2.2px) rotate(-3deg); }
-  27% { transform: translate(0, 1.6px) rotate(2deg); }
-  41% { transform: translate(0, -0.8px) rotate(-1deg); }
-  60% { transform: translate(0, 2px) rotate(2.5deg); }
-  78% { transform: translate(0, -1.4px) rotate(-1.5deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .seatbelt-sign { animation: none; opacity: 1; }
-  .turbulence { animation: none; }
-}
-
-/* Saved to the calendar: a page flipping down onto the first trip's day. */
-.calendar-flip { transform-origin: top; animation: calendar-flip 0.55s cubic-bezier(0.3, 1.4, 0.5, 1) both; }
-@keyframes calendar-flip {
-  from { transform: perspective(60px) rotateX(-95deg); opacity: 0; }
-  to { transform: perspective(60px) rotateX(0); opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .calendar-flip { animation: none; }
-}

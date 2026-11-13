@@ -145,7 +145,7 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
                       {copied ? "Copied" : "Copy link"}
                     </button>
                   </div>
-                  <input readOnly value={link ?? ""} aria-label="Your calendar link" onFocus={(e) => e.target.select()} className="mt-2 w-full rounded border border-field-edge bg-surface px-2 py-1 font-mono text-[11px] text-ink-muted" />
+                  <input readOnly value={link ?? ""} aria-label="Your calendar link" onFocus={(e) => e.target.select()} className="mt-2 w-full rounded border border-field-edge bg-surface px-2 py-1 font-mono text-2xs text-ink-muted" />
                   <p className="mt-2 text-xs leading-relaxed text-ink-muted">
                     This is the only time this link can be shown, because we keep just a scrambled copy of it. Add it to your calendar now. In Apple Calendar, change Auto-refresh to &ldquo;Every hour&rdquo; when it asks, since it starts on once a week, and pick iCloud to see it on your iPhone too. Google and Outlook pick their own pace, which can take up to a day.
                   </p>

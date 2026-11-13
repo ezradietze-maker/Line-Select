@@ -57,17 +57,13 @@ function RailTip({ children }: { children: ReactNode }) {
 const ROW =
   "group relative flex w-full items-center gap-3 rounded-md py-[7px] pl-3 pr-3 text-left text-sm transition-colors duration-150 rail-collapsed:justify-center rail-collapsed:px-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]";
 
-/** An icon that lifts a hair and catches the light on hover — the switch under your finger, not a link in a list. */
-function RowIcon({ icon: Icon, active, badge = 0 }: { icon: ComponentType<{ className?: string }>; active: boolean; badge?: number }) {
+/** An icon that lifts a hair on hover — the switch under your finger, not a link in a list. */
+function RowIcon({ icon: Icon, badge = 0 }: { icon: ComponentType<{ className?: string }>; active: boolean; badge?: number }) {
   return (
-    <span
-      className={`relative shrink-0 transition-[transform,filter] duration-200 ease-[var(--ease-emphasized)] group-hover:-translate-y-px group-hover:scale-110 group-disabled:transform-none ${
-        active ? "drop-shadow-[0_0_6px_var(--color-accent)]" : ""
-      }`}
-    >
+    <span className="relative shrink-0 transition-transform duration-200 ease-[var(--ease-emphasized)] group-hover:-translate-y-px group-disabled:transform-none">
       <Icon className="h-[18px] w-[18px]" />
       {badge > 0 && (
-        <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-on-danger">
+        <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-2xs font-semibold leading-none text-on-danger">
           {badge > 9 ? "9+" : badge}
         </span>
       )}
@@ -79,7 +75,7 @@ function RowIcon({ icon: Icon, active, badge = 0 }: { icon: ComponentType<{ clas
 function SectionLabel({ children, first }: { children: ReactNode; first: boolean }) {
   return (
     <>
-      <div className={`px-3 pb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint rail-collapsed:hidden ${first ? "pt-1" : "pt-3"}`}>
+      <div className={`px-3 pb-1.5 text-2xs font-medium text-ink-faint rail-collapsed:hidden ${first ? "pt-1" : "pt-3"}`}>
         {children}
       </div>
       {!first && <div aria-hidden className="mx-auto my-2 hidden h-px w-6 bg-sidebar-border rail-collapsed:block" />}
@@ -88,8 +84,8 @@ function SectionLabel({ children, first }: { children: ReactNode; first: boolean
 }
 
 /**
- * The destinations, in two banks — this month's bid, then the crew-wide
- * tools — with one lit indicator that slides to whichever is live.
+ * The destinations, in three banks — this month's bid, the pilot's own flying, then the crew-wide tools — with one
+ * location sign (yellow on black, yellow border: "you are here") that slides to whichever is live.
  */
 function NavList({
   active,
@@ -120,12 +116,9 @@ function NavList({
       {indicator && (
         <div
           aria-hidden
-          className="absolute inset-x-0 z-0 rounded-md bg-accent-wash shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] transition-[transform,height] duration-300 ease-[var(--ease-emphasized)]"
+          className="absolute inset-x-0 z-0 rounded-[4px] bg-accent-wash ring-[1.5px] ring-inset ring-accent transition-[transform,height] duration-300 ease-[var(--ease-emphasized)]"
           style={{ transform: `translateY(${indicator.top}px)`, height: indicator.height }}
-        >
-          {/* A status LED, not a generic highlight — the panel's own way of saying "this one's live." */}
-          <div className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-accent shadow-[0_0_8px_var(--color-accent)]" />
-        </div>
+        />
       )}
       {(["bid", "flying", "crew"] as const).map((section) => (
         <div key={section} role="group" aria-label={SECTION_LABELS[section]}>
@@ -162,7 +155,7 @@ function NavList({
 
 function InfoIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={className}>
       <circle cx="12" cy="12" r="9" />
       <path strokeLinecap="round" d="M12 17v-5M12 8h.01" />
     </svg>
@@ -171,7 +164,7 @@ function InfoIcon({ className }: { className?: string }) {
 
 function FeedbackIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.5a8.38 8.38 0 01-1.9 5.4L21 21l-4.65-1.55a8.5 8.5 0 11-6.85-15A8.5 8.5 0 0121 11.5z" />
     </svg>
   );
@@ -179,14 +172,14 @@ function FeedbackIcon({ className }: { className?: string }) {
 
 function SparkIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={className}>
       <path strokeLinejoin="round" d="M12 3l1.9 5.3L19 10l-5.1 1.7L12 17l-1.9-5.3L5 10l5.1-1.7z" />
       <path strokeLinecap="round" d="M19 16v4M17 18h4" />
     </svg>
   );
 }
 
-/** What's new, with an amber dot until this device has seen the latest entry. */
+/** What's new, with a yellow dot until this device has seen the latest entry. */
 function WhatsNewLink() {
   const [unseen, setUnseen] = useState(false);
   useEffect(() => {
@@ -198,7 +191,7 @@ function WhatsNewLink() {
     <Link href="/whats-new" onClick={() => setUnseen(false)} className={`${ROW} font-medium text-ink-faint hover:bg-ink/[0.06] hover:text-ink-muted`}>
       <span className="relative">
         <RowIcon icon={SparkIcon} active={false} />
-        {unseen && <span aria-hidden className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent shadow-[0_0_6px_var(--color-accent)]" />}
+        {unseen && <span aria-hidden className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent ring-2 ring-sidebar" />}
       </span>
       <span className="rail-collapsed:sr-only">
         What&rsquo;s new{unseen && <span className="sr-only"> (new things since you last looked)</span>}
@@ -239,26 +232,25 @@ export function LeftNav({
       className="sidebar-scheme shadow-sidebar fixed inset-y-0 left-0 z-30 hidden w-[var(--shell-left)] flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[var(--ease-emphasized)] md:flex"
     >
       <div className="relative flex items-center justify-between gap-2 border-b border-sidebar-border/70 px-4 py-4 rail-collapsed:flex-col rail-collapsed:gap-3 rail-collapsed:px-0">
-        <SidebarStars />
         <button
           type="button"
           onClick={() => onNavigate(homeTarget(hasProfile, hasBidPack))}
           aria-label="Line Select home"
-          className="group relative flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
+          className="group relative flex min-w-0 items-center gap-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
         >
           <LogoFlight className="h-9 w-9 shrink-0 transition-transform duration-200 group-hover:scale-105" />
-          <Wordmark className="truncate text-[17px] rail-collapsed:hidden" />
+          <Wordmark className="h-9 text-[15px] rail-collapsed:hidden" />
         </button>
         <AppearanceMenu />
       </div>
 
       {pack && (
-        <div className="mx-3 mt-3 rounded-lg border border-hairline bg-canvas/40 px-3 py-2 rail-collapsed:hidden">
-          <div className="flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.2em] text-ink-faint">
+        <div className="mx-3 mt-3 rounded-[4px] border border-border px-3 py-2 rail-collapsed:hidden">
+          <div className="flex items-center justify-between text-2xs text-ink-faint font-medium">
             <span>Bid pack</span>
             <span className="flex items-center gap-1.5 text-good">
-              {/* Blinking slowly, like an aircraft's beacon. */}
-              <span className="beacon h-1.5 w-1.5 rounded-full bg-good text-good" aria-hidden />
+              {/* A steady green centreline light: loaded and clear to go. */}
+              <span className="h-1.5 w-1.5 rounded-full bg-good" aria-hidden />
               Loaded
             </span>
           </div>
@@ -280,7 +272,7 @@ export function LeftNav({
         >
           <RowIcon icon={SearchIcon} active={false} />
           <span className="flex-1 rail-collapsed:sr-only">Jump to line…</span>
-          <kbd className="rounded border border-hairline px-1.5 font-mono text-[10px] text-ink-faint rail-collapsed:hidden">⌘K</kbd>
+          <kbd className="rounded border border-hairline px-1.5 font-mono text-2xs text-ink-faint rail-collapsed:hidden">⌘K</kbd>
           <RailTip>Jump to line (⌘K)</RailTip>
         </button>
       </div>
@@ -321,25 +313,5 @@ export function LeftNav({
         {ready ? <AccountMenu user={user} onSignIn={onSignIn} onLogout={onLogout} /> : <AccountPlaceholder />}
       </div>
     </aside>
-  );
-}
-
-/** A faint night sky over the header, twinkling — shown in the dark scheme only (see `.sidebar-stars`). */
-const STARS = [
-  [8, 18, 1, 0], [22, 70, 0.8, 1.1], [31, 30, 1.2, 2.3], [44, 82, 0.7, 0.6], [52, 14, 0.9, 1.8],
-  [63, 58, 0.7, 2.9], [71, 26, 1.1, 0.3], [80, 76, 0.8, 1.5], [88, 40, 1, 2.6], [95, 12, 0.7, 0.9],
-] as const;
-
-function SidebarStars() {
-  return (
-    <span aria-hidden className="sidebar-stars pointer-events-none absolute inset-0 overflow-hidden">
-      {STARS.map(([x, y, r, delay]) => (
-        <span
-          key={`${x}-${y}`}
-          className="twinkle absolute rounded-full bg-ink"
-          style={{ left: `${x}%`, top: `${y}%`, width: `${r * 2}px`, height: `${r * 2}px`, animationDelay: `${delay}s`, animationDuration: `${2.6 + (delay % 1.5)}s` }}
-        />
-      ))}
-    </span>
   );
 }

@@ -9,7 +9,7 @@ import type { CityMark } from "@/types/preferences";
 const DAY = 24 * 60;
 
 /** A month-calendar day: room for three-letter cities, not for times. */
-const SIZE = { top: 11, track: 15, tick: 9, bar: 3, duty: 13, lane: 3, line: 10, labelPx: 22 };
+const SIZE = { top: 11, track: 15, tick: 9, bar: 3, duty: 13, lane: 3, line: 11, labelPx: 24 };
 
 /** How far the duty band runs past the takeoff and landing ticks, so it outlines the flying it holds. */
 const DUTY_PAD = 2;
@@ -160,7 +160,7 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
           return (
             <span
               key={`d${i}`}
-              className={`absolute bg-calendar-accent/30 ${runsIn ? "" : "rounded-l-[3px]"} ${runsOn ? "" : "rounded-r-[3px]"}`}
+              className={`absolute bg-trip-band ${runsIn ? "" : "rounded-l-[3px]"} ${runsOn ? "" : "rounded-r-[3px]"}`}
               style={{ left, width: x(d.end) + (runsOn ? bleed : DUTY_PAD) - left, top: mid - size.duty / 2, height: size.duty }}
             />
           );
@@ -191,7 +191,7 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
             <span key={`r${i}`}>
               <span className="absolute rounded-full bg-rest" style={{ left, width: w, top: f.laneTop, height: size.lane }} title={`Crew-rest hotel at ${r.city}, ${Math.round(r.hours)}h`} />
               {clear && (
-                <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-[10px] font-semibold leading-none text-rest" style={{ left: center, top: f.wordsTop, height: size.line }}>
+                <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-2xs font-semibold leading-none text-rest" style={{ left: center, top: f.wordsTop, height: size.line }}>
                   {text}
                 </span>
               )}
@@ -213,7 +213,7 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
         {stayWords.map(({ s, up, center, words }, i) => (
           <span
             key={`w${i}`}
-            className="absolute flex -translate-x-1/2 items-center gap-0.5 whitespace-nowrap font-mono text-[10px] font-semibold leading-none text-layover"
+            className="absolute flex -translate-x-1/2 items-center gap-0.5 whitespace-nowrap font-mono text-2xs font-semibold leading-none text-layover"
             style={{ left: center, top: up ? 0 : f.wordsTop, height: up ? size.top : size.line }}
             title={`Layover in ${s.city}, ${layoverHours(s.hours)}`}
           >
@@ -235,7 +235,7 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
           );
           const jumpWords = (at: number, minutes: number) =>
             showCities ? (
-              <span className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[9px] font-semibold leading-none ${ink}`} style={{ left: Math.min(Math.max(at, 12 - bleed), width + bleed - 12), top: f.citiesTop, height: size.line }}>
+              <span className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-2xs font-semibold leading-none ${ink}`} style={{ left: Math.min(Math.max(at, 12 - bleed), width + bleed - 12), top: f.citiesTop, height: size.line }}>
                 {jumpLabel(minutes)}
               </span>
             ) : null;
@@ -308,7 +308,7 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
           b.cityPoints.map((c, i) => (
             <span
               key={`c${i}`}
-              className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[10px] font-semibold leading-none ${c.deadhead ? "text-deadhead" : "text-ink"}`}
+              className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-2xs font-semibold leading-none ${c.deadhead ? "text-deadhead" : "text-ink"}`}
               style={{ left: cityCenters[i], top: f.citiesTop + (f.cityRows - 1) * size.line, height: size.line }}
             >
               {c.text}

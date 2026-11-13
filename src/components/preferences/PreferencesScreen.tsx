@@ -225,24 +225,24 @@ export function PreferencesScreen({
     <div className="mx-auto w-full max-w-3xl pb-24">
       <div className="flex flex-col gap-4">
         <div>
-          {bidPack && <div className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-accent">{packEyebrow(bidPack)}</div>}
+          {bidPack && <div className="text-2xs font-medium text-accent">{packEyebrow(bidPack)}</div>}
           <Heading as="h1" className={`text-3xl tracking-tight text-ink sm:text-4xl ${bidPack ? "mt-1.5" : ""}`}>Your preferences</Heading>
           <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
             <span>
               Last answered {completedDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
             </span>
             {currentProfile.deepRoundCompleted && (
-              <span className="inline-flex items-center rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
+              <span className="inline-flex items-center rounded-[3px] bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
                 Deep interview
               </span>
             )}
             {currentProfile.isCommuter !== null && (
-              <span className="inline-flex items-center rounded-full bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand">
+              <span className="inline-flex items-center rounded-[3px] bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand">
                 {currentProfile.isCommuter ? "Commuter" : "Local"}
               </span>
             )}
             {currentProfile.isCommuter === true && currentProfile.hasCrashPad !== null && (
-              <span className="inline-flex items-center rounded-full border border-border-strong px-2 py-0.5 text-xs font-medium text-ink-faint">
+              <span className="inline-flex items-center rounded-[3px] border border-border-strong px-2 py-0.5 text-xs font-medium text-ink-faint">
                 {currentProfile.hasCrashPad ? "Has a crash pad" : "No crash pad"}
               </span>
             )}
@@ -268,7 +268,7 @@ export function PreferencesScreen({
       {freshBidPack && (
         <div className="panel-glass glow-soft mt-6 p-5">
           <div className="flex items-center gap-2 font-display text-lg font-semibold text-ink">
-            <span className="h-2 w-2 rounded-full bg-good shadow-[0_0_8px_var(--color-good)]" aria-hidden />
+            <span className="h-2 w-2 rounded-full bg-good" aria-hidden />
             New bid pack loaded
           </div>
           <p className="mt-1 text-sm leading-relaxed text-ink-muted">
@@ -404,13 +404,13 @@ export function PreferencesScreen({
                       aria-pressed={on}
                       title={a.description}
                       onClick={() => setWeightsDraft((d) => ({ ...d, [a.key]: on ? 0 : HOTEL_AMENITY_WEIGHT }))}
-                      className={`press inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                      className={`press inline-flex items-center gap-1.5 rounded-[3px] border px-3.5 py-1.5 text-sm font-medium transition-colors ${
                         on
                           ? "border-accent/60 bg-accent-soft text-accent"
                           : "border-hairline bg-canvas/40 text-ink-muted hover:border-border-strong hover:text-ink"
                       }`}
                     >
-                      <span aria-hidden className={`h-1.5 w-1.5 rounded-full transition-colors ${on ? "bg-accent shadow-[0_0_6px_var(--color-accent)]" : "bg-hairline"}`} />
+                      <span aria-hidden className={`h-1.5 w-1.5 rounded-full transition-colors ${on ? "bg-accent" : "bg-hairline"}`} />
                       {a.label}
                     </button>
                   );
@@ -468,7 +468,7 @@ export function PreferencesScreen({
         <div data-bottom-bar className="animate-toast-in fixed inset-x-0 bottom-[var(--shell-bottom,0px)] z-20 border-t border-accent/30 bg-panel px-4 py-3 shadow-elevated-lg md:left-[var(--shell-left,15rem)]">
           <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
             <span className="flex items-center gap-2 text-sm text-ink-muted">
-              <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent shadow-[0_0_8px_var(--color-accent)]" aria-hidden />
+              <span className="h-2 w-2 shrink-0 rounded-[1px] bg-accent" aria-hidden />
               You have unsaved changes.
             </span>
             <div className="flex gap-2">

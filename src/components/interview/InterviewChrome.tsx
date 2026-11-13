@@ -61,7 +61,7 @@ export function InterviewProgress({ fraction, left, right, base }: { fraction: n
   return (
     <div className="mb-6">
       <FlightPathProgress fraction={fraction} label="Interview progress" stops={stops} />
-      <div className="mt-1.5 flex items-center justify-between gap-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
+      <div className="mt-1.5 flex items-center justify-between gap-4 text-2xs text-ink-faint font-medium">
         <span className="whitespace-nowrap">{left}</span>
         {right && <span className="whitespace-nowrap text-right">{right}</span>}
       </div>

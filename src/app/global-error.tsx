@@ -22,7 +22,7 @@ export default function GlobalError({ error, retry }: { error: unknown; retry: (
         <main style={{ maxWidth: 420, textAlign: "center" }}>
           <h1 style={{ fontSize: 22, margin: "0 0 8px" }}>Something went wrong</h1>
           <p style={{ margin: "0 0 20px", lineHeight: 1.5, opacity: 0.8 }}>Your bid pack and preferences are saved. Try again, and if it keeps happening, reload the page.</p>
-          <button type="button" onClick={() => retry()} style={{ font: "inherit", padding: "10px 18px", borderRadius: 8, border: "1px solid currentColor", background: "transparent", color: "inherit", cursor: "pointer" }}>
+          <button type="button" onClick={() => retry()} style={{ font: "inherit", padding: "10px 18px", borderRadius: 4, border: "1px solid currentColor", background: "transparent", color: "inherit", cursor: "pointer" }}>
             Try again
           </button>
         </main>

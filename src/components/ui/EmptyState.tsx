@@ -19,26 +19,18 @@ interface EmptyStateProps {
 }
 
 /**
- * The default empty-state mark: a radar scope, slowly sweeping — "nothing
- * on the scope yet, still watching" rather than a dead empty tray. The
- * sweep stops under reduced motion.
+ * The default empty-state mark: a still radar scope — "nothing on the scope yet" rather than a dead empty tray. Its
+ * rings draw once as it appears (Draw), then it holds still; drawn whole under reduced motion.
  */
 export function ScopeIcon({ className = "h-10 w-10" }: { className?: string }) {
   return (
     <svg viewBox="0 0 48 48" className={className} aria-hidden>
-      <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeOpacity={0.45} strokeWidth={1.5} />
-      <circle cx="24" cy="24" r="13.5" fill="none" stroke="currentColor" strokeOpacity={0.3} strokeWidth={1.2} />
-      <circle cx="24" cy="24" r="6" fill="none" stroke="currentColor" strokeOpacity={0.25} strokeWidth={1.2} />
+      <circle className="route-draw" pathLength={1} cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeOpacity={0.45} strokeWidth={1.5} />
+      <circle className="route-draw" pathLength={1} cx="24" cy="24" r="13.5" fill="none" stroke="currentColor" strokeOpacity={0.3} strokeWidth={1.2} />
+      <circle className="route-draw" pathLength={1} cx="24" cy="24" r="6" fill="none" stroke="currentColor" strokeOpacity={0.25} strokeWidth={1.2} />
       <path d="M24 3v42M3 24h42" stroke="currentColor" strokeOpacity={0.18} strokeWidth={1} />
-      {/* A faint return, lit as the sweep passes over it (the two share one 4.5s clock). */}
-      <circle className="scope-return" cx="35.6" cy="28.2" r="1.6" fill="var(--color-accent)" />
-      {/* The sweep, with an afterglow trailing it in three crisp steps rather than a muddy gradient. */}
-      <g className="radar-sweep">
-        <path d="M24 24 L13.5 5.8 A21 21 0 0 1 24 3 Z" fill="var(--color-accent)" fillOpacity={0.08} />
-        <path d="M24 24 L17.6 4 A21 21 0 0 1 24 3 Z" fill="var(--color-accent)" fillOpacity={0.12} />
-        <path d="M24 24 L20.9 3.2 A21 21 0 0 1 24 3 Z" fill="var(--color-accent)" fillOpacity={0.2} />
-        <path d="M24 24 L24 3" stroke="var(--color-accent)" strokeWidth={1.5} strokeLinecap="round" />
-      </g>
+      {/* The sweep's line, at rest. */}
+      <path d="M24 24 L24 3" stroke="var(--color-accent)" strokeWidth={1.5} />
       <circle cx="24" cy="24" r="1.8" fill="var(--color-accent)" />
     </svg>
   );
@@ -57,7 +49,7 @@ export function EmptyState({
 }: EmptyStateProps) {
   if (compact) {
     return (
-      <div className={`animate-fade-in flex flex-col items-center rounded-xl border border-dashed border-hairline bg-canvas/20 px-4 py-7 text-center text-sm text-ink-faint ${className}`}>
+      <div className={`animate-fade-in flex flex-col items-center rounded-[6px] border border-dashed border-border-strong px-4 py-7 text-center text-sm text-ink-faint ${className}`}>
         <div className="mb-3 text-ink-faint">{icon ?? <ScopeIcon className="h-9 w-9" />}</div>
         {title && <div className="font-medium text-ink-muted">{title}</div>}
         <div className={`max-w-sm ${title ? "mt-1" : ""}`}>{description}</div>

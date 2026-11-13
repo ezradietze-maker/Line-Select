@@ -37,8 +37,8 @@ export function CopyButton({ getText, label = "Copy", copiedLabel = "Copied", cl
     <button
       type="button"
       onClick={handleCopy}
-      className={`press inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] ${
-        copied ? "border-good/50 bg-good-soft text-good" : "border-hairline bg-surface text-ink hover:border-accent/60 hover:text-accent"
+      className={`press inline-flex shrink-0 items-center gap-1.5 rounded-[4px] border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] ${
+        copied ? "border-good/50 bg-good-soft text-good" : "border-border-strong bg-surface text-ink hover:border-ink"
       } ${className}`}
     >
       {copied ? (

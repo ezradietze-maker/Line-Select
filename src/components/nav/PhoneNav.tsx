@@ -27,7 +27,7 @@ function MoreIcon({ className }: { className?: string }) {
 function Badge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-on-danger">
+    <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-2xs font-semibold leading-none text-on-danger">
       {count > 9 ? "9+" : count}
     </span>
   );
@@ -88,15 +88,15 @@ export function PhoneNav({
       >
         {/* With large text the bar takes two rows rather than run off the side: the page scrolled sideways, and the tab
             bar's More went off the edge with it. The pack's name gives up its room first. */}
-        <button type="button" onClick={() => go(homeTarget(hasProfile, hasBidPack))} className="flex shrink-0 items-center gap-2" aria-label="Line Select home">
+        <button type="button" onClick={() => go(homeTarget(hasProfile, hasBidPack))} className="flex shrink-0 items-center gap-1" aria-label="Line Select home">
           <LogoMark className="h-8 w-8" />
-          <Wordmark className="text-base" />
+          <Wordmark className="h-8 text-sm" />
         </button>
         <div className="ml-auto flex min-w-0 items-center gap-2.5">
           {pack && (
-            <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
-              {/* The loaded pack's beacon, as on the desktop sidebar. */}
-              <span aria-hidden className="beacon h-1.5 w-1.5 shrink-0 rounded-full bg-good text-good" />
+            <span className="flex min-w-0 items-center gap-1.5 text-2xs font-semibold text-ink-faint">
+              {/* The loaded pack's steady green light, as on the desktop sidebar. */}
+              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-good" />
               <span className="truncate">
                 {pack.base} &middot; <span className="text-accent">{pack.month}</span>
               </span>
@@ -126,17 +126,17 @@ export function PhoneNav({
               className="absolute top-0 flex w-1/5 justify-center transition-[left] duration-300 ease-[var(--ease-emphasized)]"
               style={{ left: `${tabIndex * 20}%` }}
             >
-              <span className="h-[3px] w-8 rounded-b-full bg-accent shadow-[0_0_10px_var(--color-accent)]" />
+              <span className="h-[3px] w-8 rounded-b-[2px] bg-accent" />
             </span>
           )}
-          {/* A soft lit pad behind the active tab, gliding along with the marker. */}
+          {/* A location sign behind the active tab — black, yellow-bordered — gliding along with the marker. */}
           {tabIndex >= 0 && (
             <span
               aria-hidden
               className="absolute inset-y-1.5 flex w-1/5 justify-center transition-[left] duration-300 ease-[var(--ease-emphasized)]"
               style={{ left: `${tabIndex * 20}%` }}
             >
-              <span className="w-14 rounded-xl bg-accent/[0.09]" />
+              <span className="w-[4.25rem] rounded-[4px] bg-accent-wash ring-[1.5px] ring-inset ring-accent" />
             </span>
           )}
           {TAB_TARGETS.map((target, i) => {
@@ -151,11 +151,11 @@ export function PhoneNav({
                 aria-label={reason ? `${item.label} — ${reason}` : item.label}
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => go(target)}
-                className={`flex flex-col items-center justify-center gap-1 text-[10.5px] font-medium transition-colors disabled:opacity-35 ${
+                className={`flex flex-col items-center justify-center gap-1 text-2xs font-medium transition-colors disabled:opacity-35 ${
                   isActive ? "text-accent" : "text-ink-muted active:text-ink"
                 }`}
               >
-                <span className={`transition-transform duration-200 ${isActive ? "-translate-y-px drop-shadow-[0_0_6px_var(--color-accent)]" : ""}`}>
+                <span className={`transition-transform duration-200 ${isActive ? "-translate-y-px" : ""}`}>
                   <item.icon className="h-[21px] w-[21px]" />
                 </span>
                 {item.tabLabel}
@@ -168,11 +168,11 @@ export function PhoneNav({
             onClick={() => setMoreOpen((o) => !o)}
             aria-expanded={moreOpen}
             aria-haspopup="dialog"
-            className={`flex flex-col items-center justify-center gap-1 text-[10.5px] font-medium transition-colors ${
+            className={`flex flex-col items-center justify-center gap-1 text-2xs font-medium transition-colors ${
               tabIndex === 4 || moreOpen ? "text-accent" : "text-ink-muted"
             }`}
           >
-            <span className={`relative ${tabIndex === 4 ? "drop-shadow-[0_0_6px_var(--color-accent)]" : ""}`}>
+            <span className="relative">
               <MoreIcon className="h-[21px] w-[21px]" />
               <Badge count={inboxUnreadCount} />
             </span>
@@ -195,10 +195,10 @@ export function PhoneNav({
             role="dialog"
             aria-modal="true"
             aria-label="More"
-            className="sidebar-scheme animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-sidebar-border bg-sidebar px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-elevated-lg"
+            className="sidebar-scheme animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-[10px] border-t border-sidebar-border bg-sidebar px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-elevated-lg"
           >
             <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-sidebar-border" />
-            <div className="mb-2 px-1 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">More</div>
+            <div className="mb-2 px-1 text-2xs font-medium text-ink-faint">More</div>
             <div className="grid grid-cols-3 gap-2">
               {MORE_TARGETS.map((item) => {
                 const isActive = active === item.target;
@@ -208,8 +208,8 @@ export function PhoneNav({
                     type="button"
                     onClick={() => go(item.target)}
                     aria-current={isActive ? "page" : undefined}
-                    className={`flex flex-col items-center gap-2 rounded-xl border px-2 py-3.5 text-xs font-medium transition-colors ${
-                      isActive ? "border-accent/50 bg-accent-wash text-on-wash" : "border-hairline bg-canvas/40 text-ink-muted active:bg-canvas"
+                    className={`flex flex-col items-center gap-2 rounded-[4px] border px-2 py-3.5 text-xs font-medium transition-colors ${
+                      isActive ? "border-accent bg-accent-wash text-on-wash" : "border-border text-ink-muted active:bg-canvas"
                     }`}
                   >
                     <span className="relative">
@@ -222,7 +222,7 @@ export function PhoneNav({
               })}
             </div>
 
-            <div className="mt-3 divide-y divide-hairline rounded-xl border border-hairline">
+            <div className="mt-3 divide-y divide-hairline rounded-[4px] border border-border">
               <button
                 type="button"
                 onClick={() => {

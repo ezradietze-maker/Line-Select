@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "motion/react";
 import { NumberTicker } from "@/components/ui/NumberTicker";
+import { Spinner } from "@/components/ui/Spinner";
 import { EASE } from "@/lib/motion-tokens";
 
 export interface LoadProgress {
@@ -14,23 +15,20 @@ export interface LoadProgress {
 
 type RowState = "pending" | "active" | "done";
 
+/** Each stage's light: approach lights running while it works, a tick marked in once it's done, a dark square before. */
 function StatusLight({ state }: { state: RowState }) {
   if (state === "done") {
     return (
-      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-good-soft text-good" aria-hidden>
+      <span className="mark-in flex h-5 w-6 items-center justify-center rounded-[3px] bg-good-soft text-good" aria-hidden>
         <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12.5l4.5 4.5L19 7.5" />
+          <path strokeLinecap="square" d="M5 12.5l4.5 4.5L19 7.5" />
         </svg>
       </span>
     );
   }
   return (
-    <span className="flex h-5 w-5 items-center justify-center" aria-hidden>
-      <span
-        className={`h-2 w-2 rounded-full ${
-          state === "active" ? "animate-pulse bg-accent shadow-[0_0_8px_var(--glow-strong)]" : "bg-border-strong"
-        }`}
-      />
+    <span className="flex h-5 w-6 items-center justify-center" aria-hidden>
+      {state === "active" ? <Spinner /> : <span className="h-2 w-2 rounded-[1px] bg-border-strong" />}
     </span>
   );
 }
@@ -39,52 +37,35 @@ function Row({ label, state, children }: { label: string; state: RowState; child
   return (
     <div className={`flex items-center gap-3 py-2.5 transition-opacity duration-300 ${state === "pending" ? "opacity-45" : "opacity-100"}`}>
       <StatusLight state={state} />
-      <span className="w-24 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint">{label}</span>
+      <span className="w-24 text-2xs text-ink-faint font-medium">{label}</span>
       <span className="text-readout flex-1 text-right text-lg font-semibold">{children}</span>
     </div>
   );
 }
 
 /**
- * A small radar scope sweeping the pack: a return for each pairing, then each line, as the parser genuinely counts
- * them (placed by the golden angle, so they scatter like real returns), and the count underneath. The sweep stops
- * once the pack is loaded, and doesn't turn under reduced motion.
+ * What the parser has found so far, stacking up: a row racked onto the pile for each pairing, then a fresh pile for
+ * the lines, as the parser genuinely counts them (up to a full box), and the count underneath.
  */
-function RadarScope({ progress, loaded }: { progress: LoadProgress; loaded: boolean }) {
-  const reduce = useReducedMotion();
+function FoundStack({ progress }: { progress: LoadProgress }) {
   const found = progress.lines ?? progress.pairings ?? 0;
   const what = progress.lines !== undefined ? "lines" : progress.pairings !== undefined ? "pairings" : null;
-  const blips = Math.min(found, 18);
+  const rows = Math.min(found, 12);
   return (
     <div className="flex shrink-0 flex-col items-center gap-1" aria-hidden>
-      <div className="relative h-14 w-14 overflow-hidden rounded-full border border-hairline bg-canvas/60">
-        <span className="absolute inset-[22%] rounded-full border border-hairline" />
-        <span className="absolute inset-x-0 top-1/2 border-t border-hairline" />
-        <span className="absolute inset-y-0 left-1/2 border-l border-hairline" />
-        {!loaded && !reduce && (
-          <span className="absolute inset-0 animate-[spin_2.4s_linear_infinite] rounded-full bg-[conic-gradient(from_0deg,transparent_0deg,transparent_280deg,var(--glow-strong)_350deg,var(--color-accent)_360deg)] opacity-70" />
-        )}
-        {Array.from({ length: blips }, (_, i) => {
-          const angle = i * 2.39996; // the golden angle, in radians
-          const r = 0.18 + 0.27 * ((i * 0.618034) % 1);
-          return (
-            <span
-              key={`${what}-${i}`} // pairings, then a fresh scan filling with lines
-              className="blip absolute -ml-0.5 -mt-0.5 h-1 w-1 rounded-full bg-accent"
-              style={{ left: `${50 + Math.cos(angle) * r * 100}%`, top: `${50 + Math.sin(angle) * r * 100}%`, animationDelay: `${(i % 9) * 70}ms` }}
-            />
-          );
-        })}
+      <div className="flex h-14 w-14 flex-col-reverse gap-[2px] overflow-hidden rounded-[3px] border border-border bg-canvas/60 p-1.5">
+        {Array.from({ length: rows }, (_, i) => (
+          <span key={`${what}-${i}`} className={`rack h-[2px] shrink-0 ${what === "lines" ? "bg-accent" : "bg-ink-muted"}`} style={{ width: `${62 + ((i * 37) % 38)}%` }} />
+        ))}
       </div>
-      <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-faint">{what ? `${found} ${what}` : "Scanning"}</span>
+      <span className="text-2xs text-ink-faint font-medium">{what ? `${found} ${what}` : "Scanning"}</span>
     </div>
   );
 }
 
 /**
- * The bid pack loading like a flight plan into the box: a page under a read
- * head, and four rows that each light up as the parser genuinely reaches
- * that stage — every number is the server's own running count, streamed
+ * The bid pack loading like a flight plan into the box: a page whose rows light as it's read, and four rows that
+ * each light up as the parser genuinely reaches that stage — every number is the server's own running count, streamed
  * as it works, never a timer pretending to be progress. Ends in a short
  * "LOADED" lock-in, shown only for a pack that actually parsed.
  */
@@ -117,34 +98,30 @@ export function FlightPlanLoader({ fileName, progress, loaded }: { fileName: str
       </p>
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Loading flight plan</div>
+          <div className="text-2xs text-accent font-medium">Loading flight plan</div>
           <div className="mt-1 truncate font-display text-lg font-semibold text-ink">{fileName}</div>
         </div>
-        <RadarScope progress={progress} loaded={loaded} />
+        <FoundStack progress={progress} />
       </div>
 
       <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
-        {/* The page under the read head, filling as pages are read. */}
-        <div className="relative mx-auto h-44 w-32 shrink-0 overflow-hidden rounded-lg border border-hairline bg-surface-raised sm:mx-0" aria-hidden>
+        {/* A page of the pack, filling and its rows lighting as pages are read. */}
+        <div className="relative mx-auto h-44 w-32 shrink-0 overflow-hidden rounded-[3px] border border-border bg-surface-raised sm:mx-0" aria-hidden>
           <motion.div
-            className="absolute inset-x-0 bottom-0 bg-accent-soft"
+            className="absolute inset-x-0 bottom-0 bg-ink/[0.06]"
             initial={false}
             animate={{ height: `${(loaded ? 1 : pageFraction) * 100}%` }}
             transition={{ duration: reduce ? 0 : 0.4, ease: EASE.standard }}
           />
           <div className="relative space-y-2 p-3">
             {[90, 70, 84, 60, 92, 75, 66, 88, 58, 80].map((w, i) => (
-              <div key={i} className="h-1 rounded-full bg-ink/15" style={{ width: `${w}%` }} />
+              <div
+                key={i}
+                className={`h-1 rounded-[1px] transition-colors duration-300 ${loaded || i < Math.round(pageFraction * 10) ? "bg-accent" : "bg-ink/15"}`}
+                style={{ width: `${w}%` }}
+              />
             ))}
           </div>
-          {!loaded && !reduce && (
-            <motion.div
-              className="absolute inset-x-0 h-8 bg-gradient-to-b from-transparent via-[var(--glow-strong)] to-transparent"
-              initial={{ top: "-20%" }}
-              animate={{ top: "110%" }}
-              transition={{ duration: 1.6, ease: "easeInOut", repeat: Infinity, repeatDelay: 0.2 }}
-            />
-          )}
         </div>
 
         <div className="flex-1 divide-y divide-hairline">
@@ -173,19 +150,15 @@ export function FlightPlanLoader({ fileName, progress, loaded }: { fileName: str
       {loaded && (
         <motion.div
           aria-hidden
-          className="pointer-events-none absolute inset-0 flex items-center justify-center bg-panel/60 backdrop-blur-[2px]"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center bg-panel/70"
           initial={reduce ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.25 }}
         >
-          <motion.div
-            className="glow-soft -rotate-6 rounded-xl border-2 border-accent bg-panel px-7 py-2.5 font-mono text-2xl font-semibold uppercase tracking-[0.3em] text-accent"
-            initial={reduce ? false : { scale: 1.4, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.35, ease: EASE.emphasized }}
-          >
+          {/* Mark: the pack's in — a location sign marked in over the panel. */}
+          <div className="mark-in rounded-[4px] bg-on-sign px-7 py-2.5 font-display text-2xl font-extrabold tracking-[0.04em] text-sign ring-2 ring-inset ring-sign">
             Loaded
-          </motion.div>
+          </div>
         </motion.div>
       )}
     </div>

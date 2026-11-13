@@ -51,7 +51,7 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
 
   return (
     <div>
-      <div className="relative rounded-xl border border-hairline bg-canvas/60 transition-[border-color,box-shadow] duration-200 focus-within:border-accent focus-within:shadow-[0_0_0_4px_var(--glow-soft)]">
+      <div className="relative rounded-[4px] border border-border bg-canvas/60 transition-[border-color,box-shadow] duration-200 focus-within:border-[var(--color-focus-ring)] focus-within:ring-1 focus-within:ring-[var(--color-focus-ring)]">
         <textarea
           ref={area}
           value={text}
@@ -85,11 +85,11 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
               Skip this one
             </button>
           )}
-          <span className="hidden font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint sm:inline" aria-hidden>
+          <span className="hidden text-2xs text-ink-faint sm:inline font-medium" aria-hidden>
             Enter to send &middot; Shift+Enter for a new line
           </span>
           {left < SHOW_LEFT_UNDER && (
-            <span className="font-mono text-[10.5px] text-ink-faint" aria-live="polite">
+            <span className="font-mono text-2xs text-ink-faint" aria-live="polite">
               {left.toLocaleString()} characters left
             </span>
           )}

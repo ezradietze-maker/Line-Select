@@ -1,7 +1,7 @@
 import { coordinatesForAirport } from "@/lib/airport-coordinates";
 
 /**
- * The landing globe's routes — real city pairs from real October bid packs
+ * The landing page's routes (the sign under its approach lights) — real city pairs from real October bid packs
  * (Memphis out to Europe, Latin America and the West Coast; the Pacific
  * through Anchorage, the way that flying actually routes). Shown to a
  * visitor who hasn't uploaded anything, so they're the network's shape,

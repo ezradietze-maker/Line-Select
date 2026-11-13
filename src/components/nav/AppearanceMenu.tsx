@@ -8,66 +8,57 @@ import {
   setStoredCalendarAccent,
 } from "@/lib/calendar-theme";
 import { applyThemeAttribute, getStoredTheme, setStoredTheme, THEME_CHANGE_EVENT, type ThemeMode } from "@/lib/theme";
-import { MoonIcon, PaletteIcon } from "@/components/ui/icons";
+import { PaletteIcon } from "@/components/ui/icons";
 import { radioKeyProps } from "@/components/ui/radio-keys";
 
-/** Whether a theme choice shows dark: the red-light night counts, and "system" follows the device. */
-function isDark(mode: ThemeMode): boolean {
-  if (mode === "system") return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  return mode !== "light";
-}
+/**
+ * Each mode's own colors, for its little picture in the menu — fixed on purpose, so every picture shows its mode
+ * whichever one is on now. Page, sidebar, text and the sign (the yellow that's red under red light).
+ */
+const PICTURES: Record<Exclude<ThemeMode, "system">, { page: string; side: string; ink: string; sign: string }> = {
+  light: { page: "#eceff3", side: "#0a1120", ink: "#0a1120", sign: "#ffcc00" },
+  dark: { page: "#0a1120", side: "#060b16", ink: "#eef1f6", sign: "#ffcc00" },
+  night: { page: "#0d0404", side: "#0a0303", ink: "#ff5c5c", sign: "#ff5c5c" },
+};
 
-/** A plain sun: a disc and its rays. */
-function SunGlyph({ className }: { className?: string }) {
+/** A thumbnail of the site in one mode: the sidebar with its location sign, and a page of text. */
+function ModePicture({ mode }: { mode: ThemeMode }) {
+  const half = (m: Exclude<ThemeMode, "system">, clip?: string) => {
+    const c = PICTURES[m];
+    return (
+      <span className="absolute inset-0 flex" style={{ background: c.page, clipPath: clip }}>
+        <span className="flex w-[30%] flex-col gap-[3px] px-[3px] pt-[4px]" style={{ background: c.side }}>
+          <span className="h-[4px] w-full rounded-[1px]" style={{ background: c.sign }} />
+          <span className="h-[2px] w-[80%] rounded-full opacity-40" style={{ background: m === "light" ? "#eef1f6" : c.ink }} />
+          <span className="h-[2px] w-[70%] rounded-full opacity-40" style={{ background: m === "light" ? "#eef1f6" : c.ink }} />
+        </span>
+        <span className="flex flex-1 flex-col gap-[3px] px-[4px] pt-[5px]">
+          <span className="h-[3px] w-[70%] rounded-full" style={{ background: c.ink }} />
+          <span className="h-[2px] w-full rounded-full opacity-35" style={{ background: c.ink }} />
+          <span className="h-[2px] w-[85%] rounded-full opacity-35" style={{ background: c.ink }} />
+        </span>
+      </span>
+    );
+  };
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <circle cx="12" cy="12" r="4" fill="currentColor" />
-      <path strokeLinecap="round" d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" />
-    </svg>
+    <span aria-hidden className="relative block h-9 w-full overflow-hidden rounded-[3px] border border-border">
+      {mode === "system" ? (
+        <>
+          {half("light")}
+          {half("dark", "polygon(100% 0, 100% 100%, 0 100%)")}
+        </>
+      ) : (
+        half(mode)
+      )}
+    </span>
   );
 }
 
-const THEME_OPTIONS: { mode: ThemeMode; label: string; title?: string; icon: React.ReactNode }[] = [
-  {
-    mode: "light",
-    label: "Light",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
-        <circle cx="12" cy="12" r="4" />
-        <path strokeLinecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-      </svg>
-    ),
-  },
-  {
-    mode: "system",
-    label: "System",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
-        <rect x="3" y="4" width="18" height="13" rx="2" />
-        <path strokeLinecap="round" d="M8 21h8M12 17v4" />
-      </svg>
-    ),
-  },
-  {
-    mode: "dark",
-    label: "Dark",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-      </svg>
-    ),
-  },
-  {
-    mode: "night",
-    label: "Night",
-    title: "Night — real red cockpit lighting, to protect your night vision",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.5.8.5 1.3V16h6v-.8c0-.5.1-1 .5-1.3A6 6 0 0 0 12 3z" />
-        <path strokeLinecap="round" d="M9.5 18h5M10.5 21h3" />
-      </svg>
-    ),
-  },
+const THEME_OPTIONS: { mode: ThemeMode; label: string; title?: string }[] = [
+  { mode: "light", label: "Light" },
+  { mode: "system", label: "System" },
+  { mode: "dark", label: "Dark" },
+  { mode: "night", label: "Night", title: "Night — real red cockpit lighting, to protect your night vision" },
 ];
 
 /**
@@ -83,8 +74,6 @@ export function AppearanceMenu() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<ThemeMode>("system");
   const [accent, setAccent] = useState<string | null>(null);
-  // Light to dark: the sun sets and the moon rises in the button; dark to light, the other way round.
-  const [sky, setSky] = useState<{ to: "dark" | "light"; n: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
@@ -124,12 +113,27 @@ export function AppearanceMenu() {
     };
   }, [open]);
 
+  /** The new mode sweeps across the window from the Appearance button (see `.theme-sweep` in globals.css). */
   function chooseTheme(next: ThemeMode) {
-    const wasDark = isDark(mode);
+    if (next === mode) return;
     setMode(next);
-    setStoredTheme(next);
+    const root = document.documentElement;
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!still && isDark(next) !== wasDark) setSky((s) => ({ to: isDark(next) ? "dark" : "light", n: (s?.n ?? 0) + 1 }));
+    // Found by id, not the ref: this runs from the radios' key handlers too, which are built during render.
+    const button = document.getElementById(`${panelId}-button`);
+    if (still || !document.startViewTransition || !button) {
+      setStoredTheme(next);
+      return;
+    }
+    const r = button.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    root.style.setProperty("--sweep-x", `${x}px`);
+    root.style.setProperty("--sweep-y", `${y}px`);
+    root.style.setProperty("--sweep-r", `${Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))}px`);
+    root.classList.add("theme-sweep");
+    const sweep = document.startViewTransition(() => setStoredTheme(next));
+    sweep.finished.finally(() => root.classList.remove("theme-sweep"));
   }
 
   function chooseAccent(value: string | null) {
@@ -137,7 +141,7 @@ export function AppearanceMenu() {
     setStoredCalendarAccent(value);
   }
 
-  // A pilot's own calendar color when they've picked one; otherwise the chrome's own accent (amber on the charcoal sidebar).
+  // A pilot's own calendar color when they've picked one; otherwise the chrome's own accent (sign yellow).
   const accentCss = accent ?? "var(--color-accent)";
   const themeIndex = Math.max(0, THEME_OPTIONS.findIndex((o) => o.mode === mode));
   const accentIndex = Math.max(0, CALENDAR_ACCENT_PRESETS.findIndex((p) => p.value === accent));
@@ -153,37 +157,18 @@ export function AppearanceMenu() {
     >
       <button
         ref={buttonRef}
+        id={`${panelId}-button`}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-controls={open ? panelId : undefined}
         title="Appearance"
-        className="relative flex h-9 w-9 items-center justify-center rounded-full border transition-transform hover:scale-105"
-        style={{
-          borderColor: `color-mix(in srgb, ${accentCss} 45%, var(--color-border))`,
-          background: `color-mix(in srgb, ${accentCss} 16%, var(--color-surface))`,
-        }}
+        className="relative flex h-9 w-9 items-center justify-center rounded-[4px] border border-border transition-colors hover:border-border-strong"
       >
-        <span style={{ color: accentCss }} className={`transition-opacity ${sky ? "opacity-0" : ""}`}>
+        <span style={{ color: accentCss }}>
           <PaletteIcon className="h-4 w-4" />
         </span>
-        {sky && (
-          <span
-            key={sky.n}
-            aria-hidden
-            className="celestial-out pointer-events-none absolute inset-0 overflow-hidden rounded-full"
-            style={{ color: accentCss }}
-            onAnimationEnd={(e) => e.target === e.currentTarget && setSky(null)}
-          >
-            <span className={`absolute inset-0 flex items-center justify-center ${sky.to === "dark" ? "sun-set" : "moon-rise"}`}>
-              <SunGlyph className="h-4 w-4" />
-            </span>
-            <span className={`absolute inset-0 flex items-center justify-center ${sky.to === "dark" ? "moon-rise" : "sun-set"}`}>
-              <MoonIcon className="h-3.5 w-3.5" />
-            </span>
-          </span>
-        )}
         <span className="sr-only">Appearance settings</span>
       </button>
 
@@ -194,7 +179,7 @@ export function AppearanceMenu() {
           id={panelId}
           role="dialog"
           aria-labelledby={`${panelId}-title`}
-          className="absolute right-0 top-full z-40 mt-2 w-52 rail-collapsed:left-0 rail-collapsed:right-auto animate-fade-in overflow-hidden rounded-lg border border-border bg-surface shadow-elevated-lg"
+          className="absolute right-0 top-full z-40 mt-2 w-52 rail-collapsed:left-0 rail-collapsed:right-auto animate-fade-in overflow-hidden rounded-[6px] border border-border bg-surface shadow-elevated-lg"
         >
           <div className="border-b border-border px-4 py-3">
             <div id={`${panelId}-title`} className="text-sm font-medium text-ink">
@@ -205,34 +190,33 @@ export function AppearanceMenu() {
 
           <div className="space-y-4 px-4 py-3.5">
             <div>
-              <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-wide text-ink-faint">Mode</div>
-              <div
-                role="radiogroup"
-                aria-label="Color theme"
-                className="inline-flex w-full items-center gap-0.5 rounded-full border border-border bg-canvas p-0.5"
-              >
-                {THEME_OPTIONS.map((opt, i) => (
-                  <button
-                    key={opt.mode}
-                    type="button"
-                    role="radio"
-                    aria-checked={mode === opt.mode}
-                    {...radioKeyProps(i, THEME_OPTIONS.length, themeIndex, (n) => chooseTheme(THEME_OPTIONS[n].mode))}
-                    title={opt.title ?? opt.label}
-                    onClick={() => chooseTheme(opt.mode)}
-                    className={`flex flex-1 items-center justify-center rounded-full py-1.5 transition-colors ${
-                      mode === opt.mode ? "bg-brand text-on-brand shadow-sm" : "text-ink-faint hover:text-ink"
-                    }`}
-                  >
-                    {opt.icon}
-                    <span className="sr-only">{opt.label}</span>
-                  </button>
-                ))}
+              <div className="mb-2 text-2xs font-semibold text-ink-faint">Mode</div>
+              <div role="radiogroup" aria-label="Color theme" className="grid grid-cols-4 gap-1">
+                {THEME_OPTIONS.map((opt, i) => {
+                  const on = mode === opt.mode;
+                  return (
+                    <button
+                      key={opt.mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      {...radioKeyProps(i, THEME_OPTIONS.length, themeIndex, (n) => chooseTheme(THEME_OPTIONS[n].mode))}
+                      title={opt.title ?? opt.label}
+                      onClick={() => chooseTheme(opt.mode)}
+                      className={`flex flex-col items-stretch gap-1 rounded-[4px] p-1 text-center text-2xs font-medium transition-colors ${
+                        on ? "bg-accent-wash text-on-wash ring-[1.5px] ring-inset ring-accent" : "text-ink-muted hover:bg-ink/[0.06] hover:text-ink"
+                      }`}
+                    >
+                      <ModePicture mode={opt.mode} />
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <div>
-              <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-wide text-ink-faint">
+              <div className="mb-2 text-2xs font-semibold text-ink-faint">
                 Calendar accent
               </div>
               <div role="radiogroup" aria-label="Calendar accent color" className="flex items-center gap-1.5">
@@ -248,16 +232,14 @@ export function AppearanceMenu() {
                       {...radioKeyProps(i, CALENDAR_ACCENT_PRESETS.length, accentIndex, (n) => chooseAccent(CALENDAR_ACCENT_PRESETS[n].value))}
                       title={preset.label}
                       onClick={() => chooseAccent(preset.value)}
-                      className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-110"
+                      className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-[3px] transition-transform hover:-translate-y-px"
                       style={{
-                        background: `radial-gradient(circle at 32% 28%, color-mix(in srgb, ${swatchCss} 45%, white), ${swatchCss})`,
-                        boxShadow: isSelected
-                          ? `0 0 0 2px var(--color-surface), 0 0 0 3.5px ${swatchCss}`
-                          : "0 1px 3px hsl(var(--shadow-color) / 0.3)",
+                        background: swatchCss,
+                        boxShadow: isSelected ? `0 0 0 2px var(--color-surface), 0 0 0 3.5px ${swatchCss}` : "inset 0 0 0 1px rgb(0 0 0 / 0.15)",
                       }}
                     >
                       {isSelected && (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3.5} className="h-2.5 w-2.5">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="rgb(0 0 0 / 0.75)" strokeWidth={3.5} className="h-2.5 w-2.5">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                         </svg>
                       )}

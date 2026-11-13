@@ -157,7 +157,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
   if (waiting && !showSidebar) {
     return (
       <div className="flex min-h-[80vh] flex-1 items-center justify-center" role="status" aria-label="Loading Line Select">
-        <LogoMark className="skeleton-pulse h-16 w-16" detailed />
+        <LogoMark className="skeleton-pulse h-16 w-16" />
       </div>
     );
   }

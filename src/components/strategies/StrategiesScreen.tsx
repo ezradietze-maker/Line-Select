@@ -181,7 +181,7 @@ function SeniorityForm({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-accent">{packEyebrow(bidPack)}</div>
+      <div className="text-2xs font-medium text-accent">{packEyebrow(bidPack)}</div>
       <Heading as="h1" className="mt-1.5 text-3xl tracking-tight text-ink sm:text-4xl">Where do you rank?</Heading>
       <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-muted">
         Every strategy below is built from the real lines in your {bidPack.base} {bidPack.aircraft}{" "}
@@ -401,7 +401,7 @@ function StrategyResults({
             <a
               key={st.id}
               href={`#strategy-${st.id}`}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent/60 hover:text-accent ${
+              className={`shrink-0 rounded-[3px] border px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent/60 hover:text-accent ${
                 st.id === topPickId ? "border-accent/50 bg-accent-soft/60 text-accent" : "border-hairline text-ink-muted"
               }`}
             >
@@ -451,20 +451,20 @@ function StandingPanel({ standing: st }: { standing: Standing }) {
     <div className="panel-glass mt-5 p-4 sm:p-5">
       <div className="grid gap-3 sm:grid-cols-3">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">On the printed list</p>
+          <p className="text-2xs text-ink-faint font-medium">On the printed list</p>
           <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-ink">
             #{st.printedBidNumber} <span className="text-sm font-normal text-ink-faint">of {st.listSize}</span>
           </p>
         </div>
         {st.payAhead !== null && (
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Above you, not bidding a line</p>
+            <p className="text-2xs text-ink-faint font-medium">Above you, not bidding a line</p>
             <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-good">{st.payAhead}</p>
           </div>
         )}
         {st.effective !== null && (
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Your real place</p>
+            <p className="text-2xs text-ink-faint font-medium">Your real place</p>
             <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-accent">
               #{st.effective} <span className="text-sm font-normal text-ink-faint">of {st.bidders} bidding</span>
             </p>
@@ -473,7 +473,7 @@ function StandingPanel({ standing: st }: { standing: Standing }) {
       </div>
       {total > 0 && (
         <>
-          <div className="relative mt-4 flex h-2.5 overflow-hidden rounded-full" role="img" aria-label={`Place ${position} of ${total}: ${bandWord} on the numbers`}>
+          <div className="relative mt-4 flex h-2.5 overflow-hidden rounded-[1px]" role="img" aria-label={`Place ${position} of ${total}: ${bandWord} on the numbers`}>
             {bands.map((b) => (
               <div key={b.label} className={b.cls} style={{ width: `${(b.n / total) * 100}%` }} />
             ))}
@@ -481,13 +481,13 @@ function StandingPanel({ standing: st }: { standing: Standing }) {
           {/* Your place: a plane that taxis in from the head of the list and stops on your number. */}
           <div className="relative h-0" aria-hidden>
             <div className="taxi-in absolute top-0" style={{ left: `${at * 100}%` }}>
-              <svg viewBox="0 0 24 24" className="absolute -left-2.5 -top-[25px] h-5 w-5 text-ink drop-shadow-[0_0_5px_var(--glow-strong)]" fill="currentColor">
+              <svg viewBox="0 0 24 24" className="absolute -left-2.5 -top-[25px] h-5 w-5 text-ink" fill="currentColor">
                 <path d="M21 12c0-.8-.7-1.2-1.6-1.2H15L10.3 3.6H8.5l2.3 7.2H6.2L4.6 8.6H3.2l1 3.4-1 3.4h1.4l1.6-2.2h4.6l-2.3 7.2h1.8l4.7-7.2h4.4c.9 0 1.6-.4 1.6-1.2z" />
               </svg>
               <span className="absolute -left-px -top-[11px] h-[14px] w-0.5 rounded-full bg-ink" />
             </div>
           </div>
-          <div className="mt-1.5 flex text-[11px] text-ink-faint">
+          <div className="mt-1.5 flex text-2xs text-ink-faint">
             {bands.map((b) => (
               <span key={b.label} style={{ width: `${(b.n / total) * 100}%` }} className="truncate">
                 {b.label} · {b.n}

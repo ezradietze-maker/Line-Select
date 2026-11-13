@@ -1,46 +1,45 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import { FlightPathProgress } from "@/components/ui/FlightPathProgress";
 import { Gauge } from "@/components/ui/Gauge";
 import { NumberTicker } from "@/components/ui/NumberTicker";
-import { EASE } from "@/lib/motion-tokens";
+import { DURATION, EASE } from "@/lib/motion-tokens";
+import { useMediaQuery } from "@/lib/use-media-query";
 
 /**
  * The four panels of the landing page's "how it flies" story. Each takes
  * `active` and plays when its step is the one on screen. Every number is
  * real, from one real October 767 Memphis first-officer bid pack, except
  * the illustrative scores in the ranking panel, which say so.
+ *
+ * Reduced motion is read with `useStill`, not motion's `useReducedMotion`: that one is already true on the browser's
+ * first render, so a panel that drew differently for it never matched the server's HTML (a hydration error on every
+ * load with reduced motion on).
  */
+
+function useStill() {
+  return useMediaQuery("(prefers-reduced-motion: reduce)", false);
+}
 
 /** Real counts from parsing the October 2026 B767 Memphis pack. */
 const PACK = { pages: 263, pairings: 769, lines: 667, cities: 82 };
 
 function Caption({ children }: { children: React.ReactNode }) {
-  return <p className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.16em] text-ink-faint">{children}</p>;
+  return <p className="mt-4 text-2xs text-ink-faint font-medium">{children}</p>;
 }
 
 export function ParseVisual({ active }: { active: boolean }) {
-  const reduce = useReducedMotion();
   return (
     <div>
       <div className="panel-glass flex gap-6 p-6">
-        {/* A page of the pack, with the read head passing over it. */}
-        <div className="relative h-44 w-32 shrink-0 overflow-hidden rounded-lg border border-hairline bg-surface-raised">
-          <div className="space-y-2 p-3" aria-hidden>
+        {/* A page of the pack, its rows racking in one after another as they're read. */}
+        <div className="relative h-44 w-32 shrink-0 overflow-hidden rounded-[3px] border border-border bg-surface-raised">
+          <div key={active ? "reading" : "waiting"} className="space-y-2 p-3" aria-hidden>
             {[90, 70, 84, 60, 92, 75, 66, 88, 58, 80].map((w, i) => (
-              <div key={i} className="h-1 rounded-full bg-ink/15" style={{ width: `${w}%` }} />
+              <div key={i} className={`h-1 rounded-[1px] bg-ink/20 ${active ? "rack" : ""}`} style={{ width: `${w}%`, animationDelay: `${i * 90}ms` }} />
             ))}
           </div>
-          {active && !reduce && (
-            <motion.div
-              aria-hidden
-              className="absolute inset-x-0 h-8 bg-gradient-to-b from-transparent via-[var(--glow-strong)] to-transparent"
-              initial={{ top: "-20%" }}
-              animate={{ top: "110%" }}
-              transition={{ duration: 1.8, ease: "easeInOut", repeat: Infinity, repeatDelay: 0.4 }}
-            />
-          )}
         </div>
         <dl className="grid flex-1 content-center gap-4">
           {[
@@ -49,7 +48,7 @@ export function ParseVisual({ active }: { active: boolean }) {
             ["Lines", PACK.lines],
           ].map(([label, value]) => (
             <div key={label as string}>
-              <dt className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-ink-faint">{label}</dt>
+              <dt className="text-2xs text-ink-faint font-medium">{label}</dt>
               <dd className="text-readout text-3xl font-semibold">
                 {active ? <NumberTicker key="on" value={value as number} duration={1.4} /> : <span>0</span>}
               </dd>
@@ -58,13 +57,13 @@ export function ParseVisual({ active }: { active: boolean }) {
         </dl>
       </div>
       <motion.div
-        className="mt-3 inline-flex items-center gap-2 rounded-full border border-good/40 bg-good-soft px-3 py-1 font-mono text-[11px] uppercase tracking-[0.14em] text-good"
+        className="mt-3 inline-flex items-center gap-2 rounded-[3px] border border-good/40 bg-good-soft px-2.5 py-1 text-2xs text-good font-medium"
         initial={false}
         animate={{ opacity: active ? 1 : 0 }}
         transition={{ delay: active ? 1.5 : 0, duration: 0.4 }}
       >
         <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12.5l4.5 4.5L19 7.5" />
+          <path strokeLinecap="square" d="M5 12.5l4.5 4.5L19 7.5" />
         </svg>
         Loaded &middot; {PACK.cities} layover cities
       </motion.div>
@@ -76,12 +75,12 @@ export function ParseVisual({ active }: { active: boolean }) {
 const QUESTION = "Two early shows back to back — where does it start to wear on you?".split(" ");
 
 export function InterviewVisual({ active }: { active: boolean }) {
-  const reduce = useReducedMotion();
+  const reduce = useStill();
   const pick = 2;
   return (
     <div>
       <div className="panel-glass p-6">
-        <div className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-ink-faint">Question 7</div>
+        <div className="text-2xs text-ink-faint font-medium">Question 7</div>
         <p className="mt-2 font-display text-xl font-semibold leading-snug text-ink">
           {QUESTION.map((w, i) => (
             <motion.span
@@ -95,19 +94,19 @@ export function InterviewVisual({ active }: { active: boolean }) {
             </motion.span>
           ))}
         </p>
-        <div className="relative mt-5 grid grid-cols-5 rounded-xl border border-hairline bg-canvas/60 p-1 text-center font-mono text-sm">
+        <div className="relative mt-5 grid grid-cols-5 rounded-[4px] border border-border bg-canvas/60 p-1 text-center font-mono text-sm">
           <motion.div
             aria-hidden
-            className="absolute inset-y-1 rounded-lg bg-accent-soft ring-1 ring-accent/50"
+            className="absolute inset-y-1 rounded-[3px] bg-on-sign ring-[1.5px] ring-inset ring-sign"
             style={{ width: "calc((100% - 0.5rem) / 5)" }}
             initial={false}
             animate={{ left: `calc(0.25rem + (100% - 0.5rem) / 5 * ${active ? pick : 0})` }}
-            transition={{ delay: active && !reduce ? 0.9 : 0, duration: reduce ? 0 : 0.5, ease: EASE.emphasized }}
+            transition={{ delay: active && !reduce ? 0.9 : 0, duration: reduce ? 0 : DURATION.handoff, ease: EASE.rack }}
           />
           {[0, 1, 2, 3, 4].map((n) => (
             <div
               key={n}
-              className={`relative py-2 transition-colors duration-300 ${active && n === pick ? "font-semibold text-accent" : "text-ink-muted"}`}
+              className={`relative py-2 transition-colors duration-300 ${active && n === pick ? "font-semibold text-sign" : "text-ink-muted"}`}
               // Lights up as the selection arrives, not before it.
               style={{ transitionDelay: active && !reduce ? "1100ms" : "0ms" }}
             >
@@ -115,9 +114,9 @@ export function InterviewVisual({ active }: { active: boolean }) {
             </div>
           ))}
         </div>
-        <div className="mt-1 text-right font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">in a row</div>
+        <div className="mt-1 text-right text-2xs text-ink-faint font-medium">in a row</div>
         <motion.p
-          className="mt-4 rounded-lg border-l-2 border-accent bg-canvas/60 px-3 py-2 text-sm italic text-ink-muted"
+          className="mt-4 rounded-[3px] border-l-[3px] border-accent bg-canvas/60 px-3 py-2 text-sm italic text-ink-muted"
           initial={false}
           animate={{ opacity: active ? 1 : 0 }}
           transition={{ delay: active && !reduce ? 1.4 : 0, duration: 0.4 }}
@@ -140,7 +139,7 @@ const LINES = [
 ];
 
 export function RankVisual({ active }: { active: boolean }) {
-  const reduce = useReducedMotion();
+  const reduce = useStill();
   const rows = active ? [...LINES].sort((a, b) => b.score - a.score) : LINES;
   return (
     <div>
@@ -149,13 +148,13 @@ export function RankVisual({ active }: { active: boolean }) {
           <motion.li
             key={l.n}
             layout={!reduce}
-            transition={{ type: "spring", stiffness: 260, damping: 30, delay: active ? 0.15 : 0 }}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2 ${active && i === 0 ? "glow-soft bg-accent-soft/60" : "bg-canvas/40"}`}
+            transition={{ duration: DURATION.slow, ease: EASE.rack, delay: active ? 0.15 : 0 }}
+            className={`flex items-center gap-3 rounded-[4px] border px-3 py-2 ${active && i === 0 ? "glow-soft bg-panel" : "border-transparent bg-canvas/40"}`}
           >
             <span className="w-6 font-mono text-xs text-ink-faint">#{i + 1}</span>
             <div className="min-w-0 flex-1">
               <div className="font-display text-sm font-semibold tracking-wide text-ink">Line {l.n}</div>
-              <div className="truncate font-mono text-[11px] text-ink-faint">
+              <div className="truncate font-mono text-2xs text-ink-faint">
                 {l.off} off &middot; {l.credit.toFixed(1)} cr &middot; {l.via}
               </div>
             </div>
@@ -165,7 +164,7 @@ export function RankVisual({ active }: { active: boolean }) {
                 size={40}
                 tone={{ stroke: "var(--color-accent)", track: "var(--color-accent-soft)", text: "text-readout" }}
                 label={`Illustrative score ${l.score}`}
-                readoutClassName="text-[11px] font-semibold"
+                readoutClassName="text-2xs font-semibold"
               />
             ) : (
               <div className="h-10 w-10" />
@@ -186,13 +185,13 @@ const MONTH: (string | null)[] = [
 ];
 
 export function CalendarVisual({ active }: { active: boolean }) {
-  const reduce = useReducedMotion();
+  const reduce = useStill();
   const start = new Date(Date.UTC(2026, 8, 28));
   let trip = -1;
   return (
     <div>
       <div className="panel-glass p-5">
-        <div className="mb-2 grid grid-cols-7 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+        <div className="mb-2 grid grid-cols-7 text-center text-2xs text-ink-faint font-medium">
           {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
             <div key={d}>{d}</div>
           ))}
@@ -205,15 +204,15 @@ export function CalendarVisual({ active }: { active: boolean }) {
             return (
               <motion.div
                 key={i}
-                className={`flex h-12 flex-col justify-between rounded-md border p-1 text-left ${
-                  flying ? "border-accent/40" : "border-dashed border-hairline"
+                className={`flex h-12 flex-col justify-between rounded-[3px] border p-1 text-left ${
+                  flying ? "border-accent/50" : "border-dashed border-border"
                 }`}
                 initial={false}
                 animate={{ backgroundColor: flying && active ? "var(--color-accent-soft)" : "rgba(0,0,0,0)" }}
                 transition={{ delay: flying && active && !reduce ? 0.2 + trip * 0.08 : 0, duration: reduce ? 0 : 0.35 }}
               >
-                <span className="font-mono text-[10px] text-ink-faint">{date}</span>
-                {code && <span className="font-mono text-[10px] font-semibold text-accent">{code}</span>}
+                <span className="font-mono text-2xs text-ink-faint">{date}</span>
+                {code && <span className="font-mono text-2xs font-semibold text-accent">{code}</span>}
               </motion.div>
             );
           })}
@@ -225,7 +224,7 @@ export function CalendarVisual({ active }: { active: boolean }) {
             ["Trips", 1],
           ].map(([label, v]) => (
             <div key={label as string}>
-              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">{label}</div>
+              <div className="text-2xs text-ink-faint font-medium">{label}</div>
               <div className="text-readout text-xl font-semibold">{active ? <NumberTicker key="on" value={v as number} /> : 0}</div>
             </div>
           ))}

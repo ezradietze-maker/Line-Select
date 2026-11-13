@@ -36,7 +36,7 @@ async function badgedIcon(color: string): Promise<string | null> {
     ctx.fillStyle = color;
     ctx.fill();
     ctx.lineWidth = 4;
-    ctx.strokeStyle = "#1f2125";
+    ctx.strokeStyle = "#0a1120";
     ctx.stroke();
     return canvas.toDataURL("image/png");
   } catch {
@@ -81,7 +81,7 @@ export function DeadlineTabTitle({ pack }: { pack: BidPack | null }) {
       const left = msLeft === null ? null : tabCountdown(msLeft);
       const next = left ? `⏱ ${left} · ${page}` : page;
       if (document.title !== next) document.title = next;
-      setBadge(left && msLeft !== null ? (msLeft <= 6 * 3_600_000 ? "#e5484d" : "#ebb357") : null);
+      setBadge(left && msLeft !== null ? (msLeft <= 6 * 3_600_000 ? "#ff6b63" : "#ffcc00") : null);
     };
     apply();
     const id = window.setInterval(apply, 15_000);

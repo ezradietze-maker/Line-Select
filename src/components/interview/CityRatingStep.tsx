@@ -68,7 +68,7 @@ function GradePills({ value, onPick, label, small }: { value: CityRatingScore | 
             type="button"
             aria-pressed={on}
             onClick={() => onPick(on ? undefined : step.score)}
-            className={`flex-1 whitespace-nowrap rounded-md border px-1 ${small ? "py-1 text-[11px]" : "py-1.5 text-xs"} font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+            className={`flex-1 whitespace-nowrap rounded-md border px-1 ${small ? "py-1 text-2xs" : "py-1.5 text-xs"} font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
               on ? GRADE_STYLE[step.score] : "border-border text-ink-muted hover:border-border-strong hover:text-ink"
             }`}
           >
@@ -125,7 +125,7 @@ function SeasonGrades({ code, name, rating, onSeason }: { code: string; name: st
                 type="button"
                 aria-pressed={on}
                 onClick={() => toggleMonth(m)}
-                className={`rounded border px-1 py-1 text-[11px] transition-colors ${on ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
+                className={`rounded border px-1 py-1 text-2xs transition-colors ${on ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
               >
                 {monthName(m)}
               </button>
@@ -197,7 +197,7 @@ function CityRow({
           <span className="font-mono text-sm font-semibold text-ink">{facts.code}</span>
           {name && <span className="ml-2 text-sm text-ink">{name}</span>}
         </p>
-        <p className="font-mono text-[11px] text-ink-faint">
+        <p className="font-mono text-2xs text-ink-faint">
           {facts.trips} {facts.trips === 1 ? "trip" : "trips"} · {length}
           {facts.standbyDays > 0 && ` · ${facts.standbyDays} standby ${facts.standbyDays === 1 ? "day" : "days"}`}
         </p>
@@ -212,7 +212,7 @@ function CityRow({
           type="button"
           aria-pressed={untried}
           onClick={() => onUntried(!untried)}
-          className={`mt-1.5 mr-3 rounded-full border px-2.5 py-0.5 text-xs transition-colors ${untried ? "border-accent bg-accent-soft text-accent" : "border-border text-ink-muted hover:border-border-strong"}`}
+          className={`mt-1.5 mr-3 rounded-[3px] border px-2.5 py-0.5 text-xs transition-colors ${untried ? "border-accent bg-accent-soft text-accent" : "border-border text-ink-muted hover:border-border-strong"}`}
         >
           Haven&rsquo;t been &mdash; I&rsquo;d try it
         </button>
@@ -256,7 +256,7 @@ function CityRow({
                   type="button"
                   aria-pressed={on}
                   onClick={() => onReasons(on ? reasons.filter((t) => t !== r.tag) : [...reasons, r.tag])}
-                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                  className={`rounded-[3px] border px-2.5 py-1 text-xs transition-colors ${
                     on ? "border-brand bg-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"
                   }`}
                 >
@@ -294,7 +294,7 @@ function RatedSummary({ cities, scoreOf, untried }: { cities: CityFacts[]; score
   if (!groups.length) return null;
   return (
     <div role="group" className="mt-4 rounded-lg border border-border bg-surface-raised px-3 py-2.5" aria-label="Your city ratings">
-      <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">Your ratings — check they&rsquo;re on the right cities</p>
+      <p className="text-2xs text-ink-faint font-medium">Your ratings — check they&rsquo;re on the right cities</p>
       <dl className="mt-1.5 space-y-1 text-sm">
         {groups.map((g) => (
           <div key={g.score} className="flex gap-2">
@@ -359,7 +359,7 @@ export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons,
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">
+          <p className="text-2xs text-ink-faint font-medium">
             {rated} of {cities.length} rated
           </p>
         </div>

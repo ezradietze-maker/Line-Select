@@ -120,7 +120,7 @@ export function PreferenceMicroPrompt({
                 type="button"
                 onClick={() => handleChip(f.id, f.direction)}
                 disabled={busy}
-                className="rounded-full border border-accent/40 bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-accent-soft disabled:opacity-50"
+                className="rounded-[3px] border border-accent/40 bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-accent-soft disabled:opacity-50"
               >
                 {f.label}
               </button>
@@ -129,7 +129,7 @@ export function PreferenceMicroPrompt({
               type="button"
               onClick={() => setShowFreeText((v) => !v)}
               disabled={busy}
-              className="rounded-full border border-border-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
+              className="rounded-[3px] border border-border-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
             >
               Something else
             </button>

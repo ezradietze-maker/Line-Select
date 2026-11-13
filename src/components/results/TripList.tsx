@@ -40,7 +40,7 @@ const REPORT_LABELS: Record<Trip["reportTime"], string> = {
 /** "(L)" after a local clock time, "(Z)" after a Zulu one — so no time on the trip view is ever ambiguous. */
 const zoneTag = (mode: TimeMode) => (mode === "zulu" ? "(Z)" : "(L)");
 
-const LABEL = "font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint";
+const LABEL = "text-2xs text-ink-faint font-medium";
 
 const LAYOVER_TOOLTIP =
   "Layover / hotel — real time from landing to hotel pickup for the next duty period. Not exactly when you’ll sleep, since that’s down to you and the time zones.";
@@ -126,7 +126,7 @@ function TripInsights({ trip, bidPeriodStart, base }: { trip: Trip; bidPeriodSta
         <span
           key={chip.label}
           title={chip.title}
-          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${
+          className={`inline-flex items-center gap-1 rounded-[3px] border px-2 py-0.5 text-2xs ${
             chip.tone === "warn" ? "border-warn/40 bg-warn-soft text-warn" : "border-hairline bg-surface-raised/60 text-ink-muted"
           }`}
         >
@@ -143,7 +143,7 @@ function Readout({ label, value, note, tone = "text-readout", title }: { label: 
       <div className={`${LABEL} truncate`}>{label}</div>
       <div className={`truncate font-mono text-xs font-semibold ${tone}`}>
         {value}
-        {note && <span className="ml-1 text-[10px] font-normal text-ink-muted">{note}</span>}
+        {note && <span className="ml-1 text-2xs font-normal text-ink-muted">{note}</span>}
       </div>
     </div>
   );
@@ -189,13 +189,13 @@ function TripHeader({
     <div>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {/* The same oval the calendar puts on a trip's first day: its number and credit. */}
-        <span className="rounded-full bg-calendar-accent px-2 py-0.5 font-mono text-sm font-semibold text-on-calendar" title="Trip number and credit in the bid pack">
+        <span className="rounded-[3px] bg-calendar-accent px-2 py-0.5 font-mono text-sm font-semibold text-on-calendar" title="Trip number and credit in the bid pack">
           {trip.pairingNumber !== null ? `#${trip.pairingNumber} ` : ""}
           <CreditHours hours={trip.creditHours} className="font-normal opacity-85" />
         </span>
-        <span className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-ink">{trip.days}-day</span>
+        <span className="text-xs font-semibold text-ink">{trip.days}-day</span>
         {trip.international && (
-          <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">Intl</span>
+          <span className="rounded-[3px] bg-accent-soft px-1.5 py-0.5 text-2xs font-semibold text-accent">Intl</span>
         )}
         {bodyClock && <BodyClockBadge result={bodyClock} open={whyOpen} onClick={() => setWhyOpen((o) => !o)} />}
       </div>
@@ -231,7 +231,7 @@ function TripHeader({
       </div>
       {carryOver && (
         <p className="mt-2 rounded-md border border-carry/40 bg-carry-soft px-2.5 py-1.5 font-mono text-xs text-readout">
-          <span className="font-sans text-[10px] font-semibold uppercase tracking-wide text-carry">Carries into {carryOver.month} · </span>
+          <span className="font-sans text-2xs font-semibold text-carry">Carries into {carryOver.month} · </span>
           last {carryOver.days} day{carryOver.days === 1 ? "" : "s"}
           {carryOver.dutyPeriods > 0 ? ` · ${carryOver.dutyPeriods} duty period${carryOver.dutyPeriods === 1 ? "" : "s"}` : ""}
           {carryOver.landings > 0 ? ` · ${carryOver.landings} landing${carryOver.landings === 1 ? "" : "s"}` : ""}
@@ -255,7 +255,7 @@ function TripLegendInfo() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center text-[11px] font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
+        className="inline-flex items-center text-2xs font-medium text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink"
       >
         What do these mean?
       </button>

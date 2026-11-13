@@ -29,7 +29,7 @@ export function MinHomeHoursPicker({ value, onChange, base, id = "min-home-hours
             type="button"
             aria-pressed={value === h}
             onClick={() => onChange(h)}
-            className={`relative rounded-full border px-3 py-1.5 text-sm transition-colors duration-300 ${value === h ? "border-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
+            className={`relative rounded-[3px] border px-3 py-1.5 text-sm transition-colors duration-300 ${value === h ? "border-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
           >
             {value === h && <PillHighlight group={`${id}-pill`} />}
             <span className="relative z-10">{label(h)}</span>
