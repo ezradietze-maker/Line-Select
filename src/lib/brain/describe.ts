@@ -69,7 +69,8 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   layoversInRange: ["{n} layover in that range", "{n} layovers in that range"],
   shortLayovers: ["{n} short layover", "{n} short layovers"],
   sleepableLayovers: ["{n} layover you can sleep on", "{n} layovers you can sleep on"],
-  daytimeLayovers: ["{n} layover with no real night", "{n} layovers with no real night", "a real night on every layover"],
+  // Under 4 hours of the night (10 pm to 7 am) in the hotel: "4 layovers with no real night" left the owner asking what it meant.
+  daytimeLayovers: ["{n} layover where you'd have to sleep in the daytime", "{n} layovers where you'd have to sleep in the daytime", "a night's sleep on every layover"],
   avgLayoverNightHours: "{n} night hours a layover",
   internationalLayoverShare: "{n} of layovers international",
   layoverHoursInCities: "{n} hours on layover in those cities",
@@ -85,18 +86,20 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   creditPerBlockHour: "{n} credit hours for each hour flown",
   workDays: ["{n} day given to work", "{n} days given to work"],
   deIcingExposure: ["{n} takeoff where you'd likely de-ice", "{n} takeoffs where you'd likely de-ice", "no takeoffs where you'd likely de-ice"],
-  nightsWorked: ["{n} night worked", "{n} nights worked"],
+  nightsWorked: ["{n} night with work after midnight", "{n} nights with work after midnight"],
   nightHubTurnRuns: ["{n} night hub turn in a run of 3+ nights", "{n} night hub turns in runs of 3+ nights", "no weeks of night hub turns"],
   longestHubTurnRun: ["night hub turns one at a time", "{n} night hub turns in a row", "no night hub turns"],
   nightHubTurns: ["{n} night hub turn", "{n} night hub turns"],
   restHotelHubTurns: ["{n} hub turn with a crew-rest hotel", "{n} hub turns with a crew-rest hotel"],
   dayHubTurns: ["{n} day hub turn", "{n} day hub turns"],
-  longestNightStreak: ["nights worked one at a time", "{n} nights worked in a row", "no nights worked"],
-  deepNightHours: "{n} hours worked on the backside of the clock",
+  longestNightStreak: ["the odd night of work after midnight, never two in a row", "{n} nights in a row with work after midnight", "no work after midnight"],
+  // Any flying or standby between midnight and 5 am — late finishes and early starts too, which is why a line can have
+  // hours of it and still no all-night duty.
+  deepNightHours: "{n} hours of work between midnight and 5 am",
   dayFlyingShare: "{n} of the flying in daytime",
   redEyeFinishes: ["{n} trip ending with a night leg", "{n} trips ending with a night leg"],
-  allNighterStreak: ["duties through the night one at a time", "{n} duties through the night in a row", "no duties through the night"],
-  backToBackRedEyes: ["{n} back-to-back duty through the night", "{n} back-to-back duties through the night"],
+  allNighterStreak: ["the odd all-night duty, never two in a row", "{n} all-night duties in a row", "no all-night duties"],
+  backToBackRedEyes: ["{n} all-night duty back to back", "{n} all-night duties back to back"],
   timezoneHoursCrossed: "{n} hours of time zones crossed",
   earlyReports: ["{n} early report", "{n} early reports"],
   hotelStandbyDays: ["{n} hotel standby day", "{n} hotel standby days"],
@@ -160,12 +163,12 @@ function readsOf(def: ValueDef, oneTrip = false): [string, string, string?] {
  */
 export function formatValue(value: number, def: ValueDef, oneTrip = false): string {
   if (def.unit === "weighted hours")
-    return value >= 0 ? `${Math.round(value)} hours in cities you like` : `${Math.round(-value)} hours more in cities you avoid than in ones you like`;
+    return value >= 0 ? `${Math.round(value)} hours on layover in cities you like` : `${Math.round(-value)} hours more on layover in cities you avoid than in ones you like`;
   if (def.unit === "weighted days") {
     // Days weighted by how much the city is liked: said to the nearest whole day, as a pilot would count them.
     const n = Math.round(Math.abs(value));
-    if (value >= 0) return n === 0 ? (value > 0 ? "less than a full day in cities you like" : "no full days in cities you like") : `${n} full day${n === 1 ? "" : "s"} in cities you like`;
-    return n === 0 ? "less than a full day more in cities you avoid" : `${n} full day${n === 1 ? "" : "s"} more in cities you avoid than in ones you like`;
+    if (value >= 0) return n === 0 ? (value > 0 ? "less than a full day off in cities you like" : "no full days off in cities you like") : `${n} full day${n === 1 ? "" : "s"} off in cities you like`;
+    return n === 0 ? "less than a full day off more in cities you avoid" : `${n} full day${n === 1 ? "" : "s"} off more in cities you avoid than in ones you like`;
   }
   const [one, many, none] = readsOf(def, oneTrip);
   if (value === 0 && !MEASURED_UNITS.has(def.unit)) return none ?? many.replace("{n}", "no");

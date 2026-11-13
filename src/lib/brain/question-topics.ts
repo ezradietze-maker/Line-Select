@@ -30,6 +30,8 @@ export interface TopicCandidate {
   moves: number;
   /** The priorities it covers, by name; empty for a feature they never mentioned. */
   priorities: string[];
+  /** The same, by criterion id — so a line pair can be built around the topic. */
+  criterionIds?: string[];
   /**
    * What an answer would settle: how much it matters against their other priorities (asked best as a real choice),
    * the number where it starts to cost or stops adding (their number), or how they feel about a feature (by name).
@@ -115,7 +117,12 @@ const quantile = (xs: number[], q: number) => {
   return s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))];
 };
 
-/** The ways an answer could move one priority: weight halved or half again, or its anchor set at the pack's middle. */
+/**
+ * The ways an answer could move one priority: weight halved or half again, or — for something they want less of — the
+ * point where it starts to cost set at the pack's middle. Never "where more stops helping" for something they want more
+ * of: every pilot wants more days off, and the owner found asking where extra days stop mattering weird (Nov 2026);
+ * what they'd give up for more is a weight, asked as a real choice.
+ */
 function nudges(c: Criterion, values: number[]): Criterion[] {
   const out: Criterion[] = [
     { ...c, weight: c.weight * 0.5 },
@@ -124,7 +131,6 @@ function nudges(c: Criterion, values: number[]): Criterion[] {
   if (values.length >= 4) {
     const mid = quantile(values, 0.5);
     if (c.shape.kind === "less" && c.shape.fineAt === undefined) out.push({ ...c, shape: { ...c.shape, fineAt: mid } });
-    if (c.shape.kind === "more" && c.shape.enoughAt === undefined) out.push({ ...c, shape: { ...c.shape, enoughAt: mid } });
   }
   return out;
 }
@@ -160,8 +166,9 @@ export function pickTopics(
   const byTopic = new Map<string, TopicCandidate>();
   const consider = (t: TopicCandidate) => {
     const was = byTopic.get(t.id);
-    if (!was || t.moves > was.moves) byTopic.set(t.id, was ? { ...t, priorities: [...new Set([...was.priorities, ...t.priorities])], exampleIds: [...new Set([...was.exampleIds, ...t.exampleIds])] } : t);
-    else byTopic.set(t.id, { ...was, priorities: [...new Set([...was.priorities, ...t.priorities])], exampleIds: [...new Set([...was.exampleIds, ...t.exampleIds])] });
+    const merged = (into: TopicCandidate): TopicCandidate =>
+      was ? { ...into, priorities: [...new Set([...was.priorities, ...t.priorities])], criterionIds: [...new Set([...(was.criterionIds ?? []), ...(t.criterionIds ?? [])])], exampleIds: [...new Set([...was.exampleIds, ...t.exampleIds])] } : into;
+    byTopic.set(t.id, !was || t.moves > was.moves ? merged(t) : merged(was));
   };
 
   // Their priorities, nudged the ways an answer could move them.
@@ -172,7 +179,7 @@ export function pickTopics(
     const moved = nudges(c, valuesOf(c.metric, c.params)).map((n) => movedCount(base, topLines(bidPack, withCriterion(model, n), pm)));
     const moves = Math.max(0, ...moved);
     const unclear = moved.slice(2).some((m) => m === moves && m > Math.max(...moved.slice(0, 2))) ? "number" : "weight";
-    consider({ id, label: TOPIC_LABELS[id] ?? id, moves, unclear, priorities: [c.label], exampleIds: examples.filter((e) => e.criterionId === c.id).map((e) => e.id) });
+    consider({ id, label: TOPIC_LABELS[id] ?? id, moves, unclear, priorities: [c.label], criterionIds: [c.id], exampleIds: examples.filter((e) => e.criterionId === c.id).map((e) => e.id) });
   }
 
   // Features they never mentioned, in a kind of thing they haven't talked about at all (one they have is asked about

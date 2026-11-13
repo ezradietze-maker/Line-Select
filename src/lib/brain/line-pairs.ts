@@ -1,3 +1,4 @@
+import { plainBetter } from "@/lib/brain/plain-features";
 import { namedDomicile } from "@/lib/domicile-name";
 import { formatValue } from "@/lib/brain/describe";
 import { lineSummary } from "@/lib/brain/line-text";
@@ -62,12 +63,18 @@ interface Diff {
   d: number;
 }
 
-export function pickLinePairs(bidPack: BidPack, model: PilotModel, pack: PackMetrics, alreadyCompared: Set<string>, count = 3, pastTrades: string[] = []): LinePairCandidate[] {
+/**
+ * `focus`: the priorities of the topic most worth asking about, when what's unclear is how much it matters. A pair where
+ * one line's headline advantage is that topic — two more days off, say — and the other line wins on something else
+ * shows what the pilot would give up for it, so such pairs come first ("pilots always want more days off; it's what
+ * they'd give up for them", the owner, Nov 2026).
+ */
+export function pickLinePairs(bidPack: BidPack, model: PilotModel, pack: PackMetrics, alreadyCompared: Set<string>, count = 3, pastTrades: string[] = [], focus?: { ids: string[]; label: string }): LinePairCandidate[] {
   if (model.criteria.length < 2) return [];
   const ranked = scorePackV2(bidPack, model, { pack }).sort((a, b) => b.score - a.score).slice(0, TOP);
   // Measures the pilot has already been asked to trade, so a pair that brings in something untested is preferred.
   const tested = new Set(pastTrades.flatMap((t) => t.split("|")));
-  const pairs: { score: number; a: (typeof ranked)[number]; b: (typeof ranked)[number]; shown: Diff[]; trade: string }[] = [];
+  const pairs: { onFocus: boolean; score: number; a: (typeof ranked)[number]; b: (typeof ranked)[number]; shown: Diff[]; trade: string }[] = [];
   for (let i = 0; i < ranked.length; i++)
     for (let j = i + 1; j < ranked.length; j++) {
       const a = ranked[i];
@@ -95,8 +102,9 @@ export function pickLinePairs(bidPack: BidPack, model: PilotModel, pack: PackMet
       const sumB = shown.filter((x) => x.d < 0).reduce((s, x) => s - x.d, 0);
       const balance = Math.min(sumA, sumB) / Math.max(sumA, sumB);
       const untested = new Set(shown.map((x) => x.ra.metric).filter((m) => !tested.has(m))).size;
+      const onFocus = !!focus && (focus.ids.includes(forA[0].ra.criterionId) || focus.ids.includes(forB[0].ra.criterionId));
       const score = (sumA + sumB) * (0.4 + 0.6 * balance) + 0.15 * untested;
-      pairs.push({ score, a, b, shown, trade: tradeKey(forA[0].ra.metric, forB[0].ra.metric) });
+      pairs.push({ onFocus, score, a, b, shown, trade: tradeKey(forA[0].ra.metric, forB[0].ra.metric) });
     }
   const used = new Set<string>();
   const trades = new Set<string>();
@@ -108,7 +116,7 @@ export function pickLinePairs(bidPack: BidPack, model: PilotModel, pack: PackMet
   const seen = (l: string) => showings.get(l) ?? 0;
   const asked = (p: (typeof pairs)[number]) => pastTrades.filter((t) => t === p.trade).length;
   const fresh = (p: (typeof pairs)[number]) => (seen(p.a.lineNumber) ? 1 : 0) + (seen(p.b.lineNumber) ? 1 : 0);
-  for (const p of pairs.sort((x, y) => asked(x) - asked(y) || fresh(x) - fresh(y) || y.score - x.score)) {
+  for (const p of pairs.sort((x, y) => Number(y.onFocus) - Number(x.onFocus) || asked(x) - asked(y) || fresh(x) - fresh(y) || y.score - x.score)) {
     // Each line at most once per offer, and each headline trade at most once, so every pair teaches something new.
     if (used.has(p.a.lineNumber) || used.has(p.b.lineNumber) || trades.has(p.trade)) continue;
     if (seen(p.a.lineNumber) >= MAX_SHOWINGS_PER_LINE || seen(p.b.lineNumber) >= MAX_SHOWINGS_PER_LINE) continue;
@@ -118,7 +126,10 @@ export function pickLinePairs(bidPack: BidPack, model: PilotModel, pack: PackMet
     trades.add(p.trade);
     const lineA = bidPack.lines.find((l) => l.id === p.a.lineId)!;
     const lineB = bidPack.lines.find((l) => l.id === p.b.lineId)!;
-    const differences: LinePairDifference[] = p.shown.map((x) => ({ label: namedDomicile(x.ra.label, bidPack.base), metric: x.ra.metric, a: namedDomicile(v(x.ra), bidPack.base), b: namedDomicile(v(x.rb), bidPack.base), better: x.d > 0 ? "a" : "b" }));
+    const differences: LinePairDifference[] = p.shown.map((x) => {
+      const plain = plainBetter(x.ra.metric);
+      return { label: namedDomicile(x.ra.label, bidPack.base), metric: x.ra.metric, a: namedDomicile(v(x.ra), bidPack.base), b: namedDomicile(v(x.rb), bidPack.base), better: x.d > 0 ? "a" : "b", ...(plain ? { plain } : {}) };
+    });
     const side = (s: "a" | "b") =>
       differences
         .filter((x) => x.better === s)
@@ -133,6 +144,7 @@ export function pickLinePairs(bidPack: BidPack, model: PilotModel, pack: PackMet
       differences,
       summaryA: lineSummary(bidPack, lineA),
       summaryB: lineSummary(bidPack, lineB),
+      ...(p.onFocus && focus ? { focus: focus.label } : {}),
     });
     if (out.length >= count) break;
   }

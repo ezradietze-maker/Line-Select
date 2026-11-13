@@ -37,6 +37,9 @@ describe("what's worth asking next", () => {
     expect(topics.every((t) => t.moves >= 3)).toBe(true);
     for (const t of topics) for (const id of t.exampleIds) expect(shown.some((e) => e.id === id)).toBe(true);
     expect(new Set(topics.map((t) => t.id)).size).toBe(topics.length);
+    // Every pilot wants more days off and credit: never asked where more stops helping, only what they'd give up for it.
+    expect(topics.filter((t) => t.id === "home" || t.id === "pay").every((t) => t.unclear === "weight")).toBe(true);
+    expect(topics.filter((t) => !t.feature).every((t) => (t.criterionIds ?? []).length > 0)).toBe(true);
   });
 
   it("never offers a topic already asked", () => {

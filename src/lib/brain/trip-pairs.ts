@@ -1,5 +1,6 @@
 import { tripHeadline } from "@/lib/brain/line-text";
 import { namedDomicile } from "@/lib/domicile-name";
+import { plainBetter } from "@/lib/brain/plain-features";
 import { tripLabel } from "@/lib/brain/trip-sort";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
@@ -22,6 +23,8 @@ export interface TripPairDifference {
   a: string;
   b: string;
   better: "a" | "b";
+  /** How a pilot would say the better trip beats the other, without the measurement (see `plain-features.ts`). */
+  plain?: string;
 }
 
 export interface TripPairCandidate {
@@ -129,7 +132,10 @@ export function pickTripPairs(bidPack: BidPack, model: PilotModel, pack: PackMet
       labelB,
       trade: p.trade,
       tension: `${labelA} is better on ${better("a").join("; ")}. ${labelB} on ${better("b").join("; ")}`,
-      differences: shown.map(({ label, a, b, better }) => ({ label: named(label), a: named(a), b: named(b), better })),
+      differences: shown.map(({ label, a, b, better, metric }) => {
+        const plain = plainBetter(metric);
+        return { label: named(label), a: named(a), b: named(b), better, ...(plain ? { plain } : {}) };
+      }),
       summaryA: tripHeadline(bidPack, p.a),
       summaryB: tripHeadline(bidPack, p.b),
     });
