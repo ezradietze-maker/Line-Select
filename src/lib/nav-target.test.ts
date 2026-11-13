@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { NAV_ITEMS } from "@/components/nav/nav-items";
 import { navTargetForPath } from "@/lib/nav-target";
 
 describe("navTargetForPath", () => {
@@ -21,6 +22,11 @@ describe("navTargetForPath", () => {
     expect(navTargetForPath("/trade-board")).toBe("trade-board");
     expect(navTargetForPath("/inbox")).toBe("inbox");
     expect(navTargetForPath("/hotel-ratings")).toBe("hotel-ratings");
+  });
+
+  // Ask the Contract was missing here, so its page lit no sidebar row at all: every item's own page must light it.
+  it("lights every sidebar item on its own page", () => {
+    for (const item of NAV_ITEMS) expect(navTargetForPath(`/${item.target}`)).toBe(item.target);
   });
 
   it("lights nothing on info pages that aren't sidebar destinations", () => {

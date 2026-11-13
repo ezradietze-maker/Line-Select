@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
 import { useAppState } from "@/lib/app-state";
-import { fetchEmailResetEnabled, resendConfirmEmail } from "@/lib/auth";
+import { checkSession, fetchEmailResetEnabled, resendConfirmEmail } from "@/lib/auth";
 import type { UserAccount } from "@/types/auth";
 
 type SendState = { kind: "idle" } | { kind: "sending" } | { kind: "sent"; email: string } | { kind: "confirmed" } | { kind: "failed"; error: string };
@@ -86,6 +86,7 @@ export function ConfirmEmailNotice({ user }: { user: UserAccount }) {
     }
   });
   const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
   useEffect(() => {
     let cancelled = false;
     fetchEmailResetEnabled().then((on) => !cancelled && setEmailEnabled(on));
@@ -93,6 +94,41 @@ export function ConfirmEmailNotice({ user }: { user: UserAccount }) {
       cancelled = true;
     };
   }, []);
+
+  // Watch for the address being confirmed, here or on another device — the pilot opens the link on their phone and the
+  // account (shared between devices) comes back verified. The moment it does, say so and reload so trading and sharing
+  // unlock, instead of leaving this screen waiting until the pilot reloads by hand.
+  useEffect(() => {
+    if (dismissed || confirmed || emailEnabled !== true) return;
+    let stop = false;
+    const tick = async () => {
+      if (stop || (typeof document !== "undefined" && document.visibilityState === "hidden")) return;
+      const { user: fresh } = await checkSession();
+      if (!stop && fresh?.id === user.id && fresh.emailVerified) setConfirmed(true);
+    };
+    const timer = setInterval(tick, 5000);
+    return () => {
+      stop = true;
+      clearInterval(timer);
+    };
+  }, [dismissed, confirmed, emailEnabled, user.id]);
+
+  useEffect(() => {
+    if (!confirmed) return;
+    const timer = setTimeout(() => window.location.reload(), 1600);
+    return () => clearTimeout(timer);
+  }, [confirmed]);
+
+  if (confirmed) {
+    return (
+      <Notice tone="good" role="status" className="mx-auto mb-4 w-full max-w-3xl">
+        <p>
+          <span className="font-medium">Email confirmed.</span> You&rsquo;re all set — trading, sharing and your seat&rsquo;s
+          numbers are unlocked. Refreshing…
+        </p>
+      </Notice>
+    );
+  }
 
   if (dismissed || emailEnabled === null) return null;
 

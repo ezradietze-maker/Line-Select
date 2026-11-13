@@ -194,12 +194,12 @@ describe("signing up with email set up", () => {
     expect((await login("pilot@example.com", "the squatters pw", SQUATTER_IP)).ok).toBe(false);
   });
 
-  it("sends one address three emails an hour from one sender, so one sender can't stop anyone else's", async () => {
-    for (let i = 0; i < 6; i++) await signUpByEmail("busy@example.com", "a long password", "J. Pilot", LAPTOP, SQUATTER_IP);
-    expect(mail.sent).toHaveLength(3);
+  it("sends one address five emails an hour from one sender, so one sender can't stop anyone else's", async () => {
+    for (let i = 0; i < 8; i++) await signUpByEmail("busy@example.com", "a long password", "J. Pilot", LAPTOP, SQUATTER_IP);
+    expect(mail.sent).toHaveLength(5);
     // The address's owner, elsewhere, still gets theirs.
     await signUpByEmail("busy@example.com", "a long password", "J. Pilot", PHONE, "203.0.113.50");
-    expect(mail.sent).toHaveLength(4);
+    expect(mail.sent).toHaveLength(6);
   });
 
   it("sends one address ten an hour from everyone together", async () => {
@@ -215,7 +215,7 @@ describe("signing up with email set up", () => {
 
   it("a sender over their own limit doesn't use the site's allowance", async () => {
     for (let i = 0; i < 60; i++) await signUpByEmail("same@example.com", "a long password", "J. Pilot", LAPTOP, SQUATTER_IP);
-    expect(kv.get(`line-select:sign-up-mail:${new Date().toISOString().slice(0, 13)}`)).toBe(3);
+    expect(kv.get(`line-select:sign-up-mail:${new Date().toISOString().slice(0, 13)}`)).toBe(5);
   });
 });
 
@@ -386,15 +386,15 @@ describe("Send it again", () => {
     expect(store.confirmTokens[0].signUp).toBe(true);
   });
 
-  it("by address, from the log-in screen, mails only an account waiting on its link, three times an hour from one sender", async () => {
+  it("by address, from the log-in screen, mails only an account waiting on its link, five times an hour from one sender", async () => {
     await signUpByEmail("new@example.com", "a long password", "J. Pilot", LAPTOP);
     store.users.push(legacy({ email: "done@example.com", emailVerified: true }));
     mail.sent.length = 0;
     await resendConfirmEmailByAddress("done@example.com", "203.0.113.1", LAPTOP);
     await resendConfirmEmailByAddress("nobody@example.com", "203.0.113.1", LAPTOP);
     expect(mail.sent).toHaveLength(0);
-    for (let i = 0; i < 5; i++) await resendConfirmEmailByAddress("New@Example.com", "203.0.113.1", LAPTOP);
-    expect(mail.sent).toHaveLength(3);
+    for (let i = 0; i < 7; i++) await resendConfirmEmailByAddress("New@Example.com", "203.0.113.1", LAPTOP);
+    expect(mail.sent).toHaveLength(5);
     expect(mail.sent[0]).toMatchObject({ to: "new@example.com", subject: "Confirm your email for Line Select" });
   });
 });

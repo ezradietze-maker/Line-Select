@@ -244,8 +244,11 @@ async function sendTakeBackLink(userId: string, email: string, config: EmailConf
   });
 }
 
-/** Emails one sender may cause to one address in an hour, and all senders together: a sender can't use up an address's share for everyone. */
-const MAILS_PER_SENDER_AND_ADDRESS = 3;
+/**
+ * Emails one sender may cause to one address in an hour (enough for a pilot who retries a few times), and all senders
+ * together: a sender can't use up an address's share for everyone.
+ */
+const MAILS_PER_SENDER_AND_ADDRESS = 5;
 const MAILS_PER_ADDRESS = 10;
 
 /**
