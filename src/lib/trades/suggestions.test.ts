@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { holdingsAfter, suggestionForViewer, tradeSignature, viewStatus } from "@/lib/trades/suggestions";
+import { holdingsAfter, suggestionForViewer, tradeSignature, tripsSpokenFor, viewStatus } from "@/lib/trades/suggestions";
 import type { TradeSuggestionMember, TradeSuggestionRecord, TradeTrip, TradeValue } from "@/types/trade";
 
 const trip = (id: string): TradeTrip =>
@@ -115,5 +115,28 @@ describe("a trade's signature", () => {
     expect(tradeSignature("p", [a, b, c])).toBe(tradeSignature("p", [b, c, a]));
     expect(tradeSignature("p", [a, b])).not.toBe(tradeSignature("p", [a, c]));
     expect(tradeSignature("p", [a, b])).not.toBe(tradeSignature("q", [a, b]));
+  });
+});
+
+describe("the trips a suggested trade has spoken for, which the board refuses", () => {
+  const ids = (trips: TradeTrip[]) => trips.map((t) => t.id).sort();
+
+  it("is none until everyone has said yes", () => {
+    expect(tripsSpokenFor(record(), now)).toEqual([]);
+  });
+
+  it("is every trip once everyone has, until it expires unbegun", () => {
+    expect(ids(tripsSpokenFor(record({ status: "accepted" }), now))).toEqual(["t0", "t1", "t2"]);
+    expect(tripsSpokenFor(record({ status: "accepted" }), Date.parse("2026-12-06T00:00:00Z"))).toEqual([]);
+  });
+
+  it("lets go of a trip once it reaches the pilot it ends with, and keeps the rest however late", () => {
+    // After the first step, position 0 has t1, theirs to keep; t0 is still on its way to position 2.
+    expect(ids(tripsSpokenFor(record({ status: "accepted", stepsDone: 1 }), Date.parse("2026-12-06T00:00:00Z")))).toEqual(["t0", "t2"]);
+  });
+
+  it("is none once it's done or called off", () => {
+    expect(tripsSpokenFor(record({ status: "done", stepsDone: 2 }), now)).toEqual([]);
+    expect(tripsSpokenFor(record({ status: "cancelled" }), now)).toEqual([]);
   });
 });

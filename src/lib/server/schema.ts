@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import type { FeedMonth, FeedOptions } from "@/lib/calendar-feed";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
 import type { InterviewOutcome } from "@/lib/learning/interview-outcome";
+import type { CarryInItem } from "@/lib/phase-in";
 import type { BidPackMetaSnapshot, HeldTrip, TradeAnswer, TradeCancelReason, TradeDeclineReason, TradeSuggestionStatus, TradeTrip, TradeValue, TripSnapshot } from "@/types/trade";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -130,6 +131,8 @@ export const tradeHoldings = pgTable(
      * holdings confirmed on it. Null for one confirmed before this was kept, until it's filled from the pilot's account.
      */
     packFingerprint: text("pack_fingerprint"),
+    /** What the pilot carries in from last month (`TradeHolding.carryIn`); null when their browser didn't say. */
+    carryIn: jsonb("carry_in").$type<CarryInItem[]>(),
   },
   (t) => [uniqueIndex("trade_holdings_user_pack_idx").on(t.userId, t.packId), index("trade_holdings_group_idx").on(t.base, t.aircraft, t.seat, t.month)]
 );

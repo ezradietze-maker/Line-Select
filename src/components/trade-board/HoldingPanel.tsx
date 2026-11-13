@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { useAppState } from "@/lib/app-state";
+import { loadCarryIn } from "@/lib/carry-in-storage";
 import { heldTripsOfLine, tradeLocksFor, tripInstances } from "@/lib/trades/holding";
 import { clearTradeHolding, fetchTradeHolding, saveTradeHolding, saveTradeSettings } from "@/lib/trades/holding-client";
 import { tripInstanceKey } from "@/lib/trades/legality";
@@ -49,7 +50,7 @@ export function HoldingPanel({
   /** Hears each change saved here (what they hold, removed, "Include me…"): the trades found for them depend on it. */
   onSaved?: () => void;
 }) {
-  const { profile } = useAppState();
+  const { profile, user } = useAppState();
   const onHoldingRef = useRef(onHolding);
   useEffect(() => {
     onHoldingRef.current = onHolding;
@@ -110,6 +111,8 @@ export function HoldingPanel({
       bidPackMeta: { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month },
       lineNumber,
       trips: draft,
+      // What they carry in from last month, as Open time and View/Add check against: a trade has to fit around it too.
+      carryIn: loadCarryIn(user?.id ?? null, bidPack.id).items,
     });
     setBusy(false);
     if (!saved) return setError("Couldn't save what you hold. Check your connection and try again.");

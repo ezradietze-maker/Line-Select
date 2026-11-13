@@ -1,3 +1,4 @@
+import type { CarryInItem } from "@/lib/phase-in";
 import type { ReportTime } from "@/types/bidpack";
 
 /**
@@ -91,6 +92,11 @@ export interface TradeHolding {
   /** The line these trips started from, if they did. */
   lineNumber: string | null;
   trips: HeldTrip[];
+  /**
+   * What they carry in from last month, as their device had it when they confirmed (the same list Open time and View/Add
+   * check against): a trade has to fit around it. Missing when it wasn't sent, so isn't known.
+   */
+  carryIn?: CarryInItem[];
   confirmedAt: string;
 }
 

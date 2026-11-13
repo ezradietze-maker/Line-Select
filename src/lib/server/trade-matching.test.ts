@@ -14,7 +14,7 @@ const state = vi.hoisted(() => ({
   saved: [] as unknown[],
   emailed: [] as unknown[],
   failSeat: null as string | null,
-  history: { busyPilots: new Set<string>(), signatures: new Set<string>(), declined: new Set<string>(), refusedTrips: new Set<string>(), minGains: new Map<string, number>(), holdingDoubted: new Map<string, Date>() },
+  history: { boardTrips: [] as unknown[], busyPilots: new Set<string>(), signatures: new Set<string>(), declined: new Set<string>(), refusedTrips: new Set<string>(), minGains: new Map<string, number>(), holdingDoubted: new Map<string, Date>() },
   options: [] as Record<string, (...a: never[]) => unknown>[],
   fingerprints: new Map<string, string | null>(),
   matched: [] as unknown[],
@@ -63,7 +63,7 @@ vi.mock("@/lib/server/trade-suggestions", () => ({
 vi.mock("@/lib/trades/holding", () => ({
   pilotsForMatching: (_p: unknown, rows: unknown[]) => {
     state.matched = rows;
-    return [{ pilotId: "a" }, { pilotId: "b" }];
+    return [{ pilotId: "a", line: { trips: [{ id: "t1", startDayIndex: 3, pairingNumber: "11" }] } }, { pilotId: "b", line: { trips: [] } }];
   },
 }));
 vi.mock("@/lib/trades/match", () => ({
@@ -95,7 +95,7 @@ beforeEach(() => {
   state.emailed = [];
   state.failSeat = null;
   state.options = [];
-  state.history = { busyPilots: new Set(), signatures: new Set(), declined: new Set(), refusedTrips: new Set(), minGains: new Map(), holdingDoubted: new Map() };
+  state.history = { boardTrips: [], busyPilots: new Set(), signatures: new Set(), declined: new Set(), refusedTrips: new Set(), minGains: new Map(), holdingDoubted: new Map() };
 });
 
 describe("the daily run", () => {
@@ -152,6 +152,14 @@ describe("the daily run", () => {
     // The mocked group holds pilots "a" and "b"; "a" has no holding confirmed since saying so.
     await runDailyMatching(now);
     expect(state.available.map((p) => p.pilotId)).toEqual(["b"]);
+  });
+
+  it("never hands on a trip its pilot agreed to trade on the board", async () => {
+    state.history.boardTrips = [{ pilot: "a", trip: { tripId: "t1", startDayIndex: 3, pairingNumber: "11", lineNumber: "1001" } }];
+    await runDailyMatching(now);
+    const [a, b] = state.available as unknown as { locked?: Set<string> }[];
+    expect([...(a.locked ?? [])]).toEqual(["t1@3"]);
+    expect(b.locked).toBeUndefined();
   });
 
   it("doesn't store the same trade twice", async () => {

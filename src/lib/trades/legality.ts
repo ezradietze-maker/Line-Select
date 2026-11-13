@@ -1,12 +1,15 @@
 import { bidMonthEnd } from "@/lib/bid-month";
+import { zoneOf, type CarryInItem } from "@/lib/phase-in";
 import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { busyFromCarry, fitCheck, scheduleAsFlown } from "@/lib/view-add";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 
 /**
  * What the contract lets a pilot trade, as far as a bid pack can show it. This narrows the suggestions; it doesn't
- * promise a trade will go through. VIPS runs the real check when each pilot submits (rest, 1-in-7, currency and the
- * other Section 12 limits are FedEx's to judge), and the questions the text leaves open are in
- * `private/ex-pilot/trip-trades-questions.md`.
+ * promise a trade will go through. VIPS runs the real check when each pilot submits (currency and what a pack can't
+ * show are FedEx's to judge), and the questions the text leaves open are in `private/ex-pilot/trip-trades-questions.md`.
+ * The rest and 1-in-7 rules the site can see are View/Add's and Open time's own (`fitCheck`), so a trade is never
+ * called legal where they'd rule the same trip out.
  */
 
 const HOUR = 3_600_000;
@@ -88,17 +91,22 @@ export function touchesVacation(pack: BidPack, trip: Trip, vacations: readonly V
 }
 
 /**
- * Whether a pilot holding `others` could also hold `trip`: no overlap and the gap kept between trips (CBA 2026 25.L.1.d),
- * and not into their vacation (7.A.4). A trip with no date among `others` can't be checked, so it rules this out.
+ * Whether a pilot holding `others`, and carrying in `carryIn` from last month, could also hold `trip`: no overlap and the
+ * gap kept between trips (CBA 2026 25.L.1.d), not into their vacation (7.A.4), and nothing View/Add or Open time would
+ * rule out on the same schedule (`fitCheck`: rest after a long duty, 12.D.7.c, 12.C.6.b; 1-in-7, 12.C.1.b; R-days,
+ * 25.L.1.d.i). A trip with no date among `others` can't be checked, so it rules this out.
  */
-export function canHold(pack: BidPack, others: readonly Trip[], trip: Trip, vacations: readonly VacationPeriod[]): boolean {
+export function canHold(pack: BidPack, others: readonly Trip[], trip: Trip, vacations: readonly VacationPeriod[], carryIn: readonly CarryInItem[] = []): boolean {
   const span = tripSpan(pack, trip);
   if (!span || touchesVacation(pack, trip, vacations)) return false;
   const gap = MIN_HOURS_BETWEEN_TRIPS * HOUR;
-  return others.every((o) => {
-    const other = tripSpan(pack, o);
-    return other !== null && overlaps(span, other.start - gap, other.end + gap) === false;
-  });
+  const clear = (other: { start: number; end: number } | null) => other !== null && overlaps(span, other.start - gap, other.end + gap) === false;
+  if (!others.every((o) => clear(tripSpan(pack, o)))) return false;
+  // What's carried in is held like any other trip: the same gap from it.
+  const zone = carryIn.length ? zoneOf(pack) : "";
+  if (!carryIn.every((c) => clear(busyFromCarry(c, zone)?.span ?? null))) return false;
+  // The cheap test first: most swaps fail on the gap, and this one sorts the whole month.
+  return fitCheck(trip, scheduleAsFlown({ trips: [...others] }, [...carryIn], pack), [...vacations], pack).illegal.length === 0;
 }
 
 /** The vacation a pilot holds, by their seniority number, from the pack's own schedule. */
