@@ -33,6 +33,21 @@ export async function fetchServerProfile(): Promise<ServerProfileLoad> {
   }
 }
 
+/**
+ * The account's profile as the server has it now, for a look only: its version isn't taken as this tab's own, so a
+ * save from here is still refused over a newer copy. Undefined when the server couldn't be reached.
+ */
+export async function peekServerProfile(): Promise<PreferenceProfile | null | undefined> {
+  try {
+    const res = await fetch("/api/preference-profile", { credentials: "same-origin", cache: "no-store" });
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as { profile?: PreferenceProfile | null };
+    return data.profile ?? null;
+  } catch {
+    return undefined;
+  }
+}
+
 export type ServerProfileSave =
   | { kind: "saved" }
   /** Saved from another device since this one loaded it: the newer copy, to merge with. */
