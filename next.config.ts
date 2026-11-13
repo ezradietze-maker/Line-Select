@@ -15,7 +15,9 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `connect-src 'self' https://*.posthog.com https://api.open-meteo.com https://archive-api.open-meteo.com wss://streaming.assemblyai.com${isDev ? " ws:" : ""}`,
+  // Open-Meteo on both the free hosts and the commercial "customer-" twins, so the browser can reach whichever the
+  // NEXT_PUBLIC_OPEN_METEO_API_KEY switch selects (weather-client.ts) without a redeploy of this header.
+  `connect-src 'self' https://*.posthog.com https://api.open-meteo.com https://archive-api.open-meteo.com https://customer-api.open-meteo.com https://customer-archive-api.open-meteo.com wss://streaming.assemblyai.com${isDev ? " ws:" : ""}`,
   "worker-src 'self' blob:",
   "frame-src 'none'",
   "frame-ancestors 'none'",
