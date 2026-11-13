@@ -547,8 +547,9 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
     it("rejects a second pilot claiming the same bid position, and lets the original pilot update their own", async () => {
       const packKey = `test-pack-${randomUUID()}`;
       const lineNumbers = ["100", "101", "102"];
-      const pilotA = randomUUID();
-      const pilotB = randomUUID();
+      // Confirmed accounts: only theirs count toward what others see.
+      const pilotA = (await makeUser("forecast-a")).id;
+      const pilotB = (await makeUser("forecast-b")).id;
 
       const first = await forecastStore.saveSubmission({
         packKey,
