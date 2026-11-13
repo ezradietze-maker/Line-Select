@@ -97,7 +97,8 @@ describe("POST /api/auth/forgot, across the whole site", () => {
   it("one address takes only its small share of the hour, whatever it asks for, and other pilots still get theirs", async () => {
     for (let n = 0; n < 10; n++) accounts.add(`own${n}@attacker.example`);
     accounts.add("pilot@example.com");
-    for (let i = 0; i < 30; i++) await ask(`own${i % 10}@attacker.example`, "198.51.100.7", device(i));
+    // More than the site's whole hour, so without the share the pilot below would get nothing.
+    for (let i = 0; i < SITE_MAILS_PER_HOUR.reset + 10; i++) await ask(`own${i % 10}@attacker.example`, "198.51.100.7", device(i));
     await runAfter();
     expect(mail.sent).toHaveLength(SITE_MAILS_PER_SENDER_PER_HOUR);
     expect(kv.get(hourKey())).toBe(SITE_MAILS_PER_SENDER_PER_HOUR);

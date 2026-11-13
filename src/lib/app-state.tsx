@@ -221,6 +221,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [profileSync, setProfileSync] = useState<"ok" | "merged" | "failed">("ok");
   const [listSaveFailed, setListSaveFailed] = useState(false);
   const showSignedOutRef = useRef<() => void>(() => {});
+  /** Counts this tab's sign-ins and sign-outs, so an answer about who's signed in asked for before one isn't used after it (`refreshUser`). */
+  const signInsRef = useRef(0);
   const adoptOnLoadRef = useRef<(user: UserAccount, from: GuestWork) => Promise<unknown>>(async () => {});
   const latestProfileRef = useRef<PreferenceProfile | null>(null);
   const realOffersRef = useRef<TradeOffer[]>([]);
@@ -769,6 +771,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleAuthenticated(newUser: UserAccount, { stay = false, from }: { stay?: boolean; from?: GuestWork } = {}): Promise<string> {
+    signInsRef.current++;
     // What was on screen before this sign-in; on a load finishing a confirm's sign-in, what the guest had on this device.
     const before: GuestWork = from ?? { user: state.user, bidPack: state.bidPack, profile: state.profile, seniority: state.seniority };
     askToKeepStorage();
@@ -847,7 +850,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   /** The answer, for a caller that keeps asking: confirmed (or someone else now), still waiting, nobody signed in, or no answer. */
   async function refreshUser(): Promise<"confirmed" | "waiting" | "signed-out" | "unknown"> {
+    const asked = signInsRef.current;
     const session = await checkSession();
+    // Signed out (or in) on this tab while it was on its way: it says who was signed in before. Written down now, it
+    // put the pilot who just left back on this device, for the next person here to be shown when offline.
+    if (signInsRef.current !== asked) return "unknown";
     if (!session.reachable) return "unknown";
     if (!session.user) return "signed-out";
     const fresh = session.user;
@@ -873,6 +880,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleLogout(opts?: { to?: string }) {
+    signInsRef.current++;
     // Offline, the session cookie outlives a sign-out that only happened on screen: the next person to open the app
     // here would be let back into this account. Stay signed in and say so.
     if (!(await logoutAccount())) {
@@ -889,6 +897,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   /** The guest view, once the server no longer holds a session for this device; at `to`, or wherever a guest belongs. */
   async function showSignedOut(to?: string) {
+    signInsRef.current++;
     setProfileSync("ok");
     writeSignedInHint(null);
     // The account's copy isn't what a guest's next save starts from, and the guest pack shown now (kept from before the
