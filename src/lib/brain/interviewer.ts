@@ -671,7 +671,7 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
       }).catch(() => null);
       if (review) usage = { ...usage, costUsd: usage.costUsd + review.usage.costUsd };
       if (review && !review.ok) {
-        fresh += `\n\nYour last proposal can't be used: ${review.problem} Fix that, or choose a different question.`;
+        fresh += `\n\nYour last proposal can't be used: ${review.problem}${review.rewrite ? ` A clearer way to ask it: "${review.rewrite}"` : ""} Use that, fix it your own way, or choose a different question.`;
         continue;
       }
     }
