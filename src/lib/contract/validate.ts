@@ -189,8 +189,12 @@ type Quote = { section: string; quote: string; version: ContractVersion };
  * `bidMonth` is the bid period the question is about ("2026-11"). An answer may name it, or a bid period the question
  * itself names, as the period asked about ("for the November 2026 bid period"), never as when a rule starts.
  */
-export function validateAnswer(raw: RawAnswer, context: { question: string; facts?: string; bidMonth?: string }): Verdict {
-  if (!raw.found) return { ok: false, reason: "the model found nothing" };
+export function validateAnswer(given: RawAnswer, context: { question: string; facts?: string; bidMonth?: string }): Verdict {
+  if (!given.found) return { ok: false, reason: "the model found nothing" };
+  // Checked as plain keys: the checks read ASCII digits only, and "１２０ hours" or "Phase ４" passed unread. Digits of
+  // another script that this doesn't turn into ASCII ("١٢٠") are refused, not trusted.
+  const raw = { ...given, answer: given.answer.normalize("NFKC") };
+  if (/(?![0-9])\p{Nd}/u.test(raw.answer)) return { ok: false, reason: "the answer writes a number in digits other than 0 to 9. Write every number in plain digits" };
   if (!raw.answer.trim()) return { ok: false, reason: "empty answer" };
   if (!raw.quotes.length) return { ok: false, reason: "an answer with no quote" };
   if (raw.quotes.length > MAX_QUOTES) return { ok: false, reason: `${raw.quotes.length} quotes is more than an answer needs. Quote at most ${MAX_QUOTES} places` };
@@ -327,7 +331,7 @@ export function validateAnswer(raw: RawAnswer, context: { question: string; fact
     }
     if (text.replace(/·/g, "").trim()) before = { ids, pieces };
   }
-  return { ok: true, answer: raw.answer.trim(), quotes };
+  return { ok: true, answer: given.answer.trim(), quotes };
 }
 
 /** A clause that goes on from the one before: "and 78.6 CH", "which totals…", "It has…", a bullet's "- 15 days off". */
@@ -385,10 +389,11 @@ const DATE = new RegExp(
 /**
  * Words before a date that make it a start. "Since" says when a rule came into force; "by", "until", "starts" when it
  * starts or, for one applied by hand, when it's automated: a rule in force by hand since June 29, 2026 and automated by
- * the December 2026 bid period had its two dates swapped unnoticed.
+ * the December 2026 bid period had its two dates swapped unnoticed. "After" is neither: "the bid period after November"
+ * names the month before a start, and is checked as a date said with no claim.
  */
 const SINCE_BEFORE = /\b(?:since|from|as\s+of|effective(?:\s+(?:on|from))?|(?:takes?|took)\s+effect(?:\s+(?:on|from))?)\s+(?:the\s+)?$/i;
-const BY_BEFORE = /\b(?:start(?:s|ed|ing)?(?:\s+(?:in|on|with|by))?|by|until|till|begin(?:s|ning)?(?:\s+(?:in|on|with|by))?|began(?:\s+(?:in|on|with))?|after|replaced(?:\s+(?:in|on|by))?|implemented(?:\s+(?:in|on|by))?|automated(?:\s+(?:in|on|by))?)\s+(?:the\s+)?(?:first\s+day\s+of\s+(?:the\s+)?)?$/i;
+const BY_BEFORE = /\b(?:start(?:s|ed|ing)?(?:\s+(?:in|on|with|by))?|by|until|till|begin(?:s|ning)?(?:\s+(?:in|on|with|by))?|began(?:\s+(?:in|on|with))?|replaced(?:\s+(?:in|on|by))?|implemented(?:\s+(?:in|on|by))?|automated(?:\s+(?:in|on|by))?)\s+(?:the\s+)?(?:first\s+day\s+of\s+(?:the\s+)?)?$/i;
 
 type FoundDate = { at: number; end: number; text: string; month: number; day?: string; ym?: string; checked: boolean; claim: "since" | "by" | null };
 
@@ -405,8 +410,10 @@ function datesIn(text: string): FoundDate[] {
     const month = MONTH_NAMES.findIndex((n) => n.slice(0, 3) === word.slice(0, 3));
     const day = m[1] ?? m[5];
     const year = m[3] ?? m[6];
-    const full = MONTH_NAMES.includes(word);
-    const alone = !day && !year && full && (word !== "May" || /^\s+bid period/i.test(text.slice(m.index + m[0].length)));
+    // The match takes a dot after the month, for "Dec.": one ending a sentence ("…starts by August.") is still the word.
+    const name = word.replace(/\.$/, "");
+    const full = MONTH_NAMES.includes(name);
+    const alone = !day && !year && full && (name !== "May" || /^\s+bid period/i.test(text.slice(m.index + m[0].length)));
     const june29 = !year && month === 5 && day === "29";
     return {
       at: m.index,
@@ -454,6 +461,9 @@ function startsOf(pieces: string[], texts: string[], bidMonth: string | undefine
   };
   const of = (id: string) => applicabilityOf(id, bidMonth ?? "2026-06");
   for (const id of new Set(pieces)) {
+    // The chart's own words date each phase, and those are read below. As a change it doesn't list, it took the general
+    // effective date, which let "13 CH, effective the first day of the June 2026 bid period" through on its quote.
+    if (isChart(id)) continue;
     const a = of(id);
     if (a.kind === "scheduled") scheduled(a.phase, a.manual);
     else if (a.kind === "mixed") {
@@ -485,17 +495,31 @@ function startsOf(pieces: string[], texts: string[], bidMonth: string | undefine
 const COMMON = new Set(
   "the and for that this with from under shall will may can not are was were has have had its into than then when which who any all each per bid period periods wording rule rules force start starts started applies apply applied since until contract section pilot pilots company new old now phase hand automated also only more less but they their you your does did been being also there here what where while such other same both either neither must would could should 2015 2026 2027 january february march april june july august september october november december".split(" ")
 );
-/** A clause's telling words, roughly stemmed so "dropped" meets "drop" and "62-hour" meets "62 hours". */
+/**
+ * A clause's telling words, roughly stemmed so "dropped" meets "drop" and "62-hour" meets "62 hours". Every number is
+ * one, a single digit too: "the 3-hour pilots-only rule" shared only "hour" with three quotes, and took the Phase 1 date
+ * of the one that said "12 hours" as well as the Phase 2 date of the one that said "3 hours".
+ */
 const stem = (w: string) => w.replace(/'s$/, "").replace(/(?:ing|ed|ly|es|s)$/, "").replace(/([b-df-hj-np-tv-z])\1$/, "$1");
 const COMMON_STEMS = new Set([...COMMON].map(stem));
-const wordsOf = (t: string) => new Set((t.toLowerCase().match(/[a-z0-9]+(?:'[a-z]+)?/g) ?? []).map(stem).filter((w) => (w.length >= 3 || /^\d{2,}$/.test(w)) && !COMMON.has(w) && !COMMON_STEMS.has(w)));
+const wordsOf = (t: string) => new Set((t.toLowerCase().match(/[a-z0-9]+(?:'[a-z]+)?/g) ?? []).map(stem).filter((w) => (w.length >= 3 || /^\d+$/.test(w)) && !COMMON.has(w) && !COMMON_STEMS.has(w)));
 
-/** The quotes a clause shares the most words with, or null when it shares none. */
+/** The implementation chart and its letter: they date the phases, and say nothing of any one rule. */
+const isChart = (id: string) => id === "LOA-Implementation" || id.startsWith("LOA-Implementation.");
+
+/**
+ * The quotes a clause shares the most words with, or null when it shares none. A chart quote is taken only when no rule's
+ * quote shares a word: its "effective the first day of the … bid period" drew in every clause written that way, and
+ * then backed its phase's date for whatever rule the clause was about.
+ */
 function closestQuotes(text: string, quotes: Quote[]): Quote[] | null {
   const mine = wordsOf(text);
-  const scored = quotes.map((q) => ({ q, score: [...wordsOf(q.quote)].filter((w) => mine.has(w)).length }));
-  const best = Math.max(...scored.map((s) => s.score));
-  return best > 0 ? scored.filter((s) => s.score === best).map((s) => s.q) : null;
+  const best = (qs: Quote[]) => {
+    const scored = qs.map((q) => ({ q, score: [...wordsOf(q.quote)].filter((w) => mine.has(w)).length }));
+    const top = Math.max(0, ...scored.map((s) => s.score));
+    return top > 0 ? scored.filter((s) => s.score === top).map((s) => s.q) : null;
+  };
+  return best(quotes.filter((q) => !isChart(q.section))) ?? best(quotes.filter((q) => isChart(q.section)));
 }
 
 /** R-24, R-1.5, RP-24, R‑24: a reserve status's name, unless an hour or day word follows it ("R-24 hours"). */

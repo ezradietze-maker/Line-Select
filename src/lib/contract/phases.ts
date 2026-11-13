@@ -1,4 +1,4 @@
-import { CHART, changedInside, contractNode, findNode, versionText } from "./index";
+import { CHART, changedInside, childrenOf, contractNode, findNode, versionText } from "./index";
 import type { Applicability, ChartRow } from "./types";
 
 /**
@@ -90,6 +90,25 @@ function waitsOn(id: string, chart: ChartRow[]): { section: string; row: ChartRo
   return latest;
 }
 
+/** The highest pieces under one that the chart doesn't list but that wait on a change it dates later, with that phase. */
+const waitingCache = new Map<string, { id: string; phase: 1 | 2 | 3 | 4 }[]>();
+function waitingUnder(id: string, chart: ChartRow[]): { id: string; phase: 1 | 2 | 3 | 4 }[] {
+  const kept = chart === CHART ? waitingCache.get(id) : undefined;
+  if (kept) return kept;
+  const out: { id: string; phase: 1 | 2 | 3 | 4 }[] = [];
+  const walk = (at: string) => {
+    for (const c of childrenOf(at)) {
+      if (chartRow(c.id, chart) || !changedInside(c.id) || UNDATED.has(c.id)) continue;
+      const waits = waitsOn(c.id, chart);
+      if (waits) out.push({ id: c.id, phase: waits.row.phase });
+      else walk(c.id);
+    }
+  };
+  walk(id);
+  if (chart === CHART) waitingCache.set(id, out);
+  return out;
+}
+
 const ancestorIds = (id: string) => {
   const out: string[] = [];
   for (let n = contractNode(id); n?.parent; n = contractNode(n.parent)) out.push(n.parent);
@@ -117,16 +136,23 @@ export function applicabilityOf(id: string, bidMonth: string, chart: ChartRow[] 
     };
   }
   const inside = chart.filter((r) => r.refs.some((ref) => ref.startsWith(`${id}.`)));
-  if (inside.length) {
+  const undated = [id, ...ancestorIds(id)].some((at) => UNDATED.has(at));
+  const waits = undated || !changedInside(id) ? null : waitsOn(id, chart);
+  // The parts under it that wait on a later change take its phase too: 25.L.10 read "in force since June 29, 2026"
+  // with 25.L.10.c under it waiting on 25.L.1.a, Phase 3, and 25.L.4 listed only Phase 2 with 25.L.4.b doing the same.
+  const following = waits ? [] : waitingUnder(id, chart);
+  if (inside.length || following.length) {
     const phases = ([1, 2, 3, 4] as const).flatMap((phase) => {
-      const refs = inside.filter((r) => r.phase === phase).flatMap((r) => r.refs.filter((ref) => ref.startsWith(`${id}.`)));
+      const refs = [
+        ...inside.filter((r) => r.phase === phase).flatMap((r) => r.refs.filter((ref) => ref.startsWith(`${id}.`))),
+        ...following.filter((f) => f.phase === phase).map((f) => f.id),
+      ];
       return refs.length ? [{ phase, startsLabel: PHASE_STARTS[phase].label, refs }] : [];
     });
     return { kind: "mixed", phases };
   }
   if (!changedInside(id)) return { kind: "unchanged" };
-  if ([id, ...ancestorIds(id)].some((at) => UNDATED.has(at))) return { kind: "undated" };
-  const waits = waitsOn(id, chart);
+  if (undated) return { kind: "undated" };
   if (waits) {
     const start = PHASE_STARTS[waits.row.phase];
     return {
