@@ -29,6 +29,7 @@ const db = vi.hoisted(() => ({
   updateCredential: vi.fn(async () => {}),
   consumeResetToken: vi.fn(async () => USER),
   markEmailVerified: vi.fn(async () => {}),
+  isUnconfirmedSignUp: vi.fn(async () => false),
 }));
 vi.mock("@/lib/server/db", () => db);
 
@@ -80,9 +81,23 @@ describe("sign-in limits for one account", () => {
     expect((await login(EMAIL, PW, HOME)).ok).toBe(false);
     expect((await resetPasswordWithEmailToken("token", "a-new-password", HOME)).ok).toBe(true);
     // The new password is what the credential now holds.
-    const updated = (db.updateCredential.mock.calls.at(-1) as unknown as [string, { passwordHash: string; salt: string }])[1];
+    // The password's update, not the new recovery code's that follows it.
+    const updated = (db.updateCredential.mock.calls as unknown as [string, { passwordHash?: string; salt?: string }][]).map((c) => c[1]).filter((p) => p.passwordHash).at(-1)!;
     db.findCredentialByEmail.mockResolvedValue({ userId: USER, email: EMAIL, ...updated });
     expect((await login(EMAIL, "a-new-password", HOME)).ok).toBe(true);
     expect((await login(EMAIL, "a-new-password", "192.0.2.77")).ok).toBe(true);
+  });
+});
+
+describe("one IPv6 connection", () => {
+  it("counts as one address: twelve tries from twelve addresses in its /64 don't shut the account to everyone", async () => {
+    for (let a = 1; a <= 12; a++) await login(EMAIL, "wrong", `2001:db8:1234:5678::${a.toString(16)}`);
+    expect((await login(EMAIL, PW, HOME, "cccccccc-cccc-4ccc-8ccc-cccccccccccc")).ok).toBe(true);
+  });
+
+  it("gets one address's few tries across its whole /64", async () => {
+    for (let a = 1; a <= 6; a++) await login(EMAIL, "wrong", `2001:db8:1234:5678::${a.toString(16)}`);
+    expect((await login(EMAIL, PW, "2001:db8:1234:5678::ff")).ok).toBe(false);
+    expect((await login(EMAIL, PW, "2001:db8:1234:9999::1")).ok).toBe(true);
   });
 });

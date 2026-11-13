@@ -48,6 +48,12 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
   const [relogging, setRelogging] = useState(false);
   // Said here, not in the form: a saved award closes the form, and a failed share has to outlive it.
   const [notice, setNotice] = useState<string | null>(null);
+  /** The notice says a share was refused because the email isn't confirmed: the way to confirm it goes under it. */
+  const [noticeNeedsConfirm, setNoticeNeedsConfirm] = useState(false);
+  const say = (text: string | null, confirmEmail = false) => {
+    setNotice(text);
+    setNoticeNeedsConfirm(!!text && confirmEmail);
+  };
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -64,10 +70,10 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
           user={user}
           seniority={seniority}
           existing={thisMonth}
-          onSave={(p, warning) => {
+          onSave={(p, warning, confirmEmail) => {
             onUpdateProfile(p);
             setRelogging(false);
-            setNotice(warning);
+            say(warning, confirmEmail);
           }}
           onCancel={thisMonth ? () => setRelogging(false) : undefined}
         />
@@ -77,7 +83,7 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
         <div className="mt-4 rounded-lg border border-warn/40 bg-warn-soft px-4 py-2.5 text-sm text-warn">
           <p>{notice}</p>
           {/* A share refused for an unconfirmed address: the way to confirm it, right there. */}
-          {user?.emailVerified === false && <ConfirmEmailButton className="mt-1.5" />}
+          {noticeNeedsConfirm && <ConfirmEmailButton className="mt-1.5" />}
         </div>
       )}
 
@@ -88,11 +94,11 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
         onWithdrawAll={async () => {
           const r = await withdrawAwardShares();
           if (!r.ok) {
-            setNotice(`Nothing withdrawn: ${r.error}`);
+            say(`Nothing withdrawn: ${r.error}`);
             return;
           }
           if (profile) onUpdateProfile(withoutShares(profile));
-          setNotice(r.removed ? `Withdrawn: ${r.removed} shared ${r.removed === 1 ? "award" : "awards"} removed. Your logbook stays as it was.` : "You have nothing shared.");
+          say(r.removed ? `Withdrawn: ${r.removed} shared ${r.removed === 1 ? "award" : "awards"} removed. Your logbook stays as it was.` : "You have nothing shared.");
         }}
       />
 
@@ -116,17 +122,17 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
                     onUpdateProfile(updated);
                     // A month already shared is shared again with how it flew: the real-outcome signal the brain is judged by.
                     const share = user ? checkInShare(updated.logbook?.find((e) => e.id === m.id) ?? m, profile.pilotModel) : null;
-                    if (share) void submitAwardHistory(share).then((r) => !r.ok && setNotice(`Saved here, but not shared: ${r.error}`));
+                    if (share) void submitAwardHistory(share).then((r) => !r.ok && say(`Saved here, but not shared: ${r.error}`, r.confirmEmail));
                   }}
                   onDelete={() => profile && onUpdateProfile(withoutLoggedMonth(profile, m.id))}
                   onWithdraw={
                     user && m.sharedAt
                       ? async () => {
                           const r = await withdrawAwardShares({ base: m.base, aircraft: m.aircraft, seat: m.seat, month: m.month });
-                          if (!r.ok) setNotice(`Still shared: ${r.error}`);
+                          if (!r.ok) say(`Still shared: ${r.error}`);
                           else {
                             if (profile) onUpdateProfile(withoutShares(profile, m.id));
-                            setNotice(`Your ${m.month} share is withdrawn. The month stays in your logbook.`);
+                            say(`Your ${m.month} share is withdrawn. The month stays in your logbook.`);
                           }
                         }
                       : undefined
@@ -155,7 +161,7 @@ function LogAward({
   user: UserAccount | null;
   seniority: SeniorityInput | null;
   existing: LoggedMonth | null;
-  onSave: (profile: PreferenceProfile, warning: string | null) => void;
+  onSave: (profile: PreferenceProfile, warning: string | null, confirmEmail?: boolean) => void;
   onCancel?: () => void;
 }) {
   // The pilot's own ranking, best first — to list the lines in their order and say which choice they got. The order My
@@ -182,6 +188,7 @@ function LogAward({
   async function save() {
     setSaving(true);
     let warning: string | null = null;
+    let refusedForEmail = false;
     const line = outcome === "line" ? (bidPack.lines.find((l) => l.id === lineId) ?? null) : null;
     const rank = line ? ranked.findIndex((l) => l.id === line.id) : -1;
     // A corrected award keeps the month's check-in and its shared mark.
@@ -213,11 +220,14 @@ function LogAward({
         brainVersion: profile.pilotModel?.brainVersion ?? null,
         notesUsed: profile.pilotModel?.notesUsed ?? null,
       });
-      if (!result.ok) warning = `Logged here, but not shared: ${result.error}`;
+      if (!result.ok) {
+        warning = `Logged here, but not shared: ${result.error}`;
+        refusedForEmail = !!result.confirmEmail;
+      }
       else entry = { ...entry, sharedAt: new Date().toISOString(), holderShown: canShowHolder };
     }
     setSaving(false);
-    onSave(withLoggedMonth(profile, entry), warning);
+    onSave(withLoggedMonth(profile, entry), warning, refusedForEmail);
   }
 
   return (

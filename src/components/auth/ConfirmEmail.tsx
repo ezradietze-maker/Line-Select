@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
+import { useAppState } from "@/lib/app-state";
 import { fetchEmailResetEnabled, resendConfirmEmail } from "@/lib/auth";
 import type { UserAccount } from "@/types/auth";
 
@@ -14,13 +15,17 @@ type SendState = { kind: "idle" } | { kind: "sending" } | { kind: "sent"; email:
  */
 export function ConfirmEmailButton({ label = "Confirm your email", className = "" }: { label?: string; className?: string }) {
   const [state, setState] = useState<SendState>({ kind: "idle" });
+  const { refreshUser } = useAppState();
 
   async function send() {
     setState({ kind: "sending" });
     const result = await resendConfirmEmail();
     if (!result.ok) setState({ kind: "failed", error: result.error });
-    else if ("confirmed" in result) setState({ kind: "confirmed" });
-    else setState({ kind: "sent", email: result.email });
+    else if ("confirmed" in result) {
+      setState({ kind: "confirmed" });
+      // Confirmed elsewhere already: the app asks who's signed in again, and the notices for it go.
+      void refreshUser();
+    } else setState({ kind: "sent", email: result.email });
   }
 
   return (
@@ -41,7 +46,7 @@ export function ConfirmEmailButton({ label = "Confirm your email", className = "
             Sent to <span className="font-medium">{state.email}</span>. Open the link in it; check your spam folder if it isn&rsquo;t there.
           </>
         )}
-        {state.kind === "confirmed" && "Your email is already confirmed. Reload the page to carry on."}
+        {state.kind === "confirmed" && "Your email is already confirmed."}
         {state.kind === "failed" && state.error}
       </span>
     </span>
@@ -112,7 +117,8 @@ export function ConfirmEmailNotice({ user }: { user: UserAccount }) {
         <>
           <p>
             Confirm your email, <span className="font-medium break-all">{user.email}</span>, to trade, share what you held and
-            count toward your seat&rsquo;s numbers. Everything else works now.
+            count toward your seat&rsquo;s numbers. Until then your pack, interview and rankings work for you alone, and your
+            account stays as it is: nothing is removed while you wait.
           </p>
           <ConfirmEmailButton label="Send the link again" className="mt-1.5" />
         </>

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
-import { fetchEmailResetEnabled, login, requestResetEmail, resetPassword, signUp } from "@/lib/auth";
+import { fetchEmailResetEnabled, login, requestResetEmail, resendConfirmEmailTo, resetPassword, signUp } from "@/lib/auth";
 import { AUTH_LIMITS } from "@/lib/auth-limits";
 import type { UserAccount } from "@/types/auth";
 import { PillHighlight } from "@/components/ui/PillHighlight";
@@ -45,7 +45,7 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
   const [displayName, setDisplayName] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
   // After signup or a reset, the pilot must see (and confirm they saved) their recovery code before being let in.
-  const [reveal, setReveal] = useState<{ user: UserAccount; code: string; reason: "signup" | "reset" } | null>(null);
+  const [reveal, setReveal] = useState<{ user: UserAccount; code: string; reason: "signup" | "reset" | "first" } | null>(null);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -123,9 +123,10 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
       return;
     }
 
-    if (mode !== "login" && result.recoveryCode) {
+    // A sign-in brings one only for an account that had none: its first, shown once like any other.
+    if (result.recoveryCode) {
       setSubmitting(false);
-      setReveal({ user: result.user, code: result.recoveryCode, reason: mode === "reset" ? "reset" : "signup" });
+      setReveal({ user: result.user, code: result.recoveryCode, reason: mode === "reset" ? "reset" : mode === "login" ? "first" : "signup" });
       return;
     }
     // Still "submitting" until the app has loaded their account and moved on: a second tap meanwhile signed in twice.
@@ -203,8 +204,8 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
               confirm the address and sign in. It works for 24 hours, once.
             </p>
             <p className="text-sm leading-relaxed text-ink-muted">
-              Nothing there after a few minutes? Check your spam folder. You can also log in with the password you just chose
-              and send the link again from inside the app. An account that isn&rsquo;t confirmed within 7 days is removed.
+              Nothing there after a few minutes? Check your spam folder, or choose &ldquo;Send the link again&rdquo; on the log-in
+              screen. You can log in once the address is confirmed. An account that isn&rsquo;t confirmed within 7 days is removed.
             </p>
             <button
               type="button"
@@ -317,6 +318,8 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
           )}
 
           {error && <ErrorBanner>{error}</ErrorBanner>}
+          {/* A refused sign-in may be an account waiting on its link: the same answer either way, so the way to get a new link is offered either way. */}
+          {mode === "login" && error && emailResetEnabled && <SendLinkAgain email={email} />}
 
           <Button type="submit" disabled={submitting} className="w-full">
             {submitting
@@ -382,8 +385,41 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
         trade offers can be seen by other pilots, and so your bid pack,
         your interview (finished or partway) and your preferences follow you
         to a new device or browser once you&rsquo;re signed in &mdash; and if
-        you forget your password, the recovery code you get when you set up your account
+        you forget your password, the recovery code we show you once your account is set up
         is your way back in.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * "Send the link again" by address, under a refused sign-in. The answer is the same for every address, so it doesn't
+ * say whether one has an account, nor whether it's confirmed.
+ */
+function SendLinkAgain({ email }: { email: string }) {
+  const [state, setState] = useState<{ kind: "idle" | "sending" } | { kind: "done"; text: string } | { kind: "failed"; text: string }>({ kind: "idle" });
+
+  async function send() {
+    if (!email.trim()) return setState({ kind: "failed", text: "Enter your email above first." });
+    setState({ kind: "sending" });
+    const result = await resendConfirmEmailTo(email.trim());
+    setState(result.ok ? { kind: "done", text: result.message } : { kind: "failed", text: result.error });
+  }
+
+  return (
+    <div className="text-sm leading-relaxed text-ink-muted">
+      {state.kind !== "done" && (
+        <button
+          type="button"
+          onClick={send}
+          disabled={state.kind === "sending"}
+          className="font-medium text-ink underline decoration-dotted underline-offset-4 hover:text-brand disabled:opacity-60"
+        >
+          {state.kind === "sending" ? "Sending\u2026" : "Send the link again"}
+        </button>
+      )}
+      <p role="status" aria-live="polite" className={state.kind === "failed" ? "mt-1 text-danger" : "mt-1"}>
+        {state.kind === "done" || state.kind === "failed" ? state.text : null}
       </p>
     </div>
   );

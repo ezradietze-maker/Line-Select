@@ -106,21 +106,26 @@ export async function createRecoveryCode(password: string): Promise<{ ok: boolea
 
 /** How opening a confirm link went (see `/api/auth/confirm-email`). */
 export type ConfirmEmailOutcome =
-  | { status: "confirmed"; signedIn: "now" | "already" | "no"; user: UserAccount; recoveryCode?: string }
+  | { status: "confirmed"; signedIn: "now" | "already"; user: UserAccount; recoveryCode?: string }
   | { status: "confirmed"; signedIn: "other-account" }
+  /** Opened away from the device that signed up: the account's password, or "This wasn't me", first. */
+  | { status: "needs-password"; email: string }
   | { status: "used"; yours: boolean }
-  | { status: "expired" | "invalid" | "unreachable" };
+  | { status: "wrong-password" | "limited" | "not-me" | "expired" | "invalid" | "unreachable" };
 
-export async function confirmEmailLink(token: string): Promise<ConfirmEmailOutcome> {
+const CONFIRM_STATUSES = new Set(["confirmed", "needs-password", "wrong-password", "limited", "not-me", "used", "expired", "invalid"]);
+
+/** Opens a confirm link; away from the device that signed up, with the account's `password` or `notMe` ("This wasn't me"). */
+export async function confirmEmailLink(token: string, choice: { password?: string; notMe?: boolean } = {}): Promise<ConfirmEmailOutcome> {
   try {
     const res = await fetch("/api/auth/confirm-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, ...choice }),
     });
     const data = (await res.json().catch(() => ({}))) as { status?: string };
-    if (data.status === "confirmed" || data.status === "used" || data.status === "expired" || data.status === "invalid") return data as ConfirmEmailOutcome;
+    if (data.status && CONFIRM_STATUSES.has(data.status)) return data as ConfirmEmailOutcome;
     return { status: "unreachable" };
   } catch {
     return { status: "unreachable" };
@@ -135,6 +140,23 @@ export async function resendConfirmEmail(): Promise<{ ok: true; email: string } 
     if (data.sent && data.email) return { ok: true, email: data.email };
     if (data.confirmed) return { ok: true, confirmed: true };
     return { ok: false, error: data.error ?? "That didn't send. Try again in a few minutes." };
+  } catch {
+    return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
+  }
+}
+
+/** "Send the link again" by address, from the log-in screen: the server's one answer for every address, or an error. */
+export async function resendConfirmEmailTo(email: string): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
+  try {
+    const res = await fetch("/api/auth/confirm-email/resend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ email }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+    if (res.ok && data.message) return { ok: true, message: data.message };
+    return { ok: false, error: data.error ?? (res.status === 429 ? "Too many requests. Try again shortly." : "That didn't send. Try again in a few minutes.") };
   } catch {
     return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
   }
