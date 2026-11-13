@@ -128,6 +128,18 @@ export function carryInReach(pack: BidPack): number | null {
 }
 const reachCache = new WeakMap<BidPack, number | null>();
 
+/**
+ * The month's first days, on the base's clock, in which a trip starting is held back from a pilot who hasn't said what
+ * they carry in (`carryInReach`): 2 when it reaches two days in. Null without the pack's dates.
+ */
+export function carryInReachDays(pack: BidPack): number | null {
+  const reach = carryInReach(pack);
+  if (reach === null || !pack.bidPeriodStart) return null;
+  const zone = zoneOf(pack);
+  const days = DateTime.fromMillis(reach, { zone }).diff(DateTime.fromISO(pack.bidPeriodStart, { zone }), "days").days;
+  return Math.max(1, Math.ceil(days - 1e-9));
+}
+
 /** The vacation a pilot holds, by their seniority number, from the pack's own schedule. */
 export function vacationsOf(pack: BidPack, seniority: number | null | undefined): readonly VacationPeriod[] {
   if (seniority === null || seniority === undefined) return [];

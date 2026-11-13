@@ -173,6 +173,8 @@ export function twoTripDutyLimitHours(showMinutes: number): number {
   if (showMinutes >= 960 || showMinutes < 60) return 13;
   return 9;
 }
+/** The most `twoTripDutyLimitHours` gives, at a day show. */
+const MAX_TWO_TRIP_DUTY_HOURS = 13.5;
 
 /**
  * Whether a trip can go on this schedule. Every bid period but the rest numbers, which `phaseInRules` switches.
@@ -280,6 +282,13 @@ function workOutPair(candidate: Busy, o: Busy, pack: BidPack, { illegal, check, 
           return;
         }
         if (!first.dutiesKnown) {
+          // Its last duty isn't known, but it was on duty at its release: as one duty, at least from then on. Past the
+          // most 12.C.4.e allows at any show, it can't be one, so it's under the rest. A trip typed in by hand reads so.
+          const least = (firstDuty.end - first.span.end) / HOUR;
+          if (least > MAX_TWO_TRIP_DUTY_HOURS) {
+            illegal.push(`Under the rest after ${o.label}, and as one duty with it, it's at least ${least.toFixed(1)} hours; the most is ${MAX_TWO_TRIP_DUTY_HOURS} (CBA 2026 12.C.4.e).`);
+            return;
+          }
           check.push(`Under the rest after ${o.label}, so it's legal only as one duty with it (CBA 2026 12.C.4.e).`);
         } else {
           const show = DateTime.fromMillis(lastDuty.start, { zone });

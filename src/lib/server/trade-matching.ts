@@ -8,7 +8,7 @@ import { accountPackFingerprint, groupFingerprint, unpackRecord } from "@/lib/se
 import { lapseUnanswered, listActiveGroups, listMatchingGroup, matchingHistory, refusedTripKey, saveSuggestion, swapKey, tradeDayCounts } from "@/lib/server/trade-suggestions";
 import { pilotsForMatching } from "@/lib/trades/holding";
 import { findTrades } from "@/lib/trades/match";
-import { lockBoardTrades } from "@/lib/trades/offer-trips";
+import { lockBoardTrades, withBoardSwaps } from "@/lib/trades/offer-trips";
 import { suggestionToStore, tradeSignature } from "@/lib/trades/suggestions";
 import type { Seat } from "@/types/bidpack";
 import type { BidPackMetaSnapshot, TradeDeclineReason } from "@/types/trade";
@@ -62,8 +62,9 @@ async function matchGroup(meta: BidPackMetaSnapshot, now: number, deadline = Dat
     const pack = unpackRecord(record.data);
     const end = bidMonthEnd(pack);
     if (end !== null && end <= now) return { status: "closed" };
-    // A trip agreed on the board stays on its pilot's month, but no chain may hand it on.
-    const everyone = lockBoardTrades(pilotsForMatching(pack, onIt), history.boardTrips);
+    // A trip agreed on the board stays on its pilot's month, but no chain may hand it on; and what they take there, a
+    // trip handed them must fit beside.
+    const everyone = withBoardSwaps(pack, lockBoardTrades(pilotsForMatching(pack, onIt), history.boardTrips), history.boardSwaps);
     const confirmedAt = new Map(onIt.map((r) => [r.userId, r.holding?.confirmedAt ?? ""]));
     const doubted = (pilotId: string) => {
       const said = history.holdingDoubted.get(pilotId);
