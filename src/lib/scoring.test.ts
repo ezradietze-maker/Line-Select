@@ -825,7 +825,7 @@ describe("recurring commitment conflicts", () => {
 
   it("stays empty when the line's calendar placement isn't grid-confirmed real", () => {
     const profile = { ...buildProfile(emptyWeights(), false, []), discoveredFacts: [recurringFact("Mon")] };
-    const ranked = rankLines(SAMPLE_BID_PACK, profile); // unmodified — no bidPeriodStart at all
+    const ranked = rankLines({ ...SAMPLE_BID_PACK, bidPeriodStart: null }, profile); // no bidPeriodStart at all
     for (const r of ranked) {
       expect(r.recurringCommitmentConflicts).toEqual([]);
     }

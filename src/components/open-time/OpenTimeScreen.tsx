@@ -298,7 +298,7 @@ function OpenTimeBuilder({ bidPack, seniority, profile, userId }: { bidPack: Bid
       </Notice>
 
       <section aria-label="Your open-time list" className="panel-glass mt-4 p-4 sm:p-5 print:hidden">
-        {!hasDates && <p className="mb-3 text-xs text-ink">This pack&rsquo;s trips aren&rsquo;t on dates, so an open-time list can&rsquo;t be matched to them. Upload a real bid pack to use this; the sample pack has no dates.</p>}
+        {!hasDates && <p className="mb-3 text-xs text-ink">This pack&rsquo;s trips aren&rsquo;t on dates, so an open-time list can&rsquo;t be matched to them. Upload a real bid pack to use this.</p>}
         <label className="block text-xs text-ink-muted">
           VIPS&rsquo;s open-time list, pasted (a trip number and a date on each line)
           <textarea className={`${FIELD} mt-1 block h-32 w-full font-mono text-xs`} value={pasted} onChange={(e) => setPasted(e.target.value)} placeholder={"213 14OCT\nTrip 37 Oct 15 CH 12.5"} />
