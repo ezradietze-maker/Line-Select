@@ -115,9 +115,13 @@ export async function POST(request: Request) {
 
   // Kept for the learning, after the response: this month's line features
   // (numbers only), and for a signed-in pilot who shares, the raw forecast
-  // they were shown — checked against the award they report later.
+  // they were shown — checked against the award they report later. Only a
+  // signed-in pilot's features are kept: the first copy under a key stays, and
+  // a guest's, made up and sent first, would be what every pilot's rankings
+  // and awards for the pack were read against.
   const position = resolveBidPosition(list, seniority);
   afterResponse(async () => {
+    if (!user) return;
     try {
       const key = blobKey(packKey, lineNumbers);
       await savePackFeatures(key, packKey, lineFeatures);

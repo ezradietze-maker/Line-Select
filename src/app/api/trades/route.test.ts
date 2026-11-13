@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   barAsked: [] as unknown[],
   hasSeat: true,
   created: true,
+  holding: null as null | { trips: { id: string; startDayIndex: number; lock: string | null }[] },
+  posted: [] as unknown[],
 }));
 vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => mocks.user }));
 vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: async () => ({ ok: !mocks.limited }), rateLimitedResponse: () => new Response(null, { status: 429 }) }));
@@ -17,7 +19,12 @@ vi.mock("@/lib/server/trade-board-bar", () => ({
     return mocks.open;
   },
 }));
-vi.mock("@/lib/server/db", () => ({ listTradeOffersForSeat: mocks.list, createTradeOffer: async () => mocks.created, pilotHasSeatMonth: async () => mocks.hasSeat }));
+vi.mock("@/lib/server/db", () => ({
+  listTradeOffersForSeat: mocks.list,
+  createTradeOffer: async (o: unknown) => (mocks.posted.push(o), mocks.created),
+  pilotHasSeatMonth: async () => mocks.hasSeat,
+  getTradeHolding: async () => mocks.holding,
+}));
 
 const { GET, POST, BOARD_LIMIT } = await import("./route");
 
@@ -30,6 +37,8 @@ beforeEach(() => {
   mocks.limited = false;
   mocks.hasSeat = true;
   mocks.created = true;
+  mocks.holding = null;
+  mocks.posted.length = 0;
   mocks.list.mockClear();
   mocks.barAsked.length = 0;
 });
@@ -75,6 +84,23 @@ describe("POST /api/trades", () => {
 
   it("posts an offer", async () => {
     expect((await post()).status).toBe(200);
+  });
+
+  it("refuses a seat's month the pilot neither holds nor has the pack for, as reading its board does", async () => {
+    mocks.hasSeat = false;
+    const res = await post();
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/bid pack you fly/);
+    expect(mocks.posted).toHaveLength(0);
+  });
+
+  it("with a holding confirmed, takes only a trip in it the pilot can trade", async () => {
+    mocks.holding = { trips: [{ id: "p13", startDayIndex: 9, lock: null }, { id: "p13", startDayIndex: 2, lock: "VLT" }] };
+    // The same pairing on another day, and this day marked as one they can't trade.
+    expect((await post()).status).toBe(403);
+    mocks.holding = { trips: [{ id: "p13", startDayIndex: 2, lock: null }] };
+    expect((await post()).status).toBe(200);
+    expect(mocks.posted).toHaveLength(1);
   });
 
   it("refuses a trip the pilot has already agreed to trade", async () => {

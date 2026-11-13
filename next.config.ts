@@ -39,6 +39,8 @@ const nextConfig: NextConfig = {
   // Lets the dev server serve JS/CSS chunks and HMR when opened from a
   // phone or other device on the same LAN instead of localhost.
   allowedDevOrigins: ["192.168.0.183"],
+  // No "X-Powered-By: Next.js" on every answer: it tells a stranger which framework, and so which known holes, to try.
+  poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

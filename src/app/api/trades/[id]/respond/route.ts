@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
-import { findTradeOffer, respondToTradeOffer } from "@/lib/server/db";
+import { packIdFor } from "@/lib/pack-id";
+import { findTradeOffer, getTradeHolding, pilotHasSeatMonth, respondToTradeOffer } from "@/lib/server/db";
 import { offerForViewer } from "@/lib/server/trade-view";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { sanitizeTripSnapshot } from "@/lib/server/trade-validation";
+import { NOT_YOUR_SEAT, NOT_YOUR_TRIP, sanitizeTripSnapshot, tripIsHeld } from "@/lib/server/trade-validation";
+import type { Seat } from "@/types/bidpack";
 import type { TripSnapshot } from "@/types/trade";
 
 export const runtime = "nodejs";
@@ -43,6 +45,12 @@ export async function POST(
   }
   const { ok } = await checkRateLimit("trade-respond", user.id, 60, 60 * 60);
   if (!ok) return rateLimitedResponse();
+  // Only a pilot who flies this seat's month may answer an offer on its board, with a trip they hold in it: an offer's
+  // id is all a request needs, and an id can be passed on.
+  if (!(await pilotHasSeatMonth(user.id, offer.bidPackMeta))) return NextResponse.json({ error: NOT_YOUR_SEAT }, { status: 403 });
+  if (!tripIsHeld(await getTradeHolding(user.id, packIdFor({ ...offer.bidPackMeta, seat: offer.bidPackMeta.seat as Seat })), responderTrip)) {
+    return NextResponse.json({ error: NOT_YOUR_TRIP }, { status: 403 });
+  }
   if (offer.wantedPairingNumber && responderTrip.pairingNumber !== offer.wantedPairingNumber) {
     return NextResponse.json(
       { error: `This pilot wants Pairing ${offer.wantedPairingNumber} specifically.` },

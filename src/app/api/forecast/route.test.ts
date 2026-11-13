@@ -212,6 +212,17 @@ describe("/api/forecast", () => {
     expect(learningStore.savedPredictions).toHaveLength(1);
   });
 
+  it("keeps a pack's line features only from a signed-in pilot: a guest's could be a made-up order, stored first", async () => {
+    learningStore.savedFeatures.length = 0;
+    await POST(request(goodBody({ lineNumbers: [...lineNumbers].reverse() })));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(learningStore.savedFeatures).toHaveLength(0);
+    authMocks.getCurrentServerUser.mockResolvedValue(USER);
+    await POST(request(goodBody()));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(learningStore.savedFeatures).toHaveLength(1);
+  });
+
   it("refuses to delete for someone who isn't signed in", async () => {
     expect((await DELETE(request({ packKey: "x", lineNumbers }, "DELETE"))).status).toBe(401);
   });

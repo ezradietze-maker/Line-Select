@@ -24,7 +24,7 @@ vi.mock("@/lib/server/email", () => ({
   },
 }));
 
-const { dailySummaryText, noteActivity, reportProblem, sendDailySummary, summarizeDay } = await import("./alerts");
+const { dailySummaryText, noteActivity, reportBrowserProblem, reportProblem, sendDailySummary, summarizeDay } = await import("./alerts");
 const { recordSpend } = await import("./spend-guard");
 
 const at = new Date("2026-11-05T15:10:00Z");
@@ -50,6 +50,20 @@ describe("reportProblem", () => {
     expect(sent[0].text).toMatch(/overloaded_error/);
     await reportProblem("brain-build", new Error("overloaded_error"), {}, laterSameHour);
     expect(sent).toHaveLength(1);
+  });
+
+  it("emails about browser failures only on the third different address, and never with what was sent", async () => {
+    const fake = new Error("Your Line Select account is suspended: sign in at evil.example");
+    for (let i = 0; i < 5; i++) await reportBrowserProblem(fake, { page: "/results" }, "198.51.100.7", at);
+    expect(sent).toHaveLength(0);
+    await reportBrowserProblem(new Error("TypeError: x is undefined"), {}, "203.0.113.1", at);
+    expect(sent).toHaveLength(0);
+    await reportBrowserProblem(new Error("TypeError: x is undefined"), {}, "203.0.113.2", laterSameHour);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].text).toMatch(/3 different addresses/);
+    expect(sent[0].text).not.toMatch(/suspended|evil|TypeError/);
+    // Every report still counts for the day.
+    expect((await summarizeDay("2026-11-05")).problems.browser).toBe(7);
   });
 
   it("counts each kind and each hour apart", async () => {

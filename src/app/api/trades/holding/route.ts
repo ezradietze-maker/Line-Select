@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
-import { deleteTradeHolding, getTradeHolding, getTradeSettings, saveTradeHolding } from "@/lib/server/db";
+import { packIdFor } from "@/lib/pack-id";
+import { deleteTradeHolding, getBidPackRecord, getTradeHolding, getTradeSettings, saveTradeHolding } from "@/lib/server/db";
 import { readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { accountPackFingerprint } from "@/lib/server/trade-pack";
 import { lapseSuggestionsFor } from "@/lib/server/trade-suggestions";
 import { readHolding } from "@/lib/trades/holding";
+import type { Seat } from "@/types/bidpack";
 
 export const runtime = "nodejs";
 
@@ -35,7 +37,17 @@ export async function PUT(request: Request) {
   if (!(await checkRateLimit("trade-holding-save", user.id, 120, 60 * 60)).ok) return rateLimitedResponse();
   const holding = readHolding(await readJsonBody(request, MAX_BODY));
   if (!holding) return NextResponse.json({ error: "That isn't a list of trips from your bid pack." }, { status: 400 });
+  // A holding opens its seat's trade board to the pilot (`pilotHasSeatMonth`), so its seat has to be the pack's, and
+  // the pack the one on their account: otherwise naming another seat's month opened that board, with its pilots' names
+  // and notes. Only the current id: the older one doesn't name the aircraft, and a second row under it in the same month
+  // was matched as a second pilot.
+  if (holding.packId !== packIdFor({ ...holding.bidPackMeta, seat: holding.bidPackMeta.seat as Seat })) {
+    return NextResponse.json({ error: "That isn't a list of trips from your bid pack." }, { status: 400 });
+  }
   try {
+    if ((await getBidPackRecord(user.id))?.packId !== holding.packId) {
+      return NextResponse.json({ error: "Save this bid pack to your account first, then mark what you hold." }, { status: 409 });
+    }
     // Which copy of the pack it was confirmed on, so it's only matched with others confirmed on the same one.
     const saved = await saveTradeHolding(user.id, holding, await accountPackFingerprint(user.id, holding.packId));
     // Every suggestion on this pack was worked out from what they held before.

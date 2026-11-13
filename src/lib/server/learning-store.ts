@@ -9,6 +9,7 @@ import { getJson, setJson } from "@/lib/server/kv";
 import type { CalibrationCase } from "@/lib/learning/fair-test";
 import type { PackHistory, ReportedAward } from "@/lib/learning/forecast-learning";
 import { trustedHolders } from "@/lib/server/award-aggregate";
+import { BLOB_KEY_V2_PREFIX, blobKey } from "@/lib/server/forecast-store";
 import { bidPercentile } from "@/lib/learning/cohort";
 import { db } from "@/lib/server/postgres";
 import {
@@ -92,7 +93,11 @@ export function parsePackKey(packKey: string): { month: string; base: string; ai
   return { month: month.toUpperCase(), base: base.toUpperCase(), aircraft: aircraft.toUpperCase(), seat: seat.toUpperCase() };
 }
 
-/** Keeps a month's line features (numbers only) so rankings shared that month can still be learned from years later. */
+/**
+ * Keeps a month's line features (numbers only) so rankings shared that month can still be learned from years later.
+ * The first copy under a key stays; the key names the whole line order (`blobKey`), so every copy under it has the
+ * same lines in the same order. The forecast route stores one only for a signed-in pilot.
+ */
 export async function savePackFeatures(blobKey: string, packKey: string, features: LineFeatures): Promise<void> {
   const parts = parsePackKey(packKey);
   if (!parts) return;
@@ -141,10 +146,26 @@ export async function awardedChoiceFromPrediction(pilotHash: string, packKey: st
     .orderBy(desc(forecastPredictions.createdAt))
     .limit(1);
   if (!p) return null;
-  const [pack] = await db.select({ lineNumbers: packFeatures.lineNumbers }).from(packFeatures).where(eq(packFeatures.blobKey, p.blobKey)).limit(1);
-  const index = pack?.lineNumbers.indexOf(lineNumber) ?? -1;
+  const lines = (await trustedLineOrders([p.blobKey])).get(p.blobKey);
+  const index = lines?.indexOf(lineNumber) ?? -1;
   const at = index >= 0 ? p.ranking.indexOf(index) : -1;
   return at >= 0 ? at + 1 : null;
+}
+
+const isLegacyBlobKey = (key: string) => !key.startsWith(BLOB_KEY_V2_PREFIX);
+
+/**
+ * Stored line orders by key, leaving out any under the old key shape (`legacyBlobKey`) that nothing vouches for. The
+ * first copy under an old key stayed, a guest's included, and only the count and the first and last line had to match,
+ * so it may be a made-up order. One counts when the same order is also stored under its new key, which only a
+ * signed-in pilot's forecast writes; an old one that doesn't is skipped, as if it were never kept.
+ */
+async function trustedLineOrders(keys: string[]): Promise<Map<string, string[]>> {
+  if (keys.length === 0) return new Map();
+  const rows = await db.select({ blobKey: packFeatures.blobKey, packKey: packFeatures.packKey, lineNumbers: packFeatures.lineNumbers }).from(packFeatures).where(inArray(packFeatures.blobKey, [...new Set(keys)]));
+  const vouching = [...new Set(rows.filter((r) => isLegacyBlobKey(r.blobKey)).map((r) => blobKey(r.packKey, r.lineNumbers)))];
+  const vouched = vouching.length ? new Set((await db.select({ blobKey: packFeatures.blobKey }).from(packFeatures).where(inArray(packFeatures.blobKey, vouching))).map((r) => r.blobKey)) : new Set<string>();
+  return new Map(rows.filter((r) => !isLegacyBlobKey(r.blobKey) || vouched.has(blobKey(r.packKey, r.lineNumbers))).map((r) => [r.blobKey, r.lineNumbers] as const));
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +284,11 @@ export async function loadCorrections(): Promise<CorrectionEvent[]> {
 
 /** Every stored month of line features with the rankings pilots shared that month. */
 export async function loadPackHistories(): Promise<PackHistory[]> {
-  const packs = await db.select().from(packFeatures).orderBy(desc(packFeatures.updatedAt)).limit(MAX_PACKS);
+  const stored = await db.select().from(packFeatures).orderBy(desc(packFeatures.updatedAt)).limit(MAX_PACKS);
+  if (stored.length === 0) return [];
+  // A ranking read through a made-up line order teaches the wrong lines.
+  const trusted = await trustedLineOrders(stored.filter((p) => isLegacyBlobKey(p.blobKey)).map((p) => p.blobKey));
+  const packs = stored.filter((p) => !isLegacyBlobKey(p.blobKey) || trusted.has(p.blobKey));
   if (packs.length === 0) return [];
   const rankings = await db
     .select({ blobKey: forecastRankings.blobKey, ranking: forecastRankings.ranking })
@@ -305,11 +330,7 @@ export async function loadCalibrationCases(): Promise<DatedCalibrationCase[]> {
     .from(forecastPredictions)
     .where(inArray(forecastPredictions.packKey, [...new Set(awards.map((a) => a.packKey!))]));
   if (predictions.length === 0) return [];
-  const blobs = await db
-    .select({ blobKey: packFeatures.blobKey, lineNumbers: packFeatures.lineNumbers })
-    .from(packFeatures)
-    .where(inArray(packFeatures.blobKey, [...new Set(predictions.map((p) => p.blobKey))]));
-  return calibrationCasesFrom(awards, predictions, new Map(blobs.map((b) => [b.blobKey, b.lineNumbers] as const)));
+  return calibrationCasesFrom(awards, predictions, await trustedLineOrders(predictions.map((p) => p.blobKey)));
 }
 
 type StoredAward = Pick<typeof awardHistoryRecords.$inferSelect, "id" | "pilotHash" | "packKey" | "seat" | "outcome" | "lineNumber" | "seniorityRank" | "holderShown" | "submittedAt">;
