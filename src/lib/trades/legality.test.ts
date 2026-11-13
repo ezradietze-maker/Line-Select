@@ -58,3 +58,31 @@ describe("what a pilot can hold", () => {
     expect(canHold(pack, [], trip("x", 20), vacation)).toBe(true);
   });
 });
+
+describe("held to View/Add's and Open time's own checks", () => {
+  // A day trip with one 2-hour leg, as View/Add's own tests build them: 08:00 show, `tafb` hours to release.
+  const dayTrip = (id: string, startDayIndex: number, tafb = 10): Trip =>
+    ({
+      id,
+      pairingNumber: id,
+      startDayIndex,
+      tafbHours: tafb,
+      days: 1,
+      schedule: [{ reportTimeLocal: "0800", startMinutes: 0, legs: [{ flightNumber: "1", isDeadhead: false, depAirport: "MEM", arrAirport: "IND", blockHours: 2, startMinutes: 60, endMinutes: tafb * 60 }], layover: null }],
+    }) as unknown as Trip;
+  const december = { ...pack, month: "DEC26", bidPeriodStart: "2026-11-30", aircraft: "B767", seat: "CAP", lines: [] } as unknown as BidPack;
+
+  it("refuses a swap that runs past 144 hours with no 24 hours off, though every gap passes 12 hours (CBA 2026 12.C.1.b)", () => {
+    const run = [0, 1, 2, 3, 4, 5].map((d) => dayTrip(`k${d}`, d));
+    expect(canHold(december, run, dayTrip("x", 6), [])).toBe(false);
+    expect(canHold(december, run.slice(0, 5), dayTrip("x", 5), [])).toBe(true);
+  });
+
+  it("fits around what's carried in from last month", () => {
+    // Day 0 is Nov 30; a trip carried in from November releases that evening.
+    const carried = { kind: "trip" as const, id: "c", label: "carry-in trip", report: "2026-11-28T14:00:00Z", release: "2026-11-30T23:00:00Z", international: false };
+    expect(canHold(december, [], dayTrip("x", 0), [])).toBe(true);
+    expect(canHold(december, [], dayTrip("x", 0), [], [carried])).toBe(false);
+    expect(canHold(december, [], dayTrip("x", 3), [], [carried])).toBe(true);
+  });
+});

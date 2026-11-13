@@ -1,10 +1,14 @@
-import { and, count, desc, eq, gte, inArray, isNull, lt, or, gt } from "drizzle-orm";
+import { and, countDistinct, desc, eq, gte, inArray, isNull, lt, or, gt } from "drizzle-orm";
+import { legacyPackIdFor, packIdFor } from "@/lib/pack-id";
+import { freeOffersOfMovedTrips, lockPilotsInSeat } from "@/lib/server/db";
 import { db } from "@/lib/server/postgres";
-import { preferenceProfiles, tradeHoldings, tradePreferences, tradeSuggestionMembers, tradeSuggestions, users } from "@/lib/server/schema";
+import { bidPackMetaOf, preferenceProfiles, tradeHoldings, tradeOffers, tradePreferences, tradeSuggestionMembers, tradeSuggestions, users } from "@/lib/server/schema";
 import { tripInstanceKey } from "@/lib/trades/legality";
 import type { MatchingRow } from "@/lib/trades/holding";
+import { agreedBoardTrips, type GivenTrip } from "@/lib/trades/offer-trips";
 import { holdingsAfter, isWhole, type suggestionToStore } from "@/lib/trades/suggestions";
-import type { BidPackMetaSnapshot, TradeAnswer, TradeDeclineReason, TradeHolding, TradeSuggestionMember, TradeSuggestionRecord } from "@/types/trade";
+import type { Seat } from "@/types/bidpack";
+import type { BidPackMetaSnapshot, TradeAnswer, TradeDeclineReason, TradeHolding, TradeOffer, TradeSuggestionMember, TradeSuggestionRecord } from "@/types/trade";
 
 /** Suggested trades in the database (see `lib/trades/suggestions.ts` for what they mean). */
 
@@ -34,9 +38,23 @@ function toRecord(row: SuggestionRow, members: MemberRow[]): TradeSuggestionReco
 const groupIs = (meta: BidPackMetaSnapshot) => and(eq(tradeHoldings.base, meta.base), eq(tradeHoldings.aircraft, meta.aircraft), eq(tradeHoldings.seat, meta.seat), eq(tradeHoldings.month, meta.month));
 const suggestionGroupIs = (meta: BidPackMetaSnapshot) => and(eq(tradeSuggestions.base, meta.base), eq(tradeSuggestions.aircraft, meta.aircraft), eq(tradeSuggestions.seat, meta.seat), eq(tradeSuggestions.month, meta.month));
 
-/** Everyone in a base, aircraft, seat and month who has confirmed what they hold, with what the matching needs. */
+/** The ids a pack in this group may be stored under: its own, and the one it had before ids named the aircraft. */
+const packIdsOf = (packId: string, meta: BidPackMetaSnapshot) => (packId === packIdFor({ ...meta, seat: meta.seat as Seat }) ? [packId, legacyPackIdFor({ ...meta, seat: meta.seat as Seat })] : [packId]);
+
+/**
+ * Everyone in a base, aircraft, seat and month who has confirmed what they hold, with what the matching needs: one row
+ * each. A pilot who confirmed under the pack's older id and again under its own has two holdings; the one under its own
+ * id is what they hold now, and keyed by pilot, two would overwrite each other's pack fingerprint.
+ */
 export async function listMatchingGroup(meta: BidPackMetaSnapshot): Promise<{ rows: MatchingRow[]; names: Map<string, string>; fingerprints: Map<string, string | null> }> {
-  const holdings = await db.select().from(tradeHoldings).where(groupIs(meta));
+  const current = packIdFor({ ...meta, seat: meta.seat as Seat });
+  const byUser = new Map<string, typeof tradeHoldings.$inferSelect>();
+  for (const h of await db.select().from(tradeHoldings).where(groupIs(meta))) {
+    const kept = byUser.get(h.userId);
+    const better = !kept || (kept.packId !== current && (h.packId === current || h.confirmedAt > kept.confirmedAt));
+    if (better) byUser.set(h.userId, h);
+  }
+  const holdings = [...byUser.values()];
   const ids = holdings.map((h) => h.userId);
   if (!ids.length) return { rows: [], names: new Map(), fingerprints: new Map() };
   const [settings, profiles, people] = await Promise.all([
@@ -47,7 +65,7 @@ export async function listMatchingGroup(meta: BidPackMetaSnapshot): Promise<{ ro
   const settingsBy = new Map(settings.map((s) => [s.userId, s]));
   const profileBy = new Map(profiles.map((p) => [p.userId, p.profile]));
   const rows = holdings.map((h): MatchingRow => {
-    const holding: TradeHolding = { packId: h.packId, bidPackMeta: meta, lineNumber: h.lineNumber, trips: h.trips, confirmedAt: h.confirmedAt.toISOString() };
+    const holding: TradeHolding = { packId: h.packId, bidPackMeta: meta, lineNumber: h.lineNumber, trips: h.trips, ...(h.carryIn ? { carryIn: h.carryIn } : {}), confirmedAt: h.confirmedAt.toISOString() };
     const s = settingsBy.get(h.userId);
     return { userId: h.userId, holding, settings: { suggestMe: s?.suggestMe ?? true, emailMatches: s?.emailMatches ?? false }, profile: profileBy.get(h.userId) ?? null };
   });
@@ -55,12 +73,36 @@ export async function listMatchingGroup(meta: BidPackMetaSnapshot): Promise<{ ro
 }
 
 /**
- * What the matching must steer around in a group: pilots already on an open trade, trades already suggested, and what
- * pilots have said no to. A pilot who didn't want a trip isn't offered it again, whatever they'd give for it; one who said
- * a trade wasn't worth it needs more than that trade's gain next time.
+ * What the matching must steer around in a group: pilots already on an open trade, trades already suggested, what
+ * pilots have said no to, and the trips in trades agreed on the board (`boardTrips`: spoken for, so not to be handed on).
+ * A pilot who didn't want a trip isn't offered it again, whatever they'd give for it; one who said a trade wasn't worth
+ * it needs more than that trade's gain next time.
  */
 export async function matchingHistory(meta: BidPackMetaSnapshot, now: Date) {
+  const agreed = await db
+    .select()
+    .from(tradeOffers)
+    .where(and(eq(tradeOffers.base, meta.base), eq(tradeOffers.aircraft, meta.aircraft), eq(tradeOffers.seat, meta.seat), eq(tradeOffers.month, meta.month), eq(tradeOffers.status, "accepted")));
+  const boardTrips: GivenTrip[] = agreedBoardTrips(
+    agreed.map((o): TradeOffer => ({
+      id: o.id,
+      bidPackMeta: bidPackMetaOf(o),
+      offeringUserId: o.offeringUserId,
+      offeringDisplayName: o.offeringDisplayName,
+      offeredTrip: o.offeredTrip,
+      wantedPairingNumber: o.wantedPairingNumber,
+      note: o.note,
+      status: "accepted",
+      createdAt: o.createdAt.toISOString(),
+      responderUserId: o.responderUserId,
+      responderDisplayName: o.responderDisplayName,
+      responderTrip: o.responderTrip,
+      respondedAt: o.respondedAt?.toISOString() ?? null,
+      resolvedAt: o.resolvedAt?.toISOString() ?? null,
+    }))
+  );
   const empty = {
+    boardTrips,
     busyPilots: new Set<string>(),
     signatures: new Set<string>(),
     declined: new Set<string>(),
@@ -152,10 +194,11 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function stillStands(tx: Tx, s: ReturnType<typeof suggestionToStore>, foundFrom: Date): Promise<boolean> {
   const ids = s.members.map((m) => m.userId);
-  const held = await tx.select().from(tradeHoldings).where(and(inArray(tradeHoldings.userId, ids), eq(tradeHoldings.packId, s.packId))).for("update");
+  const held = await tx.select().from(tradeHoldings).where(and(inArray(tradeHoldings.userId, ids), inArray(tradeHoldings.packId, packIdsOf(s.packId, s.bidPackMeta)))).for("update");
   const byUser = new Map(held.map((h) => [h.userId, h]));
   const holdsIt = s.members.every((m) => {
-    const h = byUser.get(m.userId);
+    // Under the pack's own id when they have one there (as `listMatchingGroup` picks), or else its older one.
+    const h = held.find((x) => x.userId === m.userId && x.packId === s.packId) ?? byUser.get(m.userId);
     return !!h && h.confirmedAt <= foundFrom && h.trips.some((t) => tripInstanceKey(t) === tripInstanceKey(m.give));
   });
   if (!holdsIt) return false;
@@ -222,10 +265,17 @@ export type StepResult = { ok: true; record: TradeSuggestionRecord } | { ok: fal
 
 /**
  * A pilot says the next trade in the order went through. Either of the two can say so. What both pilots hold moves with
- * it, so a chain stopped partway still shows each of them what they really have.
+ * it, so a chain stopped partway still shows each of them what they really have, and the board lets go of the trips
+ * that moved: their offers of them are withdrawn, and proposals made with them taken off (`freeOffersOfMovedTrips`).
  */
 export async function markStepDone(id: string, userId: string, stepIndex: number, now = new Date()): Promise<StepResult> {
   return db.transaction(async (tx) => {
+    // Everyone on it, seat-locked before the trade's own row, in the order the board takes them: a board accept checking
+    // this trade waits for the step, or the step for it, and never each for the other.
+    const [seen] = await tx.select().from(tradeSuggestions).where(eq(tradeSuggestions.id, id));
+    if (!seen) return { ok: false, reason: "not-found" } as const;
+    const onIt = await tx.select({ userId: tradeSuggestionMembers.userId }).from(tradeSuggestionMembers).where(eq(tradeSuggestionMembers.suggestionId, id));
+    await lockPilotsInSeat(tx, bidPackMetaOf(seen), onIt.map((m) => m.userId));
     const [row] = await tx.select().from(tradeSuggestions).where(eq(tradeSuggestions.id, id)).for("update");
     if (!row) return { ok: false, reason: "not-found" } as const;
     const members = await tx.select().from(tradeSuggestionMembers).where(eq(tradeSuggestionMembers.suggestionId, id));
@@ -241,13 +291,23 @@ export async function markStepDone(id: string, userId: string, stepIndex: number
     const swap = async (position: number, other: number) => {
       const giving = pilot(holds[position]).give;
       const taking = pilot(holds[other]).give;
-      const [held] = await tx.select().from(tradeHoldings).where(and(eq(tradeHoldings.userId, pilot(position).userId), eq(tradeHoldings.packId, row.packId))).for("update");
+      const rows = await tx.select().from(tradeHoldings).where(and(eq(tradeHoldings.userId, pilot(position).userId), inArray(tradeHoldings.packId, packIdsOf(row.packId, record.bidPackMeta)))).for("update");
+      const held = rows.find((h) => h.packId === row.packId) ?? rows[0];
       if (!held) return;
       const trips = [...held.trips.filter((t) => tripInstanceKey(t) !== tripInstanceKey(giving)), { id: taking.id, startDayIndex: taking.startDayIndex, lock: null }].sort((x, y) => x.startDayIndex - y.startDayIndex);
       await tx.update(tradeHoldings).set({ trips, confirmedAt: now }).where(eq(tradeHoldings.id, held.id));
     };
     await swap(step.a, step.b);
     await swap(step.b, step.a);
+    await freeOffersOfMovedTrips(
+      tx,
+      record.bidPackMeta,
+      [
+        { pilot: pilot(step.a).userId, trip: pilot(holds[step.a]).give },
+        { pilot: pilot(step.b).userId, trip: pilot(holds[step.b]).give },
+      ],
+      now
+    );
 
     const stepsDone = stepIndex + 1;
     const finished = stepsDone === row.steps.length;
@@ -283,7 +343,8 @@ export async function lapseSuggestionsFor(userId: string, packId: string | null,
 /** Every month and seat where at least `min` pilots have confirmed what they hold. */
 export async function listActiveGroups(min: number): Promise<BidPackMetaSnapshot[]> {
   const rows = await db
-    .select({ base: tradeHoldings.base, aircraft: tradeHoldings.aircraft, seat: tradeHoldings.seat, month: tradeHoldings.month, n: count() })
+    // Pilots, not holdings: one confirmed under the pack's older id and its own is one pilot.
+    .select({ base: tradeHoldings.base, aircraft: tradeHoldings.aircraft, seat: tradeHoldings.seat, month: tradeHoldings.month, n: countDistinct(tradeHoldings.userId) })
     .from(tradeHoldings)
     .groupBy(tradeHoldings.base, tradeHoldings.aircraft, tradeHoldings.seat, tradeHoldings.month);
   return rows.filter((r) => r.n >= min).map(({ base, aircraft, seat, month }) => ({ base, aircraft, seat, month }));

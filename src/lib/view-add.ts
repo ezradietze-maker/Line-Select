@@ -323,7 +323,7 @@ function stretchFit(candidate: Busy, schedule: Busy[]): FitCheck {
 }
 
 /** What a new trip has to fit around: the line as it will fly, and what's carried in. */
-export function scheduleAsFlown(line: Line, carryIn: CarryInItem[], pack: BidPack): Busy[] {
+export function scheduleAsFlown(line: Pick<Line, "trips">, carryIn: CarryInItem[], pack: BidPack): Busy[] {
   const zone = zoneOf(pack);
   return [
     ...line.trips.flatMap((t) => {

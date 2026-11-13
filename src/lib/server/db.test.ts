@@ -262,6 +262,57 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       const late = new Date(Date.now() + 2 * 86_400_000);
       expect((await suggestions.matchingHistory(meta, late)).busyPilots.has(pilots[0].id)).toBe(false);
     });
+
+    it("and the board hold each other's agreed trips: neither hands on one the other has spoken for", async () => {
+      // As stored for real, each trip on a suggested trade names its day (`tripId`), as the board's do.
+      const dated = (n: number) => ({ ...(tripOf(n) as object), tripId: `t${n}` }) as never;
+      const board = (n: number) => ({ lineNumber: "held", pairingNumber: `${n}`, days: 2, layoverCities: [], international: false, reportTime: "early" as const, creditHours: 10, tafbHours: 48, landings: 2, deadheadLegs: 0, tripId: `t${n}`, startDayIndex: n, date: null });
+      const post = (by: { id: string }, n: number, over: Partial<TradeOffer> = {}): TradeOffer => ({
+        id: randomUUID(), bidPackMeta: meta, offeringUserId: by.id, offeringDisplayName: "Pilot", offeredTrip: board(n), wantedPairingNumber: null, note: null,
+        status: "open", createdAt: new Date().toISOString(), responderUserId: null, responderDisplayName: null, responderTrip: null, respondedAt: null, resolvedAt: null, ...over,
+      });
+      const chain = async (pilots: { id: string }[]) => {
+        const saved = await suggestions.saveSuggestion({
+          signature: randomUUID(), packId, bidPackMeta: meta, steps: [{ a: 0, b: 1 }, { a: 1, b: 2 }], expiresAt: new Date(Date.now() + 86_400_000),
+          members: pilots.map((p, position) => ({ userId: p.id, displayName: `P${position}`, position, give: dated(position), value })),
+        });
+        expect(saved).toBe(true);
+        return (await suggestions.listSuggestionsFor(pilots[0].id, packId))[0].id;
+      };
+      const [a, b, c, d] = [await makeUser("both-a"), await makeUser("both-b"), await makeUser("both-c"), await makeUser("both-d")];
+      for (const [i, p] of [a, b, c].entries()) await mod.saveTradeHolding(p.id, { packId, bidPackMeta: meta, lineNumber: null, trips: [{ id: `t${i}`, startDayIndex: i, lock: null }, { id: `t${i + 10}`, startDayIndex: i + 10, lock: null }] });
+
+      // Not everyone has said yes: the trip can still go on the board, and a board trade agreed calls the chain off.
+      const proposed = await chain([a, b, c]);
+      const early = post(a, 0);
+      expect(await mod.createTradeOffer(early)).toBe(true);
+      const other = post(a, 10);
+      await mod.createTradeOffer(other);
+      await mod.respondToTradeOffer(other.id, { id: d.id, displayName: "D" }, board(30));
+      expect(await mod.acceptTradeOffer(other.id, null)).toMatchObject({ status: "accepted" });
+      expect((await suggestions.listSuggestionsFor(b.id, packId)).find((r) => r.id === proposed)).toMatchObject({ status: "cancelled", cancelReason: "changed" });
+      // That board trade's trips aren't handed on by the matching.
+      expect((await suggestions.matchingHistory(meta, new Date())).boardTrips.map((g) => [g.pilot, g.trip.tripId])).toEqual(
+        expect.arrayContaining([
+          [a.id, "t10"],
+          [d.id, "t30"],
+        ])
+      );
+
+      // Everyone said yes: its trips are spoken for on the board.
+      const agreed = await chain([a, b, c]);
+      for (const p of [a, b, c]) await suggestions.answerSuggestion(agreed, p.id, "accepted");
+      expect(await mod.createTradeOffer(post(b, 1))).toBe(false);
+      const dOffer = post(d, 31);
+      await mod.createTradeOffer(dOffer);
+      expect(await mod.respondToTradeOffer(dOffer.id, { id: c.id, displayName: "C" }, board(2))).toBe("traded");
+      await mod.respondToTradeOffer(early.id, { id: d.id, displayName: "D" }, board(32));
+      expect(await mod.acceptTradeOffer(early.id, null)).toBe("traded");
+
+      // The step that moves A's trip takes it off the board.
+      expect((await suggestions.markStepDone(agreed, a.id, 0)).ok).toBe(true);
+      expect((await mod.findTradeOffer(early.id))?.status).toBe("withdrawn");
+    });
   });
 
   describe("preference profile store", () => {

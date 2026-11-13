@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { and, count, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
-import { alreadyTraded, offersFreedByTrade } from "@/lib/trades/offer-trips";
+import { alreadyTraded, offersFreedBy, offersFreedByTrade, sameTrip, type GivenTrip } from "@/lib/trades/offer-trips";
+import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { packIdFor } from "@/lib/pack-id";
 import { db } from "@/lib/server/postgres";
 import {
@@ -18,6 +19,8 @@ import {
   tradeHoldings,
   tradeOffers,
   tradePreferences,
+  tradeSuggestionMembers,
+  tradeSuggestions,
   users,
 } from "@/lib/server/schema";
 import type { AwardHistoryRecord } from "@/types/award-history";
@@ -306,7 +309,7 @@ const TRADE_LOCK_CLASS = 4_820_113;
  * offers that already exist, and an offer posted a moment after an accept isn't one of them. Taken in one order, so
  * two transactions never wait on each other.
  */
-async function lockPilotsInSeat(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[]): Promise<void> {
+export async function lockPilotsInSeat(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[]): Promise<void> {
   const keys = [...new Set(pilots)].map((p) => [p, meta.base, meta.aircraft, meta.seat, meta.month].join("|")).sort();
   for (const key of keys) await tx.execute(sql`select pg_advisory_xact_lock(${TRADE_LOCK_CLASS}::int, hashtext(${key}))`);
 }
@@ -320,12 +323,54 @@ async function agreedTrades(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[])
   return rows.map(toTradeOffer);
 }
 
-/** Posts an offer, unless the pilot has already agreed to trade that trip away this month. False when refused for that. */
-export async function createTradeOffer(offer: TradeOffer): Promise<boolean> {
+/**
+ * The suggested trades (`trade-suggestions.ts`) these pilots are on in this seat's month and that haven't finished or
+ * been called off, locked until the transaction ends, so a pilot's last yes or a step can't land between this check and
+ * what follows it: the trips they've spoken for (`tripsSpokenFor`), and those not everyone has said yes to yet. A step
+ * takes the same seat locks first (`markStepDone`), so the two never wait on each other.
+ */
+async function openSuggestions(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[], now: Date): Promise<{ spokenFor: TripSnapshot[]; proposed: string[] }> {
+  const ids = await tx
+    .selectDistinct({ id: tradeSuggestions.id })
+    .from(tradeSuggestionMembers)
+    .innerJoin(tradeSuggestions, eq(tradeSuggestions.id, tradeSuggestionMembers.suggestionId))
+    .where(
+      and(
+        inArray(tradeSuggestionMembers.userId, pilots),
+        eq(tradeSuggestions.base, meta.base),
+        eq(tradeSuggestions.aircraft, meta.aircraft),
+        eq(tradeSuggestions.seat, meta.seat),
+        eq(tradeSuggestions.month, meta.month),
+        inArray(tradeSuggestions.status, ["proposed", "accepted"])
+      )
+    );
+  if (!ids.length) return { spokenFor: [], proposed: [] };
+  const rows = await tx
+    .select()
+    .from(tradeSuggestions)
+    .where(and(inArray(tradeSuggestions.id, ids.map((r) => r.id)), inArray(tradeSuggestions.status, ["proposed", "accepted"])))
+    .orderBy(tradeSuggestions.id)
+    .for("update");
+  if (!rows.length) return { spokenFor: [], proposed: [] };
+  const members = await tx.select().from(tradeSuggestionMembers).where(inArray(tradeSuggestionMembers.suggestionId, rows.map((r) => r.id)));
+  const spokenFor = rows.flatMap((r) =>
+    tripsSpokenFor({ status: r.status, steps: r.steps, stepsDone: r.stepsDone, expiresAt: r.expiresAt.toISOString(), members: members.filter((m) => m.suggestionId === r.id) }, now.getTime())
+  );
+  return { spokenFor, proposed: rows.filter((r) => r.status === "proposed" && r.stepsDone === 0).map((r) => r.id) };
+}
+
+const spokenForIn = (spokenFor: readonly TripSnapshot[], trip: TripSnapshot) => spokenFor.some((t) => sameTrip(t, trip));
+
+/**
+ * Posts an offer, unless the pilot has already agreed to trade that trip away this month: on the board, or in a
+ * suggested trade everyone on it said yes to. False when refused for that.
+ */
+export async function createTradeOffer(offer: TradeOffer, now = new Date()): Promise<boolean> {
   if (!isUuid(offer.offeringUserId)) return false;
   return db.transaction(async (tx) => {
     await lockPilotsInSeat(tx, offer.bidPackMeta, [offer.offeringUserId]);
     if (alreadyTraded(await agreedTrades(tx, offer.bidPackMeta, [offer.offeringUserId]), offer.bidPackMeta, offer.offeringUserId, offer.offeredTrip)) return false;
+    if (spokenForIn((await openSuggestions(tx, offer.bidPackMeta, [offer.offeringUserId], now)).spokenFor, offer.offeredTrip)) return false;
     await tx.insert(tradeOffers).values({
       id: offer.id,
       createdAt: new Date(offer.createdAt),
@@ -351,7 +396,8 @@ export async function createTradeOffer(offer: TradeOffer): Promise<boolean> {
 
 /**
  * A pilot's proposal on an open offer, with their own trip. "traded" when either trip is already in a trade one of the
- * two pilots agreed this month; null when the offer isn't open any more (another pilot's proposal got there first).
+ * two pilots agreed this month, on the board or in a suggested trade; null when the offer isn't open any more (another
+ * pilot's proposal got there first).
  */
 export async function respondToTradeOffer(
   id: string,
@@ -368,6 +414,8 @@ export async function respondToTradeOffer(
     await lockPilotsInSeat(tx, meta, pilots);
     const agreed = await agreedTrades(tx, meta, pilots);
     if (alreadyTraded(agreed, meta, row.offeringUserId, row.offeredTrip) || alreadyTraded(agreed, meta, responder.id, responderTrip)) return "traded";
+    const { spokenFor } = await openSuggestions(tx, meta, pilots, now);
+    if (spokenForIn(spokenFor, row.offeredTrip) || spokenForIn(spokenFor, responderTrip)) return "traded";
     const [updated] = await tx
       .update(tradeOffers)
       .set({ status: "pending", responderUserId: responder.id, responderDisplayName: responder.displayName, responderTrip, respondedAt: now })
@@ -415,7 +463,11 @@ export async function updateTradeOffer(
  * (`lockPilotsInSeat`), then every offer either is on is locked, in one order, so two accepts that share a trip queue
  * up rather than both going through. Null when the offer isn't pending, or its proposal isn't the one
  * `expectedRespondedAt` names (one taken off and replaced since it was seen); "traded" when either trip is already in
- * a trade one of the pilots agreed.
+ * a trade one of the pilots agreed, on the board or in a suggested trade everyone on it said yes to.
+ *
+ * The suggested trades either pilot is on that not everyone has said yes to are called off with it: they were worked
+ * out from what the two held before, and one could hand on a trip just agreed here. Like a change to what they hold,
+ * they're left free to be found again (`lapseSuggestionsFor`).
  */
 export async function acceptTradeOffer(id: string, expectedRespondedAt: string | null, now = new Date()): Promise<TradeOffer | "traded" | null> {
   if (!isUuid(id)) return null;
@@ -440,6 +492,11 @@ export async function acceptTradeOffer(id: string, expectedRespondedAt: string |
       ...(locked.responderTrip ? [{ pilot: first.responderUserId, trip: locked.responderTrip }] : []),
     ];
     if (given.some((g) => alreadyTraded(others, offer.bidPackMeta, g.pilot, g.trip))) return "traded";
+    const suggested = await openSuggestions(tx, offer.bidPackMeta, pilots, now);
+    if (given.some((g) => spokenForIn(suggested.spokenFor, g.trip))) return "traded";
+    if (suggested.proposed.length > 0) {
+      await tx.update(tradeSuggestions).set({ status: "cancelled", cancelReason: "changed", signature: null, resolvedAt: now }).where(inArray(tradeSuggestions.id, suggested.proposed));
+    }
     const { withdraw, reopen } = offersFreedByTrade(offer, others);
     const [row] = await tx.update(tradeOffers).set({ status: "accepted", resolvedAt: now }).where(eq(tradeOffers.id, id)).returning();
     if (withdraw.length > 0) await tx.update(tradeOffers).set({ status: "withdrawn", resolvedAt: now }).where(inArray(tradeOffers.id, withdraw));
@@ -451,6 +508,30 @@ export async function acceptTradeOffer(id: string, expectedRespondedAt: string |
     }
     return toTradeOffer(row);
   });
+}
+
+/**
+ * Trips that changed hands in a step of a suggested trade: the board's open offers of them are withdrawn, and a proposal
+ * made with one is taken off its offer, which opens again, as when a board trade is agreed (`offersFreedBy`). The
+ * caller holds the pilots' seat locks (`lockPilotsInSeat`).
+ */
+export async function freeOffersOfMovedTrips(tx: Tx, meta: BidPackMetaSnapshot, moved: GivenTrip[], now = new Date()): Promise<void> {
+  const pilots = [...new Set(moved.map((m) => m.pilot))].filter(isUuid);
+  if (!pilots.length) return;
+  const rows = await tx
+    .select()
+    .from(tradeOffers)
+    .where(and(offersForSeat(meta), inArray(tradeOffers.status, ["open", "pending"]), or(inArray(tradeOffers.offeringUserId, pilots), inArray(tradeOffers.responderUserId, pilots))))
+    .orderBy(tradeOffers.id)
+    .for("update");
+  const { withdraw, reopen } = offersFreedBy(moved, meta, rows.map(toTradeOffer));
+  if (withdraw.length > 0) await tx.update(tradeOffers).set({ status: "withdrawn", resolvedAt: now }).where(inArray(tradeOffers.id, withdraw));
+  if (reopen.length > 0) {
+    await tx
+      .update(tradeOffers)
+      .set({ status: "open", responderUserId: null, responderDisplayName: null, responderTrip: null, respondedAt: null })
+      .where(inArray(tradeOffers.id, reopen));
+  }
 }
 
 // ---- Candidate variables ----
@@ -649,7 +730,7 @@ export async function deleteBidPackRecord(userId: string): Promise<void> {
 }
 
 function holdingOf(row: typeof tradeHoldings.$inferSelect): TradeHolding {
-  return { packId: row.packId, bidPackMeta: bidPackMetaOf(row), lineNumber: row.lineNumber, trips: row.trips, confirmedAt: row.confirmedAt.toISOString() };
+  return { packId: row.packId, bidPackMeta: bidPackMetaOf(row), lineNumber: row.lineNumber, trips: row.trips, ...(row.carryIn ? { carryIn: row.carryIn } : {}), confirmedAt: row.confirmedAt.toISOString() };
 }
 
 /** What a pilot has confirmed they hold in this pack. */
@@ -691,11 +772,13 @@ export async function pilotHasSeatMonth(userId: string, meta: BidPackMetaSnapsho
 export async function saveTradeHolding(userId: string, holding: Omit<TradeHolding, "confirmedAt">, packFingerprint: string | null = null): Promise<TradeHolding | null> {
   if (!isUuid(userId)) return null;
   const { packId, bidPackMeta, lineNumber, trips } = holding;
+  // Null, not an empty list, when the browser didn't say: no carry-in and an unknown one are matched differently.
+  const carryIn = holding.carryIn ?? null;
   const now = new Date();
   const [row] = await db
     .insert(tradeHoldings)
-    .values({ userId, packId, ...bidPackMeta, lineNumber, trips, packFingerprint, confirmedAt: now })
-    .onConflictDoUpdate({ target: [tradeHoldings.userId, tradeHoldings.packId], set: { ...bidPackMeta, lineNumber, trips, packFingerprint, confirmedAt: now } })
+    .values({ userId, packId, ...bidPackMeta, lineNumber, trips, carryIn, packFingerprint, confirmedAt: now })
+    .onConflictDoUpdate({ target: [tradeHoldings.userId, tradeHoldings.packId], set: { ...bidPackMeta, lineNumber, trips, carryIn, packFingerprint, confirmedAt: now } })
     .returning();
   return holdingOf(row);
 }

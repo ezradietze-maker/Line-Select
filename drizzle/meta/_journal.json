@@ -78,6 +78,13 @@
       "when": 1794434351415,
       "tag": "0010_award_dedupe_and_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794543706214,
+      "tag": "0011_trade_holding_carry_in",
+      "breakpoints": true
     }
   ]
 }
