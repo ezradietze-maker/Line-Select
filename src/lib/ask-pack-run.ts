@@ -106,9 +106,18 @@ export function checkAskQuery(query: AskQuery, pack: BidPack, pm: PackMetrics, c
   const cityOf = (raw: unknown): string | null => {
     const text = String(raw ?? "").trim();
     if (codes.has(text.toUpperCase())) return text.toUpperCase();
-    const code = text.split(/[^A-Za-z]+/).find((w) => w.length === 3 && codes.has(w.toUpperCase()));
-    if (code) return code.toUpperCase();
-    return byName.get(plainWords(text.replace(/\b(airport|intl|international)\b/gi, ""))) ?? null;
+    const words = plainWords(text.replace(/\b(airport|intl|international)\b/gi, ""));
+    const named = byName.get(words);
+    if (named) return named;
+    // A code with words around it ("HNL airport", "CDG (Paris)"): only its own city's words. A city's own name isn't a
+    // code in it: "San Juan" and "San Antonio" read as SAN, San Diego, on a pack that lays over there.
+    for (const word of words.split(" ")) {
+      const code = word.toUpperCase();
+      if (word.length !== 3 || !codes.has(code)) continue;
+      const own = new Set(plainWords(`${cityName(code)} ${citySearchName(code)}`).split(" "));
+      if (words.split(" ").every((w) => w === word || own.has(w))) return code;
+    }
+    return null;
   };
   const regionOf = (raw: unknown): Region | null => {
     const w = plainWords(String(raw ?? ""));
