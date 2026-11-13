@@ -156,8 +156,8 @@ async function createAccount(normalized: string, password: string, displayName: 
 const CONFIRM_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 /** How long an account made by signing up has to be confirmed before the daily run removes it (`deleteUnconfirmedSignUps`). */
 export const UNCONFIRMED_SIGN_UP_DAYS = 7;
-/** Emails signing up may send one address in an hour, whoever asks: enough for a pilot who tries twice, not enough to fill an inbox. */
-const SIGN_UP_MAILS_PER_ADDRESS = 3;
+/** Emails signing up may send one address in an hour, whoever asks: enough for a pilot who retries a few times, not enough to fill an inbox. */
+const SIGN_UP_MAILS_PER_ADDRESS = 5;
 /** "Send it again", per account and per address it's asked from, in an hour. */
 export const RESENDS_PER_ACCOUNT = 3;
 export const RESENDS_PER_ADDRESS = 10;
