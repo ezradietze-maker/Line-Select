@@ -13,7 +13,9 @@ describe("the contract validator", () => {
 
   it("holds a number written in words to the quotes, like one in digits", () => {
     expect(check({ ...good, answer: "It runs at least twelve hours." })).toMatchObject({ ok: false, reason: expect.stringContaining("12") });
-    expect(check({ ...good, answer: "It starts June 29 and runs 115 hours." }).ok).toBe(true);
+    expect(check({ ...good, answer: "It starts by December 2026 and runs 115 hours." }).ok).toBe(true);
+    // The SWW's 2026 wording is Phase 2's, so June 29 isn't when it starts.
+    expect(check({ ...good, answer: "It starts June 29 and runs 115 hours." }).ok).toBe(false);
     expect(check({ ...good, answer: "It runs 29 hours." }).ok).toBe(false);
   });
 
@@ -111,6 +113,59 @@ describe("the contract validator", () => {
     expect(check({ ...good, answer: "It covers only one of your vacations." }).ok).toBe(false);
     expect(check({ ...good, answer: "At least one of these runs 115 hours." }).ok).toBe(false);
     expect(check({ ...good, answer: "Each one runs 115 hours." }).ok).toBe(false);
+  });
+
+  it("lets a pack's figure back only what's said of its own line", () => {
+    const blocks = { section: "25.D.1.c", version: "2026" as const, quote: "Regular lines in a 4 week bid period shall contain at least 1 block of 4 consecutive days off" };
+    const facts = "The pilot's bid pack: OCT26, IND B767 CAP, a 28-day bid period.\nLine 1001 as printed: 15 days off, 78.6 CH, 294.73 hours TAFB, 1 trips.";
+    const said = (answer: string) => check({ found: true, answer, quotes: [blocks] }, "How many days off does line 1001 have?", facts).ok;
+    expect(said("Line 1001 has 15 days off and 78.6 CH. The contract requires at least 1 block of 4 days off in a 4 week bid period.")).toBe(true);
+    expect(said("Line 1001 has 15 days off in a 28-day bid period.")).toBe(true);
+    expect(said("Line 1001 has 15 days off. The contract requires at least 15 days off in a 4 week bid period.")).toBe(false);
+    expect(said("Line 1001 has 15 days off. A 4 week bid period may have at most 28 work days.")).toBe(false);
+    expect(said("Line 1001 has 15 days off, but the contract requires 15 of them in blocks of 4.")).toBe(false);
+  });
+
+  it("lets the answer name only a piece a quote landed on, one above it, or one the quote itself names", () => {
+    const order = { section: "25.G.3.b", version: "2026" as const, quote: "Open time not assigned as provided in Section 25.G.1. shall be assigned in the following order:" };
+    const said = (answer: string) => check({ found: true, answer, quotes: [order] }).ok;
+    expect(said("Under 25.G.3.b, it goes in this order.")).toBe(true);
+    expect(said("Under 25.G.3, it goes in this order.")).toBe(true);
+    expect(said("What 25.G.1 doesn't assign goes in this order.")).toBe(true);
+    expect(said("See 25.G.3.b.vii for this.")).toBe(false);
+    expect(said("See 25.G.2 for this.")).toBe(false);
+    // A piece under the one quoted, whose words are part of the quote, counts as quoted.
+    const list = { section: "25.N.4.b.ii", version: "2026" as const, quote: `if the trip touches: (a) ${contractNode("25.N.4.b.ii.(a)")!.text}` };
+    expect(check({ found: true, answer: "A trip that touches 25.N.4.b.ii.(a)'s holiday.", quotes: [list] }).ok).toBe(true);
+  });
+
+  it("holds every month, date and phase to when the quoted rules start", () => {
+    const at = (answer: string, bidMonth?: string) => validateAnswer({ ...good, answer }, { question: "How long is the SWW?", bidMonth }).ok;
+    expect(at("It runs 115 hours, starting by the December 2026 bid period (Phase 2).")).toBe(true);
+    expect(at("It runs 115 hours, starting by the December 2027 bid period.")).toBe(false);
+    expect(at("It runs 115 hours, starting by the March 2026 bid period.")).toBe(false);
+    expect(at("It runs 115 hours, starting in Phase 3.")).toBe(false);
+    expect(at("It runs 115 hours from June 29, 2026.")).toBe(false);
+    expect(at("For November 2026 the 2015 wording applies.", "2026-11")).toBe(true);
+    expect(at("For November 2026 the 2015 wording applies.")).toBe(false);
+    expect(at("For November 2027 the 2015 wording applies.", "2026-11")).toBe(false);
+    // A change the chart doesn't list is in force from the Agreement's general effective date.
+    const recall = contractNode("4.Z")!.text.split(/\s+/).slice(0, 12).join(" ");
+    expect(validateAnswer({ found: true, answer: "This is in force since June 29, 2026.", quotes: [{ section: "4.Z", quote: recall, version: "2026" }] }, { question: "?" }).ok).toBe(true);
+    expect(validateAnswer({ found: true, answer: "This starts by the December 2026 bid period.", quotes: [{ section: "4.Z", quote: recall, version: "2026" }] }, { question: "?" }).ok).toBe(false);
+  });
+
+  it("reads a reserve status the contract writes as a name, not a count, and takes section numbers the quote names", () => {
+    const standby = { section: "25.M.3.a.vii", version: "2026" as const, quote: "the Company may assign a pilot once per bid period to base hotel standby for a block or a portion of a block of R-days" };
+    expect(check({ found: true, answer: "An R-24 pilot can be put on base hotel standby once per bid period.", quotes: [standby] }).ok).toBe(true);
+    expect(check({ found: true, answer: "An R-48 pilot can be put on base hotel standby once per bid period.", quotes: [standby] }).ok).toBe(false);
+    const disruption = {
+      section: "25.S.2.g",
+      version: "2026" as const,
+      quote: "For trips originally scheduled entirely under Section 12.C. (Domestic Provisions), a day to critical disruption occurs if more than half of the original scheduled revenue duty periods in a trip began in the day duty period",
+    };
+    expect(check({ found: true, answer: "It covers trips scheduled entirely under Section 12.C.", quotes: [disruption] }).ok).toBe(true);
+    expect(check({ found: true, answer: "It covers trips scheduled entirely under Section 12.D.", quotes: [disruption] }).ok).toBe(false);
   });
 
   it("holds a quote from a pay table, cell by cell", () => {

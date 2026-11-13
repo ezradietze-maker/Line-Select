@@ -173,7 +173,11 @@ export function renderPassage(id: string, bidMonth: string): string {
     const a = n.changed ? applicabilityOf(n.id, bidMonth) : null;
     return a?.kind === "scheduled" ? a : null;
   };
+  // A change the implementation chart doesn't list takes the Agreement's general effective date (Implementation LOA):
+  // left unmarked, its 2015 line read as a rule that might still apply.
+  const unlisted = (n: ContractNode) => n.changed && applicabilityOf(n.id, bidMonth).kind === "unlisted";
   const when = (n: ContractNode) => {
+    if (unlisted(n)) return " | in force since June 29, 2026, the Agreement's general effective date";
     const a = scheduled(n);
     if (!a) return "";
     if (a.manual) return ` | in force since June 29, 2026, applied by hand until automated by ${a.startsLabel}`;
@@ -182,6 +186,7 @@ export function renderPassage(id: string, bidMonth: string): string {
   // A 2015 line can hold a whole deleted paragraph, such as First Fly's old 75% limit under 25.M.6.b.iv. Saying it has
   // been replaced keeps the model from reading a deleted rule as the current one.
   const was = (n: ContractNode) => {
+    if (unlisted(n)) return "2015 wording | replaced: no longer the rule";
     const a = scheduled(n);
     if (!a) return "2015 wording";
     return a.manual || a.inForce ? "2015 wording | replaced: no longer the rule" : "2015 wording | still the rule for this bid period";

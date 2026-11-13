@@ -8,8 +8,12 @@ export function appliesLine(applies: Applicability, version: ContractVersion): s
   switch (applies.kind) {
     case "unchanged":
       return "Same wording as the 2015 contract.";
+    // The Implementation LOA gives the Agreement "a general effective date of June 29, 2026"; Appendix A only sets later
+    // dates for the changes it lists. A change it doesn't list takes the general date.
     case "unlisted":
-      return version === "2015" ? "The 2015 wording. The implementation chart doesn't list this change, so it doesn't say when the 2026 wording starts." : "Changed in 2026. The implementation chart doesn't list this change, so it doesn't say when this wording starts.";
+      return version === "2015"
+        ? "The 2015 wording. It was replaced on June 29, 2026, the Agreement's general effective date: the implementation chart doesn't give this change a later date."
+        : "In force since June 29, 2026, the Agreement's general effective date: the implementation chart doesn't give this change a later date.";
     case "mixed":
       return `Parts of this change at different times: ${applies.phases.map((p) => `Phase ${p.phase}, ${p.startsLabel} (${p.refs.slice(0, 4).join(", ")}${p.refs.length > 4 ? "…" : ""})`).join("; ")}.`;
     case "scheduled": {
@@ -32,7 +36,7 @@ export function appliesShort(applies: Applicability): string {
     case "unchanged":
       return "same wording as 2015";
     case "unlisted":
-      return "changed in 2026, not on the implementation chart";
+      return "in force since June 29, 2026, the general effective date";
     case "mixed":
       return "parts change at different times";
     case "scheduled":

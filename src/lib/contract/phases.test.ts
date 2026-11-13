@@ -47,6 +47,9 @@ describe("which bid periods a rule applies to", () => {
 
   it("says when words didn't change, and when the chart doesn't list a change", () => {
     expect(applicabilityOf("25.A.1", "2026-11")).toEqual({ kind: "unchanged" });
-    expect(appliesLine({ kind: "unlisted" }, "2026")).toContain("doesn't list this change");
+    // Not on the chart: the Implementation LOA's general effective date applies.
+    expect(applicabilityOf("4.Z", "2026-11")).toEqual({ kind: "unlisted" });
+    expect(appliesLine({ kind: "unlisted" }, "2026")).toBe("In force since June 29, 2026, the Agreement's general effective date: the implementation chart doesn't give this change a later date.");
+    expect(appliesLine({ kind: "unlisted" }, "2015")).toContain("replaced on June 29, 2026");
   });
 });
