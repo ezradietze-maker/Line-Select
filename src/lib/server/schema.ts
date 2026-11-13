@@ -531,3 +531,25 @@ export const learningRuns = pgTable("learning_runs", {
   trigger: text("trigger").notNull(),
   summary: jsonb("summary").notNull().$type<Record<string, unknown>>(),
 });
+
+/**
+ * A pilot's paid membership, mirrored from Stripe by the webhook. Kept in its
+ * own table rather than as columns on `users` so every billing concern is
+ * isolated and a pilot who never subscribed simply has no row. `users.plan`
+ * stays the fast gate the rest of the app reads; the webhook keeps it in step
+ * with `status` (trialing/active → "pro", anything else → "free").
+ */
+export const subscriptions = pgTable("subscriptions", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  stripeCustomerId: text("stripe_customer_id").notNull().unique(),
+  /** Absent until a checkout actually creates a subscription at Stripe. */
+  stripeSubscriptionId: text("stripe_subscription_id").unique(),
+  /** Stripe's own status: "trialing" | "active" | "past_due" | "canceled" | "incomplete" | … */
+  status: text("status").notNull(),
+  priceId: text("price_id"),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

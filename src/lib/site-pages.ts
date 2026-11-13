@@ -22,6 +22,7 @@ export const SAVED_STATE_SCREENS = [
   "/inbox",
   "/interview",
   "/logbook",
+  "/membership",
   "/open-time",
   "/preferences",
   "/preview",

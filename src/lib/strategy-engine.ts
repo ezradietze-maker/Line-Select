@@ -30,6 +30,9 @@ import type {
 const hm = (hours: number) => formatHoursValue(hours);
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** A line's chance of being open at the pilot's turn, in words: "about 0%" read like a real chance for a line that's as good as gone. */
+const openOdds = (p: number) =>
+  p < 0.005 ? "Very likely gone before your turn" : p >= 0.995 ? "Very likely still open at your turn" : `About ${pct(p)} likely still open at your turn`;
 
 // ---------------------------------------------------------------- where the pilot stands
 
@@ -227,7 +230,9 @@ export function generateStrategies(
     ];
     const bandLine =
       st.band === "regular"
-        ? `You're ${plural(st.marginToRegular, "place")} inside the last regular line.`
+        ? st.marginToRegular === 0
+          ? "On the numbers, you hold the last regular line."
+          : `You're ${plural(st.marginToRegular, "place")} inside the last regular line.`
         : st.band === "secondary"
           ? `You're ${plural(-st.marginToRegular, "place")} past the last regular line — inside the secondary lines.`
           : `You're past the regular and secondary lines — on the numbers, this month is reserve.`;
@@ -265,15 +270,24 @@ export function generateStrategies(
     // A senior pilot has nearly every line open — listing them says nothing; the move is for pilots the pack's favorites pass by.
     const recs = (st.band === "regular" && position <= st.regular * 0.35 ? [] : likely).slice(0, 6).map((l) => {
       const p = openAt(l)!;
-      return rec(l, `About ${pct(p)} likely still open at your turn`, whyPassedOver(l, pack), p, "");
+      return rec(l, openOdds(p), whyPassedOver(l, pack), p, "");
     });
     const openCount = lines.filter((l) => (openAt(l) ?? 0) >= 0.5).length;
     const fit: StrategyFit =
       !hasForecast ? "maybe" : st.band === "regular" && position > st.regular * 0.35 ? "now" : st.band === "secondary" && -st.marginToRegular <= 10 ? "maybe" : st.band === "regular" ? "later" : "later";
+    // No line more likely open than not: the count would read "about 0 … put the best of them high", and the steps would
+    // point at a list that isn't there. At the cutoff one line is still left, just no single one likely; past it, none.
+    const tagline = !hasForecast
+      ? "Rank the lines the pilots above you are least likely to take."
+      : openCount === 0
+        ? st.band === "regular"
+          ? "No single regular line is likely still open at your number, but one will be left — rank every line you'd fly, so it's one you chose."
+          : "No regular line is likely still open at your number — rank the ones you'd fly anyway, in case pilots above you choose reserve or a secondary line."
+        : `About ${plural(openCount, "regular line")} ${openCount === 1 ? "is" : "are"} likely still open at your number — put the best of ${openCount === 1 ? "it" : "them"} high on your list.`;
     strategies.push({
       id: "leftovers",
       name: "Bid the lines senior pilots leave behind",
-      tagline: hasForecast ? `About ${plural(openCount, "regular line")} are likely still open at your number — put the best of them high on your list.` : "Rank the lines the pilots above you are least likely to take.",
+      tagline,
       mechanism:
         "Pilots above you take the lines most pilots want: high credit, more days off, fewer trips. What's left at your turn is predictable — the lines with lower credit, fewer days off or a busier shape. Ranking your favorites from that leftover pool near the top of your list beats ranking twenty lines you'll never see; your reaches still go first, because seniority bidding never punishes aiming high.",
       benefits: [],
@@ -283,10 +297,12 @@ export function generateStrategies(
           ? `At ${where}, most of the pack's favorites go before your turn — the leftovers are your real choice.`
           : st.band === "regular"
             ? "You're senior enough that most lines are still open at your turn — this matters more as your number drops."
-            : "Regular lines are mostly gone by your number; this is the move for a month you're nearer the cutoff.",
+            : `Regular lines are ${hasForecast && openCount === 0 ? "likely all" : "mostly"} gone by your number; this is the move for a month you're nearer the cutoff.`,
       steps: [
         "Put two or three reach lines first — the ones you'd love even if they're probably gone.",
-        hasScores ? "Next, the lines below: likely still open at your number, best for you first." : "Next, the lines below: likely still open at your number. Take the interview and they'll be ordered by what you'd actually want.",
+        ...(recs.length
+          ? [hasScores ? "Next, the lines below: likely still open at your number, best for you first." : "Next, the lines below: likely still open at your number. Take the interview and they'll be ordered by what you'd actually want."]
+          : []),
         "Then keep going: list every regular line you'd fly over reserve or secondary, so a surprise above you still lands on something you chose.",
       ],
       facts: [
@@ -302,6 +318,19 @@ export function generateStrategies(
   // ---- Aim for a secondary line ----
   /** Past the regular lines by under this share of them: as likely to hold a regular line as not, the forecast says. */
   const NEAR_CUTOFF_SHARE = 0.03;
+  /**
+   * Where a pilot inside the secondary lines builds theirs: the pilots awarded one build in seniority order, so #30 of 30
+   * builds from what 29 pilots left — not "most of them still open", which was said at every place.
+   */
+  const secondaryTurn = (slot: number, total: number) => {
+    const ahead = slot - 1;
+    const share = ahead / total;
+    return share <= 1 / 3
+      ? `Your place puts you #${slot} of ${total} for secondary lines — ${ahead === 0 ? "you build yours first" : `${plural(ahead, "pilot")} build${ahead === 1 ? "s" : ""} theirs before you`}, so most of the flying is still there at your turn.`
+      : share <= 2 / 3
+        ? `Your place puts you #${slot} of ${total} for secondary lines — ${plural(ahead, "pilot")} build theirs before you, so much of the flying is taken by your turn.`
+        : `Your place puts you ${slot === total ? "last" : `#${slot}`} of ${total} for secondary lines — ${plural(ahead, "pilot")} build theirs before you, so yours is built from what's left.`;
+  };
   if (st.secondary > 0) {
     const slot = position - st.regular;
     const fit: StrategyFit = st.band === "secondary" ? "now" : st.band === "regular" && st.marginToRegular <= 8 ? "maybe" : st.band === "reserve" ? "maybe" : "later";
@@ -317,9 +346,9 @@ export function generateStrategies(
         st.band === "secondary"
           ? slot <= Math.max(1, Math.ceil(st.regular * NEAR_CUTOFF_SHARE))
             ? `You're ${plural(slot, "place")} past the regular lines: a few pilots above you passing on one and you'd hold a regular line instead, so bid your full list and have a secondary line behind it.`
-            : `Your place puts you #${slot} of ${st.secondary} for secondary lines — most of them will still be open at your turn.`
+            : secondaryTurn(slot, st.secondary)
           : st.band === "regular" && st.marginToRegular <= 8
-            ? `You're only ${plural(st.marginToRegular, "place")} inside the regular lines — a few pilots above you bidding differently and this becomes your month.`
+            ? `${st.marginToRegular === 0 ? "You hold the last regular line" : `You're only ${plural(st.marginToRegular, "place")} inside the regular lines`} — a few pilots above you bidding differently and this becomes your month.`
             : st.band === "regular"
               ? "You'll hold a regular line this month — secondary lines are for the pilots past the cutoff."
               : `You're ${plural(position - st.regular - st.secondary, "place")} past the secondary lines — they'd reach you only if pilots above you choose reserve.`,
@@ -347,7 +376,11 @@ export function generateStrategies(
     const under = lines.filter((l) => l.totalCreditHours < rlg).sort((a, b) => a.totalCreditHours - b.totalCreditHours);
     const likelyMine = lines.filter((l) => (openAt(l) ?? 0) >= 0.5);
     const likelyUnder = likelyMine.filter((l) => l.totalCreditHours < rlg);
-    const fit: StrategyFit = st.band === "reserve" ? "now" : under.length && (st.band === "secondary" || (likelyMine.length > 0 && likelyUnder.length >= likelyMine.length / 2)) ? "now" : under.length ? "maybe" : "later";
+    // "Now" only on the lines the forecast says are likely left at this pilot's number. Past the regular cutoff there are
+    // none, so a secondary-band pilot isn't told "many of the lines likely left" pay under the guarantee while the
+    // leftovers move counts 0 of them — their choice is a secondary line or reserve, and the pack can't price the first.
+    const leftUnder = likelyMine.length > 0 && likelyUnder.length >= likelyMine.length / 2;
+    const fit: StrategyFit = st.band === "reserve" ? "now" : under.length && leftUnder ? "now" : under.length || st.band === "secondary" ? "maybe" : "later";
     const counts = { "24hr": 0, a: 0, b: 0 };
     for (const r of bidPack.reserveLines ?? []) if (r.reserveType) counts[r.reserveType]++;
     const types = [counts["24hr"] && `${counts["24hr"]} R (24-hour)`, counts.a && `${counts.a} RA`, counts.b && `${counts.b} RB`].filter(Boolean).join(", ");
@@ -362,10 +395,14 @@ export function generateStrategies(
         st.band === "reserve"
           ? "On the numbers you hold reserve this month — so pick the reserve you'd rather have."
           : fit === "now"
-            ? "Many of the lines likely left at your number pay less than the reserve guarantee."
-            : under.length
-              ? "Worth knowing if your realistic lines are the low-credit ones."
-              : "Every regular line beats the guarantee this month.",
+            ? likelyMine.length === 1
+              ? "The one regular line likely left at your number pays less than the reserve guarantee."
+              : `${likelyUnder.length === likelyMine.length ? "All" : `${likelyUnder.length} of the`} ${likelyMine.length} regular lines likely left at your number pay${likelyUnder.length === 1 ? "s" : ""} less than the reserve guarantee.`
+            : st.band === "secondary"
+              ? `Past the regular lines, your month is a secondary line or reserve — and reserve pays its ${hm(rlg)} guarantee whether or not you're called.`
+              : under.length
+                ? "Worth knowing if your realistic lines are the low-credit ones."
+                : "Every regular line beats the guarantee this month.",
       steps: [
         under.length ? `Find where the ${under.length} lines under ${hm(rlg)} sit on your list. Anything you'd rank below them, rank reserve above instead.` : "No regular line pays less than reserve this month, so reserve only wins on lifestyle.",
         info.reserveReportStatus
@@ -437,7 +474,7 @@ export function generateStrategies(
           `${hm(credit)} of trips come off for your vacation${credit > value ? ` — ${hm(credit - value)} more than its ${hm(value)}, drawn from your bank (CBA 2026 7.G.1)` : ""}`,
           `${l.daysOff} days off on the line before vacation · ${hm(l.totalCreditHours)} credit.`,
           openAt(l),
-          openAt(l) !== null ? `About ${pct(openAt(l)!)} likely still open at your turn.` : ""
+          openAt(l) !== null ? `${openOdds(openAt(l)!)}.` : ""
         )
       ),
     });
@@ -462,7 +499,7 @@ export function generateStrategies(
         ],
         facts: [{ label: "Lines with carry-over credit", value: `${co.length} of ${lines.length}` }],
         risk: "A conflict between the carried-in trip and next month's award is settled in the Conflict Input Window; which trip you'd rather keep can matter more than the credit.",
-        lines: co.slice(0, 5).map((l) => rec(l, `${hm(l.carryOverCreditHours!)} carried into next month`, `${hm(l.totalCreditHours)} credit this month · ${l.daysOff} days off.`, openAt(l), openAt(l) !== null ? `About ${pct(openAt(l)!)} likely still open at your turn.` : "")),
+        lines: co.slice(0, 5).map((l) => rec(l, `${hm(l.carryOverCreditHours!)} carried into next month`, `${hm(l.totalCreditHours)} credit this month · ${l.daysOff} days off.`, openAt(l), openAt(l) !== null ? `${openOdds(openAt(l)!)}.` : "")),
       });
     }
   }
@@ -489,7 +526,7 @@ export function generateStrategies(
         { label: "Lines flying them", value: `${withSweep.length} of ${lines.length}` },
       ],
       risk: "How often sweeps are actually rerouted, and how reroutes are paid, aren't in the pack.",
-      lines: withSweep.slice(0, 5).map(({ l, n }) => rec(l, `${plural(n, "leg")} on sweep aircraft`, `${hm(l.totalCreditHours)} credit · ${l.daysOff} days off.`, openAt(l), openAt(l) !== null ? `About ${pct(openAt(l)!)} likely still open at your turn.` : "")),
+      lines: withSweep.slice(0, 5).map(({ l, n }) => rec(l, `${plural(n, "leg")} on sweep aircraft`, `${hm(l.totalCreditHours)} credit · ${l.daysOff} days off.`, openAt(l), openAt(l) !== null ? `${openOdds(openAt(l)!)}.` : "")),
     });
   }
 

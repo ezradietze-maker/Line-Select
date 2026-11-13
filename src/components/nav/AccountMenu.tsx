@@ -131,6 +131,15 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
               items[next]?.focus();
             }}
           >
+            <a
+              href="/membership"
+              role="menuitem"
+              tabIndex={-1}
+              onClick={() => close()}
+              className="block w-full px-4 py-2.5 text-left text-sm text-ink hover:bg-canvas focus-visible:bg-canvas"
+            >
+              Membership
+            </a>
             <button
               type="button"
               role="menuitem"

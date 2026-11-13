@@ -18,6 +18,7 @@ import {
   passwordResetTokens,
   preferenceProfiles,
   sessions,
+  subscriptions,
   tradeHoldings,
   tradeOffers,
   tradePreferences,
@@ -176,6 +177,84 @@ export async function updateCredential(
   if (patch.recoverySalt !== undefined) set.recoverySalt = patch.recoverySalt;
   if (Object.keys(set).length === 0) return;
   await db.update(credentialsTable).set(set).where(eq(credentialsTable.userId, userId));
+}
+
+// ---- Membership (Stripe) ----
+
+export interface SubscriptionRecord {
+  userId: string;
+  stripeCustomerId: string;
+  stripeSubscriptionId: string | null;
+  status: string;
+  priceId: string | null;
+  currentPeriodEnd: string | null;
+  trialEndsAt: string | null;
+}
+
+function toSubscriptionRecord(row: typeof subscriptions.$inferSelect): SubscriptionRecord {
+  return {
+    userId: row.userId,
+    stripeCustomerId: row.stripeCustomerId,
+    stripeSubscriptionId: row.stripeSubscriptionId ?? null,
+    status: row.status,
+    priceId: row.priceId ?? null,
+    currentPeriodEnd: row.currentPeriodEnd ? row.currentPeriodEnd.toISOString() : null,
+    trialEndsAt: row.trialEndsAt ? row.trialEndsAt.toISOString() : null,
+  };
+}
+
+export async function getSubscriptionByUserId(userId: string): Promise<SubscriptionRecord | null> {
+  if (!isUuid(userId)) return null;
+  const [row] = await db.select().from(subscriptions).where(eq(subscriptions.userId, userId)).limit(1);
+  return row ? toSubscriptionRecord(row) : null;
+}
+
+export async function getSubscriptionByCustomerId(customerId: string): Promise<SubscriptionRecord | null> {
+  const [row] = await db.select().from(subscriptions).where(eq(subscriptions.stripeCustomerId, customerId)).limit(1);
+  return row ? toSubscriptionRecord(row) : null;
+}
+
+/** Records the pilot↔Stripe-customer link before the first checkout, so a later webhook can find the pilot. */
+export async function linkStripeCustomer(userId: string, stripeCustomerId: string): Promise<void> {
+  await db
+    .insert(subscriptions)
+    .values({ userId, stripeCustomerId, status: "incomplete", updatedAt: new Date() })
+    .onConflictDoUpdate({ target: subscriptions.userId, set: { stripeCustomerId, updatedAt: new Date() } });
+}
+
+/** Upserts the pilot's membership from a Stripe subscription (called by the webhook). */
+export async function saveSubscription(
+  userId: string,
+  snap: {
+    stripeCustomerId: string;
+    stripeSubscriptionId: string;
+    status: string;
+    priceId: string | null;
+    currentPeriodEnd: Date | null;
+    trialEndsAt: Date | null;
+  }
+): Promise<void> {
+  await db
+    .insert(subscriptions)
+    .values({ userId, ...snap, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: subscriptions.userId,
+      set: {
+        stripeCustomerId: snap.stripeCustomerId,
+        stripeSubscriptionId: snap.stripeSubscriptionId,
+        status: snap.status,
+        priceId: snap.priceId,
+        currentPeriodEnd: snap.currentPeriodEnd,
+        trialEndsAt: snap.trialEndsAt,
+        updatedAt: new Date(),
+      },
+    });
+}
+
+/** The fast gate the rest of the app reads. The webhook keeps this in step with the Stripe status. */
+export async function setUserPlan(userId: string, plan: "free" | "pro"): Promise<void> {
+  if (!isUuid(userId)) return;
+  await db.update(users).set({ plan }).where(eq(users.id, userId));
 }
 
 // ---- Password reset tokens ----

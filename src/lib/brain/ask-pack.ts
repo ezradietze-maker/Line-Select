@@ -1,5 +1,5 @@
 import { callCeilingUsd, schemaChars, structuredCall, type BrainUsage } from "@/lib/brain/llm";
-import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
+import { METRICS, METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
 import { neverSayForPrompt } from "./pilot-words";
 
 /**
@@ -27,6 +27,13 @@ export interface AskQuery {
   cannotAnswer: string | null;
 }
 
+/**
+ * The measures the model may name: the brief's menu, as an enum, so a near-miss id ("layoversInCity") can't be written at
+ * all. A free string let one through, `cleanAskQuery` dropped it, and the answer listed every line under the pilot's
+ * filter ("Lines with a Honolulu layover — 49 lines").
+ */
+const METRIC_IDS = METRICS.filter((def) => !def.retired).map((def) => def.id);
+
 const PARAMS_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -41,7 +48,8 @@ const PARAMS_SCHEMA = {
   },
 };
 
-const SCHEMA = {
+/** What the model fills in (exported for the tests). */
+export const ASK_QUERY_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: ["conditions", "sort", "summary", "cannotAnswer"],
@@ -53,7 +61,7 @@ const SCHEMA = {
         additionalProperties: false,
         required: ["metric", "op", "value", "params", "label"],
         properties: {
-          metric: { type: "string" },
+          metric: { type: "string", enum: METRIC_IDS },
           op: { type: "string", enum: ["atMost", "atLeast", "equals"] },
           value: { type: "number" },
           params: PARAMS_SCHEMA,
@@ -68,14 +76,14 @@ const SCHEMA = {
           type: "object",
           additionalProperties: false,
           required: ["metric", "direction", "params"],
-          properties: { metric: { type: "string" }, direction: { type: "string", enum: ["asc", "desc"] }, params: PARAMS_SCHEMA },
+          properties: { metric: { type: "string", enum: METRIC_IDS }, direction: { type: "string", enum: ["asc", "desc"] }, params: PARAMS_SCHEMA },
         },
       ],
     },
     summary: { type: "string" },
     cannotAnswer: { anyOf: [{ type: "null" }, { type: "string" }] },
   },
-} as const;
+};
 
 const SYSTEM = `You turn a FedEx pilot's question about their bid pack into a precise query over measures the app computes for every line. You never answer from your own knowledge: the app measures each line and keeps the ones that meet your conditions.
 
@@ -92,7 +100,7 @@ const MAX_TOKENS = 4000;
 
 /** The most `readAskQuery` can cost, held against the spend ceilings before it's asked. */
 export function askQueryCeilingUsd(input: { question: string; packBrief: string; model?: string }): number {
-  return callCeilingUsd(input.model, SYSTEM.length + schemaChars(SCHEMA) + input.packBrief.length + input.question.length, MAX_TOKENS);
+  return callCeilingUsd(input.model, SYSTEM.length + schemaChars(ASK_QUERY_SCHEMA) + input.packBrief.length + input.question.length, MAX_TOKENS);
 }
 
 /** Reads a question into a query. `packBrief` is the pack's measure menu (`buildPackBrief`), the same the brain reads. */
@@ -102,26 +110,57 @@ export async function readAskQuery(input: { question: string; packBrief: string;
     model: input.model,
     system: SYSTEM,
     user: { cached: input.packBrief, fresh: `THE PILOT'S QUESTION:\n${input.question}` },
-    schema: SCHEMA as unknown as Record<string, unknown>,
+    schema: ASK_QUERY_SCHEMA as unknown as Record<string, unknown>,
     effort: "low",
     maxTokens: MAX_TOKENS,
   });
   return { query: cleanAskQuery(data), usage };
 }
 
-/** Only measures the app has, only the params each one takes — anything else the model wrote is dropped. */
+/** Params that say which cities, regions, dates or weekdays: a measure that reads one counts nothing without it. */
+const CHOSEN: (keyof MetricParams)[] = ["cities", "regions", "dates", "weekdays"];
+const MAX_CONDITIONS = 6;
+
+/**
+ * Only measures the app has, only the params each one takes — anything else the model wrote is dropped. A condition
+ * that can't be checked as written (a measure the app doesn't have, a city measure left with no cities, one past the
+ * sixth) turns the whole answer into a plain "couldn't check", naming it: a list with the condition quietly gone would
+ * still read as filtered by it ("Lines with a Honolulu layover — 49 lines").
+ */
 export function cleanAskQuery(q: AskQuery): AskQuery {
   const params = (metric: string, p: MetricParams | undefined): MetricParams | undefined => {
     const allowed = new Set(METRICS_BY_ID.get(metric)?.params ?? []);
     if (!p) return undefined;
-    const out = Object.fromEntries(Object.entries(p).filter(([k, v]) => allowed.has(k as keyof MetricParams) && v !== null && v !== undefined)) as MetricParams;
+    const out = Object.fromEntries(
+      Object.entries(p).filter(([k, v]) => allowed.has(k as keyof MetricParams) && v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0))
+    ) as MetricParams;
     return Object.keys(out).length ? out : undefined;
   };
-  const conditions = (q.conditions ?? [])
-    .filter((c) => METRICS_BY_ID.has(c.metric) && Number.isFinite(c.value) && (c.op === "atMost" || c.op === "atLeast" || c.op === "equals"))
-    .slice(0, 6)
-    .map((c) => ({ ...c, params: params(c.metric, c.params), label: String(c.label ?? "").slice(0, 120) }));
-  const sort = q.sort && METRICS_BY_ID.has(q.sort.metric) ? { metric: q.sort.metric, direction: q.sort.direction === "asc" ? ("asc" as const) : ("desc" as const), params: params(q.sort.metric, q.sort.params) } : null;
-  const cannotAnswer = typeof q.cannotAnswer === "string" && q.cannotAnswer.trim() ? q.cannotAnswer.trim().slice(0, 300) : null;
+  /** The measure reads a chosen city, region, date or weekday, and none survived. */
+  const missingChoice = (metric: string, p: MetricParams | undefined) => {
+    const def = METRICS_BY_ID.get(metric);
+    const needs = (def?.params ?? []).filter((k) => CHOSEN.includes(k) && def?.defaults?.[k] === undefined);
+    return needs.length > 0 && !needs.some((k) => p?.[k] !== undefined);
+  };
+  const unchecked: string[] = [];
+  const conditions: AskCondition[] = [];
+  for (const c of q.conditions ?? []) {
+    const label = String(c.label ?? "").slice(0, 120);
+    const p = params(c.metric, c.params);
+    const ok = METRICS_BY_ID.has(c.metric) && Number.isFinite(c.value) && (c.op === "atMost" || c.op === "atLeast" || c.op === "equals") && !missingChoice(c.metric, p);
+    if (ok && conditions.length < MAX_CONDITIONS) conditions.push({ ...c, params: p, label });
+    else unchecked.push(label.trim() ? `"${label.trim()}"` : "part of the question");
+  }
+  let sort: AskQuery["sort"] = null;
+  if (q.sort) {
+    const p = params(q.sort.metric, q.sort.params);
+    if (METRICS_BY_ID.has(q.sort.metric) && !missingChoice(q.sort.metric, p)) sort = { metric: q.sort.metric, direction: q.sort.direction === "asc" ? "asc" : "desc", params: p };
+    else unchecked.push("the order asked for");
+  }
+  const said = typeof q.cannotAnswer === "string" && q.cannotAnswer.trim() ? q.cannotAnswer.trim().slice(0, 300) : null;
+  const cannotAnswer =
+    said ?? (unchecked.length ? `The pack couldn't be checked for ${joinAnd(unchecked)} as asked, so no lines are shown — try asking it another way.`.slice(0, 300) : null);
   return { conditions: cannotAnswer ? [] : conditions, sort: cannotAnswer ? null : sort, summary: String(q.summary ?? "").slice(0, 300), cannotAnswer };
 }
+
+const joinAnd = (items: string[]) => (items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
