@@ -27,7 +27,8 @@ import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 import type { TradeOffer } from "@/types/trade";
 import type { ToastItem } from "@/components/ui/Toast";
-import { forgetPilotOnDevice } from "@/lib/device-data";
+import { forgetPilotOnDevice, forgetPilotWork } from "@/lib/device-data";
+import { clearServerDraft } from "@/lib/interview-draft-sync";
 import { adoptGuestDrafts } from "@/lib/interview-draft";
 import { landingAfterSignIn, landingPathFor } from "@/lib/landing-path";
 import { LOCAL_SAVE_FAILED_EVENT } from "@/lib/local-save-failed";
@@ -694,13 +695,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function handleStartOver() {
-    clearBidPack(user?.id ?? null);
+    // All of it, for every pack, as the dialog says — not only the pack and profile: tiers and starred lines kept by
+    // the pack's id came back with the same month's pack uploaded again. The sign-in stays.
+    forgetPilotWork(user?.id ?? null);
     if (user) void clearServerBidPack();
     if (user && bidPack) void clearTradeHolding(bidPack.id);
+    if (user && bidPack) void clearServerDraft(bidPack.id);
     clearPendingProfile(user?.id ?? null);
     setInterviewKey((k) => k + 1);
-    setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null, freshBidPack: false }));
-    router.push("/");
+    setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null, seniority: null, freshBidPack: false }));
+    // Signed in, the landing page is for someone else: on to the upload, inside the app.
+    router.push(user ? "/upload" : "/");
     void clearProfileForUser(user?.id ?? null);
   }
 

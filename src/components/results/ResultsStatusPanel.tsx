@@ -144,6 +144,8 @@ function useInTabReminders(packId: string, deadline: string | null, label: strin
       setBlocked(true);
       return;
     }
+    // Allowed since (in the browser's site settings): the earlier "blocked" no longer holds.
+    setBlocked(false);
     writeStorage(key, "on");
     setEnabled(true);
   }

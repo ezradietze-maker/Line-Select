@@ -32,6 +32,9 @@ export function InboxScreen({ bidPack, user, polledOffers, onGoToTradeBoard }: I
   const [offers, setOffers] = useState<TradeOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  // Whether a copy of the board has ever come in: until one has, a failed load shows only its message, not three
+  // sections saying there's nothing waiting when nothing could be read.
+  const [everLoaded, setEverLoaded] = useState(false);
 
   // One seat's board for one month: the server sends nothing else.
   const boardKey = bidPack ? [bidPack.base, bidPack.aircraft, bidPack.seat, bidPack.month].join("|") : null;
@@ -44,7 +47,10 @@ export function InboxScreen({ bidPack, user, polledOffers, onGoToTradeBoard }: I
     const [base, aircraft, seat, month] = boardKey.split("|");
     const data = await fetchTradeOffers({ base, aircraft, seat, month });
     setLoadFailed(data === null);
-    if (data) setOffers(data);
+    if (data) {
+      setOffers(data);
+      setEverLoaded(true);
+    }
     setLoading(false);
   }, [boardKey]);
 
@@ -68,6 +74,7 @@ export function InboxScreen({ bidPack, user, polledOffers, onGoToTradeBoard }: I
     if (polledOffers && polledOffers !== firstPoll.current) {
       setOffers(polledOffers);
       setLoadFailed(false);
+      setEverLoaded(true);
     }
   }, [polledOffers]);
 
@@ -103,7 +110,7 @@ export function InboxScreen({ bidPack, user, polledOffers, onGoToTradeBoard }: I
 
       {loading ? (
         <SkeletonCards shape="offer" className="mt-8" />
-      ) : (
+      ) : loadFailed && !everLoaded ? null : (
         <div className="mt-8 space-y-8">
           <Section title="Needs your response" count={needsResponse.length}>
             {needsResponse.length === 0 ? (

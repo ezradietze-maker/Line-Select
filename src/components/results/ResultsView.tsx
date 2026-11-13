@@ -107,6 +107,7 @@ import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
 import { FlipText } from "@/components/ui/FlipText";
 import { PillHighlight } from "@/components/ui/PillHighlight";
 import { setRankingSnapshot } from "@/lib/ranking-snapshot";
+import { settleScrollTo } from "@/lib/settle-scroll";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
@@ -715,6 +716,13 @@ export function ResultsView({
   const focusDone = useRef<string | null>(null);
   // Filters are cleared once per ask: cleared on every pass, a line they couldn't bring back kept wiping each new one.
   const focusCleared = useRef<string | null>(null);
+  // The scroll holding an asked-for line in place (stopped by a new ask, or leaving), and when the list first showed.
+  const focusScroll = useRef<(() => void) | null>(null);
+  const listReadyAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (listReady && listReadyAt.current === null) listReadyAt.current = performance.now();
+  }, [listReady]);
+  useEffect(() => () => focusScroll.current?.(), []);
   const focusTarget = focusLine && listReady ? ranked.find((r) => r.line.lineNumber === focusLine) ?? null : null;
   const focusIndex = focusTarget ? sorted.indexOf(focusTarget) : -1;
   useEffect(() => {
@@ -745,17 +753,23 @@ export function ResultsView({
       return;
     }
     if (focusIndex >= shown) {
-      setPageState({ key: listKey, shown: focusIndex + 1 });
+      // Paged on past it, so there's list below it to scroll on to: with the line last, the page ended too soon for it
+      // to reach the top of the screen. Rows off screen only stand in, so a page more costs next to nothing.
+      setPageState({ key: listKey, shown: Math.min(sorted.length, focusIndex + PAGE_SIZE) });
       return;
     }
     const el = document.getElementById(`line-${focusTarget.line.id}`);
     if (!el) return; // the page grown to it isn't drawn yet — runs again once it is
-    el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    // Held at the top of the screen while the cards around it draw in and the panels above finish loading; a glide only
+    // for an ask from within the list already showing (the palette here), never on arriving from another screen.
+    focusScroll.current?.();
+    const settled = listReadyAt.current !== null && performance.now() - listReadyAt.current > 1500;
+    focusScroll.current = settleScrollTo(el.id, { smooth: !reduceMotion && settled });
     setOpenIds((prev) => (prev.has(focusTarget.line.id) ? prev : new Set(prev).add(focusTarget.line.id)));
     setFlashId(focusTarget.line.id);
     focusDone.current = focusLine;
     onFocusHandled?.();
-  }, [focusLine, listReady, focusTarget, focusIndex, shown, listKey, displayedIds, hiddenSet, reduceMotion, onFocusHandled, tiers]);
+  }, [focusLine, listReady, focusTarget, focusIndex, shown, listKey, displayedIds, hiddenSet, reduceMotion, onFocusHandled, tiers, sorted.length]);
   // Every line's strip has the pack's day columns, laid out the same at the list's width, so they line up under one header.
   // Counted with the ranking's warm-up: the strips only show once the list does.
   const columns = useMemo(() => (warmUp.ready ? packColumns(bidPack.bidPeriodStart, bidPack.bidPeriodDays, columnCountOf(bidPack)) : NO_COLUMNS), [bidPack, warmUp.ready]);
@@ -1533,7 +1547,9 @@ export function ResultsView({
                 ["s", "shortlist"],
                 ["c", "compare"],
                 ["x", "select"],
-                ["1–5", "move to a tier"],
+                // As the keys work: one number per tier there is (up to 9), and 0 for none.
+                [tiers.state.tiers.length > 1 ? `1–${Math.min(9, tiers.state.tiers.length)}` : "1", "move to a tier"],
+                ["0", "out of its tier"],
                 ["⌘Z", "undo"],
                 ["⌘K", "jump to a line"],
                 ["esc", "clear"],

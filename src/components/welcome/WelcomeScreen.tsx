@@ -169,7 +169,7 @@ function Story() {
  * carried is still here: not affiliated, what happens to the PDF, which
  * numbers are illustrative.
  */
-export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; onTrySample: () => void }) {
+export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStart: () => void; onTrySample: () => void; appHref?: string | null }) {
   const reduce = useReducedMotion();
   // The hero rises in with CSS, not motion: CSS starts on first paint, from
   // the server-rendered HTML, while a motion entrance would hold the
@@ -187,8 +187,9 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
           <Link href="/how-it-works" className="rounded-md px-3 py-2 text-ink-muted transition-colors hover:text-ink">
             How it works
           </Link>
-          <Link href="/auth" className="rounded-md border border-hairline px-3 py-2 text-ink transition-colors hover:border-border-strong">
-            Sign in
+          {/* Signed in already (shown this page with "/?welcome"): `appHref` goes back into the app, not to a sign-in form. */}
+          <Link href={appHref ?? "/auth"} className="rounded-md border border-hairline px-3 py-2 text-ink transition-colors hover:border-border-strong">
+            {appHref ? "Open Line Select" : "Sign in"}
           </Link>
         </nav>
       </header>

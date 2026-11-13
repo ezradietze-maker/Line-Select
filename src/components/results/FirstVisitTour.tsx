@@ -1,11 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
+import { nextStop } from "@/lib/focus-trap";
 
 /**
  * A pilot's first look at the rankings: four tips, each lighting up the part of the screen it's about, once per
- * device. Skippable at any point; a tip whose part isn't on screen (the sidebar on a phone) is left out.
+ * device. Skippable at any point; a tip whose part isn't on screen (the sidebar on a phone) is left out. While it's up
+ * the page holds still and Tab stays in the tip: scrolled, the tip went off the screen and left only the dimmed page.
  */
 
 const DONE_KEY = "line-select:tour:results:v1";
@@ -17,6 +20,13 @@ const STEPS: { target: string; title: string; body: string }[] = [
   { target: '[role="group"][aria-label="Your flying"]', title: "Beyond this bid", body: "Your layover cities, your logbook of awards, and tools like the world clock and commute planner live here." },
 ];
 
+/** Room around the lit part, between it and the tip, and from the screen's edges. */
+const PAD = 6;
+const GAP = 10;
+const EDGE = 12;
+/** Keys that scroll the page, held while the tour is up (a Space on one of its buttons still presses it). */
+const SCROLL_KEYS = new Set([" ", "PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown"]);
+
 function shown(el: Element | null): el is HTMLElement {
   if (!(el instanceof HTMLElement)) return false;
   const r = el.getBoundingClientRect();
@@ -26,6 +36,9 @@ function shown(el: Element | null): el is HTMLElement {
 export function FirstVisitTour({ ready }: { ready: boolean }) {
   const [step, setStep] = useState<number | null>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  // The tip's own height, once drawn (a guess before): where it goes depends on it fitting.
+  const [cardHeight, setCardHeight] = useState(180);
 
   useEffect(() => {
     if (!ready) return;
@@ -67,6 +80,12 @@ export function FirstVisitTour({ ready }: { ready: boolean }) {
     [nextShown, finish]
   );
 
+  // Measured once each tip is drawn, before it shows: a longer tip may no longer fit where the guess put it.
+  useLayoutEffect(() => {
+    const h = cardRef.current?.offsetHeight;
+    if (h && h !== cardHeight) setCardHeight(h);
+  }, [step, rect, cardHeight]);
+
   useLayoutEffect(() => {
     if (step === null) return;
     const el = document.querySelector(STEPS[step].target);
@@ -75,45 +94,100 @@ export function FirstVisitTour({ ready }: { ready: boolean }) {
       go(step + 1, 1);
       return;
     }
-    el.scrollIntoView({ block: "center", behavior: "auto" });
+    // Scrolled so the part and its tip fit on the screen together, the tip under it. A part too tall for both (the
+    // bid panel on a small phone) goes to the top of the screen, so its top — the countdown — is what's lit.
+    const place = () => {
+      const r = el.getBoundingClientRect();
+      // Below the phone's top bar, which stays on the page: a part scrolled under it had its top hidden.
+      const bar = document.querySelector("[data-top-bar]")?.getBoundingClientRect();
+      const ceiling = bar && bar.height > 0 ? bar.bottom : 0;
+      const room = window.innerHeight - ceiling;
+      const block = r.height + PAD * 2 + GAP + cardHeight;
+      const top = ceiling + (block + EDGE * 2 <= room ? (room - block) / 2 + PAD : EDGE + PAD);
+      window.scrollTo({ top: Math.max(0, window.scrollY + r.top - top), behavior: "instant" });
+      setRect(el.getBoundingClientRect());
+    };
+    place();
     const measure = () => setRect(el.getBoundingClientRect());
-    measure();
-    window.addEventListener("resize", measure);
+    window.addEventListener("resize", place);
     window.addEventListener("scroll", measure, true);
     return () => {
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("resize", place);
       window.removeEventListener("scroll", measure, true);
     };
-  }, [step, go]);
+  }, [step, go, cardHeight]);
+
+  // Each tip opens with its Next (or Done) in focus, unless focus is in it already: Safari doesn't focus a button it
+  // clicks, so after a Next there it had gone back to the page.
+  useEffect(() => {
+    const card = cardRef.current;
+    if (step === null || !rect || !card || card.contains(document.activeElement)) return;
+    [...card.querySelectorAll<HTMLButtonElement>("button")].at(-1)?.focus({ preventScroll: true });
+  }, [step, rect]);
+
+  // The page holds still under the tour: no wheel, touch or key scrolls it, as with a dialog.
+  const open = step !== null;
+  useEffect(() => {
+    if (!open) return;
+    const body = document.body;
+    const before = body.style.overflow;
+    body.style.overflow = "hidden";
+    const hold = (e: Event) => e.preventDefault();
+    window.addEventListener("wheel", hold, { passive: false });
+    window.addEventListener("touchmove", hold, { passive: false });
+    return () => {
+      body.style.overflow = before;
+      window.removeEventListener("wheel", hold);
+      window.removeEventListener("touchmove", hold);
+    };
+  }, [open]);
 
   useEffect(() => {
-    if (step === null) return;
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") finish();
+      if (e.key === "Escape") return finish();
+      const card = cardRef.current;
+      if (e.key === "Tab" && card) {
+        // Round the tip's own buttons, never out to the page behind it.
+        e.preventDefault();
+        const stops = [...card.querySelectorAll<HTMLButtonElement>("button")].filter((b) => !b.disabled);
+        nextStop(stops, document.activeElement instanceof HTMLButtonElement ? document.activeElement : null, e.shiftKey)?.focus();
+      } else if (SCROLL_KEYS.has(e.key) && !(e.key === " " && e.target instanceof HTMLButtonElement)) e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step, finish]);
+  }, [open, finish]);
 
   if (step === null || !rect) return null;
   const s = STEPS[step];
-  const pad = 6;
-  const below = rect.bottom + 180 < window.innerHeight;
-  const cardTop = below ? rect.bottom + pad + 10 : Math.max(12, rect.top - pad - 10 - 170);
-  const cardLeft = Math.min(Math.max(12, rect.left), window.innerWidth - 12 - Math.min(360, window.innerWidth - 24));
+  // Under the part if the tip fits there, over it if it fits there, else at the foot of the screen with only the part
+  // above it lit — never on top of what it's describing.
+  const vh = window.innerHeight;
+  const spotTop = rect.top - PAD;
+  const spotBottom = rect.bottom + PAD;
+  let spotHeight = spotBottom - spotTop;
+  let cardTop: number;
+  if (spotBottom + GAP + cardHeight + EDGE <= vh) cardTop = spotBottom + GAP;
+  else if (spotTop - GAP - cardHeight >= EDGE) cardTop = spotTop - GAP - cardHeight;
+  else {
+    cardTop = Math.max(EDGE, vh - EDGE - cardHeight);
+    spotHeight = Math.max(24, cardTop - GAP - spotTop);
+  }
+  const cardLeft = Math.min(Math.max(EDGE, rect.left), window.innerWidth - EDGE - Math.min(360, window.innerWidth - 2 * EDGE));
   const visibleSteps = STEPS.map((x, i) => i).filter((i) => shown(document.querySelector(STEPS[i].target)));
   const position = visibleSteps.indexOf(step) + 1;
 
-  return (
+  // At the end of <body>, as a dialog is: drawn inside the screen, it sat under the phone's top bar and tab bar.
+  return createPortal(
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={s.title}>
       {/* The spotlight: the screen dimmed around the part the tip is about. */}
-      <button type="button" aria-label="Skip the tour" onClick={finish} className="absolute inset-0 cursor-default" />
+      <button type="button" aria-label="Skip the tour" tabIndex={-1} onClick={finish} className="absolute inset-0 cursor-default" />
       <div
         aria-hidden
         className="pointer-events-none absolute rounded-xl transition-all duration-300"
-        style={{ top: rect.top - pad, left: rect.left - pad, width: rect.width + pad * 2, height: rect.height + pad * 2, boxShadow: "0 0 0 9999px rgb(0 0 0 / 0.5)" }}
+        style={{ top: spotTop, left: rect.left - PAD, width: rect.width + PAD * 2, height: spotHeight, boxShadow: "0 0 0 9999px rgb(0 0 0 / 0.5)" }}
       />
-      <div className="absolute w-[min(360px,calc(100vw-24px))] rounded-xl border border-hairline bg-surface-raised p-4 shadow-elevated-lg" style={{ top: cardTop, left: cardLeft }}>
+      <div ref={cardRef} className="absolute w-[min(360px,calc(100vw-24px))] rounded-xl border border-hairline bg-surface-raised p-4 shadow-elevated-lg" style={{ top: cardTop, left: cardLeft }}>
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="font-display text-base font-semibold text-ink">{s.title}</h2>
           <span className="text-xs tabular-nums text-ink-faint">
@@ -137,6 +211,7 @@ export function FirstVisitTour({ ready }: { ready: boolean }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

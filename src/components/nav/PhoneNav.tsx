@@ -83,6 +83,7 @@ export function PhoneNav({
   return (
     <>
       <header
+        data-top-bar
         style={{ viewTransitionName: "app-topbar" }}
         className="sidebar-scheme sticky top-0 z-30 flex flex-wrap items-center justify-between gap-x-2.5 gap-y-2 border-b border-sidebar-border bg-sidebar/95 px-4 py-2.5 backdrop-blur md:hidden"
       >

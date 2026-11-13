@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadBidPack, saveBidPack } from "./bidpack-storage";
-import { forgetPilotOnDevice } from "./device-data";
+import { forgetPilotOnDevice, forgetPilotWork } from "./device-data";
 import { SAMPLE_BID_PACK } from "./sample-bidpack";
 
 function fakeStorage() {
@@ -54,5 +54,41 @@ describe("signing out on a shared computer", () => {
     forgetPilotOnDevice("pilot-1");
     await saving;
     expect(await loadBidPack("pilot-1")).toBeNull();
+  });
+});
+
+describe("starting over from scratch", () => {
+  let store: ReturnType<typeof fakeStorage>;
+  beforeEach(() => {
+    store = fakeStorage();
+    vi.stubGlobal("window", { localStorage: store });
+  });
+  const keys = () => [...Array(store.length).keys()].map((i) => store.key(i)).sort();
+
+  it("removes the pilot's bidding for every pack, so the same month's pack uploaded again brings none of it back", () => {
+    for (const k of [
+      "line-select:line-marks:pilot-1:pack-a:v1",
+      "line-select:line-tiers:pilot-1:pack-a:v1",
+      "line-select:line-tiers:pilot-1:pack-b:v1",
+      "line-select:seniority:pilot-1:v1",
+      "line-select:top-lines:pilot-1:v2",
+      "line-select:bid-period-history:pilot-1:v1",
+      "line-select:commute-settings:v1",
+    ])
+      store.setItem(k, "x");
+    forgetPilotWork("pilot-1");
+    expect(keys()).toEqual([]);
+  });
+
+  it("keeps the sign-in, the contract chat, other pilots' and the guest's own", () => {
+    for (const k of ["line-select:signed-in-hint:v1", "line-select:last-user:v1", "line-select:contract-chat:pilot-1:v1", "line-select:line-tiers:pilot-2:pack-a:v1", "line-select:seniority:guest:v1"]) store.setItem(k, "x");
+    forgetPilotWork("pilot-1");
+    expect(keys()).toEqual(["line-select:contract-chat:pilot-1:v1", "line-select:last-user:v1", "line-select:line-tiers:pilot-2:pack-a:v1", "line-select:seniority:guest:v1", "line-select:signed-in-hint:v1"]);
+  });
+
+  it("for a guest, removes the guest's own and their pack", () => {
+    for (const k of ["line-select:bidpack:guest:v1", "line-select:line-marks:guest:pack-a:v1", "line-select:seniority:guest:v1", "line-select:seniority:pilot-1:v1"]) store.setItem(k, "x");
+    forgetPilotWork(null);
+    expect(keys()).toEqual(["line-select:seniority:pilot-1:v1"]);
   });
 });

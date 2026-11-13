@@ -107,8 +107,13 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
         <div className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-[14rem] animate-fade-in overflow-hidden rounded-lg border border-border bg-surface shadow-elevated-lg">
           {/* Who's signed in sits above the menu, not in it: a menu holds only its items. */}
           <div className="border-b border-border px-4 py-3">
-            <div className="text-sm font-medium text-ink">{user.displayName}</div>
-            <div className="truncate text-xs text-ink-faint">{user.email}</div>
+            {/* A long name or address ends in "…", with the whole of it on hover. */}
+            <div className="truncate text-sm font-medium text-ink" title={user.displayName}>
+              {user.displayName}
+            </div>
+            <div className="truncate text-xs text-ink-faint" title={user.email}>
+              {user.email}
+            </div>
           </div>
           {/* A real menu: Up and Down move between the items, Home and End go to the ends, Tab leaves and closes it. */}
           <div

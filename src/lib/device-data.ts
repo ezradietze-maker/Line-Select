@@ -20,6 +20,37 @@ const isGuestsOwn = (k: string) => k.includes(":guest:") && !k.startsWith("line-
  * computer can't read it, and what they'd done as a guest there before signing in. The account keeps its own copy on
  * the server; signing back in brings it back.
  */
+/**
+ * Kept through "Start over": what isn't the bid or anything learned about the pilot — their questions to the contract,
+ * a feedback note half written, which trade offers they've already looked at, and whether they share their forecast.
+ */
+const KEPT_ON_START_OVER = ["line-select:contract-chat:", "line-select:feedback-draft:", "line-select:trade-offers-seen:", "line-select:forecast-share:"];
+/** Under no id, but part of the preferences "Start over" deletes: the home airport and commute settings, and the flights found from them. */
+const COMMUTE = ["line-select:commute-settings:v1", "line-select:flights:v5:", "line-select:commute-check:v2:"];
+
+/**
+ * "Start over from scratch": everything this device kept of the pilot's bidding, for every pack — the pack and profile,
+ * seniority, starred and hidden lines, tiers, swaps, sorts, carry-ins, interview and story drafts, last month's top
+ * lines and the months before, the commute settings — so none of it comes back with the same month's pack uploaded again, as the dialog
+ * promises. Their sign-in stays (and, for a guest, nothing of an account is touched).
+ */
+export function forgetPilotWork(userId: string | null): void {
+  if (typeof window === "undefined") return;
+  clearBidPack(userId);
+  clearProfile(userId);
+  const scope = `:${userId ?? "guest"}:`;
+  try {
+    const store = window.localStorage;
+    const keys = Array.from({ length: store.length }, (_, i) => store.key(i)).filter(
+      (k): k is string =>
+        !!k && k.startsWith("line-select:") && ((k.includes(scope) && !KEPT_ON_START_OVER.some((p) => k.startsWith(p))) || COMMUTE.some((p) => k.startsWith(p)))
+    );
+    for (const key of keys) store.removeItem(key);
+  } catch {
+    // Storage unavailable: nothing was kept to forget.
+  }
+}
+
 export function forgetPilotOnDevice(userId: string): void {
   if (typeof window === "undefined" || !userId) return;
   // Through the pack's and the profile's own clears, so a save still compressing, or one the account refused and that's

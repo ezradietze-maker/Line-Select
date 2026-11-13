@@ -17,7 +17,7 @@ import { landingShownBefore, withLandingShown } from "@/lib/landing-return";
  */
 export function LandingPage() {
   const router = useRouter();
-  const { ready, bidPack, profile, handleTrySample } = useAppState();
+  const { ready, bidPack, profile, user, handleTrySample } = useAppState();
 
   // A pack this page itself loaded ("Try it with sample data") navigates on its
   // own — redirecting again here raced that navigation and dropped a returning
@@ -38,17 +38,23 @@ export function LandingPage() {
   }, []);
 
   useEffect(() => {
-    if (!ready || welcomeAsked || !bidPack || loadingSample.current) return;
+    if (!ready || welcomeAsked || loadingSample.current) return;
+    // Signed in with no pack yet (after "Start over", say): the pitch and its "Sign in" made them look signed out.
+    // Their resume point is the upload, inside the app.
+    if (!bidPack) {
+      if (user) router.replace("/upload");
+      return;
+    }
     const target = landingPathFor(bidPack, profile);
     if (target !== "/") router.replace(target);
-  }, [ready, bidPack, profile, router, welcomeAsked]);
+  }, [ready, bidPack, profile, user, router, welcomeAsked]);
 
   // A saved-pack marker from the pre-paint script can be stale (another
   // account's pack on this browser): once state has loaded and there's no
   // pack to resume, show the landing page after all. So with one they came back for.
   useEffect(() => {
-    if (ready && (!bidPack || welcomeAsked)) document.documentElement.removeAttribute("data-returning");
-  }, [ready, bidPack, welcomeAsked]);
+    if (ready && ((!bidPack && !user) || welcomeAsked)) document.documentElement.removeAttribute("data-returning");
+  }, [ready, bidPack, user, welcomeAsked]);
 
   const loader = (
     <div className="flex min-h-[70vh] items-center justify-center" role="status" aria-label="Loading Line Select">
@@ -57,7 +63,7 @@ export function LandingPage() {
   );
 
   // A returning pilot on their way to their resume point: the mark, breathing gently.
-  if (ready && bidPack && !welcomeAsked) return loader;
+  if (ready && (bidPack || user) && !welcomeAsked) return loader;
 
   function trySample() {
     loadingSample.current = true;
@@ -72,7 +78,7 @@ export function LandingPage() {
     <>
       <div className="returning-only">{loader}</div>
       <div className="landing-only">
-        <WelcomeScreen onStart={() => router.push("/upload")} onTrySample={trySample} />
+        <WelcomeScreen onStart={() => router.push("/upload")} onTrySample={trySample} appHref={user ? (bidPack ? landingPathFor(bidPack, profile) : "/upload") : null} />
       </div>
     </>
   );
