@@ -1,3 +1,4 @@
+import { isSamplePack } from "@/lib/fake-trade-offers";
 import type { ScheduledFlight, TravelAnswer } from "@/lib/flights/itineraries";
 import { jumpseatFlights } from "@/lib/flights/jumpseat";
 import { travelNeedsForPack, type TravelNeed, type TravelParams } from "@/lib/flights/needs";
@@ -134,6 +135,9 @@ const inFlight = new Map<string, Promise<FlightAnswers | null>>();
  * call while one is running shares it — the interview starts it, and the results screen picks it up.
  */
 export function lookUpFlights(bidPack: BidPack, model: PilotModel | undefined | null): Promise<FlightAnswers | null> {
+  // The sample's trips are made up, on dates of their own: once those come within the boards' reach, every commuter
+  // trying it would have paid for real flight lookups for trips nobody flies.
+  if (isSamplePack(bidPack)) return Promise.resolve(null);
   const p = model ? travelParamsFor(bidPack, model) : null;
   if (!model || !p) return Promise.resolve(null);
   const key = storeKey(bidPack, p);

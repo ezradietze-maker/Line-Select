@@ -213,12 +213,13 @@ describe('CBA 2026 25.L.1.d: "prohibited if it would create a conflict", on the 
     expect(t.findings.find((f) => f.level === "no")?.text).toContain("12.C.4");
   });
 
-  it("under the legal rest with 4 hours on the ground, it's a question: a day room can lift the limit (CBA 2026 12.C.4.d.iv)", () => {
+  it("under the legal rest with 4 hours on the ground, still too long as one duty: a day room doesn't lift 12.C.4.e", () => {
+    // A day room puts the normal limits in place of the blended ones (CBA 2026 12.C.4.d.iv); 12.C.4.e's are already normal.
     const close = trip("213", 11, { report: "2200", tafb: 10 });
     const p = pack([l], [close]);
     const t = only(board(p, rowFor(close, p), { line: l }));
-    expect(t.verdict).toBe("check");
-    expect(t.findings.find((f) => f.level === "check")?.text).toContain("12.C.4.d.iv");
+    expect(t.verdict).toBe("no");
+    expect(t.findings.find((f) => f.level === "no")?.text).toContain("12.C.4.e");
   });
 
   it("a clear trip passes", () => {

@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import type { Line } from "@/types/bidpack";
+import { hm } from "@/lib/trip-day-stats";
 
 /** An event's id with only id characters: a pack's pairing number with a line break in it wrote a line of its own. */
 const safeUid = (uid: string) => uid.replace(/[^A-Za-z0-9._@-]/g, "-");
@@ -85,7 +86,7 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null, bid
     const description = [
       reportTime ? `Reports ${reportTime.slice(0, 2)}:${reportTime.slice(2)} local` : null,
       `${trip.days}-day trip, ${cities}`,
-      `${trip.creditHours.toFixed(1)} credit hours`,
+      `${hm(trip.creditHours * 60)} credit hours`,
     ]
       .filter((v): v is string => !!v)
       .join(" \u2014 ");

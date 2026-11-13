@@ -110,13 +110,16 @@ export function HoldingPanel({
     setBusy(true);
     setError(null);
     setRefused(null);
+    const carriedIn = loadCarryIn(user?.id ?? null, bidPack.id).items;
     const saved = await saveTradeHolding({
       packId: bidPack.id,
       bidPackMeta: { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month },
       lineNumber,
       trips: draft,
       // What they carry in from last month, as Open time and View/Add check against: a trade has to fit around it too.
-      carryIn: loadCarryIn(user?.id ?? null, bidPack.id).items,
+      // Sent only when this device has some: none kept here may mean none entered here, not none carried, and sent as
+      // "none" the matching handed day 0–1 trips across a carried-in one.
+      carryIn: carriedIn.length ? carriedIn : undefined,
     });
     setBusy(false);
     if (!saved) return setError("Couldn't save what you hold. Check your connection and try again.");
