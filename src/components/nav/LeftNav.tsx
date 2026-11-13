@@ -103,16 +103,28 @@ function NavList({
   onGo: (target: NavTarget) => void;
 }) {
   const itemRefs = useRef<Partial<Record<NavTarget, HTMLButtonElement | null>>>({});
+  const listRef = useRef<HTMLDivElement>(null);
   const collapsed = useRailCollapsed();
   const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(null);
 
   useLayoutEffect(() => {
-    const el = active ? itemRefs.current[active] : null;
-    setIndicator(el ? { top: el.offsetTop, height: el.offsetHeight } : null);
+    const measure = () => {
+      const el = active ? itemRefs.current[active] : null;
+      const next = el ? { top: el.offsetTop, height: el.offsetHeight } : null;
+      setIndicator((now) => (now?.top === next?.top && now?.height === next?.height ? now : next));
+    };
+    measure();
+    // Measured again whenever the list reflows with the same row lit: coming back from the sign-in page, the sidebar
+    // grows in from nothing, its first label wraps for a moment, and the sign was left half a row below its row.
+    const list = listRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    return () => observer.disconnect();
   }, [active, collapsed]);
 
   return (
-    <div className="relative">
+    <div ref={listRef} className="relative">
       {indicator && (
         <div
           aria-hidden
