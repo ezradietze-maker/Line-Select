@@ -551,5 +551,28 @@ export const subscriptions = pgTable("subscriptions", {
   priceId: text("price_id"),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  /**
+   * `event.created` (Stripe's own clock) of the newest webhook event that
+   * wrote this row. Stripe doesn't promise delivery order, so the webhook
+   * ignores any event older than this — a late "subscription.updated" can't
+   * drag an already-cancelled membership back to "active". Null until the
+   * first real event writes it (the pre-checkout `linkStripeCustomer` row
+   * has no event behind it yet).
+   */
+  lastEventAt: timestamp("last_event_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Every Stripe webhook event we have fully processed, by its Stripe id.
+ * Stripe delivers each event at least once — the same event can arrive twice,
+ * or a retry can land after we already handled the original. The webhook
+ * records an id here only after its handler succeeds and skips any id it has
+ * already seen, so a replay is a no-op. Kept separate from `subscriptions`
+ * because it tracks event delivery, not membership.
+ */
+export const processedStripeEvents = pgTable("processed_stripe_events", {
+  eventId: text("event_id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true }).notNull().defaultNow(),
 });
