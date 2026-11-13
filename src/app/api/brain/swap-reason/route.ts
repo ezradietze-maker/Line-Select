@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { onceForRequest } from "@/lib/server/replay";
 import { failedCallCost } from "@/lib/brain/llm";
-import { readSwapReason, type ReasonOption } from "@/lib/brain/swap-reason";
+import { readSwapReason, swapReasonCeilingUsd, type ReasonOption } from "@/lib/brain/swap-reason";
 import { reportProblem } from "@/lib/server/alerts";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
+import { spenderFor, spendLimitResponse, startPaidCall } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -33,23 +33,26 @@ async function respond(request: Request) {
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "Reading reasons isn't set up on this server." }, { status: 503 });
-  const spender = await spenderFor(request);
-  const allowed = await checkSpend(spender);
-  if (!allowed.ok) return spendLimitResponse(allowed);
-
   const body = await readJsonBody(request, 40_000);
   const priorities = isJsonObject(body) ? options(body.priorities) : null;
   const measures = isJsonObject(body) ? options(body.measures) : null;
   if (!isJsonObject(body) || !isText(body.text, 300) || !(body.text as string).trim() || !isText(body.higher, 20) || !isText(body.lower, 20) || !priorities || !measures) {
     return NextResponse.json({ error: "Tell us why in a sentence (up to 300 characters)." }, { status: 400 });
   }
+  const input = { text: (body.text as string).trim(), higher: body.higher as string, lower: body.lower as string, priorities, measures };
+  const paid = await startPaidCall(await spenderFor(request), swapReasonCeilingUsd(input));
+  if (!paid.ok) return spendLimitResponse(paid);
+  let spent = 0;
   try {
-    const { reason, usage } = await readSwapReason({ text: (body.text as string).trim(), higher: body.higher as string, lower: body.lower as string, priorities, measures, apiKey });
-    await recordSpend(spender, usage.costUsd);
+    const { reason, usage } = await readSwapReason({ ...input, apiKey });
+    spent = usage.costUsd;
     console.log("[swap-reason]", { kind: reason.kind, costUsd: +usage.costUsd.toFixed(5), ms: usage.ms });
     return NextResponse.json({ reason });
   } catch (e) {
-    await Promise.all([recordSpend(spender, failedCallCost(e)), reportProblem("swap-reason", e)]);
+    spent = failedCallCost(e);
+    await reportProblem("swap-reason", e);
     return NextResponse.json({ error: "Couldn't read that just now. Please try again." }, { status: 502 });
+  } finally {
+    await paid.finish(spent);
   }
 }

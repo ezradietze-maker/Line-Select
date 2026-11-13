@@ -1,10 +1,10 @@
 import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
 import type { Region } from "@/lib/metrics/trip-facts";
 import { TIER_WEIGHT, type Criterion, type CriterionShape, type CriterionTier, type PilotModel, type PilotThread } from "@/types/pilot-model";
-import { failedCallCost, structuredCall, withSpent, type BrainUsage, type Effort } from "./llm";
+import { callCeilingUsd, failedCallCost, schemaChars, structuredCall, withSpent, type BrainUsage, type Effort } from "./llm";
 import { modelToBodyClock, modelToDepartures, modelToFullDays, modelToHomePay, modelToHubTurns, modelToWeekdayParts } from "./model-upgrade";
-import { applyPilotFacts, readPilotFacts, type PilotFacts } from "./pilot-facts";
-import { fixModelWords } from "./fix-words";
+import { applyPilotFacts, pilotFactsCeilingUsd, readPilotFacts, type PilotFacts } from "./pilot-facts";
+import { fixModelWords, fixWordsCeilingUsd } from "./fix-words";
 import { pilotWordsForPrompt } from "./pilot-words";
 
 /**
@@ -412,6 +412,20 @@ export interface BuildModelResult {
   facts: PilotFacts | null;
 }
 
+// The longest saved read wrote about 13,700 tokens, thinking included; this leaves room without an open-ended bill.
+const MAX_TOKENS = 24_000;
+
+/**
+ * The most `buildPilotModel` can cost, held against the spend ceilings before it starts: the read itself, the facts
+ * read beside it, and the rewording after. The interview and the prior reading are counted as JSON, which runs longer
+ * than the prompt writes them. The words are fixed on the new reading, which is about the size of the prior one.
+ */
+export function buildModelCeilingUsd(input: BuildModelInput): number {
+  const fresh = input.pilotContext.length + JSON.stringify(input.exchanges).length + JSON.stringify(input.prior ?? null).length + (input.fleetNotes?.length ?? 0);
+  const read = callCeilingUsd(input.model, SYSTEM.length + schemaChars(SCHEMA) + input.packBrief.length + fresh, MAX_TOKENS);
+  return read + pilotFactsCeilingUsd(input) + fixWordsCeilingUsd(input.prior ?? null);
+}
+
 export async function buildPilotModel(input: BuildModelInput): Promise<BuildModelResult> {
   const fresh = [
     `PILOT: ${input.pilotContext}`,
@@ -435,8 +449,7 @@ export async function buildPilotModel(input: BuildModelInput): Promise<BuildMode
       user: { cached: input.packBrief, fresh },
       schema: SCHEMA as unknown as Record<string, unknown>,
       effort: input.effort ?? "high",
-      // The longest saved read wrote about 13,700 tokens, thinking included; this leaves room without an open-ended bill.
-      maxTokens: 24_000,
+      maxTokens: MAX_TOKENS,
     }).catch(async (e) => {
       throw withSpent(e, (await factsCall).cost);
     }),

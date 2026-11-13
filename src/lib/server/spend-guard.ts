@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { sendEmail } from "@/lib/server/email";
-import { addToCounter, getJson, incrementCounter } from "@/lib/server/kv";
+import { addToCounter, getJson, incrementCounter, releaseSlot, takeSlot } from "@/lib/server/kv";
 import { clientIp, deviceIdFrom } from "@/lib/server/rate-limit";
 
 /**
@@ -9,8 +9,10 @@ import { clientIp, deviceIdFrom } from "@/lib/server/rate-limit";
  * and for each pilot, per UTC day. Rate limits count requests, but one request can cost a tenth of a cent or half a
  * dollar, so only a running total of what was actually spent stops someone running up the bill (or a bug looping).
  *
- * Checked before a paid call, recorded after it with the call's real cost. Calls already under way when a ceiling is
- * reached still finish, so a day can end a few cents over — never by more than the calls in flight.
+ * An AI call holds the most it could cost against every ceiling before it starts, and settles to its real cost when it
+ * ends (`startPaidCall`): checking first and recording after let fifty calls sent at once all pass the check before any
+ * was recorded — one guest ran $15 against a $2 ceiling. A day can still end over a ceiling by one call's hold, the
+ * last one let in while there was room. How many paid calls one pilot or one address has running is capped too.
  *
  * Totals are kept in millionths of a dollar so Redis can add them atomically (INCRBY takes whole numbers).
  */
@@ -184,6 +186,97 @@ export async function releaseSpend(spender: Spender, usd: number, { feature, now
   }
 }
 
+/**
+ * How many paid calls one pilot (or guest) may have running at once, and all of them on one address together. A real
+ * interview runs a read of the answers beside the next question, now and then with dictation or Ask your pack; a
+ * crew room has several pilots. Past these it's a script, and each call it holds is money held against the ceilings.
+ */
+export function inFlightCaps() {
+  const count = (envName: string, fallback: number) => {
+    const v = Number(process.env[envName]);
+    return Number.isInteger(v) && v > 0 ? v : fallback;
+  };
+  return { spender: count("SPEND_IN_FLIGHT_PER_PILOT", 4), address: count("SPEND_IN_FLIGHT_PER_ADDRESS", 12) };
+}
+
+/**
+ * A place in flight lets itself go this long after the last call on that key started — longer than the longest paid
+ * route may run (the brain's read, 300 s) — so a function that crashed before giving its place back can't keep it.
+ */
+const IN_FLIGHT_SECONDS = 6 * 60;
+const inFlightKey = (key: string) => `line-select:spend:in-flight:${key}`;
+
+/** A paid call let in. `finish` must be called once, however the call ends, with what it really cost (0 if nothing). */
+export interface PaidCall {
+  finish: (usd: number) => Promise<void>;
+}
+
+export type PaidCallStart = ({ ok: true } & PaidCall) | { ok: false; scope: "site" | "pilot" | "busy" };
+
+/**
+ * Lets a paid call start, or says why not. It takes a place in flight for the spender and their address, then holds
+ * `ceilingUsd` — the most the call can cost: every output token it may write, its whole input — against the site's,
+ * the spender's and the address's totals for the day, all at once, so calls started together can't each see the same
+ * room left. A call is let in while there was room before its hold, as `checkSpend` let one in while anything was
+ * left. `finish` then trades the hold for the real cost, a failed call's included (`failedCallCost`), and gives the
+ * place back. Throws only when the store can't be reached, like `checkSpend`.
+ */
+export async function startPaidCall(spender: Spender, ceilingUsd: number, { now = new Date() }: { now?: Date } = {}): Promise<PaidCallStart> {
+  const caps = inFlightCaps();
+  const places = [{ key: inFlightKey(spender.key), limit: caps.spender }, ...(spender.addressKey ? [{ key: inFlightKey(spender.addressKey), limit: caps.address }] : [])];
+  const taken: string[] = [];
+  const giveBack = () => Promise.all(taken.map((k) => releaseSlot(k).catch((e) => console.error("[spend] place not given back", e))));
+  try {
+    for (const p of places) {
+      if (!(await takeSlot(p.key, p.limit, IN_FLIGHT_SECONDS))) {
+        await giveBack();
+        return { ok: false, scope: "busy" };
+      }
+      taken.push(p.key);
+    }
+  } catch (e) {
+    await giveBack();
+    throw e;
+  }
+
+  // The day it started is the day it's settled on, even if it ends after midnight.
+  const day = today(now);
+  const amount = Math.max(1, Math.ceil((ceilingUsd > 0 && Number.isFinite(ceilingUsd) ? ceilingUsd : 0) * MICRO));
+  const counters = countersFor(spender, undefined, day);
+  const held = await Promise.allSettled(counters.map((c) => addToCounter(c.key, amount, DAY_SECONDS)));
+  const unhold = (only: (i: number) => boolean) =>
+    Promise.all(counters.map((c, i) => (only(i) ? addToCounter(c.key, -amount, DAY_SECONDS).catch((e) => console.error("[spend] hold not given back", e)) : null)));
+  const failed = held.find((h): h is PromiseRejectedResult => h.status === "rejected");
+  if (failed) {
+    await Promise.all([unhold((i) => held[i].status === "fulfilled"), giveBack()]);
+    throw failed.reason;
+  }
+  const totals = held.map((h) => (h as PromiseFulfilledResult<number>).value);
+  const full = totals.findIndex((t, i) => t - amount >= counters[i].cap);
+  if (full >= 0) {
+    await Promise.all([unhold(() => true), giveBack()]);
+    // The site's counter is the first; reaching it pauses paid features for everyone, so the owner hears of it.
+    if (full === 0) await alertSiteCapReached(day, (totals[0] - amount) / MICRO).catch((e) => console.error("[spend] alert not sent", e));
+    return { ok: false, scope: full === 0 ? "site" : "pilot" };
+  }
+
+  let finished = false;
+  return {
+    ok: true,
+    finish: async (usd: number) => {
+      if (finished) return;
+      finished = true;
+      const spent = usd > 0 && Number.isFinite(usd) ? Math.ceil(usd * MICRO) : 0;
+      try {
+        if (spent !== amount) await Promise.all(counters.map((c) => addToCounter(c.key, spent - amount, DAY_SECONDS)));
+      } catch (e) {
+        console.error("[spend] not settled", e);
+      }
+      await giveBack();
+    },
+  };
+}
+
 /** One email a day, the first time the site's ceiling is reached, to `ALERT_EMAIL` (when email is set up). */
 async function alertSiteCapReached(day: string, spentUsd: number): Promise<void> {
   if ((await incrementCounter(`line-select:spend:alerted:${day}`, DAY_SECONDS)) !== 1) return;
@@ -198,10 +291,12 @@ async function alertSiteCapReached(day: string, spentUsd: number): Promise<void>
 }
 
 /** What a pilot sees when a ceiling stops a call — the same 429 shape as a rate limit, so every caller already shows it. */
-export function spendLimitResponse(check: Extract<SpendCheck, { ok: false }>): NextResponse {
+export function spendLimitResponse(check: { ok: false; scope: "site" | "pilot" | "busy" }): NextResponse {
   const error =
     check.scope === "site"
       ? "Line Select's AI is resting until tomorrow — it's had a very busy day. Everything you've done is saved."
-      : "You've reached today's limit for the AI features. They'll be back tomorrow — everything you've done is saved.";
+      : check.scope === "busy"
+        ? "You've got a few AI requests running already. Try again when one finishes — everything you've done is saved."
+        : "You've reached today's limit for the AI features. They'll be back tomorrow — everything you've done is saved.";
   return NextResponse.json({ error }, { status: 429 });
 }

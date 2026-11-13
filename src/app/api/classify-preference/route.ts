@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { failedCallCost, structuredCall } from "@/lib/brain/llm";
+import { callCeilingUsd, failedCallCost, schemaChars, structuredCall } from "@/lib/brain/llm";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { checkSpend, pilotSpender, recordSpend, spendLimitResponse } from "@/lib/server/spend-guard";
+import { pilotSpender, spendLimitResponse, startPaidCall } from "@/lib/server/spend-guard";
 
 /** A pilot's reason, as typed in one box; the catalog's variables, with room to grow. */
 const MAX_FREE_TEXT = 1_000;
@@ -13,6 +13,7 @@ export const runtime = "nodejs";
 
 /** A short reason against a fixed list: the smallest current model does it, at a tenth of the old one's price. */
 const MODEL = "claude-haiku-5-5";
+const MAX_TOKENS = 2_000;
 
 /**
  * Maps a pilot's free-text explanation onto the existing implicit taxonomy,
@@ -98,10 +99,6 @@ export async function POST(request: Request) {
 
   const { ok } = await checkRateLimit("classify-preference", user.id, 60, 60 * 60);
   if (!ok) return rateLimitedResponse();
-  const spender = pilotSpender(user.id, request);
-  const allowed = await checkSpend(spender);
-  if (!allowed.ok) return spendLimitResponse(allowed);
-
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "Classification isn't configured on this server." }, { status: 503 });
@@ -130,22 +127,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing classification input." }, { status: 400 });
   }
 
+  const system = "You match a pilot's own reason for a preference to a list of tracked preference variables.";
+  const prompt = buildPrompt(body as ClassifyRequest);
+  const paid = await startPaidCall(pilotSpender(user.id, request), callCeilingUsd(MODEL, system.length + prompt.length + schemaChars(SCHEMA), MAX_TOKENS));
+  if (!paid.ok) return spendLimitResponse(paid);
   let parsed: ClassifyResult;
+  let spent = 0;
   try {
-    const r = await structuredCall<ClassifyResult>({
-      apiKey,
-      model: MODEL,
-      system: "You match a pilot's own reason for a preference to a list of tracked preference variables.",
-      user: { fresh: buildPrompt(body as ClassifyRequest) },
-      schema: SCHEMA,
-      effort: "low",
-      maxTokens: 2_000,
-    });
-    await recordSpend(spender, r.usage.costUsd);
+    const r = await structuredCall<ClassifyResult>({ apiKey, model: MODEL, system, user: { fresh: prompt }, schema: SCHEMA, effort: "low", maxTokens: MAX_TOKENS });
+    spent = r.usage.costUsd;
     parsed = r.data;
   } catch (e) {
-    await recordSpend(spender, failedCallCost(e));
+    spent = failedCallCost(e);
     return NextResponse.json({ error: "Couldn't reach the classification service." }, { status: 502 });
+  } finally {
+    await paid.finish(spent);
   }
 
   const validVariableIds = new Set(body.variables!.map((v) => v.id));

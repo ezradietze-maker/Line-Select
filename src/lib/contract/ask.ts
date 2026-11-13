@@ -1,4 +1,4 @@
-import { structuredCall, withSpent, type BrainUsage, type Effort } from "@/lib/brain/llm";
+import { callCeilingUsd, schemaChars, structuredCall, withSpent, type BrainUsage, type Effort } from "@/lib/brain/llm";
 import { contractNode, coveredParts, sectionPath } from "./index";
 import { applicabilityOf } from "./phases";
 import { linesNamed } from "./pack-facts";
@@ -106,6 +106,18 @@ function whenLine(quotes: { section: string; version: string; applies: Parameter
   return parts.length ? `Checked when each rule applies. ${parts.join("; ")}.` : "Checked when each rule applies.";
 }
 
+const MAX_TOKENS = 8_000;
+
+/**
+ * The most `askContract` can cost, held against the spend ceilings before it's asked: two calls (the answer and its one
+ * retry), each reading the contract passages at their longest, with each passage's notes, plus the pilot's question,
+ * facts and earlier turns.
+ */
+export function askContractCeilingUsd(input: Pick<AskInput, "question" | "history" | "facts" | "model">): number {
+  const asked = input.question.length + (input.facts?.length ?? 0) + JSON.stringify(input.history ?? []).length + 1_000;
+  return 2 * callCeilingUsd(input.model ?? CONTRACT_MODEL, SYSTEM.length + schemaChars(SCHEMA) + 2 * PASSAGE_BUDGET_CHARS + asked, MAX_TOKENS);
+}
+
 export async function askContract(input: AskInput): Promise<AskResult> {
   const step = input.onStep ?? (() => {});
   const last = input.history?.[input.history.length - 1];
@@ -148,7 +160,7 @@ export async function askContract(input: AskInput): Promise<AskResult> {
       user: { cached: contract, fresh: `${period}${facts}${conversation}\n\n<question>\n${input.question}\n</question>${correction}` },
       schema: SCHEMA,
       effort: EFFORT,
-      maxTokens: 8_000,
+      maxTokens: MAX_TOKENS,
     });
 
   step("Writing the answer from those sections…");

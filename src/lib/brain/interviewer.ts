@@ -1,10 +1,10 @@
 import type { PilotModel } from "@/types/pilot-model";
 import type { InterviewExchange } from "./build-model";
-import { structuredCall, withSpent, type BrainUsage } from "./llm";
+import { callCeilingUsd, schemaChars, structuredCall, withSpent, type BrainUsage } from "./llm";
 import { avoidedPhrases, insteadOf, inventedLimit, pilotWordsForPrompt } from "./pilot-words";
 import { workedExamplesForPrompt, type QuestionKind } from "./interview-examples";
 import { examplesTranscript, type QuestionExample } from "./question-examples";
-import { reviewQuestion } from "./question-review";
+import { reviewCeilingUsd, reviewQuestion } from "./question-review";
 import { askedTopics, type TopicCandidate } from "./question-topics";
 import { askedTripPairs, TRIP_PAIR_QUESTION, tripPairTranscript, type TripPairCandidate } from "./trip-pairs";
 
@@ -562,6 +562,21 @@ export function rankingHasSettled(input: Pick<InterviewStepInput, "turn" | "rank
   return !importantOpen;
 }
 
+const MAX_TOKENS = 4000;
+/** Tries at a question before giving up, each read once more by the reviewer but the last. */
+const ATTEMPTS = 3;
+
+/**
+ * The most `nextInterviewStep` can cost, held against the spend ceilings before it's asked: every try, each with its
+ * review. What the prompt writes out from the request is counted as the request's JSON, which runs longer.
+ */
+export function interviewStepCeilingUsd(input: InterviewStepInput): number {
+  const rest = JSON.stringify({ ...input, packBrief: undefined, apiKey: undefined }).length;
+  // Each try after the first carries what was wrong with the one before.
+  const one = callCeilingUsd(INTERVIEWER_MODEL, SYSTEM.length + schemaChars(SCHEMA) + input.packBrief.length + rest + ATTEMPTS * 1_000, MAX_TOKENS);
+  return ATTEMPTS * one + (ATTEMPTS - 1) * reviewCeilingUsd();
+}
+
 export async function nextInterviewStep(input: InterviewStepInput): Promise<InterviewStep> {
   if (rankingHasSettled(input)) return { done: true, reason: "The last answers stopped changing the ranking.", settled: [] };
   const conversation = input.exchanges.map((e) => `[${e.turn}] Q: ${e.question}\nA: ${e.answer}`).join("\n\n");
@@ -592,10 +607,10 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
   // At the limit the answer is "done" whatever the call says: don't pay for one.
   if (input.turn >= input.maxTurns) return { done: true, reason: "That's every question this interview asks.", settled: [] };
   let usage: BrainUsage | undefined;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     const spent = usage?.costUsd ?? 0;
     // A later attempt failing still leaves the earlier, rejected ones paid for.
-    const r = await structuredCall<RawStep>({ apiKey: input.apiKey, model: INTERVIEWER_MODEL, system: SYSTEM, user: { cached: input.packBrief, fresh }, schema: SCHEMA as unknown as Record<string, unknown>, effort: "medium", maxTokens: 4000 }).catch((e) => {
+    const r = await structuredCall<RawStep>({ apiKey: input.apiKey, model: INTERVIEWER_MODEL, system: SYSTEM, user: { cached: input.packBrief, fresh }, schema: SCHEMA as unknown as Record<string, unknown>, effort: "medium", maxTokens: MAX_TOKENS }).catch((e) => {
       throw withSpent(e, spent);
     });
     usage = usage ? { ...r.usage, costUsd: usage.costUsd + r.usage.costUsd, ms: usage.ms + r.usage.ms } : r.usage;
