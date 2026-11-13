@@ -1,4 +1,4 @@
-import { failedCallCost, structuredCall } from "@/lib/brain/llm";
+import { callCeilingUsd, failedCallCost, schemaChars, structuredCall } from "@/lib/brain/llm";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
 import type { PilotModel } from "@/types/pilot-model";
 import { avoidedPhrases, insteadOf } from "./pilot-words";
@@ -38,6 +38,14 @@ const SCHEMA = {
   properties: { lines: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "text"], properties: { id: { type: "string" }, text: { type: "string" } } } } },
 } as const;
 
+const MAX_TOKENS = 2000;
+
+/** The most `fixModelWords` can cost: every line the pilot reads sent to be reworded, with what to say instead. */
+export function fixWordsCeilingUsd(model: PilotModel | null): number {
+  const lines = model ? linesOf(model).reduce((n, l) => n + l.text.length + 200, 0) : 0;
+  return callCeilingUsd(FIX_WORDS_MODEL, SYSTEM.length + schemaChars(SCHEMA) + Math.max(lines, 20_000), MAX_TOKENS);
+}
+
 export async function fixModelWords(model: PilotModel, theirs: string, opts: { apiKey?: string } = {}): Promise<{ model: PilotModel; costUsd: number }> {
   const faults = linesOf(model).filter((l) => avoidedPhrases(l.text, theirs).length);
   if (!faults.length) return { model, costUsd: 0 };
@@ -53,7 +61,7 @@ export async function fixModelWords(model: PilotModel, theirs: string, opts: { a
       user: { fresh: asked },
       schema: SCHEMA as unknown as Record<string, unknown>,
       effort: "low",
-      maxTokens: 2000,
+      maxTokens: MAX_TOKENS,
     });
     costUsd = usage.costUsd;
     reworded = new Map(data.lines.map((l) => [l.id, l.text.trim()]));

@@ -1,4 +1,4 @@
-import { structuredCall, type BrainUsage } from "./llm";
+import { callCeilingUsd, schemaChars, structuredCall, type BrainUsage } from "./llm";
 
 /**
  * A second, cheaper reader for every question the interviewer writes, before the pilot sees it. The interviewer's
@@ -71,6 +71,16 @@ const recent = (xs: string[], chars: number) => {
   return out;
 };
 
+const MAX_TOKENS = 600;
+
+/**
+ * The most one review can cost. What it reads is kept short (`recent`), but the facts for what's shown come from the
+ * request, so they're counted at their longest: a few examples and a pair, each summary up to 2,000 characters.
+ */
+export function reviewCeilingUsd(): number {
+  return callCeilingUsd(REVIEW_MODEL, SYSTEM.length + schemaChars(SCHEMA) + 6000 + 3000 + 30_000, MAX_TOKENS);
+}
+
 export async function reviewQuestion(input: ReviewInput): Promise<Review> {
   const q = input.question;
   const user = [
@@ -83,6 +93,6 @@ export async function reviewQuestion(input: ReviewInput): Promise<Review> {
   ]
     .filter(Boolean)
     .join("\n\n");
-  const r = await structuredCall<{ ok: boolean; problem: string }>({ apiKey: input.apiKey, model: REVIEW_MODEL, system: SYSTEM, user: { fresh: user }, schema: SCHEMA as unknown as Record<string, unknown>, effort: "low", maxTokens: 600 });
+  const r = await structuredCall<{ ok: boolean; problem: string }>({ apiKey: input.apiKey, model: REVIEW_MODEL, system: SYSTEM, user: { fresh: user }, schema: SCHEMA as unknown as Record<string, unknown>, effort: "low", maxTokens: MAX_TOKENS });
   return { ok: r.data.ok || !r.data.problem.trim(), problem: r.data.problem.trim(), usage: r.usage };
 }

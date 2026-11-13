@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { onceForRequest } from "@/lib/server/replay";
 import { failedCallCost } from "@/lib/brain/llm";
 import { noteActivity, reportProblem } from "@/lib/server/alerts";
-import { readAskQuery } from "@/lib/brain/ask-pack";
+import { askQueryCeilingUsd, readAskQuery } from "@/lib/brain/ask-pack";
 import { MAX_PACK_BRIEF } from "@/lib/server/brain-input";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
+import { spenderFor, spendLimitResponse, startPaidCall } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,21 +22,25 @@ async function respond(request: Request) {
   if (!ok) return rateLimitedResponse();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "Asking isn't configured on this server." }, { status: 503 });
-  const spender = await spenderFor(request);
-  const allowed = await checkSpend(spender);
-  if (!allowed.ok) return spendLimitResponse(allowed);
-
   const body = await readJsonBody(request, MAX_PACK_BRIEF + 10_000);
   if (!isJsonObject(body) || !isText(body.question, 400) || !(body.question as string).trim() || !isText(body.packBrief, MAX_PACK_BRIEF)) {
     return NextResponse.json({ error: "Ask a question about your pack (up to 400 characters)." }, { status: 400 });
   }
+  const input = { question: (body.question as string).trim(), packBrief: body.packBrief as string, apiKey };
+  const paid = await startPaidCall(await spenderFor(request), askQueryCeilingUsd(input));
+  if (!paid.ok) return spendLimitResponse(paid);
+  let spent = 0;
   try {
-    const { query, usage } = await readAskQuery({ question: (body.question as string).trim(), packBrief: body.packBrief as string, apiKey });
-    await Promise.all([recordSpend(spender, usage.costUsd), noteActivity("ask")]);
+    const { query, usage } = await readAskQuery(input);
+    spent = usage.costUsd;
+    await noteActivity("ask");
     console.log("[brain-ask]", { conditions: query.conditions.length, costUsd: +usage.costUsd.toFixed(4), ms: usage.ms });
     return NextResponse.json({ query });
   } catch (e) {
-    await Promise.all([recordSpend(spender, failedCallCost(e)), reportProblem("brain-ask", e)]);
+    spent = failedCallCost(e);
+    await reportProblem("brain-ask", e);
     return NextResponse.json({ error: "Couldn't read that question just now. Please try again." }, { status: 502 });
+  } finally {
+    await paid.finish(spent);
   }
 }
