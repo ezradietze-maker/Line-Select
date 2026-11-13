@@ -6,10 +6,10 @@ import { ConfirmEmailRefusal } from "@/components/auth/ConfirmEmail";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { useAppState } from "@/lib/app-state";
-import { loadCarryIn } from "@/lib/carry-in-storage";
+import { carryInToSend, loadCarryIn, saveCarryIn, type CarryInState } from "@/lib/carry-in-storage";
 import { heldTripsOfLine, tradeLocksFor, tripInstances } from "@/lib/trades/holding";
 import { clearTradeHolding, fetchTradeHolding, saveTradeHolding, saveTradeSettings } from "@/lib/trades/holding-client";
-import { tripInstanceKey } from "@/lib/trades/legality";
+import { carryInReach, tripInstanceKey } from "@/lib/trades/legality";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { HeldTrip, TradeHolding, TradeLock, TradeSettings } from "@/types/trade";
 
@@ -67,12 +67,20 @@ export function HoldingPanel({
   const [error, setError] = useState<string | null>(null);
   /** Refused because their email isn't confirmed: said with the button to confirm it. */
   const [refused, setRefused] = useState<string | null>(null);
+  /** What this device has them carrying in from last month (the carry-in on Your rankings), read as they start to confirm. */
+  const [carry, setCarry] = useState<CarryInState | null>(null);
 
   const instances = useMemo(() => tripInstances(bidPack), [bidPack]);
   const byKey = useMemo(() => new Map(instances.map((t) => [tripInstanceKey(t), t])), [instances]);
   const locks = useMemo(() => tradeLocksFor(bidPack), [bidPack]);
   const lines = useMemo(() => bidPack.lines.filter((l) => !l.estimated), [bidPack]);
   const awarded = (profile?.logbook ?? []).find((m) => m.bidPackId === bidPack.id && m.lineNumber)?.lineNumber ?? null;
+  // The days a trip carried in could still be flying, as this pack's own lines carry out.
+  const carryDays = useMemo(() => {
+    const reach = carryInReach(bidPack);
+    const start = bidPack.bidPeriodStart ? Date.parse(`${bidPack.bidPeriodStart}T00:00:00Z`) : null;
+    return reach !== null && start !== null ? Math.max(1, Math.ceil((reach - start) / 86_400_000)) : null;
+  }, [bidPack]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +107,7 @@ export function HoldingPanel({
   function startEditing() {
     setError(null);
     setSearch("");
+    setCarry(loadCarryIn(user?.id ?? null, bidPack.id));
     if (holding) {
       setLineNumber(holding.lineNumber);
       setDraft(holding.trips);
@@ -110,16 +119,15 @@ export function HoldingPanel({
     setBusy(true);
     setError(null);
     setRefused(null);
-    const carriedIn = loadCarryIn(user?.id ?? null, bidPack.id).items;
     const saved = await saveTradeHolding({
       packId: bidPack.id,
       bidPackMeta: { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month },
       lineNumber,
       trips: draft,
       // What they carry in from last month, as Open time and View/Add check against: a trade has to fit around it too.
-      // Sent only when this device has some: none kept here may mean none entered here, not none carried, and sent as
-      // "none" the matching handed day 0–1 trips across a carried-in one.
-      carryIn: carriedIn.length ? carriedIn : undefined,
+      // None only when they've said so: nothing kept here may be nothing entered here, and sent as "none" the matching
+      // would hand them early trips across a carried-in one.
+      carryIn: carryInToSend(loadCarryIn(user?.id ?? null, bidPack.id)),
     });
     setBusy(false);
     if (!saved) return setError("Couldn't save what you hold. Check your connection and try again.");
@@ -287,6 +295,37 @@ export function HoldingPanel({
               </ul>
             )}
           </div>
+
+          {carry && (
+            <div className="text-sm text-ink">
+              {carry.items.length ? (
+                <p className="text-ink-muted">
+                  Carried in from last month: {carry.items.map((c) => c.label).join(", ")}. Trades fit around {carry.items.length === 1 ? "it" : "them"}; change {carry.items.length === 1 ? "it" : "them"} under Carry-in from last month on Your rankings.
+                </p>
+              ) : (
+                <>
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={!!carry.none}
+                      onChange={(e) => {
+                        const next = { ...carry, none: e.target.checked };
+                        saveCarryIn(user?.id ?? null, bidPack.id, next);
+                        setCarry(next);
+                      }}
+                    />
+                    <span>Nothing carries in from last month</span>
+                  </label>
+                  {!carry.none && (
+                    <p className="mt-1 text-xs text-ink-muted">
+                      Until you say, no trade hands you a trip that starts {carryDays ? `in the month's first ${carryDays} days` : "early in the month"}, unless you already hold one that starts as early. Carrying a trip in? Add it under Carry-in from last month on Your rankings.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy || draft.length === 0} onClick={() => void confirm()}>

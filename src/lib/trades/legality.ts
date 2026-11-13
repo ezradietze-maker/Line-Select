@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { bidMonthEnd } from "@/lib/bid-month";
 import { zoneOf, type CarryInItem } from "@/lib/phase-in";
 import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
@@ -13,12 +14,6 @@ import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
  */
 
 const HOUR = 3_600_000;
-/**
- * The gap kept between trips. CBA 2026 25.L.1.d (all bid periods) prohibits an adjustment that "would create a conflict
- * with another scheduled activity" or leave the pilot not legal for one, without giving a number for trips. It gives 12
- * hours for R-days (25.L.1.d.i), so that's the floor used here until the ex-pilot confirms the real figure.
- */
-const MIN_HOURS_BETWEEN_TRIPS = 12;
 
 /**
  * What a pilot holds and can't trade away, by `tripInstanceKey`: CBA 2026 25.L.1.h "may not trade, proffer, or drop a
@@ -91,23 +86,47 @@ export function touchesVacation(pack: BidPack, trip: Trip, vacations: readonly V
 }
 
 /**
- * Whether a pilot holding `others`, and carrying in `carryIn` from last month, could also hold `trip`: no overlap and the
- * gap kept between trips (CBA 2026 25.L.1.d), not into their vacation (7.A.4), and nothing View/Add or Open time would
- * rule out on the same schedule (`fitCheck`: rest after a long duty, 12.D.7.c, 12.C.6.b; 1-in-7, 12.C.1.b; R-days,
- * 25.L.1.d.i). A trip with no date among `others` can't be checked, so it rules this out.
+ * Whether a pilot holding `others`, and carrying in `carryIn` from last month, could also hold `trip`: not in conflict
+ * with what they hold, nor leaving them not legal for it (CBA 2026 25.L.1.d, every bid period), and not into their
+ * vacation (7.A.4). Legal is what View/Add and Open time hold the same schedule to (`fitCheck`): overlap, rest (12.C.6.a,
+ * 12.C.6.b, 12.D.7), a hub turn as one duty within 12.C.4.e (which names "trip trade" as an optional assignment), 1-in-7
+ * (12.C.1.b), and 12 hours from an R-day (25.L.1.d.i, ii, the only gap 25.L.1.d puts a number on). A trip with no date
+ * among `others` can't be checked, so it rules this out.
  */
 export function canHold(pack: BidPack, others: readonly Trip[], trip: Trip, vacations: readonly VacationPeriod[], carryIn: readonly CarryInItem[] = []): boolean {
   const span = tripSpan(pack, trip);
   if (!span || touchesVacation(pack, trip, vacations)) return false;
-  const gap = MIN_HOURS_BETWEEN_TRIPS * HOUR;
-  const clear = (other: { start: number; end: number } | null) => other !== null && overlaps(span, other.start - gap, other.end + gap) === false;
+  const clear = (other: { start: number; end: number } | null) => other !== null && !overlaps(span, other.start, other.end);
+  // The cheap test first, as an overlap is never legal: the full one sorts the whole month.
   if (!others.every((o) => clear(tripSpan(pack, o)))) return false;
-  // What's carried in is held like any other trip: the same gap from it.
   const zone = carryIn.length ? zoneOf(pack) : "";
   if (!carryIn.every((c) => clear(busyFromCarry(c, zone)?.span ?? null))) return false;
-  // The cheap test first: most swaps fail on the gap, and this one sorts the whole month.
   return fitCheck(trip, scheduleAsFlown({ trips: [...others] }, [...carryIn], pack), [...vacations], pack).illegal.length === 0;
 }
+
+/** The least a carry-in is taken to reach into the month, when the pack's own lines carry out less. */
+const MIN_CARRY_IN_DAYS = 2;
+
+/**
+ * Until when a trip carried in from last month may still be flying: the bid month's start, plus the longest any of this
+ * pack's own lines runs past its end (7.04 days on the October B777 MEM lines, 2 on the A300's). Last month's pack isn't
+ * here, so this one stands in for it. A pilot who hasn't said what they carry in is handed no trip starting before then
+ * (`PilotHolding.carryIn`). Null without the pack's dates.
+ */
+export function carryInReach(pack: BidPack): number | null {
+  if (reachCache.has(pack)) return reachCache.get(pack)!;
+  const end = bidMonthEnd(pack);
+  const start = pack.bidPeriodStart ? DateTime.fromISO(pack.bidPeriodStart, { zone: zoneOf(pack) }) : null;
+  let reach: number | null = null;
+  if (end !== null && start?.isValid) {
+    let longest = MIN_CARRY_IN_DAYS * 24 * HOUR;
+    for (const line of pack.lines) for (const t of line.trips) longest = Math.max(longest, (tripSpan(pack, t)?.end ?? end) - end);
+    reach = start.toMillis() + longest;
+  }
+  reachCache.set(pack, reach);
+  return reach;
+}
+const reachCache = new WeakMap<BidPack, number | null>();
 
 /** The vacation a pilot holds, by their seniority number, from the pack's own schedule. */
 export function vacationsOf(pack: BidPack, seniority: number | null | undefined): readonly VacationPeriod[] {

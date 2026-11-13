@@ -302,16 +302,40 @@ function withDaySpans(trips: Trip[], given: Map<Trip, Span>): Map<Trip, Span> {
   return spans;
 }
 
-/** A trip's duties as real instants. Its layovers are what's between them. */
+/**
+ * Block-in to release on a duty that lays over. The pack prints no release for one, but its own reads so: 2,712 of the
+ * 2,744 duties joined to another in the October packs print a DUTY that runs from show to block-in plus 30.
+ */
+const RELEASE_AFTER_BLOCK_IN_MINUTES = 30;
+
+/**
+ * A trip's duties as real instants, show to release, as the contract measures duty and rest (CBA 2026 12.C.4, 12.C.6,
+ * 12.D.7). Its layovers are what's between them. The first duty's show is the trip's printed report. A later duty's
+ * isn't printed: its `startMinutes` is the hotel pickup (`anchorPickups`), so the show is its release less the printed
+ * DUTY, when the pack printed one. Its release is block-in plus the pack's 30 minutes; the trip's last duty ends at the
+ * trip's release.
+ */
 export function tripSpans(trip: Trip, report: number): Span[] {
   const release = report + tripReleaseHours(trip) * HOUR;
   if (!trip.schedule.length) return [{ start: report, end: release }];
   // In a run of day trips, each day's last duty ends at that day's release, not the run's.
   const dayEnd = new Map((runDaysOf(trip) ?? []).map((day) => [day.last, report + (day.startMinutes / 60 + day.hours) * HOUR]));
-  return trip.schedule.map((d, i) => ({
-    start: report + d.startMinutes * MINUTE,
-    end: d.layover ? report + d.layover.startMinutes * MINUTE : (dayEnd.get(i) ?? release),
-  }));
+  let before = report;
+  return trip.schedule.map((d, i) => {
+    const lastLeg = d.legs[d.legs.length - 1];
+    const firstLeg = d.legs[0];
+    const blockIn = lastLeg ? lastLeg.endMinutes : d.layover?.startMinutes;
+    const end = dayEnd.get(i) ?? (d.layover && blockIn !== undefined ? report + (blockIn + RELEASE_AFTER_BLOCK_IN_MINUTES) * MINUTE : release);
+    let start = report + d.startMinutes * MINUTE;
+    if (i > 0 && d.totals && d.totals.dutyHours > 0) start = end - d.totals.dutyHours * HOUR;
+    // A hotel standby prints no DUTY and no ride: it starts when the standby does.
+    else if (i > 0 && firstLeg && d.legs.every((l) => l.isStandby)) start = report + firstLeg.startMinutes * MINUTE;
+    // Never before the last duty's release, nor after its own first block-out: a misread DUTY can't move it that far.
+    if (i > 0) start = Math.max(start, before);
+    if (firstLeg) start = Math.min(start, report + firstLeg.startMinutes * MINUTE);
+    before = end;
+    return { start, end };
+  });
 }
 
 /** A trip cut at each layover at base of 24 hours or more (CBA 2026 12.C.1.c: "relieved from all duty at the pilot's base"). Without this, Anchorage's long standby trips read as 300 hours without relief. */

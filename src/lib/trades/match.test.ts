@@ -173,6 +173,16 @@ describe("one pilot is one pilot, however they're listed", () => {
     expect(chosen).toHaveLength(7);
   });
 
+  it("finds the best set where taking the best trade first doesn't, and says it looked at everything", () => {
+    const trade = (worth: number, ...ids: string[]) => ({ legs: ids.map((pilotId) => ({ pilotId })), plan: { steps: [], exposure: 0 }, worth }) as never;
+    const top = trade(10, "P1", "P2");
+    const left = trade(6, "P1", "P3");
+    const right = trade(6, "P2", "P4");
+    const { chosen, complete } = bestSet([top, left, right]);
+    expect(chosen).toEqual([left, right]);
+    expect(complete).toBe(true);
+  });
+
   it("leaves out an option naming one pilot twice, whatever it's worth", () => {
     const twice = { legs: [{ pilotId: "U" }, { pilotId: "U" }], plan: { steps: [], exposure: 0 }, worth: 50 } as never;
     const fair = { legs: [{ pilotId: "U" }, { pilotId: "P" }], plan: { steps: [], exposure: 0 }, worth: 2 } as never;
@@ -188,6 +198,17 @@ describe("what's carried in from last month", () => {
     wants(1, 2);
     wants(2, 1);
     expect(findTrades(pack, [later(1), first()], { now }).trades).toEqual([]);
+  });
+
+  it("isn't known: nor a later one, while this pack's own lines run that far into the next month", () => {
+    wants(1, 2);
+    wants(2, 1);
+    // A line here runs 150 hours from day 25, past the 28-day month's end by about 3 days.
+    const long = { ...trip("long", 25), tafbHours: 150, days: 7 } as Trip;
+    const carrying = { ...pack, lines: [{ lineNumber: "L9", trips: [long] }] } as unknown as BidPack;
+    expect(findTrades(carrying, [later(1), pilot(2, 3)], { now }).trades).toEqual([]);
+    expect(findTrades(carrying, [later(1, []), pilot(2, 3)], { now }).trades).toHaveLength(1);
+    expect(findTrades(pack, [later(1), pilot(2, 3)], { now }).trades).toHaveLength(1);
   });
 
   it("is known to be nothing: the trade goes ahead", () => {

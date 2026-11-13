@@ -44,7 +44,9 @@ export function CarryInPanel({ bidPack, profile, carry, order }: { bidPack: BidP
 
   const remember = (next: Partial<typeof state>) => {
     setRecommended(null);
-    update({ ...state, ...next });
+    const merged = { ...state, ...next };
+    // Something carried in isn't nothing.
+    update(merged.items.length ? { ...merged, none: false } : merged);
   };
 
   const fromLog = useMemo(
@@ -71,7 +73,9 @@ export function CarryInPanel({ bidPack, profile, carry, order }: { bidPack: BidP
           <p className="mt-0.5 text-xs text-ink-muted">
             {state.items.length
               ? `Your lines are scored as they'll fly with ${state.items.length === 1 ? "this" : "these"} on your schedule.`
-              : "Tell us what runs into this month, and your lines are scored as they'll really fly."}
+              : state.none
+                ? "Nothing carries in from last month."
+                : "Tell us what runs into this month, and your lines are scored as they'll really fly."}
           </p>
         </div>
         <Button variant="ghost" className="shrink-0 px-2 py-1 text-xs" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
@@ -108,6 +112,13 @@ export function CarryInPanel({ bidPack, profile, carry, order }: { bidPack: BidP
               </Button>
             </div>
           ))}
+
+          {state.items.length === 0 && (
+            <label className="flex items-start gap-2 text-sm text-ink">
+              <input type="checkbox" className="mt-1" checked={!!state.none} onChange={(e) => remember({ none: e.target.checked })} />
+              <span>Nothing carries in from last month</span>
+            </label>
+          )}
 
           {adding === null && (
             <div className="flex flex-wrap gap-2">
