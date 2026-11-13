@@ -11,6 +11,9 @@ vi.mock("@/lib/server/kv", () => ({
 }));
 
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
+// The calendar link a reset revokes: in memory, never Postgres.
+const feeds = vi.hoisted(() => ({ revoked: [] as string[] }));
+vi.mock("@/lib/server/calendar-feeds", () => ({ revokeFeed: vi.fn(async (id: string) => void feeds.revoked.push(id)) }));
 
 const sent = vi.hoisted(() => ({ messages: [] as { to: string; subject: string; text: string }[], configured: true }));
 
@@ -161,6 +164,8 @@ describe("emailed password reset", () => {
     expect(result.recoveryCode).toMatch(/^[A-Z0-9]{4}(-[A-Z0-9]{4}){4}$/);
     expect(store.credentials[0].recoveryHash).not.toBe(before);
     expect(store.sessions.map((s) => s.token)).toEqual([result.sessionToken]);
+    // A calendar link whoever was in made goes too.
+    expect(feeds.revoked).toContain(store.users[0].id);
   });
 
   it("answers the same for an address with no account, and sends nothing", async () => {

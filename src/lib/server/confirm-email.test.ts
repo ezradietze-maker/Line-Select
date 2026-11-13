@@ -16,6 +16,9 @@ vi.mock("@/lib/server/kv", () => ({
   }),
 }));
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
+// The calendar link a reset revokes: in memory, never Postgres.
+const feeds = vi.hoisted(() => ({ revoked: [] as string[] }));
+vi.mock("@/lib/server/calendar-feeds", () => ({ revokeFeed: vi.fn(async (id: string) => void feeds.revoked.push(id)) }));
 
 const mail = vi.hoisted(() => ({ sent: [] as { to: string; subject: string; text: string }[], configured: true }));
 vi.mock("@/lib/server/email", () => ({
@@ -110,6 +113,7 @@ const {
   RESENDS_PER_ACCOUNT,
   RESENDS_PER_ADDRESS,
 } = await import("@/lib/server/auth");
+const { SITE_MAILS_PER_HOUR, SITE_MAILS_PER_SENDER_PER_HOUR } = await import("@/lib/server/mail-allowance");
 
 const LAPTOP = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const PHONE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -129,6 +133,7 @@ beforeEach(() => {
   store.sessions = [];
   store.confirmTokens = [];
   store.resetTokens = [];
+  feeds.revoked.length = 0;
 });
 
 describe("signing up with email set up", () => {
@@ -170,7 +175,7 @@ describe("signing up with email set up", () => {
     expect(nobody).toEqual(right);
     expect(store.sessions).toHaveLength(0);
     // Once confirmed, the same password signs in.
-    await confirmEmail(lastConfirmLink()!, null, LAPTOP);
+    await confirmEmail(lastConfirmLink()!, null, LAPTOP, { password: "a long password" }, "203.0.113.5");
     expect((await login("new@example.com", "a long password", "203.0.113.5", LAPTOP)).ok).toBe(true);
   });
 
@@ -208,9 +213,15 @@ describe("signing up with email set up", () => {
   });
 
   it("past the site's hourly allowance makes no account, and sends nothing", async () => {
-    for (let i = 0; i < 45; i++) await signUpByEmail(`pilot${i}@example.com`, "a long password", "J. Pilot", LAPTOP, SQUATTER_IP);
-    expect(mail.sent).toHaveLength(40);
-    expect(store.users).toHaveLength(40);
+    for (let i = 0; i < 105; i++) await signUpByEmail(`pilot${i}@example.com`, "a long password", "J. Pilot", LAPTOP, `10.0.${Math.floor(i / 200)}.${i % 200}`);
+    expect(mail.sent).toHaveLength(SITE_MAILS_PER_HOUR["sign-up"]);
+    expect(store.users).toHaveLength(SITE_MAILS_PER_HOUR["sign-up"]);
+  });
+
+  it("one sender gets only a small share of the site's hour, across every address it names", async () => {
+    for (let i = 0; i < 8; i++) await signUpByEmail(`pilot${i}@example.com`, "a long password", "J. Pilot", LAPTOP, SQUATTER_IP);
+    expect(mail.sent).toHaveLength(SITE_MAILS_PER_SENDER_PER_HOUR);
+    expect(store.users).toHaveLength(SITE_MAILS_PER_SENDER_PER_HOUR);
   });
 
   it("a sender over their own limit doesn't use the site's allowance", async () => {
@@ -234,9 +245,10 @@ describe("opening the confirm link", () => {
     return { token: lastConfirmLink()!, user: store.users.find((u) => u.email === email)! };
   }
 
-  it("on the device that signed up confirms the account, signs it in and makes its recovery code", async () => {
+  it("asks for the password even on the device that signed up, then confirms, signs in and makes the recovery code", async () => {
     const { token, user } = await signedUp();
-    const result = await confirmEmail(token, null, LAPTOP);
+    expect(await confirmEmail(token, null, LAPTOP)).toEqual({ status: "needs-password", email: "new@example.com" });
+    const result = await confirmEmail(token, null, LAPTOP, { password: "a long password" }, "203.0.113.1");
     expect(result).toMatchObject({ status: "confirmed", signedIn: "now", user: { id: user.id, emailVerified: true } });
     expect(result.status === "confirmed" && result.sessionToken).toBeTruthy();
     expect(result.status === "confirmed" && result.recoveryCode).toMatch(/^[A-Z0-9]{4}(-[A-Z0-9]{4}){4}$/);
@@ -292,7 +304,7 @@ describe("opening the confirm link", () => {
 
   it("works once: a second open says it's used and signs no one in", async () => {
     const { token, user } = await signedUp();
-    await confirmEmail(token, null, LAPTOP);
+    await confirmEmail(token, null, LAPTOP, { password: "a long password" }, "203.0.113.1");
     store.sessions = [];
     expect(await confirmEmail(token, null, LAPTOP)).toEqual({ status: "used", yours: false });
     expect(await confirmEmail(token, user.id, LAPTOP)).toEqual({ status: "used", yours: true });
@@ -308,7 +320,30 @@ describe("opening the confirm link", () => {
     const { token: first, user } = await signedUp();
     expect((await resendConfirmEmail(user, "203.0.113.5", LAPTOP)).sent).toBe(true);
     expect(await confirmEmail(first, null, LAPTOP)).toEqual({ status: "invalid" });
-    expect((await confirmEmail(lastConfirmLink()!, null, LAPTOP)).status).toBe("confirmed");
+    expect((await confirmEmail(lastConfirmLink()!, null, LAPTOP, { password: "a long password" }, "203.0.113.1")).status).toBe("confirmed");
+  });
+});
+
+describe("a shared computer (crew room, hotel business centre)", () => {
+  const CREW_ROOM_PC = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const ATTACKER_HOME = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+  it("someone signs up there with a pilot's address; the pilot opening the link there is asked for the password, so nothing is confirmed", async () => {
+    await signUpByEmail("victim@fedex.example", "squatter's password", "Victim", CREW_ROOM_PC, "203.0.113.20");
+    const r = await confirmEmail(lastConfirmLink()!, null, CREW_ROOM_PC, {}, "203.0.113.20");
+    expect(r).toEqual({ status: "needs-password", email: "victim@fedex.example" });
+    expect(store.users[0].emailVerified).toBe(false);
+    // Whoever signed up there still can't sign in from home.
+    expect((await login("victim@fedex.example", "squatter's password", "198.51.100.77", ATTACKER_HOME)).ok).toBe(false);
+  });
+
+  it("'Send the link again' by address ties the link to no device: the pilot's own sign-up still takes their own password", async () => {
+    await signUpByEmail("victim@fedex.example", "pilot's own password", "Victim", LAPTOP, "192.0.2.5");
+    await resendConfirmEmailByAddress("victim@fedex.example", "203.0.113.20", CREW_ROOM_PC);
+    const link = lastConfirmLink()!;
+    expect(await confirmEmail(link, null, CREW_ROOM_PC, {}, "203.0.113.20")).toMatchObject({ status: "needs-password" });
+    expect(await confirmEmail(link, null, LAPTOP, { password: "pilot's own password" }, "192.0.2.5")).toMatchObject({ status: "confirmed", signedIn: "now" });
+    expect(store.confirmTokens.every((t) => t.deviceHash === null)).toBe(true);
   });
 });
 
@@ -328,6 +363,8 @@ describe("someone signing up with a pilot's address", () => {
     expect(await confirmEmail(link, null, PHONE, { notMe: true }, "203.0.113.50")).toEqual({ status: "not-me" });
     expect(store.users[0].emailVerified).toBe(false);
     expect(await confirmEmail(link, null, LAPTOP)).toEqual({ status: "used", yours: false });
+    // Whoever made it is signed out of it, and any calendar link they made is revoked.
+    expect(feeds.revoked).toContain(store.users[0].id);
     expect(mail.sent.at(-1)).toMatchObject({ to: "realpilot@fedex.example", subject: "Finish signing up for Line Select" });
     const taken = await resetPasswordWithEmailToken(lastResetLink()!, "owners own pw 456", "203.0.113.50", PHONE);
     expect(taken).toMatchObject({ ok: true, user: { emailVerified: true } });
@@ -364,13 +401,23 @@ describe("Send it again", () => {
     expect(store.confirmTokens[0].signUp).toBe(false);
   });
 
-  it(`sends ${RESENDS_PER_ADDRESS} an hour from one address, across accounts`, async () => {
+  it("sends one address's share of the site's hour, across accounts", async () => {
     let sent = 0;
     for (let i = 0; i < RESENDS_PER_ADDRESS + 3; i++) {
       const r = await resendConfirmEmail(legacy({ id: `11111111-1111-4111-8111-${String(i).padStart(12, "0")}`, email: `p${i}@example.com` }), "198.51.100.9", LAPTOP);
       if (r.sent) sent++;
     }
-    expect(sent).toBe(RESENDS_PER_ADDRESS);
+    expect(sent).toBe(Math.min(RESENDS_PER_ADDRESS, SITE_MAILS_PER_SENDER_PER_HOUR));
+  });
+
+  it("one address with a handful of made-up accounts can't use up the hour: a real pilot elsewhere still gets their link", async () => {
+    for (let i = 0; i < 8; i++) store.users.push(legacy({ id: `22222222-2222-4222-8222-${String(i).padStart(12, "0")}`, email: `junk${i}@attacker.example` }));
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 5; j++) await resendConfirmEmailByAddress(`junk${i}@attacker.example`, "203.0.113.66", `${String(i * 10 + j).padStart(8, "0")}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`);
+    expect(mail.sent.length).toBeLessThanOrEqual(SITE_MAILS_PER_SENDER_PER_HOUR);
+    mail.sent.length = 0;
+    await signUpByEmail("new.pilot@fedex.example", "a long password", "New Pilot", LAPTOP, "192.0.2.10");
+    expect(mail.sent).toHaveLength(1);
+    expect(store.users.some((u) => u.email === "new.pilot@fedex.example")).toBe(true);
   });
 
   it("sends nothing to a confirmed account, or when email isn't set up", async () => {

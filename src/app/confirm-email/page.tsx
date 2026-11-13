@@ -23,9 +23,9 @@ export default function ConfirmEmailPage() {
 
 /**
  * Where the link in a confirm email lands. The token in the address is sent to the server from here, not spent by
- * opening the link, so a mail program that fetches links to check them doesn't use it up. Opened away from the device
- * that signed up, it asks for the account's password first, or "This wasn't me": confirming says the account is the
- * address owner's, so it takes the password as well as the inbox.
+ * opening the link, so a mail program that fetches links to check them doesn't use it up. It asks for the account's
+ * password first, or "This wasn't me": confirming says the account is the address owner's, so it takes the password as
+ * well as the inbox.
  */
 function ConfirmEmailView() {
   const urlToken = useSearchParams().get("token");
@@ -104,14 +104,18 @@ function ConfirmEmailView() {
           <div>
             <h1 className="text-lg font-semibold text-ink">Confirm your email</h1>
             <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-              Enter the password for the Line Select account at <span className="break-all font-medium text-ink">{asking.email}</span>. This
-              device isn&rsquo;t the one that signed up, and confirming says the account is yours.
+              Enter the password for the Line Select account at <span className="break-all font-medium text-ink">{asking.email}</span>: the one you
+              chose when you signed up. Confirming says the account is yours, so it takes the password as well as this link.
             </p>
             <form onSubmit={submitPassword} className="mt-4 space-y-4" noValidate>
+              {/* The account's address, for a password manager to know which saved password this is. */}
+              <input type="email" name="username" autoComplete="username" value={asking.email} readOnly hidden />
               <TextField
                 label="Password"
                 type="password"
                 autoComplete="current-password"
+                // The only thing to do here: the cursor is in it, not a dozen Tabs away.
+                autoFocus
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

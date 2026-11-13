@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
 import { useAppState } from "@/lib/app-state";
-import { checkSession, fetchEmailResetEnabled, resendConfirmEmail } from "@/lib/auth";
+import { fetchEmailResetEnabled, resendConfirmEmail } from "@/lib/auth";
+import { useRecoveryCodeShowing } from "@/lib/recovery-code-showing";
 import type { UserAccount } from "@/types/auth";
 
 type SendState = { kind: "idle" } | { kind: "sending" } | { kind: "sent"; email: string } | { kind: "confirmed" } | { kind: "failed"; error: string };
@@ -72,6 +73,9 @@ export async function isConfirmEmailRefusal(res: Response): Promise<{ error: str
 
 const DISMISSED_KEY = "line-select:confirm-email-notice-dismissed";
 
+/** When the notice asks again whether the address was confirmed elsewhere, in seconds, each after the last: about five minutes in all, then it stops. */
+const CHECK_AFTER_SECONDS = [30, 30, 45, 45, 60, 60, 60];
+
 /**
  * The app's notice for a signed-in pilot whose address isn't confirmed: their address, "Send it again", and a way to
  * put it away for this visit. When the server can't send email it says so instead, since nobody can confirm until it
@@ -86,7 +90,13 @@ export function ConfirmEmailNotice({ user }: { user: UserAccount }) {
     }
   });
   const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
+  const { refreshUser } = useAppState();
+  // The latest, without the checks below starting over each time the app draws (which would put them off for ever).
+  const refreshUserRef = useRef(refreshUser);
+  useEffect(() => {
+    refreshUserRef.current = refreshUser;
+  });
+  const codeShowing = useRecoveryCodeShowing();
   useEffect(() => {
     let cancelled = false;
     fetchEmailResetEnabled().then((on) => !cancelled && setEmailEnabled(on));
@@ -95,41 +105,33 @@ export function ConfirmEmailNotice({ user }: { user: UserAccount }) {
     };
   }, []);
 
-  // Watch for the address being confirmed, here or on another device — the pilot opens the link on their phone and the
-  // account (shared between devices) comes back verified. The moment it does, say so and reload so trading and sharing
-  // unlock, instead of leaving this screen waiting until the pilot reloads by hand.
+  // Watch for the address being confirmed on another device (the pilot opens the link on their phone), and when it is,
+  // the app's own state says so: this notice and the Trade Board's banner go, and trading and sharing open, with nothing
+  // on the page reloaded or lost. Asked now and then, more slowly each time, for a few minutes after this notice
+  // appears, then left to the checks on focus and on the confirm page's word (app-state). Not at all when email isn't
+  // set up, while a recovery code is on screen, or once nobody is signed in.
   useEffect(() => {
-    if (dismissed || confirmed || emailEnabled !== true) return;
+    if (dismissed || emailEnabled !== true || codeShowing) return;
     let stop = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let i = 0;
     const tick = async () => {
-      if (stop || (typeof document !== "undefined" && document.visibilityState === "hidden")) return;
-      const { user: fresh } = await checkSession();
-      if (!stop && fresh?.id === user.id && fresh.emailVerified) setConfirmed(true);
+      if (stop) return;
+      if (document.visibilityState === "visible") {
+        const answer = await refreshUserRef.current();
+        if (stop || answer === "confirmed" || answer === "signed-out") return;
+      }
+      i++;
+      if (i < CHECK_AFTER_SECONDS.length) timer = setTimeout(tick, CHECK_AFTER_SECONDS[i] * 1000);
     };
-    const timer = setInterval(tick, 5000);
+    timer = setTimeout(tick, CHECK_AFTER_SECONDS[0] * 1000);
     return () => {
       stop = true;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
-  }, [dismissed, confirmed, emailEnabled, user.id]);
+  }, [dismissed, emailEnabled, codeShowing]);
 
-  useEffect(() => {
-    if (!confirmed) return;
-    const timer = setTimeout(() => window.location.reload(), 1600);
-    return () => clearTimeout(timer);
-  }, [confirmed]);
-
-  if (confirmed) {
-    return (
-      <Notice tone="good" role="status" className="mx-auto mb-4 w-full max-w-3xl">
-        <p>
-          <span className="font-medium">Email confirmed.</span> You&rsquo;re all set — trading, sharing and your seat&rsquo;s
-          numbers are unlocked. Refreshing…
-        </p>
-      </Notice>
-    );
-  }
-
+  if (codeShowing) return null;
   if (dismissed || emailEnabled === null) return null;
 
   function dismiss() {

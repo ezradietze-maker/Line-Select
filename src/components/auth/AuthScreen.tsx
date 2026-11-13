@@ -200,12 +200,13 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
           <div className="space-y-4">
             <h2 className="text-base font-semibold text-ink">Check your email to finish signing up</h2>
             <p className="rounded-lg border border-border bg-canvas px-4 py-3 text-sm leading-relaxed text-ink">
-              We&rsquo;ve sent an email to <span className="break-all font-medium">{checkEmailAt}</span>. Open the link in it to
-              confirm the address and sign in. It works for 24 hours, once.
+              We&rsquo;ve sent an email to <span className="break-all font-medium">{checkEmailAt}</span>. Open the link in it and enter
+              the password you just chose, to confirm the address and sign in. It works for 24 hours, once.
             </p>
             <p className="text-sm leading-relaxed text-ink-muted">
               Nothing there after a few minutes? Check your spam folder, or choose &ldquo;Send the link again&rdquo; on the log-in
-              screen. You can log in once the address is confirmed. An account that isn&rsquo;t confirmed within 7 days is removed.
+              screen. Still nothing? Sign up again later: when an email can&rsquo;t go, no account is made, so trying again is
+              fine. An account that isn&rsquo;t confirmed within 7 days is removed.
             </p>
             <button
               type="button"

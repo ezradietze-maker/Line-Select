@@ -237,7 +237,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
             className={`outline-none ${pathname === "/" ? "flex flex-1 flex-col" : pathname === "/contract" ? "flex flex-1 flex-col px-4 pt-4" : "flex flex-1 flex-col px-4 py-10 sm:py-14"}`}
           >
             {/* Signed in with an address not confirmed yet: only `false`, never a missing answer (an account kept on this device from before). */}
-            {user?.emailVerified === false && showSidebar && pathname !== "/confirm-email" && <ConfirmEmailNotice key={user.id} user={user} />}
+            {user?.emailVerified === false && showSidebar && pathname !== "/confirm-email" && pathname !== "/reset-password" && <ConfirmEmailNotice key={user.id} user={user} />}
             {bidPackSaveFailed && (
               <div role="alert" className="mx-auto mb-4 flex w-full max-w-3xl items-start justify-between gap-3 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm leading-relaxed text-warn">
                 <span>
