@@ -146,6 +146,10 @@ export const AVOIDED: { name: string; phrase: RegExp; say: string }[] = [
   { name: "compact schedule", phrase: /\bcompact,? (?:\w+[- ])?schedule\b/i, say: "fewer days off" },
   // The owner's call (Nov 2026), after the ex-pilot: pilots rank lines rather than throw them out, and a limit sinks a line.
   { name: "dealbreaker", phrase: /\bdeal[- ]?breakers?\b/i, say: "a limit that puts a line at the bottom of their list" },
+  // App wording the owner couldn't follow (Nov 2026): "4 layovers with no real night", "no duties through the night but
+  // 20.8 hours on the backside of the clock".
+  { name: "no real night", phrase: /\b(?:no|without a|with a) real night\b|\breal nights?\b(?! ?'s sleep)/i, say: "layovers where you'd have to sleep in the daytime (or a night's sleep on every layover)" },
+  { name: "duties through the night", phrase: /\bdut(?:y|ies) through the night\b/i, say: "all-night duties" },
   { name: "landings for currency", phrase: /\bproficiency\b|\bcurrency comfort\b|\bfor currency\b/i, say: "more landings" },
 ];
 

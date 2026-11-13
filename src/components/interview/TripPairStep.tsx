@@ -51,15 +51,16 @@ function Differences({ pair }: { pair: TripPairCandidate }) {
           {pair.differences.map((d) => (
             <tr key={d.label} className="border-b border-hairline last:border-0">
               <th scope="row" className="px-3 py-2 text-sm font-normal text-ink">
-                {d.label}
+                {d.plain ? d.plain.charAt(0).toUpperCase() + d.plain.slice(1) : d.label}
               </th>
+              {/* A feature said plainly ("less night flying") is ticked on the line that has it, not measured. */}
               <td className={cell(d.better === "a")}>
                 {d.better === "a" && <span className="sr-only">better: </span>}
-                {d.a}
+                {d.plain ? (d.better === "a" ? <span className="text-base leading-none">✓</span> : "") : d.a}
               </td>
               <td className={cell(d.better === "b")}>
                 {d.better === "b" && <span className="sr-only">better: </span>}
-                {d.b}
+                {d.plain ? (d.better === "b" ? <span className="text-base leading-none">✓</span> : "") : d.b}
               </td>
             </tr>
           ))}

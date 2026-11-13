@@ -169,7 +169,7 @@ export function SleepScienceInfo() {
                 before a night duty cuts its fatigue. <span className="text-ink-faint">(Rosekind et al., NASA, 1994.)</span>
               </li>
               <li>
-                <span className="font-medium text-ink">After a duty through the night, sleep twice.</span> A recovery sleep on arrival plus a main sleep in your body&rsquo;s night beats one long daytime sleep, which
+                <span className="font-medium text-ink">After an all-night duty, sleep twice.</span> A recovery sleep on arrival plus a main sleep in your body&rsquo;s night beats one long daytime sleep, which
                 your body clock cuts short — so daytime main sleeps are planned as four cycles with a nap before you go.{" "}
                 <span className="text-ink-faint">(Minors &amp; Waterhouse&rsquo;s anchor sleep; Åkerstedt&rsquo;s shift-work studies.)</span>
               </li>

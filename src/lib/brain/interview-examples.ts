@@ -18,7 +18,7 @@ export const QUESTION_KINDS: { kind: QuestionKind; when: string; rule: string }[
   {
     kind: "their-words",
     when: "They said something whose meaning would change their ranking.",
-    rule: "Quote their exact words in theirWords and ask what they meant, in their pack. One thing.",
+    rule: "Say back what they meant in your own plain words, the way one pilot would to another (\"You said you prefer several days off in a row\"), never their phrase repeated clumsily; put their exact words in theirWords, for the app's check only. Ask one concrete thing, and offer the two or three likely answers as options when you can — never \"What is it about…?\".",
   },
   {
     kind: "feature",
@@ -137,15 +137,15 @@ export const ANOTHER_PILOT: { story: string; questions: { kind: QuestionKind; qu
     },
     {
       kind: "their-words",
-      question: "You said you're not a fan of IND trips. What is it about them?",
+      question: "You said you're not a fan of IND trips. Is it the Indianapolis layover, or the flying on those trips? (Options: The layover / The flying / Both)",
       shown: "Trip #97, Anchorage to Osaka to Indianapolis, 5 days",
       why: "Tells the app whether to mark down the city or the kind of flying.",
     },
     {
       kind: "their-words",
-      question: "You said you want big blocks of days off. How many nights at home in a row make a big block?",
+      question: "You said you prefer several days off in a row. How many nights at home would that be?",
       shown: "Lines 2021 (15 nights in a row) and 2018 (9)",
-      why: "Where \"big\" starts, for every line in the pack.",
+      why: "Where a real stretch at home starts, for every line in the pack.",
     },
     {
       kind: "their-number",
@@ -155,6 +155,9 @@ export const ANOTHER_PILOT: { story: string; questions: { kind: QuestionKind; qu
     },
   ],
   notToAsk: [
+    "\"You said you want big blocks of days off. How many nights at home in a row make a big block?\" Their phrase repeated back reads like a form; say it the way a pilot would.",
+    "\"What is it about a Memphis start or finish that bothers you most?\" Vague, and it makes them do the work: offer the likely answers (\"the commute in, or the hotel night before an early show?\").",
+    "\"Where do extra days off stop mattering to you?\" Every pilot wants more days off; what's worth knowing is what they'd give up for them, so ask it as a real choice between a line with more days off and one better on something else.",
     "\"What's the earliest show you can still come up for the same day?\" The app works it out from his home airport, his time before a report and real flights.",
     "\"How much credit would you give up to cut one departure?\" A trade in words; the line choice asks it with real lines.",
     "\"How many other flights would you want?\" The owner called it unnecessary.",

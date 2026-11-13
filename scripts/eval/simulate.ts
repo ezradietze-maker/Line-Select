@@ -179,10 +179,12 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
   const packNumbers = { lines: pack.lines.map((l) => l.lineNumber), trips: [...new Set(pack.lines.flatMap((l) => l.trips.map((t) => t.pairingNumber ?? t.id)))] };
   for (;;) {
     const compared = new Set(choices.map((c) => `${c.preferred}|${c.other}`));
-    const pairs = pickLinePairs(pack, model, pm, compared, 3, pastTrades);
+
     // As in the app: real lines and trips at both ends of their main priorities, for the question to show.
     // And the topics still worth asking: what's unclear and would move their top 20 most.
-    const { topics, examples } = pickTopics(pack, model, pm, askedTopics(threads), pickQuestionExamples(pack, model, pm));
+    const { topics, examples } = pickTopics(pack, model, pm, askedTopics(threads), pickQuestionExamples(pack, model, pm), undefined, exchanges);
+    const weightTopic = topics.find((x) => x.unclear === "weight" && x.criterionIds?.length);
+    const pairs = pickLinePairs(pack, model, pm, compared, 3, pastTrades, weightTopic ? { ids: weightTopic.criterionIds!, label: weightTopic.label.toLowerCase() } : undefined);
     const tripPairs = pickTripPairs(pack, model, pm, askedTripPairs(exchanges), pastTrades);
     const stepInput = { pilotContext: context, exchanges, model, threads: structuredClone(threads), linePairs: pairs, tripPairs, examples, packNumbers, topics, lastTopic, turn, maxTurns: limit, rankingShifts: [...shifts] };
     const step = await nextInterviewStep({ packBrief: brief, ...stepInput });
@@ -247,7 +249,7 @@ async function sim<T>(fresh: string, schema: Record<string, unknown>): Promise<T
       continue;
     }
     if (step.threadId) threads[step.threadId] = { status: threads[step.threadId]?.status ?? "open", timesAsked: (threads[step.threadId]?.timesAsked ?? 0) + 1 };
-    say(`\nQ${turn + 1} [${step.kind}${step.questionKind ? ` · ${step.questionKind}` : ""}${step.topic ? ` · topic ${step.topic}` : ""}${step.threadId ? ` · ${step.threadId}` : ""}] ${step.prompt}${step.options ? `\n   options: ${step.options.join(" / ")}` : ""}${step.examples?.length ? `\n   shown: ${step.examples.map((e) => `${e.title} — ${e.fact}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}` : ""}`);
+    say(`\nQ${turn + 1} [${step.kind}${step.questionKind ? ` · ${step.questionKind}` : ""}${step.topic ? ` · topic ${step.topic}` : ""}${step.threadId ? ` · ${step.threadId}` : ""}] ${step.prompt}${step.helpText ? `\n   help: ${step.helpText}` : ""}${step.options ? `\n   options: ${step.options.join(" / ")}` : ""}${step.examples?.length ? `\n   shown: ${step.examples.map((e) => `${e.title} — ${e.fact}${e.priority ? ` (${e.priority})` : ""}`).join("; ")}` : ""}`);
     const entry: (typeof asked)[number] = { kind: step.kind, words: step.prompt.split(/\s+/).filter(Boolean).length, ack: (step as { ack?: string }).ack ?? "", examples: step.examples?.length ?? 0 };
     if (entry.ack) say(`   (ack) ${entry.ack}`);
     asked.push(entry);
