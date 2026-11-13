@@ -596,4 +596,23 @@ describe("the four kinds of question, each with its rule", () => {
     );
     expect(await nextInterviewStep(input({ packNumbers: { lines: ["1011"], trips: [] } }))).toMatchObject({ questionKind: "their-words" });
   });
+
+  it("never asks \"What is it about…?\", or where more of something every pilot wants stops mattering", async () => {
+    proposals.push(
+      step({ threadId: "china", questionKind: "their-words", theirWords: "single legs", prompt: "You said single legs. What is it about two-leg duties that bothers you?" }),
+      step({ threadId: "china", prompt: "You said 14 days off or so. Where do extra days off stop mattering to you?" }),
+      step({ threadId: "china", questionKind: "their-words", theirWords: "single legs", kind: "choice", prompt: "You said you prefer single legs. What makes a two-leg duty harder?", options: ["The extra landing", "The longer day"] })
+    );
+    expect(await nextInterviewStep(input({ packNumbers }))).toMatchObject({ done: false, kind: "choice" });
+  });
+
+  it("makes at least one question in three a real choice once the interview is under way", async () => {
+    const asked = [2, 3, 4, 5, 6].map((i) => ({ turn: i, question: `Question ${i}?`, answer: "an answer" }));
+    const later = input({ turn: 5, exchanges: [...input().exchanges, ...asked] });
+    proposals.push(
+      step({ threadId: "china", prompt: "How many departures before it bothers you?" }),
+      step({ threadId: "china", questionKind: "real-choice", kind: "line-pair", pairIndex: 0, prompt: "Which line would you bid higher: 1011 or 1018?" })
+    );
+    expect(await nextInterviewStep(later)).toMatchObject({ done: false, kind: "line-pair" });
+  });
 });

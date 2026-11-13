@@ -607,10 +607,12 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       setPhase("question");
       return;
     }
-    const linePairs: LinePairCandidate[] = m ? pickLinePairs(bidPack, m, pm, compared, 3, tradesRef.current) : [];
     // Real lines and trips at both ends of their main priorities, for the question to show — and the topics still worth
     // asking: what's unclear and would move their top 20 most (lib/brain/question-topics.ts).
     const { topics, examples } = m ? pickTopics(bidPack, m, pm, askedTopics(th), pickQuestionExamples(bidPack, m, pm)) : { topics: [], examples: [] };
+    // Line pairs, the first built around the top topic whose weight is unclear: what they'd give up for more of it.
+    const weightTopic = topics.find((x) => x.unclear === "weight" && x.criterionIds?.length);
+    const linePairs: LinePairCandidate[] = m ? pickLinePairs(bidPack, m, pm, compared, 3, tradesRef.current, weightTopic ? { ids: weightTopic.criterionIds!, label: weightTopic.label.toLowerCase() } : undefined) : [];
     // And two real trips that pull their priorities apart, for a trip choice (lib/brain/trip-pairs.ts).
     const tripPairs = m ? pickTripPairs(bidPack, m, pm, askedTripPairs(all), tradesRef.current) : [];
     try {

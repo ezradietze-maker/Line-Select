@@ -15,18 +15,18 @@ describe("saying the model back in plain words", () => {
   it("says each measure's value so it reads on its own, next to a priority written as a wish", () => {
     expect(formatValue(0, { id: "extraLegs", unit: "legs" })).toBe("no extra legs");
     expect(formatValue(3, { id: "extraLegs", unit: "legs" })).toBe("3 extra legs");
-    expect(formatValue(1, { id: "allNighterStreak", unit: "duties" })).toBe("duties through the night one at a time");
-    expect(formatValue(0, { id: "allNighterStreak", unit: "duties" })).toBe("no duties through the night");
-    expect(formatValue(0, { id: "daytimeLayovers", unit: "layovers" })).toBe("a real night on every layover");
+    expect(formatValue(1, { id: "allNighterStreak", unit: "duties" })).toBe("the odd all-night duty, never two in a row");
+    expect(formatValue(0, { id: "allNighterStreak", unit: "duties" })).toBe("no all-night duties");
+    expect(formatValue(0, { id: "daytimeLayovers", unit: "layovers" })).toBe("a night's sleep on every layover");
     expect(formatValue(8, { id: "longestTripDays", unit: "days" })).toBe("an 8-day longest trip");
     expect(formatValue(13, { id: "longestTripDays", unit: "days" })).toBe("a 13-day longest trip");
     expect(formatValue(11, { id: "maxDutyHours", unit: "hours" })).toBe("an 11-hour longest duty");
-    expect(formatValue(4, { id: "allNighterStreak", unit: "duties" })).toBe("4 duties through the night in a row");
+    expect(formatValue(4, { id: "allNighterStreak", unit: "duties" })).toBe("4 all-night duties in a row");
     expect(formatValue(64, { id: "bodyClockScore", unit: "score (1–100, 100 gentlest)" })).toBe("64/100 on the body clock");
     expect(formatValue(0.4, { id: "dayFlyingShare", unit: "share" })).toBe("40% of the flying in daytime");
     expect(formatValue(2, { id: "tripsJoinedFromHome", unit: "trips" })).toBe("2 trips with a front-end deadhead from home");
-    expect(formatValue(-10, { id: "layoverValue", unit: "weighted hours" })).toBe("10 hours more in cities you avoid than in ones you like");
-    expect(formatRange(0, 4, { id: "allNighterStreak", unit: "duties" })).toBe("0 to 4 duties through the night in a row");
+    expect(formatValue(-10, { id: "layoverValue", unit: "weighted hours" })).toBe("10 hours more on layover in cities you avoid than in ones you like");
+    expect(formatRange(0, 4, { id: "allNighterStreak", unit: "duties" })).toBe("0 to 4 all-night duties in a row");
     expect(formatRange(40, 64, { id: "bodyClockScore", unit: "score (1–100, 100 gentlest)" })).toBe("40 to 64/100 on the body clock");
     expect(formatRange(4.9, 9.5, { id: "creditPerDayAway", unit: "hours/day" })).toBe("4.9 to 9.5 credit hours a day");
     expect(formatRange(3, 13, { id: "longestTripDays", unit: "days" })).toBe("longest trips of 3 to 13 days");

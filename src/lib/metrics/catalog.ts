@@ -910,7 +910,7 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "daytimeLayovers",
-    label: "Layovers with no real night",
+    label: "Layovers where you'd sleep in the daytime",
     unit: "layovers",
     category: "layover",
     description:
@@ -1151,7 +1151,7 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "deepNightHours",
-    label: "Hours worked on the backside of the clock",
+    label: "Hours of work between midnight and 5 am",
     unit: "hours",
     category: "body",
     description: "Total hours of operated flying and on-call standby between 00:00 and 05:00 local across the month.",
@@ -1194,11 +1194,11 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "allNighterStreak",
-    label: "Most duties through the night in a row",
+    label: "Most all-night duties in a row",
     unit: "duties",
     category: "body",
     description:
-      "The longest run of consecutive duties through the night on a trip — duties whose flying spans at least 3 of the 5 hours from midnight to 5am (00:00–05:00 local). Early reports and late arrivals don't count.",
+      "The longest run of consecutive all-night duties on a trip — duties whose flying spans at least 3 of the 5 hours from midnight to 5am (00:00–05:00 local). Early reports and late arrivals don't count.",
     trip: {
       measure: (f) => {
         let best = 0;
@@ -1214,11 +1214,11 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "backToBackRedEyes",
-    label: "Back-to-back duties through the night",
+    label: "All-night duties back to back",
     unit: "duties",
     category: "body",
     description:
-      "Consecutive duties through the night: duties whose flying runs, first leg out to last arrival, across at least 3 of the 5 hours from midnight to 5am (00:00–05:00 local). A late leg in at 01:30, or an early leg out at 04:15, isn't one.",
+      "Consecutive all-night duties: duties whose flying runs, first leg out to last arrival, across at least 3 of the 5 hours from midnight to 5am (00:00–05:00 local). A late leg in at 01:30, or an early leg out at 04:15, isn't one.",
     trip: {
       measure: (f) => {
         const allNighter = f.duties.filter((d) => d.operatedLegs > 0).map(isAllNighter);

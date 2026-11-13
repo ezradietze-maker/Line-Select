@@ -64,7 +64,16 @@ function turnsOf(run: string): Turn[] {
     const steps = JSON.parse(readFileSync(recorded, "utf8")) as { input: Omit<InterviewStepInput, "packBrief">; asked: { ack: string; prompt: string } | null }[];
     // A run recorded before topics existed gets them worked out as the app would now (none counted as asked yet).
     const r = loadRun(persona, tag)!;
-    return steps.map((s) => ({ run, input: s.input.topics || !s.input.model ? s.input : { ...s.input, ...pickTopics(r.pack, s.input.model, r.pm, askedTopics(s.input.threads), s.input.examples ?? []) }, asked: s.asked }));
+    // Topics and line pairs are worked out again as the app would now — the run may have recorded older ones — the
+    // first pair built around the top topic whose weight is unclear.
+    return steps.map((s) => {
+      if (!s.input.model) return { run, input: s.input, asked: s.asked };
+      const t = pickTopics(r.pack, s.input.model, r.pm, askedTopics(s.input.threads), (s.input.examples ?? []).filter((e) => !e.id.startsWith("F")));
+      const weightTopic = t.topics.find((x) => x.unclear === "weight" && x.criterionIds?.length);
+      const compared = new Set(s.input.exchanges.flatMap((e) => [...e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)].map((m) => `${m[1]}|${m[2]}`)));
+      const linePairs = pickLinePairs(r.pack, s.input.model, r.pm, compared, 3, [], weightTopic ? { ids: weightTopic.criterionIds!, label: weightTopic.label.toLowerCase() } : undefined);
+      return { run, input: { ...s.input, ...t, linePairs }, asked: s.asked };
+    });
   }
   // Rebuilt from the transcript: each question the interviewer wrote, and everything before it.
   const r = loadRun(persona, tag)!;

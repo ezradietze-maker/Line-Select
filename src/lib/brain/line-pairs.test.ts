@@ -46,4 +46,17 @@ describe("picking line pairs to put to the pilot", () => {
     const pairs = pickLinePairs(wide, model, prepareMetrics(wide), new Set(["1|9"]), 1);
     expect(pairs[0].a === "1" || pairs[0].b === "1").toBe(false);
   });
+
+  it("puts first a pair built around the topic: more of it on one side, what they'd give up on the other", () => {
+    const pairs = pickLinePairs(pack, model, prepareMetrics(pack), new Set(), 3, [], { ids: ["Days off"], label: "time at home" });
+    expect(pairs.length).toBeGreaterThan(0);
+    expect(pairs[0].focus).toBe("time at home");
+    expect(pairs[0].differences?.some((d) => d.metric === "daysOff")).toBe(true);
+  });
+
+  it("says a feature the way a pilot would, without its measurement, where the count isn't what they'd say", () => {
+    const night: PilotModel = { ...model, criteria: [crit("Days off", "daysOff"), crit("Less night flying", "deepNightHours", "less")] };
+    for (const p of pickLinePairs(pack, night, prepareMetrics(pack), new Set(), 3))
+      for (const d of p.differences ?? []) expect(d.plain).toBe(d.metric === "deepNightHours" ? "less night flying" : undefined);
+  });
 });

@@ -36,6 +36,8 @@ export interface LinePairDifference {
   a: string;
   b: string;
   better: "a" | "b";
+  /** How a pilot would say the better line beats the other, without the measurement ("less night flying"); none when the count itself is what they'd say. */
+  plain?: string;
 }
 
 /** Two real lines from the pack that pull this pilot's priorities against each other — offered to the interviewer, which may ask the pilot to choose. */
@@ -51,6 +53,8 @@ export interface LinePairCandidate {
   differences?: LinePairDifference[];
   summaryA: string;
   summaryB: string;
+  /** The topic it was built around, when one line's headline advantage is that topic (see `pickLinePairs`). */
+  focus?: string;
 }
 
 export interface InterviewStepInput {
@@ -126,6 +130,8 @@ WHAT TO ASK ABOUT
 The app has worked out TOPICS WORTH ASKING NOW: what's still unclear about this pilot and would move their top 20 the most, most useful first, with how many of their top 20 an answer could move. Ask about one of them (set topic to its id), usually the first, in the kind its "Unclear" says: how much it matters → a real choice (or their own words, if no line pair pulls it against another priority); the number → their number; a feature they never mentioned → a feature question. Never ask how they feel about something they already told you they like or avoid — what's unclear about it is how much, and a real choice shows that. Each topic is asked once; the topic just answered may be asked once more, only if their answer left it unclear. When no topics are listed, ask what their own words and the threads still leave open.
 
 THE RULES THAT COME WITH THEM
+- Say it the way one pilot would to another. Put what they said in your own plain words ("You said you prefer several days off in a row. How many nights at home would that be?"), never their phrase repeated back clumsily ("…how many nights make a big block?"). Never "What is it about…?" — offer the two or three likely answers instead ("What bothers you more: the commute in, or the hotel night before an early show?").
+- Never ask where more of something stops mattering, or what's "enough", for things every pilot wants more of — days off, nights at home, credit, layover time. Who wouldn't want more? What's worth knowing is what they'd give up for it: ask that as a real choice between a line with more of it and one that's better on something else.
 - One question, one ask. prompt is the plain question, one sentence a pilot would say out loud, about 20 words at most. helpText carries the lines, trips and figures under it, in a sentence or two.
 - Weigh priorities against each other only with a real choice (an offered line pair or trip pair). Never in words: no "would you give up", "how much would X be worth", "next to", "compared with", "over two where…". If no pair pulls the two apart, ask about something else.
 - Only real lines and trips from their pack, by number — from the line pairs, the examples, or what they've already been shown. Never a made-up one ("say a trip had…", "a line with…").
@@ -147,7 +153,8 @@ ${pilotWordsForPrompt()}
 Write as you'd say it out loud: whole, plain sentences, never a label and a number glued together, never shorthand from a trip's summary ("×4 standby days" is "four standby days"). Times and lengths the way you'd say them: "a 9:50 pm show", "about 13 hours". Their priorities' names are written as wishes ("Avoid duty periods over 12 hours"): talk about the thing itself ("long duty periods").
 
 THE FORM OF THE QUESTION (kind)
-- line-pair: every real-choice question. Set pairIndex to the offered pair. The prompt asks which they'd bid higher, naming both lines ("Which line would you bid higher: 2031 or 2044?"); helpText says the two or three differences that matter most to them, in their terms, with the right figure on the right line.
+- line-pair: a real choice between two lines. Set pairIndex to the offered pair. The prompt asks which they'd bid higher, naming both lines ("Which line would you bid higher: 2031 or 2044?").
+- How to describe the two lines (or trips) in helpText: name their features, the way one pilot tells another about a line — "2035 gives you 16 days off, but more night flying. 2068 has less night flying and more credit, but 3 fewer days off." For a trip: "#79 is an 11-day trip with three full days off in Honolulu, but it's hard on your body clock." Use the differences as listed ("has less night flying", "easier on the body clock", "more time in cities you like"). Keep numbers only where a pilot counts them on a line: days off, trips, departures, credit, days in a trip, long duty periods, early shows, layovers in a city. Never an hours total ("5.1 hours after midnight", "138 hours in cities you like"), a score ("33/100"), a percentage, or a 24-hour time. At most three features per line, the ones that matter most to them, each on the right line.
 - trip-pair: a real choice between two trips, when what's being weighed shows up trip by trip (a deadhead from home against a layover they love, one-leg duties against pay per day away). Set tripPairIndex to an offered trip pair. The prompt asks which they'd rather fly, naming both ("Which trip would you rather fly: #50 on Oct 1 or #104 on Oct 2?"); helpText says the two or three differences that matter most to them. At most two in an interview — the trip grades at the end cover many trips at once.
 - choice: 2–4 concrete options make it quicker (they can still add a note), like how they feel about hotel standby: "I like them / I don't mind / I'd rather fly". Options mutually exclusive, in their terms.
 - free-text: everything else.
@@ -290,6 +297,13 @@ const THEN_ANOTHER = /[,;—–-]\s*(?:and|or)\s+(?:what|how|which|why|where|whe
  * you want to be at the airport?" (the fixed commute question asks it)
  */
 const COMMUTE_REACH = /\btwo departures instead of one\b|\b(?:count|counts|feel) as (?:one|a single|two|separate) departures?\b|\bhow (?:many|long)\b[^?]*\bat home\b[^?]*\b(?:two|separate) (?:departures|trips)\b|\bhow many (?:other |backup |more )?flights\b|\b(?:other|backup) flights?\b|\bhow (?:many hours|much time|long|early) before (?:the |your |a )?(?:report|show|deadhead|flying|first leg|departure)\b|\b(?:go|come|head|fly|get) (?:in|up) the (?:night|evening) before\b|\breports?\b[^?]*\bearly enough\b|\b(?:show|report)\b[^?]*\b(?:come|coming|get|getting) (?:up|in)\b[^?]*\bsame day\b|\b(?:earliest|how early)\b[^?]*\b(?:show|report)\b[^?]*\b(?:same day|that day|that morning|night before|come up|commute|get (?:up|in))\b|\bhow late\b[^?]*\b(?:land|lands|landing|release|get in|get back|back in)\b[^?]*\b(?:home|that night|same night)\b/i;
+/** "What is it about a Memphis start or finish that bothers you most?" — vague; the owner found it weird (Nov 2026). */
+const WHAT_IS_IT_ABOUT = /\bwhat is it about\b/i;
+/**
+ * Where more of something every pilot wants stops mattering: "Where do extra days off stop mattering to you?" Everyone
+ * wants more days off; what they'd give up for them is the question, and only a real choice shows it (the owner, Nov 2026).
+ */
+const MORE_STOPS_MATTERING = /\bstops? (?:mattering|adding|helping|counting)\b|\b(?:is|feels like) (?:plenty|enough)\b|\bhow (?:many|much)\b[^?]*\b(?:is|would be) (?:plenty|enough)\b|\bstop(?:s)? (?:being )?worth\b/i;
 /** Text that fixes itself as it goes: "…on 2043's side. Correction: 2043 has…" (a replayed turn, Nov 2026). */
 const SELF_CORRECTION = /\b(?:correction|I mean|scratch that|sorry)\b\s*[:,—–-]/i;
 /** One thing weighed against a list: "how much does it matter next to layovers and days off?" */
@@ -488,9 +502,21 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   if (attempt < 2 && (step.prompt.match(/\?/g) ?? []).length > 1) return "That asks more than one thing. Ask the first as its own plain question; the other can be the next question.";
   if (attempt < 2 && THEN_ANOTHER.test(step.prompt)) return "That asks two things in one (\"…, and what would…\"). Ask the first on its own; the other can be the next question.";
   if (COMMUTE_REACH.test(step.prompt)) return "The app already works out which reports they can commute in for, and when they can get home, from their home airport, the time they leave before a report and real flights. Ask something else.";
+  if (attempt < 2 && !isChoiceKind(step.kind) && WHAT_IS_IT_ABOUT.test(step.prompt)) return "\"What is it about…?\" is vague and makes them do the work. Offer the two or three likely answers as options instead (a choice question).";
+  if (attempt < 2 && !isChoiceKind(step.kind) && MORE_STOPS_MATTERING.test(step.prompt)) return "Every pilot wants more of that, so don't ask where more stops mattering. Ask what they'd give up for it, as a real choice: an offered line pair with more of it on one side and something else better on the other.";
   if (attempt < 2 && SELF_CORRECTION.test(`${step.prompt} ${step.helpText}`)) return "That corrects itself partway (\"Correction: …\"). Write it once, the right way.";
   if (attempt < 2 && WEIGHED_AGAINST_SEVERAL.test(step.prompt)) return "That weighs one thing against several (\"next to layovers and days off\"). Ask about the one thing on its own; to weigh several, offer a line pair.";
   if (attempt < 2 && step.prompt.split(/\s+/).length > MAX_PROMPT_WORDS) return `Put the question in one plain sentence of ${MAX_PROMPT_WORDS} words or fewer, and the lines and figures in helpText.`;
+  // At least one question in three is a real choice once the interview is under way: on the ex-pilot's own sort, a
+  // simulated interview that asked one line choice in 15 questions agreed 81.7%, ones that asked four and six 95–97%
+  // (Nov 2026) — words say what matters, choices say how much against the rest.
+  if (attempt < 2 && !isChoiceKind(step.kind) && (input.linePairs.length || input.tripPairs?.length)) {
+    const sofar = input.turn > 0 ? input.exchanges.slice(-input.turn) : [];
+    const choices = sofar.filter((e) => LINE_PAIR_QUESTION.test(e.question) || TRIP_PAIR_QUESTION.test(e.question)).length;
+    const last = sofar.at(-1);
+    const lastWasChoice = !!last && (LINE_PAIR_QUESTION.test(last.question) || TRIP_PAIR_QUESTION.test(last.question));
+    if (sofar.length >= 3 && !lastWasChoice && choices < Math.floor((sofar.length + 1) / 3)) return "Fewer than one question in three has been a real choice, and choices are what show how they weigh one thing against another. Offer one of the line pairs (or trip pairs) now, on the topic that's most unclear.";
+  }
   const t = step.threadId ? input.threads[step.threadId] : undefined;
   if (t && t.status !== "open") return `Thread ${step.threadId} is ${t.status} — don't ask about it again.`;
   if (t && t.timesAsked >= 2) return `Thread ${step.threadId} has already been asked twice — move on.`;
@@ -545,8 +571,8 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
   const pairs = input.linePairs.length
     ? input.linePairs
         .map((p) => {
-          const diffs = p.differences?.length ? `\n   differences: ${p.differences.map((d) => `${d.label} ${d.a} vs ${d.b} (better: ${d.better === "a" ? p.a : p.b})`).join("; ")}` : "";
-          return `#${p.index}: Line ${p.a} vs Line ${p.b} — ${p.tension}${diffs}\n   ${p.a}: ${p.summaryA}\n   ${p.b}: ${p.summaryB}`;
+          const diffs = p.differences?.length ? `\n   differences (say them like this): ${p.differences.map((d) => (d.plain ? `${d.better === "a" ? p.a : p.b} has ${d.plain}` : `${d.label}: ${p.a} ${d.a}, ${p.b} ${d.b}`)).join("; ")}` : "";
+          return `#${p.index}: Line ${p.a} vs Line ${p.b}${p.focus ? ` (built around ${p.focus}: shows what they'd give up for it)` : ""} — ${p.tension}${diffs}\n   ${p.a}: ${p.summaryA}\n   ${p.b}: ${p.summaryB}`;
         })
         .join("\n")
     : "(none offered this turn)";
@@ -555,7 +581,7 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
     `THE BRAIN'S CURRENT MODEL OF THEM:\n${renderModel(input.model, input.threads, openingCountOf(input))}`,
     input.fleetNotes ? `FLEET NOTES — other pilots in the same group (hints only):\n${input.fleetNotes}` : "",
     `LINE PAIRS YOU MAY OFFER:\n${pairs}`,
-    `TRIP PAIRS YOU MAY OFFER:\n${(input.tripPairs ?? []).map((p) => `#${p.index}: ${p.labelA} vs ${p.labelB} — ${p.tension}\n   differences: ${p.differences.map((d) => `${d.label} ${d.a} vs ${d.b}`).join("; ")}\n   ${p.labelA}: ${p.summaryA}\n   ${p.labelB}: ${p.summaryB}`).join("\n") || "(none offered this turn)"}`,
+    `TRIP PAIRS YOU MAY OFFER:\n${(input.tripPairs ?? []).map((p) => `#${p.index}: ${p.labelA} vs ${p.labelB} — ${p.tension}\n   differences (say them like this): ${p.differences.map((d) => (d.plain ? `${d.better === "a" ? p.labelA : p.labelB} has ${d.plain}` : `${d.label}: ${d.a} vs ${d.b}`)).join("; ")}\n   ${p.labelA}: ${p.summaryA}\n   ${p.labelB}: ${p.summaryB}`).join("\n") || "(none offered this turn)"}`,
     `TOPICS WORTH ASKING NOW:\n${renderTopics(input)}`,
     `EXAMPLES YOU MAY SHOW — real lines and trips from their pack at the two ends of each priority, grouped by priority. Show examples from the group of the priority your question is about:\n${renderExamples(input.examples ?? [])}`,
     input.rankingShifts?.length ? `RANKING STABILITY — top-10 lines changed by each re-read, oldest first: ${input.rankingShifts.join(", ")}` : "",

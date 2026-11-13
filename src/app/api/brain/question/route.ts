@@ -44,6 +44,7 @@ function readPairs(value: unknown): LinePairCandidate[] {
       differences: readDifferences(p.differences),
       summaryA: p.summaryA as string,
       summaryB: p.summaryB as string,
+      ...(isText(p.focus, 80) ? { focus: p.focus as string } : {}),
     }));
 }
 
@@ -85,7 +86,7 @@ function readTripPairs(value: unknown): TripPairCandidate[] {
       differences: (Array.isArray(p.differences) ? p.differences : [])
         .slice(0, 6)
         .filter((d): d is Record<string, unknown> => isJsonObject(d) && isText(d.label, 120) && isText(d.a, 80) && isText(d.b, 80) && (d.better === "a" || d.better === "b"))
-        .map((d) => ({ label: d.label as string, a: d.a as string, b: d.b as string, better: d.better as "a" | "b" })),
+        .map((d) => ({ label: d.label as string, a: d.a as string, b: d.b as string, better: d.better as "a" | "b", ...(isText(d.plain, 120) ? { plain: d.plain as string } : {}) })),
       summaryA: p.summaryA as string,
       summaryB: p.summaryB as string,
     }));
@@ -104,6 +105,7 @@ function readTopics(value: unknown): TopicCandidate[] {
       moves: Math.max(0, Math.min(20, Math.round(t.moves as number))),
       unclear: t.unclear === "number" || t.unclear === "feature" ? (t.unclear as "number" | "feature") : ("weight" as const),
       priorities: (t.priorities as unknown[]).filter((x): x is string => isText(x, 200)).slice(0, 8),
+      ...(Array.isArray(t.criterionIds) ? { criterionIds: (t.criterionIds as unknown[]).filter((x): x is string => isText(x, 80)).slice(0, 8) } : {}),
       exampleIds: (t.exampleIds as unknown[]).filter((x): x is string => isText(x, 8)).slice(0, 8),
       ...(isJsonObject(t.feature) && isText(t.feature.metric, 60) && isText(t.feature.label, 120) ? { feature: { metric: t.feature.metric as string, label: t.feature.label as string } } : {}),
     }));
@@ -122,7 +124,7 @@ function readDifferences(value: unknown): LinePairDifference[] {
     .slice(0, 6)
     .filter((d): d is Record<string, unknown> => isJsonObject(d))
     .filter((d) => isText(d.label, 120) && isText(d.metric, 60) && isText(d.a, 80) && isText(d.b, 80) && (d.better === "a" || d.better === "b"))
-    .map((d) => ({ label: d.label as string, metric: d.metric as string, a: d.a as string, b: d.b as string, better: d.better as "a" | "b" }));
+    .map((d) => ({ label: d.label as string, metric: d.metric as string, a: d.a as string, b: d.b as string, better: d.better as "a" | "b", ...(isText(d.plain, 120) ? { plain: d.plain as string } : {}) }));
 }
 
 /** The interviewer's next move: one question drawn from the pilot's own threads, or "done". See `nextInterviewStep`. */

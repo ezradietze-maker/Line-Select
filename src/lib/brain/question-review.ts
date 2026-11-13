@@ -46,6 +46,9 @@ const SYSTEM = `You check one interview question before a FedEx line pilot sees 
 4. It asks how they feel about something their answers already say plainly, with nothing left open, or for a number their answers already give ("three or four days at home"). Asking what their own words meant, or for a number they haven't given, is fine.
 5. It asks the same thing as an earlier question, in other words.
 6. A line pilot couldn't tell in one read what's being asked.
+7. It reads like a form, not one pilot talking to another: their own phrase repeated back clumsily ("You said you want big blocks of days off. How many nights at home in a row make a big block?" should be "You said you prefer several days off in a row. How many nights at home would that be?"), or a vague "What is it about…?".
+9. The help text doesn't make common sense to a pilot: a list of figures instead of the lines' features, or a measurement no pilot counts on a line — an hours total ("5.1 hours after midnight", "138 hours in cities you like"), a score ("33/100"), a percentage. Days off, trips, departures, credit, days in a trip, long duty periods and early shows are fine; "less night flying", "easier on the body clock" is how it should read.
+8. It asks where more of something every pilot wants stops mattering, or how much is "enough" (days off, nights at home, credit, layover time) — what's worth knowing is what they'd give up for it.
 
 Be lenient: pass anything a pilot would understand and that isn't wrong. When something is wrong, say the one thing to fix in a sentence addressed to the writer ("The help text says 2014 shows at 8:58 am, but that's 2020's trip; 2014 shows at 9:50 pm.").`;
 
