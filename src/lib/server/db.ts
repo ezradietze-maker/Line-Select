@@ -524,7 +524,7 @@ export async function lockPilotsInSeat(tx: Tx, meta: BidPackMetaSnapshot, pilots
 }
 
 /** The trades these pilots have agreed in this seat's month: the trips in them are spoken for (`alreadyTraded`). */
-async function agreedTrades(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[]): Promise<TradeOffer[]> {
+export async function agreedTrades(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[]): Promise<TradeOffer[]> {
   const rows = await tx
     .select()
     .from(tradeOffers)

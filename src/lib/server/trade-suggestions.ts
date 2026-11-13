@@ -1,15 +1,15 @@
 import { and, countDistinct, desc, eq, gte, inArray, isNull, lt, or, gt } from "drizzle-orm";
 import { legacyPackIdFor, packIdFor } from "@/lib/pack-id";
-import { freeOffersOfMovedTrips, lockPilotsInSeat } from "@/lib/server/db";
+import { agreedTrades, freeOffersOfMovedTrips, lockPilotsInSeat } from "@/lib/server/db";
 import { db } from "@/lib/server/postgres";
 import { verifiedUserIds } from "@/lib/server/verified-pilots";
 import { bidPackMetaOf, preferenceProfiles, tradeHoldings, tradeOffers, tradePreferences, tradeSuggestionMembers, tradeSuggestions, users } from "@/lib/server/schema";
 import { tripInstanceKey } from "@/lib/trades/legality";
 import type { MatchingRow } from "@/lib/trades/holding";
-import { agreedBoardTrips, type GivenTrip } from "@/lib/trades/offer-trips";
+import { agreedBoardTrips, alreadyTraded, type GivenTrip } from "@/lib/trades/offer-trips";
 import { holdingsAfter, isWhole, type suggestionToStore } from "@/lib/trades/suggestions";
 import type { Seat } from "@/types/bidpack";
-import type { BidPackMetaSnapshot, TradeAnswer, TradeDeclineReason, TradeHolding, TradeOffer, TradeSuggestionMember, TradeSuggestionRecord } from "@/types/trade";
+import type { BidPackMetaSnapshot, TradeAnswer, TradeDeclineReason, TradeHolding, TradeOffer, TradeSuggestionMember, TradeSuggestionRecord, TradeTrip } from "@/types/trade";
 
 /** Suggested trades in the database (see `lib/trades/suggestions.ts` for what they mean). */
 
@@ -180,6 +180,10 @@ export const swapKey = (userId: string, give: { id: string; startDayIndex: numbe
  */
 export async function saveSuggestion(s: ReturnType<typeof suggestionToStore>, foundFrom?: Date): Promise<boolean> {
   return db.transaction(async (tx) => {
+    // The run read the board before a search of up to a minute: a trip agreed there since is spoken for. Under the
+    // pilots' seat locks, so an accept on the board can't land between this check and the insert.
+    await lockPilotsInSeat(tx, s.bidPackMeta, s.members.map((m) => m.userId));
+    if (await givesAgreedTrip(tx, s.bidPackMeta, s.members)) return false;
     if (foundFrom && !(await stillStands(tx, s, foundFrom))) return false;
     const [row] = await tx
       .insert(tradeSuggestions)
@@ -193,6 +197,24 @@ export async function saveSuggestion(s: ReturnType<typeof suggestionToStore>, fo
 }
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Whether one of these pilots has agreed on the board to trade away the trip they'd give here. The caller holds their seat locks. */
+async function givesAgreedTrip(tx: Tx, meta: BidPackMetaSnapshot, gives: readonly { userId: string; give: TradeTrip }[]): Promise<boolean> {
+  const agreed = await agreedTrades(tx, meta, [...new Set(gives.map((g) => g.userId))]);
+  return gives.some((g) => alreadyTraded(agreed, meta, g.userId, g.give));
+}
+
+/**
+ * Takes everyone's seat locks, in the board's order (`lockPilotsInSeat`), before the trade's own row is locked: a board
+ * accept checking this trade then waits for it, or it for the accept, and never each for the other.
+ */
+async function lockMembersInSeat(tx: Tx, id: string): Promise<boolean> {
+  const [seen] = await tx.select().from(tradeSuggestions).where(eq(tradeSuggestions.id, id));
+  if (!seen) return false;
+  const onIt = await tx.select({ userId: tradeSuggestionMembers.userId }).from(tradeSuggestionMembers).where(eq(tradeSuggestionMembers.suggestionId, id));
+  await lockPilotsInSeat(tx, bidPackMetaOf(seen), onIt.map((m) => m.userId));
+  return true;
+}
 
 async function stillStands(tx: Tx, s: ReturnType<typeof suggestionToStore>, foundFrom: Date): Promise<boolean> {
   const ids = s.members.map((m) => m.userId);
@@ -234,16 +256,22 @@ export type AnswerResult = { ok: true; record: TradeSuggestionRecord } | { ok: f
 
 /**
  * A pilot's answer. One no cancels the trade for everyone; the last yes opens it. In a transaction with the trade's row
- * locked, so two pilots answering together can't each miss the other's yes.
+ * locked, so two pilots answering together can't each miss the other's yes. A yes to a trade one of whose trips has
+ * since been agreed on the board calls it off instead, as a change to what they hold would (`lapseSuggestionsFor`).
  */
 export async function answerSuggestion(id: string, userId: string, answer: Exclude<TradeAnswer, "waiting">, now = new Date(), declineReason: TradeDeclineReason | null = null): Promise<AnswerResult> {
   return db.transaction(async (tx) => {
+    if (!(await lockMembersInSeat(tx, id))) return { ok: false, reason: "not-found" } as const;
     const [row] = await tx.select().from(tradeSuggestions).where(eq(tradeSuggestions.id, id)).for("update");
     if (!row) return { ok: false, reason: "not-found" } as const;
     const members = await tx.select().from(tradeSuggestionMembers).where(eq(tradeSuggestionMembers.suggestionId, id));
     const me = members.find((m) => m.userId === userId);
     if (!me) return { ok: false, reason: "not-found" } as const;
     if (row.status !== "proposed" || row.expiresAt <= now || !isWhole({ members: toRecord(row, members).members, steps: row.steps })) return { ok: false, reason: "closed" } as const;
+    if (answer === "accepted" && (await givesAgreedTrip(tx, bidPackMetaOf(row), members))) {
+      const [called] = await tx.update(tradeSuggestions).set({ status: "cancelled", cancelReason: "changed", signature: null, resolvedAt: now }).where(eq(tradeSuggestions.id, id)).returning();
+      return { ok: true, record: toRecord(called, members) } as const;
+    }
     await tx.update(tradeSuggestionMembers).set({ answer, answeredAt: now, declineReason: answer === "declined" ? declineReason : null }).where(eq(tradeSuggestionMembers.id, me.id));
     const after = members.map((m) => (m.id === me.id ? { ...m, answer } : m));
     const next =
@@ -263,7 +291,7 @@ export async function answerSuggestion(id: string, userId: string, answer: Exclu
   });
 }
 
-export type StepResult = { ok: true; record: TradeSuggestionRecord } | { ok: false; reason: "not-found" | "not-yours" | "not-next" };
+export type StepResult = { ok: true; record: TradeSuggestionRecord } | { ok: false; reason: "not-found" | "not-yours" | "not-next" | "traded" };
 
 /**
  * A pilot says the next trade in the order went through. Either of the two can say so. What both pilots hold moves with
@@ -272,12 +300,7 @@ export type StepResult = { ok: true; record: TradeSuggestionRecord } | { ok: fal
  */
 export async function markStepDone(id: string, userId: string, stepIndex: number, now = new Date()): Promise<StepResult> {
   return db.transaction(async (tx) => {
-    // Everyone on it, seat-locked before the trade's own row, in the order the board takes them: a board accept checking
-    // this trade waits for the step, or the step for it, and never each for the other.
-    const [seen] = await tx.select().from(tradeSuggestions).where(eq(tradeSuggestions.id, id));
-    if (!seen) return { ok: false, reason: "not-found" } as const;
-    const onIt = await tx.select({ userId: tradeSuggestionMembers.userId }).from(tradeSuggestionMembers).where(eq(tradeSuggestionMembers.suggestionId, id));
-    await lockPilotsInSeat(tx, bidPackMetaOf(seen), onIt.map((m) => m.userId));
+    if (!(await lockMembersInSeat(tx, id))) return { ok: false, reason: "not-found" } as const;
     const [row] = await tx.select().from(tradeSuggestions).where(eq(tradeSuggestions.id, id)).for("update");
     if (!row) return { ok: false, reason: "not-found" } as const;
     const members = await tx.select().from(tradeSuggestionMembers).where(eq(tradeSuggestionMembers.suggestionId, id));
@@ -290,6 +313,9 @@ export async function markStepDone(id: string, userId: string, stepIndex: number
 
     const holds = holdingsAfter(row.steps.length + 1, row.steps, stepIndex);
     const pilot = (position: number) => record.members[position];
+    // A trip agreed on the board since (in a race the board's own checks can't see) isn't the trade's to move.
+    const moving = [step.a, step.b].map((p) => ({ userId: pilot(p).userId, give: pilot(holds[p]).give }));
+    if (await givesAgreedTrip(tx, record.bidPackMeta, moving)) return { ok: false, reason: "traded" } as const;
     const swap = async (position: number, other: number) => {
       const giving = pilot(holds[position]).give;
       const taking = pilot(holds[other]).give;

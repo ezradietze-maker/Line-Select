@@ -6,6 +6,7 @@ import {
   dutyIsInternational,
   scheduledDutyLimitHours,
   tripBaseSpans,
+  tripSpans,
   flownUnderInternationalRules,
   flyLine,
   flyPack,
@@ -603,5 +604,30 @@ describe("recommendVipsAnswers", () => {
     const r = byKey(recommendVipsAnswers({ pack: q, order: ["1001"], carryIn: [carryEndingBefore(q, -2)], model: null }));
     expect(r.protectMinDays.answer).toBe(true);
     expect(r.protectMinDays.section).toContain("25.F.7");
+  });
+});
+
+describe("a trip's duties, show to release", () => {
+  const H = 3_600_000;
+  const leg = (startMinutes: number, endMinutes: number, isStandby = false) => ({ flightNumber: "1", isDeadhead: false, isStandby, depAirport: "MEM", arrAirport: "IND", blockHours: 2, startMinutes, endMinutes });
+  // Report at 0, block-in at 6:00; the hotel pickup 14:00 later, the show 1:00 after it; block-in 26:00; released 26:30.
+  const trip = {
+    tafbHours: 26.5,
+    schedule: [
+      { reportTimeLocal: "0800", startMinutes: 0, legs: [leg(60, 360)], totals: { blockHours: 5, creditHours: 5, dutyHours: 6.5 }, layover: { city: "IND", startMinutes: 360, endMinutes: 1200, hours: 14 } },
+      { reportTimeLocal: "0400", startMinutes: 1200, legs: [leg(1290, 1560)], totals: { blockHours: 5, creditHours: 5, dutyHours: 5.5 }, layover: null },
+    ],
+  } as unknown as Trip;
+
+  it("releases a duty that lays over 30 minutes after block-in, and shows a later one at its release less the printed DUTY, not at the hotel pickup", () => {
+    expect(tripSpans(trip, 0)).toEqual([
+      { start: 0, end: 6.5 * H },
+      { start: 21 * H, end: 26.5 * H },
+    ]);
+  });
+
+  it("starts a hotel standby, which prints no DUTY, when the standby does", () => {
+    const standby = { ...trip, schedule: [trip.schedule[0], { ...trip.schedule[1], legs: [leg(1230, 1560, true)], totals: { blockHours: 0, creditHours: 3.2, dutyHours: 0 } }] } as unknown as Trip;
+    expect(tripSpans(standby, 0)[1].start).toBe(20.5 * H);
   });
 });

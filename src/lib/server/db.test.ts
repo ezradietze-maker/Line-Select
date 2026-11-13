@@ -316,6 +316,46 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect((await suggestions.markStepDone(agreed, a.id, 0)).ok).toBe(true);
       expect((await mod.findTradeOffer(early.id))?.status).toBe("withdrawn");
     });
+
+    it("re-checks the board when a trade found earlier is stored, agreed and stepped: a trip agreed there since is spoken for", async () => {
+      const dated = (n: number) => ({ ...(tripOf(n) as object), tripId: `t${n}` }) as never;
+      const board = (n: number) => ({ lineNumber: "held", pairingNumber: `${n}`, days: 2, layoverCities: [], international: false, reportTime: "early" as const, creditHours: 10, tafbHours: 48, landings: 2, deadheadLegs: 0, tripId: `t${n}`, startDayIndex: n, date: null });
+      const [a, b, c, d] = [await makeUser("race-a"), await makeUser("race-b"), await makeUser("race-c"), await makeUser("race-d")];
+      for (const [i, p] of [a, b, c].entries()) await mod.saveTradeHolding(p.id, { packId, bidPackMeta: meta, lineNumber: null, trips: [{ id: `t${i}`, startDayIndex: i, lock: null }] });
+      const stored = () => ({
+        signature: randomUUID(), packId, bidPackMeta: meta, steps: [{ a: 0, b: 1 }, { a: 1, b: 2 }], expiresAt: new Date(Date.now() + 86_400_000),
+        members: [a, b, c].map((p, position) => ({ userId: p.id, displayName: `P${position}`, position, give: dated(position), value })),
+      });
+      // A board trade of A's t0 agreed, as one that slipped in while the trade below was being worked out or answered.
+      const offerId = randomUUID();
+      const agreeOnBoard = () =>
+        db.insert(tradeOffers).values({ id: offerId, ...meta, offeringUserId: a.id, offeringDisplayName: "A", offeredTrip: board(0), status: "accepted", responderUserId: d.id, responderDisplayName: "D", responderTrip: board(30), respondedAt: new Date(), resolvedAt: new Date() });
+      const undo = () => db.delete(tradeOffers).where(eq(tradeOffers.id, offerId));
+
+      // Found before, stored after: refused.
+      const foundFrom = new Date();
+      await agreeOnBoard();
+      expect(await suggestions.saveSuggestion(stored(), foundFrom)).toBe(false);
+      await undo();
+
+      // Stored, then agreed on the board before the last yes: the yes calls it off.
+      expect(await suggestions.saveSuggestion(stored())).toBe(true);
+      const answering = (await suggestions.listSuggestionsFor(a.id, packId))[0].id;
+      await suggestions.answerSuggestion(answering, a.id, "accepted");
+      await agreeOnBoard();
+      const answered = await suggestions.answerSuggestion(answering, b.id, "accepted");
+      expect(answered.ok && answered.record).toMatchObject({ status: "cancelled", cancelReason: "changed" });
+      await undo();
+
+      // Agreed by everyone, then on the board: the step that would move the trip is refused.
+      expect(await suggestions.saveSuggestion(stored())).toBe(true);
+      const stepping = (await suggestions.listSuggestionsFor(a.id, packId)).find((r) => r.status === "proposed")!.id;
+      for (const p of [a, b, c]) await suggestions.answerSuggestion(stepping, p.id, "accepted");
+      await agreeOnBoard();
+      expect(await suggestions.markStepDone(stepping, a.id, 0)).toEqual({ ok: false, reason: "traded" });
+      await undo();
+      expect((await suggestions.markStepDone(stepping, a.id, 0)).ok).toBe(true);
+    });
   });
 
   describe("preference profile store", () => {

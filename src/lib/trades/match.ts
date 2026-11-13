@@ -1,5 +1,5 @@
 import type { CarryInItem } from "@/lib/phase-in";
-import { canHold, isTradeable, sortedTrips, touchesVacation, tripInstanceKey, vacationsOf, type LockedTrips } from "@/lib/trades/legality";
+import { canHold, carryInReach, isTradeable, sortedTrips, touchesVacation, tripInstanceKey, tripSpan, vacationsOf, type LockedTrips } from "@/lib/trades/legality";
 import { planChain, type TradePlan } from "@/lib/trades/plan";
 import { valueSwaps, type SwapValue } from "@/lib/trades/value";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
@@ -24,7 +24,11 @@ const EFFORT_PER_TRADE = 0.5;
 /** Each trip's best alternatives kept: past these, it's only ever a worse way to help the same pilot. */
 const MAX_OPTIONS_PER_TRIP = 12;
 const MAX_CYCLES = 200_000;
-const MAX_SEARCH_NODES = 500_000;
+/**
+ * How much each pass of the search for the best set may do, counted in options looked at: on the October packs at 40
+ * pilots, the two passes take about half a second together.
+ */
+const MAX_SEARCH_WORK = 20_000_000;
 
 export interface PilotHolding {
   pilotId: string;
@@ -35,17 +39,12 @@ export interface PilotHolding {
   locked?: LockedTrips;
   /**
    * What they carry in from last month (as Open time and View/Add read it): busy time any trip handed to them must fit
-   * around. Undefined when they haven't said, as for a holding confirmed before it was asked: then a trip in the month's
-   * first days is handed them only when they already hold one that early (`CARRY_IN_DAYS`).
+   * around; empty when they said nothing carries in. Undefined when they haven't said: then a trip starting while a
+   * carry-in could still be flying (`carryInReach`) is handed them only when they already hold one starting as early,
+   * as what they confirmed holding fits whatever they carry in.
    */
   carryIn?: readonly CarryInItem[];
 }
-
-/**
- * The days a trip carried in from last month can still be flying. A pilot whose carry-in isn't known takes a trip
- * starting in them only when they already hold one starting as early: what they confirmed holding fits their carry-in.
- */
-const CARRY_IN_DAYS = 2;
 
 export interface TradeLeg {
   pilotId: string;
@@ -100,7 +99,8 @@ interface Edge {
 function holdChecker(pack: BidPack, pilots: readonly PilotHolding[], nodes: Node[]) {
   const known = new Map<number, boolean>();
   const vacations = pilots.map((p) => vacationsOf(pack, p.seniority));
-  const earliest = pilots.map((p) => Math.min(...p.line.trips.map((t) => t.startDayIndex ?? Infinity)));
+  const earliest = pilots.map((p) => Math.min(...p.line.trips.map((t) => tripSpan(pack, t)?.start ?? Infinity)));
+  const reach = carryInReach(pack) ?? -Infinity;
   return (own: number, trip: number): boolean => {
     const key = own * nodes.length + trip;
     const seen = known.get(key);
@@ -108,9 +108,9 @@ function holdChecker(pack: BidPack, pilots: readonly PilotHolding[], nodes: Node
     const pilot = nodes[own].pilot;
     const p = pilots[pilot];
     const taking = nodes[trip].trip;
-    const day = taking.startDayIndex ?? 0;
+    const starts = tripSpan(pack, taking)?.start ?? -Infinity;
     const ok =
-      (p.carryIn !== undefined || day >= CARRY_IN_DAYS || earliest[pilot] <= day) &&
+      (p.carryIn !== undefined || starts >= reach || earliest[pilot] <= starts) &&
       canHold(pack, p.line.trips.filter((t) => t !== nodes[own].trip), taking, vacations[pilot], p.carryIn ?? []);
     known.set(key, ok);
     return ok;
@@ -226,44 +226,95 @@ function toSuggestion(pilots: readonly PilotHolding[], nodes: Node[], cycle: Edg
 
 /**
  * The set of trades worth the most in all, each pilot (by `pilotId`) in at most one. Exact unless the search hits its
- * limit, when it keeps the best found. Each level of the search picks the next trade to take, so it goes only as deep as
- * the trades taken, however many options there are: one level per option overflowed the stack at a few thousand.
+ * limit, when it keeps the best found.
+ *
+ * It starts from the better of two greedy sets (each trade worth the most still free, in turn; then each worth the most
+ * per pilot), so a search cut short is never worse than those. Each step of the search takes one more trade and keeps
+ * only the options that share no pilot with it, so it goes only as deep as the trades taken. And it gives up on a branch
+ * as soon as what's left can't beat the best: a trade's worth shared among its pilots, each pilot still free can add at
+ * most their best share among the options still open to them. Summing every option ahead instead, as it did, counted
+ * one pilot once per trade they're on, and at 40 pilots the search never ended.
  */
 export function bestSet(options: TradeSuggestion[]): { chosen: TradeSuggestion[]; complete: boolean } {
-  const worthFromHere = new Array<number>(options.length + 1).fill(0);
-  for (let i = options.length - 1; i >= 0; i--) worthFromHere[i] = worthFromHere[i + 1] + Math.max(0, options[i].worth);
+  const ids = new Map<string, number>();
   // A trade naming one pilot twice can't be done, whatever it's worth.
-  const usable = options.map((o) => o.worth > 0 && new Set(o.legs.map((l) => l.pilotId)).size === o.legs.length);
-  let best: TradeSuggestion[] = [];
-  let bestWorth = 0;
-  let visited = 0;
-  let complete = true;
-  const used = new Set<string>();
-  const taken: TradeSuggestion[] = [];
-  const walk = (from: number, worth: number) => {
-    if (worth > bestWorth) {
-      bestWorth = worth;
-      best = [...taken];
+  const open = options.flatMap((o, i) => (o.worth > 0 && new Set(o.legs.map((l) => l.pilotId)).size === o.legs.length ? [i] : []));
+  for (const i of open) for (const l of options[i].legs) if (!ids.has(l.pilotId)) ids.set(l.pilotId, ids.size);
+  const legsOf = options.map((o) => o.legs.map((l) => ids.get(l.pilotId) ?? -1));
+  const share = options.map((o) => o.worth / Math.max(1, o.legs.length));
+  const marked = new Uint8Array(ids.size);
+  // Worths are rounded to a tenth, so a sum within this of the best is the same.
+  const EPS = 1e-6;
+
+  const greedy = (order: number[]) => {
+    marked.fill(0);
+    const chosen: number[] = [];
+    for (const i of order) {
+      if (legsOf[i].some((p) => marked[p])) continue;
+      for (const p of legsOf[i]) marked[p] = 1;
+      chosen.push(i);
     }
-    for (let i = from; i < options.length; i++) {
-      // Nothing further on can lift this past the best: what's left only shrinks.
-      if (worth + worthFromHere[i] <= bestWorth) return;
-      if (++visited > MAX_SEARCH_NODES) {
+    marked.fill(0);
+    return chosen;
+  };
+  const worthOf = (set: number[]) => set.reduce((sum, i) => sum + options[i].worth, 0);
+  const byWorth = [...open].sort((a, b) => options[b].worth - options[a].worth);
+  const byShare = [...open].sort((a, b) => share[b] - share[a]);
+  const seeds = [greedy(byWorth), greedy(byShare)];
+  let best = worthOf(seeds[0]) >= worthOf(seeds[1]) ? seeds[0] : seeds[1];
+  let bestWorth = worthOf(best);
+
+  let work = 0;
+  let complete = true;
+  const taken: number[] = [];
+  const walk = (candidates: number[], worth: number) => {
+    // ahead[k]: the most the options from k on could add, each free pilot at their best share among them.
+    const ahead = new Float64Array(candidates.length + 1);
+    const bestShare = new Float64Array(ids.size);
+    let sum = 0;
+    for (let k = candidates.length - 1; k >= 0; k--) {
+      const c = candidates[k];
+      for (const p of legsOf[c]) {
+        if (share[c] > bestShare[p]) {
+          sum += share[c] - bestShare[p];
+          bestShare[p] = share[c];
+        }
+      }
+      ahead[k] = sum;
+    }
+    work += candidates.length;
+    for (let k = 0; k < candidates.length; k++) {
+      if (worth + ahead[k] <= bestWorth + EPS) return;
+      if (work > MAX_SEARCH_WORK) {
         complete = false;
         return;
       }
-      const o = options[i];
-      if (!usable[i] || o.legs.some((l) => used.has(l.pilotId))) continue;
-      for (const l of o.legs) used.add(l.pilotId);
-      taken.push(o);
-      walk(i + 1, worth + o.worth);
+      const c = candidates[k];
+      const now = worth + options[c].worth;
+      taken.push(c);
+      if (now > bestWorth + EPS) {
+        bestWorth = now;
+        best = [...taken];
+      }
+      for (const p of legsOf[c]) marked[p] = 1;
+      const rest: number[] = [];
+      for (let j = k + 1; j < candidates.length; j++) if (!legsOf[candidates[j]].some((p) => marked[p])) rest.push(candidates[j]);
+      for (const p of legsOf[c]) marked[p] = 0;
+      work += candidates.length - k;
+      if (rest.length) walk(rest, now);
       taken.pop();
-      for (const l of o.legs) used.delete(l.pilotId);
       if (!complete) return;
     }
   };
-  walk(0, 0);
-  return { chosen: best, complete };
+  // Most worth per pilot first, then most worth: on the October packs each finds the better set on about half of them.
+  // A search that ends is exact, so the second only runs when the first was cut short, starting from its best.
+  for (const order of [byShare, byWorth]) {
+    work = 0;
+    complete = true;
+    walk(order, 0);
+    if (complete) break;
+  }
+  return { chosen: best.map((i) => options[i]), complete };
 }
 
 export function findTrades(pack: BidPack, pilots: readonly PilotHolding[], options: MatchOptions = {}): MatchResult {
