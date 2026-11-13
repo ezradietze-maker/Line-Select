@@ -6,7 +6,7 @@ import { nextInterviewStep, type LinePairCandidate, type LinePairDifference, typ
 import type { QuestionExample } from "@/lib/brain/question-examples";
 import type { TopicCandidate } from "@/lib/brain/question-topics";
 import type { TripPairCandidate } from "@/lib/brain/trip-pairs";
-import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
+import { MAX_BRAIN_BODY, MAX_CONTEXT, MAX_PACK_BRIEF, exchangesProblem, readCohort, readExchanges, readModel } from "@/lib/server/brain-input";
 import { fleetNotesFor } from "@/lib/server/fleet-notes";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -144,7 +144,7 @@ async function respond(request: Request) {
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   const exchanges = readExchanges(body.exchanges);
   if (!isText(body.packBrief, MAX_PACK_BRIEF) || !isText(body.pilotContext, MAX_CONTEXT) || !exchanges || typeof body.turn !== "number") {
-    return NextResponse.json({ error: "Missing interview input." }, { status: 400 });
+    return NextResponse.json({ error: (!exchanges && exchangesProblem(body.exchanges)) || "Missing interview input." }, { status: 400 });
   }
   const model = body.model === null || body.model === undefined ? null : readModel(body.model);
   const maxTurns = Math.min(MAX_TURNS, typeof body.maxTurns === "number" ? body.maxTurns : MAX_TURNS);

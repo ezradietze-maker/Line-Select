@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { QuestionPrompt } from "@/components/interview/QuestionPrompt";
-import { parseSeniorityInput } from "@/components/interview/SeniorityStep";
+import { checkSeniority, parseSeniorityInput, SeniorityNotice } from "@/components/interview/SeniorityStep";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
 import { TextField } from "@/components/ui/TextField";
@@ -47,7 +47,9 @@ export function QuickBrief({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const metrics = useMemo(() => prepareMetrics(bidPack), [bidPack]);
-  const ready = quickBriefReady({ chips, sentence });
+  // A number that isn't one ("0") holds Rank back with the reason under it, as in the interview: it was dropped without a word.
+  const seniorityUnusable = checkSeniority(seniority, bidPack.seniorityList ?? [])?.kind === "not-a-number";
+  const ready = quickBriefReady({ chips, sentence }) && !seniorityUnusable;
 
   const toggle = (id: string) => setChips((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
 
@@ -166,7 +168,11 @@ export function QuickBrief({
       </section>
 
       <section className="mt-6 grid gap-4 sm:grid-cols-2">
-        <TextField label="Seniority number (optional)" inputMode="numeric" autoComplete="off" value={seniority} onChange={(e) => setSeniority(e.target.value.replace(/[^\d]/g, "").slice(0, 6))} />
+        <div>
+          <TextField label="Seniority number (optional)" inputMode="numeric" autoComplete="off" value={seniority} onChange={(e) => setSeniority(e.target.value.replace(/[^\d]/g, "").slice(0, 6))} />
+          {/* Shown as it's typed, before Rank: a number not on this pack's list is saved only once they've seen that. */}
+          <SeniorityNotice value={seniority} list={bidPack.seniorityList ?? []} seat={bidPack.seat} className="mt-2" />
+        </div>
         <div>
           <label htmlFor="quick-dates" className="text-sm font-medium text-ink">
             Dates you need off (optional)

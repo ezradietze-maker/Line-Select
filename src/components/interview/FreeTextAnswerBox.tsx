@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { MAX_ANSWER, SHOW_LEFT_UNDER } from "@/lib/brain/answer-limits";
 import { MicButton } from "@/components/ui/MicButton";
 import { useDictation } from "@/lib/use-speech-to-text";
 import { useGrowingTextarea } from "@/lib/use-growing-textarea";
@@ -11,6 +12,8 @@ interface FreeTextAnswerBoxProps {
   onSubmit: (text: string) => Promise<void>;
   onSkip?: () => void;
   submitLabel?: string;
+  /** The longest answer it takes; the brain routes refuse a longer one. */
+  maxLength?: number;
 }
 
 /**
@@ -20,11 +23,13 @@ interface FreeTextAnswerBoxProps {
  * failure surfaces an error and leaves the typed answer in place to retry,
  * rather than silently eating it or locking the input.
  */
-export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel = "Send" }: FreeTextAnswerBoxProps) {
-  const [text, setText] = useState("");
+export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel = "Send", maxLength = MAX_ANSWER }: FreeTextAnswerBoxProps) {
+  const [text, setTextRaw] = useState("");
+  const setText = (next: string) => setTextRaw(next.slice(0, maxLength));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dictation = useDictation(text, setText);
+  const dictation = useDictation(text, setText, { maxLength });
+  const left = maxLength - text.length;
   const area = useRef<HTMLTextAreaElement>(null);
 
   // Grows with the answer up to most of the screen, then scrolls; follows the words while dictating.
@@ -58,6 +63,7 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
             }
           }}
           rows={2}
+          maxLength={maxLength}
           placeholder={placeholder ?? "In your own words…"}
           disabled={busy}
           aria-label="Your answer"
@@ -82,6 +88,11 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
           <span className="hidden font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint sm:inline" aria-hidden>
             Enter to send &middot; Shift+Enter for a new line
           </span>
+          {left < SHOW_LEFT_UNDER && (
+            <span className="font-mono text-[10.5px] text-ink-faint" aria-live="polite">
+              {left.toLocaleString()} characters left
+            </span>
+          )}
         </div>
         <Button type="button" onClick={handleSubmit} disabled={busy || !text.trim()} className="shrink-0 sm:px-6">
           {busy ? "Sending…" : submitLabel}

@@ -5,6 +5,7 @@ import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionP
 import { TripGlance } from "@/components/interview/TripGlance";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
+import { MAX_NOTE } from "@/lib/brain/answer-limits";
 import type { TripPairCandidate } from "@/lib/brain/trip-pairs";
 import { tripKey } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
@@ -155,7 +156,7 @@ export function TripPairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
           })}
         </div>
 
-        <NoteBox value={why} onChange={setWhy} placeholder="What decided it? (optional)" ariaLabel="What decided it" className="mt-4" />
+        <NoteBox value={why} onChange={setWhy} placeholder="What decided it? (optional)" ariaLabel="What decided it" maxLength={MAX_NOTE} className="mt-4" />
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
         <div className="mt-4 flex items-center justify-between gap-3">

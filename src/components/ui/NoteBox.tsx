@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { MicButton } from "@/components/ui/MicButton";
+import { SHOW_LEFT_UNDER } from "@/lib/brain/answer-limits";
 import { useDictation } from "@/lib/use-speech-to-text";
 import { useGrowingTextarea } from "@/lib/use-growing-textarea";
 
@@ -30,7 +31,8 @@ interface NoteBoxProps {
 export function NoteBox({ value, onChange, placeholder, ariaLabel, id, maxLength, disabled, rows = 2, invalid, className = "" }: NoteBoxProps) {
   const area = useRef<HTMLTextAreaElement>(null);
   const set = (next: string) => onChange(maxLength ? next.slice(0, maxLength) : next);
-  const dictation = useDictation(value, set);
+  const dictation = useDictation(value, set, { maxLength });
+  const left = maxLength === undefined ? null : maxLength - value.length;
   useGrowingTextarea(area, value, { following: dictation.listening });
   return (
     <div className={className}>
@@ -50,6 +52,12 @@ export function NoteBox({ value, onChange, placeholder, ariaLabel, id, maxLength
         />
         {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
       </div>
+      {/* As the story box does: how much room is left, once it's nearly full. */}
+      {left !== null && left < SHOW_LEFT_UNDER && (
+        <p className="mt-1 text-right font-mono text-[10.5px] text-ink-faint" aria-live="polite">
+          {left.toLocaleString()} characters left
+        </p>
+      )}
       {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
     </div>
   );

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
+import { MAX_ANSWER } from "@/lib/brain/answer-limits";
 import { describeModel } from "@/lib/brain/describe";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -14,7 +15,7 @@ function Box({ id, label, hint, value, onChange }: { id: string; label: string; 
         {label}
       </label>
       <p className="mb-2 text-xs text-ink-muted">{hint}</p>
-      <NoteBox id={id} value={value} onChange={onChange} placeholder="Optional — type or tap the mic" />
+      <NoteBox id={id} value={value} onChange={onChange} maxLength={MAX_ANSWER} placeholder="Optional — type or tap the mic" />
     </div>
   );
 }
