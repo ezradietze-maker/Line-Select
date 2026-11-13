@@ -95,7 +95,14 @@ export const tradeOffers = pgTable(
     respondedAt: timestamp("responded_at", { withTimezone: true }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   },
-  (t) => [index("trade_offers_status_idx").on(t.status)]
+  (t) => [
+    index("trade_offers_status_idx").on(t.status),
+    // One seat's board for one month, by status: the board's own query and every accept's.
+    index("trade_offers_board_idx").on(t.base, t.aircraft, t.seat, t.month, t.status),
+    // A pilot's own offers and proposals, and the rows a deleted account takes with it.
+    index("trade_offers_offering_user_idx").on(t.offeringUserId),
+    index("trade_offers_responder_user_idx").on(t.responderUserId),
+  ]
 );
 
 /**
@@ -243,6 +250,11 @@ export const awardHistoryRecords = pgTable(
   (t) => [
     index("award_history_base_aircraft_seat_idx").on(t.base, t.aircraft, t.seat),
     index("award_history_pilot_idx").on(t.pilotHash),
+    // One pack's awards, for "held by".
+    index("award_history_pack_idx").on(t.packKey),
+    // One report per pilot per pack: a corrected one replaces it (`createAwardHistoryRecord`), and two sent at once
+    // can't both stand.
+    uniqueIndex("award_history_pilot_pack_idx").on(t.pilotHash, t.packKey).where(sql`${t.pilotHash} is not null and ${t.packKey} is not null`),
   ]
 );
 
@@ -262,16 +274,22 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () =>
  * Each signed-in pilot's latest bid pack, so it follows them to a new device and survives the browser clearing its
  * storage. Stored gzipped in the browser's compact format (`compactBidPack`): the biggest pack is about 3 MB as JSON.
  */
-export const bidPacks = pgTable("bid_packs", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  packId: text("pack_id").notNull(),
-  data: bytea("data").notNull(),
-  /** What trades are worked out from in it (`tradePackFingerprint`). Null for a pack saved before this was kept, until it's worked out. */
-  fingerprint: text("fingerprint"),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const bidPacks = pgTable(
+  "bid_packs",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    packId: text("pack_id").notNull(),
+    data: bytea("data").notNull(),
+    /** What trades are worked out from in it (`tradePackFingerprint`). Null for a pack saved before this was kept, until it's worked out. */
+    fingerprint: text("fingerprint"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // The packs whose id starts with a seat's (`countRecentPilotsWithPack`, asked on every board view): text_pattern_ops
+  // lets a prefix search use the index whatever the database's collation.
+  (t) => [index("bid_packs_pack_id_prefix_idx").on(t.packId.op("text_pattern_ops"))]
+);
 
 export const preferenceProfiles = pgTable("preference_profiles", {
   userId: uuid("user_id")

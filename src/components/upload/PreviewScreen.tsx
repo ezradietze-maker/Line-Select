@@ -65,6 +65,14 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
     <div className="mx-auto w-full max-w-3xl">
       <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Step 1 &middot; Confirm</div>
       <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">Does this look right?</Heading>
+      {/* What the pack's own info page says should be here and isn't: said up front, not among the parsing details. */}
+      {(result.problems ?? []).length > 0 && (
+        <div className="mt-4 space-y-2">
+          {(result.problems ?? []).map((p, i) => (
+            <ErrorBanner key={i}>{p.message}</ErrorBanner>
+          ))}
+        </div>
+      )}
       <p className="mt-2 text-sm leading-relaxed text-ink-muted">
         We found <strong className="font-semibold text-ink">{result.linesParsed} lines</strong>{" "}
         from{" "}

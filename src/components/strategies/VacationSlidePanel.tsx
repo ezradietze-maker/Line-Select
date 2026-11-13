@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { loadCarryIn } from "@/lib/carry-in-storage";
 import { flyPack, zoneOf } from "@/lib/phase-in";
 import { placeInPack } from "@/lib/strategy-engine";
-import { CH_PER_VACATION_DAY, findVacationSlides, slideWhere, typedVacation, vacationsInReach, type LineSlides, type SlideOption, type VacationSlides } from "@/lib/vacation-slide";
+import { CH_PER_VACATION_DAY, findVacationSlides, type LineSlides, type SlideOption, slideWhere, typedVacation, vacationLabel, vacationsInReach, type VacationSlides } from "@/lib/vacation-slide";
 import { vacationId } from "@/lib/vacation-lines";
 import type { BidPack, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -18,12 +18,6 @@ const LINES_SHOWN = 5;
 
 const day = (iso: string) => DateTime.fromISO(iso).toFormat("LLL d");
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
-function vacationLabel(v: VacationPeriod, zone: string): string {
-  const first = DateTime.fromISO(v.from, { zone });
-  const last = DateTime.fromMillis(Date.parse(v.to) - 7_200_000, { zone });
-  return `${first.toFormat("LLL d")} to ${last.toFormat("LLL d")} (${plural(v.days, "day")})`;
-}
 
 function moveWords(o: Pick<SlideOption, "offset" | "expandBefore" | "expandAfter">): string {
   const parts: string[] = [];

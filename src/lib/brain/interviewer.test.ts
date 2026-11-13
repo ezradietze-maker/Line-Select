@@ -103,6 +103,36 @@ describe("the interviewer's guard rails", () => {
   });
 });
 
+describe("four-digit trip numbers", () => {
+  beforeEach(() => void (proposals.length = 0));
+  const packNumbers = { lines: ["1011", "1018"], trips: ["4017", "3042", "93"] };
+  /** Why the interviewer turned a question down, as it told the model on the next try. */
+  async function refusalOf(prompt: string): Promise<string> {
+    const { structuredCall } = await import("@/lib/brain/llm");
+    const calls = (structuredCall as unknown as { mock: { calls: { user: { fresh: string } }[][] } }).mock.calls;
+    const before = calls.length;
+    proposals.push(step({ prompt }), step({ prompt: "Anything else about your month?" }));
+    await nextInterviewStep(input({ packNumbers }));
+    return calls.length > before + 1 ? (calls[before + 1][0].user.fresh.split("Your last proposal can't be used:")[1] ?? "") : "";
+  }
+
+  it("takes a captain's four-digit trip as a trip, not a made-up line", async () => {
+    expect(await refusalOf("What do you make of the layover on trip 4017?")).not.toContain("no line");
+    expect(await refusalOf("Which would you rather fly: #4017 or #3042?")).not.toContain("no line");
+  });
+
+  it("leaves a place on a list alone: '#1 priority' and 'Line #1011' aren't trips", async () => {
+    expect(await refusalOf("Is a short commute your #1 priority?")).not.toContain("no trip");
+    expect(await refusalOf("What do you make of Line #1011's layovers?")).not.toContain("no trip");
+    expect(await refusalOf("Trip 4017 vs 3042: which would you rather fly?")).not.toContain("no line");
+  });
+
+  it("still refuses a line or a trip that isn't in the pack", async () => {
+    expect(await refusalOf("What about line 1999?")).toContain("There's no line 1999");
+    expect(await refusalOf("What about trip 5555?")).toContain("There's no trip 5555");
+  });
+});
+
 describe("rankingHasSettled", () => {
   const model = { version: 2, home: null, criteria: [], notMeasurable: [], synopsis: "", threads: [{ id: "t1", topic: "", why: "", priority: 0.8, status: "open", criteria: [], timesAsked: 0 }] } as unknown as PilotModel;
   it("waits for enough questions and two quiet re-reads", () => {

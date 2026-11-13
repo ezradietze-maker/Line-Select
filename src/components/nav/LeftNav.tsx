@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { AccountMenu } from "@/components/nav/AccountMenu";
+import { AccountMenu, AccountPlaceholder } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
 import { ChevronLeftIcon, SearchIcon } from "@/components/ui/icons";
@@ -30,6 +30,8 @@ export interface NavProps {
   hasProfile: boolean;
   hasBidPack: boolean;
   user: UserAccount | null;
+  /** The pilot's saved state has loaded: until then the account area and which destinations are open aren't known yet. */
+  ready: boolean;
   inboxUnreadCount?: number;
   pack: PackLabel | null;
   onNavigate: (target: NavTarget) => void;
@@ -93,12 +95,14 @@ function NavList({
   active,
   hasProfile,
   hasBidPack,
+  ready,
   inboxUnreadCount,
   onGo,
 }: {
   active: NavTarget | null;
   hasProfile: boolean;
   hasBidPack: boolean;
+  ready: boolean;
   inboxUnreadCount: number;
   onGo: (target: NavTarget) => void;
 }) {
@@ -127,7 +131,7 @@ function NavList({
         <div key={section} role="group" aria-label={SECTION_LABELS[section]}>
           <SectionLabel first={section === "bid"}>{SECTION_LABELS[section]}</SectionLabel>
           {NAV_ITEMS.filter((item) => item.section === section).map((item) => {
-            const reason = disabledReason(item.target, hasProfile, hasBidPack);
+            const reason = disabledReason(item.target, hasProfile, hasBidPack, ready);
             const isActive = active === item.target;
             return (
               <button
@@ -216,6 +220,7 @@ export function LeftNav({
   hasProfile,
   hasBidPack,
   user,
+  ready,
   inboxUnreadCount = 0,
   pack,
   onNavigate,
@@ -283,7 +288,7 @@ export function LeftNav({
       {/* The one part that scrolls, on a window too short for the whole rail, so the links below stay in view. Not on
           the icon rail: its tooltips stand out past its edge, and a scrolling box would clip them. */}
       <nav aria-label="Destinations" className="min-h-0 flex-1 overflow-y-auto px-3 pb-2 pt-3 rail-collapsed:min-h-fit rail-collapsed:overflow-visible">
-        <NavList active={active} hasProfile={hasProfile} hasBidPack={hasBidPack} inboxUnreadCount={inboxUnreadCount} onGo={onNavigate} />
+        <NavList active={active} hasProfile={hasProfile} hasBidPack={hasBidPack} ready={ready} inboxUnreadCount={inboxUnreadCount} onGo={onNavigate} />
       </nav>
 
       <div className="space-y-0.5 border-t border-sidebar-border/70 px-3 py-2">
@@ -313,7 +318,7 @@ export function LeftNav({
       </div>
 
       <div className="border-t border-sidebar-border px-3 py-3">
-        <AccountMenu user={user} onSignIn={onSignIn} onLogout={onLogout} />
+        {ready ? <AccountMenu user={user} onSignIn={onSignIn} onLogout={onLogout} /> : <AccountPlaceholder />}
       </div>
     </aside>
   );

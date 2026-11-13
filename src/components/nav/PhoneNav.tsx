@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AccountMenu } from "@/components/nav/AccountMenu";
+import { AccountMenu, AccountPlaceholder } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { FeedbackIcon, InfoIcon, type NavProps } from "@/components/nav/LeftNav";
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
 import { SearchIcon } from "@/components/ui/icons";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
+import { dialogOpen } from "@/components/ui/Modal";
 
 /** The four destinations a pilot reaches for every month get a tab of their own; the crew tools share "More". */
 const TAB_TARGETS: NavTarget[] = ["upload", "preferences", "results", "strategies"];
@@ -43,6 +44,7 @@ export function PhoneNav({
   hasProfile,
   hasBidPack,
   user,
+  ready,
   inboxUnreadCount = 0,
   pack,
   onNavigate,
@@ -63,7 +65,8 @@ export function PhoneNav({
     const moreButton = moreButtonRef.current;
     sheetRef.current?.querySelector<HTMLElement>("button:not([disabled])")?.focus();
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setMoreOpen(false);
+      // Not while a dialog opened from the sheet is up: that Escape is the dialog's (`dialogOpen`).
+      if (e.key === "Escape" && !dialogOpen()) setMoreOpen(false);
     }
     document.addEventListener("keydown", onKey);
     return () => {
@@ -134,7 +137,7 @@ export function PhoneNav({
           )}
           {TAB_TARGETS.map((target, i) => {
             const item = NAV_ITEMS.find((n) => n.target === target)!;
-            const reason = disabledReason(target, hasProfile, hasBidPack);
+            const reason = disabledReason(target, hasProfile, hasBidPack, ready);
             const isActive = tabIndex === i;
             return (
               <button
@@ -241,17 +244,21 @@ export function PhoneNav({
             </div>
 
             <div className="mt-3">
-              <AccountMenu
-                user={user}
-                onSignIn={() => {
-                  setMoreOpen(false);
-                  onSignIn();
-                }}
-                onLogout={() => {
-                  setMoreOpen(false);
-                  onLogout();
-                }}
-              />
+              {ready ? (
+                <AccountMenu
+                  user={user}
+                  onSignIn={() => {
+                    setMoreOpen(false);
+                    onSignIn();
+                  }}
+                  onLogout={() => {
+                    setMoreOpen(false);
+                    onLogout();
+                  }}
+                />
+              ) : (
+                <AccountPlaceholder />
+              )}
             </div>
           </div>
         </div>

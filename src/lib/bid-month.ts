@@ -28,6 +28,17 @@ export function bidMonthEnd(pack: PackDates): number | null {
 }
 
 /**
+ * When a trip that reports after the month's end at midnight still starts in it: before the next base day begins
+ * (0130, 0215 in Europe, as `baseDayStartMinutes`). The pack counts a trip reporting at 0031 on the 26th as the 25th's,
+ * its first duty in the month and the rest carried; dropped whole, ten B777 lines lost that duty's credit and block.
+ * Only the first duty: a later duty reporting at 0045 is carried, as the pack carries it.
+ */
+function firstDutyEnd(end: number, pack: PackDates): number {
+  const zone = timezoneForAirport(pack.base) ?? "UTC";
+  return end + (zone.startsWith("Europe/") ? 135 : 90) * 60_000;
+}
+
+/**
  * Which calendar day after the month's end an instant falls on, on the base's clock: 1 for the first. Counted in
  * dates, not 24-hour spans — the night the clocks go back is 25 hours long, and a landing late on the day after it
  * would otherwise count a day further on.
@@ -97,7 +108,7 @@ export function splitTrip(trip: Trip, pack: PackDates, carryOverCredit = 0): { i
   if (end === null || anchor === null) return null;
   const tripEnd = anchor + tripReleaseHours(trip) * HOUR;
   const report = (d: Trip["schedule"][number]) => anchor + d.startMinutes * 60_000;
-  const kept = trip.schedule.filter((d) => report(d) < end);
+  const kept = trip.schedule.filter((d, i) => report(d) < (i === 0 ? firstDutyEnd(end, pack) : end));
   const lastLanding = Math.max(anchor, ...trip.schedule.flatMap((d) => d.legs.map((l) => anchor + l.endMinutes * 60_000)));
   // Released a few minutes past midnight after landing before it, nothing of the trip is the next month's.
   if (kept.length === trip.schedule.length && lastLanding <= end) return { inMonth: trip, carry: null };
@@ -112,7 +123,9 @@ export function splitTrip(trip: Trip, pack: PackDates, carryOverCredit = 0): { i
         const to = from + day.hours * HOUR;
         return n + Math.max(0, to - Math.max(from, end)) / HOUR;
       }, 0)
-    : Math.max(0, (tripEnd - end) / HOUR);
+    : // From its report, for a trip that reports after midnight inside the first-duty grace: from the end, it carried
+      // more hours away than the trip has.
+      Math.max(0, (tripEnd - Math.max(end, anchor)) / HOUR);
   const carry: TripCarryOver = {
     // Calendar days after the month's end the trip is still flying on, the day it lands back counted.
     days: dayPastEnd(lastLanding, end, pack),
@@ -158,10 +171,11 @@ function split(line: Line, pack: PackDates): { month: Line; carry: LineCarryOver
   if (end !== null && !line.estimated) {
     const starts = line.trips.map((t) => tripReportUtc(pack, t));
     // The line's printed C/O credit belongs to the trip still flying at the month's end.
-    const carrying = line.trips.findIndex((t, i) => starts[i] !== null && starts[i]! < end && starts[i]! + tripReleaseHours(t) * HOUR > end);
+    const startsBy = firstDutyEnd(end, pack);
+    const carrying = line.trips.findIndex((t, i) => starts[i] !== null && starts[i]! < startsBy && starts[i]! + tripReleaseHours(t) * HOUR > end);
     const parts = line.trips.map((t, i) => {
       // A trip reporting after the month's end (rare: one the grid still shows) is all next month's.
-      if (starts[i] !== null && starts[i]! >= end) return null;
+      if (starts[i] !== null && starts[i]! >= startsBy) return null;
       return splitTrip(t, pack, i === carrying ? (line.carryOverCreditHours ?? 0) : 0) ?? { inMonth: t, carry: null };
     });
     const carried = parts.filter((p): p is { inMonth: Trip; carry: TripCarryOver } => !!p?.carry);

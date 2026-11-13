@@ -245,6 +245,8 @@ export function isProbed(c: PilotModel["criteria"][number], openingCount: number
 
 /** How many exchanges came before the first interview question — the opening steps (and, in a check-in, last month's). */
 const openingCountOf = (input: Pick<InterviewStepInput, "exchanges" | "turn">) => Math.max(0, input.exchanges.length - input.turn);
+/** The questions asked in this interview, past the opening and any record carried from last month. */
+const thisSession = (input: Pick<InterviewStepInput, "exchanges" | "turn">) => input.exchanges.slice(openingCountOf(input));
 
 /** Important criteria the interview has only from the opening story. */
 export function unprobedCriteria(input: Pick<InterviewStepInput, "exchanges" | "turn" | "model">): PilotModel["criteria"] {
@@ -306,10 +308,25 @@ const MAX_PROMPT_WORDS = 25;
 
 const HYPOTHETICAL = /\b(?:if|what if|say|imagine|suppose)\s+(?:a|another|some|the)?\s*(?:line|trip)\s+(?:instead\s+)?(?:had|has|were|was|with|that|came|paid|gave)\b|\bimagine\b|\bsuppose\b|\bhypothetical/i;
 
-/** Line numbers a question names (four-digit numbers), and trip numbers ("trip 93", "Trip #93", "trips 93 and 98"). */
-function namedNumbers(text: string): { lines: string[]; trips: string[] } {
-  const lines = [...text.matchAll(/\b(\d{4})\b/g)].map((m) => m[1]);
-  const trips = [...text.matchAll(/\btrips?\s+#?\s*(\d{1,4})(?:\s*(?:,|and|&)\s*#?\s*(\d{1,4}))*/gi)].flatMap((m) => [...m[0].matchAll(/\d{1,4}/g)].map((x) => x[0]));
+/**
+ * Line numbers a question names (four-digit numbers), and trip numbers ("trip 93", "Trip #93", "trips 93 and 98", "#4017").
+ * A trip's number is taken out before lines are looked for: captains' trips run to four digits (trip 4001), and read as
+ * lines, every real one was refused as a made-up line, so a captain's trip choices were never asked.
+ */
+function namedNumbers(text: string, knownTrips?: ReadonlySet<string>): { lines: string[]; trips: string[] } {
+  // "trip 4017", "trips 93 and 98", "Trip 4017 vs 3042": a trip whatever its number. A bare "#4017" is a trip only when
+  // the pack has that trip: "#" also means a place ("your #1 priority", "#12 on their list"), and taken for a trip
+  // every such question was refused as naming a made-up trip.
+  const tripWords = /\btrips?\s+#?\s*\d{1,4}(?:\s*(?:,|and|&|or|vs\.?|versus)\s*#?\s*\d{1,4})*/gi;
+  const bare = /#\s*(\d{1,4})\b/g;
+  const trips = [...text.matchAll(tripWords)].flatMap((m) => [...m[0].matchAll(/\d{1,4}/g)].map((x) => x[0]));
+  let rest = text.replace(tripWords, " ");
+  rest = rest.replace(bare, (all, n: string) => {
+    if (!knownTrips?.has(n)) return all;
+    trips.push(n);
+    return " ";
+  });
+  const lines = [...rest.matchAll(/\b(\d{4})\b/g)].map((m) => m[1]);
   return { lines, trips };
 }
 /** A four-digit number that could be a clock time ("0430", "1755") rather than a line. */
@@ -320,7 +337,7 @@ const couldBeYear = (n: string) => /^20\d\d$/.test(n);
 /** The real lines a question names, each once. */
 function namedPackLines(step: Pick<RawStep, "prompt" | "helpText">, input: Pick<InterviewStepInput, "packNumbers">): string[] {
   const lines = new Set(input.packNumbers?.lines ?? []);
-  return [...new Set(namedNumbers(`${step.prompt} ${step.helpText}`).lines.filter((n) => lines.has(n)))];
+  return [...new Set(namedNumbers(`${step.prompt} ${step.helpText}`, new Set(input.packNumbers?.trips ?? [])).lines.filter((n) => lines.has(n)))];
 }
 
 /** The offered examples a question may show: those of the priorities its thread is about, when it names any. */
@@ -336,7 +353,9 @@ function otherEnd(e: QuestionExample, offered: QuestionExample[]): QuestionExamp
 
 /** The offered trip a question names by number ("trip 97"), if any. */
 function namedTripExamples(step: Pick<RawStep, "prompt" | "helpText">, offered: QuestionExample[]): { n: string; example?: QuestionExample }[] {
-  return [...new Set(namedNumbers(`${step.prompt} ${step.helpText}`).trips)].map((n) => ({ n, example: offered.find((e) => e.kind === "trip" && new RegExp(`^Trip #${n}\\b`).test(e.title)) }));
+  // A bare "#N" counts here when it's one of the offered trips.
+  const offeredTrips = new Set(offered.flatMap((e) => (e.kind === "trip" ? (e.title.match(/^Trip #(\d+)/)?.slice(1) ?? []) : [])));
+  return [...new Set(namedNumbers(`${step.prompt} ${step.helpText}`, offeredTrips).trips)].map((n) => ({ n, example: offered.find((e) => e.kind === "trip" && new RegExp(`^Trip #${n}\\b`).test(e.title)) }));
 }
 
 /**
@@ -421,7 +440,7 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   if (step.questionKind === "real-choice" && !isChoiceKind(step.kind)) return "A real choice is an offered line pair or trip pair: set kind line-pair (and pairIndex) or trip-pair (and tripPairIndex) — or write one of the other kinds.";
   if (isChoiceKind(step.kind) && step.questionKind !== "real-choice") return "A line pair or trip pair is a real-choice question: set questionKind real-choice.";
   if (attempt < 2 && step.questionKind === "their-words" && !saidByThem(step.theirWords, input)) return "A their-words question asks about words they said: copy their exact words, from their answers, into theirWords — or write another kind.";
-  if (attempt < 2 && step.questionKind === "feature" && !(step.examples ?? []).length && !namedPackLines(step, input).length && !namedNumbers(`${step.prompt} ${step.helpText}`).trips.length)
+  if (attempt < 2 && step.questionKind === "feature" && !(step.examples ?? []).length && !namedPackLines(step, input).length && !namedNumbers(`${step.prompt} ${step.helpText}`, new Set(input.packNumbers?.trips ?? [])).trips.length)
     return "A feature question shows a line or trip that has the feature: set examples, or name the real line in helpText.";
   if (attempt < 2 && !isChoiceKind(step.kind) && !examplesOnTopic(step, input)) return "The examples you chose show a different priority from what the question asks. Show examples of exactly what you're asking about, or none.";
   // A feature question is for a feature they never mentioned — one they did is asked about in their words or a choice.
@@ -437,7 +456,7 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   if (attempt < 2 && !isChoiceKind(step.kind) && TRADE_IN_WORDS.test(step.prompt)) return "That asks them to trade one thing for another in words, which pilots can't answer in general. Offer a line pair that pulls the two apart, or ask about one thing.";
   // Only real lines and trips: a number that names nothing in their pack is an invented one.
   if (input.packNumbers) {
-    const named = namedNumbers(`${step.prompt} ${step.helpText}`);
+    const named = namedNumbers(`${step.prompt} ${step.helpText}`, new Set(input.packNumbers.trips));
     const lines = new Set(input.packNumbers.lines);
     const trips = new Set(input.packNumbers.trips);
     const fakeLine = named.lines.find((n) => !lines.has(n) && !couldBeTime(n) && !couldBeYear(n));
@@ -508,7 +527,7 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
     if (step.kind === "trip-pair") {
       const tp = (input.tripPairs ?? []).find((p) => p.index === step.tripPairIndex);
       if (!tp) return "That trip pair index doesn't exist.";
-      if (askedTripPairs(input.exchanges).has(`${tp.a}|${tp.b}`)) return "Those two trips were already compared.";
+      if (askedTripPairs(thisSession(input)).has(`${tp.a}|${tp.b}`)) return "Those two trips were already compared.";
       if (interview.filter((e) => TRIP_PAIR_QUESTION.test(e.question)).length >= MAX_TRIP_PAIRS) return `Trip choices are already ${MAX_TRIP_PAIRS} — the trip grades at the end cover more trips at once. Ask something else.`;
     } else {
       const pair = input.linePairs.find((p) => p.index === step.pairIndex);
@@ -541,7 +560,9 @@ export function rankingHasSettled(input: Pick<InterviewStepInput, "turn" | "rank
 export async function nextInterviewStep(input: InterviewStepInput): Promise<InterviewStep> {
   if (rankingHasSettled(input)) return { done: true, reason: "The last answers stopped changing the ranking.", settled: [] };
   const conversation = input.exchanges.map((e) => `[${e.turn}] Q: ${e.question}\nA: ${e.answer}`).join("\n\n");
-  const pairsUsed = new Set(input.exchanges.flatMap((e) => [...e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)].map((m) => `${m[1]}|${m[2]}`)));
+  // This session's questions only: in a check-in the record carries last month's, and line and trip numbers repeat
+  // from pack to pack, so last month's pairs refused this month's of the same numbers.
+  const pairsUsed = new Set(thisSession(input).flatMap((e) => [...e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)].map((m) => `${m[1]}|${m[2]}`)));
   const pairs = input.linePairs.length
     ? input.linePairs
         .map((p) => {

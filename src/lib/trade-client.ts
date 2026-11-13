@@ -99,13 +99,18 @@ export function withdrawOffer(id: string): Promise<ActionResult> {
   return postAction(`/api/trades/${id}/withdraw`);
 }
 
-/** Whether this seat's board has opened. A failed check reads as not yet: it's only a matter of waiting. */
-export async function fetchTradeBoardOpen(seat: { base: string; aircraft: string; seat: string }): Promise<boolean> {
+/**
+ * Whether this seat's board has opened, or null when the check didn't get an answer (no signal, the server busy). A
+ * failed check isn't "not yet": read that way, a pilot was told there was nothing to do until their seat filled up,
+ * and nothing ever asked again.
+ */
+export async function fetchTradeBoardOpen(seat: { base: string; aircraft: string; seat: string }): Promise<boolean | null> {
   try {
     const res = await fetch(`/api/trade-board/status?${new URLSearchParams(seat).toString()}`);
-    if (!res.ok) return false;
-    return ((await res.json()) as { open?: boolean }).open === true;
+    if (!res.ok) return null;
+    const open = ((await res.json()) as { open?: unknown }).open;
+    return typeof open === "boolean" ? open : null;
   } catch {
-    return false;
+    return null;
   }
 }

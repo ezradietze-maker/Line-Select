@@ -116,15 +116,17 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
         <EmptyState
           compact
           description={
+            // Counts come rounded, and as none at all until enough pilots have reported (`summarizeBands`), so a
+            // pilot's own report can't be picked out of them.
             summary.nearbyCount === 0
-              ? "No reports near your seniority yet — be the first."
-              : `${summary.nearbyCount} nearby report${summary.nearbyCount === 1 ? "" : "s"} so far — not quite enough yet to show a reliable pattern.`
+              ? "Not enough reports near your seniority yet to show a pattern — yours helps."
+              : `About ${summary.nearbyCount} nearby reports so far — not quite enough yet to show a reliable pattern.`
           }
           className="mt-4"
         />
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Stat label="Nearby reports" value={String(summary.nearbyCount)} />
+          <Stat label="Nearby reports" value={`About ${summary.nearbyCount}`} />
           <Stat label="Avg days off held" value={summary.avgDaysOff.toFixed(1)} />
           <Stat label="Avg credit hours held" value={summary.avgCreditHours?.toFixed(1) ?? "—"} />
           {summary.lineRate !== null && (

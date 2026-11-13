@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
@@ -38,7 +37,7 @@ import { WheelsDown } from "@/components/results/WheelsDown";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { BidPackHeader, StripKey, StripViewToggle, stripLayout } from "@/components/results/BidPackStrip";
-import { useStripView } from "@/lib/strip-view-storage";
+import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view-storage";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { packColumnCount, packColumns } from "@/lib/bidpack-row";
 import { monthLine } from "@/lib/bid-month";
@@ -64,11 +63,14 @@ import { loadLineMarks, saveLineMarks } from "@/lib/line-marks-storage";
 import { PHRASES } from "@/lib/preference-summary";
 import {
   PAGE_SIZE,
+  bidOrderLines,
   hideLine,
+  leftOutPhrase,
   matchesLineSearch,
   nextVisibleCount,
   pruneMarks,
   restoreLine,
+  stepCursor,
   toggleStar,
   type LineMarks,
 } from "@/lib/results-list";
@@ -92,6 +94,8 @@ import { tierHeadings } from "@/lib/line-tiers";
 import { useLineSort } from "@/lib/use-line-sort";
 import { useLineTiers, type TeachTiers } from "@/lib/use-line-tiers";
 import { applyPlacements, loadPlacements, placementFromDrag, prunePlacements, savePlacements, type Placement } from "@/lib/line-placements";
+import { EMPTY_ORDER_HISTORY, dropSwaps, recordStep, takeRedo, takeUndo, type OrderHistory } from "@/lib/order-history";
+import type { LineChoice } from "@/types/pilot-model";
 import { prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import { rankLines, type HotelQualityData, type LineScore } from "@/lib/scoring";
 import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
@@ -102,15 +106,26 @@ import { setRankingSnapshot } from "@/lib/ranking-snapshot";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
-// `loading` gives it a Suspense boundary of its own: without one, the first open suspends up to the whole page's, which
-// blanks the rankings and loses the pilot's place on the list.
-const LineComparisonModal = dynamic(() => import("@/components/results/LineComparisonModal").then((m) => m.LineComparisonModal), { loading: () => null });
+/**
+ * Compare's dialog, loaded apart from the page and drawn only once it's here. Not `next/dynamic`: its lazy component
+ * suspends on its first render however early the code was fetched, and React holds a fallback it has shown for 300 ms,
+ * so the first Compare took a third of a second longer than every one after. Fetched when the page goes idle, and
+ * again (a no-op by then) when the pilot picks a first line to compare.
+ */
+type ComparisonModal = typeof import("@/components/results/LineComparisonModal").LineComparisonModal;
+let comparisonModal: ComparisonModal | null = null;
+let comparisonLoad: Promise<ComparisonModal> | null = null;
+function loadComparisonModal(): Promise<ComparisonModal> {
+  comparisonLoad ??= import("@/components/results/LineComparisonModal").then((m) => (comparisonModal = m.LineComparisonModal));
+  // A failed fetch (offline for a moment) is tried again next time rather than remembered.
+  comparisonLoad.catch(() => (comparisonLoad = null));
+  return comparisonLoad;
+}
 
 /** The pieces a card only shows when opened, fetched while the pilot is still reading the list, so opening one never waits. */
 function warmUpDetails() {
   void import("@/components/results/TripList");
   void import("@/components/results/RouteMap");
-  void import("@/components/results/LineComparisonModal");
 }
 
 /** 0-1: below this, the model already basically expected the outcome — update quietly. Above it, the drag contradicted what the model currently believes, which is worth surfacing. */
@@ -192,6 +207,16 @@ function buildJudgments(ranked: LineScore[], fromIndex: number, toIndex: number)
   return judgments;
 }
 
+/**
+ * A swap in the undo history: its placement and, once it's been undone, what a redo needs to put back what the brain
+ * learned from it — the profile itself when nothing has changed since, or else the line choices it taught.
+ */
+interface SwapStep {
+  placement: Placement;
+  lesson?: LineChoice[];
+  exact?: { before: PreferenceProfile; after: PreferenceProfile };
+}
+
 /** How long to hold the list back waiting on hotel reviews before showing it anyway. Hotel data changes scores, so showing the list first and then reshuffling it under a pilot who's already reading is worse than a short wait. */
 const HOTEL_WAIT_MS = 6000;
 
@@ -253,6 +278,23 @@ export function ResultsView({
   // The latest swap, with the profile from just before it and just after: undoing it while nothing else has changed
   // puts back exactly what the pilot had.
   const [lastSwap, setLastSwap] = useState<{ id: string; before: PreferenceProfile; after: PreferenceProfile } | null>(null);
+  // ⌘Z, Undo and Redo: one history, newest first, across tier changes and swaps (see `lib/order-history.ts`). Kept for
+  // one pilot and pack, as the tiers' own is; mirrored in a ref, so two quick presses each take the step the one
+  // before left.
+  const historyOwner = `${userId}|${bidPack.id}`;
+  const [orderHistoryState, setOrderHistoryState] = useState<{ owner: string; history: OrderHistory<SwapStep> }>({ owner: historyOwner, history: EMPTY_ORDER_HISTORY });
+  const orderHistoryRef = useRef(orderHistoryState);
+  const orderHistory = orderHistoryState.owner === historyOwner ? orderHistoryState.history : EMPTY_ORDER_HISTORY;
+  /** The newest history, for a key or a button pressed before the last change has rendered. */
+  const heldHistory = useCallback(() => (orderHistoryRef.current.owner === historyOwner ? orderHistoryRef.current.history : EMPTY_ORDER_HISTORY), [historyOwner]);
+  const setOrderHistory = useCallback(
+    (change: (h: OrderHistory<SwapStep>) => OrderHistory<SwapStep>) => {
+      orderHistoryRef.current = { owner: historyOwner, history: change(heldHistory()) };
+      setOrderHistoryState(orderHistoryRef.current);
+    },
+    [historyOwner, heldHistory]
+  );
+  const recordTierStep = useCallback(() => setOrderHistory((h) => recordStep(h, { kind: "tier" })), [setOrderHistory]);
   // The one question after an unclear swap, and how often it's been asked this visit (see `lib/brain/swap-question.ts`).
   const [swapQuestion, setSwapQuestion] = useState<{ question: SwapQuestion; options: { priorities: ReasonOption[]; measures: ReasonOption[] } } | null>(null);
   const askRef = useRef<AskState>({ swapsSince: 0, asked: 0, askedPairs: new Set(), stopped: readStopAsking() });
@@ -401,7 +443,7 @@ export function ResultsView({
   // The pilot's tiers on top of that (see `lib/line-tiers.ts`); a pilot who never uses them gets the same list back.
   const teachTiersRef = useRef<TeachTiers | null>(null);
   const packLineIds = useMemo(() => bidPack.lines.map((l) => l.id), [bidPack]);
-  const tiers = useLineTiers(userId, bidPack.id, packLineIds, placed, teachTiersRef);
+  const tiers = useLineTiers(userId, bidPack.id, packLineIds, placed, teachTiersRef, recordTierStep);
   const orderByTier = tiers.order;
   const ranked = useMemo(() => orderByTier(placed), [orderByTier, placed]);
   // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order.
@@ -471,7 +513,10 @@ export function ResultsView({
   const starredSet = useMemo(() => new Set(validMarks.starred), [validMarks]);
   const hiddenSet = useMemo(() => new Set(validMarks.hidden), [validMarks]);
 
+  // Compare's dialog once its code is here; until then a second pick waits for it, with the first line still picked.
+  const [Comparison, setComparison] = useState<ComparisonModal | null>(() => comparisonModal);
   function toggleCompare(lineId: string) {
+    if (!Comparison) void loadComparisonModal().then((c) => setComparison(() => c), () => {});
     setCompareIds((prev) => {
       if (prev.includes(lineId)) return prev.filter((id) => id !== lineId);
       return prev.length < 2 ? [...prev, lineId] : [prev[1], lineId];
@@ -572,12 +617,26 @@ export function ResultsView({
   }
 
   useEffect(() => {
+    let live = true;
+    const warmUp = () => {
+      warmUpDetails();
+      loadComparisonModal().then(
+        (c) => live && setComparison(() => c),
+        () => {}
+      );
+    };
     if (typeof window.requestIdleCallback === "function") {
-      const id = window.requestIdleCallback(warmUpDetails, { timeout: 3000 });
-      return () => window.cancelIdleCallback(id);
+      const id = window.requestIdleCallback(warmUp, { timeout: 3000 });
+      return () => {
+        live = false;
+        window.cancelIdleCallback(id);
+      };
     }
-    const id = window.setTimeout(warmUpDetails, 1500);
-    return () => window.clearTimeout(id);
+    const id = window.setTimeout(warmUp, 1500);
+    return () => {
+      live = false;
+      window.clearTimeout(id);
+    };
   }, []);
 
   // A line asked for by number: make sure it's listed (clearing whatever filter or view hides it, and paging far enough
@@ -632,24 +691,34 @@ export function ResultsView({
   const columns = useMemo(() => packColumns(bidPack.bidPeriodStart, bidPack.bidPeriodDays, packColumnCount(bidPack)), [bidPack]);
   const [listRef, listWidth] = useMeasuredWidth<HTMLDivElement>(768);
   const layout = useMemo(() => stripLayout(listWidth, columns.length), [listWidth, columns.length]);
-  const [stripView, setStripView] = useStripView();
+  const [chosenStripView, setStripView] = useStripView();
+  // What's drawn: the pilot's choice, or the Bid pack row on a pack with no dates to lay a timeline on. Said so when
+  // they pick Timeline there, so the switch doesn't look broken.
+  const stripView = stripViewFor(chosenStripView, bidPack);
+  const [noTimelineSaid, setNoTimelineSaid] = useState(false);
+  const chooseStripView = (next: StripViewMode) => {
+    setStripView(next);
+    setNoTimelineSaid(next === "timeline" && stripViewFor(next, bidPack) !== next);
+  };
   // Keys for working down the list at a desk: j / k move between lines, o opens one, s shortlists, c compares, ? shows the keys.
-  const [keyIndex, setKeyIndex] = useState<number | null>(null);
+  // The cursor is a line, not a place in the list: a tier key moves the line, and the cursor goes with it.
+  const [keyId, setKeyId] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
-  const keyedId = keyIndex !== null ? displayed[Math.min(keyIndex, mountedCount - 1)]?.line.id ?? null : null;
+  const keyableIds = displayed.slice(0, mountedCount).map((r) => r.line.id);
+  const keyedId = keyId !== null && keyableIds.includes(keyId) ? keyId : null;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const t = e.target;
       if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       if (document.querySelector('[role="dialog"]')) return;
-      const count = Math.min(displayed.length, mountedCount);
-      if (!count) return;
+      if (!keyableIds.length) return;
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
-        const next = keyIndex === null ? 0 : Math.max(0, Math.min(count - 1, keyIndex + (e.key === "j" ? 1 : -1)));
-        setKeyIndex(next);
-        document.getElementById(`line-${displayed[next].line.id}`)?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+        const next = stepCursor(keyableIds, keyedId, e.key === "j" ? 1 : -1);
+        if (!next) return;
+        setKeyId(next);
+        document.getElementById(`line-${next}`)?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
       } else if ((e.key === "o" || e.key === "Enter") && keyedId) {
         if (e.key === "Enter" && t instanceof HTMLElement && t.closest("button, a")) return;
         e.preventDefault();
@@ -669,7 +738,7 @@ export function ResultsView({
       } else if (e.key === "?") {
         setShowKeys((v) => !v);
       } else if (e.key === "Escape") {
-        setKeyIndex(null);
+        setKeyId(null);
         setShowKeys(false);
       }
     }
@@ -683,11 +752,12 @@ export function ResultsView({
     return () => clearTimeout(timer);
   }, [flashId]);
 
-  // Exports follow the pilot's own ranking and tiers, among lines they haven't hidden or marked Not bid — a sort-by-days-off view is for looking, not for what to bid.
-  const exportable = useMemo(() => matching.filter((r) => !hiddenSet.has(r.line.id) && !tiers.notBid.has(r.line.id)), [matching, hiddenSet, tiers.notBid]);
+  // Exports follow the pilot's own ranking and tiers, among lines they haven't hidden or marked Not bid: a sort by days
+  // off, a search or a filter is for looking, not for what to bid (see `bidOrderLines`).
+  const exportable = useMemo(() => bidOrderLines(ranked, hiddenSet, tiers.notBid), [ranked, hiddenSet, tiers.notBid]);
   const bidOrderEntries = useMemo<BidOrderEntry[]>(
     () =>
-      exportable.map((r) => ({
+      exportable.lines.map((r) => ({
         lineScore: r,
         rank: rankById.get(r.line.id) ?? 0,
         // The bid month, as each card counts it — not with what the last trip flies in the next.
@@ -779,7 +849,10 @@ export function ResultsView({
     // The two lines trade places and stay there, whatever the brain makes of it.
     const swapId = `swap-${Date.now().toString(36)}`;
     const placement = placementFromDrag(sorted.map((r) => r.line.id), fromIndex, toIndex, swapId);
-    if (placement) updatePlacements((p) => [...p, placement]);
+    if (placement) {
+      updatePlacements((p) => [...p, placement]);
+      setOrderHistory((h) => recordStep(h, { kind: "swap", swap: { placement } }));
+    }
     const moved = sorted[fromIndex].line.lineNumber;
     const target = sorted[toIndex].line.lineNumber;
     const kept = `Swapped ${moved} and ${target} — they'll stay that way.`;
@@ -862,21 +935,91 @@ export function ResultsView({
    * else changed since, the profile goes back exactly; otherwise the swap's line choices come out and the model refits
    * (a profile from the older interview keeps what it learned — its weights carry no record of which drag moved them).
    */
-  function undoSwap(id: string) {
+  function takeBackSwap(id: string): SwapStep | null {
+    const placement = placementsRef.current.find((x) => x.id === id);
+    if (!placement) return null;
+    const current = profileRef.current;
+    // What it taught, as first taught (whether a later swap set one aside is worked out again when it's given back).
+    const lesson = (current.brainInterview?.choices ?? [])
+      .filter((c) => c.dragId === id)
+      .map((c) => {
+        const back = { ...c };
+        delete back.supersededBy;
+        return back;
+      });
+    let exact: SwapStep["exact"];
     updatePlacements((p) => p.filter((x) => x.id !== id));
     setLearnMessage(null);
-    if (lastSwap?.id === id && lastSwap.after === profile) {
-      if (lastSwap.before !== profile) onUpdateProfile(lastSwap.before);
-    } else if (profile.pilotModel && profile.brainInterview?.choices.some((c) => c.dragId === id)) {
-      onUpdateProfile(withModel(profile, bidPack, { choices: withoutDrag(profile.brainInterview.choices, id) }, packMetrics ?? undefined).profile);
+    if (lastSwap?.id === id && lastSwap.after === current) {
+      exact = { before: lastSwap.before, after: lastSwap.after };
+      if (lastSwap.before !== current) {
+        profileRef.current = lastSwap.before;
+        onUpdateProfile(lastSwap.before);
+      }
+    } else if (current.pilotModel && lesson.length) {
+      const next = withModel(current, bidPack, { choices: withoutDrag(current.brainInterview?.choices ?? [], id) }, packMetrics ?? undefined).profile;
+      profileRef.current = next;
+      onUpdateProfile(next);
     }
     if (lastSwap?.id === id) setLastSwap(null);
     if (swapQuestion?.question.dragId === id) setSwapQuestion(null);
+    return { placement, lesson, exact };
+  }
+
+  /** The swap back where the pilot had put it, and what it taught back with it. */
+  function putBackSwap(step: SwapStep) {
+    const { placement, lesson = [], exact } = step;
+    updatePlacements((p) => [...p.filter((x) => x.id !== placement.id), placement]);
+    const current = profileRef.current;
+    let next: PreferenceProfile | null = null;
+    if (exact && current === exact.before) next = exact.after;
+    else if (current.pilotModel && lesson.length) next = withModel(current, bidPack, { choices: addDragChoices(current.brainInterview?.choices ?? [], lesson) }, packMetrics ?? undefined).profile;
+    if (next && next !== current) {
+      profileRef.current = next;
+      onUpdateProfile(next);
+    }
+    setLastSwap({ id: placement.id, before: current, after: next ?? current });
+    const numberOf = (lineId: string) => bidPack.lines.find((l) => l.id === lineId)?.lineNumber ?? "";
+    setLearnMessage(`Swapped ${numberOf(placement.order[0])} and ${numberOf(placement.order[placement.order.length - 1])} again.`);
+  }
+
+  /** ⌘Z and Undo: the newest change, tier or swap. A swap's lesson goes with it, as a tier move's does. */
+  function undoOrder() {
+    const r = takeUndo(heldHistory());
+    if (!r) return;
+    if (r.step.kind === "tier") {
+      setOrderHistory(() => r.history);
+      tiers.undo();
+      return;
+    }
+    const back = takeBackSwap(r.step.swap.placement.id);
+    // A swap that's already gone (put back some other way) just leaves the history.
+    setOrderHistory(() => (back ? { past: r.history.past, future: [{ kind: "swap", swap: back }, ...r.history.future.slice(1)] } : { ...r.history, future: r.history.future.slice(1) }));
+  }
+
+  function redoOrder() {
+    const r = takeRedo(heldHistory());
+    if (!r) return;
+    setOrderHistory(() => r.history);
+    if (r.step.kind === "tier") tiers.redo();
+    else putBackSwap(r.step.swap);
+  }
+
+  /**
+   * Takes back one swap: the "Undo" beside what a swap taught, and "Undo last swap". The newest change is undone as ⌘Z
+   * would (redo puts it back); an older swap is taken out on its own and leaves the history.
+   */
+  function undoSwap(id: string) {
+    const top = heldHistory().past.at(-1);
+    if (top?.kind === "swap" && top.swap.placement.id === id) return undoOrder();
+    takeBackSwap(id);
+    setOrderHistory((h) => dropSwaps(h, (s) => s.placement.id === id));
   }
 
   /** Puts the list back in the brain's order. What it learned from the swaps stays; undo a swap to take that back too. */
   function clearPlacements() {
     updatePlacements(() => []);
+    setOrderHistory((h) => dropSwaps(h, () => true));
     setLastSwap(null);
     setLearnMessage(null);
     setSwapQuestion(null);
@@ -1142,7 +1285,7 @@ export function ResultsView({
           </div>
 
           <SortNote sort={lineSort} />
-          <TierBar tiers={tiers} lines={placed} />
+          <TierBar tiers={tiers} lines={placed} history={{ undo: undoOrder, redo: redoOrder, canUndo: orderHistory.past.length > 0, canRedo: orderHistory.future.length > 0 }} />
 
           {/* A small staggered beat behind the header above — the page reads as "header settles, then controls, then the list below" instead of everything landing in one flat instant. */}
           <div className="animate-rise-in print:hidden" style={{ animationDelay: "60ms" }}>
@@ -1165,16 +1308,22 @@ export function ResultsView({
               bidPeriodStart={bidPack.bidPeriodStart}
               bidMonth={bidPack.month}
               packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
-              leftOut={bidPack.lines.length - exportable.length}
+              leftOut={bidPack.lines.length - exportable.lines.length}
+              leftOutWhy={leftOutPhrase(exportable.hidden, exportable.notBid)}
               presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds }}
-              topLineNumber={ranked.find((r) => !hiddenSet.has(r.line.id))?.line.lineNumber ?? null}
+              topLineNumber={exportable.lines[0]?.line.lineNumber ?? null}
             />
           </div>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <StripKey view={stripView} />
-            <StripViewToggle view={stripView} onChange={setStripView} />
+            <StripViewToggle view={stripView} onChange={chooseStripView} />
           </div>
+          {noTimelineSaid && stripView !== chosenStripView && (
+            <p role="status" className="mt-1.5 text-right text-xs text-ink-muted print:hidden">
+              This pack prints no bid period dates, so there&rsquo;s no timeline to put its trips on. Lines show as the bid pack prints them.
+            </p>
+          )}
 
           {showKeys && (
             <div role="note" className="mt-3 hidden flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-hairline bg-canvas/40 px-3 py-2 font-mono text-[11px] text-ink-muted sm:flex print:hidden">
@@ -1370,8 +1519,8 @@ export function ResultsView({
         </div>
       )}
 
-      {compareLineScores.length === 2 && (
-        <LineComparisonModal
+      {compareLineScores.length === 2 && Comparison && (
+        <Comparison
           lineScores={[compareLineScores[0], compareLineScores[1]]}
           homeBaseOffsetMinutes={homeBaseOffsetMinutes}
           bidPeriodStart={bidPack.bidPeriodStart}

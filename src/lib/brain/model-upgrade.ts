@@ -176,20 +176,27 @@ export const FULL_DAY_SHARE = 0.15;
 /**
  * A pilot who talks about full days in the cities they like ("a full day in a decent layover city … quite a bit more
  * appealing") gets them counted: their city priority shares its weight with full days in those cities
- * (`FULL_DAY_SHARE`), with the same city grades. A model with both already is set to that share; full days with no
- * hours priority gain one. `pilotSaid` is the pilot's own answers. Safe to run on any model, any number of times.
+ * (`FULL_DAY_SHARE`), with the same city grades. Full days with no hours priority gain one. A model with both is set to
+ * that share only on a fresh read (`rebalance`): run on a saved model at every load, it undid the pilot's own pins and
+ * what their drags had taught. `pilotSaid` is the pilot's own answers. Safe to run on any model, any number of times.
  */
-export function modelToFullDays(model: PilotModel, pilotSaid: string[]): PilotModel;
-export function modelToFullDays(model: PilotModel | null | undefined, pilotSaid: string[]): PilotModel | null | undefined;
-export function modelToFullDays(model: PilotModel | null | undefined, pilotSaid: string[]): PilotModel | null | undefined {
+export function modelToFullDays(model: PilotModel, pilotSaid: string[], opts?: { rebalance?: boolean }): PilotModel;
+export function modelToFullDays(model: PilotModel | null | undefined, pilotSaid: string[], opts?: { rebalance?: boolean }): PilotModel | null | undefined;
+export function modelToFullDays(model: PilotModel | null | undefined, pilotSaid: string[], opts: { rebalance?: boolean } = {}): PilotModel | null | undefined {
   if (!model) return model;
   const hours = model.criteria.find((c) => c.metric === "layoverValue");
   const days = model.criteria.find((c) => c.metric === "fullDaysInLikedCities");
   if (!days && (!hours || !pilotSaid.some((t) => FULL_DAY_WORDS.test(t)))) return model;
+  if (hours && days && !opts.rebalance) return model;
   const total = (hours?.weight ?? 0) + (days?.weight ?? 0);
   const cityScores = { ...days?.params?.cityScores, ...hours?.params?.cityScores };
   const base = (hours ?? days)!;
-  const asHours = { ...base, ...(hours ?? { id: `${base.id}-hours`, label: "Time in cities you like" }), metric: "layoverValue", params: { ...hours?.params, cityScores }, weight: total * (1 - FULL_DAY_SHARE) };
+  // Made from full days when there was no hours priority, it takes their place and weight but not their scale: a
+  // "3 full days is enough" or a limit of 1 read on hours in the city saturated at 3 hours, so those stay on full days.
+  const asHours = hours
+    ? { ...hours, params: { ...hours.params, cityScores }, weight: total * (1 - FULL_DAY_SHARE) }
+    : { ...base, id: `${base.id}-hours`, label: "Time in cities you like", metric: "layoverValue", shape: { kind: "more" as const }, params: { ...base.params, cityScores }, weight: total * (1 - FULL_DAY_SHARE) };
+  if (!hours) delete (asHours as { hardLimit?: unknown }).hardLimit;
   const asDays = {
     ...base,
     ...(days ?? { id: `${base.id}-full-days`, label: "Full days in cities you like", shape: { kind: "more" as const } }),
@@ -197,7 +204,8 @@ export function modelToFullDays(model: PilotModel | null | undefined, pilotSaid:
     params: { ...days?.params, cityScores },
     weight: total * FULL_DAY_SHARE,
   };
-  delete (asDays as { hardLimit?: unknown }).hardLimit;
+  // A limit the pilot set on full days stays on full days; one made from the hours priority has none of its own.
+  if (!days) delete (asDays as { hardLimit?: unknown }).hardLimit;
   // The hours priority keeps its place (or takes the full days' place, when there was none).
   const criteria = model.criteria.flatMap((c) => (c === (hours ?? days) ? [asHours] : c === days ? [] : [c]));
   // Full days sit right after the hours priority they share with.

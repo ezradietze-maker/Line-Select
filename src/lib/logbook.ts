@@ -1,5 +1,5 @@
 import { monthLine, tripCarryOver } from "@/lib/bid-month";
-import { flownUnderInternationalRules, operatedBlockHours } from "@/lib/phase-in";
+import { flownUnderInternationalRules, operatedBlockHours, tripSpans } from "@/lib/phase-in";
 import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { AwardHistorySubmission } from "@/types/award-history";
 import type { BidPack, Line } from "@/types/bidpack";
@@ -19,7 +19,6 @@ function carriedOut(line: Line, pack: Pick<BidPack, "base" | "bidPeriodStart" | 
     const report = tripReportUtc(pack, trip);
     if (report === null || !tripCarryOver(trip, pack)) return [];
     const iso = (ms: number) => new Date(ms).toISOString();
-    const at = (minutes: number) => report + minutes * 60_000;
     const release = report + tripReleaseHours(trip) * 3_600_000;
     return [
       {
@@ -28,7 +27,8 @@ function carriedOut(line: Line, pack: Pick<BidPack, "base" | "bidPeriodStart" | 
         release: iso(release),
         international: flownUnderInternationalRules(trip),
         creditHours: trip.creditHours,
-        duties: trip.schedule.map((d) => ({ start: iso(at(d.startMinutes)), end: iso(d.layover ? at(d.layover.startMinutes) : release) })),
+        // Each day of a run of day trips ends at its own release, not the run's (`tripSpans`).
+        duties: tripSpans(trip, report).map((d) => ({ start: iso(d.start), end: iso(d.end) })),
         lastDutyBlockHours: operatedBlockHours(trip.schedule[trip.schedule.length - 1]),
       },
     ];

@@ -291,7 +291,8 @@ export function evaluateOpenTime(snapshot: OpenTimeSnapshot, s: OpenTimeSituatio
     ? { ...carried, line: flyVacationsOnLine(carried.line, pack, (s.vacations ?? []).map((vacation) => ({ vacation, choice: "use" as const })), carriedDaysOf(pack, carryIn)).line }
     : null;
   const flownLine = flown?.line ?? null;
-  const given = s.giveUp && flownLine ? (flownLine.trips.find((t) => tripKey(t) === s.giveUp!.key) ?? null) : null;
+  // A day of a run of day trips can be given up on its own, as one is picked up on its own.
+  const given = s.giveUp && flownLine ? (flownLine.trips.flatMap(dayTripsOf).find((t) => tripKey(t) === s.giveUp!.key) ?? null) : null;
 
   // Open trips, and trips on other pilots' lines: another pilot's drop or conflict puts those in open time.
   const universe = new Map<string, Trip[]>();

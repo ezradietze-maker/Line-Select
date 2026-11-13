@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { offersFreedByTrade, sameTrip } from "@/lib/trades/offer-trips";
+import { alreadyTraded, offersFreedByTrade, sameTrip } from "@/lib/trades/offer-trips";
 import type { TradeOffer, TripSnapshot } from "@/types/trade";
 
 const meta = { base: "MEM", aircraft: "MD11", seat: "CAP", month: "NOV26" };
@@ -73,5 +73,24 @@ describe("after a trade is agreed", () => {
     const done = offer("a", trip("13", 2), { status: "declined" });
     const otherMonth = offer("a", trip("13", 2), { bidPackMeta: { ...meta, month: "DEC26" } });
     expect(offersFreedByTrade(accepted, [accepted, done, otherMonth])).toEqual({ withdraw: [], reopen: [] });
+  });
+});
+
+describe("a trip already traded", () => {
+  const accepted = offer("a", trip("13", 2), { ...proposal("b", trip("27", 6)), status: "accepted" });
+
+  it("is spoken for, for either pilot who gave one away in an agreed trade", () => {
+    expect(alreadyTraded([accepted], meta, "a", trip("13", 2))).toBe(true);
+    expect(alreadyTraded([accepted], meta, "b", trip("27", 6))).toBe(true);
+    // Not the trip each received, another day of the pairing, or someone else's.
+    expect(alreadyTraded([accepted], meta, "a", trip("27", 6))).toBe(false);
+    expect(alreadyTraded([accepted], meta, "a", trip("13", 9))).toBe(false);
+    expect(alreadyTraded([accepted], meta, "c", trip("13", 2))).toBe(false);
+  });
+
+  it("only counts trades agreed in the same seat's month", () => {
+    const pending = offer("a", trip("13", 2), proposal("b", trip("27", 6)));
+    const otherMonth = { ...accepted, bidPackMeta: { ...meta, month: "DEC26" } };
+    expect(alreadyTraded([pending, otherMonth], meta, "a", trip("13", 2))).toBe(false);
   });
 });

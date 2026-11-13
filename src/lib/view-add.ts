@@ -2,11 +2,11 @@ import { DateTime } from "luxon";
 import { splitTrip } from "@/lib/bid-month";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { parseOpenTimePaste } from "@/lib/open-time/parse";
-import { carriedDaysOf, dayIndices, dutyIsInternational, flownUnderInternationalRules, flyLine, operatedBlockHours, phaseInRules, reservePeriodSpan, tripBaseSpans, tripSpans, zoneOf, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
+import { carriedDaysOf, type CarryInItem, dayIndices, dutyIsInternational, type FlownLine, flownUnderInternationalRules, flyLine, operatedBlockHours, type PhaseInElections, phaseInRules, reservePeriodSpan, type Span, touchesOutside48, tripBaseSpans, tripSpans, zoneOf } from "@/lib/phase-in";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import { flyVacationsOnLine } from "@/lib/vacation-lines";
-import { vacationSpan } from "@/lib/vacation-slide";
+import { frontBufferWaivable, vacationSpan } from "@/lib/vacation-slide";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 import { prepareMetrics } from "@/lib/metrics/compute";
@@ -52,6 +52,13 @@ export interface Busy {
   startsInternational: boolean;
   /** An international trip of the kind the buffers guard, whatever its last duty. */
   buffered: boolean;
+  /**
+   * Has the 24-hour buffer before it (12.D.1.d.i). From December 2026 (Phase 2) only a trip flown under international
+   * rules does; before that, any trip that touches outside the 48 states, as phase-in reads it (`bufferedBefore`).
+   */
+  bufferedBefore?: boolean;
+  /** Its bid month, for the rules that changed with Phase 2. */
+  month?: string;
   tafbHours: number;
   allDeadheadFirst: boolean;
   /** Operated block hours of the last duty; null when not known. */
@@ -82,6 +89,8 @@ export function busyFromTrip(trip: Trip, pack: BidPack): Busy | null {
     endsInternational: dutyIsInternational(trip, last),
     startsInternational: dutyIsInternational(trip, first),
     buffered: flownUnderInternationalRules(trip),
+    bufferedBefore: phaseInRules(pack.month).frontBufferSparesDomesticParameters ? flownUnderInternationalRules(trip) : touchesOutside48(trip),
+    month: pack.month,
     tafbHours: trip.tafbHours,
     allDeadheadFirst: !!first?.legs.length && first.legs.every((l) => l.isDeadhead),
     lastDutyBlockHours: last ? operatedBlockHours(last) : null,
@@ -187,10 +196,17 @@ export function fitCheck(trip: Trip, schedule: Busy[], vacations: VacationPeriod
     const span = vacationSpan(v);
     if (candidate.span.start < span.end && candidate.span.end > span.start) {
       illegal.push("It's during your vacation (CBA 2026 7.A.3).");
-    } else if (candidate.buffered && candidate.tafbHours > 120) {
-      if (span.start >= candidate.span.end && span.start - candidate.span.end < 48 * HOUR) check.push("Your vacation starts inside the 48-hour international buffer after it (CBA 2026 7.G.1, 12.D.1.d.ii).");
-      // CBA 2026 7.G.1.b: "deemed to have waived" this one for a bid line adjustment; the 48 hours "may not be waived".
-      if (candidate.span.start >= span.end && candidate.span.start - span.end < 24 * HOUR) excused("Your vacation ends inside the 24-hour international buffer before it (CBA 2026 7.G.1, 12.D.1.d.i).");
+    } else if (candidate.tafbHours > 120) {
+      // CBA 2026 7.G.1: a conflict with the buffer "shall constitute a conflict with the trip", and the 48 hours after
+      // "may not be waived", in any bid period.
+      if (candidate.buffered && span.start >= candidate.span.end && span.start - candidate.span.end < 48 * HOUR) illegal.push("Your vacation starts inside the 48-hour international buffer after it (CBA 2026 7.G.1, 12.D.1.d.ii).");
+      // The 24 hours before: "deemed to have waived" for a bid line adjustment only from December 2026 (7.G.1.b,
+      // Phase 2); before that the buffer "may not be waived".
+      if ((candidate.bufferedBefore ?? candidate.buffered) && candidate.span.start >= span.end && candidate.span.start - span.end < 24 * HOUR) {
+        const text = "Your vacation ends inside the 24-hour international buffer before it (CBA 2026 7.G.1, 12.D.1.d.i).";
+        if (frontBufferWaivable(candidate.month ?? "")) excused(text);
+        else illegal.push(text);
+      }
     }
   }
   for (const o of schedule) {
@@ -287,7 +303,7 @@ function workOutPair(candidate: Busy, o: Busy, pack: BidPack, { illegal, check, 
       }
     }
     if (first.buffered && first.tafbHours > 120 && gap < 48 * HOUR) excused(`Inside the 48-hour international buffer after ${first === o ? o.label : "it"} (CBA 2026 12.D.1.d.ii).`);
-    if (second.buffered && second.tafbHours > 120 && gap < 24 * HOUR) excused(`Inside the 24-hour international buffer before ${second === o ? o.label : "it"} (CBA 2026 12.D.1.d.i).`);
+    if ((second.bufferedBefore ?? second.buffered) && second.tafbHours > 120 && gap < 24 * HOUR) excused(`Inside the 24-hour international buffer before ${second === o ? o.label : "it"} (CBA 2026 12.D.1.d.i).`);
   }
 }
 

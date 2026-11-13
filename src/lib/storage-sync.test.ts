@@ -9,7 +9,7 @@ vi.stubGlobal("window", {
   localStorage: { getItem: (k: string) => local.get(k) ?? null, setItem: (k: string, v: string) => void local.set(k, v), removeItem: (k: string) => void local.delete(k) },
 });
 
-const { loadProfileForUser, saveProfileForUser } = await import("./storage");
+const { hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } = await import("./storage");
 
 const profile = (completedAt: string, logbook: PreferenceProfile["logbook"] = []): PreferenceProfile => ({ weights: { ...DEFAULT_WEIGHTS }, deepRoundCompleted: false, tradeoffAnswers: [], explicitTargets: {}, isCommuter: null, hasCrashPad: null, seniorityNumber: null, cityPreferences: {}, completedAt, implicitWeights: {}, implicitConfidence: {}, discoveredFacts: [], interviewTranscript: [], logbook });
 const KEY = "line-select:preference-profile:pilot-1:v1";
@@ -84,15 +84,56 @@ describe("saving a signed-in pilot's profile", () => {
     expect((await loadProfileForUser("pilot-1"))?.completedAt).toBe("logged offline");
   });
 
+  it("says a save is still waiting after the app opens and can't send it, so the app keeps retrying and keeps the copy", async () => {
+    client.serverProfileVersion.mockReturnValue("v1");
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    await saveProfileForUser("pilot-1", profile("logged offline"));
+    expect(hasUnsyncedProfile("pilot-1")).toBe(true);
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: profile("before") });
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    await loadProfileForUser("pilot-1");
+    expect(hasUnsyncedProfile("pilot-1")).toBe(true);
+    // Sent on a later try: nothing waiting any more.
+    client.saveServerProfile.mockResolvedValue({ kind: "saved" });
+    await saveProfileForUser("pilot-1", profile("logged offline"));
+    expect(hasUnsyncedProfile("pilot-1")).toBe(false);
+  });
+
+  it("keeps the version a waiting save was made from when the server can't be reached at all", async () => {
+    client.serverProfileVersion.mockReturnValue("v1");
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    await saveProfileForUser("pilot-1", profile("logged offline"));
+    client.fetchServerProfile.mockResolvedValue({ kind: "unreachable" });
+    expect((await loadProfileForUser("pilot-1"))?.completedAt).toBe("logged offline");
+    expect(client.setServerProfileVersion).toHaveBeenCalledWith("v1");
+    expect(hasUnsyncedProfile("pilot-1")).toBe(true);
+  });
+
   it("marks a failed save with the version it was sent against, after the save ahead of it landed", async () => {
+    // As the real queue in preference-profile-client.ts runs them: the second save waits for the first, and the first
+    // moves the server's version only when it lands, after the second save has already been started.
     let version = "v1";
     client.serverProfileVersion.mockImplementation(() => version);
+    let landFirst!: () => void;
+    const firstLanded = new Promise<void>((resolve) => {
+      landFirst = resolve;
+    });
     client.saveServerProfile.mockImplementationOnce(async () => {
+      await firstLanded;
       version = "v2";
       return { kind: "saved" };
     });
-    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
-    await Promise.all([saveProfileForUser("pilot-1", profile("a")), saveProfileForUser("pilot-1", profile("b"))]);
+    client.saveServerProfile.mockImplementationOnce(async () => {
+      await firstLanded;
+      return { kind: "failed" };
+    });
+    const first = saveProfileForUser("pilot-1", profile("a"));
+    const second = saveProfileForUser("pilot-1", profile("b"));
+    // Both under way and neither landed: a mark taken now would name v1.
+    expect(client.saveServerProfile).toHaveBeenCalledTimes(2);
+    expect(version).toBe("v1");
+    landFirst();
+    await Promise.all([first, second]);
     expect(JSON.parse(local.get("line-select:profile-unsynced:pilot-1:v1")!)).toEqual({ base: "v2" });
   });
 

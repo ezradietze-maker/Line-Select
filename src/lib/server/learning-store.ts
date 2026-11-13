@@ -456,7 +456,7 @@ export async function saveModel(params: { kind: ModelKind; version: string; payl
 
 /** A run that started within this long and hasn't finished is assumed still going. */
 const RUN_LEASE_MS = 10 * 60 * 1000;
-/** Any fixed number, unique among this app's advisory locks (it has no others). */
+/** Any fixed number. The only one-key advisory lock in this app: trade locks (`db.ts`) use the two-key form, whose keys never meet these. */
 const RUN_LOCK_KEY = 7_301_946;
 
 /** Starts a run unless one is already going — two triggers landing at once (the daily schedule and a burst of interviews) never learn twice in parallel. */

@@ -24,7 +24,7 @@ const { GET: heldBy } = await import("./held-by/route");
 
 const URL_BASE = "https://example.com/api/award-history";
 const pilot = { id: "11111111-1111-4111-8111-111111111111", email: "someone@example.com", displayName: "Some Pilot" };
-const row = (i: number, over: Partial<AwardRow> = {}): AwardRow => ({ pilotHash: `hash${i}`, seniorityRank: i + 1, seniorityTotalPilots: 100, outcome: "line", lineNumber: String(1000 + i), daysOff: 15, totalCreditHours: 70, holderShown: true, ...over });
+const row = (i: number, over: Partial<AwardRow> = {}): AwardRow => ({ pilotHash: `hash${i}`, seniorityRank: i + 1, seniorityTotalPilots: 100, outcome: "line", lineNumber: String(1000 + i), daysOff: 15, totalCreditHours: 70, holderShown: true, submittedAt: new Date(Date.UTC(2026, 9, 1) + i * 60_000), ...over });
 const post = (body: unknown) => new Request(URL_BASE, { method: "POST", body: JSON.stringify(body) });
 const report = { base: "MEM", aircraft: "MD11", seat: "CAP", month: "OCT26", seniorityRank: 12, seniorityTotalPilots: 100, outcome: "line", lineNumber: "1033", daysOff: 15, totalCreditHours: 70, totalTafbHours: 200 };
 
@@ -100,7 +100,7 @@ describe("the open listing", () => {
   it("holds back a small group", async () => {
     mocks.rows.mockResolvedValue([row(0), row(1), row(2)]);
     const { bands } = await (await get()).json();
-    expect(bands[0]).toEqual({ reports: 3, avgDaysOff: null, avgCreditHours: null, lineRate: null });
+    expect(bands[0]).toEqual({ reports: 0, avgDaysOff: null, avgCreditHours: null, lineRate: null });
   });
 });
 

@@ -54,7 +54,7 @@ import { isLearnablePack } from "@/lib/learning/corrections";
 import { postBrainOutcome } from "@/lib/learning/learning-client";
 import { parseAirportCode } from "@/lib/interview-story";
 import { loadStoryDraft, saveStoryDraft } from "@/lib/interview-draft";
-import { openingSteps, stepDepth, stepFromSearch, urlForStep, type OpeningStep } from "@/lib/interview-opening";
+import { openingSteps, popMove, stateForEntry, stepDepth, stepEntryOf, stepFromSearch, stepsBetween, urlForStep, type OpeningStep } from "@/lib/interview-opening";
 import { clearServerDraft, fetchServerDraft, saveServerDraft } from "@/lib/interview-draft-sync";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import type { BidPack } from "@/types/bidpack";
@@ -225,9 +225,21 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const unwinding = useRef(false);
   /** The pilot has moved past the first opening step (or resumed past it): from then on the opening is saved as a draft. */
   const openingStarted = useRef(false);
+  /** This visit to the page, and where its newest entry the pilot is on sits in the tab's history (`StepEntry`). */
+  const visitRef = useRef("");
+  const ownAt = useRef(0);
+  /** An entry of this visit's own for a step, pushed after the one the pilot is on. */
+  function pushStep(step: OpeningStep, steps: readonly OpeningStep[]) {
+    ownAt.current += 1;
+    window.history.pushState(stateForEntry({ visit: visitRef.current, step, at: ownAt.current }), "", urlForStep(window.location.pathname, window.location.search, step, steps));
+  }
+  /** The entry the pilot is on, made this visit's and named for a step. */
+  function replaceStep(step: OpeningStep, steps: readonly OpeningStep[]) {
+    window.history.replaceState(stateForEntry({ visit: visitRef.current, step, at: ownAt.current }), "", urlForStep(window.location.pathname, window.location.search, step, steps));
+  }
   /** On to the next opening step, with an entry of its own for Back to return to. */
   function stepTo(next: OpeningStep) {
-    window.history.pushState(null, "", urlForStep(window.location.pathname, window.location.search, next, stepsRef.current));
+    pushStep(next, stepsRef.current);
     openingStarted.current = true;
     setPhase(next);
   }
@@ -243,17 +255,27 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     window.history.go(-depth);
   }
   useEffect(() => {
-    // Arriving on a step's address (a reload, or Forward back into the interview) starts at the first step: the address says so too.
-    // (No state of our own: the router adds its own and follows the new address.)
-    if (new URLSearchParams(window.location.search).has("step")) window.history.replaceState(null, "", urlForStep(window.location.pathname, window.location.search, stepsRef.current[0], stepsRef.current));
-    function onPop() {
+    // Arriving (a reload, coming back, or Forward into the interview) starts at the first step, and the entry it starts
+    // on becomes this visit's first: the address says the first step too. Entries an earlier visit left, ahead or
+    // behind, are stepped over below.
+    visitRef.current = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    ownAt.current = stepEntryOf(window.history.state)?.at ?? window.history.length - 1;
+    replaceStep(stepsRef.current[0], stepsRef.current);
+    function onPop(e: PopStateEvent) {
+      const entry = stepEntryOf(e.state);
+      const move = popMove(entry, visitRef.current, ownAt.current, window.history.length);
+      if (move.kind === "go") {
+        if (move.by !== 0) window.history.go(move.by);
+        return;
+      }
+      if (entry) ownAt.current = entry.at;
       if (unwinding.current) {
         unwinding.current = false;
         return;
       }
       // Only among the opening steps: once the questions have begun, their own Back takes back an answer.
       if (!(stepsRef.current as readonly string[]).includes(phaseRef.current)) return;
-      setPhase(stepFromSearch(window.location.search, stepsRef.current));
+      setPhase(move.kind === "show" && stepsRef.current.includes(move.step) ? move.step : stepFromSearch(window.location.search, stepsRef.current));
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -534,7 +556,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     shiftsRef.current = [];
     // The story takes the check-in's place, in the address as on screen: the same entry, at the same depth.
     const full = openingSteps(false, hasSeniorityStep);
-    window.history.replaceState(null, "", urlForStep(window.location.pathname, window.location.search, "story", full));
+    replaceStep("story", full);
     setPhase("story");
   }
 
@@ -570,8 +592,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setPhase("asking");
     setError(null);
     const m = modelRef.current;
-    const compared = new Set(ch.map((c) => `${c.preferred}|${c.other}`));
-    for (const e of all) for (const x of e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)) compared.add(`${x[1]}|${x[2]}`);
+    // This pack's choices only: line numbers repeat from pack to pack (every First Officer pack starts at 2001), so in a
+    // check-in last month's line pairs blocked this month's lines of the same numbers.
+    const compared = new Set(ch.filter((c) => !c.packId || c.packId === bidPack.id).map((c) => `${c.preferred}|${c.other}`));
+    for (const e of all.slice(all.length - t)) for (const x of e.question.matchAll(/Line (\d{3,5}) vs Line (\d{3,5})/g)) compared.add(`${x[1]}|${x[2]}`);
     // The first question, asked the same way for everyone: which of their top priorities they'd give up last — in
     // their words, before any line choice can reorder them (see lib/brain/priority-order.ts).
     const priority = t === 0 && !checkInRef.current ? priorityOrderQuestion(m) : null;
@@ -610,9 +634,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const linePairs: LinePairCandidate[] = m ? pickLinePairs(bidPack, m, pm, compared, 3, tradesRef.current) : [];
     // Real lines and trips at both ends of their main priorities, for the question to show — and the topics still worth
     // asking: what's unclear and would move their top 20 most (lib/brain/question-topics.ts).
-    const { topics, examples } = m ? pickTopics(bidPack, m, pm, askedTopics(th), pickQuestionExamples(bidPack, m, pm)) : { topics: [], examples: [] };
+    const { topics, examples } = m ? pickTopics(bidPack, m, pm, askedTopics(th), pickQuestionExamples(bidPack, m, pm), undefined, all) : { topics: [], examples: [] };
     // And two real trips that pull their priorities apart, for a trip choice (lib/brain/trip-pairs.ts).
-    const tripPairs = m ? pickTripPairs(bidPack, m, pm, askedTripPairs(all), tradesRef.current) : [];
+    const tripPairs = m ? pickTripPairs(bidPack, m, pm, askedTripPairs(all.slice(all.length - t)), tradesRef.current) : [];
     try {
       const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, model: m, threads: th, linePairs, tripPairs, examples, packNumbers, topics, lastTopic: question?.topic ?? null, turn: t, maxTurns: turnLimitRef.current, rankingShifts: shiftsRef.current });
       const settledThreads = { ...th };
@@ -736,12 +760,16 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       return;
     }
     const all = [...exchanges, { turn: exchanges.length, question: SWEEP_QUESTION, answer: [picked.length ? `These matter to me too: ${picked.join(", ")}.` : "", note].filter(Boolean).join(" ") }];
+    // An answer like any other: not counted, the interviewer took it for part of the opening story, and a priority the
+    // first questions had already probed read as unprobed again.
+    const nextTurn = turn + 1;
     setExchanges(all);
+    setTurn(nextTurn);
     // A follow-up or two on what they picked, then done.
-    const limit = Math.min(MAX_TURNS, turn + AFTER_SWEEP);
+    const limit = Math.min(MAX_TURNS, nextTurn + AFTER_SWEEP);
     turnLimitRef.current = limit;
     setTurnLimit(limit);
-    await askNext(all, threads, choices, turn, true);
+    await askNext(all, threads, choices, nextTurn, true);
   }
 
   async function finishInterview(all: InterviewExchange[], ch: LineChoice[]) {
@@ -837,12 +865,14 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   // answer isn't lost to a phone locking while that question is worked out (resuming then asks it again).
   useEffect(() => {
     if ((phase !== "question" && phase !== "sweep" && phase !== "asking") || exchanges.length === 0) return;
-    const d: DraftState = { version: 1, savedAt: Date.now(), phase: phase === "sweep" ? "sweep" : "question", exchanges, threads, choices, tripChoices, pastTrades, model, question: phase === "asking" ? null : question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn };
+    // With which cities the story suggested and which the pilot changed: without them, a city set back to neutral on
+    // the city screen came back as the story's "love" after a resume, and was saved that way.
+    const d: DraftState = { version: 1, savedAt: Date.now(), phase: phase === "sweep" ? "sweep" : "question", exchanges, threads, choices, tripChoices, pastTrades, model, question: phase === "asking" ? null : question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, touchedCities: [...touchedCities.current], homeCity, sweepDone, turnLimit, checkIn };
     try {
       window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify(d));
     } catch {}
     if (userId) saveServerDraft(bidPack.id, d);
-  }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
+  }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, homeCity, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
 
   // The opening steps too, once the pilot has moved past the first: leaving for another screen and coming back lost the
   // commute answer and every city grade. Kept on this device only — it's minutes of work, and on the account it could
@@ -886,6 +916,9 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setSeniorityText(d.seniorityText);
     setCityRatings(d.cityRatings);
     setCityPreferences(d.cityPreferences);
+    setStorySuggested(d.storySuggested ?? {});
+    touchedCities.current = new Set(d.touchedCities ?? []);
+    setHomeCity(d.homeCity ?? null);
     setSweepDone(d.sweepDone);
     turnLimitRef.current = d.turnLimit ?? MAX_TURNS;
     setTurnLimit(turnLimitRef.current);
@@ -924,10 +957,19 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const story = d.exchanges.find((e) => e.turn === 0 && e.question === OPENING_QUESTION);
     readStory.current = story ? story.answer : null;
     if (story && !d.model) setResumeRead(d.exchanges);
-    // One history entry for each step up to theirs, as if they'd stepped there, so Back still goes a step at a time.
+    // One history entry for each step up to theirs, as if they'd stepped there, so Back still goes a step at a time —
+    // from the step they're on now, so steps they'd already taken this visit aren't pushed a second time.
     const resumedSteps = openingSteps(resumedCheckIn, hasSeniorityStep);
     const step = d.step && resumedSteps.includes(d.step) ? d.step : resumedSteps[0];
-    for (const s of resumedSteps.slice(1, stepDepth(step, resumedSteps) + 1)) window.history.pushState(null, "", urlForStep(window.location.pathname, window.location.search, s, resumedSteps));
+    const here = (stepsRef.current as readonly string[]).includes(phaseRef.current) ? stepDepth(phaseRef.current as OpeningStep, stepsRef.current) : 0;
+    const { push, back } = stepsBetween(here, step, resumedSteps);
+    for (const s of push) pushStep(s, resumedSteps);
+    if (!push.length && !back) replaceStep(step, resumedSteps);
+    if (back) {
+      // Back over this visit's own entries to theirs; the step is set here, so that Back isn't the pilot's.
+      unwinding.current = true;
+      window.history.go(-back);
+    }
     stepsRef.current = resumedSteps;
     setPhase(step);
   }

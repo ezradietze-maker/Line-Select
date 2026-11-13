@@ -1,6 +1,7 @@
 import { coordinatesForAirport } from "@/lib/airport-coordinates";
 import { uncutTrip } from "@/lib/bid-month";
 import { computeTripFacts, type TripFacts } from "@/lib/metrics/trip-facts";
+import { tripReleaseHours } from "@/lib/trip-anchor";
 
 /**
  * Door-to-door time away for a pilot who doesn't live at base. A trip's
@@ -153,7 +154,8 @@ export function homeAwayForTrip(f: TripFacts, base: string, params: HomeParams, 
 
   // Cut at the bid month's end (`lib/bid-month.ts`), it's away to the month's end — its tafb runs to it — and home in the next.
   if (f.trip.carriesIntoNextMonth) {
-    const monthEnd = f.trip.tafbHours * 60;
+    // Its release, not its hours: for a run of day trips the hours leave out the nights at home between its days.
+    const monthEnd = tripReleaseHours(f.trip) * 60;
     return { awayHours: Math.max(0, monthEnd - leave) / 60, leaveMinute: leave, backMinute: monthEnd, start, end: null };
   }
 

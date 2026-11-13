@@ -21,6 +21,14 @@ function initials(name: string): string {
   return (first + last).toUpperCase();
 }
 
+/**
+ * The account area's place, held while the session check runs: a public page draws its nav at once, and "Sign in"
+ * there flashed up for a pilot who was already signed in.
+ */
+export function AccountPlaceholder() {
+  return <div aria-hidden data-account-placeholder className="skeleton-pulse h-10 w-full rounded-md bg-border" />;
+}
+
 export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -148,7 +156,9 @@ function RecoveryCodeModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal title="Account recovery code" onClose={onClose}>
+    // Once the request is sent the old code may already be gone, and a new one is shown only once: from then on only
+    // the confirmed button closes the dialog, never a stray Escape or tap outside.
+    <Modal title="Account recovery code" onClose={onClose} locked={submitting || !!code}>
       {code ? (
         <RecoveryCodePanel code={code} reason="new" onDone={onClose} doneLabel="Done" />
       ) : (

@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { failedCallCost, structuredCall } from "@/lib/brain/llm";
-import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
+import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { checkSpend, recordSpend, spendLimitResponse, type Spender } from "@/lib/server/spend-guard";
+import { checkSpend, pilotSpender, recordSpend, spendLimitResponse } from "@/lib/server/spend-guard";
+
+/** A pilot's reason, as typed in one box; the catalog's variables, with room to grow. */
+const MAX_FREE_TEXT = 1_000;
+const MAX_VARIABLES = 400;
 
 export const runtime = "nodejs";
 
@@ -94,7 +98,7 @@ export async function POST(request: Request) {
 
   const { ok } = await checkRateLimit("classify-preference", user.id, 60, 60 * 60);
   if (!ok) return rateLimitedResponse();
-  const spender: Spender = { key: `u:${user.id}`, signedIn: true };
+  const spender = pilotSpender(user.id, request);
   const allowed = await checkSpend(spender);
   if (!allowed.ok) return spendLimitResponse(allowed);
 
@@ -107,14 +111,19 @@ export async function POST(request: Request) {
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   const hasPairwiseContext = typeof body.favoredSummary === "string" && typeof body.overtakenSummary === "string";
   const hasStandaloneContext = typeof body.context === "string" && body.context.trim().length > 0;
+  // At least one variable, and short: `[].every` was true, so an empty list (or one free text near the body's 50 KB)
+  // was a paid call for nothing.
   const validVariables =
     Array.isArray(body.variables) &&
+    body.variables.length > 0 &&
+    body.variables.length <= MAX_VARIABLES &&
     body.variables.every(
-      (v) => isJsonObject(v) && typeof v.id === "string" && typeof v.label === "string" && typeof v.description === "string"
+      (v) => isJsonObject(v) && isText(v.id, 80) && isText(v.label, 200) && isText(v.description, 600)
     );
   if (
     typeof body.freeText !== "string" ||
     !body.freeText.trim() ||
+    body.freeText.length > MAX_FREE_TEXT ||
     !validVariables ||
     (!hasPairwiseContext && !hasStandaloneContext)
   ) {
