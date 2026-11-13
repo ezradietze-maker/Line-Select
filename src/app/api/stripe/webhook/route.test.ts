@@ -117,6 +117,25 @@ describe("stripe webhook", () => {
     expect(db.setUserPlan).toHaveBeenCalledWith("u-1", "pro");
   });
 
+  it("doesn't let an old membership's end overwrite the newer one the pilot is on", async () => {
+    // sub_old went past due, the pilot started a fresh membership (sub_new, trialing), then Stripe gave up on sub_old.
+    db.getSubscriptionByUserId.mockResolvedValue({ stripeSubscriptionId: "sub_new", status: "trialing", lastEventAt: secondsAsDate(5000).toISOString() });
+    stripe.constructEventAsync.mockResolvedValue(event("customer.subscription.deleted", 6000, sub({ id: "sub_old", status: "canceled" }), "evt_old_end"));
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(db.saveSubscription).not.toHaveBeenCalled();
+    expect(db.setUserPlan).not.toHaveBeenCalled(); // still pro on sub_new
+    expect(db.markStripeEventProcessed).toHaveBeenCalledWith("evt_old_end", "customer.subscription.deleted");
+  });
+
+  it("does let a new membership replace an old one that lapsed", async () => {
+    db.getSubscriptionByUserId.mockResolvedValue({ stripeSubscriptionId: "sub_old", status: "canceled", lastEventAt: secondsAsDate(5000).toISOString() });
+    stripe.constructEventAsync.mockResolvedValue(event("customer.subscription.created", 6000, sub({ id: "sub_new", status: "trialing" })));
+    await POST(req());
+    expect(db.saveSubscription).toHaveBeenCalledWith("u-1", expect.objectContaining({ stripeSubscriptionId: "sub_new", status: "trialing" }), secondsAsDate(6000));
+    expect(db.setUserPlan).toHaveBeenCalledWith("u-1", "pro");
+  });
+
   it("records (but doesn't act on) an event for a customer we don't know", async () => {
     db.getSubscriptionByCustomerId.mockResolvedValue(null);
     stripe.constructEventAsync.mockResolvedValue(event("customer.subscription.updated", 1000, sub({ userId: "", customer: "cus_unknown" })));

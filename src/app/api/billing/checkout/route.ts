@@ -3,7 +3,7 @@ import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { getSubscriptionByUserId, linkStripeCustomer } from "@/lib/server/db";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
-import { appOrigin, getStripe, stripeConfig, TRIAL_DAYS } from "@/lib/server/stripe";
+import { appOrigin, getStripe, planForStatus, stripeConfig, TRIAL_DAYS } from "@/lib/server/stripe";
 
 export const runtime = "nodejs";
 const NO_STORE = { "Cache-Control": "private, no-store" };
@@ -19,6 +19,10 @@ export async function POST(request: Request) {
   try {
     const stripe = getStripe();
     const existing = await getSubscriptionByUserId(user.id);
+    // A second tab can still show "Start free month" after the first finished checkout; that would bill the pilot twice.
+    if (existing?.stripeSubscriptionId && planForStatus(existing.status) === "pro") {
+      return NextResponse.json({ error: "You already have a membership. Reload this page to manage it." }, { status: 409, headers: NO_STORE });
+    }
     let customerId = existing?.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({ email: user.email, name: user.displayName, metadata: { userId: user.id } });

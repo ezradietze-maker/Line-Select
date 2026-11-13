@@ -767,7 +767,7 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.findUserById(confirmed.id)).not.toBeNull();
     });
 
-    it("the clear-out leaves an account anyone has used: a session, a saved pack or a profile", async () => {
+    it("the clear-out leaves an account anyone has used: a session, a saved pack, a profile or a membership", async () => {
       const weekAgo = new Date(Date.now() - 8 * 24 * 3600_000).toISOString();
       const made = async (label: string) => {
         const id = randomUUID();
@@ -784,10 +784,14 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       await mod.saveBidPackRecord(withPack, "MEM-777-CA-2026-12", Buffer.from("pack"));
       const withProfile = await made("profile");
       await mod.savePreferenceProfile(withProfile, fakeProfile());
+      // Started a membership, then signed out: Stripe goes on billing the card, so the account must stay to match it.
+      const withMembership = await made("membership");
+      await mod.linkStripeCustomer(withMembership, `cus_test_${withMembership}`);
       const untouched = await made("untouched");
       await mod.deleteUnconfirmedSignUps(new Date(Date.now() - 7 * 24 * 3600_000));
       expect(await mod.findUserById(untouched)).toBeNull();
-      for (const id of [withSession, withPack, withProfile]) expect(await mod.findUserById(id)).not.toBeNull();
+      for (const id of [withSession, withPack, withProfile, withMembership]) expect(await mod.findUserById(id)).not.toBeNull();
+      expect(await mod.getSubscriptionByUserId(withMembership)).not.toBeNull();
       expect(await mod.findSession(token)).not.toBeNull();
       expect(await mod.getBidPackRecord(withPack)).not.toBeNull();
     });

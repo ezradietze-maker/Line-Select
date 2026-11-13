@@ -35,6 +35,10 @@ async function applySubscription(sub: Stripe.Subscription, eventCreatedAt: Date)
   const existing = await getSubscriptionByUserId(userId);
   const lastEventAt = existing?.lastEventAt ? new Date(existing.lastEventAt) : null;
   if (lastEventAt && eventCreatedAt < lastEventAt) return; // A newer event already wrote this row — don't go backwards.
+  // One row per pilot: an older membership ending (a lapsed one Stripe finally cancels after the pilot started a new
+  // one) must not overwrite the live membership they're on now.
+  const otherLive = existing?.stripeSubscriptionId && existing.stripeSubscriptionId !== sub.id && planForStatus(existing.status) === "pro";
+  if (otherLive && planForStatus(sub.status) !== "pro") return;
   await saveSubscription(userId, snap, eventCreatedAt);
   await setUserPlan(userId, planForStatus(sub.status));
 }
