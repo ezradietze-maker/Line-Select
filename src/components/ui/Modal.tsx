@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Heading } from "@/components/ui/Heading";
 import { FOCUSABLE, nextStop, tabStops } from "@/lib/focus-trap";
+import { lockScroll } from "@/lib/scroll-lock";
 
 interface ModalProps {
   title: string;
@@ -90,11 +91,11 @@ export function Modal({ title, onClose, children, wide = false, locked = false }
       }
     }
     document.addEventListener("keydown", handleKey);
-    document.body.style.overflow = "hidden";
+    const unlock = lockScroll();
     return () => {
       document.removeEventListener("keydown", handleKey);
       openDialogs.splice(openDialogs.indexOf(me), 1);
-      if (openDialogs.length === 0) document.body.style.overflow = "";
+      unlock();
     };
   }, []);
 

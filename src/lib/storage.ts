@@ -1,6 +1,7 @@
 import { clearServerProfile, fetchServerProfile, saveServerProfile, serverProfileVersion, setServerProfileVersion } from "@/lib/preference-profile-client";
 import { mergeAfterConflict, sameProfile } from "@/lib/profile-merge";
 import { migrateProfile } from "@/lib/profile-migration";
+import { staleAfterStartOver } from "@/lib/start-over-signal";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
 
 const GUEST_KEY = "line-select:preference-profile:guest:v1";
@@ -98,11 +99,19 @@ export function saveProfile(
   }
 }
 
-export function clearProfile(userId: string | null): void {
-  if (typeof window === "undefined") return;
+/**
+ * Another tab started over: a save this tab still has on its way isn't written back here, and what it last knew of the
+ * profile is no copy to merge against. What's kept now stays — it may be a new profile made in that tab since.
+ */
+export function dropPendingProfileWrites(userId: string | null): void {
   clearedProfiles.set(profileKey(userId), clearCount(userId) + 1);
   if (lastKnown?.userId === userId) lastKnown = null;
   if (lastRun?.userId === userId) lastRun = null;
+}
+
+export function clearProfile(userId: string | null): void {
+  if (typeof window === "undefined") return;
+  dropPendingProfileWrites(userId);
   try {
     window.localStorage.removeItem(profileKey(userId));
   } catch {
@@ -206,6 +215,9 @@ let saving: Promise<unknown> = Promise.resolve();
 let lastRun: { userId: string; sent: PreferenceProfile; result: PreferenceProfile } | null = null;
 
 export async function saveProfileForUser(userId: string | null, profile: PreferenceProfile): Promise<{ savedLocally: boolean; sync: ProfileSync; profile: PreferenceProfile }> {
+  // Started over in another tab that this one hasn't caught up with: its profile is the one just deleted, and saved it
+  // went back onto the device and the account. Neither is touched; the tab drops it as soon as it hears (app-state).
+  if (staleAfterStartOver(userId)) return { savedLocally: true, sync: "local", profile };
   if (!userId) return saveGuestProfile(profile);
   const savedLocally = saveProfile(userId, profile);
   const asOf = clearCount(userId);
@@ -223,6 +235,8 @@ export async function saveProfileForUser(userId: string | null, profile: Prefere
 
 async function sendInTurn(userId: string, profile: PreferenceProfile, asOf: number): Promise<{ sync: ProfileSync; profile: PreferenceProfile }> {
   if (clearCount(userId) !== asOf) return { sync: "failed", profile };
+  // Waited its turn behind another save while another tab started over: not sent (see `saveProfileForUser`).
+  if (staleAfterStartOver(userId)) return { sync: "local", profile };
   const before = lastRun && lastRun.userId === userId && lastRun.result !== lastRun.sent ? lastRun : null;
   let toSend = profile;
   if (before) {

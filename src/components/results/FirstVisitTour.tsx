@@ -3,12 +3,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
+import { LANDING_DONE_EVENT, landingUnderway } from "@/components/results/WheelsDown";
 import { nextStop } from "@/lib/focus-trap";
+import { lockScroll, overlayOpen } from "@/lib/scroll-lock";
 
 /**
  * A pilot's first look at the rankings: four tips, each lighting up the part of the screen it's about, once per
  * device. Skippable at any point; a tip whose part isn't on screen (the sidebar on a phone) is left out. While it's up
  * the page holds still and Tab stays in the tip: scrolled, the tip went off the screen and left only the dimmed page.
+ * It waits for the screen to be the pilot's alone: not over a dialog they opened (it sat under or over it), not over
+ * the landing from the interview, and not on a visit that came for one line (it scrolled away from it) — that one has
+ * it next time. Done, the page goes back where it was, with focus on the list's heading.
  */
 
 const DONE_KEY = "line-select:tour:results:v1";
@@ -24,6 +29,10 @@ const STEPS: { target: string; title: string; body: string }[] = [
 const PAD = 6;
 const GAP = 10;
 const EDGE = 12;
+/** How long after the list shows the first tip comes up; how often it looks again while a dialog is open; the beat after the landing. */
+const START_MS = 1200;
+const RETRY_MS = 700;
+const AFTER_LANDING_MS = 400;
 /** Keys that scroll the page, held while the tour is up (a Space on one of its buttons still presses it). */
 const SCROLL_KEYS = new Set([" ", "PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown"]);
 
@@ -33,15 +42,21 @@ function shown(el: Element | null): el is HTMLElement {
   return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
 }
 
-export function FirstVisitTour({ ready }: { ready: boolean }) {
+/**
+ * `ready`: the list is showing. `skip`: a line was asked for on this visit (`/results?line=`, or the palette before the
+ * tour came up) — the pilot came for that line, so the tour waits for a visit of their own.
+ */
+export function FirstVisitTour({ ready, skip = false }: { ready: boolean; skip?: boolean }) {
   const [step, setStep] = useState<number | null>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   // The tip's own height, once drawn (a guess before): where it goes depends on it fitting.
   const [cardHeight, setCardHeight] = useState(180);
+  // Where the page was when the tour came up, to go back to after it.
+  const scrollBefore = useRef(0);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || skip) return;
     let done = true;
     try {
       done = window.localStorage.getItem(DONE_KEY) === "done";
@@ -49,9 +64,26 @@ export function FirstVisitTour({ ready }: { ready: boolean }) {
       // No storage, no way to remember it was seen: better no tour than one on every visit.
     }
     if (done) return;
-    const id = window.setTimeout(() => setStep(0), 1200);
-    return () => window.clearTimeout(id);
-  }, [ready]);
+    let id = 0;
+    const later = (ms: number) => {
+      window.clearTimeout(id);
+      id = window.setTimeout(tryStart, ms);
+    };
+    function tryStart() {
+      // The landing says when it's down (LANDING_DONE_EVENT, below); a dialog the pilot opened is waited out.
+      if (landingUnderway()) return;
+      if (overlayOpen()) return later(RETRY_MS);
+      scrollBefore.current = window.scrollY;
+      setStep(0);
+    }
+    const afterLanding = () => later(AFTER_LANDING_MS);
+    window.addEventListener(LANDING_DONE_EVENT, afterLanding);
+    later(START_MS);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener(LANDING_DONE_EVENT, afterLanding);
+    };
+  }, [ready, skip]);
 
   const finish = useCallback(() => {
     try {
@@ -60,6 +92,14 @@ export function FirstVisitTour({ ready }: { ready: boolean }) {
       // Nothing to remember it in.
     }
     setStep(null);
+    // Back where the page was before the tour moved it, with focus on the list's heading: left on the tip's button,
+    // which is gone, focus fell to the page's body and the next Tab started from the top.
+    window.scrollTo({ top: scrollBefore.current, behavior: "instant" });
+    const heading = document.querySelector<HTMLElement>("main h1");
+    if (heading) {
+      if (!heading.hasAttribute("tabindex")) heading.setAttribute("tabindex", "-1");
+      heading.focus({ preventScroll: true });
+    }
   }, []);
 
   // The steps whose part is on screen, from `from` on.
@@ -129,14 +169,13 @@ export function FirstVisitTour({ ready }: { ready: boolean }) {
   const open = step !== null;
   useEffect(() => {
     if (!open) return;
-    const body = document.body;
-    const before = body.style.overflow;
-    body.style.overflow = "hidden";
+    // Counted with the dialogs' and the palette's holds (`lockScroll`): the page scrolls again once the last one closes.
+    const unlock = lockScroll();
     const hold = (e: Event) => e.preventDefault();
     window.addEventListener("wheel", hold, { passive: false });
     window.addEventListener("touchmove", hold, { passive: false });
     return () => {
-      body.style.overflow = before;
+      unlock();
       window.removeEventListener("wheel", hold);
       window.removeEventListener("touchmove", hold);
     };

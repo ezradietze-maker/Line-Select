@@ -59,6 +59,22 @@ export function stripLayout(listWidth: number, columns: number): StripLayout {
   return { mode: "scroll", stacked, font: 9, daysPx: columns * SCROLL_COL };
 }
 
+/** How wide the list prints: an A4 or Letter sheet's width inside its 12mm margins (globals.css `@page`), a little to spare. */
+export const PRINT_LIST_PX = 680;
+
+/**
+ * The strips as printed, whatever the screen: the numbers above the days, and every day across the sheet. Laid out at
+ * the screen's width they were cut off at the sheet's edge, a laptop's at about the 16th, and a phone's days don't
+ * scroll on paper.
+ */
+export function printStripLayout(columns: number): StripLayout {
+  const daysPx = PRINT_LIST_PX - 2 - 2 * PAD_X;
+  const col = daysPx / Math.max(columns, 1);
+  // Narrower than a laptop ever lays them out, with five weeks of a pack across: a size smaller, so a day's four
+  // letters don't run into the next day's.
+  return { mode: "fit", stacked: true, font: col >= 23 ? 9 : col >= MIN_FIT_COL ? 8 : 7, daysPx };
+}
+
 const TOKEN_TONE: Record<PackToken["kind"], string> = {
   flight: "text-leg",
   deadhead: "text-deadhead",
@@ -166,7 +182,8 @@ function DateRows({ columns, layout }: { columns: PackColumn[]; layout: StripLay
 
 /** The shared date header over a list of strips laid out to fit — kept in view while the list scrolls, unless `sticky` is off. */
 export function BidPackHeader({ columns, layout, label = "Line · score", sticky = true }: { columns: PackColumn[]; layout: StripLayout; label?: string; sticky?: boolean }) {
-  if (layout.mode !== "fit") return null;
+  // Stacked (printed), each strip has its own dates over its days.
+  if (layout.mode !== "fit" || layout.stacked) return null;
   return (
     <div className={`${sticky ? "sticky top-0 z-20" : ""} -mx-px rounded-t-lg border border-hairline bg-canvas/95 backdrop-blur print:static`} style={{ paddingLeft: PAD_X + GRIP_W, paddingRight: PAD_X }}>
       <div className="grid" style={{ gridTemplateColumns: `${LEFT_W}px minmax(0, 1fr) ${CHEVRON_W}px` }}>
@@ -444,11 +461,12 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
   const chevron = <ChevronDownIcon className={`h-4 w-4 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />;
 
   if (layout.stacked || layout.mode === "scroll") {
-    // The days scroll sideways under (a phone) or beside (a narrow laptop) the numbers, each strip with its own dates.
+    // The days scroll sideways under (a phone) or beside (a narrow laptop) the numbers, each strip with its own dates;
+    // printed, they're under the numbers and fit the sheet.
     const scroller = (
       // Focusable, so a keyboard can scroll it too (arrow keys once it has focus).
       <div role="region" aria-label={`Line ${line.lineNumber}, day by day`} tabIndex={0} className="min-w-0 overflow-x-auto overscroll-x-contain focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={onToggle}>
-        <div style={{ width: columns.length * SCROLL_COL }}>
+        <div style={{ width: layout.mode === "fit" ? undefined : columns.length * SCROLL_COL }}>
           <DateRows columns={columns} layout={layout} />
           {drawn}
         </div>

@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { checkSession, logout as logoutAccount } from "@/lib/auth";
 import { accountBidPack } from "@/lib/account-bid-pack";
 import { clearServerBidPack, saveServerBidPack } from "@/lib/bidpack-server";
-import { clearBidPack, clearGuestUpload, guestUploadedPackId, loadBidPack, markGuestUpload, saveBidPack } from "@/lib/bidpack-storage";
+import { clearBidPack, clearGuestUpload, dropPendingBidPackWrites, guestUploadedPackId, loadBidPack, markGuestUpload, saveBidPack } from "@/lib/bidpack-storage";
 import { withGuestRecords } from "@/lib/profile-merge";
 import { generateFakeOffer, isSamplePack } from "@/lib/fake-trade-offers";
 import { clearTradeHolding, fetchWaitingSuggestions } from "@/lib/trades/holding-client";
@@ -18,7 +18,7 @@ import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/post
 import { clearPendingProfile, loadPendingProfile, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
-import { askToKeepStorage, clearProfile, clearProfileForUser, dropGuestRecords, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
+import { askToKeepStorage, clearProfile, clearProfileForUser, dropGuestRecords, dropPendingProfileWrites, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import { loadSeenOfferIds, newArrivals, saveSeenOfferIds, type ToastBaseline } from "@/lib/trade-seen-storage";
 import type { BidPack } from "@/types/bidpack";
@@ -32,6 +32,7 @@ import { clearServerDraft } from "@/lib/interview-draft-sync";
 import { adoptGuestDrafts } from "@/lib/interview-draft";
 import { landingAfterSignIn, landingPathFor } from "@/lib/landing-path";
 import { LOCAL_SAVE_FAILED_EVENT } from "@/lib/local-save-failed";
+import { announceStartOver, caughtUpWithStartOver, onStartOverElsewhere } from "@/lib/start-over-signal";
 
 /**
  * Whether this device was signed in when the app last checked — not a credential (the session cookie is), just a
@@ -175,7 +176,8 @@ interface AppStateValue extends DataState {
   /** Asks the server again who's signed in, for an account whose address may have just been confirmed elsewhere. */
   refreshUser: () => Promise<"confirmed" | "waiting" | "signed-out" | "unknown">;
   handleContinueAsGuest: () => void;
-  handleLogout: () => Promise<void>;
+  /** Signs out; `to`, where to go then (the sign-in form, to use another account) — otherwise wherever a guest belongs. */
+  handleLogout: (opts?: { to?: string }) => Promise<void>;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -479,6 +481,28 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, [state.ready, userId]);
+
+  useEffect(() => {
+    // Started over in another tab: what this one holds was deleted there, and left on screen, its next star, tier move
+    // or tick put it all back, the profile on the account too. It goes here as well, along with any save still on its
+    // way, and the tab shows what a fresh load would: no pack, no profile. Nothing kept is touched — loaded again from
+    // the account straight away, the pack could come back before the other tab's delete reached it, and a tab woken
+    // later could remove a new pack uploaded there since.
+    if (!state.ready) return;
+    return onStartOverElsewhere(userId, () => {
+      dropPendingBidPackWrites(userId);
+      dropPendingProfileWrites(userId);
+      caughtUpWithStartOver();
+      setInterviewKey((k) => k + 1);
+      setProfileSync("ok");
+      setListSaveFailed(false);
+      setState((s) =>
+        (s.user?.id ?? null) !== userId
+          ? s
+          : { ...s, profile: null, bidPack: null, parseResult: null, pendingProfile: null, seniority: null, freshBidPack: false, bidPackSaveFailed: false, profileSaveFailed: false }
+      );
+    });
+  }, [state.ready, userId]);
   useEffect(() => {
     if (profileSync !== "failed" || !userId) return;
     const retry = async () => {
@@ -698,6 +722,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // All of it, for every pack, as the dialog says — not only the pack and profile: tiers and starred lines kept by
     // the pack's id came back with the same month's pack uploaded again. The sign-in stays.
     forgetPilotWork(user?.id ?? null);
+    // Any other tab open on it drops it too, rather than put it back with its next star or tick (`onStartOverElsewhere`).
+    announceStartOver(user?.id ?? null);
+    // The calendar link showed the line the deleted ranking put first: it's turned off (and the device forgets what it
+    // last sent it, with the rest, in `forgetPilotWork`). Fetched when needed, not shipped on every screen.
+    if (user) void import("@/lib/calendar-feed-client").then(({ turnOffFeed }) => turnOffFeed()).catch(() => {});
     if (user) void clearServerBidPack();
     if (user && bidPack) void clearTradeHolding(bidPack.id);
     if (user && bidPack) void clearServerDraft(bidPack.id);
@@ -843,7 +872,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     router.push(landingPathFor(guestBidPack, guestProfile));
   }
 
-  async function handleLogout() {
+  async function handleLogout(opts?: { to?: string }) {
     // Offline, the session cookie outlives a sign-out that only happened on screen: the next person to open the app
     // here would be let back into this account. Stay signed in and say so.
     if (!(await logoutAccount())) {
@@ -854,11 +883,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // while an edit is still waiting to reach their account: then this device holds the only copy. The mark is read
     // too, not just this visit's state, so an edit left from an earlier visit is kept as well.
     if (user && profileSync !== "failed" && !hasUnsyncedProfile(user.id)) forgetPilotOnDevice(user.id);
-    await showSignedOut();
+    // Passed as a click handler, it's handed the click: only a path asked for by name is gone to.
+    await showSignedOut(typeof opts?.to === "string" ? opts.to : undefined);
   }
 
-  /** The guest view, once the server no longer holds a session for this device. */
-  async function showSignedOut() {
+  /** The guest view, once the server no longer holds a session for this device; at `to`, or wherever a guest belongs. */
+  async function showSignedOut(to?: string) {
     setProfileSync("ok");
     writeSignedInHint(null);
     // The account's copy isn't what a guest's next save starts from, and the guest pack shown now (kept from before the
@@ -880,7 +910,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       bidPackSaveFailed: false,
       profileSaveFailed: false,
     });
-    router.push(landingPathFor(guestBidPack, guestProfile));
+    router.push(to ?? landingPathFor(guestBidPack, guestProfile));
   }
   useEffect(() => {
     showSignedOutRef.current = () => void showSignedOut();
