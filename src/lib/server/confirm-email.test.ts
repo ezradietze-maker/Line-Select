@@ -5,6 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * "Send it again". The database, the store and email are in memory here: never Postgres, Redis or Resend.
  */
 
+// Several tests here loop 100+ real sign-ups, each a full scrypt password hash, to prove the hourly allowances hold.
+// On a busy CI runner that can run past the default 5s, and a timed-out test's still-pending async writes then land
+// in the next test's freshly-reset store and throw its counts off. A generous timeout keeps these deterministic
+// (same reason the lockout test was given 30s in commit 14141f8).
+vi.setConfig({ testTimeout: 30_000 });
+
 const kv = vi.hoisted(() => new Map<string, unknown>());
 vi.mock("@/lib/server/kv", () => ({
   getJson: vi.fn(async (k: string) => kv.get(k) ?? null),
