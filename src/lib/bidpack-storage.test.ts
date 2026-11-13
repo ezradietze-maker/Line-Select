@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { bidPackSavedAt, clearBidPack, compactBidPack, expandBidPack, loadBidPack, restoreBidPack, saveBidPack } from "@/lib/bidpack-storage";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
+import { anchorTripToItsDate } from "@/lib/trip-anchor";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /** About what a browser allows a site, in characters. */
@@ -23,14 +24,15 @@ function memoryStorage(limit = Infinity) {
 
 const stored = () => (window as unknown as { localStorage: ReturnType<typeof memoryStorage> }).localStorage.map;
 
-/** A pack where the same trip appears in many lines at different start days, as in a real one. */
+/** A pack where the same trip appears in many lines at different start days, each anchored to its own date, as in a real one. */
 function busyPack(): BidPack {
   const trip = SAMPLE_BID_PACK.lines.flatMap((l) => l.trips).find((t) => t.schedule.length > 0)!;
+  const on = (day: number) => anchorTripToItsDate(SAMPLE_BID_PACK, { ...trip, startDayIndex: day });
   const lines = Array.from({ length: 30 }, (_, i) => ({
     ...SAMPLE_BID_PACK.lines[0],
     id: `line-${i}`,
     lineNumber: String(1000 + i),
-    trips: [{ ...trip, startDayIndex: i % 20 }, { ...trip, startDayIndex: (i % 20) + 5 }],
+    trips: [on(i % 20), on((i % 20) + 5)],
   }));
   return { ...SAMPLE_BID_PACK, lines };
 }
