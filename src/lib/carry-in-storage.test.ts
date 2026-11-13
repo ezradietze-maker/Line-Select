@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { carryInFromLogbook } from "@/lib/carry-in-storage";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { NO_ELECTIONS } from "@/lib/phase-in";
+import { carryInFromLogbook, carryInToSend, loadCarryIn, saveCarryIn } from "@/lib/carry-in-storage";
 import type { LoggedMonth } from "@/types/logbook";
 
 const logged = (month: string, report: string, release: string): LoggedMonth => ({
@@ -26,5 +27,25 @@ describe("carryInFromLogbook", () => {
   it("is empty without a logbook or the pack's dates", () => {
     expect(carryInFromLogbook(undefined, pack)).toEqual([]);
     expect(carryInFromLogbook([logged("NOV26", "2026-11-28T14:00:00Z", "2026-12-01T02:00:00Z")], { month: "DEC26", bidPeriodStart: null })).toEqual([]);
+  });
+});
+
+describe("saying nothing carries in", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const trip = { kind: "trip" as const, id: "c", label: "Trip 213", report: "2026-11-28T14:00:00Z", release: "2026-12-01T02:00:00Z", international: false };
+
+  it("is sent as none, while an empty list nobody filled in isn't sent at all", () => {
+    expect(carryInToSend({ items: [], none: true })).toEqual([]);
+    expect(carryInToSend({ items: [] })).toBeUndefined();
+    expect(carryInToSend({ items: [trip], none: true })).toEqual([trip]);
+  });
+
+  it("is kept on this device though there's nothing in the list", () => {
+    const kept = new Map<string, string>();
+    vi.stubGlobal("window", { localStorage: { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) } });
+    saveCarryIn("u1", "p", { items: [], elections: NO_ELECTIONS, none: true });
+    expect(loadCarryIn("u1", "p").none).toBe(true);
+    saveCarryIn("u1", "p", { items: [], elections: NO_ELECTIONS });
+    expect(loadCarryIn("u1", "p").none).toBeUndefined();
   });
 });

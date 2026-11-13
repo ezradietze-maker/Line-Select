@@ -285,13 +285,13 @@ function workOutPair(candidate: Busy, o: Busy, pack: BidPack, { illegal, check, 
           const show = DateTime.fromMillis(lastDuty.start, { zone });
           const limit = twoTripDutyLimitHours(show.hour * 60 + show.minute);
           const hours = (firstDuty.end - lastDuty.start) / HOUR;
-          // A day room lifts blended limits, and we can't see one (CBA 2026 12.C.4.d.iv), so a long gap is a question.
-          if (hours > limit && (transit === null || transit < 4 * HOUR)) {
+          // Over 12.C.4.e's limit, a day room doesn't help: it puts the normal limits in place of the blended ones (CBA 2026
+          // 12.C.4.d.iv), and this limit is already the normal one. Read as lifting it, 17.9 hours as one duty was a "check".
+          if (hours > limit) {
             illegal.push(`As one duty with ${o.label} it's ${hours.toFixed(1)} hours; the most is ${limit} (CBA 2026 12.C.4.e).`);
             return;
           }
-          if (hours > limit) check.push(`As one duty with ${o.label} it's ${hours.toFixed(1)} hours; check for a day room (CBA 2026 12.C.4.d.iv).`);
-          else check.push(`It hub turns with ${o.label} as one duty, ${hours.toFixed(1)} hours (CBA 2026 12.C.4.e).`);
+          check.push(`It hub turns with ${o.label} as one duty, ${hours.toFixed(1)} hours (CBA 2026 12.C.4.e).`);
         }
       } else if ((first.lastDutyBlockHours ?? 0) > 8 && gap < 17 * HOUR) {
         // CBA 2026 12.C.6.b.

@@ -60,6 +60,7 @@ import { clearStoryDraft, loadStoryDraft, saveStoryDraft } from "@/lib/interview
 import { openingSteps, popMove, stateForEntry, stepDepth, stepEntryOf, stepFromSearch, stepsBetween, urlForStep, type OpeningStep } from "@/lib/interview-opening";
 import { clearServerDraft, fetchServerDraft, saveServerDraft } from "@/lib/interview-draft-sync";
 import { prepareMetrics } from "@/lib/metrics/compute";
+import { peekServerProfile } from "@/lib/preference-profile-client";
 import { loadProfile } from "@/lib/storage";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, TripChoice } from "@/types/pilot-model";
@@ -173,6 +174,8 @@ const draftKey = (userId: string | null, packId: string) => `line-select:brain-i
 /** When this pack's interview was last finished on this device: a tab still open on it stops saving its draft then. */
 const finishedKey = (userId: string | null, packId: string) => `line-select:brain-interview-done:${userId ?? "guest"}:${packId}`;
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/** How often, at most, a signed-in pilot's saves look at the account for a finish on another device. */
+const ACCOUNT_CHECK_EVERY_MS = 15_000;
 
 /** A draft worth offering: the right shape, and under a day old. */
 function usableDraft(d: DraftState | null): DraftState | null {
@@ -297,16 +300,33 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
    */
   const [finishedElsewhere, setFinishedElsewhere] = useState(false);
   const finishedElsewhereRef = useRef(false);
-  /** When this pack's interview was last finished, as this device knows: its own mark, or the profile's. */
+  /** When a profile says this pack's interview was finished; 0 for a quick start, another pack's, or none. */
+  const finishOf = (p: PreferenceProfile | null | undefined) => (p?.brainInterview && p.source !== "quick" && isPackId(p.brainInterview.packId, bidPack) ? Date.parse(p.completedAt) || 0 : 0);
+  /**
+   * The last finish on the account, as the server has it (`checkAccountFinish`): another device's finish, which this
+   * device's storage never hears of. Counted against this tab only once the look at it as the tab opened is back.
+   */
+  const accountFinish = useRef(0);
+  const accountBaseline = useRef(false);
+  const accountCheck = useRef<{ at: number; promise: Promise<void> } | null>(null);
+  /** Looks at the account's profile — at most every `ACCOUNT_CHECK_EVERY_MS` unless `fresh`. */
+  function checkAccountFinish(fresh = false): Promise<void> {
+    if (!userId) return Promise.resolve();
+    const now = Date.now();
+    if (!fresh && accountCheck.current && now - accountCheck.current.at < ACCOUNT_CHECK_EVERY_MS) return accountCheck.current.promise;
+    const promise = peekServerProfile().then((p) => {
+      accountFinish.current = Math.max(accountFinish.current, finishOf(p));
+    });
+    accountCheck.current = { at: now, promise };
+    return promise;
+  }
+  /** When this pack's interview was last finished, as this device knows: its own mark, the profile's, or the account's. */
   function lastFinish(): number {
     let at = 0;
     try {
       at = Number(window.localStorage.getItem(finishedKey(userId, bidPack.id)) ?? 0) || 0;
     } catch {}
-    // The profile too: an interview of this pack's, finished on another device and brought here by the account.
-    const saved = loadProfile(userId);
-    if (saved?.brainInterview && saved.source !== "quick" && isPackId(saved.brainInterview.packId, bidPack)) at = Math.max(at, Date.parse(saved.completedAt) || 0);
-    return at;
+    return Math.max(at, finishOf(loadProfile(userId)), accountBaseline.current ? accountFinish.current : 0);
   }
   /**
    * A finish after this tab opened. Both marks: after the time it opened (a profile the account brings in later is
@@ -325,6 +345,25 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setFinishedElsewhere(true);
     return true;
   }
+  /**
+   * After a look at the account: finished on another device since this tab opened, then this tab stops, and the draft
+   * it saved on this device a moment ago goes — reloading here offered the finished interview again.
+   */
+  async function stopIfFinishedOnAccount(fresh = false): Promise<boolean> {
+    if (!userId) return stopIfFinishedElsewhere();
+    await checkAccountFinish(fresh);
+    if (!stopIfFinishedElsewhere()) return false;
+    try {
+      const stored = loadDraftState(userId, bidPack.id);
+      if (stored && stored.savedAt === ownSavedAt.current) window.localStorage.removeItem(draftKey(userId, bidPack.id));
+    } catch {}
+    return true;
+  }
+  /** When this tab last saved its draft on this device. */
+  const ownSavedAt = useRef(0);
+  /** For the saves, which run in effects and only act on what the account says once it's back. */
+  const accountStopRef = useRef(stopIfFinishedOnAccount);
+  accountStopRef.current = stopIfFinishedOnAccount;
   const stopRef = useRef(stopIfFinishedElsewhere);
   stopRef.current = stopIfFinishedElsewhere;
   useEffect(() => {
@@ -419,7 +458,15 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const packBrief = () => (briefRef.current ??= buildPackBrief(bidPack, pm));
 
   // The interview only renders once the bid pack has loaded from this device, so local storage is always there to read.
-  const [resume, setResume] = useState<DraftState | null>(() => (typeof window === "undefined" ? null : loadDraftState(userId, bidPack.id)));
+  // One saved before the last finish is of an interview already finished (in another tab, or on another device): dropped,
+  // not offered.
+  const [resume, setResume] = useState<DraftState | null>(() => {
+    if (typeof window === "undefined") return null;
+    const local = loadDraftState(userId, bidPack.id);
+    return local && local.savedAt > lastFinish() ? local : null;
+  });
+  /** A signed-in pilot's saved progress is offered once the account has said when the interview was last finished. */
+  const [accountChecked, setAccountChecked] = useState(!userId);
   // A signed-in pilot's draft also lives on their account: begun on another device, or kept after this browser cleared
   // its storage. The newer of the two is the one offered.
   const olderPackId = bidPack.id === packIdFor(bidPack) ? legacyPackIdFor(bidPack) : null;
@@ -434,17 +481,41 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (!userId) return;
     let live = true;
     // Saved from another device before ids named the aircraft: under the pack's older id.
-    void fetchServerDraft<DraftState>(bidPack.id)
-      .then((d) => d ?? (olderPackId ? fetchServerDraft<DraftState>(olderPackId) : null))
-      .then((d) => {
-        const server = usableDraft(d);
-        // Resumed or started fresh before it came back: that choice stands — not overwritten by the account's copy.
-        // A partway interview on the account outranks this device's opening steps, however recent: it's further along.
-        if (live && server && !draftChosen.current) setResume((local) => (local && local.phase !== "opening" && local.savedAt >= server.savedAt ? local : server));
+    const drafts = fetchServerDraft<DraftState>(bidPack.id).then((d) => d ?? (olderPackId ? fetchServerDraft<DraftState>(olderPackId) : null));
+    // When the account last had this interview finished, as this tab opens: finished on another device, which this
+    // device's storage never hears of.
+    const finished = checkAccountFinish(true).then(() => {
+      finishSeen.current = Math.max(finishSeen.current, accountFinish.current);
+      accountBaseline.current = true;
+    });
+    void Promise.all([drafts, finished]).then(([d]) => {
+      if (!live) return;
+      setAccountChecked(true);
+      const finish = lastFinish();
+      // Drafts saved before that finish are of the interview already finished: gone, here and on the account.
+      const stored = loadDraftState(userId, bidPack.id);
+      if (stored && stored.savedAt <= finish) {
+        try {
+          window.localStorage.removeItem(draftKey(userId, bidPack.id));
+        } catch {}
+      }
+      const found = usableDraft(d);
+      const server = found && found.savedAt > finish ? found : null;
+      if (found && !server) clearServerDrafts();
+      // Resumed or started fresh before it came back: that choice stands — not overwritten by the account's copy.
+      if (draftChosen.current) return;
+      // A partway interview on the account outranks this device's opening steps, however recent: it's further along.
+      setResume((prev) => {
+        const local = prev && prev.savedAt > finish ? prev : null;
+        if (!server) return local;
+        return local && local.phase !== "opening" && local.savedAt >= server.savedAt ? local : server;
       });
+    });
     return () => {
       live = false;
     };
+    // Once per pilot and pack: the functions it calls read only refs, storage and these.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, bidPack.id, olderPackId]);
 
   const pilotContext = () =>
@@ -853,6 +924,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setFinishFrom(from);
     setPhase("building");
     setError(null);
+    // Not paid for when another device has finished it.
+    if (await stopIfFinishedOnAccount(true)) return;
     try {
       if (buildRef.current) await buildRef.current.promise;
       const built = await requestModelBuild({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, prior: modelRef.current });
@@ -872,9 +945,28 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     }
   }
 
-  function confirmReview(verdicts: Record<string, PriorityVerdict | undefined>) {
+  /** A look at the account before confirming is under way: the tap is taken once. */
+  const confirmLook = useRef(false);
+  /** Finished on another device meanwhile: its priorities stay, not replaced by this tab's. */
+  async function confirmReview(verdicts: Record<string, PriorityVerdict | undefined>) {
+    if (confirmLook.current || confirmedRef.current) return;
+    confirmLook.current = true;
+    setConfirming(true);
+    const elsewhere = await stopIfFinishedOnAccount(true);
+    confirmLook.current = false;
+    if (elsewhere) {
+      setConfirming(false);
+      return;
+    }
+    confirmReviewNow(verdicts);
+  }
+
+  function confirmReviewNow(verdicts: Record<string, PriorityVerdict | undefined>) {
     // Once only: a second tap before the rankings open would save the profile again and post a second outcome.
-    if (!reviewModel || !ratedModel || confirmedRef.current || stopIfFinishedElsewhere()) return;
+    if (!reviewModel || !ratedModel || confirmedRef.current || stopIfFinishedElsewhere()) {
+      setConfirming(false);
+      return;
+    }
     confirmedRef.current = true;
     setConfirming(true);
     // The pilot's verdicts land on the model before fitting, so later choices and edits refit from what they confirmed.
@@ -956,9 +1048,15 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const d: DraftState = { version: 1, savedAt: Date.now(), phase: atReview ? "review" : phase === "sweep" ? "sweep" : "question", exchanges, threads, choices, tripChoices, pastTrades, model, question: phase === "question" ? question : null, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, touchedCities: [...touchedCities.current], homeCity, sweepDone, turnLimit, checkIn, ...(atReview ? { reviewModel: reviewModel!, ratedModel: ratedModel! } : {}) };
     try {
       window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify({ ...d, ...saveBack(history) }));
+      ownSavedAt.current = d.savedAt;
     } catch {}
-    // Back's steps stay on this device: they'd take the account's copy past what a page closing can still send.
-    if (userId) saveServerDraft(bidPack.id, d);
+    // Back's steps stay on this device: they'd take the account's copy past what a page closing can still send. The
+    // account's copy only once the account says the interview wasn't finished on another device meanwhile: saved
+    // anyway, it came back there as "Pick up where you left off?" for the interview just finished.
+    if (userId)
+      void accountStopRef.current().then((elsewhere) => {
+        if (!elsewhere) saveServerDraft(bidPack.id, d);
+      });
     // `stopIfFinishedElsewhere` reads only refs and storage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, history, reviewModel, ratedModel, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, homeCity, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
@@ -973,6 +1071,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     const d: DraftState = { version: 1, savedAt: Date.now(), phase: "opening", step: phase as OpeningStep, exchanges, threads, choices: [], model, question: null, turn: 0, isCommuter, commuteDeclined, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, touchedCities: [...touchedCities.current], homeCity, sweepDone: false, checkIn };
     try {
       window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify(d));
+      ownSavedAt.current = d.savedAt;
     } catch {}
     // `steps` follows `checkIn`, which is in the list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1109,7 +1208,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (finishedElsewhere) {
       return (
         <div className="py-2">
-          <QuestionPrompt eyebrow="Finished in another tab" title="You finished this interview in another tab." help="Your priorities from it are saved, and your lines are ranked by them. This tab stopped saving, so nothing here replaces them." />
+          <QuestionPrompt eyebrow="Finished elsewhere" title="You finished this interview in another tab or on another device." help="Your priorities from it are saved, and your lines are ranked by them. This tab stopped saving, so nothing here replaces them." />
           <div className="mt-6 flex flex-col gap-2 sm:flex-row">
             <Button onClick={() => router.push("/results")}>See my lines</Button>
             {/* A fresh start here: the page opened again reads the finished interview, as a retake does. */}
@@ -1424,7 +1523,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     <div className={`mx-auto w-full ${phase === "question" && (question?.kind === "line-pair" || question?.kind === "trip-pair" || question?.examples?.some((e) => e.kind === "line")) ? "max-w-6xl" : "max-w-2xl"}`}>
       <InterviewProgress base={bidPack.base} fraction={progress} left={inOpening ? "Getting started" : phase === "review" ? "Your priorities" : `${turn} answered`} right={inOpening ? (checkIn ? "About 3–5 min" : "About 20–30 min") : phase === "review" ? "Last step" : checkIn ? "Monthly check-in" : "Story-driven"} />
 
-      {resume && inOpening && !finishedElsewhere && (
+      {resume && inOpening && !finishedElsewhere && accountChecked && (
         <div className="panel-glass glow-soft mb-5 p-5">
           <div className="text-2xs text-accent font-medium">Saved progress</div>
           <div className="mt-1.5 font-display text-lg font-semibold text-ink">Pick up where you left off?</div>

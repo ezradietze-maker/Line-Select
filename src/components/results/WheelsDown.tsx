@@ -23,6 +23,28 @@ export function markLanding(): void {
   }
 }
 
+/**
+ * Said on the window when the landing is over (or won't play after all, under reduced motion), for what waits on it:
+ * the first-visit tour, drawn over the landing, lit up the plane.
+ */
+export const LANDING_DONE_EVENT = "line-select:landing-done";
+let playing = false;
+
+/** Whether the landing is playing, or set to play and not started yet. */
+export function landingUnderway(): boolean {
+  if (playing) return true;
+  try {
+    return window.sessionStorage.getItem(KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function landed(): void {
+  playing = false;
+  window.dispatchEvent(new Event(LANDING_DONE_EVENT));
+}
+
 /** Where the main wheels touch, in the picture's own units; the plane is drawn with its main wheels at (0, 0). */
 const TOUCH_X = 250;
 const GROUND_Y = 118;
@@ -71,7 +93,12 @@ export function WheelsDown() {
     } catch {
       pending = false;
     }
-    if (!pending || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!pending) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      landed();
+      return;
+    }
+    playing = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPhase("on");
   }, []);
@@ -79,11 +106,14 @@ export function WheelsDown() {
   const showing = phase !== "off";
   useEffect(() => {
     if (!showing) return;
+    playing = true;
     const fade = window.setTimeout(() => setPhase("leaving"), LANDING_MS + HOLD_MS);
     const done = window.setTimeout(() => setPhase("off"), LANDING_MS + HOLD_MS + FADE_MS);
     return () => {
       window.clearTimeout(fade);
       window.clearTimeout(done);
+      // Gone (played out, or the pilot moved on mid-landing): nothing waits on it any longer.
+      landed();
     };
   }, [showing]);
   if (!showing) return null;

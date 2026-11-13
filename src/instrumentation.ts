@@ -1,5 +1,19 @@
 import type { Instrumentation } from "next";
+import { assertProductionEnv } from "@/lib/server/env-assert";
 import { posthogServer } from "@/lib/server/posthog";
+
+/**
+ * Runs once when a server instance starts, before it takes any request. On a
+ * real production server this fails loudly if the environment that makes spend
+ * caps, rate limits and persistence work is missing (`env-assert.ts`), so a
+ * misconfigured deploy crashes at startup instead of serving a site whose
+ * safeguards silently do nothing. Node runtime only — the Edge runtime fires
+ * `register` too, but the stores this guards (Postgres, Redis) are only used
+ * from Node, and the Edge build wouldn't carry those credentials.
+ */
+export function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") assertProductionEnv();
+}
 
 /**
  * Next.js's server-instrumentation hook (see node_modules/next/dist/docs/

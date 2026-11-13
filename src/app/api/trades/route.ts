@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { proFeatureRefusal } from "@/lib/server/gating";
 import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { packIdFor } from "@/lib/pack-id";
 import { createTradeOffer, getTradeHolding, listTradeOffersForSeat, pilotHasSeatMonth } from "@/lib/server/db";
@@ -44,6 +45,9 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Sign in to post a trade offer." }, { status: 401 });
   }
+  // The trade board is a paid feature; a no-op while FREE_FOR_ALL is on (see lib/server/gating.ts).
+  const gated = proFeatureRefusal(user, "trade-board");
+  if (gated) return gated;
   if (!isVerified(user)) return confirmEmailRefusal("post trade offers");
 
   let body: {

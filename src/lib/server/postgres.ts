@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@/lib/server/schema";
+import { assertLocalRuntimeNotProduction } from "@/lib/server/db-guard";
 
 /**
  * A module-level singleton pool, kept warm across invocations on the same
@@ -63,6 +64,9 @@ function getDb(): DrizzleDb {
         "See HANDOFF.md for how this project's database is provisioned."
     );
   }
+  // A local process (dev server, a script that imports this module) must not
+  // open the app's pool against the live database. No-op on Vercel.
+  assertLocalRuntimeNotProduction(connectionString);
   const pool = createPool(connectionString);
   instance = drizzle(pool, { schema });
   return instance;

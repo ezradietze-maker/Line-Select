@@ -120,6 +120,20 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
         }
       />
 
+      {/* Asked for a city this pack doesn't fly (a logbook chip from an earlier month, an old link): said so, not a
+          page that seems to ignore the tap. */}
+      {selected && !selectedFacts && (
+        <div role="status" className="panel-glass mt-6 flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm text-ink-muted">
+          <span>
+            No line in this pack lays over in <span className="font-mono font-semibold text-ink">{selected.toUpperCase().slice(0, 4)}</span>
+            {cityName(selected.toUpperCase()) !== selected.toUpperCase() && <> ({cityName(selected.toUpperCase())})</>} this month.
+          </span>
+          <button type="button" onClick={() => open(null)} className="text-sm font-medium text-accent underline underline-offset-2 hover:text-ink">
+            Show this month&rsquo;s cities
+          </button>
+        </div>
+      )}
+
       <ul className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {sorted.map((f) => (
           <li key={f.code}>

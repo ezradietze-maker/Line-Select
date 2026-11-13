@@ -39,7 +39,9 @@ Written 2026-09-12 so a fresh Claude Code session (new machine) has full context
 Names only; values live in your password manager and in Vercel, never in this repo.
 `ADMIN_API_KEY`, `AERODATABOX_API_KEY`, `ALERT_EMAIL`, `ANTHROPIC_API_KEY`, `APP_URL`, `ASSEMBLYAI_API_KEY`, `BRAIN_MODEL`, `CRON_SECRET`, `DATABASE_URL`, `DEVICE_COOKIE_SECRET`, `EMAIL_FROM`, `FLEET_NOTES`, `FLIGHT_BOARD_USD`, `GOOGLE_PLACES_API_KEY`, `HOTEL_SITE_DAILY_LOOKUPS`, `INTERVIEWER_MODEL`, `INTERVIEW_MODEL`, `KV_REST_API_TOKEN`, `KV_REST_API_URL`, `NEXT_PUBLIC_POSTHOG_HOST`, `NEXT_PUBLIC_POSTHOG_KEY`, `PILOT_HASH_SECRET`, `POSTGRES_URL`, `RESEND_API_KEY`, `UPSTASH_REDIS_REST_TOKEN`, `UPSTASH_REDIS_REST_URL`
 
-Set `TEST_DATABASE_URL` only to run `src/lib/server/db.test.ts`, against a database that isn't the live one (migrate it first with `DATABASE_URL=<that url> npm run db:migrate`). Without it those tests skip. **Local dev still uses `.env.local`'s `DATABASE_URL`, which is the live Neon database**, so anything done on localhost touches real data.
+Set `TEST_DATABASE_URL` only to run `src/lib/server/db.test.ts`, against a database that isn't the live one (migrate it first with `DATABASE_URL=<that url> npm run db:migrate`). Without it those tests skip.
+
+**Point local dev and scripts at a non-production database.** A guard (`src/lib/server/db-guard.ts`) now refuses to let a local `npm run dev`, `npm run db:migrate`, or the maintenance scripts touch a production-looking database unless you set `ALLOW_PRODUCTION_DB=1` for that one command. Set `PRODUCTION_DB_HOST` in `.env.local` so the guard can recognise the live Neon endpoint, and use a Neon dev branch (or local Postgres) for everyday work — see [docs/safe-database.md](docs/safe-database.md).
 
 ## Current state
 - Deployed and live at **https://line-select.vercel.app**, auto-deploying from `origin/main` on GitHub (`ezradietze-maker/Line-Select`).

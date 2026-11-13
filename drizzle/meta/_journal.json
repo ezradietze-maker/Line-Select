@@ -99,6 +99,13 @@
       "when": 1794442192321,
       "tag": "0013_acoustic_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794607533606,
+      "tag": "0014_nostalgic_shriek",
+      "breakpoints": true
     }
   ]
 }

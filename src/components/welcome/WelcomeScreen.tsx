@@ -168,7 +168,7 @@ function Story() {
  * with real data from a real bid pack. Every honesty note the old landing carried is still here: not affiliated,
  * what happens to the PDF, which numbers are illustrative.
  */
-export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; onTrySample: () => void }) {
+export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStart: () => void; onTrySample: () => void; appHref?: string | null }) {
   // The hero rises in with CSS, not motion: CSS starts on first paint, from
   // the server-rendered HTML, while a motion entrance would hold the
   // headline at opacity 0 until the JavaScript arrived — on a phone, seconds.
@@ -185,8 +185,9 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
           <Link href="/how-it-works" className="rounded-md px-3 py-2 text-ink-muted transition-colors hover:text-ink">
             How it works
           </Link>
-          <Link href="/auth" className="rounded-[4px] border border-border-strong px-3 py-2 font-display font-bold text-ink transition-colors hover:border-ink">
-            Sign in
+          {/* Signed in already (shown this page with "/?welcome"): `appHref` goes back into the app, not to a sign-in form. */}
+          <Link href={appHref ?? "/auth"} className="rounded-[4px] border border-border-strong px-3 py-2 font-display font-bold text-ink transition-colors hover:border-ink">
+            {appHref ? "Open Line Select" : "Sign in"}
           </Link>
         </nav>
       </header>

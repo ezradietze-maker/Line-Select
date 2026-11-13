@@ -11,6 +11,9 @@ vi.mock("@/lib/server/kv", () => ({
 }));
 
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
+// The calendar link a reset revokes: in memory, never Postgres.
+const feeds = vi.hoisted(() => ({ revoked: [] as string[] }));
+vi.mock("@/lib/server/calendar-feeds", () => ({ revokeFeed: vi.fn(async (id: string) => void feeds.revoked.push(id)) }));
 
 const sent = vi.hoisted(() => ({ messages: [] as { to: string; subject: string; text: string }[], configured: true }));
 
@@ -48,6 +51,7 @@ vi.mock("@/lib/server/db", () => ({
   findSession: vi.fn(),
   findUserByEmail: vi.fn(async (email: string) => store.users.find((u) => u.email === email) ?? null),
   findUserById: vi.fn(async (id: string) => store.users.find((u) => u.id === id) ?? null),
+  isUnconfirmedSignUp: vi.fn(async () => false),
   updateCredential: vi.fn(async (userId: string, patch: object) => {
     const i = store.credentials.findIndex((c) => c.userId === userId);
     if (i !== -1) store.credentials[i] = { ...store.credentials[i], ...patch };
@@ -150,14 +154,18 @@ describe("emailed password reset", () => {
     expect(store.credentials[0].recoveryHash).not.toBe(before);
   });
 
-  it("leaves a confirmed account's recovery code as it was", async () => {
+  it("replaces a confirmed account's recovery code too, and signs out every session: someone else may hold the old code", async () => {
     store.users[0].emailVerified = true;
+    store.sessions.push({ token: "someone-elses", userId: store.users[0].id, expiresAt: "" });
     const before = store.credentials[0].recoveryHash;
     await requestPasswordResetEmail(EMAIL);
     const result = await resetPasswordWithEmailToken(tokenFromLastEmail(), "brand-new-pass");
     expect(result.ok).toBe(true);
-    expect(result.recoveryCode).toBeUndefined();
-    expect(store.credentials[0].recoveryHash).toBe(before);
+    expect(result.recoveryCode).toMatch(/^[A-Z0-9]{4}(-[A-Z0-9]{4}){4}$/);
+    expect(store.credentials[0].recoveryHash).not.toBe(before);
+    expect(store.sessions.map((s) => s.token)).toEqual([result.sessionToken]);
+    // A calendar link whoever was in made goes too.
+    expect(feeds.revoked).toContain(store.users[0].id);
   });
 
   it("answers the same for an address with no account, and sends nothing", async () => {

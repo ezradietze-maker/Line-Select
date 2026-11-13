@@ -5,6 +5,7 @@ import { backupsOf, type TravelAnswer } from "@/lib/flights/itineraries";
 import { flightsForTrip, type FlightAnswers } from "@/lib/flights/trip-travel";
 import { escapeIcsText, foldLine, icsUtc } from "@/lib/ics-export";
 import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { hm } from "@/lib/trip-day-stats";
 import type { BidPack, Line, Trip, TripDutyPeriod } from "@/types/bidpack";
 
 /**
@@ -64,7 +65,7 @@ const withPhone = (name: string | null | undefined, phone: string | undefined) =
 function layoverLines(duty: TripDutyPeriod, n: number): string[] {
   const lay = duty.layover;
   if (!lay) return [];
-  const hours = Number.isFinite(lay.hours) ? ` (${lay.hours.toFixed(1)} hours)` : "";
+  const hours = Number.isFinite(lay.hours) ? ` (${hm(lay.hours * 60)} hours)` : "";
   const pickup = clock(lay.pickupTimeLocal);
   return [
     `Layover ${n}: ${lay.city}${hours}`,
@@ -119,7 +120,7 @@ function feedTrip(pack: Pick<BidPack, "month" | "base" | "bidPeriodStart">, line
     source === "awarded" ? `Line ${line.lineNumber}: your award.` : `Line ${line.lineNumber}: your #1 in Line Select right now. Not an award.`,
     `Report: ${local(start)} ${pack.base} time`,
     `Release: ${local(end)} ${pack.base} time`,
-    `${trip.days}-day trip, ${trip.creditHours.toFixed(1)} credit hours`,
+    `${trip.days}-day trip, ${hm(trip.creditHours * 60)} credit hours`,
     ...trip.schedule.flatMap((d) => {
       if (!d.layover) return [];
       layover += 1;

@@ -9,6 +9,7 @@ import { flyPack, zoneOf } from "@/lib/phase-in";
 import { placeInPack } from "@/lib/strategy-engine";
 import { CH_PER_VACATION_DAY, findVacationSlides, type LineSlides, type SlideOption, slideWhere, typedVacation, vacationLabel, vacationsInReach, type VacationSlides } from "@/lib/vacation-slide";
 import { vacationId } from "@/lib/vacation-lines";
+import { VacationCalendar } from "@/components/strategies/VacationCalendar";
 import type { BidPack, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
@@ -75,12 +76,14 @@ function LineRow({ row, value, byModel }: { row: LineSlides; value: number; byMo
   );
 }
 
-function Results({ found, zone }: { found: VacationSlides; zone: string }) {
+function Results({ found, zone, pack }: { found: VacationSlides; zone: string; pack: BidPack }) {
   const [all, setAll] = useState(false);
+  const [lineIdx, setLineIdx] = useState(0);
   const value = found.vacation.days * CH_PER_VACATION_DAY;
   const shown = all ? found.lines : found.lines.slice(0, LINES_SHOWN);
   const reasons = [...new Set(found.illegal.map((c) => c.why!))];
   const best = found.across[0];
+  const onCalendar = found.lines[Math.min(lineIdx, found.lines.length - 1)];
   return (
     <div className="mt-3 space-y-3">
       <p className="text-xs text-ink-muted">
@@ -96,16 +99,38 @@ function Results({ found, zone }: { found: VacationSlides; zone: string }) {
       ) : (
         <p className="text-sm text-ink">Across your top {found.lines.length} lines, no slide beats your vacation as awarded.</p>
       )}
-      <ul className="space-y-3">
-        {shown.map((row) => (
-          <LineRow key={row.line.id} row={row} value={value} byModel={found.byModel} />
-        ))}
-      </ul>
-      {found.lines.length > LINES_SHOWN && (
-        <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => setAll((v) => !v)}>
-          {all ? "Show fewer" : `Show all ${found.lines.length}`}
-        </Button>
+
+      {onCalendar && (
+        <div className="space-y-2">
+          {found.lines.length > 1 && (
+            <label className="flex items-center gap-2 text-xs text-ink-muted">
+              Line to see on the calendar
+              <select className={`${FIELD} py-1`} value={lineIdx} onChange={(e) => setLineIdx(Number(e.target.value))}>
+                {found.lines.map((row, i) => (
+                  <option key={row.line.id} value={i}>
+                    #{row.rank} Line {row.line.lineNumber}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <VacationCalendar key={onCalendar.line.id} row={onCalendar} pack={pack} value={value} byModel={found.byModel} />
+        </div>
       )}
+
+      <details className="text-xs text-ink-muted">
+        <summary className="cursor-pointer text-ink-muted hover:text-ink">Every line, in words</summary>
+        <ul className="mt-2 space-y-3">
+          {shown.map((row) => (
+            <LineRow key={row.line.id} row={row} value={value} byModel={found.byModel} />
+          ))}
+        </ul>
+        {found.lines.length > LINES_SHOWN && (
+          <Button variant="ghost" className="mt-2 px-2 py-1 text-xs" onClick={() => setAll((v) => !v)}>
+            {all ? "Show fewer" : `Show all ${found.lines.length}`}
+          </Button>
+        )}
+      </details>
       {reasons.length > 0 && (
         <details className="text-xs text-ink-muted">
           <summary className="cursor-pointer">Why some slides aren&rsquo;t offered</summary>
@@ -198,7 +223,7 @@ export function VacationSlidePanel({ bidPack, seniority, profile, userId, order 
       {!order.length && <p className="mt-2 text-xs text-ink-muted">Rank your lines first, so we know which ones to look at.</p>}
 
       {found?.map((f) => (
-        <Results key={f.vacation.from} found={f} zone={zone} />
+        <Results key={f.vacation.from} found={f} zone={zone} pack={bidPack} />
       ))}
 
       <div className="mt-4 border-t border-hairline pt-3 text-xs text-ink-muted">

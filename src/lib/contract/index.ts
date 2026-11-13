@@ -47,13 +47,22 @@ export function versionText(node: ContractNode, version: ContractVersion): strin
   return version === "2015" && node.changed ? (node.old ?? "") : node.text;
 }
 
-/** A piece's words with everything under it, each with its marker, as it reads in the contract. */
+/**
+ * A piece's words with everything under it, each with its marker, as it reads in the contract. Kept once built: the
+ * contract never changes while the server runs, and a whole Section rebuilt for every quote cited to it cost seconds.
+ */
+const fullTexts = new Map<string, string>();
 export function fullText(id: string, version: ContractVersion = "2026"): string {
+  const key = `${version}|${id}`;
+  const kept = fullTexts.get(key);
+  if (kept !== undefined) return kept;
   const node = byId.get(id);
   if (!node) return "";
   const own = versionText(node, version);
   const under = childrenOf(id).map((c) => `${c.marker} ${fullText(c.id, version)}`.trim());
-  return [own, ...under].filter(Boolean).join(" ");
+  const text = [own, ...under].filter(Boolean).join(" ");
+  fullTexts.set(key, text);
+  return text;
 }
 
 /** Whether a piece, or anything under it, reads differently from 2015. */

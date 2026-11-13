@@ -170,10 +170,24 @@ export function hasSeenLatest(): boolean {
   }
 }
 
+/** Told on this page when What's New is seen, however it was reached (the footer, the palette): the sidebar's dot goes. */
+const SEEN_EVENT = "line-select:whats-new-seen";
+
 export function markLatestSeen(): void {
   try {
     window.localStorage.setItem(SEEN_KEY, LATEST_WHATS_NEW);
   } catch {
     // Nothing to remember it in — the dot just shows again next visit.
   }
+  window.dispatchEvent(new Event(SEEN_EVENT));
+}
+
+/** Calls `onChange` whenever What's New is seen, on this page or in another tab; returns the unsubscribe. */
+export function subscribeWhatsNewSeen(onChange: () => void): () => void {
+  window.addEventListener(SEEN_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(SEEN_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
 }

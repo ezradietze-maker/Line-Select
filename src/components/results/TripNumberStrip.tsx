@@ -1,6 +1,7 @@
 import { CreditHours } from "@/components/results/TripMarks";
 import type { LineCarryOver } from "@/lib/bid-month";
 import { tripStandbyDays } from "@/lib/standby";
+import { hm } from "@/lib/trip-day-stats";
 import type { Trip } from "@/types/bidpack";
 
 /** In calendar order when the grid gave every trip a real start day; otherwise the order the line lists them. */
@@ -16,7 +17,7 @@ function TripChip({ trip, carryOver }: { trip: Trip; carryOver?: LineCarryOver |
   return (
     <span
       className="inline-flex items-baseline gap-1 rounded-md border border-border bg-canvas px-2 py-0.5 font-mono text-xs text-ink"
-      title={`Trip ${trip.pairingNumber} — ${trip.creditHours.toFixed(2)} credit hours, ${trip.landings} landing${trip.landings === 1 ? "" : "s"}${standby > 0 ? `, ${standby} standby day${standby === 1 ? "" : "s"}` : ""}${carries ? ` in this bid month; it carries ${carries.days} day${carries.days === 1 ? "" : "s"}${carries.creditHours > 0 ? ` and ${carries.creditHours.toFixed(2)} credit hours` : ""} into ${carries.month}` : ""}`}
+      title={`Trip ${trip.pairingNumber} — ${hm(trip.creditHours * 60)} credit hours, ${trip.landings} landing${trip.landings === 1 ? "" : "s"}${standby > 0 ? `, ${standby} standby day${standby === 1 ? "" : "s"}` : ""}${carries ? ` in this bid month; it carries ${carries.days} day${carries.days === 1 ? "" : "s"}${carries.creditHours > 0 ? ` and ${hm(carries.creditHours * 60)} credit hours` : ""} into ${carries.month}` : ""}`}
     >
       <span className="font-semibold">{trip.pairingNumber}</span>
       <span className="text-ink-muted">

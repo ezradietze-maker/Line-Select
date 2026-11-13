@@ -93,6 +93,57 @@ describe("generateStrategies", () => {
     expect(secondary.fit).toBe("now");
   });
 
+  // A pack sized like the MD11 MEM captains' (Oct 2026): 49 regular and 30 secondary lines, 10 reserve; one PAY pilot at
+  // the bottom so places are counted among bidders. Odds are given, as the forecast would: every line likely open near
+  // the top, eight of them in the middle of the regular lines, none at or past the last one.
+  const big = (() => {
+    const reg = 49, sec = 30, res = 10;
+    const line = SAMPLE_BID_PACK.lines[0];
+    const lines = Array.from({ length: reg }, (_, i) => ({ ...line, id: `L${i}`, lineNumber: String(1001 + i), totalCreditHours: 60 + (i % 20) }));
+    const list: SeniorityEntry[] = Array.from({ length: reg + sec + res }, (_, i) => ({ bidNumber: i + 1, seniority: (i + 1) * 10 }));
+    list.push({ bidNumber: list.length + 1, seniority: (list.length + 1) * 10, pay: true });
+    const p = pack({ lines, seniorityList: list, info: { ...pack().info!, rlgHours: 68.5, totalRegularLines: reg, totalSecondaryLines: sec, totalReserveLines: res } });
+    const odds = (bid: number) => Object.fromEntries(lines.map((l, i) => [l.id, bid <= 10 ? 0.9 : bid < reg ? (i > 40 ? 0.6 : 0.1) : 0]));
+    const moves = (bid: number) => generateStrategies(p, { rank: bid, totalPilots: list.length }, null, { pAvailable: odds(bid) });
+    return { reg, sec, moves };
+  })();
+  const card = (moves: ReturnType<typeof big.moves>, id: string) => moves.find((m) => m.id === id)!;
+
+  it("tells a pilot late in the secondary lines how many build theirs first", () => {
+    const last = card(big.moves(big.reg + big.sec), "secondary-play");
+    expect(last.fitReason).not.toMatch(/still (be )?open|still there/);
+    expect(last.fitReason).toContain("last of 30");
+    expect(last.fitReason).toContain("29 pilots build theirs before you");
+    expect(card(big.moves(big.reg + 6), "secondary-play").fitReason).toMatch(/#6 of 30 .*most of the flying is still there/);
+    expect(card(big.moves(big.reg + 15), "secondary-play").fitReason).toMatch(/#15 of 30 .*much of the flying is taken/);
+  });
+
+  it("doesn't say lines likely left pay under reserve when no line is likely left", () => {
+    for (const bid of [big.reg + 3, big.reg + 15, big.reg + big.sec]) {
+      const moves = big.moves(bid);
+      const reserve = card(moves, "reserve-pays-more");
+      const leftovers = card(moves, "leftovers");
+      expect(leftovers.facts.find((f) => f.label.startsWith("Regular lines likely open"))!.value).toBe("0 of 49");
+      expect(reserve.fit).not.toBe("now");
+      expect(reserve.fitReason).not.toContain("likely left");
+      expect(reserve.fitReason).toContain("secondary line or reserve");
+      expect(leftovers.tagline).not.toMatch(/About 0|best of them/);
+      expect(leftovers.steps.some((s) => s.includes("the lines below"))).toBe(false);
+    }
+    // Inside the regular lines, the reason counts the same lines the leftovers move does.
+    const mid = big.moves(30);
+    expect(card(mid, "leftovers").facts.find((f) => f.label.startsWith("Regular lines likely open"))!.value).toBe("8 of 49");
+    expect(card(mid, "reserve-pays-more").fitReason).toMatch(/^(All|\d+ of the) 8 regular lines likely left at your number pay/);
+  });
+
+  it("tells the last regular holder they hold the last line, not that they're 0 places inside", () => {
+    const moves = big.moves(big.reg);
+    expect(card(moves, "true-number").fitReason).toBe("On the numbers, you hold the last regular line.");
+    expect(card(moves, "secondary-play").fitReason).toMatch(/^You hold the last regular line/);
+    expect(card(moves, "leftovers").tagline).toMatch(/^No single regular line is likely still open at your number, but one will be left/);
+    for (const m of moves) expect(JSON.stringify(m)).not.toMatch(/\b0 places?\b|About 0\b|\b1 regular line are\b/);
+  });
+
   it("lists the regular lines that pay less than the reserve guarantee", () => {
     const reserve = generateStrategies(pack(), at(12)).find((m) => m.id === "reserve-pays-more")!;
     const rlg = pack().info!.rlgHours!;

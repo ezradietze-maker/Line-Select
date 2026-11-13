@@ -1284,6 +1284,69 @@ html.theme-sweep::view-transition-new(root) {
     --shell-left: 0px !important;
     --shell-bottom: 0px !important;
   }
+  /* Printed in the day theme's colours whatever the screen's: the white sheet under the dark and night themes' text
+     printed it near-white on white, and their panels as dark blocks. The pilot's own calendar colour stays theirs. */
+  :root {
+    color-scheme: light !important;
+    --color-canvas: #eceff3 !important;
+    --color-surface: #f6f7f9 !important;
+    --color-surface-raised: #ffffff !important;
+    --color-border: #d5dbe3 !important;
+    --color-border-strong: #b4bdca !important;
+    --color-field-edge: #77818f !important;
+    --color-ink: #0a1120 !important;
+    --color-ink-muted: #434e63 !important;
+    --color-ink-faint: #4b566b !important;
+    --color-brand: #0a1120 !important;
+    --color-brand-strong: #000000 !important;
+    --color-brand-soft: #e1e6ee !important;
+    --color-on-brand: #ffcc00 !important;
+    --color-on-danger: #ffffff !important;
+    --color-accent: #7d6000 !important;
+    --color-accent-soft: #fff4c7 !important;
+    --color-accent-wash: #ffe58a !important;
+    --color-on-wash: #3f3000 !important;
+    --color-trip-wash: color-mix(in srgb, var(--color-calendar-accent) 13%, transparent) !important;
+    --color-trip-wash-strong: color-mix(in srgb, var(--color-calendar-accent) 22%, transparent) !important;
+    --color-trip-band: color-mix(in srgb, var(--color-calendar-accent) 30%, transparent) !important;
+    --color-dispatch: #4b566b !important;
+    --color-dispatch-soft: #e6eaf0 !important;
+    --color-dispatch-wash: #d3dae4 !important;
+    --color-sidebar: #0a1120 !important;
+    --color-sidebar-border: #1b2740 !important;
+    --color-good: #0b6e44 !important;
+    --color-standby: #6a4fae !important;
+    --color-sleep: #2f4596 !important;
+    --color-sleep-soft: #dfe5f7 !important;
+    --color-carry: #1d6672 !important;
+    --color-carry-soft: #d8edf0 !important;
+    --color-good-soft: #dbf1e6 !important;
+    --color-warn: #9c4508 !important;
+    --color-warn-soft: #fbe7d6 !important;
+    --color-danger: #bd2a22 !important;
+    --color-danger-soft: #fbe0dd !important;
+    --color-leg: #1d4ed8 !important;
+    --color-deadhead: #ae1d6d !important;
+    --color-layover: #02704b !important;
+    --color-report: #ad380a !important;
+    --color-gt: #0e7490 !important;
+    --color-rest: #8f5400 !important;
+    --color-chain: #4338ca !important;
+    --color-focus-ring: #1f5fe0 !important;
+    --color-sign: #ffcc00 !important;
+    --color-on-sign: #000000 !important;
+    --color-sign-edge: #0a1120 !important;
+    --shadow-color: 222 40% 10% !important;
+    --color-panel: #ffffff !important;
+    --color-readout: #0a1120 !important;
+    --color-hairline: rgb(10 17 32 / 0.1) !important;
+    --glow-soft: rgb(10 17 32 / 0.08) !important;
+    --glow-strong: rgb(10 17 32 / 0.14) !important;
+    --panel-highlight: rgb(255 255 255 / 0.7) !important;
+    --texture-grid-line: transparent !important;
+    --logo-plate: #000000 !important;
+    --logo-ink: #ffcc00 !important;
+  }
   aside[aria-label="Main"],
   nav[aria-label="Main"],
   header[style*="app-topbar"],

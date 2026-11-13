@@ -35,7 +35,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error ?? "Something went wrong." }, { status: 401 });
   }
 
-  const response = NextResponse.json({ user: result.user });
+  // A recovery code only when this sign-in made the account its first one: shown once, then gone.
+  const response = NextResponse.json({ user: result.user, recoveryCode: result.recoveryCode });
   response.cookies.set(SESSION_COOKIE, result.sessionToken, sessionCookieOptions());
   return response;
 }

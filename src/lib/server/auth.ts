@@ -17,11 +17,15 @@ import {
   saveVerificationToken,
   updateCredential,
   spendVerificationToken,
+  isUnconfirmedSignUp,
+  peekVerificationToken,
+  voidVerificationToken,
 } from "@/lib/server/db";
 import { getEmailConfig, sendEmail, type EmailConfig } from "@/lib/server/email";
 import { getJson, setJson } from "@/lib/server/kv";
+import { revokeFeed } from "@/lib/server/calendar-feeds";
 import { siteMailLeft } from "@/lib/server/mail-allowance";
-import { attemptsUsed, checkRateLimit, clearAttempts, countAttempt, MAX_ATTEMPTS, takeAttempt } from "@/lib/server/rate-limit";
+import { addressGroup, attemptsUsed, checkRateLimit, clearAttempts, countAttempt, MAX_ATTEMPTS, takeAttempt } from "@/lib/server/rate-limit";
 import type { UserAccount } from "@/types/auth";
 
 const scrypt = promisify(scryptCallback);
@@ -156,18 +160,18 @@ async function createAccount(normalized: string, password: string, displayName: 
 const CONFIRM_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 /** How long an account made by signing up has to be confirmed before the daily run removes it (`deleteUnconfirmedSignUps`). */
 export const UNCONFIRMED_SIGN_UP_DAYS = 7;
-/** Emails signing up may send one address in an hour, whoever asks: enough for a pilot who tries twice, not enough to fill an inbox. */
-const SIGN_UP_MAILS_PER_ADDRESS = 3;
 /** "Send it again", per account and per address it's asked from, in an hour. */
 export const RESENDS_PER_ACCOUNT = 3;
 export const RESENDS_PER_ADDRESS = 10;
 
-const deviceHashOf = (device: string | null | undefined) => (device ? createHash("sha256").update(`line-select-device:${device}`).digest("hex") : null);
-
-/** One fresh link, replacing the account's last, that signs in only on the device that asked for it. False when the email didn't go. */
-async function sendConfirmLink(userId: string, email: string, config: EmailConfig, { signUp, device }: { signUp: boolean; device: string | null | undefined }): Promise<boolean> {
+/**
+ * One fresh link, replacing the account's last. False when the email didn't go. It isn't tied to the device that asked
+ * for it: a device id is a long-lived cookie a shared computer hands to everyone who uses it, so opening the link always
+ * takes the account's password too (`confirmEmail`), wherever it's opened and whoever asked for it.
+ */
+async function sendConfirmLink(userId: string, email: string, config: EmailConfig, { signUp }: { signUp: boolean; device?: string | null }): Promise<boolean> {
   const token = randomBytes(32).toString("hex");
-  await saveVerificationToken({ tokenHash: hashResetToken(token), userId, expiresAt: new Date(Date.now() + CONFIRM_LINK_TTL_MS).toISOString(), signUp, deviceHash: deviceHashOf(device) });
+  await saveVerificationToken({ tokenHash: hashResetToken(token), userId, expiresAt: new Date(Date.now() + CONFIRM_LINK_TTL_MS).toISOString(), signUp, deviceHash: null });
   return sendEmail({
     to: email,
     subject: "Confirm your email for Line Select",
@@ -190,22 +194,26 @@ async function sendConfirmLink(userId: string, email: string, config: EmailConfi
  *   password with it confirms the account and replaces its recovery code (`resetPasswordWithEmailToken`), so the
  *   account is theirs and no one else's.
  *
- * Each address gets a few of these an hour at most, and all of them come out of the site's hourly allowance.
+ * Each sender gets a few of these an hour for one address, and an address a few more from everyone together; then
+ * the site's hourly allowance, taken only for an email that's really about to go. When that's used up nothing is made
+ * or sent, and the answer was the same anyway.
  */
-export async function signUpByEmail(email: string, password: string, displayName: string, device?: string | null): Promise<void> {
+export async function signUpByEmail(email: string, password: string, displayName: string, device?: string | null, from = "unknown"): Promise<void> {
   const config = getEmailConfig();
   if (!config || signUpInputError(email, password, displayName)) return;
   const normalized = normalizeEmail(email);
-  if (!(await checkRateLimit("sign-up-mail", normalized, SIGN_UP_MAILS_PER_ADDRESS, 60 * 60)).ok) return;
+  if (!(await mayMailAddress("sign-up-mail", normalized, from))) return;
 
   const existing = await findUserByEmail(normalized);
   if (!existing) {
+    // No email can go, so no account: one nobody could confirm would only sit there.
+    if (!(await siteMailLeft("sign-up", from))) return;
     const user = await createAccount(normalized, password, displayName);
     // Null: another sign-up for this address got there a moment before, and its email covers this one.
-    if (user && (await siteMailLeft("sign-up"))) await sendConfirmLink(user.id, normalized, config, { signUp: true, device });
+    if (user) await sendConfirmLink(user.id, normalized, config, { signUp: true, device });
     return;
   }
-  if (!(await siteMailLeft("sign-up"))) return;
+  if (!(await siteMailLeft("sign-up", from))) return;
   if (existing.emailVerified) {
     await sendEmail({
       to: normalized,
@@ -217,32 +225,74 @@ export async function signUpByEmail(email: string, password: string, displayName
     });
     return;
   }
+  await sendTakeBackLink(existing.id, normalized, config, "Someone tried to make a Line Select account with this address. There's already an account for it that was never confirmed.");
+}
+
+/**
+ * A reset link to an address whose unconfirmed account may be someone else's: setting a password with it confirms the
+ * account, replaces its recovery code and signs everyone else out (`resetPasswordWithEmailToken`), so it's the
+ * address owner's alone. The caller has already taken this email from the site's allowance.
+ */
+async function sendTakeBackLink(userId: string, email: string, config: EmailConfig, why: string): Promise<boolean> {
   const token = randomBytes(32).toString("hex");
-  await saveResetToken({ tokenHash: hashResetToken(token), userId: existing.id, expiresAt: new Date(Date.now() + RESET_LINK_TTL_MS).toISOString() });
-  await sendEmail({
-    to: normalized,
+  await saveResetToken({ tokenHash: hashResetToken(token), userId, expiresAt: new Date(Date.now() + RESET_LINK_TTL_MS).toISOString() });
+  return sendEmail({
+    to: email,
     subject: "Finish signing up for Line Select",
     text:
-      `Someone tried to make a Line Select account with this address. There's already an account for it that was never confirmed.\n\n` +
-      `If it was you, open this link within the hour and choose a password. That confirms the account and makes it yours, and signs out anyone else using it:\n` +
+      `${why}\n\n` +
+      `If it's yours, open this link within the hour and choose a password. That confirms the account and makes it yours, and signs out anyone else using it:\n` +
       `${config.appUrl}/reset-password?token=${token}\n\n` +
-      `If it wasn't you, ignore this email.`,
+      `If you don't want a Line Select account, ignore this email.`,
   });
+}
+
+/**
+ * Emails one sender may cause to one address in an hour (enough for a pilot who retries a few times), and all senders
+ * together: a sender can't use up an address's share for everyone.
+ */
+const MAILS_PER_SENDER_AND_ADDRESS = 5;
+const MAILS_PER_ADDRESS = 10;
+
+/**
+ * Whether another email to this address may go, as asked from `from`: a few an hour for each sender, then a ceiling for
+ * the address from everyone. A sender over their own few is turned away before the address's count is touched, so one
+ * address asking over and over can't keep a pilot from getting their own email.
+ */
+async function mayMailAddress(scope: string, email: string, from: string): Promise<boolean> {
+  if (!(await checkRateLimit(scope, `${email}|${addressGroup(from)}`, MAILS_PER_SENDER_AND_ADDRESS, 60 * 60)).ok) return false;
+  return (await checkRateLimit(`${scope}:address`, email, MAILS_PER_ADDRESS, 60 * 60)).ok;
 }
 
 export type ResendResult = { sent: true } | { sent: false; reason: "confirmed" | "not-set-up" | "limited" | "failed" };
 
-/** "Send it again", for a signed-in pilot whose address isn't confirmed. Limited per account and per address it's asked from, and out of the site's hourly allowance. */
+/** "Send it again", for a signed-in pilot whose address isn't confirmed. Limited per account and per address it's asked from, then out of the site's hourly allowance. */
 export async function resendConfirmEmail(user: UserAccount, from: string, device?: string | null): Promise<ResendResult> {
   if (user.emailVerified) return { sent: false, reason: "confirmed" };
   const config = getEmailConfig();
   if (!config) return { sent: false, reason: "not-set-up" };
   const [mine, address] = await Promise.all([
     checkRateLimit("confirm-resend", user.id, RESENDS_PER_ACCOUNT, 60 * 60),
-    checkRateLimit("confirm-resend-address", from, RESENDS_PER_ADDRESS, 60 * 60),
+    checkRateLimit("confirm-resend-address", addressGroup(from), RESENDS_PER_ADDRESS, 60 * 60),
   ]);
-  if (!mine.ok || !address.ok || !(await siteMailLeft("sign-up"))) return { sent: false, reason: "limited" };
+  if (!mine.ok || !address.ok || !(await siteMailLeft("sign-up", from))) return { sent: false, reason: "limited" };
   return (await sendConfirmLink(user.id, normalizeEmail(user.email), config, { signUp: false, device })) ? { sent: true } : { sent: false, reason: "failed" };
+}
+
+/**
+ * "Send the link again" from the log-in screen, by address: for a pilot who signed up and can't sign in until they
+ * confirm. The caller answers the same whatever happens here, so it says nothing about the address. Only an account
+ * whose address isn't confirmed gets a link; limited per sender and address and per address, then the site's allowance.
+ */
+export async function resendConfirmEmailByAddress(email: string, from: string, device?: string | null): Promise<void> {
+  const config = getEmailConfig();
+  const normalized = normalizeEmail(email);
+  if (!config || !/^\S+@\S+\.\S+$/.test(normalized)) return;
+  if (!(await mayMailAddress("confirm-resend-mail", normalized, from))) return;
+  const user = await findUserByEmail(normalized);
+  if (!user || user.emailVerified) return;
+  if (!(await siteMailLeft("sign-up", from))) return;
+  await sendConfirmLink(user.id, normalized, config, { signUp: false, device });
 }
 
 export type ConfirmResult =
@@ -250,34 +300,83 @@ export type ConfirmResult =
       status: "confirmed";
       user: UserAccount;
       /** How this device stands now: signed in by this link, signed in already, or left as it was (see `confirmEmail`). */
-      signedIn: "now" | "already" | "other-account" | "no";
+      signedIn: "now" | "already" | "other-account";
       sessionToken?: string;
       /** Made now, for an account that had none (every account made by signing up with email): shown once. */
       recoveryCode?: string;
     }
+  /** Opened by anyone but its own signed-in pilot: the account's password, or "This wasn't me", before anything happens. */
+  | { status: "needs-password"; email: string }
+  | { status: "wrong-password" }
+  | { status: "limited" }
+  /** "This wasn't me": the link is spent, nothing is confirmed, and the address has been sent a link that takes the account. */
+  | { status: "not-me" }
   | { status: "used"; yours: boolean }
   | { status: "expired" | "invalid" };
 
+export type ConfirmChoice = { password?: string; notMe?: boolean };
+
 /**
- * Opens a confirm link: the account it was sent for is confirmed. On the device that asked for the link, with nobody
- * signed in, it signs that account in too. Its own pilot, signed in already, stays so; anyone else signed in here stays
- * signed in as themselves. On any other device nobody is signed in, and the pilot signs in with their password: a
- * link the account's maker passed on to someone else would otherwise sign them in to it, and their pack and interview
- * would go to that account. The recovery code, for an account with none yet, comes back only to its own pilot.
+ * Opens a confirm link. Confirming says the account is the address owner's, so whoever confirms must have both the
+ * inbox (the link) and the account's password: otherwise someone could sign up with a pilot's address, and the pilot,
+ * opening the link, would vouch for an account whose password only that someone knows.
+ *
+ * - With the account's own pilot signed in here: confirmed straight away.
+ * - Otherwise, wherever it's opened, the link isn't spent until the account's password is given (`choice.password`),
+ *   checked and limited like a sign-in. A device that signed up proves nothing: on a crew room's or hotel's shared
+ *   computer, whoever signed up with a pilot's address and the pilot reading their mail there are on the same device.
+ *   Then it's confirmed and, if nobody is signed in here, signed in. Anyone else signed in here stays themselves.
+ * - Or "This wasn't me" (`choice.notMe`): the link is spent without confirming, and the address is sent a reset link
+ *   that makes the account the address owner's (`sendTakeBackLink`).
+ *
+ * The recovery code, for an account with none yet, comes back only to its own pilot.
  */
-export async function confirmEmail(token: string, signedInAs: string | null, device?: string | null): Promise<ConfirmResult> {
-  const result = await spendVerificationToken(hashResetToken(token));
-  if (result.status === "expired" || result.status === "invalid") return { status: result.status };
-  if (result.status === "used") return { status: "used", yours: signedInAs === result.userId };
-  const user = await findUserById(result.userId);
+export async function confirmEmail(token: string, signedInAs: string | null, device?: string | null, choice: ConfirmChoice = {}, from?: string): Promise<ConfirmResult> {
+  const hash = hashResetToken(token);
+  const peek = await peekVerificationToken(hash);
+  if (peek.status === "expired" || peek.status === "invalid") return { status: peek.status };
+  if (peek.status === "used") return { status: "used", yours: signedInAs === peek.userId };
+  const user = await findUserById(peek.userId);
   if (!user) return { status: "invalid" };
-  if (signedInAs && signedInAs !== user.id) return { status: "confirmed", user, signedIn: "other-account" };
-  const sameDevice = !!result.deviceHash && result.deviceHash === deviceHashOf(device);
-  if (!signedInAs && !sameDevice) return { status: "confirmed", user, signedIn: "no" };
+
+  if (choice.notMe) {
+    const config = getEmailConfig();
+    if (!config) return { status: "invalid" };
+    if (!(await mayMailAddress("take-back-mail", normalizeEmail(user.email), from ?? "unknown")) || !(await siteMailLeft("sign-up", from ?? "unknown"))) return { status: "limited" };
+    if (!(await voidVerificationToken(hash))) return { status: "used", yours: false };
+    // Whoever made the account may be signed in to it, or have a calendar link from it: both end here.
+    await endOtherWaysIn(user.id);
+    await sendTakeBackLink(user.id, normalizeEmail(user.email), config, "You told us you didn't sign up for the Line Select account with this address. Whoever did can't use this link, and the account isn't confirmed.");
+    return { status: "not-me" };
+  }
+
+  const ownPilot = signedInAs === user.id;
+  if (!ownPilot) {
+    if (choice.password === undefined) return { status: "needs-password", email: user.email };
+    const normalized = normalizeEmail(user.email);
+    if (!(await takeAccountAttempt(LOGIN_RATE_LIMIT_SCOPE, normalized, from, device))) return { status: "limited" };
+    const credential = await findCredentialByUserId(user.id);
+    const attempt = await hashPassword(choice.password, credential?.salt ?? NO_ACCOUNT_SALT);
+    if (!credential || !timingSafeStringEqual(attempt, credential.passwordHash)) return { status: "wrong-password" };
+  }
+
+  const spent = await spendVerificationToken(hash);
+  if (spent.status !== "confirmed") return spent.status === "used" ? { status: "used", yours: ownPilot } : { status: spent.status };
+  const confirmed = { ...user, emailVerified: true };
+  if (signedInAs && !ownPilot) return { status: "confirmed", user: confirmed, signedIn: "other-account" };
   const credential = await findCredentialByUserId(user.id);
   const recoveryCode = credential && !credential.recoveryHash ? await storeNewRecoveryCode(user.id) : undefined;
-  if (signedInAs) return { status: "confirmed", user, signedIn: "already", recoveryCode };
-  return { status: "confirmed", user, signedIn: "now", sessionToken: await startSession(user.id), recoveryCode };
+  if (ownPilot) return { status: "confirmed", user: confirmed, signedIn: "already", recoveryCode };
+  return { status: "confirmed", user: confirmed, signedIn: "now", sessionToken: await startSession(user.id), recoveryCode };
+}
+
+/**
+ * Every way someone else may still be in an account once its owner has taken it back (a reset by either route, "This
+ * wasn't me"): every session is signed out, and the private calendar link is revoked, since whoever was in could have
+ * made one and kept it; the owner makes a new one from Tools. The recovery code is replaced by the caller.
+ */
+async function endOtherWaysIn(userId: string): Promise<void> {
+  await Promise.all([deleteSessionsForUser(userId), revokeFeed(userId)]);
 }
 
 const RESET_RATE_LIMIT_SCOPE = "password-reset";
@@ -314,7 +413,7 @@ export async function resetPasswordWithRecoveryCode(email: string, recoveryCode:
 
   const salt = randomBytes(16).toString("hex");
   await updateCredential(credential.userId, { passwordHash: await hashPassword(newPassword, salt), salt });
-  await deleteSessionsForUser(credential.userId);
+  await endOtherWaysIn(credential.userId);
   await clearAttemptsAfterReset(normalized, from);
   await rememberDevice(normalized, device);
   const newRecoveryCode = await storeNewRecoveryCode(credential.userId);
@@ -344,6 +443,10 @@ export async function requestPasswordResetEmail(email: string, from?: string, de
 
   const credential = await findCredentialByEmail(normalized);
   if (!credential) return true;
+  // Out of the site's hourly allowance only now, with the limits per account and per address passed and an email about
+  // to go: taken before them, one address asking over and over used up every pilot's reset emails for the hour. Past
+  // it the answer is the same as ever, so it says nothing about who has an account.
+  if (!(await siteMailLeft("reset", from ?? "unknown"))) return true;
 
   const token = randomBytes(32).toString("hex");
   await saveResetToken({
@@ -367,9 +470,9 @@ export async function requestPasswordResetEmail(email: string, from?: string, de
  * Every count against the account is cleared too, the account-wide ones included: the password someone was guessing at
  * is gone, and a pilot who had to reset because someone kept them out shouldn't find the door still shut.
  *
- * The link came to the account's address, so it confirms that address too. An account that wasn't confirmed until now
- * may have been started by someone else with this address (`signUpByEmail`), so its recovery code is replaced as well,
- * and the new one comes back to be shown: whoever made the old one can't use it to take the account back.
+ * The link came to the account's address, so it confirms that address too. The recovery code is replaced every time,
+ * and the new one comes back to be shown: someone else may have made the old one (an account started with this address
+ * by someone else, or one they got into), and with it they could take the account straight back.
  */
 export async function resetPasswordWithEmailToken(token: string, newPassword: string, from?: string, device?: string | null): Promise<AuthResult> {
   if (newPassword.length < MIN_PASSWORD_LENGTH) return { ok: false, error: PASSWORD_TOO_SHORT };
@@ -379,10 +482,9 @@ export async function resetPasswordWithEmailToken(token: string, newPassword: st
 
   const salt = randomBytes(16).toString("hex");
   await updateCredential(userId, { passwordHash: await hashPassword(newPassword, salt), salt });
-  await deleteSessionsForUser(userId);
-  const wasUnconfirmed = !user.emailVerified;
+  await endOtherWaysIn(userId);
   await markEmailVerified(userId);
-  const recoveryCode = wasUnconfirmed ? await storeNewRecoveryCode(userId) : undefined;
+  const recoveryCode = await storeNewRecoveryCode(userId);
   const normalized = normalizeEmail(user.email);
   await clearAttemptsAfterReset(normalized, from);
   await rememberDevice(normalized, device);
@@ -406,7 +508,12 @@ export async function createRecoveryCodeForUser(userId: string, password: string
 
 const LOGIN_RATE_LIMIT_SCOPE = "login";
 /** The same answer for "no such account" and "wrong password", so the sign-in form can't be used to find out who has an account. */
-export const LOGIN_FAILED = "Email or password is incorrect.";
+/**
+ * The same answer for "no such account", "wrong password" and "an account just made by signing up whose address isn't
+ * confirmed yet" (`isUnconfirmedSignUp`), so neither the sign-in form nor signing in straight after signing up can be
+ * used to find out who has an account. The words cover the last of these too.
+ */
+export const LOGIN_FAILED = "Wrong email or password. If you just signed up, open the link we emailed you first.";
 /** A dummy salt, so a sign-in for an email with no account takes as long as one with a wrong password. */
 const NO_ACCOUNT_SALT = "0".repeat(32);
 
@@ -420,8 +527,13 @@ export async function login(email: string, password: string, from?: string, devi
   }
 
   const credential = await findCredentialByEmail(normalized);
-  const attemptHash = await hashPassword(password, credential?.salt ?? NO_ACCOUNT_SALT);
-  if (!credential || !timingSafeStringEqual(attemptHash, credential.passwordHash)) {
+  // Asked beside the hash, right or wrong, so a correct password to an account waiting on its link takes no longer to
+  // turn away than a wrong one.
+  const [attemptHash, waitingOnLink] = await Promise.all([
+    hashPassword(password, credential?.salt ?? NO_ACCOUNT_SALT),
+    credential ? isUnconfirmedSignUp(credential.userId) : Promise.resolve(false),
+  ]);
+  if (!credential || !timingSafeStringEqual(attemptHash, credential.passwordHash) || waitingOnLink) {
     return { ok: false, error: LOGIN_FAILED };
   }
 
@@ -433,10 +545,13 @@ export async function login(email: string, password: string, from?: string, devi
   // This address's count only: the account-wide one is left to run out, or a guesser working from many addresses
   // would get a fresh set of them each time the pilot signed in.
   await clearAttempts(LOGIN_RATE_LIMIT_SCOPE, normalized);
-  if (from) await clearAttempts(LOGIN_RATE_LIMIT_SCOPE, `${normalized}|${from}`);
+  if (from) await clearAttempts(LOGIN_RATE_LIMIT_SCOPE, `${normalized}|${addressGroup(from)}`);
   await rememberDevice(normalized, device);
   const sessionToken = await startSession(user.id);
-  return { ok: true, user, sessionToken };
+  // An account with no recovery code yet (one confirmed from a tab signed in as someone else, or from before codes
+  // existed) gets one now, shown once, so the way back in the sign-in screen speaks of is really there.
+  const recoveryCode = credential.recoveryHash ? undefined : await storeNewRecoveryCode(user.id);
+  return { ok: true, user, sessionToken, recoveryCode };
 }
 
 /**
@@ -457,8 +572,10 @@ const accountWideScope = (scope: string) => `${scope}:addresses`;
  * address's own limit still holds), so even then the pilot's own phone or laptop gets in. Without an address (a caller
  * that doesn't know one), per account as before.
  */
-async function takeAccountAttempt(scope: string, email: string, from?: string, device?: string | null): Promise<boolean> {
-  if (!from) return takeAttempt(scope, email);
+async function takeAccountAttempt(scope: string, email: string, sentFrom?: string, device?: string | null): Promise<boolean> {
+  if (!sentFrom) return takeAttempt(scope, email);
+  // Counted by the sender's address group (an IPv6 /64 is one sender), however the caller wrote it.
+  const from = addressGroup(sentFrom);
   const mine = await countAttempt(scope, `${email}|${from}`);
   if (mine > MAX_ATTEMPTS) return false;
   if (await isKnownDevice(email, device)) return true;
@@ -470,7 +587,8 @@ async function takeAccountAttempt(scope: string, email: string, from?: string, d
  * After a reset, by either route: every count for the account, sign-in and both resets, the account-wide ones
  * included. Other addresses' own counts are left; they keep out only whoever was using those addresses.
  */
-async function clearAttemptsAfterReset(email: string, from?: string): Promise<void> {
+async function clearAttemptsAfterReset(email: string, sentFrom?: string): Promise<void> {
+  const from = sentFrom && addressGroup(sentFrom);
   await Promise.all(
     [LOGIN_RATE_LIMIT_SCOPE, RESET_RATE_LIMIT_SCOPE, RESET_EMAIL_SCOPE].flatMap((scope) => [
       clearAttempts(scope, email),

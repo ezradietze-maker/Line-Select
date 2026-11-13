@@ -9,7 +9,7 @@ import { ChevronLeftIcon, SearchIcon } from "@/components/ui/icons";
 import { Wordmark } from "@/components/ui/Logo";
 import { LogoFlight } from "@/components/ui/LogoFlight";
 import { setRailCollapsed, useRailCollapsed } from "@/lib/rail";
-import { hasSeenLatest } from "@/lib/whats-new";
+import { hasSeenLatest, subscribeWhatsNewSeen } from "@/lib/whats-new";
 import type { UserAccount } from "@/types/auth";
 
 export type { NavTarget } from "@/components/nav/nav-items";
@@ -195,9 +195,11 @@ function SparkIcon({ className }: { className?: string }) {
 function WhatsNewLink() {
   const [unseen, setUnseen] = useState(false);
   useEffect(() => {
-    // Read after mount: the server can't know what this device has seen.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setUnseen(!hasSeenLatest());
+    // Read after mount: the server can't know what this device has seen. Read again whenever it's seen from anywhere
+    // else (the footer link, the palette, another tab), so the dot doesn't stay once the page has been read.
+    const read = () => setUnseen(!hasSeenLatest());
+    read();
+    return subscribeWhatsNewSeen(read);
   }, []);
   return (
     <Link href="/whats-new" onClick={() => setUnseen(false)} className={`${ROW} font-medium text-ink-faint hover:bg-ink/[0.06] hover:text-ink-muted`}>

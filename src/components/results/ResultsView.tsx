@@ -38,7 +38,7 @@ import { FirstVisitTour } from "@/components/results/FirstVisitTour";
 import { WheelsDown } from "@/components/results/WheelsDown";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
-import { BidPackHeader, StripKey, StripViewToggle, stripLayout } from "@/components/results/BidPackStrip";
+import { BidPackHeader, PRINT_LIST_PX, StripKey, StripViewToggle, printStripLayout, stripLayout } from "@/components/results/BidPackStrip";
 import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view-storage";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { packColumns } from "@/lib/bidpack-row";
@@ -108,6 +108,7 @@ import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
 import { FlipText } from "@/components/ui/FlipText";
 import { PillHighlight } from "@/components/ui/PillHighlight";
 import { setRankingSnapshot } from "@/lib/ranking-snapshot";
+import { settleScrollTo } from "@/lib/settle-scroll";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
@@ -712,14 +713,26 @@ export function ResultsView({
   // A line asked for by number: make sure it's listed (clearing whatever filter or view hides it, and paging far enough
   // down), then scroll to it and light it up. Its row is there from the first render, drawn or standing in.
   const [flashId, setFlashId] = useState<string | null>(null);
+  // A line asked for on this visit: the first-visit tour waits for another, rather than scroll the page away from it.
+  // Kept once seen (the address drops the ask once the line is shown), adjusted during render as state derived from a change.
+  const [lineAsked, setLineAsked] = useState(!!focusLine);
+  if (focusLine && !lineAsked) setLineAsked(true);
   // The ask already answered, while the address catches up — so more cards mounting doesn't scroll back to it.
   const focusDone = useRef<string | null>(null);
   // Filters are cleared once per ask: cleared on every pass, a line they couldn't bring back kept wiping each new one.
   const focusCleared = useRef<string | null>(null);
+  // The scroll holding an asked-for line in place (stopped by a new ask, or leaving), and when the list first showed.
+  const focusScroll = useRef<(() => void) | null>(null);
+  const listReadyAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (listReady && listReadyAt.current === null) listReadyAt.current = performance.now();
+  }, [listReady]);
+  useEffect(() => () => focusScroll.current?.(), []);
   const focusTarget = focusLine && listReady ? ranked.find((r) => r.line.lineNumber === focusLine) ?? null : null;
   const focusIndex = focusTarget ? sorted.indexOf(focusTarget) : -1;
   useEffect(() => {
-    if (!focusLine) focusDone.current = null;
+    // Each ask clears the filters afresh: the same line asked for again, filtered out again since, came back too.
+    if (!focusLine) focusDone.current = focusCleared.current = null;
     if (!focusLine || !listReady || focusDone.current === focusLine) return;
     if (!focusTarget) {
       onFocusHandled?.();
@@ -746,36 +759,29 @@ export function ResultsView({
       return;
     }
     if (focusIndex >= shown) {
-      setPageState({ key: listKey, shown: focusIndex + 1 });
+      // Paged on past it, so there's list below it to scroll on to: with the line last, the page ended too soon for it
+      // to reach the top of the screen. Rows off screen only stand in, so a page more costs next to nothing.
+      setPageState({ key: listKey, shown: Math.min(sorted.length, focusIndex + PAGE_SIZE) });
       return;
     }
     const el = document.getElementById(`line-${focusTarget.line.id}`);
     if (!el) return; // the page grown to it isn't drawn yet — runs again once it is
-    // Scrolled two frames on: opening the card has `motion` measure its height first, and it puts the window's scroll
-    // back where it found it when it's done — which cancelled a smooth scroll begun now, so the jump never moved.
-    const lineId = focusTarget.line.id;
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => document.getElementById(`line-${lineId}`)?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }))
-    );
+    // Held at the top of the screen while the cards around it draw in and the panels above finish loading; a glide only
+    // for an ask from within the list already showing (the palette here), never on arriving from another screen. Held
+    // every frame, so `motion` putting the window's scroll back after measuring the opened card doesn't undo it.
+    focusScroll.current?.();
+    const settled = listReadyAt.current !== null && performance.now() - listReadyAt.current > 1500;
+    focusScroll.current = settleScrollTo(el.id, { smooth: !reduceMotion && settled });
     setOpenIds((prev) => (prev.has(focusTarget.line.id) ? prev : new Set(prev).add(focusTarget.line.id)));
     setFlashId(focusTarget.line.id);
     focusDone.current = focusLine;
+    focusCleared.current = null;
     onFocusHandled?.();
-  }, [focusLine, listReady, focusTarget, focusIndex, shown, listKey, displayedIds, hiddenSet, reduceMotion, onFocusHandled, tiers]);
+  }, [focusLine, listReady, focusTarget, focusIndex, shown, listKey, displayedIds, hiddenSet, reduceMotion, onFocusHandled, tiers, sorted.length]);
   // Every line's strip has the pack's day columns, laid out the same at the list's width, so they line up under one header.
   // Counted with the ranking's warm-up: the strips only show once the list does.
   const columns = useMemo(() => (warmUp.ready ? packColumns(bidPack.bidPeriodStart, bidPack.bidPeriodDays, columnCountOf(bidPack)) : NO_COLUMNS), [bidPack, warmUp.ready]);
   const [listRef, listWidth] = useMeasuredWidth<HTMLDivElement>(768);
-  const layout = useMemo(() => stripLayout(listWidth, columns.length), [listWidth, columns.length]);
-  const [chosenStripView, setStripView] = useStripView();
-  // What's drawn: the pilot's choice, or the Bid pack row on a pack with no dates to lay a timeline on. Said so when
-  // they pick Timeline there, so the switch doesn't look broken.
-  const stripView = stripViewFor(chosenStripView, bidPack);
-  const [noTimelineSaid, setNoTimelineSaid] = useState(false);
-  const chooseStripView = (next: StripViewMode) => {
-    setStripView(next);
-    setNoTimelineSaid(next === "timeline" && stripViewFor(next, bidPack) !== next);
-  };
   // Only the cards near the screen are drawn in full (see `lib/use-windowed-rows.ts`); the page paints its top fast on a
   // phone, and showing all of a big pack costs no more than showing a page of it. Everything is drawn to print.
   const [firstBatch] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? 2 : 6));
@@ -790,6 +796,18 @@ export function ResultsView({
       window.removeEventListener("afterprint", after);
     };
   }, []);
+  // Printed, the strips are laid out for the paper, not the screen: laid out at a laptop's width, a sheet cut each one
+  // off at about the 16th.
+  const layout = useMemo(() => (printing ? printStripLayout(columns.length) : stripLayout(listWidth, columns.length)), [printing, listWidth, columns.length]);
+  const [chosenStripView, setStripView] = useStripView();
+  // What's drawn: the pilot's choice, or the Bid pack row on a pack with no dates to lay a timeline on. Said so when
+  // they pick Timeline there, so the switch doesn't look broken.
+  const stripView = stripViewFor(chosenStripView, bidPack);
+  const [noTimelineSaid, setNoTimelineSaid] = useState(false);
+  const chooseStripView = (next: StripViewMode) => {
+    setStripView(next);
+    setNoTimelineSaid(next === "timeline" && stripViewFor(next, bidPack) !== next);
+  };
   // Held still while a line is dragged: the cards it can land on stay drawn where they were measured.
   const rows = useWindowedRows(listRef, displayedIds, firstBatch, printing, `${stripView}|${listWidth}`, activeId !== null);
   // The first cards rise in one after another as the list first shows; cards drawn after that just fade in.
@@ -1319,7 +1337,7 @@ export function ResultsView({
       />
       <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
       <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
-      <FirstVisitTour ready={listReady} />
+      <FirstVisitTour ready={listReady} skip={lineAsked} />
       <WheelsDown />
       <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />
       {confirmingStartOver && (
@@ -1539,7 +1557,9 @@ export function ResultsView({
                 ["s", "shortlist"],
                 ["c", "compare"],
                 ["x", "select"],
-                ["1–5", "move to a tier"],
+                // As the keys work: one number per tier there is (up to 9), and 0 for none.
+                [tiers.state.tiers.length > 1 ? `1–${Math.min(9, tiers.state.tiers.length)}` : "1", "move to a tier"],
+                ["0", "out of its tier"],
                 ["⌘Z", "undo"],
                 ["⌘K", "jump to a line"],
                 ["esc", "clear"],
@@ -1589,7 +1609,8 @@ export function ResultsView({
             measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
             accessibility={swapSpeech}
           >
-            <div ref={listRef} className="mt-3 space-y-1.5">
+            {/* As wide as the strips were laid out for the paper (`printStripLayout`), so the days and their words line up. */}
+            <div ref={listRef} className="mt-3 space-y-1.5" style={printing ? { width: PRINT_LIST_PX, maxWidth: "100%" } : undefined}>
               {displayed.length > 0 && <BidPackHeader columns={columns} layout={layout} />}
               {displayed.length === 0 && filtersActive(filters) && <FilterBlameList lines={bidPack.lines} filters={filters} ctx={filterCtx} onChange={setFilters} />}
               {displayed.length === 0 ? (

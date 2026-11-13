@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { checkSession, logout as logoutAccount } from "@/lib/auth";
 import { accountBidPack } from "@/lib/account-bid-pack";
 import { clearServerBidPack, saveServerBidPack } from "@/lib/bidpack-server";
-import { clearBidPack, clearGuestUpload, guestUploadedPackId, loadBidPack, markGuestUpload, saveBidPack } from "@/lib/bidpack-storage";
+import { clearBidPack, clearGuestUpload, dropPendingBidPackWrites, guestUploadedPackId, loadBidPack, markGuestUpload, saveBidPack } from "@/lib/bidpack-storage";
 import { withGuestRecords } from "@/lib/profile-merge";
 import { generateFakeOffer, isSamplePack } from "@/lib/fake-trade-offers";
 import { clearTradeHolding, fetchWaitingSuggestions } from "@/lib/trades/holding-client";
@@ -18,7 +18,7 @@ import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/post
 import { clearPendingProfile, loadPendingProfile, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
-import { askToKeepStorage, clearProfile, clearProfileForUser, dropGuestRecords, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
+import { askToKeepStorage, clearProfile, clearProfileForUser, dropGuestRecords, dropPendingProfileWrites, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import { loadSeenOfferIds, newArrivals, saveSeenOfferIds, type ToastBaseline } from "@/lib/trade-seen-storage";
 import type { BidPack } from "@/types/bidpack";
@@ -27,10 +27,12 @@ import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
 import type { TradeOffer } from "@/types/trade";
 import type { ToastItem } from "@/components/ui/Toast";
-import { forgetPilotOnDevice } from "@/lib/device-data";
+import { forgetPilotOnDevice, forgetPilotWork } from "@/lib/device-data";
+import { clearServerDraft } from "@/lib/interview-draft-sync";
 import { adoptGuestDrafts } from "@/lib/interview-draft";
 import { landingAfterSignIn, landingPathFor } from "@/lib/landing-path";
 import { LOCAL_SAVE_FAILED_EVENT } from "@/lib/local-save-failed";
+import { announceStartOver, caughtUpWithStartOver, onStartOverElsewhere } from "@/lib/start-over-signal";
 
 /**
  * Whether this device was signed in when the app last checked — not a credential (the session cookie is), just a
@@ -66,6 +68,26 @@ function writeSignedInHint(user: UserAccount | null): void {
 
 /** The account this device was last signed in to — stood in for when the session check can't reach the server. */
 const LAST_USER_KEY = "line-select:last-user:v1";
+
+/**
+ * Written by the confirm page the moment its link signs this device in, and cleared once the guest's pack and profile
+ * have joined the account (`handleAuthenticated`). Found still there when the app loads (the tab was reloaded or
+ * closed in between), the load finishes that step itself rather than leaving the guest's work behind.
+ */
+export const CONFIRM_SIGN_IN_KEY = "line-select:confirm-sign-in:v1";
+/** Written by the confirm page when an address is confirmed: other tabs hear of it (a storage event) and ask again who's signed in. */
+export const EMAIL_CONFIRMED_KEY = "line-select:email-confirmed:v1";
+
+function readKey(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** What a guest had on this device, for an account signing in to take over (`handleAuthenticated`). */
+type GuestWork = Pick<DataState, "user" | "bidPack" | "profile" | "seniority">;
 
 function readLastUser(): UserAccount | null {
   try {
@@ -146,9 +168,16 @@ interface AppStateValue extends DataState {
   handleDismissProfileSaveWarning: () => void;
   handleDismissToast: (id: string) => void;
   handleToastClick: (id: string) => void;
-  handleAuthenticated: (newUser: UserAccount) => void;
+  /**
+   * After signing in: the guest's own work joins an account that has none, and the app moves on to where the pilot
+   * belongs. With `stay`, it doesn't move, and the place it would have gone is returned instead.
+   */
+  handleAuthenticated: (newUser: UserAccount, opts?: { stay?: boolean }) => Promise<string>;
+  /** Asks the server again who's signed in, for an account whose address may have just been confirmed elsewhere. */
+  refreshUser: () => Promise<"confirmed" | "waiting" | "signed-out" | "unknown">;
   handleContinueAsGuest: () => void;
-  handleLogout: () => Promise<void>;
+  /** Signs out; `to`, where to go then (the sign-in form, to use another account) — otherwise wherever a guest belongs. */
+  handleLogout: (opts?: { to?: string }) => Promise<void>;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -192,6 +221,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [profileSync, setProfileSync] = useState<"ok" | "merged" | "failed">("ok");
   const [listSaveFailed, setListSaveFailed] = useState(false);
   const showSignedOutRef = useRef<() => void>(() => {});
+  const adoptOnLoadRef = useRef<(user: UserAccount, from: GuestWork) => Promise<unknown>>(async () => {});
   const latestProfileRef = useRef<PreferenceProfile | null>(null);
   const realOffersRef = useRef<TradeOffer[]>([]);
   /** The trade poll below, for a screen to run straight after an answer (`refreshTradeActivity`). */
@@ -241,6 +271,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // dropping a signed-in pilot to an empty guest view until the connection comes back.
       const currentUser = session.reachable ? session.user : readLastUser();
       if (session.reachable) writeSignedInHint(currentUser);
+      // This device's confirm link signed this account in, and the step that brings the guest's work across didn't
+      // finish (the tab reloaded or closed first): it's finished here, from what the guest had.
+      if (currentUser && readKey(CONFIRM_SIGN_IN_KEY) === currentUser.id) {
+        await adoptOnLoadRef.current(currentUser, await stateFor(null));
+        return;
+      }
       // Signed in already: a guest pack still on the device was uploaded before this account signed in, not for it.
       if (currentUser) clearGuestUpload();
       if (currentUser) identifyPilot(currentUser.id);
@@ -444,6 +480,28 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
+  }, [state.ready, userId]);
+
+  useEffect(() => {
+    // Started over in another tab: what this one holds was deleted there, and left on screen, its next star, tier move
+    // or tick put it all back, the profile on the account too. It goes here as well, along with any save still on its
+    // way, and the tab shows what a fresh load would: no pack, no profile. Nothing kept is touched — loaded again from
+    // the account straight away, the pack could come back before the other tab's delete reached it, and a tab woken
+    // later could remove a new pack uploaded there since.
+    if (!state.ready) return;
+    return onStartOverElsewhere(userId, () => {
+      dropPendingBidPackWrites(userId);
+      dropPendingProfileWrites(userId);
+      caughtUpWithStartOver();
+      setInterviewKey((k) => k + 1);
+      setProfileSync("ok");
+      setListSaveFailed(false);
+      setState((s) =>
+        (s.user?.id ?? null) !== userId
+          ? s
+          : { ...s, profile: null, bidPack: null, parseResult: null, pendingProfile: null, seniority: null, freshBidPack: false, bidPackSaveFailed: false, profileSaveFailed: false }
+      );
+    });
   }, [state.ready, userId]);
   useEffect(() => {
     if (profileSync !== "failed" || !userId) return;
@@ -661,13 +719,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function handleStartOver() {
-    clearBidPack(user?.id ?? null);
+    // All of it, for every pack, as the dialog says — not only the pack and profile: tiers and starred lines kept by
+    // the pack's id came back with the same month's pack uploaded again. The sign-in stays.
+    forgetPilotWork(user?.id ?? null);
+    // Any other tab open on it drops it too, rather than put it back with its next star or tick (`onStartOverElsewhere`).
+    announceStartOver(user?.id ?? null);
+    // The calendar link showed the line the deleted ranking put first: it's turned off (and the device forgets what it
+    // last sent it, with the rest, in `forgetPilotWork`). Fetched when needed, not shipped on every screen.
+    if (user) void import("@/lib/calendar-feed-client").then(({ turnOffFeed }) => turnOffFeed()).catch(() => {});
     if (user) void clearServerBidPack();
     if (user && bidPack) void clearTradeHolding(bidPack.id);
+    if (user && bidPack) void clearServerDraft(bidPack.id);
     clearPendingProfile(user?.id ?? null);
     setInterviewKey((k) => k + 1);
-    setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null, freshBidPack: false }));
-    router.push("/");
+    setState((s) => ({ ...s, profile: null, bidPack: null, pendingProfile: null, seniority: null, freshBidPack: false }));
+    // Signed in, the landing page is for someone else: on to the upload, inside the app.
+    router.push(user ? "/upload" : "/");
     void clearProfileForUser(user?.id ?? null);
   }
 
@@ -701,7 +768,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (href !== null) router.push(href ?? "/inbox");
   }
 
-  async function handleAuthenticated(newUser: UserAccount) {
+  async function handleAuthenticated(newUser: UserAccount, { stay = false, from }: { stay?: boolean; from?: GuestWork } = {}): Promise<string> {
+    // What was on screen before this sign-in; on a load finishing a confirm's sign-in, what the guest had on this device.
+    const before: GuestWork = from ?? { user: state.user, bidPack: state.bidPack, profile: state.profile, seniority: state.seniority };
     askToKeepStorage();
     writeSignedInHint(newUser);
     identifyPilot(newUser.id);
@@ -715,39 +784,39 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     clearGuestUpload();
 
     // A guest who uploaded a pack and answered the interview, then makes an account so it "follows them to a new device", must not land on an empty app. An account that has nothing of its own adopts what the guest was just working on; one that already has data keeps it untouched.
-    if (!state.user) {
+    if (!before.user) {
       // What the account takes over stops being the guest's, so signing out later really does take it off the screen.
       // Only a pack this guest uploaded here, and only to an account the server said holds none: a fetch that failed
       // would put it over the account's own, and a guest pack shown after an earlier account signed out isn't this
       // pilot's to take.
-      const guestsOwnUpload = state.bidPack && !isSamplePack(state.bidPack) && state.bidPack.id === guestUpload;
-      if (!theirBidPack && account.noneOnAccount && guestsOwnUpload && state.bidPack) {
+      const guestsOwnUpload = before.bidPack && !isSamplePack(before.bidPack) && before.bidPack.id === guestUpload;
+      if (!theirBidPack && account.noneOnAccount && guestsOwnUpload && before.bidPack) {
         // The guest's copy goes first: two copies of a big pack don't fit in the browser's storage together.
         clearBidPack(null);
-        if (!(await saveBidPack(newUser.id, state.bidPack))) {
+        if (!(await saveBidPack(newUser.id, before.bidPack))) {
           packSaveFailed = true;
-          await saveBidPack(null, state.bidPack);
+          await saveBidPack(null, before.bidPack);
         }
-        void saveServerBidPack(state.bidPack);
-        theirBidPack = state.bidPack;
+        void saveServerBidPack(before.bidPack);
+        theirBidPack = before.bidPack;
       }
-      if (!theirProfile && state.profile) {
-        if ((await saveProfileForUser(newUser.id, state.profile)).savedLocally) clearProfile(null);
-        theirProfile = state.profile;
-      } else if (theirProfile && state.profile) {
+      if (!theirProfile && before.profile) {
+        if ((await saveProfileForUser(newUser.id, before.profile)).savedLocally) clearProfile(null);
+        theirProfile = before.profile;
+      } else if (theirProfile && before.profile) {
         // The account's own profile stands, but the months the guest logged and the checklist they ticked join it:
         // otherwise they'd sit hidden on the device behind the account's, and go with it at sign-out.
         // Once the account's copy holds them, the guest's copy gives them up, or the next sign-in here adds them again.
-        const withGuest = withGuestRecords(theirProfile, state.profile);
+        const withGuest = withGuestRecords(theirProfile, before.profile);
         if (withGuest !== theirProfile) {
           const saved = await saveProfileForUser(newUser.id, withGuest);
           theirProfile = saved.profile;
           if (saved.savedLocally) dropGuestRecords();
         }
       }
-      if (!theirSeniority && state.seniority) {
-        saveSeniority(newUser.id, state.seniority);
-        theirSeniority = state.seniority;
+      if (!theirSeniority && before.seniority) {
+        saveSeniority(newUser.id, before.seniority);
+        theirSeniority = before.seniority;
       }
       adoptGuestDrafts(newUser.id);
     }
@@ -765,8 +834,28 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       bidPackSaveFailed: packSaveFailed,
       profileSaveFailed: false,
     });
-    router.push(landingAfterSignIn(theirBidPack, theirProfile, state.user ? null : state.bidPack));
+    // The guest's work has joined the account: a load from here on has nothing left to finish.
+    try {
+      if (window.localStorage.getItem(CONFIRM_SIGN_IN_KEY) === newUser.id) window.localStorage.removeItem(CONFIRM_SIGN_IN_KEY);
+    } catch {
+      // Private mode: there was nothing written to clear.
+    }
+    const landing = landingAfterSignIn(theirBidPack, theirProfile, before.user ? null : before.bidPack);
+    if (!stay) router.push(landing);
+    return landing;
   }
+
+  /** The answer, for a caller that keeps asking: confirmed (or someone else now), still waiting, nobody signed in, or no answer. */
+  async function refreshUser(): Promise<"confirmed" | "waiting" | "signed-out" | "unknown"> {
+    const session = await checkSession();
+    if (!session.reachable) return "unknown";
+    if (!session.user) return "signed-out";
+    const fresh = session.user;
+    setState((s) => (s.user && s.user.id === fresh.id && s.user.emailVerified !== fresh.emailVerified ? { ...s, user: fresh } : s));
+    writeSignedInHint(fresh);
+    return fresh.emailVerified === false ? "waiting" : "confirmed";
+  }
+
 
   async function handleContinueAsGuest() {
     // Signed in, carrying on as a guest means signing out first: the guest's pack and profile under the account's
@@ -783,7 +872,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     router.push(landingPathFor(guestBidPack, guestProfile));
   }
 
-  async function handleLogout() {
+  async function handleLogout(opts?: { to?: string }) {
     // Offline, the session cookie outlives a sign-out that only happened on screen: the next person to open the app
     // here would be let back into this account. Stay signed in and say so.
     if (!(await logoutAccount())) {
@@ -794,11 +883,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // while an edit is still waiting to reach their account: then this device holds the only copy. The mark is read
     // too, not just this visit's state, so an edit left from an earlier visit is kept as well.
     if (user && profileSync !== "failed" && !hasUnsyncedProfile(user.id)) forgetPilotOnDevice(user.id);
-    await showSignedOut();
+    // Passed as a click handler, it's handed the click: only a path asked for by name is gone to.
+    await showSignedOut(typeof opts?.to === "string" ? opts.to : undefined);
   }
 
-  /** The guest view, once the server no longer holds a session for this device. */
-  async function showSignedOut() {
+  /** The guest view, once the server no longer holds a session for this device; at `to`, or wherever a guest belongs. */
+  async function showSignedOut(to?: string) {
     setProfileSync("ok");
     writeSignedInHint(null);
     // The account's copy isn't what a guest's next save starts from, and the guest pack shown now (kept from before the
@@ -820,11 +910,34 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       bidPackSaveFailed: false,
       profileSaveFailed: false,
     });
-    router.push(landingPathFor(guestBidPack, guestProfile));
+    router.push(to ?? landingPathFor(guestBidPack, guestProfile));
   }
   useEffect(() => {
     showSignedOutRef.current = () => void showSignedOut();
+    adoptOnLoadRef.current = (user, from) => handleAuthenticated(user, { stay: true, from });
   });
+
+  // An address confirmed in another tab or on another device: the notice and the Trade Board's banner go as soon as
+  // this tab is looked at again, or the confirm page says so, rather than waiting for a reload.
+  const waitingOnConfirm = state.user?.emailVerified === false;
+  const refreshUserRef = useRef(refreshUser);
+  useEffect(() => {
+    refreshUserRef.current = refreshUser;
+  });
+  useEffect(() => {
+    if (!waitingOnConfirm) return;
+    const ask = () => void refreshUserRef.current();
+    const onVisible = () => document.visibilityState === "visible" && ask();
+    const onStorage = (e: StorageEvent) => e.key === EMAIL_CONFIRMED_KEY && ask();
+    window.addEventListener("focus", ask);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("focus", ask);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [waitingOnConfirm]);
 
   const value: AppStateValue = {
     ...state,
@@ -858,6 +971,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     handleDismissToast,
     handleToastClick,
     handleAuthenticated,
+    refreshUser,
     handleContinueAsGuest,
     handleLogout,
   };

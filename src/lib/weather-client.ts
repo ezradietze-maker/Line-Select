@@ -71,6 +71,23 @@ function toDaily(json: OpenMeteoDaily): DailyWeather[] {
 const cache = new Map<string, Promise<DailyWeather[] | null>>();
 const UNITS = "temperature_unit=fahrenheit&precipitation_unit=inch&timezone=auto";
 
+/**
+ * Open-Meteo's free API is licensed for non-commercial use only. Once pilots are paying we move to the commercial
+ * ("customer") endpoints, which take a paid API key. Set NEXT_PUBLIC_OPEN_METEO_API_KEY to switch the browser over;
+ * leave it unset to stay on the free hosts (local dev, and until the owner buys a plan). See docs/launch/paid-tiers.md.
+ *
+ * NOTE: these requests run in the browser (CitiesScreen is a client component), so the key ships in the page bundle and
+ * is visible to anyone who opens the site. Open-Meteo bills per call, so a public key is a denial-of-wallet risk — the
+ * checklist covers the mitigations (rate limits / a server proxy) to weigh before enabling it on the live site.
+ */
+const OPEN_METEO_KEY = process.env.NEXT_PUBLIC_OPEN_METEO_API_KEY;
+// Commercial hosts when a key is set, the free hosts otherwise. Each free host `X.open-meteo.com` has a commercial
+// twin `customer-X.open-meteo.com`; only the host and the trailing apikey differ, the query is identical.
+const FORECAST_HOST = OPEN_METEO_KEY ? "https://customer-api.open-meteo.com" : "https://api.open-meteo.com";
+const ARCHIVE_HOST = OPEN_METEO_KEY ? "https://customer-archive-api.open-meteo.com" : "https://archive-api.open-meteo.com";
+// Appended to every request so the commercial plan counts and bills the call; empty string on the free tier.
+const API_KEY_PARAM = OPEN_METEO_KEY ? `&apikey=${encodeURIComponent(OPEN_METEO_KEY)}` : "";
+
 function fetchDaily(url: string): Promise<DailyWeather[] | null> {
   const known = cache.get(url);
   if (known) return known;
@@ -93,7 +110,7 @@ export async function typicalWeather(code: string, bidPeriodStart: string, days:
   if (!at) return null;
   const { from, to } = sameDatesLastYear(bidPeriodStart, days);
   const daily = await fetchDaily(
-    `https://archive-api.open-meteo.com/v1/archive?latitude=${at[0]}&longitude=${at[1]}&start_date=${from}&end_date=${to}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum&${UNITS}`
+    `${ARCHIVE_HOST}/v1/archive?latitude=${at[0]}&longitude=${at[1]}&start_date=${from}&end_date=${to}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum&${UNITS}${API_KEY_PARAM}`
   );
   return daily ? summarizeWeather(daily) : null;
 }
@@ -103,7 +120,7 @@ export function forecastWeather(code: string): Promise<DailyWeather[] | null> {
   const at = coordinatesForAirport(code);
   if (!at) return Promise.resolve(null);
   return fetchDaily(
-    `https://api.open-meteo.com/v1/forecast?latitude=${at[0]}&longitude=${at[1]}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum&forecast_days=16&${UNITS}`
+    `${FORECAST_HOST}/v1/forecast?latitude=${at[0]}&longitude=${at[1]}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum&forecast_days=16&${UNITS}${API_KEY_PARAM}`
   );
 }
 
@@ -161,7 +178,7 @@ export function currentWeather(codes: string[]): Promise<Record<string, CurrentW
     return at ? [{ code, at }] : [];
   });
   if (!placed.length) return Promise.resolve({});
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${placed.map((p) => p.at[0]).join(",")}&longitude=${placed.map((p) => p.at[1]).join(",")}&current=temperature_2m,weather_code,is_day&${UNITS}`;
+  const url = `${FORECAST_HOST}/v1/forecast?latitude=${placed.map((p) => p.at[0]).join(",")}&longitude=${placed.map((p) => p.at[1]).join(",")}&current=temperature_2m,weather_code,is_day&${UNITS}${API_KEY_PARAM}`;
   const known = currentCache.get(url);
   if (known) return known;
   const p = fetch(url)

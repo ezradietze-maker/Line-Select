@@ -25,6 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!result.ok) {
       if (result.reason === "not-found") return NextResponse.json({ error: "We couldn't find that trade." }, { status: 404 });
       if (result.reason === "not-yours") return NextResponse.json({ error: "That step is between two other pilots." }, { status: 403 });
+      if (result.reason === "traded") return NextResponse.json({ error: "One of these trips is already in a trade agreed this month." }, { status: 409 });
       return NextResponse.json({ error: "That isn't the next step." }, { status: 409 });
     }
     return NextResponse.json({ suggestion: suggestionForViewer(result.record, user.id) });

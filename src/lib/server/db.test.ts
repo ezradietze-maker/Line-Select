@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import * as mod from "@/lib/server/db";
 import * as forecastStore from "@/lib/server/forecast-store";
 import { db } from "@/lib/server/postgres";
+import { looksLikeProductionUrl, productionDbOptIn } from "@/lib/server/db-guard";
 import * as suggestions from "@/lib/server/trade-suggestions";
 import { awardHistoryRecords, feedbackSubmissions, tradeOffers, users } from "@/lib/server/schema";
 import { DEFAULT_WEIGHTS } from "@/types/preferences";
@@ -32,6 +33,15 @@ try {
 
 const hasDb = !!process.env.TEST_DATABASE_URL;
 if (hasDb) {
+  // These tests create and then delete rows. If TEST_DATABASE_URL points at the
+  // live database, that cleanup would delete real pilots' data — so refuse it
+  // outright rather than run against production (see `db-guard.ts`).
+  if (looksLikeProductionUrl(process.env.TEST_DATABASE_URL!) && !productionDbOptIn()) {
+    throw new Error(
+      "TEST_DATABASE_URL looks like the PRODUCTION database. These tests create and delete rows, " +
+        "so point it at a dev/test database (see docs/safe-database.md)."
+    );
+  }
   // `postgres.ts` connects on first use, so this reaches it despite the imports above.
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 } else {
@@ -315,6 +325,46 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       // The step that moves A's trip takes it off the board.
       expect((await suggestions.markStepDone(agreed, a.id, 0)).ok).toBe(true);
       expect((await mod.findTradeOffer(early.id))?.status).toBe("withdrawn");
+    });
+
+    it("re-checks the board when a trade found earlier is stored, agreed and stepped: a trip agreed there since is spoken for", async () => {
+      const dated = (n: number) => ({ ...(tripOf(n) as object), tripId: `t${n}` }) as never;
+      const board = (n: number) => ({ lineNumber: "held", pairingNumber: `${n}`, days: 2, layoverCities: [], international: false, reportTime: "early" as const, creditHours: 10, tafbHours: 48, landings: 2, deadheadLegs: 0, tripId: `t${n}`, startDayIndex: n, date: null });
+      const [a, b, c, d] = [await makeUser("race-a"), await makeUser("race-b"), await makeUser("race-c"), await makeUser("race-d")];
+      for (const [i, p] of [a, b, c].entries()) await mod.saveTradeHolding(p.id, { packId, bidPackMeta: meta, lineNumber: null, trips: [{ id: `t${i}`, startDayIndex: i, lock: null }] });
+      const stored = () => ({
+        signature: randomUUID(), packId, bidPackMeta: meta, steps: [{ a: 0, b: 1 }, { a: 1, b: 2 }], expiresAt: new Date(Date.now() + 86_400_000),
+        members: [a, b, c].map((p, position) => ({ userId: p.id, displayName: `P${position}`, position, give: dated(position), value })),
+      });
+      // A board trade of A's t0 agreed, as one that slipped in while the trade below was being worked out or answered.
+      const offerId = randomUUID();
+      const agreeOnBoard = () =>
+        db.insert(tradeOffers).values({ id: offerId, ...meta, offeringUserId: a.id, offeringDisplayName: "A", offeredTrip: board(0), status: "accepted", responderUserId: d.id, responderDisplayName: "D", responderTrip: board(30), respondedAt: new Date(), resolvedAt: new Date() });
+      const undo = () => db.delete(tradeOffers).where(eq(tradeOffers.id, offerId));
+
+      // Found before, stored after: refused.
+      const foundFrom = new Date();
+      await agreeOnBoard();
+      expect(await suggestions.saveSuggestion(stored(), foundFrom)).toBe(false);
+      await undo();
+
+      // Stored, then agreed on the board before the last yes: the yes calls it off.
+      expect(await suggestions.saveSuggestion(stored())).toBe(true);
+      const answering = (await suggestions.listSuggestionsFor(a.id, packId))[0].id;
+      await suggestions.answerSuggestion(answering, a.id, "accepted");
+      await agreeOnBoard();
+      const answered = await suggestions.answerSuggestion(answering, b.id, "accepted");
+      expect(answered.ok && answered.record).toMatchObject({ status: "cancelled", cancelReason: "changed" });
+      await undo();
+
+      // Agreed by everyone, then on the board: the step that would move the trip is refused.
+      expect(await suggestions.saveSuggestion(stored())).toBe(true);
+      const stepping = (await suggestions.listSuggestionsFor(a.id, packId)).find((r) => r.status === "proposed")!.id;
+      for (const p of [a, b, c]) await suggestions.answerSuggestion(stepping, p.id, "accepted");
+      await agreeOnBoard();
+      expect(await suggestions.markStepDone(stepping, a.id, 0)).toEqual({ ok: false, reason: "traded" });
+      await undo();
+      expect((await suggestions.markStepDone(stepping, a.id, 0)).ok).toBe(true);
     });
   });
 
@@ -715,6 +765,47 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.findUserById(signedUp.id)).toBeNull();
       expect(await mod.findUserById(fromBefore.id)).not.toBeNull();
       expect(await mod.findUserById(confirmed.id)).not.toBeNull();
+    });
+
+    it("the clear-out leaves an account anyone has used: a session, a saved pack or a profile", async () => {
+      const weekAgo = new Date(Date.now() - 8 * 24 * 3600_000).toISOString();
+      const made = async (label: string) => {
+        const id = randomUUID();
+        const email = `${label}-${id}@test.line-select.invalid`;
+        await mod.createUserWithCredential({ id, email, displayName: "P", createdAt: weekAgo, plan: "free", emailVerified: false }, { userId: id, email, passwordHash: "00", salt: "00" });
+        createdUserIds.push(id);
+        await mod.saveVerificationToken({ tokenHash: hashOf(`used-${id}`), userId: id, expiresAt: new Date(Date.now() - 7 * 24 * 3600_000).toISOString(), signUp: true });
+        return id;
+      };
+      const withSession = await made("session");
+      const token = randomUUID().replace(/-/g, "");
+      await mod.createSession({ token, userId: withSession, expiresAt: new Date(Date.now() + 20 * 24 * 3600_000).toISOString() });
+      const withPack = await made("pack");
+      await mod.saveBidPackRecord(withPack, "MEM-777-CA-2026-12", Buffer.from("pack"));
+      const withProfile = await made("profile");
+      await mod.savePreferenceProfile(withProfile, fakeProfile());
+      const untouched = await made("untouched");
+      await mod.deleteUnconfirmedSignUps(new Date(Date.now() - 7 * 24 * 3600_000));
+      expect(await mod.findUserById(untouched)).toBeNull();
+      for (const id of [withSession, withPack, withProfile]) expect(await mod.findUserById(id)).not.toBeNull();
+      expect(await mod.findSession(token)).not.toBeNull();
+      expect(await mod.getBidPackRecord(withPack)).not.toBeNull();
+    });
+
+    it("know whether an account is a sign-up waiting on its link, and a link can be looked at, or spent without confirming", async () => {
+      const waiting = await makeUser("waiting", { confirmed: false });
+      const older = await makeUser("older", { confirmed: false });
+      await mod.saveVerificationToken({ tokenHash: hashOf(`w-${waiting.id}`), userId: waiting.id, expiresAt: new Date(Date.now() + 60_000).toISOString(), signUp: true, deviceHash: "d" });
+      await mod.saveVerificationToken({ tokenHash: hashOf(`o-${older.id}`), userId: older.id, expiresAt: new Date(Date.now() + 60_000).toISOString(), signUp: false });
+      expect(await mod.isUnconfirmedSignUp(waiting.id)).toBe(true);
+      expect(await mod.isUnconfirmedSignUp(older.id)).toBe(false);
+      expect(await mod.peekVerificationToken(hashOf(`w-${waiting.id}`))).toEqual({ status: "valid", userId: waiting.id, deviceHash: "d" });
+      expect(await mod.voidVerificationToken(hashOf(`w-${waiting.id}`))).toBe(waiting.id);
+      expect(await mod.voidVerificationToken(hashOf(`w-${waiting.id}`))).toBeNull();
+      expect(await mod.peekVerificationToken(hashOf(`w-${waiting.id}`))).toEqual({ status: "used", userId: waiting.id });
+      expect((await mod.findUserById(waiting.id))?.emailVerified).toBe(false);
+      await mod.markEmailVerified(waiting.id);
+      expect(await mod.isUnconfirmedSignUp(waiting.id)).toBe(false);
     });
 
     it("don't count toward the Trade Board's bar", async () => {

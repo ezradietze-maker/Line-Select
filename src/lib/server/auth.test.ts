@@ -31,11 +31,13 @@ const dbMocks = vi.hoisted(() => ({
   findCredentialByEmail: vi.fn(),
   findUserById: vi.fn(),
   createSession: vi.fn(async () => {}),
+  isUnconfirmedSignUp: vi.fn(async () => false),
+  updateCredential: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/server/db", () => dbMocks);
 
-import { login } from "@/lib/server/auth";
+import { LOGIN_FAILED, login } from "@/lib/server/auth";
 
 describe("login", () => {
   beforeEach(async () => {
@@ -43,6 +45,7 @@ describe("login", () => {
     dbMocks.findCredentialByEmail.mockReset();
     dbMocks.findUserById.mockReset();
     dbMocks.createSession.mockReset().mockResolvedValue(undefined);
+    dbMocks.isUnconfirmedSignUp.mockReset().mockResolvedValue(false);
 
     const passwordHash = await hashFor(CORRECT_PASSWORD);
     dbMocks.findCredentialByEmail.mockResolvedValue({
@@ -69,14 +72,14 @@ describe("login", () => {
   it("rejects the wrong password without revealing anything beyond that", async () => {
     const result = await login(EMAIL, "wrong-password");
     expect(result.ok).toBe(false);
-    expect(result.error).toBe("Email or password is incorrect.");
+    expect(result.error).toBe(LOGIN_FAILED);
   });
 
   it("rejects an email with no account", async () => {
     dbMocks.findCredentialByEmail.mockResolvedValue(null);
     const result = await login("nobody@example.com", "whatever");
     expect(result.ok).toBe(false);
-    expect(result.error).toBe("Email or password is incorrect.");
+    expect(result.error).toBe(LOGIN_FAILED);
   });
 
   it("locks out further attempts after enough failures, even with the correct password", async () => {
@@ -109,10 +112,34 @@ describe("login", () => {
     }
   });
 
+  it("turns away the right password to an account made by signing up and not yet confirmed, with the wrong password's words", async () => {
+    dbMocks.isUnconfirmedSignUp.mockResolvedValue(true);
+    const right = await login(EMAIL, CORRECT_PASSWORD);
+    const wrong = await login(EMAIL, "wrong-password");
+    expect(right).toEqual(wrong);
+    expect(right).toEqual({ ok: false, error: LOGIN_FAILED });
+    expect(LOGIN_FAILED).toMatch(/If you just signed up, open the link we emailed you first/);
+    expect(dbMocks.createSession).not.toHaveBeenCalled();
+  });
+
+  it("still lets in an account from before confirming existed, confirmed or not", async () => {
+    dbMocks.isUnconfirmedSignUp.mockResolvedValue(false);
+    expect((await login(EMAIL, CORRECT_PASSWORD)).ok).toBe(true);
+  });
+
+  it("gives an account with no recovery code its first one at sign-in, shown once, and none to an account that has one", async () => {
+    const first = await login(EMAIL, CORRECT_PASSWORD);
+    expect(first.recoveryCode).toMatch(/^[A-Z0-9]{4}(-[A-Z0-9]{4}){4}$/);
+    expect(dbMocks.updateCredential).toHaveBeenCalledWith("user-1", expect.objectContaining({ recoveryHash: expect.any(String) }));
+    const credential = await dbMocks.findCredentialByEmail.getMockImplementation()?.(EMAIL);
+    dbMocks.findCredentialByEmail.mockResolvedValue({ ...credential, recoveryHash: "h", recoverySalt: "s" });
+    expect((await login(EMAIL, CORRECT_PASSWORD)).recoveryCode).toBeUndefined();
+  });
+
   it("rate-limits a different email independently", async () => {
     for (let i = 0; i < 6; i++) await login(EMAIL, "wrong-password");
     dbMocks.findCredentialByEmail.mockResolvedValue(null);
     const other = await login("someone-else@example.com", "whatever");
-    expect(other.error).toBe("Email or password is incorrect.");
+    expect(other.error).toBe(LOGIN_FAILED);
   });
 });

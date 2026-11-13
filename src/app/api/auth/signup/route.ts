@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     const inputError = signUpInputError(email, password, displayName);
     if (inputError) return NextResponse.json({ error: inputError }, { status: 400 });
     const device = deviceIdFrom(request);
-    afterResponse(() => signUpByEmail(email, password, displayName, device).catch((e) => reportProblem("accounts", e, { action: "sign up" })));
+    afterResponse(() => signUpByEmail(email, password, displayName, device, ip).catch((e) => reportProblem("accounts", e, { action: "sign up" })));
     return NextResponse.json({ checkEmail: true });
   }
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gt, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
 import { alreadyTraded, offersFreedBy, offersFreedByTrade, sameTrip, type GivenTrip } from "@/lib/trades/offer-trips";
 import { tripsSpokenFor } from "@/lib/trades/suggestions";
@@ -17,6 +17,7 @@ import {
   interviewCandidateFacts,
   passwordResetTokens,
   preferenceProfiles,
+  processedStripeEvents,
   sessions,
   subscriptions,
   tradeHoldings,
@@ -189,6 +190,8 @@ export interface SubscriptionRecord {
   priceId: string | null;
   currentPeriodEnd: string | null;
   trialEndsAt: string | null;
+  /** `event.created` of the newest webhook event that wrote this row; null before any event has. */
+  lastEventAt: string | null;
 }
 
 function toSubscriptionRecord(row: typeof subscriptions.$inferSelect): SubscriptionRecord {
@@ -200,6 +203,7 @@ function toSubscriptionRecord(row: typeof subscriptions.$inferSelect): Subscript
     priceId: row.priceId ?? null,
     currentPeriodEnd: row.currentPeriodEnd ? row.currentPeriodEnd.toISOString() : null,
     trialEndsAt: row.trialEndsAt ? row.trialEndsAt.toISOString() : null,
+    lastEventAt: row.lastEventAt ? row.lastEventAt.toISOString() : null,
   };
 }
 
@@ -222,7 +226,11 @@ export async function linkStripeCustomer(userId: string, stripeCustomerId: strin
     .onConflictDoUpdate({ target: subscriptions.userId, set: { stripeCustomerId, updatedAt: new Date() } });
 }
 
-/** Upserts the pilot's membership from a Stripe subscription (called by the webhook). */
+/**
+ * Upserts the pilot's membership from a Stripe subscription (called by the
+ * webhook). `lastEventAt` is the `event.created` of the event that carried
+ * this state, stored so a later, older event can be recognised as stale.
+ */
 export async function saveSubscription(
   userId: string,
   snap: {
@@ -232,11 +240,12 @@ export async function saveSubscription(
     priceId: string | null;
     currentPeriodEnd: Date | null;
     trialEndsAt: Date | null;
-  }
+  },
+  lastEventAt: Date
 ): Promise<void> {
   await db
     .insert(subscriptions)
-    .values({ userId, ...snap, updatedAt: new Date() })
+    .values({ userId, ...snap, lastEventAt, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: subscriptions.userId,
       set: {
@@ -246,9 +255,25 @@ export async function saveSubscription(
         priceId: snap.priceId,
         currentPeriodEnd: snap.currentPeriodEnd,
         trialEndsAt: snap.trialEndsAt,
+        lastEventAt,
         updatedAt: new Date(),
       },
     });
+}
+
+/** True once a Stripe event id has been fully processed, so a repeat delivery can be skipped. */
+export async function stripeEventProcessed(eventId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ eventId: processedStripeEvents.eventId })
+    .from(processedStripeEvents)
+    .where(eq(processedStripeEvents.eventId, eventId))
+    .limit(1);
+  return Boolean(row);
+}
+
+/** Records a Stripe event id as processed; a second delivery of the same id is a no-op. */
+export async function markStripeEventProcessed(eventId: string, eventType: string): Promise<void> {
+  await db.insert(processedStripeEvents).values({ eventId, eventType }).onConflictDoNothing();
 }
 
 /** The fast gate the rest of the app reads. The webhook keeps this in step with the Stripe status. */
@@ -337,6 +362,44 @@ export async function spendVerificationToken(tokenHash: string, now = new Date()
   return result;
 }
 
+/**
+ * What a confirm link is, without spending it: whether it can still be used, whose it is and which device asked for
+ * it. Opened anywhere but there, the link waits for the account's password before it's spent (`confirmEmail`).
+ */
+export async function peekVerificationToken(tokenHash: string, now = new Date()): Promise<{ status: "valid"; userId: string; deviceHash: string | null } | VerificationResult> {
+  const [row] = await db.select().from(emailVerificationTokens).where(eq(emailVerificationTokens.tokenHash, tokenHash)).limit(1);
+  if (!row) return { status: "invalid" };
+  if (row.usedAt) return { status: "used", userId: row.userId };
+  if (row.expiresAt.getTime() <= now.getTime()) return { status: "expired" };
+  return { status: "valid", userId: row.userId, deviceHash: row.deviceHash ?? null };
+}
+
+/** Spends a link without confirming anything ("This wasn't me"): it can't be used afterwards. Its account, or null if it was already spent. */
+export async function voidVerificationToken(tokenHash: string, now = new Date()): Promise<string | null> {
+  const [row] = await db
+    .update(emailVerificationTokens)
+    .set({ usedAt: now })
+    .where(and(eq(emailVerificationTokens.tokenHash, tokenHash), isNull(emailVerificationTokens.usedAt), gt(emailVerificationTokens.expiresAt, now)))
+    .returning({ userId: emailVerificationTokens.userId });
+  return row?.userId ?? null;
+}
+
+/**
+ * An account made by signing up whose address isn't confirmed yet. It can't be signed in to with its password until it
+ * is (`login`): otherwise signing in straight after signing up told which addresses already had an account. Accounts
+ * from before confirming existed never had a sign-up link, so they sign in as they always did.
+ */
+export async function isUnconfirmedSignUp(userId: string): Promise<boolean> {
+  if (!isUuid(userId)) return false;
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .innerJoin(emailVerificationTokens, eq(emailVerificationTokens.userId, users.id))
+    .where(and(eq(users.id, userId), isNull(users.emailVerifiedAt), eq(emailVerificationTokens.signUp, true)))
+    .limit(1);
+  return !!row;
+}
+
 /** An emailed reset proves the address as well as a confirm link does. An earlier confirm's date is left as it was. */
 export async function markEmailVerified(userId: string, now = new Date()): Promise<void> {
   if (!isUuid(userId)) return;
@@ -347,13 +410,23 @@ export async function markEmailVerified(userId: string, now = new Date()): Promi
 /**
  * Removes accounts made by signing up and never confirmed, made before `before`. Only those whose first link was sent
  * by signing up: accounts from before confirming existed never had one, so they stay however long they go unconfirmed.
- * Their pack, profile and the rest go with them (every table's link to an account cascades). Returns how many went.
+ * And never one anyone has used: an account with a session, a saved pack or a profile stays, however it got them.
+ * Every table's link to an account cascades, so nothing of a removed one is left. Returns how many went.
  */
 export async function deleteUnconfirmedSignUps(before: Date): Promise<number> {
   const signedUp = db.select({ id: emailVerificationTokens.userId }).from(emailVerificationTokens).where(eq(emailVerificationTokens.signUp, true));
   const removed = await db
     .delete(users)
-    .where(and(isNull(users.emailVerifiedAt), lt(users.createdAt, before), inArray(users.id, signedUp)))
+    .where(
+      and(
+        isNull(users.emailVerifiedAt),
+        lt(users.createdAt, before),
+        inArray(users.id, signedUp),
+        notInArray(users.id, db.select({ id: sessions.userId }).from(sessions)),
+        notInArray(users.id, db.select({ id: bidPacks.userId }).from(bidPacks)),
+        notInArray(users.id, db.select({ id: preferenceProfiles.userId }).from(preferenceProfiles))
+      )
+    )
     .returning({ id: users.id });
   return removed.length;
 }
@@ -476,7 +549,7 @@ export async function lockPilotsInSeat(tx: Tx, meta: BidPackMetaSnapshot, pilots
 }
 
 /** The trades these pilots have agreed in this seat's month: the trips in them are spoken for (`alreadyTraded`). */
-async function agreedTrades(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[]): Promise<TradeOffer[]> {
+export async function agreedTrades(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[]): Promise<TradeOffer[]> {
   const rows = await tx
     .select()
     .from(tradeOffers)

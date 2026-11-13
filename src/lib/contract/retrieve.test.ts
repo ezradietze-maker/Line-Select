@@ -43,6 +43,16 @@ describe("finding the sections for a question", () => {
     expect(renderPassage("25.M.6.b", "2026-11")).toMatch(/\[25\.M\.6\.b\.iv \| 2015 wording \| replaced: no longer the rule\] i\. Reserves who elected .*75% of RLG/);
   });
 
+  it("dates a change the implementation chart doesn't list from the Agreement's general effective date", () => {
+    const text = renderPassage("4.Z", "2026-11");
+    expect(text).toContain("[4.Z | in force since June 29, 2026, the Agreement's general effective date] Recall From Rest Pay");
+    expect(text).toContain("[4.Z | 2015 wording | replaced: no longer the rule]");
+    expect(text).not.toMatch(/\[4\.Z \| 2015 wording\]/);
+    // One that waits on a later change keeps its 2015 wording as the rule until then; one the chart can't date says nothing.
+    expect(renderPassage("25.L.9.a", "2026-11")).toContain("[25.L.9.a.iii | 2015 wording | still the rule for this bid period]");
+    expect(renderPassage("25.E", "2026-11")).toContain("[25.E.3 | 2015 wording] Conflict Processing Window");
+  });
+
   it("stays within what it was given to spend", () => {
     const small = retrievePassages("first fly reserve assignment", 5_000).passages;
     expect(small.length).toBeGreaterThan(0);

@@ -61,14 +61,14 @@ describe("what a pilot can hold", () => {
 
 describe("held to View/Add's and Open time's own checks", () => {
   // A day trip with one 2-hour leg, as View/Add's own tests build them: 08:00 show, `tafb` hours to release.
-  const dayTrip = (id: string, startDayIndex: number, tafb = 10): Trip =>
+  const dayTrip = (id: string, startDayIndex: number, tafb = 10, report = "0800"): Trip =>
     ({
       id,
       pairingNumber: id,
       startDayIndex,
       tafbHours: tafb,
       days: 1,
-      schedule: [{ reportTimeLocal: "0800", startMinutes: 0, legs: [{ flightNumber: "1", isDeadhead: false, depAirport: "MEM", arrAirport: "IND", blockHours: 2, startMinutes: 60, endMinutes: tafb * 60 }], layover: null }],
+      schedule: [{ reportTimeLocal: report, startMinutes: 0, legs: [{ flightNumber: "1", isDeadhead: false, depAirport: "MEM", arrAirport: "IND", blockHours: 2, startMinutes: 60, endMinutes: tafb * 60 }], layover: null }],
     }) as unknown as Trip;
   const december = { ...pack, month: "DEC26", bidPeriodStart: "2026-11-30", aircraft: "B767", seat: "CAP", lines: [] } as unknown as BidPack;
 
@@ -76,6 +76,20 @@ describe("held to View/Add's and Open time's own checks", () => {
     const run = [0, 1, 2, 3, 4, 5].map((d) => dayTrip(`k${d}`, d));
     expect(canHold(december, run, dayTrip("x", 6), [])).toBe(false);
     expect(canHold(december, run.slice(0, 5), dayTrip("x", 5), [])).toBe(true);
+  });
+
+  it("takes a domestic rest of 9:30, though under 12 hours (CBA 2026 12.C.6.a, December 2026 on)", () => {
+    // 08:00 to 18:00, then a show at 04:00: 10 hours off.
+    expect(canHold(december, [dayTrip("k", 5)], dayTrip("x", 6, 6, "0400"), [])).toBe(true);
+    // 9 hours off is under the rest, and 22 hours as one duty is past 12.C.4.e.
+    expect(canHold(december, [dayTrip("k", 5)], dayTrip("x", 6, 6, "0300"), [])).toBe(false);
+  });
+
+  it("takes a hub turn as one duty within 12.C.4.e, which names a trip trade", () => {
+    // 08:00 to 14:00, then out again at 17:00 and released at 19:00: 11 hours as one duty, the most 13:30.
+    expect(canHold(december, [dayTrip("k", 5, 6)], dayTrip("x", 5, 3, "1600"), [])).toBe(true);
+    // Released at 23:00: 15 hours, past it.
+    expect(canHold(december, [dayTrip("k", 5, 6)], dayTrip("x", 5, 7, "1600"), [])).toBe(false);
   });
 
   it("fits around what's carried in from last month", () => {
