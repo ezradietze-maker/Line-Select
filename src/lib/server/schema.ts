@@ -94,9 +94,9 @@ export const emailVerificationTokens = pgTable("email_verification_tokens", {
   usedAt: timestamp("used_at", { withTimezone: true }),
   signUp: boolean("sign_up").notNull().default(false),
   /**
-   * A hash of the device that asked for the link (its `ls_device` cookie). Opening the link signs in only there: sent
-   * on to someone else, a link to an account its sender made would otherwise sign them in to that account, and what
-   * they did next (uploading their pack, the interview) would go to it.
+   * No longer written (always null). It held the device that asked for the link, to let that device confirm without a
+   * password; but a shared computer is one device to everyone who uses it, so a link now always takes the password
+   * (`confirmEmail`). Kept, not dropped, so no migration is needed.
    */
   deviceHash: text("device_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

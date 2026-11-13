@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { recoveryCodeShown } from "@/lib/recovery-code-showing";
 import { Button } from "@/components/ui/Button";
 
 interface RecoveryCodePanelProps {
@@ -26,6 +27,8 @@ const INTRO: Record<RecoveryCodePanelProps["reason"], string> = {
  */
 export function RecoveryCodePanel({ code, reason, onDone, doneLabel = "Continue" }: RecoveryCodePanelProps) {
   const [saved, setSaved] = useState(false);
+  // While it's on screen, nothing else may change the page (the confirm-email notice's checks wait).
+  useEffect(() => recoveryCodeShown(), []);
   const [copied, setCopied] = useState(false);
 
   async function copy() {

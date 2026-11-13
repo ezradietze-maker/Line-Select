@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentServerUser, resendConfirmEmail, resendConfirmEmailByAddress } from "@/lib/server/auth";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
-import { checkRequestLimit, clientIp, deviceIdFrom, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { afterResponse } from "@/lib/server/after-response";
+import { reportProblem } from "@/lib/server/alerts";
+import { checkRateLimit, clientIp, deviceIdFrom, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
@@ -18,10 +20,16 @@ export async function POST(request: Request) {
   if (refused) return refused;
   const user = await getCurrentServerUser();
   if (!user) {
-    if (!(await checkRequestLimit("confirm-resend-by-address", request, 10, 60 * 60)).ok) return rateLimitedResponse();
+    // Per address, whatever the device: a device cookie costs one page load, so counted per device it was ten an hour
+    // for every page load.
+    const from = clientIp(request);
+    if (!(await checkRateLimit("confirm-resend-by-address", from, 10, 60 * 60)).ok) return rateLimitedResponse();
     const body = await readJsonBody(request, 1_000);
     if (!isJsonObject(body) || !isText(body.email, 200) || !body.email) return NextResponse.json({ error: "Enter your email address." }, { status: 400 });
-    await resendConfirmEmailByAddress(body.email, clientIp(request), deviceIdFrom(request));
+    // Answered at once, and the lookup and email run after, so how long the answer takes says nothing about the address.
+    const email = body.email;
+    const device = deviceIdFrom(request);
+    afterResponse(() => resendConfirmEmailByAddress(email, from, device).catch((e) => reportProblem("accounts", e, { action: "resend by address" })));
     return NextResponse.json({ sent: "if-waiting", message: SENT_IF_WAITING });
   }
   const result = await resendConfirmEmail(user, clientIp(request), deviceIdFrom(request));

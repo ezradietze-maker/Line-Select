@@ -173,7 +173,7 @@ interface AppStateValue extends DataState {
    */
   handleAuthenticated: (newUser: UserAccount, opts?: { stay?: boolean }) => Promise<string>;
   /** Asks the server again who's signed in, for an account whose address may have just been confirmed elsewhere. */
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<"confirmed" | "waiting" | "signed-out" | "unknown">;
   handleContinueAsGuest: () => void;
   handleLogout: () => Promise<void>;
 }
@@ -816,12 +816,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return landing;
   }
 
-  async function refreshUser() {
+  /** The answer, for a caller that keeps asking: confirmed (or someone else now), still waiting, nobody signed in, or no answer. */
+  async function refreshUser(): Promise<"confirmed" | "waiting" | "signed-out" | "unknown"> {
     const session = await checkSession();
-    if (!session.reachable || !session.user) return;
+    if (!session.reachable) return "unknown";
+    if (!session.user) return "signed-out";
     const fresh = session.user;
     setState((s) => (s.user && s.user.id === fresh.id && s.user.emailVerified !== fresh.emailVerified ? { ...s, user: fresh } : s));
     writeSignedInHint(fresh);
+    return fresh.emailVerified === false ? "waiting" : "confirmed";
   }
 
 

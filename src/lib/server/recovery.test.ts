@@ -15,6 +15,9 @@ vi.mock("@/lib/server/kv", () => ({
 }));
 
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
+// The calendar link a reset revokes: in memory, never Postgres.
+const feeds = vi.hoisted(() => ({ revoked: [] as string[] }));
+vi.mock("@/lib/server/calendar-feeds", () => ({ revokeFeed: vi.fn(async (id: string) => void feeds.revoked.push(id)) }));
 
 /** An in-memory stand-in for the db layer so reset can be tested end to end against real hashing. */
 const store = vi.hoisted(() => ({
@@ -125,6 +128,8 @@ describe("account recovery", () => {
     const reset = await resetPasswordWithRecoveryCode(EMAIL, recoveryCode!, "brand-new-pass");
     expect(store.sessions.find((s) => s.token === staleToken)).toBeUndefined();
     expect(store.sessions.map((s) => s.token)).toEqual([reset.sessionToken]);
+    // And a calendar link whoever was in made.
+    expect(feeds.revoked).toContain(store.users[0].id);
   });
 
   it("rejects a wrong code, and gives the identical error for an unknown email so accounts can't be discovered", async () => {

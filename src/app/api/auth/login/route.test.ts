@@ -15,6 +15,9 @@ vi.mock("@/lib/server/kv", () => ({
   },
 }));
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
+// The calendar link a reset revokes: in memory, never Postgres.
+const feeds = vi.hoisted(() => ({ revoked: [] as string[] }));
+vi.mock("@/lib/server/calendar-feeds", () => ({ revokeFeed: vi.fn(async (id: string) => void feeds.revoked.push(id)) }));
 const mail = vi.hoisted(() => ({ sent: [] as { to: string; subject: string; text: string }[] }));
 vi.mock("@/lib/server/email", () => ({
   getEmailConfig: () => ({ apiKey: "k", from: "a@b.c", appUrl: "https://app.example.com" }),

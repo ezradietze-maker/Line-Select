@@ -108,7 +108,7 @@ export async function createRecoveryCode(password: string): Promise<{ ok: boolea
 export type ConfirmEmailOutcome =
   | { status: "confirmed"; signedIn: "now" | "already"; user: UserAccount; recoveryCode?: string }
   | { status: "confirmed"; signedIn: "other-account" }
-  /** Opened away from the device that signed up: the account's password, or "This wasn't me", first. */
+  /** Opened by anyone but its own signed-in pilot: the account's password, or "This wasn't me", first. */
   | { status: "needs-password"; email: string }
   | { status: "used"; yours: boolean }
   | { status: "wrong-password" | "limited" | "not-me" | "expired" | "invalid" | "unreachable" };
