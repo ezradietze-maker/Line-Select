@@ -37,22 +37,22 @@ export default function RootError({ error, reset }: { error: Error & { digest?: 
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
-      <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 text-center shadow-elevated">
-        {/* A little turbulence: the fasten-seatbelt sign chiming on, and a plane bumping along under it. */}
+      <div className="w-full max-w-md rounded-[6px] border border-border-strong bg-surface p-6 text-center shadow-elevated">
+        {/* A calm panel: the fasten-seatbelt sign on, and the plane flying level under it. Nothing moves. */}
         <svg viewBox="0 0 120 64" className="mx-auto h-16 w-[120px]" aria-hidden>
-          <rect x={32} y={3} width={56} height={30} rx={7} fill="var(--color-canvas)" stroke="var(--color-border-strong)" />
-          <g className="seatbelt-sign" fill="var(--color-accent)" stroke="var(--color-accent)">
+          <rect x={32} y={3} width={56} height={30} rx={3} fill="var(--color-on-sign)" stroke="var(--color-sign)" strokeWidth={1.5} />
+          <g fill="var(--color-sign)" stroke="var(--color-sign)">
             {/* The seatbelt: two straps meeting at a buckle. */}
-            <path d="M42 18 H55 M65 18 H78" fill="none" strokeWidth={3.2} strokeLinecap="round" />
+            <path d="M42 18 H55 M65 18 H78" fill="none" strokeWidth={3.2} />
             <rect x={54} y={13.5} width={12} height={9} rx={2} fill="none" strokeWidth={2} />
             <rect x={58} y={16.6} width={4} height={2.8} rx={0.6} stroke="none" />
           </g>
           <g transform="translate(60 50)">
-            <g className="turbulence" fill="var(--color-ink-muted)">
+            <g fill="var(--color-ink-muted)">
               <path transform="translate(-12 -12)" d="M21 12c0-.8-.7-1.2-1.6-1.2H15L10.3 3.6H8.5l2.3 7.2H6.2L4.6 8.6H3.2l1 3.4-1 3.4h1.4l1.6-2.2h4.6l-2.3 7.2h1.8l4.7-7.2h4.4c.9 0 1.6-.4 1.6-1.2z" />
             </g>
           </g>
-          <path d="M14 50 h22 M84 50 h22" stroke="var(--color-hairline)" strokeDasharray="3 4" strokeLinecap="round" />
+          <path d="M14 50 h22 M84 50 h22" stroke="var(--color-border-strong)" strokeDasharray="3 4" />
         </svg>
         <h1 className="mt-4 text-lg font-semibold text-ink">Something went wrong</h1>
         <p className="mt-2 text-sm leading-relaxed text-ink-muted">

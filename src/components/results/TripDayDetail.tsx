@@ -19,7 +19,7 @@ import type { HotelResult } from "@/types/hotel";
  * a tap away. Laid out to read top to bottom on a phone. The per-duty credit is left out on purpose.
  */
 
-const LABEL = "font-mono text-[10px] uppercase tracking-[0.12em] text-ink-faint";
+const LABEL = "text-2xs text-ink-faint font-medium";
 
 function clock(hhmm: string): string {
   return `${hhmm.slice(0, 2)}:${hhmm.slice(2, 4)}`;
@@ -84,7 +84,7 @@ function LegRow({ leg, mode, next }: { leg: TripLeg; mode: TimeMode; next: TripL
     <li>
       <div className="flex flex-wrap items-baseline gap-x-2">
         <span className={`font-mono font-semibold ${tone}`}>{leg.flightNumber}</span>
-        {leg.isDeadhead && <span className={`rounded px-1 font-mono text-[10px] font-semibold ${cab ? "bg-gt/15 text-gt" : "bg-deadhead/15 text-deadhead"}`}>{cab ? "CAB" : "DH"}</span>}
+        {leg.isDeadhead && <span className={`rounded px-1 font-mono text-2xs font-semibold ${cab ? "bg-gt/15 text-gt" : "bg-deadhead/15 text-deadhead"}`}>{cab ? "CAB" : "DH"}</span>}
         {equipment && !cab && <span className="text-ink-muted">{equipment === "airline" ? "airline" : equipment}</span>}
         {leg.blockHours !== null && (
           <span className="text-ink-muted">
@@ -93,7 +93,7 @@ function LegRow({ leg, mode, next }: { leg: TripLeg; mode: TimeMode; next: TripL
         )}
         {leg.meal && (
           <span className="text-ink-muted" title={`Meal code ${leg.meal}`}>
-            {mealWords(leg.meal)} <span className="font-mono text-[10px] text-ink-faint">({leg.meal})</span>
+            {mealWords(leg.meal)} <span className="font-mono text-2xs text-ink-faint">({leg.meal})</span>
           </span>
         )}
       </div>
@@ -173,7 +173,7 @@ function Layover({ layover, ratings, mode }: { layover: NonNullable<TripDutyPeri
       )}
       {layover.transportToHotel && (
         <div className="flex flex-wrap items-center gap-x-2">
-          <span className="font-mono text-[10px] font-semibold text-gt">GT IN</span>
+          <span className="font-mono text-2xs font-semibold text-gt">GT IN</span>
           <span className="capitalize text-ink-muted">{rideName(layover.transportToHotel, layover.hotelName)}</span>
           {layover.transportToPhone && <Phone number={layover.transportToPhone} />}
           <span className="text-ink-faint">airport to hotel, after landing</span>
@@ -181,7 +181,7 @@ function Layover({ layover, ratings, mode }: { layover: NonNullable<TripDutyPeri
       )}
       {(layover.transportFromHotel || pickup) && (
         <div className="flex flex-wrap items-center gap-x-2">
-          <span className="font-mono text-[10px] font-semibold text-gt">GT OUT</span>
+          <span className="font-mono text-2xs font-semibold text-gt">GT OUT</span>
           {layover.transportFromHotel && <span className="capitalize text-ink-muted">{rideName(layover.transportFromHotel, layover.hotelName)}</span>}
           {layover.transportFromPhone && <Phone number={layover.transportFromPhone} />}
           {pickup && (
@@ -265,7 +265,7 @@ export function TripDayDetail({ trip, day, mode, ratings }: { trip: Trip; day: T
           </section>
         );
       })}
-      {older && <p className="text-[11px] text-ink-faint">Meals, duty times and phone numbers show here once this bid pack is uploaded again.</p>}
+      {older && <p className="text-2xs text-ink-faint">Meals, duty times and phone numbers show here once this bid pack is uploaded again.</p>}
     </div>
   );
 }

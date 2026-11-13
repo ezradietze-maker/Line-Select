@@ -9,7 +9,7 @@ const HOLD_MS = 140;
 
 function Tick({ working }: { working: boolean }) {
   return working ? (
-    <span aria-hidden className="mt-1.5 inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent" />
+    <span aria-hidden className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-[1px] bg-accent" />
   ) : (
     <span aria-hidden className="mt-[1px] w-2 shrink-0 text-center text-accent">
       ✓

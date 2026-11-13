@@ -11,7 +11,7 @@ const FIT_STYLE: Record<StrategyFit, { label: string; cls: string }> = {
 
 function FitBadge({ fit }: { fit: StrategyFit }) {
   const f = FIT_STYLE[fit];
-  return <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium ${f.cls}`}>{f.label}</span>;
+  return <span className={`inline-flex shrink-0 items-center rounded-[3px] border px-2 py-0.5 text-xs font-medium ${f.cls}`}>{f.label}</span>;
 }
 
 function ScoreContextLine({ scoreContext }: { scoreContext: StrategyLineRecommendation["scoreContext"] }) {
@@ -49,7 +49,7 @@ const FEASIBILITY_LABEL: Record<FeasibilityTier, string> = {
 function FeasibilityBadge({ tier }: { tier: FeasibilityTier }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium ${FEASIBILITY_STYLE[tier]}`}
+      className={`inline-flex shrink-0 items-center rounded-[3px] border px-2 py-0.5 text-xs font-medium ${FEASIBILITY_STYLE[tier]}`}
     >
       {FEASIBILITY_LABEL[tier]}
     </span>
@@ -60,7 +60,7 @@ function FeasibilityBadge({ tier }: { tier: FeasibilityTier }) {
 function AwardHistoryBadge() {
   return (
     <span
-      className="inline-flex shrink-0 items-center rounded-full border border-brand/30 bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand"
+      className="inline-flex shrink-0 items-center rounded-[3px] border border-brand/30 bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand"
       title="Based on real, self-reported hold outcomes from pilots near your seniority for this exact domicile/aircraft/seat — not the usual rarity estimate."
     >
       Real reports
@@ -80,7 +80,7 @@ function LineRecommendationRow({ rec }: { rec: StrategyLineRecommendation }) {
       </div>
       <p className="mt-1.5 text-sm font-medium text-ink">{rec.headline}</p>
       <p className="mt-1 text-sm leading-relaxed text-ink-muted">{rec.detail}</p>
-      <div className="mt-2.5 flex flex-wrap gap-1.5 font-mono text-[11px] text-ink-muted">
+      <div className="mt-2.5 flex flex-wrap gap-1.5 font-mono text-2xs text-ink-muted">
         <span className="rounded border border-hairline px-1.5 py-0.5">{rec.daysOff} days off</span>
         <span className="rounded border border-hairline px-1.5 py-0.5">{rec.totalCreditHours.toFixed(1)} credit hrs</span>
         <span className="rounded border border-hairline px-1.5 py-0.5">{(rec.totalTafbHours / 24).toFixed(1)} days away</span>
@@ -105,7 +105,7 @@ function ReactionButtons({
         type="button"
         onClick={() => onReact("used")}
         aria-pressed={reaction === "used"}
-        className={`press rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+        className={`press rounded-[3px] border px-3 py-1.5 text-xs font-medium transition-colors ${
           reaction === "used"
             ? "border-good bg-good-soft text-good"
             : "border-border text-ink-faint hover:border-border-strong hover:text-ink-muted"
@@ -117,7 +117,7 @@ function ReactionButtons({
         type="button"
         onClick={() => onReact("dismissed")}
         aria-pressed={reaction === "dismissed"}
-        className={`press rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+        className={`press rounded-[3px] border px-3 py-1.5 text-xs font-medium transition-colors ${
           reaction === "dismissed"
             ? "border-ink-faint bg-canvas text-ink-muted"
             : "border-border text-ink-faint hover:border-border-strong hover:text-ink-muted"
@@ -147,14 +147,17 @@ export function StrategyCard({
   return (
     <article
       id={`strategy-${strategy.id}`}
-      className={`panel-glass scroll-mt-24 overflow-hidden ${topPick ? "top-pick-glow !border-accent/50 ring-1 ring-accent/20" : ""}`}
+      className={`panel-glass scroll-mt-24 overflow-hidden ${topPick ? "top-pick-glow !border-sign-edge" : ""}`}
     >
       {topPick && (
-        <div className="flex items-center gap-1.5 border-b border-accent/20 bg-gradient-to-r from-accent-soft to-transparent px-5 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-accent sm:px-6">
-          <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3">
-            <path d="M12 2l2.6 6.5 7 .5-5.3 4.5 1.7 6.9L12 16.9 5.9 20.4l1.7-6.9L2.4 9l7-.5L12 2z" />
-          </svg>
-          Best match for you
+        <div className="flex items-center border-b border-border px-5 py-1.5 sm:px-6">
+          {/* A location sign: yellow on black, as on the top-pick line. */}
+          <span className="mark-in inline-flex items-center gap-1.5 rounded-[2px] bg-on-sign px-1.5 py-0.5 font-display text-2xs font-bold text-sign">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3">
+              <path d="M12 2l2.6 6.5 7 .5-5.3 4.5 1.7 6.9L12 16.9 5.9 20.4l1.7-6.9L2.4 9l7-.5L12 2z" />
+            </svg>
+            Best match for you
+          </span>
         </div>
       )}
       <div className="p-5 sm:p-6">
@@ -165,7 +168,7 @@ export function StrategyCard({
         <p className="mt-1 text-sm font-medium text-accent">{strategy.tagline}</p>
         <p className="mt-2 text-sm leading-relaxed text-ink-muted">{strategy.fitReason}</p>
 
-        <h4 className="mt-4 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Your move</h4>
+        <h4 className="mt-4 text-2xs font-semibold text-ink-faint">Your move</h4>
         <ol className="mt-1.5 space-y-1.5">
           {strategy.steps.map((step, i) => (
             <li key={i} className="flex gap-2.5 text-sm leading-relaxed text-ink">

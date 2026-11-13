@@ -32,15 +32,15 @@ export function SeniorityQueue({ ahead, total }: { ahead: number; total: number 
           <Plane key={k} className="hidden text-ink-faint sm:block" delay={next()} opacity={0.3 + (0.4 * (k + 1)) / behind} />
         ))}
         <span className="relative flex">
-          <Plane className="text-accent drop-shadow-[0_0_5px_var(--glow-strong)]" delay={next()} />
-          <span className="absolute left-0 top-full mt-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-accent sm:left-1/2 sm:-translate-x-1/2">You</span>
+          <Plane className="text-accent" delay={next()} />
+          <span className="absolute left-0 top-full mt-1 text-2xs text-accent sm:left-1/2 sm:-translate-x-1/2 font-medium">You</span>
         </span>
         <span className="mx-1 h-px w-3 bg-hairline" />
         {long ? (
           <>
             <Plane className="text-ink-muted" delay={next()} />
             <Plane className="text-ink-muted" delay={next()} />
-            <span className="queue-roll whitespace-nowrap px-1.5 font-mono text-[10.5px] text-ink-faint" style={{ animationDelay: `${next()}ms` }}>
+            <span className="queue-roll whitespace-nowrap px-1.5 font-mono text-2xs text-ink-faint" style={{ animationDelay: `${next()}ms` }}>
               &middot; &middot; {ahead - 5} more &middot; &middot;
             </span>
             {[0, 1, 2].map((k) => (
@@ -59,7 +59,7 @@ export function SeniorityQueue({ ahead, total }: { ahead: number; total: number 
           <span className="absolute inset-x-1 top-1/2 h-px -translate-y-1/2 bg-[repeating-linear-gradient(to_right,var(--color-ink-faint)_0_6px,transparent_6px_10px)]" />
         </span>
       </div>
-      <div className="mt-1 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">
+      <div className="mt-1 text-2xs text-ink-faint font-medium">
         {ahead === 0 ? "First in line for the runway" : `${ahead} ahead of you for the runway`}
       </div>
     </div>

@@ -313,7 +313,7 @@ function OpenTimeBuilder({ bidPack, seniority, profile, userId }: { bidPack: Bid
             <legend className="text-xs text-ink-muted">What you have to make up, CH</legend>
             <div className="mt-1 grid grid-cols-3 gap-2 sm:grid-cols-5">
               {BANKS.map(({ code, label }) => (
-                <label key={code} className="text-[11px] text-ink-faint">
+                <label key={code} className="text-2xs text-ink-faint">
                   {label}
                   <input className={`${FIELD} mt-0.5 block w-full px-2`} value={banks[code] ?? ""} onChange={(e) => setBanks((b) => ({ ...b, [code]: e.target.value }))} placeholder="0" inputMode="decimal" />
                 </label>

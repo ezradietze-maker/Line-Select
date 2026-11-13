@@ -42,8 +42,9 @@ function bow(a: Stop, b: Stop): string {
 /**
  * Where the pack goes, drawn: a route out from base to every layover city, each drawing itself in one after another,
  * the most-flown three in amber with their codes. Cities across the date line are reached the short way round.
+ * `labels={false}` leaves the codes off, for a screen that already names the cities (the Logbook).
  */
-export function LayoverRouteMap({ base, cities }: { base: string; cities: string[] }) {
+export function LayoverRouteMap({ base, cities, labels = true }: { base: string; cities: string[]; labels?: boolean }) {
   const reduce = useReducedMotion();
   const placed = useMemo(() => {
     const home = coordinatesForAirport(base);
@@ -103,7 +104,7 @@ export function LayoverRouteMap({ base, cities }: { base: string; cities: string
         <circle cx={origin.x} cy={origin.y} r={3.2 * unit} fill="none" stroke="var(--color-ink)" strokeWidth={1} vectorEffect="non-scaling-stroke" className={reduce ? "" : "beacon-ring"} />
       </WorldMap>
       {/* The most-flown three named, in HTML over the map so the codes read the same size on any screen. */}
-      {stops.slice(0, 3).map((s, i) => {
+      {labels && stops.slice(0, 3).map((s, i) => {
         const left = ((s.x - view[0]) / view[2]) * 100;
         const top = ((s.y - view[1]) / view[3]) * 100;
         // Two close together (Toronto and Newark, from Memphis) would print over each other above their dots: each takes its own side instead.
@@ -113,7 +114,7 @@ export function LayoverRouteMap({ base, cities }: { base: string; cities: string
           <span
             key={s.code}
             aria-hidden
-            className={`pointer-events-none absolute font-mono text-[10px] font-semibold tracking-wider text-accent ${side === "above" ? "-translate-x-1/2" : side === "west" ? "-translate-x-full" : ""} ${reduce ? "" : "route-dot"}`}
+            className={`pointer-events-none absolute font-mono text-2xs font-semibold tracking-wider text-accent ${side === "above" ? "-translate-x-1/2" : side === "west" ? "-translate-x-full" : ""} ${reduce ? "" : "route-dot"}`}
             style={{
               left: side === "above" ? `${left}%` : `calc(${left}% ${side === "west" ? "-" : "+"} 7px)`,
               top: side === "above" ? `calc(${top}% - 18px)` : `calc(${top}% - 7px)`,

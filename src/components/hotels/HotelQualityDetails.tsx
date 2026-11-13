@@ -91,7 +91,7 @@ export function HotelQualityDetails({
 
       {hotel.reviewSummary && (
         <div className={hotel.amenities ? "border-t border-border pt-3" : ""}>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+          <div className="text-2xs font-semibold text-ink-faint">
             From recent reviews
           </div>
           <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">{hotel.reviewSummary.summary}</p>
@@ -100,7 +100,7 @@ export function HotelQualityDetails({
               {themeEntries.map(([theme, sentiment]) => (
                 <span
                   key={theme}
-                  className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${SENTIMENT_CLASS[sentiment]}`}
+                  className={`rounded-[3px] border px-2 py-0.5 text-2xs font-medium ${SENTIMENT_CLASS[sentiment]}`}
                 >
                   {THEME_LABELS[theme]}
                 </span>

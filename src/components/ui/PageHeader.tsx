@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { Heading } from "@/components/ui/Heading";
-import { TypedEyebrow } from "@/components/ui/TypedEyebrow";
 
 interface PageHeaderProps {
   /** A mono context line above the title — usually the loaded pack ("MEM · B767 · FO · OCT26"). */
@@ -25,8 +24,8 @@ export function PageHeader({ eyebrow, title, description, actions, children, cla
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           {eyebrow && (
-            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-accent">
-              {typeof eyebrow === "string" ? <TypedEyebrow text={eyebrow} /> : eyebrow}
+            <div className="text-2xs font-medium text-accent">
+              {eyebrow}
             </div>
           )}
           <Heading as="h1" className={`text-3xl tracking-tight text-ink sm:text-4xl ${eyebrow ? "mt-1.5" : ""}`}>

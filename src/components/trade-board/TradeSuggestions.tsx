@@ -47,7 +47,7 @@ function Reason({ reason }: { reason: TradeReason }) {
 function TripBlock({ title, trip }: { title: string; trip: TradeTrip }) {
   return (
     <div>
-      <div className="font-mono text-[11px] uppercase tracking-wide text-ink-faint">{title}</div>
+      <div className="text-2xs text-ink-faint font-medium">{title}</div>
       <div className="mt-0.5 font-display text-sm font-semibold text-ink">{tripName(trip)}</div>
       <div className="mt-1">
         <TripSnapshotStats trip={trip} />
@@ -115,7 +115,7 @@ function SuggestionCard({
 
       {s.size > 2 && (
         <div className="mt-3 text-sm text-ink-muted">
-          <div className="font-mono text-[11px] uppercase tracking-wide text-ink-faint">Who&rsquo;s on it</div>
+          <div className="text-2xs text-ink-faint font-medium">Who&rsquo;s on it</div>
           <ul className="mt-1 space-y-0.5">
             {s.pilots.map((p, i) => (
               <li key={i}>
@@ -167,7 +167,7 @@ function SuggestionCard({
 
       {(s.status === "accepted" || s.status === "done") && (
         <div className="mt-4">
-          <div className="font-mono text-[11px] uppercase tracking-wide text-ink-faint">{s.status === "done" ? "Done" : "Everyone said yes. Submit these in VIPS, in this order"}</div>
+          <div className="text-2xs text-ink-faint font-medium">{s.status === "done" ? "Done" : "Everyone said yes. Submit these in VIPS, in this order"}</div>
           <ol className="mt-2 space-y-3">
             {s.steps.map((step, i) => (
               <li key={i} className={`text-sm ${step.yours ? "text-ink" : "text-ink-muted"}`}>

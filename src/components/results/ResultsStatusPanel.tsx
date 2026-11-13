@@ -8,7 +8,7 @@ import { ForecastBanner } from "@/components/results/ForecastBanner";
 import { PilotProfileSummary } from "@/components/results/PilotProfileSummary";
 import { Button } from "@/components/ui/Button";
 import { FlipText } from "@/components/ui/FlipText";
-import { CalendarIcon, ChevronDownIcon, PlaneIcon } from "@/components/ui/icons";
+import { CalendarIcon, ChevronDownIcon } from "@/components/ui/icons";
 import { bidChecklist, upcomingReminders, withBidEntered } from "@/lib/bid-checklist";
 import { buildDeadlineReminderIcs } from "@/lib/ics-export";
 import type { BidPeriodChangeSummary } from "@/lib/bid-period-history";
@@ -28,7 +28,7 @@ const URGENCY_TEXT: Record<Urgency, string> = {
   closed: "text-ink-muted",
 };
 
-const LABEL = "font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint";
+const LABEL = "text-2xs text-ink-faint font-medium";
 
 /** A tick in a circle: filled when the step's done. */
 /** No date set yet: a departures board's tiles standing blank, waiting for a time to turn over to. */
@@ -197,8 +197,8 @@ export function ResultsStatusPanel({
   const reminders = useInTabReminders(pack.id, deadline.deadline, packLabel);
   const items = bidChecklist(profile, pack);
   const doneCount = items.filter((i) => i.done).length;
-  // Cleared to bid: every step before the award is done (the award can only be logged once it's out). The takeoff
-  // plays when that happens here, not on every visit to a finished checklist.
+  // Cleared to bid: every step before the award is done (the award can only be logged once it's out). The bar draws
+  // itself through once when that happens here, not on every visit to a finished checklist.
   const cleared = items.every((i) => i.done || i.id === "award");
   const awarded = items.some((i) => i.id === "award" && i.done);
   const [takeoff, setTakeoff] = useState(false);
@@ -230,9 +230,9 @@ export function ResultsStatusPanel({
         <div className="min-w-0">
           <div className={`flex items-center gap-2 ${LABEL}`}>
             Bid closes
-            {urgency === "imminent" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-danger shadow-[0_0_6px_var(--color-danger)]" aria-hidden />}
-            {/* Inside the last day: final call, and the countdown glows (the tab's title counts down too). */}
-            {finalCall && <span className={`drop-in rounded-full border px-1.5 py-px ${urgency === "imminent" ? "border-danger/50 text-danger" : "border-accent/50 text-accent"}`}>Final call</span>}
+            {urgency === "imminent" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-danger" aria-hidden />}
+            {/* Inside the last day: final call, marked in, and the countdown pulses (the tab's title counts down too). */}
+            {finalCall && <span className={`mark-in rounded-[3px] border px-1.5 py-px ${urgency === "imminent" ? "border-danger/50 text-danger" : "border-accent/50 text-accent"}`}>Final call</span>}
           </div>
           <div className={`mt-1 font-mono text-3xl font-semibold tabular-nums sm:text-[2rem] ${urgency ? URGENCY_TEXT[urgency] : "text-ink-faint"} ${finalCall ? "final-call" : ""}`}>
             {time ? (
@@ -298,15 +298,10 @@ export function ResultsStatusPanel({
             </span>
           </div>
           <div className="relative mt-2">
-            <div className="h-1.5 overflow-hidden rounded-full bg-ink/[0.08]" role="progressbar" aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={doneCount} aria-label="Bid steps done">
-              <div className="h-full rounded-full bg-good transition-[width] duration-500" style={{ width: `${(doneCount / items.length) * 100}%` }} />
+            <div className="h-1.5 overflow-hidden rounded-[1px] bg-ink/[0.08]" role="progressbar" aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={doneCount} aria-label="Bid steps done">
+              {/* Cleared to bid: the green centreline draws itself through, left to right — once, when it happens. */}
+              <div className={`h-full bg-good transition-[width] duration-500 ${takeoff ? "draw-x" : ""}`} style={{ width: `${(doneCount / items.length) * 100}%` }} />
             </div>
-            {/* Cleared to bid: a plane rolls down the bar and climbs away — once, when it happens. */}
-            {takeoff && (
-              <span aria-hidden className="takeoff pointer-events-none absolute top-1/2 text-good">
-                <PlaneIcon className="h-4 w-4 rotate-45" />
-              </span>
-            )}
           </div>
           {cleared && !awarded && <p className="drop-in mt-1.5 text-xs font-medium text-good">Cleared to bid &mdash; good luck this month.</p>}
           <ul className="mt-3 space-y-1">
@@ -401,7 +396,7 @@ export function ResultsStatusPanel({
               )}
               {inYourWords > 0 && (
                 <div>
-                  <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.16em] text-ink-faint">In your words</div>
+                  <div className="mb-2 text-2xs text-ink-faint font-medium">In your words</div>
                   <PilotProfileSummary profile={profile} bare />
                 </div>
               )}

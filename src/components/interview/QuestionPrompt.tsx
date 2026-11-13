@@ -38,7 +38,7 @@ export function QuestionPrompt({ eyebrow, title, help }: { eyebrow?: string; tit
     <div>
       {eyebrow && (
         <motion.div
-          className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent"
+          className="text-2xs text-accent font-medium"
           initial={reduce ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3 }}

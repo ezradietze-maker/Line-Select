@@ -61,7 +61,7 @@ export function CityChips({ cities, sentiments, onCycle }: CityChipsProps) {
               type="button"
               onClick={() => onCycle(code)}
               aria-label={`${code}: ${sentiment === "love" ? "favorite" : sentiment === "avoid" ? "avoid" : "no opinion"}. ${nextLabel(sentiment)}`}
-              className={`flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 rounded-[3px] border-2 px-3 py-1.5 text-sm font-medium transition-all ${
                 sentiment === "love"
                   ? "border-good bg-good-soft text-good"
                   : sentiment === "avoid"

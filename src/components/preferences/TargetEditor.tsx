@@ -81,7 +81,7 @@ export function TargetEditor({ config, range, value, allowRange, onChange }: Tar
             parts[role] !== undefined ? (
               <div key={role}>
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="text-xs font-medium uppercase tracking-wide text-ink-faint">{ROLE_LABELS[role].title}</span>
+                  <span className="text-xs font-medium text-ink-faint">{ROLE_LABELS[role].title}</span>
                   {allowRange && (
                     <button
                       type="button"

@@ -37,12 +37,12 @@ export function Tabs({ tabs, activeId, onChange }: TabsProps) {
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
             className={`relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
-              isActive ? "text-brand" : "text-ink-faint hover:text-ink-muted"
+              isActive ? "font-semibold text-ink" : "text-ink-faint hover:text-ink-muted"
             }`}
           >
             {tab.label}
             {tab.badge && <span className="h-1.5 w-1.5 rounded-full bg-warn" aria-hidden />}
-            {isActive && <PillHighlight group={group} className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-brand" />}
+            {isActive && <PillHighlight group={group} className="absolute inset-x-0 -bottom-px h-[3px] bg-brand" />}
           </button>
         );
       })}

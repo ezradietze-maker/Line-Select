@@ -9,7 +9,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
 import { NotamStrip } from "@/components/ui/NotamStrip";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
-import { PaperPlane } from "@/components/ui/PaperPlane";
+import { MarkTick } from "@/components/ui/MarkTick";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { TextField } from "@/components/ui/TextField";
@@ -293,8 +293,8 @@ export function TradeBoardScreen({
         }
       />
 
-      {/* A posted offer folds into a paper plane and flies off to the board. */}
-      <div className="relative h-0">{sends > 0 && <PaperPlane key={sends} className="right-24 top-0" />}</div>
+      {/* Mark: a tick drawn by the post button once an offer is up. */}
+      <div className="relative h-0">{sends > 0 && <MarkTick key={sends} className="absolute right-24 top-0 text-good" />}</div>
 
       <NonBindingDisclaimer />
 
@@ -529,7 +529,7 @@ export function OfferCard({
             {offer.isDemo && (
               <span
                 title="An example of what an offer looks like, shown only with the sample bid pack. No real pilot posted it."
-                className="ml-2 inline-block rounded-full bg-warn-soft px-2 py-0.5 align-middle font-sans text-[11px] font-semibold uppercase tracking-wide text-warn"
+                className="ml-2 inline-block rounded-[3px] bg-warn-soft px-2 py-0.5 align-middle font-sans text-2xs font-semibold text-warn"
               >
                 Example &mdash; not real
               </span>
@@ -540,7 +540,7 @@ export function OfferCard({
           </div>
         </div>
         <span
-          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[offer.status]}`}
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-[3px] px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[offer.status]}`}
         >
           <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[offer.status]}`} />
           {STATUS_LABELS[offer.status]}

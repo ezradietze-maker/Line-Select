@@ -1,35 +1,38 @@
 "use client";
 
-import { Gauge, type GaugeTone } from "@/components/ui/Gauge";
-import { DEALBREAKER_SCORE_CAP } from "@/lib/scoring";
-
-function scoreTone(score: number): GaugeTone {
-  if (score >= 78) {
-    return { stroke: "var(--color-good)", text: "text-good", track: "var(--color-good-soft)" };
-  }
-  if (score >= 55) {
-    return { stroke: "var(--color-brand)", text: "text-brand", track: "var(--color-brand-soft)" };
-  }
-  return { stroke: "var(--color-warn)", text: "text-warn", track: "var(--color-warn-soft)" };
+/** The box's ruled edge and number, by how good the score is: green for a strong fit, plain ink in the middle, amber low. */
+function scoreTone(score: number): string {
+  if (score >= 78) return "border-good text-good";
+  if (score >= 55) return "border-ink text-ink";
+  return "border-warn text-warn";
 }
 
 interface ScoreRingProps {
   score: number;
   size?: number;
-  /** A violated dealbreaker holds this line's score down — drawn as a red limit at the cap, so the dial itself shows it can't go higher. */
+  /** A violated dealbreaker holds this line's score down — a red bar along the box's foot says it can't go higher. */
   capped?: boolean;
+  /** The pilot's top pick: the score is a location sign, yellow on black. */
+  top?: boolean;
 }
 
-/** A line's Satisfaction Index on the shared `Gauge` instrument, colored by how good the score is. */
-export function ScoreRing({ score, size = 56, capped = false }: ScoreRingProps) {
+/**
+ * A line's Satisfaction Index as a boxed score — a number in a ruled box, the way a strip prints it, coloured by how
+ * good the score is. (The name stays from the round dial it replaced, so every screen picks the box up as it is.)
+ */
+export function ScoreRing({ score, size = 56, capped = false, top = false }: ScoreRingProps) {
+  const rounded = Math.round(score);
   return (
-    <Gauge
-      value={score}
-      size={size}
-      tone={scoreTone(score)}
-      label={`Satisfaction Index ${Math.round(score)} out of 100${capped ? ", held down by a limit you set" : ""}`}
-      limit={capped ? DEALBREAKER_SCORE_CAP : undefined}
-      readoutClassName={size >= 56 ? "text-base font-semibold" : "text-sm font-semibold"}
-    />
+    <div
+      role="img"
+      aria-label={`Satisfaction Index ${rounded} out of 100${capped ? ", held down by a limit you set" : ""}`}
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-[3px] border-[1.5px] font-display font-extrabold tabular-nums leading-none ${
+        top ? "border-sign bg-on-sign text-sign" : `bg-panel ${scoreTone(score)}`
+      }`}
+      style={{ width: Math.round(size * 1.05), height: Math.round(size * 0.78), fontSize: Math.round(size * 0.42) }}
+    >
+      <span aria-hidden>{rounded}</span>
+      {capped && <span aria-hidden className="absolute inset-x-0 bottom-0 h-[3px] bg-danger" />}
+    </div>
   );
 }

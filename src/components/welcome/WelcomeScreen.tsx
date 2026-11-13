@@ -1,13 +1,13 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { Button } from "@/components/ui/Button";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
-import { NightGlobe } from "@/components/welcome/NightGlobe";
+import { ApproachLights } from "@/components/welcome/ApproachLights";
 import { CalendarVisual, InterviewVisual, ParseVisual, RankVisual } from "@/components/welcome/StoryVisuals";
-import { EASE } from "@/lib/motion-tokens";
+import { DURATION, EASE } from "@/lib/motion-tokens";
 
 const STEPS: { eyebrow: string; title: string; body: string; Visual: ComponentType<{ active: boolean }> }[] = [
   {
@@ -111,7 +111,7 @@ function Story() {
   return (
     <section aria-labelledby="story-heading" className="mx-auto max-w-6xl px-4 sm:px-8">
       <div className="mx-auto max-w-2xl text-center">
-        <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">How it flies</div>
+        <div className="text-2xs text-accent font-medium">How it flies</div>
         <h2 id="story-heading" className="mt-3 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
           From a 260-page PDF to the line that fits you.
         </h2>
@@ -127,7 +127,7 @@ function Story() {
               className="flex flex-col justify-center py-10 lg:min-h-[78vh] lg:py-0"
             >
               <div className={`transition-opacity duration-500 ${active === i ? "lg:opacity-100" : "lg:opacity-35"}`}>
-                <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">{s.eyebrow}</div>
+                <div className="text-2xs text-accent font-medium">{s.eyebrow}</div>
                 <h3 className="mt-3 font-display text-2xl font-semibold leading-tight text-ink sm:text-3xl">{s.title}</h3>
                 <p className="mt-3 max-w-md text-base leading-relaxed text-ink-muted">{s.body}</p>
               </div>
@@ -148,7 +148,7 @@ function Story() {
                   className={i === 0 ? "relative" : "absolute inset-x-0 top-0"}
                   initial={false}
                   animate={{ opacity: active === i ? 1 : 0, y: active === i ? 0 : active > i ? -16 : 16 }}
-                  transition={{ duration: 0.5, ease: EASE.emphasized }}
+                  transition={{ duration: DURATION.handoff, ease: EASE.rack }}
                   style={{ pointerEvents: active === i ? "auto" : "none" }}
                 >
                   <s.Visual active={active === i} />
@@ -163,14 +163,12 @@ function Story() {
 }
 
 /**
- * The public front door — a full-bleed hero with a live 3D globe of real
- * routes, then a scroll story of what the app actually does, each step shown
- * with real data from a real bid pack. Every honesty note the old landing
- * carried is still here: not affiliated, what happens to the PDF, which
- * numbers are illustrative.
+ * The public front door — a hero with the theme's one showpiece (approach lights running in toward the Line Select
+ * sign, and a real route on the sign under it), then a scroll story of what the app actually does, each step shown
+ * with real data from a real bid pack. Every honesty note the old landing carried is still here: not affiliated,
+ * what happens to the PDF, which numbers are illustrative.
  */
 export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; onTrySample: () => void }) {
-  const reduce = useReducedMotion();
   // The hero rises in with CSS, not motion: CSS starts on first paint, from
   // the server-rendered HTML, while a motion entrance would hold the
   // headline at opacity 0 until the JavaScript arrived — on a phone, seconds.
@@ -179,31 +177,25 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
   return (
     <div className="relative overflow-x-clip">
       <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-8">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-1">
           <LogoMark className="h-9 w-9" />
-          <Wordmark className="text-lg" />
+          <Wordmark className="h-9 text-base" />
         </div>
         <nav className="flex items-center gap-1 text-sm">
           <Link href="/how-it-works" className="rounded-md px-3 py-2 text-ink-muted transition-colors hover:text-ink">
             How it works
           </Link>
-          <Link href="/auth" className="rounded-md border border-hairline px-3 py-2 text-ink transition-colors hover:border-border-strong">
+          <Link href="/auth" className="rounded-[4px] border border-border-strong px-3 py-2 font-display font-bold text-ink transition-colors hover:border-ink">
             Sign in
           </Link>
         </nav>
       </header>
 
       <section className="relative mx-auto grid max-w-7xl items-center gap-6 px-4 pb-16 pt-2 sm:px-8 lg:min-h-[calc(100svh-5rem)] lg:grid-cols-[1fr_1.1fr] lg:gap-4 lg:pb-8">
-        {/* Instrument light pooling behind the globe. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute right-[-10%] top-[5%] -z-10 h-[70%] w-[70%] rounded-full opacity-70 blur-3xl"
-          style={{ background: "radial-gradient(circle, var(--glow-soft), transparent 65%)" }}
-        />
         <div className="order-2 text-center lg:order-1 lg:text-left">
           <span
             style={rise(0)}
-            className="animate-hero-in inline-block max-w-full text-balance rounded-2xl border border-hairline bg-surface/70 px-3 py-1 font-mono text-[11px] uppercase leading-relaxed tracking-[0.14em] text-ink-faint backdrop-blur-sm sm:rounded-full"
+            className="animate-hero-in inline-block max-w-full text-balance rounded-[3px] border border-border-strong px-2.5 py-1 text-2xs font-medium leading-relaxed text-ink-muted"
           >
             Independent prototype &middot; not affiliated with FedEx
           </span>
@@ -212,50 +204,37 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
             className="animate-hero-in mt-6 font-display text-[2.6rem] font-semibold leading-[1.02] tracking-tight text-ink sm:text-6xl xl:text-7xl"
           >
             Find the line that actually fits{" "}
-            <span className="text-glow text-accent">how you want to fly.</span>
+            <span className="text-accent">how you want to fly.</span>
           </h1>
           <p style={rise(2)} className="animate-hero-in mx-auto mt-6 max-w-xl text-lg leading-relaxed text-ink-muted lg:mx-0">
             Upload your bid pack, tell it what matters, and every line gets scored against you &mdash; with a plain-English
             reason for each score, so you can trust the answer instead of re-checking it by hand.
           </p>
           <div style={rise(3)} className="animate-hero-in mt-9 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
-            <Button onClick={onStart} className="glow-soft w-full px-7 py-3.5 text-base sm:w-auto">
+            <Button onClick={onStart} className="w-full px-7 py-3.5 text-base sm:w-auto">
               Upload your bid pack
             </Button>
-            <button
-              type="button"
-              onClick={onTrySample}
-              className="w-full rounded-lg border border-hairline px-6 py-3.5 text-base font-medium text-ink transition-colors hover:border-border-strong hover:bg-surface/60 sm:w-auto"
-            >
+            <Button variant="secondary" onClick={onTrySample} className="w-full px-6 py-3.5 text-base sm:w-auto">
               Try it with sample data
-            </button>
+            </Button>
           </div>
           <p style={rise(4)} className="animate-hero-in mt-4 text-xs text-ink-faint">
             Parsed on our server, never stored there &mdash; only the extracted line data comes back to this device.
           </p>
         </div>
 
-        <div className="order-1 mx-auto w-full max-w-[min(58vw,640px)] sm:max-w-[min(92vw,640px)] lg:order-2">
-          <NightGlobe />
+        <div className="order-1 mx-auto w-full max-w-[min(72vw,560px)] sm:max-w-[min(80vw,560px)] lg:order-2">
+          <ApproachLights />
         </div>
 
         <a
           href="#story-heading"
-          className="absolute bottom-3 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-faint transition-colors hover:text-ink-muted lg:flex"
+          className="absolute bottom-3 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-1 text-2xs text-ink-faint transition-colors hover:text-ink-muted lg:flex font-medium"
         >
           How it flies
-          <motion.svg
-            viewBox="0 0 24 24"
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            aria-hidden
-            animate={reduce ? undefined : { y: [0, 4, 0] }}
-            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
-          </motion.svg>
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+            <path strokeLinecap="square" d="M6 9l6 6 6-6" />
+          </svg>
         </a>
       </section>
 
@@ -267,7 +246,7 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
         <ul className="grid gap-4 border-y border-hairline py-10 sm:grid-cols-3">
           {TRUST.map((t) => (
             <li key={t.title} className="flex gap-3.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">{t.icon}</div>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-on-sign text-sign">{t.icon}</div>
               <div>
                 <h3 className="font-display text-base font-semibold text-ink">{t.title}</h3>
                 <p className="mt-1 text-sm leading-relaxed text-ink-muted">{t.body}</p>
@@ -279,7 +258,7 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
 
       <section className="mx-auto max-w-4xl px-4 py-20 sm:px-8">
         <div className="panel-glass glow-soft relative overflow-hidden px-6 py-12 text-center sm:px-12">
-          <LogoMark className="mx-auto h-12 w-12" detailed />
+          <LogoMark className="mx-auto h-12 w-12" />
           <h2 className="mt-5 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
             Your next bid starts with your pack.
           </h2>
@@ -291,7 +270,7 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
             <button
               type="button"
               onClick={onTrySample}
-              className="w-full rounded-lg px-6 py-3.5 text-base font-medium text-ink-muted underline decoration-dotted underline-offset-4 transition-colors hover:text-ink sm:w-auto"
+              className="w-full rounded-[4px] px-6 py-3.5 text-base font-medium text-ink-muted underline decoration-dotted underline-offset-4 transition-colors hover:text-ink sm:w-auto"
             >
               Or try it with sample data
             </button>

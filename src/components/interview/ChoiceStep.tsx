@@ -81,7 +81,7 @@ export function ChoiceStep({ prompt, helpText, eyebrow, options, selected, onSel
             );
           })}
         </div>
-        <p className="mt-3 hidden font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint sm:block" aria-hidden>
+        <p className="mt-3 hidden text-2xs text-ink-faint sm:block font-medium" aria-hidden>
           Press 1&ndash;{options.length} to pick &middot; Enter to continue
         </p>
         {children}

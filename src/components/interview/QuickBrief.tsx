@@ -83,7 +83,7 @@ export function QuickBrief({
         <h2 className="text-sm font-medium text-ink">Start from a pilot like you</h2>
         <div className="mt-2 flex flex-wrap gap-2">
           {QUICK_STARTS.map((s) => (
-            <button key={s.id} type="button" onClick={() => setChips(s.chips)} className="rounded-full border border-hairline px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-accent hover:text-ink">
+            <button key={s.id} type="button" onClick={() => setChips(s.chips)} className="rounded-[3px] border border-hairline px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-accent hover:text-ink">
               {s.label}
             </button>
           ))}
@@ -101,7 +101,7 @@ export function QuickBrief({
                 type="button"
                 aria-pressed={on}
                 onClick={() => toggle(c.id)}
-                className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? "border-accent bg-accent/15 text-ink" : "border-hairline text-ink-muted hover:text-ink"}`}
+                className={`rounded-[3px] border px-3 py-1.5 text-sm transition-colors ${on ? "border-accent bg-accent/15 text-ink" : "border-hairline text-ink-muted hover:text-ink"}`}
               >
                 {c.label}
               </button>
@@ -158,7 +158,7 @@ export function QuickBrief({
               type="button"
               aria-pressed={isCommuter === value}
               onClick={() => setIsCommuter(isCommuter === value ? null : value)}
-              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${isCommuter === value ? "border-accent bg-accent/15 text-ink" : "border-hairline text-ink-muted hover:text-ink"}`}
+              className={`rounded-[3px] border px-3 py-1.5 text-sm transition-colors ${isCommuter === value ? "border-accent bg-accent/15 text-ink" : "border-hairline text-ink-muted hover:text-ink"}`}
             >
               {label}
             </button>

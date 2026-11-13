@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans_Condensed, Public_Sans } from "next/font/google";
+import { Atkinson_Hyperlegible_Next, Overpass, Overpass_Mono } from "next/font/google";
 import { AppShell } from "@/components/app/AppShell";
 import { CrashReporting } from "@/components/CrashReporting";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
@@ -7,27 +7,27 @@ import { SITE_URL } from "@/lib/site-pages";
 import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
-// Body copy — repoints the existing --font-sans variable, so every call
-// site that already reads it (the `body` rule in globals.css, any bare
-// `font-sans` utility) gets this face with zero changes elsewhere.
-const publicSans = Public_Sans({
+// Body copy — Atkinson Hyperlegible Next, drawn by the Braille Institute for low-vision reading: letters that could
+// be mistaken for one another (I l 1, O 0) are shaped apart. It repoints the existing --font-sans variable, so every
+// call site that already reads it (the `body` rule in globals.css, any bare `font-sans` utility) gets this face with
+// zero changes elsewhere. All three faces are variable, so one file covers every weight.
+const atkinson = Atkinson_Hyperlegible_Next({
   variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
 });
 
-// Headers only — opt-in via the `font-display` utility (see Heading.tsx),
-// never the implicit body default, so headings read distinctly from prose.
-const plexCondensed = IBM_Plex_Sans_Condensed({
+// Headers only — opt-in via the `font-display` utility (see Heading.tsx), never the implicit body default, so
+// headings read distinctly from prose. Overpass is drawn from Highway Gothic, the lettering of US road and airfield
+// signs.
+const overpass = Overpass({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
 });
 
-const plexMono = IBM_Plex_Mono({
+// Times, numbers and the pack's own tokens only — never labels or headings.
+const overpassMono = Overpass_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -44,13 +44,13 @@ export const metadata: Metadata = {
 };
 
 // The phone's browser bar matches the page behind it — the sidebar's color in
-// each scheme — charcoal over either page.
+// each scheme — the navy night sky over either page.
 export const viewport: Viewport = {
   // Lets the phone tab bar sit flush to the bottom edge and pad itself clear of the home indicator (env(safe-area-inset-bottom)).
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#26282c" },
-    { media: "(prefers-color-scheme: dark)", color: "#141517" },
+    { media: "(prefers-color-scheme: light)", color: "#0a1120" },
+    { media: "(prefers-color-scheme: dark)", color: "#060b16" },
   ],
 };
 
@@ -59,7 +59,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${publicSans.variable} ${plexCondensed.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${atkinson.variable} ${overpass.variable} ${overpassMono.variable} h-full antialiased`}
     >
       <head>
         {/* Applies a saved theme override before first paint to avoid a flash. */}

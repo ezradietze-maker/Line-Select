@@ -158,7 +158,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
                   key={o}
                   type="button"
                   onClick={() => setOutcome(o)}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  className={`rounded-[3px] border px-3 py-1 text-xs font-medium transition-colors ${
                     outcome === o
                       ? "border-brand bg-brand-soft text-brand"
                       : "border-border-strong text-ink-muted hover:border-brand hover:text-brand"
@@ -219,7 +219,7 @@ const pctLabel = (p: number) => `top ${Math.max(1, Math.round((1 - p) * 100))}%`
 function HoldHistory({ history }: { history: HoldHistorySummary }) {
   return (
     <div className="mt-5 rounded-lg border border-hairline bg-canvas/50 p-4">
-      <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint">Your hold history</h3>
+      <h3 className="text-2xs text-ink-faint font-medium">Your hold history</h3>
       <p className="mt-1.5 text-sm leading-relaxed text-ink">{history.headline}</p>
       {history.seniorityTrend && history.seniorityTrend.to !== history.seniorityTrend.from && (
         <p className="mt-1 text-xs text-ink-faint">

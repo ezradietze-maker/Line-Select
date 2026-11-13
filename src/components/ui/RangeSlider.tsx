@@ -1,5 +1,7 @@
 "use client";
 
+import { PrintedScale } from "@/components/ui/Slider";
+
 interface RangeSliderProps {
   value: number;
   min: number;
@@ -32,7 +34,7 @@ export function RangeSlider({
     <div>
       {!hideValue && (
         <div className="mb-2 flex items-center justify-center">
-          <span className="rounded-full bg-brand-soft px-3 py-1 font-mono text-base font-semibold tabular-nums text-brand">
+          <span className="rounded-[3px] bg-brand-soft px-3 py-1 font-mono text-base font-semibold tabular-nums text-brand">
             {formatValue(value)}
           </span>
         </div>
@@ -53,6 +55,7 @@ export function RangeSlider({
           }}
         />
       </div>
+      <PrintedScale count={10} />
       <div className="mt-2 flex items-center justify-between text-xs text-ink-faint">
         <span>{minLabel}</span>
         <span>{maxLabel}</span>

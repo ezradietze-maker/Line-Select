@@ -1,6 +1,5 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
 import { useMemo, useRef } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
@@ -38,7 +37,6 @@ const TITLE = "Walk us through your whole bidding process, start to finish.";
  * stories that rank best run a page or so (see `storyDepth`).
  */
 export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, error, maxLength, eyebrow }: BiddingStoryStepProps) {
-  const reduce = useReducedMotion();
   const remaining = maxLength - value.length;
   const dictation = useDictation(value, (next) => onChange(next.slice(0, maxLength)), { maxLength });
   const mentioned = useMemo(() => storyTopicsMentioned(value), [value]);
@@ -65,7 +63,7 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
       />
 
       <RevealControls title={TITLE} className="mt-6">
-        <div className="relative overflow-hidden rounded-xl border border-hairline bg-canvas/60 transition-[border-color,box-shadow] duration-200 focus-within:border-accent focus-within:shadow-[0_0_0_4px_var(--glow-soft)]">
+        <div className="relative overflow-hidden rounded-[4px] border border-border bg-canvas/60 transition-[border-color,box-shadow] duration-200 focus-within:border-[var(--color-focus-ring)] focus-within:ring-1 focus-within:ring-[var(--color-focus-ring)]">
           <textarea
             ref={area}
             value={value}
@@ -78,28 +76,18 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
           {dictation.supported && (
             <MicButton listening={dictation.listening} onClick={dictation.toggle} className="absolute right-3 top-3" />
           )}
-          {/* While the story is being read: a read head passing over it. */}
-          {busy && !reduce && (
-            <motion.div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 h-16 bg-gradient-to-b from-transparent via-[var(--glow-soft)] to-transparent"
-              initial={{ top: "-15%" }}
-              animate={{ top: "105%" }}
-              transition={{ duration: 1.6, ease: "easeInOut", repeat: Infinity }}
-            />
-          )}
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" aria-live="polite">
           <div className="flex items-center gap-2.5">
             <span className="flex gap-0.5" aria-hidden>
               {[1, 2, 3, 4, 5].map((n) => (
-                <span key={n} className={`h-1.5 w-5 rounded-full transition-colors duration-500 ${n <= depth.level ? "bg-accent" : "bg-border-strong"}`} />
+                <span key={n} className={`h-1.5 w-5 rounded-[1px] transition-colors duration-500 ${n <= depth.level ? "bg-accent" : "bg-border-strong"}`} />
               ))}
             </span>
-            <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-faint">{depth.label || "Your story"}</span>
+            <span className="text-2xs text-ink-faint font-medium">{depth.label || "Your story"}</span>
           </div>
-          <span className="font-mono text-[10.5px] text-ink-faint">
+          <span className="font-mono text-2xs text-ink-faint">
             {depth.areas} of {STORY_TOPICS.length} areas
             {remaining < 500 && <> · {remaining.toLocaleString()} characters left</>}
           </span>
@@ -110,7 +98,7 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
             return (
               <li
                 key={t.id}
-                className={`rounded-full border px-2.5 py-0.5 text-xs transition-all duration-300 ${
+                className={`rounded-[3px] border px-2.5 py-0.5 text-xs transition-all duration-300 ${
                   on ? "border-accent/50 bg-accent-soft text-accent" : "border-hairline text-ink-faint"
                 }`}
               >

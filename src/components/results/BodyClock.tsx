@@ -22,7 +22,7 @@ export function bodyClockTone(score: number): string {
 export function BodyClockBadge({ result, open, onClick, label = "Body clock" }: { result: BodyClockScore; open?: boolean; onClick?: () => void; label?: string }) {
   const body = (
     <>
-      <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">{label}</span>
+      <span className="text-2xs font-medium text-ink-faint">{label}</span>
       <span className={`font-mono text-xs font-semibold tabular-nums ${bodyClockTone(result.score)}`}>
         {result.score}
         <span className="font-normal text-ink-faint">/100</span>
@@ -32,7 +32,7 @@ export function BodyClockBadge({ result, open, onClick, label = "Body clock" }: 
   );
   const title = `Body-clock score ${result.score}/100 — 100 is the gentlest on your body clock`;
   return onClick ? (
-    <button type="button" onClick={onClick} aria-expanded={open} title={title} className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-canvas/60 px-2 py-0.5 transition-colors hover:border-border-strong">
+    <button type="button" onClick={onClick} aria-expanded={open} title={title} className="inline-flex items-center gap-1.5 rounded-[3px] border border-hairline bg-canvas/60 px-2 py-0.5 transition-colors hover:border-border-strong">
       {body}
     </button>
   ) : (
@@ -60,13 +60,13 @@ export function BodyClockReasons({ result, facts }: { result: BodyClockScore; fa
               <span className="min-w-0">
                 <span className="text-xs font-medium text-ink">{f.label}</span>
                 <span className="text-xs text-ink-muted"> · {f.detail}</span>
-                <span className="block text-[11px] leading-snug text-ink-faint">{f.science}</span>
+                <span className="block text-2xs leading-snug text-ink-faint">{f.science}</span>
               </span>
             </li>
           ))}
         </ul>
       )}
-      <p className="text-[11px] leading-snug text-ink-faint">
+      <p className="text-2xs leading-snug text-ink-faint">
         Scored on your body clock — home time, shifting about an hour a day toward local time on layovers — from 100, the gentlest. The points lost add up to 100 minus the score.
       </p>
     </div>
@@ -77,7 +77,7 @@ export function BodyClockReasons({ result, facts }: { result: BodyClockScore; fa
 export function BodyClockFact({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {
   return (
     <span className="whitespace-nowrap">
-      <span className="font-sans text-[10px] uppercase tracking-wide text-ink-faint">{label} </span>
+      <span className="font-sans text-2xs text-ink-faint font-medium">{label} </span>
       <span className={tone}>{value}</span>
     </span>
   );

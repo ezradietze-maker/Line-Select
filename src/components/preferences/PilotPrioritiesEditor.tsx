@@ -186,20 +186,21 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
     <fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">
       <section className="panel-glass mt-6 p-5 sm:p-6">
         <SectionHeading>Your priorities</SectionHeading>
-        <p className="mt-2 rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-[15px] leading-relaxed text-ink">{model.synopsis}</p>
+        <p className="mt-2 rounded-[4px] border border-border bg-canvas/60 px-4 py-3 text-[15px] leading-relaxed text-ink">{model.synopsis}</p>
         <p className="mt-3 text-sm text-ink-muted">
           These rank every line, in this order. Change how much one counts, or take it off &mdash; your rankings update right away.
           Dragging lines on your rankings tunes these too.
         </p>
         {note && <p className="mt-3 rounded-lg bg-good-soft px-3 py-2 text-sm text-good" role="status">{note}</p>}
         <ol className="mt-4 space-y-3">
-          {items.map((d) => {
+          {items.map((d, row) => {
             const c = base.criteria.find((x) => x.id === d.id);
             if (!c) return null;
             const pin = profile.brainInterview?.pins?.[c.id];
             const level = pin !== undefined ? levelOf(pin, 1) : levelOf(model.criteria.find((x) => x.id === c.id)?.weight ?? c.weight, top);
             return (
-              <li key={d.id} className="rounded-xl border border-border bg-surface p-4">
+              // A strip in the rack: each priority slides into its slot in turn, a holder-yellow edge down its side.
+              <li key={d.id} className="rack rounded-[4px] border border-l-[3px] border-border border-l-accent bg-surface p-4" style={{ animationDelay: `${row * 40}ms` }}>
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="min-w-0 font-medium text-ink">{d.label}</p>
                   <span className="shrink-0 font-mono text-xs text-accent">{Math.round(d.influence)}%</span>
@@ -216,7 +217,7 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
                       type="button"
                       aria-pressed={i === level}
                       onClick={() => i !== level && setLevel(c, i)}
-                      className={`relative rounded-full border px-2.5 py-1 text-xs transition-colors duration-300 ${i === level ? "border-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
+                      className={`relative rounded-[3px] border px-2.5 py-1 text-xs transition-colors duration-300 ${i === level ? "border-brand text-on-brand" : "border-border text-ink-muted hover:border-border-strong"}`}
                     >
                       {i === level && <PillHighlight group={`priority-level-${d.id}`} />}
                       <span className="relative z-10">{l.label}</span>
@@ -243,7 +244,7 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
           </div>
         )}
         {model.notMeasurable.length > 0 && (
-          <div className="mt-5 rounded-xl border border-hairline bg-canvas/40 px-4 py-3">
+          <div className="mt-5 rounded-[4px] border border-border bg-canvas/40 px-4 py-3">
             <p className="text-sm font-medium text-ink">Things you said a bid pack can&rsquo;t show</p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-muted">
               {model.notMeasurable.map((n, i) => (

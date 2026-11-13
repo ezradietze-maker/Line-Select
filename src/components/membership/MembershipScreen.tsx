@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { useAppState } from "@/lib/app-state";
 import { fetchBillingStatus, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
 
-const PANEL = "rounded-xl border border-border bg-surface p-6 shadow-elevated";
+const PANEL = "panel-glass p-6";
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -61,17 +61,18 @@ export function MembershipScreen() {
   return (
     <div className="mx-auto w-full max-w-xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-ink">Membership</h1>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Membership</h1>
         <p className="text-sm text-ink-muted">Line Select Pro is $20/month, and your first month is free.</p>
       </header>
 
       {outcome === "success" && (
-        <div className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-ink">
+        <div className="relative overflow-hidden rounded-[4px] border border-good/40 bg-good-soft py-3 pl-5 pr-4 text-sm text-ink">
+          <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-good" />
           You&rsquo;re all set — welcome to Line Select Pro. Your free month has started.
         </div>
       )}
       {outcome === "cancelled" && (
-        <div className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-ink-muted">
+        <div className="rounded-[4px] border border-border bg-panel px-4 py-3 text-sm text-ink-muted">
           No charge — you closed checkout before finishing. You can start your free month whenever you like.
         </div>
       )}
@@ -126,7 +127,7 @@ function MembershipBody({
     return (
       <div className={`${PANEL} space-y-4`}>
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center rounded-full bg-brand px-2.5 py-0.5 text-xs font-semibold text-on-brand">Pro</span>
+          <span className="inline-flex items-center rounded-[2px] bg-on-sign px-2 py-0.5 font-display text-xs font-bold text-sign">Pro</span>
           <span className="text-sm font-medium text-ink">{status.status === "trialing" ? "Free month in progress" : "Membership active"}</span>
         </div>
         <p className="text-sm text-ink-muted">
@@ -151,7 +152,7 @@ function MembershipBody({
   return (
     <div className={`${PANEL} space-y-4`}>
       <div className="space-y-1">
-        <div className="text-lg font-semibold text-ink">Line Select Pro</div>
+        <div className="font-display text-lg font-extrabold text-ink">Line Select Pro</div>
         <div className="text-sm text-ink-muted">$20/month · first month free</div>
       </div>
       <ul className="space-y-1.5 text-sm text-ink-muted">
@@ -163,7 +164,7 @@ function MembershipBody({
         {busy ? "Starting…" : "Start free month"}
       </Button>
       {lapsed && (
-        <button type="button" onClick={onPortal} disabled={busy} className="block text-sm text-ink-faint underline hover:text-ink">
+        <button type="button" onClick={onPortal} disabled={busy} className="block text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink">
           Or update your card in the billing portal
         </button>
       )}

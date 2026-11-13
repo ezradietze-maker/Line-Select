@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 import { DURATION, EASE } from "@/lib/motion-tokens";
 
-const DRIFT_PX = 24;
+const DRIFT_PX = 16;
 
 interface StepTransitionProps {
   screenKey: string;
@@ -28,7 +28,7 @@ export function StepTransition({ screenKey, direction, children }: StepTransitio
       key={screenKey}
       initial={{ opacity: 0, x: drift }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: reduceMotion ? 0 : DURATION.page, ease: EASE.standard }}
+      transition={{ duration: reduceMotion ? 0 : DURATION.handoff, ease: EASE.rack }}
     >
       {children}
     </motion.div>

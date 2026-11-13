@@ -48,13 +48,13 @@ export function NoteBox({ value, onChange, placeholder, ariaLabel, id, maxLength
           disabled={disabled}
           placeholder={placeholder}
           aria-label={ariaLabel}
-          className={`block w-full resize-none rounded-lg border bg-canvas px-3 py-2 pr-11 text-sm leading-relaxed text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none disabled:opacity-60 ${invalid ? "border-danger" : "border-field-edge"}`}
+          className={`block w-full resize-none rounded-[4px] border bg-panel px-3 py-2 pr-11 text-sm leading-relaxed text-ink placeholder:text-ink-faint focus:border-[var(--color-focus-ring)] focus:outline-none disabled:opacity-60 ${invalid ? "border-danger" : "border-field-edge"}`}
         />
         {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
       </div>
       {/* As the story box does: how much room is left, once it's nearly full. */}
       {left !== null && left < SHOW_LEFT_UNDER && (
-        <p className="mt-1 text-right font-mono text-[10.5px] text-ink-faint" aria-live="polite">
+        <p className="mt-1 text-right font-mono text-2xs text-ink-faint" aria-live="polite">
           {left.toLocaleString()} characters left
         </p>
       )}

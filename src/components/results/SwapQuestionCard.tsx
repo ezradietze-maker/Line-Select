@@ -16,7 +16,7 @@ interface Props {
 }
 
 const chip =
-  "rounded-full border border-hairline bg-surface px-3 py-1.5 text-left text-sm text-ink transition-colors hover:border-accent hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand";
+  "rounded-[3px] border border-border bg-surface px-3 py-1.5 text-left text-sm text-ink transition-colors hover:border-accent hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand";
 const quiet = "text-sm font-medium text-ink-muted underline-offset-2 hover:text-ink hover:underline";
 
 /**

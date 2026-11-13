@@ -85,11 +85,12 @@ export function SunDial({ code, now }: { code: string; now: number }) {
   const y = cy - r * Math.sin(angle);
   return (
     <svg viewBox="0 0 120 54" className="h-14 w-32" role="img" aria-label={up ? `The sun is up in ${code}, ${Math.round(f * 100)}% of the way across the sky` : `It's night in ${code}`}>
-      <path d={`M${cx - r} ${cy} A${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="var(--color-hairline)" strokeWidth={1.5} strokeDasharray="2 3" />
+      <path d={`M${cx - r} ${cy} A${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="var(--color-border-strong)" strokeWidth={1.2} strokeDasharray="2 3" />
       <line x1={4} y1={cy} x2={116} y2={cy} stroke="var(--color-ink-faint)" strokeWidth={1} />
       {up ? (
         <g>
-          <circle cx={x} cy={y} r={9} fill="var(--color-accent)" opacity={0.18} />
+          {/* A crisp ring round the sun, not a glow. */}
+          <circle cx={x} cy={y} r={8} fill="none" stroke="var(--color-accent)" strokeWidth={1.2} />
           <circle cx={x} cy={y} r={5} fill="var(--color-accent)" />
         </g>
       ) : (

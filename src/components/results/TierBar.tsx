@@ -85,7 +85,7 @@ export function useCardPressProps(tiers: LineTiers, listedIds: string[]): (lineI
 /** Over each group in the list: a tier's name and how many lines it has. The lines themselves carry nothing new. */
 export function TierHeadingRow({ heading }: { heading: Heading }) {
   return (
-    <div role="heading" aria-level={2} className="flex items-baseline gap-2 px-1 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+    <div role="heading" aria-level={2} className="flex items-baseline gap-2 px-1 pt-3 text-xs font-semibold text-ink-muted">
       {heading.name}
       <span className="font-normal normal-case tracking-normal">
         {heading.count} {heading.count === 1 ? "line" : "lines"}
@@ -97,7 +97,7 @@ export function TierHeadingRow({ heading }: { heading: Heading }) {
 /** The move buttons in an opened line: one press, no dragging (WCAG 2.5.7). */
 export function TierMoveRow({ tiers, lineId }: { tiers: LineTiers; lineId: string }) {
   const current = tiers.tierOf(lineId);
-  const chip = (active: boolean) => `min-h-8 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${active ? "border-accent bg-accent-soft text-accent" : "border-hairline text-ink-muted hover:border-accent hover:text-accent"}`;
+  const chip = (active: boolean) => `min-h-8 rounded-[3px] border px-2.5 py-1 text-xs font-medium transition-colors ${active ? "border-accent bg-accent-soft text-accent" : "border-hairline text-ink-muted hover:border-accent hover:text-accent"}`;
   return (
     <div data-tier-control role="group" aria-label="Move this line" className="flex flex-wrap items-center gap-1.5 border-b border-hairline px-5 py-2 sm:px-6 print:hidden">
       <span className="text-xs font-medium text-ink-muted">Tier</span>
@@ -187,7 +187,7 @@ export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: Li
           <p className="text-xs text-ink-muted">Set aside: out of the list while you sort, still in your bid where they&rsquo;d rank.</p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {state.setAside.map((id) => (
-              <button key={id} type="button" onClick={() => tiers.unpark([id])} className="min-h-8 rounded-full border border-hairline px-2.5 py-1 font-mono text-xs text-ink hover:border-accent" aria-label={`Bring line ${numberOf(id)} back to the list`}>
+              <button key={id} type="button" onClick={() => tiers.unpark([id])} className="min-h-8 rounded-[3px] border border-hairline px-2.5 py-1 font-mono text-xs text-ink hover:border-accent" aria-label={`Bring line ${numberOf(id)} back to the list`}>
                 {numberOf(id)} &#8617;
               </button>
             ))}

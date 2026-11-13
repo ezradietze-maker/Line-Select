@@ -31,7 +31,7 @@ export function OfflineNotice() {
   return (
     <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--shell-bottom,0px)+1rem)] z-40 flex justify-center px-4">
       {state !== "online" && (
-        <div key={state} className="animate-toast-in panel-glass flex max-w-md items-center gap-2.5 rounded-2xl px-4 py-2 text-sm sm:rounded-full">
+        <div key={state} className="animate-toast-in panel-glass flex max-w-md items-center gap-2.5 border-border-strong px-4 py-2 text-sm shadow-elevated-lg">
           <svg viewBox="0 0 24 24" fill="currentColor" className={`h-4 w-4 shrink-0 ${state === "offline" ? "text-warn" : "text-good"}`} aria-hidden>
             <path d="M21 12c0-.8-.7-1.2-1.6-1.2H15L10.3 3.6H8.5l2.3 7.2H6.2L4.6 8.6H3.2l1 3.4-1 3.4h1.4l1.6-2.2h4.6l-2.3 7.2h1.8l4.7-7.2h4.4c.9 0 1.6-.4 1.6-1.2z" />
           </svg>

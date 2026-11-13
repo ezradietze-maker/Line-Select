@@ -18,6 +18,7 @@ import {
 import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { swapKeyboardCoordinates } from "@/lib/swap-keyboard";
 import { motion, useReducedMotion } from "motion/react";
+import { DURATION, EASE, RACK_MAX_DELAY } from "@/lib/motion-tokens";
 import { BidOrderExport, type BidOrderEntry } from "@/components/results/BidOrderExport";
 import { QuickStartNote } from "@/components/results/QuickStartNote";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -197,7 +198,7 @@ function LineStandIn({ id, line, height }: { id: string; line: LineScore["line"]
   // a line's number, and a page of 25 lines draws only the few on screen.
   const trips = [...new Set(line.trips.flatMap((t) => [t.pairingNumber ?? "", ...t.layoverCities]).filter(Boolean))].join(" ");
   return (
-    <div id={`line-${id}`} className="panel-glass scroll-mt-20 overflow-hidden px-4 py-3 font-mono text-[12px] leading-[14px] tracking-wide text-ink-faint md:scroll-mt-6" style={{ height }}>
+    <div id={`line-${id}`} className="panel-glass scroll-mt-20 overflow-hidden px-4 py-3 font-mono text-xs leading-[14px] tracking-wide text-ink-faint md:scroll-mt-6" style={{ height }}>
       <div className="font-semibold">LINE {line.lineNumber}</div>
       {trips && <div className="mt-2 opacity-70">{trips}</div>}
     </div>
@@ -750,7 +751,12 @@ export function ResultsView({
     }
     const el = document.getElementById(`line-${focusTarget.line.id}`);
     if (!el) return; // the page grown to it isn't drawn yet — runs again once it is
-    el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    // Scrolled two frames on: opening the card has `motion` measure its height first, and it puts the window's scroll
+    // back where it found it when it's done — which cancelled a smooth scroll begun now, so the jump never moved.
+    const lineId = focusTarget.line.id;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => document.getElementById(`line-${lineId}`)?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }))
+    );
     setOpenIds((prev) => (prev.has(focusTarget.line.id) ? prev : new Set(prev).add(focusTarget.line.id)));
     setFlashId(focusTarget.line.id);
     focusDone.current = focusLine;
@@ -1272,7 +1278,7 @@ export function ResultsView({
     <div className="mx-auto w-full max-w-3xl xl:max-w-6xl">
       <div className="flex items-start justify-between gap-3 sm:items-end">
         <div className="min-w-0">
-          <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">
+          <div className="text-2xs text-accent font-medium">
             {bidPack.base} &middot; {bidPack.aircraft} &middot; {bidPack.seat} &middot; {bidPack.month}
           </div>
           <Heading as="h1" className="mt-1.5 text-3xl text-ink sm:text-4xl">
@@ -1526,7 +1532,7 @@ export function ResultsView({
           )}
 
           {showKeys && (
-            <div role="note" className="mt-3 hidden flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-hairline bg-canvas/40 px-3 py-2 font-mono text-[11px] text-ink-muted sm:flex print:hidden">
+            <div role="note" className="mt-3 hidden flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-hairline bg-canvas/40 px-3 py-2 font-mono text-2xs text-ink-muted sm:flex print:hidden">
               {[
                 ["j / k", "next / previous line"],
                 ["o", "open / close it"],
@@ -1619,20 +1625,21 @@ export function ResultsView({
                           id={`line-${id}`}
                           data-line-id={id}
                           {...pressPropsFor(id)}
-                          className={`scroll-mt-20 md:scroll-mt-6 ${flashId === id ? "line-flash" : ""} ${keyedId === id ? "line-keyed" : ""} ${tiers.selected.has(id) ? "rounded-xl ring-2 ring-accent" : ""}`}
+                          className={`scroll-mt-20 md:scroll-mt-6 ${flashId === id ? "line-flash" : ""} ${keyedId === id ? "line-keyed" : ""} ${tiers.selected.has(id) ? "rounded-[6px] ring-2 ring-sign-edge" : ""}`}
                           layout={layoutArmed ? "position" : false}
                           layoutDependency={dragEnabled && order.moved.has(id) ? order.turn : 0}
                           // The list's first cards rise in one after another; a card drawn later, as the pilot scrolls
                           // to it, fades straight in where it stands.
-                          initial={reduceMotion ? false : revealing ? { opacity: 0, y: 10 } : { opacity: 0 }}
+                          initial={reduceMotion ? false : revealing ? { opacity: 0, y: 8 } : { opacity: 0 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={
                             reduceMotion
                               ? { duration: 0 }
                               : {
-                                  layout: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
-                                  opacity: { duration: revealing ? 0.35 : 0.2, ease: [0.16, 1, 0.3, 1], delay: revealing ? Math.min(index * 0.035, 0.4) : 0 },
-                                  y: { duration: 0.35, ease: [0.16, 1, 0.3, 1], delay: Math.min(index * 0.035, 0.4) },
+                                  // Re-rack: a line moved by a drag glides to its new place. Rack: the list arrives line by line.
+                                  layout: { duration: DURATION.slow, ease: EASE.rack },
+                                  opacity: { duration: revealing ? DURATION.rack : DURATION.base, ease: EASE.rack, delay: revealing ? Math.min(index * DURATION.rackStep, RACK_MAX_DELAY) : 0 },
+                                  y: { duration: DURATION.rack, ease: EASE.rack, delay: Math.min(index * DURATION.rackStep, RACK_MAX_DELAY) },
                                 }
                           }
                         >
@@ -1725,7 +1732,7 @@ export function ResultsView({
         <div
           role="status"
           data-bottom-bar
-          className="animate-toast-in fixed bottom-[calc(var(--shell-bottom)+1rem)] left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-full border border-accent/40 bg-surface/95 py-2 pl-4 pr-2 text-sm text-ink shadow-elevated-lg backdrop-blur md:left-[calc(50%+var(--shell-left)/2)] print:hidden"
+          className="animate-toast-in fixed bottom-[calc(var(--shell-bottom)+1rem)] left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-[4px] border border-accent/40 bg-surface/95 py-2 pl-4 pr-2 text-sm text-ink shadow-elevated-lg backdrop-blur md:left-[calc(50%+var(--shell-left)/2)] print:hidden"
         >
           <span>
             <span className="font-semibold">Line {compareLineScores[0].line.lineNumber}</span>
@@ -1738,7 +1745,7 @@ export function ResultsView({
           <button
             type="button"
             onClick={() => setCompareIds([])}
-            className="rounded-full px-3 py-1 text-ink-muted transition-colors hover:bg-black/[0.05] hover:text-ink"
+            className="rounded-[3px] px-3 py-1 text-ink-muted transition-colors hover:bg-black/[0.05] hover:text-ink"
           >
             Cancel
           </button>

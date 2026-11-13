@@ -52,7 +52,7 @@ export function LandingPage() {
 
   const loader = (
     <div className="flex min-h-[70vh] items-center justify-center" role="status" aria-label="Loading Line Select">
-      <LogoMark className="skeleton-pulse h-16 w-16" detailed />
+      <LogoMark className="skeleton-pulse h-16 w-16" />
     </div>
   );
 

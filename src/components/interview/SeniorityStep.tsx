@@ -81,7 +81,7 @@ export function SeniorityStep({ value, onChange, list, seat, eyebrow }: Seniorit
       />
 
       <RevealControls title={PROMPT} className="mt-8">
-        <label htmlFor="seniority-number" className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint">
+        <label htmlFor="seniority-number" className="text-2xs text-ink-faint font-medium">
           Seniority number
         </label>
         <input
@@ -92,7 +92,7 @@ export function SeniorityStep({ value, onChange, list, seat, eyebrow }: Seniorit
           value={value}
           onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, "").slice(0, 6))}
           placeholder="e.g. 1234"
-          className="text-readout mt-2 block w-full max-w-56 rounded-xl border border-field-edge bg-canvas/60 px-4 py-3 text-2xl tracking-wider placeholder:text-ink-faint/60 focus:border-accent focus:shadow-[0_0_0_2px_var(--color-focus-ring),0_0_0_6px_var(--glow-soft)] focus:outline-none"
+          className="text-readout mt-2 block w-full max-w-56 rounded-[4px] border border-field-edge bg-canvas/60 px-4 py-3 text-2xl tracking-wider placeholder:text-ink-faint/60 focus:border-accent focus:ring-2 focus:ring-[var(--color-focus-ring)] focus:outline-none"
         />
         <SeniorityNotice value={value} list={list} seat={seat} className="mt-3 min-h-[3rem]" />
 

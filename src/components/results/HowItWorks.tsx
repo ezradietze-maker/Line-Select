@@ -170,7 +170,8 @@ export function HowItWorksContent({ headingLevel = "h3" }: { headingLevel?: "h2"
       <span aria-hidden className="absolute bottom-4 left-[17px] top-4 w-px bg-hairline" />
       <span
         aria-hidden
-        className="absolute bottom-4 left-[17px] top-4 w-px origin-top bg-gradient-to-b from-accent to-accent/40 transition-transform duration-200 ease-out"
+        // Read so far: the green centreline, drawn down the list as you go.
+        className="absolute bottom-4 left-[17px] top-4 w-0.5 -translate-x-[0.5px] origin-top bg-good transition-transform duration-200 ease-out"
         style={{ transform: `scaleY(${progress})` }}
       />
       {POINTS.map((point, i) => {
@@ -178,8 +179,9 @@ export function HowItWorksContent({ headingLevel = "h3" }: { headingLevel?: "h2"
         return (
           <li key={point.title} className="relative flex gap-4">
             <div
-              className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-panel transition-[color,border-color,box-shadow] duration-500 ${
-                lit ? "border-accent/40 text-accent shadow-[0_0_14px_-4px_var(--color-accent)]" : "border-hairline text-ink-faint"
+              // Each point turns into a location sign (yellow on black) once it's been read.
+              className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] border transition-[color,border-color,background-color] duration-300 ${
+                lit ? "border-sign bg-on-sign text-sign" : "border-border bg-panel text-ink-faint"
               }`}
             >
               {point.icon}

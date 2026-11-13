@@ -156,9 +156,9 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
   return (
     <div className="mx-auto w-full max-w-md">
       {/* This page has no sidebar, so the mark is the only thing saying where you are — and the way home. */}
-      <Link href="/" className="mx-auto mb-5 flex w-fit items-center gap-2.5" aria-label="Line Select home">
+      <Link href="/" className="mx-auto mb-5 flex w-fit items-center gap-1" aria-label="Line Select home">
         <LogoMark className="h-9 w-9" />
-        <Wordmark className="text-lg" />
+        <Wordmark className="h-9 text-base" />
       </Link>
       <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
         {mode === "forgot" ? (
