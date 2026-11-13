@@ -17,6 +17,7 @@ import {
   interviewCandidateFacts,
   passwordResetTokens,
   preferenceProfiles,
+  processedStripeEvents,
   sessions,
   subscriptions,
   tradeHoldings,
@@ -189,6 +190,8 @@ export interface SubscriptionRecord {
   priceId: string | null;
   currentPeriodEnd: string | null;
   trialEndsAt: string | null;
+  /** `event.created` of the newest webhook event that wrote this row; null before any event has. */
+  lastEventAt: string | null;
 }
 
 function toSubscriptionRecord(row: typeof subscriptions.$inferSelect): SubscriptionRecord {
@@ -200,6 +203,7 @@ function toSubscriptionRecord(row: typeof subscriptions.$inferSelect): Subscript
     priceId: row.priceId ?? null,
     currentPeriodEnd: row.currentPeriodEnd ? row.currentPeriodEnd.toISOString() : null,
     trialEndsAt: row.trialEndsAt ? row.trialEndsAt.toISOString() : null,
+    lastEventAt: row.lastEventAt ? row.lastEventAt.toISOString() : null,
   };
 }
 
@@ -222,7 +226,11 @@ export async function linkStripeCustomer(userId: string, stripeCustomerId: strin
     .onConflictDoUpdate({ target: subscriptions.userId, set: { stripeCustomerId, updatedAt: new Date() } });
 }
 
-/** Upserts the pilot's membership from a Stripe subscription (called by the webhook). */
+/**
+ * Upserts the pilot's membership from a Stripe subscription (called by the
+ * webhook). `lastEventAt` is the `event.created` of the event that carried
+ * this state, stored so a later, older event can be recognised as stale.
+ */
 export async function saveSubscription(
   userId: string,
   snap: {
@@ -232,11 +240,12 @@ export async function saveSubscription(
     priceId: string | null;
     currentPeriodEnd: Date | null;
     trialEndsAt: Date | null;
-  }
+  },
+  lastEventAt: Date
 ): Promise<void> {
   await db
     .insert(subscriptions)
-    .values({ userId, ...snap, updatedAt: new Date() })
+    .values({ userId, ...snap, lastEventAt, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: subscriptions.userId,
       set: {
@@ -246,9 +255,25 @@ export async function saveSubscription(
         priceId: snap.priceId,
         currentPeriodEnd: snap.currentPeriodEnd,
         trialEndsAt: snap.trialEndsAt,
+        lastEventAt,
         updatedAt: new Date(),
       },
     });
+}
+
+/** True once a Stripe event id has been fully processed, so a repeat delivery can be skipped. */
+export async function stripeEventProcessed(eventId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ eventId: processedStripeEvents.eventId })
+    .from(processedStripeEvents)
+    .where(eq(processedStripeEvents.eventId, eventId))
+    .limit(1);
+  return Boolean(row);
+}
+
+/** Records a Stripe event id as processed; a second delivery of the same id is a no-op. */
+export async function markStripeEventProcessed(eventId: string, eventType: string): Promise<void> {
+  await db.insert(processedStripeEvents).values({ eventId, eventType }).onConflictDoNothing();
 }
 
 /** The fast gate the rest of the app reads. The webhook keeps this in step with the Stripe status. */
