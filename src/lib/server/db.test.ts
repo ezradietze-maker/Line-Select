@@ -301,12 +301,13 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
 
       // Everyone said yes: its trips are spoken for on the board.
       const agreed = await chain([a, b, c]);
+      // Answered on the board before the chain was agreed: accepting it after is what's refused.
+      expect(await mod.respondToTradeOffer(early.id, { id: d.id, displayName: "D" }, board(32))).toMatchObject({ status: "pending" });
       for (const p of [a, b, c]) await suggestions.answerSuggestion(agreed, p.id, "accepted");
       expect(await mod.createTradeOffer(post(b, 1))).toBe(false);
       const dOffer = post(d, 31);
       await mod.createTradeOffer(dOffer);
       expect(await mod.respondToTradeOffer(dOffer.id, { id: c.id, displayName: "C" }, board(2))).toBe("traded");
-      await mod.respondToTradeOffer(early.id, { id: d.id, displayName: "D" }, board(32));
       expect(await mod.acceptTradeOffer(early.id, null)).toBe("traded");
 
       // The step that moves A's trip takes it off the board.
