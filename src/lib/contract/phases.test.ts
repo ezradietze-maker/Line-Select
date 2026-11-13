@@ -52,4 +52,24 @@ describe("which bid periods a rule applies to", () => {
     expect(appliesLine({ kind: "unlisted" }, "2026")).toBe("In force since June 29, 2026, the Agreement's general effective date: the implementation chart doesn't give this change a later date.");
     expect(appliesLine({ kind: "unlisted" }, "2015")).toContain("replaced on June 29, 2026");
   });
+
+  it("gives a change the chart doesn't list the date of the later one it waits on", () => {
+    // "…processed as provided in Section 25.L.1.a." (2015: "…notwithstanding Section 25.L.1.a."); 25.L.1.a is Phase 3.
+    expect(applicabilityOf("25.L.9.a.iii", "2026-11")).toMatchObject({ kind: "scheduled", phase: 3, inForce: false });
+    expect(applicabilityOf("25.L.10.c", "2027-08")).toMatchObject({ kind: "scheduled", phase: 3, inForce: true });
+    // "Following the three additional bid periods…", which 8.C.2.a.ii (Phase 2) sets up.
+    expect(applicabilityOf("8.C.2.a.iii", "2026-11")).toMatchObject({ kind: "scheduled", phase: 2, inForce: false });
+    // By rule: the 2026 wording newly adds "(except as provided in Section 25.L.1.a. above)".
+    expect(applicabilityOf("25.L.4.b", "2026-11")).toMatchObject({ kind: "scheduled", phase: 3 });
+    const waits = applicabilityOf("25.L.9.a.iii", "2026-11");
+    expect(appliesLine(waits, "2026")).toBe("Not yet: starts by the August 2027 bid period (Phase 3). Until then the 2015 wording applies. Not on the chart itself: it waits on Section 25.L.1.a.");
+    // A renumbered reference isn't waiting on anything.
+    expect(applicabilityOf("5.E.6", "2026-11")).toEqual({ kind: "unlisted" });
+  });
+
+  it("says the chart doesn't date a change that may belong with a later one", () => {
+    expect(applicabilityOf("25.E.3", "2026-11")).toEqual({ kind: "undated" });
+    expect(applicabilityOf("8.C.5.a.ii", "2026-11")).toEqual({ kind: "undated" });
+    expect(appliesLine({ kind: "undated" }, "2026")).toContain("doesn't say when this wording starts");
+  });
 });
