@@ -210,6 +210,8 @@ function touchesHoliday(trip: Trip, pack: BidPack): boolean {
 
 export interface SlideOption {
   offset: number;
+  /** The vacation's real-instant span under this option, for drawing its footprint on a calendar. */
+  span: Span;
   /** CBA 2026 7.E.3: days the vacation is expanded, earlier and later. */
   expandBefore: number;
   expandAfter: number;
@@ -245,6 +247,7 @@ function optionFor(line: Line, pack: BidPack, vacation: VacationPeriod, span: Sp
   const flown = lineAsFlown(line, pack, trips, spans, new Set(), { creditPaid: true, alsoOff: new Set(dayIndices(span, pack)) });
   return {
     offset,
+    span,
     expandBefore,
     expandAfter,
     firstDay: DateTime.fromMillis(span.start, { zone }).toISODate()!,
@@ -323,6 +326,8 @@ export interface LineSlides {
   asAwarded: SlideOption;
   /** Best first, up to `BEST_PER_LINE`; never just the vacation as awarded again. */
   best: SlideOption[];
+  /** Every scored option for this line (slides and expansions), best first: for a calendar to slide through. */
+  all: SlideOption[];
 }
 
 export interface SlideAcrossLines {
@@ -409,7 +414,7 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
       best.push(o);
       if (best.length === BEST_PER_LINE) break;
     }
-    return { line, rank, asAwarded, best };
+    return { line, rank, asAwarded, best, all: [...options].sort(better) };
   });
 
   const across = legal

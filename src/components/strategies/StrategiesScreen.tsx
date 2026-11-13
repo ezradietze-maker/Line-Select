@@ -7,6 +7,7 @@ import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { VacationSlidePanel } from "@/components/strategies/VacationSlidePanel";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FIELD } from "@/components/ui/field";
 import { Heading } from "@/components/ui/Heading";
 import { Notice } from "@/components/ui/Notice";
 import { NotamStrip } from "@/components/ui/NotamStrip";
@@ -322,6 +323,9 @@ function StrategyResults({
   }, [bidPack, seniority, profile, ranked, awardSummary]);
   const standing = useMemo(() => computeStanding(bidPack, seniority), [bidPack, seniority]);
 
+  // What the dropdown is showing: "vacation" for the interactive slide tool, or a strategy's id.
+  const [selected, setSelected] = useState<string>("vacation");
+
   function handleReaction(strategyId: StrategyId, reaction: "used" | "dismissed") {
     // The buttons stay pressed: tapping the one already chosen again isn't a second vote, and used to nudge the
     // weights another step on every tap.
@@ -395,36 +399,47 @@ function StrategyResults({
         </Notice>
       )}
 
-      <nav aria-label="Jump to a strategy" className="mt-8">
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
-          {strategies.map((st) => (
-            <a
-              key={st.id}
-              href={`#strategy-${st.id}`}
-              className={`shrink-0 rounded-[3px] border px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent/60 hover:text-accent ${
-                st.id === topPickId ? "border-accent/50 bg-accent-soft/60 text-accent" : "border-hairline text-ink-muted"
-              }`}
-            >
-              {st.name}
-              {st.lines.length > 0 && <span className="ml-1.5 font-mono text-ink-faint">{st.lines.length}</span>}
-            </a>
-          ))}
-        </div>
-      </nav>
+      {/* Pick one strategy — or the vacation slide tool — and see just that one below. */}
+      <div className="mt-8 max-w-md">
+        <label className="block">
+          <span className="text-xs font-medium text-ink-muted">Pick a strategy to see</span>
+          <select className={`${FIELD} mt-1 w-full`} value={selected} onChange={(e) => setSelected(e.target.value)}>
+            <optgroup label="Tools">
+              <option value="vacation">Vacation slide — test it on each line</option>
+            </optgroup>
+            {groups.map((g) => {
+              const items = strategies.filter((st) => st.fit === g.fit);
+              if (!items.length) return null;
+              return (
+                <optgroup key={g.fit} label={g.title}>
+                  {items.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.name}
+                      {st.lines.length > 0 ? ` (${st.lines.length} lines)` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              );
+            })}
+          </select>
+        </label>
+      </div>
 
-      {groups.map((g) => {
-        const items = strategies.filter((st) => st.fit === g.fit);
-        if (!items.length) return null;
-        return (
-          <section key={g.fit} className="mt-8">
-            <SectionHeading count={items.length}>{g.title}</SectionHeading>
-            <p className="mt-2 text-xs text-ink-faint">{g.note}</p>
-            <div className="mt-3 space-y-4">{items.map(card)}</div>
-          </section>
-        );
-      })}
-
-      <VacationSlidePanel bidPack={bidPack} seniority={seniority} profile={profile} userId={user?.id ?? null} order={ranked?.map((r) => r.line.lineNumber) ?? []} />
+      {selected === "vacation" ? (
+        <VacationSlidePanel bidPack={bidPack} seniority={seniority} profile={profile} userId={user?.id ?? null} order={ranked?.map((r) => r.line.lineNumber) ?? []} />
+      ) : (
+        (() => {
+          const st = strategies.find((s) => s.id === selected);
+          if (!st) return <p className="mt-6 text-sm text-ink-muted">That strategy isn&rsquo;t in this month&rsquo;s pack &mdash; pick another above.</p>;
+          const g = groups.find((gr) => gr.fit === st.fit);
+          return (
+            <section className="mt-6">
+              {g && <p className="mb-3 text-xs text-ink-faint">{g.title} &middot; {g.note}</p>}
+              {card(st)}
+            </section>
+          );
+        })()
+      )}
 
       <div className="mt-10">
         <AwardHistoryPanel bidPack={bidPack} seniority={seniority} user={user} rankedLineIds={rankedLineIds} />
