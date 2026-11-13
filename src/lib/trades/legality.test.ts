@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canHold, isTradeable, touchesVacation, tradeDeadlineHours, tripInstanceKey } from "@/lib/trades/legality";
+import { canHold, carryInReachDays, isTradeable, touchesVacation, tradeDeadlineHours, tripInstanceKey } from "@/lib/trades/legality";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 const pack = { id: "uploaded-mem-md11-fo-oct26", base: "MEM", month: "OCT26", bidPeriodStart: "2026-09-28", bidPeriodDays: 28 } as BidPack;
@@ -59,6 +59,17 @@ describe("what a pilot can hold", () => {
   });
 });
 
+describe("the days held back while a carry-in isn't known", () => {
+  it("counts them on the base's clock, not from midnight GMT", () => {
+    // Nothing here carries out past 2 days: trips starting Sep 28 or 29 are held back, two days, here and in Anchorage.
+    expect(carryInReachDays({ ...pack, lines: [] } as BidPack)).toBe(2);
+    expect(carryInReachDays({ ...pack, base: "ANC", lines: [] } as BidPack)).toBe(2);
+    // A line running from day 25 at 10:00 for 150 hours lands back 3 days and 16 hours past the end: 4 days.
+    const long = { ...trip("long", 25, 150), days: 7 } as Trip;
+    expect(carryInReachDays({ ...pack, lines: [{ lineNumber: "1", trips: [long] }] } as unknown as BidPack)).toBe(4);
+  });
+});
+
 describe("held to View/Add's and Open time's own checks", () => {
   // A day trip with one 2-hour leg, as View/Add's own tests build them: 08:00 show, `tafb` hours to release.
   const dayTrip = (id: string, startDayIndex: number, tafb = 10, report = "0800"): Trip =>
@@ -98,5 +109,16 @@ describe("held to View/Add's and Open time's own checks", () => {
     expect(canHold(december, [], dayTrip("x", 0), [])).toBe(true);
     expect(canHold(december, [], dayTrip("x", 0), [], [carried])).toBe(false);
     expect(canHold(december, [], dayTrip("x", 3), [], [carried])).toBe(true);
+  });
+
+  it("refuses a trip under the rest after a carry-in typed by hand, when as one duty it's past 12.C.4.e", () => {
+    // Released Nov 30 17:00 in Memphis; its duties weren't given. A show at 00:00 is 7 hours off, and as one duty it
+    // runs from before 17:00 to 10:00: over 13:30 whatever its show.
+    const carried = { kind: "trip" as const, id: "c", label: "carry-in trip", report: "2026-11-28T14:00:00Z", release: "2026-11-30T23:00:00Z", international: false };
+    expect(canHold(december, [], dayTrip("x", 1, 10, "0000"), [], [carried])).toBe(false);
+    // Out at 20:00 for 2 hours: one duty of 5 hours or more, which its last duty's show decides. Not ruled out.
+    expect(canHold(december, [], dayTrip("x", 0, 2, "2000"), [], [carried])).toBe(true);
+    // A legal rest after it: fine.
+    expect(canHold(december, [], dayTrip("x", 1, 10, "0300"), [], [carried])).toBe(true);
   });
 });

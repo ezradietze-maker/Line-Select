@@ -6,7 +6,7 @@ import { verifiedUserIds } from "@/lib/server/verified-pilots";
 import { bidPackMetaOf, preferenceProfiles, tradeHoldings, tradeOffers, tradePreferences, tradeSuggestionMembers, tradeSuggestions, users } from "@/lib/server/schema";
 import { tripInstanceKey } from "@/lib/trades/legality";
 import type { MatchingRow } from "@/lib/trades/holding";
-import { agreedBoardTrips, alreadyTraded, type GivenTrip } from "@/lib/trades/offer-trips";
+import { agreedBoardSwaps, agreedBoardTrips, alreadyTraded, type GivenTrip } from "@/lib/trades/offer-trips";
 import { holdingsAfter, isWhole, type suggestionToStore } from "@/lib/trades/suggestions";
 import type { Seat } from "@/types/bidpack";
 import type { BidPackMetaSnapshot, TradeAnswer, TradeDeclineReason, TradeHolding, TradeOffer, TradeSuggestionMember, TradeSuggestionRecord, TradeTrip } from "@/types/trade";
@@ -85,26 +85,27 @@ export async function matchingHistory(meta: BidPackMetaSnapshot, now: Date) {
     .select()
     .from(tradeOffers)
     .where(and(eq(tradeOffers.base, meta.base), eq(tradeOffers.aircraft, meta.aircraft), eq(tradeOffers.seat, meta.seat), eq(tradeOffers.month, meta.month), eq(tradeOffers.status, "accepted")));
-  const boardTrips: GivenTrip[] = agreedBoardTrips(
-    agreed.map((o): TradeOffer => ({
-      id: o.id,
-      bidPackMeta: bidPackMetaOf(o),
-      offeringUserId: o.offeringUserId,
-      offeringDisplayName: o.offeringDisplayName,
-      offeredTrip: o.offeredTrip,
-      wantedPairingNumber: o.wantedPairingNumber,
-      note: o.note,
-      status: "accepted",
-      createdAt: o.createdAt.toISOString(),
-      responderUserId: o.responderUserId,
-      responderDisplayName: o.responderDisplayName,
-      responderTrip: o.responderTrip,
-      respondedAt: o.respondedAt?.toISOString() ?? null,
-      resolvedAt: o.resolvedAt?.toISOString() ?? null,
-    }))
-  );
+  const offers = agreed.map((o): TradeOffer => ({
+    id: o.id,
+    bidPackMeta: bidPackMetaOf(o),
+    offeringUserId: o.offeringUserId,
+    offeringDisplayName: o.offeringDisplayName,
+    offeredTrip: o.offeredTrip,
+    wantedPairingNumber: o.wantedPairingNumber,
+    note: o.note,
+    status: "accepted",
+    createdAt: o.createdAt.toISOString(),
+    responderUserId: o.responderUserId,
+    responderDisplayName: o.responderDisplayName,
+    responderTrip: o.responderTrip,
+    respondedAt: o.respondedAt?.toISOString() ?? null,
+    resolvedAt: o.resolvedAt?.toISOString() ?? null,
+  }));
+  const boardTrips: GivenTrip[] = agreedBoardTrips(offers);
   const empty = {
     boardTrips,
+    /** What each pilot takes in those trades: a trip handed them must fit beside it until it goes through. */
+    boardSwaps: agreedBoardSwaps(offers),
     busyPilots: new Set<string>(),
     signatures: new Set<string>(),
     declined: new Set<string>(),
@@ -181,9 +182,13 @@ export const swapKey = (userId: string, give: { id: string; startDayIndex: numbe
 export async function saveSuggestion(s: ReturnType<typeof suggestionToStore>, foundFrom?: Date): Promise<boolean> {
   return db.transaction(async (tx) => {
     // The run read the board before a search of up to a minute: a trip agreed there since is spoken for. Under the
-    // pilots' seat locks, so an accept on the board can't land between this check and the insert.
+    // pilots' seat locks, so an accept on the board can't land between this check and the insert. And any board trade one
+    // of them agreed since changes what they'll hold, a trip taken there as much as one given: the search fitted what it
+    // handed them around what they held before.
     await lockPilotsInSeat(tx, s.bidPackMeta, s.members.map((m) => m.userId));
-    if (await givesAgreedTrip(tx, s.bidPackMeta, s.members)) return false;
+    const agreed = await agreedTrades(tx, s.bidPackMeta, [...new Set(s.members.map((m) => m.userId))]);
+    if (s.members.some((m) => alreadyTraded(agreed, s.bidPackMeta, m.userId, m.give))) return false;
+    if (foundFrom && agreed.some((o) => o.resolvedAt !== null && Date.parse(o.resolvedAt) > foundFrom.getTime())) return false;
     if (foundFrom && !(await stillStands(tx, s, foundFrom))) return false;
     const [row] = await tx
       .insert(tradeSuggestions)

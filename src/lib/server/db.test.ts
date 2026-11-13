@@ -304,10 +304,18 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.acceptTradeOffer(other.id, null)).toMatchObject({ status: "accepted" });
       expect((await suggestions.listSuggestionsFor(b.id, packId)).find((r) => r.id === proposed)).toMatchObject({ status: "cancelled", cancelReason: "changed" });
       // That board trade's trips aren't handed on by the matching.
-      expect((await suggestions.matchingHistory(meta, new Date())).boardTrips.map((g) => [g.pilot, g.trip.tripId])).toEqual(
+      const history = await suggestions.matchingHistory(meta, new Date());
+      expect(history.boardTrips.map((g) => [g.pilot, g.trip.tripId])).toEqual(
         expect.arrayContaining([
           [a.id, "t10"],
           [d.id, "t30"],
+        ])
+      );
+      // And what each takes there, what's handed them has to fit beside.
+      expect(history.boardSwaps.map((s) => [s.pilot, s.give?.tripId, s.take.tripId])).toEqual(
+        expect.arrayContaining([
+          [a.id, "t10", "t30"],
+          [d.id, "t30", "t10"],
         ])
       );
 
@@ -365,6 +373,25 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await suggestions.markStepDone(stepping, a.id, 0)).toEqual({ ok: false, reason: "traded" });
       await undo();
       expect((await suggestions.markStepDone(stepping, a.id, 0)).ok).toBe(true);
+    });
+
+    it("won't store a trade found before one of its pilots agreed a board trade, whatever trips it moved", async () => {
+      const dated = (n: number) => ({ ...(tripOf(n) as object), tripId: `t${n}` }) as never;
+      const board = (n: number) => ({ lineNumber: "held", pairingNumber: `${n}`, days: 2, layoverCities: [], international: false, reportTime: "early" as const, creditHours: 10, tafbHours: 48, landings: 2, deadheadLegs: 0, tripId: `t${n}`, startDayIndex: n, date: null });
+      const [a, b, d] = [await makeUser("since-a"), await makeUser("since-b"), await makeUser("since-d")];
+      for (const [i, p] of [a, b].entries()) await mod.saveTradeHolding(p.id, { packId, bidPackMeta: meta, lineNumber: null, trips: [{ id: `t${i}`, startDayIndex: i, lock: null }, { id: `t${i + 20}`, startDayIndex: i + 20, lock: null }] });
+      const stored = () => ({
+        signature: randomUUID(), packId, bidPackMeta: meta, steps: [{ a: 0, b: 1 }], expiresAt: new Date(Date.now() + 86_400_000),
+        members: [a, b].map((p, position) => ({ userId: p.id, displayName: `P${position}`, position, give: dated(position), value })),
+      });
+      // A gives t20, not in the trade, and takes D's t30: what A will hold changed, which the search didn't see.
+      const agreeOnBoard = (at: Date) =>
+        db.insert(tradeOffers).values({ id: randomUUID(), ...meta, offeringUserId: a.id, offeringDisplayName: "A", offeredTrip: board(20), status: "accepted", responderUserId: d.id, responderDisplayName: "D", responderTrip: board(30), respondedAt: at, resolvedAt: at });
+      const foundFrom = new Date();
+      await agreeOnBoard(new Date(foundFrom.getTime() + 1000));
+      expect(await suggestions.saveSuggestion(stored(), foundFrom)).toBe(false);
+      // One agreed before the search read the board, it worked around.
+      expect(await suggestions.saveSuggestion(stored(), new Date(foundFrom.getTime() + 2000))).toBe(true);
     });
   });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { agreedBoardTrips, alreadyTraded, lockBoardTrades, offersFreedBy, offersFreedByTrade, sameTrip } from "@/lib/trades/offer-trips";
+import { agreedBoardSwaps, agreedBoardTrips, alreadyTraded, lockBoardTrades, offersFreedBy, offersFreedByTrade, sameTrip, withBoardSwaps } from "@/lib/trades/offer-trips";
 import type { PilotHolding } from "@/lib/trades/match";
-import type { Line } from "@/types/bidpack";
+import type { BidPack, Line, Trip } from "@/types/bidpack";
 import type { TradeOffer, TripSnapshot } from "@/types/trade";
 
 const meta = { base: "MEM", aircraft: "MD11", seat: "CAP", month: "NOV26" };
@@ -128,5 +128,31 @@ describe("matching around the board's agreed trades", () => {
     const given = agreedBoardTrips([offer("u1", trip("13"), { status: "accepted" })]);
     const [u1] = lockBoardTrades([held("u1", [{ id: "a", startDayIndex: 5, pairingNumber: "13" }, { id: "b", startDayIndex: 12, pairingNumber: "13" }, { id: "c", startDayIndex: 20, pairingNumber: "14" }])], given);
     expect([...(u1.locked ?? [])].sort()).toEqual(["a@5", "b@12"]);
+  });
+});
+
+describe("matching around what the board's agreed trades hand a pilot", () => {
+  const t = (id: string, startDayIndex: number, pairingNumber = id) => ({ id, startDayIndex, pairingNumber }) as unknown as Trip;
+  const held = (pilotId: string, trips: Trip[]): PilotHolding => ({ pilotId, model: {}, line: { lineNumber: "1001", trips } as unknown as Line }) as unknown as PilotHolding;
+  const pack = { lines: [{ trips: [t("p13", 5, "13"), t("p20", 7, "20"), t("p30", 9, "30")] }] } as unknown as BidPack;
+  const agreed = offer("u1", trip("13", 5), { status: "accepted", responderUserId: "u2", responderTrip: trip("20", 7) });
+
+  it("names what each pilot takes, with what they give for it", () => {
+    const [u2, u1] = agreedBoardSwaps([agreed, offer("u3", trip("30", 9))]);
+    expect([u1.pilot, u1.give?.pairingNumber, u1.take.pairingNumber]).toEqual(["u1", "13", "20"]);
+    expect([u2.pilot, u2.give?.pairingNumber, u2.take.pairingNumber]).toEqual(["u2", "20", "13"]);
+  });
+
+  it("keeps what they take beside what they hold, until what they hold no longer has what they gave", () => {
+    const [u1, u2] = withBoardSwaps(pack, [held("u1", [t("p13", 5, "13"), t("p30", 9, "30")]), held("u2", [t("p13", 5, "13")])], agreedBoardSwaps([agreed]));
+    expect([...u1.agreed!.gives]).toEqual(["p13@5"]);
+    expect(u1.agreed!.takes.map((x) => x.id)).toEqual(["p20"]);
+    // u2 holds trip 13 and not 20: it went through, and they've confirmed so.
+    expect(u2.agreed).toBeUndefined();
+  });
+
+  it("leaves out a pilot taking a trip the pack can't place", () => {
+    const old = offer("u1", trip("13", 5), { status: "accepted", responderUserId: "u2", responderTrip: trip("20") });
+    expect(withBoardSwaps(pack, [held("u1", [t("p13", 5, "13")]), held("u3", [t("p30", 9, "30")])], agreedBoardSwaps([old])).map((p) => p.pilotId)).toEqual(["u3"]);
   });
 });

@@ -1,5 +1,6 @@
 import { tripInstanceKey } from "@/lib/trades/legality";
 import type { PilotHolding } from "@/lib/trades/match";
+import type { BidPack, Trip } from "@/types/bidpack";
 import type { BidPackMetaSnapshot, TradeOffer, TripSnapshot } from "@/types/trade";
 
 /** What says which trip a snapshot is. */
@@ -87,13 +88,60 @@ export function lockBoardTrades(pilots: readonly PilotHolding[], given: readonly
   return pilots.map((p) => {
     const mine = given.filter((g) => g.pilot === p.pilotId);
     if (!mine.length) return p;
-    const spoken = p.line.trips.filter((t) =>
-      mine.some((g) => {
-        const key = snapshotTripKey(g.trip);
-        return key ? key === tripInstanceKey(t) : g.trip.pairingNumber !== null && g.trip.pairingNumber === t.pairingNumber;
-      })
-    );
+    const spoken = p.line.trips.filter((t) => mine.some((g) => isSnapshotOf(g.trip, t)));
     if (!spoken.length) return p;
     return { ...p, locked: new Set([...(p.locked ?? []), ...spoken.map(tripInstanceKey)]) };
+  });
+}
+
+/** Whether a held trip is the one a snapshot names; for an older offer that didn't say which day, any day of the pairing. */
+function isSnapshotOf(snapshot: TripSnapshot, trip: Trip): boolean {
+  const key = snapshotTripKey(snapshot);
+  return key ? key === tripInstanceKey(trip) : snapshot.pairingNumber !== null && snapshot.pairingNumber === trip.pairingNumber;
+}
+
+/** One pilot's side of a trade agreed on the board: the trip they take, and the one they give for it, if they give one. */
+export interface BoardSwap {
+  pilot: string;
+  give: TripSnapshot | null;
+  take: TripSnapshot;
+}
+
+/** What each pilot takes in the board's agreed trades, with what they give for it. */
+export function agreedBoardSwaps(offers: readonly TradeOffer[]): BoardSwap[] {
+  return offers.flatMap((o) => {
+    if (o.status !== "accepted" || !o.responderUserId) return [];
+    const swaps: BoardSwap[] = [{ pilot: o.responderUserId, give: o.responderTrip, take: o.offeredTrip }];
+    if (o.responderTrip) swaps.push({ pilot: o.offeringUserId, give: o.offeredTrip, take: o.responderTrip });
+    return swaps;
+  });
+}
+
+/**
+ * These pilots, with what they take in the board's agreed trades that haven't gone through yet (`PilotHolding.agreed`):
+ * a trip a suggested trade hands them must fit beside it too, or two trades each legal alone leave them holding two
+ * that aren't. Gone through is when the trip they gave is off what they hold (they've confirmed since). A pilot taking a
+ * trip this pack can't place can't be checked, so isn't matched until they confirm what they hold.
+ */
+export function withBoardSwaps(pack: Pick<BidPack, "lines">, pilots: readonly PilotHolding[], swaps: readonly BoardSwap[]): PilotHolding[] {
+  if (!swaps.length) return [...pilots];
+  const inPack = new Map(pack.lines.flatMap((l) => l.trips.map((t) => [tripInstanceKey(t), t] as const)));
+  return pilots.flatMap((p) => {
+    const mine = swaps.filter((s) => s.pilot === p.pilotId);
+    if (!mine.length) return [p];
+    const have = new Set(p.line.trips.map(tripInstanceKey));
+    const gives = new Set<string>();
+    const takes: Trip[] = [];
+    for (const s of mine) {
+      const giving = s.give ? p.line.trips.filter((t) => isSnapshotOf(s.give!, t)) : [];
+      if (s.give && !giving.length) continue;
+      const key = snapshotTripKey(s.take);
+      const take = key ? inPack.get(key) : undefined;
+      if (!take) return [];
+      if (have.has(key!)) continue;
+      for (const t of giving) gives.add(tripInstanceKey(t));
+      takes.push(take);
+    }
+    return takes.length ? [{ ...p, agreed: { gives, takes } }] : [p];
   });
 }

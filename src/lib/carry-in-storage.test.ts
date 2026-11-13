@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_ELECTIONS } from "@/lib/phase-in";
-import { carryInFromLogbook, carryInToSend, loadCarryIn, saveCarryIn } from "@/lib/carry-in-storage";
+import { carryInFromLogbook, carryInToSend, loadCarryIn, sameCarryIn, saveCarryIn } from "@/lib/carry-in-storage";
 import type { LoggedMonth } from "@/types/logbook";
 
 const logged = (month: string, report: string, release: string): LoggedMonth => ({
@@ -47,5 +47,23 @@ describe("saying nothing carries in", () => {
     expect(loadCarryIn("u1", "p").none).toBe(true);
     saveCarryIn("u1", "p", { items: [], elections: NO_ELECTIONS });
     expect(loadCarryIn("u1", "p").none).toBeUndefined();
+  });
+});
+
+describe("whether what trades fit around is still what this device has", () => {
+  const trip = { kind: "trip" as const, id: "c", label: "Trip 213", report: "2026-11-28T14:00:00Z", release: "2026-12-01T02:00:00Z", international: false };
+
+  it("says when a carry-in was added, removed or said to be none since the holding was confirmed", () => {
+    // Confirmed as nothing carried in, then a trip added on Your rankings: trades would still be matched as if none.
+    expect(sameCarryIn([], carryInToSend({ items: [trip] }))).toBe(false);
+    expect(sameCarryIn(undefined, carryInToSend({ items: [], none: true }))).toBe(false);
+    expect(sameCarryIn([trip], carryInToSend({ items: [] }))).toBe(false);
+    expect(sameCarryIn([trip], [{ ...trip, release: "2026-12-01T05:00:00Z" }])).toBe(false);
+  });
+
+  it("reads the same trip back from the server as the same, though its label was trimmed", () => {
+    expect(sameCarryIn([{ ...trip, label: "Trip 213", id: "c".repeat(100) }], [{ ...trip, label: " Trip 213 ", creditHours: null }])).toBe(true);
+    expect(sameCarryIn(undefined, carryInToSend({ items: [] }))).toBe(true);
+    expect(sameCarryIn([], carryInToSend({ items: [], none: true }))).toBe(true);
   });
 });

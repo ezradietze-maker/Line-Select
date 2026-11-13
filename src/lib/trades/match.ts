@@ -44,6 +44,11 @@ export interface PilotHolding {
    * as what they confirmed holding fits whatever they carry in.
    */
   carryIn?: readonly CarryInItem[];
+  /**
+   * Trades they agreed on the board that haven't gone through (`withBoardSwaps`): the trips they give in them (still on
+   * `line`, locked) and those they take. Until then they may hold either, so a trip handed them must fit both ways.
+   */
+  agreed?: { gives: LockedTrips; takes: readonly Trip[] };
 }
 
 export interface TradeLeg {
@@ -109,9 +114,12 @@ function holdChecker(pack: BidPack, pilots: readonly PilotHolding[], nodes: Node
     const p = pilots[pilot];
     const taking = nodes[trip].trip;
     const starts = tripSpan(pack, taking)?.start ?? -Infinity;
+    const others = p.line.trips.filter((t) => t !== nodes[own].trip);
+    const agreed = p.agreed;
     const ok =
       (p.carryIn !== undefined || starts >= reach || earliest[pilot] <= starts) &&
-      canHold(pack, p.line.trips.filter((t) => t !== nodes[own].trip), taking, vacations[pilot], p.carryIn ?? []);
+      canHold(pack, others, taking, vacations[pilot], p.carryIn ?? []) &&
+      (!agreed || canHold(pack, [...others.filter((t) => !agreed.gives.has(tripInstanceKey(t))), ...agreed.takes], taking, vacations[pilot], p.carryIn ?? []));
     known.set(key, ok);
     return ok;
   };
