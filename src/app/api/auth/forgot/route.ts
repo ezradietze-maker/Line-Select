@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { requestPasswordResetEmail } from "@/lib/server/auth";
 import { isEmailConfigured } from "@/lib/server/email";
-import { checkRequestLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRequestLimit, clientIp, deviceIdFrom, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
@@ -27,6 +27,6 @@ export async function POST(request: Request) {
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   if (!isText(body.email, 200)) return NextResponse.json({ error: "Enter your email address." }, { status: 400 });
 
-  const emailEnabled = await requestPasswordResetEmail(body.email, clientIp(request));
+  const emailEnabled = await requestPasswordResetEmail(body.email, clientIp(request), deviceIdFrom(request));
   return NextResponse.json({ emailEnabled });
 }

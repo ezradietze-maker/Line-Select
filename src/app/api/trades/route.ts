@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isJsonObject } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
-import { createTradeOffer, listTradeOffersForSeat, pilotHasSeatMonth } from "@/lib/server/db";
+import { packIdFor } from "@/lib/pack-id";
+import { createTradeOffer, getTradeHolding, listTradeOffersForSeat, pilotHasSeatMonth } from "@/lib/server/db";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { tradeBoardIsOpen } from "@/lib/server/trade-board-bar";
-import { sanitizeBidPackMeta, sanitizeTripSnapshot } from "@/lib/server/trade-validation";
+import { NOT_YOUR_SEAT, NOT_YOUR_TRIP, sanitizeBidPackMeta, sanitizeTripSnapshot, tripIsHeld } from "@/lib/server/trade-validation";
 import { offerForViewer } from "@/lib/server/trade-view";
 import type { Seat } from "@/types/bidpack";
 import type { BidPackMetaSnapshot, TripSnapshot, TradeOffer } from "@/types/trade";
@@ -65,6 +66,13 @@ export async function POST(request: Request) {
   // Every signed-in pilot can read the board, so cap how fast one account can fill it.
   const { ok } = await checkRateLimit("trade-post", user.id, 20, 60 * 60);
   if (!ok) return rateLimitedResponse();
+
+  // The same test as reading the board (GET): the seat comes from the request, so without it any signed-in pilot
+  // could post onto any seat's board, under their own name, a note other pilots there would read.
+  if (!(await pilotHasSeatMonth(user.id, bidPackMeta))) return NextResponse.json({ error: NOT_YOUR_SEAT }, { status: 403 });
+  if (!tripIsHeld(await getTradeHolding(user.id, packIdFor({ ...bidPackMeta, seat: bidPackMeta.seat as Seat })), offeredTrip)) {
+    return NextResponse.json({ error: NOT_YOUR_TRIP }, { status: 403 });
+  }
 
   const offer: TradeOffer = {
     id: randomUUID(),

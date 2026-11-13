@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { SESSION_COOKIE, login, sessionCookieOptions } from "@/lib/server/auth";
-import { checkRateLimit, clientIp, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { checkRateLimit, clientIp, deviceIdFrom, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
   }
 
-  const result = await login(email, password, clientIp(request));
+  const result = await login(email, password, clientIp(request), deviceIdFrom(request));
   if (!result.ok || !result.user || !result.sessionToken) {
     return NextResponse.json({ error: result.error ?? "Something went wrong." }, { status: 401 });
   }

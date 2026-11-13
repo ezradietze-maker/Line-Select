@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
 import { alreadyTraded, offersFreedByTrade } from "@/lib/trades/offer-trips";
 import { packIdFor } from "@/lib/pack-id";
@@ -199,8 +199,14 @@ export async function consumeResetToken(tokenHash: string): Promise<string | nul
 
 /**
  * Sessions are stored by a hash of their token, never the token itself: the cookie holds the token, the database
- * only its SHA-256, so a leaked copy of the table can't be used to sign in as anyone. Rows written before this rule
- * hold the token as it was; each is found that way once and rewritten as its hash.
+ * only its SHA-256, so a leaked copy of the table can't be used to sign in as anyone.
+ *
+ * Rows written before this rule (deployed 6 Nov 2026) held the token as it was, and were once looked up that way too,
+ * then rewritten as its hash. That lookup is gone. A token is 64 hex characters (`startSession`) and so is its SHA-256,
+ * so nothing about a value says which one it is; and a rewritten row kept its old expiry, so a hash copied out of the
+ * table matched the old lookup and worked as a cookie, the very thing hashing is there to stop. A pilot whose row was
+ * never rewritten (not back since 6 Nov) is asked to sign in again. Those rows can't be used any more, and all expire
+ * by 6 Dec 2026; `scripts/purge-legacy-sessions.ts` clears them sooner.
  */
 function sessionKey(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -212,20 +218,8 @@ export async function createSession(session: ServerSession): Promise<void> {
     .values({ token: sessionKey(session.token), userId: session.userId, expiresAt: new Date(session.expiresAt) });
 }
 
-/**
- * Every row written before hashing began (deployed 6 Nov 2026) expires by this moment, and every hashed row after
- * it. Only rows that old are looked up by the raw cookie: otherwise a hash copied out of the table would itself work
- * as a cookie, the very thing hashing is there to stop.
- */
-const LEGACY_SESSIONS_EXPIRE_BY = new Date("2026-12-06T19:20:00Z");
-
 export async function findSession(token: string): Promise<ServerSession | null> {
-  const key = sessionKey(token);
-  let [row] = await db.select().from(sessions).where(eq(sessions.token, key)).limit(1);
-  if (!row && Date.now() < LEGACY_SESSIONS_EXPIRE_BY.getTime()) {
-    [row] = await db.select().from(sessions).where(and(eq(sessions.token, token), lte(sessions.expiresAt, LEGACY_SESSIONS_EXPIRE_BY))).limit(1);
-    if (row) await db.update(sessions).set({ token: key }).where(eq(sessions.token, token));
-  }
+  const [row] = await db.select().from(sessions).where(eq(sessions.token, sessionKey(token))).limit(1);
   if (!row) return null;
   if (row.expiresAt.getTime() < Date.now()) {
     await deleteSession(token);
@@ -240,8 +234,9 @@ export async function deleteSessionsForUser(userId: string): Promise<void> {
   await db.delete(sessions).where(eq(sessions.userId, userId));
 }
 
+/** By the hash only: also deleting a row stored as the value sent let anyone holding a hash from the table sign its pilot out. */
 export async function deleteSession(token: string): Promise<void> {
-  await db.delete(sessions).where(inArray(sessions.token, [sessionKey(token), token]));
+  await db.delete(sessions).where(eq(sessions.token, sessionKey(token)));
 }
 
 // ---- Trade offers ----
@@ -666,18 +661,30 @@ export async function getTradeHolding(userId: string, packId: string): Promise<T
 
 /**
  * Whether this seat's month is one the pilot flies: a holding they confirmed in it, or the uploaded pack on their
- * account. Only then do they see other pilots' offers on its board: a seat named in a request proves nothing.
+ * account. Only then do they see other pilots' offers on its board, post to it or answer an offer on it: a seat named
+ * in a request proves nothing. A holding counts only under that seat's own pack id: one saved before the holding PUT
+ * checked its seat against its pack could name any seat at all.
  */
 export async function pilotHasSeatMonth(userId: string, meta: BidPackMetaSnapshot): Promise<boolean> {
   if (!isUuid(userId)) return false;
+  const packId = packIdFor({ ...meta, seat: meta.seat as Seat });
   const [held] = await db
     .select({ id: tradeHoldings.id })
     .from(tradeHoldings)
-    .where(and(eq(tradeHoldings.userId, userId), eq(tradeHoldings.base, meta.base), eq(tradeHoldings.aircraft, meta.aircraft), eq(tradeHoldings.seat, meta.seat), eq(tradeHoldings.month, meta.month)))
+    .where(
+      and(
+        eq(tradeHoldings.userId, userId),
+        eq(tradeHoldings.packId, packId),
+        eq(tradeHoldings.base, meta.base),
+        eq(tradeHoldings.aircraft, meta.aircraft),
+        eq(tradeHoldings.seat, meta.seat),
+        eq(tradeHoldings.month, meta.month)
+      )
+    )
     .limit(1);
   if (held) return true;
   const [pack] = await db.select({ packId: bidPacks.packId }).from(bidPacks).where(eq(bidPacks.userId, userId)).limit(1);
-  return pack?.packId === packIdFor({ ...meta, seat: meta.seat as Seat });
+  return pack?.packId === packId;
 }
 
 /** What a pilot holds, confirmed on the pack whose fingerprint is given (null when their account doesn't have it yet). */
