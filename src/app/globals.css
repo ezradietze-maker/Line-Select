@@ -1386,6 +1386,14 @@ html.theme-sweep::view-transition-new(root) {
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  /* A line's strip and its key printed as drawn: browsers leave backgrounds off the sheet unless asked, and the top
+     line's score — sign yellow on its black panel — printed yellow on white, the trip days lost their wash, and a
+     held-down score its red bar. */
+  [id^="line-"],
+  [role="group"][aria-label="How to read a line's strip"] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   @page {
     margin: 12mm;
   }

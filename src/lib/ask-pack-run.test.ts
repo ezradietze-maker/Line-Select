@@ -105,6 +105,22 @@ describe("ask your pack, checked against the pack", () => {
     expect(checkAskQuery(ask({ cities: ["hnl"] }), pack, pm, null).conditions[0].params).toEqual({ cities: ["HNL"] });
   });
 
+  // Round 16: a city's name read as the code its first word spells. On a pack laying over in San Diego and San Juan,
+  // "San Juan" and "San Antonio" both counted the San Diego layovers.
+  it("reads a city's name as that city, never as a code its words happen to spell", () => {
+    const sanAndSju = JSON.parse(JSON.stringify(pack).replaceAll('"LAX"', '"SAN"').replaceAll('"CDG"', '"SJU"')) as typeof pack;
+    const spm = prepareMetrics(sanAndSju);
+    const cityOf = (city: string) => {
+      const q = checkAskQuery(ask({ cities: [city] }), sanAndSju, spm, null);
+      return q.cannotAnswer ?? q.conditions[0].params?.cities;
+    };
+    expect(cityOf("San Juan")).toEqual(["SJU"]);
+    expect(cityOf("San Diego")).toEqual(["SAN"]);
+    expect(cityOf("San Antonio")).toBe('This pack\'s trips don\'t go to "San Antonio".');
+    // A code with its own city's words, or an airport's, still reads as the code.
+    for (const city of ["SAN airport", "SAN (San Diego)", "sju San Juan intl"]) expect(cityOf(city)).toEqual([city.slice(0, 3).toUpperCase()]);
+  });
+
   it("names a city the pack's trips don't go to, rather than counting it as none", () => {
     expect(lines(ask({ cities: ["ZZZ"] }))).toBe('This pack\'s trips don\'t go to "ZZZ".');
     // "No ZZZ layovers" would otherwise keep every line.
