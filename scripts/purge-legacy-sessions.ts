@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { assertSafeForDestructiveOp } from "../src/lib/server/db-guard";
 
 try {
   process.loadEnvFile(".env.local");
@@ -31,6 +32,9 @@ async function main() {
   const connectionString = process.env.POSTGRES_URL_NON_POOLING ?? process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
   if (!connectionString) throw new Error("No Postgres connection string found.");
   const apply = process.argv.includes("--apply");
+  // The --apply run deletes session rows. Guard the real delete; the dry run
+  // only counts and rolls back. See docs/safe-database.md.
+  if (apply) assertSafeForDestructiveOp(connectionString, "purge-legacy-sessions --apply");
   const pool = new Pool({ connectionString });
   const client = await pool.connect();
   try {

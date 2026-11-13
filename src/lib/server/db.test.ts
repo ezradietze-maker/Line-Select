@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import * as mod from "@/lib/server/db";
 import * as forecastStore from "@/lib/server/forecast-store";
 import { db } from "@/lib/server/postgres";
+import { looksLikeProductionUrl, productionDbOptIn } from "@/lib/server/db-guard";
 import * as suggestions from "@/lib/server/trade-suggestions";
 import { awardHistoryRecords, feedbackSubmissions, tradeOffers, users } from "@/lib/server/schema";
 import { DEFAULT_WEIGHTS } from "@/types/preferences";
@@ -32,6 +33,15 @@ try {
 
 const hasDb = !!process.env.TEST_DATABASE_URL;
 if (hasDb) {
+  // These tests create and then delete rows. If TEST_DATABASE_URL points at the
+  // live database, that cleanup would delete real pilots' data — so refuse it
+  // outright rather than run against production (see `db-guard.ts`).
+  if (looksLikeProductionUrl(process.env.TEST_DATABASE_URL!) && !productionDbOptIn()) {
+    throw new Error(
+      "TEST_DATABASE_URL looks like the PRODUCTION database. These tests create and delete rows, " +
+        "so point it at a dev/test database (see docs/safe-database.md)."
+    );
+  }
   // `postgres.ts` connects on first use, so this reaches it despite the imports above.
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 } else {
