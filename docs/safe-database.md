@@ -70,14 +70,17 @@ TEST_DATABASE_URL=postgresql://…dev-branch… npm test
 
 The guard looks at the connection string and the environment:
 
-- **On Vercel** (`VERCEL` is set) the app connects as before — the platform
-  wires the correct database per environment, so the guard never interferes
-  with a deploy.
+- **On Vercel** (`VERCEL` is set and it's the deployed production server, not
+  development) the app connects as before — the platform wires the correct
+  database per environment, so the guard never interferes with a deploy. A
+  `.env.local` made by `vercel env pull` carries `VERCEL="1"` too, so `VERCEL`
+  alone doesn't open the fence for `npm run dev` or a script.
 - **`localhost` / `127.0.0.1` / `*.local`** are always safe.
 - **If you set `PRODUCTION_DB_HOST`** (recommended), a string whose host
   contains it is production and everything else is safe. This is the reliable
   signal: Neon branch endpoints get random hostnames that don't contain the
-  branch name, so naming alone can't recognise a dev branch.
+  branch name, so naming alone can't recognise a dev branch. The pooled host
+  (`…-pooler.…`) and the direct one count as the same, so either works.
 - **Otherwise**, a `dev` / `test` / `staging` / `sandbox` / `preview` / `ci` /
   `local` / `scratch` token in the host or database name marks it safe. Any
   other remote host is assumed to be **production** (fail-safe: an unknown

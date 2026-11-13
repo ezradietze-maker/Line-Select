@@ -410,7 +410,8 @@ export async function markEmailVerified(userId: string, now = new Date()): Promi
 /**
  * Removes accounts made by signing up and never confirmed, made before `before`. Only those whose first link was sent
  * by signing up: accounts from before confirming existed never had one, so they stay however long they go unconfirmed.
- * And never one anyone has used: an account with a session, a saved pack or a profile stays, however it got them.
+ * And never one anyone has used: an account with a session, a saved pack, a profile or a membership stays, however it
+ * got them.
  * Every table's link to an account cascades, so nothing of a removed one is left. Returns how many went.
  */
 export async function deleteUnconfirmedSignUps(before: Date): Promise<number> {
@@ -424,7 +425,9 @@ export async function deleteUnconfirmedSignUps(before: Date): Promise<number> {
         inArray(users.id, signedUp),
         notInArray(users.id, db.select({ id: sessions.userId }).from(sessions)),
         notInArray(users.id, db.select({ id: bidPacks.userId }).from(bidPacks)),
-        notInArray(users.id, db.select({ id: preferenceProfiles.userId }).from(preferenceProfiles))
+        notInArray(users.id, db.select({ id: preferenceProfiles.userId }).from(preferenceProfiles)),
+        // A pilot who went to checkout has a Stripe customer (and maybe a card being billed) that only this account ties back to.
+        notInArray(users.id, db.select({ id: subscriptions.userId }).from(subscriptions))
       )
     )
     .returning({ id: users.id });
