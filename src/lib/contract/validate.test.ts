@@ -95,6 +95,12 @@ describe("the contract validator", () => {
     expect(check({ ...good, answer: "Yes, it runs 2 days." }, "Is the #2 rule that the SWW is 2 days?").ok).toBe(false);
     expect(check({ ...good, answer: "For trip 93 the SWW still runs 115 hours." }, "What about trip 93?").ok).toBe(false);
     expect(check({ ...good, answer: "For trip 93 the SWW still runs 115 hours." }, "What about trip 93?", "Trip 93 is in this pack.").ok).toBe(true);
+    // A line the pack doesn't have is said to the model, but its number backs nothing.
+    const missing = "The pilot's bid pack: OCT26, MEM B777 FO.\nLine 1800 isn't in this pack.";
+    expect(check({ ...good, answer: "No, it posts at 1800 CT." }, "Does line 1800 still post at 1700?", missing).ok).toBe(false);
+    expect(check({ ...good, answer: "Line 1800 isn't in your pack." }, "Does line 1800 still post at 1700?", missing).ok).toBe(false);
+    const printed = "Line 2163 as printed: 13 days off, 81.5 CH, 240 hours TAFB, 6 trips.\nLine 1800 isn't in this pack.";
+    expect(check({ ...good, answer: "Line 2163 has 13 days off and 81.5 CH; the SWW runs 115 hours." }, "line 2163 or line 1800?", printed).ok).toBe(true);
   });
 
   it("doesn't read 'no one' as a number, but does read a real count of one", () => {

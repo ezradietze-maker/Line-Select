@@ -49,6 +49,9 @@ describe("what the pilot's pack adds to a question", () => {
     expect(linesNamed("would line 2016 conflict?")).toEqual(["2016"]);
     expect(linesNamed("lines 2016 and 2024, or Line #3001")).toEqual(["2016", "2024", "3001"]);
     expect(linesNamed("can I trade 2016 hours of pay?")).toEqual([]);
+    expect(linesNamed("Can a line 120 hours long be built? Do lines 100 CH or more get extra pay? A line 200-hour TAFB?")).toEqual([]);
+    expect(linesNamed("does line 1800 still post? and line 2016 changes?")).toEqual(["1800", "2016"]);
+    expect(tripsNamed("trip 301 checks out")).toEqual(["301"]);
   });
 
   it("states a named line's printed figures, and only those", () => {

@@ -21,16 +21,30 @@ export function contractQuestionHref(topic: string): string {
   return `/contract?q=${encodeURIComponent(`What does the contract say about this bid question: ${topic}`.slice(0, 500))}`;
 }
 
+/** A number followed by one of these is a length or a count, not a line or trip: "120 hours", "100 CH", "3-day". */
+const A_COUNT_FOLLOWS = String.raw`(?!\s*-?\s*(?:(?:days?|hours?|hrs?|nights?|legs?|minutes?|mins?|ch|credit|block)\b|%))`;
+const LINES = new RegExp(String.raw`\blines?\s*#?\s*(\d{3,5}(?:\s*(?:,|and|or|&)\s*#?\s*\d{3,5})*)\b${A_COUNT_FOLLOWS}`, "gi");
+const TRIPS = new RegExp(String.raw`\b(?:trips?|pairings?)\s*#?\s*(\d{1,5}(?:\s*(?:,|and|or|&)\s*#?\s*\d{1,5})*)\b${A_COUNT_FOLLOWS}`, "gi");
+
+/** "line 2016", "lines 2016 and 2024", but not "a line 120 hours long" or "lines 100 CH or more". */
 export function linesNamed(question: string): string[] {
-  const numbers = [...question.matchAll(/\blines?\s*#?\s*(\d{3,5}(?:\s*(?:,|and|or|&)\s*\d{3,5})*)/gi)].flatMap((m) => m[1].match(/\d{3,5}/g) ?? []);
+  const numbers = [...question.matchAll(LINES)].flatMap((m) => m[1].match(/\d{3,5}/g) ?? []);
   return [...new Set(numbers)];
 }
 
 /** "trip 301", "trips 301 and 302", "pairing #4410", but not "trips 3 days long": a count of days isn't a trip. */
 export function tripsNamed(question: string): string[] {
-  const numbers = [...question.matchAll(/\b(?:trips?|pairings?)\s*#?\s*(\d{1,5}(?:\s*(?:,|and|or|&)\s*#?\s*\d{1,5})*)\b(?!\s*-?\s*(?:days?|hours?|hrs?|nights?|legs?|minutes?|mins?|ch|credit|block|%))/gi)].flatMap((m) => m[1].match(/\d{1,5}/g) ?? []);
+  const numbers = [...question.matchAll(TRIPS)].flatMap((m) => m[1].match(/\d{1,5}/g) ?? []);
   return [...new Set(numbers)];
 }
+
+/**
+ * The fact said of a line the question names that the pack doesn't have. The contract checker takes no number from
+ * it: a number the pilot only asked about isn't backed by being missing ("Does line 1800 post at 1700?" would have
+ * backed "it posts at 1800").
+ */
+export const lineNotInPack = (number: string) => `Line ${number} isn't in this pack.`;
+export const LINE_NOT_IN_PACK = /\bLine \d+ isn't in this pack\./g;
 
 export function packFacts(question: string, pack: BidPack | null, carryIn: CarryInItem[] = [], elections: PhaseInElections = NO_ELECTIONS): string | undefined {
   if (!pack) return undefined;
@@ -45,7 +59,7 @@ export function packFacts(question: string, pack: BidPack | null, carryIn: Carry
   for (const number of named.slice(0, 4)) {
     const line = pack.lines.find((l) => l.lineNumber === number);
     if (!line) {
-      facts.push(`Line ${number} isn't in this pack.`);
+      facts.push(lineNotInPack(number));
       continue;
     }
     const carries = line.carryOverCreditHours ? `, ${line.carryOverCreditHours} CH carrying into next bid period` : "";

@@ -1,4 +1,5 @@
 import { DOCS, NODES, childrenOf, contractNode, findNode, fullText, versionText } from "./index";
+import { LINE_NOT_IN_PACK } from "./pack-facts";
 import type { ContractVersion } from "./types";
 
 /**
@@ -184,8 +185,8 @@ export function validateAnswer(raw: RawAnswer, context: { question: string; fact
   // Nothing comes from the question itself: any number in it let "Is minimum rest 8 hours?" have its 8 confirmed
   // against a quote that says 9:30, and even its line and trip numbers did ("Do trips 3 days long count?" backed "3
   // days", "begin at 1800?" backed 1800). A line or trip the question names counts only once the pack facts, worked
-  // out from the pilot's own pack, show it's really there.
-  const facts = context.facts ?? "";
+  // out from the pilot's own pack, show it's really there: "Line 1800 isn't in this pack" backs no 1800.
+  const facts = (context.facts ?? "").replace(LINE_NOT_IN_PACK, " ");
   const allowed = new Set(["2015", "2026", "2027", ...quotedNumbers, ...numbersIn(facts)]);
   const decimalHours = new Set([...quotes.map((q) => q.quote), facts].flatMap((t) => [...t.matchAll(DECIMAL_HOURS)].flatMap((m) => (allowed.has(m[1]) ? [String(Number(m[1]))] : []))));
   const words = dropHeldLengths(raw.answer.replace(SECTION_REF, " ").replace(BARE_SECTION, " ").replace(/\bPhase \d\b/g, " ").replace(/\bJune 29\b/g, " "), allowed, decimalHours);
