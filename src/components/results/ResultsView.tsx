@@ -136,6 +136,8 @@ function warmUpDetails() {
 const SURPRISE_THRESHOLD = 0.55;
 /** Never more than this many clarifying prompts in one sitting — the feature has to stay optional and rare or pilots learn to dismiss it on reflex. */
 const MAX_PROMPTS_PER_SESSION = 6;
+/** How far above or below a line a drop still counts as onto it: the gap between cards, and a little more. */
+const DROP_SLACK_PX = 24;
 
 function phraseFor(update: DimensionUpdate): string {
   if (update.isImplicit) return update.label;
@@ -979,17 +981,20 @@ export function ResultsView({
   }
 
   /**
-   * Whether a drop by finger or mouse is onto the line under it. The lines are measured as the drag starts and only the
-   * ones drawn then can be dropped on; held at an edge till the page scrolls, every line on screen was one not drawn yet,
-   * and the drop went onto the nearest one drawn, a screen away, and was kept as a swap.
+   * Whether a drop by finger or mouse is onto the line it's let go by. The lines are measured as the drag starts and only
+   * the ones drawn then can be dropped on; held at an edge till the page scrolls, every line on screen was one not drawn
+   * yet, and the drop went onto the nearest one drawn, a screen away, and was kept as a swap. Only up and down counts,
+   * with room for the gap between cards: the grip is at the card's very edge, and a finger drifting off it sideways, or
+   * letting go in the gap, still means the line ringed.
    */
   function droppedOnIt(event: DragEndEvent, overId: string): boolean {
     if (!(event.activatorEvent instanceof PointerEvent || event.activatorEvent instanceof MouseEvent || (typeof TouchEvent !== "undefined" && event.activatorEvent instanceof TouchEvent))) return true;
     const at = pointerAt.current;
     const card = document.querySelector<HTMLElement>(`[data-line-id="${CSS.escape(overId)}"]`);
-    if (!at || !card) return !!card && !at;
+    if (!card) return false;
+    if (!at) return true;
     const r = card.getBoundingClientRect();
-    return at.x >= r.left && at.x <= r.right && at.y >= r.top && at.y <= r.bottom;
+    return at.y >= r.top - DROP_SLACK_PX && at.y <= r.bottom + DROP_SLACK_PX;
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -1639,6 +1644,7 @@ export function ResultsView({
                               topPick={rank === 1}
                               bidPeriodStart={bidPack.bidPeriodStart}
                               bidPeriodDays={bidPack.bidPeriodDays}
+                              packId={bidPack.id}
                               homeBase={bidPack.base}
                               hidden={hiddenSet.has(id)}
                               draggable={dragEnabled}

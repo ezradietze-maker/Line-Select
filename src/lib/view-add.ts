@@ -560,7 +560,8 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
     pool = [...found.values()];
   }
 
-  const onLine = new Set(flown.line.trips.map(tripKey));
+  // By day for a run of day trips, as the pasted trips are: a day of the pilot's own run is theirs, not a clash with it.
+  const onLine = new Set(flown.line.trips.flatMap(dayTripsOf).map(tripKey));
   const ruledOut: ViewAddPlan["ruledOut"] = [];
   const legal: { trip: Trip; check: string[] }[] = [];
   for (const trip of pool) {

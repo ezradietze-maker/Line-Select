@@ -59,7 +59,7 @@ const RouteMap = dynamic(() => import("@/components/results/RouteMap").then((m) 
  */
 type DetailTab = "calendar" | "breakdown" | "circadian" | "route" | "reviews";
 
-/** Each line's open tab and trip details, by line: kept while its card isn't drawn (see `LineCard`). */
+/** Each line's open tab and trip details, by pack and line: kept while its card isn't drawn (see `LineCard`). */
 const cardViews = new Map<string, { expanded: boolean; activeTab: DetailTab }>();
 
 /** What a card shows only once it's opened. Handed over for an open card alone: a closed card shows just its strip, so the
@@ -113,6 +113,8 @@ interface LineCardProps {
   /** The bid pack's own real start date and period length — see `BidPack.bidPeriodStart`'s doc comment. Threaded down to the mini month calendar. */
   bidPeriodStart: string | null;
   bidPeriodDays: number;
+  /** The pack's id: another seat's or month's pack has lines of the same numbers, and their cards kept their own tabs. */
+  packId: string;
   /** The bid pack's own home base code, e.g. "MEM" — the one fixed point every trip on this line starts and ends at, for the Route tab's map. */
   homeBase: string;
   /** Hidden by the pilot — rendered as a one-line placeholder with a restore button, only ever reached when "show hidden lines" is on. */
@@ -140,6 +142,7 @@ export const LineCard = memo(function LineCard({
   topPick,
   bidPeriodStart,
   bidPeriodDays,
+  packId,
   homeBase,
   hidden,
   draggable,
@@ -153,11 +156,12 @@ export const LineCard = memo(function LineCard({
 }: LineCardProps) {
   // Kept on the card rather than in what opens under it, so a line closed and opened again shows the tab it was on — and
   // kept by line too, as a closed card scrolled far off isn't drawn, and came back drawn afresh on the first tab.
-  const [expanded, setExpanded] = useState(() => cardViews.get(line.id)?.expanded ?? false);
-  const [activeTab, setActiveTab] = useState<DetailTab>(() => cardViews.get(line.id)?.activeTab ?? "calendar");
+  const viewKey = `${packId}|${line.id}`;
+  const [expanded, setExpanded] = useState(() => cardViews.get(viewKey)?.expanded ?? false);
+  const [activeTab, setActiveTab] = useState<DetailTab>(() => cardViews.get(viewKey)?.activeTab ?? "calendar");
   useEffect(() => {
-    cardViews.set(line.id, { expanded, activeTab });
-  }, [line.id, expanded, activeTab]);
+    cardViews.set(viewKey, { expanded, activeTab });
+  }, [viewKey, expanded, activeTab]);
   const [showEveryDimension, setShowEveryDimension] = useState(false);
   const reduceMotion = useReducedMotion();
   const onToggleOpen = useCallback(() => actions.toggleOpen(line.id), [actions, line.id]);

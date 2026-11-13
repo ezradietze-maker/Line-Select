@@ -372,8 +372,16 @@ export async function GET(request: Request) {
         const result: HotelLookupResult = { code, hotelName, hotel: found, error: null };
         return NextResponse.json(result);
       }
-      // Let go without an answer in the cache: the lookup failed, or rested for the day. Asking now beats waiting on.
-      if (!(await getJson(lock))) break;
+      // Let go without an answer in the cache: the lookup failed, or rested for the day. Asking now beats waiting on —
+      // after one more look, as the answer may have been kept just after the look above.
+      if (!(await getJson(lock))) {
+        const kept = await usableCached();
+        if (kept !== undefined) {
+          const result: HotelLookupResult = { code, hotelName, hotel: kept, error: null };
+          return NextResponse.json(result);
+        }
+        break;
+      }
     }
   }
   try {
