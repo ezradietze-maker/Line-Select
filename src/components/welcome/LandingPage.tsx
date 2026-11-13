@@ -17,7 +17,7 @@ import { landingShownBefore, withLandingShown } from "@/lib/landing-return";
  */
 export function LandingPage() {
   const router = useRouter();
-  const { ready, bidPack, profile, handleTrySample } = useAppState();
+  const { ready, bidPack, profile, user, handleTrySample } = useAppState();
 
   // A pack this page itself loaded ("Try it with sample data") navigates on its
   // own — redirecting again here raced that navigation and dropped a returning
@@ -72,7 +72,12 @@ export function LandingPage() {
     <>
       <div className="returning-only">{loader}</div>
       <div className="landing-only">
-        <WelcomeScreen onStart={() => router.push("/upload")} onTrySample={trySample} />
+        <WelcomeScreen
+          onStart={() => router.push("/upload")}
+          onTrySample={trySample}
+          signedIn={ready && !!user}
+          appHref={bidPack ? landingPathFor(bidPack, profile) : "/upload"}
+        />
       </div>
     </>
   );

@@ -168,7 +168,19 @@ function Story() {
  * with real data from a real bid pack. Every honesty note the old landing carried is still here: not affiliated,
  * what happens to the PDF, which numbers are illustrative.
  */
-export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; onTrySample: () => void }) {
+export function WelcomeScreen({
+  onStart,
+  onTrySample,
+  signedIn = false,
+  appHref = "/upload",
+}: {
+  onStart: () => void;
+  onTrySample: () => void;
+  /** The visitor is signed in (even if their email isn't confirmed yet): the header offers the app, not "Sign in". */
+  signedIn?: boolean;
+  /** Where "Open the app" goes for a signed-in pilot — their resume point, or the upload page with no pack yet. */
+  appHref?: string;
+}) {
   // The hero rises in with CSS, not motion: CSS starts on first paint, from
   // the server-rendered HTML, while a motion entrance would hold the
   // headline at opacity 0 until the JavaScript arrived — on a phone, seconds.
@@ -185,9 +197,15 @@ export function WelcomeScreen({ onStart, onTrySample }: { onStart: () => void; o
           <Link href="/how-it-works" className="rounded-md px-3 py-2 text-ink-muted transition-colors hover:text-ink">
             How it works
           </Link>
-          <Link href="/auth" className="rounded-[4px] border border-border-strong px-3 py-2 font-display font-bold text-ink transition-colors hover:border-ink">
-            Sign in
-          </Link>
+          {signedIn ? (
+            <Link href={appHref} className="rounded-[4px] border border-border-strong px-3 py-2 font-display font-bold text-ink transition-colors hover:border-ink">
+              Open the app
+            </Link>
+          ) : (
+            <Link href="/auth" className="rounded-[4px] border border-border-strong px-3 py-2 font-display font-bold text-ink transition-colors hover:border-ink">
+              Sign in
+            </Link>
+          )}
         </nav>
       </header>
 
