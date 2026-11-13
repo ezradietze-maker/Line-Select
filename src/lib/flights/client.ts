@@ -3,6 +3,8 @@ import { jumpseatFlights } from "@/lib/flights/jumpseat";
 import { travelNeedsForPack, type TravelNeed, type TravelParams } from "@/lib/flights/needs";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { DEFAULT_HOME_PARAMS } from "@/lib/metrics/home-travel";
+import type { PackMetrics } from "@/lib/metrics/compute";
+import { measuredPack } from "@/lib/scoring-v2/adapter";
 import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
@@ -48,11 +50,19 @@ interface Stored {
   answers: FlightAnswers;
 }
 
+/**
+ * The last flights read, kept while what's stored doesn't change: the same flights come back as the same object. The
+ * results page re-reads them after every refit, and a fresh copy each time read as new flights — the whole pack was
+ * measured again on every swap.
+ */
+let lastRead: { raw: string; stored: Stored } | null = null;
+
 function load(key: string): FlightAnswers | null {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    const s = JSON.parse(raw) as Stored;
+    const s = lastRead?.raw === raw ? lastRead.stored : (JSON.parse(raw) as Stored);
+    lastRead = { raw, stored: s };
     return Date.now() - s.savedAt < KEEP_MS && s.answers && typeof s.answers === "object" ? s.answers : null;
   } catch {
     return null;
@@ -63,7 +73,11 @@ function save(key: string, answers: FlightAnswers): void {
   try {
     // One pack's flights at a time — the bid pack itself needs the room.
     for (const k of Object.keys(localStorage)) if (k.startsWith("line-select:flights:") && k !== key) localStorage.removeItem(k);
-    localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), answers } satisfies Stored));
+    const stored: Stored = { savedAt: Date.now(), answers };
+    const raw = JSON.stringify(stored);
+    localStorage.setItem(key, raw);
+    // Read back as these same answers (see `lastRead`).
+    lastRead = { raw, stored };
   } catch {
     // A full store just means asking again next time.
   }
@@ -75,10 +89,26 @@ export function cachedFlightAnswers(bidPack: BidPack, model: PilotModel | undefi
   return p ? load(storeKey(bidPack, p)) : null;
 }
 
+const lookupPacks = new WeakMap<BidPack, PackMetrics>();
+
+/**
+ * The measured pack the best lines are picked on: the ranking's own (`measuredPack`), with no flights — they're what's
+ * being looked up — and kept, so its measures are taken once per pack. Measured afresh each time, every refit after a
+ * swap re-measured the whole pack just to find the same top lines.
+ */
+export function lookupPack(bidPack: BidPack): PackMetrics {
+  let pack = lookupPacks.get(bidPack);
+  if (!pack) {
+    const measured = measuredPack(bidPack);
+    lookupPacks.set(bidPack, (pack = { ...measured, ctx: { ...measured.ctx, flights: undefined } }));
+  }
+  return pack;
+}
+
 /** The trips' travel worth looking up: the pilot's best lines by their own model, skipping anything already in the past. */
 export function needsToLookUp(bidPack: BidPack, model: PilotModel, p: TravelParams, now = Date.now()): TravelNeed[] {
   const lineIds = new Set(
-    rankLinesWithTrips(bidPack, model)
+    rankLinesWithTrips(bidPack, model, { pack: lookupPack(bidPack) })
       .slice(0, LINES_LOOKED_UP)
       .map((s) => s.lineId)
   );

@@ -74,6 +74,9 @@ export async function startServiceDictation(opts: {
   let pass: Pass;
   try {
     const passPromise = fetchPass();
+    // Handled now as well as awaited below: a pass refused while the mic prompt is still open was an unhandled
+    // rejection, sent to the owner as a crash.
+    passPromise.catch(() => {});
     // Ask for the mic at the same time as the pass; a blocked mic is the pilot's to fix, not a reason to fall back.
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
     pass = await passPromise;

@@ -559,7 +559,9 @@ export const METRICS: MetricDef[] = [
   },
 
   // ---- Calendar ----
-  { id: "daysOff", label: "Days off", unit: "days", category: "calendar", description: "Days off in the bid period.", line: (l) => l.daysOff },
+  // Judged at four weeks' worth in a five-week month, as work days are: whole, "at least 15 days off" never bound there,
+  // where every line has 16 or more (CBA 2026 25.D.1.b: 19 work days in five weeks), while "at most 13 work days" did.
+  { id: "daysOff", label: "Days off", unit: "days", category: "calendar", description: "Days off in the bid period.", perMonth: true, line: (l) => l.daysOff },
   { id: "longestDaysOffBlock", label: "Longest stretch of days off", unit: "days", category: "calendar", description: "The longest run of consecutive days off.", line: (l) => longestDaysOffBlock(l) },
   {
     id: "singleDaysOff",

@@ -1,0 +1,1 @@
+ALTER TABLE "trade_holdings" ADD COLUMN "carry_in" jsonb;

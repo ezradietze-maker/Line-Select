@@ -1,4 +1,5 @@
 import { isPackId } from "@/lib/pack-id";
+import type { CarryInItem, ReservePeriod } from "@/lib/phase-in";
 import { fromPhase2, tripInstanceKey } from "@/lib/trades/legality";
 import type { PilotHolding } from "@/lib/trades/match";
 import { lineWithTrips } from "@/lib/trades/value";
@@ -35,6 +36,45 @@ const ALL_LOCKS = new Set<string>(LOCKS.map((l) => l.lock));
 
 const isText = (v: unknown, max: number): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
 
+/** More than a month's carry-in could hold: a carried-in trip or two, and a block of R-days. */
+const MAX_CARRY_IN = 10;
+const MAX_DUTIES = 40;
+const RESERVE_PERIODS = new Set<string>(["A", "A+", "B", "B+", "24"]);
+const isInstant = (v: unknown): v is string => isText(v, 40) && Number.isFinite(Date.parse(v));
+const isHours = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v < 1000;
+
+/**
+ * One thing carried in from last month, as this device keeps it (`carry-in-storage.ts`), with only the fields the checks
+ * read. Null when it isn't one, or its times can't be read: a span that can't be placed can't be fitted around. The
+ * pilot types the label, so a long one is cut, not refused.
+ */
+function readCarryItem(value: unknown): CarryInItem | null {
+  if (typeof value !== "object" || value === null) return null;
+  const c = value as Record<string, unknown>;
+  if (typeof c.id !== "string" || typeof c.label !== "string") return null;
+  const id = c.id.slice(0, 100);
+  const label = c.label.trim().slice(0, 60) || "carry-in";
+  if (c.kind === "trip") {
+    if (!isInstant(c.report) || !isInstant(c.release) || Date.parse(c.release) <= Date.parse(c.report) || typeof c.international !== "boolean") return null;
+    const item: CarryInItem = { kind: "trip", id, label, report: c.report, release: c.release, international: c.international };
+    if (c.creditHours === null || isHours(c.creditHours)) item.creditHours = c.creditHours as number | null;
+    if (isHours(c.lastDutyBlockHours)) item.lastDutyBlockHours = c.lastDutyBlockHours;
+    if (c.duties !== undefined) {
+      if (!Array.isArray(c.duties) || c.duties.length > MAX_DUTIES) return null;
+      const duties = (c.duties as Record<string, unknown>[]).map((d) => (typeof d === "object" && d !== null && isInstant(d.start) && isInstant(d.end) ? { start: d.start, end: d.end } : null));
+      if (duties.some((d) => !d)) return null;
+      item.duties = duties as { start: string; end: string }[];
+    }
+    return item;
+  }
+  if (c.kind === "rdays") {
+    if (typeof c.firstDay !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(c.firstDay) || !Number.isFinite(Date.parse(c.firstDay))) return null;
+    if (!Number.isInteger(c.days) || (c.days as number) < 1 || (c.days as number) > 31 || !RESERVE_PERIODS.has(c.rp as string)) return null;
+    return { kind: "rdays", id, label, firstDay: c.firstDay, days: c.days as number, rp: c.rp as ReservePeriod };
+  }
+  return null;
+}
+
 /** A holding as sent by a browser, or null if it isn't one. The sample pack isn't anyone's to trade. */
 export function readHolding(value: unknown): Omit<TradeHolding, "confirmedAt"> | null {
   if (typeof value !== "object" || value === null) return null;
@@ -51,11 +91,19 @@ export function readHolding(value: unknown): Omit<TradeHolding, "confirmedAt"> |
     if (t.lock !== null && !ALL_LOCKS.has(t.lock as string)) return null;
     trips.push({ id: t.id, startDayIndex: t.startDayIndex as number, lock: t.lock as TradeLock | null });
   }
+  // Left out by a browser from before it was sent, or not readable: not known, which the matching treats with care
+  // (`PilotHolding.carryIn`). Never a reason to refuse what they hold.
+  let carryIn: CarryInItem[] | undefined;
+  if (Array.isArray(v.carryIn) && v.carryIn.length <= MAX_CARRY_IN) {
+    const items = v.carryIn.map(readCarryItem);
+    if (items.every((c) => c)) carryIn = items as CarryInItem[];
+  }
   return {
     packId: v.packId,
     bidPackMeta: { base: meta.base, aircraft: meta.aircraft, seat: meta.seat, month: meta.month },
     lineNumber: v.lineNumber as string | null,
     trips,
+    ...(carryIn ? { carryIn } : {}),
   };
 }
 
@@ -110,15 +158,30 @@ export interface MatchingRow {
   profile: PreferenceProfile | null;
 }
 
-/** The pilots who can appear on a trade in this pack: they've confirmed what they hold, haven't turned suggestions off, and have finished an interview. */
+/**
+ * One row per pilot: a pilot who confirmed what they hold under the pack's older id (`isPackId`) and again under its own
+ * has two, and matched as two pilots, they could be handed two trips in one chain. The one under the pack's own id is
+ * what they hold now.
+ */
+function onePerPilot(pack: BidPack, rows: readonly MatchingRow[]): MatchingRow[] {
+  const byUser = new Map<string, MatchingRow>();
+  for (const r of rows) {
+    if (!r.holding || !isPackId(r.holding.packId, pack)) continue;
+    const kept = byUser.get(r.userId);
+    if (!kept || (kept.holding!.packId !== pack.id && r.holding.packId === pack.id)) byUser.set(r.userId, r);
+  }
+  return [...byUser.values()];
+}
+
+/** The pilots who can appear on a trade in this pack: they've confirmed what they hold, haven't turned suggestions off, and have finished an interview. Each once. */
 export function pilotsForMatching(pack: BidPack, rows: readonly MatchingRow[]): PilotHolding[] {
-  return rows.flatMap((r) => {
-    if (!r.holding || !r.settings.suggestMe || !isPackId(r.holding.packId, pack)) return [];
+  return onePerPilot(pack, rows).flatMap((r) => {
+    if (!r.holding || !r.settings.suggestMe) return [];
     // What the pilot's rankings are scored on: the model the interview confirmed, as fitted to the swaps they've made since.
     const model = r.profile?.pilotModel ?? null;
     const line = heldLine(pack, r.holding, `held-${r.userId}`);
     if (!model || !line) return [];
     const locked = new Set(r.holding.trips.filter((t) => t.lock).map(tripInstanceKey));
-    return [{ pilotId: r.userId, model, line, seniority: r.profile?.seniorityNumber ?? null, locked }];
+    return [{ pilotId: r.userId, model, line, seniority: r.profile?.seniorityNumber ?? null, locked, ...(r.holding.carryIn ? { carryIn: r.holding.carryIn } : {}) }];
   });
 }

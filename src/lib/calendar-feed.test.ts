@@ -8,8 +8,8 @@ import type { ExtractedPage } from "@/lib/pdf-parser/text-extraction";
 import cover from "@/lib/pdf-parser/fixtures/bid-calendar-oct26-md11-mem.json";
 import type { TravelAnswer } from "@/lib/flights/itineraries";
 import { travelKey } from "@/lib/flights/needs";
-import { dayTripsOf } from "@/lib/trip-anchor";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
+import { dayTripsOf } from "@/lib/trip-anchor";
 
 const bidCalendar = parseBidCalendarPage(cover as ExtractedPage);
 
@@ -301,10 +301,9 @@ describe("on a real pack", () => {
       const ics = renderFeed([m], { homeDays: true });
       expectValid(ics);
       expect(parsed(ics).length).toBeGreaterThan(0);
-      const placed = l.trips.filter((t) => t.startDayIndex !== null);
-      // The feed shows each day of a run of day trips as its own event (see dayTripsOf), so a placed run
-      // becomes one calendar entry per flying day, not one for the whole run.
-      expect(m.trips.length).toBe(placed.flatMap(dayTripsOf).filter((t) => t.schedule.length > 0).length);
+      // A run of day trips shows as its days, one event each (`dayTripsOf`).
+      const placed = l.trips.flatMap(dayTripsOf).filter((t) => t.startDayIndex !== null);
+      expect(m.trips.length).toBe(placed.filter((t) => t.schedule.length > 0).length);
       for (const t of placed) expect(l.gridOffDays ?? []).not.toContain(t.startDayIndex);
     }
   });

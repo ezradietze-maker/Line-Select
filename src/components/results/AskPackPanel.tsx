@@ -96,7 +96,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
             onChange={(e) => setQuestion(e.target.value)}
             maxLength={400}
             placeholder="Lines with Honolulu and no weekends worked"
-            className="w-full rounded-md border border-hairline bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-ink-faint"
+            className="w-full rounded-md border border-field-edge bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-ink-faint"
           />
         </div>
         <Button type="submit" disabled={asking || !question.trim()} className="shrink-0">

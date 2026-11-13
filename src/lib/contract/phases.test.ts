@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { applicabilityOf } from "./phases";
+import { applicabilityOf, currentBidMonth } from "./phases";
 import { appliesLine } from "./wording";
+
+describe("the bid month flying now, with no pack", () => {
+  it("is next month's from the Monday its period starts", () => {
+    expect(currentBidMonth(new Date("2026-11-29T18:00:00Z"))).toBe("2026-11");
+    expect(currentBidMonth(new Date("2026-11-30T18:00:00Z"))).toBe("2026-12");
+    expect(currentBidMonth(new Date("2026-10-26T18:00:00Z"))).toBe("2026-11");
+    expect(currentBidMonth(new Date("2026-12-28T18:00:00Z"))).toBe("2027-01");
+    expect(currentBidMonth(new Date("2026-11-11T18:00:00Z"))).toBe("2026-11");
+    // Late evening in Memphis is still that day there.
+    expect(currentBidMonth(new Date("2026-11-30T03:00:00Z"))).toBe("2026-11");
+  });
+});
 
 describe("which bid periods a rule applies to", () => {
   it("follows the chart: Phase 2 from the December 2026 bid period", () => {

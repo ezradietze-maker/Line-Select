@@ -92,6 +92,15 @@ function computeTripCountOptions(counts: number[]): TripCountFilter[] {
   return options;
 }
 
+const optionsByLines = new WeakMap<Line[], FilterOptions>();
+
+/** `computeFilterOptions` for a pack's lines, worked out once and kept (the results page does it ahead of its first ranking). */
+export function filterOptionsFor(lines: Line[], bidPeriodStart: string | null = null): FilterOptions {
+  let options = optionsByLines.get(lines);
+  if (!options) optionsByLines.set(lines, (options = computeFilterOptions(lines, bidPeriodStart)));
+  return options;
+}
+
 export function computeFilterOptions(lines: Line[], bidPeriodStart: string | null = null): FilterOptions {
   const daysOffValues = lines.map((l) => l.daysOff);
   const creditValues = lines.map((l) => l.totalCreditHours);

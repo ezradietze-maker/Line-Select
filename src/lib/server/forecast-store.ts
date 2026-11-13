@@ -1,9 +1,11 @@
-import { and, count, eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { decodeRanking, encodeRanking } from "@/lib/forecast/ranking-codec";
 import type { KnownRanking } from "@/lib/forecast/simulate";
 import { hashUser } from "@/lib/server/pilot-hash";
 import { db } from "@/lib/server/postgres";
 import { forecastRankings } from "@/lib/server/schema";
+import { fromVerified, verifiedPilotHashes } from "@/lib/server/verified-pilots";
 
 /**
  * The rankings pilots have shared, per seat and month — what lets the forecast
@@ -21,7 +23,25 @@ import { forecastRankings } from "@/lib/server/schema";
 
 const MAX_ENTRIES = 4000;
 
+/**
+ * Where one pack's shared rankings, stored line order and features, and the forecasts pilots were shown, are kept:
+ * the pack and a hash of its whole line order. A ranking is a list of places in that order, so two orders under one
+ * key read each other's rankings as the wrong lines. Under the old key (`legacyBlobKey`: just the count and the first
+ * and last line) a guest who sent the lines shuffled in the middle could be first to store the order, and every
+ * pilot's award was then read through it.
+ */
+export const BLOB_KEY_V2_PREFIX = "line-select:forecast:v2:";
+
 export function blobKey(packKey: string, lineNumbers: string[]): string {
+  const order = createHash("sha256").update(JSON.stringify(lineNumbers)).digest("hex").slice(0, 32);
+  return `${BLOB_KEY_V2_PREFIX}${packKey}:${lineNumbers.length}:${order}`;
+}
+
+/**
+ * The key rows had before Nov 2026. Shared rankings stored under it are still read until the month they were for is
+ * past (only signed-in pilots ever stored one, each in their own pack's order); nothing new is written under it.
+ */
+export function legacyBlobKey(packKey: string, lineNumbers: string[]): string {
   return `line-select:forecast:${packKey}:${lineNumbers.length}:${lineNumbers[0] ?? ""}-${lineNumbers[lineNumbers.length - 1] ?? ""}`;
 }
 
@@ -35,7 +55,18 @@ export async function loadKnownRankings(
 ): Promise<{ known: KnownRanking[]; total: number }> {
   const key = blobKey(packKey, lineNumbers);
   const me = excludeUserId ? hashUser(excludeUserId) : null;
-  const all = await db.select().from(forecastRankings).where(eq(forecastRankings.blobKey, key));
+  const [stored, verified] = await Promise.all([
+    db.select().from(forecastRankings).where(inArray(forecastRankings.blobKey, [key, legacyBlobKey(packKey, lineNumbers)])),
+    verifiedPilotHashes(),
+  ]);
+  // Confirmed accounts' rankings only, in what's used and in how many are said to share: a few made-up accounts ahead
+  // of the asked place would otherwise pass the "enough sharers" bar (`MIN_SHARERS_AHEAD`) on their own.
+  const rows = fromVerified(stored, verified, (r) => r.userHash);
+  // A pilot or a bid place shared under the new key wins over the same one under the old: one ranking each.
+  const current = rows.filter((r) => r.blobKey === key);
+  const users = new Set(current.map((r) => r.userHash));
+  const places = new Set(current.map((r) => r.bidNumber));
+  const all = [...current, ...rows.filter((r) => r.blobKey !== key && !users.has(r.userHash) && !places.has(r.bidNumber))];
   const others = me ? all.filter((row) => row.userHash !== me) : all;
   return {
     known: others.map((row) => ({ bidNumber: row.bidNumber, ranking: decodeRanking(row.ranking, lineNumbers.length) })),
@@ -67,7 +98,10 @@ export async function saveSubmission(params: {
   const ranking = encodeRanking(params.ranking, params.lineNumbers.length);
 
   try {
-    return await saveInTransaction(key, user, ranking, params);
+    const saved = await saveInTransaction(key, user, ranking, params);
+    // Their ranking now lives under the new key: one left under the old would be read as a second pilot.
+    if (saved.stored) await db.delete(forecastRankings).where(and(eq(forecastRankings.blobKey, legacyBlobKey(params.packKey, params.lineNumbers)), eq(forecastRankings.userHash, user)));
+    return saved;
   } catch (e) {
     if (e instanceof PositionTaken) return { stored: false, reason: "position-taken" };
     throw e;
@@ -127,7 +161,7 @@ function saveInTransaction(key: string, user: string, ranking: string, params: {
 
 /** Removes a pilot's shared ranking (when they clear their data). */
 export async function removeSubmission(packKey: string, lineNumbers: string[], userId: string): Promise<void> {
-  const key = blobKey(packKey, lineNumbers);
+  const keys = [blobKey(packKey, lineNumbers), legacyBlobKey(packKey, lineNumbers)];
   const user = hashUser(userId);
-  await db.delete(forecastRankings).where(and(eq(forecastRankings.blobKey, key), eq(forecastRankings.userHash, user)));
+  await db.delete(forecastRankings).where(and(inArray(forecastRankings.blobKey, keys), eq(forecastRankings.userHash, user)));
 }

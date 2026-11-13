@@ -1,5 +1,5 @@
 import type { PilotModel } from "@/types/pilot-model";
-import { structuredCall, type BrainUsage, type Effort } from "./llm";
+import { callCeilingUsd, schemaChars, structuredCall, type BrainUsage, type Effort } from "./llm";
 
 /**
  * Facts about the pilot that the brain's reading has no room for. The brain answers in a fixed format the API checks as
@@ -166,6 +166,13 @@ export function parsePilotFacts(raw: Record<string, unknown>): PilotFacts {
   return { values, ...(citySeasons.length ? { citySeasons } : {}), ...(hotelAreas.length ? { hotelAreas } : {}), evidence };
 }
 
+const MAX_TOKENS = 4000;
+
+/** The most `readPilotFacts` can cost, held against the spend ceilings before the brain's read starts. */
+export function pilotFactsCeilingUsd(input: { pilotContext: string; exchanges: InterviewTurn[]; model?: string }): number {
+  return callCeilingUsd(input.model, SYSTEM.length + schemaChars(schema()) + input.pilotContext.length + JSON.stringify(input.exchanges).length, MAX_TOKENS);
+}
+
 export async function readPilotFacts(input: { pilotContext: string; exchanges: InterviewTurn[]; apiKey?: string; model?: string; effort?: Effort }): Promise<{ facts: PilotFacts; usage: BrainUsage }> {
   const transcript = input.exchanges.map((e) => `[turn ${e.turn}]\nQ: ${e.question}\nA: ${e.answer}`).join("\n\n");
   const { data, usage } = await structuredCall<Record<string, unknown>>({
@@ -175,7 +182,7 @@ export async function readPilotFacts(input: { pilotContext: string; exchanges: I
     user: { fresh: `PILOT: ${input.pilotContext}\n\nTHE INTERVIEW:\n\n${transcript}\n\nRecord the facts now.` },
     schema: schema(),
     effort: input.effort ?? "low",
-    maxTokens: 4000,
+    maxTokens: MAX_TOKENS,
   });
   return { facts: parsePilotFacts(data), usage };
 }

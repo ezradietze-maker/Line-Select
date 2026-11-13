@@ -11,11 +11,10 @@ vi.mock("@/lib/server/rate-limit", async (real) => ({
   checkRateLimit: limits.checkDaily,
   checkRequestLimit: vi.fn(async () => limits.hour),
 }));
-const spend = vi.hoisted(() => ({ check: { ok: true } as { ok: boolean; scope?: string }, recordSpend: vi.fn(async () => {}), signedIn: true }));
+const spend = vi.hoisted(() => ({ check: { ok: true } as { ok: boolean; scope?: string }, finish: vi.fn<(usd: number) => Promise<void>>(async () => {}), signedIn: true }));
 vi.mock("@/lib/server/spend-guard", async (real) => ({
   ...(await real<typeof import("@/lib/server/spend-guard")>()),
-  checkSpend: vi.fn(async () => spend.check),
-  recordSpend: spend.recordSpend,
+  startPaidCall: vi.fn(async () => (spend.check.ok ? { ok: true, finish: spend.finish } : spend.check)),
   spenderFor: vi.fn(async () => ({ key: "u:1", signedIn: spend.signedIn })),
 }));
 const remembered = vi.hoisted(() => [] as { status: number; body: unknown }[]);
@@ -37,7 +36,7 @@ const reply = (data: unknown) => ({ data, usage });
 beforeEach(() => {
   process.env.ANTHROPIC_API_KEY = "test";
   llm.structuredCall.mockReset();
-  spend.recordSpend.mockClear();
+  spend.finish.mockClear();
   spend.check = { ok: true };
   spend.signedIn = true;
   limits.day = { ok: true };
@@ -68,7 +67,7 @@ describe("POST /api/contract/ask, streamed", () => {
     expect(steps[steps.length - 1]).toContain("25.E.6: starts by the December 2026 bid period");
     expect(all[all.length - 1]).toMatchObject({ type: "answer", answer: { found: true } });
     expect(remembered).toEqual([{ status: 200, body: { answer: expect.objectContaining({ found: true }) } }]);
-    expect(spend.recordSpend).toHaveBeenCalledWith(expect.anything(), 0.001);
+    expect(spend.finish).toHaveBeenCalledWith(0.001);
   });
 
   it("never lets an answer that failed the checks into the stream", async () => {
@@ -109,7 +108,7 @@ describe("POST /api/contract/ask, streamed", () => {
     const all = await messages(await POST(streamReq({ question: "How long is the SWW?" })));
     expect(all[all.length - 1]).toMatchObject({ type: "error", error: expect.stringContaining("try again") });
     expect(remembered[0].status).toBe(502);
-    expect(spend.recordSpend).toHaveBeenCalledWith(expect.anything(), 0.0005);
+    expect(spend.finish).toHaveBeenCalledWith(0.0005);
   });
 
   it("doesn't pay the model when no section has the words", async () => {
@@ -128,7 +127,7 @@ describe("POST /api/contract/ask", () => {
     const { answer } = await res.json();
     expect(answer).toMatchObject({ found: true, quotes: [{ section: "25.E.6", page: 158, applies: { kind: "scheduled", phase: 2, inForce: false } }] });
     expect(answer.quotes[0].otherWording).toContain("144 hours");
-    expect(spend.recordSpend).toHaveBeenCalledWith(expect.anything(), 0.001);
+    expect(spend.finish).toHaveBeenCalledWith(0.001);
   });
 
   it("a made-up section twice over is not found, and both calls are paid for", async () => {
@@ -139,7 +138,7 @@ describe("POST /api/contract/ask", () => {
     expect(answer.closest.length).toBeGreaterThan(0);
     expect(answer.covered).toContain("Section 25: Scheduling");
     expect(llm.structuredCall).toHaveBeenCalledTimes(2);
-    expect(spend.recordSpend).toHaveBeenCalledWith(expect.anything(), 0.002);
+    expect(spend.finish).toHaveBeenCalledWith(0.002);
   });
 
   it("a slip caught the first time gets one more try", async () => {
@@ -167,6 +166,8 @@ describe("POST /api/contract/ask", () => {
     const guest = await POST(req({ question: "q?" }));
     expect(guest.status).toBe(429);
     expect((await guest.json()).error).toContain("Sign in");
+    // The hold taken for the question is given back whole.
+    expect(spend.finish).toHaveBeenCalledWith(0);
     limits.day = { ok: true };
     spend.check = { ok: false, scope: "pilot" };
     expect((await POST(req({ question: "q?" }))).status).not.toBe(200);
@@ -194,6 +195,6 @@ describe("POST /api/contract/ask", () => {
     llm.structuredCall.mockRejectedValue(Object.assign(new Error("down"), { usage: { costUsd: 0.0005 } }));
     const res = await POST(req({ question: "How long is the SWW?" }));
     expect(res.status).toBe(502);
-    expect(spend.recordSpend).toHaveBeenCalledWith(expect.anything(), 0.0005);
+    expect(spend.finish).toHaveBeenCalledWith(0.0005);
   });
 });

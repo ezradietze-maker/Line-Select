@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { CategoryBars } from "@/components/results/CategoryBars";
@@ -35,6 +35,7 @@ import { flyStarToShortlist } from "@/lib/fly-star";
 import type { LineForecast } from "@/lib/forecast/forecast";
 import type { HeldByNoteData } from "@/lib/use-held-by";
 import type { TripScore } from "@/lib/scoring-v2/trip-score";
+import type { Line } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
 // Shown only once a card's details are opened — loaded then (and warmed up in idle time by ResultsView), not with the
@@ -58,48 +59,30 @@ const RouteMap = dynamic(() => import("@/components/results/RouteMap").then((m) 
  */
 type DetailTab = "calendar" | "breakdown" | "circadian" | "route" | "reviews";
 
-interface LineCardProps {
+/** Each line's open tab and trip details, by pack and line: kept while its card isn't drawn (see `LineCard`). */
+const cardViews = new Map<string, { expanded: boolean; activeTab: DetailTab }>();
+
+/** What a card shows only once it's opened. Handed over for an open card alone: a closed card shows just its strip, so the
+ * pilot's profile, trip scores or flights changing never re-renders it. */
+export interface LineCardDetails {
   rank: number;
   lineScore: LineScore;
   profile: PreferenceProfile;
   implicitValuesByLine: Record<string, Record<string, number>>;
   /** Real UTC offset derived from the bid pack's own printed times — see lib/circadian.ts. Null when it couldn't be derived (no trip in the pack has a verified schedule departing home base). */
   homeBaseOffsetMinutes: number | null;
-  /** The bid pack's own real start date and period length — see `BidPack.bidPeriodStart`'s doc comment. Threaded down to the mini month calendar. */
-  bidPeriodStart: string | null;
-  bidPeriodDays: number;
   /** Whether this line is currently one of the (at most two) picked for the side-by-side comparison view — see `LineComparisonModal`. */
   isComparing: boolean;
-  onToggleCompare: () => void;
   /** Shortlisted by the pilot. */
   starred: boolean;
-  onToggleStar: () => void;
-  /** Hidden by the pilot — rendered as a one-line placeholder with a restore button, only ever reached when "show hidden lines" is on. */
-  hidden: boolean;
-  onHide: () => void;
-  onRestore: () => void;
-  /** Whether the drag handle is offered — drag-to-swap only means something when the list is in the pilot's own ranking order. */
-  draggable: boolean;
   /** This pilot's chance at the line, when they've given a seniority number and the pack lists the pilots bidding. */
   forecast?: LineForecast | null;
   /** Who held this line, from pilots who shared, and how far the odds have been checked. */
   heldBy?: HeldByNoteData | null;
-  /** The bid pack's own home base code, e.g. "MEM" — the one fixed point every trip on this line starts and ends at, for the Route tab's map. */
-  homeBase: string;
   /** A commuter's looked-up airline flights, shown on the line's trips. */
   flights?: FlightAnswers | null;
   /** Every trip's own score for this pilot (see `lib/scoring-v2/trip-score.ts`), shown on its trips. */
   tripScores?: Map<string, TripScore> | null;
-  /** The pack's day columns and how the list lays its strips out — the same for every line, so they line up. */
-  packColumns: PackColumn[];
-  stripLayout: StripLayout;
-  /** Which strip the list draws: the pack's own, or the Timeline. */
-  stripView: StripViewMode;
-  /** Whether everything about the line is showing under its strip. */
-  open: boolean;
-  onToggleOpen: () => void;
-  /** The pilot swapped this line into its place (see `BidPackStrip`'s tag). */
-  placedByYou?: boolean;
   /** What the list is sorted by and this line's value on it, shown only once it's opened: the strips stay as they are. */
   sortedBy?: string;
   sortedValue?: string | null;
@@ -107,44 +90,213 @@ interface LineCardProps {
   openExtra?: ReactNode;
 }
 
+/**
+ * What a card does: the same functions for every card, each told its line. Made once by the list, so a card's props
+ * change only when what it shows does — and a function made fresh per card each render no longer holds on to that
+ * render's whole list.
+ */
+export interface LineCardActions {
+  toggleOpen: (lineId: string) => void;
+  toggleStar: (lineId: string) => void;
+  toggleCompare: (lineId: string) => void;
+  hide: (lineId: string) => void;
+  restore: (lineId: string) => void;
+}
+
+interface LineCardProps {
+  line: Line;
+  /** The score its strip shows, and whether a limit capped it. */
+  score: number;
+  capped: boolean;
+  /** Number 1 in the pilot's order: the card glows. */
+  topPick: boolean;
+  /** The bid pack's own real start date and period length — see `BidPack.bidPeriodStart`'s doc comment. Threaded down to the mini month calendar. */
+  bidPeriodStart: string | null;
+  bidPeriodDays: number;
+  /** The pack's id: another seat's or month's pack has lines of the same numbers, and their cards kept their own tabs. */
+  packId: string;
+  /** The bid pack's own home base code, e.g. "MEM" — the one fixed point every trip on this line starts and ends at, for the Route tab's map. */
+  homeBase: string;
+  /** Hidden by the pilot — rendered as a one-line placeholder with a restore button, only ever reached when "show hidden lines" is on. */
+  hidden: boolean;
+  /** Whether the drag handle is offered — drag-to-swap only means something when the list is in the pilot's own ranking order. */
+  draggable: boolean;
+  /** The pack's day columns and how the list lays its strips out — the same for every line, so they line up. */
+  packColumns: PackColumn[];
+  stripLayout: StripLayout;
+  /** Which strip the list draws: the pack's own, or the Timeline. */
+  stripView: StripViewMode;
+  /** Whether everything about the line is showing under its strip. */
+  open: boolean;
+  /** The pilot swapped this line into its place (see `BidPackStrip`'s tag). */
+  placedByYou?: boolean;
+  actions: LineCardActions;
+  /** Everything under the strip, for an open card; null for a closed one. */
+  details: LineCardDetails | null;
+}
+
 export const LineCard = memo(function LineCard({
-  placedByYou = false,
-  rank,
-  lineScore,
-  profile,
-  implicitValuesByLine,
-  homeBaseOffsetMinutes,
+  line,
+  score,
+  capped,
+  topPick,
   bidPeriodStart,
   bidPeriodDays,
-  isComparing,
-  onToggleCompare,
-  starred,
-  onToggleStar,
-  hidden,
-  onHide,
-  onRestore,
-  draggable,
-  forecast,
-  heldBy,
+  packId,
   homeBase,
-  flights,
-  tripScores,
+  hidden,
+  draggable,
   packColumns,
   stripLayout,
   stripView,
   open,
-  onToggleOpen,
-  sortedBy,
-  sortedValue,
-  openExtra,
+  placedByYou = false,
+  actions,
+  details,
 }: LineCardProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<DetailTab>("calendar");
+  // Kept on the card rather than in what opens under it, so a line closed and opened again shows the tab it was on — and
+  // kept by line too, as a closed card scrolled far off isn't drawn, and came back drawn afresh on the first tab.
+  const viewKey = `${packId}|${line.id}`;
+  const [expanded, setExpanded] = useState(() => cardViews.get(viewKey)?.expanded ?? false);
+  const [activeTab, setActiveTab] = useState<DetailTab>(() => cardViews.get(viewKey)?.activeTab ?? "calendar");
+  useEffect(() => {
+    cardViews.set(viewKey, { expanded, activeTab });
+  }, [viewKey, expanded, activeTab]);
   const [showEveryDimension, setShowEveryDimension] = useState(false);
   const reduceMotion = useReducedMotion();
+  const onToggleOpen = useCallback(() => actions.toggleOpen(line.id), [actions, line.id]);
+
+  // Two separate dnd-kit roles on the same card: the grip is the drag
+  // SOURCE, the whole card is a drop TARGET — dropping one card directly
+  // onto another swaps just that pair, nothing else in the list shifts.
+  // The dragged card itself stays put and dims; DragOverlay in
+  // ResultsView renders the actual floating copy that follows the pointer.
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: line.id });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
+
+  const view = useMemo(
+    () =>
+      stripView === "pack"
+        ? ({ kind: "pack", days: buildPackRow(line, bidPeriodStart, bidPeriodDays, packColumns.length) } as const)
+        : ({ kind: "timeline", timeline: buildLineTimeline(line, { bidPeriodStart, bidPeriodDays, base: homeBase }, packColumns.length) } as const),
+    [stripView, line, bidPeriodStart, bidPeriodDays, homeBase, packColumns.length]
+  );
+  const grip = draggable ? (
+    <button
+      ref={setDragRef}
+      type="button"
+      {...attributes}
+      {...listeners}
+      data-drag-handle
+      title="Drag onto another line to swap ranks"
+      // Its line's number in the name: 110 handles all called the same left a screen reader user guessing which one they're on.
+      aria-label={`Drag line ${line.lineNumber} onto another line to swap ranks — teaches the app your preferences`}
+      className="flex h-9 w-6 shrink-0 touch-none cursor-grab items-center justify-center rounded text-ink-faint transition-colors hover:bg-accent-soft/40 hover:text-accent active:cursor-grabbing print:hidden"
+    >
+      <GripIcon className="h-4 w-4" />
+    </button>
+  ) : null;
+
+  if (hidden) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-hairline bg-canvas/30 px-4 py-2.5 text-sm text-ink-faint print:hidden">
+        <span>
+          Line {line.lineNumber} <span className="text-ink-faint">&middot; hidden</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => actions.restore(line.id)}
+          className="font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand-strong"
+        >
+          Restore
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={setDropRef}
+      className={`panel-glass hover-lift overflow-hidden transition-[box-shadow,opacity,border-color] duration-150 ${
+        topPick ? "top-pick-glow !border-accent/50 ring-1 ring-accent/20" : "hover:!border-border-strong"
+      } ${isDragging ? "opacity-40" : ""} ${isOver ? "ring-2 ring-accent" : ""}`}
+    >
+      <BidPackStrip
+        line={line}
+        score={score}
+        capped={capped}
+        columns={packColumns}
+        view={view}
+        layout={stripLayout}
+        grip={grip}
+        open={open}
+        onToggle={onToggleOpen}
+        placedByYou={placedByYou}
+      />
+
+      {/* Everything else about the line, under its strip when it's opened. */}
+      <AnimatePresence initial={false}>
+        {open && details && (
+          <motion.div
+            key="line-open"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden border-t border-hairline"
+          >
+            <LineDetails
+              line={line}
+              details={details}
+              actions={actions}
+              bidPeriodStart={bidPeriodStart}
+              bidPeriodDays={bidPeriodDays}
+              homeBase={homeBase}
+              expanded={expanded}
+              setExpanded={setExpanded}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              showEveryDimension={showEveryDimension}
+              setShowEveryDimension={setShowEveryDimension}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+});
+
+/** Everything under an opened line's strip. Its facts are worked out here, so only an opened line pays for them. */
+function LineDetails({
+  line,
+  details,
+  actions,
+  bidPeriodStart,
+  bidPeriodDays,
+  homeBase,
+  expanded,
+  setExpanded,
+  activeTab,
+  setActiveTab,
+  showEveryDimension,
+  setShowEveryDimension,
+}: {
+  line: Line;
+  details: LineCardDetails;
+  actions: LineCardActions;
+  bidPeriodStart: string | null;
+  bidPeriodDays: number;
+  homeBase: string;
+  expanded: boolean;
+  setExpanded: Dispatch<SetStateAction<boolean>>;
+  activeTab: DetailTab;
+  setActiveTab: Dispatch<SetStateAction<DetailTab>>;
+  showEveryDimension: boolean;
+  setShowEveryDimension: Dispatch<SetStateAction<boolean>>;
+}) {
+  const { rank, lineScore, profile, implicitValuesByLine, homeBaseOffsetMinutes, isComparing, starred, forecast, heldBy, flights, tripScores, sortedBy, sortedValue, openExtra } = details;
+  const reduceMotion = useReducedMotion();
   const {
-    line,
-    score,
     explanation,
     dimensions,
     categoryScores,
@@ -161,6 +313,9 @@ export const LineCard = memo(function LineCard({
     dateCommitmentConflicts,
     commitmentPenalty,
   } = lineScore;
+  const onToggleStar = () => actions.toggleStar(line.id);
+  const onToggleCompare = () => actions.toggleCompare(line.id);
+  const onHide = () => actions.hide(line.id);
   const implicitFactors = useMemo(
     () => topImplicitContributions(line.id, implicitValuesByLine, profile, 4),
     [line.id, implicitValuesByLine, profile]
@@ -171,18 +326,10 @@ export const LineCard = memo(function LineCard({
     setExpanded(true);
   }
 
-  // Two separate dnd-kit roles on the same card: the grip is the drag
-  // SOURCE, the whole card is a drop TARGET — dropping one card directly
-  // onto another swaps just that pair, nothing else in the list shifts.
-  // The dragged card itself stays put and dims; DragOverlay in
-  // ResultsView renders the actual floating copy that follows the pointer.
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: line.id });
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
-
   const bidMonth = bidMonthOf({ bidPeriodStart, bidPeriodDays });
   const marks = useMemo(() => cityMarks(profile.cityRatings, profile.cityPreferences, bidMonth), [profile.cityRatings, profile.cityPreferences, bidMonth]);
-  // Kept on just what it reads: a refit after a swap gives a new profile every time, and redoing every card's departure
-  // grouping (date work for each trip) for each one was a large part of the freeze after a swap on a big pack.
+  // Kept on just what it reads: a refit after a swap gives a new profile every time, and redoing the departure grouping
+  // (date work for each trip) for each one was a large part of the freeze after a swap on a big pack.
   const { isCommuter, commuteFrom, hasCrashPad, minHomeHours } = profile;
   const minBreakNights = profile.brainInterview?.reviewedModel?.home?.minBreakNights;
   const departureOptions = useMemo(
@@ -198,76 +345,9 @@ export const LineCard = memo(function LineCard({
   // Times the pilot leaves home: trips flown back to back, never home between, count once — as the calendar's summary counts them.
   const departureGroups = useMemo(() => groupDepartures(month.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [month.trips, bidPeriodStart, departureOptions]);
   const departures = departureGroups.length;
-  const view = useMemo(
-    () =>
-      stripView === "pack"
-        ? ({ kind: "pack", days: buildPackRow(line, bidPeriodStart, bidPeriodDays, packColumns.length) } as const)
-        : ({ kind: "timeline", timeline: buildLineTimeline(line, { bidPeriodStart, bidPeriodDays, base: homeBase }, packColumns.length) } as const),
-    [stripView, line, bidPeriodStart, bidPeriodDays, homeBase, packColumns.length]
-  );
-  const grip = draggable ? (
-    <button
-      ref={setDragRef}
-      type="button"
-      {...attributes}
-      {...listeners}
-      data-drag-handle
-      title="Drag onto another line to swap ranks"
-      aria-label="Drag onto another line to swap ranks — teaches the app your preferences"
-      className="flex h-9 w-6 shrink-0 touch-none cursor-grab items-center justify-center rounded text-ink-faint transition-colors hover:bg-accent-soft/40 hover:text-accent active:cursor-grabbing print:hidden"
-    >
-      <GripIcon className="h-4 w-4" />
-    </button>
-  ) : null;
-
-  if (hidden) {
-    return (
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-hairline bg-canvas/30 px-4 py-2.5 text-sm text-ink-faint print:hidden">
-        <span>
-          Line {line.lineNumber} <span className="text-ink-faint">&middot; hidden</span>
-        </span>
-        <button
-          type="button"
-          onClick={onRestore}
-          className="font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand-strong"
-        >
-          Restore
-        </button>
-      </div>
-    );
-  }
 
   return (
-    <div
-      ref={setDropRef}
-      className={`panel-glass hover-lift overflow-hidden transition-[box-shadow,opacity,border-color] duration-150 ${
-        isTopPick ? "top-pick-glow !border-accent/50 ring-1 ring-accent/20" : "hover:!border-border-strong"
-      } ${isDragging ? "opacity-40" : ""} ${isOver ? "ring-2 ring-accent" : ""}`}
-    >
-      <BidPackStrip
-        line={line}
-        score={score}
-        capped={violatedDealbreakers.length > 0}
-        columns={packColumns}
-        view={view}
-        layout={stripLayout}
-        grip={grip}
-        open={open}
-        onToggle={onToggleOpen}
-        placedByYou={placedByYou}
-      />
-
-      {/* Everything else about the line, under its strip when it's opened. */}
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            key="line-open"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={reduceMotion ? { duration: 0 } : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="overflow-hidden border-t border-hairline"
-          >
+    <>
       {openExtra}
       {sortedValue && (
         <div className="border-b border-hairline px-5 py-2 text-sm text-ink-muted sm:px-6">
@@ -616,12 +696,9 @@ export const LineCard = memo(function LineCard({
           </motion.div>
         )}
       </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    </>
   );
-});
+}
 
 const CHIP_TONE: Record<LineFactChip["tone"], string> = {
   good: "border-good/40 bg-good-soft text-good",

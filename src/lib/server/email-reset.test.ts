@@ -24,8 +24,8 @@ vi.mock("@/lib/server/email", () => ({
 }));
 
 const store = vi.hoisted(() => ({
-  users: [] as { id: string; email: string; displayName: string; createdAt: string }[],
-  credentials: [] as { userId: string; email: string; passwordHash: string; salt: string }[],
+  users: [] as { id: string; email: string; displayName: string; createdAt: string; emailVerified?: boolean }[],
+  credentials: [] as { userId: string; email: string; passwordHash: string; salt: string; recoveryHash?: string }[],
   sessions: [] as { token: string; userId: string; expiresAt: string }[],
   tokens: [] as { tokenHash: string; userId: string; expiresAt: string }[],
 }));
@@ -61,6 +61,10 @@ vi.mock("@/lib/server/db", () => ({
     if (!t) return null;
     store.tokens = store.tokens.filter((x) => x.tokenHash !== hash);
     return new Date(t.expiresAt).getTime() > Date.now() ? t.userId : null;
+  }),
+  markEmailVerified: vi.fn(async (userId: string) => {
+    const u = store.users.find((x) => x.id === userId);
+    if (u) u.emailVerified = true;
   }),
 }));
 
@@ -132,6 +136,28 @@ describe("emailed password reset", () => {
     const token = tokenFromLastEmail();
     expect((await resetPasswordWithEmailToken(token, "short")).ok).toBe(false);
     expect((await resetPasswordWithEmailToken(token, "long-enough-1")).ok).toBe(true);
+  });
+
+  it("confirms the address, and replaces the recovery code of an account that wasn't confirmed", async () => {
+    const before = store.credentials[0].recoveryHash;
+    expect(store.users[0].emailVerified).toBeFalsy();
+    await requestPasswordResetEmail(EMAIL);
+    const result = await resetPasswordWithEmailToken(tokenFromLastEmail(), "brand-new-pass");
+    expect(result.user?.emailVerified).toBe(true);
+    expect(store.users[0].emailVerified).toBe(true);
+    // Whoever started the account may have made the old code; the new one comes back once, to be shown.
+    expect(result.recoveryCode).toMatch(/^[A-Z0-9]{4}(-[A-Z0-9]{4}){4}$/);
+    expect(store.credentials[0].recoveryHash).not.toBe(before);
+  });
+
+  it("leaves a confirmed account's recovery code as it was", async () => {
+    store.users[0].emailVerified = true;
+    const before = store.credentials[0].recoveryHash;
+    await requestPasswordResetEmail(EMAIL);
+    const result = await resetPasswordWithEmailToken(tokenFromLastEmail(), "brand-new-pass");
+    expect(result.ok).toBe(true);
+    expect(result.recoveryCode).toBeUndefined();
+    expect(store.credentials[0].recoveryHash).toBe(before);
   });
 
   it("answers the same for an address with no account, and sends nothing", async () => {

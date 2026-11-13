@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { getPreferenceProfile, getTradeHolding, getTradeSettings } from "@/lib/server/db";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await getCurrentServerUser();
   if (!user) return NextResponse.json({ error: "Sign in to find trades." }, { status: 401 });
+  if (!isVerified(user)) return confirmEmailRefusal("find trades");
   if (!(await checkRateLimit("trade-matches-find", user.id, 12, 60 * 60)).ok) return rateLimitedResponse();
   const body = await readJsonBody(request, 1_000);
   if (!isJsonObject(body) || !isText(body.pack, 200) || !body.pack) return NextResponse.json({ error: "Which bid pack?" }, { status: 400 });

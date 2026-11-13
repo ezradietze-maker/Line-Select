@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type HTMLAttributes } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes } from "react";
 import { Button } from "@/components/ui/Button";
+import { FIELD } from "@/components/ui/field";
 import { Modal } from "@/components/ui/Modal";
 import { canAddTier, DEFAULT_TIERS, type TierHeading as Heading } from "@/lib/line-tiers";
 import type { LineScore } from "@/lib/scoring";
@@ -10,7 +11,7 @@ import type { LineTiers } from "@/lib/use-line-tiers";
 const LONG_PRESS_MS = 500;
 const PRESS_SLOP_PX = 8;
 
-type CardPressProps = Pick<HTMLAttributes<HTMLDivElement>, "onClickCapture" | "onPointerDown" | "onPointerMove" | "onPointerUp" | "onPointerCancel">;
+export type CardPressProps = Pick<HTMLAttributes<HTMLDivElement>, "onClickCapture" | "onPointerDown" | "onPointerMove" | "onPointerUp" | "onPointerCancel">;
 
 /** The press under way. One finger at a time, and it has to outlive the re-render its own long-press causes. */
 const press: { timer?: number; start: { x: number; y: number } | null; longPressed: boolean } = { start: null, longPressed: false };
@@ -23,10 +24,13 @@ const endPress = () => {
  * What makes a card selectable: shift-click for a run, cmd/ctrl-click for one more, long-press on a phone, and while a
  * selection is going, any tap. A plain click with nothing selected still opens the line.
  */
-export function selectableCardProps(tiers: LineTiers, lineId: string, listedIds: string[]): CardPressProps {
+function selectableCardProps(now: () => { tiers: LineTiers; listedIds: string[] }, lineId: string): CardPressProps {
+  // The tiers and the list are read when a press happens, not when the handlers are made: made once per line, they
+  // never hold on to an old render's list.
   const inControl = (t: EventTarget) => t instanceof Element && !!t.closest("[data-tier-control], [data-drag-handle]");
   return {
     onClickCapture: (e) => {
+      const { tiers, listedIds } = now();
       if (inControl(e.target)) return;
       // The click that ends a long-press has already done its work.
       if (press.longPressed) {
@@ -47,7 +51,7 @@ export function selectableCardProps(tiers: LineTiers, lineId: string, listedIds:
       press.start = { x: e.clientX, y: e.clientY };
       press.timer = window.setTimeout(() => {
         press.longPressed = true;
-        tiers.toggleSelected(lineId);
+        now().tiers.toggleSelected(lineId);
       }, LONG_PRESS_MS);
     },
     onPointerMove: (e) => {
@@ -56,6 +60,26 @@ export function selectableCardProps(tiers: LineTiers, lineId: string, listedIds:
     onPointerUp: endPress,
     onPointerCancel: endPress,
   };
+}
+
+/**
+ * Each card's press handlers, made once per line and reading the newest tiers and list when pressed. Handlers made fresh
+ * each render each held on to that render's whole list, for as long as anything kept the handler.
+ */
+export function useCardPressProps(tiers: LineTiers, listedIds: string[]): (lineId: string) => CardPressProps {
+  const now = useRef({ tiers, listedIds });
+  useLayoutEffect(() => {
+    now.current = { tiers, listedIds };
+  });
+  const [made] = useState(() => new Map<string, CardPressProps>());
+  return useCallback(
+    (lineId: string) => {
+      let props = made.get(lineId);
+      if (!props) made.set(lineId, (props = selectableCardProps(() => now.current, lineId)));
+      return props;
+    },
+    [made]
+  );
 }
 
 /** Over each group in the list: a tier's name and how many lines it has. The lines themselves carry nothing new. */
@@ -144,7 +168,7 @@ export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: Li
             <span className="sm:hidden">. Long-press to pick several</span>.
           </span>
         )}
-        <span className="ml-auto flex items-center gap-1">
+        <span className="ml-auto flex flex-wrap items-center gap-1">
           <button type="button" onClick={undo} disabled={!history.canUndo} className={small}>
             Undo
           </button>
@@ -206,7 +230,7 @@ function ManageTiers({ tiers, onClose }: { tiers: LineTiers; onClose: () => void
   // a name the X kept, since only the X's click took focus out of the box first.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const addRef = useRef<HTMLInputElement>(null);
-  const field = "w-full rounded-md border border-hairline bg-canvas/50 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none";
+  const field = `w-full ${FIELD}`;
   const save = (tierId: string) => {
     const typed = drafts[tierId]?.trim();
     const current = tiers.state.tiers.find((t) => t.id === tierId)?.name;

@@ -1,4 +1,4 @@
-import { structuredCall, type BrainUsage } from "@/lib/brain/llm";
+import { callCeilingUsd, schemaChars, structuredCall, type BrainUsage } from "@/lib/brain/llm";
 import { METRICS_BY_ID, type MetricParams } from "@/lib/metrics/catalog";
 import { neverSayForPrompt } from "./pilot-words";
 
@@ -88,6 +88,13 @@ Use only measure ids from the brief, exactly as written. If nothing in the brief
 
 In label, summary and cannotAnswer: ${neverSayForPrompt()}`;
 
+const MAX_TOKENS = 4000;
+
+/** The most `readAskQuery` can cost, held against the spend ceilings before it's asked. */
+export function askQueryCeilingUsd(input: { question: string; packBrief: string; model?: string }): number {
+  return callCeilingUsd(input.model, SYSTEM.length + schemaChars(SCHEMA) + input.packBrief.length + input.question.length, MAX_TOKENS);
+}
+
 /** Reads a question into a query. `packBrief` is the pack's measure menu (`buildPackBrief`), the same the brain reads. */
 export async function readAskQuery(input: { question: string; packBrief: string; apiKey?: string; model?: string }): Promise<{ query: AskQuery; usage: BrainUsage }> {
   const { data, usage } = await structuredCall<AskQuery>({
@@ -97,7 +104,7 @@ export async function readAskQuery(input: { question: string; packBrief: string;
     user: { cached: input.packBrief, fresh: `THE PILOT'S QUESTION:\n${input.question}` },
     schema: SCHEMA as unknown as Record<string, unknown>,
     effort: "low",
-    maxTokens: 4000,
+    maxTokens: MAX_TOKENS,
   });
   return { query: cleanAskQuery(data), usage };
 }

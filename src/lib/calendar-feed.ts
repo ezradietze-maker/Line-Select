@@ -190,8 +190,11 @@ const timelineUid = (e: TimelineEvent) => `bid-${e.bidMonth}-${e.seat}-${e.kind}
 const timelineSummary = (e: TimelineEvent) => (e.source === "estimated" ? `${e.label} (estimated)` : e.label);
 const dateValue = (iso: string) => iso.replace(/-/g, "");
 
+/** An event's id with only id characters: a pack's pairing number with a line break in it wrote a line of its own. */
+const safeUid = (uid: string) => uid.replace(/[^A-Za-z0-9._@-]/g, "-");
+
 function vevent(uid: string, stamp: number, props: string[]): string[] {
-  return ["BEGIN:VEVENT", `UID:${uid}`, `DTSTAMP:${icsUtc(stamp)}`, `LAST-MODIFIED:${icsUtc(stamp)}`, ...props, "END:VEVENT"];
+  return ["BEGIN:VEVENT", `UID:${safeUid(uid)}`, `DTSTAMP:${icsUtc(stamp)}`, `LAST-MODIFIED:${icsUtc(stamp)}`, ...props, "END:VEVENT"];
 }
 
 /**

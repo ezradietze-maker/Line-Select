@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
-import { checkSpend, recordSpend, spenderFor, spendLimitResponse } from "@/lib/server/spend-guard";
+import { spenderFor, spendLimitResponse, startPaidCall } from "@/lib/server/spend-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,9 +35,10 @@ export async function POST(request: Request) {
 
   const apiKey = process.env.ASSEMBLYAI_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "Dictation isn't configured on this server." }, { status: 503 });
-  const spender = await spenderFor(request);
-  const allowed = await checkSpend(spender);
-  if (!allowed.ok) return spendLimitResponse(allowed);
+  // A pass is charged its set price, so the hold is exactly that, and a pass not given out costs nothing.
+  const paid = await startPaidCall(await spenderFor(request), PASS_COST_USD);
+  if (!paid.ok) return spendLimitResponse(paid);
+  let spent = 0;
 
   const url = `https://streaming.assemblyai.com/v3/token?expires_in_seconds=60&max_session_duration_seconds=${MAX_SESSION_SECONDS}`;
   try {
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
     }
     const { token } = (await res.json()) as { token?: string };
     if (!token) return NextResponse.json({ error: "Dictation is unavailable right now." }, { status: 502 });
-    await recordSpend(spender, PASS_COST_USD);
+    spent = PASS_COST_USD;
     return NextResponse.json(
       { provider: "assemblyai", token, socket: "wss://streaming.assemblyai.com/v3/ws", model: MODEL, maxSeconds: MAX_SESSION_SECONDS },
       { headers: { "Cache-Control": "no-store" } }
@@ -56,5 +57,7 @@ export async function POST(request: Request) {
   } catch (e) {
     await reportProblem("dictation", e);
     return NextResponse.json({ error: "Dictation is unavailable right now." }, { status: 502 });
+  } finally {
+    await paid.finish(spent);
   }
 }

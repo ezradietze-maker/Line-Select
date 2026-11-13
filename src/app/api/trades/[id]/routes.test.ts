@@ -2,14 +2,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TradeOffer } from "@/types/trade";
 
 const mocks = vi.hoisted(() => ({
-  user: { id: "pilot-1", displayName: "J Pilot" } as { id: string; displayName: string } | null,
+  user: { id: "pilot-1", displayName: "J Pilot", emailVerified: true } as { id: string; displayName: string; emailVerified?: boolean } | null,
   offer: null as unknown,
   respond: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   accept: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  hasSeat: true,
+  holding: null as null | { trips: { id: string; startDayIndex: number; lock: string | null }[] },
 }));
 vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => mocks.user }));
 vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: async () => ({ ok: true }), rateLimitedResponse: () => new Response(null, { status: 429 }) }));
-vi.mock("@/lib/server/db", () => ({ findTradeOffer: async () => mocks.offer, respondToTradeOffer: mocks.respond, acceptTradeOffer: mocks.accept }));
+vi.mock("@/lib/server/db", () => ({
+  findTradeOffer: async () => mocks.offer,
+  respondToTradeOffer: mocks.respond,
+  acceptTradeOffer: mocks.accept,
+  pilotHasSeatMonth: async () => mocks.hasSeat,
+  getTradeHolding: async () => mocks.holding,
+}));
 
 const { POST: respond } = await import("./respond/route");
 const { POST: accept } = await import("./accept/route");
@@ -22,7 +30,26 @@ const body = (b: unknown) => new Request("https://example.com/api/trades/o1/x", 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.user = { id: "pilot-1", displayName: "J Pilot" };
+  mocks.user = { id: "pilot-1", displayName: "J Pilot", emailVerified: true };
+  mocks.hasSeat = true;
+  mocks.holding = null;
+});
+
+describe("answering an offer", () => {
+  it("is only for a pilot who flies the offer's seat and month", async () => {
+    mocks.offer = offer();
+    mocks.hasSeat = false;
+    const res = await respond(body({ responderTrip: trip }), params);
+    expect(res.status).toBe(403);
+    expect(mocks.respond).not.toHaveBeenCalled();
+  });
+
+  it("with a holding confirmed, only with a trip in it", async () => {
+    mocks.offer = offer();
+    mocks.holding = { trips: [{ id: "p99", startDayIndex: 2, lock: null }] };
+    expect((await respond(body({ responderTrip: trip }), params)).status).toBe(403);
+    expect(mocks.respond).not.toHaveBeenCalled();
+  });
 });
 
 describe("a trip already traded this month", () => {

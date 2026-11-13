@@ -143,6 +143,9 @@ const words = (s: string) => s.split(/\s+/).filter(Boolean);
 /** A run of words by its letters alone, for telling the same words apart however they're split or punctuated. */
 const letters = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+/** Said when a box with a limit is full: the mic stops there. */
+const FULL_NOTICE = "That’s as long as one answer can be, so the mic stopped. Shorten it to add more.";
+
 /** The answer box whose mic is on, page-wide: starting another one stops it. */
 let activeDictation: { stop: () => void } | null = null;
 
@@ -150,9 +153,10 @@ let activeDictation: { stop: () => void } | null = null;
  * The mic for an answer box: dictated speech goes in after whatever the pilot already typed, live, the way typing
  * more at the end would. It uses the speech service with the pilot's word list (pilot terms, the pack's airports and
  * aircraft) when the server has it, and the browser's own engine otherwise. `value`/`onChange` are the box's own
- * controlled-input pair.
+ * controlled-input pair. With `maxLength`, the mic stops once the box is full and says so: the words after it went
+ * nowhere, and the pilot talked on for minutes not knowing.
  */
-export function useDictation(value: string, onChange: (next: string) => void) {
+export function useDictation(value: string, onChange: (next: string) => void, { maxLength }: { maxLength?: number } = {}) {
   const pack = useBidPackIfAny();
   const keyterms = useMemo(() => dictationWords(pack), [pack]);
   const codes = useMemo(() => packAirports(pack), [pack]);
@@ -170,6 +174,10 @@ export function useDictation(value: string, onChange: (next: string) => void) {
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+  const maxRef = useRef(maxLength);
+  useEffect(() => {
+    maxRef.current = maxLength;
+  }, [maxLength]);
 
   // What was in the box when dictation started; what we last put there; and how many dictated words are already in
   // the box by other means (the pilot typed mid-dictation, or the box trimmed to its limit) and mustn't be added again.
@@ -233,10 +241,20 @@ export function useDictation(value: string, onChange: (next: string) => void) {
         }
       }
       const fresh = freshWords.join(" ");
-      const next = withDictated(base.current, { settled: fresh, hearing: "" });
-      if (next === lastEmitted.current) return;
-      lastEmitted.current = next;
-      onChangeRef.current(next);
+      let next = withDictated(base.current, { settled: fresh, hearing: "" });
+      const max = maxRef.current;
+      const full = max !== undefined && next.length >= max;
+      if (full) next = next.slice(0, max);
+      if (next !== lastEmitted.current) {
+        lastEmitted.current = next;
+        onChangeRef.current(next);
+      }
+      if (full) {
+        // This tap is over: words still on their way are dropped, not trimmed off one by one.
+        generation.current += 1;
+        self.current.stop();
+        setError(FULL_NOTICE);
+      }
     },
     [codes]
   );
@@ -275,6 +293,10 @@ export function useDictation(value: string, onChange: (next: string) => void) {
   const toggle = useCallback(() => {
     if (listening) {
       stopListening();
+      return;
+    }
+    if (maxRef.current !== undefined && value.length >= maxRef.current) {
+      setError(FULL_NOTICE);
       return;
     }
     // One mic at a time: another box still listening would hear the same words and write them in too.

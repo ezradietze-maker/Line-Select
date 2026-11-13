@@ -50,7 +50,17 @@ export function applicabilityOf(id: string, bidMonth: string, chart: ChartRow[] 
   return changedInside(id) ? { kind: "unlisted" } : { kind: "unchanged" };
 }
 
-/** This month as a bid month. A bid period can start a day or so before its month does; a question names one when it matters. */
+/**
+ * The bid month flying now, with no pack to say. A bid period starts on the Monday on or just before its month's first
+ * day (the DEC26 period on Nov 30, NOV26 on Oct 26), so the last days of a month can be next month's period: by the
+ * calendar month, Phase 2's rules read "not in force yet" on Nov 30, the first day they applied. Memphis time.
+ */
 export function currentBidMonth(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 7);
+  const day = (ms: number) => new Date(ms).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const today = day(now.getTime());
+  const [y, m] = today.split("-").map(Number);
+  const next = new Date(Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 1));
+  // The Monday on or before the 1st: back (weekday + 6) % 7 days.
+  const nextStart = new Date(next.getTime() - ((next.getUTCDay() + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
+  return today >= nextStart ? next.toISOString().slice(0, 7) : today.slice(0, 7);
 }

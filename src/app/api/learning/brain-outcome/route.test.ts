@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const saved: { pilotHash: string | null }[] = [];
-let user: { id: string } | null = null;
+let user: { id: string; emailVerified?: boolean } | null = null;
 
 vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => user }));
 vi.mock("@/lib/server/rate-limit", () => ({ checkRequestLimit: async () => ({ ok: true }), rateLimitedResponse: () => new Response(null, { status: 429 }) }));
@@ -28,9 +28,15 @@ describe("brain outcomes", () => {
   });
 
   it("are stored for a signed-in pilot, under their hashed id", async () => {
-    user = { id: "pilot-1" };
+    user = { id: "pilot-1", emailVerified: true };
     const res = await post();
     expect(await res.json()).toEqual({ stored: true });
     expect(saved).toEqual([{ pilotHash: "hash-pilot-1" }]);
+  });
+
+  it("are not stored for an account whose email isn't confirmed: it may be one of many one person made", async () => {
+    user = { id: "pilot-1", emailVerified: false };
+    expect(await (await post()).json()).toEqual({ stored: false });
+    expect(saved).toHaveLength(0);
   });
 });

@@ -13,12 +13,25 @@ const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
 let loading: Promise<PostHog | null> | null = null;
 
-/** Every URL-ish property of an event with any `token=` value blanked out. */
-function withoutTokens(event: CaptureResult | null): CaptureResult | null {
+/** An address: whole, from the site's root, or a page's own (`results?line=…`). */
+const ADDRESS = /^(?:https?:\/\/|\/|[\w.-]+(?:\/[\w.-]*)*\?[\w-]+=)/;
+
+/**
+ * Every address in an event with its query and fragment cut off: a reset link's `?token=`, and the pack's own words a
+ * page's address can carry (`?hotel=` a hotel's name, `?line=`, `?city=`, a contract question's `?q=`), which the
+ * Privacy Policy says PostHog never gets. The path is kept. Addresses inside an event's own parts too: page speed sends
+ * each reading with the page's address in it.
+ */
+export function withoutQueries(event: CaptureResult | null): CaptureResult | null {
   if (!event) return event;
-  const scrub = (props: Record<string, unknown> | undefined) => {
-    if (!props) return;
-    for (const [k, v] of Object.entries(props)) if (typeof v === "string" && v.includes("token=")) props[k] = v.replace(/([?&#]token=)[^&#]*/g, "$1removed");
+  const scrub = (props: unknown, depth = 0) => {
+    if (!props || typeof props !== "object" || depth > 4) return;
+    const parts = props as Record<string, unknown>;
+    for (const [k, v] of Object.entries(parts)) {
+      if (typeof v === "string") {
+        if (ADDRESS.test(v) && /[?#]/.test(v)) parts[k] = v.replace(/[?#][^]*$/, "");
+      } else scrub(v, depth + 1);
+    }
   };
   scrub(event.properties);
   scrub(event.$set);
@@ -30,17 +43,28 @@ export const posthogConfigured = !!key;
 
 export function loadPosthog(): Promise<PostHog | null> {
   if (!key || typeof window === "undefined") return Promise.resolve(null);
-  loading ??= import("posthog-js")
-    .then(({ default: posthog }) => {
+  // Page speed from the bundle: fetched from PostHog's servers, it came with their remote config, and its "site apps" are
+  // code that could read what this device keeps.
+  loading ??= Promise.all([import("posthog-js"), import("posthog-js/dist/web-vitals")])
+    .then(([{ default: posthog }]) => {
       posthog.init(key, {
         api_host: host,
         // The page they're on when it starts, then each change of path. Sent by hand from the router's transition
         // start, a pageview carried the page being left (the address hadn't changed yet) and the first page of
         // every visit was never counted.
         capture_pageview: "history_change",
-        // A reset link's token never leaves the browser, even when a pageview is sent before the page takes it out
-        // of the address bar.
-        before_send: withoutTokens,
+        // A reset link's token, and the pack's words in an address, never leave the browser (`withoutQueries`), even
+        // when a pageview is sent before the page takes the token out of the address bar.
+        before_send: withoutQueries,
+        // The first address of a visit is kept on the device and sent with the person's details, outside before_send.
+        mask_personal_data_properties: true,
+        custom_personal_data_properties: ["token", "hotel", "hotelCity", "line", "city", "q"],
+        // Its random id kept in this browser's storage, not in a cookie that went along with every request to the site.
+        persistence: "localStorage",
+        // No scripts from PostHog's servers, and no feature flags (the app uses none): each /flags request carried the
+        // person's details, the first address among them.
+        disable_external_dependency_loading: true,
+        advanced_disable_flags: true,
         capture_pageleave: true,
         // No session replay, no autocapture of clicks/form inputs, no
         // rageclick heuristics, no surveys — this app's whole pitch to pilots

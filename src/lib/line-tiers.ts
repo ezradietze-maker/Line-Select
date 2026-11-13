@@ -1,4 +1,5 @@
 import { choicesFromDrag } from "@/lib/brain/profile-model";
+import { saveOrReport } from "@/lib/local-save-failed";
 import type { LineChoice } from "@/types/pilot-model";
 
 /**
@@ -252,18 +253,23 @@ export function lessonChanges(from: TierState, to: TierState): { retract: string
   return { retract: [...before].filter((m) => !after.has(m)), add: [...after].filter((m) => !before.has(m)) };
 }
 
-function tiersKey(userId: string | null, bidPackId: string): string {
+export function tiersKey(userId: string | null, bidPackId: string): string {
   return `line-select:line-tiers:${userId ?? "guest"}:${bidPackId}:v1`;
 }
 
 const isStringRecord = (x: unknown): x is Record<string, string> => !!x && typeof x === "object" && !Array.isArray(x) && Object.values(x).every((v) => typeof v === "string");
 
 export function loadTiers(userId: string | null, bidPackId: string): TierState {
-  if (typeof window === "undefined") return EMPTY_TIERS;
+  return readTiers(userId, bidPackId) ?? EMPTY_TIERS;
+}
+
+/** What's stored, or null when nothing readable is. */
+export function readTiers(userId: string | null, bidPackId: string): TierState | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(tiersKey(userId, bidPackId));
     const p = raw ? (JSON.parse(raw) as Partial<TierState>) : null;
-    if (!p || typeof p !== "object") return EMPTY_TIERS;
+    if (!p || typeof p !== "object") return null;
     const tiers = Array.isArray(p.tiers) && p.tiers.every((t) => t && typeof t.id === "string" && typeof t.name === "string") && p.tiers.some((t) => t.id === NOT_BID_ID) ? p.tiers : DEFAULT_TIERS;
     const known = new Set(tiers.map((t) => t.id));
     const assigned = isStringRecord(p.assigned) ? Object.fromEntries(Object.entries(p.assigned).filter(([, t]) => known.has(t))) : {};
@@ -274,15 +280,40 @@ export function loadTiers(userId: string | null, bidPackId: string): TierState {
       taught: isStringRecord(p.taught) ? p.taught : {},
     };
   } catch {
-    return EMPTY_TIERS;
+    return null;
   }
 }
 
-export function saveTiers(userId: string | null, bidPackId: string, s: TierState): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(tiersKey(userId, bidPackId), JSON.stringify(s));
-  } catch {
-    // storage unavailable — tiers just won't persist this session
+/** Whether the browser kept them; when it didn't, the pilot is told they won't survive a refresh (`saveOrReport`). */
+export function saveTiers(userId: string | null, bidPackId: string, s: TierState): boolean {
+  return saveOrReport(tiersKey(userId, bidPackId), JSON.stringify(s));
+}
+
+/**
+ * Another tab's tiers kept, and this tab's say on the lines it moved (`base` is what this tab last read or wrote,
+ * `mine` its tiers now, `theirs` what's stored now). A line's tier, whether it's set aside and what its move taught go
+ * together; so do the tiers themselves (names, added, removed), which this tab's win only if it changed them.
+ */
+export function mergeTiers(base: TierState, mine: TierState, theirs: TierState): TierState {
+  const sameTiers = JSON.stringify(base.tiers) === JSON.stringify(mine.tiers);
+  const aside = { base: new Set(base.setAside), mine: new Set(mine.setAside) };
+  const lineIds = new Set([...Object.keys(base.assigned), ...Object.keys(mine.assigned), ...base.setAside, ...mine.setAside, ...Object.keys(base.taught), ...Object.keys(mine.taught)]);
+  const touched = [...lineIds].filter((id) => base.assigned[id] !== mine.assigned[id] || aside.base.has(id) !== aside.mine.has(id) || base.taught[id] !== mine.taught[id]);
+  if (sameTiers && touched.length === 0) return theirs;
+  const tiers = sameTiers ? theirs.tiers : mine.tiers;
+  const assigned = { ...theirs.assigned };
+  const taught = { ...theirs.taught };
+  for (const id of touched) {
+    if (mine.assigned[id] === undefined) delete assigned[id];
+    else assigned[id] = mine.assigned[id];
+    if (mine.taught[id] === undefined) delete taught[id];
+    else taught[id] = mine.taught[id];
   }
+  // A line left in a tier the merge no longer has has no tier, as removing a tier leaves it.
+  const known = new Set(tiers.map((t) => t.id));
+  for (const [id, tier] of Object.entries(assigned)) if (!known.has(tier)) delete assigned[id];
+  const moved = new Set(touched);
+  const setAside = theirs.setAside.filter((id) => !moved.has(id) || aside.mine.has(id));
+  for (const id of mine.setAside) if (moved.has(id) && !setAside.includes(id)) setAside.push(id);
+  return { tiers, assigned, setAside, taught };
 }

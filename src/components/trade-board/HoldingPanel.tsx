@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { ConfirmEmailRefusal } from "@/components/auth/ConfirmEmail";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { useAppState } from "@/lib/app-state";
+import { loadCarryIn } from "@/lib/carry-in-storage";
 import { heldTripsOfLine, tradeLocksFor, tripInstances } from "@/lib/trades/holding";
 import { clearTradeHolding, fetchTradeHolding, saveTradeHolding, saveTradeSettings } from "@/lib/trades/holding-client";
 import { tripInstanceKey } from "@/lib/trades/legality";
@@ -49,7 +51,7 @@ export function HoldingPanel({
   /** Hears each change saved here (what they hold, removed, "Include me…"): the trades found for them depend on it. */
   onSaved?: () => void;
 }) {
-  const { profile } = useAppState();
+  const { profile, user } = useAppState();
   const onHoldingRef = useRef(onHolding);
   useEffect(() => {
     onHoldingRef.current = onHolding;
@@ -63,6 +65,8 @@ export function HoldingPanel({
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Refused because their email isn't confirmed: said with the button to confirm it. */
+  const [refused, setRefused] = useState<string | null>(null);
 
   const instances = useMemo(() => tripInstances(bidPack), [bidPack]);
   const byKey = useMemo(() => new Map(instances.map((t) => [tripInstanceKey(t), t])), [instances]);
@@ -105,14 +109,18 @@ export function HoldingPanel({
   async function confirm() {
     setBusy(true);
     setError(null);
+    setRefused(null);
     const saved = await saveTradeHolding({
       packId: bidPack.id,
       bidPackMeta: { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month },
       lineNumber,
       trips: draft,
+      // What they carry in from last month, as Open time and View/Add check against: a trade has to fit around it too.
+      carryIn: loadCarryIn(user?.id ?? null, bidPack.id).items,
     });
     setBusy(false);
     if (!saved) return setError("Couldn't save what you hold. Check your connection and try again.");
+    if ("confirmEmail" in saved) return setRefused(saved.confirmEmail);
     setHolding(saved);
     onHoldingRef.current?.(saved);
     onSaved?.();
@@ -150,6 +158,7 @@ export function HoldingPanel({
     <section className="panel-glass mt-6 p-5">
       <h2 className="font-display text-base font-semibold text-ink">What you hold</h2>
       {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
+      {refused && <ConfirmEmailRefusal className="mt-3" message={refused} />}
 
       {!editing && !holding && (
         <>
@@ -206,7 +215,7 @@ export function HoldingPanel({
                 id="held-line"
                 value={lineNumber ?? ""}
                 onChange={(e) => chooseLine(e.target.value || null)}
-                className="w-full rounded-md border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
+                className="w-full rounded-md border border-field-edge bg-surface px-3.5 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
               >
                 <option value="">Choose a line, or add trips below</option>
                 {lines.map((l) => (
@@ -237,7 +246,7 @@ export function HoldingPanel({
                       <select
                         value={h.lock ?? ""}
                         onChange={(e) => setDraft(draft.map((d) => (d === h ? { ...d, lock: (e.target.value || null) as TradeLock | null } : d)))}
-                        className="max-w-full rounded-md border border-border-strong bg-surface px-2 py-1 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
+                        className="max-w-full rounded-md border border-field-edge bg-surface px-2 py-1 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-[var(--color-focus-ring)]"
                       >
                         <option value="">I can trade it</option>
                         {locks.map((l) => (

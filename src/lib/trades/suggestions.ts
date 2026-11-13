@@ -58,6 +58,20 @@ export function holdingsAfter(size: number, steps: readonly { a: number; b: numb
   return holds;
 }
 
+/**
+ * The trips a suggested trade has spoken for: everyone said yes, it's still to finish, and the trip hasn't reached the
+ * pilot it ends with (one that has is theirs to trade again). While a trade waits on its first step, until it expires.
+ * The board refuses these (`createTradeOffer`, `respondToTradeOffer`, `acceptTradeOffer`).
+ */
+export function tripsSpokenFor(s: Pick<TradeSuggestionRecord, "status" | "steps" | "stepsDone" | "expiresAt" | "members">, now: number): TradeTrip[] {
+  if (s.status !== "accepted" || !isWhole(s)) return [];
+  if (s.stepsDone === 0 && Date.parse(s.expiresAt) <= now) return [];
+  const size = s.steps.length + 1;
+  const holds = holdingsAfter(size, s.steps, s.stepsDone);
+  const at = new Map(s.members.map((m) => [m.position, m.give]));
+  return holds.flatMap((trip, position) => (trip === (position + 1) % size ? [] : at.has(trip) ? [at.get(trip)!] : []));
+}
+
 /** Whether every pilot it needs is still there: an account deleted leaves a gap no one can trade across. */
 export function isWhole(s: Pick<TradeSuggestionRecord, "members" | "steps">): boolean {
   return s.members.length === s.steps.length + 1;

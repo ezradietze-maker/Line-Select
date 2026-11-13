@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FlipText } from "@/components/ui/FlipText";
 import type { FilterOptions } from "@/lib/line-filter-options";
 import {
@@ -43,6 +43,24 @@ const OUT_AND_BACK_LABEL: Record<OutAndBackFilter, string> = {
   none: "None",
 };
 
+/**
+ * The count as a screen reader hears it: said once the list has settled, since every keystroke in a search or a box
+ * changes it and reading each one out would talk over the pilot's typing. Nothing is said on arrival, only after a change.
+ */
+function useSettledSaying(text: string, ms = 700): string {
+  const [said, setSaid] = useState("");
+  const last = useRef(text);
+  useEffect(() => {
+    if (text === last.current) return;
+    const timer = window.setTimeout(() => {
+      last.current = text;
+      setSaid(text);
+    }, ms);
+    return () => window.clearTimeout(timer);
+  }, [text, ms]);
+  return said;
+}
+
 interface ResultsFilterBarProps {
   filters: LineFilters;
   onChange: (next: LineFilters) => void;
@@ -67,6 +85,7 @@ export function ResultsFilterBar({
 }: ResultsFilterBarProps) {
   const [expanded, setExpanded] = useState(false);
   const active = filtersActive(filters);
+  const countSaid = useSettledSaying(`Showing ${visibleCount} of ${totalCount} lines`);
 
   function toggleReportTime(rt: ReportTime) {
     const next = new Set(filters.reportTimes);
@@ -117,6 +136,9 @@ export function ResultsFilterBar({
         </button>
         <span className="text-xs text-ink-faint">
           Showing <FlipText text={String(visibleCount)} /> of {totalCount} lines
+        </span>
+        <span role="status" className="sr-only">
+          {countSaid}
         </span>
         {active && (
           <button
@@ -408,7 +430,7 @@ export function ResultsFilterBar({
   );
 }
 
-const FIELD = "rounded-md border border-border-strong bg-surface px-2 py-1.5 text-[13px] text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none";
+const FIELD = "rounded-md border border-field-edge bg-surface px-2 py-1.5 text-[13px] text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none";
 
 /** "At least N" chips, offered only when the pack has values that split it. */
 function StepRow({ label, steps, value, suffix = "+", onChange }: { label: string; steps: number[]; value: number; suffix?: string; onChange: (n: number) => void }) {

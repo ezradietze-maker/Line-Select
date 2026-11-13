@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { legacyPackIdFor, packIdFor } from "@/lib/pack-id";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { heldLine, heldTripsOfLine, pilotsForMatching, readHolding, tradeLocksFor, tripInstances, type MatchingRow } from "@/lib/trades/holding";
 import type { BidPack, Line } from "@/types/bidpack";
@@ -27,6 +28,33 @@ describe("reading a holding from a browser", () => {
 
   it("refuses the sample pack, which isn't anyone's to trade", () => {
     expect(readHolding({ ...body(), packId: "sample-bidpack" })).toBeNull();
+  });
+
+  const carriedTrip = { kind: "trip", id: "c1", label: "Trip 213", report: "2026-09-26T10:00:00Z", release: "2026-09-28T20:00:00Z", international: false, duties: [{ start: "2026-09-26T10:00:00Z", end: "2026-09-26T20:00:00Z" }] };
+  const rdays = { kind: "rdays", id: "r1", label: "R-days", firstDay: "2026-09-27", days: 2, rp: "A" };
+
+  it("takes what they carry in from last month, and says nothing of it when the browser didn't", () => {
+    expect(readHolding({ ...body(), carryIn: [carriedTrip, rdays] })?.carryIn).toEqual([carriedTrip, rdays]);
+    expect(readHolding({ ...body(), carryIn: [] })?.carryIn).toEqual([]);
+    expect(readHolding(body())).not.toHaveProperty("carryIn");
+  });
+
+  it("keeps only the carry-in fields the checks read, and cuts a long label rather than refusing it", () => {
+    const [item] = readHolding({ ...body(), carryIn: [{ ...carriedTrip, note: "x".repeat(5000), label: `Trip ${"9".repeat(500)}` }] })?.carryIn ?? [];
+    expect(item).not.toHaveProperty("note");
+    expect(item.label).toHaveLength(60);
+  });
+
+  it.each([
+    ["carry-in that isn't a list", { carryIn: "Trip 213" }],
+    ["a carried-in trip with no release", { carryIn: [{ ...carriedTrip, release: "soon" }] }],
+    ["a carried-in trip released before it reports", { carryIn: [{ ...carriedTrip, release: "2026-09-25T10:00:00Z" }] }],
+    ["R-days with no reserve period", { carryIn: [{ ...rdays, rp: "C" }] }],
+    ["too much carry-in", { carryIn: Array.from({ length: 11 }, () => rdays) }],
+  ])("takes what they hold, with carry-in not known, given %s", (_name, over) => {
+    const read = readHolding({ ...body(), ...over });
+    expect(read?.trips).toEqual(body().trips);
+    expect(read).not.toHaveProperty("carryIn");
   });
 
   it.each([
@@ -90,6 +118,22 @@ describe("who can appear on a suggested trade", () => {
 
   it("leaves out a holding from another bid pack", () => {
     expect(pilotsForMatching(pack, [row({ holding: holding({ packId: "uploaded-ind-b767-fo-oct26" }) })])).toEqual([]);
+  });
+
+  it("passes on what they carry in, or that it isn't known", () => {
+    const carryIn = [{ kind: "trip" as const, id: "c", label: "Trip 213", report: "2026-09-26T10:00:00Z", release: "2026-09-28T20:00:00Z", international: false }];
+    expect(pilotsForMatching(pack, [row({ holding: holding({ carryIn }) })])[0].carryIn).toEqual(carryIn);
+    expect(pilotsForMatching(pack, [row()])[0]).not.toHaveProperty("carryIn");
+  });
+
+  it("matches a pilot once, by what they hold under the pack's own id, when they also confirmed under its older one", () => {
+    const current = { ...pack, id: packIdFor(pack) };
+    const older = legacyPackIdFor(pack);
+    const otherTrips = heldTripsOfLine(other);
+    const rows = [row({ holding: holding({ packId: older, lineNumber: other.lineNumber, trips: otherTrips }) }), row({ holding: holding({ packId: current.id }) }), row({ userId: "u2", holding: holding({ packId: older }) })];
+    const pilots = pilotsForMatching(current, rows);
+    expect(pilots.map((p) => p.pilotId)).toEqual(["u1", "u2"]);
+    expect(pilots[0].line.trips.map((t) => t.id)).toEqual(line.trips.map((t) => t.id));
   });
 
   it("keeps locked trips out of the matching", () => {

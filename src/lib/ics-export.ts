@@ -1,6 +1,9 @@
 import { DateTime } from "luxon";
 import type { Line } from "@/types/bidpack";
 
+/** An event's id with only id characters: a pack's pairing number with a line break in it wrote a line of its own. */
+const safeUid = (uid: string) => uid.replace(/[^A-Za-z0-9._@-]/g, "-");
+
 export function escapeIcsText(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r\n|\r|\n/g, "\\n");
 }
@@ -89,7 +92,7 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null, bid
 
     return [
       "BEGIN:VEVENT",
-      `UID:line-trip-${bidMonth}-${trip.pairingNumber ?? trip.id}-${start.toFormat("yyyy-LL-dd")}@lineselect`,
+      `UID:${safeUid(`line-trip-${bidMonth}-${trip.pairingNumber ?? trip.id}-${start.toFormat("yyyy-LL-dd")}@lineselect`)}`,
       `DTSTAMP:${stamp}`,
       `DTSTART;VALUE=DATE:${start.toFormat("yyyyLLdd")}`,
       `DTEND;VALUE=DATE:${end.toFormat("yyyyLLdd")}`,
@@ -129,7 +132,7 @@ export function buildDeadlineReminderIcs(packId: string, deadline: string, label
     "PRODID:-//Line Select//Bid deadline//EN",
     "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
-    `UID:bid-close-${packId}@lineselect`,
+    `UID:${safeUid(`bid-close-${packId}@lineselect`)}`,
     `DTSTAMP:${icsUtc(now)}`,
     `DTSTART:${icsUtc(at)}`,
     "DURATION:PT15M",

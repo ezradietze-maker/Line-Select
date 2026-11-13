@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { isUuid } from "@/lib/server/db";
 import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -20,6 +21,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const body = await readJsonBody(request, 300);
   const answer = isJsonObject(body) ? body.answer : null;
   if (answer !== "accepted" && answer !== "declined") return NextResponse.json({ error: "Accept or decline?" }, { status: 400 });
+  // Saying no is always open: it only takes the pilot off a trade.
+  if (answer === "accepted" && !isVerified(user)) return confirmEmailRefusal("say yes to a trade");
   const reason = isJsonObject(body) ? (body.reason ?? null) : null;
   if (reason !== null && !REASONS.has(reason as string)) return NextResponse.json({ error: "Invalid reason." }, { status: 400 });
   const { id } = await params;

@@ -1,15 +1,18 @@
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
-import { alreadyTraded, offersFreedByTrade } from "@/lib/trades/offer-trips";
+import { alreadyTraded, offersFreedBy, offersFreedByTrade, sameTrip, type GivenTrip } from "@/lib/trades/offer-trips";
+import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { packIdFor } from "@/lib/pack-id";
 import { db } from "@/lib/server/postgres";
+import { forgetVerifiedPilots, verifiedUserIds } from "@/lib/server/verified-pilots";
 import {
   awardHistoryRecords,
   bidPackMetaOf,
   bidPacks,
   candidateVariables,
   credentials as credentialsTable,
+  emailVerificationTokens,
   feedbackSubmissions,
   interviewCandidateFacts,
   passwordResetTokens,
@@ -19,6 +22,8 @@ import {
   tradeHoldings,
   tradeOffers,
   tradePreferences,
+  tradeSuggestionMembers,
+  tradeSuggestions,
   users,
 } from "@/lib/server/schema";
 import type { AwardHistoryRecord } from "@/types/award-history";
@@ -85,6 +90,7 @@ function toUserAccount(row: typeof users.$inferSelect): UserAccount {
     displayName: row.displayName,
     createdAt: row.createdAt.toISOString(),
     plan: row.plan as UserAccount["plan"],
+    emailVerified: !!row.emailVerifiedAt,
   };
 }
 
@@ -274,12 +280,96 @@ export async function consumeResetToken(tokenHash: string): Promise<string | nul
   return row.expiresAt.getTime() > Date.now() ? row.userId : null;
 }
 
+// ---- Confirming an address ----
+
+export interface EmailVerificationToken {
+  tokenHash: string;
+  userId: string;
+  expiresAt: string;
+  /** First sent by signing up: such an account, never confirmed, is removed after a week (`deleteUnconfirmedSignUps`). */
+  signUp?: boolean;
+  /** A hash of the device that asked for it: opening the link signs in there only (see the schema). */
+  deviceHash?: string | null;
+}
+
+/**
+ * One live link per pilot: a new one replaces the last, used or not. Whether the first was sent by signing up stays
+ * as it was, so asking for another doesn't change which accounts the daily clear-out may remove.
+ */
+export async function saveVerificationToken(token: EmailVerificationToken): Promise<void> {
+  const expiresAt = new Date(token.expiresAt);
+  await db
+    .insert(emailVerificationTokens)
+    .values({ tokenHash: token.tokenHash, userId: token.userId, expiresAt, signUp: token.signUp ?? false, deviceHash: token.deviceHash ?? null })
+    .onConflictDoUpdate({
+      target: emailVerificationTokens.userId,
+      set: { tokenHash: token.tokenHash, expiresAt, usedAt: null, deviceHash: token.deviceHash ?? null, createdAt: new Date() },
+    });
+}
+
+export type VerificationResult =
+  | { status: "confirmed"; userId: string; deviceHash: string | null }
+  | { status: "used"; userId: string }
+  | { status: "expired" } | { status: "invalid" };
+
+/**
+ * Spends a confirm link and marks its account confirmed, in one transaction. Single-use by the conditional update: of
+ * two clicks at once, only one finds it unspent. A spent link is kept, so the second click hears "used" rather than
+ * "no such link"; an expired one is never spent.
+ */
+export async function spendVerificationToken(tokenHash: string, now = new Date()): Promise<VerificationResult> {
+  const result = await db.transaction(async (tx): Promise<VerificationResult> => {
+    const [spent] = await tx
+      .update(emailVerificationTokens)
+      .set({ usedAt: now })
+      .where(and(eq(emailVerificationTokens.tokenHash, tokenHash), isNull(emailVerificationTokens.usedAt), gt(emailVerificationTokens.expiresAt, now)))
+      .returning({ userId: emailVerificationTokens.userId, deviceHash: emailVerificationTokens.deviceHash });
+    if (spent) {
+      await tx.update(users).set({ emailVerifiedAt: now }).where(and(eq(users.id, spent.userId), isNull(users.emailVerifiedAt)));
+      return { status: "confirmed", userId: spent.userId, deviceHash: spent.deviceHash ?? null };
+    }
+    const [row] = await tx.select().from(emailVerificationTokens).where(eq(emailVerificationTokens.tokenHash, tokenHash)).limit(1);
+    if (!row) return { status: "invalid" };
+    if (row.usedAt) return { status: "used", userId: row.userId };
+    return { status: "expired" };
+  });
+  if (result.status === "confirmed") forgetVerifiedPilots();
+  return result;
+}
+
+/** An emailed reset proves the address as well as a confirm link does. An earlier confirm's date is left as it was. */
+export async function markEmailVerified(userId: string, now = new Date()): Promise<void> {
+  if (!isUuid(userId)) return;
+  await db.update(users).set({ emailVerifiedAt: now }).where(and(eq(users.id, userId), isNull(users.emailVerifiedAt)));
+  forgetVerifiedPilots();
+}
+
+/**
+ * Removes accounts made by signing up and never confirmed, made before `before`. Only those whose first link was sent
+ * by signing up: accounts from before confirming existed never had one, so they stay however long they go unconfirmed.
+ * Their pack, profile and the rest go with them (every table's link to an account cascades). Returns how many went.
+ */
+export async function deleteUnconfirmedSignUps(before: Date): Promise<number> {
+  const signedUp = db.select({ id: emailVerificationTokens.userId }).from(emailVerificationTokens).where(eq(emailVerificationTokens.signUp, true));
+  const removed = await db
+    .delete(users)
+    .where(and(isNull(users.emailVerifiedAt), lt(users.createdAt, before), inArray(users.id, signedUp)))
+    .returning({ id: users.id });
+  return removed.length;
+}
+
 // ---- Sessions ----
 
 /**
  * Sessions are stored by a hash of their token, never the token itself: the cookie holds the token, the database
- * only its SHA-256, so a leaked copy of the table can't be used to sign in as anyone. Rows written before this rule
- * hold the token as it was; each is found that way once and rewritten as its hash.
+ * only its SHA-256, so a leaked copy of the table can't be used to sign in as anyone.
+ *
+ * Rows written before this rule (deployed 6 Nov 2026) held the token as it was, and were once looked up that way too,
+ * then rewritten as its hash. That lookup is gone. A token is 64 hex characters (`startSession`) and so is its SHA-256,
+ * so nothing about a value says which one it is; and a rewritten row kept its old expiry, so a hash copied out of the
+ * table matched the old lookup and worked as a cookie, the very thing hashing is there to stop. A pilot whose row was
+ * never rewritten (not back since 6 Nov) is asked to sign in again. Those rows can't be used any more, and all expire
+ * by 6 Dec 2026; `scripts/purge-legacy-sessions.ts` clears them sooner.
  */
 function sessionKey(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -291,20 +381,8 @@ export async function createSession(session: ServerSession): Promise<void> {
     .values({ token: sessionKey(session.token), userId: session.userId, expiresAt: new Date(session.expiresAt) });
 }
 
-/**
- * Every row written before hashing began (deployed 6 Nov 2026) expires by this moment, and every hashed row after
- * it. Only rows that old are looked up by the raw cookie: otherwise a hash copied out of the table would itself work
- * as a cookie, the very thing hashing is there to stop.
- */
-const LEGACY_SESSIONS_EXPIRE_BY = new Date("2026-12-06T19:20:00Z");
-
 export async function findSession(token: string): Promise<ServerSession | null> {
-  const key = sessionKey(token);
-  let [row] = await db.select().from(sessions).where(eq(sessions.token, key)).limit(1);
-  if (!row && Date.now() < LEGACY_SESSIONS_EXPIRE_BY.getTime()) {
-    [row] = await db.select().from(sessions).where(and(eq(sessions.token, token), lte(sessions.expiresAt, LEGACY_SESSIONS_EXPIRE_BY))).limit(1);
-    if (row) await db.update(sessions).set({ token: key }).where(eq(sessions.token, token));
-  }
+  const [row] = await db.select().from(sessions).where(eq(sessions.token, sessionKey(token))).limit(1);
   if (!row) return null;
   if (row.expiresAt.getTime() < Date.now()) {
     await deleteSession(token);
@@ -319,8 +397,9 @@ export async function deleteSessionsForUser(userId: string): Promise<void> {
   await db.delete(sessions).where(eq(sessions.userId, userId));
 }
 
+/** By the hash only: also deleting a row stored as the value sent let anyone holding a hash from the table sign its pilot out. */
 export async function deleteSession(token: string): Promise<void> {
-  await db.delete(sessions).where(inArray(sessions.token, [sessionKey(token), token]));
+  await db.delete(sessions).where(eq(sessions.token, sessionKey(token)));
 }
 
 // ---- Trade offers ----
@@ -365,7 +444,8 @@ export async function listTradeOffersForSeat(meta: BidPackMetaSnapshot, viewerId
       ? db
           .select()
           .from(tradeOffers)
-          .where(and(offersForSeat(meta), eq(tradeOffers.status, "open"), ne(tradeOffers.offeringUserId, viewerId)))
+          // From confirmed accounts only: an unconfirmed one can't agree a trade, so its offers would only ever wait.
+          .where(and(offersForSeat(meta), eq(tradeOffers.status, "open"), ne(tradeOffers.offeringUserId, viewerId), inArray(tradeOffers.offeringUserId, verifiedUserIds())))
           .orderBy(desc(tradeOffers.createdAt))
           .limit(opts.limit)
       : [],
@@ -390,7 +470,7 @@ const TRADE_LOCK_CLASS = 4_820_113;
  * offers that already exist, and an offer posted a moment after an accept isn't one of them. Taken in one order, so
  * two transactions never wait on each other.
  */
-async function lockPilotsInSeat(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[]): Promise<void> {
+export async function lockPilotsInSeat(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[]): Promise<void> {
   const keys = [...new Set(pilots)].map((p) => [p, meta.base, meta.aircraft, meta.seat, meta.month].join("|")).sort();
   for (const key of keys) await tx.execute(sql`select pg_advisory_xact_lock(${TRADE_LOCK_CLASS}::int, hashtext(${key}))`);
 }
@@ -404,12 +484,54 @@ async function agreedTrades(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[])
   return rows.map(toTradeOffer);
 }
 
-/** Posts an offer, unless the pilot has already agreed to trade that trip away this month. False when refused for that. */
-export async function createTradeOffer(offer: TradeOffer): Promise<boolean> {
+/**
+ * The suggested trades (`trade-suggestions.ts`) these pilots are on in this seat's month and that haven't finished or
+ * been called off, locked until the transaction ends, so a pilot's last yes or a step can't land between this check and
+ * what follows it: the trips they've spoken for (`tripsSpokenFor`), and those not everyone has said yes to yet. A step
+ * takes the same seat locks first (`markStepDone`), so the two never wait on each other.
+ */
+async function openSuggestions(tx: Tx, meta: BidPackMetaSnapshot, pilots: string[], now: Date): Promise<{ spokenFor: TripSnapshot[]; proposed: string[] }> {
+  const ids = await tx
+    .selectDistinct({ id: tradeSuggestions.id })
+    .from(tradeSuggestionMembers)
+    .innerJoin(tradeSuggestions, eq(tradeSuggestions.id, tradeSuggestionMembers.suggestionId))
+    .where(
+      and(
+        inArray(tradeSuggestionMembers.userId, pilots),
+        eq(tradeSuggestions.base, meta.base),
+        eq(tradeSuggestions.aircraft, meta.aircraft),
+        eq(tradeSuggestions.seat, meta.seat),
+        eq(tradeSuggestions.month, meta.month),
+        inArray(tradeSuggestions.status, ["proposed", "accepted"])
+      )
+    );
+  if (!ids.length) return { spokenFor: [], proposed: [] };
+  const rows = await tx
+    .select()
+    .from(tradeSuggestions)
+    .where(and(inArray(tradeSuggestions.id, ids.map((r) => r.id)), inArray(tradeSuggestions.status, ["proposed", "accepted"])))
+    .orderBy(tradeSuggestions.id)
+    .for("update");
+  if (!rows.length) return { spokenFor: [], proposed: [] };
+  const members = await tx.select().from(tradeSuggestionMembers).where(inArray(tradeSuggestionMembers.suggestionId, rows.map((r) => r.id)));
+  const spokenFor = rows.flatMap((r) =>
+    tripsSpokenFor({ status: r.status, steps: r.steps, stepsDone: r.stepsDone, expiresAt: r.expiresAt.toISOString(), members: members.filter((m) => m.suggestionId === r.id) }, now.getTime())
+  );
+  return { spokenFor, proposed: rows.filter((r) => r.status === "proposed" && r.stepsDone === 0).map((r) => r.id) };
+}
+
+const spokenForIn = (spokenFor: readonly TripSnapshot[], trip: TripSnapshot) => spokenFor.some((t) => sameTrip(t, trip));
+
+/**
+ * Posts an offer, unless the pilot has already agreed to trade that trip away this month: on the board, or in a
+ * suggested trade everyone on it said yes to. False when refused for that.
+ */
+export async function createTradeOffer(offer: TradeOffer, now = new Date()): Promise<boolean> {
   if (!isUuid(offer.offeringUserId)) return false;
   return db.transaction(async (tx) => {
     await lockPilotsInSeat(tx, offer.bidPackMeta, [offer.offeringUserId]);
     if (alreadyTraded(await agreedTrades(tx, offer.bidPackMeta, [offer.offeringUserId]), offer.bidPackMeta, offer.offeringUserId, offer.offeredTrip)) return false;
+    if (spokenForIn((await openSuggestions(tx, offer.bidPackMeta, [offer.offeringUserId], now)).spokenFor, offer.offeredTrip)) return false;
     await tx.insert(tradeOffers).values({
       id: offer.id,
       createdAt: new Date(offer.createdAt),
@@ -435,7 +557,8 @@ export async function createTradeOffer(offer: TradeOffer): Promise<boolean> {
 
 /**
  * A pilot's proposal on an open offer, with their own trip. "traded" when either trip is already in a trade one of the
- * two pilots agreed this month; null when the offer isn't open any more (another pilot's proposal got there first).
+ * two pilots agreed this month, on the board or in a suggested trade; null when the offer isn't open any more (another
+ * pilot's proposal got there first).
  */
 export async function respondToTradeOffer(
   id: string,
@@ -452,6 +575,8 @@ export async function respondToTradeOffer(
     await lockPilotsInSeat(tx, meta, pilots);
     const agreed = await agreedTrades(tx, meta, pilots);
     if (alreadyTraded(agreed, meta, row.offeringUserId, row.offeredTrip) || alreadyTraded(agreed, meta, responder.id, responderTrip)) return "traded";
+    const { spokenFor } = await openSuggestions(tx, meta, pilots, now);
+    if (spokenForIn(spokenFor, row.offeredTrip) || spokenForIn(spokenFor, responderTrip)) return "traded";
     const [updated] = await tx
       .update(tradeOffers)
       .set({ status: "pending", responderUserId: responder.id, responderDisplayName: responder.displayName, responderTrip, respondedAt: now })
@@ -499,7 +624,11 @@ export async function updateTradeOffer(
  * (`lockPilotsInSeat`), then every offer either is on is locked, in one order, so two accepts that share a trip queue
  * up rather than both going through. Null when the offer isn't pending, or its proposal isn't the one
  * `expectedRespondedAt` names (one taken off and replaced since it was seen); "traded" when either trip is already in
- * a trade one of the pilots agreed.
+ * a trade one of the pilots agreed, on the board or in a suggested trade everyone on it said yes to.
+ *
+ * The suggested trades either pilot is on that not everyone has said yes to are called off with it: they were worked
+ * out from what the two held before, and one could hand on a trip just agreed here. Like a change to what they hold,
+ * they're left free to be found again (`lapseSuggestionsFor`).
  */
 export async function acceptTradeOffer(id: string, expectedRespondedAt: string | null, now = new Date()): Promise<TradeOffer | "traded" | null> {
   if (!isUuid(id)) return null;
@@ -524,6 +653,11 @@ export async function acceptTradeOffer(id: string, expectedRespondedAt: string |
       ...(locked.responderTrip ? [{ pilot: first.responderUserId, trip: locked.responderTrip }] : []),
     ];
     if (given.some((g) => alreadyTraded(others, offer.bidPackMeta, g.pilot, g.trip))) return "traded";
+    const suggested = await openSuggestions(tx, offer.bidPackMeta, pilots, now);
+    if (given.some((g) => spokenForIn(suggested.spokenFor, g.trip))) return "traded";
+    if (suggested.proposed.length > 0) {
+      await tx.update(tradeSuggestions).set({ status: "cancelled", cancelReason: "changed", signature: null, resolvedAt: now }).where(inArray(tradeSuggestions.id, suggested.proposed));
+    }
     const { withdraw, reopen } = offersFreedByTrade(offer, others);
     const [row] = await tx.update(tradeOffers).set({ status: "accepted", resolvedAt: now }).where(eq(tradeOffers.id, id)).returning();
     if (withdraw.length > 0) await tx.update(tradeOffers).set({ status: "withdrawn", resolvedAt: now }).where(inArray(tradeOffers.id, withdraw));
@@ -535,6 +669,30 @@ export async function acceptTradeOffer(id: string, expectedRespondedAt: string |
     }
     return toTradeOffer(row);
   });
+}
+
+/**
+ * Trips that changed hands in a step of a suggested trade: the board's open offers of them are withdrawn, and a proposal
+ * made with one is taken off its offer, which opens again, as when a board trade is agreed (`offersFreedBy`). The
+ * caller holds the pilots' seat locks (`lockPilotsInSeat`).
+ */
+export async function freeOffersOfMovedTrips(tx: Tx, meta: BidPackMetaSnapshot, moved: GivenTrip[], now = new Date()): Promise<void> {
+  const pilots = [...new Set(moved.map((m) => m.pilot))].filter(isUuid);
+  if (!pilots.length) return;
+  const rows = await tx
+    .select()
+    .from(tradeOffers)
+    .where(and(offersForSeat(meta), inArray(tradeOffers.status, ["open", "pending"]), or(inArray(tradeOffers.offeringUserId, pilots), inArray(tradeOffers.responderUserId, pilots))))
+    .orderBy(tradeOffers.id)
+    .for("update");
+  const { withdraw, reopen } = offersFreedBy(moved, meta, rows.map(toTradeOffer));
+  if (withdraw.length > 0) await tx.update(tradeOffers).set({ status: "withdrawn", resolvedAt: now }).where(inArray(tradeOffers.id, withdraw));
+  if (reopen.length > 0) {
+    await tx
+      .update(tradeOffers)
+      .set({ status: "open", responderUserId: null, responderDisplayName: null, responderTrip: null, respondedAt: null })
+      .where(inArray(tradeOffers.id, reopen));
+  }
 }
 
 // ---- Candidate variables ----
@@ -594,12 +752,15 @@ export async function deleteAwardShares(pilotHash: string, packKey?: string): Pr
   return removed.length;
 }
 
-/** How many accounts have had a real pack of this kind on the server since `since`. An uploaded pack's id starts with its base, aircraft and seat. */
+/**
+ * How many confirmed accounts have had a real pack of this kind on the server since `since`. An uploaded pack's id
+ * starts with its base, aircraft and seat. Unconfirmed accounts aren't counted: a dozen made-up ones would open a board.
+ */
 export async function countRecentPilotsWithPack(packIdPrefix: string, since: Date): Promise<number> {
   const [row] = await db
     .select({ n: count() })
     .from(bidPacks)
-    .where(and(sql`starts_with(${bidPacks.packId}, ${packIdPrefix})`, gte(bidPacks.updatedAt, since)));
+    .where(and(sql`starts_with(${bidPacks.packId}, ${packIdPrefix})`, gte(bidPacks.updatedAt, since), inArray(bidPacks.userId, verifiedUserIds())));
   return row?.n ?? 0;
 }
 
@@ -733,7 +894,7 @@ export async function deleteBidPackRecord(userId: string): Promise<void> {
 }
 
 function holdingOf(row: typeof tradeHoldings.$inferSelect): TradeHolding {
-  return { packId: row.packId, bidPackMeta: bidPackMetaOf(row), lineNumber: row.lineNumber, trips: row.trips, confirmedAt: row.confirmedAt.toISOString() };
+  return { packId: row.packId, bidPackMeta: bidPackMetaOf(row), lineNumber: row.lineNumber, trips: row.trips, ...(row.carryIn ? { carryIn: row.carryIn } : {}), confirmedAt: row.confirmedAt.toISOString() };
 }
 
 /** What a pilot has confirmed they hold in this pack. */
@@ -745,29 +906,43 @@ export async function getTradeHolding(userId: string, packId: string): Promise<T
 
 /**
  * Whether this seat's month is one the pilot flies: a holding they confirmed in it, or the uploaded pack on their
- * account. Only then do they see other pilots' offers on its board: a seat named in a request proves nothing.
+ * account. Only then do they see other pilots' offers on its board, post to it or answer an offer on it: a seat named
+ * in a request proves nothing. A holding counts only under that seat's own pack id: one saved before the holding PUT
+ * checked its seat against its pack could name any seat at all.
  */
 export async function pilotHasSeatMonth(userId: string, meta: BidPackMetaSnapshot): Promise<boolean> {
   if (!isUuid(userId)) return false;
+  const packId = packIdFor({ ...meta, seat: meta.seat as Seat });
   const [held] = await db
     .select({ id: tradeHoldings.id })
     .from(tradeHoldings)
-    .where(and(eq(tradeHoldings.userId, userId), eq(tradeHoldings.base, meta.base), eq(tradeHoldings.aircraft, meta.aircraft), eq(tradeHoldings.seat, meta.seat), eq(tradeHoldings.month, meta.month)))
+    .where(
+      and(
+        eq(tradeHoldings.userId, userId),
+        eq(tradeHoldings.packId, packId),
+        eq(tradeHoldings.base, meta.base),
+        eq(tradeHoldings.aircraft, meta.aircraft),
+        eq(tradeHoldings.seat, meta.seat),
+        eq(tradeHoldings.month, meta.month)
+      )
+    )
     .limit(1);
   if (held) return true;
   const [pack] = await db.select({ packId: bidPacks.packId }).from(bidPacks).where(eq(bidPacks.userId, userId)).limit(1);
-  return pack?.packId === packIdFor({ ...meta, seat: meta.seat as Seat });
+  return pack?.packId === packId;
 }
 
 /** What a pilot holds, confirmed on the pack whose fingerprint is given (null when their account doesn't have it yet). */
 export async function saveTradeHolding(userId: string, holding: Omit<TradeHolding, "confirmedAt">, packFingerprint: string | null = null): Promise<TradeHolding | null> {
   if (!isUuid(userId)) return null;
   const { packId, bidPackMeta, lineNumber, trips } = holding;
+  // Null, not an empty list, when the browser didn't say: no carry-in and an unknown one are matched differently.
+  const carryIn = holding.carryIn ?? null;
   const now = new Date();
   const [row] = await db
     .insert(tradeHoldings)
-    .values({ userId, packId, ...bidPackMeta, lineNumber, trips, packFingerprint, confirmedAt: now })
-    .onConflictDoUpdate({ target: [tradeHoldings.userId, tradeHoldings.packId], set: { ...bidPackMeta, lineNumber, trips, packFingerprint, confirmedAt: now } })
+    .values({ userId, packId, ...bidPackMeta, lineNumber, trips, carryIn, packFingerprint, confirmedAt: now })
+    .onConflictDoUpdate({ target: [tradeHoldings.userId, tradeHoldings.packId], set: { ...bidPackMeta, lineNumber, trips, carryIn, packFingerprint, confirmedAt: now } })
     .returning();
   return holdingOf(row);
 }

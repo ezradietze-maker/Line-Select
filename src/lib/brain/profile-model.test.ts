@@ -40,6 +40,12 @@ describe("keeping the pilot model current after the interview", () => {
     expect(withoutDrag(again, "s3")).toEqual(first);
   });
 
+  it("counts a swap's choices once when they're given back while still held (undo and redo pressed together)", () => {
+    const first = choicesFromDrag([{ favored: "A", overtaken: "B" }], "s1");
+    const flipped = addDragChoices(first, choicesFromDrag([{ favored: "B", overtaken: "A" }], "s2"));
+    expect(addDragChoices(flipped, choicesFromDrag([{ favored: "B", overtaken: "A" }], "s2"))).toEqual(flipped);
+  });
+
   it("keeps a choice set aside when it's undone out of order and a later swap still reverses it", () => {
     let c = choicesFromDrag([{ favored: "A", overtaken: "B" }], "d1");
     c = addDragChoices(c, choicesFromDrag([{ favored: "B", overtaken: "A" }], "d2"));

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LoggedMonth } from "@/types/logbook";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
-import { mergeAfterConflict } from "./profile-merge";
+import { mergeAfterConflict, withGuestRecords } from "./profile-merge";
 
 function profile(logbook: LoggedMonth[] | undefined, completedAt: string): PreferenceProfile {
   return { weights: { ...DEFAULT_WEIGHTS }, deepRoundCompleted: false, tradeoffAnswers: [], explicitTargets: {}, isCommuter: null, hasCrashPad: null, cityPreferences: {}, completedAt, implicitWeights: {}, implicitConfidence: {}, discoveredFacts: [], interviewTranscript: [], logbook };
@@ -38,5 +38,131 @@ describe("mergeAfterConflict", () => {
   it("leaves a profile with no logbook as it was", () => {
     const newer = profile(undefined, "b");
     expect(mergeAfterConflict(newer, profile(undefined, "a"))).toBe(newer);
+  });
+});
+
+describe("mergeAfterConflict against the copy the save started from", () => {
+  const base = { ...profile(undefined, "2026-11-07T00:00:00Z"), seniorityNumber: null } as PreferenceProfile;
+
+  it("keeps this device's edit when the newer copy changed something else", () => {
+    const newer = { ...base, cityRatings: { HNL: { score: 2 } } } as unknown as PreferenceProfile;
+    const mine = { ...base, seniorityNumber: 1234, weights: { ...base.weights, daysOff: 90 }, brainInterview: { exchanges: [], choices: [], pins: { "days-off": 1 } } } as unknown as PreferenceProfile;
+    const merged = mergeAfterConflict(newer, mine, base);
+    expect(merged.seniorityNumber).toBe(1234);
+    expect(merged.weights.daysOff).toBe(90);
+    expect(merged.brainInterview?.pins).toEqual({ "days-off": 1 });
+    expect((merged as unknown as { cityRatings: unknown }).cityRatings).toEqual({ HNL: { score: 2 } });
+  });
+
+  it("takes this device's value where both changed the same setting", () => {
+    const newer = { ...base, seniorityNumber: 500, minHomeHours: 20 } as PreferenceProfile;
+    const mine = { ...base, seniorityNumber: 1234 } as PreferenceProfile;
+    const merged = mergeAfterConflict(newer, mine, base);
+    expect(merged.seniorityNumber).toBe(1234);
+    expect(merged.minHomeHours).toBe(20);
+  });
+
+  it("doesn't read the server's reordered keys as an edit", () => {
+    const reordered = Object.fromEntries(Object.entries(base).reverse()) as unknown as PreferenceProfile;
+    const newer = { ...base, seniorityNumber: 500 } as PreferenceProfile;
+    expect(mergeAfterConflict(newer, reordered, base).seniorityNumber).toBe(500);
+  });
+
+  it("takes a setting this device cleared off the merged copy too", () => {
+    const withTarget = { ...base, minHomeHours: 30 } as PreferenceProfile;
+    const newer = { ...withTarget, seniorityNumber: 500 } as PreferenceProfile;
+    const { minHomeHours: _cleared, ...mine } = withTarget;
+    void _cleared;
+    const merged = mergeAfterConflict(newer, mine as PreferenceProfile, withTarget);
+    expect("minHomeHours" in merged).toBe(false);
+    expect(merged.seniorityNumber).toBe(500);
+  });
+
+  it("keeps the newer copy as it is when there's no copy to compare against", () => {
+    const newer = { ...base, seniorityNumber: 500 } as PreferenceProfile;
+    const mine = { ...base, seniorityNumber: 1234 } as PreferenceProfile;
+    expect(mergeAfterConflict(newer, mine).seniorityNumber).toBe(500);
+    expect(mergeAfterConflict(newer, mine, null)).toBe(newer);
+  });
+
+  it("keeps an interview the other device finished since, whole", () => {
+    const newer = { ...base, completedAt: "2026-11-09T00:00:00Z", weights: { ...base.weights, daysOff: 10 } } as PreferenceProfile;
+    const mine = { ...base, weights: { ...base.weights, daysOff: 90 } } as PreferenceProfile;
+    expect(mergeAfterConflict(newer, mine, base).weights.daysOff).toBe(10);
+  });
+
+  it("still merges both logbooks with this device's edit kept", () => {
+    const newer = { ...base, logbook: [month("NOV26", "2026-11-03T00:00:00Z")] } as PreferenceProfile;
+    const mine = { ...base, seniorityNumber: 1234, logbook: [month("OCT26", "2026-10-03T00:00:00Z")] } as PreferenceProfile;
+    const merged = mergeAfterConflict(newer, mine, base);
+    expect(merged.seniorityNumber).toBe(1234);
+    expect(merged.logbook?.map((e) => e.id)).toEqual(["NOV26", "OCT26"]);
+  });
+});
+
+describe("withGuestRecords", () => {
+  it("adds the guest's logged months and checklist to the account's profile and leaves the rest", () => {
+    const account = { ...profile([month("SEP26", "2026-09-03T00:00:00Z")], "2026-11-01T00:00:00Z"), seniorityNumber: 900 } as PreferenceProfile;
+    const guest = { ...profile([month("OCT26", "2026-10-03T00:00:00Z")], "2026-11-05T00:00:00Z"), seniorityNumber: 5, bidChecklist: { oct: { enteredAt: "2026-10-10T00:00:00Z" } } } as PreferenceProfile;
+    const merged = withGuestRecords(account, guest);
+    expect(merged.logbook?.map((e) => e.id)).toEqual(["OCT26", "SEP26"]);
+    expect(merged.bidChecklist).toEqual({ oct: { enteredAt: "2026-10-10T00:00:00Z" } });
+    expect(merged.seniorityNumber).toBe(900);
+    expect(merged.completedAt).toBe("2026-11-01T00:00:00Z");
+  });
+
+  it("is the account's own profile when the guest logged nothing", () => {
+    const account = profile(undefined, "a");
+    expect(withGuestRecords(account, profile([], "b"))).toBe(account);
+  });
+});
+
+describe("mergeAfterConflict answer by answer", () => {
+  const b = { ...profile(undefined, "2026-11-01T00:00:00Z"), brainInterview: { exchanges: [], choices: [], pins: {} } } as PreferenceProfile;
+  const drag = (dragId: string, preferred: string, other: string) => ({ preferred, other, strength: "strongly" as const, direct: true, dragId });
+
+  it("keeps a city graded on the other device when this one graded a different city", () => {
+    const merged = mergeAfterConflict({ ...b, cityPreferences: { ANC: "love" } } as PreferenceProfile, { ...b, cityPreferences: { CDG: "avoid" } } as PreferenceProfile, b);
+    expect(merged.cityPreferences).toEqual({ ANC: "love", CDG: "avoid" });
+  });
+
+  it("keeps each device's own city ratings and hotel grades, and this device's where both graded the same", () => {
+    const start = { ...b, cityRatings: { HNL: { score: 3, hotels: { Hilton: 3 } } } } as unknown as PreferenceProfile;
+    const theirs = { ...start, cityRatings: { HNL: { score: 4, hotels: { Hilton: 3, Hyatt: 1 } }, ANC: { score: 5 } } } as unknown as PreferenceProfile;
+    const mine = { ...start, cityRatings: { HNL: { score: 2, hotels: { Hilton: 5 } }, CDG: { score: 1 } } } as unknown as PreferenceProfile;
+    expect(mergeAfterConflict(theirs, mine, start).cityRatings).toEqual({ HNL: { score: 2, hotels: { Hilton: 5, Hyatt: 1 } }, ANC: { score: 5 }, CDG: { score: 1 } });
+  });
+
+  it("keeps a priority level, a target and a strategy reaction set on each device", () => {
+    const theirs = { ...b, weights: { ...b.weights, daysOff: 80 }, explicitTargets: { creditHours: { min: 70, max: 80 } }, strategyReactions: { "bid-high": "used" } } as unknown as PreferenceProfile;
+    const mine = { ...b, weights: { ...b.weights, tripLength: -40 }, explicitTargets: { daysOff: 15 }, strategyReactions: { "bid-low": "dismissed" } } as unknown as PreferenceProfile;
+    const merged = mergeAfterConflict(theirs, mine, b);
+    expect(merged.weights).toMatchObject({ daysOff: 80, tripLength: -40 });
+    expect(merged.explicitTargets).toEqual({ creditHours: { min: 70, max: 80 }, daysOff: 15 });
+    expect(merged.strategyReactions).toEqual({ "bid-high": "used", "bid-low": "dismissed" });
+  });
+
+  it("keeps a pin set on the other device when this one made a drag, and both drags when each made one", () => {
+    const theirs = { ...b, brainInterview: { ...b.brainInterview!, pins: { daysOff: 1 }, choices: [drag("d0", "2001", "2002")] } } as PreferenceProfile;
+    const mine = { ...b, brainInterview: { ...b.brainInterview!, choices: [drag("d1", "2003", "2004")] } } as PreferenceProfile;
+    const merged = mergeAfterConflict(theirs, mine, b);
+    expect(merged.brainInterview?.pins).toEqual({ daysOff: 1 });
+    expect(merged.brainInterview?.choices.map((c) => c.dragId)).toEqual(["d0", "d1"]);
+  });
+
+  it("keeps a drag undone on either device undone", () => {
+    const start = { ...b, brainInterview: { ...b.brainInterview!, choices: [drag("d0", "2001", "2002"), drag("d1", "2003", "2004")] } } as PreferenceProfile;
+    const theirs = { ...start, brainInterview: { ...start.brainInterview!, choices: [drag("d1", "2003", "2004")] } } as PreferenceProfile;
+    const mine = { ...start, brainInterview: { ...start.brainInterview!, choices: [drag("d0", "2001", "2002"), drag("d2", "2005", "2006")] } } as PreferenceProfile;
+    expect(mergeAfterConflict(theirs, mine, start).brainInterview?.choices.map((c) => c.dragId)).toEqual(["d2"]);
+  });
+
+  it("takes this device's version of a drag it set aside with a later one", () => {
+    const start = { ...b, brainInterview: { ...b.brainInterview!, choices: [drag("d0", "2001", "2002")] } } as PreferenceProfile;
+    const theirs = { ...start, brainInterview: { ...start.brainInterview!, pins: { daysOff: 1 } } } as PreferenceProfile;
+    const mine = { ...start, brainInterview: { ...start.brainInterview!, choices: [{ ...drag("d0", "2001", "2002"), supersededBy: "d1" }, drag("d1", "2002", "2001")] } } as PreferenceProfile;
+    const merged = mergeAfterConflict(theirs, mine, start);
+    expect(merged.brainInterview?.choices).toEqual(mine.brainInterview?.choices);
+    expect(merged.brainInterview?.pins).toEqual({ daysOff: 1 });
   });
 });

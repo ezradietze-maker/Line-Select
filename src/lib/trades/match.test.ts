@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
+import type { PilotHolding } from "@/lib/trades/match";
 
 // What each pilot would gain, by trip: the graph logic under test, without the scoring in the way.
 const gains = vi.hoisted(() => ({ table: new Map<string, number>() }));
@@ -9,7 +10,7 @@ vi.mock("@/lib/trades/value", () => ({
     swaps.map((s) => ({ give: s.give, take: s.take, before: 50, after: 50, gain: gains.table.get(`${line.lineNumber}:${s.give.id}>${s.take.id}`) ?? -1, creditChange: 0, daysOffChange: 0, reasons: [] })),
 }));
 
-const { findTrades } = await import("@/lib/trades/match");
+const { bestSet, findTrades } = await import("@/lib/trades/match");
 
 const pack = { id: "p", base: "MEM", month: "OCT26", bidPeriodStart: "2026-09-28", bidPeriodDays: 28, lines: [] } as unknown as BidPack;
 const now = Date.UTC(2026, 8, 20);
@@ -148,5 +149,57 @@ describe("finding trades", () => {
     // P1 ends with t2 (day 6) and keeps day 15; P2 ends with t3 (day 9) and keeps day 3 (t1's date: can't pass through); P3 ends with t1 (day 3) and keeps day 6 (t2's date).
     const { options } = findTrades(pack, [with2nd(1, 9), with2nd(2, 3), with2nd(3, 6)], { now });
     expect(options).toEqual([]);
+  });
+});
+
+describe("one pilot is one pilot, however they're listed", () => {
+  it("never hands one pilot two trips in one chain, listed twice", () => {
+    // U listed twice (two holdings, say); the only cycle runs U -> U -> P.
+    const u1 = { ...pilot(1), pilotId: "U" };
+    const u2 = { ...pilot(2), pilotId: "U" };
+    const p = { ...pilot(3), pilotId: "P" };
+    wants(1, 2);
+    wants(2, 3);
+    wants(3, 1);
+    const { trades, options } = findTrades(pack, [u1, u2, p], { now });
+    expect(options).toEqual([]);
+    expect(trades).toEqual([]);
+  });
+
+  it("chooses among thousands of trades without running out of stack", () => {
+    const options = Array.from({ length: 30_000 }, (_, i) => ({ legs: [{ pilotId: `a${i}` }, { pilotId: `b${i % 7}` }], plan: { steps: [], exposure: 0 }, worth: 30_000 - i }) as never);
+    const { chosen } = bestSet(options);
+    // Seven pilots on the "b" side, so at most seven trades: the seven worth most.
+    expect(chosen).toHaveLength(7);
+  });
+
+  it("leaves out an option naming one pilot twice, whatever it's worth", () => {
+    const twice = { legs: [{ pilotId: "U" }, { pilotId: "U" }], plan: { steps: [], exposure: 0 }, worth: 50 } as never;
+    const fair = { legs: [{ pilotId: "U" }, { pilotId: "P" }], plan: { steps: [], exposure: 0 }, worth: 2 } as never;
+    expect(bestSet([twice, fair]).chosen).toEqual([fair]);
+  });
+});
+
+describe("what's carried in from last month", () => {
+  const later = (n: number, carryIn?: PilotHolding["carryIn"]) => ({ ...pilot(n, 10), ...(carryIn ? { carryIn } : {}) });
+  const first = () => pilot(2, 0);
+
+  it("isn't known: no trip in the month's first days is handed over", () => {
+    wants(1, 2);
+    wants(2, 1);
+    expect(findTrades(pack, [later(1), first()], { now }).trades).toEqual([]);
+  });
+
+  it("is known to be nothing: the trade goes ahead", () => {
+    wants(1, 2);
+    wants(2, 1);
+    expect(findTrades(pack, [later(1, []), first()], { now }).trades).toHaveLength(1);
+  });
+
+  it("is a trip still flying on day 0: the trade is ruled out", () => {
+    wants(1, 2);
+    wants(2, 1);
+    const carried = { kind: "trip" as const, id: "c", label: "carry-in trip", report: "2026-09-26T10:00:00Z", release: "2026-09-28T20:00:00Z", international: false };
+    expect(findTrades(pack, [later(1, [carried]), first()], { now }).trades).toEqual([]);
   });
 });

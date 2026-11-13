@@ -29,15 +29,23 @@ export async function saveServerBidPack(pack: BidPack): Promise<boolean> {
   }
 }
 
-/** The pack saved to the pilot's account, or null when there's none or it can't be fetched. */
-export async function fetchServerBidPack(): Promise<BidPack | null> {
-  if (typeof DecompressionStream === "undefined") return null;
+/**
+ * The pack saved to the pilot's account; "none" only when the server said the account holds none. Anything else (no
+ * signal, a server error, a session that lapsed, a browser that can't unzip it) is "unreachable": never a reason to
+ * save a pack over the account's.
+ */
+export type ServerBidPackLoad = { kind: "found"; pack: BidPack } | { kind: "none" } | { kind: "unreachable" };
+
+export async function fetchServerBidPack(): Promise<ServerBidPackLoad> {
   try {
     const res = await fetch("/api/bid-pack", { credentials: "same-origin", cache: "no-store" });
-    if (res.status !== 200) return null;
-    return restoreBidPack(JSON.parse(await gunzip(await res.arrayBuffer())));
+    if (res.status === 204) return { kind: "none" };
+    // Asked first even where the browser can't unzip a pack (Safari before 16.4): "none" needs no unzipping, and a
+    // guest who signs up there still has their upload taken over.
+    if (res.status !== 200 || typeof DecompressionStream === "undefined") return { kind: "unreachable" };
+    return { kind: "found", pack: restoreBidPack(JSON.parse(await gunzip(await res.arrayBuffer()))) };
   } catch {
-    return null;
+    return { kind: "unreachable" };
   }
 }
 

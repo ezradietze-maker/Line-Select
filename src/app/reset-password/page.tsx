@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { RecoveryCodePanel } from "@/components/auth/RecoveryCodePanel";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
@@ -29,6 +30,13 @@ function ResetPasswordForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [newCode, setNewCode] = useState<string | null>(null);
+
+  function goHome() {
+    // A full load, not a client navigation, so the app picks up the new session cookie from scratch.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/");
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -45,9 +53,19 @@ function ResetPasswordForm() {
       setError(result.error ?? "Something went wrong. Try again.");
       return;
     }
-    // A full load, not a client navigation, so the app picks up the new session cookie from scratch.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign("/");
+    // A new recovery code comes back when this reset also confirmed the account: the old one may not have been theirs.
+    if (result.recoveryCode) return setNewCode(result.recoveryCode);
+    goHome();
+  }
+
+  if (newCode) {
+    return (
+      <div className="mx-auto w-full max-w-md">
+        <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
+          <RecoveryCodePanel code={newCode} reason="reset" doneLabel="Continue to Line Select" onDone={goHome} />
+        </div>
+      </div>
+    );
   }
 
   return (

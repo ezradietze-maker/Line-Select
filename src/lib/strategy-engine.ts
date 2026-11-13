@@ -434,7 +434,7 @@ export function generateStrategies(
       lines: overlaps.slice(0, 5).map(({ l, credit }) =>
         rec(
           l,
-          `${hm(credit)} of trips come off for your vacation${credit > value ? ` — ${hm(credit - value)} more than its ${hm(value)}, drawn from your bank (CBA 2026 7.G.5)` : ""}`,
+          `${hm(credit)} of trips come off for your vacation${credit > value ? ` — ${hm(credit - value)} more than its ${hm(value)}, drawn from your bank (CBA 2026 7.G.1)` : ""}`,
           `${l.daysOff} days off on the line before vacation · ${hm(l.totalCreditHours)} credit.`,
           openAt(l),
           openAt(l) !== null ? `About ${pct(openAt(l)!)} likely still open at your turn.` : ""

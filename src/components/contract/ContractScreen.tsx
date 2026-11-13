@@ -33,9 +33,12 @@ function loadChat(userId: string | null): Turn[] {
   }
 }
 
-function saveChat(userId: string | null, turns: Turn[]) {
+/** `fresh` for a new chat: without it, what another tab kept since stays, so two tabs' answers don't wipe each other's. */
+function saveChat(userId: string | null, turns: Turn[], fresh = false) {
   try {
-    const finished = turns.filter((t) => t.answer).slice(-MAX_KEPT_TURNS);
+    const mine = turns.filter((t) => t.answer);
+    const kept = fresh ? [] : loadChat(userId);
+    const finished = [...kept.map((k) => mine.find((t) => t.id === k.id) ?? k), ...mine.filter((t) => !kept.some((k) => k.id === t.id))].slice(-MAX_KEPT_TURNS);
     localStorage.setItem(chatKey(userId), JSON.stringify(finished));
   } catch {
     // A private window or full storage: the chat just isn't kept.
@@ -129,7 +132,7 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
 
   function newChat() {
     setTurns([]);
-    saveChat(userId, []);
+    saveChat(userId, [], true);
     setQuestion("");
   }
 

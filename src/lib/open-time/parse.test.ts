@@ -24,6 +24,12 @@ describe("parseOpenTimePaste", () => {
     expect(parseOpenTimePaste("14OCT 213").rows[0]).toMatchObject({ tripNumbers: ["213"], day: 14 });
   });
 
+  it("doesn't take a count for a trip number, its label before or after it", () => {
+    for (const text of ["1540 14OCT CR 12.5 TAFB 48:30 LDGS 3", "1540 14OCT 3 LDGS", "1540 14OCT DAYS 2"]) {
+      expect(parseOpenTimePaste(text).rows[0].tripNumbers).toEqual(["1540"]);
+    }
+  });
+
   it("believes a trip number that's labelled", () => {
     for (const text of ["Trip 213 14OCT 1430", "SEQ 213 14OCT 22", "#213 14OCT 22", "Pairing: 213 14OCT 22"]) {
       expect(parseOpenTimePaste(text).rows[0].tripNumbers).toEqual(["213"]);

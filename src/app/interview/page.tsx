@@ -16,5 +16,11 @@ export default function InterviewPage() {
 
   if (!bidPack) return null;
 
-  return <BrainInterview key={interviewKey} bidPack={bidPack} onComplete={handleBrainInterviewComplete} priorProfile={profile} userId={user?.id ?? null} />;
+  return (
+    <>
+      {/* The page's name for a screen reader's heading list: each step shows its own question as the big heading. */}
+      <h1 className="sr-only">Interview</h1>
+      <BrainInterview key={interviewKey} bidPack={bidPack} onComplete={handleBrainInterviewComplete} priorProfile={profile} userId={user?.id ?? null} />
+    </>
+  );
 }

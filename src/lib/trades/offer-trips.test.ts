@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { alreadyTraded, offersFreedByTrade, sameTrip } from "@/lib/trades/offer-trips";
+import { agreedBoardTrips, alreadyTraded, lockBoardTrades, offersFreedBy, offersFreedByTrade, sameTrip } from "@/lib/trades/offer-trips";
+import type { PilotHolding } from "@/lib/trades/match";
+import type { Line } from "@/types/bidpack";
 import type { TradeOffer, TripSnapshot } from "@/types/trade";
 
 const meta = { base: "MEM", aircraft: "MD11", seat: "CAP", month: "NOV26" };
@@ -92,5 +94,39 @@ describe("a trip already traded", () => {
     const pending = offer("a", trip("13", 2), proposal("b", trip("27", 6)));
     const otherMonth = { ...accepted, bidPackMeta: { ...meta, month: "DEC26" } };
     expect(alreadyTraded([pending, otherMonth], meta, "a", trip("13", 2))).toBe(false);
+  });
+});
+
+describe("trips that moved in a step of a suggested trade", () => {
+  it("withdraws the pilot's offers of them and takes their proposals made with them off, leaving the rest", () => {
+    const mine = offer("u1", trip("13", 5));
+    const other = offer("u1", trip("14", 9));
+    const proposedOn = offer("u3", trip("20", 7), { status: "pending", responderUserId: "u1", responderTrip: trip("13", 5) });
+    const someoneElses = offer("u2", trip("13", 5));
+    expect(offersFreedBy([{ pilot: "u1", trip: trip("13", 5) }], meta, [mine, other, proposedOn, someoneElses])).toEqual({ withdraw: [mine.id], reopen: [proposedOn.id] });
+  });
+});
+
+describe("matching around the board's agreed trades", () => {
+  const held = (pilotId: string, trips: { id: string; startDayIndex: number; pairingNumber: string }[]): PilotHolding =>
+    ({ pilotId, model: {}, line: { lineNumber: "1001", trips } as unknown as Line }) as unknown as PilotHolding;
+
+  it("locks each trip a pilot agreed to give away, for that pilot only", () => {
+    const agreed = offer("u1", trip("13", 5), { status: "accepted", responderUserId: "u2", responderTrip: trip("20", 7) });
+    const given = agreedBoardTrips([agreed, offer("u3", trip("30", 2))]);
+    expect(given.map((g) => g.pilot)).toEqual(["u1", "u2"]);
+    const [u1, u2, u3] = lockBoardTrades(
+      [held("u1", [{ id: "p13", startDayIndex: 5, pairingNumber: "13" }, { id: "p14", startDayIndex: 9, pairingNumber: "14" }]), held("u2", [{ id: "p20", startDayIndex: 7, pairingNumber: "20" }]), held("u3", [{ id: "p13", startDayIndex: 5, pairingNumber: "13" }])],
+      given
+    );
+    expect([...(u1.locked ?? [])]).toEqual(["p13@5"]);
+    expect([...(u2.locked ?? [])]).toEqual(["p20@7"]);
+    expect(u3.locked).toBeUndefined();
+  });
+
+  it("locks every day of the pairing when an older offer didn't say which", () => {
+    const given = agreedBoardTrips([offer("u1", trip("13"), { status: "accepted" })]);
+    const [u1] = lockBoardTrades([held("u1", [{ id: "a", startDayIndex: 5, pairingNumber: "13" }, { id: "b", startDayIndex: 12, pairingNumber: "13" }, { id: "c", startDayIndex: 20, pairingNumber: "14" }])], given);
+    expect([...(u1.locked ?? [])].sort()).toEqual(["a@5", "b@12"]);
   });
 });

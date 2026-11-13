@@ -177,7 +177,9 @@ export function SendToVipsDialog({
     }
     setVipsEmployeeNumber(normalized);
     setVipsAnswers(complete);
-    setSent(true);
+    // After the browser has taken the post: swapped in during the submit event, the next screen took the form off the
+    // page before it was sent, and nothing reached VIPS.
+    setTimeout(() => setSent(true), 0);
   }
 
   if (sent) {
@@ -307,7 +309,7 @@ export function SendToVipsDialog({
                 <span className="mt-0.5 block text-ink-faint" data-vips-note={q.key}>
                   {notes[q.key].meaning}
                   {notes[q.key].forThisOrder ? ` ${notes[q.key].forThisOrder}` : ""}{" "}
-                  <a href={contractQuestionHref(q.text)} target="_blank" rel="noopener" className="text-accent underline-offset-2 hover:underline">What does the contract say?</a>
+                  <a href={contractQuestionHref(q.text)} target="_blank" rel="noopener" className="text-accent underline underline-offset-2">What does the contract say?</a>
                 </span>
                 {advised && (
                   <span className="mt-0.5 block text-ink" data-vips-advised={q.key}>

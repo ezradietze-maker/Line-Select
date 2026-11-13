@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "November 10, 2026";
+const LAST_UPDATED = "November 11, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -371,7 +371,9 @@ export default function PrivacyPage() {
             IP address. It also measures page speed &mdash; how quickly each page loads and responds to a tap
             &mdash; as timings only, so slow screens can be found and fixed. If you&rsquo;re signed in, these events are tied to your account id so we can tell
             how many distinct pilots hit an issue rather than how many times it happened to one
-            pilot &mdash; never your name or email. We don&rsquo;t use this for advertising, and we
+            pilot &mdash; never your name or email. Signed in or not, PostHog keeps a random ID with nothing about you
+            in it in this browser&rsquo;s storage (not a cookie), so one browser&rsquo;s visits count as one; clearing
+            the site&rsquo;s data in your browser removes it. We don&rsquo;t use this for advertising, and we
             don&rsquo;t run session recording or record what you click or type.
           </p>
         </Section>

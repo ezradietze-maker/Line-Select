@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { DEVICE_COOKIE, deviceIdOf } from "@/lib/device-cookie";
-import { incrementCounter, setJson } from "@/lib/server/kv";
+import { getJson, incrementCounter, setJson } from "@/lib/server/kv";
 
 /**
  * A minimal attempt counter for login, backed by the same persistent
@@ -11,7 +11,7 @@ import { incrementCounter, setJson } from "@/lib/server/kv";
  */
 
 const WINDOW_SECONDS = 15 * 60;
-const MAX_ATTEMPTS = 6;
+export const MAX_ATTEMPTS = 6;
 
 // A plain integer under its own prefix: Redis INCR can't touch the `{ count }` objects the old read-then-write limiter left.
 function attemptKey(scope: string, identifier: string): string {
@@ -25,6 +25,16 @@ function attemptKey(scope: string, identifier: string): string {
  */
 export async function takeAttempt(scope: string, identifier: string, max: number = MAX_ATTEMPTS): Promise<boolean> {
   return (await incrementCounter(attemptKey(scope, identifier), WINDOW_SECONDS)) <= max;
+}
+
+/** Like `takeAttempt`, but says how many attempts this caller has used in the window, this one included. */
+export async function countAttempt(scope: string, identifier: string): Promise<number> {
+  return incrementCounter(attemptKey(scope, identifier), WINDOW_SECONDS);
+}
+
+/** How many attempts are used in the window so far, without taking one. */
+export async function attemptsUsed(scope: string, identifier: string): Promise<number> {
+  return Number((await getJson<number>(attemptKey(scope, identifier))) ?? 0);
 }
 
 /** Clears the counter after a genuine success, so a legitimate pilot who mistyped a password twice isn't penalized once they get it right. */

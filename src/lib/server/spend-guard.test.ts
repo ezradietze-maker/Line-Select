@@ -13,6 +13,17 @@ vi.mock("@/lib/server/kv", () => ({
     store.set(key, next);
     return next;
   },
+  takeSlot: async (key: string, limit: number) => {
+    const held = store.get(key) ?? 0;
+    if (held >= limit) return false;
+    store.set(key, held + 1);
+    return true;
+  },
+  releaseSlot: async (key: string) => {
+    const held = (store.get(key) ?? 0) - 1;
+    if (held > 0) store.set(key, held);
+    else store.delete(key);
+  },
 }));
 vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => null }));
 const sent: { to: string; subject: string }[] = [];
@@ -23,7 +34,7 @@ vi.mock("@/lib/server/email", () => ({
   },
 }));
 
-const { checkSpend, pilotSpender, recordSpend, spenderFor, spendLimitResponse } = await import("./spend-guard");
+const { checkSpend, pilotSpender, recordSpend, spenderFor, spenderForUser, spendLimitResponse, startPaidCall } = await import("./spend-guard");
 
 const pilot = { key: "u:pilot-1", signedIn: true };
 const otherPilot = { key: "u:pilot-2", signedIn: true };
@@ -37,6 +48,8 @@ beforeEach(() => {
   delete process.env.SPEND_SITE_DAILY_USD;
   delete process.env.SPEND_PILOT_DAILY_USD;
   delete process.env.SPEND_GUEST_DAILY_USD;
+  delete process.env.SPEND_IN_FLIGHT_PER_PILOT;
+  delete process.env.SPEND_IN_FLIGHT_PER_ADDRESS;
   process.env.ALERT_EMAIL = "owner@example.com";
 });
 
@@ -88,6 +101,15 @@ describe("spend guard", () => {
     expect(await spenderFor(withCookie)).toEqual({ key: `device:${device}`, signedIn: false, addressKey: "address:198.51.100.4" });
     const noCookie = new Request("https://example.com", { headers: { "x-forwarded-for": "198.51.100.4" } });
     expect(await spenderFor(noCookie)).toEqual({ key: "ip:198.51.100.4", signedIn: false, addressKey: "address:198.51.100.4" });
+  });
+
+  it("gives an account whose email isn't confirmed a guest's allowance, and a confirmed one a pilot's", () => {
+    const device = "6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b";
+    const request = new Request("https://example.com", { headers: { "x-forwarded-for": "198.51.100.4", cookie: `ls_device=${device}` } });
+    const account = { id: "pilot-1", email: "p@example.com", displayName: "P", createdAt: "" };
+    expect(spenderForUser({ ...account, emailVerified: false }, request)).toEqual({ key: `device:${device}`, signedIn: false, addressKey: "address:198.51.100.4" });
+    expect(spenderForUser(account, request).signedIn).toBe(false);
+    expect(spenderForUser({ ...account, emailVerified: true }, request)).toEqual(pilotSpender("pilot-1", request));
   });
 
   it("gives each guest in a crew room their own $2, up to $10 for the address", async () => {
@@ -154,5 +176,108 @@ describe("a feature's own allowance", () => {
     await recordSpend(pilot, 1, { feature: "flights", now: day });
     expect(await checkSpend(otherPilot, { feature: "flights", now: day })).toEqual({ ok: false, scope: "site" });
     expect(await checkSpend(otherPilot, { now: day })).toEqual({ ok: false, scope: "site" });
+  });
+});
+
+describe("a paid call's hold", () => {
+  const spent = (key: string) => (store.get(`line-select:spend:who:2026-11-05:${key}`) ?? 0) / 1e6;
+  const site = () => (store.get("line-select:spend:site:2026-11-05") ?? 0) / 1e6;
+  const inFlight = () => [...store.keys()].filter((k) => k.includes(":in-flight:"));
+  const crewGuest = { key: "device:g1", signedIn: false, addressKey: "address:203.0.113.1" };
+
+  it("holds the most the call can cost while it runs, then settles to what it really cost", async () => {
+    const paid = await startPaidCall(crewGuest, 0.5, { now: day });
+    if (!paid.ok) throw new Error("refused");
+    expect(spent("device:g1")).toBe(0.5);
+    expect(spent("address:203.0.113.1")).toBe(0.5);
+    expect(site()).toBe(0.5);
+    expect(inFlight()).toHaveLength(2);
+    await paid.finish(0.12);
+    expect(spent("device:g1")).toBe(0.12);
+    expect(spent("address:203.0.113.1")).toBe(0.12);
+    expect(site()).toBe(0.12);
+    expect(inFlight()).toHaveLength(0);
+  });
+
+  it("gives the hold back when the call fails, keeping what was billed", async () => {
+    const paid = await startPaidCall(guest, 0.5, { now: day });
+    if (!paid.ok) throw new Error("refused");
+    await paid.finish(0.03);
+    expect(spent(guest.key)).toBe(0.03);
+    const unbilled = await startPaidCall(guest, 0.5, { now: day });
+    if (!unbilled.ok) throw new Error("refused");
+    await unbilled.finish(0);
+    expect(spent(guest.key)).toBe(0.03);
+  });
+
+  it("settles once, however many times it's finished", async () => {
+    const paid = await startPaidCall(pilot, 1, { now: day });
+    if (!paid.ok) throw new Error("refused");
+    await paid.finish(0.2);
+    await paid.finish(0.2);
+    expect(spent(pilot.key)).toBe(0.2);
+  });
+
+  it("lets fifty calls sent at once spend no more than the ceiling and one call's hold", async () => {
+    process.env.SPEND_IN_FLIGHT_PER_PILOT = "1000";
+    process.env.SPEND_IN_FLIGHT_PER_ADDRESS = "1000";
+    const hold = 0.3;
+    const calls = await Promise.all(Array.from({ length: 50 }, () => startPaidCall(crewGuest, hold, { now: day })));
+    const letIn = calls.filter((c) => c.ok);
+    // $2 / $0.30: the seventh is let in with $0.20 left, the last while there was room.
+    expect(letIn.length).toBe(7);
+    expect(spent("device:g1")).toBeLessThanOrEqual(2 + hold);
+    expect(calls.find((c) => !c.ok)).toEqual({ ok: false, scope: "pilot" });
+    // Each really costing its whole hold, what's recorded still stops there.
+    await Promise.all(letIn.map((c) => c.ok && c.finish(hold)));
+    expect(spent("device:g1")).toBeLessThanOrEqual(2 + hold);
+    expect((await startPaidCall(crewGuest, hold, { now: day })).ok).toBe(false);
+  });
+
+  it("lets a pilot run four paid calls at once, and their address twelve", async () => {
+    const running = await Promise.all(Array.from({ length: 4 }, () => startPaidCall(pilot, 0.01, { now: day })));
+    expect(running.every((c) => c.ok)).toBe(true);
+    expect(await startPaidCall(pilot, 0.01, { now: day })).toEqual({ ok: false, scope: "busy" });
+    expect(spendLimitResponse({ ok: false, scope: "busy" }).status).toBe(429);
+    // Nothing is held for a call that was turned away.
+    expect(spent(pilot.key)).toBeCloseTo(0.04, 6);
+    if (running[0].ok) await running[0].finish(0.01);
+    expect((await startPaidCall(pilot, 0.01, { now: day })).ok).toBe(true);
+
+    const account = (n: number) => ({ key: `u:room-${n}`, signedIn: true, addressKey: "pilot-address:198.51.100.9" });
+    const room = await Promise.all(Array.from({ length: 12 }, (_, n) => startPaidCall(account(n), 0.01, { now: day })));
+    expect(room.every((c) => c.ok)).toBe(true);
+    expect(await startPaidCall(account(12), 0.01, { now: day })).toEqual({ ok: false, scope: "busy" });
+    // The pilot's own place is given back when the address had none left.
+    expect(store.has("line-select:spend:in-flight:u:room-12")).toBe(false);
+  });
+
+  it("stops at the site's ceiling, leaves the totals as they were, and emails the owner once", async () => {
+    process.env.SPEND_SITE_DAILY_USD = "1";
+    await recordSpend(otherPilot, 1, { now: day });
+    sent.length = 0;
+    expect(await startPaidCall(pilot, 0.2, { now: day })).toEqual({ ok: false, scope: "site" });
+    expect(await startPaidCall(pilot, 0.2, { now: day })).toEqual({ ok: false, scope: "site" });
+    expect(site()).toBe(1);
+    expect(spent(pilot.key)).toBe(0);
+    expect(inFlight()).toHaveLength(0);
+    // recordSpend crossing the ceiling already sent the day's one email.
+    expect(sent).toHaveLength(0);
+  });
+
+  it("emails the owner when a call is the first thing the site's ceiling stops", async () => {
+    process.env.SPEND_SITE_DAILY_USD = "1";
+    const first = await startPaidCall(pilot, 1, { now: day });
+    if (!first.ok) throw new Error("refused");
+    await first.finish(1);
+    expect(sent).toHaveLength(0);
+    expect(await startPaidCall(otherPilot, 0.2, { now: day })).toEqual({ ok: false, scope: "site" });
+    expect(await startPaidCall(otherPilot, 0.2, { now: day })).toEqual({ ok: false, scope: "site" });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("counts toward what checkSpend sees while it runs, so hotel and flight checks see it too", async () => {
+    expect((await startPaidCall(guest, 2, { now: day })).ok).toBe(true);
+    expect(await checkSpend(guest, { now: day })).toEqual({ ok: false, scope: "pilot" });
   });
 });
