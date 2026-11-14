@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { groupDepartures } from "@/lib/metrics/departures";
+import { homeStretches, summarizeHomeTime } from "@/lib/metrics/home-stretches";
 import type { Trip, TripLeg } from "@/types/bidpack";
 
 /**
@@ -118,6 +119,44 @@ describe("groupDepartures", () => {
   it("counts no nights at base with a crash pad, or for a pilot who lives there", () => {
     expect(groupDepartures([first, dayAndAHalf], PACK, { ...SAN, hasCrashPad: true })[0].baseNights).toEqual([]);
     expect(groupDepartures([first, dayAndAHalf], PACK, { homeAirports: [] }).flatMap((d) => d.baseNights)).toEqual([]);
+  });
+
+  // The same day trip on three days running, which the parser keeps as one trip (`runStarts`): reports 12:00 each day,
+  // back in Memphis at 20:00 — sixteen hours at home, or in a Memphis hotel, before the next day's report.
+  const dayRun: Trip = {
+    ...trip("48", 1, "1200", [leg("1411", "MEM", "IAH", 60, 200), leg("1412", "IAH", "MEM", 300, 480)], 18),
+    days: 3,
+    tafbHours: 25.5,
+    landings: 6,
+    departures: 6,
+    runStarts: [0, 1, 2],
+    schedule: [0, 1440, 2880].map((at) => ({
+      reportTimeLocal: "1200",
+      startMinutes: at,
+      legs: [leg("1411", "MEM", "IAH", at + 60, at + 200), leg("1412", "IAH", "MEM", at + 300, at + 480)],
+      layover: null,
+    })),
+  };
+
+  it("lets a pilot who lives at base go home between the days of a run of day trips", () => {
+    const deps = groupDepartures([dayRun], PACK, { homeAirports: [] });
+    expect(deps).toHaveLength(3);
+    expect(deps.map((d) => d.trips.map((t) => t.id))).toEqual([["48"], ["48"], ["48"]]);
+    expect(deps.map((d) => d.creditHours)).toEqual([6, 6, 6]);
+    expect(deps[0].releaseAt! - deps[0].reportAt!).toBe(480 * 60_000);
+    // Every night of the month in his own bed, the two between the days included.
+    expect(summarizeHomeTime(homeStretches(deps, { ...PACK, bidPeriodDays: 28 }, [])!).nightsHome).toBe(28);
+  });
+
+  it("keeps a commuter in a Memphis hotel between the days of a run of day trips", () => {
+    const deps = groupDepartures([dayRun], PACK, SAN);
+    expect(deps).toHaveLength(1);
+    expect(deps[0].trips.map((t) => t.id)).toEqual(["48"]);
+    expect(deps[0].turnHours).toEqual([]);
+    expect(deps[0].baseNights.filter((b) => b.reason === "between")).toEqual([
+      { reason: "between", nights: 1, tripNumber: "48", runDay: 1 },
+      { reason: "between", nights: 1, tripNumber: "48", runDay: 2 },
+    ]);
   });
 
   it("leaves a trip it can't place on a date standing alone", () => {

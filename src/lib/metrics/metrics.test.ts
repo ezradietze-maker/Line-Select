@@ -224,6 +224,38 @@ describe("the work in a trip, and the days it takes", () => {
     // Living at base: report Monday 08:00, back Saturday 19:00 — six days.
     expect(measure("workDays", line, metrics)).toBe(6);
   });
+
+  // Made-up Memphis day trips: one reporting 14:00 and back at 01:00, the next out again at 15:00 that day.
+  const dayTrip = (id: string, day: number, report: string, legs: TripLeg[]): Trip => ({
+    ...trip, id, pairingNumber: id, days: 1, layoverCities: [], international: false, deadheadLegs: 0, creditHours: 6, landings: legs.length, departures: legs.length,
+    tafbHours: (legs.at(-1)!.endMinutes + 30) / 60, startDayIndex: day, zuluAnchor: "", schedule: [{ reportTimeLocal: report, startMinutes: 0, legs, layover: null }],
+  });
+  const memPack = (trips: Trip[]) => {
+    const l: Line = { ...line, trips };
+    return { l, p: prepareMetrics({ ...pack, base: "MEM", lines: [l] } as BidPack) };
+  };
+
+  it("gives a day two departures share to work once", () => {
+    const late = dayTrip("31", 2, "1400", [leg("1411", "MEM", "IAH", 60, 300), leg("1412", "IAH", "MEM", 420, 660)]);
+    const next = dayTrip("32", 3, "1500", [leg("1411", "MEM", "IAH", 60, 300), leg("1412", "IAH", "MEM", 360, 480)]);
+    const { l, p } = memPack([late, next]);
+    // Two departures (14 hours at home between), on Wednesday–Thursday and Thursday: two days, not three.
+    expect(measure("homeDepartures", l, p)).toBe(2);
+    expect(measure("workDays", l, p)).toBe(2);
+  });
+
+  it("counts a run of day trips a pilot goes home between as a departure a day", () => {
+    // The same day trip on three days running, kept as one trip: out 08:00, back 16:00, home every night.
+    const day = (at: number) => ({ reportTimeLocal: "0800", startMinutes: at, legs: [leg("1411", "MEM", "IAH", at + 60, at + 200), leg("1412", "IAH", "MEM", at + 300, at + 480)], layover: null });
+    const run: Trip = { ...dayTrip("48", 2, "0800", day(0).legs), days: 3, creditHours: 18, tafbHours: 25.5, landings: 6, departures: 6, runStarts: [0, 1, 2], schedule: [day(0), day(1440), day(2880)] };
+    const { l, p } = memPack([run]);
+    expect(measure("homeDepartures", l, p)).toBe(3);
+    expect(measure("nightsHome", l, p)).toBe(28);
+    expect(measure("workDays", l, p)).toBe(3);
+    // A commuter stays in Memphis between the days: one departure, and a hotel night before each day after the first.
+    expect(measure("homeDepartures", l, p, { homeAirports: ["SAN"] })).toBe(1);
+    expect(measure("baseHotelNights", l, p, { homeAirports: ["SAN"] })).toBe(3);
+  });
 });
 
 describe("night work", () => {

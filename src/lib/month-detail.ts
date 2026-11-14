@@ -617,7 +617,13 @@ export function buildDetailedMonth(
       for (const b of dep.baseNights) {
         if (b.reason === "before")
           note(startDay, `Shows at ${startDay?.dutyStart ?? "an early hour"} in ${code} — too early to commute in that morning, and the duty is long, so a night in a ${code} hotel before it.`);
-        if (b.reason === "between") {
+        if (b.reason === "between" && b.runDay !== undefined) {
+          // Before a later day of a run of day trips: said on that day.
+          const trip = dep.trips.find((t) => t.pairingNumber === b.tripNumber);
+          const first = trip ? firstDayOf(indexOf.get(trip)!) : undefined;
+          const day = first ? days.find((x) => x.tripIndex === first.tripIndex && x.dayIndex === first.dayIndex + b.runDay!) : undefined;
+          note(day, `${nightsWord(b.nights)} in a ${code} hotel before this day of the trip — not long enough at home to be worth the trip back.`);
+        } else if (b.reason === "between") {
           const k = dep.trips.findIndex((t) => t.pairingNumber === b.tripNumber);
           const day = k > 0 ? firstDayOf(indexOf.get(dep.trips[k])!) : undefined;
           note(day, `${nightsWord(b.nights)} in a ${code} hotel waiting for this trip — not long enough at home to be worth the trip back.`);
