@@ -97,7 +97,7 @@ export function MembershipScreen() {
   );
 }
 
-function MembershipBody({
+export function MembershipBody({
   status,
   busy,
   error,
@@ -110,8 +110,17 @@ function MembershipBody({
   onCheckout: () => void;
   onPortal: () => void;
 }) {
+  // The status didn't load (offline, or the server failed): not the same as billing being off, so don't say it is.
+  if (!status) {
+    return (
+      <div className={PANEL}>
+        <p className="text-sm text-ink-muted">Couldn&rsquo;t load your membership just now. Reload the page to try again.</p>
+      </div>
+    );
+  }
+
   // Billing not configured on this deployment yet.
-  if (!status || !status.enabled) {
+  if (!status.enabled) {
     return (
       <div className={PANEL}>
         <p className="text-sm text-ink-muted">Paid membership isn&rsquo;t switched on for this site yet. You already have full access as a free member.</p>

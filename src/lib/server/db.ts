@@ -218,12 +218,15 @@ export async function getSubscriptionByCustomerId(customerId: string): Promise<S
   return row ? toSubscriptionRecord(row) : null;
 }
 
-/** Records the pilot↔Stripe-customer link before the first checkout, so a later webhook can find the pilot. */
-export async function linkStripeCustomer(userId: string, stripeCustomerId: string): Promise<void> {
-  await db
-    .insert(subscriptions)
-    .values({ userId, stripeCustomerId, status: "incomplete", updatedAt: new Date() })
-    .onConflictDoUpdate({ target: subscriptions.userId, set: { stripeCustomerId, updatedAt: new Date() } });
+/**
+ * Records the pilot↔Stripe-customer link before the first checkout, so a later webhook can find the pilot. The first
+ * link stays: two checkouts started at once each make a customer, and both must go on with the one kept here, or each
+ * would start its own membership. Returns the customer kept.
+ */
+export async function linkStripeCustomer(userId: string, stripeCustomerId: string): Promise<string> {
+  await db.insert(subscriptions).values({ userId, stripeCustomerId, status: "incomplete", updatedAt: new Date() }).onConflictDoNothing({ target: subscriptions.userId });
+  const [row] = await db.select({ stripeCustomerId: subscriptions.stripeCustomerId }).from(subscriptions).where(eq(subscriptions.userId, userId)).limit(1);
+  return row?.stripeCustomerId ?? stripeCustomerId;
 }
 
 /**

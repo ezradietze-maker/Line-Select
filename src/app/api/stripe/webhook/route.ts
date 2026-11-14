@@ -27,14 +27,27 @@ async function resolveUserId(sub: Stripe.Subscription, customerId: string): Prom
  * not guarantee delivery order, so an event older than the one that last wrote
  * this pilot's row is ignored rather than allowed to regress a newer state
  * (e.g. a late "updated=active" arriving after a "deleted=canceled").
+ *
+ * `event.created` is in whole seconds, and a paid start's "created=incomplete" and "updated=active" can share one, so
+ * the event's own copy can still be the older: what's saved is the subscription as Stripe has it now (`current` when
+ * the caller has just fetched it).
  */
-async function applySubscription(sub: Stripe.Subscription, eventCreatedAt: Date): Promise<void> {
-  const snap = snapshotOf(sub);
-  const userId = await resolveUserId(sub, snap.stripeCustomerId);
+async function applySubscription(fromEvent: Stripe.Subscription, eventCreatedAt: Date, current?: Stripe.Subscription): Promise<void> {
+  const userId = await resolveUserId(fromEvent, snapshotOf(fromEvent).stripeCustomerId);
   if (!userId) return; // A customer we don't know — nothing to update.
   const existing = await getSubscriptionByUserId(userId);
   const lastEventAt = existing?.lastEventAt ? new Date(existing.lastEventAt) : null;
   if (lastEventAt && eventCreatedAt < lastEventAt) return; // A newer event already wrote this row — don't go backwards.
+  // One Stripe no longer has (its customer deleted in the dashboard): the event's copy is all there is.
+  const sub: Stripe.Subscription =
+    current ??
+    (await getStripe()
+      .subscriptions.retrieve(fromEvent.id)
+      .catch((e: { statusCode?: number }) => {
+        if (e?.statusCode === 404) return fromEvent;
+        throw e;
+      }));
+  const snap = snapshotOf(sub);
   // One row per pilot: an older membership ending (a lapsed one Stripe finally cancels after the pilot started a new
   // one) must not overwrite the live membership they're on now.
   const otherLive = existing?.stripeSubscriptionId && existing.stripeSubscriptionId !== sub.id && planForStatus(existing.status) === "pro";
@@ -54,8 +67,8 @@ async function handleEvent(event: Stripe.Event): Promise<void> {
     case "checkout.session.completed": {
       const subRef = event.data.object.subscription;
       if (subRef) {
-        const subId = typeof subRef === "string" ? subRef : subRef.id;
-        await applySubscription(await getStripe().subscriptions.retrieve(subId), eventCreatedAt);
+        const sub = await getStripe().subscriptions.retrieve(typeof subRef === "string" ? subRef : subRef.id);
+        await applySubscription(sub, eventCreatedAt, sub);
       }
       break;
     }

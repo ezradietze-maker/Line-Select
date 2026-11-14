@@ -55,8 +55,9 @@ function sub(opts: { id?: string; customer?: string; status?: string; userId?: s
   } as unknown as Stripe.Subscription;
 }
 
-/** `created` is Unix seconds, as Stripe sends it. */
+/** `created` is Unix seconds, as Stripe sends it. A subscription carried is also what Stripe has now, unless a test says otherwise. */
 function event(type: string, created: number, object: unknown, id = "evt_1"): Stripe.Event {
+  if (object && typeof object === "object" && "items" in object) stripe.retrieve.mockResolvedValue(object);
   return { id, type, created, data: { object } } as unknown as Stripe.Event;
 }
 
@@ -134,6 +135,28 @@ describe("stripe webhook", () => {
     await POST(req());
     expect(db.saveSubscription).toHaveBeenCalledWith("u-1", expect.objectContaining({ stripeSubscriptionId: "sub_new", status: "trialing" }), secondsAsDate(6000));
     expect(db.setUserPlan).toHaveBeenCalledWith("u-1", "pro");
+  });
+
+  it("saves the membership as Stripe has it now, when a paid start's two events share a second and come in reversed", async () => {
+    // "updated=active" already wrote the row at t=1000; "created=incomplete", also stamped t=1000, arrives after it.
+    db.getSubscriptionByUserId.mockResolvedValue({ stripeSubscriptionId: "sub_1", status: "active", lastEventAt: secondsAsDate(1000).toISOString() });
+    stripe.constructEventAsync.mockResolvedValue(event("customer.subscription.created", 1000, sub({ status: "incomplete" }), "evt_created"));
+    stripe.retrieve.mockResolvedValue(sub({ status: "active" }));
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(stripe.retrieve).toHaveBeenCalledWith("sub_1");
+    expect(db.saveSubscription).not.toHaveBeenCalledWith("u-1", expect.objectContaining({ status: "incomplete" }), expect.anything());
+    expect(db.setUserPlan).not.toHaveBeenCalledWith("u-1", "free"); // a paid pilot isn't told their payment didn't go through
+  });
+
+  it("falls back to the event's copy for a membership Stripe no longer has, and fails (to be retried) on any other error", async () => {
+    stripe.constructEventAsync.mockResolvedValue(event("customer.subscription.deleted", 1000, sub({ status: "canceled" })));
+    stripe.retrieve.mockRejectedValue(Object.assign(new Error("No such subscription"), { statusCode: 404 }));
+    expect((await POST(req())).status).toBe(200);
+    expect(db.saveSubscription).toHaveBeenCalledWith("u-1", expect.objectContaining({ status: "canceled" }), secondsAsDate(1000));
+    stripe.constructEventAsync.mockResolvedValue(event("customer.subscription.updated", 1001, sub()));
+    stripe.retrieve.mockRejectedValue(Object.assign(new Error("Stripe is down"), { statusCode: 500 }));
+    expect((await POST(req())).status).toBe(500);
   });
 
   it("records (but doesn't act on) an event for a customer we don't know", async () => {
