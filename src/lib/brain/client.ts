@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/shown-account";
-import { fitExchangeCount, fitExchanges } from "@/lib/brain/answer-limits";
+import { fitExchanges, keptForRead } from "@/lib/brain/answer-limits";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import type { InterviewStep, LinePairCandidate, ThreadState } from "@/lib/brain/interviewer";
 import type { PilotModel } from "@/types/pilot-model";
@@ -56,9 +56,19 @@ export interface BrainRequestBase {
 
 export async function requestModelBuild(body: BrainRequestBase & { prior: PilotModel | null }): Promise<PilotModel> {
   // Every answer within the routes' limits, whatever a saved draft holds (`fitExchanges`), and no more of them than a
-  // read takes (`fitExchangeCount`).
-  const r = await postWithRetry<{ model: PilotModel }>("/api/brain/build", { ...body, exchanges: fitExchangeCount(fitExchanges(body.exchanges)) }, 290_000);
-  return r.model;
+  // read takes (`keptForRead`).
+  const kept = keptForRead(body.exchanges);
+  if (kept.length === body.exchanges.length) {
+    const r = await postWithRetry<{ model: PilotModel }>("/api/brain/build", { ...body, exchanges: fitExchanges(body.exchanges) }, 290_000);
+    return r.model;
+  }
+  // How far the last read got is counted in the whole record, and the read is sent only part of it: counted in what's
+  // sent, or the newest answers (the note just added) were taken for ones already read. Back in the record's terms after.
+  const readUpTo = body.prior?.readUpTo;
+  const prior = body.prior && readUpTo !== undefined ? { ...body.prior, readUpTo: kept.filter((i) => i < readUpTo).length } : body.prior;
+  const exchanges = fitExchanges(kept.map((i) => body.exchanges[i]));
+  const r = await postWithRetry<{ model: PilotModel }>("/api/brain/build", { ...body, prior, exchanges }, 290_000);
+  return { ...r.model, readUpTo: body.exchanges.length };
 }
 
 export type StepResponse = Omit<Extract<InterviewStep, { done: false }>, "usage"> | Omit<Extract<InterviewStep, { done: true }>, "usage">;
