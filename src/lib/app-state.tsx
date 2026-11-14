@@ -914,10 +914,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleLogout(opts?: { to?: string }) {
+    // Someone else signed in in another tab since: their session isn't this tab's to end. It shows them, as a fresh load
+    // would, rather than signing the whole browser out from under them.
+    const ended = await logoutAccount(user?.id);
+    if (ended === "other") {
+      await refreshUser();
+      return;
+    }
     signInsRef.current++;
     // Offline, the session cookie outlives a sign-out that only happened on screen: the next person to open the app
     // here would be let back into this account. Stay signed in and say so.
-    if (!(await logoutAccount())) {
+    if (!ended) {
       setToasts((prev) => [...prev, { id: `logout-${Date.now()}`, title: "Couldn't sign out", body: "Check your connection and try again. You're still signed in.", href: null }]);
       return;
     }

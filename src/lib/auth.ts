@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/shown-account";
+import { ACCOUNT_HEADER, apiFetch } from "@/lib/shown-account";
 import type { UserAccount } from "@/types/auth";
 
 /**
@@ -163,10 +163,14 @@ export async function resendConfirmEmailTo(email: string): Promise<{ ok: true; m
   }
 }
 
-/** Whether the server ended the session. When it didn't, the cookie still signs this device in — so the app must not act signed out. */
-export async function logout(): Promise<boolean> {
+/**
+ * Whether the server ended the session. When it didn't, the cookie still signs this device in — so the app must not
+ * act signed out. "other": someone else signed in in another tab since, and their session was left alone.
+ */
+export async function logout(forAccount?: string): Promise<boolean | "other"> {
   try {
-    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin", headers: forAccount ? { [ACCOUNT_HEADER]: forAccount } : undefined });
+    if (res.status === 409 && (await res.json().catch(() => null))?.otherAccount === true) return "other";
     return res.ok;
   } catch {
     return false;
