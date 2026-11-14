@@ -60,3 +60,27 @@ describe("interview requests on a bad connection", () => {
     expect(connection.isOffline()).toBe(false);
   });
 });
+
+describe("a read asked for from the priorities page after a long interview", () => {
+  it("goes within the routes' limit, with the interview's answers and the newest edit in it", async () => {
+    const sent: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        sent.push(JSON.parse(String(init.body)));
+        return ok({ model: { version: 2, criteria: [] } });
+      })
+    );
+    const { client } = await load();
+    const { readExchanges } = await import("@/lib/server/brain-input");
+    const interview = Array.from({ length: 45 }, (_, i) => ({ turn: i, question: `Question ${i}`, answer: `Answer ${i}` }));
+    // Each level tapped on the priorities page is written into the record.
+    const edits = Array.from({ length: 40 }, (_, i) => ({ turn: 45 + i, question: `Your priorities: how much does "Days off" matter?`, answer: i % 2 ? "Top priority." : "High priority." }));
+    const added = { turn: 85, question: "Something to add about how you bid (from your priorities page):", answer: "Weekends off matter more now." };
+    await client.requestModelBuild({ ...body, exchanges: [...interview, ...edits, added] } as never);
+    const exchanges = readExchanges((sent[0] as { exchanges: unknown }).exchanges);
+    expect(exchanges).not.toBeNull();
+    expect(exchanges!.slice(0, 45)).toEqual(interview);
+    expect(exchanges!.at(-1)).toEqual(added);
+  });
+});

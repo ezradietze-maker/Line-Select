@@ -135,7 +135,7 @@ describe("saving a signed-in pilot's profile", () => {
     expect(version).toBe("v1");
     landFirst();
     await Promise.all([first, second]);
-    expect(JSON.parse(local.get("line-select:profile-unsynced:pilot-1:v1")!)).toEqual({ base: "v2" });
+    expect(JSON.parse(local.get("line-select:profile-unsynced:pilot-1:v1")!)).toMatchObject({ base: "v2", from: { completedAt: "a" } });
   });
 
   it("keeps a guest on this device only", async () => {
@@ -160,6 +160,41 @@ describe("a save refused because another device saved first", () => {
     client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: { ...r.profile, hasCrashPad: true } }).mockResolvedValueOnce({ kind: "saved" });
     const again = await saveProfileForUser("pilot-1", { ...r.profile, isCommuter: true });
     expect(again.profile).toMatchObject({ seniorityNumber: 1234, minHomeHours: 20, hasCrashPad: true, isCommuter: true });
+  });
+
+  it("keeps an edit made offline when the app is closed and another device saves before it opens again", async () => {
+    const start = profile("2026-11-07T00:00:00Z");
+    client.serverProfileVersion.mockReturnValue("v1");
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: start });
+    const loaded = (await loadProfileForUser("pilot-1"))!;
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    await saveProfileForUser("pilot-1", { ...loaded, seniorityNumber: 1234 });
+    // The app is closed: what this tab knew goes with it.
+    forgetLastKnownProfile();
+    // Another device saved in the meantime; opened again, the edit kept here is refused against it.
+    const theirs = { ...start, minHomeHours: 20 };
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: theirs });
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: theirs }).mockResolvedValueOnce({ kind: "saved" });
+    const opened = await loadProfileForUser("pilot-1");
+    expect(opened).toMatchObject({ seniorityNumber: 1234, minHomeHours: 20 });
+    expect(hasUnsyncedProfile("pilot-1")).toBe(false);
+  });
+
+  it("keeps an edit made offline when the server still can't be reached after the app opens again", async () => {
+    const start = profile("2026-11-07T00:00:00Z");
+    client.serverProfileVersion.mockReturnValue("v1");
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: start });
+    const loaded = (await loadProfileForUser("pilot-1"))!;
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    await saveProfileForUser("pilot-1", { ...loaded, seniorityNumber: 1234 });
+    forgetLastKnownProfile();
+    client.fetchServerProfile.mockResolvedValue({ kind: "unreachable" });
+    const opened = (await loadProfileForUser("pilot-1"))!;
+    // The app's retry, once there's signal: another device saved in the meantime.
+    const theirs = { ...start, minHomeHours: 20 };
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: theirs }).mockResolvedValueOnce({ kind: "saved" });
+    const r = await saveProfileForUser("pilot-1", opened);
+    expect(r.profile).toMatchObject({ seniorityNumber: 1234, minHomeHours: 20 });
   });
 
   it("writes nothing back to the device once the pilot has signed out", async () => {

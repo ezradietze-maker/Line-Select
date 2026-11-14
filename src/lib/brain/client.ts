@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/shown-account";
-import { fitExchanges } from "@/lib/brain/answer-limits";
+import { fitExchangeCount, fitExchanges } from "@/lib/brain/answer-limits";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import type { InterviewStep, LinePairCandidate, ThreadState } from "@/lib/brain/interviewer";
 import type { PilotModel } from "@/types/pilot-model";
@@ -55,8 +55,9 @@ export interface BrainRequestBase {
 }
 
 export async function requestModelBuild(body: BrainRequestBase & { prior: PilotModel | null }): Promise<PilotModel> {
-  // Every answer within the routes' limit, whatever a saved draft holds (`fitExchanges`).
-  const r = await postWithRetry<{ model: PilotModel }>("/api/brain/build", { ...body, exchanges: fitExchanges(body.exchanges) }, 290_000);
+  // Every answer within the routes' limits, whatever a saved draft holds (`fitExchanges`), and no more of them than a
+  // read takes (`fitExchangeCount`).
+  const r = await postWithRetry<{ model: PilotModel }>("/api/brain/build", { ...body, exchanges: fitExchangeCount(fitExchanges(body.exchanges)) }, 290_000);
   return r.model;
 }
 
