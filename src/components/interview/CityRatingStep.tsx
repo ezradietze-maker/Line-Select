@@ -4,7 +4,7 @@ import { useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { NoteBox } from "@/components/ui/NoteBox";
 import { airportCityName } from "@/lib/airport-city-names";
-import { CITY_RATING_STEPS, CITY_REASONS, effectiveCityScore, hasSeasons, saysMore, type CityFacts } from "@/lib/city-ratings";
+import { CITY_RATING_STEPS, CITY_REASONS, cityNotesShortened, effectiveCityScore, hasSeasons, saysMore, type CityFacts } from "@/lib/city-ratings";
 import { monthName, monthsWords, seasonMonths } from "@/lib/seasons";
 import type { CityRating, CityRatingScore, CityReasonTag, CitySentiment } from "@/types/preferences";
 
@@ -391,6 +391,12 @@ export function CityRatingStep({ cities, ratings, sentiments, onRate, onReasons,
           ))}
         </ul>
         <RatedSummary cities={cities} scoreOf={scoreOf} untried={(code) => !!ratings[code]?.untried} />
+        {cityNotesShortened(ratings) && (
+          <p className="mt-3 text-xs text-warn" role="status">
+            Your notes together run longer than one answer takes, so the longest are cut short. Every grade is kept. Shorten a
+            note or two to keep all you wrote.
+          </p>
+        )}
       </RevealControls>
 
       {cities.length === 0 && (

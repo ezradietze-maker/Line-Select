@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { bidMonthOf, cityMarks, cityScoreInMonth, cityScoresFromRatings, citySeasonsFromRatings, describeCityRatings, effectiveCityScore, hotelScoresFromRatings, markCityUntried, packCityFacts, rateCity, rateCityHotel, rateCitySeason, saysMore, sentimentFromRating } from "@/lib/city-ratings";
+import { fitExchanges, MAX_ANSWER } from "@/lib/brain/answer-limits";
+import { bidMonthOf, cityMarks, cityNotesShortened, cityScoresFromRatings, citySeasonsFromRatings, cityScoreInMonth, describeCityRatings, effectiveCityScore, hotelScoresFromRatings, markCityUntried, packCityFacts, rateCity, rateCityHotel, rateCitySeason, saysMore, sentimentFromRating } from "@/lib/city-ratings";
 import type { BidPack } from "@/types/bidpack";
 
 describe("city ratings", () => {
@@ -21,6 +22,27 @@ describe("city ratings", () => {
     const r = { HNL: { score: 2 as const, reasons: ["food" as const, "friends" as const], note: "old squadron buddy lives there" }, CAN: { score: -2 as const, reasons: ["hassle" as const] } };
     expect(cityScoresFromRatings(r)).toEqual({ HNL: 1, CAN: -1 });
     expect(describeCityRatings(r)).toBe('HNL: Love (food nearby, friends there) — "old squadron buddy lives there"\nCAN: Avoid (hassle (customs, systems))');
+  });
+
+  it("keeps every city's grade when the notes together run past one answer, and says so", () => {
+    // Joined into one answer and cut at its limit, the avoid cities (listed last) were the first to go, without a word.
+    const long = "x".repeat(3_000);
+    const r = {
+      HNL: { score: 2 as const, note: long },
+      ANC: { score: 2 as const, note: long },
+      NRT: { score: 1 as const, note: long },
+      SYD: { score: 1 as const, note: long },
+      CAN: { score: -2 as const, note: "customs takes hours" },
+      CDG: { score: -1 as const },
+    };
+    const text = describeCityRatings(r);
+    const sent = fitExchanges([{ turn: 0, question: "cities", answer: text }])[0].answer;
+    expect(text.length).toBeLessThanOrEqual(MAX_ANSWER);
+    expect(sent).toContain("CAN: Avoid");
+    expect(sent).toContain('"customs takes hours"');
+    expect(sent).toContain("CDG: Dislike");
+    expect(cityNotesShortened(r)).toBe(true);
+    expect(cityNotesShortened({ CAN: r.CAN, CDG: r.CDG })).toBe(false);
   });
 
   it("describes each city from the pack's own trips, counting a shared trip once", () => {

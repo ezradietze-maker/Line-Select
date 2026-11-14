@@ -206,6 +206,29 @@ describe("a save refused because another device saved first", () => {
     expect(r.profile).toMatchObject({ seniorityNumber: 1234, minHomeHours: 20 });
   });
 
+  it("keeps an edit made after the app opened without an answer from the server, once it answers", async () => {
+    // The session check gave up on a crawling connection, so the device's copy is all the load had. The edit made then
+    // carries no version, is refused once the server answers, and was merged against no copy: the account's copy (the
+    // same one, unchanged) won whole, and the edit was gone under a banner saying another device had made a change.
+    const start = profile("2026-11-07T00:00:00Z");
+    local.set(KEY, JSON.stringify(start));
+    const opened = (await loadProfileForUser("pilot-1", true))!;
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: start }).mockResolvedValueOnce({ kind: "saved" });
+    const r = await saveProfileForUser("pilot-1", { ...opened, seniorityNumber: 1234 });
+    expect(r.profile).toMatchObject({ seniorityNumber: 1234 });
+  });
+
+  it("lays an edit made that way over another device's change, keeping both", async () => {
+    const start = profile("2026-11-07T00:00:00Z");
+    local.set(KEY, JSON.stringify(start));
+    client.fetchServerProfile.mockResolvedValue({ kind: "unreachable" });
+    const opened = (await loadProfileForUser("pilot-1"))!;
+    const theirs = { ...start, minHomeHours: 20 };
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: theirs }).mockResolvedValueOnce({ kind: "saved" });
+    const r = await saveProfileForUser("pilot-1", { ...opened, seniorityNumber: 1234 });
+    expect(r.profile).toMatchObject({ seniorityNumber: 1234, minHomeHours: 20 });
+  });
+
   it("writes nothing back to the device once the pilot has signed out", async () => {
     let refuse!: (v: unknown) => void;
     client.saveServerProfile.mockImplementationOnce(() => new Promise((resolve) => (refuse = resolve)));
