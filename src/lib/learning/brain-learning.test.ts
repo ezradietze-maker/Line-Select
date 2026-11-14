@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBrainOutcome, computeBrainModel, decideNotes, fleetNotes, guardNotes, MIN_PILOTS, noteLines, parseBrainOutcome, resolveBrainCohort, shareLowerBound, type BrainOutcome } from "@/lib/learning/brain-learning";
+import { buildBrainOutcome, computeBrainModel, decideNotes, fleetNotes, flownByLevel, guardNotes, MIN_PILOTS, noteLines, parseBrainOutcome, resolveBrainCohort, shareLowerBound, type BrainOutcome } from "@/lib/learning/brain-learning";
 import type { Cohort } from "@/lib/learning/cohort";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -97,6 +97,32 @@ describe("fleet notes that decide for themselves", () => {
   it("switch off when months ranked with notes went worse clearly more often", () => {
     const flown = [...Array.from({ length: 12 }, () => ({ notesUsed: true, worse: true })), ...Array.from({ length: 12 }, () => ({ notesUsed: false, worse: false }))];
     expect(guardNotes(confirming(14), flown)).toMatchObject({ harmful: true });
+  });
+
+  it("count each pilot's flown months once: one account sharing many months can't switch them off", () => {
+    // One confirmed pilot shares 24 months, each under a made-up base (its own pack, so its own report): half say the
+    // notes ranked a month that went worse, half that a month without them went fine.
+    const one = Array.from({ length: 24 }, (_, i) => ({ pilot: "p1", base: `Z${String(i).padStart(2, "0")}`, aircraft: "MD11", seat: "CAP", notesUsed: i < 12, feel: i < 12 ? "worse" : "better" }));
+    // Counted by month, as they were, those 24 were enough to switch the whole fleet's notes off.
+    expect(guardNotes(confirming(14), one.map((m) => ({ notesUsed: m.notesUsed, worse: m.feel === "worse" }))).harmful).toBe(true);
+    const flown = flownByLevel(one);
+    expect(flown["all"]).toHaveLength(1);
+    expect(guardNotes(confirming(14), flown["all"]).harmful).toBe(false);
+    expect(computeBrainModel(confirming(14), "b", new Date(0), flown).levels["all"].notes?.on).toBe(true);
+    // Twelve different pilots each way still make the case, as before.
+    const many = Array.from({ length: 24 }, (_, i) => ({ pilot: `p${i}`, base: "MEM", aircraft: "MD11", seat: "CAP", notesUsed: i < 12, feel: i < 12 ? "worse" : "better" }));
+    expect(guardNotes(confirming(14), flownByLevel(many)["all"]).harmful).toBe(true);
+    expect(flownByLevel(many)["pack:MEM|MD11|CAP"]).toHaveLength(24);
+  });
+
+  it("count a pilot's newest month in each group", () => {
+    const flown = flownByLevel([
+      { pilot: "p1", base: "MEM", aircraft: "MD11", seat: "CAP", notesUsed: true, feel: "worse" },
+      { pilot: "p1", base: "MEM", aircraft: "MD11", seat: "CAP", notesUsed: false, feel: "better" },
+      { pilot: "p1", base: "IND", aircraft: "B767", seat: "FO", notesUsed: null, feel: "better" },
+    ]);
+    expect(flown["all"]).toEqual([{ notesUsed: true, worse: true }]);
+    expect(flown["seat:FO"]).toBeUndefined();
   });
 
   it("put a share at its cautious end, more cautious with fewer pilots", () => {

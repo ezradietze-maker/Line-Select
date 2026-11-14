@@ -299,6 +299,27 @@ export function guardNotes(outcomes: BrainOutcome[], flown: { notesUsed: boolean
 }
 
 /**
+ * Flown months by group, for the live guard: each pilot's newest month in each group, so a group's count is of pilots,
+ * as the interviews' is. Counted by month, one account sharing a few dozen months (each made-up base its own pack, all
+ * in the whole fleet's group) stood in for the pilots on both sides of the comparison and switched the notes off.
+ * `months` come newest first; `pilot` is only for telling pilots apart.
+ */
+export function flownByLevel(months: { pilot: string; base: string; aircraft: string; seat: string; notesUsed: boolean | null; feel: string }[]): Record<string, { notesUsed: boolean; worse: boolean }[]> {
+  const byLevel: Record<string, { notesUsed: boolean; worse: boolean }[]> = {};
+  const counted = new Set<string>();
+  for (const m of months) {
+    if (m.notesUsed === null) continue;
+    const levels = cohortLevels({ base: m.base, aircraft: m.aircraft, seat: m.seat, commute: "unknown" }).filter((l) => !l.endsWith("|unknown"));
+    for (const level of levels) {
+      if (counted.has(`${level}|${m.pilot}`)) continue;
+      counted.add(`${level}|${m.pilot}`);
+      (byLevel[level] ??= []).push({ notesUsed: m.notesUsed, worse: m.feel === "worse" });
+    }
+  }
+  return byLevel;
+}
+
+/**
  * Every group's statistics and the decision on its notes. `flownByLevel` carries the real-outcome check-ins per
  * group, for the live guard.
  */
