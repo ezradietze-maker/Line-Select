@@ -5,7 +5,7 @@ import { longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
 import { baseDayStartMinutes, dayIndices, dutyIsInternational, flownUnderInternationalRules, lineAsFlown, touchesOutside48, zoneOf, type Span } from "@/lib/phase-in";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
-import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { dayTripsOf, runOfDay, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -177,6 +177,20 @@ export function vacationRemovals(line: Line, pack: BidPack, vacation: Span, opts
   return out;
 }
 
+/**
+ * The removed trips as a pilot reads them: "trip 7001", or "trip 7001 on Oct 9" for one day of a run of day trips, since
+ * a vacation takes a run a day at a time. Each once.
+ */
+export function removedNames(removed: RemovedTrip[], pack: Pick<BidPack, "base" | "bidPeriodStart">): string[] {
+  const zone = zoneOf(pack);
+  const names = removed.map(({ trip }) => {
+    const name = trip.pairingNumber ? `trip ${trip.pairingNumber}` : "a trip";
+    const report = runOfDay(trip) ? tripReportUtc(pack, trip) : null;
+    return report === null ? name : `${name} on ${DateTime.fromISO(baseDate(report + 1, zone)).toFormat("LLL d")}`;
+  });
+  return [...new Set(names)];
+}
+
 /** CBA 2026 7.G.1: "The SCH value of the removed trip(s) shall be deducted from the pilot's vacation credit hour bank." */
 export function chargedToBank(removed: RemovedTrip[]): number {
   // Each trip once: one in conflict with two vacations comes off the line once, and is charged once.
@@ -230,9 +244,12 @@ export interface SlideOption {
   score: number | null;
 }
 
+/**
+ * The base day an instant falls in, "YYYY-MM-DD". A vacation's last base day runs to 0129 the next morning, or 0214 at
+ * a EUR base (CBA 2026 25.A.2): two hours back from a EUR vacation's end was still 0015 the next morning, a day late.
+ */
 function baseDate(ms: number, zone: string): string {
-  // A vacation's last base day runs to 0129 the next morning.
-  return DateTime.fromMillis(ms - 2 * HOUR, { zone }).toISODate()!;
+  return DateTime.fromMillis(ms - 1, { zone }).minus({ minutes: baseDayStartMinutes(zone) }).toISODate()!;
 }
 
 function optionFor(line: Line, pack: BidPack, vacation: VacationPeriod, span: Span, offset: number, expandBefore: number, expandAfter: number): SlideOption {
@@ -324,7 +341,7 @@ export interface LineSlides {
   /** Where the line sits in the pilot's order, 1 first. */
   rank: number;
   asAwarded: SlideOption;
-  /** Best first, up to `BEST_PER_LINE`; never just the vacation as awarded again. */
+  /** Best first, up to `BEST_PER_LINE`; never just the vacation as awarded again, nor one with fewer days off. */
   best: SlideOption[];
   /** Every scored option for this line (slides and expansions), best first: for a calendar to slide through. */
   all: SlideOption[];
@@ -376,8 +393,10 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
   const { pack, order, vacation, model } = input;
   const checks = slideChecks(vacation, pack);
   const legal = checks.filter((c) => c.legal);
-  // No bid month dates, so not even the vacation as awarded can be placed: nothing to compare a slide with.
-  if (!legal.some((c) => c.offset === 0)) return { vacation, illegal: checks.filter((c) => !c.legal), lines: [], across: [], byModel: !!model };
+  // No bid month dates, so not even the vacation as awarded can be placed: nothing to compare a slide with. Nor for one
+  // no legal slide brings into this month (a typed date in another month): as awarded it touched nothing, and the panel
+  // said "no slide beats your vacation as awarded" instead of that it isn't in this bid month.
+  if (!legal.some((c) => c.offset === 0) || !vacationsInReach([vacation], pack).length) return { vacation, illegal: checks.filter((c) => !c.legal), lines: [], across: [], byModel: !!model };
   const byNumber = new Map(pack.lines.map((l) => [l.lineNumber, l]));
   let top = order.slice(0, TOP_LINES).flatMap((n, i) => {
     const line = byNumber.get(n);
@@ -418,6 +437,9 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
     const asAwarded = options.find((o) => o.offset === 0 && !o.expandBefore && !o.expandAfter)!;
     const best: SlideOption[] = [];
     for (const o of [...options].sort(better)) {
+      // Fewer days off than as awarded isn't a suggestion: listed, a line with nothing better offered its worst slide
+      // as its best one ("Slide 5 days earlier ... 23 days off" against 26 as awarded).
+      if (o.daysOff < asAwarded.daysOff) break;
       if (sameOutcome(o, asAwarded) || best.some((b) => sameOutcome(o, b))) continue;
       best.push(o);
       if (best.length === BEST_PER_LINE) break;
@@ -474,7 +496,7 @@ export function typedVacation(firstDay: string, days: number, pack: Pick<BidPack
 /** A vacation's days on the base's calendar: its first day, and its last (it ends at 0129 the morning after). */
 export function vacationLabel(v: VacationPeriod, zone: string): string {
   const first = DateTime.fromISO(v.from, { zone });
-  const last = DateTime.fromMillis(Date.parse(v.to) - 2 * HOUR, { zone });
+  const last = DateTime.fromISO(baseDate(vacationSpan(v).end, zone));
   return `${first.toFormat("LLL d")} to ${last.toFormat("LLL d")} (${v.days} day${v.days === 1 ? "" : "s"})`;
 }
 

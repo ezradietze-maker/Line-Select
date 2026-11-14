@@ -295,6 +295,7 @@ function StrategyResults({
   const userId = user?.id ?? null;
   const ranked = useMemo(() => (profile ? rankingAsShown(bidPack, profile, userId) : null), [bidPack, profile, userId]);
   const rankedLineIds = useMemo(() => ranked?.map((r) => r.line.id), [ranked]);
+  const order = useMemo(() => ranked?.map((r) => r.line.lineNumber) ?? [], [ranked]);
 
   // Real self-reported hold outcomes for this exact base/aircraft/seat —
   // fetched here (a second copy of what AwardHistoryPanel below also
@@ -425,9 +426,12 @@ function StrategyResults({
         </label>
       </div>
 
-      {selected === "vacation" ? (
-        <VacationSlidePanel bidPack={bidPack} seniority={seniority} profile={profile} userId={user?.id ?? null} order={ranked?.map((r) => r.line.lineNumber) ?? []} />
-      ) : (
+      {/* Kept while another strategy is shown: unmounted, the vacations typed in and the slides found were gone on
+          coming back to it. */}
+      <div hidden={selected !== "vacation"}>
+        <VacationSlidePanel bidPack={bidPack} seniority={seniority} profile={profile} userId={user?.id ?? null} order={order} />
+      </div>
+      {selected === "vacation" ? null : (
         (() => {
           const st = strategies.find((s) => s.id === selected);
           if (!st) return <p className="mt-6 text-sm text-ink-muted">That strategy isn&rsquo;t in this month&rsquo;s pack &mdash; pick another above.</p>;

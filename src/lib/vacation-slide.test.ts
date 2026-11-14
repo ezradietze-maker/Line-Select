@@ -9,6 +9,7 @@ import {
   slideChecks,
   slideWhere,
   typedVacation,
+  vacationLabel,
   vacationRemovals,
   vacationsInReach,
 } from "@/lib/vacation-slide";
@@ -53,10 +54,12 @@ function line(trips: Trip[], lineNumber = "1001"): Line {
   return { id: `l-${lineNumber}`, lineNumber, trips, daysOff: off.length, totalCreditHours: trips.reduce((a, t) => a + t.creditHours, 0), totalTafbHours: trips.reduce((a, t) => a + t.tafbHours, 0), totalLandings: trips.length, totalDepartures: trips.length, gridOffDays: off };
 }
 
-const START: Record<string, string> = { OCT26: "2026-09-28", NOV26: "2026-10-26", DEC26: "2026-11-30", JAN27: "2026-12-28", FEB27: "2027-01-25" };
+// Each bid period starts on the Monday on or before its month's 1st (see `currentBidMonth`), so NOV26 and JAN27 run 5 weeks.
+const START: Record<string, string> = { OCT26: "2026-09-28", NOV26: "2026-10-26", DEC26: "2026-11-30", JAN27: "2026-12-28", FEB27: "2027-02-01" };
+const DAYS: Record<string, number> = { OCT26: 28, NOV26: 35, DEC26: 28, JAN27: 35, FEB27: 28 };
 
 function pack(lines: Line[], month = "OCT26"): BidPack {
-  return { id: "p", month, base: "MEM", aircraft: "B767", seat: "CAP", bidPeriodDays: 28, bidPeriodStart: START[month], lines };
+  return { id: "p", month, base: "MEM", aircraft: "B767", seat: "CAP", bidPeriodDays: DAYS[month], bidPeriodStart: START[month], lines };
 }
 
 /** A vacation of `days` base days from `dayIndex` days into `month`, 0130 to 0129 like the pack prints it. */
@@ -168,8 +171,9 @@ describe("corrections from the contract review", () => {
     const found = findVacationSlides({ pack: p, order: ["1001"], vacation: jan });
     expect(found.across.every((a) => a.offset === 0 || a.helps >= 0)).toBe(true);
     const none = line([trip("1", 3)]);
+    // No trip carries over: no slide this window can make brings January's vacation in, so there's nothing to slide.
     const f2 = findVacationSlides({ pack: pack([none], "DEC26"), order: ["1001"], vacation: jan });
-    expect(f2.lines[0].best).toEqual([]);
+    expect(f2.lines).toEqual([]);
   });
   it("7.E.2.c applies to a slide, not an expansion", () => {
     const span = { start: Date.parse(vac(10).from), end: Date.parse(vac(10).to) };
@@ -210,6 +214,13 @@ describe("findVacationSlides", () => {
     const f = findVacationSlides({ pack: p, order: [], vacation: vac(10) });
     expect(f.lines.length).toBeGreaterThan(0);
     expect(f.lines.length).toBe(p.lines.filter((l) => !l.estimated).length);
+  });
+  it("never offers a slide with fewer days off than as awarded as a line's best", () => {
+    // As awarded the vacation takes the line's only trip; every slide either takes it too or leaves it on.
+    const f = findVacationSlides({ pack: pack([line([trip("1", 10)])]), order: ["1001"], vacation: vac(10) });
+    const row = f.lines[0];
+    expect(row.all.some((o) => o.daysOff < row.asAwarded.daysOff)).toBe(true);
+    expect(row.best).toEqual([]);
   });
   it("shows the best per line and never just the vacation as awarded again", () => {
     const f = findVacationSlides({ pack: p, order, vacation: vac(10) });
@@ -297,6 +308,20 @@ describe("typedVacation", () => {
   it("refuses nonsense", () => {
     expect(typedVacation("nope", 7, { base: "MEM" })).toBeNull();
     expect(typedVacation("2026-10-08", 0, { base: "MEM" })).toBeNull();
+  });
+  it("25.A.2: a EUR base day starts at 0215, so a week's last day is the 7th, not the 8th", () => {
+    const t = typedVacation("2026-10-08", 7, { base: "CGN" })!;
+    expect(vacationLabel(t, "Europe/Berlin")).toBe("Oct 8 to Oct 14 (7 days)");
+    expect(vacationLabel(typedVacation("2026-10-08", 7, { base: "MEM" })!, ZONE)).toBe("Oct 8 to Oct 14 (7 days)");
+    const cgn = { ...pack([line([trip("1", 3)])]), base: "CGN" };
+    const asAwarded = findVacationSlides({ pack: cgn, order: ["1001"], vacation: t }).lines[0].asAwarded;
+    expect([asAwarded.firstDay, asAwarded.lastDay]).toEqual(["2026-10-08", "2026-10-14"]);
+  });
+  it("a typed vacation no slide brings into this bid month has nothing to slide, so the panel says it isn't in this month", () => {
+    const p = pack([line([trip("1", 3), trip("2", 20)])]);
+    const found = findVacationSlides({ pack: p, order: ["1001"], vacation: typedVacation("2027-03-08", 7, p)! });
+    expect(found.lines).toEqual([]);
+    expect(found.across).toEqual([]);
   });
 });
 

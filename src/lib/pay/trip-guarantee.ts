@@ -45,8 +45,13 @@ export function tripPay(trip: Trip): TripPay {
 
 export interface LinePay {
   trips: TripPay[];
-  /** CBA 2026 4.B: the sum of the trips' guarantees — the Bid Line Guarantee before the floor. */
+  /**
+   * CBA 2026 4.B: the sum of the trips' guarantees, "excluding that portion of the CH of a carryover trip allocated to the
+   * next bid period" — the Bid Line Guarantee before the floor.
+   */
   tripGuaranteeTotal: number;
+  /** The share of a trip running past the period's end that the pack allocates to the next bid period (CBA 2026 4.G). */
+  carryOverCH: number;
   /** CBA 2026 4.A.1: the floor the BLG can't fall below, and its section; null for an unusual bid-period length. */
   floor: { ch: number; section: string } | null;
   /** CBA 2026 4.B: the greater of the two — what the whole line guarantees this bid period. */
@@ -55,13 +60,18 @@ export interface LinePay {
   flooredUp: boolean;
 }
 
-/** The pay a regular line guarantees this bid period, from its trips. Carryover allocation (4.G) isn't applied here. */
+/**
+ * The pay a regular line guarantees this bid period, from its trips. A trip printed whole carries its full credit, so the
+ * next period's share the line prints (4.G) comes off: counted in, a line ending on a trip over the period's end read
+ * its next month's credit as this month's guarantee.
+ */
 export function linePay(line: Line, pack: Pick<BidPack, "bidPeriodDays">): LinePay {
   const trips = line.trips.map(tripPay);
-  const tripGuaranteeTotal = round2(trips.reduce((a, t) => a + t.guaranteeCH, 0));
+  const carryOverCH = round2(Math.max(0, line.carryOverCreditHours ?? 0));
+  const tripGuaranteeTotal = round2(Math.max(0, trips.reduce((a, t) => a + t.guaranteeCH, 0) - carryOverCH));
   const floor = minBidPeriodGuarantee(pack.bidPeriodDays);
   const blg = floor ? Math.max(tripGuaranteeTotal, floor.ch) : tripGuaranteeTotal;
-  return { trips, tripGuaranteeTotal, floor, blg: round2(blg), flooredUp: !!floor && floor.ch > tripGuaranteeTotal };
+  return { trips, tripGuaranteeTotal, carryOverCH, floor, blg: round2(blg), flooredUp: !!floor && floor.ch > tripGuaranteeTotal };
 }
 
 /** What a pilot paid less than a trip's guarantee may claim: the shortfall, never negative (CBA 2026 4.F.1). */
