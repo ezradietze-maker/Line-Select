@@ -83,6 +83,9 @@ function Results({ found, zone, pack }: { found: VacationSlides; zone: string; p
   const shown = all ? found.lines : found.lines.slice(0, LINES_SHOWN);
   const reasons = [...new Set(found.illegal.map((c) => c.why!))];
   const best = found.across[0];
+  // A "pay" play even when no slide adds days off: a best slide on some line sits under bigger trips and banks more CH
+  // than the vacation as awarded. Shown so "no slide beats it" doesn't hide a real move that banks more of your pay.
+  const payPlay = found.lines.some((l) => l.best.some((o) => o.chargedCH > l.asAwarded.chargedCH + 0.1));
   const onCalendar = found.lines[Math.min(lineIdx, found.lines.length - 1)];
   return (
     <div className="mt-3 space-y-3">
@@ -93,9 +96,11 @@ function Results({ found, zone, pack }: { found: VacationSlides; zone: string; p
         <div>
           <p className="text-sm text-ink">
             <span className="font-medium">Best across your top {found.lines.length} lines:</span> {moveWords({ ...best, expandBefore: 0, expandAfter: 0 })} ({day(best.firstDay)}&ndash;{day(best.lastDay)}).{" "}
-            {found.byModel ? `It adds about ${best.gain.toFixed(1)} points on your priorities, your top lines counting most` : `It adds about ${best.gain.toFixed(1)} days off, your top lines counting most`}, and helps {plural(best.helps, "line")}.
+            It adds about {best.gain.toFixed(1)} {Math.abs(best.gain - 1) < 0.05 ? "day" : "days"} off, your top lines counting most, and helps {plural(best.helps, "line")}.
           </p>
         </div>
+      ) : payPlay ? (
+        <p className="text-sm text-ink">No slide adds days off &mdash; but on some lines a slide sits under bigger trips and banks more of your pay. See the lines below.</p>
       ) : (
         <p className="text-sm text-ink">Across your top {found.lines.length} lines, no slide beats your vacation as awarded.</p>
       )}
