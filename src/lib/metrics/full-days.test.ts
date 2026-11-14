@@ -43,4 +43,19 @@ describe("full days on a whole trip", () => {
     expect(computeTripFacts(trip("BOS")).layovers[0].fullDays).toBe(1);
     expect(computeTripFacts(trip("ANC")).layovers[0].fullDays).toBe(0);
   });
+
+  it("reads the pickup on the city's own clock when the clocks go back during the layover", () => {
+    // In Cologne at 20:00 on Fri Oct 23 2026 (18:00Z) and picked up 56.5 hours later: 03:30 on the Monday, the clocks
+    // having gone back an hour on the Sunday morning. One full day (Saturday); up at 03:30, Sunday isn't one.
+    const leg = (dep: string, arr: string, start: number, end: number, local: string) => ({ depAirport: dep, arrAirport: arr, startMinutes: start, endMinutes: end, arrTimeLocal: local, isDeadhead: false });
+    const out = 600 + 56.5 * 60;
+    const trip = {
+      zuluAnchor: "2026-10-23T08:00:00.000Z",
+      schedule: [
+        { legs: [leg("MEM", "CGN", 60, 600, "2000")], layover: { city: "CGN", hours: 56.5, startMinutes: 600, endMinutes: out, hotelName: null } },
+        { legs: [leg("CGN", "MEM", out + 60, out + 600, "1100")], layover: null },
+      ],
+    } as unknown as Trip;
+    expect(computeTripFacts(trip).layovers[0]).toMatchObject({ fullDays: 1, barelyFullDay: false, fullDayOffsets: [1] });
+  });
 });
