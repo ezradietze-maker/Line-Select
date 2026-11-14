@@ -672,6 +672,17 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
     });
   });
 
+  describe("membership: two checkouts started at once", () => {
+    it("keep the first Stripe customer linked, so both go on with the same one", async () => {
+      const pilot = await makeUser("two-checkouts");
+      const [a, b] = await Promise.all([mod.linkStripeCustomer(pilot.id, `cus_a_${pilot.id}`), mod.linkStripeCustomer(pilot.id, `cus_b_${pilot.id}`)]);
+      expect(a).toBe(b);
+      expect((await mod.getSubscriptionByUserId(pilot.id))?.stripeCustomerId).toBe(a);
+      // A later link never moves the pilot off the customer their membership is under.
+      expect(await mod.linkStripeCustomer(pilot.id, `cus_c_${pilot.id}`)).toBe(a);
+    });
+  });
+
   describe("malformed ids: a Postgres uuid column throws on non-uuid input", () => {
     it("looks like 'not found' rather than crashing, for every uuid-keyed lookup", async () => {
       const garbage = "not-a-real-id";
