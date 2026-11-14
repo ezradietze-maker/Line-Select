@@ -5,6 +5,7 @@ import type { TravelAnswer } from "@/lib/flights/itineraries";
 import { travelNeedsForTrip, type TravelNeed } from "@/lib/flights/needs";
 import type { CommuteStatus, FilterContext } from "@/lib/line-filters";
 import { groupDepartures } from "@/lib/metrics/departures";
+import { apiFetch } from "@/lib/shown-account";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 
 /**
@@ -280,7 +281,7 @@ export async function runCommuteCheck(
   bidPack: BidPack,
   s: CommuteSettings,
   onProgress: (p: CommuteCheckProgress) => void,
-  { now = Date.now(), fetcher = fetch, signal, needs: asked }: { now?: number; fetcher?: typeof fetch; signal?: AbortSignal; needs?: TravelNeed[] } = {}
+  { now = Date.now(), fetcher = apiFetch, signal, needs: asked }: { now?: number; fetcher?: typeof apiFetch; signal?: AbortSignal; needs?: TravelNeed[] } = {}
 ): Promise<CommuteCheckEnd> {
   const answers: CommuteAnswers = { ...loadCommuteAnswers(bidPack.id, s, now) };
   const needs = asked ?? commuteNeedsForPack(bidPack, s, now);
