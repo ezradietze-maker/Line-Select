@@ -25,7 +25,7 @@ export default function WhatsNewPage() {
                   <h2 className="font-display text-lg font-semibold text-ink">{e.title}</h2>
                   <p className="mt-1 text-sm leading-relaxed text-ink-muted">{e.body}</p>
                   {e.href && (
-                    <Link href={e.href} className="mt-2 inline-block text-sm font-medium text-accent underline decoration-dotted underline-offset-4">
+                    <Link href={e.href} className="mt-1 inline-block py-1 text-sm font-medium text-accent underline decoration-dotted underline-offset-4">
                       Take a look
                     </Link>
                   )}

@@ -1,3 +1,4 @@
+import { reportConnectionLost } from "@/lib/connection";
 import { ACCOUNT_HEADER, apiFetch } from "@/lib/shown-account";
 import type { UserAccount } from "@/types/auth";
 
@@ -181,13 +182,26 @@ export async function logout(forAccount?: string): Promise<boolean | "other"> {
  * The signed-in account, and whether the server could be asked at all — no signal on a layover is not the same
  * answer as "signed out", and the app keeps a pilot's own data on screen for the first.
  */
-export async function checkSession(): Promise<{ user: UserAccount | null; reachable: boolean }> {
+export async function checkSession(waitMs = SESSION_WAIT_MS): Promise<{ user: UserAccount | null; reachable: boolean }> {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), waitMs);
   try {
-    const res = await fetch("/api/auth/session", { credentials: "same-origin" });
+    const res = await fetch("/api/auth/session", { credentials: "same-origin", signal: stop.signal });
     if (!res.ok) return { user: null, reachable: res.status < 500 };
     const data = await res.json();
     return { user: (data.user as UserAccount | null) ?? null, reachable: true };
   } catch {
+    // No answer at all, or none in time: the offline notice says so, and checks for the connection coming back.
+    reportConnectionLost();
     return { user: null, reachable: false };
+  } finally {
+    clearTimeout(timer);
   }
 }
+
+/**
+ * How long a load waits to hear who's signed in before carrying on as the account this device was last signed in to.
+ * On a hotel's Wi-Fi that's there but crawling, the offline worker shows the page after a few seconds, and every
+ * screen then sat on "Loading…" until this answered, however long that took.
+ */
+const SESSION_WAIT_MS = 8000;

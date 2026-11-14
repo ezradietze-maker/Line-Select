@@ -92,6 +92,21 @@ describe("a signed-in pilot's pack on a device a guest's pack is still on", () =
     expect(store.map.has(GUEST_KEY)).toBe(true);
   });
 
+  it("doesn't ask again when the load already knows the server isn't answering", async () => {
+    // A crawling connection: the session check gave up, and a second request here would hang the same way, holding
+    // every screen on "Loading…".
+    const store = storageWithRoom(Infinity);
+    vi.stubGlobal("window", { localStorage: store });
+    serveAccountPack();
+    await accountBidPack("u1");
+    const asked = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", asked);
+    expect((await accountBidPack("u1", true)).pack?.id).toBe(accountPack.id);
+    store.map.delete(ACCOUNT_KEY);
+    expect(await accountBidPack("u1", true)).toEqual({ pack: null, saveFailed: false, noneOnAccount: false });
+    expect(asked).not.toHaveBeenCalled();
+  });
+
   it("never says the account has none when it couldn't ask", async () => {
     vi.stubGlobal("window", { localStorage: storageWithRoom(Infinity) });
     for (const answer of [async () => new Response("{}", { status: 500 }), async () => new Response("{}", { status: 401 }), async () => { throw new TypeError("offline"); }]) {

@@ -73,11 +73,11 @@ export function EmptyState({
         </Button>
       )}
       {secondaryLabel && onSecondary && (
-        <div className="mt-4">
+        <div className="mt-3">
           <button
             type="button"
             onClick={onSecondary}
-            className="text-sm text-ink-muted underline decoration-dotted underline-offset-4 transition-colors hover:text-ink"
+            className="py-1 text-sm text-ink-muted underline decoration-dotted underline-offset-4 transition-colors hover:text-ink"
           >
             {secondaryLabel}
           </button>

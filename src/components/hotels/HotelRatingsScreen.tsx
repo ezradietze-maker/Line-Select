@@ -346,7 +346,7 @@ function HotelCard({
             )}
           </div>
 
-          <div className="mt-2.5 font-mono text-xs leading-relaxed text-ink-muted">
+          <div className="mt-2 font-mono text-xs leading-6 text-ink-muted">
             <span className="text-ink-faint">Lines </span>
             {/* With rankings to show, each number opens that line there. */}
             {profile
@@ -356,7 +356,7 @@ function HotelCard({
                     <Link
                       href={`/results?line=${encodeURIComponent(n)}`}
                       title={`Open line ${n} on your rankings`}
-                      className="underline decoration-hairline decoration-dotted underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
+                      className="py-1 underline decoration-hairline decoration-dotted underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
                     >
                       {n}
                     </Link>

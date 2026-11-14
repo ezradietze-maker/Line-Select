@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { dayBars, LABEL_CHAR_PX, type BarLabel, type DayBars } from "@/lib/leg-bars";
 import type { TimelineSegment } from "@/lib/trip-timeline";
+import { widthWatcher } from "@/lib/width-watcher";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
 import type { CityMark } from "@/types/preferences";
 
@@ -12,15 +13,10 @@ const DAY = 24 * 60;
 export function useMeasuredWidth<T extends HTMLElement>(initial: number): [React.RefObject<T | null>, number] {
   const ref = useRef<T>(null);
   const [width, setWidth] = useState(initial);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const read = () => setWidth(el.getBoundingClientRect().width || initial);
-    read();
-    const ro = new ResizeObserver(read);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [initial]);
+  const [watcher] = useState(() => widthWatcher(setWidth, initial));
+  // After every render, not once: the element may only appear later (a list behind its loading screen).
+  useEffect(() => watcher.follow(ref.current));
+  useEffect(() => () => watcher.stop(), [watcher]);
   return [ref, width];
 }
 

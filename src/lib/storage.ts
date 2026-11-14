@@ -1,4 +1,4 @@
-import { clearServerProfile, fetchServerProfile, saveServerProfile, serverProfileVersion, setServerProfileVersion } from "@/lib/preference-profile-client";
+import { clearServerProfile, fetchServerProfile, saveServerProfile, serverProfileVersion, setServerProfileVersion, type ServerProfileLoad } from "@/lib/preference-profile-client";
 import { mergeAfterConflict, sameProfile } from "@/lib/profile-merge";
 import { migrateProfile } from "@/lib/profile-migration";
 import { staleAfterStartOver } from "@/lib/start-over-signal";
@@ -130,9 +130,10 @@ export function clearProfile(userId: string | null): void {
  * it once (covers a pilot who used the app before server-side persistence
  * existed). When the server can't be reached, the local copy is used and
  * nothing is uploaded: an older copy on this device must never replace a
- * newer one saved from another.
+ * newer one saved from another. `offline`: the load already knows the server isn't answering, so it goes straight to
+ * that last case rather than wait on another request that won't be answered either.
  */
-export async function loadProfileForUser(userId: string | null): Promise<PreferenceProfile | null> {
+export async function loadProfileForUser(userId: string | null, offline = false): Promise<PreferenceProfile | null> {
   if (!userId) {
     const guest = loadProfile(null);
     if (guest) remember(null, guest);
@@ -141,7 +142,7 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
   }
   // Signed out while the server was asked: what it sends back isn't kept here (see `clearedProfiles`).
   const asOf = clearCount(userId);
-  const server = await fetchServerProfile(userId);
+  const server: ServerProfileLoad = offline ? { kind: "unreachable" } : await fetchServerProfile(userId);
   if (clearCount(userId) !== asOf) return null;
   if (server.kind === "found") {
     // A save that never reached the server (no signal, then the app was closed) goes up now, against the copy it was
