@@ -3,6 +3,7 @@ import {
   BookIcon,
   BuildingIcon,
   ClockIcon,
+  CoinIcon,
   ContractIcon,
   GlobeIcon,
   ListIcon,
@@ -28,6 +29,7 @@ export type NavTarget =
   | "cities"
   | "logbook"
   | "tools"
+  | "pay"
   | "contract";
 
 export interface NavItem {
@@ -50,6 +52,7 @@ export const NAV_ITEMS: NavItem[] = [
   { target: "cities", label: "Cities", tabLabel: "Cities", section: "flying", icon: GlobeIcon },
   { target: "logbook", label: "Logbook", tabLabel: "Logbook", section: "flying", icon: BookIcon },
   { target: "tools", label: "Tools", tabLabel: "Tools", section: "flying", icon: ToolboxIcon },
+  { target: "pay", label: "Pay check", tabLabel: "Pay", section: "flying", icon: CoinIcon },
   { target: "contract", label: "Ask the Contract", tabLabel: "Contract", section: "flying", icon: ContractIcon },
   { target: "trade-board", label: "Trade Board", tabLabel: "Trades", section: "crew", icon: SwapIcon },
   { target: "inbox", label: "Inbox", tabLabel: "Inbox", section: "crew", icon: MailIcon },
@@ -68,6 +71,7 @@ export function disabledReason(target: NavTarget, hasProfile: boolean, hasBidPac
   if (target === "view-add" && !hasBidPack) return "Upload a bid pack first to build your View/Add list.";
   if (target === "open-time" && !hasBidPack) return "Upload a bid pack first to score open time.";
   if (target === "cities" && !hasBidPack) return "Upload a bid pack first to see its layover cities.";
+  if (target === "pay" && !hasBidPack) return "Upload a bid pack first to check pay.";
   return undefined;
 }
 

@@ -24,6 +24,7 @@ export const SAVED_STATE_SCREENS = [
   "/logbook",
   "/membership",
   "/open-time",
+  "/pay",
   "/preferences",
   "/preview",
   "/reset-password",
