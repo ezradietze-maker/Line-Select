@@ -54,7 +54,14 @@ describe("/api/calendar-feed", () => {
 
   it("turns off", async () => {
     expect(await (await DELETE(req("DELETE"))).json()).toEqual({ on: false });
-    expect(feeds.revokeFeed).toHaveBeenCalledWith("u1");
+    expect(feeds.revokeFeed).toHaveBeenCalledWith("u1", undefined);
+  });
+
+  it("turns off only a link made before a Start over, when told when that was", async () => {
+    await DELETE(req("DELETE", { madeBefore: "2026-11-10T12:05:00.000Z" }));
+    expect(feeds.revokeFeed).toHaveBeenCalledWith("u1", new Date("2026-11-10T12:05:00.000Z"));
+    expect((await DELETE(req("DELETE", { madeBefore: "soon" }))).status).toBe(400);
+    expect(feeds.revokeFeed).toHaveBeenCalledTimes(1);
   });
 
   it("is rate limited per pilot", async () => {

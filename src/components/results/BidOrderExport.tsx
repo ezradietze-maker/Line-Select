@@ -19,12 +19,15 @@ export interface BidOrderEntry {
 
 const countLines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
 
+/** "1 in Not bid left out": the starred lines Copy shortlist leaves out, or nothing. */
+export const shortlistLeftOut = (notBid: number) => (notBid > 0 ? `${notBid} in Not bid left out` : null);
+
 /** What a copy button's new words say, for a screen reader: what went to the clipboard, and what was left out. */
-function copiedSaying(kind: CopiedKind, lines: number, shortlisted: number, leftOut: number): string | null {
+export function copiedSaying(kind: CopiedKind, lines: number, shortlisted: number, leftOut: number, shortlistNotBid = 0): string | null {
   const out = leftOut > 0 ? `, ${leftOut} left out` : "";
   if (kind === "plain") return leftOut > 0 ? `Line order copied: ${countLines(lines)}${out}` : "Line order copied — cleared to bid";
   if (kind === "annotated") return `Copied with notes: ${countLines(lines)}${out}`;
-  if (kind === "shortlist") return `Shortlist copied: ${countLines(shortlisted)}`;
+  if (kind === "shortlist") return `Shortlist copied: ${countLines(shortlisted)}${shortlistNotBid > 0 ? `, ${shortlistLeftOut(shortlistNotBid)}` : ""}`;
   return null;
 }
 
@@ -44,6 +47,7 @@ function useFlash<T>(ms: number): [T | null, (value: T | null) => void] {
 export function BidOrderExport({
   entries,
   shortlistEntries = [],
+  shortlistNotBid = 0,
   bidPeriodStart,
   bidMonth,
   packLabel,
@@ -55,6 +59,8 @@ export function BidOrderExport({
   entries: BidOrderEntry[];
   /** The starred lines, in ranked order — when present, "Copy shortlist" becomes the fastest way to turn a hand-picked set into a bid order. */
   shortlistEntries?: BidOrderEntry[];
+  /** Starred lines the shortlist leaves out for being in Not bid: said once it's copied. */
+  shortlistNotBid?: number;
   /** Threaded through to `buildLineCalendar` — the top pick's calendar export only works when the bid pack's own trip placement is real (see that function's own doc comment). */
   bidPeriodStart: string | null;
   /** The pack's month as printed ("NOV26"): each trip's calendar event is named by it, since line ids repeat every month. */
@@ -155,7 +161,11 @@ export function BidOrderExport({
             onClick={() => copy(shortlistEntries.map((e) => e.lineScore.line.lineNumber).join("\n"), "shortlist")}
             className={`${secondary} ${showMore ? "" : "hidden sm:inline-flex"}`}
           >
-            {copied === "shortlist" ? "Copied" : `Copy shortlist (${shortlistEntries.length})`}
+            {copied === "shortlist"
+              ? shortlistNotBid > 0
+                ? `Copied ${countLines(shortlistEntries.length)} — ${shortlistLeftOut(shortlistNotBid)}`
+                : "Copied"
+              : `Copy shortlist (${shortlistEntries.length})`}
           </button>
         )}
         <button
@@ -212,7 +222,7 @@ export function BidOrderExport({
       {calendarError && <p className="mt-2 text-xs text-danger">{calendarError}</p>}
       {/* The buttons above change their words when they've worked; this says it out loud, since a changed label alone is silent. */}
       <span role="status" className="sr-only">
-        {copiedSaying(copied, entries.length, shortlistEntries.length, leftOut) ??
+        {copiedSaying(copied, entries.length, shortlistEntries.length, leftOut, shortlistNotBid) ??
           (savedFrom ? `Saved — trips from ${savedFrom.month} ${savedFrom.day}` : calendarError ?? "")}
       </span>
       <CalendarSubscribe topLineNumber={topLineNumber} />

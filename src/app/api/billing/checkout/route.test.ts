@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Stripe, the database and the signed-in pilot are all faked: no checkout is ever really started.
-const db = vi.hoisted(() => ({ getSubscriptionByUserId: vi.fn(), linkStripeCustomer: vi.fn() }));
+const db = vi.hoisted(() => ({ getSubscriptionByUserId: vi.fn(), linkStripeCustomer: vi.fn(), relinkStripeCustomer: vi.fn() }));
 vi.mock("@/lib/server/db", () => db);
 vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
 vi.mock("@/lib/server/same-origin", () => ({ crossSiteRefusal: () => null }));
@@ -13,6 +13,7 @@ const stripe = vi.hoisted(() => ({
   listSessions: vi.fn(),
   expireSession: vi.fn(),
   createCustomer: vi.fn(),
+  retrieveCustomer: vi.fn(),
   listCustomers: vi.fn(),
   listSubscriptions: vi.fn(),
 }));
@@ -21,7 +22,7 @@ vi.mock("@/lib/server/stripe", async (importOriginal) => ({
   stripeConfig: () => ({ secretKey: "sk_test", priceId: "price_1" }),
   getStripe: () => ({
     checkout: { sessions: { create: stripe.createSession, list: stripe.listSessions, expire: stripe.expireSession } },
-    customers: { create: stripe.createCustomer, list: stripe.listCustomers },
+    customers: { create: stripe.createCustomer, list: stripe.listCustomers, retrieve: stripe.retrieveCustomer },
     subscriptions: { list: stripe.listSubscriptions },
   }),
 }));
@@ -37,6 +38,8 @@ beforeEach(() => {
   stripe.expireSession.mockResolvedValue({});
   db.linkStripeCustomer.mockImplementation(async (_userId: string, customerId: string) => customerId);
   stripe.createCustomer.mockResolvedValue({ id: "cus_new" });
+  stripe.retrieveCustomer.mockImplementation(async (id: string) => ({ id, object: "customer" }));
+  db.relinkStripeCustomer.mockImplementation(async (_userId: string, _from: string, to: string) => to);
   stripe.listCustomers.mockResolvedValue({ data: [] });
   stripe.listSubscriptions.mockResolvedValue({ data: [] });
 });
@@ -128,5 +131,36 @@ describe("start a membership", () => {
     expect((await POST(req())).status).toBe(200);
     expect(stripe.createSession).toHaveBeenCalledWith(expect.objectContaining({ customer: "cus_first" }));
     expect(stripe.listSessions).toHaveBeenCalledWith(expect.objectContaining({ customer: "cus_first" }));
+  });
+
+  it("starts one under a new customer when the saved one was deleted at Stripe", async () => {
+    // Deleted in the Stripe dashboard: Stripe refuses a checkout for it, and every try ended "Couldn't start checkout".
+    db.getSubscriptionByUserId.mockResolvedValue({ stripeCustomerId: "cus_gone", stripeSubscriptionId: "sub_1", status: "canceled", trialEndsAt: "2026-10-01T00:00:00.000Z" });
+    stripe.retrieveCustomer.mockImplementation(async (id: string) => (id === "cus_gone" ? { id, object: "customer", deleted: true } : { id, object: "customer" }));
+    stripe.createSession.mockImplementation(async ({ customer }: { customer: string }) => {
+      if (customer === "cus_gone") throw Object.assign(new Error("No such customer: 'cus_gone'"), { type: "StripeInvalidRequestError", code: "resource_missing" });
+      return { id: "cs_1", created: 1000, url: "https://checkout.stripe.test/s" };
+    });
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(db.relinkStripeCustomer).toHaveBeenCalledWith("u-1", "cus_gone", "cus_new");
+    expect(stripe.createSession).toHaveBeenCalledWith(expect.objectContaining({ customer: "cus_new" }));
+    // Still no second free month.
+    expect(trialOf()).toBeUndefined();
+  });
+
+  it("does the same for a saved customer Stripe has never heard of", async () => {
+    db.getSubscriptionByUserId.mockResolvedValue({ stripeCustomerId: "cus_other_mode", stripeSubscriptionId: null, status: "incomplete", trialEndsAt: null });
+    stripe.retrieveCustomer.mockRejectedValue(Object.assign(new Error("No such customer"), { type: "StripeInvalidRequestError", code: "resource_missing" }));
+    expect((await POST(req())).status).toBe(200);
+    expect(stripe.createSession).toHaveBeenCalledWith(expect.objectContaining({ customer: "cus_new" }));
+  });
+
+  it("keeps the saved customer when Stripe can't be asked", async () => {
+    db.getSubscriptionByUserId.mockResolvedValue({ stripeCustomerId: "cus_1", stripeSubscriptionId: null, status: "incomplete", trialEndsAt: null });
+    stripe.retrieveCustomer.mockRejectedValue(Object.assign(new Error("timeout"), { type: "StripeConnectionError" }));
+    expect((await POST(req())).status).toBe(503);
+    expect(stripe.createCustomer).not.toHaveBeenCalled();
+    expect(db.relinkStripeCustomer).not.toHaveBeenCalled();
   });
 });

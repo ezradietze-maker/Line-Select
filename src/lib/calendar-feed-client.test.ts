@@ -131,4 +131,14 @@ describe("Start over turning the calendar link off", () => {
     expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(["DELETE", "POST"]);
     setShownAccount(null);
   });
+
+  it("says when it was owed, so a link made since on another device stays on", async () => {
+    vi.useFakeTimers({ now: new Date("2026-11-10T12:05:00Z"), toFake: ["Date"] });
+    const fetchMock = device("offline", 200);
+    await turnOffFeedForStartOver("u1");
+    vi.setSystemTime(new Date("2026-11-10T13:00:00Z"));
+    await payFeedOffOwed("u1");
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({ madeBefore: "2026-11-10T12:05:00.000Z" });
+    vi.useRealTimers();
+  });
 });

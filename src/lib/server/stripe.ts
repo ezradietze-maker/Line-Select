@@ -49,6 +49,21 @@ export function getStripe(): Stripe {
 
 export { membershipEnded };
 
+/**
+ * Whether the customer saved for a pilot is gone at Stripe: deleted in the dashboard (Stripe still answers for it, marked
+ * deleted), or never there under this key. Stripe refuses a checkout for either, so every "Start free month" failed
+ * until it's replaced. Anything else (Stripe not answering) is thrown, and the saved customer kept.
+ */
+export async function customerGone(stripe: Stripe, customerId: string): Promise<boolean> {
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    return "deleted" in customer && customer.deleted === true;
+  } catch (e) {
+    if ((e as { code?: string }).code === "resource_missing") return true;
+    throw e;
+  }
+}
+
 /** The free month a pilot's first membership starts with. Only the first: cancelling and starting again doesn't bring another. */
 export const TRIAL_DAYS = 30;
 

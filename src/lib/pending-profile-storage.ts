@@ -51,3 +51,12 @@ export function clearPendingProfile(userId: string | null): void {
     // ignore
   }
 }
+
+/**
+ * What's left of a finished, unconfirmed interview once a pack is loaded: kept when it's the same pack loaded again (the
+ * same PDF uploaded a second time), gone with any other. Cleared either way, the pilot who uploaded their pack again from
+ * the confirmation screen lost the whole interview, its draft being gone the moment it finished.
+ */
+export function pendingAfterLoading(pending: PreferenceProfile | null, loadedPackId: string | null, newPackId: string): PreferenceProfile | null {
+  return pending && loadedPackId === newPackId ? pending : null;
+}

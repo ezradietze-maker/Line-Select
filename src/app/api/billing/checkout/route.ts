@@ -2,9 +2,9 @@ import type Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
-import { getSubscriptionByUserId, linkStripeCustomer } from "@/lib/server/db";
+import { getSubscriptionByUserId, linkStripeCustomer, relinkStripeCustomer } from "@/lib/server/db";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
-import { appOrigin, freeMonthFor, getStripe, membershipEnded, planForStatus, stripeConfig, TRIAL_DAYS } from "@/lib/server/stripe";
+import { appOrigin, customerGone, freeMonthFor, getStripe, membershipEnded, planForStatus, stripeConfig, TRIAL_DAYS } from "@/lib/server/stripe";
 
 export const runtime = "nodejs";
 const NO_STORE = { "Cache-Control": "private, no-store" };
@@ -46,16 +46,20 @@ export async function POST(request: Request) {
     const existing = await getSubscriptionByUserId(user.id);
     if (existing?.stripeSubscriptionId && !membershipEnded(existing.status)) return secondMembershipRefusal(existing.status);
     let customerId = existing?.stripeCustomerId;
+    const newCustomer = () => stripe.customers.create({ email: user.email, name: user.displayName, metadata: { userId: user.id } });
     if (!customerId) {
-      const customer = await stripe.customers.create({ email: user.email, name: user.displayName, metadata: { userId: user.id } });
+      const customer = await newCustomer();
       // Save the link now so a webhook that races ahead of checkout completion can still find this pilot. A checkout
       // started at the same moment in another tab may have linked its own first: go on with that one.
       customerId = await linkStripeCustomer(user.id, customer.id);
+    } else if (await customerGone(stripe, customerId)) {
+      // Deleted at Stripe: a new one in its place, or the pilot could never start a membership again.
+      customerId = await relinkStripeCustomer(user.id, customerId, (await newCustomer()).id);
     }
     // A checkout finished a moment ago (another tab) is at Stripe before its webhook reaches our row.
     const atStripe = (await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 })).data.find((s) => !membershipEnded(s.status));
     if (atStripe) return secondMembershipRefusal(atStripe.status);
-    const freeMonth = await freeMonthFor(stripe, user.email, existing ?? { stripeCustomerId: customerId, stripeSubscriptionId: null, trialEndsAt: null });
+    const freeMonth = await freeMonthFor(stripe, user.email, existing ? { ...existing, stripeCustomerId: customerId } : { stripeCustomerId: customerId, stripeSubscriptionId: null, trialEndsAt: null });
     const origin = appOrigin(request);
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
