@@ -3,8 +3,8 @@
 import { DateTime } from "luxon";
 import { useMemo, useState } from "react";
 import { baseDayStartMinutes, dayIndices, zoneOf, type Span } from "@/lib/phase-in";
-import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
-import type { LineSlides, SlideOption } from "@/lib/vacation-slide";
+import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { removedNames, type LineSlides, type SlideOption } from "@/lib/vacation-slide";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /**
@@ -19,6 +19,7 @@ const COL = 26;
 const WEEKDAY = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const day = (iso: string) => DateTime.fromISO(iso).toFormat("LLL d");
 
 /** "As awarded", or how this option moves the vacation. */
 function moveWords(o: Pick<SlideOption, "offset" | "expandBefore" | "expandAfter">): string {
@@ -61,18 +62,6 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
     });
   }, [pack.bidPeriodStart, zone, dayCount]);
 
-  // This line's trips, where each one sits in the month.
-  const trips = useMemo(
-    () =>
-      row.line.trips.flatMap((trip) => {
-        const span = tripSpanOf(trip, pack);
-        if (!span) return [];
-        const days = spanDays(span, pack);
-        return days.length ? [{ trip, days }] : [];
-      }),
-    [row.line.trips, pack],
-  );
-
   // The pure slides this line offers (no expansion), earliest to latest: the footprint can be dragged across these.
   const slides = useMemo(() => row.all.filter((o) => !o.expandBefore && !o.expandAfter).sort((a, b) => a.offset - b.offset), [row.all]);
   const asAwardedIdx = Math.max(0, slides.findIndex((o) => o.offset === 0));
@@ -82,15 +71,22 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
   const selected = picked ?? slides[idx] ?? row.asAwarded;
 
   const vacationDays = useMemo(() => new Set(spanDays(selected.span, pack)), [selected, pack]);
-  const removedDays = useMemo(() => {
-    const out = new Set<number>();
-    for (const r of selected.removed) {
-      const span = tripSpanOf(r.trip, pack);
-      if (span) for (const d of spanDays(span, pack)) out.add(d);
-    }
-    return out;
-  }, [selected, pack]);
-  const removedPairings = useMemo(() => new Set(selected.removed.map((r) => r.trip.pairingNumber)), [selected]);
+
+  // This line's trips, where each one sits in the month, and whether this option takes it off. A vacation takes a run
+  // of day trips a day at a time (CBA 2026 7.G.1), so a run it hits is drawn as its days: struck whole, a run that
+  // loses one day read as all of it coming off.
+  const trips = useMemo(() => {
+    const removed = new Set(selected.removed.map((r) => r.trip));
+    return row.line.trips.flatMap((whole) => {
+      const days = dayTripsOf(whole);
+      return (days.some((d) => removed.has(d)) ? days : [whole]).flatMap((trip) => {
+        const span = tripSpanOf(trip, pack);
+        if (!span) return [];
+        const cols = spanDays(span, pack);
+        return cols.length ? [{ trip, days: cols, off: removed.has(trip) }] : [];
+      });
+    });
+  }, [row.line.trips, selected, pack]);
 
   const vacCol = gridColumn([...vacationDays]);
   const chips = [row.asAwarded, ...row.best];
@@ -117,16 +113,17 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
         <p className="text-sm font-medium text-ink">
           #{row.rank} Line {row.line.lineNumber}
         </p>
-        <p className="text-xs text-ink-muted">
-          {moveWords(selected)} ·{" "}
-          {selected.removed.length ? `takes ${selected.removed.map((r) => `trip ${r.trip.pairingNumber}`).join(", ")} off` : "takes no trips off"} ·{" "}
+        {/* Said again as the slider moves: the calendar itself is a picture. */}
+        <p className="text-xs text-ink-muted" aria-live="polite">
+          {moveWords(selected)} ({day(selected.firstDay)}&ndash;{day(selected.lastDay)}) ·{" "}
+          {selected.removed.length ? `takes ${removedNames(selected.removed, pack).join(", ")} off` : "takes no trips off"} ·{" "}
           {selected.chargedCH.toFixed(1)} CH from bank · {plural(selected.daysOff, "day")} off{selected.longestOff ? `, ${selected.longestOff} in a row` : ""}
           {byModel && selected.score !== null ? ` · scores ${selected.score.toFixed(1)}` : ""}
         </p>
       </div>
 
       {/* The month, with the vacation footprint over it. */}
-      <div className="mt-3 overflow-x-auto pb-1">
+      <div className="mt-3 overflow-x-auto pb-1" aria-hidden>
         <div className="grid items-end gap-px" style={{ gridTemplateColumns: `repeat(${dayCount}, minmax(${COL}px, 1fr))`, gridTemplateRows: "10px auto auto 34px", minWidth: dayCount * COL }}>
           {/* Vacation band */}
           {vacCol && (
@@ -146,13 +143,13 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
             <div key={`c${m.d}`} className={`self-stretch rounded-sm border ${vacationDays.has(m.d) ? "border-accent/40 bg-accent/10" : "border-hairline/60"}`} style={{ gridColumn: m.d + 1, gridRow: 4 }} />
           ))}
           {/* Trips */}
-          {trips.map(({ trip, days }) => {
+          {trips.map(({ trip, days, off }) => {
             const col = gridColumn(days);
             if (!col) return null;
-            const off = removedPairings.has(trip.pairingNumber) && days.some((d) => removedDays.has(d));
             return (
               <div
-                key={trip.id}
+                // A run's days share its id.
+                key={`${trip.id}@${trip.startDayIndex}`}
                 className={`z-10 flex items-center justify-center self-stretch overflow-hidden rounded-sm border px-1 text-[10px] font-medium ${off ? "border-accent bg-accent/15 text-accent line-through decoration-accent/70" : "border-leg/50 bg-leg/25 text-ink"}`}
                 style={{ gridColumn: col, gridRow: 4 }}
                 title={off ? `Trip ${trip.pairingNumber} comes off — vacation takes it` : `Trip ${trip.pairingNumber}`}
@@ -177,10 +174,12 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
             min={0}
             max={slides.length - 1}
             step={1}
-            value={picked ? asAwardedIdx : idx}
+            // An expansion picked below sits on its slide: as awarded, the slider showed a slide-and-expand at none.
+            value={picked ? Math.max(0, slides.findIndex((s) => s.offset === picked.offset)) : idx}
             onChange={(e) => pickSlider(Number(e.target.value))}
             className="mt-1 w-full accent-[var(--color-accent)]"
             aria-label="Slide vacation earlier or later"
+            aria-valuetext={`${moveWords(selected)}, ${day(selected.firstDay)} to ${day(selected.lastDay)}`}
           />
         </div>
       )}
@@ -193,6 +192,7 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
             <button
               key={`${o.offset}:${o.expandBefore}:${o.expandAfter}`}
               type="button"
+              aria-pressed={on}
               onClick={() => pickChip(o)}
               className={`rounded-[3px] border px-2.5 py-1 text-2xs transition-colors ${on ? "border-accent bg-accent text-surface-raised" : "border-hairline text-ink-muted hover:text-ink"}`}
             >

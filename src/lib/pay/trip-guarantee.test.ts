@@ -3,7 +3,7 @@ import { guaranteeShortfall, linePay, minBidPeriodGuarantee, tripPay, tripRig } 
 import type { Line, Trip } from "@/types/bidpack";
 
 const trip = (creditHours: number, tafbHours: number): Trip => ({ creditHours, tafbHours } as Trip);
-const line = (trips: Trip[]): Line => ({ trips } as Line);
+const line = (trips: Trip[], carryOverCreditHours?: number): Line => ({ trips, carryOverCreditHours } as Line);
 
 describe("trip rig (CBA 2026 4.F.2.a)", () => {
   it("is 1 CH per 3.75 hours of TAFB", () => {
@@ -36,6 +36,13 @@ describe("linePay (CBA 2026 4.B / 4.A.1)", () => {
     expect(lp.tripGuaranteeTotal).toBe(80);
     expect(lp.blg).toBe(80);
     expect(lp.flooredUp).toBe(false);
+  });
+  it("4.B: leaves out the share of a trip over the period's end that the line carries into the next one", () => {
+    const lp = linePay(line([trip(40, 100), trip(40, 100)], 15), { bidPeriodDays: 28 });
+    expect(lp.carryOverCH).toBe(15);
+    expect(lp.tripGuaranteeTotal).toBe(65);
+    expect(lp.blg).toBe(68);
+    expect(lp.flooredUp).toBe(true);
   });
   it("floors a thin line up to the minimum bid period guarantee", () => {
     const lp = linePay(line([trip(20, 60)]), { bidPeriodDays: 28 });

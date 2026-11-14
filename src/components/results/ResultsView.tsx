@@ -1724,7 +1724,7 @@ export function ResultsView({
             <DragOverlay>{activeLineScore && <DragPreview lineScore={activeLineScore} />}</DragOverlay>
           </DndContext>
 
-          {menu && <LineContextMenu menu={menu} tiers={tiers} displayedIds={displayedIds} onClose={() => setMenu(null)} />}
+          {menu && <LineContextMenu menu={menu} tiers={tiers} listedIds={listedIds} onClose={() => setMenu(null)} />}
 
           {sorted.length > displayed.length && (
             <div className="panel-glass mt-4 flex flex-col items-center gap-2 px-4 py-4 text-center">

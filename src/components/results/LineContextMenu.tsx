@@ -16,6 +16,7 @@ function Item({ onClick, children, disabled = false }: { onClick: () => void; ch
     <button
       type="button"
       role="menuitem"
+      tabIndex={-1}
       disabled={disabled}
       onClick={onClick}
       className="block w-full px-3 py-1.5 text-left text-sm text-ink transition-colors hover:bg-accent-soft/60 disabled:cursor-default disabled:text-ink-faint disabled:hover:bg-transparent"
@@ -30,7 +31,7 @@ function Item({ onClick, children, disabled = false }: { onClick: () => void; ch
  * selection to a tier, set it aside, or take it out — the bulk moves Acrobid's grid has, on our scored list.
  * It drives the same tier state the keyboard and drag do, so every move still teaches the brain and still undoes.
  */
-export function LineContextMenu({ menu, tiers, displayedIds, onClose }: { menu: LineMenu; tiers: Tiers; displayedIds: string[]; onClose: () => void }) {
+export function LineContextMenu({ menu, tiers, listedIds, onClose }: { menu: LineMenu; tiers: Tiers; listedIds: string[]; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x: menu.x, y: menu.y });
 
@@ -46,6 +47,14 @@ export function LineContextMenu({ menu, tiers, displayedIds, onClose }: { menu: 
     });
   }, [menu.x, menu.y]);
 
+  // A menu opens onto its first item, and gives the keyboard back to where it was when it closes: left where it was, the
+  // arrows went on moving the line under it.
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    ref.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true });
+    return () => opener?.focus({ preventScroll: true });
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     const onScroll = () => onClose();
@@ -58,9 +67,11 @@ export function LineContextMenu({ menu, tiers, displayedIds, onClose }: { menu: 
   }, [onClose]);
 
   const targets = tiers.selected.has(menu.id) ? [...tiers.selected] : [menu.id];
-  const idx = displayedIds.indexOf(menu.id);
-  const above = idx >= 0 ? displayedIds.slice(0, idx + 1) : [];
-  const below = idx >= 0 ? displayedIds.slice(idx) : [];
+  // The whole list, not the page of it showing: "everything below" stopped at the 25th line, and the lines under
+  // "Show more" were left where they were.
+  const idx = listedIds.indexOf(menu.id);
+  const above = idx >= 0 ? listedIds.slice(0, idx + 1) : [];
+  const below = idx >= 0 ? listedIds.slice(idx) : [];
 
   const selectRun = (ids: string[], word: string) => {
     tiers.select(ids);
@@ -87,10 +98,26 @@ export function LineContextMenu({ menu, tiers, displayedIds, onClose }: { menu: 
         style={{ left: pos.x, top: pos.y }}
         onClick={(e) => e.stopPropagation()}
         onContextMenu={(e) => e.stopPropagation()}
+        // Up and Down move between the items, Home and End go to the ends, Tab leaves and closes it.
+        onKeyDown={(e) => {
+          if (e.key === "Tab") {
+            e.preventDefault();
+            onClose();
+            return;
+          }
+          const items = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)')];
+          const at = items.indexOf(document.activeElement as HTMLElement);
+          const next =
+            e.key === "ArrowDown" ? (at + 1) % items.length : e.key === "ArrowUp" ? (at - 1 + items.length) % items.length : e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : null;
+          if (next === null) return;
+          e.preventDefault();
+          e.stopPropagation();
+          items[next]?.focus();
+        }}
       >
         {targets.length > 1 && <p className="px-3 pb-1 pt-0.5 text-2xs font-medium uppercase tracking-wide text-ink-faint">{targets.length} lines selected</p>}
         <Item onClick={() => selectRun(above, "everything above")} disabled={idx <= 0}>Select all above</Item>
-        <Item onClick={() => selectRun(below, "everything below")} disabled={idx < 0 || idx >= displayedIds.length - 1}>Select all below</Item>
+        <Item onClick={() => selectRun(below, "everything below")} disabled={idx < 0 || idx >= listedIds.length - 1}>Select all below</Item>
         {tiers.selected.size > 0 && <Item onClick={() => { tiers.clearSelected(); onClose(); }}>Clear selection</Item>}
         <div className="my-1 border-t border-hairline/70" />
         <p className="px-3 pb-0.5 pt-0.5 text-2xs font-medium uppercase tracking-wide text-ink-faint">Move {targets.length > 1 ? `${targets.length} lines` : "to"}</p>

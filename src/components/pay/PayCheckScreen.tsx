@@ -76,6 +76,7 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
                 {pay.flooredUp && pay.floor
                   ? <>Its trips add to {ch(pay.tripGuaranteeTotal)}, below the {ch(pay.floor.ch)} minimum for a {bidPack.bidPeriodDays}-day period, so the floor sets it (CBA 2026 4.A.1, 4.B).</>
                   : <>That&rsquo;s the sum of its {pay.trips.length} trips&rsquo; guarantees{pay.floor ? `, above the ${ch(pay.floor.ch)} floor` : ""} (CBA 2026 4.B).</>}
+                {pay.carryOverCH > 0 ? <> The {ch(pay.carryOverCH)} of its carryover trip that falls in the next bid period is left out; it counts there (CBA 2026 4.B, 4.G).</> : null}
               </p>
             </section>
           )}

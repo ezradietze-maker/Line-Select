@@ -7,7 +7,7 @@ import { FIELD } from "@/components/ui/field";
 import { loadCarryIn } from "@/lib/carry-in-storage";
 import { flyPack, zoneOf } from "@/lib/phase-in";
 import { placeInPack } from "@/lib/strategy-engine";
-import { CH_PER_VACATION_DAY, findVacationSlides, type LineSlides, type SlideOption, slideWhere, typedVacation, vacationLabel, vacationsInReach, type VacationSlides } from "@/lib/vacation-slide";
+import { CH_PER_VACATION_DAY, findVacationSlides, type LineSlides, removedNames, type SlideOption, slideWhere, typedVacation, vacationLabel, vacationsInReach, type VacationSlides } from "@/lib/vacation-slide";
 import { vacationId } from "@/lib/vacation-lines";
 import { VacationCalendar } from "@/components/strategies/VacationCalendar";
 import type { BidPack, VacationPeriod } from "@/types/bidpack";
@@ -33,24 +33,23 @@ function moveWords(o: Pick<SlideOption, "offset" | "expandBefore" | "expandAfter
   return parts.length ? parts.join(", ") : "As awarded";
 }
 
-function tripWords(o: SlideOption): string {
+function tripWords(o: SlideOption, pack: BidPack): string {
   // CBA 2026 7.G.1 charges the bank for removed trips only.
   if (!o.removed.length) return "takes no trips off, so it sits on days you already had off and your bank isn't charged";
-  const names = o.removed.map((r) => (r.trip.pairingNumber ? `trip ${r.trip.pairingNumber}` : "a trip")).join(", ");
-  return `takes ${names} off (${o.chargedCH.toFixed(1)} CH from your bank, still paid)`;
+  return `takes ${removedNames(o.removed, pack).join(", ")} off (${o.chargedCH.toFixed(1)} CH from your bank, still paid)`;
 }
 
 function restWords(o: SlideOption): string {
   return `${plural(o.daysOff, "day")} off${o.longestOff ? `, ${o.longestOff} in a row` : ""}`;
 }
 
-function OptionRow({ o, value, byModel }: { o: SlideOption; value: number; byModel: boolean }) {
+function OptionRow({ o, value, byModel, pack }: { o: SlideOption; value: number; byModel: boolean; pack: BidPack }) {
   return (
     <li>
       <span className="font-medium text-ink">
         {moveWords(o)} ({day(o.firstDay)}&ndash;{day(o.lastDay)}).
       </span>{" "}
-      It {tripWords(o)}: {restWords(o)}.{byModel && o.score !== null ? ` Scores ${o.score.toFixed(1)}.` : ""}
+      It {tripWords(o, pack)}: {restWords(o)}.{byModel && o.score !== null ? ` Scores ${o.score.toFixed(1)}.` : ""}
       {o.chargedCH > value ? ` That's ${(o.chargedCH - value).toFixed(1)} CH more than this vacation's ${value} CH (CBA 2026 7.G.1).` : ""}
       {o.removed.some((r) => r.waivable) ? " You can waive the 24-hour buffer to keep the trip after it (CBA 2026 7.G.1)." : ""}
       {" "}
@@ -59,23 +58,23 @@ function OptionRow({ o, value, byModel }: { o: SlideOption; value: number; byMod
   );
 }
 
-function LineRow({ row, value, byModel }: { row: LineSlides; value: number; byModel: boolean }) {
+function LineRow({ row, value, byModel, pack }: { row: LineSlides; value: number; byModel: boolean; pack: BidPack }) {
   return (
     <li>
       <p className="text-sm font-medium text-ink">
         #{row.rank} Line {row.line.lineNumber}
       </p>
       <p className="mt-0.5 text-xs text-ink-muted">
-        As awarded it {tripWords(row.asAwarded)}: {restWords(row.asAwarded)}.{byModel && row.asAwarded.score !== null ? ` Scores ${row.asAwarded.score.toFixed(1)}.` : ""}
+        As awarded it {tripWords(row.asAwarded, pack)}: {restWords(row.asAwarded)}.{byModel && row.asAwarded.score !== null ? ` Scores ${row.asAwarded.score.toFixed(1)}.` : ""}
       </p>
       {row.best.length > 0 ? (
         <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs text-ink-muted">
           {row.best.map((o) => (
-            <OptionRow key={`${o.offset}:${o.expandBefore}:${o.expandAfter}`} o={o} value={value} byModel={byModel} />
+            <OptionRow key={`${o.offset}:${o.expandBefore}:${o.expandAfter}`} o={o} value={value} byModel={byModel} pack={pack} />
           ))}
         </ol>
       ) : (
-        <p className="mt-1 text-xs text-ink-muted">No slide changes anything on this line.</p>
+        <p className="mt-1 text-xs text-ink-muted">No slide adds days off on this line.</p>
       )}
     </li>
   );
@@ -136,7 +135,7 @@ function Results({ found, zone, pack }: { found: VacationSlides; zone: string; p
         <summary className="cursor-pointer text-ink-muted hover:text-ink">Every line, in words</summary>
         <ul className="mt-2 space-y-3">
           {shown.map((row) => (
-            <LineRow key={row.line.id} row={row} value={value} byModel={found.byModel} />
+            <LineRow key={row.line.id} row={row} value={value} byModel={found.byModel} pack={pack} />
           ))}
         </ul>
         {found.lines.length > LINES_SHOWN && (
