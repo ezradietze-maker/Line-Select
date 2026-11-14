@@ -18,10 +18,11 @@
  *    (`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`) or Vercel's KV
  *    integration (`KV_REST_API_URL` / `KV_REST_API_TOKEN`), matching `kv.ts`.
  *
- * Only a real running production server is checked. Development, tests and the
- * `next build` step (which runs with `NODE_ENV=production` but no live
- * credentials, e.g. in CI) are all left alone, so nothing here can break a
- * local run, a test, or a build.
+ * Only the live site (Vercel's production environment) refuses to start. A
+ * preview deploy or a local `next start` gets a warning, and development, tests
+ * and the `next build` step (which runs with `NODE_ENV=production` but no live
+ * credentials, e.g. in CI) are left alone, so nothing here can break a preview,
+ * a local run, a test, or a build.
  */
 
 export interface MissingEnv {
@@ -65,8 +66,8 @@ export function missingProductionEnv(env: EnvLike = process.env): MissingEnv[] {
   return missing;
 }
 
-/** True only for a real running production server — not dev, not tests, not `next build`. */
-function isRunningProduction(env: EnvLike): boolean {
+/** A server taking requests (not dev, not tests, not `next build`). */
+function isRunningServer(env: EnvLike): boolean {
   if (env.NODE_ENV !== "production") return false;
   // `next build` runs with NODE_ENV=production but no live credentials; it isn't a server taking requests.
   if (env.NEXT_PHASE === "phase-production-build") return false;
@@ -74,16 +75,28 @@ function isRunningProduction(env: EnvLike): boolean {
 }
 
 /**
- * Throws if a real production server is starting without the required
- * environment. The message names each missing variable and what it breaks, so
- * the fix is clear from the crash alone. A no-op anywhere but a running
- * production server.
+ * The live site: Vercel's production environment. A preview deploy (each branch and pull request gets one) or a
+ * `next start` on a laptop may well run without the live database and Redis, and refusing to start there only stopped
+ * previews from loading; it gets a warning instead.
  */
-export function assertProductionEnv(env: EnvLike = process.env): void {
-  if (!isRunningProduction(env)) return;
+function isLiveSite(env: EnvLike): boolean {
+  return isRunningServer(env) && env.VERCEL_ENV === "production";
+}
+
+/**
+ * Throws if the live site is starting without the required environment. The message names each missing variable and
+ * what it breaks, so the fix is clear from the crash alone. Any other running server (a preview, a local
+ * `next start`) only warns; dev, tests and `next build` say nothing.
+ */
+export function assertProductionEnv(env: EnvLike = process.env, warn: (message: string) => void = console.warn): void {
+  if (!isRunningServer(env)) return;
   const missing = missingProductionEnv(env);
   if (missing.length === 0) return;
   const lines = missing.map((m) => `  - ${m.name}: ${m.why}`).join("\n");
+  if (!isLiveSite(env)) {
+    warn(`Line Select is running without part of its production environment (fine for a preview or a local run):\n${lines}`);
+    return;
+  }
   throw new Error(
     "Line Select cannot start: required production environment is missing or misconfigured.\n" +
       lines +
