@@ -58,16 +58,18 @@ export const turnOffFeed = async () => statusFrom(await send("DELETE"));
  */
 export async function turnOffFeedForStartOver(userId: string): Promise<boolean> {
   oweFeedOff(userId);
-  return payFeedOffOwed(userId);
+  return payFeedOffOwed(userId, true);
 }
 
 /**
  * Turns the link off if this device still owes it for `userId`; true once nothing is owed. Only a link made by the
- * Start over: one the pilot made since on another device is theirs to keep.
+ * Start over: one the pilot made since on another device is theirs to keep. `rightAway`: the Start over's own try,
+ * which turns off whatever link there is. Sent with this device's time, a clock running slow kept on a link made a
+ * minute before, and the device took it as off.
  */
-export async function payFeedOffOwed(userId: string): Promise<boolean> {
+export async function payFeedOffOwed(userId: string, rightAway = false): Promise<boolean> {
   if (feedOffOwed() !== userId) return true;
-  const since = feedOffOwedSince();
+  const since = rightAway ? null : feedOffOwedSince();
   try {
     await statusFrom(await send("DELETE", since ? { madeBefore: since } : undefined, userId));
   } catch {

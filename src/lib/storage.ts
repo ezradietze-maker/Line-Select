@@ -172,6 +172,10 @@ export async function loadProfileForUser(userId: string | null, offline = false)
   if (pending && localProfile) {
     setServerProfileVersion(pending.base);
     startFromUnsynced(userId, pending);
+  } else if (server.kind === "unreachable" && localProfile) {
+    // With nothing waiting, the device's copy is the account's as last loaded here: an edit made from it, refused once
+    // the server answers, is merged against it. Against no copy, the account's won whole and the edit was lost.
+    remember(userId, localProfile);
   }
   if (server.kind === "none" && localProfile) {
     const saved = await saveServerProfile(localProfile, userId);

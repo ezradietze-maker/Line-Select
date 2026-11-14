@@ -1,6 +1,8 @@
 import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserAccount } from "@/types/auth";
+import type { BidPack } from "@/types/bidpack";
+import type { PreferenceProfile } from "@/types/preferences";
 
 /**
  * `refreshUser` (asked on focus, and by the confirm-email notice) racing a sign-out on the same tab. The provider's own
@@ -53,7 +55,7 @@ vi.mock("@/lib/posthog-client", () => ({ captureUsageEvent: () => {}, identifyPi
 vi.mock("@/lib/device-data", () => ({ forgetPilotOnDevice: () => {}, forgetPilotWork: () => {} }));
 vi.mock("@/lib/account-bid-pack", () => ({ accountBidPack: async () => ({ pack: null, saveFailed: false, noneOnAccount: true }) }));
 
-const { AppStateProvider, useAppState } = await import("@/lib/app-state");
+const { AppStateProvider, caughtUpState, useAppState } = await import("@/lib/app-state");
 type AppState = ReturnType<typeof useAppState>;
 
 const PILOT: UserAccount = { id: "11111111-1111-4111-8111-111111111111", email: "pilot@example.com", displayName: "J. Pilot", createdAt: "", plan: "free", emailVerified: false };
@@ -102,5 +104,36 @@ describe("refreshUser", () => {
     expect(await asked).toBe("confirmed");
     expect(store.get(HINT)).toBe("1");
     expect(JSON.parse(store.get(LAST_USER)!).id).toBe(PILOT.id);
+  });
+});
+
+describe("caughtUpState", () => {
+  // The load gave up on a crawling connection and showed this device's copies; the server has answered since.
+  const pack = (id: string) => ({ id }) as unknown as BidPack;
+  const profile = (completedAt: string) => ({ completedAt }) as unknown as PreferenceProfile;
+  const oct = pack("OCT26");
+  const kept = profile("device");
+  const shown = { ready: true, profile: kept, user: { ...PILOT, emailVerified: true }, bidPack: oct, parseResult: null, pendingProfile: null, seniority: null, freshBidPack: false, bidPackSaveFailed: false, profileSaveFailed: false };
+  const was = { userId: PILOT.id, bidPack: oct, profile: kept };
+
+  it("shows the month uploaded on another device, and the account's profile, in place of the device's copies", () => {
+    const nov = pack("NOV26");
+    const next = caughtUpState(shown, was, { bidPack: nov, profile: profile("account"), pendingFor: () => null });
+    expect(next.bidPack).toBe(nov);
+    expect(next.profile?.completedAt).toBe("account");
+  });
+
+  it("keeps a pack the pilot loaded and an edit they made since", () => {
+    const uploaded = pack("NOV26-mine");
+    const edited = profile("edited");
+    const next = caughtUpState({ ...shown, bidPack: uploaded, profile: edited }, was, { bidPack: pack("NOV26"), profile: profile("account"), pendingFor: () => null });
+    expect(next.bidPack).toBe(uploaded);
+    expect(next.profile).toBe(edited);
+  });
+
+  it("changes nothing for another account, or when the account had nothing to give", () => {
+    const other = { ...shown, user: null };
+    expect(caughtUpState(other, was, { bidPack: pack("NOV26"), profile: profile("account"), pendingFor: () => null })).toBe(other);
+    expect(caughtUpState(shown, was, { bidPack: null, profile: null, pendingFor: () => null })).toBe(shown);
   });
 });

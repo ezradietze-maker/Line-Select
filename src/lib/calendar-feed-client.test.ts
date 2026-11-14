@@ -132,6 +132,15 @@ describe("Start over turning the calendar link off", () => {
     setShownAccount(null);
   });
 
+  it("turns off whatever link there is on the Start over's own try, whatever this device's clock says", async () => {
+    // A clock five minutes slow named a time before a link made a minute ago: the server kept it on, and said "off".
+    vi.useFakeTimers({ now: new Date("2026-11-10T12:00:00Z"), toFake: ["Date"] });
+    const fetchMock = device(200);
+    expect(await turnOffFeedForStartOver("u1")).toBe(true);
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined();
+    vi.useRealTimers();
+  });
+
   it("says when it was owed, so a link made since on another device stays on", async () => {
     vi.useFakeTimers({ now: new Date("2026-11-10T12:05:00Z"), toFake: ["Date"] });
     const fetchMock = device("offline", 200);

@@ -4,6 +4,7 @@ import { markLanding } from "@/components/results/WheelsDown";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { checkSession, logout as logoutAccount } from "@/lib/auth";
+import { isOffline, useOffline } from "@/lib/connection";
 import { accountBidPack } from "@/lib/account-bid-pack";
 import { clearServerBidPack, saveServerBidPack } from "@/lib/bidpack-server";
 import { clearBidPack, clearGuestUpload, dropPendingBidPackWrites, guestUploadedPackId, loadBidPack, markGuestUpload, saveBidPack } from "@/lib/bidpack-storage";
@@ -18,7 +19,7 @@ import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/post
 import { clearPendingProfile, loadPendingProfile, pendingAfterLoading, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
-import { askToKeepStorage, clearProfile, clearProfileForUser, dropGuestRecords, dropPendingProfileWrites, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
+import { askToKeepStorage, clearProfile, clearProfileForUser, dropGuestRecords, dropPendingProfileWrites, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfile, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
 import { loadSeenOfferIds, newArrivals, saveSeenOfferIds, type ToastBaseline } from "@/lib/trade-seen-storage";
 import type { BidPack } from "@/types/bidpack";
@@ -182,6 +183,29 @@ async function loadStateFor(currentUser: UserAccount | null, offline = false): P
   };
 }
 
+/** A signed-in load made from this device's copies alone (`loadStateFor` offline): whose, and what it showed. */
+export interface OfflineLoad {
+  userId: string;
+  bidPack: BidPack | null;
+  profile: PreferenceProfile | null;
+}
+
+/**
+ * The account's pack and profile, read once the server answers after a load that had only this device's copies: each
+ * one shown in place of the device's while the screen still shows that copy. One the pilot has changed since (a pack
+ * uploaded, an edit) stays. Without this, a pack uploaded on the laptop stayed off the phone until it was reloaded, the
+ * offline notice long gone. Null for anything the account couldn't give.
+ */
+export function caughtUpState(s: DataState, was: OfflineLoad, fresh: { bidPack: BidPack | null; profile: PreferenceProfile | null; pendingFor: (packId: string) => PreferenceProfile | null }): DataState {
+  if (s.user?.id !== was.userId) return s;
+  let next = s;
+  if (fresh.bidPack && s.bidPack === was.bidPack && fresh.bidPack.id !== was.bidPack?.id) {
+    next = { ...next, bidPack: fresh.bidPack, parseResult: null, pendingProfile: fresh.pendingFor(fresh.bidPack.id), freshBidPack: false };
+  }
+  if (fresh.profile && s.profile === was.profile) next = { ...next, profile: fresh.profile };
+  return next;
+}
+
 interface AppStateValue extends DataState {
   interviewKey: number;
   demoOffer: TradeOffer | null;
@@ -262,6 +286,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   /** Counts this tab's sign-ins and sign-outs, so an answer about who's signed in asked for before one isn't used after it (`refreshUser`). */
   const signInsRef = useRef(0);
   const adoptOnLoadRef = useRef<(user: UserAccount, from: GuestWork) => Promise<unknown>>(async () => {});
+  /** The load that had only this device's copies, until the account has been read (`catchUpAfterOfflineLoad`). */
+  const offlineLoadRef = useRef<OfflineLoad | null>(null);
+  const catchUpRef = useRef<(was: OfflineLoad) => Promise<void>>(async () => {});
+  const offlineNow = useOffline();
   const latestProfileRef = useRef<PreferenceProfile | null>(null);
   const realOffersRef = useRef<TradeOffer[]>([]);
   /** The trade poll below, for a screen to run straight after an answer (`refreshTradeActivity`). */
@@ -307,8 +335,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       if (currentUser) clearGuestUpload();
       if (currentUser) identifyPilot(currentUser.id);
       if (assumedGuest && !currentUser) return;
-      const resolved = await loadStateFor(currentUser, !session.reachable);
+      // No answer at all (or none in time): only what this device kept. A server that answered with an error may still
+      // give the pack and profile, as before.
+      const offline = !session.reachable && isOffline();
+      const resolved = await loadStateFor(currentUser, offline);
       if (cancelled) return;
+      // Read from the account once the server answers again (`caughtUpState`).
+      if (offline && currentUser) offlineLoadRef.current = { userId: currentUser.id, bidPack: resolved.bidPack, profile: resolved.profile };
       setState(resolved);
       // An edit kept on this device that the load couldn't send either (still no signal, the server busy): the notice
       // shows and the retries below run, as for a save that failed in this visit.
@@ -1033,10 +1066,41 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (hasUnsyncedProfile(now.id)) setProfileSync("failed");
   }
 
+  /**
+   * The server answers again after a load that had only this device's copies: who's signed in is asked (signed out
+   * elsewhere, it's the guest view now), then the account's pack and profile replace the device's where nothing has
+   * changed them since.
+   */
+  async function catchUpAfterOfflineLoad(was: OfflineLoad) {
+    const answer = await refreshUser();
+    if (answer === "unknown") {
+      // Still no answer: asked again the next time the connection comes back.
+      if (!offlineLoadRef.current && shownAccount() === was.userId) offlineLoadRef.current = was;
+      return;
+    }
+    if (answer === "signed-out" || shownAccount() !== was.userId) return;
+    const asked = signInsRef.current;
+    // An edit since, or one still waiting to reach the account, is the profile to keep: the account's isn't asked for.
+    const untouched = latestProfileRef.current === was.profile && !hasUnsyncedProfile(was.userId);
+    const [pack, profile] = await Promise.all([accountBidPack(was.userId), untouched ? loadProfileForUser(was.userId) : null]);
+    if (signInsRef.current !== asked) return;
+    // Edited while the account's copy was on its way: what this device keeps is that edit, not the copy just read.
+    if (untouched && latestProfileRef.current !== was.profile && latestProfileRef.current) saveProfile(was.userId, latestProfileRef.current);
+    setState((s) => caughtUpState(s, was, { bidPack: pack.pack, profile, pendingFor: (packId) => loadPendingProfile(was.userId, packId) }));
+  }
+
   useEffect(() => {
     showAccountNowRef.current = (now) => void showAccountNow(now);
     adoptOnLoadRef.current = (user, from) => handleAuthenticated(user, { stay: true, from });
+    catchUpRef.current = catchUpAfterOfflineLoad;
   });
+
+  useEffect(() => {
+    const was = offlineLoadRef.current;
+    if (offlineNow || !state.ready || !was) return;
+    offlineLoadRef.current = null;
+    void catchUpRef.current(was);
+  }, [offlineNow, state.ready]);
 
   // An address confirmed in another tab or on another device: the notice and the Trade Board's banner go as soon as
   // this tab is looked at again, or the confirm page says so, rather than waiting for a reload.
