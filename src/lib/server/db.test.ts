@@ -832,7 +832,7 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       const fromBefore = await makeUser("from-before", { confirmed: false });
       const confirmed = await makeUser("confirmed-sign-up", { confirmed: false });
       for (const [u, signUp] of [[signedUp, true], [fromBefore, false], [confirmed, true]] as const) {
-        await mod.saveVerificationToken({ tokenHash: hashOf(`clear-${u.id}`), userId: u.id, expiresAt: new Date(Date.now() + 60_000).toISOString(), signUp });
+        await mod.saveVerificationToken({ tokenHash: hashOf(`clear-${u.id}`), userId: u.id, expiresAt: new Date(Date.now() - 60_000).toISOString(), signUp });
       }
       await mod.markEmailVerified(confirmed.id);
       // Made just now: nothing is old enough yet.
@@ -841,6 +841,35 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.findUserById(signedUp.id)).toBeNull();
       expect(await mod.findUserById(fromBefore.id)).not.toBeNull();
       expect(await mod.findUserById(confirmed.id)).not.toBeNull();
+    });
+
+    it("the clear-out waits while a link sent since still works", async () => {
+      // Signed up eight days ago and asked for the link again today: removed the next morning, that link led nowhere.
+      const eightDaysAgo = new Date(Date.now() - 8 * 24 * 3600_000).toISOString();
+      const made = async (label: string) => {
+        const id = randomUUID();
+        const email = `${label}-${id}@test.line-select.invalid`;
+        await mod.createUserWithCredential({ id, email, displayName: "P", createdAt: eightDaysAgo, plan: "free", emailVerified: false }, { userId: id, email, passwordHash: "00", salt: "00" });
+        createdUserIds.push(id);
+        await mod.saveVerificationToken({ tokenHash: hashOf(`first-${id}`), userId: id, expiresAt: new Date(Date.now() - 7 * 24 * 3600_000).toISOString(), signUp: true });
+        return id;
+      };
+      const askedAgain = await made("asked-again");
+      await mod.saveVerificationToken({ tokenHash: hashOf(`again-${askedAgain}`), userId: askedAgain, expiresAt: new Date(Date.now() + 20 * 3600_000).toISOString() });
+      // "This wasn't me" spends the link without confirming: nothing is left to wait for.
+      const notMe = await made("not-me");
+      await mod.saveVerificationToken({ tokenHash: hashOf(`void-${notMe}`), userId: notMe, expiresAt: new Date(Date.now() + 20 * 3600_000).toISOString() });
+      await mod.voidVerificationToken(hashOf(`void-${notMe}`));
+      const weekAgo = new Date(Date.now() - 7 * 24 * 3600_000);
+      await mod.deleteUnconfirmedSignUps(weekAgo);
+      expect(await mod.findUserById(askedAgain)).not.toBeNull();
+      expect(await mod.findUserById(notMe)).toBeNull();
+      expect((await mod.spendVerificationToken(hashOf(`again-${askedAgain}`))).status).toBe("confirmed");
+      // Once that link has run out, it goes as any other.
+      const later = await made("ran-out");
+      await mod.saveVerificationToken({ tokenHash: hashOf(`late-${later}`), userId: later, expiresAt: new Date(Date.now() + 20 * 3600_000).toISOString() });
+      await mod.deleteUnconfirmedSignUps(weekAgo, new Date(Date.now() + 21 * 3600_000));
+      expect(await mod.findUserById(later)).toBeNull();
     });
 
     it("the clear-out leaves an account anyone has used: a session, a saved pack, a profile or a membership", async () => {
