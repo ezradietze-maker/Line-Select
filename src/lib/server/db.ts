@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gt, gte, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
 import { alreadyTraded, offersFreedBy, offersFreedByTrade, sameTrip, snapshotTripKey, type GivenTrip } from "@/lib/trades/offer-trips";
 import { tripIsHeld } from "@/lib/server/trade-validation";
@@ -428,11 +428,15 @@ export async function markEmailVerified(userId: string, now = new Date()): Promi
  * Removes accounts made by signing up and never confirmed, made before `before`. Only those whose first link was sent
  * by signing up: accounts from before confirming existed never had one, so they stay however long they go unconfirmed.
  * And never one anyone has used: an account with a session, a saved pack, a profile or a membership stays, however it
- * got them.
+ * got them. Nor one whose latest link still works: "Send the link again" on its last day sent one that would otherwise
+ * have led nowhere the next morning. A link spent by "This wasn't me" has nothing left to wait for.
  * Every table's link to an account cascades, so nothing of a removed one is left. Returns how many went.
  */
-export async function deleteUnconfirmedSignUps(before: Date): Promise<number> {
-  const signedUp = db.select({ id: emailVerificationTokens.userId }).from(emailVerificationTokens).where(eq(emailVerificationTokens.signUp, true));
+export async function deleteUnconfirmedSignUps(before: Date, now = new Date()): Promise<number> {
+  const signedUp = db
+    .select({ id: emailVerificationTokens.userId })
+    .from(emailVerificationTokens)
+    .where(and(eq(emailVerificationTokens.signUp, true), or(lte(emailVerificationTokens.expiresAt, now), isNotNull(emailVerificationTokens.usedAt))));
   const removed = await db
     .delete(users)
     .where(

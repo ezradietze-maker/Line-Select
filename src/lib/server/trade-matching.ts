@@ -22,7 +22,7 @@ const RUN_SECONDS = 90;
 /** A trade takes two. */
 const MIN_PILOTS = 2;
 /** The whole daily run's limit, leaving the morning email time to go within the cron's five minutes. */
-const DAILY_BUDGET_MS = 120_000;
+export const DAILY_MATCHING_BUDGET_MS = 120_000;
 /** How long one group's search may take, inside Find trades' 90 seconds with time to store and email what it found. */
 const SEARCH_MS = 45_000;
 
@@ -113,7 +113,7 @@ export interface DailyMatchingResult {
 }
 
 /** The daily run: every month and seat with pilots to match, within a time limit. Never throws: one seat failing can't stop the rest or the morning email. */
-export async function runDailyMatching(nowDate = new Date(), budgetMs = DAILY_BUDGET_MS): Promise<DailyMatchingResult> {
+export async function runDailyMatching(nowDate = new Date(), budgetMs = DAILY_MATCHING_BUDGET_MS): Promise<DailyMatchingResult> {
   const result: DailyMatchingResult = { groups: 0, skipped: 0, found: 0, failed: 0, notReached: 0 };
   const now = nowDate.getTime();
   const started = Date.now();
@@ -127,7 +127,8 @@ export async function runDailyMatching(nowDate = new Date(), budgetMs = DAILY_BU
   }
   result.groups = groups.length;
   for (const [i, meta] of groups.entries()) {
-    if (Date.now() - started > budgetMs) {
+    // At or past it: a budget of nothing left reaches no group, rather than one more search of a few seconds.
+    if (Date.now() - started >= budgetMs) {
       result.notReached = groups.length - i;
       break;
     }

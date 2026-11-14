@@ -24,7 +24,7 @@ vi.mock("@/lib/server/email", () => ({
   },
 }));
 
-const { dailySummaryText, noteActivity, reportBrowserProblem, reportProblem, sendDailySummary, summarizeDay } = await import("./alerts");
+const { dailySummaryText, noteActivity, reportBrowserProblem, reportProblem, sendDailySummary, sendFeedbackNote, summarizeDay } = await import("./alerts");
 const { recordSpend } = await import("./spend-guard");
 
 const at = new Date("2026-11-05T15:10:00Z");
@@ -92,6 +92,7 @@ describe("the daily summary", () => {
     expect(s.spentUsd).toBeCloseTo(3.5);
     expect(s.activity).toEqual({ "brain-read": 2, "interview-question": 0, ask: 0, "pack-parsed": 1 });
     expect(s.problems).toEqual({ hotels: 1 });
+    expect(s.feedbackHeld).toBe(0);
   });
 
   it("says what the learning run did, failures first in the subject", async () => {
@@ -105,8 +106,24 @@ describe("the daily summary", () => {
     expect(sent[0].text).toMatch(/skipped \(12 checked/);
   });
 
+  it("says how many feedback notes weren't emailed, past the hour's few", async () => {
+    const note = { category: "bug", message: "The calendar cut off", page: "/results", pilotDisplayName: null, pilotEmail: null };
+    for (let i = 0; i < 12; i++) await sendFeedbackNote(note, at);
+    expect(sent).toHaveLength(10);
+    sent.length = 0;
+    expect(await sendDailySummary({ results: [] }, new Date("2026-11-06T09:00:00Z"))).toBe(true);
+    expect(sent[0].text).toMatch(/Feedback not emailed[^\n]*: 2\b/);
+  });
+
+  it("doesn't read all clear when this morning's trade matching failed", async () => {
+    const trades = "Trade matching\nThis morning: 2 seats with pilots to match, 0 skipped, 0 new trades, 1 FAILED.";
+    expect(await sendDailySummary({ results: [] }, new Date("2026-11-06T09:00:00Z"), null, { text: trades, failed: true })).toBe(true);
+    expect(sent[0].subject).toBe("Line Select daily: something needs a look (2026-11-05)");
+    expect(sent[0].text).toContain("1 FAILED");
+  });
+
   it("reads all clear on a quiet day", () => {
-    const text = dailySummaryText({ day: "2026-11-05", spentUsd: 0, activity: { "brain-read": 0, "interview-question": 0, ask: 0, "pack-parsed": 0 }, problems: {} }, { results: [] });
+    const text = dailySummaryText({ day: "2026-11-05", spentUsd: 0, activity: { "brain-read": 0, "interview-question": 0, ask: 0, "pack-parsed": 0 }, problems: {}, feedbackHeld: 0 }, { results: [] });
     expect(text).toMatch(/Failures: none/);
   });
 });
