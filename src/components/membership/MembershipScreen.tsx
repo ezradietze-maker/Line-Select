@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/Button";
 import { useAppState } from "@/lib/app-state";
-import { fetchBillingStatus, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
+import { claimFreeMembership, fetchBillingStatus, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
 
 const PANEL = "panel-glass p-6";
 
@@ -47,6 +47,11 @@ export function MembershipScreen() {
   const status = loaded ? data.status : null;
   const loading = Boolean(user) && !loaded;
 
+  async function refresh() {
+    const next = await fetchBillingStatus();
+    setData({ forUser: userId, status: next });
+  }
+
   async function run(action: () => Promise<{ ok: boolean; error?: string }>) {
     setBusy(true);
     setError(null);
@@ -58,11 +63,25 @@ export function MembershipScreen() {
     }
   }
 
+  async function claimFree() {
+    setBusy(true);
+    setError(null);
+    const result = await claimFreeMembership();
+    setBusy(false);
+    if (result.ok) {
+      await refresh();
+      return;
+    }
+    setError(result.error ?? "Couldn't claim a free spot.");
+    // When the spots just ran out, reload so the screen drops the free option and shows Pro only.
+    if (result.full) await refresh();
+  }
+
   return (
     <div className="mx-auto w-full max-w-xl space-y-6">
       <header className="space-y-1">
         <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Membership</h1>
-        <p className="text-sm text-ink-muted">Line Select Pro is $20/month, and your first month is free.</p>
+        <p className="text-sm text-ink-muted">A free spot while they last, or Line Select Pro at $20/month with your first month free.</p>
       </header>
 
       {outcome === "success" && (
@@ -86,12 +105,18 @@ export function MembershipScreen() {
           <p className="text-sm text-ink-faint">Loading your membership…</p>
         </div>
       ) : (
-        <MembershipBody status={status} busy={busy} error={error} onCheckout={() => run(startMembershipCheckout)} onPortal={() => run(openBillingPortal)} />
+        <MembershipBody
+          status={status}
+          busy={busy}
+          error={error}
+          onCheckout={() => run(startMembershipCheckout)}
+          onPortal={() => run(openBillingPortal)}
+          onClaimFree={claimFree}
+        />
       )}
 
       <p className="text-center text-xs text-ink-faint">
-        Every pilot has full access right now — paying is optional while Line Select is in testing. Your card is only ever
-        entered on Stripe&rsquo;s secure page; we never see it.
+        Your card is only ever entered on Stripe&rsquo;s secure page; we never see it.
       </p>
     </div>
   );
@@ -103,12 +128,14 @@ function MembershipBody({
   error,
   onCheckout,
   onPortal,
+  onClaimFree,
 }: {
   status: BillingStatus | null;
   busy: boolean;
   error: string | null;
   onCheckout: () => void;
   onPortal: () => void;
+  onClaimFree: () => void;
 }) {
   // Billing not configured on this deployment yet.
   if (!status || !status.enabled) {
@@ -123,7 +150,8 @@ function MembershipBody({
   const renews = formatDate(status.currentPeriodEnd);
   const active = status.status === "trialing" || status.status === "active";
 
-  if (active) {
+  // Active Pro subscriber (free month or paid).
+  if (active || status.tier === "pro") {
     return (
       <div className={`${PANEL} space-y-4`}>
         <div className="flex items-center gap-2">
@@ -147,27 +175,62 @@ function MembershipBody({
     );
   }
 
-  // Had a membership that lapsed (canceled / past_due / incomplete) — offer to restart, or fix the card.
+  // Free members: a claimed free spot, or an account grandfathered in from before the cutover. Full access, no card.
+  if (status.tier === "free" || status.tier === "grandfathered") {
+    return (
+      <div className={`${PANEL} space-y-3`}>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center rounded-[2px] border border-border px-2 py-0.5 font-display text-xs font-bold text-ink">Free</span>
+          <span className="text-sm font-medium text-ink">Free member — full access</span>
+        </div>
+        <p className="text-sm text-ink-muted">
+          You have the whole app, at no charge. If you&rsquo;d ever like to move to a paid membership you can, but there&rsquo;s
+          nothing you need to do.
+        </p>
+      </div>
+    );
+  }
+
+  // Locked: no membership yet. Offer a free spot if any remain, plus Pro. When the spots are gone, Pro only.
+  const freeLeft = status.freeSlotsLeft;
   const lapsed = status.hasSubscription;
   return (
-    <div className={`${PANEL} space-y-4`}>
-      <div className="space-y-1">
-        <div className="font-display text-lg font-extrabold text-ink">Line Select Pro</div>
-        <div className="text-sm text-ink-muted">$20/month · first month free</div>
-      </div>
-      <ul className="space-y-1.5 text-sm text-ink-muted">
-        <li>Every line scored and ranked for how you actually bid</li>
-        <li>Sorts, filters, the calendar feed, and Send to VIPS</li>
-        <li>Cancel anytime from Stripe&rsquo;s portal</li>
-      </ul>
-      <Button onClick={onCheckout} disabled={busy}>
-        {busy ? "Starting…" : "Start free month"}
-      </Button>
-      {lapsed && (
-        <button type="button" onClick={onPortal} disabled={busy} className="block text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink">
-          Or update your card in the billing portal
-        </button>
+    <div className="space-y-4">
+      {freeLeft > 0 && (
+        <div className={`${PANEL} space-y-3`}>
+          <div className="flex items-center justify-between">
+            <div className="font-display text-lg font-extrabold text-ink">Free</div>
+            <span className="rounded-[2px] border border-border px-2 py-0.5 text-xs font-medium text-ink-muted">
+              {freeLeft} of 15 left
+            </span>
+          </div>
+          <p className="text-sm text-ink-muted">Full access, no card. A limited number of free spots while Line Select gets going.</p>
+          <Button onClick={onClaimFree} disabled={busy}>
+            {busy ? "Claiming…" : "Claim a free spot"}
+          </Button>
+        </div>
       )}
+
+      <div className={`${PANEL} space-y-4`}>
+        <div className="space-y-1">
+          <div className="font-display text-lg font-extrabold text-ink">Line Select Pro</div>
+          <div className="text-sm text-ink-muted">$20/month · first month free</div>
+        </div>
+        <ul className="space-y-1.5 text-sm text-ink-muted">
+          <li>Every line scored and ranked for how you actually bid</li>
+          <li>Sorts, filters, the calendar feed, and Send to VIPS</li>
+          <li>Cancel anytime from Stripe&rsquo;s portal</li>
+        </ul>
+        <Button variant={freeLeft > 0 ? "secondary" : "primary"} onClick={onCheckout} disabled={busy}>
+          {busy ? "Starting…" : "Start free month"}
+        </Button>
+        {lapsed && (
+          <button type="button" onClick={onPortal} disabled={busy} className="block text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink">
+            Or update your card in the billing portal
+          </button>
+        )}
+      </div>
+      {freeLeft === 0 && <p className="text-xs text-ink-faint">The free spots are all taken — membership is the way in now.</p>}
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );

@@ -24,6 +24,11 @@ export interface UserAccount {
    * then they use the app for themselves, but share nothing, trade with no one and count as no one (`server/verified-pilots.ts`).
    */
   emailVerified?: boolean;
+  /**
+   * ISO time the pilot claimed one of the limited free-membership slots, or null/absent if they haven't (see
+   * `src/lib/membership.ts`). Grandfathered accounts and Pro subscribers leave this null.
+   */
+  freeMemberAt?: string | null;
 }
 
 /** Stored server-side alongside the account; password is hashed + salted, never kept in plain text. */

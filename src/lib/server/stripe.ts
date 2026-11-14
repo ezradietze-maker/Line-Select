@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import type { UserAccount } from "@/types/auth";
+import { FREE_FOR_ALL } from "@/lib/membership";
 
 /**
  * Stripe is optional: the site runs perfectly with no billing configured
@@ -61,13 +62,13 @@ export function planForStatus(status: string): "free" | "pro" {
 }
 
 /**
- * Whether a pilot should get paid-only features. Today it returns true for
- * EVERYONE: the free tier is intentionally identical to Pro while you hand
- * access to test pilots. When you want a feature to be paid-only, gate it on
- * this helper; flip `FREE_FOR_ALL` to false (or delete it) to start enforcing
- * membership everywhere at once, with no other code change.
+ * Whether a pilot carries a paid (Pro) subscription specifically. The master
+ * switch `FREE_FOR_ALL` now lives in `@/lib/membership`; while it is on this
+ * returns true for everyone. For the whole-app member-or-locked gate use
+ * `hasAccess` from `@/lib/membership`, which also counts the free tier and
+ * grandfathered accounts — both tiers are all-access, so that is the gate the
+ * routes and UI use.
  */
-const FREE_FOR_ALL: boolean = true;
 export function hasProAccess(user: Pick<UserAccount, "plan"> | null): boolean {
   if (FREE_FOR_ALL) return true;
   return user?.plan === "pro";
