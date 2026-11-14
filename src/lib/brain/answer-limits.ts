@@ -13,6 +13,9 @@ export const MAX_ANSWER = 12_000;
  */
 export const MAX_NOTE = MAX_ANSWER - 1_000;
 
+/** How many answers one read can take (the brain routes refuse more — `lib/server/brain-input.ts`). */
+export const MAX_EXCHANGES = 80;
+
 /** Below this many characters left, a box says how many are left. */
 export const SHOW_LEFT_UNDER = 500;
 
@@ -22,4 +25,24 @@ export const SHOW_LEFT_UNDER = 500;
  */
 export function fitExchanges(exchanges: InterviewExchange[]): InterviewExchange[] {
   return exchanges.some((e) => e.answer.length > MAX_ANSWER) ? exchanges.map((e) => (e.answer.length > MAX_ANSWER ? { ...e, answer: e.answer.slice(0, MAX_ANSWER) } : e)) : exchanges;
+}
+
+/** What the priorities page writes into the interview's record (see `PilotPrioritiesEditor`): an edit, not an interview answer. */
+const fromPrioritiesPage = (e: InterviewExchange) => e.question.startsWith("Your priorities:") || e.question.startsWith("Something to add about how you bid");
+
+/**
+ * The record within the number of answers one read can take. Every level tapped on the priorities page is written into
+ * it, so after a long interview "Add it" there was refused every time, with a note to go back a few answers that the
+ * page can't do. The oldest of those edits go first (the newest is the pilot's word, and the model they shaped is sent
+ * with the read); then, past that, the oldest answers after the story.
+ */
+export function fitExchangeCount(exchanges: InterviewExchange[]): InterviewExchange[] {
+  if (exchanges.length <= MAX_EXCHANGES) return exchanges;
+  let over = exchanges.length - MAX_EXCHANGES;
+  const kept: InterviewExchange[] = [];
+  for (const [i, e] of exchanges.entries()) {
+    if (over > 0 && i < exchanges.length - 1 && fromPrioritiesPage(e)) over--;
+    else kept.push(e);
+  }
+  return kept.length <= MAX_EXCHANGES ? kept : [kept[0], ...kept.slice(kept.length - MAX_EXCHANGES + 1)];
 }

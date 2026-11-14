@@ -150,8 +150,9 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
     const local = pending ? loadProfile(userId) : null;
     if (pending && local) {
       setServerProfileVersion(pending.base);
-      // Which copy it was made from isn't known, only that copy's version: refused, the newer one is kept as before.
-      forgetLastKnownProfile();
+      // Refused, it's merged against the copy it was made from, kept with the mark: without it, every edit made here
+      // was lost to the newer copy.
+      startFromUnsynced(userId, pending);
       const sent = await saveProfileForUser(userId, local);
       // Still not through (the server busy, say): it stays this device's, marked, rather than be replaced by the
       // server's older copy and lost. Later saves from here go against the copy it was made from too.
@@ -167,7 +168,10 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
   // Unreachable with a save still kept here: the retries the app runs (see `hasUnsyncedProfile`) go against the copy it
   // was made from, as above, not against no copy at all.
   const pending = server.kind === "unreachable" ? unsyncedBase(userId) : null;
-  if (pending && localProfile) setServerProfileVersion(pending.base);
+  if (pending && localProfile) {
+    setServerProfileVersion(pending.base);
+    startFromUnsynced(userId, pending);
+  }
   if (server.kind === "none" && localProfile) {
     const saved = await saveServerProfile(localProfile, userId);
     if (clearCount(userId) !== asOf) return null;
@@ -228,7 +232,7 @@ export async function saveProfileForUser(userId: string | null, profile: Prefere
   if (clearCount(userId) !== asOf) return { savedLocally, ...outcome };
   // Read after the save had its turn: saves wait for one another, so before it a save just ahead of this one hadn't
   // landed yet, and the mark named a version older than the one this save was sent against.
-  if (outcome.sync === "failed") markUnsynced(userId, serverProfileVersion());
+  if (outcome.sync === "failed") markUnsynced(userId, serverProfileVersion(), lastKnownFor(userId));
   else clearUnsynced(userId);
   return { savedLocally, ...outcome };
 }
@@ -313,16 +317,29 @@ export function dropGuestRecords(): void {
 }
 
 /**
- * A save kept on this device only, with the server version it was made from: the first one that failed, so a run of
- * them is sent against the copy they all started from.
+ * A save kept on this device only, with the server version it was made from and that copy itself (`from`): the first
+ * one that failed, so a run of them is sent against the copy they all started from, and a refusal after the app is
+ * opened again can still tell this device's edits from the other device's.
  */
 const unsyncedKey = (userId: string) => `line-select:profile-unsynced:${userId}:v1`;
-function markUnsynced(userId: string, base: string | null): void {
+type Unsynced = { base: string | null; from: PreferenceProfile | null };
+function markUnsynced(userId: string, base: string | null, from: PreferenceProfile | null): void {
   try {
-    if (!window.localStorage.getItem(unsyncedKey(userId))) window.localStorage.setItem(unsyncedKey(userId), JSON.stringify({ base }));
+    if (window.localStorage.getItem(unsyncedKey(userId))) return;
+    try {
+      window.localStorage.setItem(unsyncedKey(userId), JSON.stringify(from ? { base, from } : { base }));
+    } catch {
+      // No room for the copy: the mark alone still keeps the save from being replaced.
+      window.localStorage.setItem(unsyncedKey(userId), JSON.stringify({ base }));
+    }
   } catch {
     // Storage unavailable: then nothing was kept on the device to send either.
   }
+}
+/** The copy a waiting save was made from becomes the one this tab's next refused save is merged against. */
+function startFromUnsynced(userId: string, pending: Unsynced): void {
+  forgetLastKnownProfile();
+  if (pending.from) remember(userId, pending.from);
 }
 function clearUnsynced(userId: string): void {
   try {
@@ -339,11 +356,13 @@ function clearUnsynced(userId: string): void {
 export function hasUnsyncedProfile(userId: string): boolean {
   return unsyncedBase(userId) !== null;
 }
-function unsyncedBase(userId: string): { base: string | null } | null {
+function unsyncedBase(userId: string): Unsynced | null {
   try {
     const raw = window.localStorage.getItem(unsyncedKey(userId));
-    const parsed = raw ? (JSON.parse(raw) as { base?: unknown }) : null;
-    return parsed ? { base: typeof parsed.base === "string" ? parsed.base : null } : null;
+    const parsed = raw ? (JSON.parse(raw) as { base?: unknown; from?: unknown }) : null;
+    if (!parsed) return null;
+    const from = typeof parsed.from === "object" && parsed.from !== null && !Array.isArray(parsed.from) ? (parsed.from as PreferenceProfile) : null;
+    return { base: typeof parsed.base === "string" ? parsed.base : null, from };
   } catch {
     return null;
   }
