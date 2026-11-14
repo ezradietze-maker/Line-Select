@@ -35,6 +35,9 @@ const post = (body: unknown) => new Request(URL_BASE, { method: "POST", body: JS
 const report = { base: "MEM", aircraft: "MD11", seat: "CAP", month: "OCT26", seniorityRank: 12, seniorityTotalPilots: 100, outcome: "line", lineNumber: "1033", daysOff: 15, totalCreditHours: 70, totalTafbHours: 200 };
 
 beforeEach(() => {
+  // The months a report may name are counted from today: the tests' "OCT26" stays a recent month.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(Date.UTC(2026, 10, 13)));
   for (const m of [mocks.user, mocks.rows, mocks.packRows, mocks.create, mocks.remove, mocks.active]) m.mockClear();
   mocks.verified.only = null;
   mocks.user.mockResolvedValue(null);
@@ -91,6 +94,30 @@ describe("what's stored", () => {
     // A reserve month never shows a number, said or not.
     await POST(post({ ...report, outcome: "reserve", lineNumber: null }));
     expect(mocks.create.mock.calls[2][1]).toMatchObject({ holderShown: false });
+  });
+});
+
+describe("the month a report names", () => {
+  const status = async (month: unknown) => (await POST(post({ ...report, month }))).status;
+
+  it("is a bid month as packs print it, not any text: one pilot can't make up months to outweigh everyone else", async () => {
+    mocks.user.mockResolvedValue(pilot);
+    // Each made-up "month" was a report of its own for the same seat and slice, from one account.
+    for (const month of ["x1", "x2", "OCT2026", "SAMPLE", "UNKNOWN", "oct26", "ABC26", "OCT 26"]) expect(await status(month)).toBe(400);
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(await status("OCT26")).toBe(200);
+    expect(await status("NOV26")).toBe(200);
+  });
+
+  it("is within two years back and a few months ahead", async () => {
+    mocks.user.mockResolvedValue(pilot);
+    expect(await status("NOV24")).toBe(200);
+    expect(await status("OCT24")).toBe(400);
+    expect(await status("FEB27")).toBe(200);
+    expect(await status("MAR27")).toBe(400);
+    // The other hundred years of codes, every one a "month" a script could share.
+    expect(await status("JAN99")).toBe(400);
+    expect(await status("JAN00")).toBe(400);
   });
 });
 

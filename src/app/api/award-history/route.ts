@@ -21,6 +21,25 @@ function isIntOrNull(value: unknown, max: number): value is number | null {
   return value === null || value === undefined || (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max);
 }
 
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+/** How far back a month may be shared (a logbook check-in on an older month), and how far ahead (next month's award). */
+const MONTHS_BACK = 24;
+const MONTHS_AHEAD = 3;
+
+/**
+ * A bid month as packs print it ("OCT26"), within a couple of years of now. Any text used to do: one pilot could share
+ * a "month" for every made-up name, each a report of its own, and outweigh every other pilot in their slice's numbers
+ * and in how flown months judge the fleet notes.
+ */
+function isShareableMonth(value: unknown, now = new Date()): value is string {
+  const m = typeof value === "string" ? value.match(/^([A-Z]{3})(\d{2})$/) : null;
+  const month = m ? MONTHS.indexOf(m[1]) : -1;
+  if (!m || month < 0) return false;
+  const at = (2000 + Number(m[2])) * 12 + month;
+  const current = now.getUTCFullYear() * 12 + now.getUTCMonth();
+  return at >= current - MONTHS_BACK && at <= current + MONTHS_AHEAD;
+}
+
 /**
  * GET gives the group numbers for one base/aircraft/seat, held back for small
  * groups — no sign-in required, since it never returns a single report. POST
@@ -64,7 +83,7 @@ export async function POST(request: Request) {
     !isText(base, 20) ||
     !isText(aircraft, 20) ||
     (seat !== "CAP" && seat !== "FO") ||
-    !isText(month, 20) ||
+    !isShareableMonth(month) ||
     !isIntOrNull(seniorityRank, 100_000) ||
     seniorityRank == null ||
     !isIntOrNull(seniorityTotalPilots, 100_000) ||
