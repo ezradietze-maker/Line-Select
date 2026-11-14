@@ -2,9 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { LogoMark } from "@/components/ui/Logo";
 import { WelcomeScreen } from "@/components/welcome/WelcomeScreen";
 import { landingPathFor, useAppState } from "@/lib/app-state";
+import { sampleWouldReplace } from "@/lib/landing-path";
 import { landingShownBefore, withLandingShown } from "@/lib/landing-return";
 
 /**
@@ -26,6 +28,8 @@ export function LandingPage() {
   // or arrived a moment later with their account (signed in on the server, but
   // this device last showed a guest), and gets them to their resume point.
   const loadingSample = useRef(false);
+  // The pilot's own pack is loaded (back here with Back, or "/?welcome"): the sample would take its place, so they're asked.
+  const [askingSample, setAskingSample] = useState(false);
   // "/?welcome" shows the landing page to anyone, a returning pilot included — no bounce to their resume point. So
   // does coming back to it with Back (after trying the sample, say): they asked for this page, and bouncing them on
   // made Back seem to do nothing. (Only read once state has loaded, so the server's render and the first client
@@ -65,9 +69,15 @@ export function LandingPage() {
   // A returning pilot on their way to their resume point: the mark, breathing gently.
   if (ready && (bidPack || user) && !welcomeAsked) return loader;
 
-  function trySample() {
+  function loadSample() {
     loadingSample.current = true;
+    setAskingSample(false);
     handleTrySample();
+  }
+
+  function trySample() {
+    if (sampleWouldReplace(bidPack)) setAskingSample(true);
+    else loadSample();
   }
 
   // Everyone else gets the landing page in the server HTML, so the headline
@@ -80,6 +90,20 @@ export function LandingPage() {
       <div className="landing-only">
         <WelcomeScreen onStart={() => router.push("/upload")} onTrySample={trySample} appHref={user ? (bidPack ? landingPathFor(bidPack, profile) : "/upload") : null} />
       </div>
+      {askingSample && bidPack && (
+        <ConfirmModal
+          title="Load the sample bid pack?"
+          confirmLabel="Load the sample"
+          alternative={{ label: profile ? "See my rankings" : "Set my preferences", onClick: () => router.push(landingPathFor(bidPack, profile)) }}
+          onConfirm={loadSample}
+          onCancel={() => setAskingSample(false)}
+        >
+          <p>
+            It takes the place of your {bidPack.base} {bidPack.aircraft} {bidPack.seat} {bidPack.month} bid pack on this device. To get yours back,
+            you&rsquo;d upload the PDF again.
+          </p>
+        </ConfirmModal>
+      )}
     </>
   );
 }
