@@ -73,6 +73,25 @@ describe("forecastBid", () => {
     for (const l of Object.values(f.lines)) expect(l.pAward).toBeLessThanOrEqual(l.pAvailable + 1e-12);
   });
 
+  it("keeps the award chances one award between them when the correction raises the open chances", () => {
+    const pack = syntheticPack(20, 40);
+    const features = buildLineFeatures(pack);
+    const myRanking = [...Array(8)].map((_, i) => 19 - i);
+    const input = { packKey: "k", features, seniorityList: pack.seniorityList!, regularLines: 20, dropoutRate: 0.08, seniorityNumber: 3 * 19, myRanking, known: [], simulations: 200 };
+    const raw = forecastFromFeatures(input);
+    expect(raw.pNoRegularLine).toBeGreaterThan(0);
+    // A correction that finds the forecast was too cautious: every line's open chance goes up.
+    const f = forecastFromFeatures({ ...input, calibrate: (p) => Math.min(0.99, 0.5 + p) });
+    const awards = myRanking.map((i) => f.lines[features.lineIds[i]].pAward);
+    const total = awards.reduce((a, b) => a + b, 0);
+    expect(total).toBeLessThanOrEqual(1 + 1e-9);
+    expect(f.pNoRegularLine + total).toBeCloseTo(1, 9);
+    expect(f.pTop[1]).toBeCloseTo(awards[0], 9);
+    expect(f.pTop[5]).toBeCloseTo(awards.slice(0, 5).reduce((a, b) => a + b, 0), 9);
+    // Line #2 is only awarded when #1 is gone.
+    expect(awards[1]).toBeLessThanOrEqual(1 - f.lines[features.lineIds[myRanking[0]]].pAvailable + 1e-9);
+  });
+
   it("returns nothing when the pack has no seniority list", () => {
     const pack = { ...syntheticPack(20, 30), seniorityList: undefined };
     expect(forecastBid({ bidPack: pack, seniorityNumber: 3, myRanking: idsBestFirst(pack) })).toBeNull();

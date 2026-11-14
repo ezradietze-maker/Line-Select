@@ -5,7 +5,7 @@ import { ConfirmEmailButton } from "@/components/auth/ConfirmEmail";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
-import { fetchAwardSummary, MIN_SHARED_PILOTS, submitAwardHistory, summaryForSeniority } from "@/lib/award-history";
+import { fetchAwardSummary, MIN_SHARED_PILOTS, submitAwardHistory, summaryForSeniority, type AwardHistorySummary } from "@/lib/award-history";
 import type { HoldHistorySummary } from "@/lib/learning/hold-history";
 import { fetchHoldHistory } from "@/lib/learning/learning-client";
 import type { BidPack } from "@/types/bidpack";
@@ -114,30 +114,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
         </div>
       </div>
 
-      {summary === null ? (
-        <Spinner label="Pulling the reported awards…" className="mt-4" />
-      ) : summary.avgDaysOff === null ? (
-        <EmptyState
-          compact
-          description={
-            // Counts come rounded, and as none at all until enough pilots have reported (`summarizeBands`), so a
-            // pilot's own report can't be picked out of them.
-            summary.nearbyCount === 0
-              ? "Not enough reports near your seniority yet to show a pattern — yours helps."
-              : `About ${summary.nearbyCount} nearby reports so far — not quite enough yet to show a reliable pattern.`
-          }
-          className="mt-4"
-        />
-      ) : (
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Stat label="Nearby reports" value={`About ${summary.nearbyCount}`} />
-          <Stat label="Avg days off held" value={summary.avgDaysOff.toFixed(1)} />
-          <Stat label="Avg credit hours held" value={summary.avgCreditHours?.toFixed(1) ?? "—"} />
-          {summary.lineRate !== null && (
-            <Stat label="Held a regular line" value={`${Math.round(summary.lineRate * 100)}%`} />
-          )}
-        </div>
-      )}
+      <AwardSummaryView summary={summary} />
 
       {user && history && history.months > 0 && <HoldHistory history={history} />}
 
@@ -209,6 +186,36 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The group numbers for the pilot's slice of the list, or why there aren't any yet. */
+export function AwardSummaryView({ summary }: { summary: AwardHistorySummary | null }) {
+  if (summary === null) return <Spinner label="Pulling the reported awards…" className="mt-4" />;
+  // A slice where most held reserve has a real share that held a line, and too few lines to average: it's shown, not
+  // hidden behind "not enough reports", which left a junior pilot never seeing that almost no one near them got one.
+  if (summary.avgDaysOff === null && summary.lineRate === null) {
+    return (
+      <EmptyState
+        compact
+        description={
+          // Counts come rounded, and as none at all until enough pilots have reported (`summarizeBands`), so a
+          // pilot's own report can't be picked out of them.
+          summary.nearbyCount === 0
+            ? "Not enough reports near your seniority yet to show a pattern — yours helps."
+            : `About ${summary.nearbyCount} nearby reports so far — not quite enough yet to show a reliable pattern.`
+        }
+        className="mt-4"
+      />
+    );
+  }
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <Stat label="Nearby reports" value={`About ${summary.nearbyCount}`} />
+      <Stat label="Avg days off held" value={summary.avgDaysOff?.toFixed(1) ?? "—"} />
+      <Stat label="Avg credit hours held" value={summary.avgCreditHours?.toFixed(1) ?? "—"} />
+      {summary.lineRate !== null && <Stat label="Held a regular line" value={`${Math.round(summary.lineRate * 100)}%`} />}
     </div>
   );
 }

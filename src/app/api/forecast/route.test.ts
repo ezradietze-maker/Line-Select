@@ -187,6 +187,22 @@ describe("/api/forecast", () => {
     expect(signedIn.forecast.knownAhead).toBe(0);
   });
 
+  it("counts toward the bar only the sharers the forecast plays: a short list can't leave one sharer alone ahead", async () => {
+    // One sharer first in bid order, three more further down.
+    for (const [id, seniority] of [["user-t", 5], ["user-a", 50], ["user-b", 55], ["user-c", 60]] as const) {
+      authMocks.getCurrentServerUser.mockResolvedValue({ ...USER, id });
+      const ranking = id === "user-t" ? [7, 4, 5, 0, 1, 2, 6, 3, 8, 9, 10, 11] : [3, 4, 5, 0, 1, 2, 6, 7, 8, 9, 10, 11];
+      await POST(request(goodBody({ share: true, seniorityNumber: seniority, ranking })));
+    }
+    authMocks.getCurrentServerUser.mockResolvedValue(USER);
+    // A list of five that names the three far down, so they pass the bar, while only the first five places are played:
+    // the first sharer and four guessed pilots, so the one line at 0% open was the first sharer's top choice.
+    const short = [[1, 5], [10, 50], [11, 55], [12, 60], [19, 95]];
+    const data = await (await POST(request(goodBody({ seniorityList: short, seniorityNumber: 95 })))).json();
+    expect(data.forecast.knownAhead).toBe(0);
+    expect(data.forecast.lines["line-1007"].pAvailable).toBeGreaterThan(0);
+  });
+
   it("lets a different account not take over a claimed bid position", async () => {
     authMocks.getCurrentServerUser.mockResolvedValue(USER);
     await POST(request(goodBody({ share: true })));
