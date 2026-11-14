@@ -50,6 +50,8 @@ export interface LineTiers {
   tierOf: (lineId: string) => string | undefined;
   selected: Set<string>;
   toggleSelected: (lineId: string, rangeOver?: string[]) => void;
+  /** Replace the selection outright (a right-click "select all above/below"). */
+  select: (lineIds: string[]) => void;
   clearSelected: () => void;
   move: (lineIds: string[], tierId: string | null) => void;
   park: (lineIds: string[]) => void;
@@ -271,6 +273,10 @@ export function useLineTiers(
     },
     [anchor]
   );
+  const select = useCallback((ids: string[]) => {
+    setSelected(new Set(ids));
+    setAnchor(ids[ids.length - 1] ?? null);
+  }, []);
   const clearSelected = useCallback(() => setSelected(new Set()), []);
 
   const order = useCallback((list: LineScore[]) => applyTiers(list, state, (r) => r.line.id), [state]);
@@ -287,6 +293,7 @@ export function useLineTiers(
     tierOf,
     selected,
     toggleSelected,
+    select,
     clearSelected,
     move,
     park,

@@ -96,6 +96,7 @@ import { rankedAsFlown } from "@/lib/vacation-lines";
 import { useCarryIn } from "@/lib/use-carry-in";
 import { SortMenu, SortNote } from "@/components/results/SortMenu";
 import { TierBar, TierHeadingRow, TierMoveRow, useCardPressProps } from "@/components/results/TierBar";
+import { LineContextMenu, type LineMenu } from "@/components/results/LineContextMenu";
 import { tierHeadings } from "@/lib/line-tiers";
 import { useLineSort } from "@/lib/use-line-sort";
 import { useLineTiers, type TeachTiers } from "@/lib/use-line-tiers";
@@ -305,6 +306,8 @@ export function ResultsView({
   // on: switching a card's layout tracking off and on again each swap left a listener behind every time, holding that
   // render's whole list (about 3 MB a swap); which cards it measures is said by `layoutDependency` instead.
   const [layoutArmed, setLayoutArmed] = useState(false);
+  // The right-click bulk menu: which line it opened on, and where.
+  const [menu, setMenu] = useState<LineMenu | null>(null);
   const [promptJudgment, setPromptJudgment] = useState<PairwiseJudgment | null>(null);
   const [promptCount, setPromptCount] = useState(0);
   const [askedPairIds, setAskedPairIds] = useState<Set<string>>(new Set());
@@ -1646,6 +1649,10 @@ export function ResultsView({
                           id={`line-${id}`}
                           data-line-id={id}
                           {...pressPropsFor(id)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setMenu({ id, x: e.clientX, y: e.clientY });
+                          }}
                           className={`scroll-mt-20 md:scroll-mt-6 ${flashId === id ? "line-flash" : ""} ${keyedId === id ? "line-keyed" : ""} ${tiers.selected.has(id) ? "rounded-[6px] ring-2 ring-sign-edge" : ""}`}
                           layout={layoutArmed ? "position" : false}
                           layoutDependency={dragEnabled && order.moved.has(id) ? order.turn : 0}
@@ -1716,6 +1723,8 @@ export function ResultsView({
             </div>
             <DragOverlay>{activeLineScore && <DragPreview lineScore={activeLineScore} />}</DragOverlay>
           </DndContext>
+
+          {menu && <LineContextMenu menu={menu} tiers={tiers} displayedIds={displayedIds} onClose={() => setMenu(null)} />}
 
           {sorted.length > displayed.length && (
             <div className="panel-glass mt-4 flex flex-col items-center gap-2 px-4 py-4 text-center">
