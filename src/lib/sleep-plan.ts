@@ -1,3 +1,4 @@
+import { timezoneForAirport } from "@/lib/airport-timezones";
 import { SORT_HUBS } from "@/lib/metrics/hub-turns";
 import type { Trip } from "@/types/bidpack";
 
@@ -277,6 +278,19 @@ function wokeBeforeTrip(firstReport: number, bodyMinute: number): number {
   return firstReport - 180;
 }
 
+/**
+ * The trip minute a layover's clocks change, when the next duty leaves on another offset than the last one landed on
+ * (Europe and the US in the autumn, Australia in October); never, when they agree. Europe changes at 01:00 GMT;
+ * elsewhere at 02:00 on the clock it landed on, or 03:00 for Australia and New Zealand going back. The printed times
+ * carry no date, so this is the rule, not a lookup: right for the places FedEx lays over.
+ */
+function clockChangeAt(city: string, from: number, until: number, zOff: number, before: number, after: number): number {
+  if (before === after) return Infinity;
+  const zone = timezoneForAirport(city) ?? "";
+  const utcMinute = zone.startsWith("Europe/") ? 60 : (after < before && /^(Australia|Pacific\/Auckland)/.test(zone) ? 180 : 120) - before;
+  return Math.min(until, from + mod(utcMinute - (from + zOff)));
+}
+
 /** The layover's printed hotel pickup as a trip minute (the last time that clock reads before report), if there is one. */
 function pickupMinute(pickupLocal: string | undefined, report: number, localOff: number, zOff: number): number | null {
   const p = hhmm(pickupLocal);
@@ -351,7 +365,13 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
     const localOff = offsetOf(lastLeg?.arrTimeLocal, lastLeg?.arrTimeGmt) ?? body;
     const inHotel = lay.startMinutes + POST_DUTY;
     const report = next.startMinutes;
-    const pickup = pickupMinute(lay.pickupTimeLocal, report, localOff, zOff);
+    // The clock the next duty leaves on. Read on the clock it landed on, a pickup across a clock change came out an
+    // hour off, or more than four hours from report and dropped, and every time after the change an hour off.
+    const out = next.legs[0];
+    const leaveOff = out && out.depAirport === lastLeg?.arrAirport ? (offsetOf(out.depTimeLocal, out.depTimeGmt) ?? localOff) : localOff;
+    const changeAt = clockChangeAt(lay.city, lay.startMinutes, report, zOff, localOff, leaveOff);
+    const offAt = (m: number) => (m < changeAt ? localOff : leaveOff);
+    const pickup = pickupMinute(lay.pickupTimeLocal, report, leaveOff, zOff);
     const wakeBy = pickup !== null ? pickup - BEFORE_PICKUP : report - GET_READY;
     const from = inHotel + WIND_DOWN;
     const startBody = body;
@@ -361,7 +381,7 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
     const pressureAt = (m: number) => Math.max(0, Math.min(0.5, (awakeMin / 60 - 14) / 10)) * Math.exp(-(m - from) / 240);
     const ctx: Context = { zOff, bodyAt, pressureAt, sample: sampler(zOff, bodyAt, pressureAt) };
     const nextDutyEnd = next.legs.at(-1)?.endMinutes ?? report;
-    const local = (m: number) => clockText(m + zOff + localOff);
+    const local = (m: number) => clockText(m + zOff + offAt(m));
     const blocks = planLayover(ctx, from, wakeBy, awakeMin / 60, report, nextDutyEnd).map((b) => ({ ...b, startLocal: local(b.start), endLocal: local(b.end) }));
     // The nap on the hub sit counts toward the rest the pilot gets between duties.
     const total = blocks.reduce((a, b) => a + (b.end - b.start), 0) + (dutyNap ? dutyNap.end - dutyNap.start : 0);
