@@ -379,10 +379,15 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
   // No bid month dates, so not even the vacation as awarded can be placed: nothing to compare a slide with.
   if (!legal.some((c) => c.offset === 0)) return { vacation, illegal: checks.filter((c) => !c.legal), lines: [], across: [], byModel: !!model };
   const byNumber = new Map(pack.lines.map((l) => [l.lineNumber, l]));
-  const top = order.slice(0, TOP_LINES).flatMap((n, i) => {
+  let top = order.slice(0, TOP_LINES).flatMap((n, i) => {
     const line = byNumber.get(n);
     return line && !line.estimated ? [{ line, rank: i + 1 }] : [];
   });
+  // Fall back to the pack's own lines when no ranked order reaches us (a guest who hasn't ranked yet, or the order
+  // didn't come through): the slide still has real lines to work on, instead of reporting "0 lines / nothing beats it".
+  if (top.length === 0) {
+    top = pack.lines.filter((l) => !l.estimated).slice(0, TOP_LINES).map((line, i) => ({ line, rank: i + 1 }));
+  }
 
   const rows = top.map(({ line, rank }) => {
     const options: SlideOption[] = [];
