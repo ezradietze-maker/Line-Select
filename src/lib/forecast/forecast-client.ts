@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
 import { estimateDropoutRate, forecastBid, forecastPackKey, type BidForecast } from "@/lib/forecast/forecast";
 import type { BidPack } from "@/types/bidpack";
@@ -37,7 +38,7 @@ export async function fetchForecast(input: ForecastRequestInput): Promise<Foreca
   const ranking = input.rankingLineIds.map((id) => indexById.get(id)).filter((i): i is number => i !== undefined);
 
   try {
-    const res = await fetch("/api/forecast", {
+    const res = await apiFetch("/api/forecast", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -71,7 +72,7 @@ export { FEATURE_COUNT };
 /** Asks the server to forget this pilot's shared ranking for the seat. */
 export async function stopSharingRanking(packKey: string, lineNumbers: string[]): Promise<void> {
   try {
-    await fetch("/api/forecast", {
+    await apiFetch("/api/forecast", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",

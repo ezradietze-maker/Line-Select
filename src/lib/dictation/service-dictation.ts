@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/shown-account";
 import { serviceText, type Heard, type Turn } from "@/lib/dictation/assemble";
 
 /**
@@ -44,7 +45,7 @@ export function serviceDictationPossible(): boolean {
 async function fetchPass(): Promise<Pass> {
   let res: Response;
   try {
-    res = await fetch("/api/dictation-token", { method: "POST", cache: "no-store" });
+    res = await apiFetch("/api/dictation-token", { method: "POST", cache: "no-store" });
   } catch {
     throw new DictationUnavailable("offline");
   }

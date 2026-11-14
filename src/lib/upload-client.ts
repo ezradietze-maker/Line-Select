@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import type { ParseBidPackResult, ParseProgress } from "@/lib/pdf-parser/types";
 
 export type StreamMessage =
@@ -36,7 +37,7 @@ export async function uploadBidPack(file: File, onProgress: (progress: ParseProg
   body.append("file", file);
   let res: Response;
   try {
-    res = await fetch("/api/parse-bidpack", { method: "POST", body, headers: { Accept: "application/x-ndjson" } });
+    res = await apiFetch("/api/parse-bidpack", { method: "POST", body, headers: { Accept: "application/x-ndjson" } });
   } catch {
     throw new Error("Couldn't reach the server to parse this file. Check your connection and try again.");
   }

@@ -1,3 +1,5 @@
+import { apiFetch } from "@/lib/shown-account";
+
 /**
  * Thin client for the membership API (see `app/api/billing/*`). The pilot's
  * card is only ever entered on Stripe's own hosted pages, which these calls
@@ -17,7 +19,7 @@ export interface BillingStatus {
 
 export async function fetchBillingStatus(): Promise<BillingStatus | null> {
   try {
-    const res = await fetch("/api/billing/status", { credentials: "same-origin" });
+    const res = await apiFetch("/api/billing/status", { credentials: "same-origin" });
     if (!res.ok) return null;
     return (await res.json()) as BillingStatus;
   } catch {
@@ -27,7 +29,7 @@ export async function fetchBillingStatus(): Promise<BillingStatus | null> {
 
 async function redirectTo(url: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",

@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import { rememberHotelAddress } from "@/lib/hotel-addresses";
 import type { HotelLookupResult } from "@/types/hotel";
 import type { HotelQualityData } from "@/lib/scoring";
@@ -14,7 +15,7 @@ export function fetchHotel(code: string, hotelName: string): Promise<HotelLookup
   const existing = inFlight.get(key);
   if (existing) return existing;
 
-  const promise = fetch(`/api/hotels?code=${encodeURIComponent(code)}&name=${encodeURIComponent(hotelName)}`)
+  const promise = apiFetch(`/api/hotels?code=${encodeURIComponent(code)}&name=${encodeURIComponent(hotelName)}`)
     .then(async (res) => {
       const body = (await res.json()) as Partial<HotelLookupResult> & { error?: string };
       if (!res.ok) throw new Error(body.error ?? `Hotel lookup failed (${res.status})`);

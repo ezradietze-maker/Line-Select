@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import type { FeedbackCategory } from "@/types/feedback";
 
 interface SubmitFeedbackResult {
@@ -11,7 +12,7 @@ export async function submitFeedback(input: {
   page: string;
 }): Promise<SubmitFeedbackResult> {
   try {
-    const res = await fetch("/api/feedback", {
+    const res = await apiFetch("/api/feedback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",

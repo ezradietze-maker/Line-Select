@@ -59,7 +59,7 @@ describe("saving a signed-in pilot's profile", () => {
     expect(r.sync).toBe("merged");
     expect(r.profile.completedAt).toBe("theirs");
     expect(r.profile.logbook?.map((e) => e.id)).toEqual(["NOV26", "OCT26"]);
-    expect(client.saveServerProfile).toHaveBeenLastCalledWith(r.profile);
+    expect(client.saveServerProfile).toHaveBeenLastCalledWith(r.profile, "pilot-1");
   });
 
   it("sends a save kept on this device, next time the app opens, rather than replacing it with the older copy", async () => {

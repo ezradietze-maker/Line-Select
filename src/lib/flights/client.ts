@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import { isSamplePack } from "@/lib/fake-trade-offers";
 import type { ScheduledFlight, TravelAnswer } from "@/lib/flights/itineraries";
 import { jumpseatFlights } from "@/lib/flights/jumpseat";
@@ -151,7 +152,7 @@ export function lookUpFlights(bidPack: BidPack, model: PilotModel | undefined | 
     const answers: FlightAnswers = { ...known };
     for (let i = 0; i < needs.length; i += CHUNK) {
       const chunk = needs.slice(i, i + CHUNK);
-      const res = await fetch("/api/flights/travel", {
+      const res = await apiFetch("/api/flights/travel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ needs: chunk, jumpseats: jumpseatsFor(bidPack, chunk) }),

@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import type { BidPackMetaSnapshot, TripSnapshot, TradeOffer } from "@/types/trade";
 import type { Trip } from "@/types/bidpack";
 
@@ -44,7 +45,7 @@ interface ActionResult {
 
 async function postAction(url: string, body?: unknown): Promise<ActionResult> {
   try {
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method: "POST",
       headers: body ? { "Content-Type": "application/json" } : undefined,
       credentials: "same-origin",
@@ -65,7 +66,7 @@ async function postAction(url: string, body?: unknown): Promise<ActionResult> {
 export async function fetchTradeOffers(pack: BidPackMetaSnapshot): Promise<TradeOffer[] | null> {
   try {
     const query = new URLSearchParams({ base: pack.base, aircraft: pack.aircraft, seat: pack.seat, month: pack.month });
-    const res = await fetch(`/api/trades?${query.toString()}`, { credentials: "same-origin", cache: "no-store" });
+    const res = await apiFetch(`/api/trades?${query.toString()}`, { credentials: "same-origin", cache: "no-store" });
     if (res.status === 401) return [];
     if (!res.ok) return null;
     const data = await res.json();
@@ -108,7 +109,7 @@ export function withdrawOffer(id: string): Promise<ActionResult> {
  */
 export async function fetchTradeBoardOpen(seat: { base: string; aircraft: string; seat: string }): Promise<boolean | null> {
   try {
-    const res = await fetch(`/api/trade-board/status?${new URLSearchParams(seat).toString()}`);
+    const res = await apiFetch(`/api/trade-board/status?${new URLSearchParams(seat).toString()}`);
     if (!res.ok) return null;
     const open = ((await res.json()) as { open?: unknown }).open;
     return typeof open === "boolean" ? open : null;
