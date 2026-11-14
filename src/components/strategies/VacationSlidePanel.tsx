@@ -92,7 +92,11 @@ function Results({ found, zone, pack }: { found: VacationSlides; zone: string; p
       <p className="text-xs text-ink-muted">
         This vacation is worth {value} CH ({found.vacation.days} days at {CH_PER_VACATION_DAY} CH, CBA 2026 7.A.1). {vacationLabel(found.vacation, zone)}.
       </p>
-      {found.across.length > 0 && best.gain > 0 ? (
+      {found.lines.length === 0 ? (
+        <p className="text-sm text-ink">
+          This vacation doesn&rsquo;t land in this bid month, so there&rsquo;s nothing to slide here &mdash; check the first day and length above.
+        </p>
+      ) : found.across.length > 0 && best.gain > 0 ? (
         <div>
           <p className="text-sm text-ink">
             <span className="font-medium">Best across your top {found.lines.length} lines:</span> {moveWords({ ...best, expandBefore: 0, expandAfter: 0 })} ({day(best.firstDay)}&ndash;{day(best.lastDay)}).{" "}

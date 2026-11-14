@@ -206,6 +206,11 @@ describe("findVacationSlides", () => {
     expect(best.daysOff).toBeGreaterThan(a.daysOff);
     expect(best.line.trips.length).toBe(a.trips.length - best.removed.length);
   });
+  it("falls back to the pack's own lines when no ranked order is given, so it never reports 0 lines", () => {
+    const f = findVacationSlides({ pack: p, order: [], vacation: vac(10) });
+    expect(f.lines.length).toBeGreaterThan(0);
+    expect(f.lines.length).toBe(p.lines.filter((l) => !l.estimated).length);
+  });
   it("shows the best per line and never just the vacation as awarded again", () => {
     const f = findVacationSlides({ pack: p, order, vacation: vac(10) });
     for (const l of f.lines) {
