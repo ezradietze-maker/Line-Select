@@ -69,6 +69,7 @@ import { PHRASES } from "@/lib/preference-summary";
 import {
   PAGE_SIZE,
   bidOrderLines,
+  emptyListSaying,
   hideLine,
   leftOutPhrase,
   matchesLineSearch,
@@ -878,7 +879,8 @@ export function ResultsView({
     // Tabbing or clicking into another card takes the cursor there, so the ring and the keys stay on the same line. With
     // no cursor showing, a click puts none up.
     function onFocusIn(e: FocusEvent) {
-      if (!(e.target instanceof HTMLElement)) return;
+      // Into a line's right-click menu, the line keeps it: drawn, wherever a move sends it, for focus to come back to.
+      if (!(e.target instanceof HTMLElement) || e.target.closest('[role="menu"]')) return;
       const id = e.target.closest<HTMLElement>("[data-line-id]")?.dataset.lineId ?? null;
       if (id !== focusId) setFocusId(id);
       if (keyId !== null && id && id !== keyId && keyableIds.includes(id)) setKeyId(id);
@@ -1284,16 +1286,7 @@ export function ResultsView({
     setPromptJudgment(null);
   }
 
-  const emptyMessage =
-    view === "shortlist"
-      ? "Nothing shortlisted yet — tap the star on any line to save it here."
-      : view === "realistic"
-        ? "No line matches the current filters among the ones you could realistically hold. Try clearing one or two."
-      : search.trim()
-        ? `No line matches “${search.trim()}”.`
-        : hotelFilter
-          ? `No line matches these filters at ${hotelFilter.hotelName}. Try clearing one or two.`
-          : "No lines match the current filters. Try clearing one or two.";
+  const empty = emptyListSaying({ view, starred: validMarks.starred.length, search, hotelName: hotelFilter?.hotelName ?? null, filtersOn: filtersActive(filters) });
 
   return (
     <div className="mx-auto w-full max-w-3xl xl:max-w-6xl">
@@ -1522,7 +1515,9 @@ export function ResultsView({
                 availableCities={availableCities}
                 touchedCities={touchedCities}
                 commute={commute}
-                visibleCount={matching.length}
+                // The lines the list shows: the filters' matches less the hidden and set-aside lines, in the view chosen.
+                // Their matches alone said "Showing 489 of 489" over a shortlist of three.
+                visibleCount={sorted.length}
                 totalCount={ranked.length}
               />
             )}
@@ -1619,8 +1614,8 @@ export function ResultsView({
               {displayed.length === 0 ? (
                 <EmptyState
                   compact
-                  description={emptyMessage}
-                  {...(view !== "shortlist" && (filtersActive(filters) || search.trim() || hotelFilter)
+                  description={empty.message}
+                  {...(empty.canClear
                     ? {
                         actionLabel: "Clear filters and search",
                         onAction: () => {
