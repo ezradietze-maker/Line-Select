@@ -31,6 +31,7 @@ import { forgetPilotOnDevice, forgetPilotWork } from "@/lib/device-data";
 import { clearServerDraft } from "@/lib/interview-draft-sync";
 import { adoptGuestDrafts } from "@/lib/interview-draft";
 import { landingAfterSignIn, landingPathFor } from "@/lib/landing-path";
+import { moveGuestWorkToAccount } from "@/lib/pack-id";
 import { LOCAL_SAVE_FAILED_EVENT } from "@/lib/local-save-failed";
 import { feedOffOwed, oweFeedOff } from "@/lib/calendar-feed-owed";
 import { announceStartOver, caughtUpWithStartOver, onStartOverElsewhere } from "@/lib/start-over-signal";
@@ -847,6 +848,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           await saveBidPack(null, before.bidPack);
         }
         void saveServerBidPack(before.bidPack, newUser.id);
+        // Their stars, hidden lines, tiers, own order, sort and carry-in on it come with it.
+        moveGuestWorkToAccount(before.bidPack.id, newUser.id);
         theirBidPack = before.bidPack;
       }
       if (!theirProfile && before.profile) {
