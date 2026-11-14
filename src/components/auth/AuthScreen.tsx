@@ -83,6 +83,11 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
     setError(null);
 
     if (mode === "forgot") {
+      // Nothing but spaces went through as an address, and "a link is on its way" came back for it.
+      if (!email.trim()) {
+        setError("Enter the email you signed up with.");
+        return;
+      }
       setSubmitting(true);
       const sent = await requestResetEmail(email);
       setSubmitting(false);
