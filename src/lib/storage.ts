@@ -141,7 +141,7 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
   }
   // Signed out while the server was asked: what it sends back isn't kept here (see `clearedProfiles`).
   const asOf = clearCount(userId);
-  const server = await fetchServerProfile();
+  const server = await fetchServerProfile(userId);
   if (clearCount(userId) !== asOf) return null;
   if (server.kind === "found") {
     // A save that never reached the server (no signal, then the app was closed) goes up now, against the copy it was
@@ -169,7 +169,7 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
   const pending = server.kind === "unreachable" ? unsyncedBase(userId) : null;
   if (pending && localProfile) setServerProfileVersion(pending.base);
   if (server.kind === "none" && localProfile) {
-    const saved = await saveServerProfile(localProfile);
+    const saved = await saveServerProfile(localProfile, userId);
     if (clearCount(userId) !== asOf) return null;
     // Through now, so the "kept on this device" mark goes: left, sign-out kept the pilot's data on the device.
     if (saved.kind === "saved") {
@@ -181,7 +181,7 @@ export async function loadProfileForUser(userId: string | null): Promise<Prefere
       const merged = mergeAfterConflict(newer, localProfile);
       saveProfile(userId, merged);
       remember(userId, newer);
-      const again = await saveServerProfile(merged);
+      const again = await saveServerProfile(merged, userId);
       if (clearCount(userId) === asOf && again.kind === "saved") {
         clearUnsynced(userId);
         remember(userId, merged);
@@ -253,7 +253,7 @@ async function sendInTurn(userId: string, profile: PreferenceProfile, asOf: numb
 }
 
 async function sendForUser(userId: string, profile: PreferenceProfile, asOf: number): Promise<{ sync: ProfileSync; profile: PreferenceProfile }> {
-  const saved = await saveServerProfile(profile);
+  const saved = await saveServerProfile(profile, userId);
   const stillHere = () => clearCount(userId) === asOf;
   if (saved.kind === "saved") {
     if (stillHere()) remember(userId, profile);
@@ -267,7 +267,7 @@ async function sendForUser(userId: string, profile: PreferenceProfile, asOf: num
   // The account holds the newer copy now, and the version this tab sends next is that one's: refused again, it's the
   // copy the merged one is compared against.
   remember(userId, newer);
-  const again = await saveServerProfile(merged);
+  const again = await saveServerProfile(merged, userId);
   if (again.kind === "saved" && stillHere()) remember(userId, merged);
   return { sync: again.kind === "saved" ? "merged" : "failed", profile: merged };
 }
@@ -364,5 +364,5 @@ export function askToKeepStorage(): void {
 
 export async function clearProfileForUser(userId: string | null): Promise<void> {
   clearProfile(userId);
-  if (userId) await clearServerProfile();
+  if (userId) await clearServerProfile(userId);
 }

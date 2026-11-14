@@ -60,7 +60,7 @@ describe("syncFeedChoice", () => {
     const fetchMock = answers("pack-not-saved", "ok");
     server.saveServerBidPack.mockResolvedValue(true);
     expect(await syncFeedChoice(pack, null, "1004")).toBe("ok");
-    expect(server.saveServerBidPack).toHaveBeenCalledWith(pack);
+    expect(server.saveServerBidPack).toHaveBeenCalledWith(pack, undefined);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

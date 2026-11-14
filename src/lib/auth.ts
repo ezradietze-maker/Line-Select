@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import type { UserAccount } from "@/types/auth";
 
 /**
@@ -90,7 +91,7 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
 /** For a signed-in pilot: mints a fresh recovery code (replacing any old one), after re-checking their password. */
 export async function createRecoveryCode(password: string): Promise<{ ok: boolean; error?: string; recoveryCode?: string }> {
   try {
-    const res = await fetch("/api/auth/recovery-code", {
+    const res = await apiFetch("/api/auth/recovery-code", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -135,7 +136,7 @@ export async function confirmEmailLink(token: string, choice: { password?: strin
 /** "Send it again": a fresh confirm link to the signed-in pilot's address. */
 export async function resendConfirmEmail(): Promise<{ ok: true; email: string } | { ok: true; confirmed: true } | { ok: false; error: string }> {
   try {
-    const res = await fetch("/api/auth/confirm-email/resend", { method: "POST", credentials: "same-origin" });
+    const res = await apiFetch("/api/auth/confirm-email/resend", { method: "POST", credentials: "same-origin" });
     const data = (await res.json().catch(() => ({}))) as { sent?: boolean; email?: string; confirmed?: boolean; error?: string };
     if (data.sent && data.email) return { ok: true, email: data.email };
     if (data.confirmed) return { ok: true, confirmed: true };

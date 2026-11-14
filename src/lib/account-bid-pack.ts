@@ -16,7 +16,7 @@ export interface AccountPack {
 
 /** A signed-in pilot with no pack on this device gets the one saved to their account, kept here too from then on. */
 async function packFromAccount(userId: string): Promise<AccountPack> {
-  const fetched = await fetchServerBidPack();
+  const fetched = await fetchServerBidPack(userId);
   if (fetched.kind !== "found") return { pack: null, saveFailed: false, noneOnAccount: fetched.kind === "none" };
   const { pack } = fetched;
   // Saved to the account before ids named the aircraft: what this device kept under the older id follows it.
@@ -36,7 +36,7 @@ export async function accountBidPack(userId: string): Promise<AccountPack> {
   const local = await loadBidPack(userId);
   if (!local) return packFromAccount(userId);
   const kept = { pack: local, saveFailed: false, noneOnAccount: false };
-  const server = await fetchServerBidPackMeta();
+  const server = await fetchServerBidPackMeta(userId);
   if (!server || isPackId(server.packId, local)) return kept;
   const localAt = bidPackSavedAt(userId);
   if (localAt > 0) {
@@ -46,7 +46,7 @@ export async function accountBidPack(userId: string): Promise<AccountPack> {
   }
   // A copy saved before the device kept a time beside it: a newer month only, never by guessing which was saved
   // last — this device's own upload may never have reached the account. Kept either way, it's stamped from now on.
-  const fetched = await fetchServerBidPack();
+  const fetched = await fetchServerBidPack(userId);
   const remote = fetched.kind === "found" ? fetched.pack : null;
   const keep = remote && remote.bidPeriodStart && local.bidPeriodStart && remote.bidPeriodStart > local.bidPeriodStart ? remote : local;
   return { pack: keep, saveFailed: !(await saveBidPack(userId, keep)), noneOnAccount: false };

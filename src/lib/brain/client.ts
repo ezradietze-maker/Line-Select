@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import { fitExchanges } from "@/lib/brain/answer-limits";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import type { InterviewStep, LinePairCandidate, ThreadState } from "@/lib/brain/interviewer";
@@ -25,7 +26,7 @@ export async function postWithRetry<T>(url: string, body: unknown, timeoutMs: nu
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     let res: Response;
     try {
-      res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Request-Id": requestId }, body: JSON.stringify(body), signal: ctrl.signal });
+      res = await apiFetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Request-Id": requestId }, body: JSON.stringify(body), signal: ctrl.signal });
     } catch {
       clearTimeout(timer);
       // The browser's own words for a timeout or a dropped connection ("signal is aborted without reason", "Failed to

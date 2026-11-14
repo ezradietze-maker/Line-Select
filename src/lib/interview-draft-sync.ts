@@ -1,3 +1,5 @@
+import { apiFetch, shownAccount } from "@/lib/shown-account";
+
 /**
  * The server copy of a signed-in pilot's unfinished interview (see `/api/interview-draft`), so it follows them to
  * another device. Only ever called for a signed-in pilot — a guest's draft stays in this browser alone. Nothing here
@@ -7,7 +9,7 @@
 /** The draft saved on the server for this pack, or null when there's none or it couldn't be reached. */
 export async function fetchServerDraft<T>(packId: string): Promise<T | null> {
   try {
-    const res = await fetch(`/api/interview-draft?pack=${encodeURIComponent(packId)}`, { credentials: "same-origin", cache: "no-store" });
+    const res = await apiFetch(`/api/interview-draft?pack=${encodeURIComponent(packId)}`, { credentials: "same-origin", cache: "no-store" });
     if (!res.ok) return null;
     const data = (await res.json()) as { draft?: T | null };
     return data.draft ?? null;
@@ -18,7 +20,8 @@ export async function fetchServerDraft<T>(packId: string): Promise<T | null> {
 
 /** Waits this long after an answer before saving: the save that follows several quick changes carries them all. */
 const SAVE_AFTER_MS = 1500;
-let pending: { packId: string; draft: unknown; timer: ReturnType<typeof setTimeout> } | null = null;
+/** `account`: whose answer it is, as the tab showed when it was given — the save goes up later, maybe after the tab moved on. */
+let pending: { packId: string; draft: unknown; account: string | null | undefined; timer: ReturnType<typeof setTimeout> } | null = null;
 
 /**
  * Browsers refuse a `keepalive` request past 64 KiB — counted in bytes, and across every keepalive request still in
@@ -26,10 +29,10 @@ let pending: { packId: string; draft: unknown; timer: ReturnType<typeof setTimeo
  */
 const KEEPALIVE_MAX_BYTES = 48 * 1024;
 
-async function send(packId: string, draft: unknown): Promise<void> {
+async function send(packId: string, draft: unknown, account: string | null | undefined): Promise<void> {
   const body = JSON.stringify({ pack: packId, draft });
   const put = (keepalive: boolean) =>
-    fetch("/api/interview-draft", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", keepalive, body });
+    apiFetch("/api/interview-draft", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", keepalive, body }, account);
   // Sent even if the page is closing, so the last answer isn't lost to a tab shut right after it — when it's small
   // enough to be. Refused that way (too big after all, with another save still going), it's sent the ordinary way.
   const keepalive = new TextEncoder().encode(body).length <= KEEPALIVE_MAX_BYTES;
@@ -44,9 +47,9 @@ async function send(packId: string, draft: unknown): Promise<void> {
 function flush(): void {
   if (!pending) return;
   clearTimeout(pending.timer);
-  const { packId, draft } = pending;
+  const { packId, draft, account } = pending;
   pending = null;
-  void send(packId, draft);
+  void send(packId, draft, account);
 }
 
 let flushOnLeave = false;
@@ -54,11 +57,12 @@ let flushOnLeave = false;
 /** Saves the draft to the server shortly — the latest one only, when several come in a row. */
 export function saveServerDraft(packId: string, draft: unknown): void {
   if (pending) clearTimeout(pending.timer);
+  const account = shownAccount();
   const timer = setTimeout(() => {
     pending = null;
-    void send(packId, draft);
+    void send(packId, draft, account);
   }, SAVE_AFTER_MS);
-  pending = { packId, draft, timer };
+  pending = { packId, draft, account, timer };
   // An answer given just before the tab is swiped away (or the phone locks) would otherwise wait on a timer that
   // never fires — iOS freezes it in the background, and a closed tab never runs it.
   if (!flushOnLeave && typeof window !== "undefined") {
@@ -77,6 +81,6 @@ export async function clearServerDraft(packId: string): Promise<void> {
     pending = null;
   }
   try {
-    await fetch(`/api/interview-draft?pack=${encodeURIComponent(packId)}`, { method: "DELETE", credentials: "same-origin", keepalive: true });
+    await apiFetch(`/api/interview-draft?pack=${encodeURIComponent(packId)}`, { method: "DELETE", credentials: "same-origin", keepalive: true });
   } catch {}
 }

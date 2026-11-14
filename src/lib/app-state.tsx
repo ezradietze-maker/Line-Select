@@ -33,6 +33,7 @@ import { adoptGuestDrafts } from "@/lib/interview-draft";
 import { landingAfterSignIn, landingPathFor } from "@/lib/landing-path";
 import { LOCAL_SAVE_FAILED_EVENT } from "@/lib/local-save-failed";
 import { announceStartOver, caughtUpWithStartOver, onStartOverElsewhere } from "@/lib/start-over-signal";
+import { onAccountRefused, onSignedInElsewhere, setShownAccount, shownAccount } from "@/lib/shown-account";
 
 /**
  * Whether this device was signed in when the app last checked — not a credential (the session cookie is), just a
@@ -100,6 +101,16 @@ function readLastUser(): UserAccount | null {
 }
 
 /**
+ * Who this device was last signed in to, as the tab that signed in or out wrote it down: null for nobody, undefined
+ * when it can't tell (storage blocked, or nothing written yet). Another tab's sign-in shows up here first.
+ */
+function signedInHere(): string | null | undefined {
+  const hint = readKey(SIGNED_IN_HINT_KEY);
+  if (hint === "0") return null;
+  return hint === "1" ? (readLastUser()?.id ?? undefined) : undefined;
+}
+
+/**
  * A signed-in pilot's save that came back as a different copy (merged with another device's): that copy is shown, and
  * it's what the retries send. Only while the profile on screen is still the one that was saved — an edit made since
  * goes up after it, laid over the merged copy (`saveProfileForUser`), and replacing it here would lose it.
@@ -131,6 +142,38 @@ interface DataState {
   bidPackSaveFailed: boolean;
   /** True when the browser refused to keep a GUEST's profile locally — the one case a local save failure means real data loss, since a signed-in pilot's profile also lives on the server. */
   profileSaveFailed: boolean;
+}
+
+/** Before the device and the account have been read: pilot screens wait, as on a fresh load. */
+const NOT_LOADED: DataState = {
+  ready: false,
+  profile: null,
+  user: null,
+  bidPack: null,
+  parseResult: null,
+  pendingProfile: null,
+  seniority: null,
+  freshBidPack: false,
+  bidPackSaveFailed: false,
+  profileSaveFailed: false,
+};
+
+/** What a fresh load shows for this account (or a guest): its pack, profile and seniority, from the device and the account. */
+async function loadStateFor(currentUser: UserAccount | null): Promise<DataState> {
+  const { pack: savedBidPack, saveFailed } = currentUser ? await accountBidPack(currentUser.id) : { pack: await loadBidPack(null), saveFailed: false };
+  return {
+    ready: true,
+    profile: await loadProfileForUser(currentUser?.id ?? null),
+    user: currentUser,
+    bidPack: savedBidPack,
+    parseResult: null,
+    // A finished-but-unconfirmed interview survives a refresh on the confirmation screen.
+    pendingProfile: loadPendingProfile(currentUser?.id ?? null, savedBidPack?.id ?? null),
+    seniority: loadSeniority(currentUser?.id ?? null),
+    freshBidPack: false,
+    bidPackSaveFailed: saveFailed,
+    profileSaveFailed: false,
+  };
 }
 
 interface AppStateValue extends DataState {
@@ -195,18 +238,7 @@ export function useBidPackIfAny(): BidPack | null {
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const [state, setState] = useState<DataState>({
-    ready: false,
-    profile: null,
-    user: null,
-    bidPack: null,
-    parseResult: null,
-    pendingProfile: null,
-    seniority: null,
-    freshBidPack: false,
-    bidPackSaveFailed: false,
-    profileSaveFailed: false,
-  });
+  const [state, setState] = useState<DataState>(NOT_LOADED);
   const { user, bidPack, pendingProfile } = state;
   const [interviewKey, setInterviewKey] = useState(0);
   const [demoOffer, setDemoOffer] = useState<TradeOffer | null>(null);
@@ -220,7 +252,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   /** How the signed-in pilot's last profile save went (see `persistProfile`). */
   const [profileSync, setProfileSync] = useState<"ok" | "merged" | "failed">("ok");
   const [listSaveFailed, setListSaveFailed] = useState(false);
-  const showSignedOutRef = useRef<() => void>(() => {});
+  const showAccountNowRef = useRef<(now: UserAccount | null) => void>(() => {});
   /** Counts this tab's sign-ins and sign-outs, so an answer about who's signed in asked for before one isn't used after it (`refreshUser`). */
   const signInsRef = useRef(0);
   const adoptOnLoadRef = useRef<(user: UserAccount, from: GuestWork) => Promise<unknown>>(async () => {});
@@ -242,29 +274,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // resolve the initial profile/bidPack/user — can't happen during render
     // since it would mismatch the server-rendered "not ready yet" state.
     let cancelled = false;
-    const stateFor = async (currentUser: UserAccount | null): Promise<DataState> => {
-      const { pack: savedBidPack, saveFailed } = currentUser ? await accountBidPack(currentUser.id) : { pack: await loadBidPack(null), saveFailed: false };
-      return {
-        ready: true,
-        profile: await loadProfileForUser(currentUser?.id ?? null),
-        user: currentUser,
-        bidPack: savedBidPack,
-        parseResult: null,
-        // A finished-but-unconfirmed interview survives a refresh on the confirmation screen.
-        pendingProfile: loadPendingProfile(currentUser?.id ?? null, savedBidPack?.id ?? null),
-        seniority: loadSeniority(currentUser?.id ?? null),
-        freshBidPack: false,
-        bidPackSaveFailed: saveFailed,
-        profileSaveFailed: false,
-      };
-    };
     async function bootstrap() {
       // A device that wasn't signed in last time is almost certainly a guest now, and a guest's pack and profile are
       // all on this device — so show them straight away instead of waiting on the session check (which takes a second
       // or more when the server is cold). If the check then finds an account after all, its data replaces them.
       const assumedGuest = !readSignedInHint();
       if (assumedGuest) {
-        const guest = await stateFor(null);
+        const guest = await loadStateFor(null);
         if (!cancelled) setState(guest);
       }
       const session = await checkSession();
@@ -272,18 +288,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // No answer from the server (no signal): carry on as the account this device was last signed in to, rather than
       // dropping a signed-in pilot to an empty guest view until the connection comes back.
       const currentUser = session.reachable ? session.user : readLastUser();
+      // From here on, every call to the server says it's for this account (`apiFetch`).
+      setShownAccount(currentUser?.id ?? null);
       if (session.reachable) writeSignedInHint(currentUser);
       // This device's confirm link signed this account in, and the step that brings the guest's work across didn't
       // finish (the tab reloaded or closed first): it's finished here, from what the guest had.
       if (currentUser && readKey(CONFIRM_SIGN_IN_KEY) === currentUser.id) {
-        await adoptOnLoadRef.current(currentUser, await stateFor(null));
+        await adoptOnLoadRef.current(currentUser, await loadStateFor(null));
         return;
       }
       // Signed in already: a guest pack still on the device was uploaded before this account signed in, not for it.
       if (currentUser) clearGuestUpload();
       if (currentUser) identifyPilot(currentUser.id);
       if (assumedGuest && !currentUser) return;
-      const resolved = await stateFor(currentUser);
+      const resolved = await loadStateFor(currentUser);
       if (cancelled) return;
       setState(resolved);
       // An edit kept on this device that the load couldn't send either (still no signal, the server busy): the notice
@@ -510,11 +528,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const retry = async () => {
       const profile = latestProfileRef.current;
       if (!profile) return;
-      // A save refused because the session ended (signed out in another tab, or expired) would fail forever behind a
-      // "will try again" notice: the server says who's signed in now, and a pilot no longer signed in is shown so.
+      // A save refused because the session ended (signed out in another tab, or expired) or is someone else's now
+      // (signed in there) would fail forever behind a "will try again" notice: the server says who's signed in now,
+      // and the tab shows that, as a fresh load would.
+      const asked = signInsRef.current;
       const session = await checkSession();
-      if (session.reachable && session.user?.id !== userId) {
-        showSignedOutRef.current();
+      if (signInsRef.current !== asked) return;
+      if (session.reachable && (session.user?.id ?? null) !== userId) {
+        showAccountNowRef.current(session.user);
         return;
       }
       void saveProfileForUser(userId, profile).then((r) => {
@@ -599,7 +620,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
     // A signed-in pilot's pack also goes to their account, so a new device or a cleared browser gets it back. A guest's
     // own upload is marked, so the account they sign in to next can take it over (see `handleAuthenticated`).
-    if (user) void saveServerBidPack(newBidPack);
+    if (user) void saveServerBidPack(newBidPack, user.id);
     else if (!isSamplePack(newBidPack)) markGuestUpload(newBidPack.id);
     clearPendingProfile(user?.id ?? null);
     setState((s) => ({
@@ -729,7 +750,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // The calendar link showed the line the deleted ranking put first: it's turned off (and the device forgets what it
     // last sent it, with the rest, in `forgetPilotWork`). Fetched when needed, not shipped on every screen.
     if (user) void import("@/lib/calendar-feed-client").then(({ turnOffFeed }) => turnOffFeed()).catch(() => {});
-    if (user) void clearServerBidPack();
+    if (user) void clearServerBidPack(user.id);
     if (user && bidPack) void clearTradeHolding(bidPack.id);
     if (user && bidPack) void clearServerDraft(bidPack.id);
     clearPendingProfile(user?.id ?? null);
@@ -772,6 +793,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   async function handleAuthenticated(newUser: UserAccount, { stay = false, from }: { stay?: boolean; from?: GuestWork } = {}): Promise<string> {
     signInsRef.current++;
+    // The session is this account's now, and so is every call from here on: the ones just below that bring in its pack
+    // and profile among them.
+    setShownAccount(newUser.id);
     // What was on screen before this sign-in; on a load finishing a confirm's sign-in, what the guest had on this device.
     const before: GuestWork = from ?? { user: state.user, bidPack: state.bidPack, profile: state.profile, seniority: state.seniority };
     askToKeepStorage();
@@ -800,7 +824,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           packSaveFailed = true;
           await saveBidPack(null, before.bidPack);
         }
-        void saveServerBidPack(before.bidPack);
+        void saveServerBidPack(before.bidPack, newUser.id);
         theirBidPack = before.bidPack;
       }
       if (!theirProfile && before.profile) {
@@ -855,6 +879,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // Signed out (or in) on this tab while it was on its way: it says who was signed in before. Written down now, it
     // put the pilot who just left back on this device, for the next person here to be shown when offline.
     if (signInsRef.current !== asked) return "unknown";
+    // Signed in as someone else (or out) in another tab since this one last asked: this tab shows what a fresh load
+    // would. Without a signal, it goes by who the other tab wrote down as signed in, as a load does.
+    const shown = shownAccount();
+    const here = signedInHere();
+    const now = session.reachable ? session.user : here === undefined ? undefined : readLastUser();
+    if (shown !== undefined && now !== undefined && (now?.id ?? null) !== shown) await showAccountNow(now);
     if (!session.reachable) return "unknown";
     if (!session.user) return "signed-out";
     const fresh = session.user;
@@ -898,6 +928,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   /** The guest view, once the server no longer holds a session for this device; at `to`, or wherever a guest belongs. */
   async function showSignedOut(to?: string) {
     signInsRef.current++;
+    setShownAccount(null);
     setProfileSync("ok");
     writeSignedInHint(null);
     // The account's copy isn't what a guest's next save starts from, and the guest pack shown now (kept from before the
@@ -905,8 +936,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     forgetLastKnownProfile();
     clearGuestUpload();
     resetPilotIdentity();
+    await showGuest(to);
+  }
+
+  /** The guest's own pack and profile from this device, at `to` or wherever a guest belongs. */
+  async function showGuest(to?: string) {
+    const asked = signInsRef.current;
     const guestBidPack = await loadBidPack(null);
     const guestProfile = await loadProfileForUser(null);
+    if (signInsRef.current !== asked) return;
     setState({
       ready: true,
       profile: guestProfile,
@@ -921,8 +959,39 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
     router.push(to ?? landingPathFor(guestBidPack, guestProfile));
   }
+
+  /**
+   * Another tab signed in as `now` (or signed out: null) since this one showed its account. What this tab holds goes
+   * from the screen, and it shows what a fresh load would. Nothing kept on the device is touched: the other tab did all
+   * that signing in or out does, and the old account's own copies stay its own (an edit not yet on its account among
+   * them) for the next time it signs in here. Nothing of the old account's goes into the new one.
+   */
+  async function showAccountNow(now: UserAccount | null) {
+    const asked = ++signInsRef.current;
+    setShownAccount(now?.id ?? null);
+    // Read by a save of the old account's that comes back now: it says nothing about the new one's.
+    userIdRef.current = now?.id ?? null;
+    writeSignedInHint(now);
+    forgetLastKnownProfile();
+    setInterviewKey((k) => k + 1);
+    setProfileSync("ok");
+    setListSaveFailed(false);
+    // Off the screen at once, as on a fresh load: no tap meanwhile on the old account's pack or profile ("Start over"
+    // among them) goes up as the new account's.
+    setState(NOT_LOADED);
+    if (!now) {
+      resetPilotIdentity();
+      return showGuest();
+    }
+    identifyPilot(now.id);
+    const resolved = await loadStateFor(now);
+    if (signInsRef.current !== asked) return;
+    setState(resolved);
+    if (hasUnsyncedProfile(now.id)) setProfileSync("failed");
+  }
+
   useEffect(() => {
-    showSignedOutRef.current = () => void showSignedOut();
+    showAccountNowRef.current = (now) => void showAccountNow(now);
     adoptOnLoadRef.current = (user, from) => handleAuthenticated(user, { stay: true, from });
   });
 
@@ -933,6 +1002,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refreshUserRef.current = refreshUser;
   });
+
+  useEffect(() => {
+    // Another pilot signed in (or this one out) in another tab of this browser: the cookie is theirs now, and the pack,
+    // profile and lists on this tab's screen are the old account's. The server refuses this tab's calls meanwhile
+    // (`apiFetch`), and the tab asks who's signed in as soon as it hears: the other tab's note on the device, being
+    // looked at again after the browser put it to sleep, or a call refused. Then it shows that (`refreshUser`).
+    if (!state.ready) return;
+    const ask = () => void refreshUserRef.current();
+    const stopRefused = onAccountRefused(ask);
+    const stopElsewhere = onSignedInElsewhere(userId, signedInHere, ask);
+    return () => {
+      stopRefused();
+      stopElsewhere();
+    };
+  }, [state.ready, userId]);
   useEffect(() => {
     if (!waitingOnConfirm) return;
     const ask = () => void refreshUserRef.current();

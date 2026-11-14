@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/shown-account";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -48,7 +49,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
     setShowAll(false);
     try {
       brief.current ??= buildPackBrief(bidPack, metrics());
-      const res = await fetch("/api/brain/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text, packBrief: brief.current }) });
+      const res = await apiFetch("/api/brain/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text, packBrief: brief.current }) });
       const data = (await res.json().catch(() => null)) as { query?: AskQuery; error?: string } | null;
       if (id !== latest.current) return;
       if (!res.ok || !data?.query) {
