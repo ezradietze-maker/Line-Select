@@ -6,6 +6,7 @@ import { packIdFor } from "@/lib/pack-id";
 import { findTradeOffer, getTradeHolding, pilotHasSeatMonth, respondToTradeOffer } from "@/lib/server/db";
 import { offerForViewer } from "@/lib/server/trade-view";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
+import { pastBoardDeadline, tooLateToTrade } from "@/lib/server/trade-deadline";
 import { NOT_YOUR_SEAT, NOT_YOUR_TRIP, sanitizeTripSnapshot, tripIsHeld } from "@/lib/server/trade-validation";
 import type { Seat } from "@/types/bidpack";
 import type { TripSnapshot } from "@/types/trade";
@@ -58,6 +59,9 @@ export async function POST(
       { error: `This pilot wants Pairing ${offer.wantedPairingNumber} specifically.` },
       { status: 400 }
     );
+  }
+  if (await pastBoardDeadline(offer.bidPackMeta, [offer.offeredTrip, responderTrip], [user.id, offer.offeringUserId])) {
+    return NextResponse.json({ error: tooLateToTrade(offer.bidPackMeta) }, { status: 409 });
   }
 
   // Refused when either trip is already in a trade one of the two pilots agreed: it's spoken for (`respondToTradeOffer`).

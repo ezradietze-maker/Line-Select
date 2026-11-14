@@ -1,4 +1,6 @@
-import { tripInstanceKey } from "@/lib/trades/legality";
+import { DateTime } from "luxon";
+import { timezoneForAirport } from "@/lib/airport-timezones";
+import { tradeDeadlineHours, tripInstanceKey, tripSpan } from "@/lib/trades/legality";
 import type { PilotHolding } from "@/lib/trades/match";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { BidPackMetaSnapshot, TradeOffer, TripSnapshot } from "@/types/trade";
@@ -32,6 +34,26 @@ export function sameTrip(a: TripNamed, b: TripNamed): boolean {
 
 const sameMeta = (a: BidPackMetaSnapshot, b: BidPackMetaSnapshot) =>
   a.base === b.base && a.aircraft === b.aircraft && a.seat === b.seat && a.month === b.month;
+
+const HOUR = 3_600_000;
+
+/**
+ * Whether a trip on the board is past its trade deadline (`tradeDeadlineHours`, CBA 2026 25.L.9.a.ii), as suggested
+ * trades already are (`isTradeable`): the board had none, so a trip that had shown, or flown, could still be offered,
+ * proposed and agreed. The show is the one in `pack` when it's this seat's month and has the trip; otherwise the first
+ * minute of the day the trip starts, in the base's time, which is never after its show (a pilot told too early is never
+ * late). A trip whose day isn't known can't be judged, and passes.
+ */
+export function pastTradeDeadline(pack: BidPack | null, meta: BidPackMetaSnapshot, trip: TripSnapshot, now: number): boolean {
+  const deadline = tradeDeadlineHours(meta) * HOUR;
+  const key = snapshotTripKey(trip);
+  const found = pack && key && sameMeta(pack, meta) ? pack.lines.flatMap((l) => l.trips).find((t) => tripInstanceKey(t) === key) : undefined;
+  const span = pack && found ? tripSpan(pack, found) : null;
+  if (span) return span.start - deadline <= now;
+  if (!trip.date) return false;
+  const day = DateTime.fromISO(trip.date, { zone: timezoneForAirport(meta.base) ?? "UTC" }).startOf("day");
+  return day.isValid && day.toMillis() - deadline <= now;
+}
 
 /** What each pilot on an offer gives away in it: the offering pilot their trip, and a proposing pilot theirs. */
 function tripsGivenIn(offer: TradeOffer): GivenTrip[] {

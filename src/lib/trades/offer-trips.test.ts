@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agreedBoardSwaps, agreedBoardTrips, alreadyTraded, lockBoardTrades, offersFreedBy, offersFreedByTrade, sameTrip, withBoardSwaps } from "@/lib/trades/offer-trips";
+import { agreedBoardSwaps, agreedBoardTrips, alreadyTraded, lockBoardTrades, offersFreedBy, offersFreedByTrade, pastTradeDeadline, sameTrip, withBoardSwaps } from "@/lib/trades/offer-trips";
 import type { PilotHolding } from "@/lib/trades/match";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 import type { TradeOffer, TripSnapshot } from "@/types/trade";
@@ -154,5 +154,31 @@ describe("matching around what the board's agreed trades hand a pilot", () => {
   it("leaves out a pilot taking a trip the pack can't place", () => {
     const old = offer("u1", trip("13", 5), { status: "accepted", responderUserId: "u2", responderTrip: trip("20") });
     expect(withBoardSwaps(pack, [held("u1", [t("p13", 5, "13")]), held("u3", [t("p30", 9, "30")])], agreedBoardSwaps([old])).map((p) => p.pilotId)).toEqual(["u3"]);
+  });
+});
+
+describe("the board's trade deadline (25.L.9.a.ii)", () => {
+  // Day 2 of a pack starting Oct 29 is Oct 31, reporting 10:00 in Memphis: 15:00Z.
+  const flown = { id: "p13", startDayIndex: 2, pairingNumber: "13", tafbHours: 48, days: 2, schedule: [{ reportTimeLocal: "1000", startMinutes: 0, legs: [], layover: null }] } as unknown as Trip;
+  const pack = { ...meta, id: "uploaded-mem-md11-cap-nov26", bidPeriodStart: "2026-10-29", bidPeriodDays: 30, lines: [{ lineNumber: "1001", trips: [flown] }] } as unknown as BidPack;
+  const show = Date.UTC(2026, 9, 31, 15);
+  const HOUR = 3_600_000;
+  const offered = { ...trip("13", 2), date: "2026-10-31" };
+
+  it("closes 2 hours before the trip's show, read from the pack", () => {
+    expect(pastTradeDeadline(pack, meta, offered, show - 2.5 * HOUR)).toBe(false);
+    expect(pastTradeDeadline(pack, meta, offered, show - 1.5 * HOUR)).toBe(true);
+    // Flown already.
+    expect(pastTradeDeadline(pack, meta, offered, show + 30 * HOUR)).toBe(true);
+  });
+
+  it("without the pack, from the start of the day it shows in the base's time, never later than the show", () => {
+    // Oct 31 starts at 05:00Z in Memphis: 2 hours before is 03:00Z.
+    expect(pastTradeDeadline(null, meta, offered, Date.UTC(2026, 9, 31, 2, 30))).toBe(false);
+    expect(pastTradeDeadline(null, meta, offered, Date.UTC(2026, 9, 31, 3, 30))).toBe(true);
+    // Another seat's pack doesn't say when this one shows.
+    expect(pastTradeDeadline({ ...pack, seat: "FO" } as BidPack, meta, offered, Date.UTC(2026, 9, 31, 3, 30))).toBe(true);
+    // No day known: nothing to judge it by.
+    expect(pastTradeDeadline(null, meta, trip("13", 2), show + 30 * HOUR)).toBe(false);
   });
 });

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { and, count, desc, eq, gt, gte, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
-import { alreadyTraded, offersFreedBy, offersFreedByTrade, sameTrip, type GivenTrip } from "@/lib/trades/offer-trips";
+import { alreadyTraded, offersFreedBy, offersFreedByTrade, sameTrip, snapshotTripKey, type GivenTrip } from "@/lib/trades/offer-trips";
+import { tripIsHeld } from "@/lib/server/trade-validation";
 import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { packIdFor } from "@/lib/pack-id";
 import { db } from "@/lib/server/postgres";
@@ -772,6 +773,30 @@ export async function freeOffersOfMovedTrips(tx: Tx, meta: BidPackMetaSnapshot, 
       .set({ status: "open", responderUserId: null, responderDisplayName: null, responderTrip: null, respondedAt: null })
       .where(inArray(tradeOffers.id, reopen));
   }
+}
+
+/**
+ * After a pilot confirms what they hold anew, their offers of trips no longer on it (or now marked as ones they can't
+ * trade) are withdrawn, and a proposal they made with one is taken off its offer, as when a trip changes hands
+ * (`freeOffersOfMovedTrips`): otherwise the board could agree a trip they no longer have. An offer posted before
+ * snapshots carried the date can't say which day it meant, and is left alone.
+ */
+export async function freeOffersOfTripsNotHeld(userId: string, holding: Pick<TradeHolding, "bidPackMeta" | "trips">, now = new Date()): Promise<void> {
+  if (!isUuid(userId)) return;
+  const meta = holding.bidPackMeta;
+  await db.transaction(async (tx) => {
+    await lockPilotsInSeat(tx, meta, [userId]);
+    const rows = await tx
+      .select()
+      .from(tradeOffers)
+      .where(and(offersForSeat(meta), inArray(tradeOffers.status, ["open", "pending"]), or(eq(tradeOffers.offeringUserId, userId), eq(tradeOffers.responderUserId, userId))));
+    const given = rows.flatMap((r) => [
+      ...(r.offeringUserId === userId ? [r.offeredTrip] : []),
+      ...(r.responderUserId === userId && r.responderTrip ? [r.responderTrip] : []),
+    ]);
+    const gone = given.filter((t) => snapshotTripKey(t) !== null && !tripIsHeld(holding, t)).map((trip) => ({ pilot: userId, trip }));
+    if (gone.length > 0) await freeOffersOfMovedTrips(tx, meta, gone, now);
+  });
 }
 
 // ---- Candidate variables ----

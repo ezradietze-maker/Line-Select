@@ -24,6 +24,7 @@ vi.mock("@/lib/server/db", () => ({
   createTradeOffer: async (o: unknown) => (mocks.posted.push(o), mocks.created),
   pilotHasSeatMonth: async () => mocks.hasSeat,
   getTradeHolding: async () => mocks.holding,
+  getBidPackRecord: async () => null,
 }));
 
 const { GET, POST, BOARD_LIMIT } = await import("./route");
@@ -80,7 +81,14 @@ describe("GET /api/trades", () => {
 
 describe("POST /api/trades", () => {
   const trip = { lineNumber: "1", pairingNumber: "13", days: 3, layoverCities: ["ANC"], international: false, reportTime: "early", creditHours: 15, tafbHours: 60, landings: 4, deadheadLegs: 0, tripId: "p13", startDayIndex: 2 };
-  const post = () => POST(new Request("https://example.com/api/trades", { method: "POST", body: JSON.stringify({ bidPackMeta: { base: "MEM", aircraft: "MD11", seat: "CAP", month: "NOV26" }, offeredTrip: trip }) }));
+  const post = (offeredTrip: unknown = trip) => POST(new Request("https://example.com/api/trades", { method: "POST", body: JSON.stringify({ bidPackMeta: { base: "MEM", aircraft: "MD11", seat: "CAP", month: "NOV26" }, offeredTrip }) }));
+
+  it("refuses a trip past its trade deadline, as one already flown (25.L.9.a.ii)", async () => {
+    const res = await post({ ...trip, date: "2026-01-05" });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/Too late to trade that trip\. Trades are due 2 hours before show\./);
+    expect(mocks.posted).toHaveLength(0);
+  });
 
   it("posts an offer", async () => {
     expect((await post()).status).toBe(200);

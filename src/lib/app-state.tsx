@@ -10,7 +10,7 @@ import { clearBidPack, clearGuestUpload, dropPendingBidPackWrites, guestUploaded
 import { withGuestRecords } from "@/lib/profile-merge";
 import { generateFakeOffer, isSamplePack } from "@/lib/fake-trade-offers";
 import { clearTradeHolding, fetchWaitingSuggestions } from "@/lib/trades/holding-client";
-import { computeInboxSections, sameBidPack } from "@/lib/inbox";
+import { computeInboxSections, inboxNoticeKey, sameBidPack, unseenCount } from "@/lib/inbox";
 import { correctionEvents, isLearnablePack } from "@/lib/learning/corrections";
 import { postCorrections } from "@/lib/learning/learning-client";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
@@ -426,7 +426,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   // A suggested trade waiting on the pilot counts until they answer it: unlike an offer, opening the Inbox doesn't deal with it.
   // Nothing counts until this pilot's seen list has been read, or every offer would flash up as unread first.
-  const inboxUnreadCount = (seenOfferIds ? notifiableOffers.filter((o) => !seenOfferIds.has(o.id)).length : 0) + waitingTrades;
+  const inboxUnreadCount = (seenOfferIds ? unseenCount(notifiableOffers, seenOfferIds) : 0) + waitingTrades;
 
   useEffect(() => {
     // Only the Inbox counts as "checked" — the Trade Board shows the same
@@ -441,8 +441,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       let changed = false;
       const next = new Set(prev.ids);
       for (const offer of notifiableOffers) {
-        if (!next.has(offer.id)) {
-          next.add(offer.id);
+        const key = inboxNoticeKey(offer);
+        if (!next.has(key)) {
+          next.add(key);
           changed = true;
         }
       }
@@ -458,9 +459,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // backlog is whatever the first poll for this pilot and pack finds
     // (`newArrivals`), so nothing is compared before that poll is in.
     if (!offersLoaded || !offersKey) return;
-    const { baseline, fresh } = newArrivals(toastBaselineRef.current, offersKey, notifiableOffers.map((o) => o.id));
+    const { baseline, fresh } = newArrivals(toastBaselineRef.current, offersKey, notifiableOffers.map(inboxNoticeKey));
     toastBaselineRef.current = baseline;
-    const newOnes = notifiableOffers.filter((o) => fresh.includes(o.id));
+    const newOnes = notifiableOffers.filter((o) => fresh.includes(inboxNoticeKey(o)));
     if (newOnes.length === 0 || onInboxRef.current) return;
     setToasts((prev) => [
       ...prev,
