@@ -3,6 +3,7 @@ import {
   EMPTY_MARKS,
   PAGE_SIZE,
   bidOrderLines,
+  emptyListSaying,
   hideLine,
   leftOutPhrase,
   matchesLineSearch,
@@ -99,5 +100,31 @@ describe("the j / k cursor", () => {
     expect(stepCursor(["a", "b"], "b", 1)).toBe("b");
     expect(stepCursor(["a", "b"], "a", -1)).toBe("a");
     expect(stepCursor([], "a", 1)).toBeNull();
+  });
+});
+
+describe("what an empty list says", () => {
+  const none = { view: "all" as const, starred: 0, search: "", hotelName: null, filtersOn: false };
+
+  it("says nothing is shortlisted only when nothing is", () => {
+    expect(emptyListSaying({ ...none, view: "shortlist" })).toEqual({ message: "Nothing shortlisted yet — tap the star on any line to save it here.", canClear: false });
+    // Three lines shortlisted, and a search that finds none of them: they're there, the search hides them.
+    const searched = emptyListSaying({ ...none, view: "shortlist", starred: 3, search: "9999" });
+    expect(searched.message).toBe("No line matches “9999”.");
+    expect(searched.canClear).toBe(true);
+    const filtered = emptyListSaying({ ...none, view: "shortlist", starred: 3, filtersOn: true });
+    expect(filtered.message).not.toMatch(/Nothing shortlisted/);
+    expect(filtered.canClear).toBe(true);
+  });
+
+  it("offers to clear what narrows the list, and only that", () => {
+    expect(emptyListSaying({ ...none, filtersOn: true }).canClear).toBe(true);
+    expect(emptyListSaying({ ...none, hotelName: "Hilton" }).message).toMatch(/at Hilton/);
+    expect(emptyListSaying({ ...none, view: "realistic", filtersOn: true }).message).toMatch(/realistically hold/);
+    // Nothing narrows it: every line is set aside or hidden, and clearing filters would bring none back.
+    const parked = emptyListSaying(none);
+    expect(parked.canClear).toBe(false);
+    expect(parked.message).not.toMatch(/filters/);
+    expect(emptyListSaying({ ...none, view: "shortlist", starred: 2 }).message).toMatch(/set aside/);
   });
 });

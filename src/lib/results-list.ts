@@ -84,6 +84,30 @@ export function leftOutPhrase(hidden: number, notBid: number): string | null {
 }
 
 /**
+ * What the list says when it shows no line, and whether clearing the filters and search would bring lines back. The
+ * shortlist with a search on said "Nothing shortlisted yet" over three shortlisted lines, and offered no way to clear it.
+ */
+export function emptyListSaying(s: {
+  view: "all" | "shortlist" | "realistic";
+  /** How many lines are shortlisted, whatever is showing. */
+  starred: number;
+  search: string;
+  hotelName: string | null;
+  filtersOn: boolean;
+}): { message: string; canClear: boolean } {
+  if (s.view === "shortlist" && s.starred === 0) return { message: "Nothing shortlisted yet — tap the star on any line to save it here.", canClear: false };
+  const q = s.search.trim();
+  if (q) return { message: `No line matches “${q}”.`, canClear: true };
+  const among = s.view === "shortlist" ? " among your shortlisted lines" : s.view === "realistic" ? " among the ones you could realistically hold" : "";
+  if (s.hotelName) return { message: `No line matches these filters at ${s.hotelName}${among}. Try clearing one or two.`, canClear: true };
+  if (s.filtersOn) return { message: `No line matches the current filters${among}. Try clearing one or two.`, canClear: true };
+  // Nothing narrows the list: the lines it would show are set aside or hidden.
+  if (s.view === "shortlist") return { message: "Your shortlisted lines are set aside. Bring them back from Set aside, above.", canClear: false };
+  if (s.view === "realistic") return { message: "None of the lines you could realistically hold is in the list: they're set aside or hidden.", canClear: false };
+  return { message: "Every line is set aside or hidden. Bring them back from Set aside, above, or show the ones you hid.", canClear: false };
+}
+
+/**
  * The j / k cursor, one line on. It's kept by line, not by place, so when a line moves (a tier key sends it up the
  * list) the cursor goes with it and the next key acts on that same line. A cursor whose line has left the list starts
  * again at the top.

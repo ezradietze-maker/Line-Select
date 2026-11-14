@@ -48,12 +48,27 @@ export function LineContextMenu({ menu, tiers, listedIds, onClose }: { menu: Lin
   }, [menu.x, menu.y]);
 
   // A menu opens onto its first item, and gives the keyboard back to where it was when it closes: left where it was, the
-  // arrows went on moving the line under it.
+  // arrows went on moving the line under it. When that's gone with its line (set aside), to the line now in its place:
+  // given back to nothing, focus fell to the page, and the next Tab started again at the top.
+  const [neighbours] = useState(() => {
+    const at = listedIds.indexOf(menu.id);
+    return at < 0 ? [] : [...listedIds.slice(at + 1), ...listedIds.slice(0, at).reverse()];
+  });
   useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     ref.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true });
-    return () => opener?.focus({ preventScroll: true });
-  }, []);
+    return () => {
+      if (!opener) return;
+      if (opener.isConnected) return opener.focus({ preventScroll: true });
+      for (const id of neighbours) {
+        const card = document.querySelector<HTMLElement>(`[data-line-id="${CSS.escape(id)}"]`);
+        if (!card) continue;
+        // The strip's own button, which opens the line: the first stop in a card is its drag handle.
+        (card.querySelector<HTMLElement>("button[aria-expanded]") ?? card.querySelector<HTMLElement>("button"))?.focus({ preventScroll: true });
+        return;
+      }
+    };
+  }, [neighbours]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
