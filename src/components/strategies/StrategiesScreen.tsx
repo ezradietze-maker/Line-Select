@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { parseSeniorityInput } from "@/components/interview/SeniorityStep";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { VacationSlidePanel } from "@/components/strategies/VacationSlidePanel";
@@ -166,8 +167,11 @@ function SeniorityForm({
   // Without one, the place in bid order and the seat's size are asked for, as that's what's worked out from.
   const fromList = (bidPack.seniorityList?.length ?? 0) > 0;
   const [number, setNumber] = useState(profile?.seniorityNumber ? String(profile.seniorityNumber) : "");
-  const numberNum = Number(number);
-  const numberValid = number !== "" && Number.isInteger(numberNum) && numberNum >= 1;
+  // As the interview and Preferences read it (digits only, up to six): "1e3" or a seven-digit typo isn't one, and sent to
+  // the forecast it was refused, read here as "Couldn't reach the server".
+  const parsedNumber = parseSeniorityInput(number);
+  const numberNum = parsedNumber ?? 0;
+  const numberValid = parsedNumber !== null;
   const [rank, setRank] = useState(initial ? String(initial.rank) : "");
   const [totalPilots, setTotalPilots] = useState(initial ? String(initial.totalPilots) : "");
   const rankNum = Number(rank);
@@ -205,9 +209,8 @@ function SeniorityForm({
         {fromList ? (
           <TextField
             label="Your seniority number"
-            type="number"
-            min={1}
             inputMode="numeric"
+            maxLength={6}
             placeholder="e.g. 4210"
             value={number}
             onChange={(e) => setNumber(e.target.value)}
