@@ -267,10 +267,11 @@ function LogAward({
           </select>
         </label>
       )}
-      <label className={`mt-4 flex items-start gap-2.5 text-sm ${user && seniority ? "cursor-pointer" : "opacity-70"}`}>
-        <input type="checkbox" checked={share} disabled={!user || !seniority} onChange={(e) => setShare(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]" />
+      {/* Only the box and its name dim while it can't be ticked: the line under says how to make it work, with a link. */}
+      <label className={`mt-4 flex items-start gap-2.5 text-sm ${user && seniority ? "cursor-pointer" : ""}`}>
+        <input type="checkbox" checked={share} disabled={!user || !seniority} onChange={(e) => setShare(e.target.checked)} className={`mt-0.5 h-4 w-4 accent-[var(--color-accent)] ${user && seniority ? "" : "opacity-70"}`} />
         <span>
-          <span className="text-ink">Share it with other pilots</span>
+          <span className={`text-ink ${user && seniority ? "" : "opacity-70"}`}>Share it with other pilots</span>
           <span className="block text-xs text-ink-muted">
             {!user ? (
               <>
