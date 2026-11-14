@@ -68,7 +68,8 @@ export function simulateBid(params: ForecastParams): ForecastCore {
   const notBidding = params.notBidding;
 
   const knownByBid = new Map<number, number[]>();
-  for (const k of params.known) if (k.bidNumber < myBidNumber) knownByBid.set(k.bidNumber, k.ranking);
+  // Only those played: one past the pilots ahead (a list shorter than the bid numbers on it) never picks, so isn't known ahead.
+  for (const k of params.known) if (k.bidNumber >= 1 && k.bidNumber <= pilotsAhead) knownByBid.set(k.bidNumber, k.ranking);
   const population: PopulationModel = estimatePopulation(features, params.known.map((k) => k.ranking), params.learnedPrior);
 
   const rand = mulberry32(params.seed ?? 1);
