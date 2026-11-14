@@ -3,7 +3,8 @@ import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
 import { estimateDropoutRate, forecastBid, forecastPackKey, type BidForecast } from "@/lib/forecast/forecast";
 import type { BidPack } from "@/types/bidpack";
 
-export type ShareOutcome = "stored" | "not-signed-in" | "unconfirmed" | "not-requested" | "position-taken" | "store-full" | "unlisted" | "failed";
+/** "off": the pilot stopped sharing, on another device or on this one before signing out, so nothing was kept. */
+export type ShareOutcome = "stored" | "not-signed-in" | "unconfirmed" | "not-requested" | "position-taken" | "store-full" | "unlisted" | "off" | "failed";
 
 export interface ForecastResponse {
   forecast: BidForecast;
@@ -22,6 +23,8 @@ export interface ForecastRequestInput {
   rankingLineIds: string[];
   /** Whether to let the pilot's ranking help forecasts for other pilots. */
   share: boolean;
+  /** The pilot has just ticked sharing again: it clears their account's "stopped" (see the route). */
+  resume?: boolean;
 }
 
 /** Numbers rounded to keep the request small — four decimals is far below anything that could move a probability. */
@@ -53,6 +56,7 @@ export async function fetchForecast(input: ForecastRequestInput): Promise<Foreca
         seniorityNumber: input.seniorityNumber,
         ranking,
         share: input.share,
+        ...(input.share && input.resume ? { resume: true } : {}),
       }),
     });
     if (res.ok) {

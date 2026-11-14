@@ -27,6 +27,13 @@ export function authModeFor(view: string | null): Mode {
   return MODES.find((m) => m === view) ?? "login";
 }
 
+/**
+ * For what takes the form's place ("Check your email", "a reset link is on its way"): the keyboard and a screen reader
+ * go to it. Left alone, focus fell to the top of the page with the form, and nothing said the email had gone. Defined
+ * once, out here, so it runs when the notice appears and not again at every render.
+ */
+const focusOnShow = (el: HTMLElement | null) => el?.focus();
+
 interface AuthScreenProps {
   onAuthenticated: (user: UserAccount) => void;
   onContinueAsGuest: () => void;
@@ -198,7 +205,9 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
         {mode === "signup" && checkEmailAt ? (
           // The same words whether or not the address already had an account: what differs is only in the email.
           <div className="space-y-4">
-            <h2 className="text-base font-semibold text-ink">Check your email to finish signing up</h2>
+            <h2 ref={focusOnShow} tabIndex={-1} className="text-base font-semibold text-ink focus:outline-none">
+              Check your email to finish signing up
+            </h2>
             <p className="rounded-lg border border-border bg-canvas px-4 py-3 text-sm leading-relaxed text-ink">
               We&rsquo;ve sent an email to <span className="break-all font-medium">{checkEmailAt}</span>. Open the link in it and enter
               the password you just chose, to confirm the address and sign in. It works for 24 hours, once.
@@ -218,7 +227,11 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
           </div>
         ) : mode === "forgot" && linkSentTo ? (
           <div className="space-y-4">
-            <p className="rounded-lg border border-border bg-canvas px-4 py-3 text-sm leading-relaxed text-ink">
+            <p
+              ref={focusOnShow}
+              tabIndex={-1}
+              className="rounded-lg border border-border bg-canvas px-4 py-3 text-sm leading-relaxed text-ink focus:outline-none"
+            >
               If there&rsquo;s an account for <span className="font-medium">{linkSentTo}</span>, a reset link is on its
               way. It works for one hour and only once. Check your spam folder if it doesn&rsquo;t show up.
             </p>
@@ -436,8 +449,10 @@ function TabButton({
   children: React.ReactNode;
 }) {
   return (
+    // Pressed or not, said aloud: the pill alone showed which of the two a screen reader was on.
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={`relative rounded-md py-2 text-sm font-medium transition-colors duration-300 ${active ? "text-ink" : "text-ink-faint hover:text-ink-muted"}`}
     >

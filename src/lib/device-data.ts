@@ -55,6 +55,12 @@ export function forgetPilotWork(userId: string | null): void {
   }
 }
 
+/**
+ * Kept through signing out: whether they share their ranking with the forecast. It's a choice, not their bid or their
+ * words, and forgotten it came back ticked at the next sign-in, sharing again what they'd stopped sharing.
+ */
+const KEPT_ON_SIGN_OUT = "line-select:forecast-share:";
+
 export function forgetPilotOnDevice(userId: string): void {
   if (typeof window === "undefined" || !userId) return;
   // Through the pack's and the profile's own clears, so a save still compressing, or one the account refused and that's
@@ -63,7 +69,9 @@ export function forgetPilotOnDevice(userId: string): void {
   clearProfile(userId);
   try {
     const store = window.localStorage;
-    const keys = Array.from({ length: store.length }, (_, i) => store.key(i)).filter((k): k is string => !!k && k.startsWith("line-select:") && (k.includes(userId) || UNSCOPED.some((p) => k.startsWith(p)) || isGuestsOwn(k)));
+    const keys = Array.from({ length: store.length }, (_, i) => store.key(i)).filter(
+      (k): k is string => !!k && k.startsWith("line-select:") && !k.startsWith(KEPT_ON_SIGN_OUT) && (k.includes(userId) || UNSCOPED.some((p) => k.startsWith(p)) || isGuestsOwn(k))
+    );
     for (const key of keys) store.removeItem(key);
   } catch {
     // Storage unavailable: nothing was kept to forget.

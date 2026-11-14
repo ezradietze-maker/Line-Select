@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RecoveryCodePanel } from "@/components/auth/RecoveryCodePanel";
 import { Button } from "@/components/ui/Button";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Modal } from "@/components/ui/Modal";
 import { TextField } from "@/components/ui/TextField";
 import { createRecoveryCode } from "@/lib/auth";
@@ -172,12 +173,12 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
           </div>
         </div>
       )}
-      {recoveryOpen && <RecoveryCodeModal onClose={() => setRecoveryOpen(false)} />}
+      {recoveryOpen && <RecoveryCodeModal email={user.email} onClose={() => setRecoveryOpen(false)} />}
     </div>
   );
 }
 
-function RecoveryCodeModal({ onClose }: { onClose: () => void }) {
+function RecoveryCodeModal({ email, onClose }: { email: string; onClose: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -208,6 +209,8 @@ function RecoveryCodeModal({ onClose }: { onClose: () => void }) {
             If you forget your password, a recovery code gets you back in without needing your email.
             Making a new one replaces any code you had before. Confirm your password to continue.
           </p>
+          {/* The account's address, for a password manager to know which saved password to fill. */}
+          <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />
           <TextField
             label="Your password"
             type="password"
@@ -216,7 +219,8 @@ function RecoveryCodeModal({ onClose }: { onClose: () => void }) {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          {error && <p className="text-sm text-danger">{error}</p>}
+          {/* Read out as it appears: a wrong password was shown in red and said nothing to a screen reader. */}
+          {error && <ErrorBanner>{error}</ErrorBanner>}
           <Button type="submit" disabled={submitting || !password} className="w-full">
             {submitting ? "Please wait…" : "Create a new recovery code"}
           </Button>
