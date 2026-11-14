@@ -17,7 +17,9 @@ vi.mock("@/lib/server/db", () => ({
   },
   deleteTradeHolding: async (u: string, p: string) => void held.delete(`${u}|${p}`),
   getBidPackRecord: async () => (accountPack ? { packId: accountPack, data: Buffer.from(""), updatedAt: "", fingerprint: null } : null),
+  freeOffersOfTripsNotHeld: async (...args: unknown[]) => void freed.push(args),
 }));
+const freed = vi.hoisted(() => [] as unknown[][]);
 
 const fingerprinted = vi.hoisted(() => [] as unknown[]);
 vi.mock("@/lib/server/trade-pack", () => ({ accountPackFingerprint: async () => "fp-1" }));
@@ -66,6 +68,12 @@ describe("/api/trades/holding", () => {
     expect(lapsed).toEqual([["pilot-1", PACK]]);
     await DELETE(new Request(url, { method: "DELETE" }));
     expect(lapsed).toHaveLength(2);
+  });
+
+  it("frees the pilot's board offers of trips no longer on what they hold", async () => {
+    freed.length = 0;
+    await put();
+    expect(freed).toEqual([["pilot-1", body]]);
   });
 
   it("refuses anyone not signed in", async () => {

@@ -612,6 +612,30 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect((await mod.findTradeOffer(stale.id))?.status).toBe("pending");
     });
 
+    it("when a pilot confirms what they hold anew, frees their offers of trips no longer on it", async () => {
+      const [a, b, c] = [await makeUser("reheld-a"), await makeUser("reheld-b"), await makeUser("reheld-c")];
+      const gone = await offer(a, trip("13", 2));
+      const kept = await offer(a, trip("14", 3));
+      const legacy = await offer(a, { ...trip("15", 4), tripId: undefined, startDayIndex: undefined } as unknown as ReturnType<typeof trip>);
+      const cOffer = await offer(c, trip("40", 4));
+      const bOffer = await offer(b, trip("50", 5));
+      await propose(cOffer, a, trip("16", 5));
+      await propose(bOffer, c, trip("41", 6));
+      // Trip 13 went in VIPS some other way, and 16 is now marked as one they can't trade.
+      await mod.freeOffersOfTripsNotHeld(a.id, { bidPackMeta: meta, trips: [{ id: "p14", startDayIndex: 3, lock: null }, { id: "p16", startDayIndex: 5, lock: "VLT" }] });
+      expect((await mod.findTradeOffer(gone.id))?.status).toBe("withdrawn");
+      expect((await mod.findTradeOffer(kept.id))?.status).toBe("open");
+      expect((await mod.findTradeOffer(legacy.id))?.status).toBe("open");
+      expect(await mod.findTradeOffer(cOffer.id)).toMatchObject({ status: "open", responderUserId: null, responderTrip: null });
+      // Other pilots' trades are theirs.
+      expect((await mod.findTradeOffer(bOffer.id))?.status).toBe("pending");
+      // Another seat's month is another holding.
+      const elsewhere = await offer(a, trip("17", 6), { bidPackMeta: { ...meta, month: "NOV26" } });
+      await mod.freeOffersOfTripsNotHeld(a.id, { bidPackMeta: meta, trips: [] });
+      expect((await mod.findTradeOffer(kept.id))?.status).toBe("withdrawn");
+      expect((await mod.findTradeOffer(elsewhere.id))?.status).toBe("open");
+    });
+
     it("shows other pilots' offers only on a seat's month the pilot holds or has the pack for", async () => {
       const [held, packed, stranger] = [await makeUser("seat-held"), await makeUser("seat-packed"), await makeUser("seat-stranger")];
       await mod.saveTradeHolding(held.id, { packId: `uploaded-${meta.base}-b777-cap-oct26`.toLowerCase(), bidPackMeta: meta, lineNumber: "1", trips: [] });

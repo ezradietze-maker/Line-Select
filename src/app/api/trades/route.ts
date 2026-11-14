@@ -8,6 +8,7 @@ import { packIdFor } from "@/lib/pack-id";
 import { createTradeOffer, getTradeHolding, listTradeOffersForSeat, pilotHasSeatMonth } from "@/lib/server/db";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { tradeBoardIsOpen } from "@/lib/server/trade-board-bar";
+import { pastBoardDeadline, tooLateToTrade } from "@/lib/server/trade-deadline";
 import { NOT_YOUR_SEAT, NOT_YOUR_TRIP, sanitizeBidPackMeta, sanitizeTripSnapshot, tripIsHeld } from "@/lib/server/trade-validation";
 import { offerForViewer } from "@/lib/server/trade-view";
 import type { Seat } from "@/types/bidpack";
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
   if (!tripIsHeld(await getTradeHolding(user.id, packIdFor({ ...bidPackMeta, seat: bidPackMeta.seat as Seat })), offeredTrip)) {
     return NextResponse.json({ error: NOT_YOUR_TRIP }, { status: 403 });
   }
+  if (await pastBoardDeadline(bidPackMeta, [offeredTrip], [user.id])) return NextResponse.json({ error: tooLateToTrade(bidPackMeta) }, { status: 409 });
 
   const offer: TradeOffer = {
     id: randomUUID(),

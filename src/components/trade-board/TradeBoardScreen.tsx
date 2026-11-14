@@ -31,7 +31,7 @@ import {
   withdrawOffer,
 } from "@/lib/trade-client";
 import { tripInstanceKey } from "@/lib/trades/legality";
-import { alreadyTraded } from "@/lib/trades/offer-trips";
+import { alreadyTraded, pastTradeDeadline } from "@/lib/trades/offer-trips";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { TradeHolding, TripSnapshot, TradeOffer } from "@/types/trade";
@@ -62,8 +62,11 @@ function allTrips(bidPack: BidPack): LineTripEntry[] {
  * can't trade are left out, and so are those already in a trade they agreed this month: the server refuses those.
  * The sample pack is the demo, where nothing is held, so any of its trips will do there.
  */
-function pilotTrips(bidPack: BidPack, holding: TradeHolding | null, awardedLine: string | null, offers: readonly TradeOffer[], userId: string | null): LineTripEntry[] {
-  const held = heldTrips(bidPack, holding, awardedLine);
+function pilotTrips(bidPack: BidPack, holding: TradeHolding | null, awardedLine: string | null, offers: readonly TradeOffer[], userId: string | null, now: number): LineTripEntry[] {
+  // Nor those past their trade deadline, which the server refuses too (`pastTradeDeadline`). Not on the sample pack, whose month is long gone.
+  const held = heldTrips(bidPack, holding, awardedLine).filter(
+    (e) => isSamplePack(bidPack) || !pastTradeDeadline(bidPack, bidPack, tripToSnapshot(e.trip, e.lineNumber, bidPack.bidPeriodStart), now)
+  );
   if (!userId) return held;
   return held.filter((e) => !alreadyTraded(offers, bidPack, userId, tripToSnapshot(e.trip, e.lineNumber)));
 }
@@ -146,7 +149,13 @@ export function TradeBoardScreen({
   const [held, setHeld] = useState<{ packId: string; holding: TradeHolding | null } | null>(null);
   const holding = bidPack && held?.packId === bidPack.id ? held.holding : null;
   const awardedLine = bidPack ? ((profile?.logbook ?? []).find((m) => m.bidPackId === bidPack.id && m.lineNumber)?.lineNumber ?? null) : null;
-  const myTrips = bidPack ? pilotTrips(bidPack, holding, awardedLine, offers, user?.id ?? null) : [];
+  /** What's past its trade deadline is judged against this, moved on each minute. */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const myTrips = bidPack ? pilotTrips(bidPack, holding, awardedLine, offers, user?.id ?? null, now) : [];
 
   // One seat's board for one month: the server sends nothing else.
   const boardKey = bidPack ? [bidPack.base, bidPack.aircraft, bidPack.seat, bidPack.month].join("|") : null;
@@ -221,8 +230,9 @@ export function TradeBoardScreen({
       (o.offeringUserId === user?.id || o.responderUserId === user?.id) &&
       !needsResponse.includes(o)
   );
+  // One past its trade deadline can't be proposed on any more (the server refuses it): left off rather than offered.
   const openFromOthers = visibleOffers.filter(
-    (o) => o.status === "open" && o.offeringUserId !== user?.id
+    (o) => o.status === "open" && o.offeringUserId !== user?.id && (o.isDemo || !pastTradeDeadline(bidPack, o.bidPackMeta, o.offeredTrip, now))
   );
   const shownOpenOffers =
     openFromOthers.length > SEARCH_THRESHOLD ? openFromOthers.filter((o) => matchesSearch(o, search)) : openFromOthers;
