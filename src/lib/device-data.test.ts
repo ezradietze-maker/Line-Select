@@ -49,6 +49,12 @@ describe("signing out on a shared computer", () => {
     expect([...Array(store.length).keys()].map((i) => store.key(i))).toEqual(["line-select:bidpack:guest:v1"]);
   });
 
+  it("keeps their choice to stop sharing their ranking, so it isn't ticked again at the next sign-in", () => {
+    store.setItem("line-select:forecast-share:pilot-1", "off");
+    forgetPilotOnDevice("pilot-1");
+    expect(store.getItem("line-select:forecast-share:pilot-1")).toBe("off");
+  });
+
   it("keeps a pack save still compressing from writing it back after sign-out", async () => {
     const saving = saveBidPack("pilot-1", SAMPLE_BID_PACK);
     forgetPilotOnDevice("pilot-1");

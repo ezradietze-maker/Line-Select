@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AuthScreen, authModeFor, authTabTitle } from "./AuthScreen";
+import { RecoveryCodePanel } from "./RecoveryCodePanel";
 
 const screen = (initialMode: Parameters<typeof authModeFor>[0]) =>
   renderToStaticMarkup(createElement(AuthScreen, { onAuthenticated: () => {}, onContinueAsGuest: () => {}, initialMode: authModeFor(initialMode) }));
@@ -27,5 +28,16 @@ describe("the sign-in screen", () => {
     expect(html).toContain('maxLength="80"');
     expect(html).toContain('maxLength="200"');
     expect(html.match(/maxLength="500"/g)).toHaveLength(2);
+  });
+
+  it("says which of Log in and Create account is on, not only with the pill", () => {
+    expect(screen("signup")).toMatch(/aria-pressed="false"[^>]*>.*?Log in/);
+    expect(screen("signup")).toMatch(/aria-pressed="true"[^>]*>.*?Create account/);
+    expect(screen(null)).toMatch(/aria-pressed="true"[^>]*>.*?Log in/);
+  });
+
+  it("puts the recovery code's heading where focus can go when it takes the form's place", () => {
+    const html = renderToStaticMarkup(createElement(RecoveryCodePanel, { code: "ABCD-EFGH-JKMN-PQRS-TUVW", reason: "signup", onDone: () => {} }));
+    expect(html).toMatch(/<h2[^>]*tabindex="-1"[^>]*>\s*Save your recovery code/i);
   });
 });

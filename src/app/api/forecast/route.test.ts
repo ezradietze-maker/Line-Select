@@ -7,9 +7,11 @@ vi.mock("@/lib/server/auth", () => authMocks);
 
 // Rate limiting (checkRateLimit) still goes through kv.ts — this route's
 // own storage (forecast-store) moved to Postgres, mocked separately below.
+const kvStore = vi.hoisted(() => new Map<string, unknown>());
 vi.mock("@/lib/server/kv", () => ({
-  getJson: vi.fn(async () => null),
-  setJson: vi.fn(async () => {}),
+  getJson: vi.fn(async (key: string) => kvStore.get(key) ?? null),
+  setJson: vi.fn(async (key: string, value: unknown) => void kvStore.set(key, value)),
+  deleteKey: vi.fn(async (key: string) => void kvStore.delete(key)),
   incrementCounter: vi.fn(async () => 1),
 }));
 
@@ -115,6 +117,7 @@ function goodBody(overrides: Record<string, unknown> = {}) {
 describe("/api/forecast", () => {
   beforeEach(() => {
     forecastStore.blobs.clear();
+    kvStore.clear();
     learningStore.savedPredictions.length = 0;
     learningStore.deletedPredictions.length = 0;
     authMocks.getCurrentServerUser.mockReset().mockResolvedValue(null);
@@ -200,6 +203,23 @@ describe("/api/forecast", () => {
     expect(learningStore.deletedPredictions).toEqual([[hashUserForTest(USER.id), "oct26|mem|b777|cap"]]);
     authMocks.getCurrentServerUser.mockResolvedValue(null);
     expect((await (await POST(request(goodBody({ seniorityNumber: 100 })))).json()).crowd.pilotsSharing).toBe(0);
+  });
+
+  it("keeps a pilot who stopped sharing stopped on their other devices, until they tick it again", async () => {
+    authMocks.getCurrentServerUser.mockResolvedValue(USER);
+    await POST(request(goodBody({ share: true })));
+    await DELETE(request({ packKey: "oct26|mem|b777|cap", lineNumbers }, "DELETE"));
+    await new Promise((r) => setTimeout(r, 0));
+    learningStore.savedPredictions.length = 0;
+    // Another device (or this one after signing out and in) starts with the box ticked and asks to share.
+    const elsewhere = await (await POST(request(goodBody({ share: true })))).json();
+    expect(elsewhere.shared).toBe("off");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(forecastStore.blobs.get("oct26|mem|b777|cap:12") ?? []).toHaveLength(0);
+    expect(learningStore.savedPredictions).toHaveLength(0);
+    // Ticked again on purpose: shared from then on.
+    expect((await (await POST(request(goodBody({ share: true, resume: true })))).json()).shared).toBe("stored");
+    expect((await (await POST(request(goodBody({ share: true })))).json()).shared).toBe("stored");
   });
 
   it("keeps the forecast a pilot was shown only when they share", async () => {

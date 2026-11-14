@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildLineFeatures } from "@/lib/forecast/features";
 import { forecastPackKey } from "@/lib/forecast/forecast";
 import { fetchForecast, stopSharingRanking, type ForecastResponse } from "@/lib/forecast/forecast-client";
@@ -16,6 +16,14 @@ function loadSharing(userId: string | null): boolean {
     return window.localStorage.getItem(shareKey(userId)) !== "off";
   } catch {
     return true;
+  }
+}
+
+function saveSharing(userId: string, next: boolean): void {
+  try {
+    window.localStorage.setItem(shareKey(userId), next ? "on" : "off");
+  } catch {
+    // preference just won't persist
   }
 }
 
@@ -40,6 +48,8 @@ export function useBidForecast({ bidPack, rankingLineIds, implicitValuesByLine, 
   const [result, setResult] = useState<(ForecastResponse & { seniorityNumber: number }) | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Ticked again by the pilot: the next forecast says so, and the server stops holding them as stopped (see the route).
+  const resume = useRef(false);
 
   const rankingKey = rankingLineIds.join(",");
   const active = enabled && !!seniorityNumber && !!bidPack.seniorityList?.length && rankingLineIds.length > 0;
@@ -53,8 +63,14 @@ export function useBidForecast({ bidPack, rankingLineIds, implicitValuesByLine, 
     let cancelled = false;
     setLoading(true);
     const timer = setTimeout(async () => {
-      const response = await fetchForecast({ bidPack, features, seniorityNumber, rankingLineIds, share: sharing && !!userId });
+      const response = await fetchForecast({ bidPack, features, seniorityNumber, rankingLineIds, share: sharing && !!userId, resume: resume.current });
       if (cancelled) return;
+      if (response && !response.local) resume.current = false;
+      // Stopped on another device, or on this one before signing out (each starts ticked): unticked here too.
+      if (response?.shared === "off" && userId) {
+        saveSharing(userId, false);
+        setSharingState(false);
+      }
       setResult(response ? { ...response, seniorityNumber } : null);
       setFailed(!response);
       setLoading(false);
@@ -71,11 +87,8 @@ export function useBidForecast({ bidPack, rankingLineIds, implicitValuesByLine, 
     (next: boolean) => {
       setSharingState(next);
       if (!userId) return;
-      try {
-        window.localStorage.setItem(shareKey(userId), next ? "on" : "off");
-      } catch {
-        // preference just won't persist
-      }
+      saveSharing(userId, next);
+      resume.current = next;
       if (!next) void stopSharingRanking(forecastPackKey(bidPack), features.lineNumbers);
     },
     [userId, bidPack, features]

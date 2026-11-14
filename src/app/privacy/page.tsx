@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "November 11, 2026";
+const LAST_UPDATED = "November 14, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -103,9 +103,9 @@ export default function PrivacyPage() {
             never includes other pilots&rsquo; data. We store only a hash of the link, but the link itself is secret:
             anyone who has it can read that calendar without signing in, and the calendar service you add it to
             (Apple, Google or Microsoft, say) fetches it and keeps a copy under its own terms. Making a new link
-            stops the old one at once. Turning the link off, or deleting your account, also removes what we kept
-            for it; &ldquo;Start over&rdquo; on your results page doesn&rsquo;t, so turn the link off too. A copy
-            may stay in your calendar app until you remove the subscription there.
+            stops the old one at once. Turning the link off, pressing &ldquo;Start over&rdquo; on your results page,
+            or deleting your account turns the link off and removes what we kept for it. A copy may stay in your
+            calendar app until you remove the subscription there.
           </p>
           <p className="mt-3">
             If you use Send to VIPS, your own FedEx employee number and your answers to VIPS&rsquo;s
@@ -119,7 +119,8 @@ export default function PrivacyPage() {
             When you&rsquo;re signed in, your browser also keeps a copy of your account&rsquo;s basic
             details (its ID, email and display name) on your device, so the app can keep showing your own
             data if you reload with no connection &mdash; on a layover, say. Signing out removes it, and what else
-            this device kept for your account, unless an edit hasn&rsquo;t reached your account yet.
+            this device kept for your account, unless an edit hasn&rsquo;t reached your account yet. Only your choice
+            about sharing your ranking (Section 7) stays, so it isn&rsquo;t undone the next time you sign in.
           </p>
         </Section>
 
@@ -186,13 +187,26 @@ export default function PrivacyPage() {
               stored;
             </li>
             <li>
-              A recovery code, shown to you once when you sign up, so you can get back in if you forget your
+              A recovery code, shown to you once when your account is ready, so you can get back in if you forget your
               password &mdash; also stored only as a salted hash, never in a form that can be read back;
             </li>
             <li>
-              If you ask to reset your password by email, a single-use reset link is sent to the address on your
-              account through a transactional email provider (Resend). Only a hash of the link&rsquo;s token is
-              kept, and it expires after an hour or once used. Unless you turn on trade emails (Section 6), that is the only email we send you;
+              Emails about your account, sent to its address through a transactional email provider (Resend): a link
+              to confirm your address when you sign up (it works for 24 hours, once; an account that&rsquo;s never
+              confirmed is removed after 7 days); a short note if someone tries to sign up again with your address; a
+              reset link if you ask for one, or when someone else may have signed up with your address. We keep only a hash of each link&rsquo;s token, and a reset link expires after an hour or once
+              used. Apart from these, we email you only if you turn on trade emails (Section 6);
+            </li>
+            <li>
+              When you sign in, a note that this device (by the random ID in its device cookie, Section 12) has signed
+              in to your account, kept for 180 days, so the limit on failed sign-ins aimed at your account doesn&rsquo;t
+              keep you out on your own devices;
+            </li>
+            <li>
+              If you start a membership, our payment provider, Stripe, gets your email, display name and account ID.
+              You enter your card on Stripe&rsquo;s own page, so we never see it. We keep the Stripe customer and
+              membership IDs, the membership&rsquo;s status, and when its free month and current period end. Stripe
+              handles the payment, and its own receipts, under its own terms;
             </li>
             <li>
               A session token in an <code className="font-mono text-xs">httpOnly</code> cookie
@@ -248,9 +262,10 @@ export default function PrivacyPage() {
             from the bid pack&rsquo;s own list) &mdash; never your name or email &mdash; and is never shown
             to any other pilot: the server uses it only to work out which lines are likely to be taken, and
             sends back nothing but probabilities. Alongside it we keep that month&rsquo;s standardized line features, which hold nothing about
-            any pilot. You can stop sharing at any time with the checkbox on your results page, which removes
-            your stored ranking and the forecast kept with it, and you can ask us to delete everything
-            (Section 15).
+            any pilot. You can stop sharing at any time with the checkbox on your results page. That removes the
+            ranking you shared for that bid month and the forecast kept with it, and your account remembers the
+            choice, so your other devices stop sharing too until you tick the box again. Rankings shared for earlier
+            months stay unless you ask us to delete them, and you can ask us to delete everything (Section 15).
           </p>
         </Section>
 
@@ -354,8 +369,8 @@ export default function PrivacyPage() {
           </p>
           <p className="mt-3">
             The Service runs on Vercel (hosting, including its request logs), Neon (database), Upstash (short-lived
-            storage such as counters, caches and interview drafts), and Resend (email). They hold this data on our
-            behalf.
+            storage such as counters, caches and interview drafts), Resend (email) and, for memberships, Stripe
+            (payments). They hold this data on our behalf.
           </p>
         </Section>
 
@@ -419,7 +434,8 @@ export default function PrivacyPage() {
         <Section title="15. Your choices and rights">
           <p>
             &ldquo;Start over&rdquo; on your results page removes your bid pack and saved preferences, from your
-            device and, if you&rsquo;re signed in, from our server, along with what you&rsquo;ve confirmed you hold in that pack. As a guest you can do the same by clearing your
+            device and, if you&rsquo;re signed in, from our server, along with what you&rsquo;ve confirmed you hold in that pack,
+            your unfinished interview, and your calendar link (Section 2). As a guest you can do the same by clearing your
             browser&rsquo;s site data.
           </p>
           <p className="mt-3">
@@ -431,7 +447,7 @@ export default function PrivacyPage() {
             forecasts stay under the one-way hash in Section 9, which can no longer be matched to anyone once your
             account is gone; feedback (Section 11) keeps the name and email it was sent with; and explanations
             (Section 10) stay with your old account ID. Ask and we&rsquo;ll delete all of these along with the
-            account.
+            account. If you had a membership, Stripe keeps its own record of your payments under its terms.
           </p>
           <p className="mt-3">
             Regardless of where you live, you may contact us to ask what account-linked data we
