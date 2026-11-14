@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { isStandbyLeg } from "@/lib/standby";
@@ -135,6 +136,19 @@ const FULL_NIGHT_PICKUP = 6 * 60 + 45;
  * layover is picked up at 04:15; the line sits a little under it so a pack a few minutes off reads the same.
  */
 const BARELY_PICKUP = 4 * 60;
+
+/**
+ * Minutes on a city's own clock between two points of a trip: the minutes between them, give or take a clock change.
+ * Over the night the clocks go back (Europe in late October, the US a week later), a pickup at 03:30 was read as 04:30
+ * from the landing's clock, and a full day counted that the pilot doesn't get.
+ */
+function wallMinutes(trip: Pick<Trip, "zuluAnchor">, city: string, from: number, to: number): number {
+  const zone = timezoneForAirport(city);
+  const anchor = trip.zuluAnchor ? Date.parse(trip.zuluAnchor) : NaN;
+  if (!zone || !Number.isFinite(anchor)) return to - from;
+  const offset = (m: number) => DateTime.fromMillis(anchor + m * 60_000, { zone }).offset;
+  return to - from + offset(to) - offset(from);
+}
 
 function hhmmToMinute(hhmm: string | undefined): number | null {
   if (!hhmm || !/^\d{4}$/.test(hhmm)) return null;
@@ -309,7 +323,7 @@ export function computeTripFacts(trip: Trip): TripFacts {
         international: isInternationalCity(city),
         localNightHours: localStart === null ? null : nightOverlapHours(localStart, duty.layover.hours),
         hotel: duty.layover.hotelName,
-        ...fullDaysOf(city === base ? null : localStart, duty.layover.endMinutes - duty.layover.startMinutes),
+        ...fullDaysOf(city === base ? null : localStart, wallMinutes(trip, city, duty.layover.startMinutes, duty.layover.endMinutes)),
       },
     ];
   });
