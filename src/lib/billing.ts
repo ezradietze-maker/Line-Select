@@ -13,8 +13,19 @@ export interface BillingStatus {
   /** Stripe's status, e.g. "trialing" | "active" | "canceled" — null before any checkout. */
   status: string | null;
   hasSubscription: boolean;
+  /** Whether starting one now comes with the free month: only a pilot's first membership does. */
+  freeMonth: boolean;
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
+}
+
+/**
+ * Stripe statuses a subscription is over in, so a new one may start. Any other (past due, unpaid, incomplete, paused) is
+ * still the pilot's: a second one beside it could leave them paying twice once the first card goes through, so they
+ * fix the card in the portal instead.
+ */
+export function membershipEnded(status: string): boolean {
+  return status === "canceled" || status === "incomplete_expired";
 }
 
 export async function fetchBillingStatus(): Promise<BillingStatus | null> {
@@ -46,7 +57,7 @@ async function redirectTo(url: string): Promise<{ ok: boolean; error?: string }>
   }
 }
 
-/** Sends the pilot to Stripe Checkout to start their free month. */
+/** Sends the pilot to Stripe Checkout to start their membership (the first with a free month). */
 export async function startMembershipCheckout(): Promise<{ ok: boolean; error?: string }> {
   return redirectTo("/api/billing/checkout");
 }

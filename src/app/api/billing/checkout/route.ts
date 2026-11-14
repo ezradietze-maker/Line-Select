@@ -3,12 +3,12 @@ import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { getSubscriptionByUserId, linkStripeCustomer } from "@/lib/server/db";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
-import { appOrigin, getStripe, planForStatus, stripeConfig, TRIAL_DAYS } from "@/lib/server/stripe";
+import { appOrigin, freeMonthFor, getStripe, membershipEnded, planForStatus, stripeConfig, TRIAL_DAYS } from "@/lib/server/stripe";
 
 export const runtime = "nodejs";
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
-/** Starts a Stripe Checkout for the $20/mo membership, with a free month. The pilot enters their card on Stripe's page. */
+/** Starts a Stripe Checkout for the $20/mo membership, the first with a free month. The pilot enters their card on Stripe's page. */
 export async function POST(request: Request) {
   const refused = crossSiteRefusal(request);
   if (refused) return refused;
@@ -23,6 +23,11 @@ export async function POST(request: Request) {
     if (existing?.stripeSubscriptionId && planForStatus(existing.status) === "pro") {
       return NextResponse.json({ error: "You already have a membership. Reload this page to manage it." }, { status: 409, headers: NO_STORE });
     }
+    // Past due (or unpaid, incomplete, paused): still theirs, and a second beside it bills twice once the card goes through.
+    if (existing?.stripeSubscriptionId && !membershipEnded(existing.status)) {
+      return NextResponse.json({ error: "Your last payment didn't go through. Update your card in the billing portal to keep your membership.", fixCard: true }, { status: 409, headers: NO_STORE });
+    }
+    const freeMonth = await freeMonthFor(stripe, user.email, existing);
     let customerId = existing?.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({ email: user.email, name: user.displayName, metadata: { userId: user.id } });
@@ -35,7 +40,7 @@ export async function POST(request: Request) {
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: config.priceId, quantity: 1 }],
-      subscription_data: { trial_period_days: TRIAL_DAYS, metadata: { userId: user.id } },
+      subscription_data: { ...(freeMonth ? { trial_period_days: TRIAL_DAYS } : {}), metadata: { userId: user.id } },
       client_reference_id: user.id,
       allow_promotion_codes: true,
       success_url: `${origin}/membership?checkout=success`,

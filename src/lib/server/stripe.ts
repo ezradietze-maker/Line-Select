@@ -1,4 +1,6 @@
 import Stripe from "stripe";
+import { membershipEnded } from "@/lib/billing";
+import type { SubscriptionRecord } from "@/lib/server/db";
 import type { UserAccount } from "@/types/auth";
 
 /**
@@ -45,8 +47,25 @@ export function getStripe(): Stripe {
   return client;
 }
 
-/** The free month every new membership starts with. */
+export { membershipEnded };
+
+/** The free month a pilot's first membership starts with. Only the first: cancelling and starting again doesn't bring another. */
 export const TRIAL_DAYS = 30;
+
+/**
+ * Whether this pilot's next membership starts with the free month: not if they've had one before, here (the row keeps
+ * the last one) or at Stripe under their customer, or under any customer with their address (an account deleted and
+ * made again).
+ */
+export async function freeMonthFor(stripe: Stripe, email: string, existing: Pick<SubscriptionRecord, "stripeCustomerId" | "stripeSubscriptionId" | "trialEndsAt"> | null): Promise<boolean> {
+  if (existing?.stripeSubscriptionId || existing?.trialEndsAt) return false;
+  const customers = existing?.stripeCustomerId ? [existing.stripeCustomerId] : [];
+  for (const c of (await stripe.customers.list({ email, limit: 10 })).data) if (!customers.includes(c.id)) customers.push(c.id);
+  for (const customer of customers) {
+    if ((await stripe.subscriptions.list({ customer, status: "all", limit: 1 })).data.length) return false;
+  }
+  return true;
+}
 
 /** The price shown to pilots. Keep in step with the Stripe price you create. */
 export const MONTHLY_PRICE_LABEL = "$20/month";

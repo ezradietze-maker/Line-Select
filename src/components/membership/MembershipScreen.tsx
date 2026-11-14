@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/Button";
 import { useAppState } from "@/lib/app-state";
-import { fetchBillingStatus, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
+import { fetchBillingStatus, membershipEnded, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
 
 const PANEL = "panel-glass p-6";
 
@@ -62,18 +62,18 @@ export function MembershipScreen() {
     <div className="mx-auto w-full max-w-xl space-y-6">
       <header className="space-y-1">
         <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Membership</h1>
-        <p className="text-sm text-ink-muted">Line Select Pro is $20/month, and your first month is free.</p>
+        <p className="text-sm text-ink-muted">Line Select Pro is $20/month, and your first membership starts with a free month.</p>
       </header>
 
       {outcome === "success" && (
         <div className="relative overflow-hidden rounded-[4px] border border-good/40 bg-good-soft py-3 pl-5 pr-4 text-sm text-ink">
           <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-good" />
-          You&rsquo;re all set — welcome to Line Select Pro. Your free month has started.
+          You&rsquo;re all set — welcome to Line Select Pro.{status?.status === "trialing" && " Your free month has started."}
         </div>
       )}
       {outcome === "cancelled" && (
         <div className="rounded-[4px] border border-border bg-panel px-4 py-3 text-sm text-ink-muted">
-          No charge — you closed checkout before finishing. You can start your free month whenever you like.
+          No charge — you closed checkout before finishing. You can start whenever you like.
         </div>
       )}
 
@@ -147,13 +147,27 @@ function MembershipBody({
     );
   }
 
-  // Had a membership that lapsed (canceled / past_due / incomplete) — offer to restart, or fix the card.
+  // Still open but unpaid (past due, unpaid, incomplete, paused): fix the card; a second membership would bill twice.
+  if (status.hasSubscription && status.status && !membershipEnded(status.status)) {
+    return (
+      <div className={`${PANEL} space-y-4`}>
+        <div className="font-display text-lg font-extrabold text-ink">Your last payment didn&rsquo;t go through</div>
+        <p className="text-sm text-ink-muted">Update your card in the billing portal to keep your membership. Stripe tries the payment again once it&rsquo;s updated.</p>
+        <Button onClick={onPortal} disabled={busy}>
+          {busy ? "Opening…" : "Update your card"}
+        </Button>
+        {error && <p className="text-sm text-danger">{error}</p>}
+      </div>
+    );
+  }
+
+  // No membership, or one that ended: start one. Only a pilot's first comes with the free month.
   const lapsed = status.hasSubscription;
   return (
     <div className={`${PANEL} space-y-4`}>
       <div className="space-y-1">
         <div className="font-display text-lg font-extrabold text-ink">Line Select Pro</div>
-        <div className="text-sm text-ink-muted">$20/month · first month free</div>
+        <div className="text-sm text-ink-muted">{status.freeMonth ? "$20/month · first month free" : "$20/month"}</div>
       </div>
       <ul className="space-y-1.5 text-sm text-ink-muted">
         <li>Every line scored and ranked for how you actually bid</li>
@@ -161,11 +175,11 @@ function MembershipBody({
         <li>Cancel anytime from Stripe&rsquo;s portal</li>
       </ul>
       <Button onClick={onCheckout} disabled={busy}>
-        {busy ? "Starting…" : "Start free month"}
+        {busy ? "Starting…" : status.freeMonth ? "Start free month" : "Start membership"}
       </Button>
       {lapsed && (
         <button type="button" onClick={onPortal} disabled={busy} className="block text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink">
-          Or update your card in the billing portal
+          See past invoices in the billing portal
         </button>
       )}
       {error && <p className="text-sm text-danger">{error}</p>}
