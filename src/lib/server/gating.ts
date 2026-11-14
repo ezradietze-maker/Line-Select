@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { UserAccount } from "@/types/auth";
 import { hasProAccess } from "@/lib/server/stripe";
+import { hasAccess } from "@/lib/membership";
 
 /**
  * Membership gating lives in one place so the free/paid split is a list, not a
@@ -50,6 +51,19 @@ export function proFeatureRefusal(user: Pick<UserAccount, "plan"> | null, featur
   if (hasProAccess(user)) return null;
   return NextResponse.json(
     { error: `A Line Select membership unlocks ${PRO_FEATURES[feature]}.`, feature, upgrade: "/membership" },
+    { status: 402, headers: { "Cache-Control": "private, no-store" } }
+  );
+}
+
+/**
+ * The whole-app gate: a 402 when this pilot has no membership (not grandfathered, no free slot, no Pro), or `null`
+ * when they may proceed. Both tiers are all-access, so routes guard on *membership*, not on Pro specifically — use
+ * this rather than `proFeatureRefusal`. A no-op while `FREE_FOR_ALL` is on (see `@/lib/membership`).
+ */
+export function accessRefusal(user: UserAccount | null): NextResponse | null {
+  if (hasAccess(user)) return null;
+  return NextResponse.json(
+    { error: "A Line Select membership unlocks this. Start yours to carry on.", upgrade: "/membership" },
     { status: 402, headers: { "Cache-Control": "private, no-store" } }
   );
 }

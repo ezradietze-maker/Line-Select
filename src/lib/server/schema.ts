@@ -42,6 +42,12 @@ export const users = pgTable("users", {
    * share, trade, or count as one more pilot anywhere (`server/verified-pilots.ts`).
    */
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  /**
+   * When the pilot claimed one of the limited free-membership slots (see `src/lib/membership.ts`). Null for everyone
+   * else — grandfathered accounts (created before the cutover) and Pro subscribers don't use a slot. Only the count of
+   * non-null values is capped (`FREE_MEMBER_CAP`), so once the slots are gone new pilots must subscribe.
+   */
+  freeMemberAt: timestamp("free_member_at", { withTimezone: true }),
 });
 
 export const credentials = pgTable("credentials", {

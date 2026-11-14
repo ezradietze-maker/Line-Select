@@ -2,10 +2,12 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect } from "react";
+import { MembershipLocked } from "@/components/membership/MembershipLocked";
 import { PreferencesScreen } from "@/components/preferences/PreferencesScreen";
 import { ResultsView } from "@/components/results/ResultsView";
 import { useAppState } from "@/lib/app-state";
 import { parseHotelFilter } from "@/lib/hotel-filter";
+import { hasAccess } from "@/lib/membership";
 
 export default function ResultsPage() {
   // useSearchParams needs a Suspense boundary or the whole route opts out of static rendering.
@@ -35,6 +37,12 @@ function ResultsPageContent() {
     // Looking at rankings is the answer to "same preferences as last month?" — clear the prompt so it doesn't linger on Preferences.
     if (showingResults) handleAcknowledgeFreshBidPack();
   }, [showingResults, handleAcknowledgeFreshBidPack]);
+
+  // A pilot with a pack and preferences but no membership sees the ranking locked (uploading still works). A no-op
+  // while `FREE_FOR_ALL` is on, so today everyone falls through to the real results.
+  if (profile && bidPack && !hasAccess(user)) {
+    return <MembershipLocked />;
+  }
 
   if (profile && bidPack) {
     return (

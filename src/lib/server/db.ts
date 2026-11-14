@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gt, gte, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
 import { alreadyTraded, offersFreedBy, offersFreedByTrade, sameTrip, type GivenTrip } from "@/lib/trades/offer-trips";
 import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { packIdFor } from "@/lib/pack-id";
+import { FREE_MEMBER_CAP } from "@/lib/membership";
 import { db } from "@/lib/server/postgres";
 import { forgetVerifiedPilots, verifiedUserIds } from "@/lib/server/verified-pilots";
 import {
@@ -92,6 +93,7 @@ function toUserAccount(row: typeof users.$inferSelect): UserAccount {
     createdAt: row.createdAt.toISOString(),
     plan: row.plan as UserAccount["plan"],
     emailVerified: !!row.emailVerifiedAt,
+    freeMemberAt: row.freeMemberAt ? row.freeMemberAt.toISOString() : null,
   };
 }
 
@@ -280,6 +282,36 @@ export async function markStripeEventProcessed(eventId: string, eventType: strin
 export async function setUserPlan(userId: string, plan: "free" | "pro"): Promise<void> {
   if (!isUuid(userId)) return;
   await db.update(users).set({ plan }).where(eq(users.id, userId));
+}
+
+/** How many pilots currently hold a free-membership slot (see `src/lib/membership.ts`). */
+export async function countFreeMembers(): Promise<number> {
+  const [row] = await db.select({ n: count() }).from(users).where(isNotNull(users.freeMemberAt));
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * Claim one of the limited free slots for `userId`, enforcing `FREE_MEMBER_CAP` atomically: the cap is checked inside
+ * the same UPDATE (a sub-select over the current free-member count), so two simultaneous claims can't both slip past
+ * the last slot. Returns "claimed" (just took a slot), "already" (this pilot already had one), or "full" (no slots
+ * left, or the user doesn't exist).
+ */
+export async function claimFreeMember(userId: string): Promise<"claimed" | "already" | "full"> {
+  if (!isUuid(userId)) return "full";
+  const claimed = await db
+    .update(users)
+    .set({ freeMemberAt: new Date() })
+    .where(
+      and(
+        eq(users.id, userId),
+        isNull(users.freeMemberAt),
+        sql`(SELECT count(*) FROM ${users} WHERE ${users.freeMemberAt} IS NOT NULL) < ${FREE_MEMBER_CAP}`
+      )
+    )
+    .returning({ id: users.id });
+  if (claimed.length > 0) return "claimed";
+  const [row] = await db.select({ freeMemberAt: users.freeMemberAt }).from(users).where(eq(users.id, userId)).limit(1);
+  return row?.freeMemberAt ? "already" : "full";
 }
 
 // ---- Password reset tokens ----
