@@ -156,6 +156,16 @@ describe("the tiers themselves", () => {
     expect(r.tiers.some((t) => t.id === "m")).toBe(false);
     expect(r.assigned).toEqual({ b: "best" });
   });
+
+  it("takes back what a removed tier's lines taught, as taking them out one at a time does", () => {
+    let s = addTier(EMPTY_TIERS, "Mine", "m");
+    s = { ...moveToTier(moveToTier(s, ["a"], "m"), ["b"], "best"), taught: { a: "move-a", b: "move-b" } };
+    const r = removeTier(s, "m");
+    expect(r.taught).toEqual({ b: "move-b" });
+    expect(lessonChanges(s, r)).toEqual({ retract: ["move-a"], add: [] });
+    // Undone, the lesson comes back.
+    expect(lessonChanges(r, s)).toEqual({ retract: [], add: ["move-a"] });
+  });
 });
 
 describe("undo and redo", () => {

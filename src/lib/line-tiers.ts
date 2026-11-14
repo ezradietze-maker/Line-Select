@@ -145,10 +145,19 @@ export function addTier(s: TierState, name: string, id: string): TierState {
   return { ...s, tiers: [...s.tiers.slice(0, at), { id, name: clean }, ...s.tiers.slice(at)] };
 }
 
-/** Only a tier the pilot added can go; its lines then have no tier. */
+/**
+ * Only a tier the pilot added can go; its lines then have no tier, and what their moves taught goes with it, as when
+ * the lines are taken out one at a time (`lessonChanges` then retracts the moves no line still holds).
+ */
 export function removeTier(s: TierState, tierId: string): TierState {
   if (DEFAULT_TIERS.some((t) => t.id === tierId)) return s;
-  return { ...s, tiers: s.tiers.filter((t) => t.id !== tierId), assigned: Object.fromEntries(Object.entries(s.assigned).filter(([, t]) => t !== tierId)) };
+  const leaving = new Set(Object.entries(s.assigned).filter(([, t]) => t === tierId).map(([id]) => id));
+  return {
+    ...s,
+    tiers: s.tiers.filter((t) => t.id !== tierId),
+    assigned: Object.fromEntries(Object.entries(s.assigned).filter(([id]) => !leaving.has(id))),
+    taught: Object.fromEntries(Object.entries(s.taught).filter(([id]) => !leaving.has(id))),
+  };
 }
 
 export function clearTiers(s: TierState): TierState {

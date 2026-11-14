@@ -231,7 +231,15 @@ export function useLineTiers(
   );
   const rename = useCallback((tierId: string, name: string) => changeNames((s) => renameTier(s, tierId, name), `Tier renamed ${name.trim()}.`), [changeNames]);
   const add = useCallback((name: string) => changeNames((s) => addTier(s, name, newMoveId()), `Tier ${name.trim()} added.`), [changeNames]);
-  const remove = useCallback((tierId: string) => changeNames((s) => removeTier(s, tierId), "Tier removed; its lines have no tier now."), [changeNames]);
+  // Its lines leave their tier, so what their moves taught the brain goes too (and comes back on undo).
+  const remove = useCallback(
+    (tierId: string) => {
+      const { state: s, history: h } = latest.current;
+      const next = removeTier(s, tierId);
+      if (next !== s) commit(next, pushHistory(h, s), "Tier removed; its lines have no tier now.", [], lessonChanges(s, next).retract);
+    },
+    [commit]
+  );
   const clear = useCallback(() => {
     const { state: s, history: h } = latest.current;
     const next = clearTiers(s);
