@@ -30,6 +30,36 @@ export function withCurrentPackId(pack: BidPack): BidPack {
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
 /**
+ * What a guest did on a pack — starred and hidden lines, tiers, their own order, the sort, the carry-in, the finished
+ * interview — moved to the account that takes the pack over when they sign in (`handleAuthenticated`). Left under the
+ * guest's keys, the account showed the pack with none of it, and signing out then erased it with the guest's other
+ * work. What the account already keeps for the pack stays as it is.
+ */
+export function moveGuestWorkToAccount(packId: string, userId: string): void {
+  if (typeof window === "undefined" || !packId || !userId) return;
+  const guestScope = `:guest:${packId}`;
+  try {
+    const store = window.localStorage;
+    const keys = Array.from({ length: store.length }, (_, i) => store.key(i)).filter(
+      (k): k is string => !!k && k.startsWith("line-select:") && (k.includes(`${guestScope}:`) || k.endsWith(guestScope))
+    );
+    for (const key of keys) {
+      const value = store.getItem(key);
+      const theirs = key.replace(guestScope, `:${userId}:${packId}`);
+      try {
+        if (value !== null && store.getItem(theirs) === null) store.setItem(theirs, value);
+      } catch {
+        // Storage full: this one stays the guest's rather than being lost.
+        continue;
+      }
+      store.removeItem(key);
+    }
+  } catch {
+    // Storage unavailable: the pack still comes across; what the guest kept on it stays the guest's.
+  }
+}
+
+/**
  * What this device kept under a pack's older id — starred lines, swaps, the interview draft, the bid deadline, the
  * pending profile — moved to its new one, once, when the pack is first loaded under it. The older id was shared by
  * every fleet at the base, but each pilot (or the guest) on a device holds one pack: what they kept under it is that

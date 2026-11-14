@@ -23,8 +23,10 @@ vi.stubGlobal("window", {
       store.set(k, v);
     },
     removeItem: (k: string) => void store.delete(k),
-    key: () => null,
-    length: 0,
+    key: (i: number) => [...store.keys()][i] ?? null,
+    get length() {
+      return store.size;
+    },
   },
   addEventListener: () => {},
   removeEventListener: () => {},
@@ -101,5 +103,18 @@ describe("a guest signing in while another tab of theirs is open", () => {
     expect(done).toEqual(["pack", "profile"]);
     expect(heldWhenNoted).toEqual([["pack", "profile"]]);
     expect(store.get(HINT)).toBe("1");
+  });
+
+  it("brings the guest's stars, tiers and own order on the pack into the account that takes it over", async () => {
+    store.set("line-select:line-marks:guest:pack-guest:v1", '{"starred":["line-1001"],"hidden":[]}');
+    store.set("line-select:line-tiers:guest:pack-guest:v1", "tiers");
+    store.set("line-select:line-placements:guest:pack-guest:v1", "swaps");
+    const app = provider();
+    const signIn = app.handleAuthenticated as (user: UserAccount, opts: { stay: boolean; from: object }) => Promise<string>;
+    await signIn(U, { stay: true, from: { user: null, bidPack: guestPack, profile: guestProfile, seniority: null } });
+    // The account's list reads them under its own id: left under the guest's, it showed the pack with none of them.
+    expect(store.get(`line-select:line-marks:${U.id}:pack-guest:v1`)).toBe('{"starred":["line-1001"],"hidden":[]}');
+    expect(store.get(`line-select:line-tiers:${U.id}:pack-guest:v1`)).toBe("tiers");
+    expect(store.get(`line-select:line-placements:${U.id}:pack-guest:v1`)).toBe("swaps");
   });
 });
