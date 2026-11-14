@@ -1,3 +1,4 @@
+import { newestMonthFirst } from "@/lib/logbook";
 import type { LoggedMonth } from "@/types/logbook";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -171,7 +172,7 @@ export function mergedLogbook(newer: PreferenceProfile, mine: PreferenceProfile)
     const theirs = byId.get(e.id);
     if (!theirs || lastTouched(e) > lastTouched(theirs)) byId.set(e.id, e);
   }
-  const logbook = [...byId.values()].sort((a, b) => b.loggedAt.localeCompare(a.loggedAt));
+  const logbook = newestMonthFirst([...byId.values()]);
   return logbook.length || newer.logbook || mine.logbook ? { logbook } : {};
 }
 

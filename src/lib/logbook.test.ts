@@ -41,6 +41,20 @@ describe("the logbook", () => {
   });
 });
 
+describe("the logbook's order", () => {
+  it("is by the month, newest first, whenever each was logged — and the seniority over time oldest month first", () => {
+    const at = (month: string, rank: number, when: string) => ({ ...loggedMonthFrom(pack, "line", line, { seniority: { rank, totalPilots: 200 }, now: new Date(when) }), id: month, month });
+    // November logged when its award came out; October only afterwards, caught up on, and December 2026 after January 2027's.
+    const nov = at("NOV26", 50, "2026-10-20T00:00:00Z");
+    const oct = at("OCT26", 60, "2026-11-02T00:00:00Z");
+    const jan = at("JAN27", 30, "2026-12-20T00:00:00Z");
+    const dec = at("DEC26", 40, "2026-12-21T00:00:00Z");
+    const p = [nov, oct, jan, dec].reduce((acc, m) => withLoggedMonth(acc, m), profile);
+    expect(p.logbook!.map((m) => m.month)).toEqual(["JAN27", "DEC26", "NOV26", "OCT26"]);
+    expect(logbookStats(p.logbook!).seniority.map((s) => s.month)).toEqual(["OCT26", "NOV26", "DEC26", "JAN27"]);
+  });
+});
+
 describe("carryOut: what next month's carry-in needs", () => {
   const pack = { id: "p", base: "MEM", aircraft: "B767", seat: "CAP" as const, month: "NOV26", bidPeriodStart: "2026-10-26", bidPeriodDays: 28 };
   const duty = (startMinutes: number, endMinutes: number, layover: boolean) => ({

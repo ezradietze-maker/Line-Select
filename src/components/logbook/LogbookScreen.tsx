@@ -12,7 +12,7 @@ import { MIN_SHARED_PILOTS, ownListEntry, submitAwardHistory, withdrawAwardShare
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { cityName } from "@/lib/city-names";
 import { rankingAsShown } from "@/lib/ranking-as-shown";
-import { checkInShare, logbookStats, loggedMonthFrom, withCheckIn, withLoggedMonth, withoutLoggedMonth, withoutShares } from "@/lib/logbook";
+import { checkInShare, logbookStats, loggedMonthFrom, newestMonthFirst, withCheckIn, withLoggedMonth, withoutLoggedMonth, withoutShares } from "@/lib/logbook";
 import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { hm as hmMinutes } from "@/lib/trip-day-stats";
 import type { UserAccount } from "@/types/auth";
@@ -42,7 +42,8 @@ interface LogbookScreenProps {
  * they've held, where they've been and how their seniority has moved. Shared only if they say so, never with a name.
  */
 export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfile }: LogbookScreenProps) {
-  const entries = useMemo(() => profile?.logbook ?? [], [profile?.logbook]);
+  // Sorted here too: a logbook saved before it was kept in month order.
+  const entries = useMemo(() => newestMonthFirst(profile?.logbook ?? []), [profile?.logbook]);
   const stats = useMemo(() => logbookStats(entries), [entries]);
   const thisMonth = bidPack && profile ? loggedMonthFor(profile, bidPack) : null;
   const [relogging, setRelogging] = useState(false);

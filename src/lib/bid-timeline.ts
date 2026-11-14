@@ -63,7 +63,8 @@ function event(bidMonth: string, seat: Seat, kind: TimelineKind, at: string, sou
   return { bidMonth, seat, kind, at, label: `${bidMonth} ${LABELS[kind]}`, source, basis };
 }
 
-const monthIndex = (code: string): number | null => {
+/** A bid month as the pack prints it ("OCT26") as a count of months, for ordering; null for anything else. */
+export const monthIndex = (code: string): number | null => {
   const m = code.match(/^([A-Z]{3})(\d{2})$/i);
   const month = m ? MONTHS.indexOf(m[1].toUpperCase()) : -1;
   return m && month >= 0 ? Number(m[2]) * 12 + month : null;
