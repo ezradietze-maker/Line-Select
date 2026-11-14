@@ -29,6 +29,15 @@ describe("loading a signed-in pilot's profile", () => {
     expect(client.saveServerProfile).not.toHaveBeenCalled();
   });
 
+  it("doesn't ask the server when the load already knows it isn't answering", async () => {
+    // The session check gave up on a crawling connection: asking for the profile too held the screen on "Loading…".
+    local.set(KEY, JSON.stringify(profile("old")));
+    client.fetchServerProfile.mockReturnValue(new Promise(() => {}));
+    expect((await loadProfileForUser("pilot-1", true))?.completedAt).toBe("old");
+    expect(client.fetchServerProfile).not.toHaveBeenCalled();
+    expect(client.saveServerProfile).not.toHaveBeenCalled();
+  });
+
   it("uploads the device's copy only when the server has none", async () => {
     local.set(KEY, JSON.stringify(profile("only-here")));
     client.fetchServerProfile.mockResolvedValue({ kind: "none" });

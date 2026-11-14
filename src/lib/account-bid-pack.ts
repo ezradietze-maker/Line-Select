@@ -31,9 +31,11 @@ async function packFromAccount(userId: string): Promise<AccountPack> {
 /**
  * A signed-in pilot's pack: this device's copy, unless the account holds a different one saved after it — a new
  * month uploaded on the laptop reaches the phone still holding last month's. Without a connection, the device's copy.
+ * `offline`: the load already knows the server isn't answering, so it doesn't wait on another request that won't.
  */
-export async function accountBidPack(userId: string): Promise<AccountPack> {
+export async function accountBidPack(userId: string, offline = false): Promise<AccountPack> {
   const local = await loadBidPack(userId);
+  if (offline) return { pack: local, saveFailed: false, noneOnAccount: false };
   if (!local) return packFromAccount(userId);
   const kept = { pack: local, saveFailed: false, noneOnAccount: false };
   const server = await fetchServerBidPackMeta(userId);

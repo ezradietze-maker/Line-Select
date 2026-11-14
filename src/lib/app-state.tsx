@@ -160,12 +160,16 @@ const NOT_LOADED: DataState = {
   profileSaveFailed: false,
 };
 
-/** What a fresh load shows for this account (or a guest): its pack, profile and seniority, from the device and the account. */
-async function loadStateFor(currentUser: UserAccount | null): Promise<DataState> {
-  const { pack: savedBidPack, saveFailed } = currentUser ? await accountBidPack(currentUser.id) : { pack: await loadBidPack(null), saveFailed: false };
+/**
+ * What a fresh load shows for this account (or a guest): its pack, profile and seniority, from the device and the
+ * account. `offline`: the server didn't answer who's signed in, so only what this device kept — asking it for the pack
+ * and profile as well left a crawling connection's screens on "Loading…" for as long as those went unanswered too.
+ */
+async function loadStateFor(currentUser: UserAccount | null, offline = false): Promise<DataState> {
+  const { pack: savedBidPack, saveFailed } = currentUser ? await accountBidPack(currentUser.id, offline) : { pack: await loadBidPack(null), saveFailed: false };
   return {
     ready: true,
-    profile: await loadProfileForUser(currentUser?.id ?? null),
+    profile: await loadProfileForUser(currentUser?.id ?? null, offline),
     user: currentUser,
     bidPack: savedBidPack,
     parseResult: null,
@@ -303,7 +307,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       if (currentUser) clearGuestUpload();
       if (currentUser) identifyPilot(currentUser.id);
       if (assumedGuest && !currentUser) return;
-      const resolved = await loadStateFor(currentUser);
+      const resolved = await loadStateFor(currentUser, !session.reachable);
       if (cancelled) return;
       setState(resolved);
       // An edit kept on this device that the load couldn't send either (still no signal, the server busy): the notice
