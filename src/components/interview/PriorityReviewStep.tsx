@@ -38,7 +38,9 @@ export function PriorityReviewStep({ model, eyebrow, onConfirm, busy }: Priority
         title={title}
         help="These priorities, in this order, will rank every line in your pack. Mark anything that's off — the rest stays as it is."
       />
-      <RevealControls title={title} className="mt-6">
+      {/* Wraps anywhere: the pilot's own words quoted back, with a long unbroken run in them (a link, airport codes run
+          together), ran off a phone's screen and widened the page to the side. */}
+      <RevealControls title={title} className="mt-6 wrap-anywhere">
         <p className="rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-[15px] leading-relaxed text-ink">{model.synopsis}</p>
         <ol className="mt-5 space-y-3">
           {items.map((c, i) => (

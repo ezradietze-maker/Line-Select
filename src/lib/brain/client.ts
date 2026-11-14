@@ -11,6 +11,9 @@ import { reportConnectionLost, waitForConnection } from "@/lib/connection";
  * interview state, so a refresh or a second device never desyncs it.
  */
 
+/** Said when an answer arrives cut off, or not in the shape the route sends. */
+const CUT_OFF = "The answer came back incomplete. Try again.";
+
 /** How long a request waits for a dropped connection to come back before giving up and saying so. */
 const WAIT_FOR_CONNECTION_MS = 3 * 60 * 1000;
 
@@ -37,8 +40,11 @@ export async function postWithRetry<T>(url: string, body: unknown, timeoutMs: nu
       throw new Error("Couldn’t reach Line Select. Check your connection and try again.");
     }
     try {
-      const json = (await res.json().catch(() => ({}))) as T & { error?: string };
-      if (!res.ok) throw new Error(json.error ?? `Request failed (${res.status})`);
+      const json = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+      if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
+      // An answer cut off on the way (a dropped connection, a proxy, the timeout mid-read) went on as an empty one, and
+      // the pilot saw the code's own words for what was missing from it ("n.settled is not iterable").
+      if (json === null) throw new Error(ctrl.signal.aborted ? "That took too long to come back. Try again." : CUT_OFF);
       return json;
     } finally {
       clearTimeout(timer);
@@ -60,7 +66,7 @@ export async function requestModelBuild(body: BrainRequestBase & { prior: PilotM
   const kept = keptForRead(body.exchanges);
   if (kept.length === body.exchanges.length) {
     const r = await postWithRetry<{ model: PilotModel }>("/api/brain/build", { ...body, exchanges: fitExchanges(body.exchanges) }, 290_000);
-    return r.model;
+    return readBuilt(r);
   }
   // How far the last read got is counted in the whole record, and the read is sent only part of it: counted in what's
   // sent, or the newest answers (the note just added) were taken for ones already read. Back in the record's terms after.
@@ -68,7 +74,13 @@ export async function requestModelBuild(body: BrainRequestBase & { prior: PilotM
   const prior = body.prior && readUpTo !== undefined ? { ...body.prior, readUpTo: kept.filter((i) => i < readUpTo).length } : body.prior;
   const exchanges = fitExchanges(kept.map((i) => body.exchanges[i]));
   const r = await postWithRetry<{ model: PilotModel }>("/api/brain/build", { ...body, prior, exchanges }, 290_000);
-  return { ...r.model, readUpTo: body.exchanges.length };
+  return { ...readBuilt(r), readUpTo: body.exchanges.length };
+}
+
+/** The read's model, or a plain error when what came back isn't one. */
+function readBuilt(r: { model?: PilotModel }): PilotModel {
+  if (!r.model || !Array.isArray(r.model.criteria)) throw new Error(CUT_OFF);
+  return r.model;
 }
 
 export type StepResponse = Omit<Extract<InterviewStep, { done: false }>, "usage"> | Omit<Extract<InterviewStep, { done: true }>, "usage">;
@@ -88,7 +100,9 @@ export async function requestNextStep(
     rankingShifts?: number[];
   }
 ): Promise<StepResponse> {
-  return postWithRetry<StepResponse>("/api/brain/question", { ...body, exchanges: fitExchanges(body.exchanges) }, 85_000);
+  const step = await postWithRetry<StepResponse>("/api/brain/question", { ...body, exchanges: fitExchanges(body.exchanges) }, 85_000);
+  if (typeof step.done !== "boolean" || !Array.isArray(step.settled) || (!step.done && typeof step.prompt !== "string")) throw new Error(CUT_OFF);
+  return step;
 }
 
 /** A pilot's own words for why they swapped two lines, matched to a priority or measure (see `lib/brain/swap-reason.ts`). */

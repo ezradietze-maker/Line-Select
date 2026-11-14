@@ -61,6 +61,33 @@ describe("interview requests on a bad connection", () => {
   });
 });
 
+describe("an answer cut off on the way", () => {
+  const step = { packBrief: "p", pilotContext: "c", exchanges: [], model: null, threads: {}, linePairs: [], turn: 3, maxTurns: 40 };
+  const cut = () => new Response('{"done":false,"settled":[],"threadId":null,"kind":"free-te', { status: 200, headers: { "Content-Type": "application/json" } });
+
+  it("says so plainly, not in the code's words, for the next question", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => cut()));
+    const { client } = await load();
+    // It went on as an empty answer, and the interview showed "n.settled is not iterable".
+    await expect(client.requestNextStep(step as never)).rejects.toThrow("The answer came back incomplete. Try again.");
+  });
+
+  it("and for a read, and for an answer that isn't one at all", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => cut()));
+    const { client } = await load();
+    await expect(client.requestModelBuild(body as never)).rejects.toThrow("The answer came back incomplete. Try again.");
+    vi.stubGlobal("fetch", vi.fn(async () => ok({})));
+    await expect(client.requestModelBuild(body as never)).rejects.toThrow("The answer came back incomplete. Try again.");
+    await expect(client.requestNextStep(step as never)).rejects.toThrow("The answer came back incomplete. Try again.");
+  });
+
+  it("still passes a whole answer through", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ok({ done: true, reason: "enough", settled: [] })));
+    const { client } = await load();
+    await expect(client.requestNextStep(step as never)).resolves.toEqual({ done: true, reason: "enough", settled: [] });
+  });
+});
+
 describe("a read asked for from the priorities page after a long interview", () => {
   it("goes within the routes' limit, with the interview's answers and the newest edit in it", async () => {
     const sent: unknown[] = [];
