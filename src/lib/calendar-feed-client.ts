@@ -1,7 +1,7 @@
 "use client";
 
 import { apiFetch, shownAccount } from "@/lib/shown-account";
-import { feedOffOwed, oweFeedOff } from "@/lib/calendar-feed-owed";
+import { feedOffOwed, feedOffOwedSince, oweFeedOff } from "@/lib/calendar-feed-owed";
 import { useEffect } from "react";
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { fetchServerBidPackMeta, saveServerBidPack } from "@/lib/bidpack-server";
@@ -61,11 +61,15 @@ export async function turnOffFeedForStartOver(userId: string): Promise<boolean> 
   return payFeedOffOwed(userId);
 }
 
-/** Turns the link off if this device still owes it for `userId`; true once nothing is owed. */
+/**
+ * Turns the link off if this device still owes it for `userId`; true once nothing is owed. Only a link made by the
+ * Start over: one the pilot made since on another device is theirs to keep.
+ */
 export async function payFeedOffOwed(userId: string): Promise<boolean> {
   if (feedOffOwed() !== userId) return true;
+  const since = feedOffOwedSince();
   try {
-    await statusFrom(await send("DELETE", undefined, userId));
+    await statusFrom(await send("DELETE", since ? { madeBefore: since } : undefined, userId));
   } catch {
     return false;
   }

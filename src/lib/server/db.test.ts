@@ -705,6 +705,15 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       // A later link never moves the pilot off the customer their membership is under.
       expect(await mod.linkStripeCustomer(pilot.id, `cus_c_${pilot.id}`)).toBe(a);
     });
+
+    it("move onto a new customer only from the one that's gone, so two tabs replacing it go on with one", async () => {
+      const pilot = await makeUser("customer-gone");
+      const gone = await mod.linkStripeCustomer(pilot.id, `cus_gone_${pilot.id}`);
+      expect(await mod.relinkStripeCustomer(pilot.id, gone, `cus_x_${pilot.id}`)).toBe(`cus_x_${pilot.id}`);
+      // The other tab, a moment behind, finds it already replaced.
+      expect(await mod.relinkStripeCustomer(pilot.id, gone, `cus_y_${pilot.id}`)).toBe(`cus_x_${pilot.id}`);
+      expect((await mod.getSubscriptionByUserId(pilot.id))?.stripeCustomerId).toBe(`cus_x_${pilot.id}`);
+    });
   });
 
   describe("malformed ids: a Postgres uuid column throws on non-uuid input", () => {

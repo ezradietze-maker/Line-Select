@@ -15,7 +15,7 @@ import { correctionEvents, isLearnablePack } from "@/lib/learning/corrections";
 import { postCorrections } from "@/lib/learning/learning-client";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { captureUsageEvent, identifyPilot, resetPilotIdentity } from "@/lib/posthog-client";
-import { clearPendingProfile, loadPendingProfile, savePendingProfile } from "@/lib/pending-profile-storage";
+import { clearPendingProfile, loadPendingProfile, pendingAfterLoading, savePendingProfile } from "@/lib/pending-profile-storage";
 import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
 import { askToKeepStorage, clearProfile, clearProfileForUser, dropGuestRecords, dropPendingProfileWrites, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfileForUser } from "@/lib/storage";
@@ -642,16 +642,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // own upload is marked, so the account they sign in to next can take it over (see `handleAuthenticated`).
     if (user) void saveServerBidPack(newBidPack, user.id);
     else if (!isSamplePack(newBidPack)) markGuestUpload(newBidPack.id);
-    clearPendingProfile(user?.id ?? null);
+    // An interview finished on this same pack and not yet confirmed stays, and is where they go back to.
+    const keptPending = pendingAfterLoading(pendingProfile, bidPack?.id ?? null, newBidPack.id);
+    if (!keptPending) clearPendingProfile(user?.id ?? null);
     setState((s) => ({
       ...s,
       bidPackSaveFailed: false,
       bidPack: newBidPack,
       parseResult: null,
-      pendingProfile: null,
+      pendingProfile: keptPending,
       freshBidPack: true,
     }));
-    router.push("/preferences");
+    router.push(keptPending ? "/confirm-preferences" : "/preferences");
     captureUsageEvent("bid_pack_confirmed");
   }
 

@@ -6,10 +6,12 @@ import {
   emptyListSaying,
   hideLine,
   leftOutPhrase,
+  listedLines,
   matchesLineSearch,
   nextVisibleCount,
   pruneMarks,
   restoreLine,
+  shortlistOrder,
   stepCursor,
   toggleStar,
 } from "@/lib/results-list";
@@ -126,5 +128,37 @@ describe("what an empty list says", () => {
     expect(parked.canClear).toBe(false);
     expect(parked.message).not.toMatch(/filters/);
     expect(emptyListSaying({ ...none, view: "shortlist", starred: 2 }).message).toMatch(/set aside/);
+  });
+});
+
+describe("listedLines", () => {
+  const lines = [ls("1001", 3), ls("1002", 2), ls("1003", 1)];
+  const marks = hideLine(toggleStar(EMPTY_MARKS, "line-1001"), "line-1002");
+  const base = { hidden: new Set(marks.hidden), setAside: new Set<string>(), showHidden: false };
+
+  it("offers no hidden lines in the Shortlist, where a hidden line can't be", () => {
+    const starred = new Set(marks.starred);
+    const shortlist = listedLines(lines, { ...base, inView: (id) => starred.has(id) });
+    expect(shortlist.hiddenInView).toBe(0);
+    expect(listedLines(lines, { ...base, showHidden: true, inView: (id) => starred.has(id) }).lines.map((r) => r.line.lineNumber)).toEqual(["1001"]);
+  });
+
+  it("counts the hidden lines that showing them brings back, not those set aside", () => {
+    const all = listedLines(lines, { ...base, inView: () => true });
+    expect(all).toMatchObject({ hiddenInView: 1 });
+    expect(all.lines.map((r) => r.line.lineNumber)).toEqual(["1001", "1003"]);
+    expect(listedLines(lines, { ...base, showHidden: true, inView: () => true }).lines).toHaveLength(3);
+    expect(listedLines(lines, { ...base, setAside: new Set(["line-1002"]), inView: () => true }).hiddenInView).toBe(0);
+  });
+});
+
+describe("shortlistOrder", () => {
+  it("takes the starred lines as bid, and counts the starred ones in Not bid it leaves out", () => {
+    const ranked = [ls("1001", 3), ls("1002", 2), ls("1003", 1)];
+    const notBid = new Set(["line-1002"]);
+    const order = bidOrderLines(ranked, new Set(), notBid).lines;
+    const out = shortlistOrder(order, ranked, new Set(["line-1001", "line-1002"]), notBid);
+    expect(out.lines.map((r) => r.line.lineNumber)).toEqual(["1001"]);
+    expect(out.notBid).toBe(1);
   });
 });

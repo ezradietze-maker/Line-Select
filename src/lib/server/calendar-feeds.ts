@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { gunzipSync } from "node:zlib";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lte } from "drizzle-orm";
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { expandBidPack } from "@/lib/bidpack-storage";
 import { buildFeedMonth, DEFAULT_FEED_OPTIONS, withFeedMonth, type FeedMonth, type FeedOptions, type LineSource } from "@/lib/calendar-feed";
@@ -78,12 +78,15 @@ export async function startFeed(userId: string, options?: Partial<FeedOptions>):
   return { token, status: statusOf(row) };
 }
 
-/** Turned off: the link stops working, and the trips kept for it go. */
-export async function revokeFeed(userId: string): Promise<void> {
+/**
+ * Turned off: the link stops working, and the trips kept for it go. `madeBefore`: only a link made by then, for a Start
+ * over that got through late (`payFeedOffOwed`), so a link the pilot made since on another device stays on.
+ */
+export async function revokeFeed(userId: string, madeBefore?: Date): Promise<void> {
   await db
     .update(calendarFeeds)
     .set({ revokedAt: new Date(), months: [] })
-    .where(and(eq(calendarFeeds.userId, userId), isNull(calendarFeeds.revokedAt)));
+    .where(and(eq(calendarFeeds.userId, userId), isNull(calendarFeeds.revokedAt), ...(madeBefore ? [lte(calendarFeeds.createdAt, madeBefore)] : [])));
 }
 
 /**

@@ -231,6 +231,19 @@ export async function linkStripeCustomer(userId: string, stripeCustomerId: strin
 }
 
 /**
+ * Moves the pilot onto a new Stripe customer when the one saved (`from`) is gone at Stripe (`customerGone`). Only from
+ * that one: a checkout in another tab that replaced it first wins, and its customer is returned to go on with.
+ */
+export async function relinkStripeCustomer(userId: string, from: string, to: string): Promise<string> {
+  await db
+    .update(subscriptions)
+    .set({ stripeCustomerId: to, updatedAt: new Date() })
+    .where(and(eq(subscriptions.userId, userId), eq(subscriptions.stripeCustomerId, from)));
+  const [row] = await db.select({ stripeCustomerId: subscriptions.stripeCustomerId }).from(subscriptions).where(eq(subscriptions.userId, userId)).limit(1);
+  return row?.stripeCustomerId ?? to;
+}
+
+/**
  * Upserts the pilot's membership from a Stripe subscription (called by the
  * webhook). `lastEventAt` is the `event.created` of the event that carried
  * this state, stored so a later, older event can be recognised as stale.

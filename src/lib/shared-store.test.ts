@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mergeLineMarks } from "@/lib/line-marks-storage";
 import { mergePlacements, type Placement } from "@/lib/line-placements";
-import { EMPTY_TIERS, mergeTiers, type TierState } from "@/lib/line-tiers";
+import { addTier, EMPTY_TIERS, mergeIntoStored, mergeTiers, moveToTier, removeTier, type TierState } from "@/lib/line-tiers";
 import { writeMerged, type StoredList } from "@/lib/shared-store";
 
 describe("two tabs on one pack", () => {
@@ -37,6 +37,25 @@ describe("two tabs on one pack", () => {
     // A tier this tab removed takes its lines out of it, the other tab's included.
     const fewer: TierState = { ...base, tiers: EMPTY_TIERS.tiers.filter((t) => t.id !== "good") };
     expect(mergeTiers(base, fewer, theirs).assigned).toEqual({ c: "best" });
+  });
+
+  it("takes back what a move into a tier taught when the other tab's removing that tier drops the line from it", () => {
+    const base: TierState = addTier(EMPTY_TIERS, "Maybe", "maybe");
+    // The other tab moved line a into Maybe, and it taught m1; this tab, not having seen that, removes Maybe.
+    const theirs: TierState = { ...moveToTier(base, ["a"], "maybe"), taught: { a: "m1" } };
+    const mine = removeTier(base, "maybe");
+    const merged = mergeIntoStored(base, mine, theirs, []);
+    expect(merged.state.assigned).toEqual({});
+    expect(merged.state.taught).toEqual({});
+    expect(merged.retract).toEqual(["m1"]);
+    // The other way round: this tab moved a into Maybe as the other removed it.
+    const moved: TierState = { ...moveToTier(base, ["a"], "maybe"), taught: { a: "m2" } };
+    const other = mergeIntoStored(base, moved, removeTier(base, "maybe"), []);
+    expect(other.state).toMatchObject({ assigned: {}, taught: {} });
+    // Not taught at all: it's no line's word any more.
+    expect(other.held.has("m2")).toBe(false);
+    // A move still held by a line is never taken back.
+    expect(mergeIntoStored(base, { ...base, taught: {} }, { ...moveToTier(base, ["a", "b"], "best"), taught: { a: "m3", b: "m3" } }, []).retract).toEqual([]);
   });
 
   it("merges into what's stored when it writes, and stays in step only with what the browser kept", () => {

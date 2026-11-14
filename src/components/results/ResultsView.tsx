@@ -72,10 +72,12 @@ import {
   emptyListSaying,
   hideLine,
   leftOutPhrase,
+  listedLines,
   matchesLineSearch,
   nextVisibleCount,
   pruneMarks,
   restoreLine,
+  shortlistOrder,
   stepCursor,
   toggleStar,
   EMPTY_MARKS,
@@ -658,11 +660,15 @@ export function ResultsView({
       ),
     [ranked, filters, filterCtx, search, hotelFilter]
   );
-  const hiddenMatchingCount = matching.filter((r) => hiddenSet.has(r.line.id)).length;
-  const listable = useMemo(
-    () => matching.filter((r) => (showHidden || !hiddenSet.has(r.line.id)) && !tiers.setAside.has(r.line.id) &&
-        (view === "all" || (view === "shortlist" ? starredSet.has(r.line.id) : realisticIds.has(r.line.id)))
-    ),
+  // "Show the N lines you hid" counts only those it would bring into this view (`listedLines`).
+  const { lines: listable, hiddenInView: hiddenMatchingCount } = useMemo(
+    () =>
+      listedLines(matching, {
+        hidden: hiddenSet,
+        setAside: tiers.setAside,
+        showHidden,
+        inView: (id) => view === "all" || (view === "shortlist" ? starredSet.has(id) : realisticIds.has(id)),
+      }),
     [matching, showHidden, hiddenSet, tiers.setAside, view, starredSet, realisticIds]
   );
   // Departures counted as each card counts them: the times the pilot leaves home.
@@ -917,10 +923,12 @@ export function ResultsView({
       })),
     [exportable, rankById, noteOf]
   );
-  const shortlistEntries = useMemo<BidOrderEntry[]>(
-    () => bidOrderEntries.filter((e) => starredSet.has(e.lineScore.line.id)),
-    [bidOrderEntries, starredSet]
+  // The starred lines as bid; those in Not bid are left out, and the copy says so (`shortlistOrder`).
+  const shortlist = useMemo(
+    () => shortlistOrder(bidOrderEntries.map((e) => ({ line: e.lineScore.line, entry: e })), ranked, starredSet, tiers.notBid),
+    [bidOrderEntries, ranked, starredSet, tiers.notBid]
   );
+  const shortlistEntries = useMemo<BidOrderEntry[]>(() => shortlist.lines.map((r) => r.entry), [shortlist]);
 
   // Same value on every line (it describes the pilot's profile, not any one line), so it's said once here instead of on all 283 cards.
   const confidenceLevel = ranked[0]?.confidenceLevel ?? null;
@@ -1527,6 +1535,7 @@ export function ResultsView({
             <BidOrderExport
               entries={bidOrderEntries}
               shortlistEntries={shortlistEntries}
+              shortlistNotBid={shortlist.notBid}
               bidPeriodStart={bidPack.bidPeriodStart}
               bidMonth={bidPack.month}
               packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}

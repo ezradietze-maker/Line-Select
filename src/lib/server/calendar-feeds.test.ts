@@ -15,6 +15,7 @@ vi.mock("drizzle-orm", async (original) => ({
   and: (...parts: unknown[]) => (row: Record<string, unknown>) => parts.every((p) => (p as (r: Record<string, unknown>) => boolean)(row)),
   eq: (col: { name: string }, value: unknown) => (row: Record<string, unknown>) => row[col.name] === value,
   isNull: (col: { name: string }) => (row: Record<string, unknown>) => row[col.name] === null,
+  lte: (col: { name: string }, value: Date) => (row: Record<string, unknown>) => (row[col.name] as Date) <= value,
 }));
 vi.mock("@/lib/server/postgres", () => {
   const keyed = (r: Record<string, unknown>) => ({ ...r, id: r.id, userId: r.user_id, tokenHash: r.token_hash, createdAt: r.created_at, revokedAt: r.revoked_at });
@@ -103,6 +104,21 @@ describe("links", () => {
     expect(store.rows[0].months).toEqual([]);
     expect(store.rows[0].revoked_at).toBeInstanceOf(Date);
     expect(await feedStatus(USER)).toEqual({ on: false });
+  });
+
+  it("turning off for a Start over leaves a link made since, on another device", async () => {
+    const old = await startFeed(USER);
+    store.rows[0].created_at = new Date("2026-11-10T12:00:00Z");
+    // Started over at 12:05 with no signal; at 12:10 the pilot makes a new link on their phone.
+    const made = await startFeed(USER);
+    store.rows[1].created_at = new Date("2026-11-10T12:10:00Z");
+    // The first device gets through at last.
+    await revokeFeed(USER, new Date("2026-11-10T12:05:00Z"));
+    expect(await feedForToken(old.token)).toBeNull();
+    expect(await feedForToken(made.token)).not.toBeNull();
+    // A link from before the Start over goes.
+    await revokeFeed(USER, new Date("2026-11-10T12:15:00Z"));
+    expect(await feedForToken(made.token)).toBeNull();
   });
 
   it("doesn't look anything up for a malformed token", async () => {
