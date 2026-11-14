@@ -124,7 +124,9 @@ export async function sendFeedbackNote(f: { category: string; message: string; p
       await incrementCounter(feedbackHeldKey(day(now)), KEEP_SECONDS);
       return;
     }
-    await sendEmail({ to, subject: `Line Select feedback: ${f.category}${f.page ? ` on ${f.page}` : ""}`, text: `${who} wrote${f.page ? ` from ${f.page}` : ""}:\n\n${f.message}` });
+    // The page is the sender's to write: a line break in it would split the subject header.
+    const page = f.page.replace(/[\r\n\t]+/g, " ").trim().slice(0, 120);
+    await sendEmail({ to, subject: `Line Select feedback: ${f.category}${page ? ` on ${page}` : ""}`, text: `${who} wrote${f.page ? ` from ${f.page}` : ""}:\n\n${f.message}` });
   } catch (e) {
     console.error("[alerts] couldn't email feedback", e);
   }

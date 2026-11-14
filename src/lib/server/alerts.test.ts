@@ -115,6 +115,12 @@ describe("the daily summary", () => {
     expect(sent[0].text).toMatch(/Feedback not emailed[^\n]*: 2\b/);
   });
 
+  it("keeps a page the sender wrote with line breaks on the subject's one line", async () => {
+    await sendFeedbackNote({ category: "bug", message: "x", page: "/results\r\nBcc: someone@example.com", pilotDisplayName: null, pilotEmail: null }, at);
+    expect(sent[0].subject).toBe("Line Select feedback: bug on /results Bcc: someone@example.com");
+    expect(sent[0].subject).not.toMatch(/[\r\n]/);
+  });
+
   it("doesn't read all clear when this morning's trade matching failed", async () => {
     const trades = "Trade matching\nThis morning: 2 seats with pilots to match, 0 skipped, 0 new trades, 1 FAILED.";
     expect(await sendDailySummary({ results: [] }, new Date("2026-11-06T09:00:00Z"), null, { text: trades, failed: true })).toBe(true);
