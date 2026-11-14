@@ -1,3 +1,4 @@
+import { formatHoursValue } from "@/lib/interview-config";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 
 /**
@@ -74,7 +75,51 @@ export function linePay(line: Line, pack: Pick<BidPack, "bidPeriodDays">): LineP
   return { trips, tripGuaranteeTotal, carryOverCH, floor, blg: round2(blg), flooredUp: !!floor && floor.ch > tripGuaranteeTotal };
 }
 
-/** What a pilot paid less than a trip's guarantee may claim: the shortfall, never negative (CBA 2026 4.F.1). */
+/**
+ * What a pilot paid less than a trip's guarantee may claim: the shortfall, never negative (CBA 2026 4.F.1). In whole
+ * minutes, as credit is counted (4.F.2): an 18:56 guarantee with 18:54 paid is 0:02 owed, not a fraction of a minute
+ * that read "0.0 CH" owed and drafted a claim for it.
+ */
 export function guaranteeShortfall(guaranteeCH: number, paidCH: number): number {
-  return round2(Math.max(0, guaranteeCH - paidCH));
+  return Math.max(0, Math.round(guaranteeCH * 60) - Math.round(paidCH * 60)) / 60;
+}
+
+/**
+ * Credit as a pilot types it: "14:30" as the pack and a pay statement print it, or hours and tenths ("14.5"). Null for
+ * anything else. A number field read "14:30" as 1430 CH, and told a pilot paid 14:30 on an 18:56 trip there was nothing
+ * to claim.
+ */
+export function parseCreditHours(text: string): number | null {
+  const s = text.trim();
+  const hm = /^(\d{1,3}):([0-5]\d)$/.exec(s);
+  if (hm) return Number(hm[1]) + Number(hm[2]) / 60;
+  return /^(\d{1,3}(\.\d*)?|\.\d+)$/.test(s) ? Number(s) : null;
+}
+
+/**
+ * The claim for a trip paid under its guarantee, naming the trip by number and date: a line can fly the same trip
+ * several times a month, and "trip 2192" alone doesn't say which one was paid short.
+ */
+export function payClaimText({
+  pack,
+  trip,
+  date,
+  guaranteeCH,
+  paidCH,
+}: {
+  pack: Pick<BidPack, "base" | "aircraft" | "seat" | "month">;
+  trip: Pick<Trip, "pairingNumber">;
+  /** "Oct 15"; null when the pack doesn't date the trip. */
+  date: string | null;
+  guaranteeCH: number;
+  paidCH: number;
+}): string {
+  const which = [`trip${trip.pairingNumber ? ` ${trip.pairingNumber}` : ""}`, date ? `on ${date}` : ""].filter(Boolean).join(" ");
+  const hm = formatHoursValue;
+  return (
+    `Pay claim — ${which}, ${pack.base} ${pack.aircraft} ${pack.seat}, bid period ${pack.month}.\n\n` +
+    `The trip's scheduled credit (trip guarantee) was ${hm(guaranteeCH)} CH. I was credited ${hm(paidCH)} CH. ` +
+    "Under CBA 2026 Section 4.F.1, a pilot's trip guarantee is the greater of the trip's scheduled credit value when it was awarded/assigned or when the pilot started flying it. " +
+    `I am claiming the ${hm(guaranteeShortfall(guaranteeCH, paidCH))} CH difference.`
+  );
 }

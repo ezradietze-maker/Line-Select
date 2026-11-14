@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAskQuery, cityGradesOf, runAskQuery } from "@/lib/ask-pack-run";
+import { checkAskQuery, cityGradesOf, orderAskResults, runAskQuery } from "@/lib/ask-pack-run";
 import type { PilotModel } from "@/types/pilot-model";
 import { ASK_QUERY_SCHEMA, cleanAskQuery, type AskQuery } from "@/lib/brain/ask-pack";
 import { METRICS, METRICS_BY_ID } from "@/lib/metrics/catalog";
@@ -79,6 +79,20 @@ describe("ask your pack", () => {
     expect(result.length).toBeGreaterThan(0);
     expect(result.every((r) => r.values[0] === most)).toBe(true);
     expect(result.map((r) => r.rank)).toEqual([...result.map((r) => r.rank)].sort((a, b) => (a ?? 0) - (b ?? 0)));
+  });
+
+  // Round 16 (Nov 2026): asked while My Rankings was still working out its order, the answer listed its lines by number
+  // under "in your order", and kept that order once the ranking came. The lines found are put in the ranking as it is.
+  it("puts the lines an answer found in the pilot's ranking once it's there", () => {
+    const query: AskQuery = { conditions: [], sort: null, summary: "", cannotAnswer: null };
+    const early = runAskQuery(query, pack, pm, {});
+    expect(early.every((r) => r.rank === null)).toBe(true);
+    const ranked = [...pack.lines].reverse().map((l) => l.id);
+    const later = orderAskResults(early, query, ranked);
+    expect(later.map((r) => r.line.id)).toEqual(ranked);
+    expect(later.map((r) => r.rank)).toEqual(ranked.map((_, i) => i + 1));
+    // The figures it was kept on go with it.
+    expect(later.find((r) => r.line.id === ranked[0])!.values).toEqual(early.find((r) => r.line.id === ranked[0])!.values);
   });
 
   it("sorts by the asked-for measure when there's no number to meet", () => {
