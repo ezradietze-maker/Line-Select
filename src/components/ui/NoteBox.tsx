@@ -5,6 +5,7 @@ import { MicButton } from "@/components/ui/MicButton";
 import { SHOW_LEFT_UNDER } from "@/lib/brain/answer-limits";
 import { useDictation } from "@/lib/use-speech-to-text";
 import { useGrowingTextarea } from "@/lib/use-growing-textarea";
+import { PASTE_CUT_NOTICE, usePasteLimit } from "@/lib/use-paste-limit";
 
 interface NoteBoxProps {
   value: string;
@@ -30,7 +31,11 @@ interface NoteBoxProps {
  */
 export function NoteBox({ value, onChange, placeholder, ariaLabel, id, maxLength, disabled, rows = 2, invalid, className = "" }: NoteBoxProps) {
   const area = useRef<HTMLTextAreaElement>(null);
-  const set = (next: string) => onChange(maxLength ? next.slice(0, maxLength) : next);
+  const paste = usePasteLimit(maxLength);
+  const set = (next: string) => {
+    paste.changed(next);
+    onChange(maxLength ? next.slice(0, maxLength) : next);
+  };
   const dictation = useDictation(value, set, { maxLength });
   const left = maxLength === undefined ? null : maxLength - value.length;
   useGrowingTextarea(area, value, { following: dictation.listening });
@@ -42,6 +47,7 @@ export function NoteBox({ value, onChange, placeholder, ariaLabel, id, maxLength
           id={id}
           value={value}
           onChange={(e) => set(e.target.value)}
+          onPaste={paste.onPaste}
           rows={rows}
           maxLength={maxLength}
           aria-invalid={invalid || undefined}
@@ -56,6 +62,11 @@ export function NoteBox({ value, onChange, placeholder, ariaLabel, id, maxLength
       {left !== null && left < SHOW_LEFT_UNDER && (
         <p className="mt-1 text-right font-mono text-2xs text-ink-faint" aria-live="polite">
           {left.toLocaleString()} characters left
+        </p>
+      )}
+      {paste.cut && (
+        <p className="mt-1 text-xs text-warn" role="status">
+          {PASTE_CUT_NOTICE}
         </p>
       )}
       {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}

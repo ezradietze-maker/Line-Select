@@ -6,6 +6,7 @@ import { MAX_ANSWER, SHOW_LEFT_UNDER } from "@/lib/brain/answer-limits";
 import { MicButton } from "@/components/ui/MicButton";
 import { useDictation } from "@/lib/use-speech-to-text";
 import { useGrowingTextarea } from "@/lib/use-growing-textarea";
+import { PASTE_CUT_NOTICE, usePasteLimit } from "@/lib/use-paste-limit";
 
 interface FreeTextAnswerBoxProps {
   placeholder?: string;
@@ -25,7 +26,11 @@ interface FreeTextAnswerBoxProps {
  */
 export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel = "Send", maxLength = MAX_ANSWER }: FreeTextAnswerBoxProps) {
   const [text, setTextRaw] = useState("");
-  const setText = (next: string) => setTextRaw(next.slice(0, maxLength));
+  const paste = usePasteLimit(maxLength);
+  const setText = (next: string) => {
+    paste.changed(next);
+    setTextRaw(next.slice(0, maxLength));
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dictation = useDictation(text, setText, { maxLength });
@@ -56,6 +61,7 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
           ref={area}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onPaste={paste.onPaste}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -98,6 +104,11 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
           {busy ? "Sending…" : submitLabel}
         </Button>
       </div>
+      {paste.cut && (
+        <p className="mt-2 text-xs text-warn" role="status">
+          {PASTE_CUT_NOTICE}
+        </p>
+      )}
       {dictation.error && <p className="mt-2 text-xs text-danger">{dictation.error}</p>}
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
     </div>

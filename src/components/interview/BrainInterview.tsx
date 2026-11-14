@@ -176,6 +176,8 @@ const finishedKey = (userId: string | null, packId: string) => `line-select:brai
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** How often, at most, a signed-in pilot's saves look at the account for a finish on another device. */
 const ACCOUNT_CHECK_EVERY_MS = 15_000;
+/** How long the interview waits on that look before going on without it. */
+const ACCOUNT_LOOK_MS = 6_000;
 
 /** A draft worth offering: the right shape, and under a day old. */
 function usableDraft(d: DraftState | null): DraftState | null {
@@ -194,6 +196,22 @@ function loadDraftState(userId: string | null, packId: string): DraftState | nul
 /** The optional "why" under a multiple-choice answer — typed or dictated, like every other answer in the interview. */
 function ChoiceNote({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return <NoteBox value={value} onChange={onChange} placeholder="Want to explain? (optional)" ariaLabel="Explain your answer" maxLength={MAX_NOTE} className="mt-4" />;
+}
+
+/**
+ * "Try again", after a question or the last read failed. It takes the focus the screen before it dropped: left on the
+ * page, a keyboard user's next Tab started back at the top, through the whole menu, to reach it.
+ */
+function TryAgain({ onClick }: { onClick: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!document.activeElement || document.activeElement === document.body) box.current?.querySelector("button")?.focus();
+  }, []);
+  return (
+    <div ref={box} className="py-8 text-center">
+      <Button onClick={onClick}>Try again</Button>
+    </div>
+  );
 }
 
 interface BrainInterviewProps {
@@ -314,9 +332,12 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (!userId) return Promise.resolve();
     const now = Date.now();
     if (!fresh && accountCheck.current && now - accountCheck.current.at < ACCOUNT_CHECK_EVERY_MS) return accountCheck.current.promise;
-    const promise = peekServerProfile().then((p) => {
+    const look = peekServerProfile().then((p) => {
       accountFinish.current = Math.max(accountFinish.current, finishOf(p));
     });
+    // A look that hangs (a hotel's Wi-Fi with nothing behind it) held "Looks right — rank my lines" on "Ranking your
+    // lines…" for as long as it did. Past a few seconds it goes on as a look that failed does; a late answer still counts.
+    const promise = Promise.race([look, new Promise<void>((resolve) => setTimeout(resolve, ACCOUNT_LOOK_MS))]);
     accountCheck.current = { at: now, promise };
     return promise;
   }
@@ -1393,25 +1414,13 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (phase === "asking") return <ThinkingPanel lastExchange={lastExchange} />;
     if (phase === "building") {
       // Failed or too slow: the error over the "thinking" panel said two things at once. Try again, or Back (above).
-      if (error) {
-        return (
-          <div className="py-8 text-center">
-            <Button onClick={() => void finishInterview(exchanges, choices)}>Try again</Button>
-          </div>
-        );
-      }
+      if (error) return <TryAgain onClick={() => void finishInterview(exchanges, choices)} />;
       return <ThinkingPanel briefing="Reading everything you’ve said one last time and turning it into your priorities — about a minute." />;
     }
     if (phase === "sweep") return <TopicSweepStep topics={uncoveredTopics(model)} eyebrow="Almost done" onContinue={(p, n) => void submitSweep(p, n)} />;
     if (phase === "review" && reviewModel) return <PriorityReviewStep model={reviewModel} eyebrow="Your priorities" onConfirm={confirmReview} busy={confirming} />;
     if (phase === "question") {
-      if (!question) {
-        return (
-          <div className="py-8 text-center">
-            <Button onClick={() => void askNext(exchanges, threads, choices, turn, sweepDone)}>Try again</Button>
-          </div>
-        );
-      }
+      if (!question) return <TryAgain onClick={() => void askNext(exchanges, threads, choices, turn, sweepDone)} />;
       const q = question;
       // What it took from their last answer, said the way a colleague would before asking the next thing.
       const ack = q.ack ? <p className="animate-fade-in mb-4 text-[15px] leading-relaxed text-ink-muted">{q.ack}</p> : null;
