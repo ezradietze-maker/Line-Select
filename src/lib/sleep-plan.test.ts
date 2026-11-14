@@ -140,6 +140,32 @@ describe("sleep plan", () => {
     expect(plan.blocks[0].start - plan.inHotel).toBeLessThan(3 * H);
   });
 
+  it("reads the pickup on the clock the trip leaves on, across Australia's clock change", () => {
+    // Lands Sydney 16:28 (AEST, +10); leaves two days later on AEDT (+11), van at 19:15, the report printed beside it.
+    const t = trip(leg("OAK", "SYD", 2 * H, 388, -7 * H, 10 * H), leg("SYD", "HNL", 3435, 4015, 11 * H, -10 * H));
+    t.schedule[0].layover!.pickupTimeLocal = "1915";
+    const [plan] = planTripSleep(t, -7 * H);
+    // Read on AEST the van came 23 hours before the report and was dropped: up by 16:45, with the van at 19:15.
+    expect(plan.wakeByLocal).toBe("18:30");
+    expect(plan.wakeBy).toBe(3375 - 45);
+  });
+
+  it("shows the times after Europe's clock change on the new clock", () => {
+    // Lands Paris 18:41 CEST (+2) the evening before the clocks go back at 01:00 GMT; leaves 18:45 CET (+1), van 14:45.
+    const t = trip(leg("MEM", "CDG", 8 * H, 1001, -5 * H, 2 * H), leg("CDG", "MEM", 2565, 3165, 1 * H, -6 * H));
+    t.schedule[0].layover!.pickupTimeLocal = "1445";
+    const [plan] = planTripSleep(t, -5 * H);
+    const change = 1440 + 60;
+    expect(plan.wakeBy).toBe(1440 + 13 * H + 45 - 45);
+    expect(plan.wakeByLocal).toBe("14:00");
+    expect(plan.inHotelLocal).toBe("19:26");
+    for (const b of plan.blocks) {
+      const shown = (m: number) => clock(m + (m < change ? 2 * H : 1 * H)).replace(/(\d\d)(\d\d)/, "$1:$2");
+      expect(b.startLocal).toBe(shown(b.start));
+      expect(b.endLocal).toBe(shown(b.end));
+    }
+  });
+
   it("draws on the hotel stay's own days, and never moves the trip's days — even across the date line", () => {
     const ANC = -8 * H;
     const KIX = 9 * H;

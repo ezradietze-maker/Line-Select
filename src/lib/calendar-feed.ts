@@ -4,7 +4,7 @@ import { bidTimeline, type TimelineEvent } from "@/lib/bid-timeline";
 import { backupsOf, type TravelAnswer } from "@/lib/flights/itineraries";
 import { flightsForTrip, type FlightAnswers } from "@/lib/flights/trip-travel";
 import { escapeIcsText, foldLine, icsUtc } from "@/lib/ics-export";
-import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { dayTripsOf, runDaysOf, runOfDay, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import { hm } from "@/lib/trip-day-stats";
 import type { BidPack, Line, Trip, TripDutyPeriod } from "@/types/bidpack";
 
@@ -87,14 +87,22 @@ function itinerary(a: TravelAnswer): string | null {
   return `${route}, ${flights}: leaves ${local(first.dep, first.from)}, lands ${local(last.arr, last.to)}${backups > 0 ? ` (${backups} other${backups === 1 ? "" : "s"} to fall back on)` : ""}`;
 }
 
+/**
+ * A day of a run of day trips shows the run's commute where it falls: in on its first day, home on its last. The flights
+ * are looked up for the whole run, and read off each day by the first day's key, the first day's event carried the
+ * flight home from the last, and the last day's carried none.
+ */
 function commuteLines(flights: FlightAnswers | undefined, trip: Trip): string[] {
-  const t = flightsForTrip(flights, trip);
+  const day = runOfDay(trip);
+  const t = flightsForTrip(flights, day ? day.run : trip);
   if (!t) return [];
+  const first = !day || day.index === 0;
+  const last = !day || day.index === (runDaysOf(day.run)?.length ?? 1) - 1;
   const rows: [string, TravelAnswer | undefined][] = [
-    ["Commute in", t.toBase],
-    ["Straight to the trip", t.deviateOut],
-    ["Commute home", t.homeFromBase],
-    ["Home from the trip's end", t.deviateHome],
+    ["Commute in", first ? t.toBase : undefined],
+    ["Straight to the trip", first ? t.deviateOut : undefined],
+    ["Commute home", last ? t.homeFromBase : undefined],
+    ["Home from the trip's end", last ? t.deviateHome : undefined],
   ];
   const lines = rows.flatMap(([label, a]) => {
     const text = a && itinerary(a);
