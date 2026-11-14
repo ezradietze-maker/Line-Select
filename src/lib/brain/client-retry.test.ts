@@ -83,4 +83,28 @@ describe("a read asked for from the priorities page after a long interview", () 
     expect(exchanges!.slice(0, 45)).toEqual(interview);
     expect(exchanges!.at(-1)).toEqual(added);
   });
+
+  it("still tells the read which answers are new, counted in what it was sent", async () => {
+    const sent: { exchanges: unknown[]; prior: { readUpTo?: number } }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const b = JSON.parse(String(init.body));
+        sent.push(b);
+        return ok({ model: { version: 2, criteria: [], readUpTo: b.exchanges.length } });
+      })
+    );
+    const { client } = await load();
+    const interview = Array.from({ length: 45 }, (_, i) => ({ turn: i, question: `Question ${i}`, answer: `Answer ${i}` }));
+    const edits = Array.from({ length: 40 }, (_, i) => ({ turn: 45 + i, question: `Your priorities: how much does "Days off" matter?`, answer: "High priority." }));
+    const added = { turn: 85, question: "Something to add about how you bid (from your priorities page):", answer: "Weekends off matter more now." };
+    // Everything before the note was read last time.
+    const prior = { version: 2, criteria: [], readUpTo: 85 };
+    const model = await client.requestModelBuild({ ...body, prior, exchanges: [...interview, ...edits, added] } as never);
+    // Sent as read up to 85 with 80 answers, the note (the 80th) read as one already taken in: "Add it" did nothing.
+    expect(sent[0].exchanges).toHaveLength(80);
+    expect(sent[0].prior.readUpTo).toBe(79);
+    // Kept in the record's own terms, so the next read counts from the whole record again.
+    expect(model.readUpTo).toBe(86);
+  });
 });

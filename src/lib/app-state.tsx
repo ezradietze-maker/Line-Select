@@ -32,6 +32,7 @@ import { clearServerDraft } from "@/lib/interview-draft-sync";
 import { adoptGuestDrafts } from "@/lib/interview-draft";
 import { landingAfterSignIn, landingPathFor } from "@/lib/landing-path";
 import { LOCAL_SAVE_FAILED_EVENT } from "@/lib/local-save-failed";
+import { feedOffOwed, oweFeedOff } from "@/lib/calendar-feed-owed";
 import { announceStartOver, caughtUpWithStartOver, onStartOverElsewhere } from "@/lib/start-over-signal";
 import { onAccountRefused, onSignedInElsewhere, setShownAccount, shownAccount } from "@/lib/shown-account";
 
@@ -555,6 +556,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [profileSync, userId]);
 
   useEffect(() => {
+    // A Start over whose turning off the calendar link didn't get through (`calendar-feed-owed`): asked again on loading,
+    // when the connection is back, and on coming back to the tab.
+    if (!state.ready || !userId) return;
+    const pay = () => {
+      if (feedOffOwed() === userId) void import("@/lib/calendar-feed-client").then(({ payFeedOffOwed }) => payFeedOffOwed(userId)).catch(() => {});
+    };
+    const onVisible = () => document.visibilityState === "visible" && pay();
+    pay();
+    window.addEventListener("online", pay);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", pay);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [state.ready, userId]);
+
+  useEffect(() => {
     // The list's own saves (tiers, stars, swaps, the sort) are made by the screens that hold them; any one the browser
     // refuses is reported here, so the pilot hears it won't survive a refresh instead of finding it gone.
     const failed = () => setListSaveFailed(true);
@@ -749,8 +767,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // Any other tab open on it drops it too, rather than put it back with its next star or tick (`onStartOverElsewhere`).
     announceStartOver(user?.id ?? null);
     // The calendar link showed the line the deleted ranking put first: it's turned off (and the device forgets what it
-    // last sent it, with the rest, in `forgetPilotWork`). Fetched when needed, not shipped on every screen.
-    if (user) void import("@/lib/calendar-feed-client").then(({ turnOffFeed }) => turnOffFeed()).catch(() => {});
+    // last sent it, with the rest, in `forgetPilotWork`), and kept owed until that gets through. Fetched when needed, not
+    // shipped on every screen.
+    if (user) {
+      oweFeedOff(user.id);
+      void import("@/lib/calendar-feed-client").then(({ turnOffFeedForStartOver }) => turnOffFeedForStartOver(user.id)).catch(() => {});
+    }
     if (user) void clearServerBidPack(user.id);
     if (user && bidPack) void clearTradeHolding(bidPack.id);
     if (user && bidPack) void clearServerDraft(bidPack.id);

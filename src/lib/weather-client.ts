@@ -3,7 +3,7 @@ import { coordinatesForAirport } from "@/lib/airport-coordinates";
 /**
  * Weather for a layover city, from Open-Meteo (open data, no key): what the bid month's dates were like there last
  * year — a fair picture of what to pack for — and, when a stay falls within the next two weeks, the forecast for it.
- * Fetched from the browser and kept for the visit; nothing is stored.
+ * Fetched from the browser and kept for the visit (the conditions now, a quarter hour); nothing is stored.
  */
 
 export interface DailyWeather {
@@ -166,11 +166,15 @@ export function toCurrent(json: OpenMeteoCurrent): CurrentWeather | null {
   return { tempF: Math.round(c.temperature_2m), sky: skyOf(c.weather_code), isDay: c.is_day !== 0 };
 }
 
-const currentCache = new Map<string, Promise<Record<string, CurrentWeather>>>();
+/** How long "now" stays now: Open-Meteo's current conditions are every 15 minutes. */
+export const CURRENT_WEATHER_FRESH_MS = 15 * 60_000;
+
+const currentCache = new Map<string, { at: number; reply: Promise<Record<string, CurrentWeather>> }>();
 
 /**
  * What it's like right now at each city, in one request for all of them (Open-Meteo takes a list of places and
- * answers with a list). Cities it can't place, or a failed request, are simply left out.
+ * answers with a list). Cities it can't place, or a failed request, are simply left out. Kept a quarter hour, not the
+ * visit: a tab left open all afternoon showed the morning's conditions as now.
  */
 export function currentWeather(codes: string[]): Promise<Record<string, CurrentWeather>> {
   const placed = codes.flatMap((code) => {
@@ -179,8 +183,10 @@ export function currentWeather(codes: string[]): Promise<Record<string, CurrentW
   });
   if (!placed.length) return Promise.resolve({});
   const url = `${FORECAST_HOST}/v1/forecast?latitude=${placed.map((p) => p.at[0]).join(",")}&longitude=${placed.map((p) => p.at[1]).join(",")}&current=temperature_2m,weather_code,is_day&${UNITS}${API_KEY_PARAM}`;
+  const asked = Date.now();
   const known = currentCache.get(url);
-  if (known) return known;
+  // By the quarter hour, so a screen asking again as one starts (`CitiesScreen`) gets the new one.
+  if (known && Math.floor(known.at / CURRENT_WEATHER_FRESH_MS) === Math.floor(asked / CURRENT_WEATHER_FRESH_MS)) return known.reply;
   const p = fetch(url)
     .then((r) => (r.ok ? (r.json() as Promise<OpenMeteoCurrent | OpenMeteoCurrent[]>) : null))
     .then((j) => {
@@ -196,9 +202,9 @@ export function currentWeather(codes: string[]): Promise<Record<string, CurrentW
     })
     .catch(() => null)
     .then((out) => {
-      if (out === null) currentCache.delete(url);
+      if (out === null && currentCache.get(url)?.reply === p) currentCache.delete(url);
       return out ?? {};
     });
-  currentCache.set(url, p);
+  currentCache.set(url, { at: asked, reply: p });
   return p;
 }

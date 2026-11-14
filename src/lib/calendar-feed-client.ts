@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch, shownAccount } from "@/lib/shown-account";
+import { feedOffOwed, oweFeedOff } from "@/lib/calendar-feed-owed";
 import { useEffect } from "react";
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { fetchServerBidPackMeta, saveServerBidPack } from "@/lib/bidpack-server";
@@ -43,9 +44,34 @@ async function statusFrom(res: Response): Promise<FeedStatusView> {
 }
 
 export const fetchFeedStatus = async () => statusFrom(await apiFetch(PATH));
-export const makeFeedLink = async (homeDays?: boolean) => statusFrom(await send("POST", homeDays === undefined ? {} : { homeDays }));
+export const makeFeedLink = async (homeDays?: boolean) => {
+  // A new link the pilot asked for: a Start over's turning off still owed here mustn't take it away later.
+  if (feedOffOwed() === shownAccount()) oweFeedOff(null);
+  return statusFrom(await send("POST", homeDays === undefined ? {} : { homeDays }));
+};
 export const setFeedHomeDays = async (homeDays: boolean) => statusFrom(await send("PATCH", { homeDays }));
 export const turnOffFeed = async () => statusFrom(await send("DELETE"));
+
+/**
+ * Start over's turning the link off: owed on this device until the server says it's off, so a failure is asked again
+ * (`payFeedOffOwed`) rather than leaving the link showing the deleted ranking's line. Whether it's off now.
+ */
+export async function turnOffFeedForStartOver(userId: string): Promise<boolean> {
+  oweFeedOff(userId);
+  return payFeedOffOwed(userId);
+}
+
+/** Turns the link off if this device still owes it for `userId`; true once nothing is owed. */
+export async function payFeedOffOwed(userId: string): Promise<boolean> {
+  if (feedOffOwed() !== userId) return true;
+  try {
+    await statusFrom(await send("DELETE", undefined, userId));
+  } catch {
+    return false;
+  }
+  if (feedOffOwed() === userId) oweFeedOff(null);
+  return true;
+}
 
 /** Where each calendar app takes a subscription from this link. */
 export function feedLinks(url: string): { apple: string; google: string; outlook: string } {

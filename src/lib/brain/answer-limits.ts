@@ -31,18 +31,18 @@ export function fitExchanges(exchanges: InterviewExchange[]): InterviewExchange[
 const fromPrioritiesPage = (e: InterviewExchange) => e.question.startsWith("Your priorities:") || e.question.startsWith("Something to add about how you bid");
 
 /**
- * The record within the number of answers one read can take. Every level tapped on the priorities page is written into
- * it, so after a long interview "Add it" there was refused every time, with a note to go back a few answers that the
+ * The record within the number of answers one read can take: the places in it of the answers kept. Every level tapped
+ * on the priorities page is written into it, so after a long interview "Add it" there was refused every time, with a note to go back a few answers that the
  * page can't do. The oldest of those edits go first (the newest is the pilot's word, and the model they shaped is sent
  * with the read); then, past that, the oldest answers after the story.
  */
-export function fitExchangeCount(exchanges: InterviewExchange[]): InterviewExchange[] {
-  if (exchanges.length <= MAX_EXCHANGES) return exchanges;
+export function keptForRead(exchanges: InterviewExchange[]): number[] {
+  if (exchanges.length <= MAX_EXCHANGES) return exchanges.map((_, i) => i);
   let over = exchanges.length - MAX_EXCHANGES;
-  const kept: InterviewExchange[] = [];
+  const kept: number[] = [];
   for (const [i, e] of exchanges.entries()) {
     if (over > 0 && i < exchanges.length - 1 && fromPrioritiesPage(e)) over--;
-    else kept.push(e);
+    else kept.push(i);
   }
   return kept.length <= MAX_EXCHANGES ? kept : [kept[0], ...kept.slice(kept.length - MAX_EXCHANGES + 1)];
 }

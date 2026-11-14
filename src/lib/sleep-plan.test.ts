@@ -166,6 +166,19 @@ describe("sleep plan", () => {
     }
   });
 
+  it("marks the hours on the ribbon on the clock each falls on, across Europe's clock change", () => {
+    const t = trip(leg("MEM", "CDG", 8 * H, 1001, -5 * H, 2 * H), leg("CDG", "MEM", 2565, 3165, 1 * H, -6 * H));
+    const [plan] = planTripSleep(t, -5 * H);
+    const change = 1440 + 60;
+    const onClock = (m: number) => (((m + (m < change ? 2 * H : 1 * H)) % 1440) + 1440) % 1440;
+    // Every six hours of the Paris clock, from the hotel to the wake-up: counted on from 19:26 summer time, the marks
+    // after the change read an hour off, "06" over five in the morning.
+    const marks = Array.from({ length: plan.wakeBy - plan.inHotel }, (_, i) => plan.inHotel + i).filter((m) => onClock(m) % 360 === 0);
+    expect(plan.ticks.map((tk) => tk.at)).toEqual(marks);
+    for (const tk of plan.ticks) expect(tk.label).toBe(String(onClock(tk.at) / 60).padStart(2, "0"));
+    expect(plan.ticks.some((tk) => tk.at > change)).toBe(true);
+  });
+
   it("draws on the hotel stay's own days, and never moves the trip's days — even across the date line", () => {
     const ANC = -8 * H;
     const KIX = 9 * H;

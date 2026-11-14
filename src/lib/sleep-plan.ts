@@ -126,6 +126,8 @@ export interface LayoverSleepPlan {
   wakeByLocal: string;
   /** How easily the body could sleep through the stay, every 15 minutes from arrival to wake-up (body clock alone), for drawing it. */
   ribbon: { at: number; ease: number }[];
+  /** The city's clock every six hours over the stay ("00", "06", …), on the clock each mark falls on, for drawing them. */
+  ticks: { at: number; label: string }[];
 }
 
 export interface DutyNap {
@@ -387,6 +389,11 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
     const total = blocks.reduce((a, b) => a + (b.end - b.start), 0) + (dutyNap ? dutyNap.end - dutyNap.start : 0);
     const ribbon: { at: number; ease: number }[] = [];
     for (let m = inHotel; m <= wakeBy; m += 15) ribbon.push({ at: m, ease: sleepPropensity(m + zOff + ctx.bodyAt(m)) });
+    // Counted on from the arrival clock, the marks after a clock change came an hour off.
+    const ticks: { at: number; label: string }[] = [];
+    for (const [s, e] of [[inHotel, Math.min(changeAt, wakeBy)], [Math.max(inHotel, changeAt), wakeBy]]) {
+      for (let m = s + mod(-(s + zOff + offAt(s)), 360); m < e; m += 360) ticks.push({ at: m, label: String(mod(m + zOff + offAt(m)) / 60).padStart(2, "0") });
+    }
     const behind = Math.round((mod(localOff - ctx.bodyAt(inHotel) + 720) - 720) / 60);
     plans.push({
       dutyIndex: i,
@@ -403,6 +410,7 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
       inHotelLocal: local(inHotel),
       wakeByLocal: local(wakeBy),
       ribbon,
+      ticks,
       ...(dutyNap ? { dutyNap } : {}),
       bodyClockNote:
         Math.abs(behind) < 1
