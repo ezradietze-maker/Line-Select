@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FIELD } from "@/components/ui/field";
 import { NotamStrip } from "@/components/ui/NotamStrip";
