@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { guaranteeShortfall, linePay, minBidPeriodGuarantee, tripPay, tripRig } from "@/lib/pay/trip-guarantee";
+import { formatHoursValue } from "@/lib/interview-config";
+import { guaranteeShortfall, linePay, minBidPeriodGuarantee, parseCreditHours, payClaimText, tripPay, tripRig } from "@/lib/pay/trip-guarantee";
 import type { Line, Trip } from "@/types/bidpack";
 
 const trip = (creditHours: number, tafbHours: number): Trip => ({ creditHours, tafbHours } as Trip);
@@ -57,5 +58,38 @@ describe("guaranteeShortfall (CBA 2026 4.F.1)", () => {
   it("is the amount paid under the guarantee, never negative", () => {
     expect(guaranteeShortfall(18, 14)).toBe(4);
     expect(guaranteeShortfall(18, 20)).toBe(0);
+  });
+  it("owes the minutes an 18:56 trip was paid short, never a fraction of one that read 0.0 owed", () => {
+    const g = 18 + 56 / 60;
+    expect(guaranteeShortfall(g, 18.9) * 60).toBe(2);
+    expect(formatHoursValue(guaranteeShortfall(g, 18.9))).toBe("0:02");
+    // Under half a minute short rounds to paid in full.
+    expect(guaranteeShortfall(18.93, 18.925)).toBe(0);
+  });
+});
+
+describe("parseCreditHours", () => {
+  it("reads credit as the pack and a pay statement print it, and as hours", () => {
+    expect(parseCreditHours("14:30")).toBe(14.5);
+    expect(parseCreditHours(" 7:05 ")).toBeCloseTo(7 + 5 / 60, 10);
+    expect(parseCreditHours("14.5")).toBe(14.5);
+    expect(parseCreditHours("14")).toBe(14);
+    expect(parseCreditHours(".5")).toBe(0.5);
+  });
+  it("refuses what isn't a credit figure, rather than reading 14:30 as 1430", () => {
+    for (const s of ["", "1430:00", "14:75", "14:3", "abc", "-2", "1e3"]) expect(parseCreditHours(s)).toBeNull();
+  });
+});
+
+describe("payClaimText", () => {
+  const pack = { base: "MEM", aircraft: "B777", seat: "FO", month: "OCT26" } as const;
+  it("names the trip by number and date, and the amounts to the minute", () => {
+    const text = payClaimText({ pack, trip: { pairingNumber: "2192" }, date: "Oct 15", guaranteeCH: 18 + 56 / 60, paidCH: 14.5 });
+    expect(text).toContain("Pay claim — trip 2192 on Oct 15, MEM B777 FO, bid period OCT26.");
+    expect(text).toContain("was 18:56 CH. I was credited 14:30 CH.");
+    expect(text).toContain("claiming the 4:26 CH difference.");
+  });
+  it("leaves the date out when the pack doesn't date the trip", () => {
+    expect(payClaimText({ pack, trip: { pairingNumber: "13" }, date: null, guaranteeCH: 10, paidCH: 9 })).toContain("Pay claim — trip 13, MEM");
   });
 });

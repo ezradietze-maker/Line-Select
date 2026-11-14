@@ -99,7 +99,7 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
     following.current = false;
   }, []);
 
-  async function ask(text: string) {
+  async function ask(text: string, retrying?: string) {
     const q = text.trim();
     if (!q || busy) return;
     setBusy(true);
@@ -108,7 +108,9 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
     const id = crypto.randomUUID();
     const update = (change: (t: Turn) => Turn) => setTurns((all) => all.map((t) => (t.id === id ? change(t) : t)));
     const earlier = turns.filter((t) => t.answer).slice(-HISTORY_TURNS);
-    setTurns((all) => [...all, { id, question: q, steps: [], answer: null, error: null }]);
+    // Asked again, the failed turn goes: left in, its error and "Try again" stayed above the answer, and tapping that
+    // paid for the same question again.
+    setTurns((all) => [...all.filter((t) => t.id !== retrying), { id, question: q, steps: [], answer: null, error: null }]);
     try {
       const carry = bidPack ? loadCarryIn(userId, bidPack.id) : null;
       const facts = packFacts(q, bidPack, carry?.items, carry?.elections);
@@ -167,7 +169,7 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
             </div>
             <div className="flex-1 space-y-8 pb-4">
               {turns.map((t) => (
-                <ChatTurn key={t.id} turn={t} lessMotion={lessMotion} onOpen={setViewing} onRetry={(q) => void ask(q)} onSettled={onSettled} />
+                <ChatTurn key={t.id} turn={t} lessMotion={lessMotion} onOpen={setViewing} onRetry={(q) => void ask(q, t.id)} onSettled={onSettled} />
               ))}
             </div>
           </>

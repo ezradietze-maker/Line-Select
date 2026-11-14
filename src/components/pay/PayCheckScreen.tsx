@@ -6,16 +6,21 @@ import { FIELD } from "@/components/ui/field";
 import { NotamStrip } from "@/components/ui/NotamStrip";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { guaranteeShortfall, linePay } from "@/lib/pay/trip-guarantee";
+import { tripDateLabel } from "@/lib/brain/line-text";
+import { formatHoursValue } from "@/lib/interview-config";
+import { guaranteeShortfall, linePay, parseCreditHours, payClaimText } from "@/lib/pay/trip-guarantee";
 import type { BidPack } from "@/types/bidpack";
 
 const VIPS_MENU = "https://pilot.fedex.com/vips-bin/vipscgi?webmenu?all";
-const ch = (n: number) => `${n.toFixed(1)} CH`;
+/** Credit to the minute, as the pack prints it: tenths showed an 18:56 trip as 18.9, and 18.9 paid as "0.0 CH" owed. */
+const ch = (n: number) => `${formatHoursValue(n)} CH`;
 
 export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack: BidPack | null; onGoToUpload: () => void; onTrySample?: () => void }) {
   const lines = useMemo(() => (bidPack ? bidPack.lines.filter((l) => l.trips.length > 0 && !l.estimated) : []), [bidPack]);
   const [lineNumber, setLineNumber] = useState<string>("");
-  const [tripId, setTripId] = useState<string>("");
+  // Which of the line's trips, by place: a line flying the same trip on three dates holds three copies with one id, and
+  // picking the second by id went back to the first.
+  const [tripAt, setTripAt] = useState(0);
   const [paid, setPaid] = useState<string>("");
 
   if (!bidPack) {
@@ -33,10 +38,12 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
 
   const line = lines.find((l) => l.lineNumber === lineNumber) ?? lines[0];
   const pay = line ? linePay(line, bidPack) : null;
-  const claimTrip = pay?.trips.find((t) => t.trip.id === tripId) ?? pay?.trips[0];
-  const paidNum = Number(paid);
-  const paidValid = paid !== "" && Number.isFinite(paidNum) && paidNum >= 0;
-  const shortfall = claimTrip && paidValid ? guaranteeShortfall(claimTrip.guaranteeCH, paidNum) : null;
+  const claimAt = pay && tripAt < pay.trips.length ? tripAt : 0;
+  const claimTrip = pay?.trips[claimAt];
+  const dateOf = (dayIndex: number | null) => tripDateLabel(bidPack, dayIndex) || null;
+  const claimDate = claimTrip ? dateOf(claimTrip.trip.startDayIndex) : null;
+  const paidNum = parseCreditHours(paid);
+  const shortfall = claimTrip && paidNum !== null ? guaranteeShortfall(claimTrip.guaranteeCH, paidNum) : null;
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -58,7 +65,7 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
         <>
           <label className="mt-6 block max-w-xs">
             <span className="text-xs font-medium text-ink-muted">Line you hold (or expect to)</span>
-            <select className={`${FIELD} mt-1 w-full`} value={line.lineNumber} onChange={(e) => { setLineNumber(e.target.value); setTripId(""); }}>
+            <select className={`${FIELD} mt-1 w-full`} value={line.lineNumber} onChange={(e) => { setLineNumber(e.target.value); setTripAt(0); }}>
               {lines.map((l) => (
                 <option key={l.id} value={l.lineNumber}>Line {l.lineNumber}</option>
               ))}
@@ -69,7 +76,7 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
           {pay && (
             <section className="panel-glass mt-5 p-4 sm:p-5">
               <p className="text-2xs font-medium uppercase tracking-wide text-ink-faint">Bid Line Guarantee</p>
-              <p className="mt-1 font-mono text-2xl font-semibold tabular-nums text-ink">{pay.blg.toFixed(1)}<span className="ml-1 text-sm font-normal text-ink-faint">CH</span></p>
+              <p className="mt-1 font-mono text-2xl font-semibold tabular-nums text-ink">{formatHoursValue(pay.blg)}<span className="ml-1 text-sm font-normal text-ink-faint">CH</span></p>
               <p className="mt-2 text-sm text-ink-muted">
                 Line {line.lineNumber} guarantees <span className="font-medium text-ink">{ch(pay.blg)}</span> this bid period.{" "}
                 {pay.flooredUp && pay.floor
@@ -94,12 +101,15 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
                 </tr>
               </thead>
               <tbody>
-                {pay?.trips.map((t) => (
-                  <tr key={t.trip.id} className="border-b border-hairline/60">
-                    <td className="py-1.5 pr-3 font-medium text-ink">{t.trip.pairingNumber ?? "—"}</td>
-                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-ink">{t.guaranteeCH.toFixed(1)}</td>
-                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-ink-muted">{t.rigCH.toFixed(1)}</td>
-                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-ink-muted">{t.creditPerDayAway?.toFixed(1) ?? "—"}</td>
+                {pay?.trips.map((t, i) => (
+                  <tr key={`${t.trip.id}-${i}`} className="border-b border-hairline/60">
+                    <td className="py-1.5 pr-3 font-medium text-ink">
+                      {t.trip.pairingNumber ?? "—"}
+                      {dateOf(t.trip.startDayIndex) && <span className="ml-2 font-normal text-ink-muted">{dateOf(t.trip.startDayIndex)}</span>}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-ink">{formatHoursValue(t.guaranteeCH)}</td>
+                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-ink-muted">{formatHoursValue(t.rigCH)}</td>
+                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-ink-muted">{t.creditPerDayAway === null ? "—" : formatHoursValue(t.creditPerDayAway)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -117,19 +127,23 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
               <div className="flex flex-wrap items-end gap-3">
                 <label className="text-xs text-ink-muted">
                   Trip
-                  <select className={`${FIELD} mt-1 block`} value={claimTrip.trip.id} onChange={(e) => setTripId(e.target.value)}>
-                    {pay?.trips.map((t) => (
-                      <option key={t.trip.id} value={t.trip.id}>{t.trip.pairingNumber ?? "trip"} ({t.guaranteeCH.toFixed(1)} CH)</option>
+                  <select className={`${FIELD} mt-1 block`} value={claimAt} onChange={(e) => setTripAt(Number(e.target.value))}>
+                    {pay?.trips.map((t, i) => (
+                      <option key={`${t.trip.id}-${i}`} value={i}>
+                        {t.trip.pairingNumber ?? "trip"}
+                        {dateOf(t.trip.startDayIndex) ? ` on ${dateOf(t.trip.startDayIndex)}` : ""} ({ch(t.guaranteeCH)})
+                      </option>
                     ))}
                   </select>
                 </label>
                 <label className="text-xs text-ink-muted">
                   Credit you were actually paid
-                  <input type="number" min={0} step="0.1" placeholder="e.g. 14.5" className={`${FIELD} mt-1 block w-32`} value={paid} onChange={(e) => setPaid(e.target.value)} />
+                  <input type="text" inputMode="decimal" autoComplete="off" placeholder="e.g. 14:30" className={`${FIELD} mt-1 block w-32 font-mono`} value={paid} onChange={(e) => setPaid(e.target.value)} />
                 </label>
               </div>
+              {paid.trim() !== "" && paidNum === null && <p className="mt-2 text-xs text-warn">Type the credit as hours and minutes, 14:30, or as hours, 14.5.</p>}
 
-              {shortfall !== null && (
+              {shortfall !== null && paidNum !== null && (
                 shortfall > 0 ? (
                   <div className="mt-4">
                     <p className="text-sm text-ink">
@@ -139,7 +153,7 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
                     <textarea
                       readOnly
                       className={`${FIELD} mt-1 h-28 w-full font-mono text-xs`}
-                      value={`Pay claim — trip ${claimTrip.trip.pairingNumber ?? ""}, ${bidPack.base} ${bidPack.aircraft} ${bidPack.seat}, bid period ${bidPack.month}.\n\nThe trip's scheduled credit (trip guarantee) was ${claimTrip.guaranteeCH.toFixed(1)} CH. I was credited ${paidNum.toFixed(1)} CH. Under CBA 2026 Section 4.F.1, a pilot's trip guarantee is the greater of the trip's scheduled credit value when it was awarded/assigned or when the pilot started flying it. I am claiming the ${shortfall.toFixed(1)} CH difference.`}
+                      value={payClaimText({ pack: bidPack, trip: claimTrip.trip, date: claimDate, guaranteeCH: claimTrip.guaranteeCH, paidCH: paidNum })}
                     />
                     <p className="mt-2 text-xs text-ink-faint">
                       Our reading of the contract, not an official award — confirm the numbers and file it through the company&rsquo;s own pay-claim process.{" "}

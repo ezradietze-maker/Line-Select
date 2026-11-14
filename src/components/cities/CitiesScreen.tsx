@@ -109,7 +109,7 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Layover cities"
-        description={`The ${facts.length} cities this pack lays you over in — the local time and daylight there, how often you'd go, and the whole picture a tap away.`}
+        description={`The ${facts.length ? `${facts.length === 1 ? "one city" : `${facts.length} cities`} ` : "cities "}this pack lays you over in — the local time and daylight there, how often you'd go, and the whole picture a tap away.`}
         actions={
           <label className="flex items-center gap-2 text-sm text-ink-muted">
             Sort
@@ -134,6 +134,15 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
             Show this month&rsquo;s cities
           </button>
         </div>
+      )}
+
+      {/* A pack of day trips, or lines whose trips couldn't be read one by one: said so, not an empty page. */}
+      {facts.length === 0 && (
+        <EmptyState
+          compact
+          className="mt-8"
+          description="No layovers found in this bid pack — its trips come home the same day, or its lines have no trip-by-trip breakdown to read them from."
+        />
       )}
 
       <ul className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
