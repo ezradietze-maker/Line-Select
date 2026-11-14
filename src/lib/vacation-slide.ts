@@ -334,7 +334,7 @@ export interface SlideAcrossLines {
   offset: number;
   firstDay: string;
   lastDay: string;
-  /** Average change, weighted to the top of the order: points on the pilot's model, or days off without one. */
+  /** Average days-off change, weighted to the top of the order. */
   gain: number;
   /** How many of the lines looked at it helps. */
   helps: number;
@@ -379,10 +379,15 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
   // No bid month dates, so not even the vacation as awarded can be placed: nothing to compare a slide with.
   if (!legal.some((c) => c.offset === 0)) return { vacation, illegal: checks.filter((c) => !c.legal), lines: [], across: [], byModel: !!model };
   const byNumber = new Map(pack.lines.map((l) => [l.lineNumber, l]));
-  const top = order.slice(0, TOP_LINES).flatMap((n, i) => {
+  let top = order.slice(0, TOP_LINES).flatMap((n, i) => {
     const line = byNumber.get(n);
     return line && !line.estimated ? [{ line, rank: i + 1 }] : [];
   });
+  // Fall back to the pack's own lines when no ranked order reaches us (a guest who hasn't ranked yet, or the order
+  // didn't come through): the slide still has real lines to work on, instead of reporting "0 lines / nothing beats it".
+  if (top.length === 0) {
+    top = pack.lines.filter((l) => !l.estimated).slice(0, TOP_LINES).map((line, i) => ({ line, rank: i + 1 }));
+  }
 
   const rows = top.map(({ line, rank }) => {
     const options: SlideOption[] = [];
@@ -404,7 +409,10 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
     const scored = new Map(scorePackV2(all, model, { pack: prepareMetrics(all), referenceLines: pack.lines.length }).map((s) => [s.lineId, s.score]));
     for (const r of rows) r.options.forEach((o, i) => (o.score = scored.get(`${r.line.id}::${i}`) ?? null));
   }
-  const better = (a: SlideOption, b: SlideOption) => (model ? (b.score ?? 0) - (a.score ?? 0) || compareWithoutModel(a, b) : compareWithoutModel(a, b));
+  // Concrete outcomes decide the best slide — most days off, then the longest run, then the bank — and the pilot's
+  // model only breaks a true tie. A few days' slide barely moves the model's whole-line score, so ranking on the
+  // score first hid slides that plainly add days off (why "no slide beats" came up so often).
+  const better = (a: SlideOption, b: SlideOption) => compareWithoutModel(a, b) || (model ? (b.score ?? 0) - (a.score ?? 0) : 0);
 
   const lines: LineSlides[] = rows.map(({ line, rank, options }) => {
     const asAwarded = options.find((o) => o.offset === 0 && !o.expandBefore && !o.expandAfter)!;
@@ -424,7 +432,9 @@ export function findVacationSlides(input: { pack: BidPack; order: string[]; vaca
       const weighted = rows.map((r) => {
         const asAwarded = r.options.find((o) => o.offset === 0 && !o.expandBefore && !o.expandAfter)!;
         const option = r.options.find((o) => o.offset === c.offset && !o.expandBefore && !o.expandAfter)!;
-        const gain = model ? (option.score ?? 0) - (asAwarded.score ?? 0) : option.daysOff - asAwarded.daysOff;
+        // The across-lines verdict is in concrete days off, with or without a model — so "no slide beats" only comes
+        // up when no slide actually adds days off, not when a real gain simply didn't move the model's score.
+        const gain = option.daysOff - asAwarded.daysOff;
         return { gain, weight: 1 / r.rank, option };
       });
       const total = weighted.reduce((a, w) => a + w.weight, 0);

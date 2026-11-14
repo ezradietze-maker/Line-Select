@@ -206,6 +206,11 @@ describe("findVacationSlides", () => {
     expect(best.daysOff).toBeGreaterThan(a.daysOff);
     expect(best.line.trips.length).toBe(a.trips.length - best.removed.length);
   });
+  it("falls back to the pack's own lines when no ranked order is given, so it never reports 0 lines", () => {
+    const f = findVacationSlides({ pack: p, order: [], vacation: vac(10) });
+    expect(f.lines.length).toBeGreaterThan(0);
+    expect(f.lines.length).toBe(p.lines.filter((l) => !l.estimated).length);
+  });
   it("shows the best per line and never just the vacation as awarded again", () => {
     const f = findVacationSlides({ pack: p, order, vacation: vac(10) });
     for (const l of f.lines) {
@@ -225,6 +230,25 @@ describe("findVacationSlides", () => {
     expect(f.across.length).toBeGreaterThan(0);
     expect(f.across[0].offset).not.toBe(0);
     expect(f.across[0].gain).toBeGreaterThanOrEqual(f.across[f.across.length - 1].gain);
+  });
+  it("measures the across-lines gain in days off even with a model, so a real day-off gain isn't hidden by a flat score", () => {
+    // Model rewards credit, not days off — the old score-first verdict would have reported the gain in model points
+    // (and buried day-off gains). It must now be the weighted days-off delta.
+    const f = findVacationSlides({ pack: p, order, vacation: vac(10), model: model("creditHours") });
+    const top = f.across[0];
+    const weight = (rank: number) => 1 / rank;
+    const totalW = f.lines.reduce((s, l) => s + weight(l.rank), 0);
+    const expected = f.lines.reduce((s, l) => {
+      const slid = l.all.find((o) => o.offset === top.offset && !o.expandBefore && !o.expandAfter)!;
+      return s + (slid.daysOff - l.asAwarded.daysOff) * weight(l.rank);
+    }, 0) / totalW;
+    expect(top.gain).toBeCloseTo(Math.round(expected * 10) / 10, 5);
+  });
+  it("orders the best slides by days off (concrete) first, not by the model's score", () => {
+    // The model rewards credit, so score order would differ from days-off order; the best list must follow days off.
+    const f = findVacationSlides({ pack: p, order, vacation: vac(10), model: model("creditHours") });
+    const best = f.lines[0].best;
+    for (let i = 1; i < best.length; i++) expect(best[i].daysOff).toBeLessThanOrEqual(best[i - 1].daysOff);
   });
   it("7.E.3.b: an expansion can't conflict with more than the vacation's CH value plus 6", () => {
     const heavy = line([trip("1", 5, { credit: 15 }), trip("2", 20, { credit: 50 })], "1003");

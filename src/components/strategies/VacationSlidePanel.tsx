@@ -16,6 +16,11 @@ import type { SeniorityInput } from "@/types/strategy";
 
 const VIPS_MENU = "https://pilot.fedex.com/vips-bin/vipscgi?webmenu?all";
 const LINES_SHOWN = 5;
+// A slide is only called out as better when it beats the awarded dates by something real — at least about half a day
+// off across your top lines, or a line that banks a meaningful chunk more credit. Below this it's noise, so we just
+// say the awarded dates are best (and the per-line detail is still there for anyone who wants to look).
+const MIN_DAYS_OFF_GAIN = 0.5;
+const MIN_CH_GAIN = 6;
 
 const day = (iso: string) => DateTime.fromISO(iso).toFormat("LLL d");
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -83,19 +88,28 @@ function Results({ found, zone, pack }: { found: VacationSlides; zone: string; p
   const shown = all ? found.lines : found.lines.slice(0, LINES_SHOWN);
   const reasons = [...new Set(found.illegal.map((c) => c.why!))];
   const best = found.across[0];
+  // A "pay" play even when no slide adds days off: a best slide on some line sits under bigger trips and banks more CH
+  // than the vacation as awarded. Shown so "no slide beats it" doesn't hide a real move that banks more of your pay.
+  const payPlay = found.lines.some((l) => l.best.some((o) => o.chargedCH > l.asAwarded.chargedCH + MIN_CH_GAIN));
   const onCalendar = found.lines[Math.min(lineIdx, found.lines.length - 1)];
   return (
     <div className="mt-3 space-y-3">
       <p className="text-xs text-ink-muted">
         This vacation is worth {value} CH ({found.vacation.days} days at {CH_PER_VACATION_DAY} CH, CBA 2026 7.A.1). {vacationLabel(found.vacation, zone)}.
       </p>
-      {found.across.length > 0 && best.gain > 0 ? (
+      {found.lines.length === 0 ? (
+        <p className="text-sm text-ink">
+          This vacation doesn&rsquo;t land in this bid month, so there&rsquo;s nothing to slide here &mdash; check the first day and length above.
+        </p>
+      ) : found.across.length > 0 && best.gain >= MIN_DAYS_OFF_GAIN ? (
         <div>
           <p className="text-sm text-ink">
             <span className="font-medium">Best across your top {found.lines.length} lines:</span> {moveWords({ ...best, expandBefore: 0, expandAfter: 0 })} ({day(best.firstDay)}&ndash;{day(best.lastDay)}).{" "}
-            {found.byModel ? `It adds about ${best.gain.toFixed(1)} points on your priorities, your top lines counting most` : `It adds about ${best.gain.toFixed(1)} days off, your top lines counting most`}, and helps {plural(best.helps, "line")}.
+            It adds about {best.gain.toFixed(1)} {Math.abs(best.gain - 1) < 0.05 ? "day" : "days"} off, your top lines counting most, and helps {plural(best.helps, "line")}.
           </p>
         </div>
+      ) : payPlay ? (
+        <p className="text-sm text-ink">No slide adds days off &mdash; but on some lines a slide sits under bigger trips and banks more of your pay. See the lines below.</p>
       ) : (
         <p className="text-sm text-ink">Across your top {found.lines.length} lines, no slide beats your vacation as awarded.</p>
       )}
@@ -158,7 +172,17 @@ export function VacationSlidePanel({ bidPack, seniority, profile, userId, order 
   const [days, setDays] = useState("7");
   const [found, setFound] = useState<VacationSlides[] | null>(null);
   const [working, setWorking] = useState(false);
-  const vacations = useMemo(() => [...fromPack, ...typed], [fromPack, typed]);
+  // The same week can arrive twice — awarded by the pack and typed in by hand — which gave two near-identical, slightly
+  // different answers for one vacation. Keep each week once (the awarded copy first), matched by how it reads to the pilot.
+  const vacations = useMemo(() => {
+    const seen = new Set<string>();
+    return [...fromPack, ...typed].filter((v) => {
+      const key = vacationLabel(v, zone);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [fromPack, typed, zone]);
   const where = useMemo(() => slideWhere(bidPack), [bidPack]);
   const zoned = (iso: string) => DateTime.fromISO(iso, { zone: "America/Chicago" }).toFormat("LLL d, HH:mm 'CT'");
 
