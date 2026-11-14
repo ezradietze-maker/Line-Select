@@ -26,18 +26,22 @@ describe("what can be traded", () => {
     expect(isTradeable(pack, trip("a", 27, 72), none, beforeMonth)).toBe(false);
   });
 
-  it("stops at 2 hours before show, and at 1 hour from the December 2026 bid period (25.L.9.a.ii)", () => {
+  it("stops at 2 hours before show, and at 1 hour once real-time trading is in, August 2027 (25.L.9.a.ii)", () => {
     expect(tradeDeadlineHours({ month: "OCT26" })).toBe(2);
     expect(tradeDeadlineHours({ month: "NOV26" })).toBe(2);
-    expect(tradeDeadlineHours({ month: "DEC26" })).toBe(1);
-    expect(tradeDeadlineHours({ month: "JAN27" })).toBe(1);
+    // Phase 2 keeps 2 hours: the clause gives 1 hour only "Upon implementation of 25.L.1.a." (Phase 3).
+    expect(tradeDeadlineHours({ month: "DEC26" })).toBe(2);
+    expect(tradeDeadlineHours({ month: "JUL27" })).toBe(2);
+    expect(tradeDeadlineHours({ month: "AUG27" })).toBe(1);
     // Day 3 is Oct 1, reporting 10:00 in Memphis, 15:00Z.
     const show = Date.UTC(2026, 9, 1, 15);
     const t = trip("a", 3);
     expect(isTradeable(pack, t, none, show - 2.5 * 3_600_000)).toBe(true);
     expect(isTradeable(pack, t, none, show - 1.5 * 3_600_000)).toBe(false);
     const december = { ...pack, month: "DEC26", bidPeriodStart: "2026-09-28" };
-    expect(isTradeable(december, t, none, show - 1.5 * 3_600_000)).toBe(true);
+    expect(isTradeable(december, t, none, show - 1.5 * 3_600_000)).toBe(false);
+    const august = { ...pack, month: "AUG27", bidPeriodStart: "2026-09-28" };
+    expect(isTradeable(august, t, none, show - 1.5 * 3_600_000)).toBe(true);
   });
 });
 
