@@ -135,7 +135,8 @@ describe("calls to the app's server", () => {
       return readFileSync(file, "utf8")
         .split("\n")
         .map((line, i) => ({ line, at: `${name}:${i + 1}` }))
-        .filter(({ line }) => !/^\s*(\/\/|\*)/.test(line) && /(^|[^\w.])fetch\(/.test(line))
+        // Called, or handed on to be called later (`fetcher = fetch`), which goes up just as bare.
+        .filter(({ line }) => !/^\s*(\/\/|\*)/.test(line) && (/(^|[^\w.])fetch\(/.test(line) || /[=:,(]\s*fetch\b(?!\s*\()/.test(line)))
         .map(({ at }) => at);
     });
     expect(bare).toEqual([]);

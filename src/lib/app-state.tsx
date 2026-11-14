@@ -792,14 +792,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleAuthenticated(newUser: UserAccount, { stay = false, from }: { stay?: boolean; from?: GuestWork } = {}): Promise<string> {
-    signInsRef.current++;
+    const signIn = ++signInsRef.current;
     // The session is this account's now, and so is every call from here on: the ones just below that bring in its pack
     // and profile among them.
     setShownAccount(newUser.id);
     // What was on screen before this sign-in; on a load finishing a confirm's sign-in, what the guest had on this device.
     const before: GuestWork = from ?? { user: state.user, bidPack: state.bidPack, profile: state.profile, seniority: state.seniority };
     askToKeepStorage();
-    writeSignedInHint(newUser);
     identifyPilot(newUser.id);
     const account = await accountBidPack(newUser.id);
     let theirBidPack = account.pack;
@@ -847,6 +846,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }
       adoptGuestDrafts(newUser.id);
     }
+    // Only now on the device's note of who's signed in: another tab of this guest's hears of the sign-in from it and
+    // loads the account (`onSignedInElsewhere`). Told before, it found the account still empty and showed "upload your
+    // bid pack" where the guest's lines were. Not once this tab has signed out or in again meanwhile: it'd put this
+    // account back on the device.
+    if (signInsRef.current === signIn) writeSignedInHint(newUser);
 
     if (hasUnsyncedProfile(newUser.id)) setProfileSync("failed");
     setState({
