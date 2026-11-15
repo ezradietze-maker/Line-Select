@@ -20,7 +20,9 @@ export default function InterviewPage() {
     <>
       {/* The page's name for a screen reader's heading list: each step shows its own question as the big heading. */}
       <h1 className="sr-only">Interview</h1>
-      <BrainInterview key={interviewKey} bidPack={bidPack} onComplete={handleBrainInterviewComplete} priorProfile={profile} userId={user?.id ?? null} />
+      {/* One interview per pack: a pack that changes under it (the account's newer one, shown once a load that had only
+          this device's copy hears from the server) starts that pack's own, rather than saving this one's answers as its draft. */}
+      <BrainInterview key={`${interviewKey}:${bidPack.id}`} bidPack={bidPack} onComplete={handleBrainInterviewComplete} priorProfile={profile} userId={user?.id ?? null} />
     </>
   );
 }
