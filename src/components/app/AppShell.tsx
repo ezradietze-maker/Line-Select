@@ -10,6 +10,7 @@ import { LeftNav } from "@/components/nav/LeftNav";
 import { NAV_ITEMS, disabledReason, type NavTarget } from "@/components/nav/nav-items";
 import { PhoneNav } from "@/components/nav/PhoneNav";
 import { DeadlineTabTitle } from "@/components/results/DeadlineTabTitle";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { LogoMark } from "@/components/ui/Logo";
 import { Modal } from "@/components/ui/Modal";
 import { BackToTop } from "@/components/ui/BackToTop";
@@ -22,6 +23,7 @@ import { AppStateProvider, useAppState } from "@/lib/app-state";
 import { navTargetForPath } from "@/lib/nav-target";
 import { waitsForSavedState } from "@/lib/site-pages";
 import { followThemeFromOtherTabs } from "@/lib/theme";
+import type { BidPack } from "@/types/bidpack";
 
 // Only ever shown in a dialog someone opens — fetched then, not shipped with every screen.
 // `loading` gives each a Suspense boundary of its own, so opening one for the first time can't suspend the page behind it.
@@ -34,6 +36,9 @@ const HIDDEN_SIDEBAR_PATHS = ["/", "/auth"];
 const ROUTE_ORDER = ["/", "/auth", "/upload", "/preview", "/preferences", "/interview", "/confirm-preferences", "/results"];
 
 /** Spine first; then two sidebar destinations move the panel stack in rail order; anything else cross-fades. */
+/** A pack as a pilot names it: base, aircraft, seat and month. */
+const packName = (p: Pick<BidPack, "base" | "aircraft" | "seat" | "month">) => `${p.base} ${p.aircraft} ${p.seat} ${p.month}`;
+
 function getDirection(from: string, to: string): NavDirection {
   const fromIndex = ROUTE_ORDER.indexOf(from);
   const toIndex = ROUTE_ORDER.indexOf(to);
@@ -77,6 +82,9 @@ function Chrome({ children }: { children: React.ReactNode }) {
     handleDismissProfileSync,
     handleDismissToast,
     handleToastClick,
+    guestPackOffer,
+    handleTakeGuestPack,
+    handleKeepAccountPack,
   } = useAppState();
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -296,6 +304,26 @@ function Chrome({ children }: { children: React.ReactNode }) {
           {pathname !== "/contract" && <Footer />}
         </ScreenTransition>
       </div>
+
+      {/* Signed in to an account with another pack than the one just loaded as a guest: which to go on with. Closed
+          any other way, the account's stays, as it was before this asked. */}
+      {guestPackOffer && bidPack && (
+        <ConfirmModal
+          title="Use the bid pack you just loaded?"
+          confirmLabel={`Use ${packName(guestPackOffer)}`}
+          cancelLabel={`Keep ${packName(bidPack)}`}
+          onConfirm={handleTakeGuestPack}
+          onCancel={handleKeepAccountPack}
+        >
+          <p>
+            Your account has your {packName(bidPack)} bid pack. Before you signed in, you loaded {packName(guestPackOffer)} on this device.
+          </p>
+          <p>
+            Use it, and it takes the place of the account&rsquo;s pack, with what you did on it. Keep the account&rsquo;s, and you&rsquo;d
+            upload the other PDF again to use it signed in.
+          </p>
+        </ConfirmModal>
+      )}
 
       {howItWorksOpen && (
         <Modal title="How this works" onClose={() => setHowItWorksOpen(false)}>

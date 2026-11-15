@@ -33,7 +33,7 @@ import { forgetPilotOnDevice, forgetPilotWork } from "@/lib/device-data";
 import { clearServerDraft } from "@/lib/interview-draft-sync";
 import { adoptGuestDrafts } from "@/lib/interview-draft";
 import { landingAfterSignIn, landingPathFor } from "@/lib/landing-path";
-import { moveGuestWorkToAccount } from "@/lib/pack-id";
+import { isPackId, moveGuestWorkToAccount } from "@/lib/pack-id";
 import { LOCAL_SAVE_FAILED_EVENT } from "@/lib/local-save-failed";
 import { feedOffOwed, oweFeedOff } from "@/lib/calendar-feed-owed";
 import { announceStartOver, caughtUpWithStartOver, onStartOverElsewhere } from "@/lib/start-over-signal";
@@ -207,6 +207,29 @@ export function caughtUpState(s: DataState, was: OfflineLoad, fresh: { bidPack: 
   return next;
 }
 
+/**
+ * The pack a guest loaded on this device before signing in to an account that already holds another one: they're asked
+ * which to go on with. Without asking, the account's (often last month's) came up, and the pack they'd just loaded, and
+ * the interview done on it, were gone from view — then gone from the device at sign-out. Null when there's nothing to
+ * ask: no account pack (the guest's is taken over), the same pack on both, the sample, or a pack this guest didn't load.
+ */
+export function guestPackToOffer(before: GuestWork, accountPack: BidPack | null, guestUpload: string | null): BidPack | null {
+  const guestPack = before.bidPack;
+  if (before.user || !guestPack || !accountPack || isSamplePack(guestPack) || guestPack.id !== guestUpload) return null;
+  return isPackId(accountPack.id, guestPack) ? null : guestPack;
+}
+
+/**
+ * The profile to go on with once the account takes the guest's pack: the guest's interview, when it was done on that
+ * pack after the account's last one, with the months the account logged and its checklist kept; else the account's.
+ */
+export function profileWithGuestPack(guestPack: BidPack, guest: PreferenceProfile | null, account: PreferenceProfile | null): PreferenceProfile | null {
+  if (!guest) return account;
+  const onThisPack = !!guest.brainInterview && isPackId(guest.brainInterview.packId, guestPack);
+  if (account && !(onThisPack && (Date.parse(guest.completedAt) || 0) > (Date.parse(account.completedAt) || 0))) return account;
+  return account ? withGuestRecords(guest, account) : guest;
+}
+
 interface AppStateValue extends DataState {
   interviewKey: number;
   demoOffer: TradeOffer | null;
@@ -247,6 +270,10 @@ interface AppStateValue extends DataState {
    * belongs. With `stay`, it doesn't move, and the place it would have gone is returned instead.
    */
   handleAuthenticated: (newUser: UserAccount, opts?: { stay?: boolean }) => Promise<string>;
+  /** Signed in to an account that holds another pack than the one loaded as a guest just before: that one, to ask about. */
+  guestPackOffer: BidPack | null;
+  handleTakeGuestPack: () => void;
+  handleKeepAccountPack: () => void;
   /** Asks the server again who's signed in, for an account whose address may have just been confirmed elsewhere. */
   refreshUser: () => Promise<"confirmed" | "waiting" | "signed-out" | "unknown">;
   handleContinueAsGuest: () => void;
@@ -285,6 +312,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   /** How the signed-in pilot's last profile save went (see `persistProfile`). */
   const [profileSync, setProfileSync] = useState<"ok" | "merged" | "failed">("ok");
   const [listSaveFailed, setListSaveFailed] = useState(false);
+  /** The pack a guest loaded before signing in to an account holding another, and their profile then (`guestPackToOffer`). */
+  const [guestOffer, setGuestOffer] = useState<{ userId: string; pack: BidPack; profile: PreferenceProfile | null } | null>(null);
   const showAccountNowRef = useRef<(now: UserAccount | null) => void>(() => {});
   /** Counts this tab's sign-ins and sign-outs, so an answer about who's signed in asked for before one isn't used after it (`refreshUser`). */
   const signInsRef = useRef(0);
@@ -897,6 +926,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // Read once and cleared: whatever this sign-in does with the guest's upload, the next one mustn't take it over too.
     const guestUpload = guestUploadedPackId();
     clearGuestUpload();
+    // The account holds another pack than the one the guest loaded: it comes up, and they're asked which to go on with.
+    const offered = guestPackToOffer(before, account.pack, guestUpload);
 
     // A guest who uploaded a pack and answered the interview, then makes an account so it "follows them to a new device", must not land on an empty app. An account that has nothing of its own adopts what the guest was just working on; one that already has data keeps it untouched.
     if (!before.user) {
@@ -956,6 +987,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       bidPackSaveFailed: packSaveFailed,
       profileSaveFailed: false,
     });
+    setGuestOffer(offered ? { userId: newUser.id, pack: offered, profile: before.profile } : null);
     // The guest's work has joined the account: a load from here on has nothing left to finish.
     try {
       if (window.localStorage.getItem(CONFIRM_SIGN_IN_KEY) === newUser.id) window.localStorage.removeItem(CONFIRM_SIGN_IN_KEY);
@@ -965,6 +997,40 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const landing = landingAfterSignIn(theirBidPack, theirProfile, before.user ? null : before.bidPack);
     if (!stay) router.push(landing);
     return landing;
+  }
+
+  /**
+   * "Use the one I loaded": the guest's pack becomes the account's, as an upload signed in makes it, with what they did
+   * on it (stars, tiers, the interview draft) and, done on it after the account's last one, their interview.
+   */
+  async function handleTakeGuestPack() {
+    const offer = guestOffer;
+    setGuestOffer(null);
+    if (!offer || userIdRef.current !== offer.userId) return;
+    const asked = signInsRef.current;
+    const { userId: owner, pack } = offer;
+    // The guest's copy goes first: two copies of a big pack don't fit in the browser's storage together.
+    clearBidPack(null);
+    const saved = await saveBidPack(owner, pack);
+    if (!saved) await saveBidPack(null, pack);
+    if (signInsRef.current !== asked) return;
+    void saveServerBidPack(pack, owner);
+    moveGuestWorkToAccount(pack.id, owner);
+    const account = latestProfileRef.current;
+    let profile = profileWithGuestPack(pack, offer.profile, account);
+    if (profile && profile !== account) {
+      const r = await saveProfileForUser(owner, profile);
+      if (signInsRef.current !== asked) return;
+      if (r.savedLocally) clearProfile(null);
+      profile = r.profile;
+    }
+    setState((s) => (s.user?.id !== owner ? s : { ...s, bidPack: pack, profile, parseResult: null, pendingProfile: loadPendingProfile(owner, pack.id), freshBidPack: false, bidPackSaveFailed: !saved }));
+    router.push(landingPathFor(pack, profile));
+  }
+
+  /** "Keep my account's": as it is; the one the guest loaded stays on this device, theirs again once signed out. */
+  function handleKeepAccountPack() {
+    setGuestOffer(null);
   }
 
   /** The answer, for a caller that keeps asking: confirmed (or someone else now), still waiting, nobody signed in, or no answer. */
@@ -1199,6 +1265,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     handleDismissToast,
     handleToastClick,
     handleAuthenticated,
+    // Only while the account it was asked for is the one shown.
+    guestPackOffer: guestOffer && user?.id === guestOffer.userId ? guestOffer.pack : null,
+    handleTakeGuestPack: () => void handleTakeGuestPack(),
+    handleKeepAccountPack,
     refreshUser,
     handleContinueAsGuest,
     handleLogout,
