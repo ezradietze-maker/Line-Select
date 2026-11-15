@@ -45,13 +45,13 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
     paste.changed(next);
     onChange(next.slice(0, maxLength));
   };
-  const dictation = useDictation(value, change, { maxLength });
+  const area = useRef<HTMLTextAreaElement>(null);
+  const dictation = useDictation(value, change, { maxLength, field: area });
   const mentioned = useMemo(() => storyTopicsMentioned(value), [value]);
   const depth = storyDepth(value);
   // The meter and the count, said once typing pauses: read out as they changed, they talked over every letter typed
   // once the story was near the limit.
   const meterSaid = useSettledSaying(`${depth.label || "Your story"}, ${depth.areas} of ${STORY_TOPICS.length} areas${remaining < 500 ? `, ${remaining.toLocaleString()} characters left` : ""}`);
-  const area = useRef<HTMLTextAreaElement>(null);
 
   // Grows with the story, however long, so it reads as a page: the page is the one scroll — a scroll box inside it
   // caught the wheel and the finger, and kept Continue out of reach. Follows the words while dictating.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useOffline } from "@/lib/connection";
+import { useOfflineShown } from "@/lib/connection";
 
 /** How long "back online" stays up once the connection returns. */
 const BACK_MS = 2600;
@@ -12,8 +12,9 @@ const BACK_MS = 2600;
  */
 export function OfflineNotice() {
   // The app's own reading of the connection (`connection.ts`): it also catches a hotel's Wi-Fi with nothing behind it,
-  // which the browser still calls online, and says "back" only once a request has really got through.
-  const offline = useOffline();
+  // which the browser still calls online, and says "back" only once a request has really got through. Only once the
+  // ping has failed too: one slow request isn't the connection gone.
+  const offline = useOfflineShown();
   const [seen, setSeen] = useState(offline);
   const [back, setBack] = useState(false);
   // Coming back from offline shows "back online"; going offline clears it.
