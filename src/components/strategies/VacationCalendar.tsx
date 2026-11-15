@@ -4,6 +4,7 @@ import { DateTime } from "luxon";
 import { useMemo, useState } from "react";
 import { baseDayStartMinutes, dayIndices, zoneOf, type Span } from "@/lib/phase-in";
 import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { formatHoursValue } from "@/lib/interview-config";
 import { removedNames, type LineSlides, type SlideOption } from "@/lib/vacation-slide";
 import type { BidPack, Trip } from "@/types/bidpack";
 
@@ -117,7 +118,7 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
         <p className="text-xs text-ink-muted" aria-live="polite">
           {moveWords(selected)} ({day(selected.firstDay)}&ndash;{day(selected.lastDay)}) ·{" "}
           {selected.removed.length ? `takes ${removedNames(selected.removed, pack).join(", ")} off` : "takes no trips off"} ·{" "}
-          {selected.chargedCH.toFixed(1)} CH from bank · {plural(selected.daysOff, "day")} off{selected.longestOff ? `, ${selected.longestOff} in a row` : ""}
+          {formatHoursValue(selected.chargedCH)} CH from bank · {plural(selected.daysOff, "day")} off{selected.longestOff ? `, ${selected.longestOff} in a row` : ""}
           {byModel && selected.score !== null ? ` · scores ${selected.score.toFixed(1)}` : ""}
         </p>
       </div>

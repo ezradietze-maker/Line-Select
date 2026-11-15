@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { fetchAwardSummary, MIN_SHARED_PILOTS, submitAwardHistory, summaryForSeniority, type AwardHistorySummary } from "@/lib/award-history";
 import type { HoldHistorySummary } from "@/lib/learning/hold-history";
 import { fetchHoldHistory } from "@/lib/learning/learning-client";
+import { formatHoursValue } from "@/lib/interview-config";
 import type { BidPack } from "@/types/bidpack";
 import type { AwardHistorySubmission, AwardSummaryResponse } from "@/types/award-history";
 import type { UserAccount } from "@/types/auth";
@@ -154,7 +155,7 @@ export function AwardHistoryPanel({ bidPack, seniority, user, rankedLineIds }: A
               >
                 {bidPack.lines.map((line) => (
                   <option key={line.id} value={line.id}>
-                    Line {line.lineNumber} &mdash; {line.daysOff} days off, {line.totalCreditHours.toFixed(1)} credit
+                    Line {line.lineNumber} &mdash; {line.daysOff} days off, {formatHoursValue(line.totalCreditHours)} credit
                   </option>
                 ))}
               </select>
@@ -214,7 +215,7 @@ export function AwardSummaryView({ summary }: { summary: AwardHistorySummary | n
     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
       <Stat label="Nearby reports" value={`About ${summary.nearbyCount}`} />
       <Stat label="Avg days off held" value={summary.avgDaysOff?.toFixed(1) ?? "—"} />
-      <Stat label="Avg credit hours held" value={summary.avgCreditHours?.toFixed(1) ?? "—"} />
+      <Stat label="Avg credit hours held" value={summary.avgCreditHours === null ? "—" : formatHoursValue(summary.avgCreditHours)} />
       {summary.lineRate !== null && <Stat label="Held a regular line" value={`${Math.round(summary.lineRate * 100)}%`} />}
     </div>
   );
