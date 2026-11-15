@@ -43,7 +43,8 @@ import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { packColumns } from "@/lib/bidpack-row";
 import { monthLine } from "@/lib/bid-month";
-import { focusHomeAfterLoss } from "@/lib/focus-trap";
+import { focusBackTo, focusHomeAfterLoss } from "@/lib/focus-trap";
+import { focusStops, letGoWhenLeft } from "@/lib/focus-keeper";
 import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
@@ -843,9 +844,20 @@ export function ResultsView({
   const [showKeys, setShowKeys] = useState(false);
   // The control the keyboard was last on in this screen: when that control goes away (Hide, Set aside, the selection's
   // bar once its move is made, a swap's Undo, a chip brought back), focus fell to the page and the next Tab started again
-  // at the top. It goes where `focusHomeAfterLoss` says instead.
+  // at the top. It goes where `focusHomeAfterLoss` says instead. Let go once the pilot takes the keyboard off it (a click
+  // on the page, another tab): a change that comes later, from another tab, pulled focus onto a card from there.
   const screenRef = useRef<HTMLDivElement>(null);
-  const lostFocusRef = useRef<{ el: HTMLElement; lineId: string | null; chipId: string | null } | null>(null);
+  const lostFocusRef = useRef<{ el: HTMLElement; lineId: string | null; chipId: string | null; forLines: boolean; ancestors: HTMLElement[] } | null>(null);
+  useEffect(
+    () =>
+      letGoWhenLeft(
+        () => lostFocusRef.current?.el ?? null,
+        () => {
+          lostFocusRef.current = null;
+        }
+      ),
+    []
+  );
   const listedBeforeRef = useRef(displayedIds);
   const chipsBeforeRef = useRef(tiers.state.setAside);
   useLayoutEffect(() => {
@@ -863,13 +875,15 @@ export function ResultsView({
     if (!home || !root) return;
     const undoButton = root.querySelector<HTMLElement>("[data-order-undo]");
     const target =
-      "line" in home
-        ? root.querySelector<HTMLElement>(`[data-line-id="${CSS.escape(home.line)}"] button[aria-expanded]`)
-        : "chip" in home
-          ? root.querySelector<HTMLElement>(`[data-set-aside-chip="${CSS.escape(home.chip)}"]`)
-          : undoButton;
+      "near" in home
+        ? focusBackTo(null, lost.ancestors, (a) => a.isConnected && root.contains(a), focusStops)
+        : (("line" in home
+            ? root.querySelector<HTMLElement>(`[data-line-id="${CSS.escape(home.line)}"] button[aria-expanded]`)
+            : "chip" in home
+              ? root.querySelector<HTMLElement>(`[data-set-aside-chip="${CSS.escape(home.chip)}"]`)
+              : null) ?? undoButton);
     // Not scrolled to: a line set aside by a click on the bar shouldn't jump the page to wherever the next one sits.
-    (target ?? undoButton)?.focus({ preventScroll: true });
+    target?.focus({ preventScroll: true });
   });
   // Every listed line, drawn or not: j and k scroll the next one into view, which draws it.
   const keyableIds = displayedIds;
@@ -924,8 +938,14 @@ export function ResultsView({
       // Into a line's right-click menu, the line keeps it: drawn, wherever a move sends it, for focus to come back to.
       if (!(e.target instanceof HTMLElement) || e.target.closest('[role="menu"]')) return;
       const id = e.target.closest<HTMLElement>("[data-line-id]")?.dataset.lineId ?? null;
-      // Kept for when the control goes away under it (see the layout effect below). A dialog gives focus back itself.
-      lostFocusRef.current = screenRef.current?.contains(e.target) ? { el: e.target, lineId: id, chipId: e.target.dataset.setAsideChip ?? null } : null;
+      // Kept for when the control goes away under it (see the layout effect above), with every box out to the screen for
+      // when it isn't in a line. A dialog gives focus back itself.
+      const screen = screenRef.current;
+      const ancestors: HTMLElement[] = [];
+      if (screen?.contains(e.target)) for (let a = e.target.parentElement; a && a !== screen.parentElement; a = a.parentElement) ancestors.push(a);
+      lostFocusRef.current = screen?.contains(e.target)
+        ? { el: e.target, lineId: id, chipId: e.target.dataset.setAsideChip ?? null, forLines: e.target.closest("[data-for-lines]") !== null, ancestors }
+        : null;
       if (id && id !== focusId) setFocusId(id);
       if (keyId !== null && id && id !== keyId && keyableIds.includes(id)) setKeyId(id);
     }
@@ -1403,7 +1423,7 @@ export function ResultsView({
       )}
 
       {learnMessage && !promptJudgment && (
-        <div role="status" className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent animate-fade-in">
+        <div role="status" data-for-lines className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent animate-fade-in">
           <span>{learnMessage}</span>
           {lastSwap && validPlacements.some((p) => p.id === lastSwap.id) && (
             <button type="button" onClick={() => undoSwap(lastSwap.id)} className="shrink-0 font-semibold underline underline-offset-2 hover:text-ink print:hidden">
@@ -1413,24 +1433,29 @@ export function ResultsView({
         </div>
       )}
 
+      {/* Answered, the questions after a swap go: the keyboard goes back to the line (see `focusHomeAfterLoss`). */}
       {promptJudgment && (
-        <PreferenceMicroPrompt
-          judgment={promptJudgment}
-          profile={profile}
-          implicitValuesByLine={implicitValuesByLine}
-          onResolved={handlePromptResolved}
-        />
+        <div data-for-lines className="contents">
+          <PreferenceMicroPrompt
+            judgment={promptJudgment}
+            profile={profile}
+            implicitValuesByLine={implicitValuesByLine}
+            onResolved={handlePromptResolved}
+          />
+        </div>
       )}
 
       {swapQuestion && (
-        <SwapQuestionCard
-          key={swapQuestion.question.dragId}
-          question={swapQuestion.question}
-          options={swapQuestion.options}
-          onReply={replyToSwap}
-          onDismiss={() => setSwapQuestion(null)}
-          onStop={stopAsking}
-        />
+        <div data-for-lines className="contents">
+          <SwapQuestionCard
+            key={swapQuestion.question.dragId}
+            question={swapQuestion.question}
+            options={swapQuestion.options}
+            onReply={replyToSwap}
+            onDismiss={() => setSwapQuestion(null)}
+            onStop={stopAsking}
+          />
+        </div>
       )}
 
       {flightsLooking && !flights && listReady && (
@@ -1625,7 +1650,7 @@ export function ResultsView({
           )}
 
           {dragEnabled && validPlacements.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted print:hidden">
+            <div data-for-lines className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted print:hidden">
               <span>
                 {validPlacements.length === 1 ? "1 swap" : `${validPlacements.length} swaps`} of yours kept in this order.
               </span>
