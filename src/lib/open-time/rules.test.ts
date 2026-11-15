@@ -251,6 +251,11 @@ describe('CBA 2026 25.L.8.a: "may not increase the pilot\'s BLG, as published, b
     expect(banksFor(18 + 56 / 60, { PMU: 10.25 }, DEC)[0].notes[0]).toContain("18:56 CH passes your 10:15 CH of PMU");
     expect(checkContingency(18 + 56 / 60, [])[0].text).toContain("cover 18:56 CH");
   });
+  // Round 25: an even trade a hair under zero in floating point (0.2 + 12.1 - 12.3) read "-0:00 CH".
+  it("an even trade nets 0:00, unsigned", () => {
+    expect(checkTradeLimit(12.1, 12.3, 0.2, DEC)[0].text).toContain("Net of trades: 0:00 CH");
+    expect(checkTradeLimit(12, 12, 0, DEC)[0].text).toContain("Net of trades: 0:00 CH");
+  });
 });
 
 describe('CBA 2026 25.L.8.b: a "similar footprint" trade "shall be accepted"', () => {

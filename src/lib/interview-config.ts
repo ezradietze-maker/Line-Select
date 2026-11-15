@@ -225,9 +225,11 @@ export interface TargetSliderQuestionConfig {
 }
 
 export function formatHoursValue(hours: number): string {
-  // Rounded as a whole count of minutes, so 7.995 reads 8:00, not 7:60.
-  const total = Math.round(hours * 60);
-  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
+  // Rounded as a whole count of minutes, so 7.995 reads 8:00, not 7:60. A negative is signed once, in front: -0.5 read
+  // "-1:-30".
+  const total = Math.round(Math.abs(hours) * 60);
+  const sign = hours < 0 && total > 0 ? "-" : "";
+  return `${sign}${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
 const NO_SLIDER_FALLBACK_TEXT = "No exact target set — this won't be weighted specifically in your ranking.";
