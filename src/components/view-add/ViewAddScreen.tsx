@@ -25,9 +25,9 @@ const VIPS_MENU = "https://pilot.fedex.com/vips-bin/vipscgi?webmenu?all";
 const name = (t: Trip) => (t.pairingNumber ? `trip ${t.pairingNumber}` : "a trip");
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-function ChoiceRow({ choice, index, byModel }: { choice: ViewAddChoice; index: number; byModel: boolean }) {
+function ChoiceRow({ choice, index, byModel, className = "" }: { choice: ViewAddChoice; index: number; byModel: boolean; className?: string }) {
   return (
-    <li className="text-xs text-ink-muted">
+    <li className={`text-xs text-ink-muted ${className}`}>
       <span className="font-medium text-ink">
         {index + 1}. {choice.text}.
       </span>{" "}
@@ -42,11 +42,10 @@ function ChoiceRow({ choice, index, byModel }: { choice: ViewAddChoice; index: n
   );
 }
 
-function Plan({ plan }: { plan: ViewAddPlan }) {
+export function Plan({ plan }: { plan: ViewAddPlan }) {
   const [all, setAll] = useState(false);
   const [copied, setCopied] = useState<"yes" | "no" | null>(null);
   const best = plan.combos[0];
-  const shown = all ? plan.choices : plan.choices.slice(0, CHOICES_SHOWN);
 
   const copy = async () => {
     try {
@@ -82,11 +81,12 @@ function Plan({ plan }: { plan: ViewAddPlan }) {
       {plan.choices.length > 0 && (
         <>
           <ol className="space-y-1.5">
-            {shown.map((c, i) => (
-              <ChoiceRow key={`${c.text}-${i}`} choice={c} index={i} byModel={plan.byModel} />
+            {/* Printed whole: the sheet has no "Show all", and a list cut at 15 read as the whole of it. */}
+            {plan.choices.map((c, i) => (
+              <ChoiceRow key={`${c.text}-${i}`} choice={c} index={i} byModel={plan.byModel} className={!all && i >= CHOICES_SHOWN ? "hidden print:block" : ""} />
             ))}
           </ol>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
             <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={copy}>
               Copy my list
             </Button>
@@ -97,7 +97,7 @@ function Plan({ plan }: { plan: ViewAddPlan }) {
             )}
             {copied === "yes" && <span className="text-xs text-ink-muted">Copied.</span>}
           </div>
-          {copied === "no" && <textarea readOnly aria-label="Your list, to copy" className={`${FIELD} h-32 w-full text-xs`} value={viewAddCopyText(plan)} />}
+          {copied === "no" && <textarea readOnly aria-label="Your list, to copy" className={`${FIELD} h-32 w-full text-xs print:hidden`} value={viewAddCopyText(plan)} />}
         </>
       )}
 
@@ -208,7 +208,8 @@ function ViewAddBuilder({ bidPack, seniority, profile, userId }: { bidPack: BidP
           .
         </span>
       </Notice>
-      <section aria-label="View/Add list" className="panel-glass mt-6 p-4 sm:p-5 print:hidden">
+      {/* Printed with the list it built, as Open Time's board is: the line and hours it's for, not the pasted text or the button. */}
+      <section aria-label="View/Add list" className="panel-glass mt-6 p-4 sm:p-5">
         {!hasOpen && bidPack.bidPeriodStart && <p className="mt-2 text-xs text-ink">This pack was saved before we kept its open trips. Upload it again to see them, or paste VIPS&rsquo;s list below.</p>}
         {!bidPack.bidPeriodStart && <p className="mt-2 text-xs text-ink">This pack&rsquo;s trips aren&rsquo;t on dates, so we can&rsquo;t check them against your line.</p>}
 
@@ -228,16 +229,16 @@ function ViewAddBuilder({ bidPack, seniority, profile, userId }: { bidPack: BidP
         </div>
         {lineNumber.trim() !== "" && !line && <p className="mt-1 text-xs text-danger">Line {lineNumber.trim()} isn&rsquo;t in this pack.</p>}
 
-        <label className="mt-3 block text-xs text-ink-muted">
+        <label className="mt-3 block text-xs text-ink-muted print:hidden">
           VIPS&rsquo;s open-time list, pasted (trip number and date on each line). Optional until the window opens.
           <textarea className={`${FIELD} mt-1 block h-20 w-full`} value={pasted} onChange={(e) => setPasted(e.target.value)} />
         </label>
-        <label className="mt-2 block text-xs text-ink-muted">
+        <label className="mt-2 block text-xs text-ink-muted print:hidden">
           Any reserve blocks or simulator events you want, by label, one a line. They go after the trips, as typed.
           <textarea className={`${FIELD} mt-1 block h-14 w-full`} value={labels} onChange={(e) => setLabels(e.target.value)} />
         </label>
 
-        <Button variant="secondary" className="mt-3 px-3 py-1.5 text-xs" disabled={!line} onClick={build}>
+        <Button variant="secondary" className="mt-3 px-3 py-1.5 text-xs print:hidden" disabled={!line} onClick={build}>
           Build my list
         </Button>
 

@@ -4,7 +4,13 @@ import { groupDepartures } from "@/lib/metrics/departures";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { lineStandbyDays } from "@/lib/standby";
-import type { Line } from "@/types/bidpack";
+import { buildSortContext, LINE_SORTS_BY_ID, sortValues } from "@/lib/line-sorts";
+import { measure, prepareMetrics } from "@/lib/metrics/compute";
+import { homeParams } from "@/lib/scoring-v2/score";
+import { startingSettings } from "@/lib/use-commute-check";
+import type { BidPack, Line } from "@/types/bidpack";
+import type { PilotModel } from "@/types/pilot-model";
+import type { PreferenceProfile } from "@/types/preferences";
 
 const START = "2026-09-28"; // a Monday
 const line = (number: string) => SAMPLE_BID_PACK.lines.find((l) => l.lineNumber === number)!;
@@ -196,6 +202,28 @@ describe("monthDepartureOptions", () => {
     expect(o).toMatchObject({ base: "MEM", homeAirports: ["SAN"], hasCrashPad: false, minHomeHours: 48 });
     expect(monthDepartureOptions("MEM", { isCommuter: false, commuteFrom: null, hasCrashPad: null }).minHomeHours).toBeUndefined();
   });
+
+  it("counts the departures the ranking counts, with the hours at home the brain read from the pilot's words", () => {
+    // Two days between the trips: one departure for a pilot who goes home only for two days at home, two at 24 hours.
+    const l = placed("9006", [2, 5]);
+    const pack = { ...SAMPLE_BID_PACK, bidPeriodStart: START, bidPeriodDays: 28, lines: [l] } as BidPack;
+    const home = { airports: ["SAN"], commuter: true, commuteBufferHours: 3, minHomeHours: 48 };
+    const pilotModel = { version: 2, home, criteria: [], threads: [], notMeasurable: [], synopsis: "" } as PilotModel;
+    // He skipped the hours-at-home question; the brain read it from what he said.
+    const profile = { isCommuter: true, commuteFrom: "SAN", hasCrashPad: false, minHomeHours: null, discoveredFacts: [], pilotModel };
+    const pm = prepareMetrics(pack);
+    const ranked = measure("homeDepartures", l, pm, homeParams(pilotModel));
+    expect(ranked).toBe(1);
+    const options = monthDepartureOptions(pack.base, profile);
+    expect(options).toMatchObject({ minHomeHours: 48, commuteBufferHours: 3 });
+    expect(buildDetailedMonth(l, START, 28, {}, options).summary.departures).toBe(ranked);
+    const sort = sortValues(LINE_SORTS_BY_ID.get("homeDepartures")!, { id: "homeDepartures" }, buildSortContext(pack, profile, pm, options));
+    expect(sort.get(l.id)).toBe(ranked);
+    // The commute filter joins the trips the same way.
+    expect(startingSettings(profile as unknown as PreferenceProfile).minHomeHours).toBe(48);
+    // His own answer on the screen is put on the model (`withHomeFacts`); before there's a model, it's the profile's.
+    expect(monthDepartureOptions(pack.base, { ...profile, pilotModel: undefined, minHomeHours: 36 })).toMatchObject({ homeAirports: ["SAN"], minHomeHours: 36 });
+  });
 });
 
 describe("chained trips", () => {
@@ -234,6 +262,36 @@ describe("chained trips", () => {
     // Two trips a week apart: no chain, two departures.
     expect(m.days.some((d) => d.chain)).toBe(false);
     expect(m.summary.departures).toBe(2);
+  });
+});
+
+describe("a late release at base", () => {
+  /** Sample trip 501, its flight home moved to leave LAX at `dep` and land in MEM at `arr` (local), `start`/`end` minutes in. */
+  function lateLine(dep: [string, string], arr: [string, string], start: number, end: number): Line {
+    const l = SAMPLE_BID_PACK.lines.find((x) => x.trips.some((t) => t.pairingNumber === "501"))!;
+    const t = l.trips.find((x) => x.pairingNumber === "501")!;
+    const anchor = Date.parse(t.zuluAnchor!);
+    const schedule = structuredClone(t.schedule);
+    Object.assign(schedule[1].legs[0], {
+      depTimeLocal: dep[0], depTimeGmt: dep[1], arrTimeLocal: arr[0], arrTimeGmt: arr[1], startMinutes: start, endMinutes: end,
+      depTimeZulu: new Date(anchor + start * 60_000).toISOString(), arrTimeZulu: new Date(anchor + end * 60_000).toISOString(),
+    });
+    return { ...l, trips: [{ ...t, schedule }] };
+  }
+  const commuter = monthDepartureOptions("MEM", { isCommuter: true, commuteFrom: "SAN", hasCrashPad: false });
+  const noted = (l: Line, mode: "local" | "zulu") => buildDetailedMonth(l, SAMPLE_BID_PACK.bidPeriodStart ?? null, 28, {}, commuter, mode).days.filter((d) => d.baseNote?.includes("too late"));
+
+  it("says the night in base on the evening it costs, at the base's own time, on either clock", () => {
+    // Lands MEM 00:35 on Sep 13: the night it costs is Sep 12's.
+    const past = lateLine(["1950", "0250"], ["0035", "0535"], 1910, 2075);
+    for (const mode of ["local", "zulu"] as const) {
+      expect(noted(past, mode).map((d) => [d.label, d.baseNote])).toEqual([["12", "Back in MEM at 00:35, just after midnight — too late to get home that night, so a night in MEM."]]);
+    }
+    // Lands MEM 23:30 on Sep 12 (04:30 Zulu on the 13th).
+    const late = lateLine(["1845", "2345"], ["2330", "0430"], 1845, 2010);
+    for (const mode of ["local", "zulu"] as const) {
+      expect(noted(late, mode).map((d) => [d.label, d.baseNote])).toEqual([["12", "Back in MEM at 23:30 — too late to get home that night, so a night in MEM."]]);
+    }
   });
 });
 

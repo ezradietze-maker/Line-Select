@@ -6,10 +6,11 @@ import { ConfirmEmailRefusal } from "@/components/auth/ConfirmEmail";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { useAppState } from "@/lib/app-state";
-import { carryInToSend, loadCarryIn, saveCarryIn, type CarryInState } from "@/lib/carry-in-storage";
+import { carryInToSend, loadCarryIn, sameCarryIn, saveCarryIn, type CarryInState } from "@/lib/carry-in-storage";
+import type { CarryInItem } from "@/lib/phase-in";
 import { heldTripsOfLine, tradeLocksFor, tripInstances } from "@/lib/trades/holding";
 import { clearTradeHolding, fetchTradeHolding, saveTradeHolding, saveTradeSettings } from "@/lib/trades/holding-client";
-import { carryInReach, tripInstanceKey } from "@/lib/trades/legality";
+import { carryInReachDays, tripInstanceKey } from "@/lib/trades/legality";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { HeldTrip, TradeHolding, TradeLock, TradeSettings } from "@/types/trade";
 
@@ -52,6 +53,7 @@ export function HoldingPanel({
   onSaved?: () => void;
 }) {
   const { profile, user } = useAppState();
+  const userId = user?.id ?? null;
   const onHoldingRef = useRef(onHolding);
   useEffect(() => {
     onHoldingRef.current = onHolding;
@@ -69,6 +71,8 @@ export function HoldingPanel({
   const [refused, setRefused] = useState<string | null>(null);
   /** What this device has them carrying in from last month (the carry-in on Your rankings), read as they start to confirm. */
   const [carry, setCarry] = useState<CarryInState | null>(null);
+  /** What this device would send as their carry-in now: changed on Your rankings since they confirmed, it isn't what trades fit around. */
+  const [carryHere, setCarryHere] = useState<CarryInItem[] | undefined>(undefined);
 
   const instances = useMemo(() => tripInstances(bidPack), [bidPack]);
   const byKey = useMemo(() => new Map(instances.map((t) => [tripInstanceKey(t), t])), [instances]);
@@ -76,16 +80,13 @@ export function HoldingPanel({
   const lines = useMemo(() => bidPack.lines.filter((l) => !l.estimated), [bidPack]);
   const awarded = (profile?.logbook ?? []).find((m) => m.bidPackId === bidPack.id && m.lineNumber)?.lineNumber ?? null;
   // The days a trip carried in could still be flying, as this pack's own lines carry out.
-  const carryDays = useMemo(() => {
-    const reach = carryInReach(bidPack);
-    const start = bidPack.bidPeriodStart ? Date.parse(`${bidPack.bidPeriodStart}T00:00:00Z`) : null;
-    return reach !== null && start !== null ? Math.max(1, Math.ceil((reach - start) / 86_400_000)) : null;
-  }, [bidPack]);
+  const carryDays = useMemo(() => carryInReachDays(bidPack), [bidPack]);
 
   useEffect(() => {
     let cancelled = false;
     void fetchTradeHolding(bidPack.id).then((state) => {
       if (cancelled) return;
+      setCarryHere(carryInToSend(loadCarryIn(userId, bidPack.id)));
       if (state) {
         setHolding(state.holding);
         onHoldingRef.current?.(state.holding);
@@ -96,7 +97,7 @@ export function HoldingPanel({
     return () => {
       cancelled = true;
     };
-  }, [bidPack.id]);
+  }, [bidPack.id, userId]);
 
   function chooseLine(number: string | null) {
     setLineNumber(number);
@@ -119,6 +120,7 @@ export function HoldingPanel({
     setBusy(true);
     setError(null);
     setRefused(null);
+    const sending = carryInToSend(loadCarryIn(userId, bidPack.id));
     const saved = await saveTradeHolding({
       packId: bidPack.id,
       bidPackMeta: { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, month: bidPack.month },
@@ -127,12 +129,13 @@ export function HoldingPanel({
       // What they carry in from last month, as Open time and View/Add check against: a trade has to fit around it too.
       // None only when they've said so: nothing kept here may be nothing entered here, and sent as "none" the matching
       // would hand them early trips across a carried-in one.
-      carryIn: carryInToSend(loadCarryIn(user?.id ?? null, bidPack.id)),
+      carryIn: sending,
     });
     setBusy(false);
     if (!saved) return setError("Couldn't save what you hold. Check your connection and try again.");
     if ("confirmEmail" in saved) return setRefused(saved.confirmEmail);
     setHolding(saved);
+    setCarryHere(sending);
     onHoldingRef.current?.(saved);
     onSaved?.();
     setEditing(false);
@@ -196,6 +199,11 @@ export function HoldingPanel({
               );
             })}
           </ul>
+          {!sameCarryIn(holding.carryIn, carryHere) && (
+            <p className="mt-2 text-sm text-warn">
+              What you carry in from last month has changed since you confirmed. Trades still fit around what you had then: Update, then Confirm, to use it.
+            </p>
+          )}
           <label className="mt-3 flex items-start gap-2 text-sm text-ink">
             <input type="checkbox" className="mt-0.5" checked={settings.suggestMe} onChange={(e) => void changeSettings({ suggestMe: e.target.checked })} />
             <span>Include me when suggesting trades</span>
@@ -311,8 +319,9 @@ export function HoldingPanel({
                       checked={!!carry.none}
                       onChange={(e) => {
                         const next = { ...carry, none: e.target.checked };
-                        saveCarryIn(user?.id ?? null, bidPack.id, next);
+                        saveCarryIn(userId, bidPack.id, next);
                         setCarry(next);
+                        setCarryHere(carryInToSend(next));
                       }}
                     />
                     <span>Nothing carries in from last month</span>

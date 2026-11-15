@@ -3,7 +3,7 @@ import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { packIdFor } from "@/lib/pack-id";
-import { deleteTradeHolding, getBidPackRecord, getTradeHolding, getTradeSettings, saveTradeHolding } from "@/lib/server/db";
+import { deleteTradeHolding, freeOffersOfTripsNotHeld, getBidPackRecord, getTradeHolding, getTradeSettings, saveTradeHolding } from "@/lib/server/db";
 import { readJsonBody } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { accountPackFingerprint } from "@/lib/server/trade-pack";
@@ -55,6 +55,8 @@ export async function PUT(request: Request) {
     const saved = await saveTradeHolding(user.id, holding, await accountPackFingerprint(user.id, holding.packId));
     // Every suggestion on this pack was worked out from what they held before.
     await lapseSuggestionsFor(user.id, holding.packId);
+    // And their board offers of trips no longer on it: the board could otherwise agree a trip they don't have.
+    await freeOffersOfTripsNotHeld(user.id, holding);
     return NextResponse.json({ holding: saved });
   } catch (e) {
     await reportProblem("trades", e, { action: "save holding" });

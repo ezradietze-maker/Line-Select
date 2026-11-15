@@ -231,12 +231,13 @@ function layoverScore(f: TripFacts, l: LayoverFact, p: MetricParams): number {
 const daysAway = (hours: number) => Math.max(1, Math.ceil(hours / 24 - 1e-9));
 /** The hours of a day each part covers, from its midnight; a night runs into the next morning. */
 const DAY_PART_HOURS: Record<DayPart | "day", [number, number]> = { morning: [7, 12], afternoon: [12, 17], evening: [17, 22], night: [22, 30], day: [8, 20] };
-/** Calendar days from one instant to another on a clock, both days counted; 0 when either isn't known. */
-function daysTouched(from: number | null, to: number | null, zone: string): number {
-  if (from === null || to === null || to < from) return 0;
-  const a = DateTime.fromMillis(from, { zone }).startOf("day");
-  const b = DateTime.fromMillis(to, { zone }).startOf("day");
-  return Math.round(b.diff(a, "days").days) + 1;
+/** The calendar dates from one instant to another on a clock, both days counted; none when either isn't known. */
+function datesTouched(from: number | null, to: number | null, zone: string): string[] {
+  if (from === null || to === null || to < from) return [];
+  const dates: string[] = [];
+  const last = DateTime.fromMillis(to, { zone }).startOf("day");
+  for (let d = DateTime.fromMillis(from, { zone }).startOf("day"); d <= last; d = d.plus({ days: 1 })) dates.push(d.toISODate()!);
+  return dates;
 }
 /** Standby days (one standby row each) at cities matching `where`. */
 const standbyDaysWhere = (trips: TripFacts[], where: (city: string) => boolean) =>
@@ -624,7 +625,8 @@ export const METRICS: MetricDef[] = [
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
     badEndAtWorst: true,
     perMonth: true,
-    line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((n, d) => n + monthShare(d.trips[d.trips.length - 1], d.leaveHome ?? d.reportAt, c), 0),
+    // Only the departure the month ends on: a run's earlier days, flown as their own departures, are all this month's.
+    line: (_l, trips, c, p) => departuresOf(trips, c, p).reduce((n, d) => n + (d.carriesOver ? monthShare(d.trips[d.trips.length - 1], d.leaveHome ?? d.reportAt, c) : 1), 0),
     belowFine: BELOW_FINE_COUNTS,
   },
   {
@@ -633,13 +635,14 @@ export const METRICS: MetricDef[] = [
     unit: "days",
     category: "calendar",
     description:
-      "Calendar days each departure touches, from the day the pilot leaves home to the day they're back, both counted — commute days and all: a two-day trip with a commute either side takes four (\"there are four days that I'm thinking about work — for just 12 hours of pay\"). Counted on the clock at home; for a pilot who lives in the domicile city, from report to the end of the last duty period. A departure running into the next bid month counts its days in this one. For a pilot who talks about days lost to work rather than hours away.",
+      "Calendar days each departure touches, from the day the pilot leaves home to the day they're back, both counted — commute days and all: a two-day trip with a commute either side takes four (\"there are four days that I'm thinking about work — for just 12 hours of pay\"). Counted on the clock at home; for a pilot who lives in the domicile city, from report to the end of the last duty period. A day two departures share counts once. A departure running into the next bid month counts its days in this one. For a pilot who talks about days lost to work rather than hours away.",
     params: ["homeAirports", "commuteBufferHours", "frontBufferHours", "backRestHours", "minHomeHours"],
     perMonth: true,
     line: (_l, trips, c, p) => {
       const home = p.homeAirports?.find((a) => a && a !== c.base);
       const zone = timezoneForAirport(home ?? c.base) ?? timezoneForAirport(c.base) ?? "UTC";
-      return departuresOf(trips, c, p).reduce((n, d) => n + daysTouched(d.leaveHome ?? d.reportAt, d.backHome ?? d.releaseAt, zone), 0);
+      // A day two departures share — home at 01:00, out again that afternoon — is given to work once.
+      return new Set(departuresOf(trips, c, p).flatMap((d) => datesTouched(d.leaveHome ?? d.reportAt, d.backHome ?? d.releaseAt, zone))).size;
     },
   },
   {
@@ -860,7 +863,10 @@ export const METRICS: MetricDef[] = [
     description:
       "Latest local arrival at the domicile on a trip that ends with operated flying (a commuter then needs a flight home). The night runs on past midnight: an arrival before 05:00 counts as later than the evening before it (02:30 is measured as 26:30, i.e. 1590 minutes); from 05:00 it's morning, with flights home. A line whose every trip ends on a deadhead has no flight home to catch from the domicile: it counts as 05:00, the earliest there is.",
     line: (_l, trips) => {
-      const flying = trips.filter((t) => !t.noFlying);
+      // A trip still flying at the month's end comes home in the next: its last landing this month is somewhere else
+      // (02:02 in Guangzhou read as a release at the domicile in the small hours), and its flight home is next month's.
+      const flying = trips.filter((t) => !t.noFlying && !t.trip.carriesIntoNextMonth);
+      if (flying.length === 0 && trips.some((t) => !t.noFlying)) return NO_BASE_RELEASE;
       if (flying.length && flying.every((t) => t.back)) return NO_BASE_RELEASE;
       const arrivals = flying
         .filter((t) => !t.back)

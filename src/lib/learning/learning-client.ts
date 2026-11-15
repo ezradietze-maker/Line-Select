@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import type { BrainOutcome } from "@/lib/learning/brain-learning";
 import type { CorrectionEvent } from "@/lib/learning/interview-learning";
 import type { Bucket, InterviewOutcome } from "@/lib/learning/interview-outcome";
@@ -41,21 +42,21 @@ export function fetchInterviewPlan(params: { base: string; aircraft: string; sea
   if (params.isCommuter !== null) q.set("commuter", params.isCommuter ? "1" : "0");
   if (params.percentile !== null) q.set("percentile", String(Math.round(params.percentile * 100) / 100));
   return withTimeout(async (signal) => {
-    const res = await fetch(`/api/learning/interview-policy?${q.toString()}`, { signal });
+    const res = await apiFetch(`/api/learning/interview-policy?${q.toString()}`, { signal });
     return res.ok ? ((await res.json()) as InterviewPlan) : null;
   }, 2500);
 }
 
 export function postInterviewOutcome(outcome: InterviewOutcome): void {
   void withTimeout(
-    (signal) => fetch("/api/learning/interview-outcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(outcome), signal, keepalive: true }),
+    (signal) => apiFetch("/api/learning/interview-outcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(outcome), signal, keepalive: true }),
     8000
   );
 }
 
 export function postBrainOutcome(outcome: BrainOutcome): void {
   void withTimeout(
-    (signal) => fetch("/api/learning/brain-outcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(outcome), signal, keepalive: true }),
+    (signal) => apiFetch("/api/learning/brain-outcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(outcome), signal, keepalive: true }),
     8000
   );
 }
@@ -63,14 +64,14 @@ export function postBrainOutcome(outcome: BrainOutcome): void {
 export function postCorrections(pack: { base: string; aircraft: string; seat: string }, events: CorrectionEvent[]): void {
   if (events.length === 0) return;
   void withTimeout(
-    (signal) => fetch("/api/learning/corrections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...pack, events }), signal, keepalive: true }),
+    (signal) => apiFetch("/api/learning/corrections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...pack, events }), signal, keepalive: true }),
     8000
   );
 }
 
 export function fetchHoldHistory(): Promise<HoldHistorySummary | null> {
   return withTimeout(async (signal) => {
-    const res = await fetch("/api/learning/hold-history", { signal });
+    const res = await apiFetch("/api/learning/hold-history", { signal });
     if (!res.ok) return null;
     return ((await res.json()) as { history: HoldHistorySummary | null }).history;
   }, 6000);

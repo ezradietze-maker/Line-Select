@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import type { AwardHistorySubmission, AwardSummaryResponse, HeldByView } from "@/types/award-history";
 import type { BidPack, SeniorityEntry } from "@/types/bidpack";
 import type { SeniorityInput } from "@/types/strategy";
@@ -51,7 +52,7 @@ export function ownListEntry(bidPack: Pick<BidPack, "seniorityList"> | null, sen
 
 export async function fetchAwardSummary(base: string, aircraft: string, seat: string): Promise<AwardSummaryResponse> {
   try {
-    const res = await fetch(`/api/award-history?${new URLSearchParams({ base, aircraft, seat }).toString()}`);
+    const res = await apiFetch(`/api/award-history?${new URLSearchParams({ base, aircraft, seat }).toString()}`);
     if (!res.ok) return { totalReports: 0, bands: [] };
     return (await res.json()) as AwardSummaryResponse;
   } catch {
@@ -62,7 +63,7 @@ export async function fetchAwardSummary(base: string, aircraft: string, seat: st
 /** Who held what for this pack, as far as pilots have agreed to show it. Needs a signed-in pilot. */
 export async function fetchHeldBy(pack: { base: string; aircraft: string; seat: string; month: string }): Promise<HeldByView | null> {
   try {
-    const res = await fetch(`/api/award-history/held-by?${new URLSearchParams(pack).toString()}`);
+    const res = await apiFetch(`/api/award-history/held-by?${new URLSearchParams(pack).toString()}`);
     if (!res.ok) return null;
     return (await res.json()) as HeldByView;
   } catch {
@@ -73,7 +74,7 @@ export async function fetchHeldBy(pack: { base: string; aircraft: string; seat: 
 /** Takes back one month's share, or with no month, every share this pilot has made. */
 export async function withdrawAwardShares(month?: { base: string; aircraft: string; seat: string; month: string }): Promise<{ ok: boolean; removed?: number; error?: string }> {
   try {
-    const res = await fetch("/api/award-history", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(month ?? {}) });
+    const res = await apiFetch("/api/award-history", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(month ?? {}) });
     const data = (await res.json().catch(() => null)) as { removed?: number; error?: string } | null;
     if (!res.ok) return { ok: false, error: data?.error ?? "Something went wrong. Try again." };
     return { ok: true, removed: data?.removed ?? 0 };
@@ -87,7 +88,7 @@ export async function submitAwardHistory(
   submission: AwardHistorySubmission
 ): Promise<{ ok: boolean; error?: string; confirmEmail?: boolean }> {
   try {
-    const res = await fetch("/api/award-history", {
+    const res = await apiFetch("/api/award-history", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(submission),

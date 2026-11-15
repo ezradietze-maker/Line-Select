@@ -1,6 +1,5 @@
 import { fitCalibration, learnForecastPriors, type ForecastPriorModel } from "@/lib/learning/forecast-learning";
-import { computeBrainModel } from "@/lib/learning/brain-learning";
-import { cohortLevels } from "@/lib/learning/cohort";
+import { computeBrainModel, flownByLevel } from "@/lib/learning/brain-learning";
 import { awardsBehind, pairsOfCase, testCalibration } from "@/lib/learning/fair-test";
 import { reportProblem } from "@/lib/server/alerts";
 import {
@@ -71,14 +70,8 @@ async function learnCalibration(now: Date) {
 async function learnBrainModel(now: Date) {
   const outcomes = await loadBrainOutcomes(now);
   if (outcomes.length === 0) return { kind: "brain", skipped: "no story-driven interviews yet" };
-  const flownByLevel: Record<string, { notesUsed: boolean; worse: boolean }[]> = {};
-  for (const m of await loadFlownMonths()) {
-    if (m.notesUsed === null) continue;
-    const levels = cohortLevels({ base: m.base, aircraft: m.aircraft, seat: m.seat, commute: "unknown" }).filter((l) => !l.endsWith("|unknown"));
-    for (const level of levels) (flownByLevel[level] ??= []).push({ notesUsed: m.notesUsed, worse: m.feel === "worse" });
-  }
   const version = versionStamp("b", now);
-  const model = computeBrainModel(outcomes, version, now, flownByLevel);
+  const model = computeBrainModel(outcomes, version, now, flownByLevel(await loadFlownMonths()));
   const notes = Object.fromEntries(Object.entries(model.levels).map(([level, s]) => [level, { pilots: s.pilots, on: !!s.notes?.on, reason: s.notes?.reason ?? "" }]));
   const metrics = { interviews: outcomes.length, groups: Object.keys(model.levels).length, notesOn: Object.values(notes).filter((n) => n.on).length, notes };
   await saveModel({ kind: "brain", version, payload: model, metrics, sampleSize: outcomes.length, active: true });

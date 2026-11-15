@@ -1,5 +1,5 @@
 import { PASS, SEND_BACK } from "./review-examples";
-import { callCeilingUsd, schemaChars, structuredCall, type BrainUsage } from "./llm";
+import { callCeilingUsd, failedCallCost, schemaChars, structuredCall, type BrainUsage } from "./llm";
 
 /**
  * A second, cheaper reader for every question the interviewer writes, before the pilot sees it. The interviewer's
@@ -115,6 +115,7 @@ export async function reviewQuestion(input: ReviewInput): Promise<Review> {
   // Sent back: the stronger model writes the fix. On the owner's test set (Nov 2026) the cheap model was the better
   // judge — it sent back far fewer good questions — but its rewrites were weak (two asks in one, a made-up line), and
   // the stronger model's read the way the owner wants. A failed rewrite still sends the question back, with the reason.
+  let failedFix = 0;
   const fix = await structuredCall<{ rewrite: string }>({
     apiKey: input.apiKey,
     model: REWRITE_MODEL,
@@ -123,8 +124,12 @@ export async function reviewQuestion(input: ReviewInput): Promise<Review> {
     schema: REWRITE_SCHEMA as unknown as Record<string, unknown>,
     effort: "low",
     maxTokens: MAX_TOKENS,
-  }).catch(() => null);
-  const usage = fix ? { ...r.usage, costUsd: r.usage.costUsd + fix.usage.costUsd, ms: r.usage.ms + fix.usage.ms } : r.usage;
+  }).catch((e) => {
+    // Paid for all the same when the model answered before it failed.
+    failedFix = failedCallCost(e);
+    return null;
+  });
+  const usage = fix ? { ...r.usage, costUsd: r.usage.costUsd + fix.usage.costUsd, ms: r.usage.ms + fix.usage.ms } : { ...r.usage, costUsd: r.usage.costUsd + failedFix };
   return { ok, problem, rewrite: (fix?.data.rewrite ?? r.data.rewrite ?? "").trim(), usage };
 }
 

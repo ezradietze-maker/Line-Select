@@ -67,6 +67,19 @@ describe("which bid periods a rule applies to", () => {
     expect(applicabilityOf("5.E.6", "2026-11")).toEqual({ kind: "unlisted" });
   });
 
+  it("lists, above a change that waits on a later one, that change's phase", () => {
+    // 25.L.10's only change is 25.L.10.c: not "in force since June 29, 2026".
+    expect(applicabilityOf("25.L.10", "2026-11")).toEqual({ kind: "mixed", phases: [{ phase: 3, startsLabel: "the August 2027 bid period", refs: ["25.L.10.c"] }] });
+    const refsOf = (id: string, phase: number) => {
+      const a = applicabilityOf(id, "2026-11");
+      return a.kind === "mixed" ? (a.phases.find((p) => p.phase === phase)?.refs ?? []) : [];
+    };
+    expect(refsOf("25.L.4", 3)).toEqual(["25.L.4.b"]);
+    expect(refsOf("25.L.9.a", 3)).toEqual(["25.L.9.a.iii"]);
+    expect(refsOf("8.C.2.a", 2)).toEqual(["8.C.2.a.ii", "8.C.2.a.iii"]);
+    expect(refsOf("25.L", 3)).toEqual(expect.arrayContaining(["25.L.1.a", "25.L.4.b", "25.L.5.a", "25.L.6.a", "25.L.9.a.iii", "25.L.10.c"]));
+  });
+
   it("says the chart doesn't date a change that may belong with a later one", () => {
     expect(applicabilityOf("25.E.3", "2026-11")).toEqual({ kind: "undated" });
     expect(applicabilityOf("8.C.5.a.ii", "2026-11")).toEqual({ kind: "undated" });

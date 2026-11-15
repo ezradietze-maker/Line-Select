@@ -91,11 +91,14 @@ export async function PUT(request: Request) {
   }
 }
 
+/** Turns the link off; with `madeBefore`, only one made by then (a Start over sent again later, `payFeedOffOwed`). */
 export async function DELETE(request: Request) {
   const { user, error } = await signedIn(request);
   if (error) return error;
+  const madeBefore = (await bodyOf(request))?.madeBefore;
+  if (madeBefore !== undefined && (typeof madeBefore !== "string" || !Number.isFinite(Date.parse(madeBefore)))) return NextResponse.json({ error: "Invalid time." }, { status: 400 });
   try {
-    await revokeFeed(user.id);
+    await revokeFeed(user.id, madeBefore === undefined ? undefined : new Date(madeBefore));
     return NextResponse.json({ on: false }, { headers: NO_STORE });
   } catch (e) {
     return failed(e, "revoke");

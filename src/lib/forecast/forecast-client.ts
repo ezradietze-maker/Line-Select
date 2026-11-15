@@ -1,8 +1,10 @@
+import { apiFetch } from "@/lib/shown-account";
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
-import { estimateDropoutRate, forecastBid, forecastPackKey, type BidForecast } from "@/lib/forecast/forecast";
+import { estimateDropoutRate, forecastBid, forecastPackKey, seatSize, type BidForecast } from "@/lib/forecast/forecast";
 import type { BidPack } from "@/types/bidpack";
 
-export type ShareOutcome = "stored" | "not-signed-in" | "unconfirmed" | "not-requested" | "position-taken" | "store-full" | "unlisted" | "failed";
+/** "off": the pilot stopped sharing, on another device or on this one before signing out, so nothing was kept. */
+export type ShareOutcome = "stored" | "not-signed-in" | "unconfirmed" | "not-requested" | "position-taken" | "store-full" | "unlisted" | "off" | "failed";
 
 export interface ForecastResponse {
   forecast: BidForecast;
@@ -21,6 +23,8 @@ export interface ForecastRequestInput {
   rankingLineIds: string[];
   /** Whether to let the pilot's ranking help forecasts for other pilots. */
   share: boolean;
+  /** The pilot has just ticked sharing again: it clears their account's "stopped" (see the route). */
+  resume?: boolean;
 }
 
 /** Numbers rounded to keep the request small — four decimals is far below anything that could move a probability. */
@@ -37,7 +41,7 @@ export async function fetchForecast(input: ForecastRequestInput): Promise<Foreca
   const ranking = input.rankingLineIds.map((id) => indexById.get(id)).filter((i): i is number => i !== undefined);
 
   try {
-    const res = await fetch("/api/forecast", {
+    const res = await apiFetch("/api/forecast", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -48,10 +52,11 @@ export async function fetchForecast(input: ForecastRequestInput): Promise<Foreca
         features: round4(features.values),
         seniorityList: list.map((e) => (e.pay ? [e.bidNumber, e.seniority, 1] : [e.bidNumber, e.seniority])),
         regularLines: bidPack.lines.length,
-        dropoutRate: estimateDropoutRate(bidPack, list.length),
+        dropoutRate: estimateDropoutRate(bidPack, seatSize(list)),
         seniorityNumber: input.seniorityNumber,
         ranking,
         share: input.share,
+        ...(input.share && input.resume ? { resume: true } : {}),
       }),
     });
     if (res.ok) {
@@ -71,7 +76,7 @@ export { FEATURE_COUNT };
 /** Asks the server to forget this pilot's shared ranking for the seat. */
 export async function stopSharingRanking(packKey: string, lineNumbers: string[]): Promise<void> {
   try {
-    await fetch("/api/forecast", {
+    await apiFetch("/api/forecast", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",

@@ -23,7 +23,7 @@ import {
   type SliderQuestionConfig,
 } from "@/lib/interview-config";
 import { parseSeniorityInput } from "@/components/interview/SeniorityStep";
-import { resolveBidPosition } from "@/lib/forecast/forecast";
+import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { DEFAULT_MIN_HOME_HOURS } from "@/lib/metrics/departures";
 import { hasEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { migrateModelsToDepartures } from "@/lib/profile-migration";
@@ -297,6 +297,7 @@ export function PreferencesScreen({
         const shown = seniorityDraft ?? (currentProfile.seniorityNumber ? String(currentProfile.seniorityNumber) : "");
         const parsed = parseSeniorityInput(shown);
         const position = parsed !== null ? resolveBidPosition(list, parsed) : null;
+        const size = seatSize(list);
         return (
           <section className="panel-glass mt-6 p-5 sm:p-6">
             <SectionHeading>Your place in the bid</SectionHeading>
@@ -317,12 +318,14 @@ export function PreferencesScreen({
               <p className="max-w-sm text-sm text-ink-muted" aria-live="polite">
                 {position
                   ? position.exact
-                    ? `${position.bidNumber - 1} of the ${list.length} pilots bidding this seat bid ahead of you.`
-                    : `Not on this pack's list — placed by where it would fall, about ${position.bidNumber} of ${list.length}.`
+                    ? `${position.bidNumber - 1} of the ${size} pilots bidding this seat bid ahead of you.`
+                    : position.bidNumber > size
+                      ? `Not on this pack's list — placed by where it would fall, after all ${size} on it.`
+                      : `Not on this pack's list — placed by where it would fall, about ${position.bidNumber} of ${size}.`
                   : "Used only to estimate which lines you could realistically hold. Leave blank to skip."}
               </p>
             </div>
-            {position && <SeniorityQueue ahead={position.bidNumber - 1} total={list.length} />}
+            {position && <SeniorityQueue ahead={position.bidNumber - 1} total={size} />}
           </section>
         );
       })()}

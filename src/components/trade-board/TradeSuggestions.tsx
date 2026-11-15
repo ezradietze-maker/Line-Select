@@ -84,6 +84,7 @@ function SuggestionCard({
             : s.cancelReason === "unanswered"
               ? "Not everyone answered in time, so it's off and you're free for other trades."
               : "Someone's trips changed, so it no longer stands."}
+        {s.status === "cancelled" && s.steps.some((step) => step.done) && " The steps already done in VIPS stay done."}
       </div>
     );
   }

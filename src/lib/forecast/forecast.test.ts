@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildLineFeatures, FEATURE_COUNT, FEATURE_NAMES } from "@/lib/forecast/features";
-import { estimateDropoutRate, forecastBid, forecastFromFeatures, forecastPackKey, likelihoodOf, resolveBidPosition } from "@/lib/forecast/forecast";
+import { estimateDropoutRate, forecastBid, forecastFromFeatures, forecastPackKey, likelihoodOf, resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { estimatePopulation, fitWeightsFromRanking, PRIOR_MEAN } from "@/lib/forecast/population";
 import { mulberry32 } from "@/lib/forecast/random";
 import type { BidPack, Line, SeniorityEntry } from "@/types/bidpack";
@@ -39,6 +39,24 @@ describe("bid position", () => {
     expect(resolveBidPosition(list, 5)).toEqual({ bidNumber: 1, exact: false });
     expect(resolveBidPosition(list, 99)).toEqual({ bidNumber: 4, exact: false });
   });
+
+  it("counts the seat to its highest bid number when the list kept a position it didn't read", () => {
+    // Bid #2 didn't read: two rows, three pilots, and a pilot at #3 is 3rd of 3, not "3 of 2".
+    const gap: SeniorityEntry[] = [
+      { bidNumber: 1, seniority: 10 },
+      { bidNumber: 3, seniority: 40 },
+    ];
+    expect(seatSize(gap)).toBe(3);
+    expect(seatSize(list)).toBe(3);
+    expect(resolveBidPosition(gap, 40)).toEqual({ bidNumber: 3, exact: true });
+    // Junior to all of them: after #3, not 3rd.
+    expect(resolveBidPosition(gap, 99)).toEqual({ bidNumber: 4, exact: false });
+    // The forecast banner's own "10 of 9 in bid order".
+    const p = syntheticPack(4, 10);
+    const short = { ...p, seniorityList: p.seniorityList!.filter((e) => e.bidNumber !== 5) };
+    const f = forecastBid({ bidPack: short, seniorityNumber: 30, myRanking: idsBestFirst(short), simulations: 50 })!;
+    expect(f).toMatchObject({ myBidNumber: 10, totalPilots: 10 });
+  });
 });
 
 describe("dropout estimate", () => {
@@ -71,6 +89,25 @@ describe("forecastBid", () => {
     const f = forecastFromFeatures({ packKey: "k", features, seniorityList, regularLines: L, dropoutRate: 0.08, seniorityNumber: 104, myRanking: [0, 1, 2], known: [], calibrate: (p) => p * 0.6 });
     expect(f.lines.l0.pAward).toBeGreaterThan(0);
     for (const l of Object.values(f.lines)) expect(l.pAward).toBeLessThanOrEqual(l.pAvailable + 1e-12);
+  });
+
+  it("keeps the award chances one award between them when the correction raises the open chances", () => {
+    const pack = syntheticPack(20, 40);
+    const features = buildLineFeatures(pack);
+    const myRanking = [...Array(8)].map((_, i) => 19 - i);
+    const input = { packKey: "k", features, seniorityList: pack.seniorityList!, regularLines: 20, dropoutRate: 0.08, seniorityNumber: 3 * 19, myRanking, known: [], simulations: 200 };
+    const raw = forecastFromFeatures(input);
+    expect(raw.pNoRegularLine).toBeGreaterThan(0);
+    // A correction that finds the forecast was too cautious: every line's open chance goes up.
+    const f = forecastFromFeatures({ ...input, calibrate: (p) => Math.min(0.99, 0.5 + p) });
+    const awards = myRanking.map((i) => f.lines[features.lineIds[i]].pAward);
+    const total = awards.reduce((a, b) => a + b, 0);
+    expect(total).toBeLessThanOrEqual(1 + 1e-9);
+    expect(f.pNoRegularLine + total).toBeCloseTo(1, 9);
+    expect(f.pTop[1]).toBeCloseTo(awards[0], 9);
+    expect(f.pTop[5]).toBeCloseTo(awards.slice(0, 5).reduce((a, b) => a + b, 0), 9);
+    // Line #2 is only awarded when #1 is gone.
+    expect(awards[1]).toBeLessThanOrEqual(1 - f.lines[features.lineIds[myRanking[0]]].pAvailable + 1e-9);
   });
 
   it("returns nothing when the pack has no seniority list", () => {

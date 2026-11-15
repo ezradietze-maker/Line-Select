@@ -15,6 +15,7 @@ import { markCityUntried, packCityFacts, rateCity as rateCityGrade, rateCityHote
 import { commuteGroupOf } from "@/lib/learning/cohort";
 import { useAppState } from "@/lib/app-state";
 import { prepareMetrics } from "@/lib/metrics/compute";
+import { shownAccount } from "@/lib/shown-account";
 import type { BidPack } from "@/types/bidpack";
 import type { Criterion } from "@/types/pilot-model";
 import type { CityRating, CityRatingScore, CitySentiment, PreferenceProfile } from "@/types/preferences";
@@ -154,6 +155,8 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
   async function addSomething(text: string) {
     setBusy(true);
     setError(null);
+    // Whose words these are: another pilot signed in elsewhere while it was read in, and they aren't put in that one's profile.
+    const askedFor = shownAccount();
     try {
       const question = "Something to add about how you bid (from your priorities page):";
       const bi = record(question, text)!;
@@ -164,6 +167,7 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
         exchanges: bi.exchanges,
         prior: base,
       });
+      if (shownAccount() !== askedFor) return;
       const withNote = (p: PreferenceProfile): PreferenceProfile => {
         const interview = p.brainInterview ?? { exchanges: [], choices: [] };
         return { ...p, brainInterview: { ...interview, exchanges: [...interview.exchanges, { turn: interview.exchanges.length, question, answer: text }] } };

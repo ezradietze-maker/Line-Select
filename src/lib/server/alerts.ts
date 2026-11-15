@@ -44,6 +44,7 @@ const dayKey = (kind: ProblemKind, d: string) => `line-select:problems:day:${kin
 
 export type ActivityKind = "brain-read" | "interview-question" | "ask" | "pack-parsed";
 const activityKey = (kind: ActivityKind, d: string) => `line-select:activity:${kind}:${d}`;
+const feedbackHeldKey = (d: string) => `line-select:feedback-held:${d}`;
 
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message.slice(0, 300);
@@ -111,16 +112,21 @@ function alertAddress(): string | null {
 /** A tester's feedback, emailed as it arrives — at beta size each one is worth reading the day it's sent. Never throws. */
 const FEEDBACK_EMAILS_PER_HOUR = 10;
 
-export async function sendFeedbackNote(f: { category: string; message: string; page: string; pilotDisplayName: string | null; pilotEmail: string | null }): Promise<void> {
+export async function sendFeedbackNote(f: { category: string; message: string; page: string; pilotDisplayName: string | null; pilotEmail: string | null }, now = new Date()): Promise<void> {
   const to = alertAddress();
   if (!to) return;
   const who = f.pilotEmail ? `${f.pilotDisplayName ?? "A pilot"} (${f.pilotEmail})` : "A guest";
   try {
-    // A few emails an hour for the whole site; past that the notes wait in the database for the daily summary. A
-    // script posting feedback from many addresses would otherwise spend the email quota password resets depend on.
-    const hour = new Date().toISOString().slice(0, 13);
-    if ((await incrementCounter(`line-select:feedback-mail:${hour}`, 2 * 60 * 60)) > FEEDBACK_EMAILS_PER_HOUR) return;
-    await sendEmail({ to, subject: `Line Select feedback: ${f.category}${f.page ? ` on ${f.page}` : ""}`, text: `${who} wrote${f.page ? ` from ${f.page}` : ""}:\n\n${f.message}` });
+    // A few emails an hour for the whole site; past that the notes wait in the database, and the daily summary says how
+    // many. A script posting feedback from many addresses would otherwise spend the email quota password resets depend on.
+    const hour = now.toISOString().slice(0, 13);
+    if ((await incrementCounter(`line-select:feedback-mail:${hour}`, 2 * 60 * 60)) > FEEDBACK_EMAILS_PER_HOUR) {
+      await incrementCounter(feedbackHeldKey(day(now)), KEEP_SECONDS);
+      return;
+    }
+    // The page is the sender's to write: a line break in it would split the subject header.
+    const page = f.page.replace(/[\r\n\t]+/g, " ").trim().slice(0, 120);
+    await sendEmail({ to, subject: `Line Select feedback: ${f.category}${page ? ` on ${page}` : ""}`, text: `${who} wrote${f.page ? ` from ${f.page}` : ""}:\n\n${f.message}` });
   } catch (e) {
     console.error("[alerts] couldn't email feedback", e);
   }
@@ -141,23 +147,26 @@ export interface DailySummary {
   spentUsd: number;
   activity: Record<ActivityKind, number>;
   problems: Partial<Record<ProblemKind, number>>;
+  /** Feedback notes past the hourly emails: in the database only, read with `GET /api/feedback`. */
+  feedbackHeld: number;
 }
 
 /** Yesterday's numbers (UTC): spend, activity, failures by kind. */
 export async function summarizeDay(d: string): Promise<DailySummary> {
   const kinds = Object.keys(LABELS) as ProblemKind[];
   const activityKinds: ActivityKind[] = ["brain-read", "interview-question", "ask", "pack-parsed"];
-  const [spentUsd, problemCounts, activityCounts] = await Promise.all([
+  const [spentUsd, problemCounts, activityCounts, feedbackHeld] = await Promise.all([
     siteSpentOn(d),
     Promise.all(kinds.map((k) => getJson<number>(dayKey(k, d)))),
     Promise.all(activityKinds.map((k) => getJson<number>(activityKey(k, d)))),
+    getJson<number>(feedbackHeldKey(d)),
   ]);
   const problems: Partial<Record<ProblemKind, number>> = {};
   kinds.forEach((k, i) => {
     if (problemCounts[i]) problems[k] = problemCounts[i]!;
   });
   const activity = Object.fromEntries(activityKinds.map((k, i) => [k, activityCounts[i] ?? 0])) as Record<ActivityKind, number>;
-  return { day: d, spentUsd, activity, problems };
+  return { day: d, spentUsd, activity, problems, feedbackHeld: feedbackHeld ?? 0 };
 }
 
 /** The daily email's text: the day's summary, then what the learning run just did. */
@@ -174,6 +183,7 @@ export function dailySummaryText(s: DailySummary, learning: Record<string, unkno
     "",
     `AI and lookups spent: $${s.spentUsd.toFixed(2)} of the $${spendCaps().site} daily limit`,
     `Brain reads: ${s.activity["brain-read"]} · interview questions: ${s.activity["interview-question"]} · Ask your pack: ${s.activity.ask} · packs uploaded: ${s.activity["pack-parsed"]}`,
+    ...(s.feedbackHeld ? [`Feedback not emailed (past ${FEEDBACK_EMAILS_PER_HOUR} an hour): ${s.feedbackHeld}. Read every note with GET /api/feedback (header x-admin-key).`] : []),
     "",
     problemLines.length ? "Failures:" : "Failures: none",
     ...problemLines,
@@ -183,8 +193,16 @@ export function dailySummaryText(s: DailySummary, learning: Record<string, unkno
   ].join("\n");
 }
 
-/** Emails the summary of the UTC day before `now`. Returns whether it was sent. */
-export async function sendDailySummary(learning: Record<string, unknown> | null, now = new Date(), weekly: string | null = null, trades: string | null = null): Promise<boolean> {
+/**
+ * Emails the summary of the UTC day before `now`. Returns whether it was sent. `trades` is this morning's matching: a
+ * seat that failed there is counted on today, not yesterday, so it has to turn the subject too.
+ */
+export async function sendDailySummary(
+  learning: Record<string, unknown> | null,
+  now = new Date(),
+  weekly: string | null = null,
+  trades: { text: string | null; failed: boolean } | null = null
+): Promise<boolean> {
   const to = alertAddress();
   if (!to) {
     console.error("[alerts] daily summary not sent: ALERT_EMAIL isn't set");
@@ -192,7 +210,8 @@ export async function sendDailySummary(learning: Record<string, unknown> | null,
   }
   const yesterday = day(new Date(now.getTime() - 24 * 60 * 60 * 1000));
   const s = await summarizeDay(yesterday);
-  const failed = Object.keys(s.problems).length > 0 || (Array.isArray(learning?.results) && (learning.results as { error?: unknown }[]).some((r) => r.error));
-  const text = [dailySummaryText(s, learning), trades, weekly].filter(Boolean).join("\n\n\n");
+  const failed =
+    Object.keys(s.problems).length > 0 || !!trades?.failed || (Array.isArray(learning?.results) && (learning.results as { error?: unknown }[]).some((r) => r.error));
+  const text = [dailySummaryText(s, learning), trades?.text, weekly].filter(Boolean).join("\n\n\n");
   return sendEmail({ to, subject: `Line Select ${weekly ? "weekly" : "daily"}: ${failed ? "something needs a look" : "all clear"} (${yesterday})`, text });
 }

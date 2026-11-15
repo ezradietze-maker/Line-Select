@@ -62,13 +62,22 @@ export const LIKELIHOOD_LABEL: Record<Likelihood, string> = {
 /**
  * Where a seniority number sits in bid order. An exact match on the pack's
  * list is authoritative; a number that isn't on it (a typo, or a list that
- * left someone off) is placed by how many listed pilots are more senior.
+ * left someone off) is placed just after the listed pilots more senior than it.
  */
 export function resolveBidPosition(list: SeniorityEntry[], seniority: number): { bidNumber: number; exact: boolean } {
   const exact = list.find((e) => e.seniority === seniority);
   if (exact) return { bidNumber: exact.bidNumber, exact: true };
-  const moreSenior = list.filter((e) => e.seniority < seniority).length;
-  return { bidNumber: moreSenior + 1, exact: false };
+  // After the last of them by bid number, not their count: a position the list didn't read is still a pilot ahead.
+  const lastSenior = list.reduce((n, e) => (e.seniority < seniority ? Math.max(n, e.bidNumber) : n), 0);
+  return { bidNumber: lastSenior + 1, exact: false };
+}
+
+/**
+ * Pilots in the seat: its highest bid number. A list is kept with a position or two it didn't read
+ * (`seniority-list-parser`), so its rows can come up short of the bid numbers on it — "#528 of 526".
+ */
+export function seatSize(list: readonly SeniorityEntry[]): number {
+  return list.reduce((n, e) => Math.max(n, e.bidNumber), list.length);
 }
 
 /**
@@ -131,6 +140,28 @@ export interface FeatureForecastInput {
   calibrate?: (p: number) => number;
 }
 
+/** Chance of an award within each top-N mark the simulation gave, from the corrected award chance at each place on the ranking. */
+function correctedTop(byRank: number[], marks: Record<number, number>): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const mark of Object.keys(marks).map(Number)) out[mark] = byRank.slice(0, mark).reduce((a, b) => a + b, 0);
+  return out;
+}
+
+/** Where on the ranking the award falls, among the times there is one, from the corrected award chance at each place. */
+function correctedAwardedRank(byRank: number[]): BidForecast["awardedRank"] {
+  const total = byRank.reduce((a, b) => a + b, 0);
+  if (total <= 0) return null;
+  const at = (q: number) => {
+    let cumulative = 0;
+    for (let r = 0; r < byRank.length; r++) {
+      cumulative += byRank[r];
+      if (cumulative >= q * total - 1e-12) return r + 1;
+    }
+    return byRank.length;
+  };
+  return { best: at(0.1), typical: at(0.5), worst: at(0.9) };
+}
+
 /** With the PAY flags known, how often a pilot still passes on a regular line (bidding reserve by choice, say). */
 const KNOWN_ROSTER_DROPOUT = 0.03;
 
@@ -147,6 +178,7 @@ export function forecastWithCore(input: FeatureForecastInput): { forecast: BidFo
   const notBidding = new Set(list.filter((e) => e.pay).map((e) => e.bidNumber));
   const core: ForecastCore = simulateBid({
     features,
+    // Played to the list's own rows, as the forecast route's bar on shared rankings counts them.
     totalPilots: list.length,
     myBidNumber: position.bidNumber,
     myRanking: input.myRanking,
@@ -158,33 +190,45 @@ export function forecastWithCore(input: FeatureForecastInput): { forecast: BidFo
     ...(notBidding.size ? { notBidding } : {}),
   });
   const calibrate = input.calibrate ?? ((p: number) => p);
+  const pAvailable = Array.from(core.pAvailable, (raw) => calibrate(raw));
+
+  // A line is only awarded when it's open: the award chance moves with the corrected open chance (the same share of
+  // it), so "40% open" never sits beside "66% you're awarded it". And it's one award between them: a choice is awarded
+  // only when every choice above it is gone, so none gets more than the choices above leave over, nor more than the
+  // chance each of them is gone. A correction that raised every open chance had them adding up past 100%.
+  const pAward = new Float64Array(features.lineCount);
+  const byRank: number[] = [];
+  let left = 1;
+  let aboveGone = 1;
+  const seen = new Set<number>();
+  for (const i of input.myRanking) {
+    const raw = core.pAvailable[i];
+    // A line listed twice is only ever awarded at its first place.
+    const p = seen.has(i) || raw <= 0 ? 0 : Math.max(0, Math.min(pAvailable[i], core.pAward[i] * (pAvailable[i] / raw), left, aboveGone));
+    seen.add(i);
+    if (p > 0) pAward[i] = p;
+    byRank.push(p);
+    left -= p;
+    aboveGone = Math.min(aboveGone, 1 - pAvailable[i]);
+  }
 
   const lines: Record<string, LineForecast> = {};
   features.lineIds.forEach((lineId, i) => {
-    const raw = core.pAvailable[i];
-    const pAvailable = calibrate(raw);
-    lines[lineId] = {
-      lineId,
-      lineNumber: features.lineNumbers[i],
-      pAvailable,
-      // A line is only awarded when it's open: the award chance moves with the corrected open chance (the same share
-      // of it), so "40% open" never sits beside "66% you're awarded it".
-      pAward: raw > 0 ? Math.min(pAvailable, core.pAward[i] * (pAvailable / raw)) : 0,
-      likelihood: likelihoodOf(pAvailable),
-    };
+    lines[lineId] = { lineId, lineNumber: features.lineNumbers[i], pAvailable: pAvailable[i], pAward: pAward[i], likelihood: likelihoodOf(pAvailable[i]) };
   });
 
   const partial = {
     packKey: input.packKey,
     myBidNumber: position.bidNumber,
     exactPosition: position.exact,
-    totalPilots: list.length,
+    totalPilots: seatSize(list),
     pilotsAhead: core.pilotsAhead,
     regularLines: input.regularLines,
     lines,
-    pNoRegularLine: core.pNoLine,
-    awardedRank: core.awardedRank ? { best: core.awardedRank.p10, typical: core.awardedRank.p50, worst: core.awardedRank.p90 } : null,
-    pTop: core.pTop,
+    // Corrected, the chances of a top-N choice and of none come from the corrected award chances, so they agree with them.
+    pNoRegularLine: input.calibrate ? Math.max(0, left) : core.pNoLine,
+    awardedRank: input.calibrate ? correctedAwardedRank(byRank) : core.awardedRank ? { best: core.awardedRank.p10, typical: core.awardedRank.p50, worst: core.awardedRank.p90 } : null,
+    pTop: input.calibrate ? correctedTop(byRank, core.pTop) : core.pTop,
     knownAhead: core.knownAhead,
     confidence: confidenceOf(core.knownAhead, core.pilotsAhead),
     simulations: core.simulations,
@@ -221,7 +265,7 @@ export function forecastBid(input: ForecastInput): BidForecast | null {
     features,
     seniorityList: list,
     regularLines: bidPack.lines.length,
-    dropoutRate: estimateDropoutRate(bidPack, list.length),
+    dropoutRate: estimateDropoutRate(bidPack, seatSize(list)),
     seniorityNumber: input.seniorityNumber,
     myRanking: input.myRanking.map((id) => indexById.get(id)).filter((i): i is number => i !== undefined),
     known: (input.known ?? []).map((k) => ({

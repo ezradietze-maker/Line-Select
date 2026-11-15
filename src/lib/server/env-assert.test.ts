@@ -48,16 +48,26 @@ describe("missingProductionEnv", () => {
 });
 
 describe("assertProductionEnv", () => {
-  it("throws in production when required env is missing", () => {
-    expect(() => assertProductionEnv({ NODE_ENV: "production" })).toThrow(/cannot start/i);
+  it("throws on the live site when required env is missing", () => {
+    expect(() => assertProductionEnv({ NODE_ENV: "production", VERCEL_ENV: "production" })).toThrow(/cannot start/i);
+  });
+
+  it("only warns on a preview deploy or a local `next start`, so they still start", () => {
+    for (const env of [{ NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "preview" }, { NODE_ENV: "production" }]) {
+      const warnings: string[] = [];
+      expect(() => assertProductionEnv(env, (m) => warnings.push(m))).not.toThrow();
+      expect(warnings.join("\n")).toMatch(/DATABASE_URL/);
+    }
   });
 
   it("names the missing vars and points to the doc", () => {
-    expect(() => assertProductionEnv({ NODE_ENV: "production" })).toThrow(/docs\/launch\/spend-caps\.md/);
+    expect(() => assertProductionEnv({ NODE_ENV: "production", VERCEL_ENV: "production" })).toThrow(/docs\/launch\/spend-caps\.md/);
   });
 
   it("does not throw in production when env is complete", () => {
-    expect(() => assertProductionEnv(complete)).not.toThrow();
+    const warnings: string[] = [];
+    expect(() => assertProductionEnv({ ...complete, VERCEL_ENV: "production" }, (m) => warnings.push(m))).not.toThrow();
+    expect(warnings).toEqual([]);
   });
 
   it("stays quiet in development even with nothing set", () => {

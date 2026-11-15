@@ -3,9 +3,10 @@ import { reportProblem } from "@/lib/server/alerts";
 import { afterResponse } from "@/lib/server/after-response";
 import { isJsonObject } from "@/lib/server/json-body";
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
-import { forecastWithCore, resolveBidPosition } from "@/lib/forecast/forecast";
+import { forecastWithCore, resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { applyCalibration, resolveForecastPrior, type Calibration, type ForecastPriorModel } from "@/lib/learning/forecast-learning";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { deleteKey, getJson, setJson } from "@/lib/server/kv";
 import { isVerified } from "@/lib/server/verified-pilots";
 import { blobKey, hashUser, loadKnownRankings, removeSubmission, saveSubmission } from "@/lib/server/forecast-store";
 import { deleteForecastPrediction, loadActiveModel, parsePackKey, saveForecastPrediction, savePackFeatures } from "@/lib/server/learning-store";
@@ -32,6 +33,30 @@ interface Body {
   seniorityNumber?: unknown;
   ranking?: unknown;
   share?: unknown;
+  resume?: unknown;
+}
+
+/**
+ * A pilot who unticked "share my ranking", kept with their account (under its one-way hash) so it holds everywhere:
+ * every device starts with the box ticked, and so did this one after signing out and back in, and each went on sharing.
+ * Ticking it again (`resume`) clears it. Pushed out each time it's read, so it lasts as long as the pilot uses the site.
+ */
+const SHARING_OFF_SECONDS = 400 * 24 * 60 * 60;
+const sharingOffKey = (userId: string) => `line-select:forecast-sharing-off:${hashUser(userId)}`;
+
+/** Whether this pilot has stopped sharing: "unknown" when the store can't be read, and then nothing is kept either. */
+async function sharingStopped(userId: string, resume: boolean): Promise<"off" | "on" | "unknown"> {
+  try {
+    if (resume) {
+      await deleteKey(sharingOffKey(userId));
+      return "on";
+    }
+    if ((await getJson<number>(sharingOffKey(userId))) !== 1) return "on";
+    await setJson(sharingOffKey(userId), 1, { ttlSeconds: SHARING_OFF_SECONDS });
+    return "off";
+  } catch {
+    return "unknown";
+  }
 }
 
 const isStringArray = (v: unknown, max: number): v is string[] => Array.isArray(v) && v.length > 0 && v.length <= max && v.every((x) => typeof x === "string" && x.length <= 40);
@@ -72,6 +97,8 @@ export async function POST(request: Request) {
   const seniority = seniorityNumber as number;
 
   const user = await getCurrentServerUser();
+  const stopped = user && body.share === true ? await sharingStopped(user.id, body.resume === true) : "on";
+  const share = body.share === true && stopped === "on";
   const sharing = await loadKnownRankings(packKey, lineNumbers, user?.id ?? null);
   const total = sharing.total;
   // Other pilots' shared rankings sharpen the forecast, but the list of who's ahead is the caller's own: a guest, or
@@ -81,10 +108,13 @@ export async function POST(request: Request) {
   // Counted only among those the caller's list has bidding: marking everyone else PAY (or leaving them off) left one
   // sharer the only one bidding ahead, however many were counted.
   // And only confirmed accounts: one made up in a minute is no better than a guest.
+  // And only those the forecast plays: it plays the first places up to the list's length, so a short list naming three
+  // sharers far down, past its own length, had them pass the bar while one sharer first in line was played alone.
   const askedAt = resolveBidPosition(sentList, seniority).bidNumber;
+  const played = Math.min(askedAt - 1, sentList.length);
   const bidding = new Set(sentList.map((e) => e.bidNumber));
   const confirmed = isVerified(user);
-  const known = confirmed && sharing.known.filter((k) => k.bidNumber < askedAt && bidding.has(k.bidNumber)).length >= MIN_SHARERS_AHEAD ? sharing.known : [];
+  const known = confirmed && sharing.known.filter((k) => k.bidNumber <= played && bidding.has(k.bidNumber)).length >= MIN_SHARERS_AHEAD ? sharing.known : [];
   // With shared rankings in it, who bids isn't the caller's to choose: no one is left out as PAY, and pilots drop out
   // at no less than the usual rate, so a list built round one sharer can't single out their first choice.
   const list = known.length ? sentList.map(({ bidNumber, seniority: s }) => ({ bidNumber, seniority: s })) : sentList;
@@ -128,13 +158,13 @@ export async function POST(request: Request) {
     try {
       const key = blobKey(packKey, lineNumbers);
       await savePackFeatures(key, packKey, lineFeatures);
-      if (user && position.exact && body.share === true) {
+      if (user && position.exact && share) {
         await saveForecastPrediction({
           pilotHash: hashUser(user.id),
           blobKey: key,
           packKey,
           bidNumber: position.bidNumber,
-          totalPilots: list.length,
+          totalPilots: seatSize(list),
           ranking: ranking as number[],
           pAvailableByLine: core.pAvailable,
           modelVersion: [priorModel?.version, calibration?.version].filter(Boolean).join("+") || null,
@@ -145,9 +175,12 @@ export async function POST(request: Request) {
     }
   });
 
-  let shared: "stored" | "not-signed-in" | "unconfirmed" | "not-requested" | "position-taken" | "store-full" | "unlisted" | "failed" = "not-requested";
+  let shared: "stored" | "not-signed-in" | "unconfirmed" | "not-requested" | "position-taken" | "store-full" | "unlisted" | "off" | "failed" = "not-requested";
   if (body.share === true) {
     if (!user) shared = "not-signed-in";
+    // Stopped on another device, or here before signing out: this device's box is unticked from this answer.
+    else if (stopped === "off") shared = "off";
+    else if (stopped === "unknown") shared = "failed";
     // Each shared ranking is one more pilot ahead in everyone's forecast: only a confirmed account's is kept.
     else if (!confirmed) shared = "unconfirmed";
     else if (!position.exact) shared = "unlisted";
@@ -163,13 +196,15 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     forecast,
-    crowd: { pilotsSharing: total },
+    // Only alongside the rankings it counts: to anyone, a guest included, it said for any seat whether a pilot shared,
+    // and when one more did.
+    crowd: { pilotsSharing: known.length ? total : 0 },
     shared,
     learning: { priorFrom: learnedPrior?.n ?? 0, calibratedFrom: calibration?.sampleSize ?? 0 },
   });
 }
 
-/** Stops sharing: removes the signed-in pilot's stored ranking for this seat. */
+/** Stops sharing: removes the signed-in pilot's stored ranking for this seat, and stops every device of theirs sharing. */
 export async function DELETE(request: Request) {
   const user = await getCurrentServerUser();
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
@@ -181,6 +216,7 @@ export async function DELETE(request: Request) {
   }
   if (!isJsonObject(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   if (typeof body.packKey !== "string" || !isStringArray(body.lineNumbers, MAX_LINES)) return NextResponse.json({ error: "Missing pack." }, { status: 400 });
+  await setJson(sharingOffKey(user.id), 1, { ttlSeconds: SHARING_OFF_SECONDS }).catch((e) => reportProblem("forecast", e, { action: "stop sharing" }));
   await removeSubmission(body.packKey, body.lineNumbers, user.id);
   await deleteForecastPrediction(hashUser(user.id), body.packKey).catch((e) => reportProblem("forecast", e, { action: "delete" }));
   return NextResponse.json({ ok: true });

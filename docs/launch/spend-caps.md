@@ -106,7 +106,8 @@ if usage genuinely runs away.
 ## Order of operations
 
 1. Confirm Vercel has `DATABASE_URL` and the Upstash Redis env set (the app now
-   refuses to start in production without them — `src/lib/server/env-assert.ts`).
+   refuses to start in Vercel's production environment without them, and only
+   warns on preview deploys — `src/lib/server/env-assert.ts`).
 2. Set the Anthropic monthly spend limit + alert (section 1).
 3. Set Vercel Spend Management (section 2).
 4. Set `ALERT_EMAIL` in Vercel so the app's own cap sends you mail when it fires.

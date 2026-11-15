@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Heading } from "@/components/ui/Heading";
-import { FOCUSABLE, nextStop, tabStops } from "@/lib/focus-trap";
+import { FOCUSABLE, focusBackTo, nextStop, tabStops } from "@/lib/focus-trap";
 import { lockScroll } from "@/lib/scroll-lock";
 
 interface ModalProps {
@@ -60,9 +60,7 @@ function focusStops(root: HTMLElement): HTMLElement[] {
 
 /** Where focus goes back to: the opener, or when that's gone (a menu that closed), the first control near where it was. */
 function returnFocus(opener: HTMLElement | null, ancestors: HTMLElement[]) {
-  if (opener?.isConnected) return opener.focus();
-  const near = ancestors.find((a) => a.isConnected);
-  if (near) focusStops(near)[0]?.focus();
+  focusBackTo(opener, ancestors, (el) => el.isConnected, focusStops)?.focus();
 }
 
 export function Modal({ title, onClose, children, wide = false, locked = false }: ModalProps) {

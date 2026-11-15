@@ -12,6 +12,7 @@ import {
   lessonsFromMove,
   linesThatWouldMove,
   loadTiers,
+  mergeIntoStored,
   mergeTiers,
   moveToTier,
   notBidIds,
@@ -50,6 +51,8 @@ export interface LineTiers {
   tierOf: (lineId: string) => string | undefined;
   selected: Set<string>;
   toggleSelected: (lineId: string, rangeOver?: string[]) => void;
+  /** Replace the selection outright (a right-click "select all above/below"). */
+  select: (lineIds: string[]) => void;
   clearSelected: () => void;
   move: (lineIds: string[], tierId: string | null) => void;
   park: (lineIds: string[]) => void;
@@ -131,11 +134,15 @@ export function useLineTiers(
   });
 
   const commit = useCallback(
-    (wanted: TierState, nextHistory: TierHistory, message: string, added: LineChoice[], retract: string[], recorded = true) => {
+    (wanted: TierState, nextHistory: TierHistory, message: string, teaching: LineChoice[], takingBack: string[], recorded = true) => {
       // Into what's stored now: a tab that hadn't seen another's move doesn't write over it.
       const base = latest.current.synced;
       const stored = readTiers(userId, bidPackId);
-      const next = mergeTiers(base, wanted, stored ? pruneTiers(stored, valid) : base);
+      // What the merge leaves no line holding is taken back too, and isn't taught (`mergeIntoStored`).
+      const merged = mergeIntoStored(base, wanted, stored ? pruneTiers(stored, valid) : base, takingBack);
+      const next = merged.state;
+      const retract = merged.retract;
+      const added = teaching.filter((c) => !c.dragId || merged.held.has(c.dragId));
       const nowSynced = saveTiers(userId, bidPackId, next) ? next : base;
       latest.current = { ...latest.current, state: next, history: nextHistory, synced: nowSynced };
       setLoaded({ owner, state: next, history: nextHistory, synced: nowSynced });
@@ -229,7 +236,15 @@ export function useLineTiers(
   );
   const rename = useCallback((tierId: string, name: string) => changeNames((s) => renameTier(s, tierId, name), `Tier renamed ${name.trim()}.`), [changeNames]);
   const add = useCallback((name: string) => changeNames((s) => addTier(s, name, newMoveId()), `Tier ${name.trim()} added.`), [changeNames]);
-  const remove = useCallback((tierId: string) => changeNames((s) => removeTier(s, tierId), "Tier removed; its lines have no tier now."), [changeNames]);
+  // Its lines leave their tier, so what their moves taught the brain goes too (and comes back on undo).
+  const remove = useCallback(
+    (tierId: string) => {
+      const { state: s, history: h } = latest.current;
+      const next = removeTier(s, tierId);
+      if (next !== s) commit(next, pushHistory(h, s), "Tier removed; its lines have no tier now.", [], lessonChanges(s, next).retract);
+    },
+    [commit]
+  );
   const clear = useCallback(() => {
     const { state: s, history: h } = latest.current;
     const next = clearTiers(s);
@@ -271,6 +286,10 @@ export function useLineTiers(
     },
     [anchor]
   );
+  const select = useCallback((ids: string[]) => {
+    setSelected(new Set(ids));
+    setAnchor(ids[ids.length - 1] ?? null);
+  }, []);
   const clearSelected = useCallback(() => setSelected(new Set()), []);
 
   const order = useCallback((list: LineScore[]) => applyTiers(list, state, (r) => r.line.id), [state]);
@@ -287,6 +306,7 @@ export function useLineTiers(
     tierOf,
     selected,
     toggleSelected,
+    select,
     clearSelected,
     move,
     park,

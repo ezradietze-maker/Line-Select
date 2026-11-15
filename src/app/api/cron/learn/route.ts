@@ -5,11 +5,13 @@ import { UNCONFIRMED_SIGN_UP_DAYS } from "@/lib/server/auth";
 import { deleteUnconfirmedSignUps } from "@/lib/server/db";
 import { incrementCounter } from "@/lib/server/kv";
 import { runLearningCycle } from "@/lib/server/learning-runner";
-import { runDailyMatching, tradeSummaryText } from "@/lib/server/trade-matching";
+import { DAILY_MATCHING_BUDGET_MS, runDailyMatching, tradeSummaryText } from "@/lib/server/trade-matching";
 import { weeklySection } from "@/lib/server/weekly-summary";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+/** Kept back from the trades for the morning email and the clear-out of unconfirmed sign-ups. */
+const AFTER_TRADES_MS = 30_000;
 
 /**
  * The daily learning run (scheduled in vercel.json). Vercel signs scheduled
@@ -17,8 +19,13 @@ export const maxDuration = 300;
  * away, so the run can't be triggered from outside.
  */
 export async function GET(request: Request) {
+  const started = Date.now();
   const secret = process.env.CRON_SECRET;
-  if (!secret || !secretMatches(request.headers.get("authorization"), `Bearer ${secret}`)) {
+  // Only the live site runs it. A preview (every pushed branch gets one) shares the secret when it's set for every
+  // environment, and may share the live database: called there, it ran that branch's learning and trade matching on
+  // real pilots and sent a second morning email. Vercel never schedules a preview's crons; this keeps anyone else off.
+  const preview = !!process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production";
+  if (preview || !secret || !secretMatches(request.headers.get("authorization"), `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
   // A call delivered twice runs once: only the learning had a lock, so trades ran again and the email went twice. Held
@@ -30,8 +37,11 @@ export async function GET(request: Request) {
   // Mondays (UTC) it also carries the week: what the brain learned and whether it's helping.
   const now = new Date();
   const weekly = now.getUTCDay() === 1 ? await weeklySection(now) : null;
-  // Trades come after the learning, so a slow run of either can't stop the morning email: this one has its own time limit and never throws.
-  const trades = await tradeSummaryText(await runDailyMatching(now), now);
+  // Trades come after the learning, so a slow run of either can't stop the morning email: this one never throws, and has
+  // its own time limit, cut to what a slow learning run left of the five minutes.
+  const tradesBudget = Math.max(0, Math.min(DAILY_MATCHING_BUDGET_MS, maxDuration * 1000 - AFTER_TRADES_MS - (Date.now() - started)));
+  const matched = await runDailyMatching(now, tradesBudget);
+  const trades = { text: await tradeSummaryText(matched, now), failed: matched.failed > 0 };
   await sendDailySummary(summary, now, weekly, trades).catch((e) => console.error("[cron] daily summary not sent", e));
   const removedUnconfirmed = await removeUnconfirmedSignUps(now);
   // A step that failed shows as a failed run on Vercel's cron page, not a quiet success.

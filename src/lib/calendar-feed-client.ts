@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch, shownAccount } from "@/lib/shown-account";
+import { feedOffOwed, feedOffOwedSince, oweFeedOff } from "@/lib/calendar-feed-owed";
 import { useEffect } from "react";
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { fetchServerBidPackMeta, saveServerBidPack } from "@/lib/bidpack-server";
@@ -30,8 +32,9 @@ export interface FeedStatusView {
 
 const PATH = "/api/calendar-feed";
 
-async function send(method: string, body?: unknown): Promise<Response> {
-  return fetch(PATH, { method, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+/** `userId`: the account the change is for, when it's sent after a wait (`syncFeedChoice`); otherwise the one on screen. */
+async function send(method: string, body?: unknown, userId: string | null | undefined = shownAccount()): Promise<Response> {
+  return apiFetch(PATH, { method, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }, userId);
 }
 
 async function statusFrom(res: Response): Promise<FeedStatusView> {
@@ -40,10 +43,41 @@ async function statusFrom(res: Response): Promise<FeedStatusView> {
   return json as FeedStatusView;
 }
 
-export const fetchFeedStatus = async () => statusFrom(await fetch(PATH));
-export const makeFeedLink = async (homeDays?: boolean) => statusFrom(await send("POST", homeDays === undefined ? {} : { homeDays }));
+export const fetchFeedStatus = async () => statusFrom(await apiFetch(PATH));
+export const makeFeedLink = async (homeDays?: boolean) => {
+  // A new link the pilot asked for: a Start over's turning off still owed here mustn't take it away later.
+  if (feedOffOwed() === shownAccount()) oweFeedOff(null);
+  return statusFrom(await send("POST", homeDays === undefined ? {} : { homeDays }));
+};
 export const setFeedHomeDays = async (homeDays: boolean) => statusFrom(await send("PATCH", { homeDays }));
 export const turnOffFeed = async () => statusFrom(await send("DELETE"));
+
+/**
+ * Start over's turning the link off: owed on this device until the server says it's off, so a failure is asked again
+ * (`payFeedOffOwed`) rather than leaving the link showing the deleted ranking's line. Whether it's off now.
+ */
+export async function turnOffFeedForStartOver(userId: string): Promise<boolean> {
+  oweFeedOff(userId);
+  return payFeedOffOwed(userId, true);
+}
+
+/**
+ * Turns the link off if this device still owes it for `userId`; true once nothing is owed. Only a link made by the
+ * Start over: one the pilot made since on another device is theirs to keep. `rightAway`: the Start over's own try,
+ * which turns off whatever link there is. Sent with this device's time, a clock running slow kept on a link made a
+ * minute before, and the device took it as off.
+ */
+export async function payFeedOffOwed(userId: string, rightAway = false): Promise<boolean> {
+  if (feedOffOwed() !== userId) return true;
+  const since = rightAway ? null : feedOffOwedSince();
+  try {
+    await statusFrom(await send("DELETE", since ? { madeBefore: since } : undefined, userId));
+  } catch {
+    return false;
+  }
+  if (feedOffOwed() === userId) oweFeedOff(null);
+  return true;
+}
 
 /** Where each calendar app takes a subscription from this link. */
 export function feedLinks(url: string): { apple: string; google: string; outlook: string } {
@@ -72,17 +106,20 @@ export type FeedSyncResult = "off" | "pack-not-saved" | "ok" | "failed";
  */
 export async function syncFeedChoice(pack: BidPack, profile: PreferenceProfile | null, topLineNumber: string | null, userId: string | null = null): Promise<FeedSyncResult> {
   const choice = feedChoiceFor(pack, profile, topLineNumber) ?? { lineNumber: null, lineSource: null };
+  // Sent for the account it was worked out for: it runs a few seconds after the line changed, and the tab may show
+  // another account by then (signed in elsewhere), whose calendar mustn't get this one's line.
+  const forAccount = userId ?? shownAccount();
   const sendChoice = async (): Promise<FeedSyncResult> => {
-    const res = await send("PUT", { packId: pack.id, ...choice, pilotClose: getBidDeadline(pack.id) });
+    const res = await send("PUT", { packId: pack.id, ...choice, pilotClose: getBidDeadline(pack.id) }, forAccount);
     if (!res.ok) return "failed";
     return ((await res.json()) as { result: FeedSyncResult }).result;
   };
   try {
     const result = await sendChoice();
     if (result !== "pack-not-saved") return result;
-    const account = await fetchServerBidPackMeta();
+    const account = await fetchServerBidPackMeta(forAccount);
     if (account && account.packId !== pack.id && account.savedAt > bidPackSavedAt(userId)) return result;
-    return (await saveServerBidPack(pack)) ? await sendChoice() : result;
+    return (await saveServerBidPack(pack, forAccount)) ? await sendChoice() : result;
   } catch {
     return "failed";
   }

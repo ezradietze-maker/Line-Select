@@ -349,7 +349,11 @@ async function loadRealBoards(
       }
       stats.boardsLeft--;
       const r = await fetchBoard(b, key, direction).catch(() => null);
-      if (!r) continue;
+      // A board that didn't come back is one not looked at, as if held back: answered without it, a "no" isn't certain.
+      if (!r) {
+        stats.skipped++;
+        continue;
+      }
       stats.fetched++;
       out.set(blockKey(b), r.flights);
       if (r.unitsLeft !== null) {

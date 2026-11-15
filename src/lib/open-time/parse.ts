@@ -89,15 +89,25 @@ const TRIP = /\b(?:TRIP|SEQ|SEQUENCE|PAIRING|PAIR|PRG)\b\s*(?:NO\.?|NUM(?:BER)?)
 // "47 LDG") is left as a trip number. Hours aren't taken out: "12 HRS 47" is either way round, and both numbers left in
 // let the trip that flies that date be the one found (or the row be flagged when both do).
 const COUNT_LABEL = "DAYS?|DY|DYS|LEGS?|LDGS?|LANDINGS?|DPS?";
-// Not a number with its own label after it: in "3 DAY 4 LEGS" the 4 is the legs', not the day's.
-const LABEL_FIRST = new RegExp(`\\b(${COUNT_LABEL})\\s*[:=-]?\\s*(\\d{1,2})\\b(?![ -]?(?:${COUNT_LABEL})\\b)`, "gi");
+const LABEL_FIRST = new RegExp(`\\b(${COUNT_LABEL})\\s*[:=-]?\\s*(\\d{1,2})\\b`, "gi");
 const NUMBER_FIRST = new RegExp(`\\b(\\d{1,2})[ -]?(${COUNT_LABEL})\\b`, "gi");
 /** Whether `n` can be a count of `label`: a trip's days, legs or duty periods run to about 20. */
 const plausibleCount = (_label: string, n: string) => Number(n) <= 20;
+const COUNT_OR_HOURS = new RegExp(`^(?:${COUNT_LABEL}|HRS?|HOURS?)$`, "i");
+/**
+ * The row's first count says which side its numbers go, as with the figures: number first when a count stands before
+ * it and the number after it, if any, has a label of its own ("3 DAY 4 LEGS", "3 LDGS 12 HRS"); label first otherwise
+ * ("LDGS 3", "49 LDGS 2"). Each count was judged alone, and in "DAYS 3 LEGS 7" the 3, with a label after it, was left as
+ * a trip number. Then the other side, for a row that mixes them.
+ */
 function withoutCounts(text: string): string {
-  return text
-    .replace(LABEL_FIRST, (all, label: string, n: string) => (plausibleCount(label, n) ? " " : all))
-    .replace(NUMBER_FIRST, (all, n: string, label: string) => (plausibleCount(label, n) ? " " : all));
+  const first = new RegExp(`\\b(${COUNT_LABEL})\\b`, "i").exec(text);
+  const before = first && text.slice(0, first.index).match(/\b(\d{1,2})[ -]?$/);
+  const after = first && text.slice(first.index + first[0].length).match(/^\s*[:=-]?\s*\d{1,2}\b[ -]?([A-Z]*)/i);
+  const numberFirst = !!before && plausibleCount(first[1], before[1]) && (!after || COUNT_OR_HOURS.test(after[1]));
+  const byLabel = (s: string) => s.replace(LABEL_FIRST, (all, label: string, n: string) => (plausibleCount(label, n) ? " " : all));
+  const byNumber = (s: string) => s.replace(NUMBER_FIRST, (all, n: string, label: string) => (plausibleCount(label, n) ? " " : all));
+  return numberFirst ? byLabel(byNumber(text)) : byNumber(byLabel(text));
 }
 /** A time or a figure written so it can't be a trip number: 09:15, 12.5, 0915Z. */
 const NOT_A_TRIP = /\b\d{1,3}:\d{2}\b|\b\d+\.\d+\b|\b\d{3,4}[LZ]\b/gi;

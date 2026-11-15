@@ -41,9 +41,9 @@ export default function NotFound() {
       >
         Back to Line Select
       </Link>
-      <div className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm">
+      <div className="mt-4 flex flex-wrap justify-center gap-x-4 text-sm">
         {PLACES.map((p) => (
-          <Link key={p.href} href={p.href} className="text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink">
+          <Link key={p.href} href={p.href} className="inline-block py-1.5 text-ink-muted underline decoration-dotted underline-offset-4 hover:text-ink">
             {p.label}
           </Link>
         ))}

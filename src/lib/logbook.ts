@@ -1,4 +1,5 @@
 import { monthLine, tripCarryOver } from "@/lib/bid-month";
+import { monthIndex } from "@/lib/bid-timeline";
 import { flownUnderInternationalRules, operatedBlockHours, tripSpans } from "@/lib/phase-in";
 import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import type { AwardHistorySubmission } from "@/types/award-history";
@@ -65,10 +66,22 @@ export function loggedMonthFrom(
   };
 }
 
+/**
+ * Oldest month first: by the bid month itself, then when logged. By when logged alone, a month caught up on after the
+ * next one went above it, and the seniority over time ran out of order.
+ */
+function byMonth(a: LoggedMonth, b: LoggedMonth): number {
+  const [x, y] = [monthIndex(a.month), monthIndex(b.month)];
+  return (x !== null && y !== null ? x - y : 0) || a.loggedAt.localeCompare(b.loggedAt);
+}
+
+/** The months newest first, as the logbook keeps and shows them. */
+export const newestMonthFirst = (entries: LoggedMonth[]): LoggedMonth[] => [...entries].sort((a, b) => byMonth(b, a));
+
 /** The profile with this month logged — replacing an earlier entry for the same month. Newest month first. */
 export function withLoggedMonth(profile: PreferenceProfile, entry: LoggedMonth): PreferenceProfile {
   const rest = (profile.logbook ?? []).filter((m) => m.id !== entry.id);
-  return { ...profile, logbook: [entry, ...rest].sort((a, b) => b.loggedAt.localeCompare(a.loggedAt)) };
+  return { ...profile, logbook: newestMonthFirst([entry, ...rest]) };
 }
 
 export function withoutLoggedMonth(profile: PreferenceProfile, id: string): PreferenceProfile {
@@ -158,7 +171,7 @@ export function logbookStats(entries: LoggedMonth[]): LogbookStats {
     topFiveShare: ranked.length ? ranked.filter((m) => (m.rankedAt as number) <= 5).length / ranked.length : null,
     seniority: [...entries]
       .filter((m) => m.seniorityRank && m.seniorityTotalPilots)
-      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt))
+      .sort(byMonth)
       .map((m) => ({ month: m.month, percentile: (m.seniorityRank as number) / (m.seniorityTotalPilots as number) })),
   };
 }

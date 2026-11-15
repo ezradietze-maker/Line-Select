@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { sameDatesLastYear, skyOf, summarizeWeather, toCurrent } from "@/lib/weather-client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { currentWeather, sameDatesLastYear, skyOf, summarizeWeather, toCurrent } from "@/lib/weather-client";
 
 describe("layover weather", () => {
   it("takes the bid month's dates a year earlier", () => {
@@ -22,5 +22,29 @@ describe("layover weather", () => {
     expect(toCurrent({ current: { temperature_2m: 63.6, weather_code: 61, is_day: 0 } })).toEqual({ tempF: 64, sky: "rain", isDay: false });
     expect(toCurrent({ current: { temperature_2m: null, weather_code: 0, is_day: 1 } })).toBeNull();
     expect(toCurrent({})).toBeNull();
+  });
+});
+
+describe("the weather now", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("asks again once what it has is more than a few minutes old, not once a visit", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-13T12:00:00Z"));
+    let temp = 50;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ current: { temperature_2m: temp, weather_code: 0, is_day: 1 } })));
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await currentWeather(["MEM"])).MEM.tempF).toBe(50);
+    vi.setSystemTime(new Date("2026-11-13T12:05:00Z"));
+    expect((await currentWeather(["MEM"])).MEM.tempF).toBe(50);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Hours later, in the same tab: the conditions then, not at noon.
+    temp = 38;
+    vi.setSystemTime(new Date("2026-11-13T17:00:00Z"));
+    expect((await currentWeather(["MEM"])).MEM.tempF).toBe(38);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

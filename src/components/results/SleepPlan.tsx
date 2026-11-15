@@ -10,7 +10,6 @@ import type { LayoverSleepPlan, SleepBlock } from "@/lib/sleep-plan";
  * pilot's body can sleep at each hour, with the suggested sleeps on it and why each one is there.
  */
 
-const MINUTES_PER_DAY = 24 * 60;
 const isNap = (k: SleepBlock["kind"]) => k === "nap" || k === "preDuty";
 
 /** How a block of each kind is drawn — solid night blue for real sleep, a lighter dashed bar for naps. */
@@ -27,12 +26,6 @@ const hoursOf = (min: number) => {
   return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
 };
 
-/** The local clock at a trip minute, given the plan's own arrival time and clock. */
-function localMinute(plan: LayoverSleepPlan, at: number): number {
-  const [h, m] = plan.inHotelLocal.split(":").map(Number);
-  return (((h * 60 + m + (at - plan.inHotel)) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
-}
-
 /** One layover's stay, hotel to wake-up: shaded by how easily the body can sleep, the suggested sleeps on top. */
 function Ribbon({ plan }: { plan: LayoverSleepPlan }) {
   const span = Math.max(1, plan.wakeBy - plan.inHotel);
@@ -42,13 +35,8 @@ function Ribbon({ plan }: { plan: LayoverSleepPlan }) {
   const stops = plan.ribbon
     .filter((_, i) => i % step === 0 || i === plan.ribbon.length - 1)
     .map((r) => `color-mix(in srgb, var(--color-sleep) ${Math.round(8 + r.ease * 42)}%, transparent) ${(((r.at - plan.inHotel) / span) * 100).toFixed(1)}%`);
-  // Local-clock ticks every six hours.
-  const ticks: { at: number; label: string }[] = [];
-  const firstLocal = localMinute(plan, plan.inHotel);
-  for (let m = plan.inHotel + ((360 - (firstLocal % 360)) % 360); m < plan.wakeBy; m += 360) {
-    const lm = localMinute(plan, m);
-    ticks.push({ at: m, label: lm === 0 ? "00" : String(Math.round(lm / 60)).padStart(2, "0") });
-  }
+  // Local-clock ticks every six hours (on the new clock after a clock change).
+  const ticks = plan.ticks;
   return (
     <div className="relative mt-5">
       <div className="relative h-8 overflow-hidden rounded-md ring-1 ring-inset ring-hairline" style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}>

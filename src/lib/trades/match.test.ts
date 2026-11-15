@@ -138,6 +138,18 @@ describe("finding trades", () => {
     expect(findTrades(pack, [p1, p2], { now }).trades).toEqual([]);
   });
 
+  it("leaves out a trade that would conflict with a trip the pilot takes on the board, until that trade goes through", () => {
+    wants(1, 2);
+    wants(2, 1);
+    // P1 gives day 15's trip on the board for day 10's; P2's trip is on day 10 too.
+    const p1 = pilot(1, 2);
+    p1.line = { ...p1.line, trips: [trip("t1", 2), trip("board", 15)] };
+    const agreed = { ...p1, locked: new Set(["board@15"]), agreed: { gives: new Set(["board@15"]), takes: [trip("theirs", 10)] } };
+    expect(findTrades(pack, [agreed, pilot(2, 10)], { now }).trades).toEqual([]);
+    // Without it, the same trade goes ahead.
+    expect(findTrades(pack, [{ ...p1, locked: new Set(["board@15"]) }, pilot(2, 10)], { now }).trades).toHaveLength(1);
+  });
+
   it("drops a chain with no legal order, even though everyone's final schedule works", () => {
     // Each pilot keeps a second trip that collides with one trip in the chain, ruling out every order's middle step.
     for (let i = 1; i <= 3; i++) wants(i, (i % 3) + 1);

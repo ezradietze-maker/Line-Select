@@ -3,12 +3,15 @@ import {
   EMPTY_MARKS,
   PAGE_SIZE,
   bidOrderLines,
+  emptyListSaying,
   hideLine,
   leftOutPhrase,
+  listedLines,
   matchesLineSearch,
   nextVisibleCount,
   pruneMarks,
   restoreLine,
+  shortlistOrder,
   stepCursor,
   toggleStar,
 } from "@/lib/results-list";
@@ -99,5 +102,63 @@ describe("the j / k cursor", () => {
     expect(stepCursor(["a", "b"], "b", 1)).toBe("b");
     expect(stepCursor(["a", "b"], "a", -1)).toBe("a");
     expect(stepCursor([], "a", 1)).toBeNull();
+  });
+});
+
+describe("what an empty list says", () => {
+  const none = { view: "all" as const, starred: 0, search: "", hotelName: null, filtersOn: false };
+
+  it("says nothing is shortlisted only when nothing is", () => {
+    expect(emptyListSaying({ ...none, view: "shortlist" })).toEqual({ message: "Nothing shortlisted yet — tap the star on any line to save it here.", canClear: false });
+    // Three lines shortlisted, and a search that finds none of them: they're there, the search hides them.
+    const searched = emptyListSaying({ ...none, view: "shortlist", starred: 3, search: "9999" });
+    expect(searched.message).toBe("No line matches “9999”.");
+    expect(searched.canClear).toBe(true);
+    const filtered = emptyListSaying({ ...none, view: "shortlist", starred: 3, filtersOn: true });
+    expect(filtered.message).not.toMatch(/Nothing shortlisted/);
+    expect(filtered.canClear).toBe(true);
+  });
+
+  it("offers to clear what narrows the list, and only that", () => {
+    expect(emptyListSaying({ ...none, filtersOn: true }).canClear).toBe(true);
+    expect(emptyListSaying({ ...none, hotelName: "Hilton" }).message).toMatch(/at Hilton/);
+    expect(emptyListSaying({ ...none, view: "realistic", filtersOn: true }).message).toMatch(/realistically hold/);
+    // Nothing narrows it: every line is set aside or hidden, and clearing filters would bring none back.
+    const parked = emptyListSaying(none);
+    expect(parked.canClear).toBe(false);
+    expect(parked.message).not.toMatch(/filters/);
+    expect(emptyListSaying({ ...none, view: "shortlist", starred: 2 }).message).toMatch(/set aside/);
+  });
+});
+
+describe("listedLines", () => {
+  const lines = [ls("1001", 3), ls("1002", 2), ls("1003", 1)];
+  const marks = hideLine(toggleStar(EMPTY_MARKS, "line-1001"), "line-1002");
+  const base = { hidden: new Set(marks.hidden), setAside: new Set<string>(), showHidden: false };
+
+  it("offers no hidden lines in the Shortlist, where a hidden line can't be", () => {
+    const starred = new Set(marks.starred);
+    const shortlist = listedLines(lines, { ...base, inView: (id) => starred.has(id) });
+    expect(shortlist.hiddenInView).toBe(0);
+    expect(listedLines(lines, { ...base, showHidden: true, inView: (id) => starred.has(id) }).lines.map((r) => r.line.lineNumber)).toEqual(["1001"]);
+  });
+
+  it("counts the hidden lines that showing them brings back, not those set aside", () => {
+    const all = listedLines(lines, { ...base, inView: () => true });
+    expect(all).toMatchObject({ hiddenInView: 1 });
+    expect(all.lines.map((r) => r.line.lineNumber)).toEqual(["1001", "1003"]);
+    expect(listedLines(lines, { ...base, showHidden: true, inView: () => true }).lines).toHaveLength(3);
+    expect(listedLines(lines, { ...base, setAside: new Set(["line-1002"]), inView: () => true }).hiddenInView).toBe(0);
+  });
+});
+
+describe("shortlistOrder", () => {
+  it("takes the starred lines as bid, and counts the starred ones in Not bid it leaves out", () => {
+    const ranked = [ls("1001", 3), ls("1002", 2), ls("1003", 1)];
+    const notBid = new Set(["line-1002"]);
+    const order = bidOrderLines(ranked, new Set(), notBid).lines;
+    const out = shortlistOrder(order, ranked, new Set(["line-1001", "line-1002"]), notBid);
+    expect(out.lines.map((r) => r.line.lineNumber)).toEqual(["1001"]);
+    expect(out.notBid).toBe(1);
   });
 });

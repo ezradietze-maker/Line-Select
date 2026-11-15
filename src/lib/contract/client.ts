@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import { reportConnectionLost, waitForConnection } from "@/lib/connection";
 import { splitNdjson } from "@/lib/upload-client";
 import type { HistoryTurn } from "./ask";
@@ -59,7 +60,7 @@ export async function askTheContract(body: AskBody, onStep: (text: string) => vo
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     let reply: ContractAnswer | "dropped";
     try {
-      const res = await fetch("/api/contract/ask", {
+      const res = await apiFetch("/api/contract/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/x-ndjson", "X-Request-Id": requestId },
         body: JSON.stringify(body),

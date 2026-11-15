@@ -91,6 +91,18 @@ describe("what an answer does", () => {
     expect(answerSwap(p, pack, q, { kind: "limit", action: "raise" }).brainInterview!.reviewedModel!.criteria[1].hardLimit).toEqual({ op: "min", value: 12 });
   });
 
+  it("raises a limit far enough to let the line through in a month longer than four weeks", () => {
+    // 30 days: a line's days off are judged at four weeks' worth (12 → 11.2), its limit shown in the month's terms.
+    const month = { ...pack, bidPeriodDays: 30, lines: [line("A", 18, 70, 150), line("B", 12, 85, 260), line("C", 17, 78, 200), line("D", 18, 72, 160), line("E", 19, 83, 240), line("F", 20, 71, 230)] } as unknown as BidPack;
+    const limited: PilotModel = { ...model, criteria: [model.criteria[0], { ...model.criteria[1], hardLimit: { op: "min", value: 15 } }] };
+    const broken = scorePackV2(month, limited, {}).find((s) => s.lineNumber === "B")!.violations[0];
+    expect(broken).toMatchObject({ criterionId: "off", value: 12 });
+    const p = { ...profile, pilotModel: limited, brainInterview: { ...profile.brainInterview!, reviewedModel: limited } };
+    const q: SwapQuestion = { kind: "limit", dragId: "s1", higher: "B", lower: "A", criterionId: "off", label: "Days off", value: broken.value, limit: broken.limit, op: "min", amounts: "" };
+    const raised = answerSwap(p, month, q, { kind: "limit", action: "raise" });
+    expect(scorePackV2(month, raised.brainInterview!.reviewedModel!, {}).find((s) => s.lineNumber === "B")!.violations).toEqual([]);
+  });
+
   it("takes the answer back when its swap is undone", () => {
     const answered = answerSwap(profile, pack, question([{ criterionId: "off", label: "Days off", amounts: "18 vs 12" }]), { kind: "factor", option: { criterionId: "off", label: "Days off", amounts: "18 vs 12" } });
     expect(answered.brainInterview!.swapAnswers).toHaveLength(1);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
-import { landingAfterSignIn, landingPathFor } from "./landing-path";
+import { landingAfterSignIn, landingPathFor, sampleWouldReplace } from "./landing-path";
 
 const pack = (id: string) => ({ id }) as BidPack;
 const profile = {} as PreferenceProfile;
@@ -21,5 +21,18 @@ describe("where signing in lands", () => {
     expect(landingAfterSignIn(pack("MEM-777-CA-NOV26"), null, null)).toBe("/preferences");
     expect(landingAfterSignIn(null, null, null)).toBe("/");
     expect(landingPathFor(pack("MEM-777-CA-NOV26"), profile)).toBe("/results");
+  });
+});
+
+describe("trying the sample with a pack loaded", () => {
+  it("asks first when it would take the place of the pilot's own pack", () => {
+    // Back to the landing page after uploading and ranking: one tap on "Try it with sample data" saved the sample over
+    // their pack, and it was gone until they uploaded the PDF again.
+    expect(sampleWouldReplace(pack("uploaded-mem-md11-cap-oct26"))).toBe(true);
+  });
+
+  it("just loads it with no pack, or the sample already", () => {
+    expect(sampleWouldReplace(null)).toBe(false);
+    expect(sampleWouldReplace(pack("sample-bidpack"))).toBe(false);
   });
 });

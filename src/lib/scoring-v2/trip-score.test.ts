@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { METRICS } from "@/lib/metrics/catalog";
+import { measure, prepareMetrics } from "@/lib/metrics/compute";
 import { rankLinesWithTrips, scoreTripsV2, tripKey, tripReadingOf, tripValueText } from "@/lib/scoring-v2/trip-score";
 import type { BidPack, Line, Trip, TripLeg } from "@/types/bidpack";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
@@ -72,6 +73,20 @@ describe("trip scores", () => {
     const scores = scoreTripsV2(withOut, m);
     expect(scores.get(tripKey(out))!.results[0].raw).toBe(1);
     expect(scores.get(tripKey(out))!.score).toBeGreaterThan(scores.get(tripKey(SHORT))!.score);
+  });
+
+  it("counts a run of day trips a pilot at base goes home between as the departures the line counts", () => {
+    // The same day trip on three days running, kept as one trip: out 08:00, back 16:00, home every night.
+    const day = (at: number) => ({ reportTimeLocal: "0800", startMinutes: at, legs: [leg("1411", "MEM", "IAH", at + 60, at + 200), leg("1412", "IAH", "MEM", at + 300, at + 480)], layover: null });
+    const run = { ...trip("R", 3, 20), layoverCities: [], tafbHours: 25.5, runStarts: [0, 1, 2], schedule: [day(0), day(1440), day(2880)] } as Trip;
+    const withRun = { ...pack, lines: [...lines, { ...lines[0], id: "5", lineNumber: "5", trips: [run] }] } as BidPack;
+    const m = model([crit({ metric: "homeDepartures", shape: { kind: "less" } })]);
+    const result = scoreTripsV2(withRun, m).get(tripKey(run))!.results[0];
+    expect(result.raw).toBe(measure("homeDepartures", withRun.lines[2], prepareMetrics(withRun)));
+    expect(result.raw).toBe(3);
+    // A commuter waits at base between the days: one departure.
+    const commuter = { ...m, home: { airports: ["SAN"], commuter: true } };
+    expect(scoreTripsV2(withRun, commuter).get(tripKey(run))!.results[0].raw).toBe(1);
   });
 
   it("moves a pilot's monthly numbers to the same place among trips", () => {

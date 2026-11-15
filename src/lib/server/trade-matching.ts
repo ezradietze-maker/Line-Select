@@ -8,7 +8,7 @@ import { accountPackFingerprint, groupFingerprint, unpackRecord } from "@/lib/se
 import { lapseUnanswered, listActiveGroups, listMatchingGroup, matchingHistory, refusedTripKey, saveSuggestion, swapKey, tradeDayCounts } from "@/lib/server/trade-suggestions";
 import { pilotsForMatching } from "@/lib/trades/holding";
 import { findTrades } from "@/lib/trades/match";
-import { lockBoardTrades } from "@/lib/trades/offer-trips";
+import { lockBoardTrades, withBoardSwaps } from "@/lib/trades/offer-trips";
 import { suggestionToStore, tradeSignature } from "@/lib/trades/suggestions";
 import type { Seat } from "@/types/bidpack";
 import type { BidPackMetaSnapshot, TradeDeclineReason } from "@/types/trade";
@@ -22,7 +22,7 @@ const RUN_SECONDS = 90;
 /** A trade takes two. */
 const MIN_PILOTS = 2;
 /** The whole daily run's limit, leaving the morning email time to go within the cron's five minutes. */
-const DAILY_BUDGET_MS = 120_000;
+export const DAILY_MATCHING_BUDGET_MS = 120_000;
 /** How long one group's search may take, inside Find trades' 90 seconds with time to store and email what it found. */
 const SEARCH_MS = 45_000;
 
@@ -62,8 +62,9 @@ async function matchGroup(meta: BidPackMetaSnapshot, now: number, deadline = Dat
     const pack = unpackRecord(record.data);
     const end = bidMonthEnd(pack);
     if (end !== null && end <= now) return { status: "closed" };
-    // A trip agreed on the board stays on its pilot's month, but no chain may hand it on.
-    const everyone = lockBoardTrades(pilotsForMatching(pack, onIt), history.boardTrips);
+    // A trip agreed on the board stays on its pilot's month, but no chain may hand it on; and what they take there, a
+    // trip handed them must fit beside.
+    const everyone = withBoardSwaps(pack, lockBoardTrades(pilotsForMatching(pack, onIt), history.boardTrips), history.boardSwaps);
     const confirmedAt = new Map(onIt.map((r) => [r.userId, r.holding?.confirmedAt ?? ""]));
     const doubted = (pilotId: string) => {
       const said = history.holdingDoubted.get(pilotId);
@@ -112,7 +113,7 @@ export interface DailyMatchingResult {
 }
 
 /** The daily run: every month and seat with pilots to match, within a time limit. Never throws: one seat failing can't stop the rest or the morning email. */
-export async function runDailyMatching(nowDate = new Date(), budgetMs = DAILY_BUDGET_MS): Promise<DailyMatchingResult> {
+export async function runDailyMatching(nowDate = new Date(), budgetMs = DAILY_MATCHING_BUDGET_MS): Promise<DailyMatchingResult> {
   const result: DailyMatchingResult = { groups: 0, skipped: 0, found: 0, failed: 0, notReached: 0 };
   const now = nowDate.getTime();
   const started = Date.now();
@@ -126,7 +127,8 @@ export async function runDailyMatching(nowDate = new Date(), budgetMs = DAILY_BU
   }
   result.groups = groups.length;
   for (const [i, meta] of groups.entries()) {
-    if (Date.now() - started > budgetMs) {
+    // At or past it: a budget of nothing left reaches no group, rather than one more search of a few seconds.
+    if (Date.now() - started >= budgetMs) {
       result.notReached = groups.length - i;
       break;
     }

@@ -1,3 +1,5 @@
+import { apiFetch } from "@/lib/shown-account";
+
 /**
  * Thin client for the membership API (see `app/api/billing/*`). The pilot's
  * card is only ever entered on Stripe's own hosted pages, which these calls
@@ -13,6 +15,10 @@ export interface BillingStatus {
   /** Stripe's status, e.g. "trialing" | "active" | "canceled" — null before any checkout. */
   status: string | null;
   hasSubscription: boolean;
+  /** Whether starting one now comes with the free month: only a pilot's first membership does. */
+  freeMonth: boolean;
+  /** A live membership (trial or active) the pilot has set to cancel at period end — still on now, but ending. */
+  cancelAtPeriodEnd: boolean;
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
   /** The pilot's membership tier (see `@/lib/membership`). */
@@ -23,9 +29,18 @@ export interface BillingStatus {
   freeSlotsLeft: number;
 }
 
+/**
+ * Stripe statuses a subscription is over in, so a new one may start. Any other (past due, unpaid, incomplete, paused) is
+ * still the pilot's: a second one beside it could leave them paying twice once the first card goes through, so they
+ * fix the card in the portal instead.
+ */
+export function membershipEnded(status: string): boolean {
+  return status === "canceled" || status === "incomplete_expired";
+}
+
 export async function fetchBillingStatus(): Promise<BillingStatus | null> {
   try {
-    const res = await fetch("/api/billing/status", { credentials: "same-origin" });
+    const res = await apiFetch("/api/billing/status", { credentials: "same-origin" });
     if (!res.ok) return null;
     return (await res.json()) as BillingStatus;
   } catch {
@@ -35,7 +50,7 @@ export async function fetchBillingStatus(): Promise<BillingStatus | null> {
 
 async function redirectTo(url: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -52,7 +67,7 @@ async function redirectTo(url: string): Promise<{ ok: boolean; error?: string }>
   }
 }
 
-/** Sends the pilot to Stripe Checkout to start their free month. */
+/** Sends the pilot to Stripe Checkout to start their membership (the first with a free month). */
 export async function startMembershipCheckout(): Promise<{ ok: boolean; error?: string }> {
   return redirectTo("/api/billing/checkout");
 }
@@ -65,7 +80,7 @@ export async function openBillingPortal(): Promise<{ ok: boolean; error?: string
 /** Claims one of the limited free-membership slots. "full" means the slots are gone — subscribe instead. */
 export async function claimFreeMembership(): Promise<{ ok: boolean; full?: boolean; error?: string }> {
   try {
-    const res = await fetch("/api/billing/claim-free", {
+    const res = await apiFetch("/api/billing/claim-free", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",

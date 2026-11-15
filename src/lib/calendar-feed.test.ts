@@ -201,6 +201,34 @@ describe("the feed's output", () => {
     expect(ev.description).toContain("Commute in: SAN > SEA > MEM, AS 608 + FX 100 (jumpseat): leaves Tue Sep 29 06:00, lands Tue Sep 29 17:00 (2 others to fall back on)");
   });
 
+  it("puts a run of day trips' commute in on its first day and home on its last", () => {
+    const day = (d: number) => ({ reportTimeLocal: "0800", startMinutes: d * 1440, legs: [], layover: null });
+    const run = trip({ id: "r1", pairingNumber: "40", days: 3, layoverCities: [], tafbHours: 30, startDayIndex: 12, runStarts: [0, 1, 2], schedule: [day(0), day(1), day(2)] });
+    const p = pack({ lines: [line({ trips: [run], gridOffDays: [] })] });
+    const flight = (kind: "toBase" | "homeFromBase", dep: number, from: string, to: string): TravelAnswer => ({
+      id: `${travelKey(run)}:${kind}`,
+      tripId: travelKey(run),
+      kind,
+      options: 1,
+      jumpseatWays: 0,
+      departures: [dep],
+      lastDeparture: dep,
+      firstArrival: dep + 2 * 3_600_000,
+      best: [{ n: "DL 1", from, to, dep, arr: dep + 2 * 3_600_000 }],
+      window: [0, 1],
+    });
+    const answers = [flight("toBase", Date.UTC(2026, 9, 9, 12), "ATL", "MEM"), flight("homeFromBase", Date.UTC(2026, 9, 12, 20), "MEM", "ATL")];
+    const events = parsed(renderFeed([month({ flights: Object.fromEntries(answers.map((a) => [a.id, a])) }, p)], { homeDays: false }))
+      .filter((e) => e.summary.startsWith("Trip 40"))
+      .sort((a, b) => a.startDate.toUnixTime() - b.startDate.toUnixTime());
+    expect(events).toHaveLength(3);
+    expect(events[0].description).toContain("Commute in: ATL > MEM");
+    expect(events[0].description).not.toContain("Commute home");
+    expect(events[1].description).not.toContain("Commute");
+    expect(events[2].description).toContain("Commute home: MEM > ATL");
+    expect(events[2].description).not.toContain("Commute in");
+  });
+
   it("never shows another pilot: only this pack's line, and the seniority list isn't touched", () => {
     const ics = renderFeed([month({}, pack({ seniorityList: [{ bidNumber: 1, seniority: 987654 }] }))], { homeDays: true });
     expect(ics).not.toContain("987654");

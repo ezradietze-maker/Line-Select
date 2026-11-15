@@ -43,10 +43,12 @@ const spanCache = new WeakMap<object, WeakMap<Trip, { start: number; end: number
 
 /**
  * How long before a trip's show a trade must go in. CBA 2026 25.L.9.a.ii: "at least 2 hours prior to showtime of the first
- * affected activity"; from the December 2026 bid period (Phase 2), 1 hour.
+ * affected activity", and "Upon implementation of 25.L.1.a., … at least 1 hour before showtime": 1 hour once real-time
+ * trading is in (Phase 3). The implementation chart lists the 1 hour in Phase 2, but the clause ties it to 25.L.1.a, and
+ * the later date is the safe one: a pilot told 2 hours is never late.
  */
 export function tradeDeadlineHours(pack: Pick<BidPack, "month">): number {
-  return fromPhase2(pack) ? 1 : 2;
+  return hasRealTimeTrading(pack) ? 1 : 2;
 }
 
 const monthNumber = (pack: Pick<BidPack, "month">): number | null => {
@@ -127,6 +129,18 @@ export function carryInReach(pack: BidPack): number | null {
   return reach;
 }
 const reachCache = new WeakMap<BidPack, number | null>();
+
+/**
+ * The month's first days, on the base's clock, in which a trip starting is held back from a pilot who hasn't said what
+ * they carry in (`carryInReach`): 2 when it reaches two days in. Null without the pack's dates.
+ */
+export function carryInReachDays(pack: BidPack): number | null {
+  const reach = carryInReach(pack);
+  if (reach === null || !pack.bidPeriodStart) return null;
+  const zone = zoneOf(pack);
+  const days = DateTime.fromMillis(reach, { zone }).diff(DateTime.fromISO(pack.bidPeriodStart, { zone }), "days").days;
+  return Math.max(1, Math.ceil(days - 1e-9));
+}
 
 /** The vacation a pilot holds, by their seniority number, from the pack's own schedule. */
 export function vacationsOf(pack: BidPack, seniority: number | null | undefined): readonly VacationPeriod[] {

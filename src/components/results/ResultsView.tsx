@@ -69,12 +69,15 @@ import { PHRASES } from "@/lib/preference-summary";
 import {
   PAGE_SIZE,
   bidOrderLines,
+  emptyListSaying,
   hideLine,
   leftOutPhrase,
+  listedLines,
   matchesLineSearch,
   nextVisibleCount,
   pruneMarks,
   restoreLine,
+  shortlistOrder,
   stepCursor,
   toggleStar,
   EMPTY_MARKS,
@@ -96,6 +99,7 @@ import { rankedAsFlown } from "@/lib/vacation-lines";
 import { useCarryIn } from "@/lib/use-carry-in";
 import { SortMenu, SortNote } from "@/components/results/SortMenu";
 import { TierBar, TierHeadingRow, TierMoveRow, useCardPressProps } from "@/components/results/TierBar";
+import { LineContextMenu, type LineMenu } from "@/components/results/LineContextMenu";
 import { tierHeadings } from "@/lib/line-tiers";
 import { useLineSort } from "@/lib/use-line-sort";
 import { useLineTiers, type TeachTiers } from "@/lib/use-line-tiers";
@@ -305,6 +309,8 @@ export function ResultsView({
   // on: switching a card's layout tracking off and on again each swap left a listener behind every time, holding that
   // render's whole list (about 3 MB a swap); which cards it measures is said by `layoutDependency` instead.
   const [layoutArmed, setLayoutArmed] = useState(false);
+  // The right-click bulk menu: which line it opened on, and where.
+  const [menu, setMenu] = useState<LineMenu | null>(null);
   const [promptJudgment, setPromptJudgment] = useState<PairwiseJudgment | null>(null);
   const [promptCount, setPromptCount] = useState(0);
   const [askedPairIds, setAskedPairIds] = useState<Set<string>>(new Set());
@@ -654,11 +660,15 @@ export function ResultsView({
       ),
     [ranked, filters, filterCtx, search, hotelFilter]
   );
-  const hiddenMatchingCount = matching.filter((r) => hiddenSet.has(r.line.id)).length;
-  const listable = useMemo(
-    () => matching.filter((r) => (showHidden || !hiddenSet.has(r.line.id)) && !tiers.setAside.has(r.line.id) &&
-        (view === "all" || (view === "shortlist" ? starredSet.has(r.line.id) : realisticIds.has(r.line.id)))
-    ),
+  // "Show the N lines you hid" counts only those it would bring into this view (`listedLines`).
+  const { lines: listable, hiddenInView: hiddenMatchingCount } = useMemo(
+    () =>
+      listedLines(matching, {
+        hidden: hiddenSet,
+        setAside: tiers.setAside,
+        showHidden,
+        inView: (id) => view === "all" || (view === "shortlist" ? starredSet.has(id) : realisticIds.has(id)),
+      }),
     [matching, showHidden, hiddenSet, tiers.setAside, view, starredSet, realisticIds]
   );
   // Departures counted as each card counts them: the times the pilot leaves home.
@@ -875,7 +885,8 @@ export function ResultsView({
     // Tabbing or clicking into another card takes the cursor there, so the ring and the keys stay on the same line. With
     // no cursor showing, a click puts none up.
     function onFocusIn(e: FocusEvent) {
-      if (!(e.target instanceof HTMLElement)) return;
+      // Into a line's right-click menu, the line keeps it: drawn, wherever a move sends it, for focus to come back to.
+      if (!(e.target instanceof HTMLElement) || e.target.closest('[role="menu"]')) return;
       const id = e.target.closest<HTMLElement>("[data-line-id]")?.dataset.lineId ?? null;
       if (id !== focusId) setFocusId(id);
       if (keyId !== null && id && id !== keyId && keyableIds.includes(id)) setKeyId(id);
@@ -912,10 +923,12 @@ export function ResultsView({
       })),
     [exportable, rankById, noteOf]
   );
-  const shortlistEntries = useMemo<BidOrderEntry[]>(
-    () => bidOrderEntries.filter((e) => starredSet.has(e.lineScore.line.id)),
-    [bidOrderEntries, starredSet]
+  // The starred lines as bid; those in Not bid are left out, and the copy says so (`shortlistOrder`).
+  const shortlist = useMemo(
+    () => shortlistOrder(bidOrderEntries.map((e) => ({ line: e.lineScore.line, entry: e })), ranked, starredSet, tiers.notBid),
+    [bidOrderEntries, ranked, starredSet, tiers.notBid]
   );
+  const shortlistEntries = useMemo<BidOrderEntry[]>(() => shortlist.lines.map((r) => r.entry), [shortlist]);
 
   // Same value on every line (it describes the pilot's profile, not any one line), so it's said once here instead of on all 283 cards.
   const confidenceLevel = ranked[0]?.confidenceLevel ?? null;
@@ -1281,16 +1294,7 @@ export function ResultsView({
     setPromptJudgment(null);
   }
 
-  const emptyMessage =
-    view === "shortlist"
-      ? "Nothing shortlisted yet — tap the star on any line to save it here."
-      : view === "realistic"
-        ? "No line matches the current filters among the ones you could realistically hold. Try clearing one or two."
-      : search.trim()
-        ? `No line matches “${search.trim()}”.`
-        : hotelFilter
-          ? `No line matches these filters at ${hotelFilter.hotelName}. Try clearing one or two.`
-          : "No lines match the current filters. Try clearing one or two.";
+  const empty = emptyListSaying({ view, starred: validMarks.starred.length, search, hotelName: hotelFilter?.hotelName ?? null, filtersOn: filtersActive(filters) });
 
   return (
     <div className="mx-auto w-full max-w-3xl xl:max-w-6xl">
@@ -1519,7 +1523,9 @@ export function ResultsView({
                 availableCities={availableCities}
                 touchedCities={touchedCities}
                 commute={commute}
-                visibleCount={matching.length}
+                // The lines the list shows: the filters' matches less the hidden and set-aside lines, in the view chosen.
+                // Their matches alone said "Showing 489 of 489" over a shortlist of three.
+                visibleCount={sorted.length}
                 totalCount={ranked.length}
               />
             )}
@@ -1529,6 +1535,7 @@ export function ResultsView({
             <BidOrderExport
               entries={bidOrderEntries}
               shortlistEntries={shortlistEntries}
+              shortlistNotBid={shortlist.notBid}
               bidPeriodStart={bidPack.bidPeriodStart}
               bidMonth={bidPack.month}
               packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
@@ -1616,8 +1623,8 @@ export function ResultsView({
               {displayed.length === 0 ? (
                 <EmptyState
                   compact
-                  description={emptyMessage}
-                  {...(view !== "shortlist" && (filtersActive(filters) || search.trim() || hotelFilter)
+                  description={empty.message}
+                  {...(empty.canClear
                     ? {
                         actionLabel: "Clear filters and search",
                         onAction: () => {
@@ -1646,6 +1653,10 @@ export function ResultsView({
                           id={`line-${id}`}
                           data-line-id={id}
                           {...pressPropsFor(id)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setMenu({ id, x: e.clientX, y: e.clientY });
+                          }}
                           className={`scroll-mt-20 md:scroll-mt-6 ${flashId === id ? "line-flash" : ""} ${keyedId === id ? "line-keyed" : ""} ${tiers.selected.has(id) ? "rounded-[6px] ring-2 ring-sign-edge" : ""}`}
                           layout={layoutArmed ? "position" : false}
                           layoutDependency={dragEnabled && order.moved.has(id) ? order.turn : 0}
@@ -1716,6 +1727,8 @@ export function ResultsView({
             </div>
             <DragOverlay>{activeLineScore && <DragPreview lineScore={activeLineScore} />}</DragOverlay>
           </DndContext>
+
+          {menu && <LineContextMenu menu={menu} tiers={tiers} listedIds={listedIds} onClose={() => setMenu(null)} />}
 
           {sorted.length > displayed.length && (
             <div className="panel-glass mt-4 flex flex-col items-center gap-2 px-4 py-4 text-center">

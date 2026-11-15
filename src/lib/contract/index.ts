@@ -8,7 +8,15 @@ import type { ChartRow, ContractDoc, ContractNode, ContractVersion } from "./typ
  */
 export const NODES = data.nodes as ContractNode[];
 export const DOCS = data.docs as ContractDoc[];
-export const CHART = data.chart as ChartRow[];
+/** What a chart line leaves out that its own clause says, shown with the line wherever it's dated. */
+const CHART_NOTES: Record<string, string> = {
+  "25.L.9.a.ii":
+    "The clause itself starts the 1 hour “Upon implementation of 25.L.1.a.” (Phase 3, August 2027). Until then Line Select times trades at 2 hours before show.",
+};
+export const CHART = (data.chart as ChartRow[]).map((row) => {
+  const extra = row.refs.map((ref) => CHART_NOTES[ref]).filter(Boolean);
+  return extra.length ? { ...row, notes: [row.notes, ...extra].filter(Boolean).join(" ") } : row;
+});
 
 const byId = new Map(NODES.map((n) => [n.id, n]));
 const childrenById = new Map<string, ContractNode[]>();

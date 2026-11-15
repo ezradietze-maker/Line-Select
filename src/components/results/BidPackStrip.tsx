@@ -29,7 +29,9 @@ import type { Line } from "@/types/bidpack";
 
 /** The grip's column, the numbers' block and the chevron's column, in px — the date header lines up on the same. */
 const GRIP_W = 24;
-const LEFT_W = 204;
+// Room for the ring and the spelled-out numbers on one line each ("C/O blk 0:00 Days off 15" needs 174px): at 204 they
+// wrapped, and the last column ran under the line's first trip.
+const LEFT_W = 224;
 const CHEVRON_W = 22;
 /** The strip's padding each side, inside its panel. */
 const PAD_X = 8;

@@ -2,7 +2,9 @@ import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { fitTripWeights, shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
 import { learnFromChoices } from "@/lib/brain/reorder-learner";
 import { criterionFromAnswer, type FactorOption, type SwapQuestion } from "@/lib/brain/swap-question";
+import { METRICS_BY_ID } from "@/lib/metrics/catalog";
 import type { PackMetrics } from "@/lib/metrics/compute";
+import { fourWeekFactor } from "@/lib/metrics/line-length";
 import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, SwapAnswer, TripChoice } from "@/types/pilot-model";
@@ -144,10 +146,12 @@ export function answerSwap(profile: PreferenceProfile, bidPack: BidPack, questio
           delete rest.hardLimit;
           return rest;
         }
-        // Moved just far enough to let this line through. The limit shown was in the month's own terms (a five-week
-        // month's count against a limit scaled up to match — see `scorePackV2`), so it's scaled back the same way.
-        const perShown = question.limit ? c.hardLimit.value / question.limit : 1;
-        return { ...c, hardLimit: { ...c.hardLimit, value: question.value * perShown } };
+        // Moved just far enough to let this line through. The limit is for four weeks, and a longer month's count is
+        // judged at four weeks' worth (see `scorePackV2`), so it's set to that, worked out the same way: scaled back
+        // from the limit shown, rounding left it a hair past the line's count, and the line still broke it.
+        const factor = fourWeekFactor(bidPack);
+        const judged = METRICS_BY_ID.get(c.metric)?.perMonth && factor !== 1 ? question.value * factor : question.value;
+        return { ...c, hardLimit: { ...c.hardLimit, value: judged } };
       });
       return add({ kind: reply.action === "drop" ? "limit-dropped" : "limit-raised", criterionId: question.criterionId }, { ...base, criteria });
     }

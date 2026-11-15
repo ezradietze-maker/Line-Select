@@ -74,6 +74,14 @@ export function bidOrderLines<T extends { line: { id: string } }>(ranked: T[], h
   return { lines, hidden: hiddenCount, notBid: notBidCount };
 }
 
+/**
+ * What "Copy shortlist" takes: the starred lines in the bid order (`bidOrderLines`), and how many starred lines that
+ * leaves out for being in Not bid — said when copied, where it used to leave them out without a word.
+ */
+export function shortlistOrder<T extends { line: { id: string } }>(bidOrder: readonly T[], ranked: readonly { line: { id: string } }[], starred: ReadonlySet<string>, notBid: ReadonlySet<string>): { lines: T[]; notBid: number } {
+  return { lines: bidOrder.filter((r) => starred.has(r.line.id)), notBid: ranked.filter((r) => starred.has(r.line.id) && notBid.has(r.line.id)).length };
+}
+
 /** "the 2 lines you hid and the Not bid line": what an export leaves out, or null when it leaves out nothing. */
 export function leftOutPhrase(hidden: number, notBid: number): string | null {
   const parts = [
@@ -81,6 +89,50 @@ export function leftOutPhrase(hidden: number, notBid: number): string | null {
     notBid ? `the ${notBid === 1 ? "Not bid line" : `${notBid} Not bid lines`}` : null,
   ].filter(Boolean);
   return parts.length ? parts.join(" and ") : null;
+}
+
+/**
+ * The lines the list would show with the hidden ones shown too — the filters' matches less the set-aside lines, in the
+ * view — and how many of those are hidden: what "Show the N lines you hid" brings back. Counted from the matches alone,
+ * the Shortlist (where a hidden line, never starred, can't be) offered to show lines it then never showed.
+ */
+export function listedLines<T extends { line: { id: string } }>(
+  matching: readonly T[],
+  s: { hidden: ReadonlySet<string>; setAside: ReadonlySet<string>; showHidden: boolean; inView: (id: string) => boolean }
+): { lines: T[]; hiddenInView: number } {
+  const lines: T[] = [];
+  let hiddenInView = 0;
+  for (const r of matching) {
+    if (s.setAside.has(r.line.id) || !s.inView(r.line.id)) continue;
+    const hidden = s.hidden.has(r.line.id);
+    if (hidden) hiddenInView++;
+    if (s.showHidden || !hidden) lines.push(r);
+  }
+  return { lines, hiddenInView };
+}
+
+/**
+ * What the list says when it shows no line, and whether clearing the filters and search would bring lines back. The
+ * shortlist with a search on said "Nothing shortlisted yet" over three shortlisted lines, and offered no way to clear it.
+ */
+export function emptyListSaying(s: {
+  view: "all" | "shortlist" | "realistic";
+  /** How many lines are shortlisted, whatever is showing. */
+  starred: number;
+  search: string;
+  hotelName: string | null;
+  filtersOn: boolean;
+}): { message: string; canClear: boolean } {
+  if (s.view === "shortlist" && s.starred === 0) return { message: "Nothing shortlisted yet — tap the star on any line to save it here.", canClear: false };
+  const q = s.search.trim();
+  if (q) return { message: `No line matches “${q}”.`, canClear: true };
+  const among = s.view === "shortlist" ? " among your shortlisted lines" : s.view === "realistic" ? " among the ones you could realistically hold" : "";
+  if (s.hotelName) return { message: `No line matches these filters at ${s.hotelName}${among}. Try clearing one or two.`, canClear: true };
+  if (s.filtersOn) return { message: `No line matches the current filters${among}. Try clearing one or two.`, canClear: true };
+  // Nothing narrows the list: the lines it would show are set aside or hidden.
+  if (s.view === "shortlist") return { message: "Your shortlisted lines are set aside. Bring them back from Set aside, above.", canClear: false };
+  if (s.view === "realistic") return { message: "None of the lines you could realistically hold is in the list: they're set aside or hidden.", canClear: false };
+  return { message: "Every line is set aside or hidden. Bring them back from Set aside, above, or show the ones you hid.", canClear: false };
 }
 
 /**

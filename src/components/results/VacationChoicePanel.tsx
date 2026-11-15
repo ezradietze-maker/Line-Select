@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { DateTime } from "luxon";
 import { useMemo } from "react";
 import { zoneOf } from "@/lib/phase-in";
 import type { CarryIn } from "@/lib/use-carry-in";
 import { vacationId, type VacationChoice } from "@/lib/vacation-lines";
+import { vacationLabel } from "@/lib/vacation-slide";
 import type { BidPack, VacationPeriod } from "@/types/bidpack";
 
 const TOP_LINES = 20;
@@ -15,12 +15,6 @@ const CHOICES: { value: VacationChoice; label: string; detail: string }[] = [
   { value: "keep-flying", label: "Keep my flying", detail: "Those trips still come off, but a line ranks lower for the share of its credit your vacation takes, so lines it barely touches rise." },
   { value: "not-taking", label: "Not taking this one", detail: "Only if it's really off your schedule, traded or changed with flight management (CBA 2026 7.E.1.a). Otherwise those trips still come off." },
 ];
-
-function when(v: VacationPeriod, zone: string): string {
-  const first = DateTime.fromISO(v.from, { zone });
-  const last = DateTime.fromMillis(Date.parse(v.to) - 7_200_000, { zone });
-  return `${first.toFormat("LLL d")} to ${last.toFormat("LLL d")} (${v.days} days)`;
-}
 
 /** Above the list: the pilot's vacation from the pack, scored into every line, and what they want done with it. */
 export function VacationChoicePanel({ bidPack, carry, order }: { bidPack: BidPack; carry: CarryIn; order: string[] }) {
@@ -63,7 +57,7 @@ export function VacationChoicePanel({ bidPack, carry, order }: { bidPack: BidPac
           const current = state.vacationChoices?.[vacationId(v)] ?? "use";
           return (
             <fieldset key={vacationId(v)}>
-              <legend className="text-sm font-medium text-ink">{when(v, zone)}</legend>
+              <legend className="text-sm font-medium text-ink">{vacationLabel(v, zone)}</legend>
               <div className="mt-1 space-y-1">
                 {CHOICES.map((c) => (
                   <label key={c.value} className="flex items-start gap-2 text-sm text-ink">

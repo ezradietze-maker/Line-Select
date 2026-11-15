@@ -307,6 +307,43 @@ describe("the contract validator, held to where each claim is made", () => {
     expect(ok("The Company may assign the one day of base hotel standby per bid period.", [BHS])).toBe(false);
   });
 
+  it("checks a month that ends a sentence, and reads 'the bid period after November' as no start", () => {
+    expect(ok("The 115-hour SWW starts by August.", [SWW])).toBe(false);
+    expect(ok("The 115-hour SWW starts by December.", [SWW])).toBe(true);
+    expect(ok("The once-per-bid-period limit has applied since December.", [BHS])).toBe(false);
+    expect(ok("The 115-hour SWW does not take effect until the bid period after November.", [SWW])).toBe(true);
+    expect(ok("The 115-hour SWW takes effect after August 2027.", [SWW])).toBe(false);
+  });
+
+  it("dates a rule by its own quote, not by the implementation chart's line beside it", () => {
+    const opening = (id: string, words: number): Q => ({ section: id, version: "2026", quote: contractNode(id)!.text.split(/\s+/).slice(0, words).join(" ") });
+    const chart = contractNode("LOA-Implementation")!.text;
+    const phase2: Q = { section: "LOA-Implementation", version: "2026", quote: chart.slice(chart.indexOf("Phase 2"), chart.indexOf("\n", chart.indexOf("Phase 2"))) };
+    const cap = opening("25.L.8.a", 60);
+    expect(ok("The 2026 wording raises that cap to 13 CH, effective the first day of the December 2026 bid period.", [cap, phase2])).toBe(true);
+    expect(ok("The 2026 wording raises that cap to 13 CH, effective the first day of the June 2026 bid period.", [cap, phase2])).toBe(false);
+    // Both quotes share "hours" with the clause; only the Phase 2 one holds its 3.
+    const upTo = (id: string, words: string): Q => {
+      const text = contractNode(id)!.text;
+      return { section: id, version: "2026", quote: text.slice(0, text.indexOf(words) + words.length) };
+    };
+    const quotes = [upTo("25.G.2.c", "3 hours"), upTo("25.G.1", "12 hours")];
+    expect(ok("The 3-hour pilots-only rule doesn't start until the December 2026 bid period.", quotes)).toBe(true);
+    expect(ok("The 3-hour pilots-only rule doesn't start until the June 2026 bid period.", quotes)).toBe(false);
+    // 25.L.10's one change waits on 25.L.1.a: naming the heading doesn't bring in the general effective date.
+    const pickUp: Q = { section: "25.L.10.c", version: "2026", quote: contractNode("25.L.10.c")!.text.trim() };
+    expect(ok("Under 25.L.10, a trip pick-up is processed this way by the August 2027 bid period.", [pickUp])).toBe(true);
+    expect(ok("Under 25.L.10, a trip pick-up has been processed this way since June 29, 2026.", [pickUp])).toBe(false);
+  });
+
+  it("reads a number in wide or other digits, or refuses it", () => {
+    expect(ok("The SWW runs at least １２０ hours.", [SWW])).toBe(false);
+    expect(ok("The 115-hour SWW is a Phase ４ change.", [SWW])).toBe(false);
+    expect(ok("The SWW runs at least 115½ hours.", [SWW])).toBe(false);
+    expect(ok("The SWW runs at least ١١٥ hours.", [SWW])).toBe(false);
+    expect(validateAnswer({ found: true, answer: "It runs at least １１５ hours.", quotes: [SWW] }, { question: "q" })).toMatchObject({ ok: true, answer: "It runs at least １１５ hours." });
+  });
+
   it("refuses more quotes than an answer needs", () => {
     expect(validateAnswer({ found: true, answer: "It runs 115 hours.", quotes: Array.from({ length: 31 }, () => SWW) }, { question: "q" })).toMatchObject({ ok: false, reason: expect.stringContaining("at most 30") });
     expect(ok("It runs 115 hours.", Array.from({ length: 30 }, () => SWW))).toBe(true);

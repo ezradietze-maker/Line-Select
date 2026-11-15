@@ -1,3 +1,5 @@
+import { reportConnectionLost } from "@/lib/connection";
+import { ACCOUNT_HEADER, apiFetch } from "@/lib/shown-account";
 import type { UserAccount } from "@/types/auth";
 
 /**
@@ -90,7 +92,7 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
 /** For a signed-in pilot: mints a fresh recovery code (replacing any old one), after re-checking their password. */
 export async function createRecoveryCode(password: string): Promise<{ ok: boolean; error?: string; recoveryCode?: string }> {
   try {
-    const res = await fetch("/api/auth/recovery-code", {
+    const res = await apiFetch("/api/auth/recovery-code", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -135,7 +137,7 @@ export async function confirmEmailLink(token: string, choice: { password?: strin
 /** "Send it again": a fresh confirm link to the signed-in pilot's address. */
 export async function resendConfirmEmail(): Promise<{ ok: true; email: string } | { ok: true; confirmed: true } | { ok: false; error: string }> {
   try {
-    const res = await fetch("/api/auth/confirm-email/resend", { method: "POST", credentials: "same-origin" });
+    const res = await apiFetch("/api/auth/confirm-email/resend", { method: "POST", credentials: "same-origin" });
     const data = (await res.json().catch(() => ({}))) as { sent?: boolean; email?: string; confirmed?: boolean; error?: string };
     if (data.sent && data.email) return { ok: true, email: data.email };
     if (data.confirmed) return { ok: true, confirmed: true };
@@ -162,10 +164,14 @@ export async function resendConfirmEmailTo(email: string): Promise<{ ok: true; m
   }
 }
 
-/** Whether the server ended the session. When it didn't, the cookie still signs this device in — so the app must not act signed out. */
-export async function logout(): Promise<boolean> {
+/**
+ * Whether the server ended the session. When it didn't, the cookie still signs this device in — so the app must not
+ * act signed out. "other": someone else signed in in another tab since, and their session was left alone.
+ */
+export async function logout(forAccount?: string): Promise<boolean | "other"> {
   try {
-    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin", headers: forAccount ? { [ACCOUNT_HEADER]: forAccount } : undefined });
+    if (res.status === 409 && (await res.json().catch(() => null))?.otherAccount === true) return "other";
     return res.ok;
   } catch {
     return false;
@@ -176,13 +182,26 @@ export async function logout(): Promise<boolean> {
  * The signed-in account, and whether the server could be asked at all — no signal on a layover is not the same
  * answer as "signed out", and the app keeps a pilot's own data on screen for the first.
  */
-export async function checkSession(): Promise<{ user: UserAccount | null; reachable: boolean }> {
+export async function checkSession(waitMs = SESSION_WAIT_MS): Promise<{ user: UserAccount | null; reachable: boolean }> {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), waitMs);
   try {
-    const res = await fetch("/api/auth/session", { credentials: "same-origin" });
+    const res = await fetch("/api/auth/session", { credentials: "same-origin", signal: stop.signal });
     if (!res.ok) return { user: null, reachable: res.status < 500 };
     const data = await res.json();
     return { user: (data.user as UserAccount | null) ?? null, reachable: true };
   } catch {
+    // No answer at all, or none in time: the offline notice says so, and checks for the connection coming back.
+    reportConnectionLost();
     return { user: null, reachable: false };
+  } finally {
+    clearTimeout(timer);
   }
 }
+
+/**
+ * How long a load waits to hear who's signed in before carrying on as the account this device was last signed in to.
+ * On a hotel's Wi-Fi that's there but crawling, the offline worker shows the page after a few seconds, and every
+ * screen then sat on "Loading…" until this answered, however long that took.
+ */
+const SESSION_WAIT_MS = 8000;

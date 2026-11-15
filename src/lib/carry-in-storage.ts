@@ -62,6 +62,21 @@ export function carryInToSend(state: Pick<CarryInState, "items" | "none">): Carr
   return state.none ? [] : undefined;
 }
 
+/**
+ * Whether what was sent with what a pilot holds is still what this device has them carrying in (`carryInToSend`), by
+ * what the checks read: the times, not the label the server trims. A change on Your rankings reaches the trades only
+ * when they confirm again.
+ */
+export function sameCarryIn(sent: readonly CarryInItem[] | undefined, here: readonly CarryInItem[] | undefined): boolean {
+  if (sent === undefined || here === undefined) return sent === here;
+  const named = (items: readonly CarryInItem[]) =>
+    items
+      .map((c) => (c.kind === "trip" ? `trip|${Date.parse(c.report)}|${Date.parse(c.release)}|${c.international}` : `rdays|${c.firstDay}|${c.days}|${c.rp}`))
+      .sort()
+      .join(",");
+  return named(sent) === named(here);
+}
+
 /** Trips logged last month that are still flying when this pack's month starts: the Logbook kept them for this. */
 export function carryInFromLogbook(logbook: LoggedMonth[] | undefined, pack: Pick<BidPack, "bidPeriodStart" | "month">): CarryInTrip[] {
   if (!pack.bidPeriodStart) return [];

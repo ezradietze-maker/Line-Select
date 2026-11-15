@@ -1,10 +1,11 @@
 "use client";
 
+import { apiFetch } from "@/lib/shown-account";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { SearchIcon } from "@/components/ui/icons";
-import { checkAskQuery, cityGradesOf, runAskQuery, type AskResultLine } from "@/lib/ask-pack-run";
+import { checkAskQuery, cityGradesOf, orderAskResults, runAskQuery, type AskResultLine } from "@/lib/ask-pack-run";
 import type { AskQuery } from "@/lib/brain/ask-pack";
 import { formatValue } from "@/lib/brain/describe";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
@@ -26,7 +27,11 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [answer, setAnswer] = useState<{ query: AskQuery; lines: AskResultLine[] } | null>(null);
+  const [found, setFound] = useState<{ query: AskQuery; lines: AskResultLine[] } | null>(null);
+  // In the ranking as it is now: asked before it was worked out (or before a line was moved), the lines kept the order
+  // they were found in.
+  const answer = useMemo(() => (found ? { query: found.query, lines: orderAskResults(found.lines, found.query, rankedIds) } : null), [found, rankedIds]);
+  const ranked = rankedIds.length > 0;
   const [showAll, setShowAll] = useState(false);
   // Worked out on the first question, not on every visit (the panel is keyed to the pack, so a new pack starts fresh).
   const pm = useRef<PackMetrics | null>(packMetrics);
@@ -48,16 +53,16 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
     setShowAll(false);
     try {
       brief.current ??= buildPackBrief(bidPack, metrics());
-      const res = await fetch("/api/brain/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text, packBrief: brief.current }) });
+      const res = await apiFetch("/api/brain/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text, packBrief: brief.current }) });
       const data = (await res.json().catch(() => null)) as { query?: AskQuery; error?: string } | null;
       if (id !== latest.current) return;
       if (!res.ok || !data?.query) {
         setError(data?.error ?? "Couldn't read that question just now. Please try again.");
-        setAnswer(null);
+        setFound(null);
       } else {
         // Checked against this pack first: a city, region or city grade it can't match is said, never run as 0 on every line.
         const query = checkAskQuery(data.query, bidPack, metrics(), grades);
-        setAnswer({ query, lines: query.cannotAnswer ? [] : runAskQuery(query, bidPack, metrics(), home, rankedIds) });
+        setFound({ query, lines: query.cannotAnswer ? [] : runAskQuery(query, bidPack, metrics(), home) });
       }
     } catch {
       if (id !== latest.current) return;
@@ -141,7 +146,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
                 <span className="font-semibold">
                   {answer!.lines.length} line{answer!.lines.length === 1 ? "" : "s"}
                 </span>
-                {answer!.lines.length > 0 && <span className="text-ink-muted">{q.sort ? "" : ", in your order"}</span>}.
+                {answer!.lines.length > 0 && <span className="text-ink-muted">{q.sort ? "" : ranked ? ", in your order" : ", by line number"}</span>}.
               </p>
               {answer!.lines.length > 0 && (
                 <ul className="mt-2 divide-y divide-hairline rounded-lg border border-hairline">

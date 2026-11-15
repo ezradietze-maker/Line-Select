@@ -40,6 +40,15 @@ describe("parseOpenTimePaste", () => {
     expect(parseOpenTimePaste("14OCT DAYS 47").rows[0].tripNumbers).toEqual(["47"]);
   });
 
+  // Round 16: each count was judged alone, so a label-first count followed by another label kept its number as a trip.
+  it("takes out every count in a row of them, whichever side the labels are", () => {
+    for (const text of ["1540 14OCT DAYS 3 LEGS 7", "1540 14OCT LEGS: 4 DAYS: 3", "1540 14OCT DAYS 3 LEGS 7 DPS 2", "1540 14OCT 3 DAYS 2 DPS 5 LDGS", "1540 14OCT DAYS 3 2 DPS"]) {
+      expect(parseOpenTimePaste(text).rows[0].tripNumbers).toEqual(["1540"]);
+    }
+    // A count before its label, then hours: the count is the landings', and hours stay in (above).
+    expect(parseOpenTimePaste("1540 14OCT 3 LDGS 12 HRS").rows[0].tripNumbers).not.toContain("3");
+  });
+
   it("believes a trip number that's labelled", () => {
     for (const text of ["Trip 213 14OCT 1430", "SEQ 213 14OCT 22", "#213 14OCT 22", "Pairing: 213 14OCT 22"]) {
       expect(parseOpenTimePaste(text).rows[0].tripNumbers).toEqual(["213"]);

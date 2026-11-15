@@ -232,6 +232,8 @@ describe("buildViewAdd", () => {
     expect(plan.targetCH).toBe(0);
     expect(plan.combos).toEqual([]);
     expect(plan.choices.length).toBeGreaterThan(0);
+    // With no combination there's nothing for a trip to fall back from: each said "A fallback if those go to someone senior".
+    for (const c of plan.choices) expect(c.why).not.toMatch(/if those go/);
   });
   it("copies as a numbered list", () => {
     const text = viewAddCopyText({ choices: [{ text: "213 14OCT" }, { text: "214 15OCT" }] as never });

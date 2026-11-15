@@ -29,6 +29,15 @@ describe("loading a signed-in pilot's profile", () => {
     expect(client.saveServerProfile).not.toHaveBeenCalled();
   });
 
+  it("doesn't ask the server when the load already knows it isn't answering", async () => {
+    // The session check gave up on a crawling connection: asking for the profile too held the screen on "Loading…".
+    local.set(KEY, JSON.stringify(profile("old")));
+    client.fetchServerProfile.mockReturnValue(new Promise(() => {}));
+    expect((await loadProfileForUser("pilot-1", true))?.completedAt).toBe("old");
+    expect(client.fetchServerProfile).not.toHaveBeenCalled();
+    expect(client.saveServerProfile).not.toHaveBeenCalled();
+  });
+
   it("uploads the device's copy only when the server has none", async () => {
     local.set(KEY, JSON.stringify(profile("only-here")));
     client.fetchServerProfile.mockResolvedValue({ kind: "none" });
@@ -59,7 +68,7 @@ describe("saving a signed-in pilot's profile", () => {
     expect(r.sync).toBe("merged");
     expect(r.profile.completedAt).toBe("theirs");
     expect(r.profile.logbook?.map((e) => e.id)).toEqual(["NOV26", "OCT26"]);
-    expect(client.saveServerProfile).toHaveBeenLastCalledWith(r.profile);
+    expect(client.saveServerProfile).toHaveBeenLastCalledWith(r.profile, "pilot-1");
   });
 
   it("sends a save kept on this device, next time the app opens, rather than replacing it with the older copy", async () => {
@@ -135,7 +144,7 @@ describe("saving a signed-in pilot's profile", () => {
     expect(version).toBe("v1");
     landFirst();
     await Promise.all([first, second]);
-    expect(JSON.parse(local.get("line-select:profile-unsynced:pilot-1:v1")!)).toEqual({ base: "v2" });
+    expect(JSON.parse(local.get("line-select:profile-unsynced:pilot-1:v1")!)).toMatchObject({ base: "v2", from: { completedAt: "a" } });
   });
 
   it("keeps a guest on this device only", async () => {
@@ -160,6 +169,64 @@ describe("a save refused because another device saved first", () => {
     client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: { ...r.profile, hasCrashPad: true } }).mockResolvedValueOnce({ kind: "saved" });
     const again = await saveProfileForUser("pilot-1", { ...r.profile, isCommuter: true });
     expect(again.profile).toMatchObject({ seniorityNumber: 1234, minHomeHours: 20, hasCrashPad: true, isCommuter: true });
+  });
+
+  it("keeps an edit made offline when the app is closed and another device saves before it opens again", async () => {
+    const start = profile("2026-11-07T00:00:00Z");
+    client.serverProfileVersion.mockReturnValue("v1");
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: start });
+    const loaded = (await loadProfileForUser("pilot-1"))!;
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    await saveProfileForUser("pilot-1", { ...loaded, seniorityNumber: 1234 });
+    // The app is closed: what this tab knew goes with it.
+    forgetLastKnownProfile();
+    // Another device saved in the meantime; opened again, the edit kept here is refused against it.
+    const theirs = { ...start, minHomeHours: 20 };
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: theirs });
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: theirs }).mockResolvedValueOnce({ kind: "saved" });
+    const opened = await loadProfileForUser("pilot-1");
+    expect(opened).toMatchObject({ seniorityNumber: 1234, minHomeHours: 20 });
+    expect(hasUnsyncedProfile("pilot-1")).toBe(false);
+  });
+
+  it("keeps an edit made offline when the server still can't be reached after the app opens again", async () => {
+    const start = profile("2026-11-07T00:00:00Z");
+    client.serverProfileVersion.mockReturnValue("v1");
+    client.fetchServerProfile.mockResolvedValue({ kind: "found", profile: start });
+    const loaded = (await loadProfileForUser("pilot-1"))!;
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "failed" });
+    await saveProfileForUser("pilot-1", { ...loaded, seniorityNumber: 1234 });
+    forgetLastKnownProfile();
+    client.fetchServerProfile.mockResolvedValue({ kind: "unreachable" });
+    const opened = (await loadProfileForUser("pilot-1"))!;
+    // The app's retry, once there's signal: another device saved in the meantime.
+    const theirs = { ...start, minHomeHours: 20 };
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: theirs }).mockResolvedValueOnce({ kind: "saved" });
+    const r = await saveProfileForUser("pilot-1", opened);
+    expect(r.profile).toMatchObject({ seniorityNumber: 1234, minHomeHours: 20 });
+  });
+
+  it("keeps an edit made after the app opened without an answer from the server, once it answers", async () => {
+    // The session check gave up on a crawling connection, so the device's copy is all the load had. The edit made then
+    // carries no version, is refused once the server answers, and was merged against no copy: the account's copy (the
+    // same one, unchanged) won whole, and the edit was gone under a banner saying another device had made a change.
+    const start = profile("2026-11-07T00:00:00Z");
+    local.set(KEY, JSON.stringify(start));
+    const opened = (await loadProfileForUser("pilot-1", true))!;
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: start }).mockResolvedValueOnce({ kind: "saved" });
+    const r = await saveProfileForUser("pilot-1", { ...opened, seniorityNumber: 1234 });
+    expect(r.profile).toMatchObject({ seniorityNumber: 1234 });
+  });
+
+  it("lays an edit made that way over another device's change, keeping both", async () => {
+    const start = profile("2026-11-07T00:00:00Z");
+    local.set(KEY, JSON.stringify(start));
+    client.fetchServerProfile.mockResolvedValue({ kind: "unreachable" });
+    const opened = (await loadProfileForUser("pilot-1"))!;
+    const theirs = { ...start, minHomeHours: 20 };
+    client.saveServerProfile.mockResolvedValueOnce({ kind: "conflict", profile: theirs }).mockResolvedValueOnce({ kind: "saved" });
+    const r = await saveProfileForUser("pilot-1", { ...opened, seniorityNumber: 1234 });
+    expect(r.profile).toMatchObject({ seniorityNumber: 1234, minHomeHours: 20 });
   });
 
   it("writes nothing back to the device once the pilot has signed out", async () => {

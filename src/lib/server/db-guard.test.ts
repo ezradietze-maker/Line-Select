@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   assertLocalRuntimeNotProduction,
   assertSafeForDestructiveOp,
@@ -10,7 +10,7 @@ import {
  * only exercise how the guard reads a connection string and the environment.
  */
 
-const ENV_KEYS = ["PRODUCTION_DB_HOST", "ALLOW_PRODUCTION_DB", "VERCEL"] as const;
+const ENV_KEYS = ["PRODUCTION_DB_HOST", "ALLOW_PRODUCTION_DB", "VERCEL", "VERCEL_ENV"] as const;
 let saved: Record<string, string | undefined>;
 
 beforeEach(() => {
@@ -18,6 +18,7 @@ beforeEach(() => {
   for (const k of ENV_KEYS) delete process.env[k];
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const k of ENV_KEYS) {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];
@@ -61,6 +62,18 @@ describe("looksLikeProductionUrl", () => {
       // A different branch is safe even though its host has no dev marker.
       expect(looksLikeProductionUrl("postgresql://u:p@ep-other-99887766-pooler.neon.tech/neondb")).toBe(false);
     });
+
+    it("matches the direct host when the pooled one is named, and the other way round", () => {
+      // Neon's pooled and direct hosts differ only by "-pooler"; migrate.ts and the scripts use the direct one
+      // (POSTGRES_URL_NON_POOLING), so naming the pooled host must still fence it.
+      const directUrl = "postgresql://user:pw@ep-cool-forest-12345678.us-east-1.aws.neon.tech/neondb?sslmode=require";
+      process.env.PRODUCTION_DB_HOST = "ep-cool-forest-12345678-pooler.us-east-1.aws.neon.tech";
+      expect(looksLikeProductionUrl(directUrl)).toBe(true);
+      expect(looksLikeProductionUrl(prodUrl)).toBe(true);
+      process.env.PRODUCTION_DB_HOST = "ep-cool-forest-12345678.us-east-1.aws.neon.tech";
+      expect(looksLikeProductionUrl(prodUrl)).toBe(true);
+      expect(() => assertSafeForDestructiveOp(directUrl, "db:migrate")).toThrow(/PRODUCTION/);
+    });
   });
 });
 
@@ -87,7 +100,29 @@ describe("assertLocalRuntimeNotProduction", () => {
 
   it("steps aside on Vercel (the deployed app reaches its wired database)", () => {
     process.env.VERCEL = "1";
+    process.env.VERCEL_ENV = "production";
+    vi.stubEnv("NODE_ENV", "production");
     expect(() => assertLocalRuntimeNotProduction(prodUrl)).not.toThrow();
+    process.env.VERCEL_ENV = "preview";
+    expect(() => assertLocalRuntimeNotProduction(prodUrl)).not.toThrow();
+  });
+
+  it("still fences `npm run dev` when .env.local came from `vercel env pull`", () => {
+    // `vercel env pull` writes VERCEL="1" and VERCEL_ENV="development" into .env.local, which `next dev` loads.
+    process.env.VERCEL = "1";
+    process.env.VERCEL_ENV = "development";
+    vi.stubEnv("NODE_ENV", "development");
+    expect(() => assertLocalRuntimeNotProduction(prodUrl)).toThrow(/PRODUCTION/);
+    // A pull from the production environment says "production", but the dev server still runs in development.
+    process.env.VERCEL_ENV = "production";
+    expect(() => assertLocalRuntimeNotProduction(prodUrl)).toThrow(/PRODUCTION/);
+  });
+
+  it("still fences a script (no NODE_ENV) that loaded a pulled .env.local", () => {
+    process.env.VERCEL = "1";
+    process.env.VERCEL_ENV = "production";
+    vi.stubEnv("NODE_ENV", undefined);
+    expect(() => assertLocalRuntimeNotProduction(prodUrl)).toThrow(/PRODUCTION/);
   });
 
   it("allows a local process against a dev/local database", () => {

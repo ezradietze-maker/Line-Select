@@ -417,8 +417,10 @@ describe("Send it again", () => {
   });
 
   it("one address with a handful of made-up accounts can't use up the hour: a real pilot elsewhere still gets their link", async () => {
-    for (let i = 0; i < 8; i++) store.users.push(legacy({ id: `22222222-2222-4222-8222-${String(i).padStart(12, "0")}`, email: `junk${i}@attacker.example` }));
-    for (let i = 0; i < 8; i++) for (let j = 0; j < 5; j++) await resendConfirmEmailByAddress(`junk${i}@attacker.example`, "203.0.113.66", `${String(i * 10 + j).padStart(8, "0")}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`);
+    // Five links an hour for each, more than the site's whole hour in all: without the share the pilot below gets nothing.
+    const junk = Math.ceil(SITE_MAILS_PER_HOUR["sign-up"] / 5) + 1;
+    for (let i = 0; i < junk; i++) store.users.push(legacy({ id: `22222222-2222-4222-8222-${String(i).padStart(12, "0")}`, email: `junk${i}@attacker.example` }));
+    for (let i = 0; i < junk; i++) for (let j = 0; j < 5; j++) await resendConfirmEmailByAddress(`junk${i}@attacker.example`, "203.0.113.66", `${String(i * 10 + j).padStart(8, "0")}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`);
     expect(mail.sent.length).toBeLessThanOrEqual(SITE_MAILS_PER_SENDER_PER_HOUR);
     mail.sent.length = 0;
     await signUpByEmail("new.pilot@fedex.example", "a long password", "New Pilot", LAPTOP, "192.0.2.10");

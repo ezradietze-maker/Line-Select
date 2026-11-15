@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   canCheckCommute,
+  commuteBlocks,
+  commuteBlockWords,
   commuteStatuses,
   DEFAULT_COMMUTE_SETTINGS,
   loadCommuteAnswers,
@@ -12,6 +14,7 @@ import {
   type CommuteSettings,
 } from "@/lib/commute-filter";
 import type { CommuteStatus } from "@/lib/line-filters";
+import { departureSettingsOf } from "@/lib/month-detail";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -24,9 +27,20 @@ export interface CommuteCheck {
   done: number;
   total: number;
   counts: Record<CommuteStatus, number>;
+  /** Each line it rules out, and why, in the pack's order: they're out of the list, so this is where a pilot sees them. */
+  ruledOut: { lineNumber: string; why: string }[];
 }
 
 const SETTINGS_KEY = "line-select:commute-settings:v1";
+
+/**
+ * The hours at home worth going home for are the pilot's, never this device's: the ones the ranking and the cards count
+ * departures by (`departureSettingsOf`), the brain's reading of their words included.
+ */
+const withMinHome = (profile: PreferenceProfile): Pick<CommuteSettings, "minHomeHours"> => {
+  const { minHomeHours } = departureSettingsOf(profile);
+  return minHomeHours !== undefined ? { minHomeHours } : {};
+};
 
 export function startingSettings(profile: PreferenceProfile): CommuteSettings {
   const h = profile.pilotModel?.home;
@@ -34,6 +48,7 @@ export function startingSettings(profile: PreferenceProfile): CommuteSettings {
     ...DEFAULT_COMMUTE_SETTINGS,
     homeAirport: h?.airports[0] ?? (profile.isCommuter ? profile.commuteFrom : null) ?? "",
     ...(h?.commuteBufferHours !== undefined ? { arriveBeforeReportHours: h.commuteBufferHours } : {}),
+    ...withMinHome(profile),
   };
   if (typeof window === "undefined") return fromProfile;
   try {
@@ -44,6 +59,7 @@ export function startingSettings(profile: PreferenceProfile): CommuteSettings {
       arriveBeforeReportHours: typeof s.arriveBeforeReportHours === "number" ? s.arriveBeforeReportHours : fromProfile.arriveBeforeReportHours,
       releaseToDepartureHours: typeof s.releaseToDepartureHours === "number" ? s.releaseToDepartureHours : fromProfile.releaseToDepartureHours,
       jumpseats: typeof s.jumpseats === "boolean" ? s.jumpseats : fromProfile.jumpseats,
+      ...withMinHome(profile),
     };
   } catch {
     return fromProfile;
@@ -52,7 +68,10 @@ export function startingSettings(profile: PreferenceProfile): CommuteSettings {
 
 /** The commute filter's flight check: runs while the filter is on, resuming from what's kept, and only then. */
 export function useCommuteCheck(bidPack: BidPack, profile: PreferenceProfile, on: boolean): CommuteCheck {
-  const [settings, setSettings] = useState<CommuteSettings>(() => startingSettings(profile));
+  const [chosen, setSettings] = useState<CommuteSettings>(() => startingSettings(profile));
+  // Changed in the profile while the results are open, the departures follow it here too.
+  const { minHomeHours } = withMinHome(profile);
+  const settings = useMemo<CommuteSettings>(() => ({ ...chosen, minHomeHours }), [chosen, minHomeHours]);
   const [answers, setAnswers] = useState<CommuteAnswers>({});
   const [run, setRun] = useState<{ phase: CommuteCheck["phase"]; done: number; total: number }>({ phase: "idle", done: 0, total: 0 });
   const canCheck = canCheckCommute(bidPack, settings.homeAirport);
@@ -97,5 +116,10 @@ export function useCommuteCheck(bidPack: BidPack, profile: PreferenceProfile, on
     return c;
   }, [statuses]);
 
-  return { settings, update, canCheck, statuses, phase: run.phase, done: run.done, total: run.total, counts };
+  const ruledOut = useMemo(
+    () => (counts.no > 0 ? commuteBlocks(bidPack, settings, answers).map(({ line, block }) => ({ lineNumber: line.lineNumber, why: commuteBlockWords(block, bidPack) })) : []),
+    [counts.no, bidPack, settings, answers]
+  );
+
+  return { settings, update, canCheck, statuses, phase: run.phase, done: run.done, total: run.total, counts, ruledOut };
 }

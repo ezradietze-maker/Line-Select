@@ -6,6 +6,7 @@ import * as forecastStore from "@/lib/server/forecast-store";
 import { db } from "@/lib/server/postgres";
 import { looksLikeProductionUrl, productionDbOptIn } from "@/lib/server/db-guard";
 import * as suggestions from "@/lib/server/trade-suggestions";
+import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { awardHistoryRecords, feedbackSubmissions, tradeOffers, users } from "@/lib/server/schema";
 import { DEFAULT_WEIGHTS } from "@/types/preferences";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -304,10 +305,18 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.acceptTradeOffer(other.id, null)).toMatchObject({ status: "accepted" });
       expect((await suggestions.listSuggestionsFor(b.id, packId)).find((r) => r.id === proposed)).toMatchObject({ status: "cancelled", cancelReason: "changed" });
       // That board trade's trips aren't handed on by the matching.
-      expect((await suggestions.matchingHistory(meta, new Date())).boardTrips.map((g) => [g.pilot, g.trip.tripId])).toEqual(
+      const history = await suggestions.matchingHistory(meta, new Date());
+      expect(history.boardTrips.map((g) => [g.pilot, g.trip.tripId])).toEqual(
         expect.arrayContaining([
           [a.id, "t10"],
           [d.id, "t30"],
+        ])
+      );
+      // And what each takes there, what's handed them has to fit beside.
+      expect(history.boardSwaps.map((s) => [s.pilot, s.give?.tripId, s.take.tripId])).toEqual(
+        expect.arrayContaining([
+          [a.id, "t10", "t30"],
+          [d.id, "t30", "t10"],
         ])
       );
 
@@ -363,8 +372,31 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       for (const p of [a, b, c]) await suggestions.answerSuggestion(stepping, p.id, "accepted");
       await agreeOnBoard();
       expect(await suggestions.markStepDone(stepping, a.id, 0)).toEqual({ ok: false, reason: "traded" });
+      // And it ends there, its pilots free for other trades, rather than "accepted" with no way on for the month.
+      const ended = (await suggestions.listSuggestionsFor(a.id, packId)).find((r) => r.id === stepping)!;
+      expect(ended).toMatchObject({ status: "cancelled", cancelReason: "changed", stepsDone: 0 });
+      expect(tripsSpokenFor(ended, Date.now())).toEqual([]);
       await undo();
-      expect((await suggestions.markStepDone(stepping, a.id, 0)).ok).toBe(true);
+      expect(await suggestions.markStepDone(stepping, a.id, 0)).toEqual({ ok: false, reason: "not-next" });
+    });
+
+    it("won't store a trade found before one of its pilots agreed a board trade, whatever trips it moved", async () => {
+      const dated = (n: number) => ({ ...(tripOf(n) as object), tripId: `t${n}` }) as never;
+      const board = (n: number) => ({ lineNumber: "held", pairingNumber: `${n}`, days: 2, layoverCities: [], international: false, reportTime: "early" as const, creditHours: 10, tafbHours: 48, landings: 2, deadheadLegs: 0, tripId: `t${n}`, startDayIndex: n, date: null });
+      const [a, b, d] = [await makeUser("since-a"), await makeUser("since-b"), await makeUser("since-d")];
+      for (const [i, p] of [a, b].entries()) await mod.saveTradeHolding(p.id, { packId, bidPackMeta: meta, lineNumber: null, trips: [{ id: `t${i}`, startDayIndex: i, lock: null }, { id: `t${i + 20}`, startDayIndex: i + 20, lock: null }] });
+      const stored = () => ({
+        signature: randomUUID(), packId, bidPackMeta: meta, steps: [{ a: 0, b: 1 }], expiresAt: new Date(Date.now() + 86_400_000),
+        members: [a, b].map((p, position) => ({ userId: p.id, displayName: `P${position}`, position, give: dated(position), value })),
+      });
+      // A gives t20, not in the trade, and takes D's t30: what A will hold changed, which the search didn't see.
+      const agreeOnBoard = (at: Date) =>
+        db.insert(tradeOffers).values({ id: randomUUID(), ...meta, offeringUserId: a.id, offeringDisplayName: "A", offeredTrip: board(20), status: "accepted", responderUserId: d.id, responderDisplayName: "D", responderTrip: board(30), respondedAt: at, resolvedAt: at });
+      const foundFrom = new Date();
+      await agreeOnBoard(new Date(foundFrom.getTime() + 1000));
+      expect(await suggestions.saveSuggestion(stored(), foundFrom)).toBe(false);
+      // One agreed before the search read the board, it worked around.
+      expect(await suggestions.saveSuggestion(stored(), new Date(foundFrom.getTime() + 2000))).toBe(true);
     });
   });
 
@@ -580,6 +612,30 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect((await mod.findTradeOffer(stale.id))?.status).toBe("pending");
     });
 
+    it("when a pilot confirms what they hold anew, frees their offers of trips no longer on it", async () => {
+      const [a, b, c] = [await makeUser("reheld-a"), await makeUser("reheld-b"), await makeUser("reheld-c")];
+      const gone = await offer(a, trip("13", 2));
+      const kept = await offer(a, trip("14", 3));
+      const legacy = await offer(a, { ...trip("15", 4), tripId: undefined, startDayIndex: undefined } as unknown as ReturnType<typeof trip>);
+      const cOffer = await offer(c, trip("40", 4));
+      const bOffer = await offer(b, trip("50", 5));
+      await propose(cOffer, a, trip("16", 5));
+      await propose(bOffer, c, trip("41", 6));
+      // Trip 13 went in VIPS some other way, and 16 is now marked as one they can't trade.
+      await mod.freeOffersOfTripsNotHeld(a.id, { bidPackMeta: meta, trips: [{ id: "p14", startDayIndex: 3, lock: null }, { id: "p16", startDayIndex: 5, lock: "VLT" }] });
+      expect((await mod.findTradeOffer(gone.id))?.status).toBe("withdrawn");
+      expect((await mod.findTradeOffer(kept.id))?.status).toBe("open");
+      expect((await mod.findTradeOffer(legacy.id))?.status).toBe("open");
+      expect(await mod.findTradeOffer(cOffer.id)).toMatchObject({ status: "open", responderUserId: null, responderTrip: null });
+      // Other pilots' trades are theirs.
+      expect((await mod.findTradeOffer(bOffer.id))?.status).toBe("pending");
+      // Another seat's month is another holding.
+      const elsewhere = await offer(a, trip("17", 6), { bidPackMeta: { ...meta, month: "NOV26" } });
+      await mod.freeOffersOfTripsNotHeld(a.id, { bidPackMeta: meta, trips: [] });
+      expect((await mod.findTradeOffer(kept.id))?.status).toBe("withdrawn");
+      expect((await mod.findTradeOffer(elsewhere.id))?.status).toBe("open");
+    });
+
     it("shows other pilots' offers only on a seat's month the pilot holds or has the pack for", async () => {
       const [held, packed, stranger] = [await makeUser("seat-held"), await makeUser("seat-packed"), await makeUser("seat-stranger")];
       await mod.saveTradeHolding(held.id, { packId: `uploaded-${meta.base}-b777-cap-oct26`.toLowerCase(), bidPackMeta: meta, lineNumber: "1", trips: [] });
@@ -637,6 +693,26 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
 
       await forecastStore.removeSubmission(packKey, lineNumbers, pilotA);
       expect((await forecastStore.loadKnownRankings(packKey, lineNumbers, null)).total).toBe(0);
+    });
+  });
+
+  describe("membership: two checkouts started at once", () => {
+    it("keep the first Stripe customer linked, so both go on with the same one", async () => {
+      const pilot = await makeUser("two-checkouts");
+      const [a, b] = await Promise.all([mod.linkStripeCustomer(pilot.id, `cus_a_${pilot.id}`), mod.linkStripeCustomer(pilot.id, `cus_b_${pilot.id}`)]);
+      expect(a).toBe(b);
+      expect((await mod.getSubscriptionByUserId(pilot.id))?.stripeCustomerId).toBe(a);
+      // A later link never moves the pilot off the customer their membership is under.
+      expect(await mod.linkStripeCustomer(pilot.id, `cus_c_${pilot.id}`)).toBe(a);
+    });
+
+    it("move onto a new customer only from the one that's gone, so two tabs replacing it go on with one", async () => {
+      const pilot = await makeUser("customer-gone");
+      const gone = await mod.linkStripeCustomer(pilot.id, `cus_gone_${pilot.id}`);
+      expect(await mod.relinkStripeCustomer(pilot.id, gone, `cus_x_${pilot.id}`)).toBe(`cus_x_${pilot.id}`);
+      // The other tab, a moment behind, finds it already replaced.
+      expect(await mod.relinkStripeCustomer(pilot.id, gone, `cus_y_${pilot.id}`)).toBe(`cus_x_${pilot.id}`);
+      expect((await mod.getSubscriptionByUserId(pilot.id))?.stripeCustomerId).toBe(`cus_x_${pilot.id}`);
     });
   });
 
@@ -756,7 +832,7 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       const fromBefore = await makeUser("from-before", { confirmed: false });
       const confirmed = await makeUser("confirmed-sign-up", { confirmed: false });
       for (const [u, signUp] of [[signedUp, true], [fromBefore, false], [confirmed, true]] as const) {
-        await mod.saveVerificationToken({ tokenHash: hashOf(`clear-${u.id}`), userId: u.id, expiresAt: new Date(Date.now() + 60_000).toISOString(), signUp });
+        await mod.saveVerificationToken({ tokenHash: hashOf(`clear-${u.id}`), userId: u.id, expiresAt: new Date(Date.now() - 60_000).toISOString(), signUp });
       }
       await mod.markEmailVerified(confirmed.id);
       // Made just now: nothing is old enough yet.
@@ -767,7 +843,36 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.findUserById(confirmed.id)).not.toBeNull();
     });
 
-    it("the clear-out leaves an account anyone has used: a session, a saved pack or a profile", async () => {
+    it("the clear-out waits while a link sent since still works", async () => {
+      // Signed up eight days ago and asked for the link again today: removed the next morning, that link led nowhere.
+      const eightDaysAgo = new Date(Date.now() - 8 * 24 * 3600_000).toISOString();
+      const made = async (label: string) => {
+        const id = randomUUID();
+        const email = `${label}-${id}@test.line-select.invalid`;
+        await mod.createUserWithCredential({ id, email, displayName: "P", createdAt: eightDaysAgo, plan: "free", emailVerified: false }, { userId: id, email, passwordHash: "00", salt: "00" });
+        createdUserIds.push(id);
+        await mod.saveVerificationToken({ tokenHash: hashOf(`first-${id}`), userId: id, expiresAt: new Date(Date.now() - 7 * 24 * 3600_000).toISOString(), signUp: true });
+        return id;
+      };
+      const askedAgain = await made("asked-again");
+      await mod.saveVerificationToken({ tokenHash: hashOf(`again-${askedAgain}`), userId: askedAgain, expiresAt: new Date(Date.now() + 20 * 3600_000).toISOString() });
+      // "This wasn't me" spends the link without confirming: nothing is left to wait for.
+      const notMe = await made("not-me");
+      await mod.saveVerificationToken({ tokenHash: hashOf(`void-${notMe}`), userId: notMe, expiresAt: new Date(Date.now() + 20 * 3600_000).toISOString() });
+      await mod.voidVerificationToken(hashOf(`void-${notMe}`));
+      const weekAgo = new Date(Date.now() - 7 * 24 * 3600_000);
+      await mod.deleteUnconfirmedSignUps(weekAgo);
+      expect(await mod.findUserById(askedAgain)).not.toBeNull();
+      expect(await mod.findUserById(notMe)).toBeNull();
+      expect((await mod.spendVerificationToken(hashOf(`again-${askedAgain}`))).status).toBe("confirmed");
+      // Once that link has run out, it goes as any other.
+      const later = await made("ran-out");
+      await mod.saveVerificationToken({ tokenHash: hashOf(`late-${later}`), userId: later, expiresAt: new Date(Date.now() + 20 * 3600_000).toISOString() });
+      await mod.deleteUnconfirmedSignUps(weekAgo, new Date(Date.now() + 21 * 3600_000));
+      expect(await mod.findUserById(later)).toBeNull();
+    });
+
+    it("the clear-out leaves an account anyone has used: a session, a saved pack, a profile or a membership", async () => {
       const weekAgo = new Date(Date.now() - 8 * 24 * 3600_000).toISOString();
       const made = async (label: string) => {
         const id = randomUUID();
@@ -784,10 +889,14 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       await mod.saveBidPackRecord(withPack, "MEM-777-CA-2026-12", Buffer.from("pack"));
       const withProfile = await made("profile");
       await mod.savePreferenceProfile(withProfile, fakeProfile());
+      // Started a membership, then signed out: Stripe goes on billing the card, so the account must stay to match it.
+      const withMembership = await made("membership");
+      await mod.linkStripeCustomer(withMembership, `cus_test_${withMembership}`);
       const untouched = await made("untouched");
       await mod.deleteUnconfirmedSignUps(new Date(Date.now() - 7 * 24 * 3600_000));
       expect(await mod.findUserById(untouched)).toBeNull();
-      for (const id of [withSession, withPack, withProfile]) expect(await mod.findUserById(id)).not.toBeNull();
+      for (const id of [withSession, withPack, withProfile, withMembership]) expect(await mod.findUserById(id)).not.toBeNull();
+      expect(await mod.getSubscriptionByUserId(withMembership)).not.toBeNull();
       expect(await mod.findSession(token)).not.toBeNull();
       expect(await mod.getBidPackRecord(withPack)).not.toBeNull();
     });

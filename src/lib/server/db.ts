@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import type { AwardRow } from "@/lib/server/award-aggregate";
-import { alreadyTraded, offersFreedBy, offersFreedByTrade, sameTrip, type GivenTrip } from "@/lib/trades/offer-trips";
+import { alreadyTraded, offersFreedBy, offersFreedByTrade, sameTrip, snapshotTripKey, type GivenTrip } from "@/lib/trades/offer-trips";
+import { tripIsHeld } from "@/lib/server/trade-validation";
 import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { packIdFor } from "@/lib/pack-id";
 import { FREE_MEMBER_CAP } from "@/lib/membership";
@@ -220,12 +221,28 @@ export async function getSubscriptionByCustomerId(customerId: string): Promise<S
   return row ? toSubscriptionRecord(row) : null;
 }
 
-/** Records the pilot↔Stripe-customer link before the first checkout, so a later webhook can find the pilot. */
-export async function linkStripeCustomer(userId: string, stripeCustomerId: string): Promise<void> {
+/**
+ * Records the pilot↔Stripe-customer link before the first checkout, so a later webhook can find the pilot. The first
+ * link stays: two checkouts started at once each make a customer, and both must go on with the one kept here, or each
+ * would start its own membership. Returns the customer kept.
+ */
+export async function linkStripeCustomer(userId: string, stripeCustomerId: string): Promise<string> {
+  await db.insert(subscriptions).values({ userId, stripeCustomerId, status: "incomplete", updatedAt: new Date() }).onConflictDoNothing({ target: subscriptions.userId });
+  const [row] = await db.select({ stripeCustomerId: subscriptions.stripeCustomerId }).from(subscriptions).where(eq(subscriptions.userId, userId)).limit(1);
+  return row?.stripeCustomerId ?? stripeCustomerId;
+}
+
+/**
+ * Moves the pilot onto a new Stripe customer when the one saved (`from`) is gone at Stripe (`customerGone`). Only from
+ * that one: a checkout in another tab that replaced it first wins, and its customer is returned to go on with.
+ */
+export async function relinkStripeCustomer(userId: string, from: string, to: string): Promise<string> {
   await db
-    .insert(subscriptions)
-    .values({ userId, stripeCustomerId, status: "incomplete", updatedAt: new Date() })
-    .onConflictDoUpdate({ target: subscriptions.userId, set: { stripeCustomerId, updatedAt: new Date() } });
+    .update(subscriptions)
+    .set({ stripeCustomerId: to, updatedAt: new Date() })
+    .where(and(eq(subscriptions.userId, userId), eq(subscriptions.stripeCustomerId, from)));
+  const [row] = await db.select({ stripeCustomerId: subscriptions.stripeCustomerId }).from(subscriptions).where(eq(subscriptions.userId, userId)).limit(1);
+  return row?.stripeCustomerId ?? to;
 }
 
 /**
@@ -442,11 +459,16 @@ export async function markEmailVerified(userId: string, now = new Date()): Promi
 /**
  * Removes accounts made by signing up and never confirmed, made before `before`. Only those whose first link was sent
  * by signing up: accounts from before confirming existed never had one, so they stay however long they go unconfirmed.
- * And never one anyone has used: an account with a session, a saved pack or a profile stays, however it got them.
+ * And never one anyone has used: an account with a session, a saved pack, a profile or a membership stays, however it
+ * got them. Nor one whose latest link still works: "Send the link again" on its last day sent one that would otherwise
+ * have led nowhere the next morning. A link spent by "This wasn't me" has nothing left to wait for.
  * Every table's link to an account cascades, so nothing of a removed one is left. Returns how many went.
  */
-export async function deleteUnconfirmedSignUps(before: Date): Promise<number> {
-  const signedUp = db.select({ id: emailVerificationTokens.userId }).from(emailVerificationTokens).where(eq(emailVerificationTokens.signUp, true));
+export async function deleteUnconfirmedSignUps(before: Date, now = new Date()): Promise<number> {
+  const signedUp = db
+    .select({ id: emailVerificationTokens.userId })
+    .from(emailVerificationTokens)
+    .where(and(eq(emailVerificationTokens.signUp, true), or(lte(emailVerificationTokens.expiresAt, now), isNotNull(emailVerificationTokens.usedAt))));
   const removed = await db
     .delete(users)
     .where(
@@ -456,7 +478,9 @@ export async function deleteUnconfirmedSignUps(before: Date): Promise<number> {
         inArray(users.id, signedUp),
         notInArray(users.id, db.select({ id: sessions.userId }).from(sessions)),
         notInArray(users.id, db.select({ id: bidPacks.userId }).from(bidPacks)),
-        notInArray(users.id, db.select({ id: preferenceProfiles.userId }).from(preferenceProfiles))
+        notInArray(users.id, db.select({ id: preferenceProfiles.userId }).from(preferenceProfiles)),
+        // A pilot who went to checkout has a Stripe customer (and maybe a card being billed) that only this account ties back to.
+        notInArray(users.id, db.select({ id: subscriptions.userId }).from(subscriptions))
       )
     )
     .returning({ id: users.id });
@@ -798,6 +822,30 @@ export async function freeOffersOfMovedTrips(tx: Tx, meta: BidPackMetaSnapshot, 
       .set({ status: "open", responderUserId: null, responderDisplayName: null, responderTrip: null, respondedAt: null })
       .where(inArray(tradeOffers.id, reopen));
   }
+}
+
+/**
+ * After a pilot confirms what they hold anew, their offers of trips no longer on it (or now marked as ones they can't
+ * trade) are withdrawn, and a proposal they made with one is taken off its offer, as when a trip changes hands
+ * (`freeOffersOfMovedTrips`): otherwise the board could agree a trip they no longer have. An offer posted before
+ * snapshots carried the date can't say which day it meant, and is left alone.
+ */
+export async function freeOffersOfTripsNotHeld(userId: string, holding: Pick<TradeHolding, "bidPackMeta" | "trips">, now = new Date()): Promise<void> {
+  if (!isUuid(userId)) return;
+  const meta = holding.bidPackMeta;
+  await db.transaction(async (tx) => {
+    await lockPilotsInSeat(tx, meta, [userId]);
+    const rows = await tx
+      .select()
+      .from(tradeOffers)
+      .where(and(offersForSeat(meta), inArray(tradeOffers.status, ["open", "pending"]), or(eq(tradeOffers.offeringUserId, userId), eq(tradeOffers.responderUserId, userId))));
+    const given = rows.flatMap((r) => [
+      ...(r.offeringUserId === userId ? [r.offeredTrip] : []),
+      ...(r.responderUserId === userId && r.responderTrip ? [r.responderTrip] : []),
+    ]);
+    const gone = given.filter((t) => snapshotTripKey(t) !== null && !tripIsHeld(holding, t)).map((trip) => ({ pilot: userId, trip }));
+    if (gone.length > 0) await freeOffersOfMovedTrips(tx, meta, gone, now);
+  });
 }
 
 // ---- Candidate variables ----

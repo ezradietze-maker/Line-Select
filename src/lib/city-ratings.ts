@@ -1,3 +1,4 @@
+import { MAX_ANSWER } from "@/lib/brain/answer-limits";
 import type { BidPack } from "@/types/bidpack";
 import { hotelKey } from "@/lib/hotel-addresses";
 import { monthsWords, seasonMonths, seasonOf, type SeasonScores } from "@/lib/seasons";
@@ -223,12 +224,47 @@ export function hotelWords(hotels: Record<string, number> | undefined, label: (s
 
 /** The ratings as the pilot brain reads them, with the pilot's reasons — one block of the interview. */
 export function describeCityRatings(ratings: Record<string, CityRating>): string {
+  return describedWithin(ratings, MAX_ANSWER).text;
+}
+
+/** Whether the notes, together, are more than the one answer they go in holds, so the longest are cut short. */
+export function cityNotesShortened(ratings: Record<string, CityRating>): boolean {
+  return describedWithin(ratings, MAX_ANSWER).shortened;
+}
+
+/**
+ * Every city's grade, and its note as far as the answer's limit allows: past it, the longest notes are cut first, each
+ * to the same length. Cut at the limit as one block instead, the cities listed last (the avoided ones) went first.
+ */
+function describedWithin(ratings: Record<string, CityRating>, max: number): { text: string; shortened: boolean } {
   const label = (s: number) => CITY_RATING_STEPS.find((x) => x.score === s)?.label ?? String(s);
   const reason = (t: CityReasonTag) => CITY_REASONS.find((x) => x.tag === t)?.label.toLowerCase() ?? t;
-  return Object.entries(ratings)
+  const cities = Object.entries(ratings)
     .sort((a, b) => b[1].score - a[1].score)
-    .map(([code, r]) => `${code}: ${r.untried ? "Haven't been — would try it" : label(r.score)}${seasonWords(code, r.seasons, label)}${hotelWords(r.hotels, label)}${r.reasons?.length ? ` (${r.reasons.map(reason).join(", ")})` : ""}${r.note?.trim() ? ` — "${r.note.trim()}"` : ""}`)
-    .join("\n");
+    .map(([code, r]) => ({
+      grade: `${code}: ${r.untried ? "Haven't been — would try it" : label(r.score)}${seasonWords(code, r.seasons, label)}${hotelWords(r.hotels, label)}${r.reasons?.length ? ` (${r.reasons.map(reason).join(", ")})` : ""}`,
+      note: r.note?.trim() ?? "",
+    }));
+  const cut = (note: string, most: number) => (note.length <= most ? note : most > 1 ? `${note.slice(0, most - 1).trimEnd()}…` : "");
+  const write = (most: number) =>
+    cities
+      .map(({ grade, note }) => {
+        const kept = cut(note, most);
+        return kept ? `${grade} — "${kept}"` : grade;
+      })
+      .join("\n");
+  const longest = Math.max(0, ...cities.map((c) => c.note.length));
+  const whole = write(longest);
+  if (whole.length <= max) return { text: whole, shortened: false };
+  // The longest each note can be for them all to fit.
+  let lo = 0;
+  let hi = longest;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (write(mid).length <= max) lo = mid;
+    else hi = mid - 1;
+  }
+  return { text: write(lo), shortened: true };
 }
 
 export interface CityFacts {

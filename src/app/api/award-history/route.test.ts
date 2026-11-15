@@ -35,6 +35,9 @@ const post = (body: unknown) => new Request(URL_BASE, { method: "POST", body: JS
 const report = { base: "MEM", aircraft: "MD11", seat: "CAP", month: "OCT26", seniorityRank: 12, seniorityTotalPilots: 100, outcome: "line", lineNumber: "1033", daysOff: 15, totalCreditHours: 70, totalTafbHours: 200 };
 
 beforeEach(() => {
+  // The months a report may name are counted from today: the tests' "OCT26" stays a recent month.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(Date.UTC(2026, 10, 13)));
   for (const m of [mocks.user, mocks.rows, mocks.packRows, mocks.create, mocks.remove, mocks.active]) m.mockClear();
   mocks.verified.only = null;
   mocks.user.mockResolvedValue(null);
@@ -75,8 +78,9 @@ describe("what's stored", () => {
     expect(mocks.create.mock.calls[2][1]).toMatchObject({ holderShown: true });
     await POST(post({ ...report, outcome: "reserve", lineNumber: null, holderShown: true }));
     expect(mocks.create.mock.calls[3][1]).toMatchObject({ holderShown: false });
-    await POST(post({ ...report, seniorityRank: 500, holderShown: true }));
-    expect(mocks.create.mock.calls[4][1]).toMatchObject({ holderShown: false });
+    // A place past the seat's end isn't stored at all now, let alone shown.
+    expect((await POST(post({ ...report, seniorityRank: 500, holderShown: true }))).status).toBe(400);
+    expect(mocks.create).toHaveBeenCalledTimes(4);
   });
 
   it("leaves out what a report didn't say, so the one it replaces keeps it", async () => {
@@ -91,6 +95,44 @@ describe("what's stored", () => {
     // A reserve month never shows a number, said or not.
     await POST(post({ ...report, outcome: "reserve", lineNumber: null }));
     expect(mocks.create.mock.calls[2][1]).toMatchObject({ holderShown: false });
+  });
+});
+
+describe("the month a report names", () => {
+  const status = async (month: unknown) => (await POST(post({ ...report, month }))).status;
+
+  it("is a bid month as packs print it, not any text: one pilot can't make up months to outweigh everyone else", async () => {
+    mocks.user.mockResolvedValue(pilot);
+    // Each made-up "month" was a report of its own for the same seat and slice, from one account.
+    for (const month of ["x1", "x2", "OCT2026", "SAMPLE", "UNKNOWN", "oct26", "ABC26", "OCT 26"]) expect(await status(month)).toBe(400);
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(await status("OCT26")).toBe(200);
+    expect(await status("NOV26")).toBe(200);
+  });
+
+  it("is within two years back and a few months ahead", async () => {
+    mocks.user.mockResolvedValue(pilot);
+    expect(await status("NOV24")).toBe(200);
+    expect(await status("OCT24")).toBe(400);
+    expect(await status("FEB27")).toBe(200);
+    expect(await status("MAR27")).toBe(400);
+    // The other hundred years of codes, every one a "month" a script could share.
+    expect(await status("JAN99")).toBe(400);
+    expect(await status("JAN00")).toBe(400);
+  });
+});
+
+describe("the place in bid order a report names", () => {
+  const status = async (seniorityRank: unknown, seniorityTotalPilots: unknown = 100) => (await POST(post({ ...report, seniorityRank, seniorityTotalPilots }))).status;
+
+  it("is from 1 to the seat's size, as the seniority box takes it", async () => {
+    mocks.user.mockResolvedValue(pilot);
+    // A #0 filed as more senior than #1, and a place past the seat's end as its most junior.
+    for (const [rank, total] of [[0, 100], [-3, 100], [101, 100], [1, 0], [0, 0], [1.5, 100], ["12", 100]]) expect(await status(rank, total)).toBe(400);
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(await status(1, 100)).toBe(200);
+    expect(await status(100, 100)).toBe(200);
+    expect(await status(1, 1)).toBe(200);
   });
 });
 

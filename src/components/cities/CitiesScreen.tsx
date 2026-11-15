@@ -20,7 +20,7 @@ import { bidMonthOf, cityMarks, CITY_RATING_STEPS, CITY_REASONS, hasSeasons, hot
 import { monthsWords, seasonMonths } from "@/lib/seasons";
 import { fetchHotel } from "@/lib/hotel-client";
 import { cityName } from "@/lib/city-names";
-import { currentWeather, forecastWeather, SKY_WORDS, typicalWeather, type CurrentWeather, type DailyWeather, type TypicalWeather } from "@/lib/weather-client";
+import { CURRENT_WEATHER_FRESH_MS, currentWeather, forecastWeather, SKY_WORDS, typicalWeather, type CurrentWeather, type DailyWeather, type TypicalWeather } from "@/lib/weather-client";
 import type { BidPack } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
 import type { CityMark, PreferenceProfile } from "@/types/preferences";
@@ -77,13 +77,15 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
   // The weather at every city right now, in one request; the cards show it once it's in.
   const [skies, setSkies] = useState<Record<string, CurrentWeather>>({});
   const codesKey = facts.map((f) => f.code).join(",");
+  // Asked again each quarter hour the page stays open, as the clocks on it move on.
+  const weatherSlot = Math.floor(now / CURRENT_WEATHER_FRESH_MS);
   useEffect(() => {
     let alive = true;
     if (codesKey) currentWeather(codesKey.split(",")).then((w) => alive && setSkies(w));
     return () => {
       alive = false;
     };
-  }, [codesKey]);
+  }, [codesKey, weatherSlot]);
 
   if (!bidPack) {
     return (
@@ -107,7 +109,7 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Layover cities"
-        description={`The ${facts.length} cities this pack lays you over in — the local time and daylight there, how often you'd go, and the whole picture a tap away.`}
+        description={`The ${facts.length ? `${facts.length === 1 ? "one city" : `${facts.length} cities`} ` : "cities "}this pack lays you over in — the local time and daylight there, how often you'd go, and the whole picture a tap away.`}
         actions={
           <label className="flex items-center gap-2 text-sm text-ink-muted">
             Sort
@@ -132,6 +134,15 @@ export function CitiesScreen({ bidPack, profile }: { bidPack: BidPack | null; pr
             Show this month&rsquo;s cities
           </button>
         </div>
+      )}
+
+      {/* A pack of day trips, or lines whose trips couldn't be read one by one: said so, not an empty page. */}
+      {facts.length === 0 && (
+        <EmptyState
+          compact
+          className="mt-8"
+          description="No layovers found in this bid pack — its trips come home the same day, or its lines have no trip-by-trip breakdown to read them from."
+        />
       )}
 
       <ul className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

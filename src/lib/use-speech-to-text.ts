@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/shown-account";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBidPackIfAny } from "@/lib/app-state";
 import { browserText, withDictated, type BrowserResult, type Heard } from "@/lib/dictation/assemble";
@@ -131,7 +132,7 @@ function startBrowserDictation(opts: { onHeard: (heard: Heard) => void; onEnd: (
 let serviceAvailable: Promise<boolean> | null = null;
 function checkService(): Promise<boolean> {
   if (!serviceAvailable) {
-    serviceAvailable = fetch("/api/dictation-token", { cache: "no-store" })
+    serviceAvailable = apiFetch("/api/dictation-token", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { available: false }))
       .then((d: { available?: boolean }) => !!d.available)
       .catch(() => false);

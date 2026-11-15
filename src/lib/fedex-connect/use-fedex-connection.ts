@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/shown-account";
 import { useCallback, useEffect, useState } from "react";
 import { CONSENT_VERSION } from "@/lib/fedex-connect/consent";
 import type { ConnectionView } from "@/lib/fedex-connect/types";
@@ -22,7 +23,7 @@ export function useFedexConnection(signedIn: boolean) {
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/fedex/status", { cache: "no-store" });
+      const res = await apiFetch("/api/fedex/status", { cache: "no-store" });
       if (!res.ok) throw new Error();
       const data = (await res.json()) as { connection: ConnectionView };
       setConnection(data.connection);
@@ -43,7 +44,7 @@ export function useFedexConnection(signedIn: boolean) {
   const post = useCallback(async (path: string, body?: unknown): Promise<boolean> => {
     setBusy(true);
     try {
-      const res = await fetch(path, {
+      const res = await apiFetch(path, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: body ? JSON.stringify(body) : undefined,

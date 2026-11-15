@@ -267,8 +267,11 @@ export interface FlownMonth {
   brainVersion: number | null;
   notesUsed: boolean | null;
   awardedChoice: number | null;
+  /** The pilot's one-way tag, only so a group can count each pilot once (`flownByLevel`). */
+  pilot: string;
 }
 
+/** Newest check-in first. */
 export async function loadFlownMonths(): Promise<FlownMonth[]> {
   const [all, verified] = await Promise.all([
     db
@@ -285,11 +288,13 @@ export async function loadFlownMonths(): Promise<FlownMonth[]> {
       })
       .from(awardHistoryRecords)
       .where(and(isNotNull(awardHistoryRecords.pilotHash), isNotNull(awardHistoryRecords.monthFeel)))
+      // A month checked in before the time was kept sorts as the oldest, not (as Postgres puts nulls) the newest.
+      .orderBy(sql`${awardHistoryRecords.checkedInAt} desc nulls last`, desc(awardHistoryRecords.submittedAt))
       .limit(MAX_OUTCOMES),
     verifiedPilotHashes(),
   ]);
   return fromVerified(all, verified, (r) => r.pilotHash)
-    .map(({ base, aircraft, seat, month, feel, brainVersion, notesUsed, awardedChoice }) => ({ base, aircraft, seat, month, feel, brainVersion, notesUsed, awardedChoice }))
+    .map(({ pilotHash, base, aircraft, seat, month, feel, brainVersion, notesUsed, awardedChoice }) => ({ base, aircraft, seat, month, feel, brainVersion, notesUsed, awardedChoice, pilot: pilotHash! }))
     .filter((r): r is FlownMonth => r.feel === "better" || r.feel === "asExpected" || r.feel === "worse");
 }
 

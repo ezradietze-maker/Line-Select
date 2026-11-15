@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canHold, isTradeable, touchesVacation, tradeDeadlineHours, tripInstanceKey } from "@/lib/trades/legality";
+import { canHold, carryInReachDays, isTradeable, touchesVacation, tradeDeadlineHours, tripInstanceKey } from "@/lib/trades/legality";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 const pack = { id: "uploaded-mem-md11-fo-oct26", base: "MEM", month: "OCT26", bidPeriodStart: "2026-09-28", bidPeriodDays: 28 } as BidPack;
@@ -26,18 +26,22 @@ describe("what can be traded", () => {
     expect(isTradeable(pack, trip("a", 27, 72), none, beforeMonth)).toBe(false);
   });
 
-  it("stops at 2 hours before show, and at 1 hour from the December 2026 bid period (25.L.9.a.ii)", () => {
+  it("stops at 2 hours before show, and at 1 hour once real-time trading is in, August 2027 (25.L.9.a.ii)", () => {
     expect(tradeDeadlineHours({ month: "OCT26" })).toBe(2);
     expect(tradeDeadlineHours({ month: "NOV26" })).toBe(2);
-    expect(tradeDeadlineHours({ month: "DEC26" })).toBe(1);
-    expect(tradeDeadlineHours({ month: "JAN27" })).toBe(1);
+    // Phase 2 keeps 2 hours: the clause gives 1 hour only "Upon implementation of 25.L.1.a." (Phase 3).
+    expect(tradeDeadlineHours({ month: "DEC26" })).toBe(2);
+    expect(tradeDeadlineHours({ month: "JUL27" })).toBe(2);
+    expect(tradeDeadlineHours({ month: "AUG27" })).toBe(1);
     // Day 3 is Oct 1, reporting 10:00 in Memphis, 15:00Z.
     const show = Date.UTC(2026, 9, 1, 15);
     const t = trip("a", 3);
     expect(isTradeable(pack, t, none, show - 2.5 * 3_600_000)).toBe(true);
     expect(isTradeable(pack, t, none, show - 1.5 * 3_600_000)).toBe(false);
     const december = { ...pack, month: "DEC26", bidPeriodStart: "2026-09-28" };
-    expect(isTradeable(december, t, none, show - 1.5 * 3_600_000)).toBe(true);
+    expect(isTradeable(december, t, none, show - 1.5 * 3_600_000)).toBe(false);
+    const august = { ...pack, month: "AUG27", bidPeriodStart: "2026-09-28" };
+    expect(isTradeable(august, t, none, show - 1.5 * 3_600_000)).toBe(true);
   });
 });
 
@@ -56,6 +60,17 @@ describe("what a pilot can hold", () => {
     expect(touchesVacation(pack, trip("x", 20), vacation)).toBe(false);
     expect(canHold(pack, [], trip("x", 10), vacation)).toBe(false);
     expect(canHold(pack, [], trip("x", 20), vacation)).toBe(true);
+  });
+});
+
+describe("the days held back while a carry-in isn't known", () => {
+  it("counts them on the base's clock, not from midnight GMT", () => {
+    // Nothing here carries out past 2 days: trips starting Sep 28 or 29 are held back, two days, here and in Anchorage.
+    expect(carryInReachDays({ ...pack, lines: [] } as BidPack)).toBe(2);
+    expect(carryInReachDays({ ...pack, base: "ANC", lines: [] } as BidPack)).toBe(2);
+    // A line running from day 25 at 10:00 for 150 hours lands back 3 days and 16 hours past the end: 4 days.
+    const long = { ...trip("long", 25, 150), days: 7 } as Trip;
+    expect(carryInReachDays({ ...pack, lines: [{ lineNumber: "1", trips: [long] }] } as unknown as BidPack)).toBe(4);
   });
 });
 
@@ -98,5 +113,16 @@ describe("held to View/Add's and Open time's own checks", () => {
     expect(canHold(december, [], dayTrip("x", 0), [])).toBe(true);
     expect(canHold(december, [], dayTrip("x", 0), [], [carried])).toBe(false);
     expect(canHold(december, [], dayTrip("x", 3), [], [carried])).toBe(true);
+  });
+
+  it("refuses a trip under the rest after a carry-in typed by hand, when as one duty it's past 12.C.4.e", () => {
+    // Released Nov 30 17:00 in Memphis; its duties weren't given. A show at 00:00 is 7 hours off, and as one duty it
+    // runs from before 17:00 to 10:00: over 13:30 whatever its show.
+    const carried = { kind: "trip" as const, id: "c", label: "carry-in trip", report: "2026-11-28T14:00:00Z", release: "2026-11-30T23:00:00Z", international: false };
+    expect(canHold(december, [], dayTrip("x", 1, 10, "0000"), [], [carried])).toBe(false);
+    // Out at 20:00 for 2 hours: one duty of 5 hours or more, which its last duty's show decides. Not ruled out.
+    expect(canHold(december, [], dayTrip("x", 0, 2, "2000"), [], [carried])).toBe(true);
+    // A legal rest after it: fine.
+    expect(canHold(december, [], dayTrip("x", 1, 10, "0300"), [], [carried])).toBe(true);
   });
 });

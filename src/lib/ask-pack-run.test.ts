@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAskQuery, cityGradesOf, runAskQuery } from "@/lib/ask-pack-run";
+import { checkAskQuery, cityGradesOf, orderAskResults, runAskQuery } from "@/lib/ask-pack-run";
 import type { PilotModel } from "@/types/pilot-model";
 import { ASK_QUERY_SCHEMA, cleanAskQuery, type AskQuery } from "@/lib/brain/ask-pack";
 import { METRICS, METRICS_BY_ID } from "@/lib/metrics/catalog";
@@ -81,6 +81,20 @@ describe("ask your pack", () => {
     expect(result.map((r) => r.rank)).toEqual([...result.map((r) => r.rank)].sort((a, b) => (a ?? 0) - (b ?? 0)));
   });
 
+  // Round 16 (Nov 2026): asked while My Rankings was still working out its order, the answer listed its lines by number
+  // under "in your order", and kept that order once the ranking came. The lines found are put in the ranking as it is.
+  it("puts the lines an answer found in the pilot's ranking once it's there", () => {
+    const query: AskQuery = { conditions: [], sort: null, summary: "", cannotAnswer: null };
+    const early = runAskQuery(query, pack, pm, {});
+    expect(early.every((r) => r.rank === null)).toBe(true);
+    const ranked = [...pack.lines].reverse().map((l) => l.id);
+    const later = orderAskResults(early, query, ranked);
+    expect(later.map((r) => r.line.id)).toEqual(ranked);
+    expect(later.map((r) => r.rank)).toEqual(ranked.map((_, i) => i + 1));
+    // The figures it was kept on go with it.
+    expect(later.find((r) => r.line.id === ranked[0])!.values).toEqual(early.find((r) => r.line.id === ranked[0])!.values);
+  });
+
   it("sorts by the asked-for measure when there's no number to meet", () => {
     const result = runAskQuery({ conditions: [], sort: { metric: "daysOff", direction: "desc" }, summary: "", cannotAnswer: null }, pack, pm);
     expect(result).toHaveLength(pack.lines.length);
@@ -103,6 +117,22 @@ describe("ask your pack, checked against the pack", () => {
     expect(Array.isArray(hnl) && hnl.length).toBeGreaterThan(0);
     for (const cities of [["hnl"], ["HNL airport"], ["Honolulu"], [" honolulu "]]) expect(lines(ask({ cities }))).toEqual(hnl);
     expect(checkAskQuery(ask({ cities: ["hnl"] }), pack, pm, null).conditions[0].params).toEqual({ cities: ["HNL"] });
+  });
+
+  // Round 16: a city's name read as the code its first word spells. On a pack laying over in San Diego and San Juan,
+  // "San Juan" and "San Antonio" both counted the San Diego layovers.
+  it("reads a city's name as that city, never as a code its words happen to spell", () => {
+    const sanAndSju = JSON.parse(JSON.stringify(pack).replaceAll('"LAX"', '"SAN"').replaceAll('"CDG"', '"SJU"')) as typeof pack;
+    const spm = prepareMetrics(sanAndSju);
+    const cityOf = (city: string) => {
+      const q = checkAskQuery(ask({ cities: [city] }), sanAndSju, spm, null);
+      return q.cannotAnswer ?? q.conditions[0].params?.cities;
+    };
+    expect(cityOf("San Juan")).toEqual(["SJU"]);
+    expect(cityOf("San Diego")).toEqual(["SAN"]);
+    expect(cityOf("San Antonio")).toBe('This pack\'s trips don\'t go to "San Antonio".');
+    // A code with its own city's words, or an airport's, still reads as the code.
+    for (const city of ["SAN airport", "SAN (San Diego)", "sju San Juan intl"]) expect(cityOf(city)).toEqual([city.slice(0, 3).toUpperCase()]);
   });
 
   it("names a city the pack's trips don't go to, rather than counting it as none", () => {

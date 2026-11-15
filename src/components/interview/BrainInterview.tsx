@@ -50,7 +50,7 @@ import { applyPins } from "@/lib/brain/profile-model";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
 import { applyPriorityReview, type PriorityVerdict } from "@/lib/brain/review";
 import { cityScoresFromRatings, describeCityRatings, effectiveCityScore, markCityUntried, packCityFacts, rateCity, rateCityHotel, rateCitySeason, saysMore, sentimentFromRating } from "@/lib/city-ratings";
-import { resolveBidPosition } from "@/lib/forecast/forecast";
+import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { buildBrainOutcome } from "@/lib/learning/brain-learning";
 import { bidPercentile, commuteGroupOf, seniorityBandOf } from "@/lib/learning/cohort";
 import { isLearnablePack } from "@/lib/learning/corrections";
@@ -80,6 +80,34 @@ import { isPackId, legacyPackIdFor, packIdFor } from "@/lib/pack-id";
  */
 
 type Phase = "seniority" | "checkin" | "story" | "commuter" | "cities" | "reading" | "asking" | "question" | "sweep" | "building" | "review";
+
+/**
+ * Where Back goes once the questions have started: "answer" takes the last answer back (to its question), "question"
+ * returns to the question still showing, "sweep" to the "anything else?" screen; null when there's nowhere to go. The
+ * "anything else?" and priorities screens had no Back at all — a pilot who'd tapped "That's enough" a question early,
+ * or wanted to change their last answer, could only go forward.
+ */
+export function laterBack(at: {
+  phase: Phase;
+  /** Answers that can be taken back. */
+  history: number;
+  hasQuestion: boolean;
+  error: boolean;
+  confirming: boolean;
+  /** What the "anything else?" screen came after: "That's enough" on a question, or the interviewer wrapping up after an answer. */
+  sweepFrom: "question" | "answered";
+  /** What the last read was started from. */
+  finishFrom: "question" | "sweep" | "answered";
+}): "answer" | "question" | "sweep" | null {
+  const answer = at.history > 0 ? "answer" : null;
+  if (at.phase === "question") return answer;
+  if (at.phase === "sweep") return at.sweepFrom === "question" && at.hasQuestion ? "question" : answer;
+  if ((at.phase === "building" && at.error) || (at.phase === "review" && !at.confirming)) {
+    if (at.finishFrom === "sweep") return "sweep";
+    return at.finishFrom === "question" && at.hasQuestion ? "question" : answer;
+  }
+  return null;
+}
 
 /** A monthly check-in asks at most this many questions about what's new. */
 const CHECK_IN_TURNS = 5;
@@ -176,6 +204,8 @@ const finishedKey = (userId: string | null, packId: string) => `line-select:brai
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** How often, at most, a signed-in pilot's saves look at the account for a finish on another device. */
 const ACCOUNT_CHECK_EVERY_MS = 15_000;
+/** How long the interview waits on that look before going on without it. */
+const ACCOUNT_LOOK_MS = 6_000;
 
 /** A draft worth offering: the right shape, and under a day old. */
 function usableDraft(d: DraftState | null): DraftState | null {
@@ -194,6 +224,22 @@ function loadDraftState(userId: string | null, packId: string): DraftState | nul
 /** The optional "why" under a multiple-choice answer — typed or dictated, like every other answer in the interview. */
 function ChoiceNote({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return <NoteBox value={value} onChange={onChange} placeholder="Want to explain? (optional)" ariaLabel="Explain your answer" maxLength={MAX_NOTE} className="mt-4" />;
+}
+
+/**
+ * "Try again", after a question or the last read failed. It takes the focus the screen before it dropped: left on the
+ * page, a keyboard user's next Tab started back at the top, through the whole menu, to reach it.
+ */
+function TryAgain({ onClick }: { onClick: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!document.activeElement || document.activeElement === document.body) box.current?.querySelector("button")?.focus();
+  }, []);
+  return (
+    <div ref={box} className="py-8 text-center">
+      <Button onClick={onClick}>Try again</Button>
+    </div>
+  );
 }
 
 interface BrainInterviewProps {
@@ -314,9 +360,12 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (!userId) return Promise.resolve();
     const now = Date.now();
     if (!fresh && accountCheck.current && now - accountCheck.current.at < ACCOUNT_CHECK_EVERY_MS) return accountCheck.current.promise;
-    const promise = peekServerProfile().then((p) => {
+    const look = peekServerProfile().then((p) => {
       accountFinish.current = Math.max(accountFinish.current, finishOf(p));
     });
+    // A look that hangs (a hotel's Wi-Fi with nothing behind it) held "Looks right — rank my lines" on "Ranking your
+    // lines…" for as long as it did. Past a few seconds it goes on as a look that failed does; a late answer still counts.
+    const promise = Promise.race([look, new Promise<void>((resolve) => setTimeout(resolve, ACCOUNT_LOOK_MS))]);
     accountCheck.current = { at: now, promise };
     return promise;
   }
@@ -423,6 +472,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [turn, setTurn] = useState(0);
   const [history, setHistory] = useState<Snapshot[]>([]);
   const [sweepDone, setSweepDone] = useState(false);
+  /** What the "anything else?" screen came after, for its Back (`laterBack`). */
+  const [sweepFrom, setSweepFrom] = useState<"question" | "answered">("answered");
   /** The interview's question limit — lowered once the sweep is done, so it wraps up with a few follow-ups at most. */
   const [turnLimit, setTurnLimit] = useState(MAX_TURNS);
   const turnLimitRef = useRef(MAX_TURNS);
@@ -781,8 +832,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
           setPhase("question");
           return;
         }
-        if (!swept && uncoveredTopics(m).length > 0) setPhase("sweep");
-        else void finishInterview(all, ch, "answered");
+        if (!swept && uncoveredTopics(m).length > 0) {
+          setSweepFrom("answered");
+          setPhase("sweep");
+        } else void finishInterview(all, ch, "answered");
         return;
       }
       if (step.threadId) settledThreads[step.threadId] = { status: settledThreads[step.threadId]?.status ?? "open", timesAsked: (settledThreads[step.threadId]?.timesAsked ?? 0) + 1 };
@@ -883,14 +936,33 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setPhase("question");
   }
 
-  /** Back from a last read that failed or took too long: to the screen it was started from. */
-  function backFromFinish() {
+  /**
+   * Back from a question, the "anything else?" screen, a last read that failed or took too long, or the priorities it
+   * made: to the screen it was started from (`laterBack`, worked out as the screen is drawn). Off the priorities, the
+   * read goes; finishing again reads afresh.
+   */
+  function backLater(to: "answer" | "question" | "sweep") {
     setError(null);
-    if (finishFrom === "sweep") {
+    if (phase === "review") {
+      setReviewModel(null);
+      setRatedModel(null);
+      // The read before the priorities were fitted to it, which the next read builds on; taking an answer back restores its own.
+      if (beforeFinish.current) {
+        modelRef.current = beforeFinish.current;
+        setModel(beforeFinish.current);
+      }
+    }
+    if (to === "answer") goBack();
+    else if (to === "sweep") {
       setSweepDone(false);
       setPhase("sweep");
-    } else if (finishFrom === "question" && question) setPhase("question");
-    else goBack();
+    } else setPhase("question");
+  }
+
+  /** "That's enough" on a question, before the "anything else?" screen. */
+  function sweepFromQuestion() {
+    setSweepFrom("question");
+    setPhase("sweep");
   }
 
   async function submitSweep(picked: string[], note: string) {
@@ -918,6 +990,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
    * does on a question.
    */
   const [finishFrom, setFinishFrom] = useState<"question" | "sweep" | "answered">("answered");
+  /** The read the last one built on, for Back off the priorities it made. */
+  const beforeFinish = useRef<PilotModel | null>(null);
 
   async function finishInterview(all: InterviewExchange[], ch: LineChoice[], from: "question" | "sweep" | "answered" = finishFrom) {
     if (stopIfFinishedElsewhere()) return;
@@ -928,6 +1002,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (await stopIfFinishedOnAccount(true)) return;
     try {
       if (buildRef.current) await buildRef.current.promise;
+      beforeFinish.current = modelRef.current;
       const built = await requestModelBuild({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, prior: modelRef.current });
       const rated = withHomeFacts(applyCityRatings(built, finalCityRatings()), { hasCrashPad, minHomeHours: isCommuter ? minHomeHours : null });
       // Priorities the pilot set by hand on their priorities page still hold — shown that way in the review.
@@ -1019,7 +1094,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       postBrainOutcome(
         buildBrainOutcome({
           month: bidPack.month,
-          cohort: { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, commute: commuteGroupOf(isCommuter), seniority: seniorityBandOf(position ? bidPercentile(position.bidNumber, list.length) : null) },
+          cohort: { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, commute: commuteGroupOf(isCommuter), seniority: seniorityBandOf(position ? bidPercentile(position.bidNumber, seatSize(list)) : null) },
           checkIn,
           questions: turn,
           choices: choices.length,
@@ -1393,25 +1468,13 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (phase === "asking") return <ThinkingPanel lastExchange={lastExchange} />;
     if (phase === "building") {
       // Failed or too slow: the error over the "thinking" panel said two things at once. Try again, or Back (above).
-      if (error) {
-        return (
-          <div className="py-8 text-center">
-            <Button onClick={() => void finishInterview(exchanges, choices)}>Try again</Button>
-          </div>
-        );
-      }
+      if (error) return <TryAgain onClick={() => void finishInterview(exchanges, choices)} />;
       return <ThinkingPanel briefing="Reading everything you’ve said one last time and turning it into your priorities — about a minute." />;
     }
     if (phase === "sweep") return <TopicSweepStep topics={uncoveredTopics(model)} eyebrow="Almost done" onContinue={(p, n) => void submitSweep(p, n)} />;
     if (phase === "review" && reviewModel) return <PriorityReviewStep model={reviewModel} eyebrow="Your priorities" onConfirm={confirmReview} busy={confirming} />;
     if (phase === "question") {
-      if (!question) {
-        return (
-          <div className="py-8 text-center">
-            <Button onClick={() => void askNext(exchanges, threads, choices, turn, sweepDone)}>Try again</Button>
-          </div>
-        );
-      }
+      if (!question) return <TryAgain onClick={() => void askNext(exchanges, threads, choices, turn, sweepDone)} />;
       const q = question;
       // What it took from their last answer, said the way a colleague would before asking the next thing.
       const ack = q.ack ? <p className="animate-fade-in mb-4 text-[15px] leading-relaxed text-ink-muted">{q.ack}</p> : null;
@@ -1513,8 +1576,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     panel.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, [screenKey]);
 
-  const backFromBuilding = phase === "building" && !!error && (finishFrom !== "answered" || history.length > 0);
-  const canGoBack = (phase === "question" && history.length > 0) || backFromBuilding;
+  const backTo = laterBack({ phase, history: history.length, hasQuestion: !!question, error: !!error, confirming, sweepFrom, finishFrom });
   const backInOpening: Phase | null =
     phase === "story" || phase === "checkin" ? (hasSeniorityStep ? "seniority" : null) : phase === "commuter" ? "story" : phase === "cities" ? (checkIn ? "checkin" : "commuter") : null;
 
@@ -1560,11 +1622,11 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
       {/* Scrolled to, it stops clear of the phone's top bar (57px), and just short of the top on a wider screen. */}
       <div ref={panelRef} className="panel-glass scroll-mt-[4.5rem] p-6 sm:p-10 md:scroll-mt-6">
-        {(canGoBack || backInOpening) && !finishedElsewhere && (
+        {(backTo || backInOpening) && !finishedElsewhere && (
           <button
             type="button"
             // In the opening, the same as the browser's Back: a step back through the entries each step added.
-            onClick={() => (backFromBuilding ? backFromFinish() : canGoBack ? goBack() : backInOpening && ((steps as readonly string[]).includes(phase) && stepDepth(phase as OpeningStep, steps) > 0 ? window.history.back() : setPhase(backInOpening)))}
+            onClick={() => (backTo ? backLater(backTo) : backInOpening && ((steps as readonly string[]).includes(phase) && stepDepth(phase as OpeningStep, steps) > 0 ? window.history.back() : setPhase(backInOpening)))}
             className="-ml-1 mb-5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-2xs text-ink-faint transition-colors hover:text-ink font-medium"
           >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -1583,7 +1645,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         <div className="mt-5 text-center">
           <button
             type="button"
-            onClick={() => (sweepDone || uncoveredTopics(model).length === 0 ? void finishInterview(exchanges, choices, "question") : setPhase("sweep"))}
+            onClick={() => (sweepDone || uncoveredTopics(model).length === 0 ? void finishInterview(exchanges, choices, "question") : sweepFromQuestion())}
             className="text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted"
           >
             That&rsquo;s enough — build my priorities

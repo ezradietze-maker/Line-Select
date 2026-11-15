@@ -60,3 +60,78 @@ describe("interview requests on a bad connection", () => {
     expect(connection.isOffline()).toBe(false);
   });
 });
+
+describe("an answer cut off on the way", () => {
+  const step = { packBrief: "p", pilotContext: "c", exchanges: [], model: null, threads: {}, linePairs: [], turn: 3, maxTurns: 40 };
+  const cut = () => new Response('{"done":false,"settled":[],"threadId":null,"kind":"free-te', { status: 200, headers: { "Content-Type": "application/json" } });
+
+  it("says so plainly, not in the code's words, for the next question", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => cut()));
+    const { client } = await load();
+    // It went on as an empty answer, and the interview showed "n.settled is not iterable".
+    await expect(client.requestNextStep(step as never)).rejects.toThrow("The answer came back incomplete. Try again.");
+  });
+
+  it("and for a read, and for an answer that isn't one at all", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => cut()));
+    const { client } = await load();
+    await expect(client.requestModelBuild(body as never)).rejects.toThrow("The answer came back incomplete. Try again.");
+    vi.stubGlobal("fetch", vi.fn(async () => ok({})));
+    await expect(client.requestModelBuild(body as never)).rejects.toThrow("The answer came back incomplete. Try again.");
+    await expect(client.requestNextStep(step as never)).rejects.toThrow("The answer came back incomplete. Try again.");
+  });
+
+  it("still passes a whole answer through", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ok({ done: true, reason: "enough", settled: [] })));
+    const { client } = await load();
+    await expect(client.requestNextStep(step as never)).resolves.toEqual({ done: true, reason: "enough", settled: [] });
+  });
+});
+
+describe("a read asked for from the priorities page after a long interview", () => {
+  it("goes within the routes' limit, with the interview's answers and the newest edit in it", async () => {
+    const sent: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        sent.push(JSON.parse(String(init.body)));
+        return ok({ model: { version: 2, criteria: [] } });
+      })
+    );
+    const { client } = await load();
+    const { readExchanges } = await import("@/lib/server/brain-input");
+    const interview = Array.from({ length: 45 }, (_, i) => ({ turn: i, question: `Question ${i}`, answer: `Answer ${i}` }));
+    // Each level tapped on the priorities page is written into the record.
+    const edits = Array.from({ length: 40 }, (_, i) => ({ turn: 45 + i, question: `Your priorities: how much does "Days off" matter?`, answer: i % 2 ? "Top priority." : "High priority." }));
+    const added = { turn: 85, question: "Something to add about how you bid (from your priorities page):", answer: "Weekends off matter more now." };
+    await client.requestModelBuild({ ...body, exchanges: [...interview, ...edits, added] } as never);
+    const exchanges = readExchanges((sent[0] as { exchanges: unknown }).exchanges);
+    expect(exchanges).not.toBeNull();
+    expect(exchanges!.slice(0, 45)).toEqual(interview);
+    expect(exchanges!.at(-1)).toEqual(added);
+  });
+
+  it("still tells the read which answers are new, counted in what it was sent", async () => {
+    const sent: { exchanges: unknown[]; prior: { readUpTo?: number } }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const b = JSON.parse(String(init.body));
+        sent.push(b);
+        return ok({ model: { version: 2, criteria: [], readUpTo: b.exchanges.length } });
+      })
+    );
+    const { client } = await load();
+    const interview = Array.from({ length: 45 }, (_, i) => ({ turn: i, question: `Question ${i}`, answer: `Answer ${i}` }));
+    const edits = Array.from({ length: 40 }, (_, i) => ({ turn: 45 + i, question: `Your priorities: how much does "Days off" matter?`, answer: "High priority." }));
+    const added = { turn: 85, question: "Something to add about how you bid (from your priorities page):", answer: "Weekends off matter more now." };
+    // Everything before the note was read last time.
+    const prior = { version: 2, criteria: [], readUpTo: 85 };
+    const model = await client.requestModelBuild({ ...body, prior, exchanges: [...interview, ...edits, added] } as never);
+    // Sent as read up to 85 with 80 answers, the note (the 80th) read as one already taken in: "Add it" did nothing.
+    expect(sent[0].exchanges).toHaveLength(80);
+    expect(sent[0].prior.readUpTo).toBe(79);
+    // Kept in the record's own terms, so the next read counts from the whole record again.
+    expect(model.readUpTo).toBe(86);
+  });
+});

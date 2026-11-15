@@ -1,5 +1,5 @@
 import { isJsonObject, isText } from "@/lib/server/json-body";
-import { MAX_ANSWER } from "@/lib/brain/answer-limits";
+import { MAX_ANSWER, MAX_EXCHANGES } from "@/lib/brain/answer-limits";
 import type { InterviewExchange } from "@/lib/brain/build-model";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -11,8 +11,7 @@ import type { PilotModel } from "@/types/pilot-model";
 
 export const MAX_PACK_BRIEF = 80_000;
 export const MAX_CONTEXT = 2_000;
-export const MAX_EXCHANGES = 80;
-export { MAX_ANSWER };
+export { MAX_ANSWER, MAX_EXCHANGES };
 export const MAX_QUESTION = 3_000;
 /** Every question and answer together. The longest saved interview (42 answers, a real pilot's) runs to about 34,000. */
 export const MAX_INTERVIEW_CHARS = 150_000;

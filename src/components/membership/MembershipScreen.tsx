@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/Button";
 import { useAppState } from "@/lib/app-state";
-import { claimFreeMembership, fetchBillingStatus, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
+import { claimFreeMembership, fetchBillingStatus, membershipEnded, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
 
 const PANEL = "panel-glass p-6";
 
@@ -87,12 +87,12 @@ export function MembershipScreen() {
       {outcome === "success" && (
         <div className="relative overflow-hidden rounded-[4px] border border-good/40 bg-good-soft py-3 pl-5 pr-4 text-sm text-ink">
           <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-good" />
-          You&rsquo;re all set — welcome to Line Select Pro. Your free month has started.
+          You&rsquo;re all set — welcome to Line Select Pro.{status?.status === "trialing" && " Your free month has started."}
         </div>
       )}
       {outcome === "cancelled" && (
         <div className="rounded-[4px] border border-border bg-panel px-4 py-3 text-sm text-ink-muted">
-          No charge — you closed checkout before finishing. You can start your free month whenever you like.
+          No charge — you closed checkout before finishing. You can start whenever you like.
         </div>
       )}
 
@@ -122,7 +122,7 @@ export function MembershipScreen() {
   );
 }
 
-function MembershipBody({
+export function MembershipBody({
   status,
   busy,
   error,
@@ -137,8 +137,17 @@ function MembershipBody({
   onPortal: () => void;
   onClaimFree: () => void;
 }) {
+  // The status didn't load (offline, or the server failed): not the same as billing being off, so don't say it is.
+  if (!status) {
+    return (
+      <div className={PANEL}>
+        <p className="text-sm text-ink-muted">Couldn&rsquo;t load your membership just now. Reload the page to try again.</p>
+      </div>
+    );
+  }
+
   // Billing not configured on this deployment yet.
-  if (!status || !status.enabled) {
+  if (!status.enabled) {
     return (
       <div className={PANEL}>
         <p className="text-sm text-ink-muted">Paid membership isn&rsquo;t switched on for this site yet. You already have full access as a free member.</p>
@@ -152,6 +161,30 @@ function MembershipBody({
 
   // Active Pro subscriber (free month or paid).
   if (active || status.tier === "pro") {
+    if (status.cancelAtPeriodEnd) {
+      const endsOn = status.status === "trialing" ? trialEnds : renews;
+      return (
+        <div className={`${PANEL} space-y-4`}>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-[2px] border border-border px-2 py-0.5 font-display text-xs font-bold text-ink-muted">Canceled</span>
+            <span className="text-sm font-medium text-ink">Membership canceled</span>
+          </div>
+          <p className="text-sm text-ink-muted">
+            {status.status === "trialing"
+              ? endsOn
+                ? `Your free month ends ${endsOn} and you won’t be charged. You keep full access until then.`
+                : "You’re on your free month — it will end and you won’t be charged. You keep full access until then."
+              : endsOn
+                ? `Your membership ends ${endsOn} and you won’t be charged again. You keep access until then.`
+                : "Your membership will end and you won’t be charged again. You keep access until then."}
+          </p>
+          <Button variant="secondary" onClick={onPortal} disabled={busy}>
+            {busy ? "Opening…" : "Resume membership"}
+          </Button>
+          {error && <p className="text-sm text-danger">{error}</p>}
+        </div>
+      );
+    }
     return (
       <div className={`${PANEL} space-y-4`}>
         <div className="flex items-center gap-2">
@@ -191,6 +224,20 @@ function MembershipBody({
     );
   }
 
+  // Still open but unpaid (past due, unpaid, incomplete, paused): fix the card; a second membership would bill twice.
+  if (status.hasSubscription && status.status && !membershipEnded(status.status)) {
+    return (
+      <div className={`${PANEL} space-y-4`}>
+        <div className="font-display text-lg font-extrabold text-ink">Your last payment didn&rsquo;t go through</div>
+        <p className="text-sm text-ink-muted">Update your card in the billing portal to keep your membership. Stripe tries the payment again once it&rsquo;s updated.</p>
+        <Button onClick={onPortal} disabled={busy}>
+          {busy ? "Opening…" : "Update your card"}
+        </Button>
+        {error && <p className="text-sm text-danger">{error}</p>}
+      </div>
+    );
+  }
+
   // Locked: no membership yet. Offer a free spot if any remain, plus Pro. When the spots are gone, Pro only.
   const freeLeft = status.freeSlotsLeft;
   const lapsed = status.hasSubscription;
@@ -214,7 +261,7 @@ function MembershipBody({
       <div className={`${PANEL} space-y-4`}>
         <div className="space-y-1">
           <div className="font-display text-lg font-extrabold text-ink">Line Select Pro</div>
-          <div className="text-sm text-ink-muted">$20/month · first month free</div>
+          <div className="text-sm text-ink-muted">{status.freeMonth ? "$20/month · first month free" : "$20/month"}</div>
         </div>
         <ul className="space-y-1.5 text-sm text-ink-muted">
           <li>Every line scored and ranked for how you actually bid</li>
@@ -222,11 +269,11 @@ function MembershipBody({
           <li>Cancel anytime from Stripe&rsquo;s portal</li>
         </ul>
         <Button variant={freeLeft > 0 ? "secondary" : "primary"} onClick={onCheckout} disabled={busy}>
-          {busy ? "Starting…" : "Start free month"}
+          {busy ? "Starting…" : status.freeMonth ? "Start free month" : "Start membership"}
         </Button>
         {lapsed && (
           <button type="button" onClick={onPortal} disabled={busy} className="block text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink">
-            Or update your card in the billing portal
+            See past invoices in the billing portal
           </button>
         )}
       </div>

@@ -1,6 +1,6 @@
 import type { PilotModel } from "@/types/pilot-model";
 import type { InterviewExchange } from "./build-model";
-import { callCeilingUsd, schemaChars, structuredCall, withSpent, type BrainUsage } from "./llm";
+import { callCeilingUsd, failedCallCost, schemaChars, structuredCall, withSpent, type BrainUsage } from "./llm";
 import { avoidedPhrases, insteadOf, inventedLimit, pilotWordsForPrompt } from "./pilot-words";
 import { workedExamplesForPrompt, type QuestionKind } from "./interview-examples";
 import { examplesTranscript, type QuestionExample } from "./question-examples";
@@ -663,13 +663,18 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
         ...(tripPair ? [`${tripPair.labelA}: ${tripPair.summaryA}`, `${tripPair.labelB}: ${tripPair.summaryB}`, ...tripPair.differences.map((d) => `${d.label}: ${tripPair.labelA} ${d.a}, ${tripPair.labelB} ${d.b}`)] : []),
       ];
       const topic = input.topics?.find((t) => t.id === step.topic);
+      // A check that failed after the model answered (cut off, unreadable) was still paid for, like any other call.
+      let failedReview = 0;
       const review = await reviewQuestion({
         apiKey: input.apiKey,
         question: { prompt: step.prompt, helpText: step.helpText, options, questionKind: step.questionKind, ...(topic ? { topic: `${topic.label}${topic.feature ? ` (${topic.feature.label}, never mentioned)` : ""}` } : {}), facts },
         answers: input.exchanges.map((e) => e.answer),
         asked: input.exchanges.map((e) => e.question),
-      }).catch(() => null);
-      if (review) usage = { ...usage, costUsd: usage.costUsd + review.usage.costUsd };
+      }).catch((e) => {
+        failedReview = failedCallCost(e);
+        return null;
+      });
+      usage = { ...usage, costUsd: usage.costUsd + (review ? review.usage.costUsd : failedReview) };
       if (review && !review.ok) {
         fresh += `\n\nYour last proposal can't be used: ${review.problem}${review.rewrite ? ` A clearer way to ask it: "${review.rewrite}"` : ""} Use that, fix it your own way, or choose a different question.`;
         continue;

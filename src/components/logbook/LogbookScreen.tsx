@@ -12,7 +12,7 @@ import { MIN_SHARED_PILOTS, ownListEntry, submitAwardHistory, withdrawAwardShare
 import { loggedMonthFor } from "@/lib/bid-checklist";
 import { cityName } from "@/lib/city-names";
 import { rankingAsShown } from "@/lib/ranking-as-shown";
-import { checkInShare, logbookStats, loggedMonthFrom, withCheckIn, withLoggedMonth, withoutLoggedMonth, withoutShares } from "@/lib/logbook";
+import { checkInShare, logbookStats, loggedMonthFrom, newestMonthFirst, withCheckIn, withLoggedMonth, withoutLoggedMonth, withoutShares } from "@/lib/logbook";
 import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { hm as hmMinutes } from "@/lib/trip-day-stats";
 import type { UserAccount } from "@/types/auth";
@@ -42,7 +42,8 @@ interface LogbookScreenProps {
  * they've held, where they've been and how their seniority has moved. Shared only if they say so, never with a name.
  */
 export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfile }: LogbookScreenProps) {
-  const entries = useMemo(() => profile?.logbook ?? [], [profile?.logbook]);
+  // Sorted here too: a logbook saved before it was kept in month order.
+  const entries = useMemo(() => newestMonthFirst(profile?.logbook ?? []), [profile?.logbook]);
   const stats = useMemo(() => logbookStats(entries), [entries]);
   const thisMonth = bidPack && profile ? loggedMonthFor(profile, bidPack) : null;
   const [relogging, setRelogging] = useState(false);
@@ -266,10 +267,11 @@ function LogAward({
           </select>
         </label>
       )}
-      <label className={`mt-4 flex items-start gap-2.5 text-sm ${user && seniority ? "cursor-pointer" : "opacity-70"}`}>
-        <input type="checkbox" checked={share} disabled={!user || !seniority} onChange={(e) => setShare(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]" />
+      {/* Only the box and its name dim while it can't be ticked: the line under says how to make it work, with a link. */}
+      <label className={`mt-4 flex items-start gap-2.5 text-sm ${user && seniority ? "cursor-pointer" : ""}`}>
+        <input type="checkbox" checked={share} disabled={!user || !seniority} onChange={(e) => setShare(e.target.checked)} className={`mt-0.5 h-4 w-4 accent-[var(--color-accent)] ${user && seniority ? "" : "opacity-70"}`} />
         <span>
-          <span className="text-ink">Share it with other pilots</span>
+          <span className={`text-ink ${user && seniority ? "" : "opacity-70"}`}>Share it with other pilots</span>
           <span className="block text-xs text-ink-muted">
             {!user ? (
               <>

@@ -7,6 +7,7 @@ import { MicButton } from "@/components/ui/MicButton";
 import { STORY_TOPICS, storyDepth, storyTopicsMentioned } from "@/lib/interview-display";
 import { useDictation } from "@/lib/use-speech-to-text";
 import { useGrowingTextarea } from "@/lib/use-growing-textarea";
+import { PASTE_CUT_NOTICE, usePasteLimit } from "@/lib/use-paste-limit";
 
 interface BiddingStoryStepProps {
   value: string;
@@ -38,7 +39,12 @@ const TITLE = "Walk us through your whole bidding process, start to finish.";
  */
 export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, error, maxLength, eyebrow }: BiddingStoryStepProps) {
   const remaining = maxLength - value.length;
-  const dictation = useDictation(value, (next) => onChange(next.slice(0, maxLength)), { maxLength });
+  const paste = usePasteLimit(maxLength);
+  const change = (next: string) => {
+    paste.changed(next);
+    onChange(next.slice(0, maxLength));
+  };
+  const dictation = useDictation(value, change, { maxLength });
   const mentioned = useMemo(() => storyTopicsMentioned(value), [value]);
   const depth = storyDepth(value);
   const area = useRef<HTMLTextAreaElement>(null);
@@ -67,7 +73,8 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
           <textarea
             ref={area}
             value={value}
-            onChange={(e) => onChange(e.target.value.slice(0, maxLength))}
+            onChange={(e) => change(e.target.value)}
+            onPaste={paste.onPaste}
             disabled={busy}
             aria-label="Your bidding process, in your own words"
             placeholder="First thing I look at is how many days off a line has, and how they fall… (or tap the mic and just say it)"
@@ -109,6 +116,11 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
             );
           })}
         </ul>
+        {paste.cut && (
+          <p className="mt-2 text-xs text-warn" role="status">
+            {PASTE_CUT_NOTICE}
+          </p>
+        )}
         {dictation.error && <p className="mt-2 text-xs text-danger">{dictation.error}</p>}
         {error && <p className="mt-3 text-sm text-danger">{error}</p>}
 

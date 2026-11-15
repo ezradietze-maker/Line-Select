@@ -145,10 +145,19 @@ export function addTier(s: TierState, name: string, id: string): TierState {
   return { ...s, tiers: [...s.tiers.slice(0, at), { id, name: clean }, ...s.tiers.slice(at)] };
 }
 
-/** Only a tier the pilot added can go; its lines then have no tier. */
+/**
+ * Only a tier the pilot added can go; its lines then have no tier, and what their moves taught goes with it, as when
+ * the lines are taken out one at a time (`lessonChanges` then retracts the moves no line still holds).
+ */
 export function removeTier(s: TierState, tierId: string): TierState {
   if (DEFAULT_TIERS.some((t) => t.id === tierId)) return s;
-  return { ...s, tiers: s.tiers.filter((t) => t.id !== tierId), assigned: Object.fromEntries(Object.entries(s.assigned).filter(([, t]) => t !== tierId)) };
+  const leaving = new Set(Object.entries(s.assigned).filter(([, t]) => t === tierId).map(([id]) => id));
+  return {
+    ...s,
+    tiers: s.tiers.filter((t) => t.id !== tierId),
+    assigned: Object.fromEntries(Object.entries(s.assigned).filter(([id]) => !leaving.has(id))),
+    taught: Object.fromEntries(Object.entries(s.taught).filter(([id]) => !leaving.has(id))),
+  };
 }
 
 export function clearTiers(s: TierState): TierState {
@@ -309,11 +318,28 @@ export function mergeTiers(base: TierState, mine: TierState, theirs: TierState):
     if (mine.taught[id] === undefined) delete taught[id];
     else taught[id] = mine.taught[id];
   }
-  // A line left in a tier the merge no longer has has no tier, as removing a tier leaves it.
+  // A line left in a tier the merge no longer has has no tier, and what its move taught goes, as removing a tier leaves it.
   const known = new Set(tiers.map((t) => t.id));
-  for (const [id, tier] of Object.entries(assigned)) if (!known.has(tier)) delete assigned[id];
+  for (const [id, tier] of Object.entries(assigned)) {
+    if (known.has(tier)) continue;
+    delete assigned[id];
+    delete taught[id];
+  }
   const moved = new Set(touched);
   const setAside = theirs.setAside.filter((id) => !moved.has(id) || aside.mine.has(id));
   for (const id of mine.setAside) if (moved.has(id) && !setAside.includes(id)) setAside.push(id);
   return { tiers, assigned, setAside, taught };
+}
+
+/**
+ * A change written into what's stored now (`mergeTiers`), with the moves to take back from the brain: those this tab
+ * took back, and any move, the other tab's or this one's, that the merge leaves no line holding (a line dropped from a
+ * tier the other tab removed). Kept by the lines, such a move went on teaching after its line had left the tier.
+ * `held`: the moves the result keeps, so one just made and dropped at once isn't taught at all.
+ */
+export function mergeIntoStored(base: TierState, wanted: TierState, theirs: TierState, retract: readonly string[]): { state: TierState; retract: string[]; held: Set<string> } {
+  const state = mergeTiers(base, wanted, theirs);
+  const held = new Set(Object.values(state.taught));
+  const dropped = new Set([...retract, ...lessonChanges(theirs, state).retract]);
+  return { state, retract: [...dropped], held };
 }

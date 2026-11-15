@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { parseSeniorityInput } from "@/components/interview/SeniorityStep";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { VacationSlidePanel } from "@/components/strategies/VacationSlidePanel";
@@ -17,7 +18,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TextField } from "@/components/ui/TextField";
 import { fetchAwardSummary, summaryForSeniority } from "@/lib/award-history";
 import { rankingAsShown } from "@/lib/ranking-as-shown";
-import { resolveBidPosition } from "@/lib/forecast/forecast";
+import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { attachScoreContext, computeStanding, generateStrategies, rankStrategiesByPreference, type Standing } from "@/lib/strategy-engine";
 import { SENIORITY_BANDS } from "@/lib/seniority-bands";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
@@ -127,7 +128,7 @@ function SeniorityGate({
           if (profile) onUpdateProfile({ ...profile, seniorityNumber });
           const list = bidPack.seniorityList ?? [];
           const position = resolveBidPosition(list, seniorityNumber);
-          onSaveSeniority({ rank: position.bidNumber, totalPilots: Math.max(list.length, position.bidNumber), source: position.exact ? "typed" : "between" });
+          onSaveSeniority({ rank: position.bidNumber, totalPilots: Math.max(seatSize(list), position.bidNumber), source: position.exact ? "typed" : "between" });
           setEditing(false);
         }}
       />
@@ -166,8 +167,11 @@ function SeniorityForm({
   // Without one, the place in bid order and the seat's size are asked for, as that's what's worked out from.
   const fromList = (bidPack.seniorityList?.length ?? 0) > 0;
   const [number, setNumber] = useState(profile?.seniorityNumber ? String(profile.seniorityNumber) : "");
-  const numberNum = Number(number);
-  const numberValid = number !== "" && Number.isInteger(numberNum) && numberNum >= 1;
+  // As the interview and Preferences read it (digits only, up to six): "1e3" or a seven-digit typo isn't one, and sent to
+  // the forecast it was refused, read here as "Couldn't reach the server".
+  const parsedNumber = parseSeniorityInput(number);
+  const numberNum = parsedNumber ?? 0;
+  const numberValid = parsedNumber !== null;
   const [rank, setRank] = useState(initial ? String(initial.rank) : "");
   const [totalPilots, setTotalPilots] = useState(initial ? String(initial.totalPilots) : "");
   const rankNum = Number(rank);
@@ -205,9 +209,8 @@ function SeniorityForm({
         {fromList ? (
           <TextField
             label="Your seniority number"
-            type="number"
-            min={1}
             inputMode="numeric"
+            maxLength={6}
             placeholder="e.g. 4210"
             value={number}
             onChange={(e) => setNumber(e.target.value)}
@@ -295,6 +298,7 @@ function StrategyResults({
   const userId = user?.id ?? null;
   const ranked = useMemo(() => (profile ? rankingAsShown(bidPack, profile, userId) : null), [bidPack, profile, userId]);
   const rankedLineIds = useMemo(() => ranked?.map((r) => r.line.id), [ranked]);
+  const order = useMemo(() => ranked?.map((r) => r.line.lineNumber) ?? [], [ranked]);
 
   // Real self-reported hold outcomes for this exact base/aircraft/seat —
   // fetched here (a second copy of what AwardHistoryPanel below also
@@ -425,9 +429,12 @@ function StrategyResults({
         </label>
       </div>
 
-      {selected === "vacation" ? (
-        <VacationSlidePanel bidPack={bidPack} seniority={seniority} profile={profile} userId={user?.id ?? null} order={ranked?.map((r) => r.line.lineNumber) ?? []} />
-      ) : (
+      {/* Kept while another strategy is shown: unmounted, the vacations typed in and the slides found were gone on
+          coming back to it. */}
+      <div hidden={selected !== "vacation"}>
+        <VacationSlidePanel bidPack={bidPack} seniority={seniority} profile={profile} userId={user?.id ?? null} order={order} />
+      </div>
+      {selected === "vacation" ? null : (
         (() => {
           const st = strategies.find((s) => s.id === selected);
           if (!st) return <p className="mt-6 text-sm text-ink-muted">That strategy isn&rsquo;t in this month&rsquo;s pack &mdash; pick another above.</p>;

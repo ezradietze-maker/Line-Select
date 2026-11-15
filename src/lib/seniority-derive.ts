@@ -1,4 +1,4 @@
-import { resolveBidPosition } from "@/lib/forecast/forecast";
+import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
@@ -16,5 +16,5 @@ export function deriveSeniorityInput(bidPack: Pick<BidPack, "seniorityList"> | n
   if (!list || list.length === 0 || !number) return null;
   const position = resolveBidPosition(list, number);
   // Junior to everyone on the list lands one past its end: the seat is at least that big.
-  return { rank: position.bidNumber, totalPilots: Math.max(list.length, position.bidNumber), ...(position.exact ? {} : { source: "between" as const }) };
+  return { rank: position.bidNumber, totalPilots: Math.max(seatSize(list), position.bidNumber), ...(position.exact ? {} : { source: "between" as const }) };
 }

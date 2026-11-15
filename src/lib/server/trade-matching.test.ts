@@ -14,7 +14,7 @@ const state = vi.hoisted(() => ({
   saved: [] as unknown[],
   emailed: [] as unknown[],
   failSeat: null as string | null,
-  history: { boardTrips: [] as unknown[], busyPilots: new Set<string>(), signatures: new Set<string>(), declined: new Set<string>(), refusedTrips: new Set<string>(), minGains: new Map<string, number>(), holdingDoubted: new Map<string, Date>() },
+  history: { boardTrips: [] as unknown[], boardSwaps: [] as unknown[], busyPilots: new Set<string>(), signatures: new Set<string>(), declined: new Set<string>(), refusedTrips: new Set<string>(), minGains: new Map<string, number>(), holdingDoubted: new Map<string, Date>() },
   options: [] as Record<string, (...a: never[]) => unknown>[],
   fingerprints: new Map<string, string | null>(),
   matched: [] as unknown[],
@@ -95,7 +95,7 @@ beforeEach(() => {
   state.emailed = [];
   state.failSeat = null;
   state.options = [];
-  state.history = { boardTrips: [], busyPilots: new Set(), signatures: new Set(), declined: new Set(), refusedTrips: new Set(), minGains: new Map(), holdingDoubted: new Map() };
+  state.history = { boardTrips: [], boardSwaps: [], busyPilots: new Set(), signatures: new Set(), declined: new Set(), refusedTrips: new Set(), minGains: new Map(), holdingDoubted: new Map() };
 });
 
 describe("the daily run", () => {
@@ -160,6 +160,14 @@ describe("the daily run", () => {
     const [a, b] = state.available as unknown as { locked?: Set<string> }[];
     expect([...(a.locked ?? [])]).toEqual(["t1@3"]);
     expect(b.locked).toBeUndefined();
+  });
+
+  it("fits what it hands a pilot around what they take on the board: one taking a trip the pack can't place is left out", async () => {
+    const given = { tripId: "t1", startDayIndex: 3, pairingNumber: "11", lineNumber: "1001" };
+    state.history.boardTrips = [{ pilot: "a", trip: given }];
+    state.history.boardSwaps = [{ pilot: "a", give: given, take: { tripId: "t9", startDayIndex: 8, pairingNumber: "19", lineNumber: "1002" } }];
+    await runDailyMatching(now);
+    expect(state.available.map((p) => p.pilotId)).toEqual(["b"]);
   });
 
   it("doesn't store the same trade twice", async () => {

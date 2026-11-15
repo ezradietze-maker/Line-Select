@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/shown-account";
 import { useEffect, useState } from "react";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Modal } from "@/components/ui/Modal";
@@ -21,7 +22,7 @@ export function SectionViewer({ section, bidMonth, onClose, onOpen }: SectionVie
   useEffect(() => {
     let live = true;
     const params = new URLSearchParams({ id: section, ...(bidMonth ? { bidMonth } : {}) });
-    fetch(`/api/contract/section?${params}`)
+    apiFetch(`/api/contract/section?${params}`)
       .then(async (r) => {
         if (!r.ok) throw new Error("Couldn't open that section.");
         const view = (await r.json()) as SectionView;

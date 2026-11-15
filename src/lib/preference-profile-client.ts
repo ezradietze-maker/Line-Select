@@ -1,4 +1,5 @@
 import { migrateProfile } from "@/lib/profile-migration";
+import { apiFetch, shownAccount } from "@/lib/shown-account";
 import type { PreferenceProfile } from "@/types/preferences";
 
 /**
@@ -21,9 +22,10 @@ export type ServerProfileLoad =
   /** Couldn't tell: offline, a server error, a session that lapsed. Never a reason to upload over the server. */
   | { kind: "unreachable" };
 
-export async function fetchServerProfile(): Promise<ServerProfileLoad> {
+/** `userId`: whose profile is asked for, which the server checks is the one signed in (see `apiFetch`). */
+export async function fetchServerProfile(userId: string | null | undefined = shownAccount()): Promise<ServerProfileLoad> {
   try {
-    const res = await fetch("/api/preference-profile", { credentials: "same-origin", cache: "no-store" });
+    const res = await apiFetch("/api/preference-profile", { credentials: "same-origin", cache: "no-store" }, userId);
     if (!res.ok) return { kind: "unreachable" };
     const data = (await res.json()) as { profile?: PreferenceProfile | null; updatedAt?: string | null };
     serverVersion = data.updatedAt ?? null;
@@ -39,7 +41,7 @@ export async function fetchServerProfile(): Promise<ServerProfileLoad> {
  */
 export async function peekServerProfile(): Promise<PreferenceProfile | null | undefined> {
   try {
-    const res = await fetch("/api/preference-profile", { credentials: "same-origin", cache: "no-store" });
+    const res = await apiFetch("/api/preference-profile", { credentials: "same-origin", cache: "no-store" });
     if (!res.ok) return undefined;
     const data = (await res.json()) as { profile?: PreferenceProfile | null };
     return data.profile ?? null;
@@ -67,20 +69,20 @@ export function setServerProfileVersion(version: string | null): void {
  */
 let queue: Promise<unknown> = Promise.resolve();
 
-export function saveServerProfile(profile: PreferenceProfile): Promise<ServerProfileSave> {
-  const run = queue.then(() => sendProfile(profile));
+/** `userId`: whose profile it is — named when the save is asked for, not when its turn comes and the tab may show another. */
+export function saveServerProfile(profile: PreferenceProfile, userId: string | null | undefined = shownAccount()): Promise<ServerProfileSave> {
+  const run = queue.then(() => sendProfile(profile, userId));
   queue = run.catch(() => {});
   return run;
 }
 
-async function sendProfile(profile: PreferenceProfile): Promise<ServerProfileSave> {
+async function sendProfile(profile: PreferenceProfile, userId: string | null | undefined): Promise<ServerProfileSave> {
   try {
-    const res = await fetch("/api/preference-profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ profile, baseUpdatedAt: serverVersion }),
-    });
+    const res = await apiFetch(
+      "/api/preference-profile",
+      { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ profile, baseUpdatedAt: serverVersion }) },
+      userId
+    );
     const data = (await res.json().catch(() => ({}))) as { profile?: PreferenceProfile | null; updatedAt?: string | null };
     if (res.ok) {
       serverVersion = data.updatedAt ?? serverVersion;
@@ -96,9 +98,9 @@ async function sendProfile(profile: PreferenceProfile): Promise<ServerProfileSav
   }
 }
 
-export async function clearServerProfile(): Promise<void> {
+export async function clearServerProfile(userId: string | null | undefined = shownAccount()): Promise<void> {
   try {
-    await fetch("/api/preference-profile", { method: "DELETE", credentials: "same-origin" });
+    await apiFetch("/api/preference-profile", { method: "DELETE", credentials: "same-origin" }, userId);
     serverVersion = null;
   } catch {
     // worst case a stale server profile lingers until the next successful save.

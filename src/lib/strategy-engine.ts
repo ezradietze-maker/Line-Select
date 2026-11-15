@@ -1,7 +1,7 @@
 import { CH_PER_VACATION_DAY, chargedToBank, vacationLabel, vacationRemovals, vacationSpan } from "@/lib/vacation-slide";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import type { AwardHistorySummary } from "@/lib/award-history";
-import { forecastBid } from "@/lib/forecast/forecast";
+import { forecastBid, seatSize } from "@/lib/forecast/forecast";
 import { formatHoursValue } from "@/lib/interview-config";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import type { LineScore } from "@/lib/scoring";
@@ -85,7 +85,7 @@ function overlapDays(v: VacationPeriod, [from, to]: [number, number]): number {
 export function placeInPack(bidPack: BidPack, seniority: SeniorityInput): { rank: number; listSize: number; me: SeniorityEntry | undefined } {
   const list = bidPack.seniorityList ?? [];
   if (seniority.source === "band") {
-    const size = list.length || (bidPack.info?.totalRegularLines ?? bidPack.lines.length) + (bidPack.info?.totalSecondaryLines ?? 0) + (bidPack.info?.totalReserveLines ?? 0);
+    const size = seatSize(list) || (bidPack.info?.totalRegularLines ?? bidPack.lines.length) + (bidPack.info?.totalSecondaryLines ?? 0) + (bidPack.info?.totalReserveLines ?? 0);
     return { rank: Math.min(size, Math.max(1, Math.round((seniority.rank / seniority.totalPilots) * size))), listSize: size, me: undefined };
   }
   const me = seniority.source === "between" ? undefined : list.find((e) => e.bidNumber === seniority.rank);
@@ -107,10 +107,11 @@ export function computeStanding(bidPack: BidPack, seniority: SeniorityInput): St
   const vacations = bounds ? (me?.vacations ?? []).filter((v) => overlapDays(v, bounds) > 0) : [];
   return {
     printedBidNumber: rank,
-    listSize,
+    // Never "#528 of 526": a position the list didn't read, or a number past its end, still counts the pilot in.
+    listSize: Math.max(listSize, rank),
     payAhead,
     effective,
-    bidders: hasPay ? list.filter((e) => !e.pay).length : null,
+    bidders: hasPay && effective !== null ? Math.max(seatSize(list) - list.filter((e) => e.pay).length, effective) : null,
     regular,
     secondary,
     reserve,

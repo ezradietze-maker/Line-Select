@@ -7,9 +7,11 @@ vi.mock("@/lib/server/auth", () => authMocks);
 
 // Rate limiting (checkRateLimit) still goes through kv.ts — this route's
 // own storage (forecast-store) moved to Postgres, mocked separately below.
+const kvStore = vi.hoisted(() => new Map<string, unknown>());
 vi.mock("@/lib/server/kv", () => ({
-  getJson: vi.fn(async () => null),
-  setJson: vi.fn(async () => {}),
+  getJson: vi.fn(async (key: string) => kvStore.get(key) ?? null),
+  setJson: vi.fn(async (key: string, value: unknown) => void kvStore.set(key, value)),
+  deleteKey: vi.fn(async (key: string) => void kvStore.delete(key)),
   incrementCounter: vi.fn(async () => 1),
 }));
 
@@ -115,6 +117,7 @@ function goodBody(overrides: Record<string, unknown> = {}) {
 describe("/api/forecast", () => {
   beforeEach(() => {
     forecastStore.blobs.clear();
+    kvStore.clear();
     learningStore.savedPredictions.length = 0;
     learningStore.deletedPredictions.length = 0;
     authMocks.getCurrentServerUser.mockReset().mockResolvedValue(null);
@@ -182,6 +185,36 @@ describe("/api/forecast", () => {
     authMocks.getCurrentServerUser.mockResolvedValue(USER);
     const signedIn = await (await POST(request(goodBody({ seniorityNumber: 50 })))).json();
     expect(signedIn.forecast.knownAhead).toBe(0);
+    // Nor how many shared: "1 pilot has shared a ranking for this seat", to anyone asking about any seat.
+    expect(guest.crowd.pilotsSharing).toBe(0);
+    expect(signedIn.crowd.pilotsSharing).toBe(0);
+  });
+
+  it("tells a guest nothing of who shares, however many do", async () => {
+    for (const [id, seniority] of [["user-a", 10], ["user-b", 15], ["user-c", 25]] as const) {
+      authMocks.getCurrentServerUser.mockResolvedValue({ ...USER, id });
+      await POST(request(goodBody({ share: true, seniorityNumber: seniority, ranking: [3, 4, 5, 0, 1, 2, 6, 7, 8, 9, 10, 11] })));
+    }
+    authMocks.getCurrentServerUser.mockResolvedValue(null);
+    const guest = await (await POST(request(goodBody({ seniorityNumber: 50 })))).json();
+    expect(guest.crowd.pilotsSharing).toBe(0);
+    expect(guest.forecast.knownAhead).toBe(0);
+  });
+
+  it("counts toward the bar only the sharers the forecast plays: a short list can't leave one sharer alone ahead", async () => {
+    // One sharer first in bid order, three more further down.
+    for (const [id, seniority] of [["user-t", 5], ["user-a", 50], ["user-b", 55], ["user-c", 60]] as const) {
+      authMocks.getCurrentServerUser.mockResolvedValue({ ...USER, id });
+      const ranking = id === "user-t" ? [7, 4, 5, 0, 1, 2, 6, 3, 8, 9, 10, 11] : [3, 4, 5, 0, 1, 2, 6, 7, 8, 9, 10, 11];
+      await POST(request(goodBody({ share: true, seniorityNumber: seniority, ranking })));
+    }
+    authMocks.getCurrentServerUser.mockResolvedValue(USER);
+    // A list of five that names the three far down, so they pass the bar, while only the first five places are played:
+    // the first sharer and four guessed pilots, so the one line at 0% open was the first sharer's top choice.
+    const short = [[1, 5], [10, 50], [11, 55], [12, 60], [19, 95]];
+    const data = await (await POST(request(goodBody({ seniorityList: short, seniorityNumber: 95 })))).json();
+    expect(data.forecast.knownAhead).toBe(0);
+    expect(data.forecast.lines["line-1007"].pAvailable).toBeGreaterThan(0);
   });
 
   it("lets a different account not take over a claimed bid position", async () => {
@@ -200,6 +233,23 @@ describe("/api/forecast", () => {
     expect(learningStore.deletedPredictions).toEqual([[hashUserForTest(USER.id), "oct26|mem|b777|cap"]]);
     authMocks.getCurrentServerUser.mockResolvedValue(null);
     expect((await (await POST(request(goodBody({ seniorityNumber: 100 })))).json()).crowd.pilotsSharing).toBe(0);
+  });
+
+  it("keeps a pilot who stopped sharing stopped on their other devices, until they tick it again", async () => {
+    authMocks.getCurrentServerUser.mockResolvedValue(USER);
+    await POST(request(goodBody({ share: true })));
+    await DELETE(request({ packKey: "oct26|mem|b777|cap", lineNumbers }, "DELETE"));
+    await new Promise((r) => setTimeout(r, 0));
+    learningStore.savedPredictions.length = 0;
+    // Another device (or this one after signing out and in) starts with the box ticked and asks to share.
+    const elsewhere = await (await POST(request(goodBody({ share: true })))).json();
+    expect(elsewhere.shared).toBe("off");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(forecastStore.blobs.get("oct26|mem|b777|cap:12") ?? []).toHaveLength(0);
+    expect(learningStore.savedPredictions).toHaveLength(0);
+    // Ticked again on purpose: shared from then on.
+    expect((await (await POST(request(goodBody({ share: true, resume: true })))).json()).shared).toBe("stored");
+    expect((await (await POST(request(goodBody({ share: true })))).json()).shared).toBe("stored");
   });
 
   it("keeps the forecast a pilot was shown only when they share", async () => {

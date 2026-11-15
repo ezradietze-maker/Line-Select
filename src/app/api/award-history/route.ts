@@ -21,6 +21,25 @@ function isIntOrNull(value: unknown, max: number): value is number | null {
   return value === null || value === undefined || (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max);
 }
 
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+/** How far back a month may be shared (a logbook check-in on an older month), and how far ahead (next month's award). */
+const MONTHS_BACK = 24;
+const MONTHS_AHEAD = 3;
+
+/**
+ * A bid month as packs print it ("OCT26"), within a couple of years of now. Any text used to do: one pilot could share
+ * a "month" for every made-up name, each a report of its own, and outweigh every other pilot in their slice's numbers
+ * and in how flown months judge the fleet notes.
+ */
+function isShareableMonth(value: unknown, now = new Date()): value is string {
+  const m = typeof value === "string" ? value.match(/^([A-Z]{3})(\d{2})$/) : null;
+  const month = m ? MONTHS.indexOf(m[1]) : -1;
+  if (!m || month < 0) return false;
+  const at = (2000 + Number(m[2])) * 12 + month;
+  const current = now.getUTCFullYear() * 12 + now.getUTCMonth();
+  return at >= current - MONTHS_BACK && at <= current + MONTHS_AHEAD;
+}
+
 /**
  * GET gives the group numbers for one base/aircraft/seat, held back for small
  * groups — no sign-in required, since it never returns a single report. POST
@@ -64,11 +83,15 @@ export async function POST(request: Request) {
     !isText(base, 20) ||
     !isText(aircraft, 20) ||
     (seat !== "CAP" && seat !== "FO") ||
-    !isText(month, 20) ||
+    !isShareableMonth(month) ||
+    // A place in bid order from 1 to the seat's size: a #0 read as more senior than #1 (its group a slice below the
+    // first), and a place past the seat's end as the most junior.
     !isIntOrNull(seniorityRank, 100_000) ||
     seniorityRank == null ||
+    seniorityRank < 1 ||
     !isIntOrNull(seniorityTotalPilots, 100_000) ||
     seniorityTotalPilots == null ||
+    seniorityRank > seniorityTotalPilots ||
     (outcome !== "line" && outcome !== "reserve" && outcome !== "other") ||
     (body.lineNumber !== undefined && body.lineNumber !== null && !isText(body.lineNumber, 12)) ||
     !isIntOrNull(body.daysOff, 31) ||
@@ -110,7 +133,7 @@ export async function POST(request: Request) {
   const brainVersion = !said("brainVersion") ? undefined : Number.isInteger(body.brainVersion) && (body.brainVersion as number) > 0 && (body.brainVersion as number) < 10_000 ? (body.brainVersion as number) : null;
   const notesUsed = !said("notesUsed") ? undefined : typeof body.notesUsed === "boolean" ? body.notesUsed : null;
   // Only for a line, and only when the pilot said yes to showing their number beside it.
-  const canShowHolder = isLine && !!record.lineNumber && record.seniorityRank >= 1 && record.seniorityRank <= record.seniorityTotalPilots;
+  const canShowHolder = isLine && !!record.lineNumber;
   const holderShown = !canShowHolder ? false : !said("holderShown") ? undefined : body.holderShown === true;
   await createAwardHistoryRecord(record, { pilotHash, packKey, awardedChoice: isLine ? (fromForecast ?? clientChoice) : null, monthFeel, brainVersion, notesUsed, holderShown });
   afterResponse(() => maybeLearn("awards"));

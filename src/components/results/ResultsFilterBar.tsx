@@ -484,7 +484,7 @@ const RELEASE_HOURS = [1, 2, 3];
 
 /** The commute filter: its settings, and what the real flights have said so far. */
 function CommuteRow({ on, onToggle, commute }: { on: boolean; onToggle: () => void; commute: CommuteCheck }) {
-  const { settings, update, canCheck, phase, done, total, counts } = commute;
+  const { settings, update, canCheck, phase, done, total, counts, ruledOut } = commute;
   return (
     <FilterRow label="Commute">
       <div className="min-w-0 flex-1 space-y-2">
@@ -540,6 +540,20 @@ function CommuteRow({ on, onToggle, commute }: { on: boolean; onToggle: () => vo
                       ? "This month's trips have already flown, so there's nothing to check."
                       : `${counts.yes} lines work, ${counts.no} don't, ${counts.unknown} not known (kept in the list).${phase === "paused" ? " Flight checks are paused for now; try again later for the rest." : ""}`}
             </p>
+            {canCheck && ruledOut.length > 0 && (
+              <details className="text-xs text-ink-muted">
+                <summary className="cursor-pointer font-medium text-ink">
+                  Why {ruledOut.length === 1 ? "1 line is" : `${ruledOut.length} lines are`} out
+                </summary>
+                <ul className="mt-1.5 max-h-48 space-y-1 overflow-y-auto">
+                  {ruledOut.map((r) => (
+                    <li key={r.lineNumber}>
+                      <span className="font-medium text-ink">Line {r.lineNumber}</span>: {r.why}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </>
         )}
       </div>

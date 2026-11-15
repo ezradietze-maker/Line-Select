@@ -18,6 +18,7 @@ export function navTargetForPath(pathname: string): NavTarget | null {
   if (pathname.startsWith("/cities")) return "cities";
   if (pathname.startsWith("/logbook")) return "logbook";
   if (pathname.startsWith("/tools")) return "tools";
+  if (pathname.startsWith("/pay")) return "pay";
   if (pathname.startsWith("/contract")) return "contract";
   return null;
 }

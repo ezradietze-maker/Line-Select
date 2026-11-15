@@ -27,13 +27,24 @@ function envTruthy(value: string | undefined): boolean {
 }
 
 /**
- * Are we running on Vercel? Vercel sets `VERCEL=1` in build and at runtime for
- * every environment. Locally it's undefined. We use this to tell "the deployed
- * app, which is supposed to reach its wired database" from "a process on
- * someone's laptop, which is not."
+ * Are we the app deployed on Vercel? Vercel sets `VERCEL=1` in build and at
+ * runtime for every environment. We use this to tell "the deployed app, which
+ * is supposed to reach its wired database" from "a process on someone's
+ * laptop, which is not."
+ *
+ * `VERCEL` alone isn't enough: `vercel env pull` writes `VERCEL="1"` into
+ * `.env.local`, which `next dev` and the scripts load, so a laptop would read
+ * as Vercel. The deployed app always runs a production server
+ * (`NODE_ENV=production`) in the production or preview environment; `next dev`
+ * runs in development and a tsx script sets no `NODE_ENV` at all.
  */
 export function onVercel(): boolean {
-  return !!process.env.VERCEL;
+  return !!process.env.VERCEL && process.env.NODE_ENV === "production" && process.env.VERCEL_ENV !== "development";
+}
+
+/** Neon's pooled host is its direct host with "-pooler" after the endpoint id; compare them as one. */
+function withoutPooler(host: string): string {
+  return host.replace(/-pooler(?=\.|$)/, "");
 }
 
 /**
@@ -87,9 +98,10 @@ export function looksLikeProductionUrl(connectionString: string): boolean {
     return false;
   }
 
-  // If the operator has named the production host, that is authoritative.
+  // If the operator has named the production host, that is authoritative. Pooled and direct count as the same host:
+  // the app uses the pooled one, migrate.ts and the scripts the direct one.
   const prodHost = process.env.PRODUCTION_DB_HOST?.trim().toLowerCase();
-  if (prodHost) return host.includes(prodHost);
+  if (prodHost) return withoutPooler(host).includes(withoutPooler(prodHost));
 
   // Otherwise, a recognisable non-production marker in the host or db name
   // makes it safe. We split on non-alphanumerics (`.`, `-`, `_`) and match whole

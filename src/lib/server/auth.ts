@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import {
   createSession,
   consumeResetToken,
@@ -25,6 +25,7 @@ import { getEmailConfig, sendEmail, type EmailConfig } from "@/lib/server/email"
 import { getJson, setJson } from "@/lib/server/kv";
 import { revokeFeed } from "@/lib/server/calendar-feeds";
 import { siteMailLeft } from "@/lib/server/mail-allowance";
+import { ACCOUNT_HEADER } from "@/lib/shown-account";
 import { addressGroup, attemptsUsed, checkRateLimit, clearAttempts, countAttempt, MAX_ATTEMPTS, takeAttempt } from "@/lib/server/rate-limit";
 import type { UserAccount } from "@/types/auth";
 
@@ -667,9 +668,18 @@ export function sessionCookieOptions() {
   };
 }
 
-/** Convenience for other API routes that need to know who's making the request. */
+/**
+ * Convenience for other API routes that need to know who's making the request. A request that says which account it's
+ * for (`apiFetch`) and isn't from that account's session is taken as from nobody, so the route refuses it: it comes
+ * from a tab still showing one pilot after another signed in (or out) in another tab of the same browser, and the
+ * cookie it carries is the other pilot's. Its save would land in their account, its pack over theirs.
+ */
 export async function getCurrentServerUser(): Promise<UserAccount | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
-  return getUserForSessionToken(token);
+  const user = await getUserForSessionToken(token);
+  if (!user) return null;
+  // A guest's tab says so (`GUEST_ACCOUNT`), and isn't taken for the account signed in since in another tab either.
+  const claimed = (await headers()).get(ACCOUNT_HEADER);
+  return claimed === null || claimed === user.id ? user : null;
 }

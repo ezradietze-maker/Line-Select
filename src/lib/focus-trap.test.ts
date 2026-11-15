@@ -1,5 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { nextStop, tabStops, type StopInfo } from "./focus-trap";
+import { focusBackTo, nextStop, tabStops, type StopInfo } from "./focus-trap";
+
+describe("focus after a dialog closes", () => {
+  // The FedEx panel after "Accept and connect": the Connect button that opened the consent is gone, the row it sat in
+  // is left with only words, and the panel around it now holds Disconnect.
+  const tree: Record<string, { connected: boolean; stops: string[] }> = {
+    connect: { connected: false, stops: [] },
+    row: { connected: true, stops: [] },
+    panel: { connected: true, stops: ["disconnect", "audit"] },
+    page: { connected: true, stops: ["nav", "disconnect", "audit"] },
+  };
+  const back = (opener: string | null, ancestors: string[]) =>
+    focusBackTo(opener, ancestors, (el) => tree[el]?.connected ?? true, (el) => tree[el]?.stops ?? []);
+
+  it("goes back to what opened it while it's there", () => {
+    expect(back("row", ["panel"])).toBe("row");
+  });
+
+  it("goes to the nearest control still there when the opener's gone, not to the page", () => {
+    expect(back("connect", ["row", "panel", "page"])).toBe("disconnect");
+  });
+
+  it("goes nowhere when nothing near it can take focus", () => {
+    expect(back("connect", ["row"])).toBeNull();
+  });
+});
 
 describe("Tab inside a dialog", () => {
   const stops = ["close", "field", "send"];

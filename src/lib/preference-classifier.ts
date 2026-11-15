@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/shown-account";
 import { IMPLICIT_VARIABLES } from "@/lib/implicit-dimensions";
 
 /** The full known taxonomy, explicit and implicit, as plain descriptors for the classifier — it only ever matches against variables that actually exist and have real weights to update. */
@@ -44,7 +45,7 @@ export async function classifyFreeText(
   input: { freeText: string } & ClassifyContext
 ): Promise<ClassifyResult | null> {
   try {
-    const res = await fetch("/api/classify-preference", {
+    const res = await apiFetch("/api/classify-preference", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -65,7 +66,7 @@ export async function submitCandidateVariable(input: {
   overtakenLineNumber: string;
 }): Promise<boolean> {
   try {
-    const res = await fetch("/api/candidate-variables", {
+    const res = await apiFetch("/api/candidate-variables", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",

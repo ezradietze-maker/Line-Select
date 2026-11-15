@@ -115,7 +115,7 @@ export async function disconnect(userId: string): Promise<FedexConnection> {
   const cleared = withAudit(
     // Consent goes with it: disconnecting is how a pilot withdraws it.
     { ...conn, status: "none", method: "undecided", encryptedSession: null, sessionExpiresAt: null, quota: { day: null, used: 0 }, consentVersion: null, consentAt: null },
-    { at: Date.now(), action: "disconnect", detail: "You disconnected FedEx. Anything held for the connection was deleted." },
+    { at: Date.now(), action: "disconnect", detail: "You disconnected FedEx. Your FedEx session and your consent were deleted." },
   );
   await saveConnection(cleared);
   return cleared;

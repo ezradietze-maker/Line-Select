@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { isStandbyLeg } from "@/lib/standby";
@@ -136,6 +137,33 @@ const FULL_NIGHT_PICKUP = 6 * 60 + 45;
  */
 const BARELY_PICKUP = 4 * 60;
 
+/**
+ * Minutes on a city's own clock between two points of a trip: the minutes between them, give or take a clock change.
+ * Over the night the clocks go back (Europe in late October, the US a week later), a pickup at 03:30 was read as 04:30
+ * from the landing's clock, and a full day counted that the pilot doesn't get.
+ */
+function wallMinutes(trip: Pick<Trip, "zuluAnchor">, city: string, from: number, to: number): number {
+  const zone = timezoneForAirport(city);
+  const anchor = trip.zuluAnchor ? Date.parse(trip.zuluAnchor) : NaN;
+  if (!zone || !Number.isFinite(anchor)) return to - from;
+  const offset = (m: number) => DateTime.fromMillis(anchor + m * 60_000, { zone }).offset;
+  return to - from + offset(to) - offset(from);
+}
+
+/**
+ * How far a city's clock has moved since trip minute `from`, at each later trip minute: 0 throughout unless the clocks
+ * change before `to` (+60 when they go forward, −60 when they go back). Null when they don't, so the usual case stays cheap.
+ */
+function clockShift(trip: Pick<Trip, "zuluAnchor">, city: string, from: number, to: number): ((m: number) => number) | null {
+  const zone = timezoneForAirport(city);
+  const anchor = trip.zuluAnchor ? Date.parse(trip.zuluAnchor) : NaN;
+  if (!zone || !Number.isFinite(anchor)) return null;
+  const offset = (m: number) => DateTime.fromMillis(anchor + m * 60_000, { zone }).offset;
+  const before = offset(from);
+  if (offset(to) === before) return null;
+  return (m) => offset(m) - before;
+}
+
 function hhmmToMinute(hhmm: string | undefined): number | null {
   if (!hhmm || !/^\d{4}$/.test(hhmm)) return null;
   return Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(2, 4));
@@ -157,13 +185,17 @@ export function regionOf(city: string): Region {
   return "unknown";
 }
 
-/** Hours of [startMinute, startMinute + hours) that fall inside the local 22:00–07:00 night, across however many nights the span covers. */
-export function nightOverlapHours(localStartMinute: number, hours: number): number {
+/**
+ * Hours of [startMinute, startMinute + hours) that fall inside the local 22:00–07:00 night, across however many nights
+ * the span covers. `shift` is how far the clock has moved `t` minutes in (`clockShift`): the night the clocks go back
+ * holds an hour more of it, the night they go forward an hour less.
+ */
+export function nightOverlapHours(localStartMinute: number, hours: number, shift?: ((t: number) => number) | null): number {
   const total = Math.round(hours * 60);
   let overlap = 0;
   // Walk the span a minute-block at a time in 15-minute steps — exact enough, and simple to trust.
   for (let t = 0; t < total; t += 15) {
-    const clock = (localStartMinute + t) % 1440;
+    const clock = (((localStartMinute + t + (shift ? shift(t) : 0)) % 1440) + 1440) % 1440;
     if (clock >= NIGHT_START || clock < NIGHT_END) overlap += Math.min(15, total - t);
   }
   return overlap / 60;
@@ -297,19 +329,22 @@ export function computeTripFacts(trip: Trip): TripFacts {
     const lastLeg = duty.legs[duty.legs.length - 1];
     const localStart = hhmmToMinute(lastLeg?.arrTimeLocal);
     const city = duty.layover.city;
+    const { startMinutes, endMinutes } = duty.layover;
+    // On the city's own clock, which can change mid-layover (Europe's last Sundays of March and October, the US's a week or so off).
+    const shift = clockShift(trip, city, startMinutes, endMinutes);
     return [
       {
         city,
         hours: duty.layover.hours,
-        start: duty.layover.startMinutes,
-        end: duty.layover.endMinutes,
+        start: startMinutes,
+        end: endMinutes,
         localStartMinute: localStart,
-        localEndMinute: localStart === null ? null : Math.round(localStart + duty.layover.hours * 60) % 1440,
+        localEndMinute: localStart === null ? null : (((Math.round(localStart + duty.layover.hours * 60) + (shift ? shift(endMinutes) : 0)) % 1440) + 1440) % 1440,
         region: regionOf(city),
         international: isInternationalCity(city),
-        localNightHours: localStart === null ? null : nightOverlapHours(localStart, duty.layover.hours),
+        localNightHours: localStart === null ? null : nightOverlapHours(localStart, duty.layover.hours, shift && ((t) => shift(startMinutes + t))),
         hotel: duty.layover.hotelName,
-        ...fullDaysOf(city === base ? null : localStart, duty.layover.endMinutes - duty.layover.startMinutes),
+        ...fullDaysOf(city === base ? null : localStart, wallMinutes(trip, city, startMinutes, endMinutes)),
       },
     ];
   });
