@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { checkInShare, withoutShares } from "@/lib/logbook";
+import { describe, expect, it, vi } from "vitest";
+import { checkInShare, withMonthDeleted, withoutShares } from "@/lib/logbook";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { LoggedMonth } from "@/types/logbook";
 
@@ -53,5 +53,23 @@ describe("sharing how a month flew", () => {
   it("sends nothing for a month never shared, or not yet checked in", () => {
     expect(checkInShare({ ...month, sharedAt: undefined }, null)).toBeNull();
     expect(checkInShare({ ...month, checkIn: undefined }, null)).toBeNull();
+  });
+
+  it("deleting a shared month withdraws its share first: once the month is gone, only withdrawing every share could", async () => {
+    const profile = { logbook: [month, { ...month, id: "other", month: "OCT26" }] } as unknown as PreferenceProfile;
+    const withdraw = vi.fn(async () => ({ ok: true }));
+    const r = await withMonthDeleted(profile, month.id, withdraw);
+    expect(withdraw).toHaveBeenCalledWith({ base: "MEM", aircraft: "MD11", seat: "CAP", month: "NOV26" });
+    expect(r.profile!.logbook!.map((m) => m.id)).toEqual(["other"]);
+  });
+
+  it("keeps a shared month while its share can't be withdrawn, and deletes a month never shared without asking the server", async () => {
+    const profile = { logbook: [month, { ...month, id: "other", sharedAt: undefined }] } as unknown as PreferenceProfile;
+    const refused = await withMonthDeleted(profile, month.id, async () => ({ ok: false, error: "Couldn't reach the server." }));
+    expect(refused).toEqual({ error: "Couldn't reach the server." });
+    const withdraw = vi.fn(async () => ({ ok: true }));
+    const r = await withMonthDeleted(profile, "other", withdraw);
+    expect(withdraw).not.toHaveBeenCalled();
+    expect(r.profile!.logbook!.map((m) => m.id)).toEqual([month.id]);
   });
 });

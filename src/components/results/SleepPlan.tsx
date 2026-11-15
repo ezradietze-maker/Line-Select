@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { BedIcon, ChevronDownIcon, MoonIcon, SunriseIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/Modal";
+import { Zone } from "@/components/results/TripMarks";
 import type { LayoverSleepPlan, SleepBlock } from "@/lib/sleep-plan";
 
 /**
@@ -26,7 +27,10 @@ const hoursOf = (min: number) => {
   return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
 };
 
-/** One layover's stay, hotel to wake-up: shaded by how easily the body can sleep, the suggested sleeps on top. */
+/**
+ * One layover's stay, hotel to wake-up: shaded by how easily the body can sleep, the suggested sleeps on top. Its times
+ * are the city's own, marked L: under the Zulu toggle they sat unmarked beside Zulu times and read as Zulu.
+ */
 function Ribbon({ plan }: { plan: LayoverSleepPlan }) {
   const span = Math.max(1, plan.wakeBy - plan.inHotel);
   const pct = (m: number) => `${((m - plan.inHotel) / span) * 100}%`;
@@ -63,9 +67,11 @@ function Ribbon({ plan }: { plan: LayoverSleepPlan }) {
       <div className="mt-1 flex justify-between font-mono text-2xs text-ink-faint">
         <span className="inline-flex items-center gap-1">
           <BedIcon className="h-3 w-3" /> In the hotel {plan.inHotelLocal}
+          <Zone />
         </span>
         <span className="inline-flex items-center gap-1">
-          Up by {plan.wakeByLocal} <SunriseIcon className="h-3 w-3" />
+          Up by {plan.wakeByLocal}
+          <Zone /> <SunriseIcon className="h-3 w-3" />
         </span>
       </div>
     </div>
@@ -98,6 +104,7 @@ function LayoverPlan({ plan }: { plan: LayoverSleepPlan }) {
           <li className="text-xs leading-relaxed">
             <span className="font-mono font-semibold text-sleep">
               {plan.dutyNap.startLocal}–{plan.dutyNap.endLocal}
+              <Zone />
             </span>{" "}
             <span className="font-medium text-ink">
               Nap at the {plan.dutyNap.hotel}, {plan.dutyNap.city}
@@ -109,6 +116,7 @@ function LayoverPlan({ plan }: { plan: LayoverSleepPlan }) {
           <li key={i} className="text-xs leading-relaxed">
             <span className="font-mono font-semibold text-sleep">
               {b.startLocal}–{b.endLocal}
+              <Zone />
             </span>{" "}
             <span className="font-medium text-ink">{b.title}</span> <span className="text-ink-muted">— {b.why}</span>
           </li>

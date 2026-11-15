@@ -88,6 +88,25 @@ export function withoutLoggedMonth(profile: PreferenceProfile, id: string): Pref
   return { ...profile, logbook: (profile.logbook ?? []).filter((m) => m.id !== id) };
 }
 
+type MonthKey = Pick<LoggedMonth, "base" | "aircraft" | "seat" | "month">;
+
+/**
+ * The profile with a month deleted, its share withdrawn first when it was shared: once the month is gone, nothing but
+ * "Withdraw all my shares" could take that one share back. While the share can't be withdrawn, the month stays.
+ */
+export async function withMonthDeleted(
+  profile: PreferenceProfile,
+  id: string,
+  withdraw: (month: MonthKey) => Promise<{ ok: boolean; error?: string }>
+): Promise<{ profile: PreferenceProfile; error?: undefined } | { profile?: undefined; error: string }> {
+  const entry = (profile.logbook ?? []).find((m) => m.id === id);
+  if (entry?.sharedAt) {
+    const r = await withdraw({ base: entry.base, aircraft: entry.aircraft, seat: entry.seat, month: entry.month });
+    if (!r.ok) return { error: r.error ?? "Something went wrong. Try again." };
+  }
+  return { profile: withoutLoggedMonth(profile, id) };
+}
+
 export function withEntry(profile: PreferenceProfile, id: string, change: Partial<LoggedMonth>): PreferenceProfile {
   return { ...profile, logbook: (profile.logbook ?? []).map((m) => (m.id === id ? { ...m, ...change } : m)) };
 }

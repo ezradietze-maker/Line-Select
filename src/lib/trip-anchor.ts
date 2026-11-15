@@ -45,6 +45,14 @@ export function runDaysOf(trip: Pick<Trip, "tafbHours" | "schedule" | "runStarts
 }
 
 /**
+ * Whether a duty starts with a report from home: the trip's first, and each later day of a run of day trips. Every
+ * other duty starts at the hotel pickup after a layover.
+ */
+export function reportsFromHome(trip: Pick<Trip, "tafbHours" | "schedule" | "runStarts">, dutyIndex: number): boolean {
+  return dutyIndex === 0 || !!runDaysOf(trip)?.some((d) => d.first === dutyIndex);
+}
+
+/**
  * Hours from a trip's first report to its release: TAFB as printed, except for a run of day trips, which ends its last
  * day's length after that day reports. Report plus the summed TAFB ended a three-day run part way through its first
  * night, and its second and third days were free to View/Add, Open Time, vacation and carry-in.
