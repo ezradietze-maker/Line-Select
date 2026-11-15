@@ -102,7 +102,7 @@ import { TierBar, TierHeadingRow, TierMoveRow, useCardPressProps } from "@/compo
 import { LineContextMenu, type LineMenu } from "@/components/results/LineContextMenu";
 import { tierHeadings } from "@/lib/line-tiers";
 import { useLineSort } from "@/lib/use-line-sort";
-import { useLineTiers, type TeachTiers } from "@/lib/use-line-tiers";
+import { useLineTiers, useTiersWithin, type TeachTiers } from "@/lib/use-line-tiers";
 import { applyPlacements, placementFromDrag, placementsKey, placementsStore, prunePlacements, type Placement } from "@/lib/line-placements";
 import { EMPTY_ORDER_HISTORY, dropSwaps, recordStep, takeRedo, takeUndo, type OrderHistory } from "@/lib/order-history";
 import type { LineChoice } from "@/types/pilot-model";
@@ -514,8 +514,8 @@ export function ResultsView({
   // The pilot's tiers on top of that (see `lib/line-tiers.ts`); a pilot who never uses them gets the same list back.
   const teachTiersRef = useRef<TeachTiers | null>(null);
   const packLineIds = useMemo(() => bidPack.lines.map((l) => l.id), [bidPack]);
-  const tiers = useLineTiers(userId, bidPack.id, packLineIds, placed, teachTiersRef, recordTierStep);
-  const orderByTier = tiers.order;
+  const allTiers = useLineTiers(userId, bidPack.id, packLineIds, placed, teachTiersRef, recordTierStep);
+  const orderByTier = allTiers.order;
   const ranked = useMemo(() => orderByTier(placed), [orderByTier, placed]);
   // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order.
   const swappedIds = useMemo(() => new Set(validPlacements.flatMap((p) => [p.order[0], p.order[p.order.length - 1]])), [validPlacements]);
@@ -665,11 +665,11 @@ export function ResultsView({
     () =>
       listedLines(matching, {
         hidden: hiddenSet,
-        setAside: tiers.setAside,
+        setAside: allTiers.setAside,
         showHidden,
         inView: (id) => view === "all" || (view === "shortlist" ? starredSet.has(id) : realisticIds.has(id)),
       }),
-    [matching, showHidden, hiddenSet, tiers.setAside, view, starredSet, realisticIds]
+    [matching, showHidden, hiddenSet, allTiers.setAside, view, starredSet, realisticIds]
   );
   // Departures counted as each card counts them: the times the pilot leaves home.
   const departureOptions = useMemo(() => monthDepartureOptions(bidPack.base, profile, flights), [bidPack.base, profile, flights]);
@@ -685,9 +685,9 @@ export function ResultsView({
   const displayed = useMemo(() => sorted.slice(0, shown), [sorted, shown]);
   const listedIds = useMemo(() => sorted.map((r) => r.line.id), [sorted]);
   // A selection is of lines the pilot can see in the list: a search, filter or view that leaves a selected line out
-  // takes it out of the selection, and a move (toolbar, right-click menu, a tier key) never reaches it (`selectionWithin`).
+  // keeps it out of reach of a move, and gives it back still selected when it's listed again (`useTiersWithin`).
   const listedSet = useMemo(() => new Set(listedIds), [listedIds]);
-  if (listReady && [...tiers.selected].some((id) => !listedSet.has(id))) tiers.keepSelected(listedSet);
+  const tiers = useTiersWithin(allTiers, listedSet);
   const headings = useMemo(() => (lineSort.isRanking ? tierHeadings(listedIds, tiers.state) : new Map()), [lineSort.isRanking, listedIds, tiers.state]);
   const displayedIds = useMemo(() => displayed.map((r) => r.line.id), [displayed]);
 

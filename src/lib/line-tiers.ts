@@ -117,7 +117,7 @@ export function bringBack(s: TierState, lineIds: string[]): TierState {
 
 /**
  * The selected lines still listed: a search, a filter or a view that takes a selected line out of the list takes it out
- * of the selection, so a move reaches only lines the pilot can see selected. Kept whole, "Select all below" and then a
+ * of what a move reaches, so a move reaches only lines the pilot can see selected. Kept whole, "Select all below" and then a
  * search for one line sent every line below to Not bid, out of the bid. The same set when every selected line is listed.
  */
 export function selectionWithin(selected: Set<string>, listed: ReadonlySet<string>): Set<string> {
