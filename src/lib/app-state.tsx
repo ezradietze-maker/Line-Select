@@ -838,7 +838,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   /** A change worked out on whatever the profile is by now — for a result that lands after the screen asking for it closed. */
   function handleUpdateProfileWith(update: (latest: PreferenceProfile) => PreferenceProfile) {
     const latest = latestProfileRef.current;
-    if (latest) handleUpdateProfile(update(latest));
+    if (!latest) return;
+    // Kept at once: two answers landing before the page draws again each build on the one before.
+    const next = update(latest);
+    latestProfileRef.current = next;
+    handleUpdateProfile(next);
   }
 
   /** Tells the fleet learning which interview values the pilot changed, and where those values had come from. */

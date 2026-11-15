@@ -36,13 +36,15 @@ interface LogbookScreenProps {
   user: UserAccount | null;
   seniority: SeniorityInput | null;
   onUpdateProfile: (profile: PreferenceProfile) => void;
+  /** A change worked out on the profile as it is by then: for a server's answer, when anything may have been saved meanwhile. */
+  onUpdateProfileWith: (update: (latest: PreferenceProfile) => PreferenceProfile) => void;
 }
 
 /**
  * The pilot's logbook: each month's award, logged once it's out, and how the month flew — adding up over time to what
  * they've held, where they've been and how their seniority has moved. Shared only if they say so, never with a name.
  */
-export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfile }: LogbookScreenProps) {
+export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfile, onUpdateProfileWith }: LogbookScreenProps) {
   // Sorted here too: a logbook saved before it was kept in month order.
   const entries = useMemo(() => newestMonthFirst(profile?.logbook ?? []), [profile?.logbook]);
   const stats = useMemo(() => logbookStats(entries), [entries]);
@@ -111,7 +113,7 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
             say(`Nothing withdrawn: ${r.error}`);
             return;
           }
-          if (profile) onUpdateProfile(withoutShares(profile));
+          onUpdateProfileWith((latest) => withoutShares(latest));
           say(r.removed ? `Withdrawn: ${r.removed} shared ${r.removed === 1 ? "award" : "awards"} removed. Your logbook stays as it was.` : "You have nothing shared.");
         }}
       />
@@ -142,7 +144,7 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
                     if (!profile) return;
                     // A shared month's share goes with it: after, nothing but withdrawing every share could take it back.
                     const r = await withMonthDeleted(profile, m.id, withdrawAwardShares);
-                    if (r.profile) onUpdateProfile(r.profile);
+                    if (r.change) onUpdateProfileWith(r.change);
                     else say(`Not deleted, since its share couldn't be withdrawn: ${r.error}`);
                   }}
                   onWithdraw={
@@ -151,7 +153,7 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
                           const r = await withdrawAwardShares({ base: m.base, aircraft: m.aircraft, seat: m.seat, month: m.month });
                           if (!r.ok) say(`Still shared: ${r.error}`);
                           else {
-                            if (profile) onUpdateProfile(withoutShares(profile, m.id));
+                            onUpdateProfileWith((latest) => withoutShares(latest, m.id));
                             say(`Your ${m.month} share is withdrawn. The month stays in your logbook.`);
                           }
                         }
