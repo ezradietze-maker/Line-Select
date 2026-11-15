@@ -20,11 +20,15 @@ export function minBidPeriodGuarantee(bidPeriodDays: number): { ch: number; sect
   return null;
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+/**
+ * Credit to the whole minute, as the pack prints it and 4.F.2.a rounds rig. Hundredths of an hour are 0.6 minutes: a
+ * 41:05 TAFB's rig read 10:58 for 10:57, and four 18:56 trips added to 75:43 for 75:44.
+ */
+const toMinute = (n: number) => Math.round(n * 60) / 60;
 
-/** CBA 2026 4.F.2.a: a trip's rig, in CH, from its time away from base. */
+/** CBA 2026 4.F.2.a: a trip's rig, in CH, from its time away from base, rounded to the nearest minute. */
 export function tripRig(tafbHours: number): number {
-  return round2(tafbHours / TAFB_HOURS_PER_RIG_CH);
+  return toMinute(tafbHours / TAFB_HOURS_PER_RIG_CH);
 }
 
 export interface TripPay {
@@ -38,10 +42,10 @@ export interface TripPay {
 }
 
 export function tripPay(trip: Trip): TripPay {
-  const guaranteeCH = round2(trip.creditHours);
+  const guaranteeCH = toMinute(trip.creditHours);
   const rigCH = tripRig(trip.tafbHours);
   const daysAway = trip.tafbHours / 24;
-  return { trip, guaranteeCH, rigCH, creditPerDayAway: daysAway > 0 ? round2(guaranteeCH / daysAway) : null };
+  return { trip, guaranteeCH, rigCH, creditPerDayAway: daysAway > 0 ? toMinute(guaranteeCH / daysAway) : null };
 }
 
 export interface LinePay {
@@ -68,11 +72,11 @@ export interface LinePay {
  */
 export function linePay(line: Line, pack: Pick<BidPack, "bidPeriodDays">): LinePay {
   const trips = line.trips.map(tripPay);
-  const carryOverCH = round2(Math.max(0, line.carryOverCreditHours ?? 0));
-  const tripGuaranteeTotal = round2(Math.max(0, trips.reduce((a, t) => a + t.guaranteeCH, 0) - carryOverCH));
+  const carryOverCH = toMinute(Math.max(0, line.carryOverCreditHours ?? 0));
+  const tripGuaranteeTotal = toMinute(Math.max(0, trips.reduce((a, t) => a + t.guaranteeCH, 0) - carryOverCH));
   const floor = minBidPeriodGuarantee(pack.bidPeriodDays);
   const blg = floor ? Math.max(tripGuaranteeTotal, floor.ch) : tripGuaranteeTotal;
-  return { trips, tripGuaranteeTotal, carryOverCH, floor, blg: round2(blg), flooredUp: !!floor && floor.ch > tripGuaranteeTotal };
+  return { trips, tripGuaranteeTotal, carryOverCH, floor, blg: toMinute(blg), flooredUp: !!floor && floor.ch > tripGuaranteeTotal };
 }
 
 /**
