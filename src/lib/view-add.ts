@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import { splitTrip } from "@/lib/bid-month";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
+import { formatHoursValue as hm } from "@/lib/interview-config";
 import { parseOpenTimePaste } from "@/lib/open-time/parse";
 import { carriedDaysOf, type CarryInItem, dayIndices, dutyIsInternational, type FlownLine, flownUnderInternationalRules, flyLine, operatedBlockHours, type PhaseInElections, phaseInRules, reservePeriodSpan, type Span, touchesOutside48, tripBaseSpans, tripSpans, zoneOf } from "@/lib/phase-in";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
@@ -452,6 +453,58 @@ export function pastedMatches(entry: Pick<PastedEntry, "tripNumber" | "month" | 
     .sort((a, b) => a.gap - b.gap);
 }
 
+export interface TripClaim<R> {
+  row: R;
+  trip: Trip;
+  gap: number;
+  /** Every pack trip the row's date found, nearest first (`pastedMatches`). */
+  matches: { trip: Trip; gap: number }[];
+}
+
+/**
+ * Pasted rows to pack trips, one row a trip. A row takes a free trip if there is one, moving another row along to a trip
+ * no farther from its own date if that frees one; failing that, the row nearer a trip's date has it, and the other
+ * looks again. Kept to its nearest only, "213 12/11" lost the pack's 213 on the 10th to "213 12/9" and never took the
+ * 12th's. A row on the date of the row holding its trip is the same row twice, and goes. A row left with no trip comes
+ * back in `lost`, with its nearest trip and the row holding it.
+ */
+export function claimTrips<R>(rows: { row: R; matches: { trip: Trip; gap: number }[] }[], sameDate: (a: R, b: R) => boolean): { claimed: Map<string, TripClaim<R>>; lost: { row: R; trip: Trip; to: R }[] } {
+  const claimed = new Map<string, TripClaim<R>>();
+  const lost: { row: R; trip: Trip; to: R }[] = [];
+  type Row = { row: R; matches: { trip: Trip; gap: number }[] };
+  // A free trip for `c`, moving a row holding one along to another trip no farther from its own date.
+  const seat = (c: Row, most: number, seen: Set<string>): boolean => {
+    for (const { trip, gap } of c.matches) {
+      const key = tripKey(trip);
+      if (gap > most || seen.has(key)) continue;
+      seen.add(key);
+      const had = claimed.get(key);
+      if (!had || seat(had, had.gap, seen)) {
+        claimed.set(key, { row: c.row, trip, gap, matches: c.matches });
+        return true;
+      }
+    }
+    return false;
+  };
+  const place = (c: Row) => {
+    if (seat(c, Infinity, new Set())) return;
+    // Nearer its date than the row holding it: the trip is this row's, and that row looks again.
+    const nearer = c.matches.find(({ trip, gap }) => gap < claimed.get(tripKey(trip))!.gap);
+    if (nearer) {
+      const key = tripKey(nearer.trip);
+      const had = claimed.get(key)!;
+      claimed.set(key, { row: c.row, ...nearer, matches: c.matches });
+      return place(had);
+    }
+    lost.push({ row: c.row, trip: c.matches[0].trip, to: claimed.get(tripKey(c.matches[0].trip))!.row });
+  };
+  for (const c of rows) {
+    if (!c.matches.length || c.matches.some(({ trip }) => { const had = claimed.get(tripKey(trip)); return had && sameDate(had.row, c.row); })) continue;
+    place(c);
+  }
+  return { claimed, lost };
+}
+
 export interface ViewAddChoice {
   /** Null for a choice the pilot typed: a reserve block or simulator label, kept as typed and unscored. */
   trip: Trip | null;
@@ -547,8 +600,7 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
   } else {
     // A run of day trips as its days: a pasted day is that day, not the whole run (see `dayTripsOf`).
     const universe = [...(pack.openPairings ?? []), ...pack.lines.flatMap((l) => l.trips)].flatMap(dayTripsOf);
-    const found = new Map<string, Trip>();
-    const claims = new Map<string, { e: PastedEntry; gap: number; check: boolean }>();
+    const rows: { row: PastedEntry; matches: { trip: Trip; gap: number }[] }[] = [];
     for (const entry of pasted.entries) {
       // Each way the line's date reads ("5 DEC 10"), and whichever of its numbers flies that day, as Open Time reads it:
       // the first number isn't always the trip.
@@ -567,28 +619,18 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
         notInPack.push(entry.raw);
         continue;
       }
-      const e = options[0].r;
-      const t = matches[0].trip;
-      const key = tripKey(t);
-      const claim = { e, gap: matches[0].gap, check: matches.length > 1 || matches[0].gap > 0 };
-      const had = claims.get(key);
-      if (had && (had.e.month !== e.month || had.e.day !== e.day || had.e.year !== e.year)) {
-        // Two dates found the one trip ("501 8DEC", "501 9DEC" with 501 only on the 8th): the nearer date has it, and
-        // the other is a trip the pack doesn't have. The last one had it, so "501 9DEC" was what the pilot copied.
-        const [keep, other] = claim.gap < had.gap ? [claim, had] : [had, claim];
-        claims.set(key, keep);
-        notInPack.push(other.e.raw);
-        continue;
-      }
-      if (!had) claims.set(key, claim);
-      found.set(key, t);
+      rows.push({ row: options[0].r, matches });
     }
-    for (const [key, { e, check }] of claims) {
-      textOf.set(key, e.raw);
+    // Two dates found the one trip ("501 8DEC", "501 9DEC" with 501 only on the 8th): the nearer date has it, and the
+    // other is a trip the pack doesn't have. The last one had it, so "501 9DEC" was what the pilot copied.
+    const { claimed, lost } = claimTrips(rows, (a, b) => a.month === b.month && a.day === b.day && a.year === b.year);
+    notInPack.push(...lost.map((l) => l.row.raw));
+    for (const [key, { row, gap, matches }] of claimed) {
+      textOf.set(key, row.raw);
       // The same pairing a day either side, or only a day off the date printed: taken, and said so.
-      if (check) dateChecks.push(e.raw);
+      if (matches.length > 1 || gap > 0) dateChecks.push(row.raw);
     }
-    pool = [...found.values()];
+    pool = [...claimed.values()].map((c) => c.trip);
   }
 
   // By day for a run of day trips, as the pasted trips are: a day of the pilot's own run is theirs, not a clash with it.
@@ -602,7 +644,7 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
       ruledOut.push({ trip, why: fit.illegal[0] });
     } else if (target > 0 && trip.creditHours > onePayCode + over) {
       // CBA 2026 25.L.6.e: "not eligible for a make-up assignment that exceeds the pilot's make-up eligibility by more than" this.
-      ruledOut.push({ trip, why: `${trip.creditHours.toFixed(1)} CH passes your ${onePayCode.toFixed(1)} CH of make-up by more than ${over} CH (CBA 2026 25.L.6.e).` });
+      ruledOut.push({ trip, why: `${hm(trip.creditHours)} CH passes your ${hm(onePayCode)} CH of make-up by more than ${over} CH (CBA 2026 25.L.6.e).` });
     } else {
       legal.push({ trip, check: fit.check });
     }
@@ -678,7 +720,7 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
       text: text(c.trip),
       creditHours: c.trip.creditHours,
       daysOffAfter: c.line.daysOff,
-      why: `${reason}: ${c.trip.creditHours.toFixed(1)} CH, costs ${lost} day${lost === 1 ? "" : "s"} off, leaving ${c.line.daysOff}.`,
+      why: `${reason}: ${hm(c.trip.creditHours)} CH, costs ${lost} day${lost === 1 ? "" : "s"} off, leaving ${c.line.daysOff}.`,
       check: c.check,
       inBest: best.has(key),
       score: c.score,

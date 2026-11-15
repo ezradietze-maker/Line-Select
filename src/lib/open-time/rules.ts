@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { bidMonthOfPack } from "@/lib/contract/pack-facts";
+import { formatHoursValue as hm } from "@/lib/interview-config";
 import { baseDayStartMinutes, phaseInRules, rDayConflictsWithEarlier, rDayConflictsWithLater, reservePeriodSpan, type ReservePeriod, type Span } from "@/lib/phase-in";
 
 /**
@@ -174,7 +175,7 @@ export function banksFor(creditHours: number, banks: Banks, rules: OpenTimeRules
     const past = creditHours - hours;
     const eligible = past <= rules.overageCH + FLOAT_SLACK;
     const notes: string[] = [];
-    if (!eligible) notes.push(`${creditHours.toFixed(1)} CH passes your ${hours.toFixed(1)} CH of ${code} by more than ${rules.overageCH} CH (CBA 2026 ${section}).`);
+    if (!eligible) notes.push(`${hm(creditHours)} CH passes your ${hm(hours)} CH of ${code} by more than ${rules.overageCH} CH (CBA 2026 ${section}).`);
     // CBA 2026 25.L.4.b, every bid period: "The pilot may submit for a specific trip(s) from available open time, but not for a trip which the pilot rejected as a substitution assignment."
     if (code === "PMU") notes.push("Not a trip you rejected as a substitution (CBA 2026 25.L.4.b).");
     if (rules.lockedCodes.includes(code as AssignedAs)) notes.push(`Once assigned as ${code} it can't be traded, proffered or dropped (CBA 2026 25.L.1.h).`);
@@ -202,8 +203,8 @@ export function checkPriority(code: "PMU" | "PNP", show: number, now: number, zo
  */
 export function checkTradeLimit(openCH: number, givenUpCH: number, tradedSoFarCH: number, rules: OpenTimeRules): RuleFinding[] {
   const net = tradedSoFarCH + openCH - givenUpCH;
-  if (net > rules.tradeNetCH + FLOAT_SLACK) return [{ section: "25.L.8.a", level: "no", text: `This trade would put you ${net.toFixed(1)} CH over your published BLG; the limit is ${rules.tradeNetCH} CH (CBA 2026 25.L.8.a).` }];
-  return [{ section: "25.L.8.a", level: "note", text: `Net of trades: ${net >= 0 ? "+" : ""}${net.toFixed(1)} CH against a limit of ${rules.tradeNetCH} CH (CBA 2026 25.L.8.a).` }];
+  if (net > rules.tradeNetCH + FLOAT_SLACK) return [{ section: "25.L.8.a", level: "no", text: `This trade would put you ${hm(net)} CH over your published BLG; the limit is ${rules.tradeNetCH} CH (CBA 2026 25.L.8.a).` }];
+  return [{ section: "25.L.8.a", level: "note", text: `Net of trades: ${net >= 0 ? "+" : "-"}${hm(Math.abs(net))} CH against a limit of ${rules.tradeNetCH} CH (CBA 2026 25.L.8.a).` }];
 }
 
 export interface TripTimes {
@@ -271,7 +272,7 @@ export function checkRDays(trip: Span, rDays: Span, label: string): RuleFinding[
 export function checkContingency(openCH: number, options: BankOption[]): RuleFinding[] {
   const covers = options.some((o) => o.hours + FLOAT_SLACK >= openCH);
   if (covers) return [{ section: "25.L.3.d", level: "note", text: "Set it up as a contingency: the drop only happens if you get this trip (CBA 2026 25.L.3.d)." }];
-  return [{ section: "25.L.3.d", level: "check", text: `A contingency needs bank CH to cover ${openCH.toFixed(1)} CH. The text doesn't say whether the hours this drop frees count (CBA 2026 25.L.3.d).` }];
+  return [{ section: "25.L.3.d", level: "check", text: `A contingency needs bank CH to cover ${hm(openCH)} CH. The text doesn't say whether the hours this drop frees count (CBA 2026 25.L.3.d).` }];
 }
 
 const MINUTES_0700 = 7 * 60;

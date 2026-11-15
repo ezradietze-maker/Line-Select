@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { FlightPathProgress } from "@/components/ui/FlightPathProgress";
 import { Gauge } from "@/components/ui/Gauge";
 import { NumberTicker } from "@/components/ui/NumberTicker";
+import { formatHoursValue } from "@/lib/interview-config";
 import { DURATION, EASE } from "@/lib/motion-tokens";
 import { useMediaQuery } from "@/lib/use-media-query";
 
@@ -155,7 +156,7 @@ export function RankVisual({ active }: { active: boolean }) {
             <div className="min-w-0 flex-1">
               <div className="font-display text-sm font-semibold tracking-wide text-ink">Line {l.n}</div>
               <div className="truncate font-mono text-2xs text-ink-faint">
-                {l.off} off &middot; {l.credit.toFixed(1)} cr &middot; {l.via}
+                {l.off} off &middot; {formatHoursValue(l.credit)} cr &middot; {l.via}
               </div>
             </div>
             {active ? (

@@ -11,6 +11,7 @@ import { FIELD } from "@/components/ui/field";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { loadCarryIn } from "@/lib/carry-in-storage";
+import { formatHoursValue as hm } from "@/lib/interview-config";
 import { canCheckCommute, commuteNeedsForTrips, loadCommuteAnswers, runCommuteCheck, type CommuteAnswers, type CommuteCheckEnd } from "@/lib/commute-filter";
 import { cachedFlightAnswers } from "@/lib/flights/client";
 import { evaluateOpenTime, type GiveUpAs, type OpenTimeBoard, type OpenTimeSituation, type OpenTrip } from "@/lib/open-time/engine";
@@ -59,7 +60,7 @@ const tripLabel = (t: Trip) => `Trip ${t.pairingNumber ?? "?"}`;
 function tripFacts(t: OpenTrip): string {
   const date = t.date ? DateTime.fromISO(t.date, { zone: "utc" }).toFormat("LLL d") : "No date";
   const cities = t.trip.layoverCities.length ? t.trip.layoverCities.join(" ") : "no layover";
-  return `${date} · ${plural(t.trip.days, "day")} · ${t.trip.creditHours.toFixed(1)} CH · ${cities}`;
+  return `${date} · ${plural(t.trip.days, "day")} · ${hm(t.trip.creditHours)} CH · ${cities}`;
 }
 
 function capitalised(text: string): string {
@@ -333,7 +334,7 @@ function OpenTimeBuilder({ bidPack, seniority, profile, userId }: { bidPack: Bid
                   <option value="">None: just pick it up</option>
                   {line.trips.flatMap(dayTripsOf).map((t) => (
                     <option key={tripKey(t)} value={tripKey(t)}>
-                      {tripLabel(t)}, {t.creditHours.toFixed(1)} CH
+                      {tripLabel(t)}, {hm(t.creditHours)} CH
                     </option>
                   ))}
                 </select>

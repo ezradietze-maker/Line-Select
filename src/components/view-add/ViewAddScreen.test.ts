@@ -18,6 +18,16 @@ describe("View/Add, printed", () => {
     expect(section).not.toContain("print:hidden");
   });
 
+  // Round 24: credit read in tenths here, as nowhere else: 24:20 read 24.3 and 6:50 read 6.8.
+  it("says credit as the pack prints it, H:MM", () => {
+    const p = { ...plan(1), targetCH: 24 + 20 / 60, combos: [{ trips: [{ pairingNumber: "501" }], totalCH: 17.5, shortCH: 6 + 50 / 60, daysOffAfter: 12, longestOff: null, workStretches: null, score: null }, { trips: [{ pairingNumber: "502" }], totalCH: 13.25, shortCH: 11, daysOffAfter: 13, longestOff: null, workStretches: null, score: null }], flown: { dropped: [{ trip: { pairingNumber: "213" }, makeUpCH: 24 + 20 / 60 }] } } as unknown as ViewAddPlan;
+    const text = renderToStaticMarkup(createElement(Plan, { plan: p })).replace(/<[^>]+>/g, "");
+    expect(text).toContain("trip 213 (24:20 CH)");
+    expect(text).toContain("trip 501, 17:30 CH, 6:50 CH short of your 24:20");
+    expect(text).toContain("trip 502 (13:15 CH, 13 days off)");
+    expect(text).not.toMatch(/\d\.\d CH/);
+  });
+
   it("prints every choice, past the 15 the screen shows before Show all", () => {
     const html = renderToStaticMarkup(createElement(Plan, { plan: plan(20) }));
     for (let n = 0; n < 20; n++) expect(html).toContain(`${100 + n} 14OCT`);

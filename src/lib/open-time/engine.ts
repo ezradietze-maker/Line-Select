@@ -8,10 +8,11 @@ import { banksFor, checkAssignedAs, checkContingency, checkDeadline, checkDrop, 
 import type { OpenTimeRow, OpenTimeSnapshot, UnreadRow } from "@/lib/open-time/source";
 import { carriedDaysOf, flyLine, lineAsFlown, reservePeriodSpan, zoneOf, type CarryInItem, type PhaseInElections, type Span } from "@/lib/phase-in";
 import { flyVacationsOnLine } from "@/lib/vacation-lines";
+import { formatHoursValue as hm } from "@/lib/interview-config";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { scoreTripsV2, tripValueText, type TripCriterionResult, type TripScore } from "@/lib/scoring-v2/trip-score";
 import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
-import { busyFromCarry, fitCheck, lineWithAdded, pairingDate, pastedMatches, scheduleAsFlown, tripKey } from "@/lib/view-add";
+import { busyFromCarry, claimTrips, fitCheck, lineWithAdded, pairingDate, pastedMatches, scheduleAsFlown, tripKey } from "@/lib/view-add";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 import { prepareMetrics } from "@/lib/metrics/compute";
@@ -108,7 +109,7 @@ export interface OpenTimeBoard {
 
 const dateOf = (r: Pick<OpenTimeRow, "month" | "day">) => `${r.month}/${r.day}`;
 
-type RowMatch = { row: OpenTimeRow; n: string; trip: Trip; gap: number; findings: RuleFinding[] } | { unread: string } | { notInPack: string };
+type RowMatch = { row: OpenTimeRow; n: string; matches: { trip: Trip; gap: number }[] } | { unread: string } | { notInPack: string };
 
 /** A pack trip for a row, read each way its date reads (`OpenTimeRow.orRead`): the one that finds a trip, or why none does. */
 function matchRow(row: OpenTimeRow, universe: Map<string, Trip[]>, pack: BidPack): RowMatch {
@@ -116,13 +117,13 @@ function matchRow(row: OpenTimeRow, universe: Map<string, Trip[]>, pack: BidPack
   const { orRead, ...first } = row;
   const one = matchReading(first, universe, pack);
   const two = matchReading({ ...first, ...orRead }, universe, pack);
-  if ("trip" in one && "trip" in two) return { unread: `It reads as trip ${one.n} on ${dateOf(one.row)} or trip ${two.n} on ${dateOf(two.row)}, and the pack has both, so we can't tell which it means.` };
-  if ("trip" in two) return two;
+  if ("matches" in one && "matches" in two) return { unread: `It reads as trip ${one.n} on ${dateOf(one.row)} or trip ${two.n} on ${dateOf(two.row)}, and the pack has both, so we can't tell which it means.` };
+  if ("matches" in two) return two;
   if ("notInPack" in one && "notInPack" in two) return { notInPack: `No trip ${first.tripNumbers.join(" or ")} on or next to ${dateOf(first)}, and no trip ${orRead.tripNumbers.join(" or ")} on or next to ${dateOf(orRead)}, in this pack. It may be new or revised since the pack came out.` };
   return one;
 }
 
-/** A pack trip for one reading of a row: the one trip number that flies on that date, or why there isn't one. */
+/** The pack trips for one reading of a row: the one trip number that flies on that date, or why there isn't one. */
 function matchReading(row: OpenTimeRow, universe: Map<string, Trip[]>, pack: BidPack): RowMatch {
   const found = row.tripNumbers.flatMap((n) => {
     const matches = pastedMatches({ tripNumber: n, month: row.month, day: row.day, year: row.year }, universe.get(n) ?? [], pack);
@@ -134,15 +135,18 @@ function matchReading(row: OpenTimeRow, universe: Map<string, Trip[]>, pack: Bid
       ? { unread: `We couldn't tell which number is the trip: none of ${row.tripNumbers.join(", ")} flies on ${dateOf(row)} in this pack.` }
       : { notInPack: `No trip ${row.tripNumbers[0]} on or next to ${dateOf(row)} in this pack. It may be new or revised since the pack came out.` };
   }
-  const { n, matches } = found[0];
-  const findings: RuleFinding[] = [];
-  // Which date VIPS prints isn't known (question 28 for the ex-pilot), and it matters when a pairing flies on neighbouring days.
-  if (matches.length > 1) {
-    findings.push({ section: "open-time-date", level: "check", text: `The same trip also flies a day away. We took the one the pairing pages date ${dateOf(row)}: check its date against VIPS, because the schedule check depends on it.` });
-  } else if (matches[0].gap > 0) {
-    findings.push({ section: "open-time-date", level: "check", text: `The pack has this trip a day from ${dateOf(row)}. We took that to be the same trip: check it against VIPS.` });
+  return { row, ...found[0] };
+}
+
+/** Which date VIPS prints isn't known (question 28 for the ex-pilot), and it matters when a pairing flies on neighbouring days. */
+function dateFindings(row: OpenTimeRow, trip: Trip, gap: number, found: number, pack: BidPack): RuleFinding[] {
+  if (gap > 0) {
+    const on = pairingDate(trip, pack);
+    const took = found > 1 && on ? `It flies a day either side, and we took the one on ${DateTime.fromISO(on, { zone: "utc" }).toFormat("L/d")}` : "We took that to be the same trip";
+    return [{ section: "open-time-date", level: "check", text: `The pack has this trip a day from ${dateOf(row)}. ${took}: check it against VIPS.` }];
   }
-  return { row, n, trip: matches[0].trip, gap: matches[0].gap, findings };
+  if (found > 1) return [{ section: "open-time-date", level: "check", text: `The same trip also flies a day away. We took the one the pairing pages date ${dateOf(row)}: check its date against VIPS, because the schedule check depends on it.` }];
+  return [];
 }
 
 const sameDate = (a: OpenTimeRow, b: OpenTimeRow) => a.month === b.month && a.day === b.day && a.year === b.year;
@@ -150,8 +154,8 @@ const sameDate = (a: OpenTimeRow, b: OpenTimeRow) => a.month === b.month && a.da
 /** A row that prints something the pack doesn't: the trip may have been revised since the pack came out. */
 function revisionFindings(row: OpenTimeRow, trip: Trip): RuleFinding[] {
   const differs: string[] = [];
-  if (row.creditHours !== undefined && Math.abs(row.creditHours - trip.creditHours) > ROUNDING_HOURS) differs.push(`${row.creditHours.toFixed(1)} CH here, ${trip.creditHours.toFixed(1)} CH in the pack`);
-  if (row.tafbHours !== undefined && Math.abs(row.tafbHours - trip.tafbHours) > ROUNDING_HOURS) differs.push(`${row.tafbHours.toFixed(1)} TAFB here, ${trip.tafbHours.toFixed(1)} in the pack`);
+  if (row.creditHours !== undefined && Math.abs(row.creditHours - trip.creditHours) > ROUNDING_HOURS) differs.push(`${hm(row.creditHours)} CH here, ${hm(trip.creditHours)} CH in the pack`);
+  if (row.tafbHours !== undefined && Math.abs(row.tafbHours - trip.tafbHours) > ROUNDING_HOURS) differs.push(`${hm(row.tafbHours)} TAFB here, ${hm(trip.tafbHours)} in the pack`);
   // A printed report in another zone would differ too, which is why this only flags.
   const report = trip.schedule[0]?.reportTimeLocal;
   if (row.reportTime && report && row.reportTime !== report) differs.push(`report ${row.reportTime} here, ${report} in the pack`);
@@ -239,7 +243,7 @@ function ruleFindings(trip: Trip, row: OpenTimeRow, s: OpenTimeSituation, rules:
     if (!usable.length) {
       // The bank that comes closest says the most: the others are further off.
       const closest = options.reduce<BankOption | null>((best, o) => (!best || o.hours > best.hours ? o : best), null);
-      findings.push({ section: closest?.section ?? "25.L.6.e", level: "no", text: closest?.notes[0] ?? `${creditHours.toFixed(1)} CH doesn't fit a bank you entered.` });
+      findings.push({ section: closest?.section ?? "25.L.6.e", level: "no", text: closest?.notes[0] ?? `${hm(creditHours)} CH doesn't fit a bank you entered.` });
     }
     if (usable.length && times && (usable[0].code === "PMU" || usable[0].code === "PNP")) findings.push(checkPriority(usable[0].code, times.show, now, zone));
   }
@@ -323,7 +327,7 @@ export function evaluateOpenTime(snapshot: OpenTimeSnapshot, s: OpenTimeSituatio
   const unread: UnreadRow[] = [...snapshot.unread];
   const notInPack: UnreadRow[] = [];
   const onLine: OpenTimeRow[] = [];
-  const claimed = new Map<string, { row: OpenTimeRow; trip: Trip; gap: number; findings: RuleFinding[] }>();
+  const rows: { row: OpenTimeRow; matches: { trip: Trip; gap: number }[] }[] = [];
   for (const row of snapshot.rows.slice(0, MAX_ROWS)) {
     const m = matchRow(row, universe, pack);
     if ("unread" in m) {
@@ -334,25 +338,20 @@ export function evaluateOpenTime(snapshot: OpenTimeSnapshot, s: OpenTimeSituatio
       notInPack.push({ raw: row.raw, why: m.notInPack });
       continue;
     }
-    const key = tripKey(m.trip);
-    const had = claimed.get(key);
     // As the pack read it, when its date reads two ways.
-    const claim = { row: m.row, trip: m.trip, gap: m.gap, findings: m.findings };
-    if (!had) claimed.set(key, claim);
-    else if (!sameDate(had.row, m.row)) {
-      // Two dates found the one trip, as "213 12/10" and "213 12/11" do when the pack has 213 only on the 10th. The
-      // nearer date has it; the other is a trip the pack doesn't have. Kept first, the 11th's row took it and the 10th's
-      // vanished from the board.
-      const [keep, other] = m.gap < had.gap ? [claim, had] : [had, claim];
-      claimed.set(key, keep);
-      const n = keep.trip.pairingNumber;
-      notInPack.push({ raw: other.row.raw, why: `The pack's only trip ${n} near ${dateOf(other.row)} went to "${keep.row.raw}". This one may be new or revised since the pack came out.` });
-    }
+    rows.push({ row: m.row, matches: m.matches });
+  }
+  // Two dates found the one trip, as "213 12/10" and "213 12/11" do when the pack has 213 only on the 10th. The nearer
+  // date has it; the other is a trip the pack doesn't have. Kept first, the 11th's row took it and the 10th's vanished
+  // from the board.
+  const { claimed, lost } = claimTrips(rows, sameDate);
+  for (const { row, trip, to } of lost) {
+    notInPack.push({ raw: row.raw, why: `The pack's trip ${trip.pairingNumber} near ${dateOf(row)} went to "${to.raw}". This one may be new or revised since the pack came out.` });
   }
   const matched = new Map<string, { row: OpenTimeRow; trip: Trip; findings: RuleFinding[] }>();
-  for (const [key, { row, trip, findings }] of claimed) {
+  for (const [key, { row, trip, gap, matches }] of claimed) {
     if (onLineKeys.has(key)) onLine.push(row);
-    else matched.set(key, { row, trip, findings: [...findings, ...revisionFindings(row, trip)] });
+    else matched.set(key, { row, trip, findings: [...dateFindings(row, trip, gap, matches.length, pack), ...revisionFindings(row, trip)] });
   }
 
   const evaluated = [...matched.values()].map(({ row, trip, findings }) => {

@@ -8,6 +8,7 @@ import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { ChevronDownIcon } from "@/components/ui/icons";
 import { buildPackRow, type PackColumn } from "@/lib/bidpack-row";
 import { lineFigures } from "@/lib/brain/line-text";
+import { formatHoursValue } from "@/lib/interview-config";
 import type { BidPack } from "@/types/bidpack";
 
 /**
@@ -66,7 +67,7 @@ export function PackLineFold({
             <div className="p-4 sm:p-5">
               {heading ? <p className="text-2xs text-ink-faint font-medium">{heading}</p> : null}
               <p className="mt-0.5 font-display text-xl font-semibold text-ink">Line {lineNumber}</p>
-              <p className="mb-3 font-mono text-xs text-ink-muted">{lineFigures(bidPack, line)}</p>
+              <p className="mb-3 font-mono text-xs text-ink-muted">{lineFigures(bidPack, line, formatHoursValue)}</p>
               <MiniLinePreview line={line} bidPeriodStart={bidPack.bidPeriodStart} bidPeriodDays={bidPack.bidPeriodDays} />
               <p className="mt-4 text-2xs text-ink-faint font-medium">Its trips</p>
               <ul className="mt-2 space-y-2">

@@ -25,10 +25,11 @@ type ReadDate = { month: number; day: number; year?: number };
 /** Each way of writing a date: "2026-10-14"; "14OCT", "14 OCT 2026", "14OCT26", "14OCT2026"; "OCT 14", "October 14, 2026"; "10/14", "10/14/26". */
 const DATE_FORMS: { re: RegExp; read: (m: RegExpMatchArray) => ReadDate }[] = [
   { re: /\b(20\d{2})-(\d{2})-(\d{2})\b/g, read: (m) => ({ year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }) },
-  { re: new RegExp(`\\b(\\d{1,2})[ -]?(${MON})[A-Z]*(?:(20\\d{2}|\\d{2})|[ -](20\\d{2}))?\\b`, "gi"), read: (m) => ({ day: Number(m[1]), month: MONTHS.indexOf(m[2].toUpperCase()) + 1, year: fullYear(m[3] ?? m[4]) }) },
+  // Not the minutes of a time: "14:30 OCT 12" is Oct 12, not Oct 30.
+  { re: new RegExp(`(?<!\\d[.:])\\b(\\d{1,2})[ -]?(${MON})[A-Z]*(?:(20\\d{2}|\\d{2})|[ -](20\\d{2}))?\\b`, "gi"), read: (m) => ({ day: Number(m[1]), month: MONTHS.indexOf(m[2].toUpperCase()) + 1, year: fullYear(m[3] ?? m[4]) }) },
   { re: new RegExp(`\\b(${MON})[A-Z]*\\.?[ -]?(\\d{1,2})\\b(?:,? (20\\d{2})\\b)?`, "gi"), read: (m) => ({ month: MONTHS.indexOf(m[1].toUpperCase()) + 1, day: Number(m[2]), year: fullYear(m[3]) }) },
-  // Not out of figures written together: "12.5/10.2" isn't May 10.
-  { re: /(?<![\d/.:])(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d/]|[.:]\d)/g, read: (m) => ({ month: Number(m[1]), day: Number(m[2]), year: fullYear(m[3]) }) },
+  // Not out of figures written together: "12.5/10.2" isn't May 10. A label's colon is fine: "DATE:5/10".
+  { re: /(?<![\d/]|\d[.:])(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d/]|[.:]\d)/g, read: (m) => ({ month: Number(m[1]), day: Number(m[2]), year: fullYear(m[3]) }) },
 ];
 
 /**
@@ -141,6 +142,15 @@ function readRow(raw: string, line: string): OpenTimeRow | UnreadRow {
   if ("why" in alt) return row;
   if ("why" in row) return alt;
   if (alt.month === row.month && alt.day === row.day && alt.tripNumbers.join() === row.tripNumbers.join()) return row;
+  // Only when each reading's day is the other's trip number. In "213 12 DEC 14:30" the 14 is a time and in "213 14 OCT
+  // 15 OCT" a release date, never a trip, and read as Dec 14 or Oct 15 too, a trip that flies daily went unread.
+  const swaps = (a: DateHit, b: DateHit, trips: string[]) => {
+    // The part of `a` that isn't `b`: "10" of "DEC 10" beside "5 DEC".
+    const own = `${line.slice(a.index, Math.max(a.index, b.index))} ${line.slice(b.index + b.text.length, a.index + a.text.length)}`;
+    const day = own.match(/\d+/)?.[0];
+    return day !== undefined && trips.some((n) => Number(n) === Number(day));
+  };
+  if (!swaps(other, dates[0], row.tripNumbers) || !swaps(dates[0], other, alt.tripNumbers)) return row;
   return { ...row, orRead: { tripNumbers: alt.tripNumbers, month: alt.month, day: alt.day, ...(alt.year ? { year: alt.year } : {}) } };
 }
 
