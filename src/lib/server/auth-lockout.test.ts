@@ -93,6 +93,26 @@ describe("sign-in limits for one account", () => {
   });
 });
 
+describe("devices known from before a reset", () => {
+  const INTRUDER = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+  it("aren't known any more: whoever was signed in on one is held to the account-wide ceiling like anyone", async () => {
+    // Someone with the old password signs in on their own device, so the account knows it.
+    expect((await login(EMAIL, PW, ATTACKER, INTRUDER)).ok).toBe(true);
+    // The pilot takes the account back on their laptop.
+    expect((await resetPasswordWithEmailToken("token", "a-new-password", HOME, LAPTOP)).ok).toBe(true);
+    const updated = (db.updateCredential.mock.calls as unknown as [string, { passwordHash?: string; salt?: string }][]).map((c) => c[1]).filter((p) => p.passwordHash).at(-1)!;
+    db.findCredentialByEmail.mockResolvedValue({ userId: USER, email: EMAIL, ...updated });
+    // Their device cookie works from any address: guessing the new password from many, it must still reach the ceiling.
+    for (let a = 0; a < 13; a++) await login(EMAIL, "wrong", `198.51.100.${a}`, INTRUDER);
+    const guessed = await login(EMAIL, "a-new-password", "192.0.2.9", INTRUDER);
+    expect(guessed.ok).toBe(false);
+    expect(guessed.error).toMatch(/Too many failed attempts/);
+    // The device the pilot reset on is known from then on, and gets in.
+    expect((await login(EMAIL, "a-new-password", "192.0.2.10", LAPTOP)).ok).toBe(true);
+  }, 30_000);
+});
+
 describe("one IPv6 connection", () => {
   it("counts as one address: twelve tries from twelve addresses in its /64 don't shut the account to everyone", async () => {
     for (let a = 1; a <= 12; a++) await login(EMAIL, "wrong", `2001:db8:1234:5678::${a.toString(16)}`);
