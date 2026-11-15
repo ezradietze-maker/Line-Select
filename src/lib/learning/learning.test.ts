@@ -374,4 +374,14 @@ describe("a pilot's own holding history", () => {
     expect(s.seniorityTrend).toEqual({ from: 0.3, to: 0.45 });
     expect(s.headline).toMatch(/around your #10 choice/);
   });
+
+  it("reads their move up the list on one list only: a new seat starts at the bottom of its own", () => {
+    // Senior on the first officer list, then upgraded to the bottom of the captain list.
+    const fo = [rec("SEP26", 3, "line", 0.85), rec("OCT26", 2, "line", 0.9)];
+    const cap = { ...rec("NOV26", null, "reserve", 0.05), aircraft: "MD11", seat: "CAP" };
+    expect(summarizeHoldHistory([...fo, cap]).seniorityTrend).toBeNull();
+    const later = { ...cap, month: "JAN27", percentile: 0.12 };
+    expect(summarizeHoldHistory([...fo, cap, later]).seniorityTrend).toEqual({ from: 0.05, to: 0.12 });
+    expect(summarizeHoldHistory(fo).seniorityTrend).toEqual({ from: 0.85, to: 0.9 });
+  });
 });
