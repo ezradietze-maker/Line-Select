@@ -16,6 +16,15 @@ const TONE: Record<Likelihood, string> = {
 
 const percent = (p: number) => `${Math.round(p * 100)}%`;
 
+/**
+ * Where the pilot falls in bid order, as the banner says it. A number junior to everyone on the list falls one past its
+ * end: "about 782 of 781" read as a mistake, as it did under the seniority box.
+ */
+export function bidOrderWords(f: Pick<BidForecast, "myBidNumber" | "totalPilots" | "exactPosition">): string {
+  if (f.myBidNumber > f.totalPilots) return `after all ${f.totalPilots} in bid order`;
+  return `${f.exactPosition ? "" : "about "}${f.myBidNumber} of ${f.totalPilots} in bid order`;
+}
+
 /** How likely a line is to still be there when it's the pilot's turn to pick — the one number on each card that says whether it's worth their time. */
 export function ForecastChip({ forecast }: { forecast: LineForecast }) {
   const award = forecast.pAward >= 0.05 ? ` · ${percent(forecast.pAward)} you're awarded it` : "";
@@ -112,8 +121,7 @@ export function ForecastBanner({
     <div className={frame("mt-5 rounded-xl border border-border bg-surface p-4 sm:p-5")} aria-busy={loading}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="text-sm font-semibold text-ink">
-          Your chances &middot; seniority #{seniorityNumber} &middot; {forecast.exactPosition ? "" : "about "}
-          {forecast.myBidNumber} of {forecast.totalPilots} in bid order
+          Your chances &middot; seniority #{seniorityNumber} &middot; {bidOrderWords(forecast)}
         </div>
         {loading && <span className="text-xs text-ink-faint">updating&hellip;</span>}
       </div>

@@ -209,12 +209,14 @@ describe("/api/forecast", () => {
       await POST(request(goodBody({ share: true, seniorityNumber: seniority, ranking })));
     }
     authMocks.getCurrentServerUser.mockResolvedValue(USER);
-    // A list of five that names the three far down, so they pass the bar, while only the first five places are played:
-    // the first sharer and four guessed pilots, so the one line at 0% open was the first sharer's top choice.
+    // A list of five that names the three far down, so they pass the bar. Played to its five rows, it was the first
+    // sharer and four guessed pilots, so the one line at 0% open was the first sharer's top choice. Every place ahead is
+    // played, the ones it leaves out too: the three far down pick, and it's the forecast the whole list gives.
     const short = [[1, 5], [10, 50], [11, 55], [12, 60], [19, 95]];
     const data = await (await POST(request(goodBody({ seniorityList: short, seniorityNumber: 95 })))).json();
-    expect(data.forecast.knownAhead).toBe(0);
-    expect(data.forecast.lines["line-1007"].pAvailable).toBeGreaterThan(0);
+    const whole = await (await POST(request(goodBody({ seniorityNumber: 95 })))).json();
+    expect(data.forecast).toMatchObject({ knownAhead: 4, pilotsAhead: 18 });
+    expect(data.forecast.lines).toEqual(whole.forecast.lines);
   });
 
   it("lets a different account not take over a claimed bid position", async () => {

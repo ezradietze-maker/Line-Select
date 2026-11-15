@@ -57,6 +57,18 @@ describe("bid position", () => {
     const f = forecastBid({ bidPack: short, seniorityNumber: 30, myRanking: idsBestFirst(short), simulations: 50 })!;
     expect(f).toMatchObject({ myBidNumber: 10, totalPilots: 10 });
   });
+
+  it("plays every bid number ahead, a list short of its bid numbers too", () => {
+    // Bids #4 and #5 didn't read: eight rows, ten pilots. At #10, nine bid ahead — #9, a listed pilot, among them.
+    const p = syntheticPack(4, 10);
+    const short = { ...p, seniorityList: p.seniorityList!.filter((e) => e.bidNumber !== 4 && e.bidNumber !== 5) };
+    const f = forecastBid({ bidPack: short, seniorityNumber: 30, myRanking: idsBestFirst(short), simulations: 50 })!;
+    expect(f).toMatchObject({ myBidNumber: 10, pilotsAhead: 9 });
+    // And #9's shared ranking is played: its first choice is never open at #10.
+    const known = forecastBid({ bidPack: short, seniorityNumber: 30, myRanking: idsBestFirst(short), known: [{ bidNumber: 9, ranking: ["1000"] }], simulations: 50 })!;
+    expect(known.knownAhead).toBe(1);
+    expect(known.lines["line-1000"].pAvailable).toBe(0);
+  });
 });
 
 describe("dropout estimate", () => {
