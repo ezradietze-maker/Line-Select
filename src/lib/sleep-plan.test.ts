@@ -217,4 +217,41 @@ describe("sleep plan", () => {
     }
     for (const tk of plan.ticks) expect(tk.label).toBe(paris(tk.at).toFormat("HH"));
   });
+
+  it("changes Sydney's clock on its own date in the southern spring, and keeps to the printed times when the date disagrees", () => {
+    // Two nights from Oct 2: forward to AEDT at 02:00 AEST on Oct 4, 16:00 GMT Oct 3.
+    const t = trip(leg("HNL", "SYD", 0, 8 * H, -10 * H, 10 * H), leg("SYD", "HNL", 70 * H, 79 * H, 11 * H, -10 * H));
+    t.zuluAnchor = "2026-10-02T00:00:00.000Z";
+    const [plan] = planTripSleep(t, -10 * H);
+    const sydney = (m: number) => DateTime.fromMillis(Date.parse(t.zuluAnchor) + m * 60_000, { zone: "Australia/Sydney" }).toFormat("HH:mm");
+    for (const b of plan.blocks) expect([b.startLocal, b.endLocal]).toEqual([sydney(b.start), sydney(b.end)]);
+    // Dated a week early, the city's rules see no change there: the printed times still set the clocks either end.
+    t.zuluAnchor = "2026-09-25T00:00:00.000Z";
+    const [early] = planTripSleep(t, -10 * H);
+    expect([early.inHotelLocal, early.wakeByLocal]).toEqual([plan.inHotelLocal, plan.wakeByLocal]);
+  });
+
+  it("says what a main sleep is: a nap only when one is planned, four cycles only when it is four, night when it's the body's night", () => {
+    // In 03:30 local with the body on local time, report 17:30, home by 23:00: four cycles in the body's day, no nap after.
+    const day = trip(leg("MEM", "IND", 30 * H + 30, 32 * H + 30, EST, EST), leg("IND", "MEM", 47 * H + 30, 52 * H, EST, EST));
+    const [core] = planTripSleep(day, EST);
+    expect(core.blocks.map((b) => [b.kind, b.end - b.start])).toEqual([["sleep", 360]]);
+    expect(core.blocks[0].why).toMatch(/four full cycles/);
+    expect(core.blocks[0].why).not.toMatch(/nap/);
+    // The same with a duty on through the night: the nap is planned, and the sleep says so.
+    const night = trip(leg("MEM", "IND", 30 * H + 30, 32 * H + 30, EST, EST), leg("IND", "MEM", 47 * H + 30, 56 * H, EST, EST));
+    const [napped] = planTripSleep(night, EST);
+    expect(napped.blocks.some((b) => b.kind === "preDuty")).toBe(true);
+    expect(napped.blocks.find((b) => b.kind === "sleep")!.why).toMatch(/nap before you go/);
+    // Five hours in the body's day, in at 08:00: all the time there is, not "four full cycles".
+    const short = trip(leg("MEM", "IND", 11 * H, 13 * H, EST, EST), leg("IND", "MEM", 21 * H + 35, 25 * H, EST, EST));
+    const [five] = planTripSleep(short, EST);
+    expect(five.blocks.map((b) => [b.kind, b.end - b.start])).toEqual([["sleep", 300]]);
+    expect(five.blocks[0].why).not.toMatch(/cycles|nap/);
+    // 4h45 from 22:05, nearly all of it the body's night: not "daytime to your body".
+    const late = trip(leg("MEM", "IND", 24 * H, 26 * H, EST, EST), leg("IND", "MEM", 34 * H + 20, 36 * H + 20, EST, EST));
+    const [dark] = planTripSleep(late, EST);
+    expect(dark.blocks.map((b) => [b.kind, b.end - b.start])).toEqual([["sleep", 285]]);
+    expect(dark.blocks[0].why).toMatch(/body clock's night/);
+  });
 });
