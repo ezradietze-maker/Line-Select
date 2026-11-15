@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/Button";
 import { useAppState } from "@/lib/app-state";
-import { fetchBillingStatus, membershipEnded, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
+import { fetchBillingStatus, MEMBERSHIP_PRICE, membershipEnded, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
 
 const PANEL = "panel-glass p-6";
 
@@ -62,7 +62,7 @@ export function MembershipScreen() {
     <div className="mx-auto w-full max-w-xl space-y-6">
       <header className="space-y-1">
         <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Membership</h1>
-        <p className="text-sm text-ink-muted">Line Select Pro is $20/month, and your first membership starts with a free month.</p>
+        <p className="text-sm text-ink-muted">Line Select Pro is {MEMBERSHIP_PRICE}, and your first membership starts with a free month.</p>
       </header>
 
       {outcome === "success" && (
@@ -166,11 +166,11 @@ export function MembershipBody({
         <p className="text-sm text-ink-muted">
           {status.status === "trialing"
             ? trialEnds
-              ? `Your free month runs through ${trialEnds}, then it’s $20/month. Cancel anytime before then and you won’t be charged.`
+              ? `Your free month runs through ${trialEnds}, then it’s ${MEMBERSHIP_PRICE}. Cancel anytime before then and you won’t be charged.`
               : "You’re on your free month. Cancel anytime before it ends and you won’t be charged."
             : renews
-              ? `Renews ${renews} at $20/month.`
-              : "Billed $20/month."}
+              ? `Renews ${renews} at ${MEMBERSHIP_PRICE}.`
+              : `Billed ${MEMBERSHIP_PRICE}.`}
         </p>
         <Button variant="secondary" onClick={onPortal} disabled={busy}>
           {busy ? "Opening…" : "Manage membership"}
@@ -200,7 +200,7 @@ export function MembershipBody({
     <div className={`${PANEL} space-y-4`}>
       <div className="space-y-1">
         <div className="font-display text-lg font-extrabold text-ink">Line Select Pro</div>
-        <div className="text-sm text-ink-muted">{status.freeMonth ? "$20/month · first month free" : "$20/month"}</div>
+        <div className="text-sm text-ink-muted">{status.freeMonth ? `${MEMBERSHIP_PRICE} · first month free` : MEMBERSHIP_PRICE}</div>
       </div>
       <ul className="space-y-1.5 text-sm text-ink-muted">
         <li>Every line scored and ranked for how you actually bid</li>

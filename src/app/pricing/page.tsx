@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useAppState } from "@/lib/app-state";
+import { MEMBERSHIP_PRICE } from "@/lib/billing";
 import { isSamplePack } from "@/lib/fake-trade-offers";
 
 const FREE_FEATURES = [
@@ -27,8 +28,8 @@ export default function PricingPage() {
         title="Pricing"
         description={
           <>
-            Line Select is free today. Everything below is a working feature, not a trial &mdash; there&rsquo;s nothing here held
-            back for a future paid tier. (With the sample pack, the Trade Board shows clearly marked example offers.)
+            Line Select is free today. Everything below is a working feature, not a trial. (With the sample pack, the Trade
+            Board shows clearly marked example offers.)
           </>
         }
       />
@@ -76,12 +77,12 @@ export default function PricingPage() {
       <div className="mt-4 rounded-xl border border-border-strong border-dashed bg-canvas p-5 sm:p-6">
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-semibold text-ink-faint">Pro</h2>
-          <span className="text-sm font-medium text-ink-faint">Pricing to be announced</span>
+          {/* As the Membership page and Stripe's checkout have it (`MembershipScreen`, `TRIAL_DAYS`). */}
+          <span className="text-sm font-medium text-ink-faint">{MEMBERSHIP_PRICE} &middot; first month free</span>
         </div>
         <p className="mt-2 text-sm leading-relaxed text-ink-faint">
-          Nothing in the app is gated behind this yet &mdash; there&rsquo;s no feature list to show
-          because there&rsquo;s no Pro-only feature built. This card exists so pricing has a real
-          place to land once there is one, not to imply a specific feature is coming.
+          Nothing is held back for Pro yet: everything above is free for every pilot. A membership (Membership, in your
+          account menu) starts with a free month the first time.
         </p>
       </div>
 
