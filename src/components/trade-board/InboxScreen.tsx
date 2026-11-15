@@ -35,6 +35,12 @@ export function InboxScreen({ bidPack, user, polledOffers, onGoToTradeBoard }: I
   // Whether a copy of the board has ever come in: until one has, a failed load shows only its message, not three
   // sections saying there's nothing waiting when nothing could be read.
   const [everLoaded, setEverLoaded] = useState(false);
+  /** What's past its trade deadline is judged against this, moved on each minute, as on the board. */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // One seat's board for one month: the server sends nothing else.
   const boardKey = bidPack ? [bidPack.base, bidPack.aircraft, bidPack.seat, bidPack.month].join("|") : null;
@@ -81,7 +87,7 @@ export function InboxScreen({ bidPack, user, polledOffers, onGoToTradeBoard }: I
   const realVisibleOffers = bidPack ? offers.filter((o) => sameBidPack(o, bidPack)) : offers;
   const visibleOffers = realVisibleOffers;
 
-  const { needsResponse, directInterest, accepted } = computeInboxSections(visibleOffers, user?.id);
+  const { needsResponse, directInterest, accepted } = computeInboxSections(visibleOffers, user?.id, { pack: bidPack, now });
 
   return (
     <div className="mx-auto w-full max-w-3xl">

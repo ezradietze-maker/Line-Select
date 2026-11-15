@@ -11,6 +11,7 @@ import { clearBidPack, clearGuestUpload, dropPendingBidPackWrites, guestUploaded
 import { withGuestRecords } from "@/lib/profile-merge";
 import { generateFakeOffer, isSamplePack } from "@/lib/fake-trade-offers";
 import { clearTradeHolding, fetchWaitingSuggestions } from "@/lib/trades/holding-client";
+import { tradeDeadlineAt } from "@/lib/trades/offer-trips";
 import { computeInboxSections, inboxNoticeKey, sameBidPack, unseenCount } from "@/lib/inbox";
 import { correctionEvents, isLearnablePack } from "@/lib/learning/corrections";
 import { postCorrections } from "@/lib/learning/learning-client";
@@ -276,6 +277,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [realOffers, setRealOffers] = useState<TradeOffer[]>([]);
   /** Whose board, and which pack's, `realOffers` is: until the first poll for this pilot and pack, it isn't theirs. */
   const [realOffersKey, setRealOffersKey] = useState<string | null>(null);
+  /** When the offers' trade deadlines were last judged (`offerStillTradeable`): at each poll that changed them, and as the next one passes. */
+  const [deadlineNow, setDeadlineNow] = useState(0);
   /** The offers this pilot has looked at in the Inbox, kept on this device (`trade-seen-storage.ts`), and whose they are. */
   const [seen, setSeen] = useState<{ userId: string | null; ids: Set<string> }>({ userId: null, ids: new Set() });
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -423,6 +426,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       last = signature;
       setRealOffers(data);
       setRealOffersKey(key);
+      setDeadlineNow(Date.now());
     }
     poll();
     tradePollRef.current = poll;
@@ -448,11 +452,25 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const visible = realOffers.filter((o) => sameBidPack(o, bidPack));
     // Example offers never notify — a real pilot shouldn't get a toast or an
     // unread badge for a trade offer that doesn't exist.
-    const { needsResponse, directInterest } = computeInboxSections(visible, user.id);
+    // Nor those past their trade deadline, which the Inbox and the board leave off too.
+    const { needsResponse, directInterest } = computeInboxSections(visible, user.id, { pack: bidPack, now: deadlineNow });
     const byId = new Map<string, TradeOffer>();
     for (const offer of [...needsResponse, ...directInterest]) byId.set(offer.id, offer);
     return [...byId.values()];
-  }, [realOffers, bidPack, user, offersLoaded]);
+  }, [realOffers, bidPack, user, offersLoaded, deadlineNow]);
+
+  useEffect(() => {
+    // Judged again as the next offer's deadline passes, not every minute: a change here redraws all that reads app state.
+    if (!bidPack) return;
+    const next = Math.min(
+      ...realOffers.flatMap((o) =>
+        [o.offeredTrip, o.responderTrip].map((t) => (t ? tradeDeadlineAt(bidPack, o.bidPackMeta, t) : null)).filter((at): at is number => at !== null && at > deadlineNow)
+      )
+    );
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(() => setDeadlineNow(Date.now()), Math.min(Math.max(0, next - Date.now()) + 1000, 2 ** 31 - 1));
+    return () => clearTimeout(timer);
+  }, [realOffers, bidPack, deadlineNow]);
 
   const seenOfferIds = seen.userId === viewerId ? seen.ids : null;
 

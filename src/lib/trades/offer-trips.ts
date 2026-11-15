@@ -45,14 +45,30 @@ const HOUR = 3_600_000;
  * late). A trip whose day isn't known can't be judged, and passes.
  */
 export function pastTradeDeadline(pack: BidPack | null, meta: BidPackMetaSnapshot, trip: TripSnapshot, now: number): boolean {
+  const at = tradeDeadlineAt(pack, meta, trip);
+  return at !== null && at <= now;
+}
+
+/** When a trip on the board stops being tradeable (`pastTradeDeadline`); null when its day isn't known. */
+export function tradeDeadlineAt(pack: BidPack | null, meta: BidPackMetaSnapshot, trip: TripSnapshot): number | null {
   const deadline = tradeDeadlineHours(meta) * HOUR;
   const key = snapshotTripKey(trip);
   const found = pack && key && sameMeta(pack, meta) ? pack.lines.flatMap((l) => l.trips).find((t) => tripInstanceKey(t) === key) : undefined;
   const span = pack && found ? tripSpan(pack, found) : null;
-  if (span) return span.start - deadline <= now;
-  if (!trip.date) return false;
+  if (span) return span.start - deadline;
+  if (!trip.date) return null;
   const day = DateTime.fromISO(trip.date, { zone: timezoneForAirport(meta.base) ?? "UTC" }).startOf("day");
-  return day.isValid && day.toMillis() - deadline <= now;
+  return day.isValid ? day.toMillis() - deadline : null;
+}
+
+/**
+ * Whether an offer's trips can all still be traded: the one offered and, on a proposal, the one proposed. Past either's
+ * deadline nothing can be agreed on it (the server refuses), so the board and the Inbox don't put it in front of a
+ * pilot to answer. An example offer is always shown.
+ */
+export function offerStillTradeable(pack: BidPack | null, offer: TradeOffer, now: number): boolean {
+  if (offer.isDemo) return true;
+  return ![offer.offeredTrip, offer.responderTrip].some((t) => t && pastTradeDeadline(pack, offer.bidPackMeta, t, now));
 }
 
 /** What each pilot on an offer gives away in it: the offering pilot their trip, and a proposing pilot theirs. */
