@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { newCloseRuleApplies, packBidClose } from "@/lib/bid-calendar";
+import { newBidTimesApply, packBidClose, phase2Applies } from "@/lib/bid-calendar";
 import { bidTimeline } from "@/lib/bid-timeline";
 import { longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
 import { baseDayStartMinutes, dayIndices, dutyIsInternational, flownUnderInternationalRules, lineAsFlown, touchesOutside48, zoneOf, type Span } from "@/lib/phase-in";
@@ -35,7 +35,7 @@ const BUFFER_AFTER_HOURS = 48;
 
 /** CBA 2026 7.G.1: the front-end 24-hour buffer "may be waived" from the December 2026 bid period (Phase 2). Before it, "may not be waived". */
 export function frontBufferWaivable(packMonth: string): boolean {
-  return newCloseRuleApplies(packMonth);
+  return phase2Applies(packMonth);
 }
 
 /** The bid month in real instants, base day to base day. */
@@ -506,12 +506,14 @@ export function slideWhere(pack: BidPack): { opens: string | null; closes: strin
   // matching on a "DEC26" at the start found none.
   const printed = bidTimeline(pack).filter((e) => e.source === "pack" && e.bidMonth === pack.month);
   const find = (kind: "conflict-open" | "conflict-close") => printed.find((e) => e.kind === kind)?.at ?? null;
-  const rule = newCloseRuleApplies(pack.month)
+  // The window is the bid's own, before its bid period starts: the DEC26 bid's ran in November, on the 2015 rule, as the
+  // timeline counts it (`timelineRules`).
+  const rule = newBidTimesApply(pack.month)
     ? "It opens 5 hours after your bid closes and runs at least 48 hours (CBA 2026 25.E.2)."
     : "It opens at 1700 CT on the day your bid closes and runs at least 48 hours (CBA 25.E.2).";
   const opens = find("conflict-open");
-  // From December 2026 it's counted from the close (CBA 2026 25.E.2, Phase 2).
-  if (opens || !newCloseRuleApplies(pack.month)) return { opens, closes: find("conflict-close"), rule };
+  // From the JAN27 bid it's counted from the close (CBA 2026 25.E.2, Phase 2).
+  if (opens || !newBidTimesApply(pack.month)) return { opens, closes: find("conflict-close"), rule };
   const close = packBidClose(pack);
   return { opens: close ? new Date(Date.parse(close.iso) + 5 * HOUR).toISOString() : null, closes: find("conflict-close"), rule };
 }

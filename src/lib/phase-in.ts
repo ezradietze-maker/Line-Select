@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
-import { newCloseRuleApplies } from "@/lib/bid-calendar";
+import { phase2Applies } from "@/lib/bid-calendar";
 import { bidMonthEnd, lineCarryOver, splitTrip } from "@/lib/bid-month";
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { tripDutyPeriods } from "@/lib/duty-periods";
@@ -81,7 +81,7 @@ export interface PhaseInRules {
 }
 
 export function phaseInRules(packMonth: string): PhaseInRules {
-  const phase2 = newCloseRuleApplies(packMonth);
+  const phase2 = phase2Applies(packMonth);
   return {
     domesticRestMinutes: phase2 ? 570 : 540,
     domesticDeadheadRestMinutes: phase2 ? 510 : 480,

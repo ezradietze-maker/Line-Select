@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
-import { eventInstant, packBidClose, type CalendarPack } from "@/lib/bid-calendar";
+import { eventInstant, newBidTimesApply, packBidClose, type CalendarPack } from "@/lib/bid-calendar";
 import type { BidCalendarEvent, BidPackInfo, Seat } from "@/types/bidpack";
 
 /**
@@ -73,12 +73,12 @@ export const monthIndex = (code: string): number | null => {
 /**
  * Implementation LOA, Phase 2: 25.C.4, 25.C.11, 25.E.2, 25.E.3 and 25.E.6 are "effective the first day of the December
  * 2026 bid period". A bid runs during the period before its own, so the DEC26 bid closes before that day and the JAN27
- * bid is the first to close after it. This reading only reaches a pack with no printed calendar, since a printed date
- * always wins. Question for the ex-pilot: does the DEC26 bid run on the 2015 times?
+ * bid is the first to close after it (`newBidTimesApply`, which the countdown's close goes by too). This reading only
+ * reaches a pack with no printed calendar, since a printed date always wins. Question for the ex-pilot: does the DEC26
+ * bid run on the 2015 times?
  */
 export function timelineRules(bidMonth: string): "2015" | "2026" {
-  const i = monthIndex(bidMonth);
-  return i !== null && i >= monthIndex("JAN27")! ? "2026" : "2015";
+  return newBidTimesApply(bidMonth) ? "2026" : "2015";
 }
 
 const seatRe = (seat: Seat) => (seat === "CAP" ? /\bCap(?:tain)?\b/i : /\bF\s*\/\s*O\b/i);

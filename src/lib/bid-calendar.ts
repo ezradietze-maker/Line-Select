@@ -10,8 +10,8 @@ export type CalendarPack = Pick<BidPack, "id" | "month" | "base" | "seat" | "bid
  * When this seat's monthly bid closes, best source first:
  *  1. what the pilot set themselves (they may know of a change the pack doesn't show);
  *  2. the bid calendar the pack prints on its cover ("OCT26 Cap Bid Closes 1200 CT");
- *  3. the 2026 contract's rule, counted from the pack's own printed "Bid Opens" — only for bid periods from
- *     December 2026, when that rule takes effect (CBA 2026 25.C.4; Implementation LOA, Phase 2).
+ *  3. the 2026 contract's rule, counted from the pack's own printed "Bid Opens" — only for bids that close once
+ *     that rule takes effect, from the JAN27 bid (CBA 2026 25.C.4; Implementation LOA, Phase 2; `newBidTimesApply`).
  * Nothing is ever guessed from `bidPeriodStart`: the contract fixes close times from publication, not from
  * when the schedule starts.
  */
@@ -57,10 +57,22 @@ function monthOf(code: string): { year: number; month: number } | null {
   return month ? { year: 2000 + Number(m[2]), month } : null;
 }
 
-/** True from the December 2026 bid period on, when 25.C.4's new close times apply (Phase 2). */
-export function newCloseRuleApplies(packMonth: string): boolean {
+/** True from the December 2026 bid period on: Implementation LOA, Phase 2, "effective the first day of the December 2026 bid period". */
+export function phase2Applies(packMonth: string): boolean {
   const m = monthOf(packMonth);
   return !!m && (m.year > 2026 || (m.year === 2026 && m.month >= 12));
+}
+
+/**
+ * True when a bid itself runs on Phase 2's times (25.C.4's close, 25.E.2's conflict window). A bid runs during the period
+ * before its own, so the DEC26 bid closes before the first day of the December 2026 bid period, on the 2015 times, and
+ * the JAN27 bid is the first to close after it. Counted as Phase 2 from DEC26, the countdown put a DEC26 F/O close a day
+ * later than the 2015 rule the timeline beside it counted from.
+ */
+export function newBidTimesApply(packMonth: string): boolean {
+  const m = monthOf(packMonth);
+  // The bid period before JAN27's is DEC26, the first in Phase 2.
+  return !!m && m.year >= 2027;
 }
 
 /**
@@ -70,7 +82,7 @@ export function newCloseRuleApplies(packMonth: string): boolean {
  * (72 hours after) isn't knowable from the pack, so the printed close always wins over this.
  */
 export function contractBidClose(pack: CalendarPack): string | null {
-  if (!newCloseRuleApplies(pack.month)) return null;
+  if (!newBidTimesApply(pack.month)) return null;
   const opens = events(pack, new RegExp(`^${pack.month}\\s+Bid\\s+Opens\\b`, "i"))[0];
   if (!opens) return null;
   const published = DateTime.fromISO(opens.date, { zone: CENTRAL });

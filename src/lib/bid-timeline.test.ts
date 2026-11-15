@@ -140,7 +140,10 @@ describe("counted from the close when nothing is printed", () => {
   });
 
   it("counts from the contract's close when the pack prints only the bid opening (25.C.4)", () => {
-    const events = bidTimeline(pack({ month: "DEC26", bidCalendar: [{ date: "2026-11-05", text: "DEC26 Bid Opens 1700 CT", time: "17:00", zone: "CT" }] }));
+    const events = bidTimeline(pack({ month: "JAN27", bidCalendar: [{ date: "2026-12-03", text: "JAN27 Bid Opens 1700 CT", time: "17:00", zone: "CT" }] }));
     expect(events[0]).toMatchObject({ kind: "bid-close", source: "contract" });
+    // Counted on the 2026 times throughout: the F/O close and its conflict window from the same rule.
+    const fo = bidTimeline(pack({ month: "JAN27", seat: "FO", bidCalendar: [{ date: "2026-12-03", text: "JAN27 Bid Opens 1700 CT", time: "17:00", zone: "CT" }] }));
+    expect(brief(fo, "JAN27")).toMatchObject({ "bid-close": "Wed, Dec 9, 07:00", "conflict-open": "Wed, Dec 9, 12:00" });
   });
 });
