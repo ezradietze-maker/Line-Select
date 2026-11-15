@@ -41,7 +41,7 @@ async function learnForecastPrior(now: Date) {
   const version = versionStamp("fp", now);
   const model: ForecastPriorModel = learnForecastPriors(history, version, now);
   // A prior only ever moves the forecast's starting point, blended with each month's own data, so more history is
-  // promoted directly. Each pilot shares at most one ranking per pack (a database rule), so no one weighs more.
+  // promoted directly. Each pilot counts once in each group (`learnForecastPriors`), so no one weighs more.
   const metrics = { packs: history.length, rankings, seats: Object.keys(model.levels).length };
   await saveModel({ kind: "forecast-prior", version, payload: model, metrics, sampleSize: rankings, active: true });
   return { kind: "forecast-prior", version, promoted: true, metrics };

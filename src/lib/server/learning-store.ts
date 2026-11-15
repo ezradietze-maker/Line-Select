@@ -306,7 +306,7 @@ export async function loadCorrections(): Promise<CorrectionEvent[]> {
   return fromVerified(all, verified, (r) => r.pilotHash).map((r) => ({ dim: r.dim, src: r.src, from: r.fromValue, to: r.toValue }));
 }
 
-/** Every stored month of line features with the rankings pilots shared that month. */
+/** Every stored month of line features with the rankings pilots shared that month, newest first. */
 export async function loadPackHistories(): Promise<PackHistory[]> {
   const stored = await db.select().from(packFeatures).orderBy(desc(packFeatures.updatedAt)).limit(MAX_PACKS);
   if (stored.length === 0) return [];
@@ -322,8 +322,8 @@ export async function loadPackHistories(): Promise<PackHistory[]> {
     verifiedPilotHashes(),
   ]);
   const rankings = fromVerified(shared, verified, (r) => r.userHash);
-  const byBlob = new Map<string, string[]>();
-  for (const r of rankings) byBlob.set(r.blobKey, [...(byBlob.get(r.blobKey) ?? []), r.ranking]);
+  const byBlob = new Map<string, { ranking: string; sharer: string }[]>();
+  for (const r of rankings) byBlob.set(r.blobKey, [...(byBlob.get(r.blobKey) ?? []), { ranking: r.ranking, sharer: r.userHash }]);
   return packs
     .filter((p) => (byBlob.get(p.blobKey)?.length ?? 0) > 0 && p.features.length === p.lineNumbers.length * FEATURE_COUNT)
     .map((p) => ({
@@ -331,7 +331,8 @@ export async function loadPackHistories(): Promise<PackHistory[]> {
       aircraft: p.aircraft,
       seat: p.seat,
       features: { lineIds: p.lineNumbers, lineNumbers: p.lineNumbers, values: Float64Array.from(p.features), lineCount: p.lineNumbers.length },
-      rankings: byBlob.get(p.blobKey)!.map((r) => decodeRanking(r, p.lineNumbers.length)),
+      rankings: byBlob.get(p.blobKey)!.map((r) => decodeRanking(r.ranking, p.lineNumbers.length)),
+      sharers: byBlob.get(p.blobKey)!.map((r) => r.sharer),
     }));
 }
 
