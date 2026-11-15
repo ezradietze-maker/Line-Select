@@ -284,6 +284,8 @@ export function TradeBoardScreen({
         ) : (
           <EmptyState className="mt-8" title="Coming when your seat has enough pilots" description="The board opens for a domicile, aircraft and seat once enough pilots are using Line Select there, so you'd find real offers on it. Nothing to do until then." />
         )}
+        {/* Trade emails about a pack confirmed before (another seat's board) say to turn them off here. */}
+        {barKnown && barAnswer.open === false && user && bidPack && <HoldingPanel bidPack={bidPack} emailOnly />}
       </div>
     );
   }
