@@ -15,6 +15,12 @@ export async function GET() {
   // Asked only of a pilot who could start one now: whether it comes with the free month.
   const canStart = enabled && (!sub?.stripeSubscriptionId || membershipEnded(sub.status));
   const freeMonth = canStart ? await freeMonthFor(getStripe(), user.email, sub).catch(() => false) : false;
+  // A live trial/active membership can be set to cancel at period end: Stripe keeps the status as-is and only flips
+  // this flag, so our mirrored row still reads "trialing". Read it live to show the pilot their membership is ending.
+  const live =
+    sub?.stripeSubscriptionId && (sub.status === "trialing" || sub.status === "active")
+      ? await getStripe().subscriptions.retrieve(sub.stripeSubscriptionId).catch(() => null)
+      : null;
   return NextResponse.json(
     {
       enabled,
@@ -22,6 +28,7 @@ export async function GET() {
       status: sub?.status ?? null,
       hasSubscription: Boolean(sub?.stripeSubscriptionId),
       freeMonth,
+      cancelAtPeriodEnd: live?.cancel_at_period_end === true,
       trialEndsAt: sub?.trialEndsAt ?? null,
       currentPeriodEnd: sub?.currentPeriodEnd ?? null,
     },

@@ -18,6 +18,23 @@ describe("membership screen", () => {
   });
 
   it("still says so when this site has no billing", () => {
-    expect(body({ enabled: false, plan: "free", status: null, hasSubscription: false, freeMonth: false, trialEndsAt: null, currentPeriodEnd: null })).toContain("switched on");
+    expect(body({ enabled: false, plan: "free", status: null, hasSubscription: false, freeMonth: false, cancelAtPeriodEnd: false, trialEndsAt: null, currentPeriodEnd: null })).toContain("switched on");
+  });
+
+  it("shows a trial set to cancel as canceled and ending, not still 'in progress'", () => {
+    // A pilot who canceled during their free month was still shown "Free month in progress" with no sign it had ended.
+    const html = body({
+      enabled: true,
+      plan: "pro",
+      status: "trialing",
+      hasSubscription: true,
+      freeMonth: false,
+      cancelAtPeriodEnd: true,
+      trialEndsAt: "2026-12-15T12:00:00.000Z",
+      currentPeriodEnd: null,
+    });
+    expect(html).toContain("Membership canceled");
+    expect(html).toContain("won’t be charged");
+    expect(html).not.toContain("Free month in progress");
   });
 });
