@@ -17,7 +17,7 @@ import { serviceText, type Heard, type Turn } from "@/lib/dictation/assemble";
 
 export class DictationUnavailable extends Error {}
 
-export type EndReason = "stopped" | "quiet" | "limit" | "lost";
+export type EndReason = "stopped" | "quiet" | "limit" | "lost" | "mic";
 
 export interface ServiceSession {
   stop(): void;
@@ -32,6 +32,11 @@ interface Pass {
 
 /** No new words for this long and the mic switches itself off — an open mic left on a tray costs money. */
 const QUIET_MS = 30_000;
+/**
+ * The service closes a connection no sound has come down for this long. The quiet watch above runs in the page, and a
+ * locked phone stops the page but not the connection, which is billed for as long as it's open.
+ */
+const INACTIVE_SECONDS = 60;
 /** How long to wait for the connection to open before giving up on the service. */
 const OPEN_TIMEOUT_MS = 8_000;
 /** Sound held while the connection opens, so the first words aren't lost — no more than this. */
@@ -73,6 +78,7 @@ export async function startServiceDictation(opts: {
   };
 
   let pass: Pass;
+  let tap: AudioWorkletNode;
   try {
     const passPromise = fetchPass();
     // Handled now as well as awaited below: a pass refused while the mic prompt is still open was an unhandled
@@ -82,24 +88,26 @@ export async function startServiceDictation(opts: {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
     pass = await passPromise;
     await audio.audioWorklet.addModule("/dictation-worklet.js");
+    // Wired up inside the clean-up too: Firefox refuses a mic whose sample rate isn't the sound's, and the mic was left on.
+    const source = audio.createMediaStreamSource(stream);
+    tap = new AudioWorkletNode(audio, "dictation-tap");
+    const mute = audio.createGain();
+    mute.gain.value = 0;
+    source.connect(tap);
+    tap.connect(mute);
+    mute.connect(audio.destination);
   } catch (e) {
     cleanup();
     throw e;
   }
-
-  const source = audio.createMediaStreamSource(stream);
-  const tap = new AudioWorkletNode(audio, "dictation-tap");
-  const mute = audio.createGain();
-  mute.gain.value = 0;
-  source.connect(tap);
-  tap.connect(mute);
-  mute.connect(audio.destination);
+  const tracks = stream.getTracks();
 
   const params = new URLSearchParams({
     sample_rate: String(Math.round(audio.sampleRate)),
     encoding: "pcm_s16le",
     speech_model: pass.model,
     token: pass.token,
+    inactivity_timeout: String(INACTIVE_SECONDS),
   });
   if (opts.keyterms.length) params.set("keyterms_prompt", JSON.stringify(opts.keyterms));
 
@@ -182,6 +190,10 @@ export async function startServiceDictation(opts: {
     };
     socket.onerror = () => {};
   });
+
+  // A headset unplugged, or the mic taken away: said at once, not heard as a quiet spell half a minute on.
+  if (tracks.some((t) => t.readyState === "ended")) finish("mic");
+  for (const t of tracks) t.addEventListener("ended", () => finish("mic"));
 
   return { stop: () => finish("stopped") };
 }

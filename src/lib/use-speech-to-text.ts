@@ -1,9 +1,9 @@
 "use client";
 
 import { apiFetch } from "@/lib/shown-account";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useBidPackIfAny } from "@/lib/app-state";
-import { browserText, withDictated, type BrowserResult, type Heard } from "@/lib/dictation/assemble";
+import { browserText, caretToKeep, withDictated, type BrowserResult, type Heard } from "@/lib/dictation/assemble";
 import { DictationUnavailable, serviceDictationPossible, startServiceDictation, type EndReason, type ServiceSession } from "@/lib/dictation/service-dictation";
 import { dictationWords, fixSpelledCodes, packAirports } from "@/lib/dictation/word-list";
 
@@ -65,6 +65,7 @@ const END_NOTICE: Partial<Record<EndReason, string>> = {
   quiet: "The mic switched off after a quiet spell — tap it to keep going.",
   limit: "The mic switches off after 15 minutes — tap it to keep going.",
   lost: "Lost the connection — tap the mic to keep going.",
+  mic: "Lost the mic — check it's plugged in, then tap it to keep going.",
 };
 
 /** A browser session that ends by itself (Safari after a pause) is restarted this many times at most, and only while words keep coming. */
@@ -155,9 +156,10 @@ let activeDictation: { stop: () => void } | null = null;
  * more at the end would. It uses the speech service with the pilot's word list (pilot terms, the pack's airports and
  * aircraft) when the server has it, and the browser's own engine otherwise. `value`/`onChange` are the box's own
  * controlled-input pair. With `maxLength`, the mic stops once the box is full and says so: the words after it went
- * nowhere, and the pilot talked on for minutes not knowing.
+ * nowhere, and the pilot talked on for minutes not knowing. With `field` (the box itself), a cursor the pilot put back
+ * inside the text stays there as the words land (`caretToKeep`).
  */
-export function useDictation(value: string, onChange: (next: string) => void, { maxLength }: { maxLength?: number } = {}) {
+export function useDictation(value: string, onChange: (next: string) => void, { maxLength, field }: { maxLength?: number; field?: RefObject<HTMLTextAreaElement | null> } = {}) {
   const pack = useBidPackIfAny();
   const keyterms = useMemo(() => dictationWords(pack), [pack]);
   const codes = useMemo(() => packAirports(pack), [pack]);
@@ -179,6 +181,10 @@ export function useDictation(value: string, onChange: (next: string) => void, { 
   useEffect(() => {
     maxRef.current = maxLength;
   }, [maxLength]);
+  const fieldRef = useRef(field);
+  useEffect(() => {
+    fieldRef.current = field;
+  }, [field]);
 
   // What was in the box when dictation started; what we last put there; and how many dictated words are already in
   // the box by other means (the pilot typed mid-dictation, or the box trimmed to its limit) and mustn't be added again.
@@ -192,6 +198,8 @@ export function useDictation(value: string, onChange: (next: string) => void, { 
   // Half-heard words already in the box when the pilot typed: the engine may settle them re-split ("four teen" →
   // "fourteen"), so they're matched by their letters when they come back, not counted off as words.
   const pendingHearing = useRef("");
+  // The pilot's cursor, to put back once the box shows the words just dictated.
+  const caret = useRef<{ start: number; end: number } | null>(null);
 
   useEffect(() => {
     // One-time checks of what this browser and server can do — not state derived from props.
@@ -204,6 +212,14 @@ export function useDictation(value: string, onChange: (next: string) => void, { 
       live = false;
     };
   }, []);
+
+  useLayoutEffect(() => {
+    const keep = caret.current;
+    caret.current = null;
+    const box = fieldRef.current?.current;
+    // Only on the words just dictated: what the pilot typed puts their cursor where they left it.
+    if (keep && box && value === lastEmitted.current && box.value === value) box.setSelectionRange(keep.start, keep.end);
+  }, [value]);
 
   useEffect(() => {
     if (value !== lastEmitted.current) {
@@ -247,6 +263,8 @@ export function useDictation(value: string, onChange: (next: string) => void, { 
       const full = max !== undefined && next.length >= max;
       if (full) next = next.slice(0, max);
       if (next !== lastEmitted.current) {
+        const box = fieldRef.current?.current;
+        caret.current = box ? caretToKeep(box, document.activeElement === box, lastEmitted.current.length) : null;
         lastEmitted.current = next;
         onChangeRef.current(next);
       }

@@ -75,6 +75,22 @@ export function browserText(results: ArrayLike<BrowserResult>): Heard {
   return { settled, hearing };
 }
 
+/** The part of a text box that says where its cursor is. */
+export interface Caret {
+  readonly selectionStart: number | null;
+  readonly selectionEnd: number | null;
+}
+
+/**
+ * Where to put the pilot's cursor back once dictated words land: a new value set on a box sends its cursor to the end
+ * (the browser's rule), so a pilot who'd clicked back into the text to fix a word had what they typed next land after
+ * the dictation. Only a cursor inside the text (`length` long) is kept: one at the end follows the words in.
+ */
+export function caretToKeep(box: Caret, focused: boolean, length: number): { start: number; end: number } | null {
+  if (!focused || box.selectionStart === null || box.selectionEnd === null || box.selectionEnd >= length) return null;
+  return { start: box.selectionStart, end: box.selectionEnd };
+}
+
 /** What was there before dictation started, and what's been said since: one space between, never two. */
 export function withDictated(base: string, heard: Heard): string {
   const said = joinAll([heard.settled, heard.hearing]);
