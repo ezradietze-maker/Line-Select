@@ -145,12 +145,12 @@ export function SleepScienceInfo() {
                 <span className="text-ink-faint">(Waterhouse et al., The Lancet, 2007.)</span>
               </li>
               <li>
-                <span className="font-medium text-ink">02:00–06:00 body time is the backside of the clock</span> — when sleep drive peaks and alertness bottoms out. A duty that flies through it gets a nap
-                planned before it. <span className="text-ink-faint">(FAA and ICAO fatigue guidance.)</span>
+                <span className="font-medium text-ink">02:00–06:00 body time is the backside of the clock</span> — when sleep drive peaks and alertness bottoms out. A duty that reports between 19:00 and
+                05:00 body time, or flies two hours or more of your body&rsquo;s night (22:30–07:00), gets a nap before it when there&rsquo;s room for one. <span className="text-ink-faint">(FAA and ICAO fatigue guidance.)</span>
               </li>
               <li>
-                <span className="font-medium text-ink">Sleep in whole cycles.</span> Adults need 7–9 hours; ending a sleep after full ~90-minute cycles, or keeping a nap to 20–30 minutes, avoids waking
-                groggy. <span className="text-ink-faint">(American Academy of Sleep Medicine.)</span>
+                <span className="font-medium text-ink">Short sleeps end on a whole cycle.</span> Adults need 7–9 hours. A main sleep fills the time there is, up to 8 hours. A sleep shorter
+                than 4½ hours ends after full ~90-minute cycles, and a nap is one full cycle or 20–30 minutes, so you wake less groggy. <span className="text-ink-faint">(American Academy of Sleep Medicine.)</span>
               </li>
               <li>
                 <span className="font-medium text-ink">Planned naps work.</span> NASA&rsquo;s study of long-haul crews found a short planned nap markedly improved performance and alertness; napping
@@ -158,7 +158,7 @@ export function SleepScienceInfo() {
               </li>
               <li>
                 <span className="font-medium text-ink">After an all-night duty, sleep twice.</span> A recovery sleep on arrival plus a main sleep in your body&rsquo;s night beats one long daytime sleep, which
-                your body clock cuts short — so daytime main sleeps are planned as four cycles with a nap before you go.{" "}
+                your body clock cuts short. On a long layover with no room for a full sleep in your body&rsquo;s night, it&rsquo;s planned as four cycles (6 hours).{" "}
                 <span className="text-ink-faint">(Minors &amp; Waterhouse&rsquo;s anchor sleep; Åkerstedt&rsquo;s shift-work studies.)</span>
               </li>
               <li>

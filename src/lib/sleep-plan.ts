@@ -51,8 +51,9 @@ const FULL_SLEEP = 480;
 const CYCLE = 90;
 /**
  * Sleep in the body clock's day runs 1–4 hours short of night sleep — the clock wakes you (Åkerstedt's shift-work
- * studies) — so where a long layover's main sleep falls in the body's day, plan a core of four cycles and a nap
- * before the next duty, the standard advice for night work, rather than an 8-hour block few people get.
+ * studies) — so where a long layover's main sleep falls in the body's day, plan a core of four cycles (and a nap
+ * before the next duty, when it runs through the body's night), the standard advice for night work, rather than an
+ * 8-hour block few people get.
  */
 const DAYTIME_CORE = 4 * CYCLE;
 /** Awake this long and sleep comes whatever the body clock says. */
@@ -469,47 +470,50 @@ function planLayover(ctx: Context, from: number, wakeBy: number, awakeHours: num
   }
 
   // Main sleeps: the best full night first, then any other body-clock night the layover covers.
-  const mains: { start: number; end: number; ease: number }[] = [];
+  const mains: { start: number; end: number; ease: number; core: boolean }[] = [];
   const free: [number, number][] = [[from, wakeBy]];
   for (let guard = 0; guard < 4 && free.length; guard++) {
-    let pick: { start: number; end: number; ease: number; score: number; slot: number } | null = null;
+    let pick: { start: number; end: number; ease: number; score: number; slot: number; core: boolean } | null = null;
     // The first sleep comes after the hours already awake: waiting past a long day for an easier hour costs.
     // Past `MAX_AWAKE_HOURS` a recovery sleep comes first anyway, so the cost stops growing there.
     const cost = mains.length ? undefined : (s: number) => WAIT_COST_PER_HOUR * Math.max(0, Math.min(MAX_AWAKE_HOURS, awakeHours + (s - from) / 60) - HIGH_PRESSURE_HOURS);
     free.forEach(([s, e], slot) => {
       let len = Math.min(FULL_SLEEP, e - s);
+      let core = false;
       if (len >= FULL_SLEEP && e - s >= 11 * 60) {
         // Whether a full sleep can land in the body's night at all — a question of the clock, not of waiting.
         const night = bestBlock(ctx, s, e, len);
-        if (night && bodyNightMinutes(ctx, night.start, night.start + len) < 4 * 60) len = DAYTIME_CORE;
+        if (night && bodyNightMinutes(ctx, night.start, night.start + len) < 4 * 60) {
+          len = DAYTIME_CORE;
+          core = true;
+        }
       }
       // A first main sleep can go anywhere it fits; later ones only into a stretch that really covers the body's night.
       if (len < 4.5 * 60 || (mains.length > 0 && bodyNightMinutes(ctx, s, e) < 4 * 60)) return;
       // Past a long day awake sleep comes wherever it's put, so when it starts only matters to a pilot not yet that tired.
       const b = bestBlock(ctx, s, e, len, cost, awakeHours < HIGH_PRESSURE_HOURS);
-      if (b && (!pick || b.score > pick.score)) pick = { start: b.start, end: b.start + len, ease: b.ease, score: b.score, slot };
+      if (b && (!pick || b.score > pick.score)) pick = { start: b.start, end: b.start + len, ease: b.ease, score: b.score, slot, core };
     });
     if (!pick) break;
-    const { start, end, ease, slot } = pick as { start: number; end: number; ease: number; score: number; slot: number };
-    mains.push({ start, end, ease });
+    const { start, end, ease, slot, core } = pick as { start: number; end: number; ease: number; score: number; slot: number; core: boolean };
+    mains.push({ start, end, ease, core });
     const [s, e] = free[slot];
     // Keep a few awake hours either side, so the next sleep has pressure behind it.
     free.splice(slot, 1, ...([[s, start - 6 * 60], [end + 6 * 60, e]] as [number, number][]).filter(([a, b]) => b - a >= 4.5 * 60));
   }
   mains.sort((a, b) => a.start - b.start);
-  const blocks: PlannedBlock[] = mains.map((m) => ({
-    kind: "sleep",
-    start: m.start,
-    end: m.end,
-    title: "Main sleep",
-    ease: m.ease,
-    why:
-      bodyNightMinutes(ctx, m.start, m.end) >= 5 * 60
+  // Said as planned: the nap only when one follows (a day duty next gets none), four cycles only when it was cut to
+  // four, and the body's night by how much of this sleep is in it (5 hours of 8), so a short sleep at night isn't "daytime".
+  const mainWhy = (m: (typeof mains)[number], napAfter: boolean) =>
+    m.core
+      ? `It's daytime to your body, and daytime sleep runs short — the body clock wakes you — so plan four full cycles (${hoursText(DAYTIME_CORE)})${napAfter ? " and top up with a nap before you go" : ""}. Blackout curtains, a cool room and earplugs help.`
+      : bodyNightMinutes(ctx, m.start, m.end) * FULL_SLEEP >= 5 * 60 * (m.end - m.start)
         ? "Lines up with your body clock's night, so it's the easiest, deepest sleep you'll get here."
-        : m.end - m.start <= DAYTIME_CORE
-          ? "It's daytime to your body, and daytime sleep runs short — the body clock wakes you — so plan four full cycles now and top up with a nap before you go. Blackout curtains, a cool room and earplugs help."
-          : "Your best chance at a full sleep in this layover — it's daytime to your body, so expect lighter sleep: blackout curtains, a cool room and earplugs help.",
-  }));
+        : m.end - m.start < FULL_SLEEP
+          ? `All the time there is here (${hoursText(m.end - m.start)}). It's daytime to your body, so expect lighter sleep: blackout curtains, a cool room and earplugs help.`
+          : "Your best chance at a full sleep in this layover — it's daytime to your body, so expect lighter sleep: blackout curtains, a cool room and earplugs help.";
+  const mainBlocks: PlannedBlock[] = mains.map((m) => ({ kind: "sleep", start: m.start, end: m.end, title: "Main sleep", ease: m.ease, why: mainWhy(m, false) }));
+  const blocks: PlannedBlock[] = [...mainBlocks];
 
   // After a long time awake (an all-nighter), or when the body-clock night is too far off to wait for, a recovery sleep on
   // arrival — kept to whole cycles, and well clear of the main sleep so the night still comes easily. Nobody should be
@@ -558,6 +562,7 @@ function planLayover(ctx: Context, from: number, wakeBy: number, awakeHours: num
             ? "Your next duty runs through your body clock's night. A planned nap beforehand — NASA's research found planned naps markedly improve pilots' alertness — banks sleep for its low point; one full cycle wakes you cleanly."
             : "Your next duty runs through your body clock's night: a 20–30 minute nap before you go lifts alertness without the grogginess of a longer one.",
       });
+    if (nap) mainBlocks.forEach((b, i) => (b.why = mainWhy(mains[i], true)));
   }
   return blocks.sort((a, b) => a.start - b.start);
 }
