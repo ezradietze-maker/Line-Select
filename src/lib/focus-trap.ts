@@ -31,6 +31,21 @@ export function nextStop<T>(stops: T[], current: T | null, backwards: boolean): 
   return stops[(at + (backwards ? -1 : 1) + stops.length) % stops.length];
 }
 
+/**
+ * Where focus goes when a dialog closes: back to what opened it, or when that's gone (a menu that closed, a Connect
+ * button that turned into Disconnect), the first control in the nearest box around it that still has one. Only the
+ * nearest box still there was asked: when it had nothing to focus (the row the button sat in), focus went to the page.
+ */
+export function focusBackTo<T>(opener: T | null, ancestors: T[], isConnected: (el: T) => boolean, stopsOf: (el: T) => T[]): T | null {
+  if (opener && isConnected(opener)) return opener;
+  for (const a of ancestors) {
+    if (!isConnected(a)) continue;
+    const first = stopsOf(a)[0];
+    if (first) return first;
+  }
+  return null;
+}
+
 /** What Tab can reach in a dialog, before the hidden and disabled are taken out. */
 export const FOCUSABLE =
   'a[href], area[href], button, input:not([type="hidden"]), select, textarea, summary, iframe, [contenteditable="true"], [tabindex]';
