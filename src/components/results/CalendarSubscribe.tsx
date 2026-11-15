@@ -193,7 +193,7 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
             </>
           )}
           {notice && <p className="mt-2 text-xs text-ink-muted">{notice}</p>}
-          {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+          {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
         </div>
       )}
     </div>

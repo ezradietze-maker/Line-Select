@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { FlipText } from "@/components/ui/FlipText";
+import { useSettledSaying } from "@/lib/use-settled-saying";
 import type { FilterOptions } from "@/lib/line-filter-options";
 import {
   EMPTY_FILTERS,
@@ -42,24 +43,6 @@ const OUT_AND_BACK_LABEL: Record<OutAndBackFilter, string> = {
   only: "Only",
   none: "None",
 };
-
-/**
- * The count as a screen reader hears it: said once the list has settled, since every keystroke in a search or a box
- * changes it and reading each one out would talk over the pilot's typing. Nothing is said on arrival, only after a change.
- */
-function useSettledSaying(text: string, ms = 700): string {
-  const [said, setSaid] = useState("");
-  const last = useRef(text);
-  useEffect(() => {
-    if (text === last.current) return;
-    const timer = window.setTimeout(() => {
-      last.current = text;
-      setSaid(text);
-    }, ms);
-    return () => window.clearTimeout(timer);
-  }, [text, ms]);
-  return said;
-}
 
 interface ResultsFilterBarProps {
   filters: LineFilters;

@@ -3,7 +3,8 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Heading } from "@/components/ui/Heading";
-import { FOCUSABLE, focusBackTo, nextStop, tabStops } from "@/lib/focus-trap";
+import { FOCUSABLE, focusBackTo, nextStop } from "@/lib/focus-trap";
+import { focusStops } from "@/lib/focus-keeper";
 import { lockScroll } from "@/lib/scroll-lock";
 
 interface ModalProps {
@@ -49,14 +50,6 @@ if (typeof document !== "undefined") {
 }
 /** A press longer ago than this didn't open the dialog. */
 const PRESS_OPENS_WITHIN_MS = 2000;
-
-/** What can take focus in `root` now: shown, enabled, reachable by Tab, one stop per radio group. */
-function focusStops(root: HTMLElement): HTMLElement[] {
-  const candidates = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    (el) => el.tabIndex >= 0 && !(el as HTMLButtonElement).disabled && !el.closest("[inert]") && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden"
-  );
-  return tabStops(candidates, (el) => (el instanceof HTMLInputElement && el.type === "radio" && el.name ? { radioGroup: el.name, checked: el.checked } : {}));
-}
 
 /** Where focus goes back to: the opener, or when that's gone (a menu that closed), the first control near where it was. */
 function returnFocus(opener: HTMLElement | null, ancestors: HTMLElement[]) {

@@ -175,7 +175,7 @@ function DateRows({ columns, layout }: { columns: PackColumn[]; layout: StripLay
       {columns.map((c, i) => (
         <div key={i} className={`py-0.5 text-center ${columnClass(c)}`}>
           <div className={c.weekend ? "font-semibold text-ink" : ""}>{c.weekday ?? ""}</div>
-          <div className={c.beyond ? "opacity-60" : "text-ink"}>{c.dayOfMonth}</div>
+          <div className={c.beyond ? "text-ink-faint" : "text-ink"}>{c.dayOfMonth}</div>
         </div>
       ))}
     </div>

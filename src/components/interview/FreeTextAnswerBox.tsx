@@ -7,6 +7,7 @@ import { MicButton } from "@/components/ui/MicButton";
 import { useDictation } from "@/lib/use-speech-to-text";
 import { useGrowingTextarea } from "@/lib/use-growing-textarea";
 import { PASTE_CUT_NOTICE, usePasteLimit } from "@/lib/use-paste-limit";
+import { useSettledSaying } from "@/lib/use-settled-saying";
 
 interface FreeTextAnswerBoxProps {
   placeholder?: string;
@@ -35,6 +36,8 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
   const [error, setError] = useState<string | null>(null);
   const dictation = useDictation(text, setText, { maxLength });
   const left = maxLength - text.length;
+  // Said once typing pauses: read out on every key, the count talked over each letter typed.
+  const leftSaid = useSettledSaying(left < SHOW_LEFT_UNDER ? `${left.toLocaleString()} characters left` : "");
   const area = useRef<HTMLTextAreaElement>(null);
 
   // Grows with the answer up to most of the screen, then scrolls; follows the words while dictating.
@@ -95,10 +98,13 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
             Enter to send &middot; Shift+Enter for a new line
           </span>
           {left < SHOW_LEFT_UNDER && (
-            <span className="font-mono text-2xs text-ink-faint" aria-live="polite">
+            <span className="font-mono text-2xs text-ink-faint">
               {left.toLocaleString()} characters left
             </span>
           )}
+          <span role="status" className="sr-only">
+            {leftSaid}
+          </span>
         </div>
         <Button type="button" onClick={handleSubmit} disabled={busy || !text.trim()} className="shrink-0 sm:px-6">
           {busy ? "Sending…" : submitLabel}
@@ -109,8 +115,8 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
           {PASTE_CUT_NOTICE}
         </p>
       )}
-      {dictation.error && <p className="mt-2 text-xs text-danger">{dictation.error}</p>}
-      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      {dictation.error && <p role="alert" className="mt-2 text-xs text-danger">{dictation.error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
     </div>
   );
 }

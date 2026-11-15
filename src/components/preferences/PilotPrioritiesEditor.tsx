@@ -263,7 +263,7 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
         <SectionHeading>Tell us something new</SectionHeading>
         <p className="mt-2 mb-3 text-sm text-ink-muted">We&rsquo;ll read it alongside everything you&rsquo;ve already said and update your priorities. About half a minute.</p>
         <AddSomething onSubmit={(t) => void addSomething(t)} busy={busy} />
-        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+        {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
       </section>
 
       <section className="panel-glass mt-6 p-5 sm:p-6">

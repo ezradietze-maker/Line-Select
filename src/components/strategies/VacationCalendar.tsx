@@ -125,18 +125,18 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
 
       {/* The month, with the vacation footprint over it. */}
       <div className="mt-3 overflow-x-auto pb-1" aria-hidden>
-        <div className="grid items-end gap-px" style={{ gridTemplateColumns: `repeat(${dayCount}, minmax(${COL}px, 1fr))`, gridTemplateRows: "10px auto auto 34px", minWidth: dayCount * COL }}>
+        <div className="grid items-end gap-px" style={{ gridTemplateColumns: `repeat(${dayCount}, minmax(${COL}px, 1fr))`, gridTemplateRows: "14px auto auto 34px", minWidth: dayCount * COL }}>
           {/* Vacation band */}
           {vacCol && (
             <div className="flex items-center justify-center self-stretch rounded-full bg-accent" style={{ gridColumn: vacCol, gridRow: 1 }} title="Your vacation">
-              <span className="truncate px-1 text-[9px] font-semibold text-surface-raised">Vacation</span>
+              <span className="truncate px-1 text-2xs font-semibold leading-none text-surface-raised">Vacation</span>
             </div>
           )}
           {/* Weekday + day number */}
           {months.map((m) => (
             <div key={`h${m.d}`} className="flex flex-col items-center" style={{ gridColumn: m.d + 1, gridRow: "2 / 4" }}>
-              <span className="text-[9px] text-ink-faint">{m.weekday}</span>
-              <span className={`text-[10px] ${m.weekend ? "text-ink" : "text-ink-muted"}`}>{m.num}</span>
+              <span className="text-2xs text-ink-faint">{m.weekday}</span>
+              <span className={`text-2xs ${m.weekend ? "text-ink" : "text-ink-muted"}`}>{m.num}</span>
             </div>
           ))}
           {/* Empty day cells, so days off read as a row */}
@@ -151,7 +151,7 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
               <div
                 // A run's days share its id.
                 key={`${trip.id}@${trip.startDayIndex}`}
-                className={`z-10 flex items-center justify-center self-stretch overflow-hidden rounded-sm border px-1 text-[10px] font-medium ${off ? "border-accent bg-accent/15 text-accent line-through decoration-accent/70" : "border-leg/50 bg-leg/25 text-ink"}`}
+                className={`z-10 flex items-center justify-center self-stretch overflow-hidden rounded-sm border px-1 text-2xs font-medium ${off ? "border-accent bg-accent/15 text-accent line-through decoration-accent/70" : "border-leg/50 bg-leg/25 text-ink"}`}
                 style={{ gridColumn: col, gridRow: 4 }}
                 title={off ? `Trip ${trip.pairingNumber} comes off — vacation takes it` : `Trip ${trip.pairingNumber}`}
               >

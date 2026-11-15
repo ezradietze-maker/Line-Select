@@ -58,4 +58,9 @@ describe("VacationCalendar", () => {
     expect(out).toContain("6:19 CH from bank");
     expect(out).not.toContain("6.3 CH");
   });
+  it("prints its days, weekdays and trip numbers no smaller than the rest of the site (11px)", () => {
+    // 9px weekdays and 10px trip numbers were under the floor globals.css sets for every screen.
+    expect(html).not.toMatch(/text-\[(\d|10)(\.\d+)?px\]/);
+    expect(html).toContain('text-2xs text-ink-faint">Mo<');
+  });
 });

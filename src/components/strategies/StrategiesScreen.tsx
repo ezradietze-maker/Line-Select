@@ -22,6 +22,7 @@ import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { attachScoreContext, computeStanding, generateStrategies, rankStrategiesByPreference, type Standing } from "@/lib/strategy-engine";
 import { SENIORITY_BANDS } from "@/lib/seniority-bands";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
+import { keepFocusIn } from "@/lib/focus-keeper";
 import type { AwardSummaryResponse } from "@/types/award-history";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
@@ -113,40 +114,46 @@ function SeniorityGate({
 }) {
   const [editing, setEditing] = useState(!seniority);
 
+  // The form and the strategies swap in place under one div that stays: "Find my strategies" took the keyboard with it to
+  // the page (see `keepFocusIn`).
   if (editing || !seniority) {
     return (
-      <SeniorityForm
-        bidPack={bidPack}
-        initial={seniority}
-        profile={profile}
-        onSave={(input) => {
-          onSaveSeniority(input);
-          setEditing(false);
-        }}
-        onSaveNumber={(seniorityNumber) => {
-          // Kept with the preferences, as Preferences keeps it: the page then reads the place off the pack's list.
-          if (profile) onUpdateProfile({ ...profile, seniorityNumber });
-          const list = bidPack.seniorityList ?? [];
-          const position = resolveBidPosition(list, seniorityNumber);
-          onSaveSeniority({ rank: position.bidNumber, totalPilots: Math.max(seatSize(list), position.bidNumber), source: position.exact ? "typed" : "between" });
-          setEditing(false);
-        }}
-      />
+      <div ref={keepFocusIn}>
+        <SeniorityForm
+          bidPack={bidPack}
+          initial={seniority}
+          profile={profile}
+          onSave={(input) => {
+            onSaveSeniority(input);
+            setEditing(false);
+          }}
+          onSaveNumber={(seniorityNumber) => {
+            // Kept with the preferences, as Preferences keeps it: the page then reads the place off the pack's list.
+            if (profile) onUpdateProfile({ ...profile, seniorityNumber });
+            const list = bidPack.seniorityList ?? [];
+            const position = resolveBidPosition(list, seniorityNumber);
+            onSaveSeniority({ rank: position.bidNumber, totalPilots: Math.max(seatSize(list), position.bidNumber), source: position.exact ? "typed" : "between" });
+            setEditing(false);
+          }}
+        />
+      </div>
     );
   }
 
   return (
-    <StrategyResults
-      bidPack={bidPack}
-      seniority={seniority}
-      profile={profile}
-      user={user}
-      fromProfile={fromProfile}
-      onEditSeniority={() => (fromProfile && onChangeSeniorityNumber ? onChangeSeniorityNumber() : setEditing(true))}
-      onGoToResults={onGoToResults}
-      onStartInterview={onStartInterview}
-      onUpdateProfile={onUpdateProfile}
-    />
+    <div ref={keepFocusIn}>
+      <StrategyResults
+        bidPack={bidPack}
+        seniority={seniority}
+        profile={profile}
+        user={user}
+        fromProfile={fromProfile}
+        onEditSeniority={() => (fromProfile && onChangeSeniorityNumber ? onChangeSeniorityNumber() : setEditing(true))}
+        onGoToResults={onGoToResults}
+        onStartInterview={onStartInterview}
+        onUpdateProfile={onUpdateProfile}
+      />
+    </div>
   );
 }
 

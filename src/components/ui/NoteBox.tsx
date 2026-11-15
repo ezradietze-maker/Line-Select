@@ -6,6 +6,7 @@ import { SHOW_LEFT_UNDER } from "@/lib/brain/answer-limits";
 import { useDictation } from "@/lib/use-speech-to-text";
 import { useGrowingTextarea } from "@/lib/use-growing-textarea";
 import { PASTE_CUT_NOTICE, usePasteLimit } from "@/lib/use-paste-limit";
+import { useSettledSaying } from "@/lib/use-settled-saying";
 
 interface NoteBoxProps {
   value: string;
@@ -38,6 +39,9 @@ export function NoteBox({ value, onChange, placeholder, ariaLabel, id, maxLength
   };
   const dictation = useDictation(value, set, { maxLength });
   const left = maxLength === undefined ? null : maxLength - value.length;
+  const nearlyFull = left !== null && left < SHOW_LEFT_UNDER;
+  // Said once typing pauses: read out on every key, the count talked over each letter typed.
+  const leftSaid = useSettledSaying(nearlyFull ? `${left.toLocaleString()} characters left` : "");
   useGrowingTextarea(area, value, { following: dictation.listening });
   return (
     <div className={className}>
@@ -59,17 +63,20 @@ export function NoteBox({ value, onChange, placeholder, ariaLabel, id, maxLength
         {dictation.supported && <MicButton listening={dictation.listening} onClick={dictation.toggle} size="sm" className="absolute right-2 top-2" />}
       </div>
       {/* As the story box does: how much room is left, once it's nearly full. */}
-      {left !== null && left < SHOW_LEFT_UNDER && (
-        <p className="mt-1 text-right font-mono text-2xs text-ink-faint" aria-live="polite">
+      {nearlyFull && (
+        <p className="mt-1 text-right font-mono text-2xs text-ink-faint">
           {left.toLocaleString()} characters left
         </p>
       )}
+      <span role="status" className="sr-only">
+        {leftSaid}
+      </span>
       {paste.cut && (
         <p className="mt-1 text-xs text-warn" role="status">
           {PASTE_CUT_NOTICE}
         </p>
       )}
-      {dictation.error && <p className="mt-1 text-xs text-danger">{dictation.error}</p>}
+      {dictation.error && <p role="alert" className="mt-1 text-xs text-danger">{dictation.error}</p>}
     </div>
   );
 }

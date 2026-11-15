@@ -8,6 +8,7 @@ import { STORY_TOPICS, storyDepth, storyTopicsMentioned } from "@/lib/interview-
 import { useDictation } from "@/lib/use-speech-to-text";
 import { useGrowingTextarea } from "@/lib/use-growing-textarea";
 import { PASTE_CUT_NOTICE, usePasteLimit } from "@/lib/use-paste-limit";
+import { useSettledSaying } from "@/lib/use-settled-saying";
 
 interface BiddingStoryStepProps {
   value: string;
@@ -47,6 +48,9 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
   const dictation = useDictation(value, change, { maxLength });
   const mentioned = useMemo(() => storyTopicsMentioned(value), [value]);
   const depth = storyDepth(value);
+  // The meter and the count, said once typing pauses: read out as they changed, they talked over every letter typed
+  // once the story was near the limit.
+  const meterSaid = useSettledSaying(`${depth.label || "Your story"}, ${depth.areas} of ${STORY_TOPICS.length} areas${remaining < 500 ? `, ${remaining.toLocaleString()} characters left` : ""}`);
   const area = useRef<HTMLTextAreaElement>(null);
 
   // Grows with the story, however long, so it reads as a page: the page is the one scroll — a scroll box inside it
@@ -85,7 +89,10 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" aria-live="polite">
+        <span role="status" className="sr-only">
+          {meterSaid}
+        </span>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="flex items-center gap-2.5">
             <span className="flex gap-0.5" aria-hidden>
               {[1, 2, 3, 4, 5].map((n) => (
@@ -121,8 +128,8 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
             {PASTE_CUT_NOTICE}
           </p>
         )}
-        {dictation.error && <p className="mt-2 text-xs text-danger">{dictation.error}</p>}
-        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+        {dictation.error && <p role="alert" className="mt-2 text-xs text-danger">{dictation.error}</p>}
+        {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
 
         <div className="mt-8 flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
           <button

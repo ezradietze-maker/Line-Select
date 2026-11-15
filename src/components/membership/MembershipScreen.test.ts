@@ -87,4 +87,18 @@ describe("membership screen", () => {
     const html = body({ ...base, tier: "grandfathered", hasAccess: true, hasSubscription: true, status: "past_due", freeMonth: false });
     expect(html).toContain("Update your card");
   });
+
+  it("reads out a failed claim or checkout the moment it shows, in every panel", () => {
+    // Said nowhere, a screen reader heard the button come back and nothing else.
+    const said = (status: BillingStatus) =>
+      renderToStaticMarkup(createElement(MembershipBody, { status, busy: false, error: "Couldn't claim a free spot.", onCheckout: () => {}, onPortal: () => {}, onClaimFree: () => {} }));
+    for (const status of [
+      { ...base, freeSlotsLeft: 3 },
+      { ...base, tier: "pro" as const, status: "active" as const },
+      { ...base, tier: "pro" as const, status: "active" as const, cancelAtPeriodEnd: true },
+      { ...base, hasSubscription: true, status: "past_due" as const },
+    ]) {
+      expect(said(status)).toMatch(/<p role="alert"[^>]*>Couldn&#x27;t claim a free spot\.<\/p>/);
+    }
+  });
 });
