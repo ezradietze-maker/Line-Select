@@ -1054,6 +1054,22 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect((await suggestions.listMatchingGroup(meta)).rows).toHaveLength(4);
     });
 
+    it("don't count toward the Trade Board's bar", async () => {
+      // Fifteen pilots with a pack opened a seat's board when only a few of them could trade on it: it looked dead, and
+      // a pilot's Find trades ran against a group too small to match.
+      const prefix = `uploaded-v${randomUUID().slice(0, 8)}-md11-cap-`;
+      const { grandfathered, pro, free, locked } = await pilots("bar");
+      for (const p of [grandfathered, pro, free, locked]) await mod.saveBidPackRecord(p.id, `${prefix}oct26`, Buffer.from("x"));
+      const since = new Date(Date.now() - 60_000);
+      membership.enforced = true;
+      try {
+        expect(await mod.countRecentPilotsWithPack(prefix, since)).toBe(3);
+      } finally {
+        membership.enforced = false;
+      }
+      expect(await mod.countRecentPilotsWithPack(prefix, since)).toBe(4);
+    });
+
     it("have their open offers kept off other pilots' boards", async () => {
       const meta = { base: "MEM", aircraft: "MD11", seat: "FO", month: `N${randomUUID().slice(0, 8)}` };
       const viewer = await makeUser("member-viewer");
