@@ -40,6 +40,19 @@ describe("learning triggers", () => {
     expect(runner.runLearningCycle).toHaveBeenCalledTimes(1);
   });
 
+  it("never runs in a preview deployment, even with the secret", async () => {
+    vi.stubEnv("CRON_SECRET", "s3cret");
+    const call = () => cron(new Request("http://x/api/cron/learn", { headers: { authorization: "Bearer s3cret" } }));
+    for (const env of ["preview", "development"]) {
+      vi.stubEnv("VERCEL_ENV", env);
+      expect((await call()).status).toBe(404);
+    }
+    expect(runner.runLearningCycle).not.toHaveBeenCalled();
+    runs.clear();
+    vi.stubEnv("VERCEL_ENV", "production");
+    expect((await call()).status).toBe(200);
+  });
+
   it("never runs when no cron secret is configured", async () => {
     vi.stubEnv("CRON_SECRET", "");
     expect((await cron(new Request("http://x/api/cron/learn", { headers: { authorization: "Bearer " } }))).status).toBe(404);

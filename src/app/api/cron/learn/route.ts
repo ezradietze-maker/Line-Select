@@ -21,7 +21,11 @@ const AFTER_TRADES_MS = 30_000;
 export async function GET(request: Request) {
   const started = Date.now();
   const secret = process.env.CRON_SECRET;
-  if (!secret || !secretMatches(request.headers.get("authorization"), `Bearer ${secret}`)) {
+  // Only the live site runs it. A preview (every pushed branch gets one) shares the secret when it's set for every
+  // environment, and may share the live database: called there, it ran that branch's learning and trade matching on
+  // real pilots and sent a second morning email. Vercel never schedules a preview's crons; this keeps anyone else off.
+  const preview = !!process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production";
+  if (preview || !secret || !secretMatches(request.headers.get("authorization"), `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
   // A call delivered twice runs once: only the learning had a lock, so trades ran again and the email went twice. Held
