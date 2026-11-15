@@ -424,6 +424,9 @@ export async function markEmailVerified(userId: string, now = new Date()): Promi
   forgetVerifiedPilots();
 }
 
+/** How long past the clear-out's cut-off a link that still works keeps an account: one sent on its last day has run out by then. */
+const LINK_GRACE_DAYS = 2;
+
 /**
  * Removes accounts made by signing up and never confirmed, made before `before`. Only those whose first link was sent
  * by signing up: accounts from before confirming existed never had one, so they stay however long they go unconfirmed.
@@ -431,14 +434,18 @@ export async function markEmailVerified(userId: string, now = new Date()): Promi
  * got them. Nor one whose latest link still works: "Send the link again" on its last day sent one that would otherwise
  * have led nowhere the next morning. A link spent by "This wasn't me" has nothing left to wait for, but the link it sent
  * the address's owner does: like the one an owner signing up again is sent, it takes the account, so while either
- * still works the account stays.
+ * still works the account stays. Only for `LINK_GRACE_DAYS` past `before`, though: anyone can ask for either link for
+ * any address, and one asked for each day kept the account for good.
  * Every table's link to an account cascades, so nothing of a removed one is left. Returns how many went.
  */
 export async function deleteUnconfirmedSignUps(before: Date, now = new Date()): Promise<number> {
-  const signedUp = db
+  const signedUp = db.select({ id: emailVerificationTokens.userId }).from(emailVerificationTokens).where(eq(emailVerificationTokens.signUp, true));
+  const liveConfirm = db
     .select({ id: emailVerificationTokens.userId })
     .from(emailVerificationTokens)
-    .where(and(eq(emailVerificationTokens.signUp, true), or(lte(emailVerificationTokens.expiresAt, now), isNotNull(emailVerificationTokens.usedAt))));
+    .where(and(gt(emailVerificationTokens.expiresAt, now), isNull(emailVerificationTokens.usedAt)));
+  const liveReset = db.select({ id: passwordResetTokens.userId }).from(passwordResetTokens).where(gt(passwordResetTokens.expiresAt, now));
+  const lastChance = new Date(before.getTime() - LINK_GRACE_DAYS * 24 * 60 * 60 * 1000);
   const removed = await db
     .delete(users)
     .where(
@@ -446,10 +453,10 @@ export async function deleteUnconfirmedSignUps(before: Date, now = new Date()): 
         isNull(users.emailVerifiedAt),
         lt(users.createdAt, before),
         inArray(users.id, signedUp),
+        or(lt(users.createdAt, lastChance), and(notInArray(users.id, liveConfirm), notInArray(users.id, liveReset))),
         notInArray(users.id, db.select({ id: sessions.userId }).from(sessions)),
         notInArray(users.id, db.select({ id: bidPacks.userId }).from(bidPacks)),
         notInArray(users.id, db.select({ id: preferenceProfiles.userId }).from(preferenceProfiles)),
-        notInArray(users.id, db.select({ id: passwordResetTokens.userId }).from(passwordResetTokens).where(gt(passwordResetTokens.expiresAt, now))),
         // A pilot who went to checkout has a Stripe customer (and maybe a card being billed) that only this account ties back to.
         notInArray(users.id, db.select({ id: subscriptions.userId }).from(subscriptions))
       )

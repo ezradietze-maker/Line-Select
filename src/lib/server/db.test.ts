@@ -882,6 +882,20 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.findUserById(later)).toBeNull();
     });
 
+    it("the clear-out doesn't wait for ever: a link sent again each day keeps an account a day or two past the week, no more", async () => {
+      // Signed up ten days ago, never confirmed; someone asks for a fresh link every day (the log-in screen's "Send the
+      // link again" takes any address), and for a reset link every hour. Kept for that, it was never removed.
+      const id = randomUUID();
+      const email = `kept-${id}@test.line-select.invalid`;
+      await mod.createUserWithCredential({ id, email, displayName: "P", createdAt: new Date(Date.now() - 10 * 24 * 3600_000).toISOString(), plan: "free", emailVerified: false }, { userId: id, email, passwordHash: "00", salt: "00" });
+      createdUserIds.push(id);
+      await mod.saveVerificationToken({ tokenHash: hashOf(`first-${id}`), userId: id, expiresAt: new Date(Date.now() - 9 * 24 * 3600_000).toISOString(), signUp: true });
+      await mod.saveVerificationToken({ tokenHash: hashOf(`today-${id}`), userId: id, expiresAt: new Date(Date.now() + 20 * 3600_000).toISOString() });
+      await mod.saveResetToken({ tokenHash: hashOf(`hourly-${id}`), userId: id, expiresAt: new Date(Date.now() + 3600_000).toISOString() });
+      await mod.deleteUnconfirmedSignUps(new Date(Date.now() - 7 * 24 * 3600_000));
+      expect(await mod.findUserById(id)).toBeNull();
+    });
+
     it("the clear-out waits while a link to take the account back still works", async () => {
       // Signed up eight days ago, never confirmed; today the address's owner signed up again (or said "This wasn't me")
       // and was sent a link to set the password and make it theirs. Removed in that hour, the link led nowhere.
