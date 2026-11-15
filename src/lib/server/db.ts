@@ -695,7 +695,9 @@ export async function respondToTradeOffer(
 export async function updateTradeOffer(
   id: string,
   patch: Partial<TradeOffer>,
-  expectedStatuses: TradeOfferStatus[]
+  expectedStatuses: TradeOfferStatus[],
+  /** Only if the proposal on it is still the one made at this time (`acceptTradeOffer`'s `expectedRespondedAt`). */
+  expectedRespondedAt?: string
 ): Promise<TradeOffer | null> {
   if (!isUuid(id)) return null;
   const set: Partial<typeof tradeOffers.$inferInsert> = {};
@@ -709,7 +711,13 @@ export async function updateTradeOffer(
   const [row] = await db
     .update(tradeOffers)
     .set(set)
-    .where(and(eq(tradeOffers.id, id), inArray(tradeOffers.status, expectedStatuses)))
+    .where(
+      and(
+        eq(tradeOffers.id, id),
+        inArray(tradeOffers.status, expectedStatuses),
+        expectedRespondedAt === undefined ? undefined : eq(tradeOffers.respondedAt, new Date(expectedRespondedAt))
+      )
+    )
     .returning();
   return row ? toTradeOffer(row) : null;
 }

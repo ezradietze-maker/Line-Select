@@ -94,8 +94,9 @@ export function acceptOffer(id: string, respondedAt: string | null): Promise<Act
   return postAction(`/api/trades/${id}/accept`, { respondedAt });
 }
 
-export function declineOffer(id: string): Promise<ActionResult> {
-  return postAction(`/api/trades/${id}/decline`);
+/** `respondedAt` is the proposal the pilot saw, as for `acceptOffer`. */
+export function declineOffer(id: string, respondedAt: string | null): Promise<ActionResult> {
+  return postAction(`/api/trades/${id}/decline`, { respondedAt });
 }
 
 export function withdrawOffer(id: string): Promise<ActionResult> {

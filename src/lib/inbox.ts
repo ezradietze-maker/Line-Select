@@ -1,3 +1,4 @@
+import { offerStillTradeable } from "@/lib/trades/offer-trips";
 import type { BidPack } from "@/types/bidpack";
 import type { TradeOffer } from "@/types/trade";
 
@@ -33,14 +34,20 @@ export function unseenCount(offers: readonly TradeOffer[], seen: ReadonlySet<str
   return offers.filter((o) => !seen.has(inboxNoticeKey(o))).length;
 }
 
-export function computeInboxSections(offers: TradeOffer[], userId: string | undefined): InboxSections {
+/**
+ * With `deadline`, an offer past its trade deadline (`offerStillTradeable`) is left out of what needs an answer, as the
+ * board leaves it off: nothing can be agreed on it any more, yet it counted on the badge and sent the pilot to the
+ * board for an offer the board didn't show.
+ */
+export function computeInboxSections(offers: TradeOffer[], userId: string | undefined, deadline?: { pack: BidPack | null; now: number }): InboxSections {
+  const live = (o: TradeOffer) => !deadline || offerStillTradeable(deadline.pack, o, deadline.now);
   const needsResponse = offers.filter(
-    (o) => o.status === "pending" && o.offeringUserId === userId
+    (o) => o.status === "pending" && o.offeringUserId === userId && live(o)
   );
 
   const myOpenPairingNumbers = new Set(
     offers
-      .filter((o) => o.offeringUserId === userId && (o.status === "open" || o.status === "pending"))
+      .filter((o) => o.offeringUserId === userId && (o.status === "open" || o.status === "pending") && live(o))
       .map((o) => o.offeredTrip.pairingNumber)
       .filter((n): n is string => n !== null)
   );
@@ -48,6 +55,7 @@ export function computeInboxSections(offers: TradeOffer[], userId: string | unde
     (o) =>
       o.offeringUserId !== userId &&
       o.status === "open" &&
+      live(o) &&
       o.wantedPairingNumber &&
       myOpenPairingNumbers.has(o.wantedPairingNumber)
   );
