@@ -24,6 +24,9 @@ export function isEmailConfigured(): boolean {
   return getEmailConfig() !== null;
 }
 
+/** Resend answers in well under a second; past this it isn't going to. */
+const SEND_TIMEOUT_MS = 10_000;
+
 export async function sendEmail(message: { to: string; subject: string; text: string }): Promise<boolean> {
   return (await sendEmailExplained(message)).sent;
 }
@@ -41,19 +44,26 @@ export function missingEmailSettings(): string[] {
 export async function sendEmailExplained(message: { to: string; subject: string; text: string }): Promise<{ sent: boolean; reason?: string }> {
   const config = getEmailConfig();
   if (!config) return { sent: false, reason: `email isn't set up: missing ${missingEmailSettings().join(", ")}` };
+  // A stalled connection otherwise waits five minutes for an answer: the daily run's trade emails are sent one by one,
+  // so one stall used up the run, and the morning email and the clear-out after them never went.
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), SEND_TIMEOUT_MS);
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from: config.from, to: [message.to], subject: message.subject, text: message.text }),
+      signal: stop.signal,
     });
     if (res.ok) return { sent: true };
     const reason = `Resend answered ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`;
     console.error("[email] not sent", { subject: message.subject, reason });
     return { sent: false, reason };
   } catch (e) {
-    const reason = `couldn't reach Resend: ${e instanceof Error ? e.message : String(e)}`;
+    const reason = stop.signal.aborted ? `Resend didn't answer within ${SEND_TIMEOUT_MS / 1000} seconds` : `couldn't reach Resend: ${e instanceof Error ? e.message : String(e)}`;
     console.error("[email] not sent", { subject: message.subject, reason });
     return { sent: false, reason };
+  } finally {
+    clearTimeout(timer);
   }
 }
