@@ -15,12 +15,15 @@ import { tripDateLabel } from "@/lib/brain/line-text";
 import { cityDaylight, offsetWords } from "@/lib/city-guide";
 import { cityName } from "@/lib/city-names";
 import { packCityFacts } from "@/lib/city-ratings";
-import { cachedFlightAnswers, lookUpFlights, travelParamsFor } from "@/lib/flights/client";
+import { LINES_LOOKED_UP, cachedFlightAnswers, lookUpFlights, lookupPack, travelParamsFor } from "@/lib/flights/client";
+import { rankingAsShown } from "@/lib/ranking-as-shown";
+import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { flightsForTrip, type FlightAnswers } from "@/lib/flights/trip-travel";
 import { tripReportUtc } from "@/lib/trip-anchor";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
 import type { BidPack, Trip } from "@/types/bidpack";
+import type { PilotModel } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
 
 const LABEL = "text-2xs text-ink-faint font-medium";
@@ -43,12 +46,12 @@ function useNow(): number {
 }
 
 /** A pilot's tools: the time everywhere the pack goes, and the airline flights to and from each trip. */
-export function ToolsScreen({ bidPack, profile }: { bidPack: BidPack | null; profile: PreferenceProfile | null }) {
+export function ToolsScreen({ bidPack, profile, userId = null }: { bidPack: BidPack | null; profile: PreferenceProfile | null; userId?: string | null }) {
   return (
     <div className="mx-auto w-full max-w-5xl">
       <PageHeader eyebrow={packEyebrow(bidPack) ?? "Tools"} title="Tools" description="The time everywhere your pack goes, and the airline flights to and from each trip." />
       <WorldClock bidPack={bidPack} profile={profile} />
-      <CommutePlanner bidPack={bidPack} profile={profile} />
+      <CommutePlanner bidPack={bidPack} profile={profile} userId={userId} />
     </div>
   );
 }
@@ -178,11 +181,34 @@ function whyNoFlights(bidPack: BidPack, trip: Trip): string {
   return "No airline flights found for this trip yet.";
 }
 
+/**
+ * The lines whose flights are looked up (`needsToLookUp`: the model's best), in the pilot's own order and with its
+ * numbers, as My Rankings shows them (the Logbook's way). Numbered by the model alone, a line read "your #1" here that
+ * My Rankings, weighing hotels, flights and the lines moved by hand, had at #2.
+ */
+export function plannerLines(bidPack: BidPack, model: PilotModel, place: ReadonlyMap<string, number>): { lineId: string; lineNumber: string; place: number | null }[] {
+  return rankLinesWithTrips(bidPack, model, { pack: lookupPack(bidPack) })
+    .slice(0, LINES_LOOKED_UP)
+    .map((s, i) => ({ lineId: s.lineId, lineNumber: s.lineNumber, place: place.get(s.lineId) ?? null, i }))
+    .sort((a, b) => (a.place ?? Infinity) - (b.place ?? Infinity) || a.i - b.i)
+    .map(({ lineId, lineNumber, place }) => ({ lineId, lineNumber, place }));
+}
+
+/** Where each line stands on My Rankings: as it last showed this visit, else worked out the way it does. */
+function placesAsShown(bidPack: BidPack, profile: PreferenceProfile, userId: string | null): Map<string, number> {
+  const shown = rankingSnapshotFor(bidPack.id);
+  if (shown) return new Map([...shown.byLineId].map(([id, s]) => [id, s.rank]));
+  return new Map(rankingAsShown(bidPack, profile, userId).map((r, i) => [r.line.id, i + 1]));
+}
+
 /** Each trip of a chosen line, with the airline flights from home to its report and from its release back home. */
-function CommutePlanner({ bidPack, profile }: { bidPack: BidPack | null; profile: PreferenceProfile | null }) {
+function CommutePlanner({ bidPack, profile, userId }: { bidPack: BidPack | null; profile: PreferenceProfile | null; userId: string | null }) {
   const model = profile?.pilotModel ?? null;
   const params = useMemo(() => (bidPack && model ? travelParamsFor(bidPack, model) : null), [bidPack, model]);
-  const ranked = useMemo(() => (bidPack && model ? rankLinesWithTrips(bidPack, model).slice(0, 30) : []), [bidPack, model]);
+  const ranked = useMemo(
+    () => (bidPack && profile && model && params ? plannerLines(bidPack, model, placesAsShown(bidPack, profile, userId)) : []),
+    [bidPack, profile, model, params, userId]
+  );
   const [lineId, setLineId] = useState<string | null>(null);
   // A line picked from an earlier pack isn't in this one: fall back to the top line rather than show no trips.
   const line = (lineId ? bidPack?.lines.find((l) => l.id === lineId) : undefined) ?? bidPack?.lines.find((l) => l.id === ranked[0]?.lineId) ?? null;
@@ -239,9 +265,10 @@ function CommutePlanner({ bidPack, profile }: { bidPack: BidPack | null; profile
           <label className="mt-4 block text-sm">
             <span className="text-ink-muted">Line</span>
             <select value={line?.id ?? ""} onChange={(e) => setLineId(e.target.value)} className="mt-1 block w-full max-w-sm rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink">
-              {ranked.map((r, i) => (
+              {ranked.map((r) => (
                 <option key={r.lineId} value={r.lineId}>
-                  Line {r.lineNumber} — your #{i + 1}
+                  Line {r.lineNumber}
+                  {r.place !== null ? ` — your #${r.place}` : ""}
                 </option>
               ))}
             </select>

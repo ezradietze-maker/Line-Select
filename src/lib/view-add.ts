@@ -649,7 +649,8 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
   const choices: ViewAddChoice[] = ordered.slice(0, MAX_CHOICES).map((c) => {
     const key = tripKey(c.trip);
     const lost = flown.line.daysOff - c.line.daysOff;
-    const reason = best.has(key) ? "In your best combination" : inCombos.has(key) ? "In a close alternative" : "A fallback if those go to someone senior";
+    // A fallback only behind a combination: with none (nothing owed, or nothing legal makes it up), it's just an open trip that fits.
+    const reason = best.has(key) ? "In your best combination" : inCombos.has(key) ? "In a close alternative" : combos.length ? "A fallback if those go to someone senior" : "Open and legal on your line";
     return {
       trip: c.trip,
       text: text(c.trip),

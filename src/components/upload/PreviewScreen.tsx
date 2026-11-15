@@ -79,9 +79,9 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
         <strong className="font-semibold text-ink">
           {pageCounts["pairing-schedule"] ?? 0} pairing schedule pages
         </strong>{" "}
-        in this PDF. Skimmed and skipped the rest &mdash; vacation and training pages were never
-        parsed, and from the seniority list only bid order and seniority numbers were read (no names,
-        no employee numbers).
+        in this PDF. From the seniority list and the vacation schedule only numbers were read: bid
+        order, seniority numbers and vacation dates (no names, no employee numbers). Training pages
+        were never read.
       </p>
 
       {result.meta && (
@@ -194,14 +194,19 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
                 <li>Pairing schedule pages parsed: {pageCounts["pairing-schedule"] ?? 0}</li>
                 <li>Line grid pages parsed: {pageCounts["line-grid"] ?? 0}</li>
                 <li>
-                  Seniority list pages (only numbers are kept &mdash; never names or employee numbers):{" "}
-                  {pageCounts["seniority-list"] ?? 0}
+                  Seniority list and vacation schedule pages (only numbers are kept &mdash; never names or employee numbers):{" "}
+                  {(pageCounts["seniority-list"] ?? 0) + (pageCounts["vacation-schedule"] ?? 0)}
+                </li>
+                {/* Read as well, each for its numbers: they were listed among the pages skipped. */}
+                <li>
+                  Reserve line, info and sweep pages parsed:{" "}
+                  {(pageCounts["reserve-line-grid"] ?? 0) + (pageCounts["info-page"] ?? 0) + (pageCounts["sweep-flights"] ?? 0)}
                 </li>
                 <li>
                   Pages skipped (contain other pilots&rsquo; personal data, never read):{" "}
                   {pageCounts["ignored-personal-data"] ?? 0}
                 </li>
-                <li>Other pages skipped (cover, info, sweep, etc.): {pageCounts["ignored-other"] ?? 0}</li>
+                <li>Other pages skipped (the cover is read only for its bid calendar): {pageCounts["ignored-other"] ?? 0}</li>
                 <li>Pairings parsed: {result.pairingsParsed}</li>
               </ul>
               {result.warnings.length > 0 && (

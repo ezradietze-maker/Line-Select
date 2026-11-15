@@ -159,6 +159,14 @@ export const WHATS_NEW: WhatsNewEntry[] = [
 ];
 
 export const LATEST_WHATS_NEW = WHATS_NEW[0].date;
+
+/**
+ * An entry's date as the page heads it, "November 8, 2026": the calendar date itself, on no one's clock. Read on the
+ * device's, a pilot east of +12 (Auckland in summer is +13) saw every entry a day late.
+ */
+export function whatsNewDateLabel(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
 const SEEN_KEY = "line-select:whats-new-seen:v1";
 
 /** Whether this device has seen the latest entry. */
