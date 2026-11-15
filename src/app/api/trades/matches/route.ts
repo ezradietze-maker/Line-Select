@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
-import { proFeatureRefusal } from "@/lib/server/gating";
+import { accessRefusal } from "@/lib/server/gating";
 import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { getPreferenceProfile, getTradeHolding, getTradeSettings } from "@/lib/server/db";
 import { isJsonObject, isText, readJsonBody } from "@/lib/server/json-body";
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   const user = await getCurrentServerUser();
   if (!user) return NextResponse.json({ error: "Sign in to find trades." }, { status: 401 });
   // The trade board is a paid feature; a no-op while FREE_FOR_ALL is on (see lib/server/gating.ts).
-  const gated = proFeatureRefusal(user, "trade-board");
+  const gated = accessRefusal(user);
   if (gated) return gated;
   if (!isVerified(user)) return confirmEmailRefusal("find trades");
   if (!(await checkRateLimit("trade-matches-find", user.id, 12, 60 * 60)).ok) return rateLimitedResponse();

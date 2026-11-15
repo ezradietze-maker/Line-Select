@@ -44,8 +44,8 @@ describe("drizzle migrations", () => {
     }
   });
 
-  it("a database that has everything up to 0012 gets 0013 and 0014", async () => {
-    expect(await migrateFrom(tags.slice(0, 13))).toEqual(["0013_acoustic_arclight", "0014_nostalgic_shriek"]);
+  it("a database that has everything up to 0012 gets 0013, 0014 and 0015", async () => {
+    expect(await migrateFrom(tags.slice(0, 13))).toEqual(["0013_acoustic_arclight", "0014_nostalgic_shriek", "0015_worried_maestro"]);
   });
 
   it("a fresh database gets every migration, in order", async () => {
