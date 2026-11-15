@@ -166,6 +166,19 @@ describe("a report in the hour the clocks go back", () => {
     expect(tripReportUtc({ bidPeriodStart: "2026-11-02", base: "ANC" }, { ...trip, schedule: [{ ...trip.schedule[0], reportTimeLocal: "0200" }] })).toBe(Date.UTC(2026, 10, 2, 11, 0));
   });
 
+  it("is asked again of a trip the grid dates after it was first asked, as the parser places it", () => {
+    const trip = {
+      startDayIndex: null,
+      schedule: [{ reportTimeLocal: "0900", startMinutes: 0, legs: [{ depTimeGmt: "1600", startMinutes: 60 }], layover: null }],
+    } as unknown as Trip;
+    const pack = { bidPeriodStart: "2026-11-02", base: "MEM" };
+    expect(tripReportUtc(pack, trip)).toBeNull();
+    (trip as { startDayIndex: number | null }).startDayIndex = 3;
+    expect(tripReportUtc(pack, trip)).toBe(Date.UTC(2026, 10, 5, 15, 0));
+    (trip as { startDayIndex: number | null }).startDayIndex = 4;
+    expect(tripReportUtc(pack, trip)).toBe(Date.UTC(2026, 10, 6, 15, 0));
+  });
+
   it("keeps the first when that's the one printed", () => {
     const trip = {
       startDayIndex: 0,
