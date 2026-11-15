@@ -1,6 +1,7 @@
 "use client";
 
 import { DateTime } from "luxon";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FIELD } from "@/components/ui/field";
@@ -163,9 +164,13 @@ function Results({ found, zone, pack }: { found: VacationSlides; zone: string; p
 export function VacationSlidePanel({ bidPack, seniority, profile, userId, order }: { bidPack: BidPack; seniority: SeniorityInput; profile: PreferenceProfile | null; userId: string | null; order: string[] }) {
   const zone = zoneOf(bidPack);
   // A vacation the pilot told My Rankings they aren't taking has nothing to slide.
-  const fromPack = useMemo(() => {
+  // Kept apart from "the pack shows none": said that way, a pilot who'd only marked theirs "Not taking this one" was
+  // told their own vacation didn't exist.
+  const { fromPack, notTaking } = useMemo(() => {
     const choices = loadCarryIn(userId, bidPack.id).vacationChoices;
-    return vacationsInReach(placeInPack(bidPack, seniority).me?.vacations ?? [], bidPack).filter((v) => choices?.[vacationId(v)] !== "not-taking");
+    const inReach = vacationsInReach(placeInPack(bidPack, seniority).me?.vacations ?? [], bidPack);
+    const skipped = (v: VacationPeriod) => choices?.[vacationId(v)] === "not-taking";
+    return { fromPack: inReach.filter((v) => !skipped(v)), notTaking: inReach.filter(skipped) };
   }, [bidPack, seniority, userId]);
   const [typed, setTyped] = useState<VacationPeriod[]>([]);
   const [firstDay, setFirstDay] = useState("");
@@ -217,6 +222,14 @@ export function VacationSlidePanel({ bidPack, seniority, profile, userId, order 
             <li key={v.from}>{vacationLabel(v, zone)}</li>
           ))}
         </ul>
+      ) : notTaking.length > 0 ? (
+        <p className="mt-3 text-sm text-ink">
+          You marked your {notTaking.map((v) => vacationLabel(v, zone)).join(" and ")} vacation as not taking, so there&rsquo;s nothing to slide.{" "}
+          <Link href="/results" className="font-medium text-accent underline decoration-dotted underline-offset-4">
+            Change it under Your vacation on My Rankings
+          </Link>
+          .
+        </p>
       ) : (
         <p className="mt-3 text-sm text-ink">The pack&rsquo;s vacation schedule shows none in reach of this month at your seniority. Add yours if that&rsquo;s wrong.</p>
       )}

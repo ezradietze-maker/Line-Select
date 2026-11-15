@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayHotelName, isPlausibleMatch, readHotelName } from "@/lib/hotels/hotel-names";
+import { displayHotelName, isPlausibleMatch, pickBestMatch, readHotelName } from "@/lib/hotels/hotel-names";
 
 // Every printed name below is verbatim from the October 2026 bid packs.
 describe("reading the packs' hotel names", () => {
@@ -56,5 +56,29 @@ describe("reading the packs' hotel names", () => {
     expect(
       isPlausibleMatch("SJC", "HILTON SJC/TWRS", { name: "DoubleTree by Hilton Hotel San Jose", formattedAddress: "2050 Gateway Pl, San Jose, CA 95110, USA" })
     ).toBe(false);
+  });
+});
+
+describe("a pack's short hotel name", () => {
+  // What Google returned for the October 767 Memphis pack's "HILTON GARDEN" at LAX (Nov 2026): every one was turned
+  // away, and the card said "No Google Places match found".
+  const lax = [
+    { name: "Hilton Garden Inn LAX/El Segundo", formattedAddress: "2100 E Mariposa Ave, El Segundo, CA 90245, USA", location: { latitude: 33.9265, longitude: -118.3985 } },
+    { name: "Hilton Garden Inn Los Angeles/Redondo Beach", formattedAddress: "2410 Marine Ave, Redondo Beach, CA 90278, USA", location: { latitude: 33.8916, longitude: -118.3727 } },
+    { name: "Hilton Garden Inn LAX Los Angeles Airport", formattedAddress: "5249 W Century Blvd, Los Angeles, CA 90045, USA", location: { latitude: 33.9455, longitude: -118.379 } },
+    { name: "Hilton Garden Inn Los Angeles Marina Del Rey", formattedAddress: "4200 Admiralty Way, Marina Del Rey, CA 90292, USA", location: { latitude: 33.9797, longitude: -118.4466 } },
+  ];
+
+  it("matches a Hilton Garden Inn when the pack leaves off the Inn", () => {
+    expect(isPlausibleMatch("LAX", "HILTON GARDEN", lax[0])).toBe(true);
+  });
+
+  it("doesn't count a name's place words against it, so of equal matches the nearest the airport wins", () => {
+    // Same brand, and place words only (an airport code, the address's own city, "Airport"): neither name is a closer
+    // match than the other, so distance decides. Counted as extra words, they sent the pick to whichever name said less.
+    const near = { name: "Hilton Garden Inn LAX Los Angeles Airport", formattedAddress: "1 Main St, Los Angeles, CA 90045, USA", location: { latitude: 33.9425, longitude: -118.406 } };
+    const far = { name: "Hilton Garden Inn LAX/El Segundo", formattedAddress: "1 Main St, El Segundo, CA 90245, USA", location: { latitude: 33.9, longitude: -118.38 } };
+    expect(pickBestMatch("LAX", "HILTON GARDEN", [far, near])?.name).toBe(near.name);
+    expect(pickBestMatch("LAX", "HILTON GARDEN", lax)).not.toBeNull();
   });
 });

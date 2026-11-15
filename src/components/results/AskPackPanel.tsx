@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { SearchIcon } from "@/components/ui/icons";
+import { askPackExamples } from "@/lib/ask-pack-examples";
 import { checkAskQuery, cityGradesOf, orderAskResults, runAskQuery, type AskResultLine } from "@/lib/ask-pack-run";
 import type { AskQuery } from "@/lib/brain/ask-pack";
 import { formatValue } from "@/lib/brain/describe";
@@ -15,7 +16,6 @@ import { homeParams } from "@/lib/scoring-v2/score";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
-const EXAMPLES = ["Lines with Honolulu and no weekends worked", "Fewest commutes, at least 15 days off", "No night hub turns and no three-leg duties"];
 const SHOWN = 12;
 
 /**
@@ -37,6 +37,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
   const pm = useRef<PackMetrics | null>(packMetrics);
   const brief = useRef<string | null>(null);
   const metrics = () => (pm.current ??= prepareMetrics(bidPack));
+  const examples = useMemo(() => askPackExamples(bidPack), [bidPack]);
   // The pilot's city grades go in with where they live, so "time in cities you like" counts their grades, as the ranking does.
   const grades = useMemo(() => cityGradesOf(profile.pilotModel, profile.cityRatings), [profile.pilotModel, profile.cityRatings]);
   const home = useMemo(() => ({ ...(profile.pilotModel ? homeParams(profile.pilotModel) : {}), ...grades }), [profile.pilotModel, grades]);
@@ -106,7 +107,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             maxLength={400}
-            placeholder="Lines with Honolulu and no weekends worked"
+            placeholder={examples[0]}
             className="w-full rounded-md border border-field-edge bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-ink-faint"
           />
         </div>
@@ -118,7 +119,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
       {!answer && !error && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-ink-faint">
           Try:
-          {EXAMPLES.map((ex) => (
+          {examples.map((ex) => (
             <button
               key={ex}
               type="button"

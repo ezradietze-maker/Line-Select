@@ -273,6 +273,10 @@ export function validateAnswer(given: RawAnswer, context: { question: string; fa
 
   const quotedMonths = new Set(quotes.flatMap((q) => datesIn(q.quote).map((d) => d.month)));
   let before: { ids: Set<string>; pieces: Quote[] | null } = { ids: new Set(), pieces: null };
+  // The pack line the answer last named, when the facts are about one line only: a later sentence that isn't about a
+  // rule ("…so they can't tell whether 14 is enough") speaks of it. Turned away, it cost the pilot a good answer twice
+  // running ("Not found") for a question about one line. Several lines stay strict: which one a bare 14 means is unclear.
+  let lastNamed = new Set<string>();
   for (const clause of clausesOf(masked)) {
     const { text } = clause;
     const inside = <T extends { at: number }>(xs: T[]) => xs.filter((x) => x.at >= clause.start && x.at < clause.end);
@@ -308,14 +312,19 @@ export function validateAnswer(given: RawAnswer, context: { question: string; fa
     // let "the contract requires at least 15 days off" through. A clause that names no line but goes on from one
     // ("…, and 78.6 CH", "…, which totals 78.6 CH", "It has 78.6 CH") speaks of the line before it.
     let ids = new Set([...idsNamed(text)].filter((id) => owners.has(id)));
+    if (ids.size) lastNamed = ids;
     if (!ids.size && GOES_ON.test(text)) ids = before.ids;
     const rule = RULE_WORDS.test(text) || refs.length > 0;
+    if (!ids.size && !rule && facts.lines.length === 1) ids = lastNamed;
     const mine = facts.lines.filter((f) => [...f.owners].some((o) => ids.has(o)));
     const allowed = new Set([...backed, ...ids]);
     if (!rule) {
       for (const n of mine.flatMap((f) => f.numbers)) allowed.add(n);
       if (ids.size) for (const token of facts.header) if (new RegExp(`(?<![\\w-])${escapeRegExp(token)}(?![\\w-])`, "i").test(text)) for (const n of numbersIn(token)) allowed.add(n);
     }
+    // The pack's bid period, named as such ("in a 28-day bid period, regular lines need…"), says which period a rule is
+    // for, not what the rule is, so it may sit beside one. Its 28 backs nothing else ("at most 28 work days").
+    for (const token of facts.header) if (/^\d+-day$/.test(token) && new RegExp(`(?<![\\w-])${token} bid period`, "i").test(text)) for (const n of numbersIn(token)) allowed.add(n);
     const hours = new Set([...quotedHours, ...decimalHoursIn(rule ? [] : mine.map((f) => f.text), allowed)]);
     for (const n of numbersIn(dropHeldLengths(text, allowed, hours))) {
       if (allowed.has(n)) continue;

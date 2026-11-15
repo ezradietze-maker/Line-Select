@@ -130,6 +130,17 @@ describe("computeCumulativeCircadianAssessment", () => {
     expect(result!.tightestRecoveryGapDays).toBe(3);
   });
 
+  it("says a trip that turns straight out of the last has no day off between, never a negative one", () => {
+    // Trip A: days 0-2. Trip B starts on day 2, the day A ends: chained, so 0 days off (not -1).
+    const trips = [
+      stubTrip({ schedule: [{ reportTimeLocal: "1400", startMinutes: 0, legs: [], layover: null }], startDayIndex: 0, days: 3 }),
+      stubTrip({ schedule: [{ reportTimeLocal: "1400", startMinutes: 0, legs: [], layover: null }], startDayIndex: 2, days: 2 }),
+    ];
+    const result = computeCumulativeCircadianAssessment(trips, -300, "2026-01-01")!;
+    expect(result.tightestRecoveryGapDays).toBe(0);
+    expect(result.summary).toBe("Some trips run straight into the next, with no day off between them.");
+  });
+
   it("flags compounding risk when two meaningfully disruptive trips sit closer together than a real recovery window", () => {
     // Six nights in a row: a rough trip on the body clock (well under the disruptive score).
     const closeTrips = [nightRunTrip(6, { startDayIndex: 0, days: 6 }), nightRunTrip(6, { startDayIndex: 7, days: 6 })]; // 1 real day off

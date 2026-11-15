@@ -47,6 +47,16 @@ function frameHeight(b: Omit<Bounds, "height">): number {
   return Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, (b.maxLat - b.minLat) * k + PAD * 2)));
 }
 
+/**
+ * Where a trip lays over, in the order it goes: LAX, IND, then LAX again. The trip's `layoverCities` lists each city
+ * once, so a trip that went back to LAX looked as if it flew home from IND; its layovers in visit order (a stop
+ * repeated straight after itself, as a two-night layover reads, counted once) keep the real order.
+ */
+export function tripStops(trip: Pick<Line["trips"][number], "layoverCities" | "layoverDetails">): string[] {
+  const visited = trip.layoverDetails?.length ? trip.layoverDetails.map((l) => l.city) : trip.layoverCities;
+  return visited.filter((city, i) => city !== visited[i - 1]);
+}
+
 function buildPoints(homeBase: string, cities: string[]): Point[] | null {
   const home = coordinatesForAirport(homeBase);
   if (!home) return null;
@@ -130,7 +140,7 @@ export function RouteMap({ homeBase, line }: RouteMapProps) {
   const width = useMediaQuery("(min-width: 640px)") ? WIDE_WIDTH : NARROW_WIDTH;
 
   const trips = line.trips
-    .map((trip, i) => ({ trip, i, pts: buildPoints(homeBase, trip.layoverCities) }))
+    .map((trip, i) => ({ trip, i, pts: buildPoints(homeBase, tripStops(trip)) }))
     .filter((t): t is { trip: Line["trips"][number]; i: number; pts: Point[] } => !!t.pts && t.pts.length > 1);
 
   if (trips.length === 0) {
@@ -245,7 +255,7 @@ export function RouteMap({ homeBase, line }: RouteMapProps) {
               >
                 <span className="text-accent">{trip.pairingNumber ? `#${trip.pairingNumber}` : `Trip ${i + 1}`}</span>
                 <span className="truncate">
-                  {[homeBase, ...trip.layoverCities, homeBase].join(" → ")}
+                  {[homeBase, ...tripStops(trip), homeBase].join(" → ")}
                 </span>
                 <span className="ml-auto shrink-0 text-ink-faint">{trip.days}d</span>
               </button>

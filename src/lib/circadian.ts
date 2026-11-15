@@ -91,7 +91,9 @@ export function computeCumulativeCircadianAssessment(
   for (let i = 0; i < sorted.length - 1; i++) {
     const current = sorted[i];
     const next = sorted[i + 1];
-    const gap = next.startDayIndex! - (current.startDayIndex! + current.days);
+    // A trip that turns straight out of the last one (the next starts the day this one ends) has no day off between,
+    // not a negative one.
+    const gap = Math.max(0, next.startDayIndex! - (current.startDayIndex! + current.days));
     if (tightestGap === null || gap < tightestGap) tightestGap = gap;
     const a = scores[i];
     const b = scores[i + 1];
@@ -101,11 +103,16 @@ export function computeCumulativeCircadianAssessment(
     }
   }
 
+  const daysOff = (n: number) => `${n} real day${n === 1 ? "" : "s"} off`;
   const summary = hasCompoundingRisk
-    ? `Two rough trips back to back with only ${roughGap} real day${roughGap === 1 ? "" : "s"} off between them.`
-    : tightestGap !== null
-      ? `At least ${tightestGap} real day${tightestGap === 1 ? "" : "s"} off between every trip this month.`
-      : "No real gaps to assess.";
+    ? roughGap === 0
+      ? "Two rough trips back to back with no day off between them."
+      : `Two rough trips back to back with only ${daysOff(roughGap!)} between them.`
+    : tightestGap === 0
+      ? "Some trips run straight into the next, with no day off between them."
+      : tightestGap !== null
+        ? `At least ${daysOff(tightestGap)} between every trip this month.`
+        : "No real gaps to assess.";
 
   return { tightestRecoveryGapDays: tightestGap, hasCompoundingRisk, summary };
 }

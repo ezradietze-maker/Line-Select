@@ -117,7 +117,9 @@ const STOPWORDS = new Set(["HOTEL", "THE", "AND", "INTERNATIONAL", "AIRPORT", "I
 /** A name's real words, accents dropped ("Swissôtel" reads as SWISSOTEL) and plurals singular ("Aparthotels"). */
 /** Brands whose name contains another's — a Hilton Garden Inn is not "the Hilton", a Holiday Inn Express not the Holiday Inn. */
 const COMPOUND_BRANDS: [RegExp, string][] = [
-  [/\bHILTON GARDEN INN\b/g, "HILTONGARDENINN"],
+  // The packs print it short ("HILTON GARDEN"); as two words it shared nothing with "Hilton Garden Inn", and every
+  // one of them was turned away.
+  [/\bHILTON GARDEN(?: INN)?\b/g, "HILTONGARDENINN"],
   [/\bHOLIDAY INN EXPRESS\b/g, "HOLIDAYINNEXPRESS"],
   [/\bHOLIDAY INN\b/g, "HOLIDAYINN"],
   [/\bHAMPTON INN\b/g, "HAMPTONINN"],
@@ -193,10 +195,16 @@ export function isPlausibleMatch(
 /** The printed name asks for a downtown property ("DT", "DTWN") — of two equally good matches, the one away from the airport. */
 export const wantsDowntown = (printed: string) => /\bDOWNTOWN\b/.test(readHotelName(printed).search);
 
-/** Words in a candidate's name the printed name doesn't account for — fewer is closer ("Clark Marriott" over "The Lounge at Clark Marriott"). */
-function extraWords(printed: string, name: string): number {
+/**
+ * Words in a candidate's name the printed name doesn't account for — fewer is closer ("Clark Marriott" over "The Lounge
+ * at Clark Marriott"). Words that only say where it is (an airport code, "Airport", its own city from its address)
+ * aren't extra: counted, of a brand's branches near one airport the pick went to whichever name said least about its
+ * place, not the nearest.
+ */
+function extraWords(printed: string, name: string, address?: string | null): number {
   const wanted = new Set(significantWords(withoutParentBrand(readHotelName(printed).search)));
-  return significantWords(withoutParentBrand(name)).filter((w) => !wanted.has(w)).length;
+  const where = new Set(significantWords((address ?? "").split(",").slice(1).join(" ")));
+  return significantWords(withoutParentBrand(name)).filter((w) => !wanted.has(w) && !where.has(w) && w !== "AIRPORT" && !(w.length === 3 && coordinatesForAirport(w))).length;
 }
 
 /**
@@ -215,7 +223,7 @@ export function pickBestMatch<T extends { name: string; formattedAddress?: strin
   for (const c of candidates) {
     if (!isPlausibleMatch(code, printed, c)) continue;
     const distance = kmFromAirport(code, c.location) ?? 0;
-    const rank = [matchedWords(printed, { name: c.name, address: c.formattedAddress }), -extraWords(printed, c.name), downtown ? distance : -distance];
+    const rank = [matchedWords(printed, { name: c.name, address: c.formattedAddress }), -extraWords(printed, c.name, c.formattedAddress), downtown ? distance : -distance];
     const better = rank[0] !== bestRank[0] ? rank[0] > bestRank[0] : rank[1] !== bestRank[1] ? rank[1] > bestRank[1] : rank[2] > bestRank[2];
     if (better) {
       best = c;

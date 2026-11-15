@@ -303,6 +303,18 @@ describe("VIPS questions explained", () => {
     expect(notes.waive1in10.meaning).toContain("12.C.1.c");
     expect(notes.protectMinDays.meaning).toContain("25.F.7");
   });
+
+  it("names every line it counts with an international trip near the start", () => {
+    // Four lines, each opening the month with the sample's Paris trip: the note used to name only the first three.
+    const paris = SAMPLE_BID_PACK.lines.flatMap((l) => l.trips).find((t) => t.layoverCities.includes("CDG"))!;
+    const lines = ["7001", "7002", "7003", "7004"].map((n) => ({ ...SAMPLE_BID_PACK.lines[0], lineNumber: n, trips: [{ ...paris, startDayIndex: 0 }] }));
+    const pack = packWith(20, { lines });
+    const note = vipsQuestionNotes(pack, lines.map((l) => l.lineNumber)).waiveBufferPhaseIn.forThisOrder ?? "";
+    const m = note.match(/^(\d+|One|one) lines? in your top 10 \(([^)]*)\)/);
+    expect(m, note).not.toBeNull();
+    const counted = /^\d+$/.test(m![1]) ? Number(m![1]) : 1;
+    expect(m![2].split(", ")).toHaveLength(counted);
+  });
 });
 
 // The October packs live outside the repo; these run wherever they're on disk.

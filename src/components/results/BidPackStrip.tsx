@@ -53,11 +53,20 @@ export interface StripLayout {
   daysPx: number;
 }
 
+/**
+ * The largest size, 7 to 9 px, at which a day's longest word (a four-figure flight number, in a monospaced face about
+ * 0.6 of its size wide) fits its column with a little air either side. A fixed 8px on a 22px column let one day's
+ * "0215" run into the next day's "2335", and the strip read "021523352335233".
+ */
+export function fitFont(col: number): number {
+  return Math.max(7, Math.min(9, Math.floor((col - 3) / (4 * 0.6))));
+}
+
 export function stripLayout(listWidth: number, columns: number): StripLayout {
   const stacked = listWidth < 640;
   const fitPx = listWidth - 2 - GRIP_W - LEFT_W - CHEVRON_W - 2 * PAD_X;
   const col = fitPx / Math.max(columns, 1);
-  if (!stacked && col >= MIN_FIT_COL) return { mode: "fit", stacked, font: col >= 23 ? 9 : 8, daysPx: fitPx };
+  if (!stacked && col >= MIN_FIT_COL) return { mode: "fit", stacked, font: fitFont(col), daysPx: fitPx };
   return { mode: "scroll", stacked, font: 9, daysPx: columns * SCROLL_COL };
 }
 
@@ -212,7 +221,8 @@ function DayCell({ col, day, font, labelRoom }: { col: PackColumn; day: PackDay;
           <span className={`absolute left-0 right-0 top-0 h-[2px] bg-calendar-accent ${trip.start ? "ml-px rounded-l-full" : ""} ${trip.end ? "mr-px rounded-r-full" : ""}`} />
         </>
       )}
-      <div className="relative flex flex-col items-center pt-[4px] font-mono font-medium" style={{ fontSize: font, lineHeight: `${ROW_PX}px` }}>
+      {/* Clipped to its own day: whatever still doesn't fit is cut at the column's edge, never run into the next day. */}
+      <div className="relative flex flex-col items-center overflow-hidden pt-[4px] font-mono font-medium" style={{ fontSize: font, lineHeight: `${ROW_PX}px` }}>
         {day.tokens.map((t, i) => (
           <span key={i} className={`whitespace-nowrap ${TOKEN_TONE[t.kind]}`}>
             {t.text}
