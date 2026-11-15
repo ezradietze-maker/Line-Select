@@ -7,6 +7,7 @@ import { rankReserveLines } from "@/lib/reserve-rank";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import type { LineScore } from "@/lib/scoring";
 import { deriveSeniorityInput } from "@/lib/seniority-derive";
+import { buildVipsBidFields } from "@/lib/vips-bid";
 import { expectedGone, fullBidOrder, meetsDaysOffBlocks, recommendedCatchAlls, runPresendChecks, vipsQuestionNotes, type PresendCheck, type PresendInput } from "@/lib/vips-presend";
 import type { BidPack, SeniorityEntry } from "@/types/bidpack";
 
@@ -163,6 +164,14 @@ describe("catch-all advice", () => {
   it("puts named reserve lines between the secondary and reserve catch-alls", () => {
     expect(fullBidOrder(["1", "2"], ["regular", "secondary", "reserve"], ["7001", "7002"])).toEqual(["1", "2", "9950", "9952", "7001", "7002", "9954"]);
     expect(fullBidOrder(["1"], [], [])).toEqual(["1"]);
+  });
+
+  it("counts a line listed twice once, where it first comes, as VIPS is sent it", () => {
+    const order = fullBidOrder(["101", "102", "101"], ["reserve"], ["7001", "7001", "102"]);
+    expect(order).toEqual(["101", "102", "7001", "9954"]);
+    const build = buildVipsBidFields({ lineNumbers: order, answers: { waiveBufferRecurrent: false, waiveBufferPhaseIn: false, waive1in10: false, protectMinDays: false } });
+    // The dialog's "N choices" and its numbered preview are this order: they match what Monthly Bid Review will list.
+    expect(build.ok && build.lines).toEqual(order);
   });
 });
 

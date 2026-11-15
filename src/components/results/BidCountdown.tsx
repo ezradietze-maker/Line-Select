@@ -19,6 +19,20 @@ function toLocalInputValue(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/**
+ * A close time as this device shows it, with its zone named ("Fri, Nov 20, 10:00 AM PST"). Without the zone, a pilot
+ * away from Memphis read their own time as the pack's 1200 CT, and typed a CT time into a field that takes their own.
+ */
+export function closeTimeWords(iso: string, opts: { timeZone?: string; locale?: string } = {}): string {
+  return new Date(iso).toLocaleString(opts.locale, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short", timeZone: opts.timeZone });
+}
+
+/** This device's zone, short ("PST"), at that moment: what the close-time field's time is in. */
+export function deviceZoneName(at: Date, opts: { timeZone?: string; locale?: string } = {}): string | null {
+  if (!Number.isFinite(at.getTime())) return null;
+  return new Intl.DateTimeFormat(opts.locale, { timeZoneName: "short", timeZone: opts.timeZone }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? null;
+}
+
 /** This pack's bid close: the pilot's own, from this device's storage, else the pack's printed one. */
 export function useBidDeadline(pack: CalendarPack) {
   // Watched rather than read once, so the calendar link and anything else showing it change with it.
@@ -112,14 +126,18 @@ export function BidDeadlineEditor({
   onDone: () => void;
 }) {
   const [draft, setDraft] = useState(deadline ? toLocalInputValue(deadline) : "");
+  const [openedAt] = useState(() => new Date());
+  // Named at the time being typed, so a time across a clock change names the zone it's in.
+  const zone = deviceZoneName(draft ? new Date(draft) : deadline ? new Date(deadline) : openedAt);
   return (
     <div>
       <label className="block text-sm font-medium text-ink" htmlFor="bid-deadline-input">
         When does bidding close for you?
+        {zone && <span className="font-normal text-ink-muted"> In your time, {zone}.</span>}
       </label>
       <p className="mt-1 text-xs text-ink-muted">
         {packClose
-          ? `Your bid pack says ${new Date(packClose.iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}. Change it only if FedEx has announced a different time.`
+          ? `Your bid pack says ${closeTimeWords(packClose.iso)}. Change it only if FedEx has announced a different time.`
           : "Your bid pack doesn't print a close time this app can read — enter the one FedEx gives for your seat."}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
