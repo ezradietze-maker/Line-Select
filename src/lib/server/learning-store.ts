@@ -457,19 +457,24 @@ export async function rollBackModel(kind: ModelKind): Promise<{ from: string; to
       .from(learnedModels)
       // Only a version that was once in use: a challenger that failed its fair test is stored inactive too, and undo
       // must never switch it on. Rows from before this was stamped count as used — except calibrations, which could
-      // be either, so they're passed over.
+      // be either, so they're passed over. Nor one the owner already undid: after an undo and the next run's version,
+      // a second undo brought back the version the first had taken away.
       .where(
         and(
           eq(learnedModels.kind, kind),
           eq(learnedModels.active, false),
           lt(learnedModels.createdAt, current.createdAt),
-          sql`coalesce((${learnedModels.metrics}->>'promoted')::boolean, ${learnedModels.kind} <> 'forecast-calibration')`
+          sql`coalesce((${learnedModels.metrics}->>'promoted')::boolean, ${learnedModels.kind} <> 'forecast-calibration')`,
+          sql`coalesce((${learnedModels.metrics}->>'undone')::boolean, false) = false`
         )
       )
       .orderBy(desc(learnedModels.createdAt))
       .limit(1);
     if (!previous) return null;
-    await tx.update(learnedModels).set({ active: false }).where(eq(learnedModels.id, current.id));
+    await tx
+      .update(learnedModels)
+      .set({ active: false, metrics: sql`${learnedModels.metrics} || '{"undone": true}'::jsonb` })
+      .where(eq(learnedModels.id, current.id));
     await tx.update(learnedModels).set({ active: true }).where(eq(learnedModels.id, previous.id));
     return { from: current.version, to: previous.version };
   });
