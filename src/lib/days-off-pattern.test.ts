@@ -43,6 +43,15 @@ describe("weekendDaysOff", () => {
   it("is null without a real bid-period start", () => {
     expect(weekendDaysOff(line([5, 6]), null)).toBeNull();
   });
+  it("counts the weekends from whatever weekday the period starts on, past the month's end", () => {
+    const all = Array.from({ length: 40 }, (_, i) => i);
+    // Starting Sunday Nov 1: Sundays 0, 7, …, 35 and Saturdays 6, 13, …, 34.
+    expect(weekendDaysOff(line(all), "2026-11-01")).toBe(11);
+    // Starting Saturday Oct 31: 0, 1, 7, 8, … 35, 36.
+    expect(weekendDaysOff(line(all), "2026-10-31")).toBe(12);
+    // Starting Monday: 5, 6, 12, 13, … 33, 34.
+    expect(weekendDaysOff(line(all), START)).toBe(10);
+  });
 });
 
 describe("dateOfDayIndex", () => {

@@ -16,7 +16,14 @@ import {
   type CommuteSettings,
 } from "@/lib/commute-filter";
 import { travelNeedsForPack } from "@/lib/flights/needs";
+import { groupDepartures } from "@/lib/metrics/departures";
 import type { BidPack, Line, Trip, TripLeg } from "@/types/bidpack";
+
+// Counted, to see how often each line's departures are worked out (see "worked out once" below).
+vi.mock("@/lib/metrics/departures", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/metrics/departures")>();
+  return { ...actual, groupDepartures: vi.fn(actual.groupDepartures) };
+});
 
 // October's packs are the real shape of everything this reads; they aren't in the repository.
 const PACKS_DIR = ".cache/packs";
@@ -333,6 +340,32 @@ describe("trips the pilot flies back to back", () => {
     expect(out.map((o) => o.line.lineNumber)).toEqual(["1008"]);
     expect(commuteBlockWords(out[0].block, pack)).toBe("Trip a: nothing gets you home the day it ends (lands Mon Oct 5 15:00).");
     expect(commuteBlocks(pack, { ...SETTINGS, minHomeHours: 48 }, answers, BEFORE_OCT)).toEqual([]);
+  });
+
+  it("works out each line's departures once, however many batches of answers come in", () => {
+    const fresh: Line = { ...line, id: "L7", trips: [dayTrip("c", 7), dayTrip("d", 9)] };
+    const p = { ...pack, lines: [fresh] } as BidPack;
+    vi.mocked(groupDepartures).mockClear();
+    const needs = commuteNeedsForPack(p, SETTINGS, BEFORE_OCT);
+    expect(needs.map((n) => n.id).sort()).toEqual(["c@7:homeFromBase", "c@7:toBase", "d@9:homeFromBase", "d@9:toBase"]);
+    // The answers come in one at a time, as the check's batches do: unknown until every end is answered, then a yes.
+    const got: CommuteAnswers = {};
+    const seen: string[] = [];
+    for (const n of needs) {
+      got[n.id] = n.kind === "toBase" ? { lastDeparture: n.arriveBy! - 3_600_000, firstArrival: null } : { lastDeparture: null, firstArrival: n.departAfter + 3 * 3_600_000 };
+      seen.push(commuteStatuses(p, SETTINGS, { ...got }, BEFORE_OCT).get("L7")!);
+      commuteBlocks(p, SETTINGS, { ...got }, BEFORE_OCT);
+    }
+    expect(seen).toEqual(["unknown", "unknown", "unknown", "yes"]);
+    // A way home that nothing makes, answered last: now a no, and it says which.
+    const late = needs.find((n) => n.id === "c@7:homeFromBase")!;
+    const missed = { ...got, [late.id]: { lastDeparture: null, firstArrival: late.departBefore + 3_600_000 } };
+    expect(commuteStatusOfLine(fresh, p, SETTINGS, missed, BEFORE_OCT)).toBe("no");
+    expect(commuteBlocks(p, SETTINGS, missed, BEFORE_OCT).map((b) => [b.block.trip.id, b.block.way])).toEqual([["c", "home"]]);
+    expect(groupDepartures).toHaveBeenCalledTimes(1);
+    // Settings that change the departures work them out again: two days at home wanted, the pilot stays at base between.
+    expect(commuteStatusOfLine(fresh, p, { ...SETTINGS, minHomeHours: 48 }, missed, BEFORE_OCT)).toBe("yes");
+    expect(groupDepartures).toHaveBeenCalledTimes(2);
   });
 });
 

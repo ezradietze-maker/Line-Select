@@ -218,21 +218,37 @@ function dayLayoverDetails(trip: Trip, day: RunDay, dayCount: number): Trip["lay
   return trip.layoverDetails.length % dayCount === 0 ? trip.layoverDetails.slice(0, trip.layoverDetails.length / dayCount) : [];
 }
 
+/**
+ * Each trip's report as last worked out, with what it was worked out from. The departures, the commute questions and
+ * several measures each ask it of every trip of every line, and it's a few date sums at a time; asked afresh each time,
+ * it was a large share of what a swap and the commute filter cost on a slowed phone.
+ */
+const reports = new WeakMap<object, { start: string; base: string; day: number; first: TripDutyPeriod; at: number | null }>();
+
 /** The trip's first report as a real instant (epoch ms), or null without a grid date, a known base zone or a printed report time. */
 export function tripReportUtc(bidPack: { bidPeriodStart: string | null; base: string }, trip: Pick<Trip, "startDayIndex" | "schedule">): number | null {
   if (!bidPack.bidPeriodStart || trip.startDayIndex === null || !trip.schedule[0]) return null;
-  const zone = timezoneForAirport(bidPack.base);
-  const hhmm = trip.schedule[0].reportTimeLocal;
+  const kept = reports.get(trip);
+  if (kept && kept.start === bidPack.bidPeriodStart && kept.base === bidPack.base && kept.day === trip.startDayIndex && kept.first === trip.schedule[0]) return kept.at;
+  const at = reportUtcOf(bidPack.bidPeriodStart, bidPack.base, trip.startDayIndex, trip.schedule[0]);
+  reports.set(trip, { start: bidPack.bidPeriodStart, base: bidPack.base, day: trip.startDayIndex, first: trip.schedule[0], at });
+  return at;
+}
+
+/** `tripReportUtc`, worked out: the trip's first duty period reported on its grid day, at base. */
+function reportUtcOf(bidPeriodStart: string, base: string, startDayIndex: number, first: TripDutyPeriod): number | null {
+  const zone = timezoneForAirport(base);
+  const hhmm = first.reportTimeLocal;
   if (!zone || !/^\d{4}$/.test(hhmm)) return null;
-  const at = DateTime.fromISO(bidPack.bidPeriodStart, { zone })
-    .plus({ days: trip.startDayIndex })
+  const at = DateTime.fromISO(bidPeriodStart, { zone })
+    .plus({ days: startDayIndex })
     .set({ hour: Number(hhmm.slice(0, 2)), minute: Number(hhmm.slice(2, 4)), second: 0, millisecond: 0 });
   if (!at.isValid) return null;
   // The hour the clocks go back happens twice, and luxon takes the first. The printed GMT times settle which: the
   // first leg's GMT departure less its minutes from report is the report in GMT.
   const later = at.plus({ hours: 1 });
   if (later.hour === at.hour && later.minute === at.minute) {
-    const leg = trip.schedule[0].legs[0];
+    const leg = first.legs[0];
     if (leg && /^\d{4}$/.test(leg.depTimeGmt ?? "")) {
       const reportGmt = (((Number(leg.depTimeGmt.slice(0, 2)) * 60 + Number(leg.depTimeGmt.slice(2)) - leg.startMinutes) % 1440) + 1440) % 1440;
       const utcMinute = (t: DateTime) => t.toUTC().hour * 60 + t.toUTC().minute;

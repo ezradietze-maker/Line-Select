@@ -1,6 +1,6 @@
 import { longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
 import { isOutAndBack } from "@/lib/line-filters";
-import { computeTripFacts } from "@/lib/metrics/trip-facts";
+import { tripFactsOf } from "@/lib/metrics/trip-facts";
 import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import type { Line, ReportTime } from "@/types/bidpack";
 import type { TripCountFilter } from "@/lib/line-filters";
@@ -109,8 +109,8 @@ export function computeFilterOptions(lines: Line[], bidPeriodStart: string | nul
   const reportTimesPresent = new Set(lines.flatMap((l) => l.trips.map((t) => t.reportTime)));
   const hasInternational = lines.some((l) => l.trips.some((t) => t.international));
   const hasDomestic = lines.some((l) => l.trips.some((t) => !t.international));
-  const facts = lines.flatMap((l) => l.trips.map((t) => computeTripFacts(t)));
-  const longestLayovers = lines.map((l) => Math.floor(Math.max(0, ...l.trips.flatMap((t) => computeTripFacts(t).layovers.map((lay) => lay.hours)))));
+  const facts = lines.flatMap((l) => l.trips.map((t) => tripFactsOf(t)));
+  const longestLayovers = lines.map((l) => Math.floor(Math.max(0, ...l.trips.flatMap((t) => tripFactsOf(t).layovers.map((lay) => lay.hours)))));
   const blocks = lines.map(longestDaysOffBlock).filter((n): n is number => n !== null);
   const weekends = lines.map((l) => weekendDaysOff(l, bidPeriodStart)).filter((n): n is number => n !== null);
   const outAndBacks = lines.flatMap((l) => l.trips.map(isOutAndBack));
@@ -136,7 +136,7 @@ export function computeFilterOptions(lines: Line[], bidPeriodStart: string | nul
     showDoubleDeadheadToggle: facts.some((f) => f.front && f.back),
     showOutAndBackOptions: outAndBacks.includes(true) && outAndBacks.includes(false),
     showSingleLegToggle: lines.some((l) => {
-      const duties = l.trips.flatMap((t) => computeTripFacts(t).duties).filter((d) => d.operatedLegs > 0);
+      const duties = l.trips.flatMap((t) => tripFactsOf(t).duties).filter((d) => d.operatedLegs > 0);
       return duties.length > 0 && duties.every((d) => d.operatedLegs === 1);
     }),
   };

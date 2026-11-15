@@ -1,7 +1,7 @@
 import { monthLine } from "@/lib/bid-month";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { METRICS_BY_ID, type Aggregation, type LineContext, type MetricDef, type MetricParams } from "@/lib/metrics/catalog";
-import { computeTripFacts, type TripFacts } from "@/lib/metrics/trip-facts";
+import { tripFactsOf, type TripFacts } from "@/lib/metrics/trip-facts";
 import type { BidPack, Line } from "@/types/bidpack";
 
 /**
@@ -24,14 +24,7 @@ export interface PackMetrics {
   tripFactsByLine: Map<string, TripFacts[]>;
 }
 
-/** A trip's facts, kept with the trip: worked out ahead of the first ranking (see `lib/ranking-warm-up.ts`), or here. */
-const factsByTrip = new WeakMap<Line["trips"][number], TripFacts>();
-
-export function tripFactsOf(t: Line["trips"][number]): TripFacts {
-  let f = factsByTrip.get(t);
-  if (!f) factsByTrip.set(t, (f = computeTripFacts(t)));
-  return f;
-}
+export { tripFactsOf };
 
 export function prepareMetrics(bidPack: BidPack): PackMetrics {
   const monthLines = new Map<string, Line>();

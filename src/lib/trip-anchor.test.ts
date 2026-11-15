@@ -154,6 +154,18 @@ describe("a report in the hour the clocks go back", () => {
     expect(tripReportUtc({ bidPeriodStart: "2026-11-01", base: "MEM" }, trip)).toBe(Date.UTC(2026, 10, 1, 7, 30));
   });
 
+  it("is asked again of the same trip with another pack or another day, not the first answer kept", () => {
+    const trip = {
+      startDayIndex: 0,
+      schedule: [{ reportTimeLocal: "0130", startMinutes: 0, legs: [{ depTimeGmt: "0830", startMinutes: 60 }], layover: null }],
+    } as unknown as Trip;
+    expect(tripReportUtc({ bidPeriodStart: "2026-11-01", base: "MEM" }, trip)).toBe(Date.UTC(2026, 10, 1, 7, 30));
+    expect(tripReportUtc({ bidPeriodStart: "2026-11-02", base: "MEM" }, trip)).toBe(Date.UTC(2026, 10, 2, 7, 30));
+    expect(tripReportUtc({ bidPeriodStart: "2026-11-02", base: "ANC" }, trip)).toBe(Date.UTC(2026, 10, 2, 10, 30));
+    expect(tripReportUtc({ bidPeriodStart: "2026-11-02", base: "ANC" }, { ...trip, startDayIndex: 1 })).toBe(Date.UTC(2026, 10, 3, 10, 30));
+    expect(tripReportUtc({ bidPeriodStart: "2026-11-02", base: "ANC" }, { ...trip, schedule: [{ ...trip.schedule[0], reportTimeLocal: "0200" }] })).toBe(Date.UTC(2026, 10, 2, 11, 0));
+  });
+
   it("keeps the first when that's the one printed", () => {
     const trip = {
       startDayIndex: 0,
