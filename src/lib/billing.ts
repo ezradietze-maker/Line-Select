@@ -15,6 +15,8 @@ export interface BillingStatus {
   hasSubscription: boolean;
   /** Whether starting one now comes with the free month: only a pilot's first membership does. */
   freeMonth: boolean;
+  /** A live membership (trial or active) the pilot has set to cancel at period end — still on now, but ending. */
+  cancelAtPeriodEnd: boolean;
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
 }

@@ -133,6 +133,30 @@ export function MembershipBody({
   const active = status.status === "trialing" || status.status === "active";
 
   if (active) {
+    if (status.cancelAtPeriodEnd) {
+      const endsOn = status.status === "trialing" ? trialEnds : renews;
+      return (
+        <div className={`${PANEL} space-y-4`}>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-[2px] border border-border px-2 py-0.5 font-display text-xs font-bold text-ink-muted">Canceled</span>
+            <span className="text-sm font-medium text-ink">Membership canceled</span>
+          </div>
+          <p className="text-sm text-ink-muted">
+            {status.status === "trialing"
+              ? endsOn
+                ? `Your free month ends ${endsOn} and you won’t be charged. You keep full access until then.`
+                : "You’re on your free month — it will end and you won’t be charged. You keep full access until then."
+              : endsOn
+                ? `Your membership ends ${endsOn} and you won’t be charged again. You keep access until then.`
+                : "Your membership will end and you won’t be charged again. You keep access until then."}
+          </p>
+          <Button variant="secondary" onClick={onPortal} disabled={busy}>
+            {busy ? "Opening…" : "Resume membership"}
+          </Button>
+          {error && <p className="text-sm text-danger">{error}</p>}
+        </div>
+      );
+    }
     return (
       <div className={`${PANEL} space-y-4`}>
         <div className="flex items-center gap-2">
