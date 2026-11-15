@@ -1,5 +1,6 @@
-import { isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, lt, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { FREE_FOR_ALL, MEMBERSHIP_CUTOVER } from "@/lib/membership";
 import { hashUser } from "@/lib/server/pilot-hash";
 import { db } from "@/lib/server/postgres";
 import { users } from "@/lib/server/schema";
@@ -27,6 +28,20 @@ export function confirmEmailRefusal(toDo: string): NextResponse {
 /** The confirmed accounts' ids, as a subquery: `inArray(table.userId, verifiedUserIds())`. */
 export function verifiedUserIds() {
   return db.select({ id: users.id }).from(users).where(isNotNull(users.emailVerifiedAt));
+}
+
+/**
+ * The accounts that can see a trade through, as a subquery: confirmed, and holding a membership once `FREE_FOR_ALL` is
+ * off (`isMember` in `@/lib/membership`: made before the cutover, Pro, or a free spot). Agreeing an offer and saying
+ * yes to a suggested trade turn away a pilot with none, so their offers, and trades suggested with them, would only
+ * ever wait, and keep the pilots on them from any other trade meanwhile.
+ */
+export function tradingUserIds() {
+  const member = or(lt(users.createdAt, new Date(MEMBERSHIP_CUTOVER)), eq(users.plan, "pro"), isNotNull(users.freeMemberAt));
+  return db
+    .select({ id: users.id })
+    .from(users)
+    .where(FREE_FOR_ALL ? isNotNull(users.emailVerifiedAt) : and(isNotNull(users.emailVerifiedAt), member));
 }
 
 /**
