@@ -1,7 +1,7 @@
 import { buildLineMonthCalendar, type LineMonthDay } from "@/lib/line-month";
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
-import { groupDepartures, type DepartureOptions } from "@/lib/metrics/departures";
+import { DEFAULT_MIN_HOME_HOURS, groupDepartures, type DepartureOptions } from "@/lib/metrics/departures";
 import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metrics/hub-turns";
 import { DEFAULT_MIN_BREAK_NIGHTS, homeStretches, summarizeHomeTime } from "@/lib/metrics/home-stretches";
 import { bidMonthEnd, lineCarryOver, monthLine, nextMonthName, uncutTrip } from "@/lib/bid-month";
@@ -82,6 +82,11 @@ export interface TripChain {
   turnMinutes: number;
   landed: string;
   reports: string;
+  /**
+   * Why the two are one departure: for a commuter, the hours at home that make going home worth it (his, or 24); null
+   * for a pilot who lives at base, whose trips join only on a turn of under 12 hours. Unset when the home isn't known.
+   */
+  homeHours?: number | null;
 }
 
 export interface DetailedDay {
@@ -314,36 +319,50 @@ export interface MonthDepartureOptions extends DepartureOptions {
   minBreakNights?: number;
 }
 
-/** The calendar's departure options from what the pilot told the interview: a commuter's home airport, or none (lives at base). */
-export function monthDepartureOptions(
-  base: string,
-  profile: (Pick<PreferenceProfile, "isCommuter" | "commuteFrom" | "hasCrashPad" | "minHomeHours"> & Partial<Pick<PreferenceProfile, "brainInterview">>) | null | undefined,
-  flights?: FlightAnswers | null
-): MonthDepartureOptions {
-  return monthDepartureOptionsFrom(base, {
-    isCommuter: profile?.isCommuter,
-    commuteFrom: profile?.commuteFrom,
-    hasCrashPad: profile?.hasCrashPad,
-    minHomeHours: profile?.minHomeHours,
-    // What makes a real break, as the pilot said it (read from their words beside the brain's reading).
-    minBreakNights: profile?.brainInterview?.reviewedModel?.home?.minBreakNights,
-  }, flights);
+/**
+ * The home settings departures are counted by: the ones the ranking measures with (`homeParams` of the pilot's model),
+ * so the card, the calendar, the departures sort and the commute filter join the trips the scores join. Before there's
+ * a model, what the interview's commute step asked. Read from the profile alone, hours at home the brain read from the
+ * pilot's words ("I only go home if I get two days") joined trips in the ranking and not on the card: with 36 hours, a
+ * Memphis 767 pack had 28 lines showing a different number of departures from the one they were ranked on.
+ */
+export interface DepartureSettings {
+  homeAirports: string[];
+  hasCrashPad: boolean | null;
+  minHomeHours?: number;
+  /** Nights at home that make a real break (default 3). */
+  minBreakNights?: number;
+  commuteBufferHours?: number;
+  frontBufferHours?: number;
+  backRestHours?: number;
+}
+
+type DepartureProfile = (Pick<PreferenceProfile, "isCommuter" | "commuteFrom" | "hasCrashPad" | "minHomeHours"> & Partial<Pick<PreferenceProfile, "brainInterview" | "pilotModel">>) | null | undefined;
+
+export function departureSettingsOf(profile: DepartureProfile): DepartureSettings {
+  const home = profile?.pilotModel?.home ?? null;
+  const minHomeHours = home?.minHomeHours ?? profile?.minHomeHours ?? undefined;
+  // What makes a real break, as the pilot said it (read from their words beside the brain's reading).
+  const minBreakNights = home?.minBreakNights ?? profile?.brainInterview?.reviewedModel?.home?.minBreakNights;
+  return {
+    homeAirports: home ? home.airports : profile?.isCommuter && profile.commuteFrom ? [profile.commuteFrom] : [],
+    hasCrashPad: home?.hasCrashPad ?? profile?.hasCrashPad ?? null,
+    ...(minHomeHours ? { minHomeHours } : {}),
+    ...(minBreakNights ? { minBreakNights } : {}),
+    ...(home?.commuteBufferHours !== undefined ? { commuteBufferHours: home.commuteBufferHours } : {}),
+    ...(home?.frontBufferHours !== undefined ? { frontBufferHours: home.frontBufferHours } : {}),
+    ...(home?.backRestHours !== undefined ? { backRestHours: home.backRestHours } : {}),
+  };
+}
+
+/** The calendar's departure options for this pilot (`departureSettingsOf`): a commuter's home, or none (lives at base). */
+export function monthDepartureOptions(base: string, profile: DepartureProfile, flights?: FlightAnswers | null): MonthDepartureOptions {
+  return monthDepartureOptionsFrom(base, departureSettingsOf(profile), flights);
 }
 
 /** The same from just the settings it reads — for a caller that keeps it while the rest of the profile changes. */
-export function monthDepartureOptionsFrom(
-  base: string,
-  s: { isCommuter?: boolean | null; commuteFrom?: string | null; hasCrashPad?: boolean | null; minHomeHours?: number | null; minBreakNights?: number },
-  flights?: FlightAnswers | null
-): MonthDepartureOptions {
-  return {
-    base,
-    homeAirports: s.isCommuter && s.commuteFrom ? [s.commuteFrom] : [],
-    hasCrashPad: s.hasCrashPad ?? null,
-    ...(s.minHomeHours ? { minHomeHours: s.minHomeHours } : {}),
-    ...(s.minBreakNights ? { minBreakNights: s.minBreakNights } : {}),
-    ...(flights ? { flights } : {}),
-  };
+export function monthDepartureOptionsFrom(base: string, s: DepartureSettings, flights?: FlightAnswers | null): MonthDepartureOptions {
+  return { ...s, base, ...(flights ? { flights } : {}) };
 }
 
 export function buildDetailedMonth(
@@ -689,6 +708,9 @@ export function buildDetailedMonth(
         }
       : null;
 
+    // Joined on the hours at home the departures were counted by — a commuter's, as `groupDepartures` tells one apart.
+    const away = (departureOptions.homeAirports ?? []).filter((a) => a && a !== code);
+    const homeHours = away.length > 0 && !(departureOptions.homeAirports ?? []).includes(code) ? (departureOptions.minHomeHours ?? DEFAULT_MIN_HOME_HOURS) : null;
     days.forEach((d) => {
       if (!d.isTripStart || d.tripIndex === null) return;
       const l = link.get(d.tripIndex);
@@ -700,6 +722,7 @@ export function buildDetailedMonth(
         turnMinutes: Math.max(0, Math.round(l.turnHours * 60)),
         landed: prevLast?.finish?.time ?? "",
         reports: d.dutyStart ?? "",
+        homeHours,
       };
     });
   } else days.forEach((d, i) => {

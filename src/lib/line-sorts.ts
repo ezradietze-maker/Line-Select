@@ -108,7 +108,7 @@ export const LINE_SORTS: SortDef[] = [
   { id: "frontSlackHours", group: "commute", label: "Time after the front deadhead", better: "more", ...hours, definition: "Average hours between a front-end deadhead landing and your first operated departure." },
   { id: "backSlackHours", group: "commute", label: "Time before the back deadhead", better: "more", ...hours, definition: "Average hours between your last operated arrival and the back-end deadhead." },
   { id: "earliestBaseReport", group: "commute", label: "Earliest report at the domicile", better: "more", ...clock, definition: "The earliest local report at the domicile. Later is easier to commute to; a line that always starts on a deadhead reads 23:59." },
-  { id: "latestBaseRelease", group: "commute", label: "Latest arrival back at the domicile", better: "fewer", ...clock, definition: "The latest local arrival at the domicile, running on past midnight until 05:00. Earlier is easier to get home from." },
+  { id: "latestBaseRelease", group: "commute", label: "Latest arrival back at the domicile", better: "fewer", ...clock, definition: "The latest local arrival at the domicile, running on past midnight until 05:00. No flight home from it this month reads 05:00." },
 
   // ---- Trips ----
   { id: "tripCount", group: "trips", label: "Trips", better: "fewer", ...count("trip"), definition: "Trips in the month. One running into next month counts by the share of it in this one." },
