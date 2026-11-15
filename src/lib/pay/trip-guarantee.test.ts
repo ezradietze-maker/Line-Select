@@ -3,7 +3,21 @@ import { formatHoursValue } from "@/lib/interview-config";
 import { guaranteeShortfall, linePay, minBidPeriodGuarantee, parseCreditHours, payClaimText, tripPay, tripRig } from "@/lib/pay/trip-guarantee";
 import type { Line, Trip } from "@/types/bidpack";
 
-const trip = (creditHours: number, tafbHours: number): Trip => ({ creditHours, tafbHours } as Trip);
+const trip = (creditHours: number, tafbHours: number): Trip => ({ creditHours, tafbHours, schedule: [] } as unknown as Trip);
+/** A run of the same day trip on consecutive days, as the parser keeps it: one trip, its days' credit and TAFB summed. */
+const run = (days: number, dayCredit: number, dayTafb: number, startDayIndex: number): Trip =>
+  ({
+    id: "p-30",
+    pairingNumber: "30",
+    days,
+    creditHours: days * dayCredit,
+    tafbHours: days * dayTafb,
+    startDayIndex,
+    layoverDetails: [],
+    zuluAnchor: "",
+    runStarts: Array.from({ length: days }, (_, i) => i),
+    schedule: Array.from({ length: days }, (_, i) => ({ reportTimeLocal: "0700", startMinutes: i * 1440, legs: [], layover: null })),
+  }) as unknown as Trip;
 const line = (trips: Trip[], carryOverCreditHours?: number): Line => ({ trips, carryOverCreditHours } as Line);
 
 describe("trip rig (CBA 2026 4.F.2.a)", () => {
@@ -16,6 +30,13 @@ describe("trip rig (CBA 2026 4.F.2.a)", () => {
     // 41:05 away is 657.33 minutes of rig: 10:57, not the 10:58 that hundredths of an hour read.
     expect(formatHoursValue(tripRig(41 + 5 / 60))).toBe("10:57");
     expect(tripRig(41 + 5 / 60) * 60).toBeCloseTo(657, 9);
+  });
+  it("is worked from the TAFB the pack prints, to the minute, not the hundredths it's kept in", () => {
+    // 44:58 away is kept as 44.97 hours. 44:58 is 719.47 minutes of rig, 11:59; 44.97 read 719.52, 12:00, a minute over
+    // the 11:59 the trip is credited, which rig can never be (4.F.1.a).
+    expect(formatHoursValue(tripRig(44.97))).toBe("11:59");
+    expect(formatHoursValue(tripRig(78.97))).toBe("21:03"); // 78:58
+    expect(tripPay(trip(11 + 59 / 60, 44.97)).rigCH).toBeLessThanOrEqual(11 + 59 / 60);
   });
 });
 
@@ -56,6 +77,17 @@ describe("linePay (CBA 2026 4.B / 4.A.1)", () => {
     const lp = linePay(line([trip(g, 40), trip(g, 40), trip(g, 40), trip(g, 40)]), { bidPeriodDays: 28 });
     expect(formatHoursValue(lp.tripGuaranteeTotal)).toBe("75:44");
     expect(formatHoursValue(lp.blg)).toBe("75:44");
+  });
+  it("takes a run of the same day trip as its days: each is its own trip, with its own guarantee and date", () => {
+    // Trip 30 three days running, 4:16 and 7:30 away a day. Kept whole, it read one 12:48 trip on the first day, and a
+    // pilot paid 4:16 for the second day was told 8:32 was owed.
+    const lp = linePay(line([run(3, 4 + 16 / 60, 7.5, 21)]), { bidPeriodDays: 28 });
+    expect(lp.trips.map((t) => [t.trip.startDayIndex, formatHoursValue(t.guaranteeCH), formatHoursValue(t.rigCH)])).toEqual([
+      [21, "4:16", "2:00"],
+      [22, "4:16", "2:00"],
+      [23, "4:16", "2:00"],
+    ]);
+    expect(formatHoursValue(lp.tripGuaranteeTotal)).toBe("12:48");
   });
   it("floors a thin line up to the minimum bid period guarantee", () => {
     const lp = linePay(line([trip(20, 60)]), { bidPeriodDays: 28 });
