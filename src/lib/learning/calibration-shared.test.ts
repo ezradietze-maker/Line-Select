@@ -156,6 +156,25 @@ describe("putting forecasts next to awards", () => {
     expect(calibrationCasesFrom([], [forecast({})], lines)).toEqual([]);
   });
 
+  it("takes one forecast per pilot per bid month: one account can't stand in for the awards the fair test waits for", () => {
+    // One confirmed account shares a forecast and reports its award under 40 made-up bases, all for one month.
+    const packs = Array.from({ length: 40 }, (_, i) => `oct26|z${i}|b767|fo`);
+    const awards = packs.map((packKey, i) => award({ id: `a${i}`, pilotHash: "X", packKey, lineNumber: "L2", seniorityRank: 10, submittedAt: at(1 + (i % 20)) }));
+    const forecasts = packs.map((packKey) => forecast({ pilotHash: "X", packKey }));
+    const cases = calibrationCasesFrom(awards, forecasts, lines);
+    expect(cases).toHaveLength(1);
+    expect(awardsBehind(cases)).toBe(1);
+    expect(testCalibration(cases, "fc", new Date(0))).toMatchObject({ ready: false });
+    // A pilot's months each still count, and so does every pilot in a month.
+    const months = ["sep26", "oct26", "nov26"].map((m) => `${m}|mem|b767|fo`);
+    const real = calibrationCasesFrom(
+      months.map((packKey, i) => award({ id: `m${i}`, pilotHash: "Y", packKey, seniorityRank: 10 })),
+      [...months.map((packKey) => forecast({ pilotHash: "Y", packKey })), forecast({ pilotHash: "Z", packKey: months[1] })],
+      lines
+    );
+    expect(real).toHaveLength(4);
+  });
+
   it("carries no hash into the case, and keeps a pack's forecasts together, oldest pack first", () => {
     const awards = [award({ id: "n", packKey: "nov", submittedAt: at(9) }), award({ id: "o", packKey: "oct", submittedAt: at(2) })];
     const forecasts = [forecast({ packKey: "nov", pilotHash: "B" }), forecast({ packKey: "oct", pilotHash: "C" }), forecast({ packKey: "nov", pilotHash: "D" })];

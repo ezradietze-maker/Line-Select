@@ -374,7 +374,10 @@ type StoredForecast = Pick<typeof forecastPredictions.$inferSelect, "pilotHash" 
 export function calibrationCasesFrom(awards: StoredAward[], predictions: StoredForecast[], linesByBlob: Map<string, string[]>): DatedCalibrationCase[] {
   const byPack = new Map<string, StoredAward[]>();
   for (const a of awards) byPack.set(a.packKey!, [...(byPack.get(a.packKey!) ?? []), a]);
-  const cases: DatedCalibrationCase[] = [];
+  // One forecast per pilot per bid month, and the one their own award checks when there is one. A pilot bids one seat a
+  // month, but a pack key is whatever the browser sends: one account sharing a forecast and reporting its award under
+  // forty made-up bases was forty awards, past the number the fair test waits for, and set the odds every pilot is shown.
+  const perMonth = new Map<string, { case: DatedCalibrationCase; own: boolean }>();
   const onePerPilot = new Map(predictions.map((p) => [`${p.pilotHash}|${p.packKey}`, p] as const));
   for (const p of onePerPilot.values()) {
     const packAwards = byPack.get(p.packKey);
@@ -387,7 +390,7 @@ export function calibrationCasesFrom(awards: StoredAward[], predictions: StoredF
       .map((a) => ({ lineIndex: indexOf(a.lineNumber), bidPosition: a.seniorityRank, id: a.id }));
     if (!own && holders.length === 0) continue;
     const ownIndex = indexOf(own?.lineNumber ?? null);
-    cases.push({
+    const c: DatedCalibrationCase = {
       at: own?.submittedAt ?? packAwards.reduce((latest, a) => (a.submittedAt > latest ? a.submittedAt : latest), packAwards[0].submittedAt),
       seat: packAwards[0].seat,
       packKey: p.packKey,
@@ -395,8 +398,12 @@ export function calibrationCasesFrom(awards: StoredAward[], predictions: StoredF
       prediction: { ranking: p.ranking, pAvailable: p.pAvailable, bidNumber: p.bidNumber },
       award: own ? { outcome: own.outcome as ReportedAward["outcome"], lineIndex: ownIndex >= 0 ? ownIndex : null } : null,
       holders,
-    });
+    };
+    const month = `${p.pilotHash}|${p.packKey.split("|")[0]}`;
+    const kept = perMonth.get(month);
+    if (!kept || (!kept.own && own) || (kept.own === !!own && c.at > kept.case.at)) perMonth.set(month, { case: c, own: !!own });
   }
+  const cases = [...perMonth.values()].map((k) => k.case);
   // Oldest first by pack, so the fair test holds back the newest packs whole.
   const packStart = new Map<string, number>();
   for (const c of cases) packStart.set(c.packKey!, Math.min(packStart.get(c.packKey!) ?? Infinity, c.at.getTime()));
