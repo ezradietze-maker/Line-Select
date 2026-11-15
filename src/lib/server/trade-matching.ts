@@ -25,6 +25,8 @@ const MIN_PILOTS = 2;
 export const DAILY_MATCHING_BUDGET_MS = 120_000;
 /** How long one group's search may take, inside Find trades' 90 seconds with time to store and email what it found. */
 const SEARCH_MS = 45_000;
+/** How long after the search ends emails may still start, each up to its ten seconds: inside Find trades' 90 too. */
+const EMAIL_AFTER_SEARCH_MS = 25_000;
 
 export type MatchingOutcome =
   | { status: "ran"; found: number; pilots: number }
@@ -36,7 +38,13 @@ export type MatchingOutcome =
   /** What they hold was confirmed on a pack that isn't the one most of their seat confirmed on. */
   | { status: "pack-differs" };
 
-async function matchGroup(meta: BidPackMetaSnapshot, now: number, deadline = Date.now() + SEARCH_MS, caller: string | null = null): Promise<MatchingOutcome> {
+async function matchGroup(
+  meta: BidPackMetaSnapshot,
+  now: number,
+  deadline = Date.now() + SEARCH_MS,
+  caller: string | null = null,
+  emailUntil = deadline + EMAIL_AFTER_SEARCH_MS
+): Promise<MatchingOutcome> {
   const lockKey = `line-select:trade-matching:${meta.base}:${meta.aircraft}:${meta.seat}:${meta.month}`;
   if ((await incrementCounter(lockKey, RUN_SECONDS)) > 1) return { status: "busy" };
   try {
@@ -83,7 +91,7 @@ async function matchGroup(meta: BidPackMetaSnapshot, now: number, deadline = Dat
       const stored = suggestionToStore(pack, t, names);
       if (await saveSuggestion(stored, foundFrom)) {
         found++;
-        await emailNewTrade(stored, new Date(now));
+        await emailNewTrade(stored, new Date(now), emailUntil);
       }
     }
     return { status: "ran", found, pilots: everyone.length };
@@ -138,7 +146,8 @@ export async function runDailyMatching(nowDate = new Date(), budgetMs = DAILY_MA
         continue;
       }
       // Within what's left of the day's budget too: a big group starting late can't run past the cron's limit.
-      const outcome = await matchGroup(meta, now, Date.now() + Math.min(SEARCH_MS, Math.max(5_000, budgetMs - (Date.now() - started))));
+      // And its emails stop with the day's budget, not past it.
+      const outcome = await matchGroup(meta, now, Date.now() + Math.min(SEARCH_MS, Math.max(5_000, budgetMs - (Date.now() - started))), null, started + budgetMs);
       if (outcome.status === "ran") result.found += outcome.found;
       else result.skipped++;
     } catch (e) {
