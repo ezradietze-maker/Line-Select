@@ -1,5 +1,6 @@
 import { isPackId } from "@/lib/pack-id";
 import type { CarryInItem, ReservePeriod } from "@/lib/phase-in";
+import { migrateProfile } from "@/lib/profile-migration";
 import { fromPhase2, tripInstanceKey } from "@/lib/trades/legality";
 import type { PilotHolding } from "@/lib/trades/match";
 import { lineWithTrips } from "@/lib/trades/value";
@@ -178,7 +179,9 @@ export function pilotsForMatching(pack: BidPack, rows: readonly MatchingRow[]): 
   return onePerPilot(pack, rows).flatMap((r) => {
     if (!r.holding || !r.settings.suggestMe) return [];
     // What the pilot's rankings are scored on: the model the interview confirmed, as fitted to the swaps they've made since.
-    const model = r.profile?.pilotModel ?? null;
+    // Upgraded as the browser upgrades it on every load (`migrateProfile`): the account's copy is as the pilot last saved
+    // it, and one saved before a measure was renamed (the body clock's stars, a commuter's trips) valued every trade at 0.
+    const model = r.profile?.pilotModel ? (migrateProfile(r.profile).pilotModel ?? null) : null;
     const line = heldLine(pack, r.holding, `held-${r.userId}`);
     if (!model || !line) return [];
     const locked = new Set(r.holding.trips.filter((t) => t.lock).map(tripInstanceKey));

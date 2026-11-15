@@ -1,4 +1,4 @@
-import { gzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { accountBidPack } from "@/lib/account-bid-pack";
 import { compactBidPack, loadBidPack } from "@/lib/bidpack-storage";
@@ -113,6 +113,58 @@ describe("a signed-in pilot's pack on a device a guest's pack is still on", () =
       vi.stubGlobal("fetch", answer);
       expect(await accountBidPack("u1")).toEqual({ pack: null, saveFailed: false, noneOnAccount: false });
     }
+  });
+
+  describe("a pack saved to the account before ids named the aircraft (Nov 6–7, 2026)", () => {
+    const olderId = "uploaded-mem-fo-oct26";
+    const savedThen = { ...accountPack, id: olderId };
+    /** The account holding it under the older id; what's put back to it, kept. */
+    function serveUnderOlderId() {
+      const body = gzipSync(Buffer.from(JSON.stringify(compactBidPack(savedThen))));
+      const puts: BidPack[] = [];
+      vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+        if (init?.method === "PUT") {
+          puts.push(JSON.parse(gunzipSync(Buffer.from(init.body as Uint8Array)).toString("utf8")));
+          return new Response(JSON.stringify({ saved: true }), { status: 200 });
+        }
+        return url.includes("?meta") ? new Response(JSON.stringify({ packId: olderId, savedAt: new Date().toISOString() }), { status: 200 }) : new Response(body, { status: 200 });
+      });
+      return puts;
+    }
+    const settle = () => new Promise((r) => setTimeout(r, 20));
+
+    it("is saved there again under its own id when this device holds it", async () => {
+      const store = storageWithRoom(Infinity);
+      // This device's copy, saved under the older id too, and moved to the new one when it loads.
+      store.map.set(ACCOUNT_KEY, JSON.stringify(compactBidPack(savedThen)));
+      store.map.set(`${ACCOUNT_KEY}:saved-at`, String(Date.now() - 60_000));
+      vi.stubGlobal("window", { localStorage: store });
+      const puts = serveUnderOlderId();
+      const { pack } = await accountBidPack("u1");
+      expect(pack?.id).toBe(accountPack.id);
+      await settle();
+      expect(puts.map((p) => p.id)).toEqual([accountPack.id]);
+    });
+
+    it("is saved there again under its own id when it's brought to a new device", async () => {
+      vi.stubGlobal("window", { localStorage: storageWithRoom(Infinity) });
+      const puts = serveUnderOlderId();
+      expect((await accountBidPack("u1")).pack?.id).toBe(accountPack.id);
+      await settle();
+      expect(puts.map((p) => p.id)).toEqual([accountPack.id]);
+    });
+
+    it("isn't saved again once the account has it under its own id", async () => {
+      vi.stubGlobal("window", { localStorage: storageWithRoom(Infinity) });
+      const puts: unknown[] = [];
+      serveAccountPack();
+      const served = globalThis.fetch;
+      vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => (init?.method === "PUT" ? (puts.push(init), new Response("{}")) : served(url, init)));
+      await accountBidPack("u1");
+      await accountBidPack("u1");
+      await settle();
+      expect(puts).toEqual([]);
+    });
   });
 
   it("still asks where the browser can't unzip a pack: none is none, a pack it can't open isn't", async () => {

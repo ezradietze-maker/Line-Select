@@ -6,6 +6,7 @@ import { ConfirmEmailRefusal } from "@/components/auth/ConfirmEmail";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { TextField } from "@/components/ui/TextField";
 import { useAppState } from "@/lib/app-state";
+import { awardedLineFor } from "@/lib/bid-checklist";
 import { carryInToSend, loadCarryIn, sameCarryIn, saveCarryIn, type CarryInState } from "@/lib/carry-in-storage";
 import type { CarryInItem } from "@/lib/phase-in";
 import { heldTripsOfLine, tradeLocksFor, tripInstances } from "@/lib/trades/holding";
@@ -119,7 +120,7 @@ export function HoldingPanel({
   const byKey = useMemo(() => new Map(instances.map((t) => [tripInstanceKey(t), t])), [instances]);
   const locks = useMemo(() => tradeLocksFor(bidPack), [bidPack]);
   const lines = useMemo(() => bidPack.lines.filter((l) => !l.estimated), [bidPack]);
-  const awarded = (profile?.logbook ?? []).find((m) => m.bidPackId === bidPack.id && m.lineNumber)?.lineNumber ?? null;
+  const awarded = awardedLineFor(profile, bidPack);
   // The days a trip carried in could still be flying, as this pack's own lines carry out.
   const carryDays = useMemo(() => carryInReachDays(bidPack), [bidPack]);
 

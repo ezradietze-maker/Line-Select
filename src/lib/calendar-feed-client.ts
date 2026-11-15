@@ -10,6 +10,7 @@ import { getBidDeadline } from "@/lib/bid-deadline-storage";
 import { useBidDeadlineOverride } from "@/lib/use-bid-deadline";
 import type { LineSource } from "@/lib/calendar-feed";
 import { isSamplePack } from "@/lib/fake-trade-offers";
+import { isPackId } from "@/lib/pack-id";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -122,7 +123,9 @@ export async function syncFeedChoice(pack: BidPack, profile: PreferenceProfile |
     const result = await sendChoice();
     if (result !== "pack-not-saved") return result;
     const account = await fetchServerBidPackMeta(forAccount);
-    if (account && account.packId !== pack.id && account.savedAt > bidPackSavedAt(userId)) return result;
+    // The same pack kept there under the id it had before ids named the aircraft isn't another pack: it's saved again
+    // under its own. Taken for a newer one, the line was never sent.
+    if (account && !isPackId(account.packId, pack) && account.savedAt > bidPackSavedAt(userId)) return result;
     return (await saveServerBidPack(pack, forAccount)) ? await sendChoice() : result;
   } catch {
     return "failed";

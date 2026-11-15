@@ -31,11 +31,11 @@ export async function saveServerBidPack(pack: BidPack, userId: string | null | u
 }
 
 /**
- * The pack saved to the pilot's account; "none" only when the server said the account holds none. Anything else (no
+ * The pack saved to the pilot's account, under its current id (`restoreBidPack`); "none" only when the server said the account holds none. Anything else (no
  * signal, a server error, a session that lapsed, a browser that can't unzip it) is "unreachable": never a reason to
  * save a pack over the account's.
  */
-export type ServerBidPackLoad = { kind: "found"; pack: BidPack } | { kind: "none" } | { kind: "unreachable" };
+export type ServerBidPackLoad = { kind: "found"; pack: BidPack; savedAs: string } | { kind: "none" } | { kind: "unreachable" };
 
 export async function fetchServerBidPack(userId: string | null | undefined = shownAccount()): Promise<ServerBidPackLoad> {
   try {
@@ -44,7 +44,9 @@ export async function fetchServerBidPack(userId: string | null | undefined = sho
     // Asked first even where the browser can't unzip a pack (Safari before 16.4): "none" needs no unzipping, and a
     // guest who signs up there still has their upload taken over.
     if (res.status !== 200 || typeof DecompressionStream === "undefined") return { kind: "unreachable" };
-    return { kind: "found", pack: restoreBidPack(JSON.parse(await gunzip(await res.arrayBuffer()))) };
+    const stored = JSON.parse(await gunzip(await res.arrayBuffer()));
+    // `savedAs`: the id it's kept under on the account, which is the older one for a pack saved before ids named the aircraft.
+    return { kind: "found", pack: restoreBidPack(stored), savedAs: String(stored?.id ?? "") };
   } catch {
     return { kind: "unreachable" };
   }

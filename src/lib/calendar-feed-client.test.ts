@@ -80,6 +80,17 @@ describe("syncFeedChoice", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("saves the pack again when the account keeps it under the id it had before ids named the aircraft, then sends", async () => {
+    // Saved to the account Nov 6–7, 2026: kept there as "uploaded-mem-fo-oct26", after this device's own save.
+    const current = { ...pack, id: "uploaded-mem-md11-fo-oct26" } as BidPack;
+    const fetchMock = answers("pack-not-saved", "ok");
+    server.fetchServerBidPackMeta.mockResolvedValueOnce({ packId: "uploaded-mem-fo-oct26", savedAt: Date.now() });
+    server.saveServerBidPack.mockResolvedValue(true);
+    expect(await syncFeedChoice(current, null, "1004", "u1")).toBe("ok");
+    expect(server.saveServerBidPack).toHaveBeenCalledWith(current, "u1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("doesn't save anything for a pilot with no link", async () => {
     answers("off");
     expect(await syncFeedChoice(pack, null, "1004")).toBe("off");

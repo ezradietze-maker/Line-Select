@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { bidChecklist, upcomingReminders, withBidEntered } from "@/lib/bid-checklist";
+import { awardedLineFor, bidChecklist, upcomingReminders, withBidEntered } from "@/lib/bid-checklist";
+import { legacyPackIdFor, packIdFor } from "@/lib/pack-id";
 import { buildDeadlineReminderIcs } from "@/lib/ics-export";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -22,6 +23,27 @@ describe("the bid checklist", () => {
     const logged = { ...profile, logbook: [{ id: "a", base: "MEM", aircraft: "MD11", seat: "CAP", month: "OCT26", outcome: "line", loggedAt: "x" }] } as unknown as PreferenceProfile;
     expect(done(logged).award).toBe(true);
     expect(bidChecklist(logged, { ...pack, month: "NOV26" }).find((i) => i.id === "award")?.done).toBe(false);
+  });
+});
+
+describe("the line awarded for a pack", () => {
+  const current = { ...pack, id: packIdFor(pack) };
+  const entry = (over: object) => ({ id: "a", base: "MEM", aircraft: "MD11", seat: "CAP", month: "OCT26", outcome: "line", lineNumber: "1042", loggedAt: "x", ...over });
+  const withLog = (...logbook: object[]) => ({ ...profile, logbook }) as unknown as PreferenceProfile;
+
+  it("is found for an award logged before ids named the aircraft (Nov 5–7, 2026), and for one typed in", () => {
+    // As the Logbook kept them then: the pack's id without its aircraft, or no pack at all.
+    const olderId = withLog(entry({ bidPackId: legacyPackIdFor(pack) }));
+    expect(olderId.logbook?.find((m) => m.bidPackId === current.id)).toBeUndefined();
+    expect(awardedLineFor(olderId, current)).toBe("1042");
+    expect(awardedLineFor(withLog(entry({})), current)).toBe("1042");
+    expect(awardedLineFor(withLog(entry({ bidPackId: current.id })), current)).toBe("1042");
+  });
+
+  it("is none for another month, an award that wasn't a line, or no profile", () => {
+    expect(awardedLineFor(withLog(entry({ month: "SEP26" })), current)).toBeNull();
+    expect(awardedLineFor(withLog(entry({ outcome: "reserve", lineNumber: null })), current)).toBeNull();
+    expect(awardedLineFor(null, current)).toBeNull();
   });
 });
 

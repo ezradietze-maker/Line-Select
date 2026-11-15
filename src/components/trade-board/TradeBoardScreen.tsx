@@ -17,6 +17,7 @@ import { TextField } from "@/components/ui/TextField";
 import { HoldingPanel } from "@/components/trade-board/HoldingPanel";
 import { TradeSuggestions } from "@/components/trade-board/TradeSuggestions";
 import { useAppState } from "@/lib/app-state";
+import { awardedLineFor } from "@/lib/bid-checklist";
 import { keepFocusIn } from "@/lib/focus-keeper";
 import { isSamplePack, withExampleOffer } from "@/lib/fake-trade-offers";
 import { sameBidPack } from "@/lib/inbox";
@@ -152,7 +153,7 @@ export function TradeBoardScreen({
   /** What the pilot confirmed holding, as the panel above loaded or saved it, for the pack it was loaded for. */
   const [held, setHeld] = useState<{ packId: string; holding: TradeHolding | null } | null>(null);
   const holding = bidPack && held?.packId === bidPack.id ? held.holding : null;
-  const awardedLine = bidPack ? ((profile?.logbook ?? []).find((m) => m.bidPackId === bidPack.id && m.lineNumber)?.lineNumber ?? null) : null;
+  const awardedLine = bidPack ? awardedLineFor(profile, bidPack) : null;
   /** What's past its trade deadline is judged against this, moved on each minute. */
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
