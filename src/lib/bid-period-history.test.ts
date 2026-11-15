@@ -85,4 +85,15 @@ describe("bid period history", () => {
       expect(summary?.previousTopLineNowRank).toBeNull();
     });
   });
+
+  it("keeps nothing of the sample pack: a pilot's own first pack doesn't read \"Since SAMPLE\"", () => {
+    saveBidPeriodSnapshot(null, "SAMPLE", [fakeScore("9001", 80)]);
+    expect(loadPreviousPeriodSnapshot(null, "OCT26")).toBeNull();
+    // One a device kept before: still not the period before.
+    window.localStorage.setItem("line-select:bid-period-history:guest:v1", JSON.stringify([{ month: "SAMPLE", savedAt: "2026-11-01T00:00:00Z", ranked: [{ lineNumber: "9001", rank: 1, score: 80 }] }]));
+    expect(loadPreviousPeriodSnapshot(null, "OCT26")).toBeNull();
+    // Nor are the pilot's own months held up against the sample.
+    saveBidPeriodSnapshot(null, "SEP26", [fakeScore("1001", 90)]);
+    expect(loadPreviousPeriodSnapshot(null, "SAMPLE")).toBeNull();
+  });
 });

@@ -6,6 +6,9 @@ import { apiFetch } from "@/lib/shown-account";
  * redirect to — nothing sensitive passes through here.
  */
 
+/** What a membership costs, as Stripe's price for it is set; said on the Membership and Pricing pages alike. */
+export const MEMBERSHIP_PRICE = "$20/month";
+
 export interface BillingStatus {
   /** Whether this deployment has Stripe configured at all. */
   enabled: boolean;

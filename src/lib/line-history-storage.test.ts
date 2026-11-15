@@ -32,4 +32,14 @@ describe("top-line history", () => {
     // And next month compares against October's latest.
     expect(loadTopLinesSnapshot(null, "NOV26")?.map((l) => l.lineNumber)).toEqual(["2285"]);
   });
+
+  it("keeps nothing of the sample pack: a pilot's own first pack isn't compared with it, nor the sample with their months", () => {
+    saveTopLinesSnapshot(null, "SEP26", [score("1100", 70)]);
+    saveTopLinesSnapshot(null, "SAMPLE", [score("9001", 80)]);
+    expect(loadTopLinesSnapshot(null, "OCT26")?.map((l) => l.lineNumber)).toEqual(["1100"]);
+    expect(loadTopLinesSnapshot(null, "SAMPLE")).toBeNull();
+    // One a device kept before: still not read as the month before.
+    store.set("line-select:top-lines:guest:v2", JSON.stringify({ current: { month: "SAMPLE", lines: [{ lineNumber: "9001", score: 80, dimensionValues: {} }] }, previous: null }));
+    expect(loadTopLinesSnapshot(null, "OCT26")).toBeNull();
+  });
 });

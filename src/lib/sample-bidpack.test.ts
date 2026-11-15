@@ -2,12 +2,18 @@ import { DateTime } from "luxon";
 import { describe, expect, it } from "vitest";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { buildPackRow, packColumnCount } from "@/lib/bidpack-row";
+import { isSamplePack, SAMPLE_MONTH } from "@/lib/fake-trade-offers";
 import { pairingDate, pastedMatches } from "@/lib/view-add";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 
 const pack = SAMPLE_BID_PACK;
 
 describe("the sample bid pack", () => {
+  it("is the sample by its id and its month, as the rankings' history tells it apart", () => {
+    expect(isSamplePack(pack)).toBe(true);
+    expect(pack.month).toBe(SAMPLE_MONTH);
+  });
+
   it("is on dates, like an uploaded pack: a 28-day period and every trip on its own day", () => {
     expect(pack.bidPeriodStart).toBe("2027-08-30");
     expect(pack.bidPeriodDays).toBe(28);
