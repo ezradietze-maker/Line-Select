@@ -62,13 +62,22 @@ export const LIKELIHOOD_LABEL: Record<Likelihood, string> = {
 /**
  * Where a seniority number sits in bid order. An exact match on the pack's
  * list is authoritative; a number that isn't on it (a typo, or a list that
- * left someone off) is placed by how many listed pilots are more senior.
+ * left someone off) is placed just after the listed pilots more senior than it.
  */
 export function resolveBidPosition(list: SeniorityEntry[], seniority: number): { bidNumber: number; exact: boolean } {
   const exact = list.find((e) => e.seniority === seniority);
   if (exact) return { bidNumber: exact.bidNumber, exact: true };
-  const moreSenior = list.filter((e) => e.seniority < seniority).length;
-  return { bidNumber: moreSenior + 1, exact: false };
+  // After the last of them by bid number, not their count: a position the list didn't read is still a pilot ahead.
+  const lastSenior = list.reduce((n, e) => (e.seniority < seniority ? Math.max(n, e.bidNumber) : n), 0);
+  return { bidNumber: lastSenior + 1, exact: false };
+}
+
+/**
+ * Pilots in the seat: its highest bid number. A list is kept with a position or two it didn't read
+ * (`seniority-list-parser`), so its rows can come up short of the bid numbers on it — "#528 of 526".
+ */
+export function seatSize(list: readonly SeniorityEntry[]): number {
+  return list.reduce((n, e) => Math.max(n, e.bidNumber), list.length);
 }
 
 /**
@@ -169,6 +178,7 @@ export function forecastWithCore(input: FeatureForecastInput): { forecast: BidFo
   const notBidding = new Set(list.filter((e) => e.pay).map((e) => e.bidNumber));
   const core: ForecastCore = simulateBid({
     features,
+    // Played to the list's own rows, as the forecast route's bar on shared rankings counts them.
     totalPilots: list.length,
     myBidNumber: position.bidNumber,
     myRanking: input.myRanking,
@@ -211,7 +221,7 @@ export function forecastWithCore(input: FeatureForecastInput): { forecast: BidFo
     packKey: input.packKey,
     myBidNumber: position.bidNumber,
     exactPosition: position.exact,
-    totalPilots: list.length,
+    totalPilots: seatSize(list),
     pilotsAhead: core.pilotsAhead,
     regularLines: input.regularLines,
     lines,
@@ -255,7 +265,7 @@ export function forecastBid(input: ForecastInput): BidForecast | null {
     features,
     seniorityList: list,
     regularLines: bidPack.lines.length,
-    dropoutRate: estimateDropoutRate(bidPack, list.length),
+    dropoutRate: estimateDropoutRate(bidPack, seatSize(list)),
     seniorityNumber: input.seniorityNumber,
     myRanking: input.myRanking.map((id) => indexById.get(id)).filter((i): i is number => i !== undefined),
     known: (input.known ?? []).map((k) => ({

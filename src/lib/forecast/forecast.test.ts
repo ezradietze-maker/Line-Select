@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildLineFeatures, FEATURE_COUNT, FEATURE_NAMES } from "@/lib/forecast/features";
-import { estimateDropoutRate, forecastBid, forecastFromFeatures, forecastPackKey, likelihoodOf, resolveBidPosition } from "@/lib/forecast/forecast";
+import { estimateDropoutRate, forecastBid, forecastFromFeatures, forecastPackKey, likelihoodOf, resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { estimatePopulation, fitWeightsFromRanking, PRIOR_MEAN } from "@/lib/forecast/population";
 import { mulberry32 } from "@/lib/forecast/random";
 import type { BidPack, Line, SeniorityEntry } from "@/types/bidpack";
@@ -38,6 +38,24 @@ describe("bid position", () => {
     expect(resolveBidPosition(list, 30)).toEqual({ bidNumber: 3, exact: false });
     expect(resolveBidPosition(list, 5)).toEqual({ bidNumber: 1, exact: false });
     expect(resolveBidPosition(list, 99)).toEqual({ bidNumber: 4, exact: false });
+  });
+
+  it("counts the seat to its highest bid number when the list kept a position it didn't read", () => {
+    // Bid #2 didn't read: two rows, three pilots, and a pilot at #3 is 3rd of 3, not "3 of 2".
+    const gap: SeniorityEntry[] = [
+      { bidNumber: 1, seniority: 10 },
+      { bidNumber: 3, seniority: 40 },
+    ];
+    expect(seatSize(gap)).toBe(3);
+    expect(seatSize(list)).toBe(3);
+    expect(resolveBidPosition(gap, 40)).toEqual({ bidNumber: 3, exact: true });
+    // Junior to all of them: after #3, not 3rd.
+    expect(resolveBidPosition(gap, 99)).toEqual({ bidNumber: 4, exact: false });
+    // The forecast banner's own "10 of 9 in bid order".
+    const p = syntheticPack(4, 10);
+    const short = { ...p, seniorityList: p.seniorityList!.filter((e) => e.bidNumber !== 5) };
+    const f = forecastBid({ bidPack: short, seniorityNumber: 30, myRanking: idsBestFirst(short), simulations: 50 })!;
+    expect(f).toMatchObject({ myBidNumber: 10, totalPilots: 10 });
   });
 });
 

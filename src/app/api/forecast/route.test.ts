@@ -185,6 +185,20 @@ describe("/api/forecast", () => {
     authMocks.getCurrentServerUser.mockResolvedValue(USER);
     const signedIn = await (await POST(request(goodBody({ seniorityNumber: 50 })))).json();
     expect(signedIn.forecast.knownAhead).toBe(0);
+    // Nor how many shared: "1 pilot has shared a ranking for this seat", to anyone asking about any seat.
+    expect(guest.crowd.pilotsSharing).toBe(0);
+    expect(signedIn.crowd.pilotsSharing).toBe(0);
+  });
+
+  it("tells a guest nothing of who shares, however many do", async () => {
+    for (const [id, seniority] of [["user-a", 10], ["user-b", 15], ["user-c", 25]] as const) {
+      authMocks.getCurrentServerUser.mockResolvedValue({ ...USER, id });
+      await POST(request(goodBody({ share: true, seniorityNumber: seniority, ranking: [3, 4, 5, 0, 1, 2, 6, 7, 8, 9, 10, 11] })));
+    }
+    authMocks.getCurrentServerUser.mockResolvedValue(null);
+    const guest = await (await POST(request(goodBody({ seniorityNumber: 50 })))).json();
+    expect(guest.crowd.pilotsSharing).toBe(0);
+    expect(guest.forecast.knownAhead).toBe(0);
   });
 
   it("counts toward the bar only the sharers the forecast plays: a short list can't leave one sharer alone ahead", async () => {

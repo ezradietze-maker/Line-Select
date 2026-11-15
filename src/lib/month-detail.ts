@@ -629,8 +629,17 @@ export function buildDetailedMonth(
           note(day, `${nightsWord(b.nights)} in a ${code} hotel waiting for this trip — not long enough at home to be worth the trip back.`);
         }
         if (b.reason === "after") {
-          const day = lastDayOf(last);
-          note(day, `Back in ${code}${day?.finish ? ` at ${day.finish.time}` : ""} — too late to get home that night, so a night in ${code}.`);
+          // On the base's own clock, said on the evening whose night it costs: the day before, for a landing after
+          // midnight. Read off the trip's last day it landed a day late in Zulu, at a Zulu time it judged as local.
+          const zone = timezoneForAirport(code);
+          const release = dep.releaseAt !== null && zone ? DateTime.fromMillis(dep.releaseAt, { zone }) : null;
+          const afterMidnight = !!release && release.hour < 5;
+          const night = release ? (afterMidnight ? release.minus({ days: 1 }) : release).toISODate() : null;
+          const index = night && bidPeriodStart ? Math.round(DateTime.fromISO(night).diff(DateTime.fromISO(bidPeriodStart), "days").days) : -1;
+          const lastDay = lastDayOf(last);
+          const day = days.find((x) => x.dayIndex === index) ?? lastDay;
+          const time = release ? release.toFormat("HH:mm") : lastDay?.finish?.time;
+          note(day, `Back in ${code}${time ? ` at ${time}${afterMidnight ? ", just after midnight" : ""}` : ""} — too late to get home that night, so a night in ${code}.`);
         }
       }
     }

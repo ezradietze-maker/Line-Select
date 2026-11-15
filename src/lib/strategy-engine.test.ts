@@ -66,6 +66,17 @@ describe("computeStanding", () => {
     expect(st.vacationDays).toBeGreaterThan(0);
   });
 
+  it("never puts the pilot past the end of the count shown beside their place", () => {
+    // Junior to all 30 on the list: #31 of 31, and 21st of 21 bidding — not "21 of 20".
+    const junior = computeStanding(pack(), { rank: 31, totalPilots: 31, source: "between" });
+    expect(junior).toMatchObject({ printedBidNumber: 31, listSize: 31, effective: 21, bidders: 21 });
+    // Bid #29 didn't read (nor its PAY): #30 is still 30th of 30 on the list, and 21st of 21 bidding.
+    const p = pack({ seniorityList: pack().seniorityList!.filter((e) => e.bidNumber !== 29) });
+    expect(computeStanding(p, at(30))).toMatchObject({ printedBidNumber: 30, listSize: 30, effective: 21, bidders: 21 });
+    // A seat size saved below the number (an older pack's) still reads in order.
+    expect(computeStanding(pack(), { rank: 30, totalPilots: 26 }).listSize).toBe(30);
+  });
+
   it("falls back to the printed number when the list has no PAY flags", () => {
     const p = pack({ seniorityList: pack().seniorityList!.map(({ bidNumber, seniority }) => ({ bidNumber, seniority })) });
     const st = computeStanding(p, at(12));

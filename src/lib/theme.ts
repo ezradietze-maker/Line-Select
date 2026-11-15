@@ -61,6 +61,22 @@ export function setStoredTheme(mode: ThemeMode): void {
 }
 
 /**
+ * Keeps this tab on the theme chosen in any other: a choice there left this one on the old theme until it reloaded.
+ * Applied here, and told to every appearance menu here (`THEME_CHANGE_EVENT`). Returns the unsubscribe.
+ */
+export function followThemeFromOtherTabs(): () => void {
+  const onStorage = (e: StorageEvent) => {
+    // A null key: storage cleared, which is "system" again.
+    if (e.key !== THEME_KEY && e.key !== null) return;
+    const mode = getStoredTheme();
+    applyThemeAttribute(mode);
+    window.dispatchEvent(new CustomEvent<ThemeMode>(THEME_CHANGE_EVENT, { detail: mode }));
+  };
+  window.addEventListener("storage", onStorage);
+  return () => window.removeEventListener("storage", onStorage);
+}
+
+/**
  * Inlined into <head> so the correct theme attribute is set before first
  * paint, avoiding a flash of the wrong theme on load.
  */

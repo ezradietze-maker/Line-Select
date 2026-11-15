@@ -18,7 +18,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TextField } from "@/components/ui/TextField";
 import { fetchAwardSummary, summaryForSeniority } from "@/lib/award-history";
 import { rankingAsShown } from "@/lib/ranking-as-shown";
-import { resolveBidPosition } from "@/lib/forecast/forecast";
+import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { attachScoreContext, computeStanding, generateStrategies, rankStrategiesByPreference, type Standing } from "@/lib/strategy-engine";
 import { SENIORITY_BANDS } from "@/lib/seniority-bands";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
@@ -128,7 +128,7 @@ function SeniorityGate({
           if (profile) onUpdateProfile({ ...profile, seniorityNumber });
           const list = bidPack.seniorityList ?? [];
           const position = resolveBidPosition(list, seniorityNumber);
-          onSaveSeniority({ rank: position.bidNumber, totalPilots: Math.max(list.length, position.bidNumber), source: position.exact ? "typed" : "between" });
+          onSaveSeniority({ rank: position.bidNumber, totalPilots: Math.max(seatSize(list), position.bidNumber), source: position.exact ? "typed" : "between" });
           setEditing(false);
         }}
       />

@@ -237,6 +237,36 @@ describe("chained trips", () => {
   });
 });
 
+describe("a late release at base", () => {
+  /** Sample trip 501, its flight home moved to leave LAX at `dep` and land in MEM at `arr` (local), `start`/`end` minutes in. */
+  function lateLine(dep: [string, string], arr: [string, string], start: number, end: number): Line {
+    const l = SAMPLE_BID_PACK.lines.find((x) => x.trips.some((t) => t.pairingNumber === "501"))!;
+    const t = l.trips.find((x) => x.pairingNumber === "501")!;
+    const anchor = Date.parse(t.zuluAnchor!);
+    const schedule = structuredClone(t.schedule);
+    Object.assign(schedule[1].legs[0], {
+      depTimeLocal: dep[0], depTimeGmt: dep[1], arrTimeLocal: arr[0], arrTimeGmt: arr[1], startMinutes: start, endMinutes: end,
+      depTimeZulu: new Date(anchor + start * 60_000).toISOString(), arrTimeZulu: new Date(anchor + end * 60_000).toISOString(),
+    });
+    return { ...l, trips: [{ ...t, schedule }] };
+  }
+  const commuter = monthDepartureOptions("MEM", { isCommuter: true, commuteFrom: "SAN", hasCrashPad: false });
+  const noted = (l: Line, mode: "local" | "zulu") => buildDetailedMonth(l, SAMPLE_BID_PACK.bidPeriodStart ?? null, 28, {}, commuter, mode).days.filter((d) => d.baseNote?.includes("too late"));
+
+  it("says the night in base on the evening it costs, at the base's own time, on either clock", () => {
+    // Lands MEM 00:35 on Sep 13: the night it costs is Sep 12's.
+    const past = lateLine(["1950", "0250"], ["0035", "0535"], 1910, 2075);
+    for (const mode of ["local", "zulu"] as const) {
+      expect(noted(past, mode).map((d) => [d.label, d.baseNote])).toEqual([["12", "Back in MEM at 00:35, just after midnight — too late to get home that night, so a night in MEM."]]);
+    }
+    // Lands MEM 23:30 on Sep 12 (04:30 Zulu on the 13th).
+    const late = lateLine(["1845", "2345"], ["2330", "0430"], 1845, 2010);
+    for (const mode of ["local", "zulu"] as const) {
+      expect(noted(late, mode).map((d) => [d.label, d.baseNote])).toEqual([["12", "Back in MEM at 23:30 — too late to get home that night, so a night in MEM."]]);
+    }
+  });
+});
+
 describe("time at home on the calendar", () => {
   it("says how long the pilot is home between departures, on the day they get home, and counts the short stays", () => {
     // Two trips a week apart: one stay at home between them.

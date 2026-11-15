@@ -84,10 +84,14 @@ export async function POST(request: Request) {
     !isText(aircraft, 20) ||
     (seat !== "CAP" && seat !== "FO") ||
     !isShareableMonth(month) ||
+    // A place in bid order from 1 to the seat's size: a #0 read as more senior than #1 (its group a slice below the
+    // first), and a place past the seat's end as the most junior.
     !isIntOrNull(seniorityRank, 100_000) ||
     seniorityRank == null ||
+    seniorityRank < 1 ||
     !isIntOrNull(seniorityTotalPilots, 100_000) ||
     seniorityTotalPilots == null ||
+    seniorityRank > seniorityTotalPilots ||
     (outcome !== "line" && outcome !== "reserve" && outcome !== "other") ||
     (body.lineNumber !== undefined && body.lineNumber !== null && !isText(body.lineNumber, 12)) ||
     !isIntOrNull(body.daysOff, 31) ||
@@ -129,7 +133,7 @@ export async function POST(request: Request) {
   const brainVersion = !said("brainVersion") ? undefined : Number.isInteger(body.brainVersion) && (body.brainVersion as number) > 0 && (body.brainVersion as number) < 10_000 ? (body.brainVersion as number) : null;
   const notesUsed = !said("notesUsed") ? undefined : typeof body.notesUsed === "boolean" ? body.notesUsed : null;
   // Only for a line, and only when the pilot said yes to showing their number beside it.
-  const canShowHolder = isLine && !!record.lineNumber && record.seniorityRank >= 1 && record.seniorityRank <= record.seniorityTotalPilots;
+  const canShowHolder = isLine && !!record.lineNumber;
   const holderShown = !canShowHolder ? false : !said("holderShown") ? undefined : body.holderShown === true;
   await createAwardHistoryRecord(record, { pilotHash, packKey, awardedChoice: isLine ? (fromForecast ?? clientChoice) : null, monthFeel, brainVersion, notesUsed, holderShown });
   afterResponse(() => maybeLearn("awards"));
