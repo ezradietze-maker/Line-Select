@@ -684,6 +684,10 @@ export function ResultsView({
   const shown = pageState.key === listKey ? pageState.shown : PAGE_SIZE;
   const displayed = useMemo(() => sorted.slice(0, shown), [sorted, shown]);
   const listedIds = useMemo(() => sorted.map((r) => r.line.id), [sorted]);
+  // A selection is of lines the pilot can see in the list: a search, filter or view that leaves a selected line out
+  // takes it out of the selection, and a move (toolbar, right-click menu, a tier key) never reaches it (`selectionWithin`).
+  const listedSet = useMemo(() => new Set(listedIds), [listedIds]);
+  if (listReady && [...tiers.selected].some((id) => !listedSet.has(id))) tiers.keepSelected(listedSet);
   const headings = useMemo(() => (lineSort.isRanking ? tierHeadings(listedIds, tiers.state) : new Map()), [lineSort.isRanking, listedIds, tiers.state]);
   const displayedIds = useMemo(() => displayed.map((r) => r.line.id), [displayed]);
 

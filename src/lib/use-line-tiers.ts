@@ -23,6 +23,7 @@ import {
   removeTier,
   renameTier,
   saveTiers,
+  selectionWithin,
   setAsideLines,
   swapTiers,
   tiersKey,
@@ -53,6 +54,8 @@ export interface LineTiers {
   toggleSelected: (lineId: string, rangeOver?: string[]) => void;
   /** Replace the selection outright (a right-click "select all above/below"). */
   select: (lineIds: string[]) => void;
+  /** Narrow the selection to the lines listed (`selectionWithin`). */
+  keepSelected: (listed: ReadonlySet<string>) => void;
   clearSelected: () => void;
   move: (lineIds: string[], tierId: string | null) => void;
   park: (lineIds: string[]) => void;
@@ -290,6 +293,10 @@ export function useLineTiers(
     setSelected(new Set(ids));
     setAnchor(ids[ids.length - 1] ?? null);
   }, []);
+  const keepSelected = useCallback((listed: ReadonlySet<string>) => {
+    setSelected((prev) => selectionWithin(prev, listed));
+    setAnchor((a) => (a !== null && !listed.has(a) ? null : a));
+  }, []);
   const clearSelected = useCallback(() => setSelected(new Set()), []);
 
   const order = useCallback((list: LineScore[]) => applyTiers(list, state, (r) => r.line.id), [state]);
@@ -307,6 +314,7 @@ export function useLineTiers(
     selected,
     toggleSelected,
     select,
+    keepSelected,
     clearSelected,
     move,
     park,

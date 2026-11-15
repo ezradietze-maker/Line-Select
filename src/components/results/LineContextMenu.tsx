@@ -26,6 +26,20 @@ function Item({ onClick, children, disabled = false }: { onClick: () => void; ch
   );
 }
 
+const MENU_PAD = 8;
+
+/**
+ * Where the menu goes: at the pointer, moved left or up as far as it must to stay on screen, never past the top or the
+ * left edge. Moved up by its whole height, a menu taller than the space (a phone turned sideways, or many tiers) put
+ * its first items above the top of the screen, where nothing could reach them; it scrolls instead (`max-h` below).
+ */
+export function placeMenu(at: { x: number; y: number }, size: { width: number; height: number }, screen: { width: number; height: number }): { x: number; y: number } {
+  return {
+    x: Math.max(MENU_PAD, Math.min(at.x, screen.width - size.width - MENU_PAD)),
+    y: Math.max(MENU_PAD, Math.min(at.y, screen.height - size.height - MENU_PAD)),
+  };
+}
+
 /**
  * Right-click a line to work a block at once: select everything above or below it, then send the whole
  * selection to a tier, set it aside, or take it out — the bulk moves Acrobid's grid has, on our scored list.
@@ -39,13 +53,8 @@ export function LineContextMenu({ menu, tiers, listedIds, onClose }: { menu: Lin
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const { width, height } = el.getBoundingClientRect();
-    const pad = 8;
-    setPos({
-      x: Math.min(menu.x, window.innerWidth - width - pad),
-      y: Math.min(menu.y, window.innerHeight - height - pad),
-    });
-  }, [menu.x, menu.y]);
+    setPos(placeMenu(menu, el.getBoundingClientRect(), { width: window.innerWidth, height: window.innerHeight }));
+  }, [menu]);
 
   // A menu opens onto its first item, and gives the keyboard back to where it was when it closes: left where it was, the
   // arrows went on moving the line under it. When that's gone with its line (set aside), to the line now in its place:
@@ -72,7 +81,10 @@ export function LineContextMenu({ menu, tiers, listedIds, onClose }: { menu: Lin
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    const onScroll = () => onClose();
+    // The page scrolling closes it; the menu's own scroll, when it's taller than the screen, doesn't.
+    const onScroll = (e: Event) => {
+      if (!(e.target instanceof Node && ref.current?.contains(e.target))) onClose();
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onScroll, true);
     return () => {
@@ -109,7 +121,7 @@ export function LineContextMenu({ menu, tiers, listedIds, onClose }: { menu: Lin
         ref={ref}
         role="menu"
         aria-label="Line actions"
-        className="panel-glass absolute min-w-52 overflow-hidden rounded-lg border border-hairline bg-surface-raised py-1 shadow-lg"
+        className="panel-glass absolute max-h-[calc(100dvh-1rem)] min-w-52 overflow-y-auto rounded-lg border border-hairline bg-surface-raised py-1 shadow-lg"
         style={{ left: pos.x, top: pos.y }}
         onClick={(e) => e.stopPropagation()}
         onContextMenu={(e) => e.stopPropagation()}
