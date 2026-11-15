@@ -69,8 +69,9 @@ export function saveTopLinesSnapshot(userId: string | null, month: string, lineS
       dimensionValues: Object.fromEntries(r.dimensions.map((d) => [d.key, d.value])),
     }));
   const stored = read(userId);
-  // A new month pushes the last one back to "previous"; the same month just refreshes itself.
-  const previous = stored && stored.current.month !== month ? stored.current : (stored?.previous ?? null);
+  // A new month pushes the last one back to "previous"; the same month just refreshes itself. A sample kept as the
+  // last month before it stopped being kept goes instead of pushing the pilot's own month before it out.
+  const previous = stored && stored.current.month !== month && stored.current.month !== SAMPLE_MONTH ? stored.current : (stored?.previous ?? null);
   try {
     window.localStorage.setItem(snapshotKey(userId), JSON.stringify({ current: { month, lines }, previous } satisfies StoredHistory));
   } catch {
