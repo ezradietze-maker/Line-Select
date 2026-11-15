@@ -10,6 +10,7 @@ const auth = vi.hoisted(() => ({ endSession: vi.fn(async () => {}), getUserForSe
 vi.mock("@/lib/server/auth", () => ({ SESSION_COOKIE: "ls_session", ...auth }));
 
 const { POST } = await import("./route");
+const ownPage = () => new Request("https://lineselect.test/api/auth/logout", { method: "POST", headers: { "sec-fetch-site": "same-origin" } });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -19,16 +20,24 @@ beforeEach(() => {
 describe("sign out", () => {
   it("leaves the session alone when the tab is for another pilot than the one signed in now", async () => {
     jar.header = "pilot-a";
-    const res = await POST();
+    const res = await POST(ownPage());
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ ok: false, otherAccount: true });
+    expect(auth.endSession).not.toHaveBeenCalled();
+  });
+
+  it("is refused to another website's page, which could otherwise sign the pilot out by posting a form here", async () => {
+    jar.header = null;
+    const res = await POST(new Request("https://lineselect.test/api/auth/logout", { method: "POST", headers: { "sec-fetch-site": "cross-site" } }));
+    expect(res.status).toBe(403);
+    expect(res.headers.get("set-cookie")).toBeNull();
     expect(auth.endSession).not.toHaveBeenCalled();
   });
 
   it("ends it for the pilot it's for, and for a caller that doesn't say", async () => {
     for (const header of ["pilot-b", null]) {
       jar.header = header;
-      expect((await POST()).status).toBe(200);
+      expect((await POST(ownPage())).status).toBe(200);
     }
     expect(auth.endSession).toHaveBeenCalledTimes(2);
   });
