@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The database is fully mocked — these tests are about the webhook's ordering and dedupe decisions, not SQL.
 const db = vi.hoisted(() => ({
+  findUserById: vi.fn(),
   getSubscriptionByCustomerId: vi.fn(),
   getSubscriptionByUserId: vi.fn(),
   markStripeEventProcessed: vi.fn(),
@@ -68,6 +69,7 @@ beforeEach(() => {
   stripe.config.secret = "whsec_test";
   stripe.config.enabled = true;
   db.stripeEventProcessed.mockResolvedValue(false);
+  db.findUserById.mockImplementation(async (id: string) => ({ id }));
   db.getSubscriptionByUserId.mockResolvedValue(null);
   db.getSubscriptionByCustomerId.mockResolvedValue(null);
   db.saveSubscription.mockResolvedValue(undefined);
@@ -166,6 +168,19 @@ describe("stripe webhook", () => {
     expect(res.status).toBe(200);
     expect(db.saveSubscription).not.toHaveBeenCalled();
     expect(db.setUserPlan).not.toHaveBeenCalled();
+    expect(db.markStripeEventProcessed).toHaveBeenCalled();
+  });
+
+  it("records (but doesn't act on) an event for an account that's been deleted, instead of failing it for Stripe to retry", async () => {
+    // As Postgres answers: the membership's row points at the account, and the account is gone.
+    db.findUserById.mockResolvedValue(null);
+    db.saveSubscription.mockRejectedValue(new Error('insert or update on table "subscriptions" violates foreign key constraint "subscriptions_user_id_users_id_fk"'));
+    stripe.constructEventAsync.mockResolvedValue(event("customer.subscription.deleted", 1000, sub({ status: "canceled", userId: "u-gone" })));
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(db.saveSubscription).not.toHaveBeenCalled();
+    expect(db.setUserPlan).not.toHaveBeenCalled();
+    expect(alerts.reportProblem).not.toHaveBeenCalled();
     expect(db.markStripeEventProcessed).toHaveBeenCalled();
   });
 

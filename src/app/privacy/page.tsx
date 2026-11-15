@@ -199,7 +199,7 @@ export default function PrivacyPage() {
             </li>
             <li>
               When you sign in, a note that this device (by the random ID in its device cookie, Section 12) has signed
-              in to your account, kept for 180 days, so the limit on failed sign-ins aimed at your account doesn&rsquo;t
+              in to your account, kept for 180 days or until your password is reset, so the limit on failed sign-ins aimed at your account doesn&rsquo;t
               keep you out on your own devices;
             </li>
             <li>

@@ -882,6 +882,23 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.findUserById(later)).toBeNull();
     });
 
+    it("the clear-out waits while a link to take the account back still works", async () => {
+      // Signed up eight days ago, never confirmed; today the address's owner signed up again (or said "This wasn't me")
+      // and was sent a link to set the password and make it theirs. Removed in that hour, the link led nowhere.
+      const id = randomUUID();
+      const email = `take-back-${id}@test.line-select.invalid`;
+      await mod.createUserWithCredential({ id, email, displayName: "P", createdAt: new Date(Date.now() - 8 * 24 * 3600_000).toISOString(), plan: "free", emailVerified: false }, { userId: id, email, passwordHash: "00", salt: "00" });
+      createdUserIds.push(id);
+      await mod.saveVerificationToken({ tokenHash: hashOf(`first-${id}`), userId: id, expiresAt: new Date(Date.now() - 7 * 24 * 3600_000).toISOString(), signUp: true });
+      await mod.saveResetToken({ tokenHash: hashOf(`take-back-${id}`), userId: id, expiresAt: new Date(Date.now() + 3600_000).toISOString() });
+      const weekAgo = new Date(Date.now() - 7 * 24 * 3600_000);
+      await mod.deleteUnconfirmedSignUps(weekAgo);
+      expect(await mod.findUserById(id)).not.toBeNull();
+      // Once it has run out, the account goes as any other.
+      await mod.deleteUnconfirmedSignUps(weekAgo, new Date(Date.now() + 2 * 3600_000));
+      expect(await mod.findUserById(id)).toBeNull();
+    });
+
     it("the clear-out leaves an account anyone has used: a session, a saved pack, a profile or a membership", async () => {
       const weekAgo = new Date(Date.now() - 8 * 24 * 3600_000).toISOString();
       const made = async (label: string) => {

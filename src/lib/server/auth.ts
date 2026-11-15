@@ -346,7 +346,7 @@ export async function confirmEmail(token: string, signedInAs: string | null, dev
     if (!(await mayMailAddress("take-back-mail", normalizeEmail(user.email), from ?? "unknown")) || !(await siteMailLeft("sign-up", from ?? "unknown"))) return { status: "limited" };
     if (!(await voidVerificationToken(hash))) return { status: "used", yours: false };
     // Whoever made the account may be signed in to it, or have a calendar link from it: both end here.
-    await endOtherWaysIn(user.id);
+    await endOtherWaysIn(user.id, normalizeEmail(user.email));
     await sendTakeBackLink(user.id, normalizeEmail(user.email), config, "You told us you didn't sign up for the Line Select account with this address. Whoever did can't use this link, and the account isn't confirmed.");
     return { status: "not-me" };
   }
@@ -374,10 +374,12 @@ export async function confirmEmail(token: string, signedInAs: string | null, dev
 /**
  * Every way someone else may still be in an account once its owner has taken it back (a reset by either route, "This
  * wasn't me"): every session is signed out, and the private calendar link is revoked, since whoever was in could have
- * made one and kept it; the owner makes a new one from Tools. The recovery code is replaced by the caller.
+ * made one and kept it; the owner makes a new one from Tools. And every device the account knew is forgotten
+ * (`forgetKnownDevices`): whoever was in was signed in on one of them. The recovery code is replaced by the caller, and
+ * the device the owner took it back on is remembered after this.
  */
-async function endOtherWaysIn(userId: string): Promise<void> {
-  await Promise.all([deleteSessionsForUser(userId), revokeFeed(userId)]);
+async function endOtherWaysIn(userId: string, email: string): Promise<void> {
+  await Promise.all([deleteSessionsForUser(userId), revokeFeed(userId), forgetKnownDevices(email)]);
 }
 
 const RESET_RATE_LIMIT_SCOPE = "password-reset";
@@ -414,7 +416,7 @@ export async function resetPasswordWithRecoveryCode(email: string, recoveryCode:
 
   const salt = randomBytes(16).toString("hex");
   await updateCredential(credential.userId, { passwordHash: await hashPassword(newPassword, salt), salt });
-  await endOtherWaysIn(credential.userId);
+  await endOtherWaysIn(credential.userId, normalized);
   await clearAttemptsAfterReset(normalized, from);
   await rememberDevice(normalized, device);
   const newRecoveryCode = await storeNewRecoveryCode(credential.userId);
@@ -483,10 +485,10 @@ export async function resetPasswordWithEmailToken(token: string, newPassword: st
 
   const salt = randomBytes(16).toString("hex");
   await updateCredential(userId, { passwordHash: await hashPassword(newPassword, salt), salt });
-  await endOtherWaysIn(userId);
+  const normalized = normalizeEmail(user.email);
+  await endOtherWaysIn(userId, normalized);
   await markEmailVerified(userId);
   const recoveryCode = await storeNewRecoveryCode(userId);
-  const normalized = normalizeEmail(user.email);
   await clearAttemptsAfterReset(normalized, from);
   await rememberDevice(normalized, device);
   return { ok: true, user: { ...user, emailVerified: true }, sessionToken: await startSession(userId), recoveryCode };
@@ -604,16 +606,22 @@ const KNOWN_DEVICE_SECONDS = 180 * 24 * 60 * 60;
 
 /**
  * The device id is the signed one from the device cookie (`deviceIdFrom`): random, never shown, so no one else can
- * claim to be the pilot's laptop. Keyed by a hash of the email, so the stored keys don't spell out the address.
+ * claim to be the pilot's laptop. But whoever has it can send it from any address, so a device stays known only until
+ * the account is next taken back (`forgetKnownDevices`). Keyed by a hash of the email, so the stored keys don't spell
+ * out the address, and by when it was last taken back: never, the key it always had.
  */
-function knownDeviceKey(email: string, device: string): string {
-  return `line-select:known-device:${createHash("sha256").update(email).digest("hex").slice(0, 32)}:${device}`;
+const emailKey = (email: string) => createHash("sha256").update(email).digest("hex").slice(0, 32);
+const takenBackKey = (email: string) => `line-select:known-device-reset:${emailKey(email)}`;
+
+async function knownDeviceKey(email: string, device: string): Promise<string> {
+  const takenBack = (await getJson<number>(takenBackKey(email))) ?? 0;
+  return `line-select:known-device:${emailKey(email)}:${takenBack ? `${takenBack}:` : ""}${device}`;
 }
 
 async function rememberDevice(email: string, device?: string | null): Promise<void> {
   if (!device) return;
   try {
-    await setJson(knownDeviceKey(email, device), 1, { ttlSeconds: KNOWN_DEVICE_SECONDS });
+    await setJson(await knownDeviceKey(email, device), 1, { ttlSeconds: KNOWN_DEVICE_SECONDS });
   } catch {
     // Only means this device is held to the account-wide ceiling like any other next time.
   }
@@ -622,9 +630,23 @@ async function rememberDevice(email: string, device?: string | null): Promise<vo
 async function isKnownDevice(email: string, device?: string | null): Promise<boolean> {
   if (!device) return false;
   try {
-    return (await getJson<number>(knownDeviceKey(email, device))) === 1;
+    return (await getJson<number>(await knownDeviceKey(email, device))) === 1;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Every device known to the account becomes unknown: their marks stay under the old time and are never read again. A
+ * time, not a count, so it never comes round to an old one; kept as long as a mark lasts, so when it's gone every mark
+ * made before it has gone too. Without it (the store not answering), known devices stay known, held by their address's
+ * own limit as ever.
+ */
+async function forgetKnownDevices(email: string): Promise<void> {
+  try {
+    await setJson(takenBackKey(email), Date.now(), { ttlSeconds: KNOWN_DEVICE_SECONDS });
+  } catch {
+    // As above: the reset itself still goes through.
   }
 }
 
