@@ -1,5 +1,6 @@
 import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { fitTripWeights, shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
+import { withHomeFacts } from "@/lib/brain/model-upgrade";
 import { learnFromChoices } from "@/lib/brain/reorder-learner";
 import { criterionFromAnswer, type FactorOption, type SwapQuestion } from "@/lib/brain/swap-question";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
@@ -81,8 +82,12 @@ export function withModel(
   update: { base?: PilotModel; choices?: LineChoice[]; cityRatings?: PreferenceProfile["cityRatings"]; pins?: Record<string, number>; swapAnswers?: SwapAnswer[] },
   pack?: PackMetrics
 ): { profile: PreferenceProfile; changes: WeightChange[]; heldByLimit: LineChoice[] } {
-  const base = update.base ?? baseModelOf(profile);
-  if (!base) return { profile, changes: [], heldByLimit: [] };
+  // The crash pad and hours at home the pilot picked on a screen win over a new reading of their words ("Add it" on
+  // Preferences), as they do when the interview ends and on every load: left to the reading, the ranking counted
+  // departures by 24 hours at home while the card said the pilot's own number.
+  const fresh = update.base ?? baseModelOf(profile);
+  if (!fresh) return { profile, changes: [], heldByLimit: [] };
+  const base = withHomeFacts(fresh, { hasCrashPad: profile.hasCrashPad, minHomeHours: profile.minHomeHours });
   const choices = update.choices ?? profile.brainInterview?.choices ?? [];
   // A swap's answer goes when the swap does.
   const dragIds = new Set(choices.flatMap((c) => (c.dragId ? [c.dragId] : [])));
