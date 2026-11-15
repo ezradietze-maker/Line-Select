@@ -95,8 +95,8 @@
      Their hues and meanings never change between modes; only brightness is tuned to each background. */
   --color-leg: #1d4ed8;
   --color-deadhead: #ae1d6d;
-  --color-layover: #02704b;
-  --color-report: #ad380a;
+  --color-layover: #016a47;
+  --color-report: #a33409;
   /* The trip's own picture adds two: the hotel van at each end of a layover (GT), and a crew-rest hotel during a long
      sit at a hub (a day room). */
   --color-gt: #0e7490;
@@ -654,10 +654,12 @@ html {
    a pilot can personalize (calendar-theme.ts) and it is light gold in the
    dark themes but deep brown in daylight, so the ink flips by the color's
    own lightness instead of being fixed. Plain white where relative color
-   syntax isn't supported. */
+   syntax isn't supported. It flips at 0.58, where dark ink starts to read
+   better than light: at 0.66 the night red and Amber got light ink at 3.7:1
+   and 3.5:1 (calendar-theme.test.ts checks every color). */
 .text-on-calendar {
   color: #fff;
-  color: oklch(from var(--color-calendar-accent) clamp(0.16, (0.66 - l) * 1000, 0.99) 0.015 70);
+  color: oklch(from var(--color-calendar-accent) clamp(0.16, (0.58 - l) * 1000, 0.99) 0.015 70);
 }
 
 /* Diagonal hatching for a deadhead — riding, not operating. */
@@ -1327,8 +1329,8 @@ html.theme-sweep::view-transition-new(root) {
     --color-danger-soft: #fbe0dd !important;
     --color-leg: #1d4ed8 !important;
     --color-deadhead: #ae1d6d !important;
-    --color-layover: #02704b !important;
-    --color-report: #ad380a !important;
+    --color-layover: #016a47 !important;
+    --color-report: #a33409 !important;
     --color-gt: #0e7490 !important;
     --color-rest: #8f5400 !important;
     --color-chain: #4338ca !important;

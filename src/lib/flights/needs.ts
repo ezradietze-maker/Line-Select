@@ -1,5 +1,5 @@
 import { commuteBufferHoursFor, distanceKm } from "@/lib/metrics/home-travel";
-import { computeTripFacts } from "@/lib/metrics/trip-facts";
+import { tripFactsOf } from "@/lib/metrics/trip-facts";
 import { tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack, Trip } from "@/types/bidpack";
 
@@ -96,7 +96,7 @@ export const travelKey = (trip: Pick<Trip, "id" | "startDayIndex">) => `${trip.i
 export function travelNeedsForTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Trip, p: TravelParams): TravelNeed[] {
   const start = tripStartUtc(bidPack, trip);
   if (start === null || p.homeAirports.length === 0) return [];
-  const f = computeTripFacts(trip);
+  const f = tripFactsOf(trip);
   if (f.noFlying && f.duties.every((d) => !d.standby)) return [];
   const at = (minutes: number) => start + minutes * 60_000;
   const home = p.homeAirports;

@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import { coordinatesForAirport } from "@/lib/airport-coordinates";
 import { timezoneForAirport } from "@/lib/airport-timezones";
-import { computeTripFacts } from "@/lib/metrics/trip-facts";
+import { tripFactsOf } from "@/lib/metrics/trip-facts";
 import { sunTimes } from "@/lib/sun-times";
 import { tripReportUtc } from "@/lib/trip-anchor";
 import type { BidPack } from "@/types/bidpack";
@@ -34,7 +34,7 @@ export function cityStays(pack: Pick<BidPack, "lines" | "bidPeriodStart" | "base
         continue;
       }
       const report = tripReportUtc(pack, trip);
-      const facts = computeTripFacts(trip);
+      const facts = tripFactsOf(trip);
       const stays = facts.layovers
         .filter((l) => l.city === code)
         .map((l) => ({ tripNumber: trip.pairingNumber, lineNumbers: [line.lineNumber], arrive: report === null ? null : report + l.start * 60_000, hours: l.hours, fullDays: l.fullDays, hotel: l.hotel }));

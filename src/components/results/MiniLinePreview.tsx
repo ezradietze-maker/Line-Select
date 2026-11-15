@@ -205,7 +205,7 @@ function Cell({
               {day.tripCreditHours !== null && (
                 <span className="hidden @min-[5.25rem]:inline">
                   {" "}
-                  <CreditHours hours={day.tripCreditHours} className="font-normal opacity-85" />
+                  <CreditHours hours={day.tripCreditHours} className="font-normal" />
                 </span>
               )}
             </span>
@@ -311,7 +311,7 @@ export function MonthLegend({ className = "" }: { className?: string }) {
       </span>
       <span className="inline-flex items-center gap-1">
         <span className="rounded bg-calendar-accent px-0.5 font-mono text-2xs font-semibold text-on-calendar">
-          #111 <CreditHours hours={17.78} className="font-normal opacity-85" />
+          #111 <CreditHours hours={17.78} className="font-normal" />
         </span>
         Trip and its credit hours
       </span>

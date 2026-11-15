@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkInShare, withMonthDeleted, withoutShares } from "@/lib/logbook";
+import { checkInShare, withCheckIn, withMonthDeleted, withoutShares } from "@/lib/logbook";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { LoggedMonth } from "@/types/logbook";
 
@@ -60,7 +60,7 @@ describe("sharing how a month flew", () => {
     const withdraw = vi.fn(async () => ({ ok: true }));
     const r = await withMonthDeleted(profile, month.id, withdraw);
     expect(withdraw).toHaveBeenCalledWith({ base: "MEM", aircraft: "MD11", seat: "CAP", month: "NOV26" });
-    expect(r.profile!.logbook!.map((m) => m.id)).toEqual(["other"]);
+    expect(r.change!(profile).logbook!.map((m) => m.id)).toEqual(["other"]);
   });
 
   it("keeps a shared month while its share can't be withdrawn, and deletes a month never shared without asking the server", async () => {
@@ -70,6 +70,21 @@ describe("sharing how a month flew", () => {
     const withdraw = vi.fn(async () => ({ ok: true }));
     const r = await withMonthDeleted(profile, "other", withdraw);
     expect(withdraw).not.toHaveBeenCalled();
-    expect(r.profile!.logbook!.map((m) => m.id)).toEqual([month.id]);
+    expect(r.change!(profile).logbook!.map((m) => m.id)).toEqual([month.id]);
+  });
+
+  it("deletes from the logbook as it is once the server answers, so two shared months deleted one after the other both go", async () => {
+    // NOV26 and OCT26 both shared; Yes, delete on each before the first withdraw came back, and a check-in saved on SEP26
+    // meanwhile. Each answer worked on the logbook from before brought back the month the other deleted.
+    const profile = { logbook: [month, { ...month, id: "oct", month: "OCT26" }, { ...month, id: "sep", month: "SEP26", checkIn: undefined }] } as unknown as PreferenceProfile;
+    const answers: (() => void)[] = [];
+    const withdraw = () => new Promise<{ ok: boolean }>((resolve) => answers.push(() => resolve({ ok: true })));
+    const first = withMonthDeleted(profile, month.id, withdraw);
+    const second = withMonthDeleted(profile, "oct", withdraw);
+    let shown = withCheckIn(profile, "sep", "worse", {});
+    answers.forEach((answer) => answer());
+    for (const r of await Promise.all([first, second])) shown = r.change!(shown);
+    expect(shown.logbook!.map((m) => m.id)).toEqual(["sep"]);
+    expect(shown.logbook![0].checkIn?.feel).toBe("worse");
   });
 });

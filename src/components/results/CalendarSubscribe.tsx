@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { isSamplePack } from "@/lib/fake-trade-offers";
 import { useAppState } from "@/lib/app-state";
-import { feedChoiceFor, feedLinks, fetchFeedStatus, forgetFeedSync, makeFeedLink, setFeedHomeDays, syncFeedChoice, turnOffFeed, useCalendarFeedSync, type FeedStatusView } from "@/lib/calendar-feed-client";
+import { feedChoiceFor, feedLinks, fetchFeedStatus, forgetFeedSync, makeFeedLink, MembershipNeededError, setFeedHomeDays, syncFeedChoice, turnOffFeed, useCalendarFeedSync, type FeedStatusView } from "@/lib/calendar-feed-client";
 
 /**
  * A private subscription link for the pilot's calendar app: their bid dates and their awarded or #1 line, kept up to
@@ -19,6 +19,8 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
   const [homeDays, setHomeDays] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Making a link was refused for no membership: the error is shown with the way to one. */
+  const [needsMembership, setNeedsMembership] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState<"new" | "off" | null>(null);
@@ -26,11 +28,13 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
   async function act(work: () => Promise<void>) {
     setBusy(true);
     setError(null);
+    setNeedsMembership(false);
     setNotice(null);
     try {
       await work();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't reach your calendar link just now.");
+      setNeedsMembership(e instanceof MembershipNeededError);
     } finally {
       setBusy(false);
       setConfirming(null);
@@ -193,7 +197,19 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
             </>
           )}
           {notice && <p className="mt-2 text-xs text-ink-muted">{notice}</p>}
-          {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+          {error && (
+            <p role="alert" className="mt-2 text-xs text-danger">
+              {error}
+              {needsMembership && (
+                <>
+                  {" "}
+                  <Link href="/membership" className="font-medium underline decoration-dotted underline-offset-4 hover:opacity-80">
+                    See membership options
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -324,8 +324,21 @@ export function flownByLevel(months: { pilot: string; base: string; aircraft: st
  * group, for the live guard.
  */
 export function computeBrainModel(outcomes: BrainOutcome[], version: string, now: Date, flownByLevel: Record<string, { notesUsed: boolean; worse: boolean }[]> = {}): BrainFleetModel {
+  // Each pilot's newest interview in each group: they're kept one per base, aircraft and seat (`loadBrainOutcomes`), so
+  // one account interviewing under a few dozen made-up bases was that many pilots in the whole fleet's group and its
+  // seat's, and wrote their notes. `outcomes` come oldest first; one with no pilot counts alone.
   const byLevel: Record<string, BrainOutcome[]> = {};
-  for (const o of outcomes) for (const level of cohortLevels(o.cohort)) (byLevel[level] ??= []).push(o);
+  const counted = new Set<string>();
+  for (let i = outcomes.length - 1; i >= 0; i--) {
+    const o = outcomes[i];
+    for (const level of cohortLevels(o.cohort)) {
+      const key = `${level}|${o.pilot ?? `outcome-${i}`}`;
+      if (counted.has(key)) continue;
+      counted.add(key);
+      (byLevel[level] ??= []).push(o);
+    }
+  }
+  for (const group of Object.values(byLevel)) group.reverse();
   const levels: BrainFleetModel["levels"] = {};
   for (const [level, group] of Object.entries(byLevel)) {
     // Flown months carry no commute group: a commute level is judged on its base, fleet and seat's months.

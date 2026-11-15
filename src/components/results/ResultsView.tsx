@@ -43,6 +43,7 @@ import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { packColumns } from "@/lib/bidpack-row";
 import { monthLine } from "@/lib/bid-month";
+import { focusHomeAfterLoss } from "@/lib/focus-trap";
 import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
 import { monthDepartureOptions } from "@/lib/month-detail";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
@@ -102,7 +103,7 @@ import { TierBar, TierHeadingRow, TierMoveRow, useCardPressProps } from "@/compo
 import { LineContextMenu, type LineMenu } from "@/components/results/LineContextMenu";
 import { tierHeadings } from "@/lib/line-tiers";
 import { useLineSort } from "@/lib/use-line-sort";
-import { useLineTiers, type TeachTiers } from "@/lib/use-line-tiers";
+import { useLineTiers, useTiersWithin, type TeachTiers } from "@/lib/use-line-tiers";
 import { applyPlacements, placementFromDrag, placementsKey, placementsStore, prunePlacements, type Placement } from "@/lib/line-placements";
 import { EMPTY_ORDER_HISTORY, dropSwaps, recordStep, takeRedo, takeUndo, type OrderHistory } from "@/lib/order-history";
 import type { LineChoice } from "@/types/pilot-model";
@@ -205,7 +206,7 @@ function LineStandIn({ id, line, height }: { id: string; line: LineScore["line"]
   return (
     <div id={`line-${id}`} className="panel-glass scroll-mt-20 overflow-hidden px-4 py-3 font-mono text-xs leading-[14px] tracking-wide text-ink-faint md:scroll-mt-6" style={{ height }}>
       <div className="font-semibold">LINE {line.lineNumber}</div>
-      {trips && <div className="mt-2 opacity-70">{trips}</div>}
+      {trips && <div className="mt-2">{trips}</div>}
     </div>
   );
 }
@@ -514,8 +515,8 @@ export function ResultsView({
   // The pilot's tiers on top of that (see `lib/line-tiers.ts`); a pilot who never uses them gets the same list back.
   const teachTiersRef = useRef<TeachTiers | null>(null);
   const packLineIds = useMemo(() => bidPack.lines.map((l) => l.id), [bidPack]);
-  const tiers = useLineTiers(userId, bidPack.id, packLineIds, placed, teachTiersRef, recordTierStep);
-  const orderByTier = tiers.order;
+  const allTiers = useLineTiers(userId, bidPack.id, packLineIds, placed, teachTiersRef, recordTierStep);
+  const orderByTier = allTiers.order;
   const ranked = useMemo(() => orderByTier(placed), [orderByTier, placed]);
   // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order.
   const swappedIds = useMemo(() => new Set(validPlacements.flatMap((p) => [p.order[0], p.order[p.order.length - 1]])), [validPlacements]);
@@ -665,11 +666,11 @@ export function ResultsView({
     () =>
       listedLines(matching, {
         hidden: hiddenSet,
-        setAside: tiers.setAside,
+        setAside: allTiers.setAside,
         showHidden,
         inView: (id) => view === "all" || (view === "shortlist" ? starredSet.has(id) : realisticIds.has(id)),
       }),
-    [matching, showHidden, hiddenSet, tiers.setAside, view, starredSet, realisticIds]
+    [matching, showHidden, hiddenSet, allTiers.setAside, view, starredSet, realisticIds]
   );
   // Departures counted as each card counts them: the times the pilot leaves home.
   const departureOptions = useMemo(() => monthDepartureOptions(bidPack.base, profile, flights), [bidPack.base, profile, flights]);
@@ -685,9 +686,9 @@ export function ResultsView({
   const displayed = useMemo(() => sorted.slice(0, shown), [sorted, shown]);
   const listedIds = useMemo(() => sorted.map((r) => r.line.id), [sorted]);
   // A selection is of lines the pilot can see in the list: a search, filter or view that leaves a selected line out
-  // takes it out of the selection, and a move (toolbar, right-click menu, a tier key) never reaches it (`selectionWithin`).
+  // keeps it out of reach of a move, and gives it back still selected when it's listed again (`useTiersWithin`).
   const listedSet = useMemo(() => new Set(listedIds), [listedIds]);
-  if (listReady && [...tiers.selected].some((id) => !listedSet.has(id))) tiers.keepSelected(listedSet);
+  const tiers = useTiersWithin(allTiers, listedSet);
   const headings = useMemo(() => (lineSort.isRanking ? tierHeadings(listedIds, tiers.state) : new Map()), [lineSort.isRanking, listedIds, tiers.state]);
   const displayedIds = useMemo(() => displayed.map((r) => r.line.id), [displayed]);
 
@@ -836,9 +837,40 @@ export function ResultsView({
   // Keys for working down the list at a desk: j / k move between lines, o opens one, s shortlists, c compares, ? shows the keys.
   // The cursor is a line, not a place in the list: a tier key moves the line, and the cursor goes with it.
   const [keyId, setKeyId] = useState<string | null>(null);
-  // The line with the keyboard's focus in it, kept drawn wherever the page scrolls: undrawn, its focus fell to the page.
+  // The line with the keyboard's focus in it, or last in it, kept drawn wherever the page scrolls: undrawn, its focus fell
+  // to the page, and focus had nowhere to come back to from the bar for a selection or a swap's Undo.
   const [focusId, setFocusId] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
+  // The control the keyboard was last on in this screen: when that control goes away (Hide, Set aside, the selection's
+  // bar once its move is made, a swap's Undo, a chip brought back), focus fell to the page and the next Tab started again
+  // at the top. It goes where `focusHomeAfterLoss` says instead.
+  const screenRef = useRef<HTMLDivElement>(null);
+  const lostFocusRef = useRef<{ el: HTMLElement; lineId: string | null; chipId: string | null } | null>(null);
+  const listedBeforeRef = useRef(displayedIds);
+  const chipsBeforeRef = useRef(tiers.state.setAside);
+  useLayoutEffect(() => {
+    const listedBefore = listedBeforeRef.current;
+    const chipsBefore = chipsBeforeRef.current;
+    listedBeforeRef.current = displayedIds;
+    chipsBeforeRef.current = tiers.state.setAside;
+    const lost = lostFocusRef.current;
+    if (!lost || lost.el.isConnected) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    lostFocusRef.current = null;
+    const home = focusHomeAfterLoss(lost, { listedBefore, listedNow: displayedIds, lastLineId: focusId, chipsBefore, chipsNow: tiers.state.setAside });
+    const root = screenRef.current;
+    if (!home || !root) return;
+    const undoButton = root.querySelector<HTMLElement>("[data-order-undo]");
+    const target =
+      "line" in home
+        ? root.querySelector<HTMLElement>(`[data-line-id="${CSS.escape(home.line)}"] button[aria-expanded]`)
+        : "chip" in home
+          ? root.querySelector<HTMLElement>(`[data-set-aside-chip="${CSS.escape(home.chip)}"]`)
+          : undoButton;
+    // Not scrolled to: a line set aside by a click on the bar shouldn't jump the page to wherever the next one sits.
+    (target ?? undoButton)?.focus({ preventScroll: true });
+  });
   // Every listed line, drawn or not: j and k scroll the next one into view, which draws it.
   const keyableIds = displayedIds;
   const keyedId = keyId !== null && keyableIds.includes(keyId) ? keyId : null;
@@ -892,7 +924,9 @@ export function ResultsView({
       // Into a line's right-click menu, the line keeps it: drawn, wherever a move sends it, for focus to come back to.
       if (!(e.target instanceof HTMLElement) || e.target.closest('[role="menu"]')) return;
       const id = e.target.closest<HTMLElement>("[data-line-id]")?.dataset.lineId ?? null;
-      if (id !== focusId) setFocusId(id);
+      // Kept for when the control goes away under it (see the layout effect below). A dialog gives focus back itself.
+      lostFocusRef.current = screenRef.current?.contains(e.target) ? { el: e.target, lineId: id, chipId: e.target.dataset.setAsideChip ?? null } : null;
+      if (id && id !== focusId) setFocusId(id);
       if (keyId !== null && id && id !== keyId && keyableIds.includes(id)) setKeyId(id);
     }
     window.addEventListener("keydown", onKey);
@@ -1301,7 +1335,7 @@ export function ResultsView({
   const empty = emptyListSaying({ view, starred: validMarks.starred.length, search, hotelName: hotelFilter?.hotelName ?? null, filtersOn: filtersActive(filters) });
 
   return (
-    <div className="mx-auto w-full max-w-3xl xl:max-w-6xl">
+    <div ref={screenRef} className="mx-auto w-full max-w-3xl xl:max-w-6xl">
       <div className="flex items-start justify-between gap-3 sm:items-end">
         <div className="min-w-0">
           <div className="text-2xs text-accent font-medium">

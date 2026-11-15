@@ -54,8 +54,6 @@ export interface LineTiers {
   toggleSelected: (lineId: string, rangeOver?: string[]) => void;
   /** Replace the selection outright (a right-click "select all above/below"). */
   select: (lineIds: string[]) => void;
-  /** Narrow the selection to the lines listed (`selectionWithin`). */
-  keepSelected: (listed: ReadonlySet<string>) => void;
   clearSelected: () => void;
   move: (lineIds: string[], tierId: string | null) => void;
   park: (lineIds: string[]) => void;
@@ -77,6 +75,17 @@ export interface LineTiers {
    * so the page has one voice and two never talk over each other.
    */
   say: (message: string) => void;
+}
+
+/**
+ * The tiers as a list shows them: its selection only the selected lines it lists (`selectionWithin`), so a move
+ * (toolbar, right-click menu, a tier key) reaches only lines the pilot can see selected. The selection itself is kept:
+ * taken out of it, lines a search hid were no longer selected once the search was cleared, and a pilot who searched for
+ * one more line to add lost the rest.
+ */
+export function useTiersWithin(tiers: LineTiers, listed: ReadonlySet<string>): LineTiers {
+  const selected = useMemo(() => selectionWithin(tiers.selected, listed), [tiers.selected, listed]);
+  return selected === tiers.selected ? tiers : { ...tiers, selected };
 }
 
 let moveCounter = 0;
@@ -293,10 +302,6 @@ export function useLineTiers(
     setSelected(new Set(ids));
     setAnchor(ids[ids.length - 1] ?? null);
   }, []);
-  const keepSelected = useCallback((listed: ReadonlySet<string>) => {
-    setSelected((prev) => selectionWithin(prev, listed));
-    setAnchor((a) => (a !== null && !listed.has(a) ? null : a));
-  }, []);
   const clearSelected = useCallback(() => setSelected(new Set()), []);
 
   const order = useCallback((list: LineScore[]) => applyTiers(list, state, (r) => r.line.id), [state]);
@@ -314,7 +319,6 @@ export function useLineTiers(
     selected,
     toggleSelected,
     select,
-    keepSelected,
     clearSelected,
     move,
     park,

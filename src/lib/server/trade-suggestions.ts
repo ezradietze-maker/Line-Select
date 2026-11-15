@@ -2,7 +2,7 @@ import { and, countDistinct, desc, eq, gte, inArray, isNull, lt, or, gt } from "
 import { legacyPackIdFor, packIdFor } from "@/lib/pack-id";
 import { agreedTrades, freeOffersOfMovedTrips, lockPilotsInSeat } from "@/lib/server/db";
 import { db } from "@/lib/server/postgres";
-import { verifiedUserIds } from "@/lib/server/verified-pilots";
+import { tradingUserIds } from "@/lib/server/verified-pilots";
 import { bidPackMetaOf, preferenceProfiles, tradeHoldings, tradeOffers, tradePreferences, tradeSuggestionMembers, tradeSuggestions, users } from "@/lib/server/schema";
 import { tripInstanceKey } from "@/lib/trades/legality";
 import type { MatchingRow } from "@/lib/trades/holding";
@@ -51,7 +51,7 @@ const packIdsOf = (packId: string, meta: BidPackMetaSnapshot) => (packId === pac
 export async function listMatchingGroup(meta: BidPackMetaSnapshot): Promise<{ rows: MatchingRow[]; names: Map<string, string>; fingerprints: Map<string, string | null> }> {
   const current = packIdFor({ ...meta, seat: meta.seat as Seat });
   const byUser = new Map<string, typeof tradeHoldings.$inferSelect>();
-  for (const h of await db.select().from(tradeHoldings).where(and(groupIs(meta), inArray(tradeHoldings.userId, verifiedUserIds())))) {
+  for (const h of await db.select().from(tradeHoldings).where(and(groupIs(meta), inArray(tradeHoldings.userId, tradingUserIds())))) {
     const kept = byUser.get(h.userId);
     const better = !kept || (kept.packId !== current && (h.packId === current || h.confirmedAt > kept.confirmedAt));
     if (better) byUser.set(h.userId, h);
@@ -381,10 +381,10 @@ export async function lapseSuggestionsFor(userId: string, packId: string | null,
 /** Every month and seat where at least `min` pilots have confirmed what they hold. */
 export async function listActiveGroups(min: number): Promise<BidPackMetaSnapshot[]> {
   const rows = await db
-    // Pilots, not holdings: one confirmed under the pack's older id and its own is one pilot. Confirmed accounts only.
+    // Pilots, not holdings: one confirmed under the pack's older id and its own is one pilot. Pilots who can trade only.
     .select({ base: tradeHoldings.base, aircraft: tradeHoldings.aircraft, seat: tradeHoldings.seat, month: tradeHoldings.month, n: countDistinct(tradeHoldings.userId) })
     .from(tradeHoldings)
-    .where(inArray(tradeHoldings.userId, verifiedUserIds()))
+    .where(inArray(tradeHoldings.userId, tradingUserIds()))
     .groupBy(tradeHoldings.base, tradeHoldings.aircraft, tradeHoldings.seat, tradeHoldings.month);
   return rows.filter((r) => r.n >= min).map(({ base, aircraft, seat, month }) => ({ base, aircraft, seat, month }));
 }

@@ -41,7 +41,7 @@ describe("the logbook check-in", () => {
 describe("the logbook on the sample pack", () => {
   const profile: PreferenceProfile = buildProfile(emptyWeights(), false, []);
   const render = (bidPack: typeof SAMPLE_BID_PACK) =>
-    renderToStaticMarkup(createElement(LogbookScreen, { bidPack, profile, user: null, seniority: null, onUpdateProfile: () => {} }));
+    renderToStaticMarkup(createElement(LogbookScreen, { bidPack, profile, user: null, seniority: null, onUpdateProfile: () => {}, onUpdateProfileWith: () => {} }));
 
   it("doesn't offer to log its made-up month as the pilot's award", () => {
     const html = render(SAMPLE_BID_PACK);

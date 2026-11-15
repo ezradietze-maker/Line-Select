@@ -5,6 +5,7 @@ import { NoteBox } from "@/components/ui/NoteBox";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmEmailButton, ConfirmEmailRefusal } from "@/components/auth/ConfirmEmail";
+import { MembershipRefusal } from "@/components/membership/MembershipRefusal";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
 import { NotamStrip } from "@/components/ui/NotamStrip";
@@ -16,6 +17,7 @@ import { TextField } from "@/components/ui/TextField";
 import { HoldingPanel } from "@/components/trade-board/HoldingPanel";
 import { TradeSuggestions } from "@/components/trade-board/TradeSuggestions";
 import { useAppState } from "@/lib/app-state";
+import { keepFocusIn } from "@/lib/focus-keeper";
 import { isSamplePack, withExampleOffer } from "@/lib/fake-trade-offers";
 import { sameBidPack } from "@/lib/inbox";
 import {
@@ -139,6 +141,8 @@ export function TradeBoardScreen({
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNeedsConfirm, setActionNeedsConfirm] = useState(false);
+  /** The last action was refused for no membership: the error is shown with the way to one. */
+  const [actionNeedsMembership, setActionNeedsMembership] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sends, setSends] = useState(0);
   const [search, setSearch] = useState("");
@@ -238,15 +242,17 @@ export function TradeBoardScreen({
   const shownOpenOffers =
     openFromOthers.length > SEARCH_THRESHOLD ? openFromOthers.filter((o) => matchesSearch(o, search)) : openFromOthers;
 
-  async function runAction(action: () => Promise<{ ok: boolean; error?: string; confirmEmail?: boolean }>, onDone?: () => void) {
+  async function runAction(action: () => Promise<{ ok: boolean; error?: string; confirmEmail?: boolean; membership?: boolean }>, onDone?: () => void) {
     setBusy(true);
     setActionError(null);
     setActionNeedsConfirm(false);
+    setActionNeedsMembership(false);
     const result = await action();
     setBusy(false);
     if (!result.ok) {
       setActionError(result.error ?? "Something went wrong. Try again.");
       setActionNeedsConfirm(!!result.confirmEmail);
+      setActionNeedsMembership(!!result.membership);
       // Refresh anyway — a failure here usually means the offer's real state moved
       // (someone else claimed it, it was withdrawn), so the stale copy on screen
       // needs replacing rather than sitting there inviting the same retry.
@@ -290,8 +296,10 @@ export function TradeBoardScreen({
     );
   }
 
+  // The keyboard stays on the board when what it was on goes: the holding editor closed, an offer withdrawn, a trade
+  // answered (see `keepFocusIn`).
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div ref={keepFocusIn} className="mx-auto w-full max-w-3xl">
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Trade Board"
@@ -336,7 +344,14 @@ export function TradeBoardScreen({
         />
       )}
 
-      {actionError && (actionNeedsConfirm ? <ConfirmEmailRefusal className="mt-4" message={actionError} /> : <ErrorBanner className="mt-4">{actionError}</ErrorBanner>)}
+      {actionError &&
+        (actionNeedsConfirm ? (
+          <ConfirmEmailRefusal className="mt-4" message={actionError} />
+        ) : actionNeedsMembership ? (
+          <MembershipRefusal className="mt-4" message={actionError} />
+        ) : (
+          <ErrorBanner className="mt-4">{actionError}</ErrorBanner>
+        ))}
       {loadFailed && <ErrorBanner className="mt-4">Couldn&rsquo;t load the board just now. Check your connection and try again in a moment.</ErrorBanner>}
 
       {loading ? (

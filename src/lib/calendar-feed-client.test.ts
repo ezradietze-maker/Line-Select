@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 const server = vi.hoisted(() => ({ saveServerBidPack: vi.fn(), fetchServerBidPackMeta: vi.fn(async () => null as { packId: string; savedAt: number } | null) }));
 vi.mock("@/lib/bidpack-server", () => server);
-import { feedChoiceFor, feedLinks, makeFeedLink, payFeedOffOwed, syncFeedChoice, turnOffFeedForStartOver } from "@/lib/calendar-feed-client";
+import { feedChoiceFor, feedLinks, makeFeedLink, MembershipNeededError, payFeedOffOwed, syncFeedChoice, turnOffFeedForStartOver } from "@/lib/calendar-feed-client";
 import { feedOffOwed } from "@/lib/calendar-feed-owed";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -149,5 +149,21 @@ describe("Start over turning the calendar link off", () => {
     await payFeedOffOwed("u1");
     expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({ madeBefore: "2026-11-10T12:05:00.000Z" });
     vi.useRealTimers();
+  });
+});
+
+describe("making a link without a membership", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("says it's the membership, with the server's words, so the box can point to it rather than say try again", async () => {
+    // Only once FREE_FOR_ALL is off: the server's `accessRefusal`.
+    const words = "A Line Select membership unlocks this. Start yours to carry on.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: words, upgrade: "/membership" }), { status: 402 })));
+    const refused = await makeFeedLink().catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(MembershipNeededError);
+    expect((refused as Error).message).toBe(words);
+    // Any other failure is still a plain one.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "busy" }), { status: 503 })));
+    expect(await makeFeedLink().catch((e: unknown) => e)).not.toBeInstanceOf(MembershipNeededError);
   });
 });

@@ -235,8 +235,10 @@ const DAY_PART_HOURS: Record<DayPart | "day", [number, number]> = { morning: [7,
 function datesTouched(from: number | null, to: number | null, zone: string): string[] {
   if (from === null || to === null || to < from) return [];
   const dates: string[] = [];
-  const last = DateTime.fromMillis(to, { zone }).startOf("day");
-  for (let d = DateTime.fromMillis(from, { zone }).startOf("day"); d <= last; d = d.plus({ days: 1 })) dates.push(d.toISODate()!);
+  // The two ends' dates on the clock at home, then every calendar date between: a date sum in the zone for each day was
+  // most of what the measure cost on every line.
+  const end = Date.parse(`${DateTime.fromMillis(to, { zone }).toISODate()}T00:00:00Z`);
+  for (let d = Date.parse(`${DateTime.fromMillis(from, { zone }).toISODate()}T00:00:00Z`); d <= end; d += 86_400_000) dates.push(new Date(d).toISOString().slice(0, 10));
   return dates;
 }
 /** Standby days (one standby row each) at cities matching `where`. */

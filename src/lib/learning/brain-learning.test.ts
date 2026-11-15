@@ -115,6 +115,27 @@ describe("fleet notes that decide for themselves", () => {
     expect(flownByLevel(many)["pack:MEM|MD11|CAP"]).toHaveLength(24);
   });
 
+  it("count each pilot once in a group, however many bases they've interviewed under", () => {
+    // Nine pilots who confirm commutes, and one confirmed account that interviews 40 times, each under a made-up base
+    // (each its own group, so each kept), saying pay is what matters and HNL is awful.
+    const real = confirming(9);
+    const one = Array.from({ length: 40 }, (_, i): BrainOutcome => ({
+      ...outcome({ cohort: { ...cohort, base: `Z${String(i).padStart(2, "0")}` }, review: [{ metric: "creditPerDayAwayFromHome", verdict: "right" }] } as Partial<BrainOutcome>),
+      cities: { HNL: -1 },
+      pilot: "one-account",
+      at: new Date(Date.UTC(2026, 10, 1 + (i % 28))).toISOString(),
+    }));
+    const all = computeBrainModel([...real, ...one], "b", new Date(0)).levels["all"];
+    // Ten pilots stand behind the fleet's group, not 49 reports.
+    expect(all.pilots).toBe(10);
+    expect(all.cities.HNL.n).toBe(10);
+    expect(all.metrics.creditPerDayAwayFromHome?.pilots ?? 0).toBe(1);
+    expect(noteLines(all).some((l) => l.key === "common:creditPerDayAwayFromHome")).toBe(false);
+    expect(noteLines(all).some((l) => l.key === "city:HNL" && l.text.includes("disliked"))).toBe(false);
+    // Each of that account's own bases still has its one interview.
+    expect(computeBrainModel([...real, ...one], "b", new Date(0)).levels["pack:Z00|B777|CAP"].pilots).toBe(1);
+  });
+
   it("count a pilot's newest month in each group", () => {
     const flown = flownByLevel([
       { pilot: "p1", base: "MEM", aircraft: "MD11", seat: "CAP", notesUsed: true, feel: "worse" },

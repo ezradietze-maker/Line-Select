@@ -282,6 +282,29 @@ describe("forecast learns what pilots at a seat want, across months", () => {
   });
 });
 
+describe("forecast priors count pilots, not shares", () => {
+  it("counts one pilot's rankings once in each group, however many packs they share them under", () => {
+    const truth = [0.4, 1.6, -0.3, 0, 0, 0, -0.2, 0, -0.1, 0];
+    const odd = [-1.5, -1.5, 1.5, 1.5, 0, 0, 0, 0, 0, 0];
+    const rand = mulberry32(5);
+    const features = syntheticFeatures(80, 300);
+    // Ten real pilots at MEM, and one confirmed account sharing the same odd ranking under 60 made-up packs.
+    const real = { base: "MEM", aircraft: "B767", seat: "FO", features, rankings: Array.from({ length: 10 }, () => rankingFor(features, truth, rand)), sharers: Array.from({ length: 10 }, (_, i) => `p${i}`) };
+    const made = Array.from({ length: 60 }, (_, i) => {
+      const f = syntheticFeatures(80, 400 + i);
+      return { base: `Z${i}`, aircraft: "B767", seat: "FO", features: f, rankings: [rankingFor(f, odd, rand)], sharers: ["one-account"] };
+    });
+    const model = learnForecastPriors([...made, real], "f1", new Date());
+    expect(model.levels["all"].n).toBe(11);
+    expect(model.levels["seat:FO"].n).toBe(11);
+    expect(model.levels["pack:MEM|B767|FO"].n).toBe(10);
+    // The seat's starting belief still leans on credit, as its real pilots do.
+    const prior = resolveForecastPrior(model, "IND", "B767", "FO")!;
+    expect(prior.mean[1]).toBeGreaterThan(prior.mean[0]);
+    expect(prior.mean[1]).toBeGreaterThan(0);
+  });
+});
+
 describe("forecast calibrated against real awards", () => {
   it("reads what an award proves: ranked above it was gone, the award was open, below says nothing", () => {
     const prediction = { ranking: [5, 9, 2, 7], pAvailable: [0.2, 0.5, 0.8, 0.9] };
@@ -350,5 +373,15 @@ describe("a pilot's own holding history", () => {
     expect(s.reserveMonths).toBe(1);
     expect(s.seniorityTrend).toEqual({ from: 0.3, to: 0.45 });
     expect(s.headline).toMatch(/around your #10 choice/);
+  });
+
+  it("reads their move up the list on one list only: a new seat starts at the bottom of its own", () => {
+    // Senior on the first officer list, then upgraded to the bottom of the captain list.
+    const fo = [rec("SEP26", 3, "line", 0.85), rec("OCT26", 2, "line", 0.9)];
+    const cap = { ...rec("NOV26", null, "reserve", 0.05), aircraft: "MD11", seat: "CAP" };
+    expect(summarizeHoldHistory([...fo, cap]).seniorityTrend).toBeNull();
+    const later = { ...cap, month: "JAN27", percentile: 0.12 };
+    expect(summarizeHoldHistory([...fo, cap, later]).seniorityTrend).toEqual({ from: 0.05, to: 0.12 });
+    expect(summarizeHoldHistory(fo).seniorityTrend).toEqual({ from: 0.85, to: 0.9 });
   });
 });

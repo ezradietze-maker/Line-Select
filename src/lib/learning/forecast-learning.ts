@@ -35,6 +35,8 @@ export interface PackHistory {
   seat: string;
   features: LineFeatures;
   rankings: number[][];
+  /** Who shared each ranking (a one-way tag, beside it), only so each pilot counts once in a group. */
+  sharers?: string[];
 }
 
 interface WeightStats {
@@ -50,15 +52,25 @@ export interface ForecastPriorModel {
   levels: Record<string, WeightStats>;
 }
 
+/**
+ * `history` newest pack first. Each pilot counts once in each group, with their newest ranking there: a ranking is kept
+ * per line order, and a pack key is whatever the browser sends, so one account sharing under sixty made-up packs was
+ * sixty pilots in the whole fleet's starting belief and its seat's.
+ */
 export function learnForecastPriors(history: PackHistory[], version: string, now: Date): ForecastPriorModel {
   const levels: Record<string, WeightStats> = {};
-  for (const pack of history) {
+  const counted = new Set<string>();
+  history.forEach((pack, p) => {
     const keys = forecastLevels(pack.base, pack.aircraft, pack.seat);
-    for (const ranking of pack.rankings) {
-      if (ranking.length < 3) continue;
+    pack.rankings.forEach((ranking, r) => {
+      if (ranking.length < 3) return;
+      const sharer = pack.sharers?.[r] ?? `ranking-${p}-${r}`;
+      const fresh = keys.filter((key) => !counted.has(`${key}|${sharer}`));
+      if (fresh.length === 0) return;
       const { weights } = fitWeightsFromRanking(pack.features, ranking);
-      if (weights.some((w) => !Number.isFinite(w))) continue;
-      for (const key of keys) {
+      if (weights.some((w) => !Number.isFinite(w))) return;
+      for (const key of fresh) {
+        counted.add(`${key}|${sharer}`);
         const s = (levels[key] ??= { n: 0, sum: new Array(FEATURE_COUNT).fill(0), sumSq: new Array(FEATURE_COUNT).fill(0) });
         s.n++;
         weights.forEach((w, k) => {
@@ -66,8 +78,8 @@ export function learnForecastPriors(history: PackHistory[], version: string, now
           s.sumSq[k] += w * w;
         });
       }
-    }
-  }
+    });
+  });
   return { version, createdAt: now.toISOString(), levels };
 }
 

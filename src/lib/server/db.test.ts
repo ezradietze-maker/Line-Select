@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import * as mod from "@/lib/server/db";
 import * as forecastStore from "@/lib/server/forecast-store";
 import { db } from "@/lib/server/postgres";
@@ -8,11 +8,23 @@ import { looksLikeProductionUrl, productionDbOptIn } from "@/lib/server/db-guard
 import * as suggestions from "@/lib/server/trade-suggestions";
 import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { awardHistoryRecords, feedbackSubmissions, tradeOffers, users } from "@/lib/server/schema";
-import { FREE_MEMBER_CAP } from "@/lib/membership";
+import { FREE_MEMBER_CAP, MEMBERSHIP_CUTOVER } from "@/lib/membership";
 import { DEFAULT_WEIGHTS } from "@/types/preferences";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { FeedbackSubmission } from "@/types/feedback";
 import type { TradeOffer } from "@/types/trade";
+
+// `FREE_FOR_ALL` stays true in the app; a test that needs it off, as it will be once membership is enforced, turns it off.
+const membership = vi.hoisted(() => ({ enforced: false }));
+vi.mock("@/lib/membership", async (real) => {
+  const m = await real<typeof import("@/lib/membership")>();
+  return {
+    ...m,
+    get FREE_FOR_ALL() {
+      return !membership.enforced;
+    },
+  };
+});
 
 /**
  * Integration tests against a real Postgres — the old version of this file
@@ -1009,6 +1021,54 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       }
       const seen = await mod.listTradeOffersForSeat(meta, viewer.id, { othersOpen: true, limit: 50 });
       expect(seen.map((o) => o.offeringUserId)).toEqual([yes.id]);
+    });
+  });
+
+  describe("pilots with no membership, once it's enforced", () => {
+    // Agreeing an offer and saying yes to a suggested trade turn them away (402): their offers, and trades suggested
+    // with them, would only ever wait, and keep the pilots on them from any other trade meanwhile.
+    async function pilots(tag: string) {
+      const after = new Date(Date.parse(MEMBERSHIP_CUTOVER) + 86_400_000);
+      const [grandfathered, pro, free, locked] = [await makeUser(`${tag}-old`), await makeUser(`${tag}-pro`), await makeUser(`${tag}-free`), await makeUser(`${tag}-locked`)];
+      await db.update(users).set({ createdAt: after }).where(inArray(users.id, [pro.id, free.id, locked.id]));
+      await db.update(users).set({ plan: "pro" }).where(eq(users.id, pro.id));
+      await db.update(users).set({ freeMemberAt: new Date() }).where(eq(users.id, free.id));
+      return { grandfathered, pro, free, locked };
+    }
+
+    it("aren't matched into trades, nor count toward a group", async () => {
+      const meta = { base: "MEM", aircraft: "MD11", seat: "FO", month: `M${randomUUID().slice(0, 8)}` };
+      const { grandfathered, pro, free, locked } = await pilots("group");
+      for (const p of [grandfathered, pro, free, locked]) await mod.saveTradeHolding(p.id, { packId: `pack-${meta.month}`, bidPackMeta: meta, lineNumber: null, trips: [] });
+      membership.enforced = true;
+      try {
+        expect((await suggestions.listMatchingGroup(meta)).rows.map((r) => r.userId).sort()).toEqual([grandfathered.id, pro.id, free.id].sort());
+        // Only the locked pilot's holding in this group: no group of two.
+        const lone = { ...meta, month: `L${randomUUID().slice(0, 8)}` };
+        for (const p of [grandfathered, locked]) await mod.saveTradeHolding(p.id, { packId: `pack-${lone.month}`, bidPackMeta: lone, lineNumber: null, trips: [] });
+        expect(await suggestions.listActiveGroups(2)).not.toContainEqual(lone);
+      } finally {
+        membership.enforced = false;
+      }
+      // While it's all free, everyone is.
+      expect((await suggestions.listMatchingGroup(meta)).rows).toHaveLength(4);
+    });
+
+    it("have their open offers kept off other pilots' boards", async () => {
+      const meta = { base: "MEM", aircraft: "MD11", seat: "FO", month: `N${randomUUID().slice(0, 8)}` };
+      const viewer = await makeUser("member-viewer");
+      const { pro, locked } = await pilots("offer");
+      for (const p of [pro, locked]) {
+        await mod.createTradeOffer({ id: randomUUID(), bidPackMeta: meta, offeringUserId: p.id, offeringDisplayName: "P", offeredTrip: { lineNumber: "1", pairingNumber: "1", days: 1, layoverCities: [], international: false, reportTime: "early", creditHours: 1, tafbHours: 1, landings: 1, deadheadLegs: 0 }, wantedPairingNumber: null, note: null, status: "open", createdAt: new Date().toISOString(), responderUserId: null, responderDisplayName: null, responderTrip: null, respondedAt: null, resolvedAt: null });
+      }
+      membership.enforced = true;
+      try {
+        expect((await mod.listTradeOffersForSeat(meta, viewer.id, { othersOpen: true, limit: 50 })).map((o) => o.offeringUserId)).toEqual([pro.id]);
+        // Their own offer still shows to them, to withdraw.
+        expect((await mod.listTradeOffersForSeat(meta, locked.id, { othersOpen: true, limit: 50 })).map((o) => o.offeringUserId).sort()).toEqual([locked.id, pro.id].sort());
+      } finally {
+        membership.enforced = false;
+      }
     });
   });
 });

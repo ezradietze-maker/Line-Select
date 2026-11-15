@@ -5,7 +5,7 @@ import { realTravelForTrip, type FlightAnswers } from "@/lib/flights/trip-travel
 import { DEFAULT_HOME_PARAMS, EARLY_SHOW_HOUR, estimatedTravel, homeAwayForTrip, type TravelTimeProvider } from "@/lib/metrics/home-travel";
 
 export { EARLY_SHOW_HOUR };
-import { computeTripFacts, type TripFacts } from "@/lib/metrics/trip-facts";
+import { tripFactsOf, type TripFacts } from "@/lib/metrics/trip-facts";
 import { runDaysOf } from "@/lib/trip-anchor";
 import type { BidPack, Trip } from "@/types/bidpack";
 
@@ -162,7 +162,7 @@ export function groupDepartures(trips: Trip[], ctx: Pick<BidPack, "bidPeriodStar
       unplaced.push(trip);
       continue;
     }
-    const facts = options.facts?.get(trip) ?? computeTripFacts(trip);
+    const facts = options.facts?.get(trip) ?? tripFactsOf(trip);
     const away = commuter ? homeAwayForTrip(facts, ctx.base, params, options.travel ?? estimatedTravel, realTravelForTrip(options.flights, ctx, trip)) : null;
     placed.push({
       trip,

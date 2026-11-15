@@ -153,7 +153,7 @@ export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: Li
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
-  const small = "min-h-8 rounded-md px-2 py-1 text-xs font-semibold text-accent underline-offset-2 hover:underline disabled:cursor-default disabled:text-ink-faint disabled:no-underline";
+  const small = "min-h-8 rounded-md px-2 py-1 text-xs font-semibold text-accent underline-offset-2 hover:underline aria-disabled:cursor-default aria-disabled:text-ink-faint aria-disabled:no-underline";
   const notBidCount = tiers.notBid.size;
 
   return (
@@ -169,10 +169,12 @@ export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: Li
           </span>
         )}
         <span className="ml-auto flex flex-wrap items-center gap-1">
-          <button type="button" onClick={undo} disabled={!history.canUndo} className={small}>
+          {/* Dimmed, not disabled, when there's nothing to take back: a disabled button lets go of focus, and the last
+              Undo pressed dropped the keyboard on the page. */}
+          <button type="button" data-order-undo onClick={() => history.canUndo && undo()} aria-disabled={!history.canUndo} className={small}>
             Undo
           </button>
-          <button type="button" onClick={redo} disabled={!history.canRedo} className={small}>
+          <button type="button" onClick={() => history.canRedo && redo()} aria-disabled={!history.canRedo} className={small}>
             Redo
           </button>
           <button type="button" onClick={() => setManaging(true)} className={small}>
@@ -187,7 +189,7 @@ export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: Li
           <p className="text-xs text-ink-muted">Set aside: out of the list while you sort, still in your bid where they&rsquo;d rank.</p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {state.setAside.map((id) => (
-              <button key={id} type="button" onClick={() => tiers.unpark([id])} className="min-h-8 rounded-[3px] border border-hairline px-2.5 py-1 font-mono text-xs text-ink hover:border-accent" aria-label={`Bring line ${numberOf(id)} back to the list`}>
+              <button key={id} type="button" data-set-aside-chip={id} onClick={() => tiers.unpark([id])} className="min-h-8 rounded-[3px] border border-hairline px-2.5 py-1 font-mono text-xs text-ink hover:border-accent" aria-label={`Bring line ${numberOf(id)} back to the list`}>
                 {numberOf(id)} &#8617;
               </button>
             ))}

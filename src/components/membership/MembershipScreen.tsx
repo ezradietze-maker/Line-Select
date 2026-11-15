@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { useAppState } from "@/lib/app-state";
 import { claimFreeMembership, fetchBillingStatus, MEMBERSHIP_PRICE, membershipEnded, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
 import { FREE_MEMBER_CAP } from "@/lib/membership";
+import { keepFocusIn } from "@/lib/focus-keeper";
 
 const PANEL = "panel-glass p-6";
 
@@ -79,8 +80,9 @@ export function MembershipScreen() {
     if (result.full || result.member) await refresh();
   }
 
+  // The button greys out while it works and the panel changes once it's done: the keyboard stays (see `keepFocusIn`).
   return (
-    <div className="mx-auto w-full max-w-xl space-y-6">
+    <div ref={keepFocusIn} className="mx-auto w-full max-w-xl space-y-6">
       <header className="space-y-1">
         <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Membership</h1>
         <p className="text-sm text-ink-muted">A free spot while they last, or Line Select Pro at {MEMBERSHIP_PRICE}. Your first membership starts with a free month.</p>
@@ -183,7 +185,7 @@ export function MembershipBody({
           <Button variant="secondary" onClick={onPortal} disabled={busy}>
             {busy ? "Opening…" : "Resume membership"}
           </Button>
-          {error && <p className="text-sm text-danger">{error}</p>}
+          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         </div>
       );
     }
@@ -205,7 +207,7 @@ export function MembershipBody({
         <Button variant="secondary" onClick={onPortal} disabled={busy}>
           {busy ? "Opening…" : "Manage membership"}
         </Button>
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       </div>
     );
   }
@@ -220,7 +222,7 @@ export function MembershipBody({
         <Button onClick={onPortal} disabled={busy}>
           {busy ? "Opening…" : "Update your card"}
         </Button>
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       </div>
     );
   }
@@ -282,7 +284,7 @@ export function MembershipBody({
         )}
       </div>
       {freeLeft === 0 && <p className="text-xs text-ink-faint">The free spots are all taken — membership is the way in now.</p>}
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     </div>
   );
 }

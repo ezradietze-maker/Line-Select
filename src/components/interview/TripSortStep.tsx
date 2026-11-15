@@ -101,7 +101,7 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
         </ul>
 
         <NoteBox value={why} onChange={setWhy} placeholder="What decided your grades? (optional)" ariaLabel="What decided your grades" maxLength={MAX_NOTE} className="mt-4" />
-        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+        {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
 
         <div className="mt-4 flex items-center justify-between gap-3">
           <button type="button" onClick={onSkip} disabled={busy} className="text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted">

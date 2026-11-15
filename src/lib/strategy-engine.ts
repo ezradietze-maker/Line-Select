@@ -3,7 +3,7 @@ import { timezoneForAirport } from "@/lib/airport-timezones";
 import type { AwardHistorySummary } from "@/lib/award-history";
 import { forecastBid, seatSize } from "@/lib/forecast/forecast";
 import { formatHoursValue } from "@/lib/interview-config";
-import { computeTripFacts } from "@/lib/metrics/trip-facts";
+import { tripFactsOf } from "@/lib/metrics/trip-facts";
 import type { LineScore } from "@/lib/scoring";
 import type { BidPack, Line, SeniorityEntry, VacationPeriod } from "@/types/bidpack";
 import type {
@@ -165,7 +165,7 @@ const flightKey = (n: string) => String(Number(n.replace(/\D/g, "")) || n);
 /** Operated legs on a line that fly a flight the pack lists as a sweep aircraft. */
 function sweepLegs(line: Line, sweep: Set<string>): number {
   let n = 0;
-  for (const t of line.trips) for (const l of computeTripFacts(t).operatedLegs) if (sweep.has(`${flightKey(l.flightNumber)}|${l.from}`)) n++;
+  for (const t of line.trips) for (const l of tripFactsOf(t).operatedLegs) if (sweep.has(`${flightKey(l.flightNumber)}|${l.from}`)) n++;
   return n;
 }
 

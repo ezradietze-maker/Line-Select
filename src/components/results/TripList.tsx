@@ -191,7 +191,7 @@ function TripHeader({
         {/* The same oval the calendar puts on a trip's first day: its number and credit. */}
         <span className="rounded-[3px] bg-calendar-accent px-2 py-0.5 font-mono text-sm font-semibold text-on-calendar" title="Trip number and credit in the bid pack">
           {trip.pairingNumber !== null ? `#${trip.pairingNumber} ` : ""}
-          <CreditHours hours={trip.creditHours} className="font-normal opacity-85" />
+          <CreditHours hours={trip.creditHours} className="font-normal" />
         </span>
         <span className="text-xs font-semibold text-ink">{trip.days}-day</span>
         {trip.international && (
@@ -236,7 +236,7 @@ function TripHeader({
           {carryOver.dutyPeriods > 0 ? ` · ${carryOver.dutyPeriods} duty period${carryOver.dutyPeriods === 1 ? "" : "s"}` : ""}
           {carryOver.landings > 0 ? ` · ${carryOver.landings} landing${carryOver.landings === 1 ? "" : "s"}` : ""}
           {carryOver.creditHours > 0 ? ` · ${hm(carryOver.creditHours * 60)} C/O credit` : ""}
-          <span className="font-sans text-ink-faint"> — the line&rsquo;s numbers count only this month&rsquo;s {hm(Math.max(0, trip.creditHours - carryOver.creditHours) * 60)} credit</span>
+          <span className="font-sans"> — the line&rsquo;s numbers count only this month&rsquo;s {hm(Math.max(0, trip.creditHours - carryOver.creditHours) * 60)} credit</span>
         </p>
       )}
     </div>

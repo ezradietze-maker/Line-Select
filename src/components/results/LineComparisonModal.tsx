@@ -87,7 +87,11 @@ export function LineComparisonModal({
         {lineScores.map((ls) => (
           <div key={ls.line.id} className="text-center font-semibold text-ink">
             #{ls.line.lineNumber}
-            <span className="ml-1 font-normal text-ink-faint">{Math.round(ls.score)}</span>
+            {/* Said as a score: a bare number after the line's read as "2112 49". */}
+            <span className="ml-1 font-normal text-ink-faint">
+              <span className="sr-only">score </span>
+              {Math.round(ls.score)}
+            </span>
           </div>
         ))}
       </div>

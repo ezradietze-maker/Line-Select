@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
-import { computeTripFacts } from "@/lib/metrics/trip-facts";
+import { tripFactsOf } from "@/lib/metrics/trip-facts";
 import { tripReportUtc } from "@/lib/trip-anchor";
 import type { Trip } from "@/types/bidpack";
 
@@ -13,7 +13,7 @@ export function fullDayDates(trip: Trip, pack: { bidPeriodStart: string | null; 
   const out = new Map<string, { city: string; barely: boolean }>();
   const report = tripReportUtc(pack, trip);
   if (report === null) return out;
-  for (const l of computeTripFacts(trip).layovers) {
+  for (const l of tripFactsOf(trip).layovers) {
     const zone = timezoneForAirport(l.city);
     if (!zone || !l.fullDays) continue;
     const landed = DateTime.fromMillis(report + l.start * 60_000, { zone }).startOf("day");
