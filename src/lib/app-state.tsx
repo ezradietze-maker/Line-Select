@@ -317,8 +317,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const guest = await loadStateFor(null);
         if (!cancelled) setState(guest);
       }
+      // Signed in (or out) on this tab while the check was on its way — a guest's view shows before it answers: the
+      // answer is of the session before that, and acted on, it put the tab and the device's note back to that one.
+      const asked = signInsRef.current;
       const session = await checkSession();
-      if (cancelled) return;
+      if (cancelled || signInsRef.current !== asked) return;
       // No answer from the server (no signal): carry on as the account this device was last signed in to, rather than
       // dropping a signed-in pilot to an empty guest view until the connection comes back.
       const currentUser = session.reachable ? session.user : readLastUser();
@@ -339,7 +342,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // give the pack and profile, as before.
       const offline = !session.reachable && isOffline();
       const resolved = await loadStateFor(currentUser, offline);
-      if (cancelled) return;
+      if (cancelled || signInsRef.current !== asked) return;
       // Read from the account once the server answers again (`caughtUpState`).
       if (offline && currentUser) offlineLoadRef.current = { userId: currentUser.id, bidPack: resolved.bidPack, profile: resolved.profile };
       setState(resolved);
@@ -986,13 +989,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await refreshUser();
       return;
     }
-    signInsRef.current++;
     // Offline, the session cookie outlives a sign-out that only happened on screen: the next person to open the app
-    // here would be let back into this account. Stay signed in and say so.
+    // here would be let back into this account. Stay signed in and say so. Still the same session, so an answer on its
+    // way about it (the account's pack once the connection is back, say) still counts: counted as a sign-out, it was
+    // dropped, and the device's older copy stayed on screen.
     if (!ended) {
       setToasts((prev) => [...prev, { id: `logout-${Date.now()}`, title: "Couldn't sign out", body: "Check your connection and try again. You're still signed in.", href: null }]);
       return;
     }
+    signInsRef.current++;
     // What this device kept for them goes too — the next person here mustn't find their pack or their own words. Not
     // while an edit is still waiting to reach their account: then this device holds the only copy. The mark is read
     // too, not just this visit's state, so an edit left from an earlier visit is kept as well.
