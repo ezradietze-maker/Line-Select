@@ -110,6 +110,21 @@ export function laterBack(at: {
 }
 
 /**
+ * Where the last read starts from when the interviewer wraps up after an answer: the "anything else?" screen when the
+ * answer was the one given there, so Back goes to it, as it does when nothing was picked on it. Taken for an answer,
+ * Back took the one before it back too (the "anything else?" answer keeps no step of its own), two screens back.
+ */
+export function wrapUpFrom(all: readonly { question: string }[]): "sweep" | "answered" {
+  return isSweepQuestion(all.at(-1)?.question ?? "") ? "sweep" : "answered";
+}
+
+/** Back to the "anything else?" screen: the answer given there, when it's the last, goes with it, or it's sent twice. */
+export function beforeSweepAnswer<E extends { question: string }>(exchanges: E[], turn: number): { exchanges: E[]; turn: number } | null {
+  if (!isSweepQuestion(exchanges.at(-1)?.question ?? "")) return null;
+  return { exchanges: exchanges.slice(0, -1), turn: Math.max(0, turn - 1) };
+}
+
+/**
  * What a draft keeps so Back (`laterBack`) goes the same way after a resume: the question still to go back to, where
  * the "anything else?" screen and the last read came from, and on the priorities the read they were built on (`model`
  * there was the one fitted to the line choices, and the next read built on it fitted them in a second time). Without
@@ -860,7 +875,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         if (!swept && uncoveredTopics(m).length > 0) {
           setSweepFrom("answered");
           setPhase("sweep");
-        } else void finishInterview(all, ch, "answered");
+        } else void finishInterview(all, ch, wrapUpFrom(all));
         return;
       }
       if (step.threadId) settledThreads[step.threadId] = { status: settledThreads[step.threadId]?.status ?? "open", timesAsked: (settledThreads[step.threadId]?.timesAsked ?? 0) + 1 };
@@ -979,6 +994,13 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     }
     if (to === "answer") goBack();
     else if (to === "sweep") {
+      const undone = beforeSweepAnswer(exchanges, turn);
+      if (undone) {
+        setExchanges(undone.exchanges);
+        setTurn(undone.turn);
+        turnLimitRef.current = MAX_TURNS;
+        setTurnLimit(MAX_TURNS);
+      }
       setSweepDone(false);
       setPhase("sweep");
     } else setPhase("question");
