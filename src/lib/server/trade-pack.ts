@@ -1,5 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import { restoreBidPack } from "@/lib/bidpack-storage";
+import { keptPackIs } from "@/lib/pack-id";
 import { getBidPackRecord, setBidPackFingerprint } from "@/lib/server/db";
 import { tradePackFingerprint } from "@/lib/server/pack-fingerprint";
 import type { BidPack } from "@/types/bidpack";
@@ -13,7 +14,7 @@ export const unpackRecord = (data: Buffer): BidPack => restoreBidPack(JSON.parse
  */
 export async function accountPackFingerprint(userId: string, packId: string): Promise<string | null> {
   const record = await getBidPackRecord(userId);
-  if (!record || record.packId !== packId) return null;
+  if (!record || !keptPackIs(record.packId, packId)) return null;
   if (record.fingerprint) return record.fingerprint;
   let fingerprint: string;
   try {
@@ -22,7 +23,7 @@ export async function accountPackFingerprint(userId: string, packId: string): Pr
     // A pack that can't be read is no copy to match on: left out, rather than stopping the seat's matching.
     return null;
   }
-  await setBidPackFingerprint(userId, packId, fingerprint);
+  await setBidPackFingerprint(userId, record.packId, fingerprint);
   return fingerprint;
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { legacyPackIdFor, packIdFor } from "@/lib/pack-id";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { heldLine, heldTripsOfLine, pilotsForMatching, readHolding, tradeLocksFor, tripInstances, type MatchingRow } from "@/lib/trades/holding";
+import { valueSwaps } from "@/lib/trades/value";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -134,6 +135,27 @@ describe("who can appear on a suggested trade", () => {
     const pilots = pilotsForMatching(current, rows);
     expect(pilots.map((p) => p.pilotId)).toEqual(["u1", "u2"]);
     expect(pilots[0].line.trips.map((t) => t.id)).toEqual(line.trips.map((t) => t.id));
+  });
+
+  it("values trades on the account's model as the browser upgrades it, for a profile saved before a measure was renamed", () => {
+    // Saved to the account before Oct 30, 2026, when the body clock was rated in stars: the account's copy stays that
+    // way until the pilot changes something, while every load in the browser moves it to the 1–100 score.
+    const criterion = (id: string, metric: string, weight: number, shape: object) => ({ id, metric, shape, tier: "major", weight, confidence: 0.8, label: id, evidence: [{ quote: "", turn: 1 }], status: "settled" });
+    const savedThen = {
+      version: 2,
+      home: { airports: ["MEM"], commuter: false },
+      criteria: [criterion("body", "avgCircadianStars", 0.9, { kind: "more", enoughAt: 4 }), criterion("credit", "totalCreditHours", 0.1, { kind: "more" })],
+      threads: [],
+      notMeasurable: [],
+      synopsis: "",
+    } as unknown as PilotModel;
+    const [p] = pilotsForMatching(pack, [row({ profile: { pilotModel: savedThen, seniorityNumber: 120 } as unknown as PreferenceProfile })]);
+    expect(p.model.criteria.map((c) => c.metric)).toEqual(["bodyClockScore", "totalCreditHours"]);
+    expect(p.model.criteria[0].shape).toEqual({ kind: "more", enoughAt: 75.25 });
+    // Read as saved, the renamed measure counted for nothing and every trade came out at 0.
+    const swaps = lines.filter((l) => l !== line).flatMap((l) => l.trips).map((take) => ({ give: line.trips[0], take }));
+    expect(valueSwaps(pack, line, savedThen, swaps).every((v) => v.gain === 0)).toBe(true);
+    expect(valueSwaps(pack, p.line, p.model, swaps).some((v) => v.gain !== 0)).toBe(true);
   });
 
   it("keeps locked trips out of the matching", () => {
