@@ -583,6 +583,16 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       expect(await mod.acceptTradeOffer(x.id, null)).toBeNull();
     });
 
+    it("declines only the proposal the pilot saw", async () => {
+      const [a, b] = [await makeUser("decline-a"), await makeUser("decline-b")];
+      const x = await offer(a, trip("13", 2));
+      await propose(x, b, trip("27", 6));
+      const pending = (await mod.findTradeOffer(x.id))!;
+      const declined = { status: "declined" as const, resolvedAt: new Date().toISOString() };
+      expect(await mod.updateTradeOffer(x.id, declined, ["pending"], "2000-01-01T00:00:00.000Z")).toBeNull();
+      expect(await mod.updateTradeOffer(x.id, declined, ["pending"], pending.respondedAt!)).toMatchObject({ status: "declined" });
+    });
+
     it("after an accept, won't let either traded trip be offered, proposed or agreed again", async () => {
       const [a, b, c] = [await makeUser("again-a"), await makeUser("again-b"), await makeUser("again-c")];
       const x = await offer(a, trip("13", 2));

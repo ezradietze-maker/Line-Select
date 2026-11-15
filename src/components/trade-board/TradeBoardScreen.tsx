@@ -350,7 +350,7 @@ export function TradeBoardScreen({
                   currentUserId={user?.id}
                   busy={busy}
                   onAccept={() => runAction(() => acceptOffer(offer.id, offer.respondedAt))}
-                  onDecline={() => runAction(() => declineOffer(offer.id))}
+                  onDecline={() => runAction(() => declineOffer(offer.id, offer.respondedAt))}
                 />
               ))}
             </Section>

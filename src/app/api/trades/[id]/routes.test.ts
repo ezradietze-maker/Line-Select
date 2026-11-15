@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   offer: null as unknown,
   respond: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   accept: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   hasSeat: true,
   holding: null as null | { trips: { id: string; startDayIndex: number; lock: string | null }[] },
   holdings: {} as Record<string, { trips: { id: string; startDayIndex: number; lock: string | null }[] }>,
@@ -16,6 +17,7 @@ vi.mock("@/lib/server/db", () => ({
   findTradeOffer: async () => mocks.offer,
   respondToTradeOffer: mocks.respond,
   acceptTradeOffer: mocks.accept,
+  updateTradeOffer: mocks.update,
   pilotHasSeatMonth: async () => mocks.hasSeat,
   getTradeHolding: async (userId: string) => mocks.holdings[userId] ?? mocks.holding,
   getBidPackRecord: async () => null,
@@ -23,6 +25,7 @@ vi.mock("@/lib/server/db", () => ({
 
 const { POST: respond } = await import("./respond/route");
 const { POST: accept } = await import("./accept/route");
+const { POST: decline } = await import("./decline/route");
 
 const trip = { lineNumber: "1", pairingNumber: "13", days: 3, layoverCities: ["ANC"], international: false, reportTime: "early" as const, creditHours: 15, tafbHours: 60, landings: 4, deadheadLegs: 0, tripId: "p13", startDayIndex: 2 };
 const offer = (over: Partial<TradeOffer> = {}) =>
@@ -84,6 +87,25 @@ describe("agreeing a trade", () => {
     mocks.holdings = { "pilot-1": { trips: [{ id: "p13", startDayIndex: 2, lock: null }] }, "pilot-3": { trips: [{ id: "p27", startDayIndex: 6, lock: null }] } };
     mocks.accept.mockResolvedValue(offer({ status: "accepted" }));
     expect((await accept(body({ respondedAt: null }), params)).status).toBe(200);
+  });
+});
+
+describe("declining a proposal", () => {
+  const proposed = (respondedAt: string) => offer({ offeringUserId: "pilot-1", status: "pending", responderUserId: "pilot-3", responderTrip: trip, respondedAt });
+
+  it("is refused when another pilot's proposal has taken the place of the one the pilot saw", async () => {
+    // B's proposal was taken off (their trip traded elsewhere) and C proposed since: declining B's mustn't close C's.
+    mocks.offer = proposed("2026-11-03T09:00:00.000Z");
+    const res = await decline(body({ respondedAt: "2026-11-02T10:00:00.000Z" }), params);
+    expect(res.status).toBe(409);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("declines the one the pilot saw, and only while it's still there", async () => {
+    mocks.offer = proposed("2026-11-02T10:00:00.000Z");
+    mocks.update.mockResolvedValue(offer({ status: "declined" }));
+    expect((await decline(body({ respondedAt: "2026-11-02T10:00:00.000Z" }), params)).status).toBe(200);
+    expect(mocks.update).toHaveBeenCalledWith("o1", expect.objectContaining({ status: "declined" }), ["pending"], "2026-11-02T10:00:00.000Z");
   });
 });
 
