@@ -12,7 +12,8 @@
     "ci-status": "node scripts/ci-status.mjs",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx scripts/migrate.ts"
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:migrate:prod": "tsx scripts/migrate-prod.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
