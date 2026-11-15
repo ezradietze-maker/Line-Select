@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { attachScoreContext, computeStanding, generateStrategies } from "@/lib/strategy-engine";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { buildProfile, emptyWeights } from "@/lib/preference-logic";
-import { rankLines } from "@/lib/scoring";
+import { rankLines, type LineScore } from "@/lib/scoring";
 import type { BidPack, SeniorityEntry } from "@/types/bidpack";
 
 /**
@@ -115,8 +115,8 @@ describe("generateStrategies", () => {
     list.push({ bidNumber: list.length + 1, seniority: (list.length + 1) * 10, pay: true });
     const p = pack({ lines, seniorityList: list, info: { ...pack().info!, rlgHours: 68.5, totalRegularLines: reg, totalSecondaryLines: sec, totalReserveLines: res } });
     const odds = (bid: number) => Object.fromEntries(lines.map((l, i) => [l.id, bid <= 10 ? 0.9 : bid < reg ? (i > 40 ? 0.6 : 0.1) : 0]));
-    const moves = (bid: number) => generateStrategies(p, { rank: bid, totalPilots: list.length }, null, { pAvailable: odds(bid) });
-    return { reg, sec, moves };
+    const moves = (bid: number, lineScores?: LineScore[]) => generateStrategies(p, { rank: bid, totalPilots: list.length }, null, { pAvailable: odds(bid), lineScores });
+    return { reg, sec, moves, lines };
   })();
   const card = (moves: ReturnType<typeof big.moves>, id: string) => moves.find((m) => m.id === id)!;
 
@@ -145,6 +145,27 @@ describe("generateStrategies", () => {
     const mid = big.moves(30);
     expect(card(mid, "leftovers").facts.find((f) => f.label.startsWith("Regular lines likely open"))!.value).toBe("8 of 49");
     expect(card(mid, "reserve-pays-more").fitReason).toMatch(/^(All|\d+ of the) 8 regular lines likely left at your number pay/);
+  });
+
+  // My Rankings as the pilot left it: a score climbing with the line number, but the lowest of the eight likely-open
+  // lines moved to the top by hand, the rest in score order under it.
+  const shown = (() => {
+    const byScore = big.lines.map((line, i) => ({ line, score: i }) as unknown as LineScore).reverse();
+    const moved = byScore.find((r) => r.line.id === "L41")!;
+    return [moved, ...byScore.filter((r) => r !== moved)];
+  })();
+
+  it("lists the leftover lines in the pilot's own order, as My Rankings shows it", () => {
+    const leftovers = card(big.moves(30, shown), "leftovers");
+    expect(leftovers.lines.map((l) => l.lineNumber)).toEqual(["1042", "1049", "1048", "1047", "1046", "1045"]);
+  });
+
+  it("measures a move's lines against the pilot's #1 in My Rankings, not their highest score", () => {
+    const leftovers = card(attachScoreContext(big.moves(30, shown), shown), "leftovers");
+    const top = leftovers.lines.find((l) => l.lineNumber === "1042")!;
+    expect(top.scoreContext).toEqual({ score: 41, deltaFromTopPick: 0, isTopPick: true });
+    const next = leftovers.lines.find((l) => l.lineNumber === "1049")!;
+    expect(next.scoreContext).toEqual({ score: 48, deltaFromTopPick: 7, isTopPick: false });
   });
 
   it("tells the last regular holder they hold the last line, not that they're 0 places inside", () => {

@@ -174,7 +174,7 @@ function sweepLegs(line: Line, sweep: Set<string>): number {
 const FIT_ORDER: Record<StrategyFit, number> = { now: 0, maybe: 1, later: 2 };
 
 export interface StrategyOptions {
-  /** The pilot's own line scores, best first (absent before an interview) — used to order a move's lines by what they'd actually want. */
+  /** The pilot's own lines in My Rankings' order, first first (absent before an interview) — a move's lines go in that order. */
   lineScores?: LineScore[] | null;
   isCommuter?: boolean | null;
   /** Chance each line is still open at the pilot's turn, by line id. Worked out here from the pack's seniority list when not given. */
@@ -195,8 +195,10 @@ export function generateStrategies(
   const info = bidPack.info;
   const lines = bidPack.lines;
   const position = st.effective ?? st.printedBidNumber;
-  const scoreOf = new Map((options.lineScores ?? []).map((r) => [r.line.lineNumber, r.score]));
-  const hasScores = scoreOf.size > 0;
+  // Where each line sits in My Rankings as shown, hand moves and tiers included: ordered by score, a line the pilot
+  // moved to the top came after lines they'd put below it.
+  const placeOf = new Map((options.lineScores ?? []).map((r, i) => [r.line.lineNumber, i]));
+  const hasScores = placeOf.size > 0;
   const pack = {
     credit: median(lines.map((l) => l.totalCreditHours)),
     daysOff: Math.round(median(lines.map((l) => l.daysOff))),
@@ -267,7 +269,7 @@ export function generateStrategies(
   {
     const likely = lines
       .filter((l) => (openAt(l) ?? 0) >= 0.5)
-      .sort((a, b) => (hasScores ? (scoreOf.get(b.lineNumber) ?? 0) - (scoreOf.get(a.lineNumber) ?? 0) : (openAt(b) ?? 0) - (openAt(a) ?? 0)));
+      .sort((a, b) => (hasScores ? (placeOf.get(a.lineNumber) ?? Infinity) - (placeOf.get(b.lineNumber) ?? Infinity) || 0 : (openAt(b) ?? 0) - (openAt(a) ?? 0)));
     // A senior pilot has nearly every line open — listing them says nothing; the move is for pilots the pack's favorites pass by.
     const recs = (st.band === "regular" && position <= st.regular * 0.35 ? [] : likely).slice(0, 6).map((l) => {
       const p = openAt(l)!;
@@ -302,7 +304,7 @@ export function generateStrategies(
       steps: [
         "Put two or three reach lines first — the ones you'd love even if they're probably gone.",
         ...(recs.length
-          ? [hasScores ? "Next, the lines below: likely still open at your number, best for you first." : "Next, the lines below: likely still open at your number. Take the interview and they'll be ordered by what you'd actually want."]
+          ? [hasScores ? "Next, the lines below: likely still open at your number, in your order from My Rankings." : "Next, the lines below: likely still open at your number. Take the interview and they'll be ordered by what you'd actually want."]
           : []),
         "Then keep going: list every regular line you'd fly over reserve or secondary, so a surprise above you still lands on something you chose.",
       ],
@@ -568,17 +570,22 @@ export function rankStrategiesByPreference(strategies: Strategy[]): Strategy[] {
   return strategies;
 }
 
-/** Ties a move's lines back to the pilot's own score for them, against their current top pick. */
+/**
+ * Ties a move's lines back to the pilot's own score for them, against their current top pick: #1 in My Rankings as
+ * shown (`lineScores` in that order). The highest score called a line "already your current top pick" when the pilot
+ * had moved another line to #1, and a line tied with #1 read as #1 itself.
+ */
 export function attachScoreContext(strategies: Strategy[], lineScores: LineScore[] | null | undefined): Strategy[] {
   if (!lineScores || lineScores.length === 0) return strategies;
-  const topScore = Math.max(...lineScores.map((r) => r.score));
+  const top = lineScores[0];
   const scoreByLineNumber = new Map(lineScores.map((r) => [r.line.lineNumber, r.score]));
   return strategies.map((s) => ({
     ...s,
     lines: s.lines.map((rec) => {
       const score = scoreByLineNumber.get(rec.lineNumber);
       if (score === undefined) return rec;
-      return { ...rec, scoreContext: { score, deltaFromTopPick: Math.round((score - topScore) * 10) / 10 } };
+      const isTopPick = rec.lineNumber === top.line.lineNumber;
+      return { ...rec, scoreContext: { score, deltaFromTopPick: Math.round((score - top.score) * 10) / 10, isTopPick } };
     }),
   }));
 }
