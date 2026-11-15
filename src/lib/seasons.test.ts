@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { IANAZone } from "luxon";
+import { describe, expect, it, vi } from "vitest";
 import { freezeShare, monthAt, monthsWords, scoreInMonth, seasonMonths, seasonOf } from "@/lib/seasons";
 
 describe("seasons, from each city's weather", () => {
@@ -51,6 +52,23 @@ describe("seasons, from each city's weather", () => {
     expect(monthAt({ bidPeriodStart: "2027-01-03", base: "MEM" }, trip, 52 * 60, "ANC")).toBe(2);
     expect(monthAt({ bidPeriodStart: "2027-01-03", base: "MEM" }, { startDayIndex: null, schedule: [] } as never, 0, "ANC")).toBe(1);
     expect(monthAt({ bidPeriodStart: null, base: "MEM" }, trip, 0, "ANC")).toBeNull();
+  });
+
+  it("keeps a bounded number of zone offsets, however many months of packs a tab sees", () => {
+    // Each new month's pack asks about hours no pack before it did: kept for good, they'd pile up pack after pack.
+    const trip = { startDayIndex: 0, schedule: [{ reportTimeLocal: "0800" }] } as never;
+    const pack = { bidPeriodStart: "2031-01-06", base: "MEM" };
+    expect(monthAt(pack, trip, 0, "ANC")).toBe(1);
+    const offset = vi.spyOn(IANAZone.prototype, "offset");
+    // Asked again at once: kept.
+    expect(monthAt(pack, trip, 0, "ANC")).toBe(1);
+    expect(offset).not.toHaveBeenCalled();
+    // Three years of hours later (more than any tab will see in packs), the first is long let go and worked out afresh.
+    for (let h = 1; h <= 26_000; h++) monthAt(pack, trip, h * 60, "ANC");
+    offset.mockClear();
+    expect(monthAt(pack, trip, 0, "ANC")).toBe(1);
+    expect(offset).toHaveBeenCalled();
+    offset.mockRestore();
   });
 
   it("says months the way a pilot reads them, a run over the new year as one", () => {
