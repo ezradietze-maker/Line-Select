@@ -67,7 +67,8 @@ async function respond(request: Request, remember: Remember | null): Promise<Res
   if (!daily.ok) {
     await paid.finish(0);
     const error = spender.signedIn ? "That's today's questions used up. They come back tomorrow." : "That's today's questions for guests. Sign in to ask more.";
-    return NextResponse.json({ error }, { status: 429 });
+    // `final`: the chat stops offering to ask again until tomorrow.
+    return NextResponse.json({ error, final: true }, { status: 429 });
   }
 
   return remember ? stream(input, paid, remember) : plain(input, paid);
