@@ -204,7 +204,9 @@ export function checkPriority(code: "PMU" | "PNP", show: number, now: number, zo
 export function checkTradeLimit(openCH: number, givenUpCH: number, tradedSoFarCH: number, rules: OpenTimeRules): RuleFinding[] {
   const net = tradedSoFarCH + openCH - givenUpCH;
   if (net > rules.tradeNetCH + FLOAT_SLACK) return [{ section: "25.L.8.a", level: "no", text: `This trade would put you ${hm(net)} CH over your published BLG; the limit is ${rules.tradeNetCH} CH (CBA 2026 25.L.8.a).` }];
-  return [{ section: "25.L.8.a", level: "note", text: `Net of trades: ${net >= 0 ? "+" : "-"}${hm(Math.abs(net))} CH against a limit of ${rules.tradeNetCH} CH (CBA 2026 25.L.8.a).` }];
+  // Signed as the minutes read: an even trade a hair under zero (0.2 + 12.1 - 12.3) read "-0:00".
+  const shown = hm(net);
+  return [{ section: "25.L.8.a", level: "note", text: `Net of trades: ${shown.startsWith("-") || shown === "0:00" ? "" : "+"}${shown} CH against a limit of ${rules.tradeNetCH} CH (CBA 2026 25.L.8.a).` }];
 }
 
 export interface TripTimes {

@@ -350,9 +350,11 @@ describe("slideWhere (CBA 2026 25.E.2.b)", () => {
     expect(slides.lines).toEqual([]);
     expect(slides.across).toEqual([]);
   });
-  it("25.E.2: the rule changes with December 2026", () => {
+  // Round 25: the DEC26 bid's window is in November, before Phase 2 starts, and the timeline counted it on the 2015 rule.
+  it("25.E.2: the rule changes with the JAN27 bid, the first to close in Phase 2, as on the timeline", () => {
     expect(slideWhere(pack([])).rule).toContain("1700 CT");
-    expect(slideWhere(pack([], "DEC26")).rule).toContain("5 hours after");
+    expect(slideWhere(pack([], "DEC26")).rule).toContain("1700 CT");
+    expect(slideWhere(pack([], "JAN27")).rule).toContain("5 hours after");
   });
 });
 

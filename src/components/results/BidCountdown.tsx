@@ -7,9 +7,9 @@ import { setBidDeadline } from "@/lib/bid-deadline-storage";
 import { useBidDeadlineOverride } from "@/lib/use-bid-deadline";
 
 /*
- * Counts down to the close the pack itself prints on its bid calendar (or, from the December 2026 bid period,
- * the contract's rule counted from the pack's printed publication — see `lib/bid-calendar.ts`), unless the pilot
- * set their own. Never guessed from `BidPack.bidPeriodStart`, which is when the schedule starts, not when
+ * Counts down to the close the pack itself prints on its bid calendar (or, from the JAN27 bid, the first to close
+ * in Phase 2, the contract's rule counted from the pack's printed publication — see `lib/bid-calendar.ts`), unless
+ * the pilot set their own. Never guessed from `BidPack.bidPeriodStart`, which is when the schedule starts, not when
  * bidding closes.
  */
 

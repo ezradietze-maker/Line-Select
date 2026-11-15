@@ -466,12 +466,14 @@ export interface TripClaim<R> {
  * no farther from its own date if that frees one; failing that, the row nearer a trip's date has it, and the other
  * looks again. Kept to its nearest only, "213 12/11" lost the pack's 213 on the 10th to "213 12/9" and never took the
  * 12th's. A row on the date of the row holding its trip is the same row twice, and goes. A row left with no trip comes
- * back in `lost`, with its nearest trip and the row holding it.
+ * back in `lost`, with its nearest trip and the row holding it. Rows nearest a trip go first, so a row on its trip's own
+ * date has it whichever row was pasted first; between rows as near as each other, the first pasted wins. Both come back
+ * in the order pasted.
  */
 export function claimTrips<R>(rows: { row: R; matches: { trip: Trip; gap: number }[] }[], sameDate: (a: R, b: R) => boolean): { claimed: Map<string, TripClaim<R>>; lost: { row: R; trip: Trip; to: R }[] } {
   const claimed = new Map<string, TripClaim<R>>();
-  const lost: { row: R; trip: Trip; to: R }[] = [];
   type Row = { row: R; matches: { trip: Trip; gap: number }[] };
+  const unplaced: Row[] = [];
   // A free trip for `c`, moving a row holding one along to another trip no farther from its own date.
   const seat = (c: Row, most: number, seen: Set<string>): boolean => {
     for (const { trip, gap } of c.matches) {
@@ -496,13 +498,22 @@ export function claimTrips<R>(rows: { row: R; matches: { trip: Trip; gap: number
       claimed.set(key, { row: c.row, ...nearer, matches: c.matches });
       return place(had);
     }
-    lost.push({ row: c.row, trip: c.matches[0].trip, to: claimed.get(tripKey(c.matches[0].trip))!.row });
+    unplaced.push(c);
   };
-  for (const c of rows) {
-    if (!c.matches.length || c.matches.some(({ trip }) => { const had = claimed.get(tripKey(trip)); return had && sameDate(had.row, c.row); })) continue;
+  // In the order pasted, "213 12/9" took the 10th's 213 and moved "213 12/10" along to the 11th; the other way round,
+  // "213 12/10" kept its own date and "213 12/9" was not in the pack.
+  const pasted = new Map(rows.map((c, i) => [c.row, i]));
+  const nearestFirst = rows.filter((c) => c.matches.length).sort((a, b) => a.matches[0].gap - b.matches[0].gap || pasted.get(a.row)! - pasted.get(b.row)!);
+  for (const c of nearestFirst) {
+    if (c.matches.some(({ trip }) => { const had = claimed.get(tripKey(trip)); return had && sameDate(had.row, c.row); })) continue;
     place(c);
   }
-  return { claimed, lost };
+  const byPaste = (a: R, b: R) => pasted.get(a)! - pasted.get(b)!;
+  return {
+    claimed: new Map([...claimed].sort(([, a], [, b]) => byPaste(a.row, b.row))),
+    // Named against the row its nearest trip went to in the end: a later row can still move that one along.
+    lost: unplaced.sort((a, b) => byPaste(a.row, b.row)).map((c) => ({ row: c.row, trip: c.matches[0].trip, to: claimed.get(tripKey(c.matches[0].trip))!.row })),
+  };
 }
 
 export interface ViewAddChoice {

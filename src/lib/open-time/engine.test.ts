@@ -201,6 +201,37 @@ describe("rows to trips", () => {
     }
   });
 
+  // Round 25: which row came first decided it. "213 12/9" then "213 12/10" (213 on the 10th and 11th) gave the 10th to
+  // the 12/9 row and moved the 12/10 row off its own date to the 11th, said to fly "a day either side"; the other way
+  // round, the 12/10 row kept its own date and the 12/9 row was not in the pack.
+  it("a row on its trip's own date keeps it, whichever row comes first", () => {
+    const tenth = trip("213", 10, { id: "t-213-10" });
+    const eleventh = trip("213", 11, { id: "t-213-11" });
+    const q = pack([], [tenth, eleventh]);
+    for (const text of ["213 12/9\n213 12/10", "213 12/10\n213 12/9"]) {
+      const b = board(q, text);
+      expect(Object.fromEntries(b.trips.map((t) => [t.row.raw, t.key])), text).toEqual({ "213 12/10": tripKey(tenth) });
+      expect(b.notInPack.map((r) => r.raw), text).toEqual(["213 12/9"]);
+      expect(b.notInPack[0].why, text).toContain('went to "213 12/10"');
+      expect(b.trips[0].findings.find((f) => f.section === "open-time-date")?.text ?? "", text).not.toContain("either side");
+    }
+  });
+
+  it("stays quick on a long list of repeated trip numbers, one row a trip", () => {
+    // 20 trip numbers flying every day, and a row for each a day either side of its date, in no order.
+    const daily = Array.from({ length: 20 }, (_, n) => Array.from({ length: 26 }, (_, d) => trip(String(300 + n), d + 1, { id: `t-${300 + n}-${d + 1}` }))).flat();
+    const q = pack([], daily);
+    const rows = [...new Set(daily.flatMap((t) => [-1, 1].map((by) => `${t.pairingNumber} ${DateTime.fromISO(pairingDate(t, q)!, { zone: "utc" }).plus({ days: by }).toFormat("L/d")}`)))];
+    const shuffled = rows.map((r, i) => ({ r, k: (i * 7919) % rows.length })).sort((a, b) => a.k - b.k).map((x) => x.r);
+    expect(shuffled.length).toBeGreaterThan(MAX_ROWS);
+    const started = performance.now();
+    const b = board(q, shuffled.join("\n"));
+    expect(performance.now() - started).toBeLessThan(5000);
+    const keys = b.trips.map((t) => t.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(b.trips.length + b.onLine.length + b.notInPack.length + b.unread.length).toBe(MAX_ROWS);
+  });
+
   // Round 24: "14:30" and a release date read as a second date, and a trip number flying both days went unread.
   it("a time or a release date beside the date isn't a second reading of it", () => {
     const daily = [12, 13, 14].map((d) => trip("213", d, { id: `t-213-${d}` }));
