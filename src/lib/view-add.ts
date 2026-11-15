@@ -417,6 +417,8 @@ export interface PastedEntry {
   day: number;
   /** The year, when the line prints one. */
   year?: number;
+  /** Another way to read the line, when its date reads two ways ("5 DEC 10"): see `OpenTimeRow.orRead`. */
+  orRead?: { tripNumbers: string[]; month: number; day: number; year?: number };
 }
 
 /**
@@ -427,7 +429,7 @@ export interface PastedEntry {
 export function parseOpenTimeList(text: string): { entries: PastedEntry[]; notRead: string[] } {
   const { rows, unread } = parseOpenTimePaste(text);
   return {
-    entries: rows.map((r) => ({ raw: r.raw, tripNumber: r.tripNumbers[0], tripNumbers: r.tripNumbers, month: r.month, day: r.day, ...(r.year ? { year: r.year } : {}) })),
+    entries: rows.map((r) => ({ raw: r.raw, tripNumber: r.tripNumbers[0], tripNumbers: r.tripNumbers, month: r.month, day: r.day, ...(r.year ? { year: r.year } : {}), ...(r.orRead ? { orRead: r.orRead } : {}) })),
     notRead: unread.map((u) => u.raw),
   };
 }
@@ -546,25 +548,45 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
     // A run of day trips as its days: a pasted day is that day, not the whole run (see `dayTripsOf`).
     const universe = [...(pack.openPairings ?? []), ...pack.lines.flatMap((l) => l.trips)].flatMap(dayTripsOf);
     const found = new Map<string, Trip>();
-    for (const e of pasted.entries) {
-      // Whichever of the line's numbers flies that day, as Open Time reads it: the first number isn't always the trip.
-      const options = (e.tripNumbers?.length ? e.tripNumbers : [e.tripNumber])
-        .map((n) => ({ n, matches: pastedMatches({ ...e, tripNumber: n }, universe, pack) }))
-        .filter((o) => o.matches.length);
+    const claims = new Map<string, { e: PastedEntry; gap: number; check: boolean }>();
+    for (const entry of pasted.entries) {
+      // Each way the line's date reads ("5 DEC 10"), and whichever of its numbers flies that day, as Open Time reads it:
+      // the first number isn't always the trip.
+      const { orRead, ...first } = entry;
+      const readings: PastedEntry[] = [first, ...(orRead ? [{ ...first, ...orRead, tripNumber: orRead.tripNumbers[0] }] : [])];
+      const options = readings.flatMap((r) =>
+        (r.tripNumbers?.length ? r.tripNumbers : [r.tripNumber]).map((n) => ({ n, r, matches: pastedMatches({ ...r, tripNumber: n }, universe, pack) })).filter((o) => o.matches.length)
+      );
       if (options.length > 1) {
-        unclear.push(`${e.raw} (${options.map((o) => o.n).join(" and ")} both fly that day)`);
+        const sameDay = options.every((o) => o.r === options[0].r);
+        unclear.push(`${entry.raw} (${sameDay ? `${options.map((o) => o.n).join(" and ")} both fly that day` : `it reads as ${options.map((o) => `trip ${o.n} on ${o.r.month}/${o.r.day}`).join(" or ")}, and the pack has both`})`);
         continue;
       }
       const matches = options[0]?.matches;
       if (!matches) {
-        notInPack.push(e.raw);
+        notInPack.push(entry.raw);
         continue;
       }
-      // The same pairing a day either side, or only a day off the date printed: taken, and said so.
-      if (matches.length > 1 || matches[0].gap > 0) dateChecks.push(e.raw);
+      const e = options[0].r;
       const t = matches[0].trip;
-      found.set(tripKey(t), t);
-      textOf.set(tripKey(t), e.raw);
+      const key = tripKey(t);
+      const claim = { e, gap: matches[0].gap, check: matches.length > 1 || matches[0].gap > 0 };
+      const had = claims.get(key);
+      if (had && (had.e.month !== e.month || had.e.day !== e.day || had.e.year !== e.year)) {
+        // Two dates found the one trip ("501 8DEC", "501 9DEC" with 501 only on the 8th): the nearer date has it, and
+        // the other is a trip the pack doesn't have. The last one had it, so "501 9DEC" was what the pilot copied.
+        const [keep, other] = claim.gap < had.gap ? [claim, had] : [had, claim];
+        claims.set(key, keep);
+        notInPack.push(other.e.raw);
+        continue;
+      }
+      if (!had) claims.set(key, claim);
+      found.set(key, t);
+    }
+    for (const [key, { e, check }] of claims) {
+      textOf.set(key, e.raw);
+      // The same pairing a day either side, or only a day off the date printed: taken, and said so.
+      if (check) dateChecks.push(e.raw);
     }
     pool = [...found.values()];
   }

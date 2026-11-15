@@ -106,10 +106,24 @@ export interface OpenTimeBoard {
   noDates: boolean;
 }
 
-const dateOf = (r: OpenTimeRow) => `${r.month}/${r.day}`;
+const dateOf = (r: Pick<OpenTimeRow, "month" | "day">) => `${r.month}/${r.day}`;
 
-/** A pack trip for a row: the one trip number that flies on that date, or why there isn't one. */
-function matchRow(row: OpenTimeRow, universe: Map<string, Trip[]>, pack: BidPack): { trip: Trip; findings: RuleFinding[] } | { unread: string } | { notInPack: string } {
+type RowMatch = { row: OpenTimeRow; n: string; trip: Trip; gap: number; findings: RuleFinding[] } | { unread: string } | { notInPack: string };
+
+/** A pack trip for a row, read each way its date reads (`OpenTimeRow.orRead`): the one that finds a trip, or why none does. */
+function matchRow(row: OpenTimeRow, universe: Map<string, Trip[]>, pack: BidPack): RowMatch {
+  if (!row.orRead) return matchReading(row, universe, pack);
+  const { orRead, ...first } = row;
+  const one = matchReading(first, universe, pack);
+  const two = matchReading({ ...first, ...orRead }, universe, pack);
+  if ("trip" in one && "trip" in two) return { unread: `It reads as trip ${one.n} on ${dateOf(one.row)} or trip ${two.n} on ${dateOf(two.row)}, and the pack has both, so we can't tell which it means.` };
+  if ("trip" in two) return two;
+  if ("notInPack" in one && "notInPack" in two) return { notInPack: `No trip ${first.tripNumbers.join(" or ")} on or next to ${dateOf(first)}, and no trip ${orRead.tripNumbers.join(" or ")} on or next to ${dateOf(orRead)}, in this pack. It may be new or revised since the pack came out.` };
+  return one;
+}
+
+/** A pack trip for one reading of a row: the one trip number that flies on that date, or why there isn't one. */
+function matchReading(row: OpenTimeRow, universe: Map<string, Trip[]>, pack: BidPack): RowMatch {
   const found = row.tripNumbers.flatMap((n) => {
     const matches = pastedMatches({ tripNumber: n, month: row.month, day: row.day, year: row.year }, universe.get(n) ?? [], pack);
     return matches.length ? [{ n, matches }] : [];
@@ -120,7 +134,7 @@ function matchRow(row: OpenTimeRow, universe: Map<string, Trip[]>, pack: BidPack
       ? { unread: `We couldn't tell which number is the trip: none of ${row.tripNumbers.join(", ")} flies on ${dateOf(row)} in this pack.` }
       : { notInPack: `No trip ${row.tripNumbers[0]} on or next to ${dateOf(row)} in this pack. It may be new or revised since the pack came out.` };
   }
-  const { matches } = found[0];
+  const { n, matches } = found[0];
   const findings: RuleFinding[] = [];
   // Which date VIPS prints isn't known (question 28 for the ex-pilot), and it matters when a pairing flies on neighbouring days.
   if (matches.length > 1) {
@@ -128,8 +142,10 @@ function matchRow(row: OpenTimeRow, universe: Map<string, Trip[]>, pack: BidPack
   } else if (matches[0].gap > 0) {
     findings.push({ section: "open-time-date", level: "check", text: `The pack has this trip a day from ${dateOf(row)}. We took that to be the same trip: check it against VIPS.` });
   }
-  return { trip: matches[0].trip, findings };
+  return { row, n, trip: matches[0].trip, gap: matches[0].gap, findings };
 }
+
+const sameDate = (a: OpenTimeRow, b: OpenTimeRow) => a.month === b.month && a.day === b.day && a.year === b.year;
 
 /** A row that prints something the pack doesn't: the trip may have been revised since the pack came out. */
 function revisionFindings(row: OpenTimeRow, trip: Trip): RuleFinding[] {
@@ -307,13 +323,36 @@ export function evaluateOpenTime(snapshot: OpenTimeSnapshot, s: OpenTimeSituatio
   const unread: UnreadRow[] = [...snapshot.unread];
   const notInPack: UnreadRow[] = [];
   const onLine: OpenTimeRow[] = [];
-  const matched = new Map<string, { row: OpenTimeRow; trip: Trip; findings: RuleFinding[] }>();
+  const claimed = new Map<string, { row: OpenTimeRow; trip: Trip; gap: number; findings: RuleFinding[] }>();
   for (const row of snapshot.rows.slice(0, MAX_ROWS)) {
     const m = matchRow(row, universe, pack);
-    if ("unread" in m) unread.push({ raw: row.raw, why: m.unread });
-    else if ("notInPack" in m) notInPack.push({ raw: row.raw, why: m.notInPack });
-    else if (onLineKeys.has(tripKey(m.trip))) onLine.push(row);
-    else if (!matched.has(tripKey(m.trip))) matched.set(tripKey(m.trip), { row, trip: m.trip, findings: [...m.findings, ...revisionFindings(row, m.trip)] });
+    if ("unread" in m) {
+      unread.push({ raw: row.raw, why: m.unread });
+      continue;
+    }
+    if ("notInPack" in m) {
+      notInPack.push({ raw: row.raw, why: m.notInPack });
+      continue;
+    }
+    const key = tripKey(m.trip);
+    const had = claimed.get(key);
+    // As the pack read it, when its date reads two ways.
+    const claim = { row: m.row, trip: m.trip, gap: m.gap, findings: m.findings };
+    if (!had) claimed.set(key, claim);
+    else if (!sameDate(had.row, m.row)) {
+      // Two dates found the one trip, as "213 12/10" and "213 12/11" do when the pack has 213 only on the 10th. The
+      // nearer date has it; the other is a trip the pack doesn't have. Kept first, the 11th's row took it and the 10th's
+      // vanished from the board.
+      const [keep, other] = m.gap < had.gap ? [claim, had] : [had, claim];
+      claimed.set(key, keep);
+      const n = keep.trip.pairingNumber;
+      notInPack.push({ raw: other.row.raw, why: `The pack's only trip ${n} near ${dateOf(other.row)} went to "${keep.row.raw}". This one may be new or revised since the pack came out.` });
+    }
+  }
+  const matched = new Map<string, { row: OpenTimeRow; trip: Trip; findings: RuleFinding[] }>();
+  for (const [key, { row, trip, findings }] of claimed) {
+    if (onLineKeys.has(key)) onLine.push(row);
+    else matched.set(key, { row, trip, findings: [...findings, ...revisionFindings(row, trip)] });
   }
 
   const evaluated = [...matched.values()].map(({ row, trip, findings }) => {

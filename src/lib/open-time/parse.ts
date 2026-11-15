@@ -22,20 +22,23 @@ const fullYear = (y: string | undefined) => (y ? (y.length === 2 ? 2000 + Number
 
 type ReadDate = { month: number; day: number; year?: number };
 
-/** Each way of writing a date: "2026-10-14"; "14OCT", "14 OCT 2026", "14OCT26"; "OCT 14", "October 14, 2026"; "10/14", "10/14/26". */
+/** Each way of writing a date: "2026-10-14"; "14OCT", "14 OCT 2026", "14OCT26", "14OCT2026"; "OCT 14", "October 14, 2026"; "10/14", "10/14/26". */
 const DATE_FORMS: { re: RegExp; read: (m: RegExpMatchArray) => ReadDate }[] = [
   { re: /\b(20\d{2})-(\d{2})-(\d{2})\b/g, read: (m) => ({ year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }) },
-  { re: new RegExp(`\\b(\\d{1,2})[ -]?(${MON})[A-Z]*(?:(\\d{2})|[ -](20\\d{2}))?\\b`, "gi"), read: (m) => ({ day: Number(m[1]), month: MONTHS.indexOf(m[2].toUpperCase()) + 1, year: fullYear(m[3] ?? m[4]) }) },
+  { re: new RegExp(`\\b(\\d{1,2})[ -]?(${MON})[A-Z]*(?:(20\\d{2}|\\d{2})|[ -](20\\d{2}))?\\b`, "gi"), read: (m) => ({ day: Number(m[1]), month: MONTHS.indexOf(m[2].toUpperCase()) + 1, year: fullYear(m[3] ?? m[4]) }) },
   { re: new RegExp(`\\b(${MON})[A-Z]*\\.?[ -]?(\\d{1,2})\\b(?:,? (20\\d{2})\\b)?`, "gi"), read: (m) => ({ month: MONTHS.indexOf(m[1].toUpperCase()) + 1, day: Number(m[2]), year: fullYear(m[3]) }) },
-  { re: /(?<![\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d/])/g, read: (m) => ({ month: Number(m[1]), day: Number(m[2]), year: fullYear(m[3]) }) },
+  // Not out of figures written together: "12.5/10.2" isn't May 10.
+  { re: /(?<![\d/.:])(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d/]|[.:]\d)/g, read: (m) => ({ month: Number(m[1]), day: Number(m[2]), year: fullYear(m[3]) }) },
 ];
 
 /**
  * The dates in a line, in the order they're written. The first is the trip's; a second is its release, and goes unused.
- * Where two ways of reading overlap ("12 Oct 15" is "12 Oct" or "Oct 15"), the first one written wins and the other
- * goes. A four-digit "year" more than a year from now is a report time ("14OCT 2030"), left in the row.
+ * Where two ways of reading overlap ("12 Oct 15" is "12 Oct" or "Oct 15"), the first one written is the date and the
+ * other is kept beside it as `other`, for the pack to settle. A four-digit "year" more than a year from now is a report
+ * time ("14OCT 2030"), left in the row.
  */
-function datesIn(line: string, now = new Date()): { index: number; text: string; date: ReadDate }[] {
+type DateHit = { index: number; text: string; date: ReadDate };
+function datesIn(line: string, now = new Date()): (DateHit & { other?: DateHit })[] {
   const thisYear = now.getFullYear();
   const all = DATE_FORMS.flatMap(({ re, read }) =>
     [...line.matchAll(re)].map((m) => {
@@ -46,8 +49,12 @@ function datesIn(line: string, now = new Date()): { index: number; text: string;
       return { index: m.index, text: m[0], date };
     })
   ).sort((a, b) => a.index - b.index || b.text.length - a.text.length);
-  const kept: typeof all = [];
-  for (const d of all) if (!kept.some((k) => d.index < k.index + k.text.length && k.index < d.index + d.text.length)) kept.push(d);
+  const kept: (DateHit & { other?: DateHit })[] = [];
+  for (const d of all) {
+    const k = kept.find((k) => d.index < k.index + k.text.length && k.index < d.index + d.text.length);
+    if (!k) kept.push({ ...d });
+    else if (!k.other && (d.date.month !== k.date.month || d.date.day !== k.date.day)) k.other = d;
+  }
   return kept;
 }
 
@@ -125,6 +132,20 @@ function readRow(raw: string, line: string): OpenTimeRow | UnreadRow {
   const hasDigit = /\d/.test(line);
   if (STANDBY.test(line)) return { raw, why: "Looks like a standby. Only trips are scored so far." };
   if (!dates.length) return { raw, why: hasDigit ? "No date we could read." : "No trip number or date in it." };
+  const row = readDated(raw, line, dates);
+  // "5 DEC 10" is trip 10 on Dec 5, or trip 5 on Dec 10 to a list that prints the trip first: both go to the pack.
+  // Read only the first way, trip 5 was lost, or trip 10 scored in its place.
+  const other = !labelled && dates[0].other;
+  if (!other) return row;
+  const alt = readDated(raw, line, [other, ...dates.slice(1)]);
+  if ("why" in alt) return row;
+  if ("why" in row) return alt;
+  if (alt.month === row.month && alt.day === row.day && alt.tripNumbers.join() === row.tripNumbers.join()) return row;
+  return { ...row, orRead: { tripNumbers: alt.tripNumbers, month: alt.month, day: alt.day, ...(alt.year ? { year: alt.year } : {}) } };
+}
+
+/** A row read with `dates[0]` as its date. */
+function readDated(raw: string, line: string, dates: DateHit[]): OpenTimeRow | UnreadRow {
   const { month, day, year } = dates[0].date;
   if (!realDate(month, day)) return { raw, why: `"${dates[0].text}" isn't a real date.` };
 
