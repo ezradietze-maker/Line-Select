@@ -7,7 +7,7 @@ import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { packIdFor } from "@/lib/pack-id";
 import { FREE_MEMBER_CAP } from "@/lib/membership";
 import { db } from "@/lib/server/postgres";
-import { forgetVerifiedPilots, tradingUserIds, verifiedUserIds } from "@/lib/server/verified-pilots";
+import { forgetVerifiedPilots, tradingUserIds } from "@/lib/server/verified-pilots";
 import {
   awardHistoryRecords,
   bidPackMetaOf,
@@ -933,14 +933,16 @@ export async function deleteAwardShares(pilotHash: string, packKey?: string): Pr
 }
 
 /**
- * How many confirmed accounts have had a real pack of this kind on the server since `since`. An uploaded pack's id
+ * How many pilots who can trade have had a real pack of this kind on the server since `since`. An uploaded pack's id
  * starts with its base, aircraft and seat. Unconfirmed accounts aren't counted: a dozen made-up ones would open a board.
+ * Nor, once membership is enforced, are those with none (`tradingUserIds`): they can upload, but not trade, so a board
+ * opened on them only looked dead.
  */
 export async function countRecentPilotsWithPack(packIdPrefix: string, since: Date): Promise<number> {
   const [row] = await db
     .select({ n: count() })
     .from(bidPacks)
-    .where(and(sql`starts_with(${bidPacks.packId}, ${packIdPrefix})`, gte(bidPacks.updatedAt, since), inArray(bidPacks.userId, verifiedUserIds())));
+    .where(and(sql`starts_with(${bidPacks.packId}, ${packIdPrefix})`, gte(bidPacks.updatedAt, since), inArray(bidPacks.userId, tradingUserIds())));
   return row?.n ?? 0;
 }
 

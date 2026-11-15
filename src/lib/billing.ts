@@ -51,6 +51,45 @@ export async function fetchBillingStatus(): Promise<BillingStatus | null> {
   }
 }
 
+/** Whether the status shows a Pro membership (a free month or paid), as the membership screen's Pro panel reads it. */
+export function showsProMembership(status: BillingStatus | null): boolean {
+  return !!status && (status.status === "trialing" || status.status === "active" || status.tier === "pro");
+}
+
+/**
+ * Back from checkout (`?checkout=success`), whether the status still offers the pilot a membership: Stripe's word hasn't
+ * reached the server yet. A pilot with access some other way (a free spot, an older account) is shown what they have.
+ */
+export function checkoutNotLanded(status: BillingStatus | null): boolean {
+  return !!status?.enabled && !status.hasAccess && !showsProMembership(status);
+}
+
+/** How long to wait before each ask after checkout, longer each time: about half a minute in all. */
+export const CHECKOUT_CONFIRM_WAITS_MS = [1000, 2000, 3000, 5000, 8000, 12000];
+
+/**
+ * After Stripe sends the pilot back from checkout: asks for the status again, waiting longer each time, until it shows
+ * the membership. Stripe's word to the server (its webhook) can land after the pilot does, and the first status still
+ * said no membership. Returns the first status that shows it, or the last answer once the waits run out (or `stopped`
+ * says the screen is gone).
+ */
+export async function waitForProMembership(
+  ask: () => Promise<BillingStatus | null> = fetchBillingStatus,
+  opts: { waits?: readonly number[]; sleep?: (ms: number) => Promise<void>; stopped?: () => boolean } = {}
+): Promise<BillingStatus | null> {
+  const { waits = CHECKOUT_CONFIRM_WAITS_MS, sleep = (ms) => new Promise<void>((r) => setTimeout(r, ms)), stopped = () => false } = opts;
+  let last: BillingStatus | null = null;
+  for (const ms of waits) {
+    await sleep(ms);
+    if (stopped()) return last;
+    const next = await ask();
+    // A failed ask (offline a moment) keeps the last answer the server did give.
+    if (next) last = next;
+    if (showsProMembership(next)) return next;
+  }
+  return last;
+}
+
 async function redirectTo(url: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await apiFetch(url, {

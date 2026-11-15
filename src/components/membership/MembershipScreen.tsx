@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/Button";
 import { useAppState } from "@/lib/app-state";
-import { claimFreeMembership, fetchBillingStatus, MEMBERSHIP_PRICE, membershipEnded, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
+import { checkoutNotLanded, claimFreeMembership, fetchBillingStatus, MEMBERSHIP_PRICE, membershipEnded, openBillingPortal, showsProMembership, startMembershipCheckout, waitForProMembership, type BillingStatus } from "@/lib/billing";
 import { FREE_MEMBER_CAP } from "@/lib/membership";
 import { keepFocusIn } from "@/lib/focus-keeper";
 
@@ -29,29 +29,58 @@ export function MembershipScreen() {
   const { user, refreshUser } = useAppState();
   const outcome = useCheckoutOutcome();
   // Keyed on the pilot so the status reloads cleanly on sign-in/out, and state is only ever set from an async callback.
-  const [data, setData] = useState<{ forUser: string | null; status: BillingStatus | null }>({ forUser: null, status: null });
+  // `confirming`: back from checkout, still asking until the status shows the membership (`waitForProMembership`).
+  const [data, setData] = useState<{ forUser: string | null; status: BillingStatus | null; confirming: boolean }>({ forUser: null, status: null, confirming: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The latest, without the asking below starting over each time the app draws.
+  const refreshUserRef = useRef(refreshUser);
+  useEffect(() => {
+    refreshUserRef.current = refreshUser;
+  });
 
   useEffect(() => {
     if (!user) return;
     let active = true;
-    fetchBillingStatus().then((status) => {
-      if (active) setData({ forUser: user.id, status });
-    });
+    const forUser = user.id;
+    (async () => {
+      const first = await fetchBillingStatus();
+      if (!active) return;
+      // Stripe sends the pilot back before its word reaches the server (the webhook): the first status can still say no
+      // membership. It said "welcome to Line Select Pro" over the offer to start one, and never asked again.
+      const waiting = outcome === "success" && checkoutNotLanded(first);
+      setData({ forUser, status: first, confirming: waiting });
+      if (!waiting) return;
+      const last = await waitForProMembership(fetchBillingStatus, { stopped: () => !active });
+      if (!active) return;
+      setData({ forUser, status: last ?? first, confirming: false });
+      // The app's own copy of the account too: it's what the ranking checks, and it still said no membership.
+      if (showsProMembership(last)) await refreshUserRef.current();
+    })();
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, outcome]);
 
   const userId = user?.id ?? null;
   const loaded = data.forUser === userId;
   const status = loaded ? data.status : null;
   const loading = Boolean(user) && !loaded;
+  const confirming = loaded && data.confirming;
+  // Back from checkout, and the status still doesn't show it after every ask.
+  const notYet = loaded && !confirming && outcome === "success" && checkoutNotLanded(status);
 
   async function refresh() {
     const next = await fetchBillingStatus();
-    setData({ forUser: userId, status: next });
+    setData({ forUser: userId, status: next, confirming: false });
+  }
+
+  async function checkAgain() {
+    setBusy(true);
+    const next = await fetchBillingStatus();
+    setData({ forUser: userId, status: next ?? status, confirming: false });
+    setBusy(false);
+    if (showsProMembership(next)) await refreshUser();
   }
 
   async function run(action: () => Promise<{ ok: boolean; error?: string }>) {
@@ -88,8 +117,8 @@ export function MembershipScreen() {
         <p className="text-sm text-ink-muted">A free spot while they last, or Line Select Pro at {MEMBERSHIP_PRICE}. Your first membership starts with a free month.</p>
       </header>
 
-      {outcome === "success" && (
-        <div className="relative overflow-hidden rounded-[4px] border border-good/40 bg-good-soft py-3 pl-5 pr-4 text-sm text-ink">
+      {outcome === "success" && showsProMembership(status) && (
+        <div role="status" className="relative overflow-hidden rounded-[4px] border border-good/40 bg-good-soft py-3 pl-5 pr-4 text-sm text-ink">
           <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-good" />
           You&rsquo;re all set — welcome to Line Select Pro.{status?.status === "trialing" && " Your free month has started."}
         </div>
@@ -108,6 +137,8 @@ export function MembershipScreen() {
         <div className={PANEL}>
           <p className="text-sm text-ink-faint">Loading your membership…</p>
         </div>
+      ) : confirming || notYet ? (
+        <CheckoutPending confirming={confirming} busy={busy} onCheckAgain={checkAgain} />
       ) : (
         <MembershipBody
           status={status}
@@ -122,6 +153,30 @@ export function MembershipScreen() {
       <p className="text-center text-xs text-ink-faint">
         Your card is only ever entered on Stripe&rsquo;s secure page; we never see it.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Back from checkout before Stripe's word has reached the server. The offer to start a membership isn't shown meanwhile:
+ * it read as though checkout hadn't worked.
+ */
+export function CheckoutPending({ confirming, busy, onCheckAgain }: { confirming: boolean; busy: boolean; onCheckAgain: () => void }) {
+  if (confirming) {
+    return (
+      <div className={PANEL} role="status">
+        <p className="text-sm text-ink-muted">Stripe is confirming your membership. This takes a few seconds…</p>
+      </div>
+    );
+  }
+  return (
+    <div className={`${PANEL} space-y-4`}>
+      <p role="status" className="text-sm text-ink-muted">
+        Stripe hasn&rsquo;t confirmed your membership yet. It can take a minute.
+      </p>
+      <Button variant="secondary" onClick={onCheckAgain} disabled={busy}>
+        {busy ? "Checking…" : "Check again"}
+      </Button>
     </div>
   );
 }

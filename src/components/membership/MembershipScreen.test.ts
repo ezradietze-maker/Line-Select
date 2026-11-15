@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/app-state", () => ({ useAppState: () => ({ user: null }) }));
 
-import { MembershipBody } from "./MembershipScreen";
-import type { BillingStatus } from "@/lib/billing";
+import { CheckoutPending, MembershipBody } from "./MembershipScreen";
+import { CHECKOUT_CONFIRM_WAITS_MS, checkoutNotLanded, showsProMembership, waitForProMembership, type BillingStatus } from "@/lib/billing";
 
 const base: BillingStatus = {
   enabled: true,
@@ -100,5 +100,63 @@ describe("membership screen", () => {
     ]) {
       expect(said(status)).toMatch(/<p role="alert"[^>]*>Couldn&#x27;t claim a free spot\.<\/p>/);
     }
+  });
+});
+
+describe("back from checkout before Stripe's word reaches the server", () => {
+  // Stripe sends the pilot back before its webhook lands: the first status still said no membership. The screen said
+  // "welcome to Line Select Pro" over the offer to start one, and never asked again.
+  const trialing: BillingStatus = { ...base, plan: "pro", status: "trialing", hasSubscription: true, tier: "pro", hasAccess: true };
+
+  it("asks again, waiting longer each time, until the status shows the membership", async () => {
+    const answers = [base, null, trialing, trialing];
+    let asks = 0;
+    const slept: number[] = [];
+    const got = await waitForProMembership(
+      async () => {
+        asks++;
+        return answers.shift() ?? null;
+      },
+      { sleep: async (ms) => void slept.push(ms) }
+    );
+    expect(got).toEqual(trialing);
+    expect(asks).toBe(3);
+    expect(slept).toEqual(CHECKOUT_CONFIRM_WAITS_MS.slice(0, 3));
+    expect(slept[1]).toBeGreaterThan(slept[0]);
+  });
+
+  it("stops after its last wait with the last answer it got, and when the screen is gone", async () => {
+    let asks = 0;
+    const locked = await waitForProMembership(async () => (asks++ ? null : base), { sleep: async () => {} });
+    expect(locked).toEqual(base);
+    expect(asks).toBe(CHECKOUT_CONFIRM_WAITS_MS.length);
+    asks = 0;
+    expect(await waitForProMembership(async () => (asks++, base), { sleep: async () => {}, stopped: () => true })).toBeNull();
+    expect(asks).toBe(0);
+  });
+
+  it("reads a free month, a paid one, or a Pro plan as the membership, and nothing else", () => {
+    expect(showsProMembership(trialing)).toBe(true);
+    expect(showsProMembership({ ...base, status: "active" })).toBe(true);
+    expect(showsProMembership({ ...base, tier: "pro" })).toBe(true);
+    expect(showsProMembership(base)).toBe(false);
+    expect(showsProMembership({ ...base, tier: "grandfathered", hasAccess: true })).toBe(false);
+    expect(showsProMembership(null)).toBe(false);
+    // Waited on only while the screen would still offer one: not for a pilot with access some other way.
+    expect(checkoutNotLanded(base)).toBe(true);
+    expect(checkoutNotLanded(trialing)).toBe(false);
+    expect(checkoutNotLanded({ ...base, tier: "grandfathered", hasAccess: true })).toBe(false);
+    expect(checkoutNotLanded({ ...base, enabled: false })).toBe(false);
+    expect(checkoutNotLanded(null)).toBe(false);
+  });
+
+  it("says it's waiting on Stripe instead of offering a membership, then offers to check again", () => {
+    const waiting = renderToStaticMarkup(createElement(CheckoutPending, { confirming: true, busy: false, onCheckAgain: () => {} }));
+    expect(waiting).toContain("Stripe is confirming your membership");
+    expect(waiting).not.toContain("Start free month");
+    expect(waiting).not.toContain("<button");
+    const late = renderToStaticMarkup(createElement(CheckoutPending, { confirming: false, busy: false, onCheckAgain: () => {} }));
+    expect(late).toContain("confirmed your membership yet");
+    expect(late).toContain("Check again");
   });
 });
