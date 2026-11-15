@@ -118,14 +118,53 @@ export function needsToLookUp(bidPack: BidPack, model: PilotModel, p: TravelPara
   return travelNeedsForPack(bidPack, p, lines).filter((n) => n.departBefore > now);
 }
 
-/** The pack's FedEx flights that could matter to these needs — the ones flying inside any of their windows. */
-export function jumpseatsFor(bidPack: BidPack, needs: TravelNeed[]): ScheduledFlight[] {
-  if (!needs.length) return [];
-  const from = Math.min(...needs.map((n) => n.departAfter));
-  const to = Math.max(...needs.map((n) => n.arriveBy ?? n.departBefore));
-  return jumpseatFlights(bidPack)
-    .filter((f) => f.dep >= from && f.dep <= to)
-    .slice(0, MAX_JUMPSEATS);
+/** Going home, a connection can leave up to a day after the last first flight that counts (as the server looks). */
+const CONNECT_AHEAD_MS = 24 * 3600_000;
+
+export interface TravelRequest {
+  needs: TravelNeed[];
+  /** The pack's FedEx flights that could matter to these needs: the ones flying inside any of their windows. */
+  jumpseats: ScheduledFlight[];
+}
+
+/**
+ * The needs in date order, cut into requests the server takes: at most `CHUNK` needs, and with the FedEx flights inside
+ * their windows at most `MAX_JUMPSEATS`. In the pack's order every request's needs spanned the month, and the biggest
+ * packs fly more FedEx flights in a month than one request carries: cut to the first 4,000, the last week's jumpseats
+ * were never sent, and a commute only they make read as one nothing makes.
+ */
+export function travelRequests(bidPack: BidPack, needs: TravelNeed[], withJumpseats = true): TravelRequest[] {
+  const flights = withJumpseats && needs.length ? jumpseatFlights(bidPack) : [];
+  // The first flight leaving at or after `t` (they're in time order).
+  const firstFrom = (t: number) => {
+    let lo = 0;
+    let hi = flights.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (flights[mid].dep < t) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  const out: TravelRequest[] = [];
+  let current: TravelNeed[] = [];
+  let taken = new Set<number>();
+  const close = () => {
+    if (current.length) out.push({ needs: current, jumpseats: [...taken].sort((a, b) => a - b).map((i) => flights[i]) });
+    current = [];
+    taken = new Set();
+  };
+  for (const n of [...needs].sort((a, b) => a.departAfter - b.departAfter)) {
+    const from = firstFrom(n.departAfter);
+    const to = firstFrom((n.arriveBy ?? n.departBefore + CONNECT_AHEAD_MS) + 1);
+    let added = 0;
+    for (let i = from; i < to; i++) if (!taken.has(i)) added++;
+    if (current.length >= CHUNK || (current.length > 0 && taken.size + added > MAX_JUMPSEATS)) close();
+    current.push(n);
+    for (let i = from; i < to && taken.size < MAX_JUMPSEATS; i++) taken.add(i);
+  }
+  close();
+  return out;
 }
 
 const inFlight = new Map<string, Promise<FlightAnswers | null>>();
@@ -150,12 +189,11 @@ export function lookUpFlights(bidPack: BidPack, model: PilotModel | undefined | 
     const needs = needsToLookUp(bidPack, model, p).filter((n) => !(n.id in known));
     if (needs.length === 0) return Object.keys(known).length ? known : null;
     const answers: FlightAnswers = { ...known };
-    for (let i = 0; i < needs.length; i += CHUNK) {
-      const chunk = needs.slice(i, i + CHUNK);
+    for (const request of travelRequests(bidPack, needs)) {
       const res = await apiFetch("/api/flights/travel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ needs: chunk, jumpseats: jumpseatsFor(bidPack, chunk) }),
+        body: JSON.stringify(request),
       }).catch(() => null);
       if (!res?.ok) break;
       const j = (await res.json().catch(() => null)) as {

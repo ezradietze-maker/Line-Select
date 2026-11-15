@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreBidPack } from "@/lib/bidpack-storage";
 import {
   canCheckCommute,
+  commuteBlocks,
+  commuteBlockWords,
   commuteNeedsForPack,
   commuteStatuses,
   commuteStatusOfLine,
@@ -14,7 +16,7 @@ import {
   type CommuteSettings,
 } from "@/lib/commute-filter";
 import { travelNeedsForPack } from "@/lib/flights/needs";
-import type { BidPack, Line } from "@/types/bidpack";
+import type { BidPack, Line, Trip, TripLeg } from "@/types/bidpack";
 
 // October's packs are the real shape of everything this reads; they aren't in the repository.
 const PACKS_DIR = ".cache/packs";
@@ -260,6 +262,77 @@ describe.skipIf(!seats.length)("each way is asked about its own day", () => {
     expect(commuteStatusOfLine(line, pack, s, held, BEFORE_OCT)).toBe("unknown");
     const whole: CommuteAnswers = Object.fromEntries(own.map((n) => [n.id, { lastDeparture: null, firstArrival: null }]));
     expect(commuteStatusOfLine(line, pack, s, whole, BEFORE_OCT)).toBe("no");
+  });
+});
+
+describe("a trip running into the next month", () => {
+  const leg = (fn: string, from: string, to: string, start: number, end: number): TripLeg => ({
+    flightNumber: fn, equipment: "77", isDeadhead: false, depAirport: from, arrAirport: to, depTimeLocal: "0000", depTimeGmt: "0000",
+    arrTimeLocal: "0000", arrTimeGmt: "0000", blockHours: (end - start) / 60, startMinutes: start, endMinutes: end, depTimeZulu: "", arrTimeZulu: "",
+  });
+  // Reports Sat Oct 24 at 10:00 in Memphis and lands back Mon Oct 26 at 20:00, after the bid month ended at midnight.
+  const trip: Trip = {
+    id: "t9", pairingNumber: "909", days: 3, layoverCities: ["OAK"], layoverDetails: [], reportTime: "early", international: false,
+    deadheadLegs: 0, creditHours: 12, landings: 2, tafbHours: 58, departures: 2, zuluAnchor: "", startDayIndex: 26,
+    schedule: [
+      { reportTimeLocal: "1000", startMinutes: 0, legs: [leg("501", "MEM", "OAK", 60, 360)], layover: { city: "OAK", hotelName: null, transportToHotel: null, transportFromHotel: null, hours: 40, startMinutes: 360, endMinutes: 2760 } },
+      { reportTimeLocal: "0800", startMinutes: 3120, legs: [leg("502", "OAK", "MEM", 3180, 3480)], layover: null },
+    ],
+  };
+  const line: Line = { id: "L9", lineNumber: "1009", trips: [trip], daysOff: 25, totalCreditHours: 12, totalTafbHours: 58, totalLandings: 2, totalDepartures: 2 };
+  const pack = { id: "p9", month: "OCT26", base: "MEM", aircraft: "B777", seat: "FO", bidPeriodDays: 28, bidPeriodStart: "2026-09-28", lines: [line] } as unknown as BidPack;
+
+  it("is judged on getting in this month, and leaves the way home to the month it's in", () => {
+    const needs = commuteNeedsForPack(pack, SETTINGS, BEFORE_OCT);
+    expect(needs.map((n) => n.kind)).toEqual(["toBase"]);
+    // Getting in works; nothing gets the pilot home on Oct 26, but that's November's commute.
+    const answers: CommuteAnswers = {
+      "t9@26:toBase": { lastDeparture: needs[0].arriveBy! - 3_600_000, firstArrival: null },
+      "t9@26:homeFromBase": { lastDeparture: null, firstArrival: null },
+    };
+    expect(commuteStatusOfLine(line, pack, SETTINGS, answers, BEFORE_OCT)).toBe("yes");
+  });
+});
+
+describe("trips the pilot flies back to back", () => {
+  const leg = (fn: string, from: string, to: string, start: number, end: number): TripLeg => ({
+    flightNumber: fn, equipment: "77", isDeadhead: false, depAirport: from, arrAirport: to, depTimeLocal: "0000", depTimeGmt: "0000",
+    arrTimeLocal: "0000", arrTimeGmt: "0000", blockHours: (end - start) / 60, startMinutes: start, endMinutes: end, depTimeZulu: "", arrTimeZulu: "",
+  });
+  // Day trips out of Memphis on Mon Oct 5 and Wed Oct 7, both reporting at 10:00: about a day and a half at home between.
+  const dayTrip = (id: string, startDayIndex: number): Trip => ({
+    id, pairingNumber: id, days: 1, layoverCities: [], layoverDetails: [], reportTime: "early", international: false,
+    deadheadLegs: 0, creditHours: 6, landings: 2, tafbHours: 6.5, departures: 2, zuluAnchor: "", startDayIndex,
+    schedule: [{ reportTimeLocal: "1000", startMinutes: 0, legs: [leg("601", "MEM", "IND", 60, 150), leg("602", "IND", "MEM", 210, 300)], layover: null }],
+  });
+  const line: Line = { id: "L8", lineNumber: "1008", trips: [dayTrip("a", 7), dayTrip("b", 9)], daysOff: 26, totalCreditHours: 12, totalTafbHours: 13, totalLandings: 4, totalDepartures: 4 };
+  const pack = { id: "p8", month: "OCT26", base: "MEM", aircraft: "B777", seat: "FO", bidPeriodDays: 28, bidPeriodStart: "2026-09-28", lines: [line] } as unknown as BidPack;
+  // In for the first and home after the second work; home between them and back in for the second don't.
+  const answers: CommuteAnswers = {
+    "a@7:toBase": { lastDeparture: null, firstArrival: null },
+    "a@7:homeFromBase": { lastDeparture: null, firstArrival: null },
+    "b@9:toBase": { lastDeparture: null, firstArrival: null },
+    "b@9:homeFromBase": { lastDeparture: null, firstArrival: null },
+  };
+  for (const n of commuteNeedsForPack(pack, SETTINGS, BEFORE_OCT)) {
+    if (n.id === "a@7:toBase") answers[n.id] = { lastDeparture: n.arriveBy! - 3_600_000, firstArrival: null };
+    if (n.id === "b@9:homeFromBase") answers[n.id] = { lastDeparture: null, firstArrival: n.departAfter + 3 * 3_600_000 };
+  }
+
+  it("go home between them only with the hours at home the pilot wants", () => {
+    // A day and a half is enough for most: two departures, and the commute home between them can't be done.
+    expect(commuteStatusOfLine(line, pack, SETTINGS, answers, BEFORE_OCT)).toBe("no");
+    // Wanting two days at home before going, the pilot stays at base: one departure, in once and home once.
+    const stays = { ...SETTINGS, minHomeHours: 48 };
+    expect(commuteNeedsForPack(pack, stays, BEFORE_OCT).map((n) => n.id).sort()).toEqual(["a@7:toBase", "b@9:homeFromBase"]);
+    expect(commuteStatusOfLine(line, pack, stays, answers, BEFORE_OCT)).toBe("yes");
+  });
+
+  it("says which end of which trip rules a line out", () => {
+    const out = commuteBlocks(pack, SETTINGS, answers, BEFORE_OCT);
+    expect(out.map((o) => o.line.lineNumber)).toEqual(["1008"]);
+    expect(commuteBlockWords(out[0].block, pack)).toBe("Trip a: nothing gets you home the day it ends (lands Mon Oct 5 15:00).");
+    expect(commuteBlocks(pack, { ...SETTINGS, minHomeHours: 48 }, answers, BEFORE_OCT)).toEqual([]);
   });
 });
 

@@ -115,7 +115,9 @@ export async function POST(request: Request) {
     // Boards held back (the allowance ran out) can only have hidden flights: a "no" in these answers isn't certain.
     return NextResponse.json({ configured: true, answers, ...(stats.skipped > 0 ? { partial: true } : {}) });
   } catch (e) {
-    await Promise.all([releaseSpend(spender, reserved, { feature: "flights", now: day }), reportProblem("flights", e)]);
+    // What it took stays charged: the boards it fetched before failing were paid for, and given back, a lookup that kept
+    // failing part way fetched boards the allowance never counted. At most the last few it took and hadn't used go too.
+    await reportProblem("flights", e);
     return NextResponse.json({ error: "Couldn't look up flights just now." }, { status: 502 });
   }
 }
