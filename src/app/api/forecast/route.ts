@@ -3,7 +3,7 @@ import { reportProblem } from "@/lib/server/alerts";
 import { afterResponse } from "@/lib/server/after-response";
 import { isJsonObject } from "@/lib/server/json-body";
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
-import { forecastWithCore, resolveBidPosition } from "@/lib/forecast/forecast";
+import { forecastWithCore, resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { applyCalibration, resolveForecastPrior, type Calibration, type ForecastPriorModel } from "@/lib/learning/forecast-learning";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { deleteKey, getJson, setJson } from "@/lib/server/kv";
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
           blobKey: key,
           packKey,
           bidNumber: position.bidNumber,
-          totalPilots: list.length,
+          totalPilots: seatSize(list),
           ranking: ranking as number[],
           pAvailableByLine: core.pAvailable,
           modelVersion: [priorModel?.version, calibration?.version].filter(Boolean).join("+") || null,
@@ -196,7 +196,9 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     forecast,
-    crowd: { pilotsSharing: total },
+    // Only alongside the rankings it counts: to anyone, a guest included, it said for any seat whether a pilot shared,
+    // and when one more did.
+    crowd: { pilotsSharing: known.length ? total : 0 },
     shared,
     learning: { priorFrom: learnedPrior?.n ?? 0, calibratedFrom: calibration?.sampleSize ?? 0 },
   });

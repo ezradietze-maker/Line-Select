@@ -78,8 +78,9 @@ describe("what's stored", () => {
     expect(mocks.create.mock.calls[2][1]).toMatchObject({ holderShown: true });
     await POST(post({ ...report, outcome: "reserve", lineNumber: null, holderShown: true }));
     expect(mocks.create.mock.calls[3][1]).toMatchObject({ holderShown: false });
-    await POST(post({ ...report, seniorityRank: 500, holderShown: true }));
-    expect(mocks.create.mock.calls[4][1]).toMatchObject({ holderShown: false });
+    // A place past the seat's end isn't stored at all now, let alone shown.
+    expect((await POST(post({ ...report, seniorityRank: 500, holderShown: true }))).status).toBe(400);
+    expect(mocks.create).toHaveBeenCalledTimes(4);
   });
 
   it("leaves out what a report didn't say, so the one it replaces keeps it", async () => {
@@ -118,6 +119,20 @@ describe("the month a report names", () => {
     // The other hundred years of codes, every one a "month" a script could share.
     expect(await status("JAN99")).toBe(400);
     expect(await status("JAN00")).toBe(400);
+  });
+});
+
+describe("the place in bid order a report names", () => {
+  const status = async (seniorityRank: unknown, seniorityTotalPilots: unknown = 100) => (await POST(post({ ...report, seniorityRank, seniorityTotalPilots }))).status;
+
+  it("is from 1 to the seat's size, as the seniority box takes it", async () => {
+    mocks.user.mockResolvedValue(pilot);
+    // A #0 filed as more senior than #1, and a place past the seat's end as its most junior.
+    for (const [rank, total] of [[0, 100], [-3, 100], [101, 100], [1, 0], [0, 0], [1.5, 100], ["12", 100]]) expect(await status(rank, total)).toBe(400);
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(await status(1, 100)).toBe(200);
+    expect(await status(100, 100)).toBe(200);
+    expect(await status(1, 1)).toBe(200);
   });
 });
 

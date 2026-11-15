@@ -1,6 +1,6 @@
 import { apiFetch } from "@/lib/shown-account";
 import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
-import { estimateDropoutRate, forecastBid, forecastPackKey, type BidForecast } from "@/lib/forecast/forecast";
+import { estimateDropoutRate, forecastBid, forecastPackKey, seatSize, type BidForecast } from "@/lib/forecast/forecast";
 import type { BidPack } from "@/types/bidpack";
 
 /** "off": the pilot stopped sharing, on another device or on this one before signing out, so nothing was kept. */
@@ -52,7 +52,7 @@ export async function fetchForecast(input: ForecastRequestInput): Promise<Foreca
         features: round4(features.values),
         seniorityList: list.map((e) => (e.pay ? [e.bidNumber, e.seniority, 1] : [e.bidNumber, e.seniority])),
         regularLines: bidPack.lines.length,
-        dropoutRate: estimateDropoutRate(bidPack, list.length),
+        dropoutRate: estimateDropoutRate(bidPack, seatSize(list)),
         seniorityNumber: input.seniorityNumber,
         ranking,
         share: input.share,

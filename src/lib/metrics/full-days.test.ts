@@ -58,4 +58,23 @@ describe("full days on a whole trip", () => {
     } as unknown as Trip;
     expect(computeTripFacts(trip).layovers[0]).toMatchObject({ fullDays: 1, barelyFullDay: false, fullDayOffsets: [1] });
   });
+
+  it("counts the night's hours and the pickup on the city's own clock when the clocks change overnight", () => {
+    // In Cologne at 20:00 and out 14 hours later. Going back an hour (Sun Oct 25 2026), 22:00–07:00 is ten hours long
+    // and the pickup is at 09:00; going forward (Sun Mar 29 2026), it's eight hours long and the pickup is at 11:00.
+    const leg = (dep: string, arr: string, start: number, end: number, local: string) => ({ depAirport: dep, arrAirport: arr, startMinutes: start, endMinutes: end, arrTimeLocal: local, isDeadhead: false });
+    const out = 600 + 14 * 60;
+    const trip = (zuluAnchor: string) =>
+      ({
+        zuluAnchor,
+        schedule: [
+          { legs: [leg("MEM", "CGN", 60, 600, "2000")], layover: { city: "CGN", hours: 14, startMinutes: 600, endMinutes: out, hotelName: null } },
+          { legs: [leg("CGN", "MEM", out + 60, out + 600, "1100")], layover: null },
+        ],
+      }) as unknown as Trip;
+    expect(computeTripFacts(trip("2026-10-24T08:00:00.000Z")).layovers[0]).toMatchObject({ localNightHours: 10, localEndMinute: 9 * 60 });
+    expect(computeTripFacts(trip("2026-03-28T09:00:00.000Z")).layovers[0]).toMatchObject({ localNightHours: 8, localEndMinute: 11 * 60 });
+    // No clock change: nine hours and a 10:00 pickup, as before.
+    expect(computeTripFacts(trip("2026-10-10T08:00:00.000Z")).layovers[0]).toMatchObject({ localNightHours: 9, localEndMinute: 10 * 60 });
+  });
 });

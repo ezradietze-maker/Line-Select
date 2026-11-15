@@ -21,6 +21,7 @@ import { ToastStack } from "@/components/ui/Toast";
 import { AppStateProvider, useAppState } from "@/lib/app-state";
 import { navTargetForPath } from "@/lib/nav-target";
 import { waitsForSavedState } from "@/lib/site-pages";
+import { followThemeFromOtherTabs } from "@/lib/theme";
 
 // Only ever shown in a dialog someone opens — fetched then, not shipped with every screen.
 // `loading` gives each a Suspense boundary of its own, so opening one for the first time can't suspend the page behind it.
@@ -107,6 +108,9 @@ function Chrome({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     for (const item of NAV_ITEMS) router.prefetch(`/${item.target}`);
   }, [router]);
+
+  // A theme chosen in another tab, on every page here, with or without the appearance menus.
+  useEffect(() => followThemeFromOtherTabs(), []);
 
   const showSidebar = !HIDDEN_SIDEBAR_PATHS.includes(pathname);
 

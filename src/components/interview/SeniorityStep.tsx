@@ -1,7 +1,7 @@
 "use client";
 
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
-import { resolveBidPosition } from "@/lib/forecast/forecast";
+import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import type { SeniorityEntry } from "@/types/bidpack";
 
 interface SeniorityStepProps {
@@ -45,18 +45,19 @@ export function checkSeniority(text: string, list: SeniorityEntry[]): { kind: "f
 export function SeniorityNotice({ value, list, seat, className = "" }: { value: string; list: SeniorityEntry[]; seat: string; className?: string }) {
   const check = checkSeniority(value, list);
   const seatWord = seat === "CAP" ? "captains" : "first officers";
+  const size = seatSize(list);
   return (
     <div className={`text-sm ${className}`} aria-live="polite">
       {check?.kind === "found" && (
         <p className="rounded-lg border border-good/30 bg-good-soft px-3 py-2 text-good">
-          Found you: {ordinal(check.bidNumber)} in bid order of {list.length} {seatWord} bidding this month. {check.bidNumber - 1} bid ahead of you.
+          Found you: {ordinal(check.bidNumber)} in bid order of {size} {seatWord} bidding this month. {check.bidNumber - 1} bid ahead of you.
         </p>
       )}
       {check?.kind === "not-listed" && (
         <p className="rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-warn">
           That number isn&rsquo;t on this pack&rsquo;s {seat === "CAP" ? "captain" : "first officer"} list. Check it, or continue and the estimate will place you by where it would fall
           {/* Past the end of the list, "about 782nd of 781" read as a mistake. */}
-          {check.bidNumber > list.length ? <> (after all {list.length} on the list).</> : <> (about {ordinal(check.bidNumber)} of {list.length}).</>}
+          {check.bidNumber > size ? <> (after all {size} on the list).</> : <> (about {ordinal(check.bidNumber)} of {size}).</>}
         </p>
       )}
       {check?.kind === "not-a-number" && (

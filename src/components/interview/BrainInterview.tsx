@@ -50,7 +50,7 @@ import { applyPins } from "@/lib/brain/profile-model";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
 import { applyPriorityReview, type PriorityVerdict } from "@/lib/brain/review";
 import { cityScoresFromRatings, describeCityRatings, effectiveCityScore, markCityUntried, packCityFacts, rateCity, rateCityHotel, rateCitySeason, saysMore, sentimentFromRating } from "@/lib/city-ratings";
-import { resolveBidPosition } from "@/lib/forecast/forecast";
+import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { buildBrainOutcome } from "@/lib/learning/brain-learning";
 import { bidPercentile, commuteGroupOf, seniorityBandOf } from "@/lib/learning/cohort";
 import { isLearnablePack } from "@/lib/learning/corrections";
@@ -80,6 +80,34 @@ import { isPackId, legacyPackIdFor, packIdFor } from "@/lib/pack-id";
  */
 
 type Phase = "seniority" | "checkin" | "story" | "commuter" | "cities" | "reading" | "asking" | "question" | "sweep" | "building" | "review";
+
+/**
+ * Where Back goes once the questions have started: "answer" takes the last answer back (to its question), "question"
+ * returns to the question still showing, "sweep" to the "anything else?" screen; null when there's nowhere to go. The
+ * "anything else?" and priorities screens had no Back at all — a pilot who'd tapped "That's enough" a question early,
+ * or wanted to change their last answer, could only go forward.
+ */
+export function laterBack(at: {
+  phase: Phase;
+  /** Answers that can be taken back. */
+  history: number;
+  hasQuestion: boolean;
+  error: boolean;
+  confirming: boolean;
+  /** What the "anything else?" screen came after: "That's enough" on a question, or the interviewer wrapping up after an answer. */
+  sweepFrom: "question" | "answered";
+  /** What the last read was started from. */
+  finishFrom: "question" | "sweep" | "answered";
+}): "answer" | "question" | "sweep" | null {
+  const answer = at.history > 0 ? "answer" : null;
+  if (at.phase === "question") return answer;
+  if (at.phase === "sweep") return at.sweepFrom === "question" && at.hasQuestion ? "question" : answer;
+  if ((at.phase === "building" && at.error) || (at.phase === "review" && !at.confirming)) {
+    if (at.finishFrom === "sweep") return "sweep";
+    return at.finishFrom === "question" && at.hasQuestion ? "question" : answer;
+  }
+  return null;
+}
 
 /** A monthly check-in asks at most this many questions about what's new. */
 const CHECK_IN_TURNS = 5;
@@ -444,6 +472,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
   const [turn, setTurn] = useState(0);
   const [history, setHistory] = useState<Snapshot[]>([]);
   const [sweepDone, setSweepDone] = useState(false);
+  /** What the "anything else?" screen came after, for its Back (`laterBack`). */
+  const [sweepFrom, setSweepFrom] = useState<"question" | "answered">("answered");
   /** The interview's question limit — lowered once the sweep is done, so it wraps up with a few follow-ups at most. */
   const [turnLimit, setTurnLimit] = useState(MAX_TURNS);
   const turnLimitRef = useRef(MAX_TURNS);
@@ -802,8 +832,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
           setPhase("question");
           return;
         }
-        if (!swept && uncoveredTopics(m).length > 0) setPhase("sweep");
-        else void finishInterview(all, ch, "answered");
+        if (!swept && uncoveredTopics(m).length > 0) {
+          setSweepFrom("answered");
+          setPhase("sweep");
+        } else void finishInterview(all, ch, "answered");
         return;
       }
       if (step.threadId) settledThreads[step.threadId] = { status: settledThreads[step.threadId]?.status ?? "open", timesAsked: (settledThreads[step.threadId]?.timesAsked ?? 0) + 1 };
@@ -904,14 +936,33 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     setPhase("question");
   }
 
-  /** Back from a last read that failed or took too long: to the screen it was started from. */
-  function backFromFinish() {
+  /**
+   * Back from a question, the "anything else?" screen, a last read that failed or took too long, or the priorities it
+   * made: to the screen it was started from (`laterBack`, worked out as the screen is drawn). Off the priorities, the
+   * read goes; finishing again reads afresh.
+   */
+  function backLater(to: "answer" | "question" | "sweep") {
     setError(null);
-    if (finishFrom === "sweep") {
+    if (phase === "review") {
+      setReviewModel(null);
+      setRatedModel(null);
+      // The read before the priorities were fitted to it, which the next read builds on; taking an answer back restores its own.
+      if (beforeFinish.current) {
+        modelRef.current = beforeFinish.current;
+        setModel(beforeFinish.current);
+      }
+    }
+    if (to === "answer") goBack();
+    else if (to === "sweep") {
       setSweepDone(false);
       setPhase("sweep");
-    } else if (finishFrom === "question" && question) setPhase("question");
-    else goBack();
+    } else setPhase("question");
+  }
+
+  /** "That's enough" on a question, before the "anything else?" screen. */
+  function sweepFromQuestion() {
+    setSweepFrom("question");
+    setPhase("sweep");
   }
 
   async function submitSweep(picked: string[], note: string) {
@@ -939,6 +990,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
    * does on a question.
    */
   const [finishFrom, setFinishFrom] = useState<"question" | "sweep" | "answered">("answered");
+  /** The read the last one built on, for Back off the priorities it made. */
+  const beforeFinish = useRef<PilotModel | null>(null);
 
   async function finishInterview(all: InterviewExchange[], ch: LineChoice[], from: "question" | "sweep" | "answered" = finishFrom) {
     if (stopIfFinishedElsewhere()) return;
@@ -949,6 +1002,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (await stopIfFinishedOnAccount(true)) return;
     try {
       if (buildRef.current) await buildRef.current.promise;
+      beforeFinish.current = modelRef.current;
       const built = await requestModelBuild({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, prior: modelRef.current });
       const rated = withHomeFacts(applyCityRatings(built, finalCityRatings()), { hasCrashPad, minHomeHours: isCommuter ? minHomeHours : null });
       // Priorities the pilot set by hand on their priorities page still hold — shown that way in the review.
@@ -1040,7 +1094,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       postBrainOutcome(
         buildBrainOutcome({
           month: bidPack.month,
-          cohort: { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, commute: commuteGroupOf(isCommuter), seniority: seniorityBandOf(position ? bidPercentile(position.bidNumber, list.length) : null) },
+          cohort: { base: bidPack.base, aircraft: bidPack.aircraft, seat: bidPack.seat, commute: commuteGroupOf(isCommuter), seniority: seniorityBandOf(position ? bidPercentile(position.bidNumber, seatSize(list)) : null) },
           checkIn,
           questions: turn,
           choices: choices.length,
@@ -1522,8 +1576,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     panel.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, [screenKey]);
 
-  const backFromBuilding = phase === "building" && !!error && (finishFrom !== "answered" || history.length > 0);
-  const canGoBack = (phase === "question" && history.length > 0) || backFromBuilding;
+  const backTo = laterBack({ phase, history: history.length, hasQuestion: !!question, error: !!error, confirming, sweepFrom, finishFrom });
   const backInOpening: Phase | null =
     phase === "story" || phase === "checkin" ? (hasSeniorityStep ? "seniority" : null) : phase === "commuter" ? "story" : phase === "cities" ? (checkIn ? "checkin" : "commuter") : null;
 
@@ -1569,11 +1622,11 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
 
       {/* Scrolled to, it stops clear of the phone's top bar (57px), and just short of the top on a wider screen. */}
       <div ref={panelRef} className="panel-glass scroll-mt-[4.5rem] p-6 sm:p-10 md:scroll-mt-6">
-        {(canGoBack || backInOpening) && !finishedElsewhere && (
+        {(backTo || backInOpening) && !finishedElsewhere && (
           <button
             type="button"
             // In the opening, the same as the browser's Back: a step back through the entries each step added.
-            onClick={() => (backFromBuilding ? backFromFinish() : canGoBack ? goBack() : backInOpening && ((steps as readonly string[]).includes(phase) && stepDepth(phase as OpeningStep, steps) > 0 ? window.history.back() : setPhase(backInOpening)))}
+            onClick={() => (backTo ? backLater(backTo) : backInOpening && ((steps as readonly string[]).includes(phase) && stepDepth(phase as OpeningStep, steps) > 0 ? window.history.back() : setPhase(backInOpening)))}
             className="-ml-1 mb-5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-2xs text-ink-faint transition-colors hover:text-ink font-medium"
           >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -1592,7 +1645,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         <div className="mt-5 text-center">
           <button
             type="button"
-            onClick={() => (sweepDone || uncoveredTopics(model).length === 0 ? void finishInterview(exchanges, choices, "question") : setPhase("sweep"))}
+            onClick={() => (sweepDone || uncoveredTopics(model).length === 0 ? void finishInterview(exchanges, choices, "question") : sweepFromQuestion())}
             className="text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted"
           >
             That&rsquo;s enough — build my priorities
