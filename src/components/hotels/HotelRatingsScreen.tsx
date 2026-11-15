@@ -156,9 +156,12 @@ function HotelRatingsList({
   const q = query.trim().toLowerCase();
   const filtered = groups.filter((g) => !q || g.code.toLowerCase().includes(q) || g.hotelName.toLowerCase().includes(q));
   const ratingOf = (g: HotelGroup) => ratings[g.key]?.rating ?? null;
+  // Looked up and not found on the map: last, in their own order, so a pack's most-used hotel that couldn't be matched
+  // doesn't open the list with "No Google Places match found".
+  const noMatch = (g: HotelGroup) => g.key in ratings && ratings[g.key] === null;
   const sorted =
     sort === "used"
-      ? filtered
+      ? [...filtered.filter((g) => !noMatch(g)), ...filtered.filter(noMatch)]
       : [...filtered].sort((a, b) => {
           if (sort === "city") return a.code.localeCompare(b.code) || b.lineNumbers.length - a.lineNumbers.length;
           const ra = ratingOf(a);

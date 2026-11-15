@@ -390,7 +390,7 @@ function linesWithInternationalNearStart(bidPack: BidPack, lineNumbers: string[]
 export function vipsQuestionNotes(bidPack: BidPack, lineNumbers: string[]): Record<keyof VipsBidAnswers, VipsQuestionNote> {
   const intl = linesWithInternationalNearStart(bidPack, lineNumbers);
   const intlNote = intl.length
-    ? `${plural(intl.length, "line")} in your top ${TOP_FOR_SANITY} (${intl.slice(0, 3).join(", ")}) ${intl.length === 1 ? "has" : "have"} an international trip in the first ${FRONT_OF_MONTH_DAYS} days, where a carry-in could run into it.`
+    ? `${plural(intl.length, "line")} in your top ${TOP_FOR_SANITY} (${intl.join(", ")}) ${intl.length === 1 ? "has" : "have"} an international trip in the first ${FRONT_OF_MONTH_DAYS} days, where a carry-in could run into it.`
     : undefined;
   return {
     waiveBufferRecurrent: {

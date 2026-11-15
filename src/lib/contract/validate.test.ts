@@ -124,6 +124,19 @@ describe("the contract validator", () => {
     expect(said("Line 1001 has 15 days off. The contract requires at least 15 days off in a 4 week bid period.")).toBe(false);
     expect(said("Line 1001 has 15 days off. A 4 week bid period may have at most 28 work days.")).toBe(false);
     expect(said("Line 1001 has 15 days off, but the contract requires 15 of them in blocks of 4.")).toBe(false);
+    // Once the one line asked about is named, a later sentence that isn't about a rule may say its figure again: this
+    // was turned down twice running, and the pilot got "Not found".
+    expect(said("Line 1001 shows 15 days off in your pack. The passages don't give a total, so they can't tell whether 15 is enough.")).toBe(true);
+    expect(said("The passages can't tell whether 15 is enough.")).toBe(false);
+    // The pack's bid period named as such says which period a rule is for; its 28 backs no rule figure.
+    expect(said("Line 1001 has 15 days off. In a 28-day bid period, the contract requires at least 1 block of 4 consecutive days off.")).toBe(true);
+  });
+
+  it("keeps a bare pack figure strict when the facts are about several lines", () => {
+    const blocks = { section: "25.D.1.c", version: "2026" as const, quote: "Regular lines in a 4 week bid period shall contain at least 1 block of 4 consecutive days off" };
+    const facts = "The pilot's bid pack: OCT26, IND B767 CAP, a 28-day bid period.\nLine 1001 as printed: 15 days off, 78.6 CH, 294.73 hours TAFB, 1 trips.\nLine 1002 as printed: 13 days off, 80.1 CH, 300.5 hours TAFB, 2 trips.";
+    const said = (answer: string) => check({ found: true, answer, quotes: [blocks] }, "Do lines 1001 and 1002 have enough days off?", facts).ok;
+    expect(said("Line 1001 has 15 days off and line 1002 has 13. The passages can't tell whether 15 is enough.")).toBe(false);
   });
 
   it("lets the answer name only a piece a quote landed on, one above it, or one the quote itself names", () => {
