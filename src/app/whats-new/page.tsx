@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ReadingProgress } from "@/components/ui/ReadingProgress";
-import { markLatestSeen, WHATS_NEW } from "@/lib/whats-new";
+import { markLatestSeen, WHATS_NEW, whatsNewDateLabel } from "@/lib/whats-new";
 
 export default function WhatsNewPage() {
   useEffect(() => markLatestSeen(), []);
@@ -17,7 +17,7 @@ export default function WhatsNewPage() {
         {Object.entries(byDate).map(([date, entries]) => (
           <li key={date}>
             <div className="text-2xs text-accent font-medium">
-              {new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
+              {whatsNewDateLabel(date)}
             </div>
             <ul className="mt-3 space-y-3">
               {entries.map((e) => (
