@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
+import { formatHoursValue } from "@/lib/interview-config";
 import type { Trip, TripDutyPeriod } from "@/types/bidpack";
 
 /**
@@ -126,7 +127,7 @@ export function namedWithHours(items: readonly { trip: Trip; creditHours: number
     groups.push(g);
     if (run) byRun.set(run, g);
   }
-  return groups.map((g) => `${name(g.trip)} (${g.days > 1 ? `${g.days} days, ` : ""}${g.creditHours.toFixed(1)} CH)`).join(" and ");
+  return groups.map((g) => `${name(g.trip)} (${g.days > 1 ? `${g.days} days, ` : ""}${formatHoursValue(g.creditHours)} CH)`).join(" and ");
 }
 
 /** A stretch of a run's days as one run, kept so its days are the same objects again (`dayTripsOf`). */

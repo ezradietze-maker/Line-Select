@@ -1,5 +1,6 @@
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { carriedDaysOf, dayIndices, flyPack, lineAsFlown, withPrintedLines, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
+import { formatHoursValue } from "@/lib/interview-config";
 import { deriveSeniorityInput } from "@/lib/seniority-derive";
 import { placeInPack } from "@/lib/strategy-engine";
 import { namedWithHours, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
@@ -82,7 +83,7 @@ export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenV
   } else {
     const trips = namedWithHours(removed.map((r) => ({ trip: r.trip, creditHours: r.trip.creditHours })), name);
     const pay = active.every((v) => v.choice === "keep-flying") ? "still paid from your bank, but this line ranks lower since you want to keep your flying" : "paid from your bank";
-    reason = `Your vacation takes off ${trips}, ${pay}: ${off}.${overCH > 0 ? ` That's ${overCH.toFixed(1)} CH more than this vacation's ${value} CH.` : ""}`;
+    reason = `Your vacation takes off ${trips}, ${pay}: ${off}.${overCH > 0 ? ` That's ${formatHoursValue(overCH)} CH more than this vacation's ${formatHoursValue(value)} CH.` : ""}`;
   }
   const printedCredit = line.totalCreditHours + (line.carryOverCreditHours ?? 0);
   const keepFlyingLoss = printedCredit > 0 ? Math.min(1, keepFlyingCH / printedCredit) : 0;

@@ -197,7 +197,7 @@ describe("flyLine: a conflict drops the new trip (CBA 2026 25.F.3, 25.F.5)", () 
     expect(f.line.trips.map((t) => t.pairingNumber)).toEqual(["214"]);
     expect(f.line.totalCreditHours).toBeCloseTo(10);
     expect(f.line.totalLandings).toBe(1);
-    expect(f.reason).toContain("trip 213 (18.2 CH)");
+    expect(f.reason).toContain("trip 213 (18:12 CH)");
     expect(f.reason).toContain("make-up eligible");
   });
 

@@ -62,7 +62,7 @@ describe("a vacation on a line (CBA 2026 7.G.1, every bid period)", () => {
     expect(f.chargedCH).toBeCloseTo(18.2);
     expect(f.daysOffAfter).toBeGreaterThan(f.daysOffBefore);
     expect(f.line.gridOffDays).toEqual(expect.arrayContaining([9, 10, 11, 12, 13, 14, 15]));
-    expect(f.reason).toContain("trip 213 (18.2 CH)");
+    expect(f.reason).toContain("trip 213 (18:12 CH)");
     expect(f.reason).toContain("paid from your bank");
   });
   it("7.G.1: the bank is charged only for removed trips, so one on days off costs nothing, and says so", () => {
@@ -75,7 +75,7 @@ describe("a vacation on a line (CBA 2026 7.G.1, every bid period)", () => {
     const heavy = line([trip("900", 10, { credit: 60 })]);
     const f = flyVacationsOnLine(heavy, pack([heavy]), [on(vac(9))]);
     expect(f.overCH).toBeCloseTo(18);
-    expect(f.reason).toContain("18.0 CH more than this vacation's 42 CH");
+    expect(f.reason).toContain("18:00 CH more than this vacation's 42:00 CH");
   });
   it("keep-flying: the trip still comes off, but its pay isn't counted, and the share of credit it takes is kept", () => {
     const f = flyVacationsOnLine(l, p, [on(vac(9), "keep-flying")]);
