@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { describe, expect, it } from "vitest";
 import { driftBodyClock, dutyClocks, planTripSleep, sleepPropensity } from "@/lib/sleep-plan";
 import { buildTimelineDays } from "@/lib/trip-timeline";
@@ -192,5 +193,28 @@ describe("sleep plan", () => {
       expect(pieces.length).toBeGreaterThan(0);
       for (const { d, s } of pieces) expect(d.segments.some((x) => x.kind === "layover" && x.startMinuteOfDay <= s.startMinuteOfDay && x.endMinuteOfDay >= s.endMinuteOfDay)).toBe(true);
     }
+  });
+
+  it("changes Auckland's clock at its own hour, though its summer offset reads past twelve hours", () => {
+    // NZDT is +13, which reads as -11 off the printed times. Back to NZST (+12) at 03:00 NZDT, 14:00 GMT: in at 02:45.
+    const back = trip(leg("HNL", "AKL", 4 * H, 13 * H, -10 * H, 13 * H), leg("AKL", "SYD", 44 * H, 47 * H, 12 * H, 11 * H));
+    expect(planTripSleep(back, -10 * H)[0].inHotelLocal).toBe("02:45");
+    // Forward to NZDT at 02:00 NZST, 14:00 GMT: in at 14:15 GMT is 03:15.
+    const on = trip(leg("HNL", "AKL", 4 * H + 30, 13 * H + 30, -10 * H, 12 * H), leg("AKL", "SYD", 44 * H, 47 * H, 13 * H, 10 * H));
+    expect(planTripSleep(on, -10 * H)[0].inHotelLocal).toBe("03:15");
+  });
+
+  it("changes the clock on the layover's own date, not its first night, when the trip has one", () => {
+    // Paris from Friday evening (CEST) to Monday morning (CET): the clocks go back early on Sunday, 01:00 GMT Oct 25.
+    const t = trip(leg("MEM", "CDG", 8 * H, 16 * H, -5 * H, 2 * H), leg("CDG", "MEM", 82 * H, 92 * H, 1 * H, -5 * H));
+    t.zuluAnchor = "2026-10-23T00:00:00.000Z";
+    const [plan] = planTripSleep(t, -5 * H);
+    const paris = (m: number) => DateTime.fromMillis(Date.parse(t.zuluAnchor) + m * 60_000, { zone: "Europe/Paris" });
+    expect(plan.blocks.some((b) => b.start > 25 * H && b.start < 49 * H)).toBe(true);
+    for (const b of plan.blocks) {
+      expect(b.startLocal).toBe(paris(b.start).toFormat("HH:mm"));
+      expect(b.endLocal).toBe(paris(b.end).toFormat("HH:mm"));
+    }
+    for (const tk of plan.ticks) expect(tk.label).toBe(paris(tk.at).toFormat("HH"));
   });
 });

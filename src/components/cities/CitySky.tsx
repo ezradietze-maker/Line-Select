@@ -60,18 +60,21 @@ export function RouteArc({ from, to }: { from: string; to: string }) {
 export function SunDial({ code, now }: { code: string; now: number }) {
   const at = coordinatesForAirport(code);
   if (!at) return null;
-  const day = (offset: number) => sunTimes(new Date(now + offset * 86_400_000), at[0], at[1]);
-  const today = day(0);
-  if (!today) return null;
-  // Which stretch we're in: today's daylight, or the night between two of them.
+  // The days round now, by GMT date. A GMT date's daylight isn't the city's today far from Greenwich: Tokyo's 07:30 is
+  // the day before in GMT, whose sun had set, and Honolulu's afternoon is the day after, whose sun hadn't risen.
+  const days = [-2, -1, 0, 1, 2].map((offset) => sunTimes(new Date(now + offset * 86_400_000), at[0], at[1]));
+  if (days.some((d) => !d)) return null;
+  const suns = days as { sunrise: number; sunset: number }[];
+  // Which stretch we're in: a day's daylight, or the night between two of them.
+  const today = suns.find((d) => now >= d.sunrise && now < d.sunset);
+  const before = suns.filter((d) => d.sunset <= now).at(-1);
+  const after = suns.find((d) => d.sunrise > now);
   let up: boolean;
   let f: number;
-  if (now >= today.sunrise && now < today.sunset) {
+  if (today) {
     up = true;
     f = (now - today.sunrise) / (today.sunset - today.sunrise);
   } else {
-    const before = now < today.sunrise ? day(-1) : today;
-    const after = now < today.sunrise ? today : day(1);
     if (!before || !after) return null;
     up = false;
     f = (now - before.sunset) / (after.sunrise - before.sunset);

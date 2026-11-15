@@ -211,6 +211,8 @@ function CityPanel({ facts: f, bidPack, profile, mark, now }: { facts: CityFacts
   const seasonal = hasSeasons(rating?.seasons);
   const bidMonth = bidMonthOf(bidPack);
   const fullDays = stays.reduce((a, s) => a + s.fullDays, 0);
+  const placed = coordinatesForAirport(f.code) !== null;
+  const nm = routeNm(bidPack.base, f.code);
 
   return (
     <div className="space-y-6">
@@ -221,20 +223,27 @@ function CityPanel({ facts: f, bidPack, profile, mark, now }: { facts: CityFacts
         <Fact label="Sunset" value={sun?.sunset ?? "—"} note={sun ? `${sun.hours.toFixed(1)}h of daylight` : ""} />
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-        <div>
-          <div className={LABEL}>
-            From {bidPack.base}, {Math.round(routeNm(bidPack.base, f.code) ?? 0).toLocaleString()} nm
+      {/* A code the airport list can't place has no distance, route or sky: left out, not "0 nm" over an empty map. */}
+      {placed && (
+        <section className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          {nm !== null ? (
+            <div>
+              <div className={LABEL}>
+                From {bidPack.base}, {Math.round(nm).toLocaleString()} nm
+              </div>
+              <div className="mt-2">
+                <RouteArc from={bidPack.base} to={f.code} />
+              </div>
+            </div>
+          ) : (
+            <div />
+          )}
+          <div className="flex flex-col items-center">
+            <div className={LABEL}>The sky there now</div>
+            <SunDial code={f.code} now={now} />
           </div>
-          <div className="mt-2">
-            <RouteArc from={bidPack.base} to={f.code} />
-          </div>
-        </div>
-        <div className="flex flex-col items-center">
-          <div className={LABEL}>The sky there now</div>
-          <SunDial code={f.code} now={now} />
-        </div>
-      </section>
+        </section>
+      )}
 
       <Weather code={f.code} bidPack={bidPack} stays={stays} now={now} />
 

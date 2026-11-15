@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { SORT_HUBS } from "@/lib/metrics/hub-turns";
 import type { Trip } from "@/types/bidpack";
@@ -282,15 +283,40 @@ function wokeBeforeTrip(firstReport: number, bodyMinute: number): number {
 
 /**
  * The trip minute a layover's clocks change, when the next duty leaves on another offset than the last one landed on
- * (Europe and the US in the autumn, Australia in October); never, when they agree. Europe changes at 01:00 GMT;
- * elsewhere at 02:00 on the clock it landed on, or 03:00 for Australia and New Zealand going back. The printed times
- * carry no date, so this is the rule, not a lookup: right for the places FedEx lays over.
+ * (Europe and the US in the autumn, Australia in October); never, when they agree. On a trip pinned to its own date
+ * (`anchorMs`, its report), the city's own rules say when: a layover of two nights can see the change on its second,
+ * and the rule below put every time of its first whole day an hour off. Otherwise the rule, right for the places FedEx
+ * lays over: Europe changes at 01:00 GMT; elsewhere at 02:00 on the clock it landed on, or 03:00 for Australia and New
+ * Zealand going back. Going back is a step back round the clock, not a smaller number: New Zealand's summer +13 reads
+ * as -11 off the printed times.
  */
-function clockChangeAt(city: string, from: number, until: number, zOff: number, before: number, after: number): number {
+function clockChangeAt(city: string, from: number, until: number, zOff: number, before: number, after: number, anchorMs: number | null): number {
   if (before === after) return Infinity;
   const zone = timezoneForAirport(city) ?? "";
-  const utcMinute = zone.startsWith("Europe/") ? 60 : (after < before && /^(Australia|Pacific\/Auckland)/.test(zone) ? 180 : 120) - before;
+  const offsetAt = (m: number) => DateTime.fromMillis(anchorMs! + m * 60_000, { zone }).offset;
+  if (zone && anchorMs !== null && mod(offsetAt(from) - before) === 0 && mod(offsetAt(until) - after) === 0) {
+    let lo = from;
+    let hi = until;
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (mod(offsetAt(mid) - before) === 0) lo = mid;
+      else hi = mid;
+    }
+    return hi;
+  }
+  const goesBack = mod(after - before + 720) - 720 < 0;
+  const utcMinute = zone.startsWith("Europe/") ? 60 : (goesBack && /^(Australia|Pacific\/Auckland)/.test(zone) ? 180 : 120) - before;
   return Math.min(until, from + mod(utcMinute - (from + zOff)));
+}
+
+/**
+ * The trip's report as a real instant, when the trip is pinned to its own date (`anchorTripToItsDate`) and that agrees
+ * with its printed GMT times; null for a trip with no date, whose anchor is only its month's.
+ */
+function tripAnchorMs(trip: Trip, zOff: number): number | null {
+  if (trip.startDayIndex === null || !trip.zuluAnchor) return null;
+  const at = Date.parse(trip.zuluAnchor);
+  return Number.isFinite(at) && mod(Math.round(at / 60_000)) === zOff ? at : null;
 }
 
 /** The layover's printed hotel pickup as a trip minute (the last time that clock reads before report), if there is one. */
@@ -351,6 +377,7 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
   if (!trip.schedule.length) return [];
   const zOff = zuluOffset(trip);
   if (zOff === null) return [];
+  const anchorMs = tripAnchorMs(trip, zOff);
   let body = tripHomeOffset(trip, homeBaseOffsetMinutes);
   const firstReport = trip.schedule[0].startMinutes;
   let lastWake = wokeBeforeTrip(firstReport, mod(firstReport + zOff + body));
@@ -371,7 +398,7 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
     // hour off, or more than four hours from report and dropped, and every time after the change an hour off.
     const out = next.legs[0];
     const leaveOff = out && out.depAirport === lastLeg?.arrAirport ? (offsetOf(out.depTimeLocal, out.depTimeGmt) ?? localOff) : localOff;
-    const changeAt = clockChangeAt(lay.city, lay.startMinutes, report, zOff, localOff, leaveOff);
+    const changeAt = clockChangeAt(lay.city, lay.startMinutes, report, zOff, localOff, leaveOff, anchorMs);
     const offAt = (m: number) => (m < changeAt ? localOff : leaveOff);
     const pickup = pickupMinute(lay.pickupTimeLocal, report, leaveOff, zOff);
     const wakeBy = pickup !== null ? pickup - BEFORE_PICKUP : report - GET_READY;
