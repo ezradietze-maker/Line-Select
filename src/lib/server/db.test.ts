@@ -8,6 +8,7 @@ import { looksLikeProductionUrl, productionDbOptIn } from "@/lib/server/db-guard
 import * as suggestions from "@/lib/server/trade-suggestions";
 import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { awardHistoryRecords, feedbackSubmissions, tradeOffers, users } from "@/lib/server/schema";
+import { FREE_MEMBER_CAP } from "@/lib/membership";
 import { DEFAULT_WEIGHTS } from "@/types/preferences";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { FeedbackSubmission } from "@/types/feedback";
@@ -723,6 +724,27 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
       // The other tab, a moment behind, finds it already replaced.
       expect(await mod.relinkStripeCustomer(pilot.id, gone, `cus_y_${pilot.id}`)).toBe(`cus_x_${pilot.id}`);
       expect((await mod.getSubscriptionByUserId(pilot.id))?.stripeCustomerId).toBe(`cus_x_${pilot.id}`);
+    });
+  });
+
+  describe("free spots: claims at once never pass the cap", () => {
+    it("gives out exactly the spots left, however many claim together, and then says full", async () => {
+      // The cap was one UPDATE's sub-select: on Postgres two claims at once each count before the other commits, and
+      // both take the last spot. (This local Postgres runs one transaction at a time, so it can't show that race; it
+      // checks the count, the answers and that the claims still go through under the lock.)
+      const left = FREE_MEMBER_CAP - (await mod.countFreeMembers());
+      const pilots: { id: string }[] = [];
+      for (let i = 0; i < Math.max(left, 0) + 5; i++) pilots.push(await makeUser(`free-spot-${i}`));
+      try {
+        const answers = await Promise.all(pilots.map((p) => mod.claimFreeMember(p.id)));
+        expect(answers.filter((a) => a === "claimed")).toHaveLength(Math.max(left, 0));
+        expect(answers.filter((a) => a === "full")).toHaveLength(5);
+        expect(await mod.countFreeMembers()).toBe(Math.max(FREE_MEMBER_CAP, FREE_MEMBER_CAP - left));
+        const holder = pilots[answers.indexOf("claimed")];
+        if (holder) expect(await mod.claimFreeMember(holder.id)).toBe("already");
+      } finally {
+        await db.update(users).set({ freeMemberAt: null }).where(inArray(users.id, pilots.map((p) => p.id)));
+      }
     });
   });
 

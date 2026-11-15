@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { accessRefusal } from "@/lib/server/gating";
 import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { packIdFor } from "@/lib/pack-id";
 import { acceptTradeOffer, findTradeOffer, getTradeHolding } from "@/lib/server/db";
@@ -25,6 +26,9 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   }
+  // The trade board is a paid feature; a no-op while FREE_FOR_ALL is on (see lib/server/gating.ts).
+  const gated = accessRefusal(user);
+  if (gated) return gated;
   if (!isVerified(user)) return confirmEmailRefusal("agree a trade");
 
   const { id } = await params;

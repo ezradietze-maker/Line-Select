@@ -4,6 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/Button";
 import { useAppState } from "@/lib/app-state";
 import { claimFreeMembership, fetchBillingStatus, MEMBERSHIP_PRICE, membershipEnded, openBillingPortal, startMembershipCheckout, type BillingStatus } from "@/lib/billing";
+import { FREE_MEMBER_CAP } from "@/lib/membership";
 
 const PANEL = "panel-glass p-6";
 
@@ -24,7 +25,7 @@ function useCheckoutOutcome(): "success" | "cancelled" | null {
 }
 
 export function MembershipScreen() {
-  const { user } = useAppState();
+  const { user, refreshUser } = useAppState();
   const outcome = useCheckoutOutcome();
   // Keyed on the pilot so the status reloads cleanly on sign-in/out, and state is only ever set from an async callback.
   const [data, setData] = useState<{ forUser: string | null; status: BillingStatus | null }>({ forUser: null, status: null });
@@ -69,19 +70,20 @@ export function MembershipScreen() {
     const result = await claimFreeMembership();
     setBusy(false);
     if (result.ok) {
-      await refresh();
+      // The app's own copy of the account too: it's what the ranking checks, and it still said no spot.
+      await Promise.all([refresh(), refreshUser()]);
       return;
     }
     setError(result.error ?? "Couldn't claim a free spot.");
-    // When the spots just ran out, reload so the screen drops the free option and shows Pro only.
-    if (result.full) await refresh();
+    // When the spots just ran out (or this pilot needs none), reload so the screen shows what's true now.
+    if (result.full || result.member) await refresh();
   }
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-6">
       <header className="space-y-1">
         <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Membership</h1>
-        <p className="text-sm text-ink-muted">A free spot while they last, or Line Select Pro at {MEMBERSHIP_PRICE} with your first month free.</p>
+        <p className="text-sm text-ink-muted">A free spot while they last, or Line Select Pro at {MEMBERSHIP_PRICE}. Your first membership starts with a free month.</p>
       </header>
 
       {outcome === "success" && (
@@ -194,11 +196,11 @@ export function MembershipBody({
         <p className="text-sm text-ink-muted">
           {status.status === "trialing"
             ? trialEnds
-              ? `Your free month runs through ${trialEnds}, then it’s $20/month. Cancel anytime before then and you won’t be charged.`
+              ? `Your free month runs through ${trialEnds}, then it’s ${MEMBERSHIP_PRICE}. Cancel anytime before then and you won’t be charged.`
               : "You’re on your free month. Cancel anytime before it ends and you won’t be charged."
             : renews
-              ? `Renews ${renews} at $20/month.`
-              : "Billed $20/month."}
+              ? `Renews ${renews} at ${MEMBERSHIP_PRICE}.`
+              : `Billed ${MEMBERSHIP_PRICE}.`}
         </p>
         <Button variant="secondary" onClick={onPortal} disabled={busy}>
           {busy ? "Opening…" : "Manage membership"}
@@ -208,23 +210,8 @@ export function MembershipBody({
     );
   }
 
-  // Free members: a claimed free spot, or an account grandfathered in from before the cutover. Full access, no card.
-  if (status.tier === "free" || status.tier === "grandfathered") {
-    return (
-      <div className={`${PANEL} space-y-3`}>
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center rounded-[2px] border border-border px-2 py-0.5 font-display text-xs font-bold text-ink">Free</span>
-          <span className="text-sm font-medium text-ink">Free member — full access</span>
-        </div>
-        <p className="text-sm text-ink-muted">
-          You have the whole app, at no charge. If you&rsquo;d ever like to move to a paid membership you can, but there&rsquo;s
-          nothing you need to do.
-        </p>
-      </div>
-    );
-  }
-
   // Still open but unpaid (past due, unpaid, incomplete, paused): fix the card; a second membership would bill twice.
+  // Asked first, of a free member too: Stripe goes on trying their card, and this is their way to the portal.
   if (status.hasSubscription && status.status && !membershipEnded(status.status)) {
     return (
       <div className={`${PANEL} space-y-4`}>
@@ -234,6 +221,23 @@ export function MembershipBody({
           {busy ? "Opening…" : "Update your card"}
         </Button>
         {error && <p className="text-sm text-danger">{error}</p>}
+      </div>
+    );
+  }
+
+  // Free members: a claimed free spot, or an account grandfathered in from before the cutover. Full access, no card.
+  // So is everyone while the whole app is free (`FREE_FOR_ALL`): an account made after the cutover was offered a spot
+  // and a paid membership for what it already had.
+  if (status.tier === "free" || status.tier === "grandfathered" || status.hasAccess) {
+    return (
+      <div className={`${PANEL} space-y-3`}>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center rounded-[2px] border border-border px-2 py-0.5 font-display text-xs font-bold text-ink">Free</span>
+          <span className="text-sm font-medium text-ink">Free member — full access</span>
+        </div>
+        <p className="text-sm text-ink-muted">
+          You have the whole app, at no charge. There&rsquo;s nothing you need to do.
+        </p>
       </div>
     );
   }
@@ -248,7 +252,7 @@ export function MembershipBody({
           <div className="flex items-center justify-between">
             <div className="font-display text-lg font-extrabold text-ink">Free</div>
             <span className="rounded-[2px] border border-border px-2 py-0.5 text-xs font-medium text-ink-muted">
-              {freeLeft} of 15 left
+              {freeLeft} of {FREE_MEMBER_CAP} left
             </span>
           </div>
           <p className="text-sm text-ink-muted">Full access, no card. A limited number of free spots while Line Select gets going.</p>

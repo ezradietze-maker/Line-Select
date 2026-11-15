@@ -66,4 +66,25 @@ describe("membership screen", () => {
     expect(html).toContain("Claim a free spot");
     expect(html).toContain("7 of 15 left");
   });
+
+  it("doesn't offer a spot or a paid membership to a pilot who has full access while it's all free", () => {
+    // An account made after the cutover is "locked" on the model's merits; with the whole app free it was offered a
+    // free spot (one fewer for a new pilot at go-live) and $20/month for what it already had.
+    const html = body({ ...base, tier: "locked", hasAccess: true, freeSlotsLeft: 7 });
+    expect(html).toContain("full access");
+    expect(html).not.toContain("Claim a free spot");
+    expect(html).not.toContain("Start free month");
+  });
+
+  it("doesn't promise a free member a move to paid that the screen has no button for", () => {
+    const html = body({ ...base, tier: "grandfathered", hasAccess: true });
+    expect(html).not.toContain("move to a paid membership");
+    expect(html).not.toContain("<button");
+  });
+
+  it("shows a free member whose membership payment failed the way to fix the card", () => {
+    // Stripe goes on trying the card; the free panel had no way to the portal.
+    const html = body({ ...base, tier: "grandfathered", hasAccess: true, hasSubscription: true, status: "past_due", freeMonth: false });
+    expect(html).toContain("Update your card");
+  });
 });

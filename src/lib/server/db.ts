@@ -307,28 +307,36 @@ export async function countFreeMembers(): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
+/** Any fixed number: the class of the free-slot claim's two-key advisory lock, apart from the trade locks' class. */
+const FREE_SLOT_LOCK_CLASS = 6_114_027;
+
 /**
- * Claim one of the limited free slots for `userId`, enforcing `FREE_MEMBER_CAP` atomically: the cap is checked inside
- * the same UPDATE (a sub-select over the current free-member count), so two simultaneous claims can't both slip past
- * the last slot. Returns "claimed" (just took a slot), "already" (this pilot already had one), or "full" (no slots
- * left, or the user doesn't exist).
+ * Claim one of the limited free slots for `userId`, enforcing `FREE_MEMBER_CAP`: claims queue behind one lock, and the
+ * cap is checked inside the UPDATE (a sub-select over the current free-member count). The sub-select alone let two
+ * claims at once both take the last slot: each updates its own row, so neither waits on the other, and each counts
+ * before the other commits. Returns "claimed" (just took a slot), "already" (this pilot already had one), or "full"
+ * (no slots left, or the user doesn't exist).
  */
 export async function claimFreeMember(userId: string): Promise<"claimed" | "already" | "full"> {
   if (!isUuid(userId)) return "full";
-  const claimed = await db
-    .update(users)
-    .set({ freeMemberAt: new Date() })
-    .where(
-      and(
-        eq(users.id, userId),
-        isNull(users.freeMemberAt),
-        sql`(SELECT count(*) FROM ${users} WHERE ${users.freeMemberAt} IS NOT NULL) < ${FREE_MEMBER_CAP}`
+  return db.transaction(async (tx) => {
+    // Held to the end of this transaction: the UPDATE after it counts every claim committed before it got the lock.
+    await tx.execute(sql`select pg_advisory_xact_lock(${FREE_SLOT_LOCK_CLASS}::int, 0)`);
+    const claimed = await tx
+      .update(users)
+      .set({ freeMemberAt: new Date() })
+      .where(
+        and(
+          eq(users.id, userId),
+          isNull(users.freeMemberAt),
+          sql`(SELECT count(*) FROM ${users} WHERE ${users.freeMemberAt} IS NOT NULL) < ${FREE_MEMBER_CAP}`
+        )
       )
-    )
-    .returning({ id: users.id });
-  if (claimed.length > 0) return "claimed";
-  const [row] = await db.select({ freeMemberAt: users.freeMemberAt }).from(users).where(eq(users.id, userId)).limit(1);
-  return row?.freeMemberAt ? "already" : "full";
+      .returning({ id: users.id });
+    if (claimed.length > 0) return "claimed";
+    const [row] = await tx.select({ freeMemberAt: users.freeMemberAt }).from(users).where(eq(users.id, userId)).limit(1);
+    return row?.freeMemberAt ? "already" : "full";
+  });
 }
 
 // ---- Password reset tokens ----
