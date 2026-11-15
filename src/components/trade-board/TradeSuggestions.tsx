@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { TripSnapshotStats } from "@/components/trade-board/TradeBoardScreen";
 import { Button } from "@/components/ui/Button";
 import { ConfirmEmailRefusal } from "@/components/auth/ConfirmEmail";
+import { MembershipRefusal } from "@/components/membership/MembershipRefusal";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Notice } from "@/components/ui/Notice";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -217,6 +218,8 @@ export function TradeSuggestions({
   const [error, setError] = useState<string | null>(null);
   /** The last action was refused because the pilot's email isn't confirmed: the error is shown with the button to confirm. */
   const [needsConfirm, setNeedsConfirm] = useState(false);
+  /** The last action was refused for no membership: the error is shown with the way to one. */
+  const [needsMembership, setNeedsMembership] = useState(false);
   /** The server turned the last check away for asking too often: said, rather than the list silently going stale. */
   const [limited, setLimited] = useState(false);
 
@@ -251,6 +254,7 @@ export function TradeSuggestions({
     setFinding(true);
     setError(null);
     setNeedsConfirm(false);
+    setNeedsMembership(false);
     setMessage(null);
     const outcome = await findTradesNow(packId);
     setFinding(false);
@@ -258,6 +262,10 @@ export function TradeSuggestions({
     if ("confirmEmail" in outcome) {
       setNeedsConfirm(true);
       return setError(outcome.confirmEmail);
+    }
+    if ("membership" in outcome) {
+      setNeedsMembership(true);
+      return setError(outcome.membership);
     }
     if (outcome.status === "busy") return setMessage("Another pilot's search is running for this seat. Try again in a moment.");
     if (outcome.status === "closed") return setMessage("Trades open once enough pilots in your seat are using Line Select.");
@@ -272,13 +280,15 @@ export function TradeSuggestions({
     await refresh();
   }
 
-  async function run(action: () => Promise<{ ok: boolean; error?: string; confirmEmail?: boolean }>) {
+  async function run(action: () => Promise<{ ok: boolean; error?: string; confirmEmail?: boolean; membership?: boolean }>) {
     setBusy(true);
     setError(null);
     setNeedsConfirm(false);
+    setNeedsMembership(false);
     const result = await action();
     if (!result.ok) setError(result.error ?? "That didn't save. Check your connection and try again.");
     setNeedsConfirm(!result.ok && !!result.confirmEmail);
+    setNeedsMembership(!result.ok && !!result.membership);
     // The Inbox badge counts trades waiting on this pilot: asked for now, not at the app's next poll.
     if (result.ok) refreshTradeActivity();
     await refresh();
@@ -299,7 +309,14 @@ export function TradeSuggestions({
   return (
     <section className="mt-8">
       <SectionHeading count={list.length}>Trades found for you</SectionHeading>
-      {error && (needsConfirm ? <ConfirmEmailRefusal className="mt-3" message={error} /> : <ErrorBanner className="mt-3">{error}</ErrorBanner>)}
+      {error &&
+        (needsConfirm ? (
+          <ConfirmEmailRefusal className="mt-3" message={error} />
+        ) : needsMembership ? (
+          <MembershipRefusal className="mt-3" message={error} />
+        ) : (
+          <ErrorBanner className="mt-3">{error}</ErrorBanner>
+        ))}
       {limitedNotice}
       <div className="mt-3 space-y-3">
         {list.map((s) => (

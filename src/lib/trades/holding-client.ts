@@ -26,6 +26,16 @@ async function confirmEmailFirst(res: Response): Promise<ConfirmEmailFirst | nul
   return data?.confirmEmail === true && typeof data.error === "string" ? { confirmEmail: data.error } : null;
 }
 
+/** Refused because the pilot has no membership (`accessRefusal` on the server, a 402), with the server's words for it. */
+export interface MembershipFirst {
+  membership: string;
+}
+
+async function membershipFirst(res: Response): Promise<MembershipFirst> {
+  const data = (await res.json().catch(() => null)) as { error?: unknown } | null;
+  return { membership: typeof data?.error === "string" ? data.error : "A Line Select membership unlocks this." };
+}
+
 /** Saves what the pilot holds; the saved copy, the refusal of an unconfirmed account, or null when it didn't save. */
 export async function saveTradeHolding(holding: Omit<TradeHolding, "confirmedAt">): Promise<TradeHolding | ConfirmEmailFirst | null> {
   try {
@@ -86,9 +96,11 @@ export async function fetchWaitingSuggestions(packId: string): Promise<number | 
 
 export type FindOutcome = { status: "ran"; found: number; pilots: number } | { status: "busy" } | { status: "not-ready" } | { status: "closed" } | { status: "pack-differs" };
 
-export async function findTradesNow(packId: string): Promise<FindOutcome | ConfirmEmailFirst | null> {
+export async function findTradesNow(packId: string): Promise<FindOutcome | ConfirmEmailFirst | MembershipFirst | null> {
   try {
     const res = await apiFetch("/api/trades/matches", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ pack: packId }) });
+    // Read as any other failure, a pilot with no membership was told to try again in a moment, for good.
+    if (res.status === 402) return membershipFirst(res);
     if (!res.ok) return confirmEmailFirst(res);
     return (await res.json()) as FindOutcome;
   } catch {
@@ -96,12 +108,12 @@ export async function findTradesNow(packId: string): Promise<FindOutcome | Confi
   }
 }
 
-async function act(url: string, body: unknown): Promise<{ ok: boolean; error?: string; confirmEmail?: boolean }> {
+async function act(url: string, body: unknown): Promise<{ ok: boolean; error?: string; confirmEmail?: boolean; membership?: boolean }> {
   try {
     const res = await apiFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
     if (res.ok) return { ok: true };
     const data = (await res.json().catch(() => ({}))) as { error?: string; confirmEmail?: unknown };
-    return { ok: false, error: data.error, confirmEmail: data.confirmEmail === true };
+    return { ok: false, error: data.error, confirmEmail: data.confirmEmail === true, membership: res.status === 402 };
   } catch {
     return { ok: false };
   }

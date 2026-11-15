@@ -37,8 +37,12 @@ async function send(method: string, body?: unknown, userId: string | null | unde
   return apiFetch(PATH, { method, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }, userId);
 }
 
+/** Making a link was turned away: the pilot has no membership (`accessRefusal` on the server, a 402). The server's words. */
+export class MembershipNeededError extends Error {}
+
 async function statusFrom(res: Response): Promise<FeedStatusView> {
   const json = await res.json().catch(() => null);
+  if (res.status === 402) throw new MembershipNeededError(json?.error ?? "A Line Select membership unlocks this.");
   if (!res.ok || !json) throw new Error(json?.error ?? "Couldn't reach your calendar link just now.");
   return json as FeedStatusView;
 }

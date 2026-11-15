@@ -41,6 +41,8 @@ interface ActionResult {
   offer?: TradeOffer;
   /** Refused because the pilot's email isn't confirmed: the app shows "Confirm your email" with the words. */
   confirmEmail?: boolean;
+  /** Refused because the pilot has no membership (`accessRefusal`, a 402): the app shows the way to one with the words. */
+  membership?: boolean;
 }
 
 async function postAction(url: string, body?: unknown): Promise<ActionResult> {
@@ -52,7 +54,7 @@ async function postAction(url: string, body?: unknown): Promise<ActionResult> {
       body: body ? JSON.stringify(body) : undefined,
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, error: data.error ?? "Something went wrong.", confirmEmail: data.confirmEmail === true };
+    if (!res.ok) return { ok: false, error: data.error ?? "Something went wrong.", confirmEmail: data.confirmEmail === true, membership: res.status === 402 };
     return { ok: true, offer: data.offer };
   } catch {
     return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };

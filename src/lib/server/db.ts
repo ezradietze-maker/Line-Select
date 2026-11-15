@@ -7,7 +7,7 @@ import { tripsSpokenFor } from "@/lib/trades/suggestions";
 import { packIdFor } from "@/lib/pack-id";
 import { FREE_MEMBER_CAP } from "@/lib/membership";
 import { db } from "@/lib/server/postgres";
-import { forgetVerifiedPilots, verifiedUserIds } from "@/lib/server/verified-pilots";
+import { forgetVerifiedPilots, tradingUserIds, verifiedUserIds } from "@/lib/server/verified-pilots";
 import {
   awardHistoryRecords,
   bidPackMetaOf,
@@ -591,8 +591,9 @@ export async function listTradeOffersForSeat(meta: BidPackMetaSnapshot, viewerId
       ? db
           .select()
           .from(tradeOffers)
-          // From confirmed accounts only: an unconfirmed one can't agree a trade, so its offers would only ever wait.
-          .where(and(offersForSeat(meta), eq(tradeOffers.status, "open"), ne(tradeOffers.offeringUserId, viewerId), inArray(tradeOffers.offeringUserId, verifiedUserIds())))
+          // From pilots who can trade only: an unconfirmed account, or one with no membership, can't agree a trade, so
+          // its offers would only ever wait.
+          .where(and(offersForSeat(meta), eq(tradeOffers.status, "open"), ne(tradeOffers.offeringUserId, viewerId), inArray(tradeOffers.offeringUserId, tradingUserIds())))
           .orderBy(desc(tradeOffers.createdAt))
           .limit(opts.limit)
       : [],
