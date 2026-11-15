@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { draftBack, laterBack } from "@/components/interview/BrainInterview";
+import { beforeSweepAnswer, draftBack, laterBack, wrapUpFrom } from "@/components/interview/BrainInterview";
+import { SWEEP_QUESTION } from "@/lib/brain/interview-pace";
 
 const at = (over: Partial<Parameters<typeof laterBack>[0]>): Parameters<typeof laterBack>[0] => ({
   phase: "question",
@@ -71,5 +72,26 @@ describe("Back after a reload", () => {
   it("keeps, on the priorities, the read they were built on: built on the fitted one, the next read fitted the choices in twice", () => {
     expect(resumed({ phase: "review", atReview: true, model: fitted, beforeFinish: read }).model).toEqual(read);
     expect(resumed({ phase: "question", model: read, beforeFinish: fitted }).model).toEqual(read);
+  });
+});
+
+describe("Back after \"anything else?\" when the interviewer wraps up with no follow-up", () => {
+  const asked = [
+    { turn: 4, question: "Line 2001 vs Line 2002?", answer: "2001" },
+    { turn: 5, question: SWEEP_QUESTION, answer: "These matter to me too: Weekends off." },
+  ];
+
+  it("goes back to the \"anything else?\" screen, not past it to the question before", () => {
+    // Taken for an answer, Back took the last step back: the question before "anything else?", two screens back.
+    expect(laterBack(at({ phase: "review", finishFrom: wrapUpFrom(asked) }))).toBe("sweep");
+    expect(laterBack(at({ phase: "building", error: true, finishFrom: wrapUpFrom(asked) }))).toBe("sweep");
+    // Wrapped up after any other answer, Back still takes that answer back.
+    expect(wrapUpFrom(asked.slice(0, 1))).toBe("answered");
+  });
+
+  it("takes the answer given there back with it, so it isn't sent twice", () => {
+    expect(beforeSweepAnswer(asked, 6)).toEqual({ exchanges: asked.slice(0, 1), turn: 5 });
+    // Nothing picked there, nothing to take back.
+    expect(beforeSweepAnswer(asked.slice(0, 1), 5)).toBeNull();
   });
 });
