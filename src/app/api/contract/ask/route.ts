@@ -57,7 +57,12 @@ async function respond(request: Request, remember: Remember | null): Promise<Res
   const bidMonth = typeof body.bidMonth === "string" && /^20\d{2}-(0[1-9]|1[0-2])$/.test(body.bidMonth) ? body.bidMonth : currentBidMonth();
   const input: AskInput = { question: (body.question as string).trim(), history: earlier, facts: body.facts as string | undefined, bidMonth, apiKey };
   const paid = await startPaidCall(spender, askContractCeilingUsd(input));
-  if (!paid.ok) return spendLimitResponse(paid);
+  if (!paid.ok) {
+    const refused = spendLimitResponse(paid);
+    // The AI's own limits for the day, the pilot's or the site's, are `final` like the day's questions: they say "back
+    // tomorrow", and a Try again under them only failed again. A pilot's running requests ("busy") pass.
+    return paid.scope === "busy" ? refused : NextResponse.json({ ...(await refused.json()), final: true }, { status: refused.status });
+  }
   // Counted only once the question will really be asked: a day's questions spent on refusals ("resting", too long)
   // left a pilot locked out after the AI came back.
   const daily = await checkRateLimit("contract-ask-day", spender.key, spender.signedIn ? DAILY_PILOT : DAILY_GUEST, DAY).catch(async (e) => {

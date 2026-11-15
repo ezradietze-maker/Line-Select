@@ -177,6 +177,20 @@ describe("POST /api/contract/ask", () => {
     expect(llm.structuredCall).not.toHaveBeenCalled();
   });
 
+  it("takes Try again away for the AI's own limits for the day, not for a pilot's running requests", async () => {
+    // "They'll be back tomorrow" with a Try again under it only ever failed again.
+    for (const scope of ["pilot", "site"]) {
+      spend.check = { ok: false, scope };
+      const res = await POST(req({ question: "q?" }));
+      expect(res.status).toBe(429);
+      expect(await res.json()).toMatchObject({ error: expect.stringContaining("tomorrow"), final: true });
+    }
+    spend.check = { ok: false, scope: "busy" };
+    const busy = await POST(req({ question: "q?" }));
+    expect(busy.status).toBe(429);
+    expect((await busy.json()).final).toBeUndefined();
+  });
+
   it("gives a signed-in pilot 40 questions a day and a guest 5", async () => {
     llm.structuredCall.mockResolvedValue(reply({ found: false, answer: "", quotes: [] }));
     limits.checkDaily.mockClear();
