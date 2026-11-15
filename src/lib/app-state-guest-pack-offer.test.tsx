@@ -193,6 +193,79 @@ describe("signing in to an account that holds another pack than the guest just l
     });
     expect(app().guestPackOffer).toBeNull();
   });
+
+  it("asks nothing when the pack left from a guest visit is an older month than the account's", async () => {
+    // Loaded here as a guest in October and never signed in; the account has had December put on it since. Taken, it
+    // put October over December, on the device and the account.
+    const OCT = pack("OCT26");
+    net.guestPack = OCT;
+    net.guestUpload = OCT.id;
+    net.guestProfile = profile(OCT.id, "2026-09-14T00:00:00Z");
+    net.accountPack = DEC;
+    net.accountProfile = profile(DEC.id, "2026-11-14T00:00:00Z");
+    const app = await mount();
+    await act(async () => {
+      await app().handleAuthenticated(U, { stay: true });
+    });
+    expect(app().bidPack?.id).toBe(DEC.id);
+    expect(app().guestPackOffer).toBeNull();
+  });
+
+  it("doesn't ask again once signed out and back in from another tab", async () => {
+    const app = await guestSignsIn();
+    expect(app().guestPackOffer?.id).toBe(DEC.id);
+    // Another tab signs out, then in again as the same pilot: this tab follows each (`refreshUser`, `showAccountNow`).
+    for (const user of [null, U]) {
+      const asked = act(async () => {
+        await app().refreshUser();
+      });
+      await act(async () => {});
+      net.session.shift()?.({ user, reachable: true });
+      await asked;
+      await act(async () => {});
+    }
+    expect(app().user?.id).toBe(U.id);
+    expect(app().guestPackOffer).toBeNull();
+  });
+});
+
+describe("signing in to an account that holds the same pack the guest just loaded", () => {
+  it("goes on with the interview the guest did on it since the account's last one, keeping the account's logbook", async () => {
+    net.guestPack = DEC;
+    net.guestUpload = DEC.id;
+    net.guestProfile = profile(DEC.id, "2026-11-14T00:00:00Z");
+    net.accountPack = DEC;
+    net.accountProfile = profile(NOV.id, "2026-10-14T00:00:00Z", ["OCT26"]);
+    const app = await mount();
+    await act(async () => {
+      await app().handleAuthenticated(U, { stay: true });
+    });
+    expect(app().guestPackOffer).toBeNull();
+    expect(app().profile?.brainInterview?.packId).toBe(DEC.id);
+    expect(app().profile?.logbook?.map((e) => e.id)).toEqual(["OCT26"]);
+    expect(net.savedProfileFor).toContain(U.id);
+  });
+
+  it("keeps the account's when the guest's interview is older, or the pack wasn't this guest's upload", async () => {
+    net.guestPack = DEC;
+    net.guestUpload = DEC.id;
+    net.guestProfile = profile(DEC.id, "2026-10-01T00:00:00Z");
+    net.accountPack = DEC;
+    net.accountProfile = profile(DEC.id, "2026-11-01T00:00:00Z");
+    let app = await mount();
+    await act(async () => {
+      await app().handleAuthenticated(U, { stay: true });
+    });
+    expect(app().profile?.completedAt).toBe("2026-11-01T00:00:00Z");
+
+    net.guestProfile = profile(DEC.id, "2026-11-14T00:00:00Z");
+    net.guestUpload = null;
+    app = await mount();
+    await act(async () => {
+      await app().handleAuthenticated(U, { stay: true });
+    });
+    expect(app().profile?.completedAt).toBe("2026-11-01T00:00:00Z");
+  });
 });
 
 describe("the profile that goes with the guest's pack", () => {

@@ -42,4 +42,14 @@ describe("top-line history", () => {
     store.set("line-select:top-lines:guest:v2", JSON.stringify({ current: { month: "SAMPLE", lines: [{ lineNumber: "9001", score: 80, dimensionValues: {} }] }, previous: null }));
     expect(loadTopLinesSnapshot(null, "OCT26")).toBeNull();
   });
+
+  it("doesn't let a sample month a device kept before push the pilot's own last month out", () => {
+    // September, then the sample tried (kept as a month before it stopped being), then October's own pack.
+    store.set(
+      "line-select:top-lines:guest:v2",
+      JSON.stringify({ current: { month: "SAMPLE", lines: [{ lineNumber: "9001", score: 80, dimensionValues: {} }] }, previous: { month: "SEP26", lines: [{ lineNumber: "1100", score: 70, dimensionValues: {} }] } })
+    );
+    saveTopLinesSnapshot(null, "OCT26", [score("2283", 69)]);
+    expect(loadTopLinesSnapshot(null, "OCT26")?.map((l) => l.lineNumber)).toEqual(["1100"]);
+  });
 });

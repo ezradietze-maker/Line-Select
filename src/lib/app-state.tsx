@@ -33,6 +33,7 @@ import { forgetPilotOnDevice, forgetPilotWork } from "@/lib/device-data";
 import { clearServerDraft } from "@/lib/interview-draft-sync";
 import { adoptGuestDrafts } from "@/lib/interview-draft";
 import { landingAfterSignIn, landingPathFor } from "@/lib/landing-path";
+import { monthOrdinal } from "@/lib/learning/hold-history";
 import { isPackId, moveGuestWorkToAccount } from "@/lib/pack-id";
 import { LOCAL_SAVE_FAILED_EVENT } from "@/lib/local-save-failed";
 import { feedOffOwed, oweFeedOff } from "@/lib/calendar-feed-owed";
@@ -211,11 +212,16 @@ export function caughtUpState(s: DataState, was: OfflineLoad, fresh: { bidPack: 
  * The pack a guest loaded on this device before signing in to an account that already holds another one: they're asked
  * which to go on with. Without asking, the account's (often last month's) came up, and the pack they'd just loaded, and
  * the interview done on it, were gone from view — then gone from the device at sign-out. Null when there's nothing to
- * ask: no account pack (the guest's is taken over), the same pack on both, the sample, or a pack this guest didn't load.
+ * ask: no account pack (the guest's is taken over), the same pack on both, the sample, a pack this guest didn't load, or
+ * an older month's than the account's.
  */
 export function guestPackToOffer(before: GuestWork, accountPack: BidPack | null, guestUpload: string | null): BidPack | null {
   const guestPack = before.bidPack;
   if (before.user || !guestPack || !accountPack || isSamplePack(guestPack) || guestPack.id !== guestUpload) return null;
+  // Nor one for a month before the account's: left from a guest visit weeks ago, not just loaded, and taken, it went
+  // over the account's newer one.
+  const [guestMonth, accountMonth] = [monthOrdinal(guestPack.month), monthOrdinal(accountPack.month)];
+  if (guestMonth !== null && accountMonth !== null && guestMonth < accountMonth) return null;
   return isPackId(accountPack.id, guestPack) ? null : guestPack;
 }
 
@@ -948,9 +954,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         moveGuestWorkToAccount(before.bidPack.id, newUser.id);
         theirBidPack = before.bidPack;
       }
+      // The account holds the pack the guest just loaded here: an interview they did on it since the account's last
+      // one is the one to go on with, as taking the pack over from the dialog makes it. Without this it sat hidden on
+      // the device behind the account's older one.
+      const onSamePack = guestsOwnUpload && before.bidPack && theirBidPack && isPackId(theirBidPack.id, before.bidPack);
+      const guestsInterview = onSamePack && before.bidPack && theirProfile ? profileWithGuestPack(before.bidPack, before.profile, theirProfile) : theirProfile;
       if (!theirProfile && before.profile) {
         if ((await saveProfileForUser(newUser.id, before.profile)).savedLocally) clearProfile(null);
         theirProfile = before.profile;
+      } else if (guestsInterview && guestsInterview !== theirProfile) {
+        const saved = await saveProfileForUser(newUser.id, guestsInterview);
+        if (saved.savedLocally) clearProfile(null);
+        theirProfile = saved.profile;
       } else if (theirProfile && before.profile) {
         // The account's own profile stands, but the months the guest logged and the checklist they ticked join it:
         // otherwise they'd sit hidden on the device behind the account's, and go with it at sign-out.
@@ -1098,6 +1113,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   /** The guest view, once the server no longer holds a session for this device; at `to`, or wherever a guest belongs. */
   async function showSignedOut(to?: string) {
     signInsRef.current++;
+    setGuestOffer(null);
     setShownAccount(null);
     setProfileSync("ok");
     writeSignedInHint(null);
@@ -1138,6 +1154,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
    */
   async function showAccountNow(now: UserAccount | null) {
     const asked = ++signInsRef.current;
+    // Asked for the sign-in on this tab only: signed in again from another, the pack it asked about may be gone or
+    // taken over there.
+    setGuestOffer(null);
     setShownAccount(now?.id ?? null);
     // Read by a save of the old account's that comes back now: it says nothing about the new one's.
     userIdRef.current = now?.id ?? null;
