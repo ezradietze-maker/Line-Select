@@ -92,7 +92,9 @@ const LINE_METRIC_READING: Record<string, TripReading> = {
   tripsEndingStraightHome: "count",
   tripsShortOnBackups: "count",
   tripCount: "count",
-  // A trip on its own is one departure; its commutes and nights at base are its own, as if flown alone.
+  // A trip on its own is one departure — but a run of day trips a pilot at base goes home between is one a day, as the
+  // line counts it (counted 1, a three-day run cost no more than one day trip); its commutes and nights at base are its
+  // own, as if flown alone.
   homeDepartures: "count",
   // A trip on its own is a departure: the days it takes, commute days and all.
   workDays: "count",
@@ -130,7 +132,6 @@ const FROM_TRIP: Record<string, (f: TripFacts) => number | null> = {
   creditHours: (f) => f.creditHours,
   tafbHours: (f) => f.tafbHours,
   tripCount: () => 1,
-  homeDepartures: () => 1,
   dutyPeriods: (f) => tripDutyPeriods(f.trip),
   landings: (f) => f.trip.landings,
 };

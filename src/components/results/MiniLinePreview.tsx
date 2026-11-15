@@ -13,6 +13,7 @@ import { labeledStayPieces } from "@/lib/leg-bars";
 import { Modal } from "@/components/ui/Modal";
 import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthDepartureOptions, type MonthSummary, type TripFinish } from "@/lib/month-detail";
 import { dayStats, equipmentLabel, hm } from "@/lib/trip-day-stats";
+import { BASE_TURN_MAX_HOURS, DEFAULT_MIN_HOME_HOURS } from "@/lib/metrics/departures";
 import type { TimeMode, TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
@@ -93,12 +94,18 @@ const STRAIGHT_TURN_MINUTES = 6 * 60;
 /** "L" or "Z", for a time written in a sentence. */
 const clockOf = (mode: TimeMode) => (mode === "zulu" ? "Z" : "L");
 
-/** What joining two trips means for this pilot, in a sentence. */
-function chainSentence(c: NonNullable<DetailedDay["chain"]>, mode: TimeMode = "local"): string {
+/**
+ * What joining two trips means for this pilot, in a sentence: on the hours at home they were joined by. Said as 24 for
+ * everyone, a commuter who goes home only for two days read the wrong rule, and a pilot who lives at base was told he
+ * couldn't get home on a nine-hour turn there.
+ */
+export function chainSentence(c: NonNullable<DetailedDay["chain"]>, mode: TimeMode = "local"): string {
   const times = c.landed && c.reports ? `: lands ${c.city} ${c.landed}, reports again ${c.reports} (${clockOf(mode)})` : "";
-  return c.turnMinutes < STRAIGHT_TURN_MINUTES
-    ? `Turns straight out of trip #${c.fromTripNumber ?? ""}${times} — ${turnLabel(c.turnMinutes)} on the ground, so the two are flown as one departure from home.`
-    : `Follows trip #${c.fromTripNumber ?? ""} after ${turnLabel(c.turnMinutes)} in ${c.city}${times}. That's not long enough to get home and have 24 hours there, so the two are one departure — and the time between is spent in ${c.city}.`;
+  if (c.turnMinutes < STRAIGHT_TURN_MINUTES)
+    return `Turns straight out of trip #${c.fromTripNumber ?? ""}${times} — ${turnLabel(c.turnMinutes)} on the ground, so the two are flown as one departure from home.`;
+  const follows = `Follows trip #${c.fromTripNumber ?? ""} after ${turnLabel(c.turnMinutes)} in ${c.city}${times}.`;
+  if (c.homeHours === null) return `${follows} Under ${BASE_TURN_MAX_HOURS} hours between them, so the two count as one departure.`;
+  return `${follows} That's not long enough to get home and have ${c.homeHours ?? DEFAULT_MIN_HOME_HOURS} hours there, so the two are one departure — and the time between is spent in ${c.city}.`;
 }
 
 /** When the trip reports, in the report color. A trip turned straight out of the one before also says how long it sits at base in between. */
@@ -268,7 +275,7 @@ function MonthKeyInfo() {
           <ul className="space-y-3 text-sm leading-relaxed text-ink-muted">
             <li><span className="font-medium text-ink">Each week reads like a line in the bid pack.</span> Shaded days joined by a bar across the top are one trip. Its first day carries the trip&rsquo;s number and credit hours (<span className="font-mono">#111 17:47CH</span>) and when it reports, in orange (<span className="font-mono font-semibold text-report">Rpt 06:30L</span>). L is local time, Z Zulu.</li>
             <li><span className="font-medium text-ink">The lines in each day.</span> Each flight is a <span className="font-medium text-leg">blue</span> line with a tick at each end, as long as the flight and placed by the time of day &mdash; midnight at the left edge, midnight at the right, on the domicile&rsquo;s clock. A <span className="font-medium text-deadhead">magenta</span> line is a deadhead, riding along. The cities are written over the ends; where two legs meet, the city between them is written once. A flight still in the air at midnight runs off the right edge and on into the next day. The grey band around the lines is the whole duty period, report to the end of its last leg, so a long wait between two short flights shows. Small ticks mark 6am, noon and 6pm.</li>
-            <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be 24 hours at home between them, counting the trip home and back (<span className="font-mono">Rpt 02:30L · 1h47 turn</span> is a straight turn at the domicile). For a pilot who lives in the domicile city, only trips that turn within a few hours.</li>
+            <li><span className="font-medium text-ink">Trips joined into one bar.</span> Trips flown without going home in between &mdash; one departure. For a commuter that&rsquo;s whenever there wouldn&rsquo;t be the hours at home you said make going home worth it (24 if you didn&rsquo;t say) between them, counting the trip home and back (<span className="font-mono">Rpt 02:30L · 1h47 turn</span> is a straight turn at the domicile). For a pilot who lives in the domicile city, only trips that turn within a few hours.</li>
             <li><span className="font-medium text-ink">Green line.</span> A layover, from landing to the next show, under the flying, with the city and its length to the hour (<span className="font-mono font-semibold text-layover">SEA 16h</span>) &mdash; on its longest day, or at the top of the day when it&rsquo;s too short for the words. <span className="text-good">♥</span> is a city you love, <span className="text-good">♡</span> one you like, an amber <span className="text-warn">✕</span> one you dislike and a red <span className="text-danger">✕</span> one you avoid.</li>
             <li><span className="font-medium text-ink">Full day.</span> A whole day free in a layover city: in the hotel by about 2 AM the night before, and a full night after it &mdash; not up before about 6 the next morning (&ldquo;barely&rdquo; when it&rsquo;s earlier, up as early as about 3:15).</li>
             <li><span className="font-medium text-ink">END MEM 19:05L.</span> Where and when the trip ends, on its last day. <span className="font-mono">+1</span> means just after midnight &mdash; the bid pack still counts the next day as off.</li>

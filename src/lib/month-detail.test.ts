@@ -4,7 +4,13 @@ import { groupDepartures } from "@/lib/metrics/departures";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { lineStandbyDays } from "@/lib/standby";
-import type { Line } from "@/types/bidpack";
+import { buildSortContext, LINE_SORTS_BY_ID, sortValues } from "@/lib/line-sorts";
+import { measure, prepareMetrics } from "@/lib/metrics/compute";
+import { homeParams } from "@/lib/scoring-v2/score";
+import { startingSettings } from "@/lib/use-commute-check";
+import type { BidPack, Line } from "@/types/bidpack";
+import type { PilotModel } from "@/types/pilot-model";
+import type { PreferenceProfile } from "@/types/preferences";
 
 const START = "2026-09-28"; // a Monday
 const line = (number: string) => SAMPLE_BID_PACK.lines.find((l) => l.lineNumber === number)!;
@@ -195,6 +201,28 @@ describe("monthDepartureOptions", () => {
     const o = monthDepartureOptions("MEM", { isCommuter: true, commuteFrom: "SAN", hasCrashPad: false, minHomeHours: 48 });
     expect(o).toMatchObject({ base: "MEM", homeAirports: ["SAN"], hasCrashPad: false, minHomeHours: 48 });
     expect(monthDepartureOptions("MEM", { isCommuter: false, commuteFrom: null, hasCrashPad: null }).minHomeHours).toBeUndefined();
+  });
+
+  it("counts the departures the ranking counts, with the hours at home the brain read from the pilot's words", () => {
+    // Two days between the trips: one departure for a pilot who goes home only for two days at home, two at 24 hours.
+    const l = placed("9006", [2, 5]);
+    const pack = { ...SAMPLE_BID_PACK, bidPeriodStart: START, bidPeriodDays: 28, lines: [l] } as BidPack;
+    const home = { airports: ["SAN"], commuter: true, commuteBufferHours: 3, minHomeHours: 48 };
+    const pilotModel = { version: 2, home, criteria: [], threads: [], notMeasurable: [], synopsis: "" } as PilotModel;
+    // He skipped the hours-at-home question; the brain read it from what he said.
+    const profile = { isCommuter: true, commuteFrom: "SAN", hasCrashPad: false, minHomeHours: null, discoveredFacts: [], pilotModel };
+    const pm = prepareMetrics(pack);
+    const ranked = measure("homeDepartures", l, pm, homeParams(pilotModel));
+    expect(ranked).toBe(1);
+    const options = monthDepartureOptions(pack.base, profile);
+    expect(options).toMatchObject({ minHomeHours: 48, commuteBufferHours: 3 });
+    expect(buildDetailedMonth(l, START, 28, {}, options).summary.departures).toBe(ranked);
+    const sort = sortValues(LINE_SORTS_BY_ID.get("homeDepartures")!, { id: "homeDepartures" }, buildSortContext(pack, profile, pm, options));
+    expect(sort.get(l.id)).toBe(ranked);
+    // The commute filter joins the trips the same way.
+    expect(startingSettings(profile as unknown as PreferenceProfile).minHomeHours).toBe(48);
+    // His own answer on the screen is put on the model (`withHomeFacts`); before there's a model, it's the profile's.
+    expect(monthDepartureOptions(pack.base, { ...profile, pilotModel: undefined, minHomeHours: 36 })).toMatchObject({ homeAirports: ["SAN"], minHomeHours: 36 });
   });
 });
 

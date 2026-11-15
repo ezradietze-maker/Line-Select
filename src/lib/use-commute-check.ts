@@ -14,6 +14,7 @@ import {
   type CommuteSettings,
 } from "@/lib/commute-filter";
 import type { CommuteStatus } from "@/lib/line-filters";
+import { departureSettingsOf } from "@/lib/month-detail";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -32,9 +33,14 @@ export interface CommuteCheck {
 
 const SETTINGS_KEY = "line-select:commute-settings:v1";
 
-/** The hours at home worth going home for are the profile's, never this device's: the departures on the cards count by them. */
-const withMinHome = (profile: PreferenceProfile): Pick<CommuteSettings, "minHomeHours"> =>
-  typeof profile.minHomeHours === "number" ? { minHomeHours: profile.minHomeHours } : {};
+/**
+ * The hours at home worth going home for are the pilot's, never this device's: the ones the ranking and the cards count
+ * departures by (`departureSettingsOf`), the brain's reading of their words included.
+ */
+const withMinHome = (profile: PreferenceProfile): Pick<CommuteSettings, "minHomeHours"> => {
+  const { minHomeHours } = departureSettingsOf(profile);
+  return minHomeHours !== undefined ? { minHomeHours } : {};
+};
 
 export function startingSettings(profile: PreferenceProfile): CommuteSettings {
   const h = profile.pilotModel?.home;
@@ -64,8 +70,8 @@ export function startingSettings(profile: PreferenceProfile): CommuteSettings {
 export function useCommuteCheck(bidPack: BidPack, profile: PreferenceProfile, on: boolean): CommuteCheck {
   const [chosen, setSettings] = useState<CommuteSettings>(() => startingSettings(profile));
   // Changed in the profile while the results are open, the departures follow it here too.
-  const minHomeHours = profile.minHomeHours;
-  const settings = useMemo<CommuteSettings>(() => ({ ...chosen, minHomeHours: typeof minHomeHours === "number" ? minHomeHours : undefined }), [chosen, minHomeHours]);
+  const { minHomeHours } = withMinHome(profile);
+  const settings = useMemo<CommuteSettings>(() => ({ ...chosen, minHomeHours }), [chosen, minHomeHours]);
   const [answers, setAnswers] = useState<CommuteAnswers>({});
   const [run, setRun] = useState<{ phase: CommuteCheck["phase"]; done: number; total: number }>({ phase: "idle", done: 0, total: 0 });
   const canCheck = canCheckCommute(bidPack, settings.homeAirport);
