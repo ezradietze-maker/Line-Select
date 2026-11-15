@@ -186,6 +186,33 @@ describe("rows to trips", () => {
     expect(b.notInPack.map((r) => r.raw)).toEqual([dayAfter]);
   });
 
+  // Round 24: a row that lost its nearest trip to a nearer row was said to be not in the pack, though the trip the other
+  // side of its date was free: a list a day early ("213 12/9", "213 12/11") lost the pack's 213 on the 12th.
+  it("a row that loses its nearest trip takes the free one the other side of its date", () => {
+    const tenth = trip("213", 10, { id: "t-213-10" });
+    const twelfth = trip("213", 12, { id: "t-213-12" });
+    const q = pack([], [tenth, twelfth]);
+    for (const text of ["213 12/9\n213 12/11", "213 12/11\n213 12/9"]) {
+      const b = board(q, text);
+      expect(b.notInPack, text).toEqual([]);
+      expect(Object.fromEntries(b.trips.map((t) => [t.row.raw, t.key])), text).toEqual({ "213 12/9": tripKey(tenth), "213 12/11": tripKey(twelfth) });
+      const late = b.trips.find((t) => t.row.raw === "213 12/11")!;
+      expect(late.findings.find((f) => f.section === "open-time-date")?.text).toContain("we took the one on 12/12");
+    }
+  });
+
+  // Round 24: "14:30" and a release date read as a second date, and a trip number flying both days went unread.
+  it("a time or a release date beside the date isn't a second reading of it", () => {
+    const daily = [12, 13, 14].map((d) => trip("213", d, { id: `t-213-${d}` }));
+    const q = pack([], daily);
+    expect(pairingDate(daily[0], q)).toBe("2026-12-12");
+    for (const text of ["213 12 DEC 14:30", "213 12 DEC 13 DEC"]) {
+      const b = board(q, text);
+      expect(b.unread, text).toEqual([]);
+      expect(only(b).key, text).toBe(tripKey(daily[0]));
+    }
+  });
+
   it("a trip already on the pilot's line is said to be", () => {
     const mine = trip("213", 10);
     const l = line([mine]);
@@ -343,7 +370,7 @@ describe("banks on a trip: CBA 2026 25.L.4.d, 25.L.5.c, 25.L.6.e", () => {
   });
   it("past every bank: names the one that comes closest", () => {
     const t = only(board(p, row, { banks: { PMU: 2, "M/U": 12 } }));
-    expect(t.findings.find((f) => f.level === "no")?.text).toContain("12.0 CH of M/U");
+    expect(t.findings.find((f) => f.level === "no")?.text).toContain("12:00 CH of M/U");
   });
   it("one bank is enough", () => {
     const t = only(board(p, row, { banks: { "M/U": 2, MUV: 13 } }));

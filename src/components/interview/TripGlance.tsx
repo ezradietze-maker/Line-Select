@@ -5,6 +5,7 @@ import { CreditHours } from "@/components/results/TripMarks";
 import { useMemo } from "react";
 import { carryOverWords, tripCarryInPack } from "@/lib/bid-month";
 import { tripDateLabel, tripDuties, tripHeadline } from "@/lib/brain/line-text";
+import { formatHoursValue } from "@/lib/interview-config";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /** The trip's oval — its number and credit, as the calendar marks a trip's first day — then when and how long, and its C/O. */
@@ -61,7 +62,7 @@ export function TripFold({ bidPack, trip }: { bidPack: BidPack; trip: Trip }) {
         <span className="hidden text-accent group-open:inline" aria-hidden>
           ▾{" "}
         </span>
-        {tripHeadline(bidPack, trip)}
+        {tripHeadline(bidPack, trip, formatHoursValue)}
       </summary>
       <div className="mt-2">
         <TripGlance bidPack={bidPack} trip={trip} tag={false} />

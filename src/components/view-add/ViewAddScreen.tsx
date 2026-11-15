@@ -10,6 +10,7 @@ import { FIELD } from "@/components/ui/field";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { eventInstant } from "@/lib/bid-calendar";
+import { formatHoursValue as hm } from "@/lib/interview-config";
 import { loadCarryIn } from "@/lib/carry-in-storage";
 import { buildViewAdd, viewAddCopyText, type ViewAddChoice, type ViewAddPlan } from "@/lib/view-add";
 import { placeInPack } from "@/lib/strategy-engine";
@@ -60,13 +61,13 @@ export function Plan({ plan }: { plan: ViewAddPlan }) {
     <div className="mt-4 space-y-3">
       {plan.flown.dropped.length > 0 && (
         <p className="text-sm text-ink">
-          Your carry-in drops {plan.flown.dropped.map((d) => `${name(d.trip)} (${d.makeUpCH.toFixed(1)} CH)`).join(" and ")}, so you&rsquo;re eligible to make that up (CBA 2026 25.F.5).
+          Your carry-in drops {plan.flown.dropped.map((d) => `${name(d.trip)} (${hm(d.makeUpCH)} CH)`).join(" and ")}, so you&rsquo;re eligible to make that up (CBA 2026 25.F.5).
         </p>
       )}
       {best ? (
         <p className="text-sm text-ink">
-          <span className="font-medium">Best combination:</span> {best.trips.map(name).join(" and ")}, {best.totalCH.toFixed(1)} CH
-          {best.shortCH > 0 ? `, ${best.shortCH.toFixed(1)} CH short of your ${plan.targetCH.toFixed(1)}` : ""}. It leaves {plural(best.daysOffAfter, "day")} off{best.longestOff ? `, ${best.longestOff} in a row` : ""}
+          <span className="font-medium">Best combination:</span> {best.trips.map(name).join(" and ")}, {hm(best.totalCH)} CH
+          {best.shortCH > 0 ? `, ${hm(best.shortCH)} CH short of your ${hm(plan.targetCH)}` : ""}. It leaves {plural(best.daysOffAfter, "day")} off{best.longestOff ? `, ${best.longestOff} in a row` : ""}
           {best.workStretches !== null ? `, in ${plural(best.workStretches, "stretch").replace("stretchs", "stretches")} of work` : ""}.
         </p>
       ) : (
@@ -74,7 +75,7 @@ export function Plan({ plan }: { plan: ViewAddPlan }) {
       )}
       {plan.combos.length > 1 && (
         <p className="text-xs text-ink-muted">
-          Also close: {plan.combos.slice(1).map((c) => `${c.trips.map(name).join(" and ")} (${c.totalCH.toFixed(1)} CH, ${c.daysOffAfter} days off)`).join("; ")}.
+          Also close: {plan.combos.slice(1).map((c) => `${c.trips.map(name).join(" and ")} (${hm(c.totalCH)} CH, ${c.daysOffAfter} days off)`).join("; ")}.
         </p>
       )}
 

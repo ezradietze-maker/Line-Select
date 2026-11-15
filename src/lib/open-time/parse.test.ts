@@ -87,6 +87,24 @@ describe("parseOpenTimePaste", () => {
     expect(parseOpenTimePaste("14 OCT 213").rows[0].orRead).toBeUndefined();
   });
 
+  // Round 24: the other reading was kept whenever two dates overlapped, so a time ("12 DEC 14:30"), a figure ("12 DEC
+  // 15.5") or a release date ("12 DEC 13 DEC") made a second date, and a trip flying both days went unread.
+  it("keeps the other reading only when each reading's day is the other's trip number", () => {
+    for (const text of ["213 12 DEC 14:30", "213 12 DEC 15.5", "213 12 DEC 13 DEC"]) {
+      expect(parseOpenTimePaste(text).rows[0], text).toMatchObject({ tripNumbers: ["213"], month: 12, day: 12 });
+      expect(parseOpenTimePaste(text).rows[0].orRead, text).toBeUndefined();
+    }
+    expect(parseOpenTimePaste("12 Oct 15").rows[0]).toMatchObject({ tripNumbers: ["15"], month: 10, day: 12, orRead: { tripNumbers: ["12"], month: 10, day: 15 } });
+  });
+
+  // Round 24: "14:30 OCT 12" was Oct 30, from the time's minutes; a label's colon ("DATE:5/10") hid the date.
+  it("reads a date beside a time, and after a label's colon", () => {
+    expect(parseOpenTimePaste("14:30 OCT 12 213").rows[0]).toMatchObject({ tripNumbers: ["213"], month: 10, day: 12 });
+    expect(parseOpenTimePaste("14:30 OCT 12 213").rows[0].orRead).toBeUndefined();
+    expect(parseOpenTimePaste("213 DATE:5/10").rows[0]).toMatchObject({ tripNumbers: ["213"], month: 5, day: 10 });
+    expect(parseOpenTimePaste("TRIP 213 DEP:12/14").rows[0]).toMatchObject({ tripNumbers: ["213"], month: 12, day: 14 });
+  });
+
   // Round 23: "14OCT2026" wasn't read as a date at all.
   it("reads a four-digit year written onto the month", () => {
     expect(parseOpenTimePaste("213 14OCT2026").rows[0]).toMatchObject({ tripNumbers: ["213"], month: 10, day: 14, year: 2026 });

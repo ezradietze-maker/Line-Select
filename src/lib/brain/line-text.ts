@@ -10,6 +10,12 @@ type PackText = Pick<BidPack, "bidPeriodStart"> & Partial<Pick<BidPack, "bidPeri
  * interview's line choices, the readback, and prompts to the brain.
  */
 
+/**
+ * Credit for the brain's prompts, in tenths as every other figure it's given (`describe.ts`). A screen passes
+ * `formatHoursValue`, to say it as the pack prints it: the interview's cards read an 18:56 trip as 18.9.
+ */
+const tenths = (hours: number) => hours.toFixed(1);
+
 const hm = (s: string | undefined) => (s && s.length >= 4 ? `${s.slice(0, 2)}:${s.slice(2, 4)}` : "?");
 
 export function tripDateLabel(bidPack: Pick<BidPack, "bidPeriodStart">, dayIndex: number | null): string {
@@ -21,7 +27,7 @@ export function tripDateLabel(bidPack: Pick<BidPack, "bidPeriodStart">, dayIndex
 
 /** "Oct 7 · 10d · 60.6 cr · ANC → DH SEA → DH CDG → … → standby ×3 at KIX → DH ANC" */
 /** A trip in a line: when, how long, its credit, its route — and what it carries into the next bid month, when it does. */
-export function tripHeadline(bidPack: PackText, t: Trip): string {
+export function tripHeadline(bidPack: PackText, t: Trip, credit = tenths): string {
   const stops: string[] = [];
   let standbyRun = 0;
   let standbyAt = "";
@@ -46,7 +52,7 @@ export function tripHeadline(bidPack: PackText, t: Trip): string {
   const route = stops.length ? stops.join(" → ") : t.layoverCities.join(" · ");
   const { bidPeriodDays, base, lines } = bidPack;
   const carry = bidPeriodDays && base && lines ? tripCarryInPack({ ...bidPack, bidPeriodDays, base, lines }, t) : null;
-  return [tripDateLabel(bidPack, t.startDayIndex), `${t.days}d`, `${t.creditHours.toFixed(1)} cr`, route, carry ? carryOverWords(carry) : ""].filter(Boolean).join(" · ");
+  return [tripDateLabel(bidPack, t.startDayIndex), `${t.days}d`, `${credit(t.creditHours)} cr`, route, carry ? carryOverWords(carry) : ""].filter(Boolean).join(" · ");
 }
 
 /** The trip duty by duty: every leg (deadheads with their airline flight, ground transport named), standby, and each layover's length and hotel. */
@@ -63,10 +69,10 @@ export function tripDuties(t: Trip): string[] {
 }
 
 /** A line's headline figures: days off, its month's credit (and the C/O its last trip carries into the next), trips. */
-export function lineFigures(bidPack: PackText, line: Line): string {
+export function lineFigures(bidPack: PackText, line: Line, credit = tenths): string {
   const { bidPeriodDays, base } = bidPack;
   const carry = bidPeriodDays && base ? lineCarryOver(line, { ...bidPack, bidPeriodDays, base }) : null;
-  return `${line.daysOff} days off · ${line.totalCreditHours.toFixed(1)} credit${carry ? ` · ${carryOverWords(carry)}` : ""} · ${line.trips.length} ${line.trips.length === 1 ? "trip" : "trips"}`;
+  return `${line.daysOff} days off · ${credit(line.totalCreditHours)} credit${carry ? ` · ${carryOverWords(carry)}` : ""} · ${line.trips.length} ${line.trips.length === 1 ? "trip" : "trips"}`;
 }
 
 /** One line in a sentence: days off, credit, and each trip's headline. */

@@ -183,6 +183,12 @@ describe("buildViewAdd", () => {
   it("CBA 2026 25.L.6.e: rules out a trip more than 7 CH past the make-up", () => {
     expect(build().ruledOut.find((r) => r.trip.pairingNumber === "504")?.why).toContain("25.L.6.e");
   });
+  // Round 24: credit read in tenths here, as nowhere else: 14:15 of make-up read 14.3.
+  it("says credit as the pack prints it, H:MM", () => {
+    const plan = build({ makeUp: { cia: 14.25 } });
+    expect(plan.ruledOut.find((r) => r.trip.pairingNumber === "500")?.why).toContain("24:00 CH passes your 14:15 CH of make-up");
+    expect(plan.choices.find((c) => c.trip?.pairingNumber === "501")?.why).toContain(": 12:00 CH, costs");
+  });
   it("CBA 2026 25.L.6.d: a trip can't mix pay codes, so it's held to the larger bucket", () => {
     const plan = build({ makeUp: { cia: 14, muv: 14 } });
     expect(plan.targetCH).toBe(28);
@@ -236,6 +242,16 @@ describe("buildViewAdd", () => {
     const both = plan([five, ten]);
     expect(both.choices).toEqual([]);
     expect(both.notRead[0]).toContain("5 DEC 10");
+  });
+  // Round 24: the row that lost the 8th's 501 to a nearer row was called not in the pack, with the 10th's 501 free.
+  it("a row that loses its nearest trip takes the free one the other side of its date", () => {
+    const tenth = { ...trip("501", 10, { credit: 12 }), id: "t-501-10" };
+    const q = pack([l], [...open, tenth]);
+    for (const pasted of ["501 7DEC\n501 9DEC", "501 9DEC\n501 7DEC"]) {
+      const plan = buildViewAdd({ pack: q, line: l, carryIn: [carry], elections: NO_ELECTIONS, pasted });
+      expect(plan.notInPack, pasted).toEqual([]);
+      expect(plan.choices.filter((c) => c.trip?.pairingNumber === "501").map((c) => [c.text, c.trip?.startDayIndex]).sort(), pasted).toEqual([["501 7DEC", 8], ["501 9DEC", 10]]);
+    }
   });
   it("CBA 2026 25.E.4.a.iv: keeps reserve block and simulator labels as typed", () => {
     const plan = build({ labels: "RES BLOCK A12\nSIM 4" });

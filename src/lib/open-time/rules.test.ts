@@ -243,6 +243,14 @@ describe('CBA 2026 25.L.8.a: "may not increase the pilot\'s BLG, as published, b
   it("a trade down is fine", () => {
     expect(checkTradeLimit(5, 20, 0, DEC)[0].level).toBe("note");
   });
+  // Round 24: credit read in tenths here, as nowhere else: an 18:56 trip read 18.9.
+  it("says credit as the pack prints it, H:MM", () => {
+    expect(checkTradeLimit(18 + 56 / 60, 10, 0, DEC)[0].text).toContain("+8:56 CH");
+    expect(checkTradeLimit(5, 6.5, 0, DEC)[0].text).toContain("-1:30 CH");
+    expect(checkTradeLimit(23.5, 10, 0, DEC)[0].text).toContain("13:30 CH over");
+    expect(banksFor(18 + 56 / 60, { PMU: 10.25 }, DEC)[0].notes[0]).toContain("18:56 CH passes your 10:15 CH of PMU");
+    expect(checkContingency(18 + 56 / 60, [])[0].text).toContain("cover 18:56 CH");
+  });
 });
 
 describe('CBA 2026 25.L.8.b: a "similar footprint" trade "shall be accepted"', () => {
