@@ -158,7 +158,7 @@ export function TripPairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
         </div>
 
         <NoteBox value={why} onChange={setWhy} placeholder="What decided it? (optional)" ariaLabel="What decided it" maxLength={MAX_NOTE} className="mt-4" />
-        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+        {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
 
         <div className="mt-4 flex items-center justify-between gap-3">
           <button type="button" onClick={onSkip} disabled={busy} className="text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted">

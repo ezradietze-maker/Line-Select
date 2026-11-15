@@ -244,7 +244,8 @@ function SortOption({
       className={`flex min-h-10 cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-2 text-sm ${active ? "bg-accent-soft text-accent" : "text-ink"}`}
     >
       <span>{def.label}</span>
-      {chosen && <span className="shrink-0 text-xs font-medium text-ink-muted">Now</span>}
+      {/* On the lit row, in its own color: grey on the night theme's lit row was under 4.5:1. */}
+      {chosen && <span className={`shrink-0 text-xs font-medium ${active ? "" : "text-ink-muted"}`}>Now</span>}
     </div>
   );
 }

@@ -114,7 +114,7 @@ export function FeedbackForm({ page, onClose }: FeedbackFormProps) {
         />
       </div>
 
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
 
       <Button type="submit" disabled={submitting} className="w-full">
         {submitting ? "Sending…" : "Send feedback"}

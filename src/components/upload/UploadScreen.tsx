@@ -12,6 +12,7 @@ import { MAX_PDF_BYTES } from "@/lib/pdf-parser/constants";
 import type { ParseBidPackResult } from "@/lib/pdf-parser/types";
 import { rankLayoverCitiesByFrequency } from "@/lib/scoring";
 import { uploadBidPack } from "@/lib/upload-client";
+import { keepFocusIn } from "@/lib/focus-keeper";
 import type { BidPack } from "@/types/bidpack";
 
 interface UploadScreenProps {
@@ -55,14 +56,18 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
     };
   }, []);
 
+  // The summary and the uploader swap in place under one div that stays: "Upload a different bid pack" and Back took
+  // the keyboard with them to the page (see `keepFocusIn`).
   if (currentBidPack && !replacing) {
     return (
-      <AlreadyUploaded
-        bidPack={currentBidPack}
-        onReplace={() => setReplacing(true)}
-        onContinue={onContinue}
-        continueLabel={continueLabel}
-      />
+      <div ref={keepFocusIn}>
+        <AlreadyUploaded
+          bidPack={currentBidPack}
+          onReplace={() => setReplacing(true)}
+          onContinue={onContinue}
+          continueLabel={continueLabel}
+        />
+      </div>
     );
   }
 
@@ -123,7 +128,7 @@ export function UploadScreen({ onParsed, onCancel, currentBidPack, onTrySample, 
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div ref={keepFocusIn} className="mx-auto w-full max-w-3xl">
       <div className="text-2xs text-accent font-medium">Step 1 &middot; Load</div>
       <Heading as="h1" className="mt-2 text-3xl text-ink sm:text-4xl">
         Load your bid pack

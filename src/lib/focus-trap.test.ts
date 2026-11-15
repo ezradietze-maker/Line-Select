@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { focusBackTo, nextStop, tabStops, type StopInfo } from "./focus-trap";
+import { focusAfterChange, focusBackTo, focusHomeAfterLoss, inPlaceOf, nextStop, tabStops, type StopInfo } from "./focus-trap";
 
 describe("focus after a dialog closes", () => {
   // The FedEx panel after "Accept and connect": the Connect button that opened the consent is gone, the row it sat in
@@ -52,5 +52,67 @@ describe("Tab inside a dialog", () => {
       send: {},
     };
     expect(tabStops(Object.keys(info), (k) => info[k])).toEqual(["close", "yes1", "no2", "send"]);
+  });
+});
+
+describe("focus on the ranked list when the control it was on goes away", () => {
+  const listed = ["2295", "2112", "2192", "2105"];
+  const at = (lost: { lineId?: string; chipId?: string }, now: { listedNow?: string[]; lastLineId?: string | null; chipsBefore?: string[]; chipsNow?: string[] } = {}) =>
+    focusHomeAfterLoss(
+      { lineId: lost.lineId ?? null, chipId: lost.chipId ?? null },
+      { listedBefore: listed, listedNow: now.listedNow ?? listed, lastLineId: now.lastLineId ?? null, chipsBefore: now.chipsBefore ?? [], chipsNow: now.chipsNow ?? [] }
+    );
+
+  it("a line hidden or set aside from its own card: to the line now in its place", () => {
+    expect(at({ lineId: "2112" }, { listedNow: ["2295", "2192", "2105"] })).toEqual({ line: "2192" });
+  });
+
+  it("the last line set aside: to the one above it", () => {
+    expect(at({ lineId: "2105" }, { listedNow: ["2295", "2112", "2192"] })).toEqual({ line: "2192" });
+  });
+
+  it("the selection's bar, gone once its move is made: to the line last worked on", () => {
+    expect(at({}, { lastLineId: "2192" })).toEqual({ line: "2192" });
+  });
+
+  it("the selection set aside from its bar: to the line now in the last one's place", () => {
+    expect(at({}, { lastLineId: "2112", listedNow: ["2295", "2105"] })).toEqual({ line: "2105" });
+  });
+
+  it("a set-aside chip brought back: to the next chip, then Undo once none is left", () => {
+    expect(at({ chipId: "2192" }, { chipsBefore: ["2192", "2105"], chipsNow: ["2105"] })).toEqual({ chip: "2105" });
+    expect(at({ chipId: "2105" }, { chipsBefore: ["2105"], chipsNow: [] })).toEqual({ undo: true });
+  });
+
+  it("every line gone: to Undo; nothing worked on yet: nowhere", () => {
+    expect(at({ lineId: "2295" }, { listedNow: [] })).toEqual({ undo: true });
+    expect(at({})).toBeNull();
+  });
+
+  it("the one in a gone one's place reads past the others that went with it", () => {
+    expect(inPlaceOf(listed, ["2295", "2105"], "2112")).toBe("2105");
+    expect(inPlaceOf(listed, listed, "9999")).toBeNull();
+  });
+});
+
+describe("focus after the page changed under the control that had it", () => {
+  // The Trade Board's holding panel: "Confirm what I hold" opens the editor in its place; Cancel closes it again.
+  const tree: Record<string, { connected: boolean; disabled?: boolean; stops: string[] }> = {
+    confirmWhatIHold: { connected: false, stops: [] },
+    panel: { connected: true, stops: ["heldLine", "confirm", "cancel"] },
+    withdraw: { connected: true, disabled: true, stops: [] },
+    card: { connected: true, stops: ["withdraw"] },
+  };
+  const after = (el: string, ancestors: string[]) =>
+    focusAfterChange({ el, ancestors }, (e) => tree[e]?.connected ?? true, (e) => tree[e]?.disabled === true, (e) => tree[e]?.stops ?? []);
+
+  it("goes to the first control of the box it was in when the control's gone", () => {
+    expect(after("confirmWhatIHold", ["panel"])).toBe("heldLine");
+  });
+
+  it("waits while the control is greyed out working, and goes back to it once it's not", () => {
+    expect(after("withdraw", ["card"])).toBeNull();
+    tree.withdraw.disabled = false;
+    expect(after("withdraw", ["card"])).toBe("withdraw");
   });
 });

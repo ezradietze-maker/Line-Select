@@ -26,6 +26,7 @@ import { parseSeniorityInput } from "@/components/interview/SeniorityStep";
 import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { DEFAULT_MIN_HOME_HOURS } from "@/lib/metrics/departures";
 import { departureSettingsOf } from "@/lib/month-detail";
+import { keepFocusIn } from "@/lib/focus-keeper";
 import { hasEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { migrateModelsToDepartures } from "@/lib/profile-migration";
 import { MAGNITUDE_ONLY_KEYS } from "@/lib/rank-learning";
@@ -222,8 +223,9 @@ export function PreferencesScreen({
 
   const sentiments: Record<string, CitySentiment | null> = Object.fromEntries(cityCodes.map((c) => [c, sentimentOf(c)]));
 
+  // A priority taken off ("Doesn't matter") leaves the list under the keyboard: it stays on the screen (see `keepFocusIn`).
   return (
-    <div className="mx-auto w-full max-w-3xl pb-24">
+    <div ref={keepFocusIn} className="mx-auto w-full max-w-3xl pb-24">
       <div className="flex flex-col gap-4">
         <div>
           {bidPack && <div className="text-2xs font-medium text-accent">{packEyebrow(bidPack)}</div>}

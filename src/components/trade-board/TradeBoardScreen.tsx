@@ -17,6 +17,7 @@ import { TextField } from "@/components/ui/TextField";
 import { HoldingPanel } from "@/components/trade-board/HoldingPanel";
 import { TradeSuggestions } from "@/components/trade-board/TradeSuggestions";
 import { useAppState } from "@/lib/app-state";
+import { keepFocusIn } from "@/lib/focus-keeper";
 import { isSamplePack, withExampleOffer } from "@/lib/fake-trade-offers";
 import { sameBidPack } from "@/lib/inbox";
 import {
@@ -295,8 +296,10 @@ export function TradeBoardScreen({
     );
   }
 
+  // The keyboard stays on the board when what it was on goes: the holding editor closed, an offer withdrawn, a trade
+  // answered (see `keepFocusIn`).
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div ref={keepFocusIn} className="mx-auto w-full max-w-3xl">
       <PageHeader
         eyebrow={packEyebrow(bidPack)}
         title="Trade Board"

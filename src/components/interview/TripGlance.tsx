@@ -15,7 +15,7 @@ function TripTag({ bidPack, trip, carry }: { bidPack: Pick<BidPack, "bidPeriodSt
     <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-muted">
       <span className="rounded-[3px] bg-calendar-accent px-1.5 py-px font-mono text-2xs font-semibold text-on-calendar">
         {trip.pairingNumber !== null ? `#${trip.pairingNumber} ` : ""}
-        <CreditHours hours={trip.creditHours} className="font-normal opacity-85" />
+        <CreditHours hours={trip.creditHours} className="font-normal" />
       </span>
       <span className="font-mono">{[date, `${trip.days}-day`].filter(Boolean).join(" · ")}</span>
       {carry && <span className="font-mono text-carry">{carryOverWords(carry)}</span>}
