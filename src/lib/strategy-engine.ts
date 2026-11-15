@@ -443,6 +443,10 @@ export function generateStrategies(
             .filter((x) => x.credit > 0)
             .sort((a, b) => b.credit - a.credit)
         : [];
+    // Only lines the pilot can hold: the forecast's leftovers, as the leftovers move counts them. Listed whole, a reserve
+    // pilot was told "for you this month" to favor lines very likely gone before their turn.
+    const reachable = overlaps.filter(({ l }) => (openAt(l) ?? 1) >= 0.5);
+    const holdsLine = st.band === "regular";
     const zone = timezoneForAirport(bidPack.base) ?? "UTC";
     const fmtV = (v: VacationPeriod) => vacationLabel(v, zone).replace(/ \(\d+ days?\)$/, "");
     strategies.push({
@@ -452,12 +456,20 @@ export function generateStrategies(
       mechanism:
         "Vacation that falls on days a line was going to be off is wasted on days you'd have had anyway. Vacation that falls on a line's trips takes those trips off the line as vacation conflicts after the award (CBA 7.G, 25.E) — so a line whose biggest trips sit inside your vacation gives you the most time at home for the same vacation days. With a regular line you can also slide your vacation up to 5 days either way, or expand it, in the Conflict Input Window that opens right after bidding closes (CBA 7.E.2–3); the SWW vacation adjustment is for secondary-line holders.",
       benefits: [],
-      fit: mine.length ? "now" : "later",
-      fitReason: mine.length ? "The pack's vacation schedule shows you on vacation this month." : "The pack's vacation schedule has no vacation for you this month — this is for a month when it does.",
+      fit: mine.length ? (holdsLine ? "now" : "maybe") : "later",
+      fitReason: !mine.length
+        ? "The pack's vacation schedule has no vacation for you this month — this is for a month when it does."
+        : holdsLine
+          ? "The pack's vacation schedule shows you on vacation this month."
+          : "The pack's vacation schedule shows you on vacation this month, but on the numbers you won't hold a regular line — on a secondary or reserve line, vacation works differently (CBA 2026 7.G.2, 7.G.3).",
       steps: mine.length
         ? [
             `Your vacation: ${mine.map((v) => `${fmtV(v)} (${v.days} days)`).join(", ")}.`,
-            "Favor the lines below — the most credit inside your vacation — over lines that are already off those days.",
+            reachable.length
+              ? "Favor the lines below — the most credit inside your vacation — over lines that are already off those days."
+              : overlaps.length
+                ? "No line with trips inside your vacation is likely still open at your number, so bid your list as you would."
+                : "No line has trips inside your vacation, so it sits on days off whichever line you hold.",
             "After the award, check which trips your vacation conflicts with, and enter any slide or expansion in the Conflict Input Window — it opens right after your bid closes (the pack calendar's Conflict Input dates). On a secondary line, adjust in the SWW instead.",
           ]
         : [
@@ -468,10 +480,11 @@ export function generateStrategies(
         ? [
             { label: "Your vacation days in this bid month", value: String(st.vacationDays), tone: "good" },
             { label: "Lines with trips inside your vacation", value: `${overlaps.length} of ${lines.length}` },
+            ...(hasForecast ? [{ label: "Of them, likely still open at your number", value: String(reachable.length) }] : []),
           ]
         : [{ label: "Vacation slot trades", value: "30 days before the month" }],
       risk: "Whether trips under vacation are paid, dropped or rebuilt, and how the adjustment window works, are set by FedEx and the contract — this may not work the way it reads. Confirm with the vacation desk or your PSIT before bidding around it.",
-      lines: overlaps.slice(0, 5).map(({ l, credit }) =>
+      lines: reachable.slice(0, 5).map(({ l, credit }) =>
         rec(
           l,
           `${hm(credit)} of trips come off for your vacation${credit > value ? ` — ${hm(credit - value)} more than its ${hm(value)}, drawn from your bank (CBA 2026 7.G.1)` : ""}`,
