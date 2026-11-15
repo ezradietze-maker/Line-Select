@@ -30,6 +30,9 @@ export function isSamplePack(bidPack: Pick<BidPack, "id">): boolean {
   return bidPack.id.startsWith("sample");
 }
 
+/** The sample pack's bid month (`SAMPLE_BID_PACK.month`): a ranking on it is of no month the pilot bid. */
+export const SAMPLE_MONTH = "SAMPLE";
+
 function pickRandom<T>(items: T[]): T | null {
   if (items.length === 0) return null;
   return items[Math.floor(Math.random() * items.length)];

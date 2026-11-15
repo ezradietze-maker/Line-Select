@@ -1,3 +1,4 @@
+import { SAMPLE_MONTH } from "@/lib/fake-trade-offers";
 import type { LineScore } from "@/lib/scoring";
 
 /**
@@ -46,16 +47,19 @@ function read(userId: string | null): StoredHistory | null {
   }
 }
 
-/** The top lines from the most recent bid month that isn't `month` — null when there's no earlier month yet. */
+/**
+ * The top lines from the most recent bid month that isn't `month` — null when there's no earlier month yet. The sample
+ * pack is no month the pilot bid: its lines aren't ones they favored before, nor are their own months held up against it.
+ */
 export function loadTopLinesSnapshot(userId: string | null, month: string): LineSnapshot[] | null {
   const stored = read(userId);
-  if (!stored) return null;
-  if (stored.current.month !== month) return stored.current.lines;
-  return stored.previous && stored.previous.month !== month ? stored.previous.lines : null;
+  if (!stored || month === SAMPLE_MONTH) return null;
+  const earlier = [stored.current, stored.previous].find((m) => m && m.month !== month && m.month !== SAMPLE_MONTH);
+  return earlier?.lines ?? null;
 }
 
 export function saveTopLinesSnapshot(userId: string | null, month: string, lineScores: LineScore[]): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || month === SAMPLE_MONTH) return;
   const lines: LineSnapshot[] = [...lineScores]
     .sort((a, b) => b.score - a.score)
     .slice(0, TOP_LINES_TO_KEEP)

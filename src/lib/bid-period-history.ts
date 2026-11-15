@@ -1,3 +1,4 @@
+import { SAMPLE_MONTH } from "@/lib/fake-trade-offers";
 import type { LineScore } from "@/lib/scoring";
 
 /**
@@ -34,10 +35,15 @@ function loadHistory(userId: string | null): BidPeriodSnapshot[] {
   }
 }
 
-/** The most recently saved snapshot from a bid month other than `currentMonth` — null when there isn't one yet (first time here, or everything on record so far is this same month). */
+/**
+ * The most recently saved snapshot from a bid month other than `currentMonth` — null when there isn't one yet (first
+ * time here, or everything on record so far is this same month). The sample pack is no bid month: tried first, it came
+ * back as "Since SAMPLE" over the pilot's own first pack.
+ */
 export function loadPreviousPeriodSnapshot(userId: string | null, currentMonth: string): BidPeriodSnapshot | null {
+  if (currentMonth === SAMPLE_MONTH) return null;
   const prior = loadHistory(userId)
-    .filter((s) => s.month !== currentMonth)
+    .filter((s) => s.month !== currentMonth && s.month !== SAMPLE_MONTH)
     .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
   return prior[0] ?? null;
 }
@@ -49,7 +55,7 @@ export function loadPreviousPeriodSnapshot(userId: string | null, currentMonth: 
  * `MAX_SNAPSHOTS` distinct months, oldest dropped first.
  */
 export function saveBidPeriodSnapshot(userId: string | null, month: string, lineScores: LineScore[]): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || month === SAMPLE_MONTH) return;
   const others = loadHistory(userId).filter((s) => s.month !== month);
   const ranked = [...lineScores].sort((a, b) => b.score - a.score);
   const entry: BidPeriodSnapshot = {
