@@ -108,10 +108,10 @@ export async function POST(request: Request) {
   // Counted only among those the caller's list has bidding: marking everyone else PAY (or leaving them off) left one
   // sharer the only one bidding ahead, however many were counted.
   // And only confirmed accounts: one made up in a minute is no better than a guest.
-  // And only those the forecast plays: it plays the first places up to the list's length, so a short list naming three
-  // sharers far down, past its own length, had them pass the bar while one sharer first in line was played alone.
+  // And only those the forecast plays: every place ahead, up to the seat's size (its highest bid number) — rows the list
+  // leaves out are played too, as pilots of unknown taste, so a short list can't thin out who bids around a sharer.
   const askedAt = resolveBidPosition(sentList, seniority).bidNumber;
-  const played = Math.min(askedAt - 1, sentList.length);
+  const played = Math.min(askedAt - 1, seatSize(sentList));
   const bidding = new Set(sentList.map((e) => e.bidNumber));
   const confirmed = isVerified(user);
   const known = confirmed && sharing.known.filter((k) => k.bidNumber <= played && bidding.has(k.bidNumber)).length >= MIN_SHARERS_AHEAD ? sharing.known : [];
