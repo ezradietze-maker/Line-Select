@@ -1,5 +1,5 @@
 import { longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
-import { computeTripFacts, type TripFacts } from "@/lib/metrics/trip-facts";
+import { tripFactsOf, type TripFacts } from "@/lib/metrics/trip-facts";
 import { hasRedEyeLeg } from "@/lib/trip-analytics";
 import type { Line, ReportTime, Trip } from "@/types/bidpack";
 
@@ -99,13 +99,8 @@ export interface FilterContext {
   commute?: Map<string, CommuteStatus>;
 }
 
-const factsMemo = new WeakMap<Trip, TripFacts>();
 /** The same pairing shows up in many lines, and filters run on every line for each change: facts are worked out once. */
-function factsOf(trip: Trip): TripFacts {
-  let f = factsMemo.get(trip);
-  if (!f) factsMemo.set(trip, (f = computeTripFacts(trip)));
-  return f;
-}
+const factsOf: (trip: Trip) => TripFacts = tripFactsOf;
 
 /**
  * Out to one city and straight back: every leg, deadheads included, runs between where the trip starts and one other

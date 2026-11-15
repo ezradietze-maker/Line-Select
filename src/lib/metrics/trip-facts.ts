@@ -392,3 +392,17 @@ export function computeTripFacts(trip: Trip): TripFacts {
     blockHours: blocks.length && blocks.every((b) => b !== null) ? blocks.reduce((a, b) => a + (b ?? 0), 0) : null,
   };
 }
+
+/** A trip's facts, kept with the trip: worked out ahead of the first ranking (see `lib/ranking-warm-up.ts`), or here. */
+const factsByTrip = new WeakMap<Trip, TripFacts>();
+
+/**
+ * `computeTripFacts`, once per trip. The ranking, the departures, the commute questions and the filters all read the same
+ * trips' facts; each working them out afresh made the commute filter's first pass and an opened card's departures several
+ * times the work. Callers only read them.
+ */
+export function tripFactsOf(trip: Trip): TripFacts {
+  let f = factsByTrip.get(trip);
+  if (!f) factsByTrip.set(trip, (f = computeTripFacts(trip)));
+  return f;
+}

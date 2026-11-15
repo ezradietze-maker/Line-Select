@@ -244,6 +244,21 @@ describe("the work in a trip, and the days it takes", () => {
     expect(measure("workDays", l, p)).toBe(2);
   });
 
+  it("counts each calendar day once across the night the clocks go back", () => {
+    // Report Fri Oct 30 08:00 in Memphis, two nights in Houston, back Sun Nov 1 about 13:00: the 25-hour day counts once.
+    const out = { ...dayTrip("41", 0, "0800", [leg("1411", "MEM", "IAH", 60, 300)]), days: 3, layoverCities: ["IAH"] };
+    const away: Trip = {
+      ...out,
+      schedule: [
+        { ...out.schedule[0], layover: { city: "IAH", hotelName: null, transportToHotel: null, transportFromHotel: null, hours: 48, startMinutes: 300, endMinutes: 3180 } },
+        { reportTimeLocal: "1000", startMinutes: 3180, legs: [leg("1412", "IAH", "MEM", 3240, 3480)], layover: null },
+      ],
+    };
+    const l: Line = { ...line, trips: [away] };
+    const p = prepareMetrics({ ...pack, base: "MEM", bidPeriodStart: "2026-10-30", lines: [l] } as BidPack);
+    expect(measure("workDays", l, p)).toBe(3);
+  });
+
   it("counts a run of day trips a pilot goes home between as a departure a day", () => {
     // The same day trip on three days running, kept as one trip: out 08:00, back 16:00, home every night.
     const day = (at: number) => ({ reportTimeLocal: "0800", startMinutes: at, legs: [leg("1411", "MEM", "IAH", at + 60, at + 200), leg("1412", "IAH", "MEM", at + 300, at + 480)], layover: null });

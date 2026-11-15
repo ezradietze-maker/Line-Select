@@ -99,9 +99,18 @@ interface Way {
   need: TravelNeed;
   /** What this way has to make the day of: the report or first flown leg on the way in, the release or last flown leg going home. */
   day: number;
+  /**
+   * The day's edge, worked out once with the way: the earliest a way in can leave home (`leavesOnReportDay`), the latest a
+   * way home can land (`landsOnReleaseDay`).
+   */
+  edge: number;
   /** Its window closed before it opened: nothing can make it on the day (a report too early to fly in that morning). */
   impossible: boolean;
 }
+
+/** An answer that gets the pilot in, or home, on this way's own day. */
+const worksIn = (a: CommuteAnswer, w: Way) => a.lastDeparture !== null && a.lastDeparture >= w.edge;
+const worksHome = (a: CommuteAnswer, w: Way) => a.firstArrival !== null && a.firstArrival < w.edge;
 
 /** A trip's ways in or home, each narrowed to its own day, with the pilot's buffers. */
 function waysOfTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Trip, s: CommuteSettings, direction: "in" | "home"): Way[] {
@@ -122,12 +131,12 @@ function waysOfTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trip: Tri
     if (goingIn) {
       const day = n.arriveBy! + s.arriveBeforeReportHours * HOUR;
       const opens = reportDayOpens(day, homeZone, baseZone);
-      ways.push({ need: { ...n, departAfter: opens, departBefore: n.arriveBy!, maxDetour: COMMUTE_MAX_DETOUR }, day, impossible: opens >= n.arriveBy! });
+      ways.push({ need: { ...n, departAfter: opens, departBefore: n.arriveBy!, maxDetour: COMMUTE_MAX_DETOUR }, day, edge: opens, impossible: opens >= n.arriveBy! });
     } else {
       const departAfter = n.kind === "homeFromBase" ? n.departAfter + extra : n.departAfter;
       const day = departAfter - s.releaseToDepartureHours * HOUR;
       const closes = releaseDayCloses(day, homeZone, baseZone);
-      ways.push({ need: { ...n, departAfter, departBefore: closes, maxDetour: COMMUTE_MAX_DETOUR }, day, impossible: departAfter >= closes });
+      ways.push({ need: { ...n, departAfter, departBefore: closes, maxDetour: COMMUTE_MAX_DETOUR }, day, edge: closes, impossible: departAfter >= closes });
     }
   }
   return ways;
@@ -155,6 +164,36 @@ function departureEnds(line: Line, bidPack: Pick<BidPack, "bidPeriodStart" | "bi
     .map((d) => ({ first: uncutTrip(d.trips[0]), last: d.trips[d.trips.length - 1] }));
 }
 
+/** A departure's two ends and the ways to make each: `home` is null for a last trip whose way home is next month's. */
+interface DepartureWays {
+  first: Trip;
+  last: Trip;
+  in: Way[];
+  home: Way[] | null;
+}
+
+/**
+ * Each line's departures and their ways, as last worked out, by line. They don't change with what the flights say, and
+ * the check brings its answers in a batch at a time: worked out again for every line on every batch (and for the list's
+ * counts, and for what it rules out), the biggest pack froze a slowed phone for most of a second as the filter went on,
+ * and a fifth of one on each batch after.
+ */
+const waysKept = new WeakMap<Line, { key: string; ends: DepartureWays[] }>();
+
+function departureWays(line: Line, bidPack: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">, s: CommuteSettings): DepartureWays[] {
+  const key = `${bidPack.bidPeriodStart}|${bidPack.bidPeriodDays}|${bidPack.base}|${s.homeAirport}|${s.arriveBeforeReportHours}|${s.releaseToDepartureHours}|${s.minHomeHours}`;
+  const kept = waysKept.get(line);
+  if (kept?.key === key) return kept.ends;
+  const ends = departureEnds(line, bidPack, s).map(({ first, last }) => ({
+    first,
+    last,
+    in: waysOfTrip(bidPack, first, s, "in"),
+    home: last.carriesIntoNextMonth ? null : waysOfTrip(bidPack, last, s, "home"),
+  }));
+  waysKept.set(line, { key, ends });
+  return ends;
+}
+
 /** The same questions for trips the pack's lines don't hold: open time. */
 export function commuteNeedsForTrips(bidPack: Pick<BidPack, "bidPeriodStart" | "base">, trips: Trip[], s: CommuteSettings, now = Date.now()): TravelNeed[] {
   const ways = trips.flatMap((t) => [...waysOfTrip(bidPack, t, s, "in"), ...(t.carriesIntoNextMonth ? [] : waysOfTrip(bidPack, t, s, "home"))]);
@@ -179,8 +218,6 @@ export function commuteOfTrip(bidPack: Pick<BidPack, "bidPeriodStart" | "base">,
   const together = line ? groupDepartures([...line.trips, trip], bidPack, options).find((d) => d.trips.includes(trip)) : null;
   const inWays = waysOfTrip(bidPack, trip, s, "in");
   const homeWays = trip.carriesIntoNextMonth ? [] : waysOfTrip(bidPack, trip, s, "home");
-  const worksIn = (a: CommuteAnswer, w: Way) => a.lastDeparture !== null && leavesOnReportDay(a.lastDeparture, w.day, homeZone, baseZone);
-  const worksHome = (a: CommuteAnswer, w: Way) => a.firstArrival !== null && landsOnReleaseDay(a.firstArrival, w.day, homeZone, baseZone);
   const departures = inWays.flatMap((w) => (answers[w.need.id] && worksIn(answers[w.need.id], w) ? [answers[w.need.id].lastDeparture!] : []));
   const arrivals = homeWays.flatMap((w) => (answers[w.need.id] && worksHome(answers[w.need.id], w) ? [answers[w.need.id].firstArrival!] : []));
   return {
@@ -196,10 +233,8 @@ export function commuteNeedsForPack(bidPack: BidPack, s: CommuteSettings, now = 
   const seen = new Map<string, TravelNeed>();
   for (const line of bidPack.lines) {
     if (line.estimated) continue;
-    for (const { first, last } of departureEnds(line, bidPack, s)) {
-      const ways = [...waysOfTrip(bidPack, first, s, "in"), ...(last.carriesIntoNextMonth ? [] : waysOfTrip(bidPack, last, s, "home"))];
-      for (const w of ways) if (!w.impossible && w.need.departBefore > now) seen.set(w.need.id, w.need);
-    }
+    for (const end of departureWays(line, bidPack, s))
+      for (const w of [...end.in, ...(end.home ?? [])]) if (!w.impossible && w.need.departBefore > now) seen.set(w.need.id, w.need);
   }
   return [...seen.values()];
 }
@@ -252,14 +287,10 @@ function commuteOfLine(line: Line, bidPack: Pick<BidPack, "bidPeriodStart" | "bi
     if (st === "unknown") unknown = true;
     return st;
   };
-  for (const { first, last } of departureEnds(line, bidPack, s)) {
-    const ways = waysOfTrip(bidPack, first, s, "in");
-    if (!flown(ways) && read(endStatus(ways, answers, (a, w) => a.lastDeparture !== null && leavesOnReportDay(a.lastDeparture, w.day, homeZone, baseZone))) === "no")
-      return { status: "no", block: { trip: first, way: "in", at: dayOf(ways, "toBase") } };
-    if (last.carriesIntoNextMonth) continue;
-    const home = waysOfTrip(bidPack, last, s, "home");
-    if (!flown(home) && read(endStatus(home, answers, (a, w) => a.firstArrival !== null && landsOnReleaseDay(a.firstArrival, w.day, homeZone, baseZone))) === "no")
-      return { status: "no", block: { trip: last, way: "home", at: dayOf(home, "homeFromBase") } };
+  for (const { first, last, in: ways, home } of departureWays(line, bidPack, s)) {
+    if (!flown(ways) && read(endStatus(ways, answers, worksIn)) === "no") return { status: "no", block: { trip: first, way: "in", at: dayOf(ways, "toBase") } };
+    if (!home) continue;
+    if (!flown(home) && read(endStatus(home, answers, worksHome)) === "no") return { status: "no", block: { trip: last, way: "home", at: dayOf(home, "homeFromBase") } };
   }
   return { status: unknown || checked === 0 ? "unknown" : "yes", block: null };
 }

@@ -37,7 +37,10 @@ export function weekendDaysOff(line: Line, bidPeriodStart: string | null): numbe
   if (line.estimated || !line.gridOffDays || !bidPeriodStart) return null;
   const start = DateTime.fromISO(bidPeriodStart, { zone: "utc" });
   if (!start.isValid) return null;
-  return [...new Set(line.gridOffDays)].filter((i) => start.plus({ days: i }).weekday >= 6).length;
+  // Counted on from the first day's weekday (1 Monday … 7 Sunday): a date sum for every day off of every line was most
+  // of what this measure cost.
+  const first = start.weekday - 1;
+  return [...new Set(line.gridOffDays)].filter((i) => ((((first + i) % 7) + 7) % 7) + 1 >= 6).length;
 }
 
 /** The real calendar date ("2026-10-14") of a day index within the bid period. */

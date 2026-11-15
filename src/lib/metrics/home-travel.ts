@@ -1,6 +1,6 @@
 import { coordinatesForAirport } from "@/lib/airport-coordinates";
 import { uncutTrip } from "@/lib/bid-month";
-import { computeTripFacts, type TripFacts } from "@/lib/metrics/trip-facts";
+import { tripFactsOf, type TripFacts } from "@/lib/metrics/trip-facts";
 import { tripReleaseHours } from "@/lib/trip-anchor";
 
 /**
@@ -138,7 +138,7 @@ export function homeAwayForTrip(f: TripFacts, base: string, params: HomeParams, 
   let leave = leaveViaBase;
   let start: HomeAway["start"] = "base";
   // A trip cut at the month's end starts as it does whole: its flying after a deadhead out can lie past the cut.
-  const front = f.trip.carriesIntoNextMonth ? computeTripFacts(uncutTrip(f.trip)).front : f.front;
+  const front = f.trip.carriesIntoNextMonth ? tripFactsOf(uncutTrip(f.trip)).front : f.front;
   if (front && front.city && front.slackHours !== null && front.legs.length) {
     const t = bestTravel(provider, params.homeAirports, front.city, false);
     if (t !== null && real.leaveDeviate !== null) {
