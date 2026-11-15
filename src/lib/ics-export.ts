@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import type { Line } from "@/types/bidpack";
+import { dayTripsOf } from "@/lib/trip-anchor";
 import { hm } from "@/lib/trip-day-stats";
 
 /** An event's id with only id characters: a pack's pairing number with a line break in it wrote a line of its own. */
@@ -75,7 +76,8 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null, bid
   const base = DateTime.fromISO(bidPeriodStart!, { zone: "utc" });
   const stamp = DateTime.utc().toFormat("yyyyLLdd'T'HHmmss'Z'");
 
-  const events = line.trips.map((trip) => {
+  // A run of day trips as its days, as the calendar link shows it: one event over the nights at home read as days away.
+  const events = line.trips.flatMap(dayTripsOf).map((trip) => {
     const start = base.plus({ days: trip.startDayIndex! });
     const end = start.plus({ days: trip.days });
     const reportTime = trip.schedule[0]?.reportTimeLocal;

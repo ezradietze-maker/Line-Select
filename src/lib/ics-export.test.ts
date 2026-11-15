@@ -103,6 +103,17 @@ describe("buildLineCalendar", () => {
     expect(content.endsWith("END:VCALENDAR\r\n")).toBe(true);
     expect(content.replace(/\r\n/g, "")).not.toMatch(/[\r\n]/);
   });
+
+  it("puts a run of day trips down as its days, not one trip away over the nights at home", () => {
+    // Trip 40 three days running from Mar 13, home each night: the calendar link shows three days, and so does the file.
+    const day = (d: number) => ({ reportTimeLocal: "0800", startMinutes: d * 1440, legs: [], layover: null });
+    const run = makeTrip({ pairingNumber: "40", days: 3, layoverCities: [], tafbHours: 30, creditHours: 18, startDayIndex: 12, runStarts: [0, 1, 2], schedule: [day(0), day(1), day(2)] });
+    const content = buildLineCalendar(makeLine([run]), "2026-03-01", "MAR26").content!;
+    expect(content.match(/^DTSTART;VALUE=DATE:.*$/gm)).toEqual(["DTSTART;VALUE=DATE:20260313", "DTSTART;VALUE=DATE:20260314", "DTSTART;VALUE=DATE:20260315"]);
+    expect(content.match(/^DTEND;VALUE=DATE:.*$/gm)).toEqual(["DTEND;VALUE=DATE:20260314", "DTEND;VALUE=DATE:20260315", "DTEND;VALUE=DATE:20260316"]);
+    expect(content).not.toContain("3-day trip");
+    expect(content).toContain("1-day trip\\, no layovers");
+  });
 });
 
 describe("buildDeadlineReminderIcs", () => {
