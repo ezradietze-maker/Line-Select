@@ -20,13 +20,28 @@ export function loadSeenOfferIds(userId: string): Set<string> {
   }
 }
 
+/**
+ * Added to what's kept, not put in its place: each open tab holds the list as it read it, and one tab saving its copy
+ * dropped what another had marked seen since, so those counted on the badge again at the next visit.
+ */
 export function saveSeenOfferIds(userId: string, ids: ReadonlySet<string>): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(seenKey(userId), JSON.stringify([...ids].slice(-MAX_KEPT)));
+    const kept = [...loadSeenOfferIds(userId)].filter((id) => !ids.has(id));
+    window.localStorage.setItem(seenKey(userId), JSON.stringify([...kept, ...ids].slice(-MAX_KEPT)));
   } catch {
     // ignore — the badge just counts them again next visit
   }
+}
+
+/** Calls back with the pilot's whole seen list when another tab on this device adds to it, so its badge drops here too. */
+export function onSeenElsewhere(userId: string, then: (ids: Set<string>) => void): () => void {
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") return () => {};
+  const listener = (e: StorageEvent) => {
+    if (e.key === seenKey(userId)) then(loadSeenOfferIds(userId));
+  };
+  window.addEventListener("storage", listener);
+  return () => window.removeEventListener("storage", listener);
 }
 
 /** The offers already there when a pilot's board for one pack was first loaded, and since. */

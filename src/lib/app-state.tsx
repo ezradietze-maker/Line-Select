@@ -22,7 +22,7 @@ import { applyManualEdits, type ProfileEdits } from "@/lib/profile-edits";
 import { loadSeniority, saveSeniority } from "@/lib/seniority-storage";
 import { askToKeepStorage, clearProfile, clearProfileForUser, dropGuestRecords, dropPendingProfileWrites, forgetLastKnownProfile, GUEST_PROFILE_KEY, guestProfileChangedElsewhere, hasUnsyncedProfile, loadProfileForUser, saveProfile, saveProfileForUser } from "@/lib/storage";
 import { fetchTradeOffers, tripToSnapshot } from "@/lib/trade-client";
-import { loadSeenOfferIds, newArrivals, saveSeenOfferIds, type ToastBaseline } from "@/lib/trade-seen-storage";
+import { loadSeenOfferIds, newArrivals, onSeenElsewhere, saveSeenOfferIds, type ToastBaseline } from "@/lib/trade-seen-storage";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
@@ -478,6 +478,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // The seen list belongs to the account: read from this device when the pilot changes (a guest has none).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSeen({ userId: viewerId, ids: viewerId ? loadSeenOfferIds(viewerId) : new Set() });
+    if (!viewerId) return;
+    // Opening the Inbox in another tab clears the badge in this one too.
+    return onSeenElsewhere(viewerId, (kept) =>
+      setSeen((prev) => (prev.userId !== viewerId || [...kept].every((id) => prev.ids.has(id)) ? prev : { userId: viewerId, ids: new Set([...prev.ids, ...kept]) }))
+    );
   }, [viewerId]);
 
   useEffect(() => {
