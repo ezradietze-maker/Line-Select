@@ -3,11 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const proposals: unknown[] = [];
 vi.mock("@/lib/brain/llm", () => ({
   structuredCall: vi.fn(async () => ({ data: proposals.shift(), usage: { model: "m", inputTokens: 0, outputTokens: 0, costUsd: 0.01, ms: 5 } })),
+  failedCallCost: (e: { usage?: { costUsd?: number } }) => e?.usage?.costUsd ?? 0,
 }));
-/** What the second reader says about each question, in turn; it passes everything once these run out. */
-const reviews: { ok: boolean; problem: string }[] = [];
+/** What the second reader says about each question, in turn (an Error is a check that failed); it passes everything once these run out. */
+const reviews: ({ ok: boolean; problem: string } | Error)[] = [];
 vi.mock("@/lib/brain/question-review", () => ({
-  reviewQuestion: vi.fn(async () => ({ ...(reviews.shift() ?? { ok: true, problem: "" }), usage: { model: "h", inputTokens: 0, outputTokens: 0, costUsd: 0.001, ms: 2 } })),
+  reviewQuestion: vi.fn(async () => {
+    const next = reviews.shift() ?? { ok: true, problem: "" };
+    if (next instanceof Error) throw next;
+    return { ...next, usage: { model: "h", inputTokens: 0, outputTokens: 0, costUsd: 0.001, ms: 2 } };
+  }),
 }));
 
 import { namedNumbers, nextInterviewStep, rankingHasSettled, SWEEP_QUESTION, type InterviewStepInput } from "@/lib/brain/interviewer";
@@ -607,6 +612,15 @@ describe("the four kinds of question, each with its rule", () => {
     expect(reviews).toHaveLength(0);
     if (r.done) throw new Error("expected a question");
     expect(r.usage?.costUsd).toBeCloseTo(0.022);
+  });
+
+  it("counts a check that failed after it was paid for, and asks the question anyway", async () => {
+    reviews.push(Object.assign(new Error("brain call ran out of room"), { usage: { model: "h", inputTokens: 0, outputTokens: 1500, costUsd: 0.004, ms: 2 } }));
+    proposals.push(step({ threadId: "china", prompt: "How many departures before it bothers you?" }));
+    const r = await nextInterviewStep(input({ packNumbers }));
+    expect(r).toMatchObject({ done: false, prompt: "How many departures before it bothers you?" });
+    if (r.done) throw new Error("expected a question");
+    expect(r.usage?.costUsd).toBeCloseTo(0.014, 6);
   });
 
   it("never matches examples on a city name alone, and never asks what makes two departures", async () => {
