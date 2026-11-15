@@ -5,6 +5,7 @@ import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { displayHotelName } from "@/lib/hotels/hotel-names";
 import { standbyPlace } from "@/lib/standby";
+import { reportsFromHome } from "@/lib/trip-anchor";
 import type { Trip, TripDutyPeriod, TripLeg } from "@/types/bidpack";
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -237,7 +238,8 @@ function legInlineClock(leg: TripLeg, endpoint: "dep" | "arr", mode: TimeMode): 
  * hotel pickup time, not some later report time. So this whole span is
  * report/check-in for duty one, or hotel-to-airport transport plus
  * check-in for every duty after a layover — real time, just not split
- * further since no separate drop-off time is printed.
+ * further since no separate drop-off time is printed. Each later day of a run
+ * of day trips reports from home too (`reportsFromHome`): no hotel before it.
  */
 function groundSegment(duty: TripDutyPeriod, isFirstDuty: boolean, previousLayover: TripDutyPeriod["layover"] | null, zuluAnchor: string): RawSegment | null {
   const firstLeg = duty.legs[0];
@@ -308,7 +310,7 @@ export function buildRawSegments(trip: Trip, mode: TimeMode = "local", sleepPlan
   trip.schedule.forEach((duty, dutyIndex) => {
     const from = raw.length;
     const previousLayover = dutyIndex > 0 ? trip.schedule[dutyIndex - 1].layover : null;
-    const ground = groundSegment(duty, dutyIndex === 0, previousLayover, trip.zuluAnchor);
+    const ground = groundSegment(duty, reportsFromHome(trip, dutyIndex), previousLayover, trip.zuluAnchor);
     if (ground) raw.push(ground);
     raw.push(...connectionSegments(duty, trip.zuluAnchor));
 

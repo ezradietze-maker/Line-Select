@@ -6,6 +6,7 @@ import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { displayHotelName } from "@/lib/hotels/hotel-names";
 import { mealWords } from "@/lib/meals";
 import { standbyPlace } from "@/lib/standby";
+import { reportsFromHome } from "@/lib/trip-anchor";
 import { equipmentLabel, hm } from "@/lib/trip-day-stats";
 import type { TimeMode, TimelineDay } from "@/lib/trip-timeline";
 import type { Trip, TripDutyPeriod, TripLeg } from "@/types/bidpack";
@@ -51,13 +52,17 @@ function LegTime({ local, gmt, mode }: { local: string; gmt: string; mode: TimeM
   );
 }
 
-/** When the duty starts: the printed report on the trip's first, the hotel pickup after a layover. */
-function dutyStart(trip: Trip, index: number, mode: TimeMode): { kind: "Report" | "Pickup"; text: string } | null {
-  if (index === 0) {
-    const first = trip.schedule[0];
+/**
+ * When the duty starts: the printed report on the trip's first and on each later day of a run of day trips, the hotel
+ * pickup after a layover. A run's later days showed no start at all: there's no hotel pickup before them.
+ */
+export function dutyStart(trip: Trip, index: number, mode: TimeMode): { kind: "Report" | "Pickup"; text: string } | null {
+  if (reportsFromHome(trip, index)) {
+    const first = trip.schedule[index];
+    if (!first) return null;
     const lead = first.legs[0] ? first.legs[0].startMinutes - first.startMinutes : 0;
     const dep = first.legs[0] ? (mode === "zulu" ? first.legs[0].depTimeGmt : first.legs[0].depTimeLocal) : null;
-    if (mode === "local") return { kind: "Report", text: `${clock(first.reportTimeLocal)}L` };
+    if (mode === "local") return first.reportTimeLocal ? { kind: "Report", text: `${clock(first.reportTimeLocal)}L` } : null;
     if (!dep) return null;
     const m = (((Number(dep.slice(0, 2)) * 60 + Number(dep.slice(2, 4)) - lead) % 1440) + 1440) % 1440;
     return { kind: "Report", text: `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}Z` };

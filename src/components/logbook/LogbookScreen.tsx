@@ -10,9 +10,10 @@ import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { CalendarSubscribe } from "@/components/results/CalendarSubscribe";
 import { MIN_SHARED_PILOTS, ownListEntry, submitAwardHistory, withdrawAwardShares } from "@/lib/award-history";
 import { loggedMonthFor } from "@/lib/bid-checklist";
+import { isSamplePack } from "@/lib/fake-trade-offers";
 import { cityName } from "@/lib/city-names";
 import { rankingAsShown } from "@/lib/ranking-as-shown";
-import { checkInShare, logbookStats, loggedMonthFrom, newestMonthFirst, withCheckIn, withLoggedMonth, withoutLoggedMonth, withoutShares } from "@/lib/logbook";
+import { checkInShare, logbookStats, loggedMonthFrom, newestMonthFirst, withCheckIn, withLoggedMonth, withMonthDeleted, withoutShares } from "@/lib/logbook";
 import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { hm as hmMinutes } from "@/lib/trip-day-stats";
 import type { UserAccount } from "@/types/auth";
@@ -45,7 +46,9 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
   // Sorted here too: a logbook saved before it was kept in month order.
   const entries = useMemo(() => newestMonthFirst(profile?.logbook ?? []), [profile?.logbook]);
   const stats = useMemo(() => logbookStats(entries), [entries]);
-  const thisMonth = bidPack && profile ? loggedMonthFor(profile, bidPack) : null;
+  // The sample pack's lines are no one's award: logged, its made-up month went into the pilot's own averages and cities.
+  const sample = !!bidPack && isSamplePack(bidPack);
+  const thisMonth = bidPack && profile && !sample ? loggedMonthFor(profile, bidPack) : null;
   const [relogging, setRelogging] = useState(false);
   // Said here, not in the form: a saved award closes the form, and a failed share has to outlive it.
   const [notice, setNotice] = useState<string | null>(null);
@@ -64,7 +67,17 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
         description="Log each month’s award once it’s out, and how the month flew once you’ve flown it. Over the months it adds up to what you’ve held, where you’ve been and where your seniority is heading."
       />
 
-      {bidPack && profile && (!thisMonth || relogging) && (
+      {sample && (
+        <p className="mt-6 rounded-lg border border-hairline bg-canvas/50 px-4 py-3 text-sm text-ink-muted">
+          This is the sample pack.{" "}
+          <Link href="/upload" className="underline decoration-dotted underline-offset-2">
+            Upload your own bid pack
+          </Link>{" "}
+          to log your award.
+        </p>
+      )}
+
+      {bidPack && profile && !sample && (!thisMonth || relogging) && (
         <LogAward
           bidPack={bidPack}
           profile={profile}
@@ -125,7 +138,13 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
                     const share = user ? checkInShare(updated.logbook?.find((e) => e.id === m.id) ?? m, profile.pilotModel) : null;
                     if (share) void submitAwardHistory(share).then((r) => !r.ok && say(`Saved here, but not shared: ${r.error}`, r.confirmEmail));
                   }}
-                  onDelete={() => profile && onUpdateProfile(withoutLoggedMonth(profile, m.id))}
+                  onDelete={async () => {
+                    if (!profile) return;
+                    // A shared month's share goes with it: after, nothing but withdrawing every share could take it back.
+                    const r = await withMonthDeleted(profile, m.id, withdrawAwardShares);
+                    if (r.profile) onUpdateProfile(r.profile);
+                    else say(`Not deleted, since its share couldn't be withdrawn: ${r.error}`);
+                  }}
                   onWithdraw={
                     user && m.sharedAt
                       ? async () => {
@@ -429,7 +448,7 @@ function MonthEntry({
   isThisPack: boolean;
   onRelog: () => void;
   onCheckIn: (feel: MonthFeel, words: { bestTrip?: string; worstTrip?: string; note?: string }) => void;
-  onDelete: () => void;
+  onDelete: () => Promise<void>;
   /** Present when the month is shared and the pilot is signed in. */
   onWithdraw?: () => Promise<void>;
 }) {
@@ -437,10 +456,7 @@ function MonthEntry({
   const [withdrawing, setWithdrawing] = useState(false);
   // One click away from losing a month with no way back: asked first, as withdrawing every share is.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [feel, setFeel] = useState<MonthFeel | null>(m.checkIn?.feel ?? null);
-  const [best, setBest] = useState(m.checkIn?.bestTrip ?? "");
-  const [worst, setWorst] = useState(m.checkIn?.worstTrip ?? "");
-  const [note, setNote] = useState(m.checkIn?.note ?? "");
+  const [deleting, setDeleting] = useState(false);
   const cities = [...new Set(m.layoverCities ?? [])];
   return (
     <article className="panel-glass p-4 sm:p-5">
@@ -487,42 +503,14 @@ function MonthEntry({
           {m.checkIn.note && <p className="mt-1 italic text-ink-muted">&ldquo;{m.checkIn.note}&rdquo;</p>}
         </div>
       ) : checking ? (
-        <div className="mt-3 space-y-3 rounded-md border border-hairline p-3">
-          <div className="text-sm font-medium text-ink">How did {m.month} fly?</div>
-          <div className="flex flex-wrap gap-2">
-            {FEELS.map((f) => (
-              <button
-                key={f.feel}
-                type="button"
-                onClick={() => setFeel(f.feel)}
-                aria-pressed={feel === f.feel}
-                className={`rounded-md border px-3 py-1.5 text-sm ${feel === f.feel ? "border-accent bg-accent-soft text-ink" : "border-hairline text-ink-muted hover:border-border-strong"}`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <input value={best} onChange={(e) => setBest(e.target.value)} placeholder="Best trip (e.g. #76, Honolulu)" className="rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink" />
-            <input value={worst} onChange={(e) => setWorst(e.target.value)} placeholder="Worst trip" className="rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink" />
-          </div>
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Anything else about the month (optional)" className="w-full rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink" />
-          <div className="flex gap-2">
-            <Button
-              disabled={!feel}
-              onClick={() => {
-                if (!feel) return;
-                onCheckIn(feel, { bestTrip: best, worstTrip: worst, note });
-                setChecking(false);
-              }}
-            >
-              Save
-            </Button>
-            <Button variant="ghost" onClick={() => setChecking(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
+        <CheckInForm
+          entry={m}
+          onSave={(feel, words) => {
+            onCheckIn(feel, words);
+            setChecking(false);
+          }}
+          onCancel={() => setChecking(false)}
+        />
       ) : null}
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -545,12 +533,21 @@ function MonthEntry({
       {confirmingDelete && (
         <div role="group" aria-label={`Delete ${m.month} from your logbook`} className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
           <span>
-            Delete {m.month} from your logbook? It can&rsquo;t be undone{m.sharedAt ? "; a shared award stays shared until you withdraw it" : ""}.
+            Delete {m.month} from your logbook? It can&rsquo;t be undone{m.sharedAt ? ", and its share is withdrawn too" : ""}.
           </span>
-          <Button variant="danger" onClick={onDelete}>
-            Yes, delete
+          <Button
+            variant="danger"
+            disabled={deleting}
+            onClick={async () => {
+              setDeleting(true);
+              await onDelete();
+              // Still here when the share couldn't be withdrawn: the month stays, and so does the ask.
+              setDeleting(false);
+            }}
+          >
+            {deleting ? "Deleting…" : "Yes, delete"}
           </Button>
-          <Button variant="ghost" autoFocus onClick={() => setConfirmingDelete(false)}>
+          <Button variant="ghost" autoFocus disabled={deleting} onClick={() => setConfirmingDelete(false)}>
             Cancel
           </Button>
         </div>
@@ -559,3 +556,64 @@ function MonthEntry({
   );
 }
 
+
+/**
+ * How a month flew, asked after it. Each box has its own name: a placeholder alone went silent for a screen reader once
+ * anything was typed, and from sight too. Starts from what was saved each time it opens, so a check-in changed on
+ * another device isn't put back by an old copy.
+ */
+export function CheckInForm({
+  entry: m,
+  onSave,
+  onCancel,
+}: {
+  entry: LoggedMonth;
+  onSave: (feel: MonthFeel, words: { bestTrip?: string; worstTrip?: string; note?: string }) => void;
+  onCancel: () => void;
+}) {
+  const [feel, setFeel] = useState<MonthFeel | null>(m.checkIn?.feel ?? null);
+  const [best, setBest] = useState(m.checkIn?.bestTrip ?? "");
+  const [worst, setWorst] = useState(m.checkIn?.worstTrip ?? "");
+  const [note, setNote] = useState(m.checkIn?.note ?? "");
+  const FIELD = "mt-1 block w-full rounded-md border border-field-edge bg-surface px-3 py-2 text-sm text-ink";
+  return (
+    <div className="mt-3 space-y-3 rounded-md border border-hairline p-3">
+      <div className="text-sm font-medium text-ink">How did {m.month} fly?</div>
+      <div className="flex flex-wrap gap-2" role="group" aria-label={`How did ${m.month} fly?`}>
+        {FEELS.map((f) => (
+          <button
+            key={f.feel}
+            type="button"
+            onClick={() => setFeel(f.feel)}
+            aria-pressed={feel === f.feel}
+            className={`rounded-md border px-3 py-1.5 text-sm ${feel === f.feel ? "border-accent bg-accent-soft text-ink" : "border-hairline text-ink-muted hover:border-border-strong"}`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block text-sm">
+          <span className="text-ink-muted">Best trip</span>
+          <input value={best} onChange={(e) => setBest(e.target.value)} placeholder="e.g. #76, Honolulu" className={FIELD} />
+        </label>
+        <label className="block text-sm">
+          <span className="text-ink-muted">Worst trip</span>
+          <input value={worst} onChange={(e) => setWorst(e.target.value)} className={FIELD} />
+        </label>
+      </div>
+      <label className="block text-sm">
+        <span className="text-ink-muted">Anything else about the month (optional)</span>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={FIELD} />
+      </label>
+      <div className="flex gap-2">
+        <Button disabled={!feel} onClick={() => feel && onSave(feel, { bestTrip: best, worstTrip: worst, note })}>
+          Save
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}

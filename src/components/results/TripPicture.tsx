@@ -7,6 +7,7 @@ import { ChevronDownIcon } from "@/components/ui/icons";
 import { fullDayDates } from "@/lib/full-days";
 import { displayHotelName } from "@/lib/hotels/hotel-names";
 import { labeledStayPieces, layoverHours } from "@/lib/leg-bars";
+import { reportsFromHome } from "@/lib/trip-anchor";
 import { dateLabel, tripDayDate } from "@/lib/trip-day-stats";
 import { buildHomeDays, buildTimelineDays, type TimeMode, type TimelineDay, type TimelineSegment } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
@@ -44,10 +45,11 @@ export function tripPictureDays(trip: Trip, mode: TimeMode): TimelineDay[] {
 }
 
 /**
- * When a duty starts on this day, and how: the trip's first duty reports ("Rpt"); every later one starts at the hotel
- * pickup ("P/U"), the van from the layover hotel — not the same thing, and the pilot plans around which it is.
+ * When a duty starts on this day, and how: the trip's first duty reports ("Rpt"), as does each later day of a run of
+ * day trips, from home; every other one starts at the hotel pickup ("P/U"), the van from the layover hotel — not the
+ * same thing, and the pilot plans around which it is.
  */
-export function dutyStartOf(day: TimelineDay): { kind: "report" | "pickup"; clock: string } | null {
+export function dutyStartOf(day: TimelineDay, trip: Trip): { kind: "report" | "pickup"; clock: string } | null {
   // A duty starts on this day when its first piece is here: nothing of it carried over from the night before. Its
   // layover (the stay after it) doesn't count as part of the duty's start.
   const duties = new Set(day.segments.map((s) => s.dutyIndex).filter((d): d is number => d !== undefined));
@@ -59,7 +61,7 @@ export function dutyStartOf(day: TimelineDay): { kind: "report" | "pickup"; cloc
     if (!first || earliest.startMinuteOfDay < first.startMinuteOfDay) first = earliest;
   }
   if (!first?.startClock) return null;
-  return { kind: (first.dutyIndex ?? 0) > 0 ? "pickup" : "report", clock: first.startClock };
+  return { kind: reportsFromHome(trip, first.dutyIndex ?? 0) ? "report" : "pickup", clock: first.startClock };
 }
 
 export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferences, compact = false, dayDetail, carryOver = null }: TripPictureProps) {
@@ -121,7 +123,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
           const date = mode === "local" ? (day.date ? dateLabel(day.date) : tripDayDate(trip, bidPeriodStart, day.dayNumber)) : null;
           // On the base's calendar, the last days of a trip running past the month's end are the next month's.
           const nextMonth = carryOver && mode === "local" && day.dayNumber > days.length - carryOver.days ? carryOver.month : null;
-          const start = dutyStartOf(day);
+          const start = dutyStartOf(day, trip);
           const fullDay = mode === "local" && day.date ? fullDays.get(day.date) : undefined;
           const isOpen = open.has(day.dayNumber);
           const row = (
