@@ -247,14 +247,22 @@ function periodStart(bidPack: Pick<BidPack, "bidPeriodStart" | "month">): DateTi
   return m && month ? DateTime.utc(2000 + Number(m[2]), month, 1) : null;
 }
 
+/**
+ * A pack whose bid period has begun: its bid is over. Said by Send to VIPS and by "Ready to bid?" itself, since a pilot
+ * who copies the order to enter it by hand never opens the dialog.
+ */
+export function periodStartedCheck(bidPack: Pick<BidPack, "bidPeriodStart" | "month">, now: Date): PresendCheck | null {
+  const start = periodStart(bidPack);
+  if (!start?.isValid || start.toMillis() > now.getTime()) return null;
+  return { id: "period-started", level: "stop", message: `The ${bidPack.month} bid period has already started, so this pack's bid is over. Upload this month's pack.` };
+}
+
 function timingChecks({ bidPack, close, now }: PresendInput): PresendCheck[] {
   if (bidPack.id.startsWith("sample-")) {
     return [{ id: "sample-pack", level: "stop", message: "This is the sample pack, not your real bid. These lines don't exist in VIPS." }];
   }
-  const start = periodStart(bidPack);
-  if (start?.isValid && start.toMillis() <= now.getTime()) {
-    return [{ id: "period-started", level: "stop", message: `The ${bidPack.month} bid period has already started, so this pack's bid is over. Upload this month's pack.` }];
-  }
+  const started = periodStartedCheck(bidPack, now);
+  if (started) return [started];
   if (close) {
     const when = DateTime.fromISO(close.iso).setZone("America/Chicago").toFormat("LLL d, HHmm 'CT'");
     const whose = close.source === "pilot" ? "the time you set" : close.source === "pack" ? "the pack's bid calendar" : "the contract's close rule (CBA 25.C.4)";
@@ -338,10 +346,21 @@ export function runPresendChecks(input: PresendInput): PresendCheck[] {
 
 // ---------------------------------------------------------------- the bid, in the order VIPS reads it
 
-/** The pilot's list, then the catch-alls, with named reserve lines before "any reserve line" so they're reached first. */
+/**
+ * The pilot's list, then the catch-alls, with named reserve lines before "any reserve line" so they're reached first.
+ * A line listed twice (a pack that prints a line on two pages) stays where it first comes, as `buildVipsBidFields`
+ * sends it: with the repeat kept, the dialog counted one more choice than VIPS got, and the pilot checks that count in
+ * Monthly Bid Review.
+ */
 export function fullBidOrder(lineNumbers: string[], anyLines: AnyLineKind[], reserveLines: string[]): string[] {
   const named = (kinds: AnyLineKind[]) => kinds.filter((k) => anyLines.includes(k)).map((k) => ANY_LINE_CODES[k]);
-  return [...lineNumbers, ...named(["regular", "secondary"]), ...reserveLines, ...named(["reserve"])];
+  const seen = new Set<string>();
+  return [...lineNumbers, ...named(["regular", "secondary"]), ...reserveLines, ...named(["reserve"])].filter((n) => {
+    const key = n.trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // ---------------------------------------------------------------- the VIPS questions, for this order

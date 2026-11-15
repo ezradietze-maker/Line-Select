@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { BidDeadlineEditor, bidCloseSourceLabel, formatTimeLeft, urgencyFor, useBidDeadline, useTimeLeft, type Urgency } from "@/components/results/BidCountdown";
+import { BidDeadlineEditor, bidCloseSourceLabel, closeTimeWords, formatTimeLeft, urgencyFor, useBidDeadline, useTimeLeft, type Urgency } from "@/components/results/BidCountdown";
 import { BidPeriodChangeBanner } from "@/components/results/BidPeriodChangeBanner";
 import { ForecastBanner } from "@/components/results/ForecastBanner";
 import { PilotProfileSummary } from "@/components/results/PilotProfileSummary";
@@ -259,7 +259,7 @@ export function ResultsStatusPanel({
             {!deadline.loaded
               ? "\u00a0"
               : deadline.deadline
-                ? new Date(deadline.deadline).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+                ? closeTimeWords(deadline.deadline)
                 : "Set when bidding closes for a live countdown."}
             {deadline.loaded && deadline.deadline && bidCloseSourceLabel(deadline.source) && (
               <span className="mt-0.5 block text-xs text-ink-faint">

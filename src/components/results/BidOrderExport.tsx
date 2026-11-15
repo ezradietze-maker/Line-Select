@@ -6,6 +6,7 @@ import { MarkTick } from "@/components/ui/MarkTick";
 import { SendToVipsDialog, type PresendContext } from "@/components/results/SendToVipsDialog";
 import { buildLineCalendar } from "@/lib/ics-export";
 import type { LineScore } from "@/lib/scoring";
+import { periodStartedCheck } from "@/lib/vips-presend";
 
 type CopiedKind = "plain" | "annotated" | "shortlist" | null;
 
@@ -82,6 +83,10 @@ export function BidOrderExport({
   /** The first trip's date, shown on a little calendar page that flips over once the file has saved. */
   const [savedFrom, setSavedFrom] = useFlash<{ month: string; day: number }>(2800);
   const [showMore, setShowMore] = useState(false);
+  // Last month's pack, still on the device: Copy has no checks of its own, and a pilot entering the order by hand never
+  // sees the dialog's.
+  const [openedAt] = useState(() => new Date());
+  const started = presend.bidPack.id.startsWith("sample-") ? null : periodStartedCheck(presend.bidPack, openedAt);
 
   async function copy(text: string, kind: CopiedKind) {
     try {
@@ -210,6 +215,11 @@ export function BidOrderExport({
           Print
         </button>
       </div>
+      {started && (
+        <p role="alert" className="mt-2 rounded-md bg-danger/15 px-3 py-2 text-xs leading-relaxed text-ink" data-period-started>
+          {started.message}
+        </p>
+      )}
       <p className="mt-2 hidden text-xs leading-relaxed text-ink-faint sm:block">
         Send to VIPS opens pilot.fedex.com with this order filled in &mdash; you sign in there, and nothing is sent until you do. Or copy the order and enter it yourself.
       </p>
