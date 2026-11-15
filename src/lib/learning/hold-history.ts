@@ -28,7 +28,7 @@ export interface HoldHistorySummary {
   /** Middle of the choices they were awarded, and the spread, over months that recorded it. */
   typicalChoice: number | null;
   choiceRange: { best: number; worst: number } | null;
-  /** Their seniority at the latest month versus the earliest — how far up the list they've moved. */
+  /** Their seniority at the latest month versus the earliest on that month's list — how far up it they've moved. */
   seniorityTrend: { from: number; to: number } | null;
   /** Newest first. */
   records: HoldRecord[];
@@ -71,7 +71,10 @@ export function summarizeHoldHistory(records: HoldRecord[]): HoldHistorySummary 
   });
 
   const choices = byMonth.map((r) => r.awardedChoice).filter((c): c is number => typeof c === "number" && c > 0);
-  const percentiles = byMonth.map((r) => r.percentile).filter((p): p is number => typeof p === "number");
+  // Their move up one list: the newest month's base, aircraft and seat. Across an upgrade or a move, "top 10% → top 95%"
+  // compared places on two different lists.
+  const list = (r: HoldRecord) => `${r.base}|${r.aircraft}|${r.seat}`.toUpperCase();
+  const percentiles = byMonth.filter((r) => list(r) === list(byMonth[0])).map((r) => r.percentile).filter((p): p is number => typeof p === "number");
   const lineMonths = byMonth.filter((r) => r.outcome === "line").length;
   const reserveMonths = byMonth.filter((r) => r.outcome === "reserve").length;
   const typicalChoice = choices.length ? Math.round(median(choices)) : null;

@@ -306,7 +306,7 @@ export async function loadCorrections(): Promise<CorrectionEvent[]> {
   return fromVerified(all, verified, (r) => r.pilotHash).map((r) => ({ dim: r.dim, src: r.src, from: r.fromValue, to: r.toValue }));
 }
 
-/** Every stored month of line features with the rankings pilots shared that month. */
+/** Every stored month of line features with the rankings pilots shared that month, newest first. */
 export async function loadPackHistories(): Promise<PackHistory[]> {
   const stored = await db.select().from(packFeatures).orderBy(desc(packFeatures.updatedAt)).limit(MAX_PACKS);
   if (stored.length === 0) return [];
@@ -322,8 +322,8 @@ export async function loadPackHistories(): Promise<PackHistory[]> {
     verifiedPilotHashes(),
   ]);
   const rankings = fromVerified(shared, verified, (r) => r.userHash);
-  const byBlob = new Map<string, string[]>();
-  for (const r of rankings) byBlob.set(r.blobKey, [...(byBlob.get(r.blobKey) ?? []), r.ranking]);
+  const byBlob = new Map<string, { ranking: string; sharer: string }[]>();
+  for (const r of rankings) byBlob.set(r.blobKey, [...(byBlob.get(r.blobKey) ?? []), { ranking: r.ranking, sharer: r.userHash }]);
   return packs
     .filter((p) => (byBlob.get(p.blobKey)?.length ?? 0) > 0 && p.features.length === p.lineNumbers.length * FEATURE_COUNT)
     .map((p) => ({
@@ -331,7 +331,8 @@ export async function loadPackHistories(): Promise<PackHistory[]> {
       aircraft: p.aircraft,
       seat: p.seat,
       features: { lineIds: p.lineNumbers, lineNumbers: p.lineNumbers, values: Float64Array.from(p.features), lineCount: p.lineNumbers.length },
-      rankings: byBlob.get(p.blobKey)!.map((r) => decodeRanking(r, p.lineNumbers.length)),
+      rankings: byBlob.get(p.blobKey)!.map((r) => decodeRanking(r.ranking, p.lineNumbers.length)),
+      sharers: byBlob.get(p.blobKey)!.map((r) => r.sharer),
     }));
 }
 
@@ -373,7 +374,10 @@ type StoredForecast = Pick<typeof forecastPredictions.$inferSelect, "pilotHash" 
 export function calibrationCasesFrom(awards: StoredAward[], predictions: StoredForecast[], linesByBlob: Map<string, string[]>): DatedCalibrationCase[] {
   const byPack = new Map<string, StoredAward[]>();
   for (const a of awards) byPack.set(a.packKey!, [...(byPack.get(a.packKey!) ?? []), a]);
-  const cases: DatedCalibrationCase[] = [];
+  // One forecast per pilot per bid month, and the one their own award checks when there is one. A pilot bids one seat a
+  // month, but a pack key is whatever the browser sends: one account sharing a forecast and reporting its award under
+  // forty made-up bases was forty awards, past the number the fair test waits for, and set the odds every pilot is shown.
+  const perMonth = new Map<string, { case: DatedCalibrationCase; own: boolean }>();
   const onePerPilot = new Map(predictions.map((p) => [`${p.pilotHash}|${p.packKey}`, p] as const));
   for (const p of onePerPilot.values()) {
     const packAwards = byPack.get(p.packKey);
@@ -386,7 +390,7 @@ export function calibrationCasesFrom(awards: StoredAward[], predictions: StoredF
       .map((a) => ({ lineIndex: indexOf(a.lineNumber), bidPosition: a.seniorityRank, id: a.id }));
     if (!own && holders.length === 0) continue;
     const ownIndex = indexOf(own?.lineNumber ?? null);
-    cases.push({
+    const c: DatedCalibrationCase = {
       at: own?.submittedAt ?? packAwards.reduce((latest, a) => (a.submittedAt > latest ? a.submittedAt : latest), packAwards[0].submittedAt),
       seat: packAwards[0].seat,
       packKey: p.packKey,
@@ -394,8 +398,12 @@ export function calibrationCasesFrom(awards: StoredAward[], predictions: StoredF
       prediction: { ranking: p.ranking, pAvailable: p.pAvailable, bidNumber: p.bidNumber },
       award: own ? { outcome: own.outcome as ReportedAward["outcome"], lineIndex: ownIndex >= 0 ? ownIndex : null } : null,
       holders,
-    });
+    };
+    const month = `${p.pilotHash}|${p.packKey.split("|")[0]}`;
+    const kept = perMonth.get(month);
+    if (!kept || (!kept.own && own) || (kept.own === !!own && c.at > kept.case.at)) perMonth.set(month, { case: c, own: !!own });
   }
+  const cases = [...perMonth.values()].map((k) => k.case);
   // Oldest first by pack, so the fair test holds back the newest packs whole.
   const packStart = new Map<string, number>();
   for (const c of cases) packStart.set(c.packKey!, Math.min(packStart.get(c.packKey!) ?? Infinity, c.at.getTime()));
@@ -449,19 +457,24 @@ export async function rollBackModel(kind: ModelKind): Promise<{ from: string; to
       .from(learnedModels)
       // Only a version that was once in use: a challenger that failed its fair test is stored inactive too, and undo
       // must never switch it on. Rows from before this was stamped count as used — except calibrations, which could
-      // be either, so they're passed over.
+      // be either, so they're passed over. Nor one the owner already undid: after an undo and the next run's version,
+      // a second undo brought back the version the first had taken away.
       .where(
         and(
           eq(learnedModels.kind, kind),
           eq(learnedModels.active, false),
           lt(learnedModels.createdAt, current.createdAt),
-          sql`coalesce((${learnedModels.metrics}->>'promoted')::boolean, ${learnedModels.kind} <> 'forecast-calibration')`
+          sql`coalesce((${learnedModels.metrics}->>'promoted')::boolean, ${learnedModels.kind} <> 'forecast-calibration')`,
+          sql`coalesce((${learnedModels.metrics}->>'undone')::boolean, false) = false`
         )
       )
       .orderBy(desc(learnedModels.createdAt))
       .limit(1);
     if (!previous) return null;
-    await tx.update(learnedModels).set({ active: false }).where(eq(learnedModels.id, current.id));
+    await tx
+      .update(learnedModels)
+      .set({ active: false, metrics: sql`${learnedModels.metrics} || '{"undone": true}'::jsonb` })
+      .where(eq(learnedModels.id, current.id));
     await tx.update(learnedModels).set({ active: true }).where(eq(learnedModels.id, previous.id));
     return { from: current.version, to: previous.version };
   });
