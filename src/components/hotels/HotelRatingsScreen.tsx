@@ -16,6 +16,7 @@ import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { fetchHotel } from "@/lib/hotel-client";
 import { hotelFilterHref } from "@/lib/hotel-filter";
 import { hotelCityReason } from "@/lib/hotel-personalization";
+import { displayHotelName, readHotelName } from "@/lib/hotels/hotel-names";
 import type { BidPack } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -32,13 +33,16 @@ interface HotelGroup {
   lineNumbers: string[];
 }
 
-/** Every distinct (city, hotel) pair actually assigned somewhere in this bid pack, most-used first. */
-function groupByHotel(bidPack: BidPack): HotelGroup[] {
+/**
+ * Every distinct (city, hotel) pair actually assigned somewhere in this bid pack, most-used first. One the pack hasn't
+ * assigned yet ("TBA") isn't a hotel: it was listed, and counted, as one, with no Google Places match found.
+ */
+export function groupByHotel(bidPack: BidPack): HotelGroup[] {
   const groups = new Map<string, HotelGroup>();
   for (const line of bidPack.lines) {
     for (const trip of line.trips) {
       for (const layover of trip.layoverDetails) {
-        if (!layover.hotelName) continue;
+        if (!layover.hotelName || !readHotelName(layover.hotelName).assigned) continue;
         const key = `${layover.city}|${layover.hotelName}`;
         const existing = groups.get(key);
         if (existing) {
@@ -62,6 +66,8 @@ const NOT_CONFIGURED_MARKER = "aren't configured yet";
 export function HotelRatingsScreen({ bidPack, profile }: HotelRatingsScreenProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [notConfigured, setNotConfigured] = useState(false);
+  /** The hotels whose lookup failed for now (no signal, Google unreachable, the day's lookups used), by group key. */
+  const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -88,6 +94,7 @@ export function HotelRatingsScreen({ bidPack, profile }: HotelRatingsScreenProps
       if (!cancelled) {
         setRatings(Object.fromEntries(entries.map(([k, r]) => [k, r.hotel])));
         setNotConfigured(entries.some(([, r]) => r.error?.includes(NOT_CONFIGURED_MARKER)));
+        setFailed(new Set(entries.filter(([, r]) => r.error && !r.hotel).map(([k]) => k)));
         setLoading(false);
       }
     }
@@ -107,7 +114,7 @@ export function HotelRatingsScreen({ bidPack, profile }: HotelRatingsScreenProps
     );
   }
 
-  return <HotelRatingsList bidPack={bidPack} profile={profile} ratings={ratings} loading={loading} notConfigured={notConfigured} />;
+  return <HotelRatingsList bidPack={bidPack} profile={profile} ratings={ratings} failed={failed} loading={loading} notConfigured={notConfigured} />;
 }
 
 type SortKey = "used" | "best" | "worst" | "city";
@@ -126,12 +133,14 @@ function HotelRatingsList({
   bidPack,
   profile,
   ratings,
+  failed,
   loading,
   notConfigured,
 }: {
   bidPack: BidPack;
   profile: PreferenceProfile | null;
   ratings: Record<string, HotelResult | null>;
+  failed: ReadonlySet<string>;
   loading: boolean;
   notConfigured: boolean;
 }) {
@@ -239,7 +248,7 @@ function HotelRatingsList({
           ) : (
             <div className="mt-3 space-y-3">
               {visible.map((g) => (
-                <HotelCard key={g.key} group={g} hotel={ratings[g.key]} profile={profile} />
+                <HotelCard key={g.key} group={g} hotel={ratings[g.key]} failed={failed.has(g.key)} profile={profile} />
               ))}
               {sorted.length > visible.length && (
                 <button
@@ -274,15 +283,28 @@ function ratingTone(rating: number): GaugeTone {
   return { stroke: "var(--color-warn)", text: "text-warn", track: "var(--color-warn-soft)" };
 }
 
+/**
+ * What a hotel card says under its name when there's no rating to show. A lookup that failed for now isn't "no match":
+ * it read as Google not knowing the hotel, when it was only a lost connection or the day's lookups used up.
+ */
+export function hotelLookupNote(hotel: HotelResult | null | undefined, failed: boolean): string | null {
+  if (hotel === undefined) return "Looking up…";
+  if (hotel !== null) return null;
+  return failed ? "Couldn’t look this hotel up just now. Try again later." : "No Google Places match found for this hotel.";
+}
+
 function HotelCard({
   group,
   hotel,
+  failed,
   profile,
 }: {
   group: HotelGroup;
   hotel: HotelResult | null | undefined;
+  failed: boolean;
   profile: PreferenceProfile | null;
 }) {
+  const note = hotelLookupNote(hotel, failed);
   const [expanded, setExpanded] = useState(false);
   const [showAllLines, setShowAllLines] = useState(false);
   const shownLines = showAllLines ? group.lineNumbers : group.lineNumbers.slice(0, 8);
@@ -320,12 +342,10 @@ function HotelCard({
                 <span className="rounded border border-accent/40 bg-accent-soft/60 px-1.5 py-0.5 font-mono text-2xs font-semibold tracking-wider text-accent">
                   {group.code}
                 </span>
-                <span className="min-w-0 font-display text-base font-semibold text-ink wrap-anywhere">{group.hotelName}</span>
+                <span className="min-w-0 font-display text-base font-semibold text-ink wrap-anywhere">{displayHotelName(group.hotelName)}</span>
               </div>
-              {hotel === undefined ? (
-                <p className="mt-1 text-xs text-ink-faint">Looking up&hellip;</p>
-              ) : hotel === null ? (
-                <p className="mt-1 text-xs text-ink-faint">No Google Places match found for this hotel.</p>
+              {note !== null || !hotel ? (
+                <p className="mt-1 text-xs text-ink-faint">{note}</p>
               ) : (
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-muted">
                   {rating !== null && (

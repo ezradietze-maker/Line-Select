@@ -86,7 +86,7 @@ export interface StrategyLineRecommendation {
    * strategy" transformation — a strategy here always points at a real,
    * already-scored line, so this is that line's own real number.
    */
-  scoreContext: { score: number; deltaFromTopPick: number } | null;
+  scoreContext: { score: number; deltaFromTopPick: number; isTopPick: boolean } | null;
 }
 
 export interface Strategy {

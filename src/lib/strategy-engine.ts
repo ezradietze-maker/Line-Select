@@ -174,7 +174,7 @@ function sweepLegs(line: Line, sweep: Set<string>): number {
 const FIT_ORDER: Record<StrategyFit, number> = { now: 0, maybe: 1, later: 2 };
 
 export interface StrategyOptions {
-  /** The pilot's own line scores, best first (absent before an interview) — used to order a move's lines by what they'd actually want. */
+  /** The pilot's own lines in My Rankings' order, first first (absent before an interview) — a move's lines go in that order. */
   lineScores?: LineScore[] | null;
   isCommuter?: boolean | null;
   /** Chance each line is still open at the pilot's turn, by line id. Worked out here from the pack's seniority list when not given. */
@@ -195,8 +195,10 @@ export function generateStrategies(
   const info = bidPack.info;
   const lines = bidPack.lines;
   const position = st.effective ?? st.printedBidNumber;
-  const scoreOf = new Map((options.lineScores ?? []).map((r) => [r.line.lineNumber, r.score]));
-  const hasScores = scoreOf.size > 0;
+  // Where each line sits in My Rankings as shown, hand moves and tiers included: ordered by score, a line the pilot
+  // moved to the top came after lines they'd put below it.
+  const placeOf = new Map((options.lineScores ?? []).map((r, i) => [r.line.lineNumber, i]));
+  const hasScores = placeOf.size > 0;
   const pack = {
     credit: median(lines.map((l) => l.totalCreditHours)),
     daysOff: Math.round(median(lines.map((l) => l.daysOff))),
@@ -267,7 +269,7 @@ export function generateStrategies(
   {
     const likely = lines
       .filter((l) => (openAt(l) ?? 0) >= 0.5)
-      .sort((a, b) => (hasScores ? (scoreOf.get(b.lineNumber) ?? 0) - (scoreOf.get(a.lineNumber) ?? 0) : (openAt(b) ?? 0) - (openAt(a) ?? 0)));
+      .sort((a, b) => (hasScores ? (placeOf.get(a.lineNumber) ?? Infinity) - (placeOf.get(b.lineNumber) ?? Infinity) || 0 : (openAt(b) ?? 0) - (openAt(a) ?? 0)));
     // A senior pilot has nearly every line open — listing them says nothing; the move is for pilots the pack's favorites pass by.
     const recs = (st.band === "regular" && position <= st.regular * 0.35 ? [] : likely).slice(0, 6).map((l) => {
       const p = openAt(l)!;
@@ -302,7 +304,7 @@ export function generateStrategies(
       steps: [
         "Put two or three reach lines first — the ones you'd love even if they're probably gone.",
         ...(recs.length
-          ? [hasScores ? "Next, the lines below: likely still open at your number, best for you first." : "Next, the lines below: likely still open at your number. Take the interview and they'll be ordered by what you'd actually want."]
+          ? [hasScores ? "Next, the lines below: likely still open at your number, in your order from My Rankings." : "Next, the lines below: likely still open at your number. Take the interview and they'll be ordered by what you'd actually want."]
           : []),
         "Then keep going: list every regular line you'd fly over reserve or secondary, so a surprise above you still lands on something you chose.",
       ],
@@ -441,6 +443,10 @@ export function generateStrategies(
             .filter((x) => x.credit > 0)
             .sort((a, b) => b.credit - a.credit)
         : [];
+    // Only lines the pilot can hold: the forecast's leftovers, as the leftovers move counts them. Listed whole, a reserve
+    // pilot was told "for you this month" to favor lines very likely gone before their turn.
+    const reachable = overlaps.filter(({ l }) => (openAt(l) ?? 1) >= 0.5);
+    const holdsLine = st.band === "regular";
     const zone = timezoneForAirport(bidPack.base) ?? "UTC";
     const fmtV = (v: VacationPeriod) => vacationLabel(v, zone).replace(/ \(\d+ days?\)$/, "");
     strategies.push({
@@ -450,12 +456,20 @@ export function generateStrategies(
       mechanism:
         "Vacation that falls on days a line was going to be off is wasted on days you'd have had anyway. Vacation that falls on a line's trips takes those trips off the line as vacation conflicts after the award (CBA 7.G, 25.E) — so a line whose biggest trips sit inside your vacation gives you the most time at home for the same vacation days. With a regular line you can also slide your vacation up to 5 days either way, or expand it, in the Conflict Input Window that opens right after bidding closes (CBA 7.E.2–3); the SWW vacation adjustment is for secondary-line holders.",
       benefits: [],
-      fit: mine.length ? "now" : "later",
-      fitReason: mine.length ? "The pack's vacation schedule shows you on vacation this month." : "The pack's vacation schedule has no vacation for you this month — this is for a month when it does.",
+      fit: mine.length ? (holdsLine ? "now" : "maybe") : "later",
+      fitReason: !mine.length
+        ? "The pack's vacation schedule has no vacation for you this month — this is for a month when it does."
+        : holdsLine
+          ? "The pack's vacation schedule shows you on vacation this month."
+          : "The pack's vacation schedule shows you on vacation this month, but on the numbers you won't hold a regular line — on a secondary or reserve line, vacation works differently (CBA 2026 7.G.2, 7.G.3).",
       steps: mine.length
         ? [
             `Your vacation: ${mine.map((v) => `${fmtV(v)} (${v.days} days)`).join(", ")}.`,
-            "Favor the lines below — the most credit inside your vacation — over lines that are already off those days.",
+            reachable.length
+              ? "Favor the lines below — the most credit inside your vacation — over lines that are already off those days."
+              : overlaps.length
+                ? "No line with trips inside your vacation is likely still open at your number, so bid your list as you would."
+                : "No line has trips inside your vacation, so it sits on days off whichever line you hold.",
             "After the award, check which trips your vacation conflicts with, and enter any slide or expansion in the Conflict Input Window — it opens right after your bid closes (the pack calendar's Conflict Input dates). On a secondary line, adjust in the SWW instead.",
           ]
         : [
@@ -466,10 +480,11 @@ export function generateStrategies(
         ? [
             { label: "Your vacation days in this bid month", value: String(st.vacationDays), tone: "good" },
             { label: "Lines with trips inside your vacation", value: `${overlaps.length} of ${lines.length}` },
+            ...(hasForecast ? [{ label: "Of them, likely still open at your number", value: String(reachable.length) }] : []),
           ]
         : [{ label: "Vacation slot trades", value: "30 days before the month" }],
       risk: "Whether trips under vacation are paid, dropped or rebuilt, and how the adjustment window works, are set by FedEx and the contract — this may not work the way it reads. Confirm with the vacation desk or your PSIT before bidding around it.",
-      lines: overlaps.slice(0, 5).map(({ l, credit }) =>
+      lines: reachable.slice(0, 5).map(({ l, credit }) =>
         rec(
           l,
           `${hm(credit)} of trips come off for your vacation${credit > value ? ` — ${hm(credit - value)} more than its ${hm(value)}, drawn from your bank (CBA 2026 7.G.1)` : ""}`,
@@ -568,17 +583,22 @@ export function rankStrategiesByPreference(strategies: Strategy[]): Strategy[] {
   return strategies;
 }
 
-/** Ties a move's lines back to the pilot's own score for them, against their current top pick. */
+/**
+ * Ties a move's lines back to the pilot's own score for them, against their current top pick: #1 in My Rankings as
+ * shown (`lineScores` in that order). The highest score called a line "already your current top pick" when the pilot
+ * had moved another line to #1, and a line tied with #1 read as #1 itself.
+ */
 export function attachScoreContext(strategies: Strategy[], lineScores: LineScore[] | null | undefined): Strategy[] {
   if (!lineScores || lineScores.length === 0) return strategies;
-  const topScore = Math.max(...lineScores.map((r) => r.score));
+  const top = lineScores[0];
   const scoreByLineNumber = new Map(lineScores.map((r) => [r.line.lineNumber, r.score]));
   return strategies.map((s) => ({
     ...s,
     lines: s.lines.map((rec) => {
       const score = scoreByLineNumber.get(rec.lineNumber);
       if (score === undefined) return rec;
-      return { ...rec, scoreContext: { score, deltaFromTopPick: Math.round((score - topScore) * 10) / 10 } };
+      const isTopPick = rec.lineNumber === top.line.lineNumber;
+      return { ...rec, scoreContext: { score, deltaFromTopPick: Math.round((score - top.score) * 10) / 10, isTopPick } };
     }),
   }));
 }

@@ -31,7 +31,7 @@ import {
   withdrawOffer,
 } from "@/lib/trade-client";
 import { tripInstanceKey } from "@/lib/trades/legality";
-import { alreadyTraded, pastTradeDeadline } from "@/lib/trades/offer-trips";
+import { alreadyTraded, offerStillTradeable, pastTradeDeadline } from "@/lib/trades/offer-trips";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
 import type { TradeHolding, TripSnapshot, TradeOffer } from "@/types/trade";
@@ -222,8 +222,9 @@ export function TradeBoardScreen({
 
   const realVisibleOffers = bidPack ? offers.filter((o) => sameBidPack(o, bidPack)) : offers;
   const visibleOffers = withExampleOffer(demoOffer, realVisibleOffers, bidPack, user?.id);
+  // A proposal past its trade deadline can't be agreed (the server refuses it): it stays under Your activity, to withdraw.
   const needsResponse = visibleOffers.filter(
-    (o) => o.status === "pending" && o.offeringUserId === user?.id
+    (o) => o.status === "pending" && o.offeringUserId === user?.id && offerStillTradeable(bidPack, o, now)
   );
   const myActivity = visibleOffers.filter(
     (o) =>
@@ -232,7 +233,7 @@ export function TradeBoardScreen({
   );
   // One past its trade deadline can't be proposed on any more (the server refuses it): left off rather than offered.
   const openFromOthers = visibleOffers.filter(
-    (o) => o.status === "open" && o.offeringUserId !== user?.id && (o.isDemo || !pastTradeDeadline(bidPack, o.bidPackMeta, o.offeredTrip, now))
+    (o) => o.status === "open" && o.offeringUserId !== user?.id && offerStillTradeable(bidPack, o, now)
   );
   const shownOpenOffers =
     openFromOthers.length > SEARCH_THRESHOLD ? openFromOthers.filter((o) => matchesSearch(o, search)) : openFromOthers;
@@ -349,7 +350,7 @@ export function TradeBoardScreen({
                   currentUserId={user?.id}
                   busy={busy}
                   onAccept={() => runAction(() => acceptOffer(offer.id, offer.respondedAt))}
-                  onDecline={() => runAction(() => declineOffer(offer.id))}
+                  onDecline={() => runAction(() => declineOffer(offer.id, offer.respondedAt))}
                 />
               ))}
             </Section>

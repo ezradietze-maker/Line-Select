@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { FIELD } from "@/components/ui/field";
 import { loadCarryIn } from "@/lib/carry-in-storage";
 import { flyPack, zoneOf } from "@/lib/phase-in";
+import { formatHoursValue } from "@/lib/interview-config";
 import { placeInPack } from "@/lib/strategy-engine";
 import { CH_PER_VACATION_DAY, findVacationSlides, type LineSlides, removedNames, type SlideOption, slideWhere, typedVacation, vacationLabel, vacationsInReach, type VacationSlides } from "@/lib/vacation-slide";
 import { vacationId } from "@/lib/vacation-lines";
@@ -36,7 +37,7 @@ function moveWords(o: Pick<SlideOption, "offset" | "expandBefore" | "expandAfter
 function tripWords(o: SlideOption, pack: BidPack): string {
   // CBA 2026 7.G.1 charges the bank for removed trips only.
   if (!o.removed.length) return "takes no trips off, so it sits on days you already had off and your bank isn't charged";
-  return `takes ${removedNames(o.removed, pack).join(", ")} off (${o.chargedCH.toFixed(1)} CH from your bank, still paid)`;
+  return `takes ${removedNames(o.removed, pack).join(", ")} off (${formatHoursValue(o.chargedCH)} CH from your bank, still paid)`;
 }
 
 function restWords(o: SlideOption): string {
@@ -50,7 +51,7 @@ function OptionRow({ o, value, byModel, pack }: { o: SlideOption; value: number;
         {moveWords(o)} ({day(o.firstDay)}&ndash;{day(o.lastDay)}).
       </span>{" "}
       It {tripWords(o, pack)}: {restWords(o)}.{byModel && o.score !== null ? ` Scores ${o.score.toFixed(1)}.` : ""}
-      {o.chargedCH > value ? ` That's ${(o.chargedCH - value).toFixed(1)} CH more than this vacation's ${value} CH (CBA 2026 7.G.1).` : ""}
+      {o.chargedCH > value ? ` That's ${formatHoursValue(o.chargedCH - value)} CH more than this vacation's ${formatHoursValue(value)} CH (CBA 2026 7.G.1).` : ""}
       {o.removed.some((r) => r.waivable) ? " You can waive the 24-hour buffer to keep the trip after it (CBA 2026 7.G.1)." : ""}
       {" "}
       <span className="text-ink-faint">({[...new Set(o.removed.map((r) => r.section))].join("; ") || "CBA 2026 7.E.2"})</span>

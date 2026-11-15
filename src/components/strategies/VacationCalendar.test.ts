@@ -50,4 +50,12 @@ describe("VacationCalendar", () => {
     expect(html).toMatch(/aria-valuetext="As awarded, Oct 9 to Oct 9"/);
     expect(html).toMatch(/aria-pressed="true"[^>]*>As awarded/);
   });
+  it("counts credit to the minute, as the pack prints it: one day of an 18:56 run is 6:19 from the bank, not 6.3", () => {
+    const heavy = { ...line, trips: [{ ...run, creditHours: 18 + 56 / 60 }] } as Line;
+    const heavyPack = { ...pack, lines: [heavy] } as BidPack;
+    const slid = findVacationSlides({ pack: heavyPack, order: ["1001"], vacation }).lines[0];
+    const out = renderToStaticMarkup(createElement(VacationCalendar, { row: slid, pack: heavyPack, value: 6, byModel: false }));
+    expect(out).toContain("6:19 CH from bank");
+    expect(out).not.toContain("6.3 CH");
+  });
 });

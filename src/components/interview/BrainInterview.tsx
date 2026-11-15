@@ -109,6 +109,28 @@ export function laterBack(at: {
   return null;
 }
 
+/**
+ * What a draft keeps so Back (`laterBack`) goes the same way after a resume: the question still to go back to, where
+ * the "anything else?" screen and the last read came from, and on the priorities the read they were built on (`model`
+ * there was the one fitted to the line choices, and the next read built on it fitted them in a second time). Without
+ * them, a reload on the "anything else?" screen after "That's enough" lost that question, and Back took the answer
+ * before it back instead.
+ */
+export function draftBack<Q, M>(at: {
+  phase: Phase;
+  atReview: boolean;
+  question: Q | null;
+  sweepFrom: "question" | "answered";
+  finishFrom: "question" | "sweep" | "answered";
+  model: M | null;
+  beforeFinish: M | null;
+}): { question: Q | null; sweepFrom: "question" | "answered"; finishFrom: "question" | "sweep" | "answered"; model: M | null } {
+  const sweepToQuestion = at.sweepFrom === "question";
+  // Never the question just answered (on "asking", or the one the interviewer wrapped up after): a resume would show it again.
+  const keep = at.phase === "question" || (at.phase === "sweep" && sweepToQuestion) || (at.atReview && (at.finishFrom === "question" || (at.finishFrom === "sweep" && sweepToQuestion)));
+  return { question: keep ? at.question : null, sweepFrom: at.sweepFrom, finishFrom: at.finishFrom, model: at.atReview ? (at.beforeFinish ?? at.model) : at.model };
+}
+
 /** A monthly check-in asks at most this many questions about what's new. */
 const CHECK_IN_TURNS = 5;
 /** The check-in's two questions as they begin, and what's recorded for a box left blank. */
@@ -194,6 +216,9 @@ interface DraftState {
   /** What Back goes back to (`interview-back.ts`): on this device only, as it grows with every answer. */
   back?: SavedBackStep[];
   backModels?: PilotModel[];
+  /** Where the "anything else?" screen and the last read came from (`draftBack`); a draft from before these came from an answer. */
+  sweepFrom?: "question" | "answered";
+  finishFrom?: "question" | "sweep" | "answered";
   reviewModel?: PilotModel;
   ratedModel?: PilotModel;
 }
@@ -1120,7 +1145,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     if (stopIfFinishedElsewhere()) return;
     // With which cities the story suggested and which the pilot changed: without them, a city set back to neutral on
     // the city screen came back as the story's "love" after a resume, and was saved that way.
-    const d: DraftState = { version: 1, savedAt: Date.now(), phase: atReview ? "review" : phase === "sweep" ? "sweep" : "question", exchanges, threads, choices, tripChoices, pastTrades, model, question: phase === "question" ? question : null, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, touchedCities: [...touchedCities.current], homeCity, sweepDone, turnLimit, checkIn, ...(atReview ? { reviewModel: reviewModel!, ratedModel: ratedModel! } : {}) };
+    const back = draftBack({ phase, atReview, question, sweepFrom, finishFrom, model, beforeFinish: beforeFinish.current });
+    const d: DraftState = { version: 1, savedAt: Date.now(), phase: atReview ? "review" : phase === "sweep" ? "sweep" : "question", exchanges, threads, choices, tripChoices, pastTrades, ...back, turn, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, touchedCities: [...touchedCities.current], homeCity, sweepDone, turnLimit, checkIn, ...(atReview ? { reviewModel: reviewModel!, ratedModel: ratedModel! } : {}) };
     try {
       window.localStorage.setItem(draftKey(userId, bidPack.id), JSON.stringify({ ...d, ...saveBack(history) }));
       ownSavedAt.current = d.savedAt;
@@ -1134,7 +1160,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       });
     // `stopIfFinishedElsewhere` reads only refs and storage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, history, reviewModel, ratedModel, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, homeCity, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
+  }, [phase, exchanges, threads, choices, tripChoices, pastTrades, model, question, turn, history, sweepFrom, finishFrom, reviewModel, ratedModel, isCommuter, commuteFrom, hasCrashPad, minHomeHours, seniorityText, cityRatings, cityPreferences, storySuggested, homeCity, sweepDone, turnLimit, checkIn, userId, bidPack.id]);
 
   // The opening steps too, once the pilot has moved past the first: leaving for another screen and coming back lost the
   // commute answer and every city grade. Kept on this device only — it's minutes of work, and on the account it could
@@ -1189,6 +1215,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     touchedCities.current = new Set(d.touchedCities ?? []);
     setHomeCity(d.homeCity ?? null);
     setSweepDone(d.sweepDone);
+    setSweepFrom(d.sweepFrom ?? "answered");
+    setFinishFrom(d.finishFrom ?? "answered");
     turnLimitRef.current = d.turnLimit ?? MAX_TURNS;
     setTurnLimit(turnLimitRef.current);
     setResume(null);

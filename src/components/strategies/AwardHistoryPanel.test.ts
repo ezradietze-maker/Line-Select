@@ -23,7 +23,7 @@ describe("the group numbers near a pilot's seniority", () => {
   it("shows every number once there are enough lines to average", () => {
     const html = view({ totalReports: 20, nearbyCount: 10, avgDaysOff: 14.2, avgCreditHours: 72.5, lineRate: 0.6 });
     expect(html).toContain("14.2");
-    expect(html).toContain("72.5");
+    expect(html).toContain("72:30");
     expect(html).toContain("60%");
   });
 });

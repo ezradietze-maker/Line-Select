@@ -178,8 +178,10 @@ export function forecastWithCore(input: FeatureForecastInput): { forecast: BidFo
   const notBidding = new Set(list.filter((e) => e.pay).map((e) => e.bidNumber));
   const core: ForecastCore = simulateBid({
     features,
-    // Played to the list's own rows, as the forecast route's bar on shared rankings counts them.
-    totalPilots: list.length,
+    // Every bid number up to the seat's size, as the forecast route's bar on shared rankings counts them: played to the
+    // list's rows, a list short of its bid numbers left its most junior pilots ahead out (at #10 with two positions
+    // unread, 8 bid ahead, and #9's shared ranking never picked).
+    totalPilots: seatSize(list),
     myBidNumber: position.bidNumber,
     myRanking: input.myRanking,
     known: input.known,

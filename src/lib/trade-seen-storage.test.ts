@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { loadSeenOfferIds, newArrivals, saveSeenOfferIds } from "@/lib/trade-seen-storage";
+import { loadSeenOfferIds, newArrivals, onSeenElsewhere, saveSeenOfferIds } from "@/lib/trade-seen-storage";
 
 function memoryStorage() {
   const map = new Map<string, string>();
@@ -19,6 +19,24 @@ describe("offers seen in the Inbox", () => {
     saveSeenOfferIds("pilot-1", new Set(["a", "b"]));
     expect([...loadSeenOfferIds("pilot-1")]).toEqual(["a", "b"]);
     expect(loadSeenOfferIds("pilot-2").size).toBe(0);
+  });
+
+  it("aren't lost when another tab, holding an older copy, saves its own", () => {
+    // Both tabs read the list empty; the first marks offer a seen, then the second marks b.
+    saveSeenOfferIds("pilot-1", new Set(["a"]));
+    saveSeenOfferIds("pilot-1", new Set(["b"]));
+    expect(loadSeenOfferIds("pilot-1")).toEqual(new Set(["a", "b"]));
+  });
+
+  it("reach the other tabs as another tab adds to them", () => {
+    const listeners: ((e: { key: string | null }) => void)[] = [];
+    vi.stubGlobal("window", { localStorage: memoryStorage(), addEventListener: (_: string, l: (e: { key: string | null }) => void) => listeners.push(l), removeEventListener: () => {} });
+    const heard: Set<string>[] = [];
+    onSeenElsewhere("pilot-1", (ids) => heard.push(ids));
+    saveSeenOfferIds("pilot-1", new Set(["a"]));
+    for (const l of listeners) l({ key: "line-select:trade-offers-seen:pilot-2:v1" });
+    for (const l of listeners) l({ key: "line-select:trade-offers-seen:pilot-1:v1" });
+    expect(heard).toEqual([new Set(["a"])]);
   });
 
   it("keep the newest few hundred", () => {

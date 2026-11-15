@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatHoursValue } from "@/lib/interview-config";
 import type { FeasibilityTier, Strategy, StrategyFit, StrategyLineRecommendation } from "@/types/strategy";
 
 const FIT_STYLE: Record<StrategyFit, { label: string; cls: string }> = {
@@ -16,11 +17,11 @@ function FitBadge({ fit }: { fit: StrategyFit }) {
 
 function ScoreContextLine({ scoreContext }: { scoreContext: StrategyLineRecommendation["scoreContext"] }) {
   if (!scoreContext) return null;
-  const { score, deltaFromTopPick } = scoreContext;
-  if (deltaFromTopPick === 0) {
+  const { score, deltaFromTopPick, isTopPick } = scoreContext;
+  if (isTopPick || deltaFromTopPick === 0) {
     return (
       <p className="mt-2 text-xs font-medium text-good">
-        Scores {score} on your Satisfaction Index — already your current top pick.
+        Scores {score} on your Satisfaction Index — {isTopPick ? "already your current top pick" : "the same as your current top pick"}.
       </p>
     );
   }
@@ -82,7 +83,7 @@ function LineRecommendationRow({ rec }: { rec: StrategyLineRecommendation }) {
       <p className="mt-1 text-sm leading-relaxed text-ink-muted">{rec.detail}</p>
       <div className="mt-2.5 flex flex-wrap gap-1.5 font-mono text-2xs text-ink-muted">
         <span className="rounded border border-hairline px-1.5 py-0.5">{rec.daysOff} days off</span>
-        <span className="rounded border border-hairline px-1.5 py-0.5">{rec.totalCreditHours.toFixed(1)} credit hrs</span>
+        <span className="rounded border border-hairline px-1.5 py-0.5">{formatHoursValue(rec.totalCreditHours)} credit</span>
         <span className="rounded border border-hairline px-1.5 py-0.5">{(rec.totalTafbHours / 24).toFixed(1)} days away</span>
       </div>
       <ScoreContextLine scoreContext={rec.scoreContext} />

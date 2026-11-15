@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDragChoices, baseModelOf, choicesFromDrag, describeChanges, withModel, withoutDrag } from "@/lib/brain/profile-model";
+import { departureSettingsOf } from "@/lib/month-detail";
+import { homeParams } from "@/lib/scoring-v2/score";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { Criterion, PilotModel } from "@/types/pilot-model";
 import { DEFAULT_WEIGHTS, type PreferenceProfile } from "@/types/preferences";
@@ -84,5 +86,18 @@ describe("keeping the pilot model current after the interview", () => {
   it("falls back to the model itself for a profile saved before the base was kept", () => {
     expect(baseModelOf({ ...profile, brainInterview: undefined })).toBe(base);
     expect(describeChanges([])).toBeNull();
+  });
+
+  it("keeps the hours at home and crash pad the pilot picked when a new reading of their words comes in", () => {
+    // "Add it" on Preferences reads the interview again; the reading's home has only what it heard (here, nothing on
+    // either). The ranking counted departures by 24 hours from then on, while the card (which falls back to the
+    // profile) said 48: the pilot's own picks on the commute step and Preferences still count.
+    const commuter = { ...profile, isCommuter: true, commuteFrom: "DEN", hasCrashPad: true, minHomeHours: 48 };
+    const read: PilotModel = { ...base, home: { airports: ["DEN"], commuter: true } };
+    const r = withModel(commuter, pack, { base: read });
+    expect(r.profile.pilotModel!.home).toMatchObject({ minHomeHours: 48, hasCrashPad: true });
+    expect(baseModelOf(r.profile)!.home).toMatchObject({ minHomeHours: 48, hasCrashPad: true });
+    expect(homeParams(r.profile.pilotModel!)).toMatchObject({ minHomeHours: 48, hasCrashPad: true });
+    expect(departureSettingsOf(r.profile)).toMatchObject({ minHomeHours: 48, hasCrashPad: true });
   });
 });
