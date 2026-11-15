@@ -217,6 +217,26 @@ describe("buildViewAdd", () => {
     expect(plan.notInPack).toEqual(["999 9DEC"]);
     expect(plan.notRead).toEqual(["garbled"]);
   });
+  // Round 23: the last row to find a trip set the text copied for VIPS, so "501 9DEC" was bid for the pack's 501 on Dec 8.
+  it("CBA 2026 25.E.4.a.iv.(a): a trip number on two dates copies the date the pack has it on, and the other row is not in the pack", () => {
+    for (const pasted of ["501 8DEC\n501 9DEC", "501 9DEC\n501 8DEC"]) {
+      const plan = build({ pasted });
+      expect(plan.choices.filter((c) => c.trip?.pairingNumber === "501").map((c) => c.text)).toEqual(["501 8DEC"]);
+      expect(plan.notInPack).toEqual(["501 9DEC"]);
+      expect(plan.dateChecks).toEqual([]);
+    }
+  });
+  // Round 23: "5 DEC 10" was only ever trip 10 on Dec 5.
+  it("a row whose date reads two ways is settled by the pack, or isn't read", () => {
+    const five = trip("5", 10);
+    const ten = trip("10", 5);
+    const plan = (open: Trip[]) => buildViewAdd({ pack: pack([l], open), line: l, carryIn: [carry], elections: NO_ELECTIONS, pasted: "5 DEC 10" });
+    expect(plan([five]).choices.map((c) => [c.trip?.pairingNumber, c.text])).toEqual([["5", "5 DEC 10"]]);
+    expect(plan([ten]).choices.map((c) => c.trip?.pairingNumber)).toEqual(["10"]);
+    const both = plan([five, ten]);
+    expect(both.choices).toEqual([]);
+    expect(both.notRead[0]).toContain("5 DEC 10");
+  });
   it("CBA 2026 25.E.4.a.iv: keeps reserve block and simulator labels as typed", () => {
     const plan = build({ labels: "RES BLOCK A12\nSIM 4" });
     expect(plan.choices.slice(-2).map((c) => c.text)).toEqual(["RES BLOCK A12", "SIM 4"]);

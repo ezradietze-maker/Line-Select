@@ -23,6 +23,11 @@ export interface OpenTimeRow {
   reportTime?: string;
   /** CBA 2026 25.G.2.b.iii: visible, "but displayed in a manner indicating that it is available only to CRS". */
   frozen?: boolean;
+  /**
+   * Another way to read the row, when its date reads two ways: "5 DEC 10" is trip 10 on Dec 5, or trip 5 on Dec 10. The
+   * pack decides, as with `tripNumbers`: the row is only used if one reading alone finds a trip.
+   */
+  orRead?: Pick<OpenTimeRow, "tripNumbers" | "month" | "day" | "year">;
   /** CBA 2026 25.L.1.a.v: "the time stamp for a trip or standby's appearance in open time", when the source has it. Epoch ms. */
   appearedAt?: number;
 }

@@ -148,6 +148,44 @@ describe("rows to trips", () => {
     expect(board(p, `${rowFor(open, p)}\n${rowFor(open, p)}`).trips).toHaveLength(1);
   });
 
+  // Round 23: "5 DEC 10" was only ever trip 10 on Dec 5, so a list printed trip first lost trip 5 on Dec 10, or scored
+  // trip 10 in its place.
+  it("a row whose date reads two ways ('5 DEC 10') is settled by the pack, or comes back unread", () => {
+    const five = trip("5", 10);
+    const q = pack([], [five]);
+    expect(pairingDate(five, q)).toBe("2026-12-10");
+    expect(only(board(q, "5 DEC 10")).key).toBe(tripKey(five));
+    const ten = trip("10", 5);
+    expect(pairingDate(ten, pack([], [ten]))).toBe("2026-12-05");
+    expect(only(board(pack([], [ten]), "5 DEC 10")).key).toBe(tripKey(ten));
+    const both = board(pack([], [five, ten]), "5 DEC 10");
+    expect(both.trips).toEqual([]);
+    expect(both.unread[0].why).toContain("trip 10 on 12/5 or trip 5 on 12/10");
+    // A labelled trip number settles it, as it always did.
+    expect(only(board(pack([], [five, ten]), "Trip 5 DEC 10")).key).toBe(tripKey(five));
+  });
+
+  // Round 23: the first of two rows took the trip, so "213 12/11" took the pack's 213 on the 10th and "213 12/10" vanished.
+  it("a trip number on two dates: the pack's trip goes to its own date, and the other row is said to be not in the pack", () => {
+    const d = DateTime.fromISO(pairingDate(open, p)!, { zone: "utc" });
+    const exact = rowFor(open, p);
+    const dayAfter = `213 ${d.plus({ days: 1 }).toFormat("L/d")}`;
+    for (const text of [`${dayAfter}\n${exact}`, `${exact}\n${dayAfter}`]) {
+      const b = board(p, text);
+      const t = only(b);
+      expect(t.row.raw).toBe(exact);
+      expect(sections(t)).not.toContain("open-time-date");
+      expect(b.notInPack.map((r) => r.raw)).toEqual([dayAfter]);
+      expect(b.notInPack[0].why).toContain(exact);
+    }
+    // On the pilot's line, the same: only the row with its date is called theirs.
+    const l = line([open]);
+    const q = pack([l], []);
+    const b = board(q, `${dayAfter}\n${exact}`, { line: l });
+    expect(b.onLine.map((r) => r.raw)).toEqual([exact]);
+    expect(b.notInPack.map((r) => r.raw)).toEqual([dayAfter]);
+  });
+
   it("a trip already on the pilot's line is said to be", () => {
     const mine = trip("213", 10);
     const l = line([mine]);

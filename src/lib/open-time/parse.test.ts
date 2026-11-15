@@ -79,6 +79,26 @@ describe("parseOpenTimePaste", () => {
     expect(parseOpenTimePaste("213 14OCT 1430 2245").rows[0].tripNumbers).toEqual(["213", "1430", "2245"]);
   });
 
+  // Round 23: only the first reading was kept, so a list printing the trip first ("5 DEC 10") lost its low trip numbers.
+  it("keeps the other reading of a date that reads two ways, for the pack to settle", () => {
+    expect(parseOpenTimePaste("5 DEC 10").rows[0]).toMatchObject({ tripNumbers: ["10"], month: 12, day: 5, orRead: { tripNumbers: ["5"], month: 12, day: 10 } });
+    expect(parseOpenTimePaste("Trip 5 DEC 10").rows[0].orRead).toBeUndefined();
+    expect(parseOpenTimePaste("213 14OCT").rows[0].orRead).toBeUndefined();
+    expect(parseOpenTimePaste("14 OCT 213").rows[0].orRead).toBeUndefined();
+  });
+
+  // Round 23: "14OCT2026" wasn't read as a date at all.
+  it("reads a four-digit year written onto the month", () => {
+    expect(parseOpenTimePaste("213 14OCT2026").rows[0]).toMatchObject({ tripNumbers: ["213"], month: 10, day: 14, year: 2026 });
+  });
+
+  // Round 23: "5/10" inside "12.5/10.2" was read as May 10 and cut out of the figure, so the credit read 12.
+  it("doesn't read a date out of two figures written together", () => {
+    expect(parseOpenTimePaste("TRIP DATE CR/BLK\n213 14OCT 12.5/10.2").rows[0]).toMatchObject({ month: 10, day: 14, creditHours: 12.5 });
+    const first = parseOpenTimePaste("213 12.5/10.2 14OCT");
+    expect(first.rows[0]).toMatchObject({ month: 10, day: 14 });
+  });
+
   it("never takes a time or a figure for the trip", () => {
     expect(parseOpenTimePaste("10/14 0915 213").rows[0].tripNumbers).toEqual(["213"]);
     expect(parseOpenTimePaste("213 10/14 09:15 12.5").rows[0].tripNumbers).toEqual(["213"]);
