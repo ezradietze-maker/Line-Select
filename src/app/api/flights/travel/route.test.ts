@@ -155,6 +155,17 @@ describe("/api/flights/travel spending", () => {
     expect((await POST(await asked("wide"))).status).toBe(400);
   });
 
+  it("keeps charging for boards a lookup fetched before it failed", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // Thirty boards fetched, then the cache falls over: they were paid for all the same.
+    answerTravelNeeds.mockImplementationOnce(async (_n: unknown, _j: unknown, o: { moreBoards: (want: number) => Promise<number> }) => {
+      for (let i = 0; i < 3; i++) await o.moreBoards(10);
+      throw new Error("cache down");
+    });
+    expect((await POST(request())).status).toBe(502);
+    expect(spentBy(`device:${DEVICE}`)).toBeCloseTo(30 * COST);
+  });
+
   it("says when boards were held back, so a no isn't taken as certain", async () => {
     answerTravelNeeds.mockResolvedValueOnce({ answers: [], stats: { fetched: 0, cached: 0, skipped: 3, boardsLeft: 0 } });
     expect((await (await POST(request())).json()).partial).toBe(true);

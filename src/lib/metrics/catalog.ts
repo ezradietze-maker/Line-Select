@@ -860,7 +860,10 @@ export const METRICS: MetricDef[] = [
     description:
       "Latest local arrival at the domicile on a trip that ends with operated flying (a commuter then needs a flight home). The night runs on past midnight: an arrival before 05:00 counts as later than the evening before it (02:30 is measured as 26:30, i.e. 1590 minutes); from 05:00 it's morning, with flights home. A line whose every trip ends on a deadhead has no flight home to catch from the domicile: it counts as 05:00, the earliest there is.",
     line: (_l, trips) => {
-      const flying = trips.filter((t) => !t.noFlying);
+      // A trip still flying at the month's end comes home in the next: its last landing this month is somewhere else
+      // (02:02 in Guangzhou read as a release at the domicile in the small hours), and its flight home is next month's.
+      const flying = trips.filter((t) => !t.noFlying && !t.trip.carriesIntoNextMonth);
+      if (flying.length === 0 && trips.some((t) => !t.noFlying)) return NO_BASE_RELEASE;
       if (flying.length && flying.every((t) => t.back)) return NO_BASE_RELEASE;
       const arrivals = flying
         .filter((t) => !t.back)

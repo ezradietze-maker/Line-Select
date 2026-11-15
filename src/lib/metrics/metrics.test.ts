@@ -323,6 +323,23 @@ describe("release times", () => {
     expect(measure("latestBaseRelease", dawn, p)).toBe(5 * 60 + 19);
   });
 
+  it("leaves out a trip still flying at the month's end: its landing then is somewhere else, and its way home next month's", () => {
+    const home: Trip = { ...trip, id: "h", startDayIndex: 3, schedule: [{ reportTimeLocal: "1000", startMinutes: 0, legs: [leg("301", "ANC", "ICN", 60, 540), leg("302", "ICN", "ANC", 600, 1080, { arrTimeLocal: "2000" })], layover: null }] };
+    // Out to Incheon on Sat Oct 24, landing at 02:30 there; back from it on the 27th, in November's bid month.
+    const carry: Trip = {
+      ...trip, id: "c", startDayIndex: 26,
+      schedule: [
+        { reportTimeLocal: "1800", startMinutes: 0, legs: [leg("303", "ANC", "ICN", 60, 600, { arrTimeLocal: "0230" })], layover: { city: "ICN", hotelName: null, transportToHotel: null, transportFromHotel: null, hours: 48, startMinutes: 600, endMinutes: 3480 } },
+        { reportTimeLocal: "1600", startMinutes: 3480, legs: [leg("304", "ICN", "ANC", 3540, 4020, { arrTimeLocal: "0900" })], layover: null },
+      ],
+    };
+    const l: Line = { ...line, id: "C", trips: [home, carry] };
+    const p = prepareMetrics({ ...pack, lines: [l] } as BidPack);
+    expect(measure("latestBaseRelease", l, p)).toBe(20 * 60);
+    const only: Line = { ...line, id: "O", trips: [carry] };
+    expect(measure("latestBaseRelease", only, prepareMetrics({ ...pack, lines: [only] } as BidPack))).toBe(5 * 60);
+  });
+
   it("gives a line that starts or ends every trip on a deadhead the easiest report and release there is", () => {
     const dh = (from: string, to: string, start: number) => leg("DH1", from, to, start, start + 180, { isDeadhead: true, depTimeLocal: "0600", arrTimeLocal: "0900" });
     const op = (from: string, to: string, start: number, arr: string) => leg("401", from, to, start, start + 300, { depTimeLocal: "0300", arrTimeLocal: arr });

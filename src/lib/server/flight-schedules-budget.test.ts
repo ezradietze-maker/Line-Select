@@ -53,6 +53,28 @@ describe("a lookup's board budget", () => {
   });
 });
 
+describe("a board the provider failed to send", () => {
+  it("leaves the answer open, not a no", async () => {
+    // SAN has a flight to Denver, and Denver's board fails: the connection on to Memphis is unknown, not missing.
+    const at = (h: number) => departAfter + h * 3600_000;
+    const iso = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + "Z";
+    vi.stubGlobal("fetch", async (url: string) => {
+      paidCalls();
+      if (url.includes("/iata/DEN/")) return new Response("boom", { status: 500 });
+      if (url.includes("/iata/SAN/") && url.includes("Departure"))
+        return Response.json(
+          { departures: [{ number: "UA 1", departure: { scheduledTime: { utc: iso(at(1)) } }, arrival: { airport: { iata: "DEN" }, scheduledTime: { utc: iso(at(3.5)) } } }] },
+          { headers: { "x-api-units-remaining": "30000" } }
+        );
+      return new Response(null, { status: 204, headers: { "x-api-units-remaining": "30000" } });
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await answerTravelNeeds([{ id: "n2", tripId: "t2", kind: "toBase", from: ["SAN"], to: ["MEM"], departAfter, departBefore: at(8), arriveBy: at(8) }], [], {});
+    expect(out.answers[0]?.options ?? 0).toBe(0);
+    expect(out.stats.skipped).toBeGreaterThan(0);
+  });
+});
+
 describe("what a board costs", () => {
   it("is its share of the $19.99, 40,000-unit plan at 2 units a board, unless the environment says otherwise", () => {
     expect(boardCostUsd()).toBeCloseTo(0.001, 5);
