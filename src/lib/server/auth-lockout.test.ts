@@ -4,9 +4,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /** Whether someone trying passwords from elsewhere can keep a pilot out of their own account. In-memory kv, never Redis. */
 const kv = vi.hoisted(() => new Map<string, unknown>());
+/** When a key set with a time to live runs out, as Redis would drop it. */
+const expires = vi.hoisted(() => new Map<string, number>());
 vi.mock("@/lib/server/kv", () => ({
-  getJson: vi.fn(async (k: string) => kv.get(k) ?? null),
-  setJson: vi.fn(async (k: string, v: unknown) => void kv.set(k, v)),
+  getJson: vi.fn(async (k: string) => ((expires.get(k) ?? Infinity) > Date.now() ? (kv.get(k) ?? null) : null)),
+  setJson: vi.fn(async (k: string, v: unknown, o?: { ttlSeconds?: number }) => {
+    kv.set(k, v);
+    if (o?.ttlSeconds) expires.set(k, Date.now() + o.ttlSeconds * 1000);
+    else expires.delete(k);
+  }),
+  extendKey: vi.fn(async (k: string, ttl: number) => {
+    if ((expires.get(k) ?? Infinity) > Date.now() && kv.has(k)) expires.set(k, Date.now() + ttl * 1000);
+  }),
   incrementCounter: vi.fn(async (k: string) => {
     const n = ((kv.get(k) as number) ?? 0) + 1;
     kv.set(k, n);
@@ -44,6 +53,7 @@ const LAPTOP = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 beforeEach(async () => {
   kv.clear();
+  expires.clear();
   const passwordHash = ((await scrypt(PW, SALT, 64)) as Buffer).toString("hex");
   db.findCredentialByEmail.mockResolvedValue({ userId: USER, email: EMAIL, passwordHash, salt: SALT });
   db.findUserById.mockResolvedValue({ id: USER, email: EMAIL, displayName: "P", createdAt: "", plan: "free", emailVerified: true });
@@ -110,6 +120,30 @@ describe("devices known from before a reset", () => {
     expect(guessed.error).toMatch(/Too many failed attempts/);
     // The device the pilot reset on is known from then on, and gets in.
     expect((await login(EMAIL, "a-new-password", "192.0.2.10", LAPTOP)).ok).toBe(true);
+  }, 30_000);
+
+  it("the device the pilot reset on stays known as long as they keep signing in on it, past the half year", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-11-15T12:00:00Z"));
+      expect((await resetPasswordWithEmailToken("token", "a-new-password", HOME, LAPTOP)).ok).toBe(true);
+      const updated = (db.updateCredential.mock.calls as unknown as [string, { passwordHash?: string; salt?: string }][]).map((c) => c[1]).filter((p) => p.passwordHash).at(-1)!;
+      db.findCredentialByEmail.mockResolvedValue({ userId: USER, email: EMAIL, ...updated });
+      // Signed in on the laptop every month for five months.
+      const day = (n: number) => new Date(Date.parse("2026-11-15T12:00:00Z") + n * 24 * 3600_000);
+      for (let month = 1; month <= 5; month++) {
+        vi.setSystemTime(day(month * 30));
+        expect((await login(EMAIL, "a-new-password", HOME, LAPTOP)).ok).toBe(true);
+      }
+      // A month on, just past half a year since the reset, someone guessing from many addresses shuts the account to
+      // everyone else: the laptop, last signed in a month ago, still gets in.
+      vi.setSystemTime(day(185));
+      for (let a = 0; a < 13; a++) await login(EMAIL, "wrong", `198.51.100.${a}`);
+      expect((await login(EMAIL, "a-new-password", "192.0.2.9")).ok).toBe(false);
+      expect((await login(EMAIL, "a-new-password", "192.0.2.10", LAPTOP)).ok).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   }, 30_000);
 });
 

@@ -22,7 +22,7 @@ import {
   voidVerificationToken,
 } from "@/lib/server/db";
 import { getEmailConfig, sendEmail, type EmailConfig } from "@/lib/server/email";
-import { getJson, setJson } from "@/lib/server/kv";
+import { extendKey, getJson, setJson } from "@/lib/server/kv";
 import { revokeFeed } from "@/lib/server/calendar-feeds";
 import { siteMailLeft } from "@/lib/server/mail-allowance";
 import { ACCOUNT_HEADER } from "@/lib/shown-account";
@@ -613,15 +613,20 @@ const KNOWN_DEVICE_SECONDS = 180 * 24 * 60 * 60;
 const emailKey = (email: string) => createHash("sha256").update(email).digest("hex").slice(0, 32);
 const takenBackKey = (email: string) => `line-select:known-device-reset:${emailKey(email)}`;
 
-async function knownDeviceKey(email: string, device: string): Promise<string> {
-  const takenBack = (await getJson<number>(takenBackKey(email))) ?? 0;
+function knownDeviceKey(email: string, device: string, takenBack: number): string {
   return `line-select:known-device:${emailKey(email)}:${takenBack ? `${takenBack}:` : ""}${device}`;
 }
 
 async function rememberDevice(email: string, device?: string | null): Promise<void> {
   if (!device) return;
   try {
-    await setJson(await knownDeviceKey(email, device), 1, { ttlSeconds: KNOWN_DEVICE_SECONDS });
+    const takenBack = (await getJson<number>(takenBackKey(email))) ?? 0;
+    await setJson(knownDeviceKey(email, device, takenBack), 1, { ttlSeconds: KNOWN_DEVICE_SECONDS });
+    // The time is kept as long as the newest mark made under it: left to run out half a year after the reset, every
+    // device signed in on since was read under the old key, and the pilot's own laptop was held to the ceiling again.
+    // Its end moved, not the time written again: a sign-in finishing as the account was taken back would write back
+    // the time from before, and every device forgotten would be known again.
+    if (takenBack) await extendKey(takenBackKey(email), KNOWN_DEVICE_SECONDS);
   } catch {
     // Only means this device is held to the account-wide ceiling like any other next time.
   }
@@ -630,7 +635,8 @@ async function rememberDevice(email: string, device?: string | null): Promise<vo
 async function isKnownDevice(email: string, device?: string | null): Promise<boolean> {
   if (!device) return false;
   try {
-    return (await getJson<number>(await knownDeviceKey(email, device))) === 1;
+    const takenBack = (await getJson<number>(takenBackKey(email))) ?? 0;
+    return (await getJson<number>(knownDeviceKey(email, device, takenBack))) === 1;
   } catch {
     return false;
   }
@@ -638,8 +644,8 @@ async function isKnownDevice(email: string, device?: string | null): Promise<boo
 
 /**
  * Every device known to the account becomes unknown: their marks stay under the old time and are never read again. A
- * time, not a count, so it never comes round to an old one; kept as long as a mark lasts, so when it's gone every mark
- * made before it has gone too. Without it (the store not answering), known devices stay known, held by their address's
+ * time, not a count, so it never comes round to an old one; kept as long as a mark lasts, and again each time a device
+ * is remembered under it, so when it's gone every mark made before it has gone too. Without it (the store not answering), known devices stay known, held by their address's
  * own limit as ever.
  */
 async function forgetKnownDevices(email: string): Promise<void> {
