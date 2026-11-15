@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import { describe, expect, it } from "vitest";
 import { NO_ELECTIONS, type CarryInTrip } from "@/lib/phase-in";
-import { MAX_CHOICES, buildViewAdd, busyFromCarry, busyFromTrip, fitCheck, lineWithAdded, overageCH, parseOpenTimeList, twoTripDutyLimitHours, viewAddCopyText, workStretches, type Busy } from "@/lib/view-add";
+import { MAX_CHOICES, buildViewAdd, busyFromCarry, busyFromTrip, claimTrips, fitCheck, lineWithAdded, overageCH, parseOpenTimeList, tripKey, twoTripDutyLimitHours, viewAddCopyText, workStretches, type Busy } from "@/lib/view-add";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -252,6 +252,30 @@ describe("buildViewAdd", () => {
       expect(plan.notInPack, pasted).toEqual([]);
       expect(plan.choices.filter((c) => c.trip?.pairingNumber === "501").map((c) => [c.text, c.trip?.startDayIndex]).sort(), pasted).toEqual([["501 7DEC", 8], ["501 9DEC", 10]]);
     }
+  });
+  // Round 25: pasted first, "501 7DEC" took the 8th's 501 and moved "501 8DEC" off its own date to the 9th.
+  it("a row on its trip's own date keeps it, whichever row comes first", () => {
+    const ninth = { ...trip("501", 9, { credit: 12 }), id: "t-501-9" };
+    const q = pack([l], [...open, ninth]);
+    for (const pasted of ["501 7DEC\n501 8DEC", "501 8DEC\n501 7DEC"]) {
+      const plan = buildViewAdd({ pack: q, line: l, carryIn: [carry], elections: NO_ELECTIONS, pasted });
+      expect(plan.notInPack, pasted).toEqual(["501 7DEC"]);
+      expect(plan.choices.filter((c) => c.trip?.pairingNumber === "501").map((c) => [c.text, c.trip?.startDayIndex]), pasted).toEqual([["501 8DEC", 8]]);
+    }
+  });
+  it("matches a long paste quickly, one row a trip, the rows back in the order pasted", () => {
+    // 40 trip numbers flying every day, each pasted a day either side of every date: 2,000 rows, no View/Add cap.
+    const trips = Array.from({ length: 40 }, (_, n) => Array.from({ length: 26 }, (_, d) => ({ ...trip(String(600 + n), d + 1), id: `t-${600 + n}-${d + 1}` }))).flat();
+    const rows = trips.flatMap((t) => [-1, 1].map((by) => ({ row: { n: t.pairingNumber, day: t.startDayIndex! + by }, matches: trips.filter((u) => u.pairingNumber === t.pairingNumber && Math.abs(u.startDayIndex! - (t.startDayIndex! + by)) <= 1).map((u) => ({ trip: u, gap: Math.abs(u.startDayIndex! - (t.startDayIndex! + by)) })).sort((a, b) => a.gap - b.gap) })));
+    expect(rows.length).toBe(2080);
+    const started = performance.now();
+    const { claimed, lost } = claimTrips(rows, (a, b) => a.n === b.n && a.day === b.day);
+    expect(performance.now() - started).toBeLessThan(2000);
+    const holders = [...claimed.values()].map((c) => c.row);
+    expect(new Set(holders).size).toBe(holders.length);
+    const at = new Map(rows.map((r, i) => [r.row, i]));
+    expect(holders.map((r) => at.get(r)!)).toEqual(holders.map((r) => at.get(r)!).sort((a, b) => a - b));
+    for (const { row, trip: t, to } of lost) expect(claimed.get(tripKey(t))?.row, `${row.n} ${row.day}`).toBe(to);
   });
   it("CBA 2026 25.E.4.a.iv: keeps reserve block and simulator labels as typed", () => {
     const plan = build({ labels: "RES BLOCK A12\nSIM 4" });
