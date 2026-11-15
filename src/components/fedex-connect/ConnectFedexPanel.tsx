@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Modal } from "@/components/ui/Modal";
 import { Notice } from "@/components/ui/Notice";
-import { CONSENT_VERSION, RISK_DISCLOSURES, WHAT_WE_NEVER_DO, WHAT_WE_READ } from "@/lib/fedex-connect/consent";
+import { CONSENT_VERSION, DISCONNECT_DOES, RISK_DISCLOSURES, WHAT_WE_NEVER_DO, WHAT_WE_READ } from "@/lib/fedex-connect/consent";
 import { FEDEX_SIGN_IN_URL } from "@/lib/fedex-connect/fedex-client";
 import { useFedexConnection } from "@/lib/fedex-connect/use-fedex-connection";
 import type { AuditEntry } from "@/lib/fedex-connect/types";
@@ -48,7 +48,8 @@ export function ConnectFedexPanel({ signedIn, reads = "your open time" }: Connec
   };
 
   return (
-    <section aria-label="Connect FedEx for live updates" className="panel-glass mt-4 p-4 sm:p-5">
+    // Not on a printed View/Add list or open-time board: it's a switch, with nothing on it to keep.
+    <section aria-label="Connect FedEx for live updates" className="panel-glass mt-4 p-4 sm:p-5 print:hidden">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-sm font-medium text-ink">Connect FedEx for live updates</h2>
@@ -112,6 +113,8 @@ export function ConnectFedexPanel({ signedIn, reads = "your open time" }: Connec
           <AuditList audit={connection.audit} />
         </div>
       )}
+      {/* Kept after a disconnect, and said so: the log is still the pilot's to see. */}
+      {!connected && connection && <AuditList audit={connection.audit} />}
 
       {showConsent && (
         <ConsentModal
@@ -139,7 +142,7 @@ export function ConnectFedexPanel({ signedIn, reads = "your open time" }: Connec
           }}
           onCancel={() => setConfirmDisconnect(false)}
         >
-          <p>This deletes anything we hold for your FedEx connection and stops any future reads. Your open-time scoring from a pasted list is unaffected. You can reconnect any time.</p>
+          <p>{DISCONNECT_DOES} Your open-time scoring from a pasted list is unaffected. You can reconnect any time.</p>
         </ConfirmModal>
       )}
     </section>
