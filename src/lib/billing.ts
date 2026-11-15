@@ -80,8 +80,11 @@ export async function openBillingPortal(): Promise<{ ok: boolean; error?: string
   return redirectTo("/api/billing/portal");
 }
 
-/** Claims one of the limited free-membership slots. "full" means the slots are gone — subscribe instead. */
-export async function claimFreeMembership(): Promise<{ ok: boolean; full?: boolean; error?: string }> {
+/**
+ * Claims one of the limited free-membership slots. "full" means the slots are gone — subscribe instead; "member", that
+ * the pilot already has full access (a screen from before they did) and needs no spot.
+ */
+export async function claimFreeMembership(): Promise<{ ok: boolean; full?: boolean; member?: boolean; error?: string }> {
   try {
     const res = await apiFetch("/api/billing/claim-free", {
       method: "POST",
@@ -91,6 +94,7 @@ export async function claimFreeMembership(): Promise<{ ok: boolean; full?: boole
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.claimed) return { ok: true };
+    if (data.reason === "member") return { ok: false, member: true, error: data.error ?? "You already have full access." };
     if (res.status === 409 || data.reason === "full") return { ok: false, full: true, error: data.error ?? "The free spots are all taken." };
     return { ok: false, error: data.error ?? "Something went wrong. Try again." };
   } catch {

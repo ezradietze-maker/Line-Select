@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { accessRefusal } from "@/lib/server/gating";
 import { feedStatus, revokeFeed, setFeedOptions, startFeed, syncFeed, type FeedChoice } from "@/lib/server/calendar-feeds";
 import { isJsonObject } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
@@ -45,6 +46,10 @@ export async function GET() {
 export async function POST(request: Request) {
   const { user, error } = await signedIn(request);
   if (error) return error;
+  // The calendar feed is a paid feature; a no-op while FREE_FOR_ALL is on (see lib/server/gating.ts). Only making a
+  // link: one already made can still be changed or turned off.
+  const gated = accessRefusal(user);
+  if (gated) return gated;
   const body = await bodyOf(request);
   const options = typeof body?.homeDays === "boolean" ? { homeDays: body.homeDays } : undefined;
   try {

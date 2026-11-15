@@ -7,6 +7,12 @@ vi.mock("@/lib/server/calendar-feeds", () => feeds);
 vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
 const rate = vi.hoisted(() => ({ checkRateLimit: vi.fn() }));
 vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: rate.checkRateLimit, rateLimitedResponse: () => new Response(null, { status: 429 }) }));
+// `enforced`: the membership model as it runs once FREE_FOR_ALL is flipped off (it stays on in the app).
+const membership = vi.hoisted(() => ({ enforced: false }));
+vi.mock("@/lib/membership", async (real) => {
+  const m = await real<typeof import("@/lib/membership")>();
+  return { ...m, hasAccess: (u: Parameters<typeof m.hasAccess>[0]) => (membership.enforced ? m.isMember(u) : m.hasAccess(u)) };
+});
 
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
 
@@ -68,5 +74,23 @@ describe("/api/calendar-feed", () => {
     rate.checkRateLimit.mockResolvedValue({ ok: false });
     expect((await GET()).status).toBe(429);
     expect(rate.checkRateLimit.mock.calls[0][1]).toBe("u1");
+  });
+
+  it("makes a link only for a member, once memberships are enforced; one made already can still be turned off", async () => {
+    // The calendar feed is a membership feature, but any signed-in pilot with none could make a link.
+    membership.enforced = true;
+    try {
+      auth.getCurrentServerUser.mockResolvedValue({ id: "u1", createdAt: "2027-01-05T00:00:00.000Z", plan: "free", freeMemberAt: null });
+      const res = await POST(req("POST", {}));
+      expect(res.status).toBe(402);
+      expect(feeds.startFeed).not.toHaveBeenCalled();
+      await DELETE(req("DELETE"));
+      expect(feeds.revokeFeed).toHaveBeenCalled();
+      auth.getCurrentServerUser.mockResolvedValue({ id: "u1", createdAt: "2027-01-05T00:00:00.000Z", plan: "free", freeMemberAt: "2027-01-06T00:00:00.000Z" });
+      feeds.startFeed.mockResolvedValue({ token: "tok", status: { on: true } });
+      expect((await POST(req("POST", {}))).status).toBe(200);
+    } finally {
+      membership.enforced = false;
+    }
   });
 });

@@ -55,7 +55,7 @@ vi.mock("@/lib/posthog-client", () => ({ captureUsageEvent: () => {}, identifyPi
 vi.mock("@/lib/device-data", () => ({ forgetPilotOnDevice: () => {}, forgetPilotWork: () => {} }));
 vi.mock("@/lib/account-bid-pack", () => ({ accountBidPack: async () => ({ pack: null, saveFailed: false, noneOnAccount: true }) }));
 
-const { AppStateProvider, caughtUpState, useAppState } = await import("@/lib/app-state");
+const { AppStateProvider, caughtUpState, standingChanged, useAppState } = await import("@/lib/app-state");
 type AppState = ReturnType<typeof useAppState>;
 
 const PILOT: UserAccount = { id: "11111111-1111-4111-8111-111111111111", email: "pilot@example.com", displayName: "J. Pilot", createdAt: "", plan: "free", emailVerified: false };
@@ -104,6 +104,23 @@ describe("refreshUser", () => {
     expect(await asked).toBe("confirmed");
     expect(store.get(HINT)).toBe("1");
     expect(JSON.parse(store.get(LAST_USER)!).id).toBe(PILOT.id);
+  });
+});
+
+describe("standingChanged (whether refreshUser shows the server's account in place of the app's)", () => {
+  const shown = { ...PILOT, emailVerified: true };
+  it("is the server's answer when a free spot was just claimed, or Pro started or ended", () => {
+    // Claiming a spot on Membership, then opening the ranking, still showed it locked until a reload.
+    expect(standingChanged(shown, { ...shown, freeMemberAt: "2026-12-02T00:00:00.000Z" })).toBe(true);
+    expect(standingChanged(shown, { ...shown, plan: "pro" })).toBe(true);
+    expect(standingChanged({ ...shown, plan: "pro" }, shown)).toBe(true);
+    expect(standingChanged(shown, { ...shown, emailVerified: false })).toBe(true);
+  });
+
+  it("leaves the app's account as it is when nothing it goes by changed", () => {
+    expect(standingChanged(shown, { ...shown })).toBe(false);
+    // An account from before these fields reads the same as one with them unset.
+    expect(standingChanged({ ...shown, plan: undefined, freeMemberAt: undefined }, { ...shown, plan: "free", freeMemberAt: null })).toBe(false);
   });
 });
 

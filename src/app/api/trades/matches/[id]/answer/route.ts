@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { accessRefusal } from "@/lib/server/gating";
 import { confirmEmailRefusal, isVerified } from "@/lib/server/verified-pilots";
 import { isUuid } from "@/lib/server/db";
 import { isJsonObject, readJsonBody } from "@/lib/server/json-body";
@@ -21,6 +22,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const body = await readJsonBody(request, 300);
   const answer = isJsonObject(body) ? body.answer : null;
   if (answer !== "accepted" && answer !== "declined") return NextResponse.json({ error: "Accept or decline?" }, { status: 400 });
+  // Saying yes is the trade board, a paid feature; a no-op while FREE_FOR_ALL is on (see lib/server/gating.ts).
+  const gated = answer === "accepted" ? accessRefusal(user) : null;
+  if (gated) return gated;
   // Saying no is always open: it only takes the pilot off a trade.
   if (answer === "accepted" && !isVerified(user)) return confirmEmailRefusal("say yes to a trade");
   const reason = isJsonObject(body) ? (body.reason ?? null) : null;

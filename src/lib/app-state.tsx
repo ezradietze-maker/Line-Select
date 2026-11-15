@@ -192,6 +192,15 @@ export interface OfflineLoad {
 }
 
 /**
+ * Whether the server's answer for the signed-in pilot changes what the app lets them do: a confirmed address, or a
+ * membership (a free spot just claimed, Pro started or ended). Only the address was looked at, so a pilot who claimed a
+ * free spot on Membership was still shown the ranking locked until they reloaded.
+ */
+export function standingChanged(shown: UserAccount, fresh: UserAccount): boolean {
+  return shown.emailVerified !== fresh.emailVerified || (shown.plan ?? "free") !== (fresh.plan ?? "free") || (shown.freeMemberAt ?? null) !== (fresh.freeMemberAt ?? null);
+}
+
+/**
  * The account's pack and profile, read once the server answers after a load that had only this device's copies: each
  * one shown in place of the device's while the screen still shows that copy. One the pilot has changed since (a pack
  * uploaded, an edit) stays. Without this, a pack uploaded on the laptop stayed off the phone until it was reloaded, the
@@ -274,7 +283,7 @@ interface AppStateValue extends DataState {
   guestPackOffer: BidPack | null;
   handleTakeGuestPack: () => void;
   handleKeepAccountPack: () => void;
-  /** Asks the server again who's signed in, for an account whose address may have just been confirmed elsewhere. */
+  /** Asks the server again who's signed in, for an account whose address or membership may have just changed. */
   refreshUser: () => Promise<"confirmed" | "waiting" | "signed-out" | "unknown">;
   handleContinueAsGuest: () => void;
   /** Signs out; `to`, where to go then (the sign-in form, to use another account) — otherwise wherever a guest belongs. */
@@ -1049,7 +1058,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!session.reachable) return "unknown";
     if (!session.user) return "signed-out";
     const fresh = session.user;
-    setState((s) => (s.user && s.user.id === fresh.id && s.user.emailVerified !== fresh.emailVerified ? { ...s, user: fresh } : s));
+    setState((s) => (s.user && s.user.id === fresh.id && standingChanged(s.user, fresh) ? { ...s, user: fresh } : s));
     writeSignedInHint(fresh);
     return fresh.emailVerified === false ? "waiting" : "confirmed";
   }
