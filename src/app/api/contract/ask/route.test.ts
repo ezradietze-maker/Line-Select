@@ -159,13 +159,16 @@ describe("POST /api/contract/ask", () => {
 
   it("stops at the limits before paying for anything", async () => {
     limits.hour = { ok: false };
-    expect((await POST(req({ question: "q?" }))).status).toBe(429);
+    const hour = await POST(req({ question: "q?" }));
+    expect(hour.status).toBe(429);
+    expect((await hour.json()).final).toBeUndefined();
     limits.hour = { ok: true };
     limits.day = { ok: false };
     spend.signedIn = false;
     const guest = await POST(req({ question: "q?" }));
     expect(guest.status).toBe(429);
-    expect((await guest.json()).error).toContain("Sign in");
+    // Out for the day: the chat stops offering to ask again. The hour's limit (above) passes, so it doesn't say so.
+    expect(await guest.json()).toMatchObject({ error: expect.stringContaining("Sign in"), final: true });
     // The hold taken for the question is given back whole.
     expect(spend.finish).toHaveBeenCalledWith(0);
     limits.day = { ok: true };

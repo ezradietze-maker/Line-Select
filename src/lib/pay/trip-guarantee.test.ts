@@ -12,6 +12,11 @@ describe("trip rig (CBA 2026 4.F.2.a)", () => {
     expect(tripRig(75)).toBe(20);
     expect(tripRig(0)).toBe(0);
   });
+  it("is rounded to the nearest minute, as 4.F.2.a says", () => {
+    // 41:05 away is 657.33 minutes of rig: 10:57, not the 10:58 that hundredths of an hour read.
+    expect(formatHoursValue(tripRig(41 + 5 / 60))).toBe("10:57");
+    expect(tripRig(41 + 5 / 60) * 60).toBeCloseTo(657, 9);
+  });
 });
 
 describe("minimum bid period guarantee (CBA 2026 4.A.1)", () => {
@@ -44,6 +49,13 @@ describe("linePay (CBA 2026 4.B / 4.A.1)", () => {
     expect(lp.tripGuaranteeTotal).toBe(65);
     expect(lp.blg).toBe(68);
     expect(lp.flooredUp).toBe(true);
+  });
+  it("adds the trips to the minute, as the pack prints them", () => {
+    // Four 18:56 trips are 75:44. Each read as 18.93 hours, they added to 75:43.
+    const g = 18 + 56 / 60;
+    const lp = linePay(line([trip(g, 40), trip(g, 40), trip(g, 40), trip(g, 40)]), { bidPeriodDays: 28 });
+    expect(formatHoursValue(lp.tripGuaranteeTotal)).toBe("75:44");
+    expect(formatHoursValue(lp.blg)).toBe("75:44");
   });
   it("floors a thin line up to the minimum bid period guarantee", () => {
     const lp = linePay(line([trip(20, 60)]), { bidPeriodDays: 28 });

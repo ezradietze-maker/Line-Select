@@ -21,9 +21,11 @@ export interface AskBody {
 /** Reads one reply: a stream of steps, or plain JSON when this is a resend of a question the server already answered. */
 async function readReply(res: Response, onStep: (text: string) => void): Promise<ContractAnswer | "dropped"> {
   if (!res.headers.get("content-type")?.includes("ndjson") || !res.body) {
-    const json = (await res.json().catch(() => ({}))) as { answer?: ContractAnswer; error?: string };
-    // Out of questions for today: asking again won't help, and the chat doesn't offer to.
-    if (res.status === 429) throw Object.assign(new Error(json.error ?? "That's today's questions used up."), { final: true });
+    const json = (await res.json().catch(() => ({}))) as { answer?: ContractAnswer; error?: string; final?: boolean };
+    // Out of questions for today: asking again won't help, and the chat doesn't offer to. Only the day's limit says so:
+    // the hour's ("try again shortly") and a pilot's running requests pass, and every 429 read as final left those
+    // without Try again, the question gone from the box.
+    if (json.final) throw Object.assign(new Error(json.error ?? "That's today's questions used up."), { final: true });
     if (!res.ok || !json.answer) throw new Error(json.error ?? `Request failed (${res.status})`);
     return json.answer;
   }

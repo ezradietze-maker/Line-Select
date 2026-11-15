@@ -67,6 +67,8 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
     } catch {
       if (id !== latest.current) return;
       setError("Couldn't reach the server. Check your connection and try again.");
+      // As a refused question does: left up, the last question's lines sat under the error as this one's answer.
+      setFound(null);
     }
     setAsking(false);
   }

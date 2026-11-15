@@ -60,9 +60,18 @@ describe("the chat's connection to the server", () => {
   });
 
   it("shows the server's reason for turning a question down, without retrying", async () => {
-    fetchMock.mockResolvedValue(Response.json({ error: "That's today's questions for guests. Sign in to ask more." }, { status: 429 }));
+    fetchMock.mockResolvedValue(Response.json({ error: "That's today's questions for guests. Sign in to ask more.", final: true }, { status: 429 }));
     await expect(askTheContract({ question: "q" }, () => {})).rejects.toMatchObject({ message: expect.stringContaining("Sign in"), final: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Try again on a limit that passes in a few minutes, so the question can be sent again", async () => {
+    for (const error of ["Too many requests — please slow down and try again shortly.", "You've got a few AI requests running already. Try again when one finishes — everything you've done is saved."]) {
+      fetchMock.mockResolvedValueOnce(Response.json({ error }, { status: 429 }));
+      const refused = await askTheContract({ question: "q" }, () => {}).catch((e: Error & { final?: boolean }) => e);
+      expect(refused).toMatchObject({ message: error });
+      expect((refused as { final?: boolean }).final).toBeFalsy();
+    }
   });
 
   it("shows an error from the stream, without retrying", async () => {
