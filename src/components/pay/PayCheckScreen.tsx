@@ -136,9 +136,10 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
                     ))}
                   </select>
                 </label>
+                {/* A full keyboard, not a phone's decimal pad: that has no colon, so 14:30 couldn't be typed on one. */}
                 <label className="text-xs text-ink-muted">
                   Credit you were actually paid
-                  <input type="text" inputMode="decimal" autoComplete="off" placeholder="e.g. 14:30" className={`${FIELD} mt-1 block w-32 font-mono`} value={paid} onChange={(e) => setPaid(e.target.value)} />
+                  <input type="text" autoComplete="off" placeholder="e.g. 14:30" className={`${FIELD} mt-1 block w-32 font-mono`} value={paid} onChange={(e) => setPaid(e.target.value)} />
                 </label>
               </div>
               {paid.trim() !== "" && paidNum === null && <p className="mt-2 text-xs text-warn">Type the credit as hours and minutes, 14:30, or as hours, 14.5.</p>}

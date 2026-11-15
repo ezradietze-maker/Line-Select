@@ -1,4 +1,5 @@
 import { formatHoursValue } from "@/lib/interview-config";
+import { dayTripsOf } from "@/lib/trip-anchor";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 
 /**
@@ -26,9 +27,13 @@ export function minBidPeriodGuarantee(bidPeriodDays: number): { ch: number; sect
  */
 const toMinute = (n: number) => Math.round(n * 60) / 60;
 
-/** CBA 2026 4.F.2.a: a trip's rig, in CH, from its time away from base, rounded to the nearest minute. */
+/**
+ * CBA 2026 4.F.2.a: a trip's rig, in CH, from its time away from base, rounded to the nearest minute. From the TAFB the
+ * pack prints, to the minute: kept in hundredths, 44:58 away read 44.97 and its rig 12:00, a minute over the 11:59 the
+ * trip is credited.
+ */
 export function tripRig(tafbHours: number): number {
-  return toMinute(tafbHours / TAFB_HOURS_PER_RIG_CH);
+  return toMinute(toMinute(tafbHours) / TAFB_HOURS_PER_RIG_CH);
 }
 
 export interface TripPay {
@@ -68,10 +73,11 @@ export interface LinePay {
 /**
  * The pay a regular line guarantees this bid period, from its trips. A trip printed whole carries its full credit, so the
  * next period's share the line prints (4.G) comes off: counted in, a line ending on a trip over the period's end read
- * its next month's credit as this month's guarantee.
+ * its next month's credit as this month's guarantee. A run of the same day trip is its days, each its own trip and
+ * guarantee (`dayTripsOf`): kept whole, a pilot paid short on its second day was checked against all three days' credit.
  */
 export function linePay(line: Line, pack: Pick<BidPack, "bidPeriodDays">): LinePay {
-  const trips = line.trips.map(tripPay);
+  const trips = line.trips.flatMap(dayTripsOf).map(tripPay);
   const carryOverCH = toMinute(Math.max(0, line.carryOverCreditHours ?? 0));
   const tripGuaranteeTotal = toMinute(Math.max(0, trips.reduce((a, t) => a + t.guaranteeCH, 0) - carryOverCH));
   const floor = minBidPeriodGuarantee(pack.bidPeriodDays);

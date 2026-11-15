@@ -30,6 +30,7 @@ import {
   removeTier,
   renameTier,
   saveTiers,
+  selectionWithin,
   setAsideLines,
   swapTiers,
   tierHeadings,
@@ -359,5 +360,18 @@ describe.skipIf(seats.length === 0)("tiers on the October seats", () => {
       expect(l.choices.length).toBeGreaterThan(0);
       expect(l.choices.length).toBeLessThanOrEqual(MAX_PAIRS_PER_LINE);
     }
+  });
+});
+
+describe("selectionWithin", () => {
+  it("keeps a selection to the lines listed, so a move never reaches lines a search or filter took out of sight", () => {
+    // "Select all below" took b to g; a search then listed only c and d. Kept whole, the toolbar's Not bid sent all six
+    // out of the bid.
+    const selected = new Set(["b", "c", "d", "e", "f", "g"]);
+    expect([...selectionWithin(selected, new Set(["a", "c", "d"]))]).toEqual(["c", "d"]);
+  });
+  it("is the same selection when every selected line is listed", () => {
+    const selected = new Set(["b", "c"]);
+    expect(selectionWithin(selected, new Set(LIST))).toBe(selected);
   });
 });
