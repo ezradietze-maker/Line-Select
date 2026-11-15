@@ -37,6 +37,42 @@ function tripText(pack: BidPack, trip: Trip): string {
 }
 
 /**
+ * The account's trade settings, under what the pilot holds. With nothing confirmed on this pack, only the email switch,
+ * and only while it's on: the emails are about trips confirmed on another month's pack (the one they're flying while
+ * they bid the next), and each one says to turn them off here. Shown only where they hold something, the switch went
+ * the day they uploaded next month's pack.
+ */
+export function TradeSettingsSwitches({
+  settings,
+  held,
+  emailsOn,
+  onChange,
+}: {
+  settings: TradeSettings;
+  held: boolean;
+  /** Whether emails went when the panel loaded (on, and "Include me" on): kept while it's open, so one turned off can be turned back on. */
+  emailsOn: boolean;
+  onChange: (change: Partial<TradeSettings>) => void;
+}) {
+  if (!held && !emailsOn) return null;
+  return (
+    <>
+      {held && (
+        <label className="mt-3 flex items-start gap-2 text-sm text-ink">
+          <input type="checkbox" className="mt-0.5" checked={settings.suggestMe} onChange={(e) => onChange({ suggestMe: e.target.checked })} />
+          <span>Include me when suggesting trades</span>
+        </label>
+      )}
+      {!held && <p className="mt-3 text-sm text-ink-muted">You get an email when a trade on trips you confirmed in another bid pack needs your answer.</p>}
+      <label className={`${held ? "mt-2" : "mt-1.5"} flex items-start gap-2 text-sm text-ink`}>
+        <input type="checkbox" className="mt-0.5" checked={settings.emailMatches} disabled={!settings.suggestMe} onChange={(e) => onChange({ emailMatches: e.target.checked })} />
+        <span>Email me when a trade needs my answer</span>
+      </label>
+    </>
+  );
+}
+
+/**
  * "What you hold": a pilot confirms their trips for this bid pack, which is what lets the site look for trades that suit
  * them. The site can't see VIPS, so the pilot says, starting from the award in their Logbook, and updates it after a
  * trade. Trips they can't trade are marked here. `onHolding` hears what they hold each time it loads or changes: the
@@ -46,11 +82,14 @@ export function HoldingPanel({
   bidPack,
   onHolding,
   onSaved,
+  emailOnly = false,
 }: {
   bidPack: BidPack;
   onHolding?: (holding: TradeHolding | null) => void;
   /** Hears each change saved here (what they hold, removed, "Include me…"): the trades found for them depend on it. */
   onSaved?: () => void;
+  /** A board not open for this pack's seat: only the email switch, while it's on, for trades on a pack confirmed before. */
+  emailOnly?: boolean;
 }) {
   const { profile, user } = useAppState();
   const userId = user?.id ?? null;
@@ -61,6 +100,8 @@ export function HoldingPanel({
   const [loaded, setLoaded] = useState(false);
   const [holding, setHolding] = useState<TradeHolding | null>(null);
   const [settings, setSettings] = useState<TradeSettings>({ suggestMe: true, emailMatches: false });
+  /** Whether trade emails were going when this loaded: see `TradeSettingsSwitches`. */
+  const [emailsOn, setEmailsOn] = useState(false);
   const [editing, setEditing] = useState(false);
   const [lineNumber, setLineNumber] = useState<string | null>(null);
   const [draft, setDraft] = useState<HeldTrip[]>([]);
@@ -91,6 +132,7 @@ export function HoldingPanel({
         setHolding(state.holding);
         onHoldingRef.current?.(state.holding);
         setSettings(state.settings);
+        setEmailsOn(state.settings.emailMatches && state.settings.suggestMe);
       } else setError("Couldn't load what you hold just now.");
       setLoaded(true);
     });
@@ -168,6 +210,17 @@ export function HoldingPanel({
 
   if (!loaded) return null;
 
+  if (emailOnly) {
+    if (!emailsOn) return null;
+    return (
+      <section className="panel-glass mt-6 p-5">
+        <h2 className="font-display text-base font-semibold text-ink">Trade emails</h2>
+        {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
+        <TradeSettingsSwitches settings={settings} held={false} emailsOn={emailsOn} onChange={(c) => void changeSettings(c)} />
+      </section>
+    );
+  }
+
   return (
     <section className="panel-glass mt-6 p-5">
       <h2 className="font-display text-base font-semibold text-ink">What you hold</h2>
@@ -183,6 +236,7 @@ export function HoldingPanel({
           <Button className="mt-3" onClick={startEditing}>
             Confirm what I hold
           </Button>
+          <TradeSettingsSwitches settings={settings} held={false} emailsOn={emailsOn} onChange={(c) => void changeSettings(c)} />
         </>
       )}
 
@@ -204,14 +258,7 @@ export function HoldingPanel({
               What you carry in from last month has changed since you confirmed. Trades still fit around what you had then: Update, then Confirm, to use it.
             </p>
           )}
-          <label className="mt-3 flex items-start gap-2 text-sm text-ink">
-            <input type="checkbox" className="mt-0.5" checked={settings.suggestMe} onChange={(e) => void changeSettings({ suggestMe: e.target.checked })} />
-            <span>Include me when suggesting trades</span>
-          </label>
-          <label className="mt-2 flex items-start gap-2 text-sm text-ink">
-            <input type="checkbox" className="mt-0.5" checked={settings.emailMatches} disabled={!settings.suggestMe} onChange={(e) => void changeSettings({ emailMatches: e.target.checked })} />
-            <span>Email me when a trade needs my answer</span>
-          </label>
+          <TradeSettingsSwitches settings={settings} held emailsOn={emailsOn} onChange={(c) => void changeSettings(c)} />
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startEditing}>
               Update

@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   trades: [] as unknown[],
   saved: [] as unknown[],
   emailed: [] as unknown[],
+  emailUntil: [] as number[],
   failSeat: null as string | null,
   history: { boardTrips: [] as unknown[], boardSwaps: [] as unknown[], busyPilots: new Set<string>(), signatures: new Set<string>(), declined: new Set<string>(), refusedTrips: new Set<string>(), minGains: new Map<string, number>(), holdingDoubted: new Map<string, Date>() },
   options: [] as Record<string, (...a: never[]) => unknown>[],
@@ -25,8 +26,9 @@ vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
 vi.mock("@/lib/server/kv", () => ({ incrementCounter: async () => 1, setJson: vi.fn() }));
 vi.mock("@/lib/server/trade-board-bar", () => ({ tradeBoardIsOpen: async (seat: { seat: string }) => state.open.has(seat.seat) }));
 vi.mock("@/lib/server/trade-email", () => ({
-  emailNewTrade: async (t: unknown) => {
+  emailNewTrade: async (t: unknown, _now: Date, until: number) => {
     state.emailed.push(t);
+    state.emailUntil.push(until);
     return 1;
   },
 }));
@@ -93,6 +95,7 @@ beforeEach(() => {
   state.trades = [trade];
   state.saved = [];
   state.emailed = [];
+  state.emailUntil = [];
   state.failSeat = null;
   state.options = [];
   state.history = { boardTrips: [], boardSwaps: [], busyPilots: new Set(), signatures: new Set(), declined: new Set(), refusedTrips: new Set(), minGains: new Map(), holdingDoubted: new Map() };
@@ -126,6 +129,14 @@ describe("the daily run", () => {
     state.open = new Set(["CAP", "FO"]);
     state.failSeat = "CAP";
     expect(await runDailyMatching(now)).toMatchObject({ groups: 2, failed: 1, found: 1 });
+  });
+
+  it("stops its emails with the day's budget: a send that hangs can't run the cron past its five minutes", async () => {
+    const before = Date.now();
+    await runDailyMatching(now, 60_000);
+    expect(state.emailUntil).toHaveLength(1);
+    expect(state.emailUntil[0]).toBeGreaterThanOrEqual(before + 60_000);
+    expect(state.emailUntil[0]).toBeLessThanOrEqual(Date.now() + 60_000);
   });
 
   it("stops when out of time, leaving the rest for tomorrow", async () => {

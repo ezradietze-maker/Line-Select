@@ -20,7 +20,12 @@ function tripText(trip: { pairingNumber: string | null; date: string | null }): 
   return `${name} on ${new Date(`${trip.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}`;
 }
 
-export async function emailNewTrade(trade: ReturnType<typeof suggestionToStore>, now = new Date()): Promise<number> {
+/**
+ * `until`: when the caller's time runs out (a clock time, as `Date.now()`). No email starts after it: Resend not
+ * answering, each send waits out its ten seconds, and the daily run's thirty an hour, one after another, were its whole
+ * five minutes. Those not sent still see the trade in the app.
+ */
+export async function emailNewTrade(trade: ReturnType<typeof suggestionToStore>, now = new Date(), until = Infinity): Promise<number> {
   try {
     const config = getEmailConfig();
     if (!config) return 0;
@@ -29,6 +34,7 @@ export async function emailNewTrade(trade: ReturnType<typeof suggestionToStore>,
     for (const m of trade.members) {
       const to = targets.get(m.userId);
       if (!to) continue;
+      if (Date.now() >= until) break;
       // The site's hour first: an email it stops must not use up one of the pilot's own for the day.
       const hour = now.toISOString().slice(0, 13);
       if ((await incrementCounter(`line-select:trade-email:${hour}`, 2 * 60 * 60)) > MAX_PER_HOUR) break;

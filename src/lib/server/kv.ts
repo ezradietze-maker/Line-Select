@@ -100,6 +100,16 @@ export async function takeLock(key: string, ttlSeconds: number): Promise<boolean
   return true;
 }
 
+/** A key's time to live set afresh, its value left as it is (EXPIRE): nothing happens to one that isn't there. */
+export async function extendKey(key: string, ttlSeconds: number): Promise<void> {
+  if (redis) {
+    await redis.expire(key, ttlSeconds);
+    return;
+  }
+  const value = await getJson<unknown>(key);
+  if (value !== null) await setJson(key, value, { ttlSeconds });
+}
+
 export async function deleteKey(key: string): Promise<void> {
   if (redis) {
     await redis.del(key);

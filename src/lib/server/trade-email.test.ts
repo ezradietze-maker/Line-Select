@@ -4,11 +4,14 @@ const sent: { to: string; subject: string; text: string }[] = [];
 const counters = new Map<string, number>();
 let targets = new Map<string, string>();
 let configured = true;
+/** Resend not answering: each send takes its full ten seconds, and fails. */
+let stall = false;
 vi.mock("@/lib/server/email", () => ({
   getEmailConfig: () => (configured ? { appUrl: "https://example.com" } : null),
   sendEmail: async (m: { to: string; subject: string; text: string }) => {
     sent.push(m);
-    return true;
+    if (stall) vi.setSystemTime(Date.now() + 10_000);
+    return !stall;
   },
 }));
 vi.mock("@/lib/server/kv", () => ({
@@ -36,6 +39,7 @@ beforeEach(() => {
   counters.clear();
   targets = new Map();
   configured = true;
+  stall = false;
 });
 
 describe("the trade email", () => {
@@ -88,5 +92,21 @@ describe("the trade email", () => {
   it("never throws: a failed email can't undo a trade", async () => {
     targets = null as never;
     await expect(emailNewTrade(trade())).resolves.toBe(0);
+  });
+});
+
+describe("a send that hangs", () => {
+  it("stops the emails at the time they're given, not one stalled send after another", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-12-05T12:00:00Z"));
+      targets = new Map(Array.from({ length: 30 }, (_, i) => [`u${i}`, `p${i}@example.com`] as const));
+      stall = true;
+      // Each send waits out its ten seconds: thirty of them were five minutes, the whole daily run.
+      await emailNewTrade({ members: Array.from({ length: 30 }, (_, i) => member(i)) } as never, new Date(), Date.now() + 25_000);
+      expect(sent.length).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
