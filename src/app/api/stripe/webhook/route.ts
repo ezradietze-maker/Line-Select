@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { reportProblem } from "@/lib/server/alerts";
 import {
+  findUserById,
   getSubscriptionByCustomerId,
   getSubscriptionByUserId,
   markStripeEventProcessed,
@@ -35,6 +36,9 @@ async function resolveUserId(sub: Stripe.Subscription, customerId: string): Prom
 async function applySubscription(fromEvent: Stripe.Subscription, eventCreatedAt: Date, current?: Stripe.Subscription): Promise<void> {
   const userId = await resolveUserId(fromEvent, snapshotOf(fromEvent).stripeCustomerId);
   if (!userId) return; // A customer we don't know — nothing to update.
+  // An account deleted since (its membership row went with it): there's no row to write, and trying failed the event,
+  // so Stripe sent it again for days and every failure counted toward a billing alert. Stripe keeps its own record.
+  if (!(await findUserById(userId))) return;
   const existing = await getSubscriptionByUserId(userId);
   const lastEventAt = existing?.lastEventAt ? new Date(existing.lastEventAt) : null;
   if (lastEventAt && eventCreatedAt < lastEventAt) return; // A newer event already wrote this row — don't go backwards.
