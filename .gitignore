@@ -58,3 +58,6 @@ scripts/transcript-*.md
 
 # Personal Claude Code settings (not shared)
 .claude/settings.local.json
+
+# Tutorial video recordings, voice and tools (scripts/tutorial, docs/tutorial/README.md); only the finished videos are kept.
+/.tutorial-work/

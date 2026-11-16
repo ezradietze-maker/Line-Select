@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { NAV_ITEMS, disabledReason, type NavTarget } from "@/components/nav/nav-items";
 import { FlipText } from "@/components/ui/FlipText";
@@ -57,6 +58,7 @@ const MAX_LINES = 8;
  * instead of scrolling a list of three hundred.
  */
 export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, hasBidPack, onNavigate, onOpenLine, onOpenHowItWorks, onOpenFeedback }: CommandPaletteProps) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -95,10 +97,11 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
     }));
     const help: Command[] = [
       { id: "how", group: "Help", label: "How this works", keywords: "help score explain", run: close(onOpenHowItWorks) },
+      { id: "tutorial", group: "Help", label: "Tutorial", keywords: "help video watch learn how to", run: close(() => router.push("/tutorial")) },
       { id: "feedback", group: "Help", label: "Send feedback", keywords: "bug report idea", run: close(onOpenFeedback) },
     ];
     return [...pages, ...themes, ...help];
-  }, [hasProfile, hasBidPack, onClose, onNavigate, onOpenHowItWorks, onOpenFeedback]);
+  }, [hasProfile, hasBidPack, onClose, onNavigate, onOpenHowItWorks, onOpenFeedback, router]);
 
   // Read fresh each render: the rankings may have been worked out since the palette was last shown.
   const ranking = open && bidPackId ? rankingSnapshotFor(bidPackId) : null;

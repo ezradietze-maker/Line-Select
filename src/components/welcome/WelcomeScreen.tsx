@@ -185,6 +185,9 @@ export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStar
           <Link href="/how-it-works" className="rounded-md px-3 py-2 text-ink-muted transition-colors hover:text-ink">
             How it works
           </Link>
+          <Link href="/tutorial" className="hidden rounded-md px-3 py-2 text-ink-muted transition-colors hover:text-ink sm:inline-block">
+            Tutorial
+          </Link>
           {/* Signed in already (shown this page with "/?welcome"): `appHref` goes back into the app, not to a sign-in form. */}
           <Link href={appHref ?? "/auth"} className="rounded-[4px] border border-border-strong px-3 py-2 font-display font-bold text-ink transition-colors hover:border-ink">
             {appHref ? "Open Line Select" : "Sign in"}
