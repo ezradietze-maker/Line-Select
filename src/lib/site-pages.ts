@@ -6,7 +6,7 @@ export const SITE_URL = "https://www.lineselect.app";
  * render in the server's HTML (readable without JavaScript, and by search engines) instead of behind "Loading…".
  * The landing page is apart: it handles a returning pilot itself (LandingPage.tsx).
  */
-export const PUBLIC_PAGES = ["/pricing", "/how-it-works", "/whats-new", "/privacy", "/terms"] as const;
+export const PUBLIC_PAGES = ["/pricing", "/how-it-works", "/tutorial", "/whats-new", "/privacy", "/terms"] as const;
 
 /**
  * Screens built from what this device or the pilot's account holds, which show a placeholder until it has loaded:

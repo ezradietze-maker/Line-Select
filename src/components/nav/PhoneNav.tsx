@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AccountMenu, AccountPlaceholder } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { FeedbackIcon, InfoIcon, type NavProps } from "@/components/nav/LeftNav";
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
-import { SearchIcon } from "@/components/ui/icons";
+import { PlayIcon, SearchIcon } from "@/components/ui/icons";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
 import { dialogOpen } from "@/components/ui/Modal";
 
@@ -235,6 +236,10 @@ export function PhoneNav({
                 <InfoIcon className="h-[18px] w-[18px]" />
                 How this works
               </button>
+              <Link href="/tutorial" onClick={() => setMoreOpen(false)} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-ink-muted">
+                <PlayIcon className="h-[18px] w-[18px]" />
+                Tutorial
+              </Link>
               <button
                 type="button"
                 onClick={() => {

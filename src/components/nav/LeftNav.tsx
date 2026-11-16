@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type 
 import { AccountMenu, AccountPlaceholder } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
-import { ChevronLeftIcon, SearchIcon } from "@/components/ui/icons";
+import { ChevronLeftIcon, PlayIcon, SearchIcon } from "@/components/ui/icons";
 import { Wordmark } from "@/components/ui/Logo";
 import { LogoFlight } from "@/components/ui/LogoFlight";
 import { setRailCollapsed, useRailCollapsed } from "@/lib/rail";
@@ -303,6 +303,11 @@ export function LeftNav({
           <span className="rail-collapsed:sr-only">How this works</span>
           <RailTip>How this works</RailTip>
         </button>
+        <Link href="/tutorial" className={`${ROW} font-medium text-ink-faint hover:bg-ink/[0.06] hover:text-ink-muted`}>
+          <RowIcon icon={PlayIcon} active={false} />
+          <span className="rail-collapsed:sr-only">Tutorial</span>
+          <RailTip>Tutorial</RailTip>
+        </Link>
         <WhatsNewLink />
         <button type="button" onClick={onOpenFeedback} className={`${ROW} font-medium text-ink-faint hover:bg-ink/[0.06] hover:text-ink-muted`}>
           <RowIcon icon={FeedbackIcon} active={false} />

@@ -339,3 +339,12 @@ export function ToolboxIcon({ className = base }: IconProps) {
     </svg>
   );
 }
+
+export function PlayIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinejoin="round" d="M10 8.5v7l5.5-3.5z" />
+    </svg>
+  );
+}

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
-import { TripGlance } from "@/components/interview/TripGlance";
+import { TripOptionFold } from "@/components/interview/TripGlance";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
 import { MAX_NOTE } from "@/lib/brain/answer-limits";
@@ -72,14 +72,21 @@ function Differences({ pair }: { pair: TripPairCandidate }) {
 
 /**
  * Two real trips from the pilot's best lines that pull their priorities against each other — "which would you rather
- * fly?" — the way the ex-pilot asked to be shown: "give me actual trips to choose between". Each trip day by day, side
- * by side on a wide screen; the answer is a trip choice the trip weights learn from, with the why in their words.
+ * fly?" — the way the ex-pilot asked to be shown: "give me actual trips to choose between". Each trip a row, as the two
+ * lines of a line choice are, tapped open to the trip day by day at full size; the answer is a trip choice the trip weights learn from, with the why in their words.
  */
 export function TripPairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswer, onSkip }: TripPairStepProps) {
   const [pick, setPick] = useState<Pick | null>(null);
   const [why, setWhy] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [opened, setOpened] = useState<Set<"a" | "b">>(() => new Set());
+  const toggle = (side: "a" | "b") =>
+    setOpened((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(side)) next.add(side);
+      return next;
+    });
   const byKey = useMemo(() => new Map(bidPack.lines.flatMap((l) => l.trips).map((t) => [tripKey(t), t])), [bidPack]);
   const tripA = byKey.get(pair.a);
   const tripB = byKey.get(pair.b);
@@ -113,28 +120,19 @@ export function TripPairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
   }
 
   if (!tripA || !tripB) return null;
-  const card = (side: "a" | "b", label: string, trip: NonNullable<typeof tripA>) => (
-    <section aria-label={`Option ${side.toUpperCase()}: ${label}`} className={`min-w-0 rounded-xl border p-3.5 transition-colors ${pick?.side === side ? "border-brand/60 bg-brand-soft/30" : "border-border bg-surface"}`}>
-      <p className="text-2xs text-ink-faint font-medium">Option {side.toUpperCase()}</p>
-      <p className="font-display text-lg font-semibold text-ink">{label}</p>
-      <div className="mt-2">
-        <TripGlance bidPack={bidPack} trip={trip} />
-      </div>
-    </section>
-  );
 
   return (
     <div>
       <div className="max-w-3xl">
-        <QuestionPrompt eyebrow={eyebrow} title={prompt} help={helpText ?? "Both trips day by day, just the trips, not the lines they're on."} />
+        <QuestionPrompt eyebrow={eyebrow} title={prompt} help={helpText ?? "Just the trips, not the lines they're on. Tap a trip to open it day by day."} />
       </div>
       <RevealControls title={prompt} className="mt-6">
         <div className="max-w-3xl">
           <Differences pair={pair} />
         </div>
-        <div className="grid gap-3 lg:grid-cols-2">
-          {card("a", pair.labelA, tripA)}
-          {card("b", pair.labelB, tripB)}
+        <div className="space-y-1.5">
+          <TripOptionFold bidPack={bidPack} trip={tripA} tag="A" label={pair.labelA} selected={pick?.side === "a"} open={opened.has("a")} onToggle={() => toggle("a")} />
+          <TripOptionFold bidPack={bidPack} trip={tripB} tag="B" label={pair.labelB} selected={pick?.side === "b"} open={opened.has("b")} onToggle={() => toggle("b")} />
         </div>
 
         <p className="mt-5 text-sm font-medium text-ink">Which would you rather fly?</p>
