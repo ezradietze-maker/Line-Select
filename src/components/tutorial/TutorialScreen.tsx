@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TUTORIAL_CHAPTERS, formatChapterLength, tutorialLength } from "@/lib/tutorial";
+import { useTutorialCaptions } from "@/lib/tutorial-captions";
 
 /** The chapter a link points at (`/tutorial#strategies`), or the first. The server can't see the #fragment. */
 function subscribeHash(onChange: () => void) {
@@ -17,12 +18,14 @@ function chapterFromHash(hash: string): number {
 /**
  * The tutorial: one narrated video in short chapters, one feature at a time, made from a real bid pack on a demo
  * account. Each chapter is its own file, so a pilot can start anywhere without loading the rest; with "Play the next
- * chapter" on, they run straight through. Captions are on by default, for watching with the sound off.
+ * chapter" on, they run straight through. Captions are on by default, for watching with the sound off; one switch turns
+ * them off (or on) for every chapter, remembered on the device.
  */
 export function TutorialScreen() {
   const hash = useSyncExternalStore(subscribeHash, () => window.location.hash, () => "");
   const at = chapterFromHash(hash);
   const [playOn, setPlayOn] = useState(true);
+  const [captionsOn, setCaptionsOn] = useTutorialCaptions();
   const video = useRef<HTMLVideoElement>(null);
   // Set when a chapter is picked or the last one ends, so the new one starts playing once it has loaded; a page that
   // just opened waits for the pilot to press play.
@@ -37,6 +40,29 @@ export function TutorialScreen() {
     if (autoplay.current) v.play().catch(() => {});
     autoplay.current = false;
   }, [at]);
+
+  // Captions follow the one choice in every chapter: set as each chapter loads (loading can put a default track back
+  // on), and the player's own CC button changes the choice itself, so the next chapter keeps it.
+  useEffect(() => {
+    const v = video.current;
+    if (!v) return;
+    const tracks = v.textTracks;
+    const apply = () => {
+      const t = tracks[0];
+      if (t) t.mode = captionsOn ? "showing" : "hidden";
+    };
+    const followPlayer = () => {
+      const t = tracks[0];
+      if (t && (t.mode === "showing") !== captionsOn) setCaptionsOn(t.mode === "showing");
+    };
+    apply();
+    v.addEventListener("loadedmetadata", apply);
+    tracks.addEventListener("change", followPlayer);
+    return () => {
+      v.removeEventListener("loadedmetadata", apply);
+      tracks.removeEventListener("change", followPlayer);
+    };
+  }, [at, captionsOn, setCaptionsOn]);
 
   function pick(i: number) {
     autoplay.current = true;
@@ -56,7 +82,7 @@ export function TutorialScreen() {
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <section aria-label="Video" className="min-w-0">
           <div className="overflow-hidden rounded-xl border border-hairline bg-black">
-            {/* The narration is captioned in the track below, on by default. */}
+            {/* The narration is captioned in the track below, shown or hidden by the captions switch. */}
             <video
               ref={video}
               key={chapter.id}
@@ -70,7 +96,7 @@ export function TutorialScreen() {
               }}
             >
               <source src={chapter.video} type="video/mp4" />
-              <track kind="captions" src={chapter.captions} srcLang="en" label="English" default />
+              <track kind="captions" src={chapter.captions} srcLang="en" label="English" default={captionsOn} />
             </video>
           </div>
           <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -92,10 +118,16 @@ export function TutorialScreen() {
               </button>
             )}
           </div>
-          <label className="mt-4 flex items-center gap-2 text-sm text-ink-muted">
-            <input type="checkbox" checked={playOn} onChange={(e) => setPlayOn(e.target.checked)} className="h-4 w-4 accent-[var(--color-accent)]" />
-            Play the next chapter when one ends
-          </label>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-x-6">
+            <label className="flex items-center gap-2 text-sm text-ink-muted">
+              <input type="checkbox" checked={playOn} onChange={(e) => setPlayOn(e.target.checked)} className="h-4 w-4 accent-[var(--color-accent)]" />
+              Play the next chapter when one ends
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink-muted">
+              <input type="checkbox" checked={captionsOn} onChange={(e) => setCaptionsOn(e.target.checked)} className="h-4 w-4 accent-[var(--color-accent)]" />
+              Captions, in every chapter
+            </label>
+          </div>
         </section>
 
         <nav aria-label="Chapters">
