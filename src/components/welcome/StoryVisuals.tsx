@@ -131,12 +131,13 @@ export function InterviewVisual({ active }: { active: boolean }) {
   );
 }
 
-const LINES = [
-  { n: "2016", off: 15, credit: 73.8, via: "SJC · MIA · BOG", score: 73 },
-  { n: "2024", off: 15, credit: 77.5, via: "CDG · BLL · DUB", score: 84 },
-  { n: "2033", off: 15, credit: 79.9, via: "CDG · DUB · MXP", score: 88 },
-  { n: "2035", off: 15, credit: 78.1, via: "CDG · DUB · MXP", score: 81 },
-  { n: "2164", off: 15, credit: 81.9, via: "SAT · ELP · DTW", score: 67 },
+/** Credit to the minute, as the pack prints it (73:45 is 73 + 45/60): rounded to a tenth, 73:45 read 73:48. */
+export const LINES = [
+  { n: "2016", off: 15, credit: 73 + 45 / 60, via: "SJC · MIA · BOG", score: 73 },
+  { n: "2024", off: 15, credit: 77 + 28 / 60, via: "CDG · BLL · DUB", score: 84 },
+  { n: "2033", off: 15, credit: 79 + 53 / 60, via: "CDG · DUB · MXP", score: 88 },
+  { n: "2035", off: 15, credit: 78 + 6 / 60, via: "CDG · DUB · MXP", score: 81 },
+  { n: "2164", off: 15, credit: 81 + 52 / 60, via: "SAT · ELP · DTW", score: 67 },
 ];
 
 export function RankVisual({ active }: { active: boolean }) {
@@ -155,7 +156,8 @@ export function RankVisual({ active }: { active: boolean }) {
             <span className="w-6 font-mono text-xs text-ink-faint">#{i + 1}</span>
             <div className="min-w-0 flex-1">
               <div className="font-display text-sm font-semibold tracking-wide text-ink">Line {l.n}</div>
-              <div className="truncate font-mono text-2xs text-ink-faint">
+              {/* Wraps rather than cut off: on a phone the layover cities were cut to "C…". */}
+              <div className="font-mono text-2xs text-ink-faint">
                 {l.off} off &middot; {formatHoursValue(l.credit)} cr &middot; {l.via}
               </div>
             </div>
@@ -178,10 +180,14 @@ export function RankVisual({ active }: { active: boolean }) {
   );
 }
 
-/** Line 2033's real month in that pack: 13 days off in a row, then one European trip. */
-const MONTH: (string | null)[] = [
+/**
+ * Line 2033's real month in that pack: 13 days off in a row, then one European trip (pairing 79, Oct 11–23). Each
+ * trip day shows the city the day ends in, as the pack's line grid prints it: the trip's seven layovers in a row, then
+ * six blank days, put four days' layovers on the wrong dates (BLL's four nights read as one).
+ */
+export const MONTH: (string | null)[] = [
   null, null, null, null, null, null, null, null, null, null, null, null, null,
-  "CDG", "DUB", "MXP", "BLL", "MXP", "BLL", "CDG", "", "", "", "", "", "",
+  "CDG", "CDG", "DUB", "DUB", "MXP", "BLL", "BLL", "BLL", "BLL", "MXP", "BLL", "CDG", "CDG",
   null, null,
 ];
 

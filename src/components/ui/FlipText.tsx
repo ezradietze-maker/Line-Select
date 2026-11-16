@@ -15,7 +15,9 @@ export function FlipText({ text, className = "", delay = 0, stagger = 0 }: { tex
           className={ch === " " || ch === ":" ? "inline-block" : "digit-roll"}
           style={delay || stagger ? { animationDelay: `${delay + i * stagger}ms` } : undefined}
         >
-          {ch === " " ? " " : ch}
+          {/* A no-break space, written as an escape: a plain one alone in an inline-block has no width, and "Line 2021"
+              read "Line2021". */}
+          {ch === " " ? "\u00a0" : ch}
         </span>
       ))}
     </span>
