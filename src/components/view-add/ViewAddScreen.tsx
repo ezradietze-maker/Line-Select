@@ -12,7 +12,7 @@ import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { eventInstant } from "@/lib/bid-calendar";
 import { formatHoursValue as hm } from "@/lib/interview-config";
 import { loadCarryIn } from "@/lib/carry-in-storage";
-import { buildViewAdd, viewAddCopyText, type ViewAddChoice, type ViewAddPlan } from "@/lib/view-add";
+import { buildViewAdd, pairingDate, viewAddCopyText, type ViewAddChoice, type ViewAddPlan } from "@/lib/view-add";
 import { placeInPack } from "@/lib/strategy-engine";
 import { vacationId } from "@/lib/vacation-lines";
 import { vacationsInReach } from "@/lib/vacation-slide";
@@ -43,8 +43,13 @@ function ChoiceRow({ choice, index, byModel, className = "" }: { choice: ViewAdd
   );
 }
 
-export function Plan({ plan }: { plan: ViewAddPlan }) {
+export function Plan({ plan, pack }: { plan: ViewAddPlan; pack?: BidPack }) {
   const [all, setAll] = useState(false);
+  // A trip number flies on several dates: the date says which one, as each choice's own text does.
+  const dated = (t: Trip) => {
+    const date = pack ? pairingDate(t, pack) : null;
+    return date ? `${name(t)} ${DateTime.fromISO(date, { zone: "utc" }).toFormat("LLL d")}` : name(t);
+  };
   const [copied, setCopied] = useState<"yes" | "no" | null>(null);
   const best = plan.combos[0];
 
@@ -120,7 +125,7 @@ export function Plan({ plan }: { plan: ViewAddPlan }) {
           <ul className="mt-1 space-y-0.5 pl-3">
             {plan.ruledOut.slice(0, 40).map((r) => (
               <li key={`${r.trip.id}@${r.trip.startDayIndex}`}>
-                {name(r.trip)}: {r.why}
+                {dated(r.trip)}: {r.why}
               </li>
             ))}
           </ul>
@@ -243,7 +248,7 @@ function ViewAddBuilder({ bidPack, seniority, profile, userId }: { bidPack: BidP
           Build my list
         </Button>
 
-        {plan && <Plan plan={plan} />}
+        {plan && <Plan plan={plan} pack={bidPack} />}
 
         <div className="mt-4 border-t border-hairline pt-3 text-xs text-ink-muted">
           <p className="font-medium text-ink">To enter it</p>

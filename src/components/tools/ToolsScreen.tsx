@@ -165,10 +165,11 @@ function ClockTile({ code, name, time, note, daylight = null }: { code: string; 
       <div className="mt-0.5 font-mono text-2xl font-semibold tabular-nums text-ink">
         <FlipText text={time.toFormat("HH:mm")} />
       </div>
-      <div className="truncate text-xs text-ink-muted">
+      {/* Wrapped, not cut: two tiles to a phone's row read "Sun 20 · Anchor…" and "same time as Me…". */}
+      <div className="text-xs text-ink-muted">
         {time.toFormat("ccc d")} &middot; {name}
       </div>
-      <div className="truncate text-2xs text-ink-faint">{note}</div>
+      <div className="text-2xs text-ink-faint">{note}</div>
     </li>
   );
 }
