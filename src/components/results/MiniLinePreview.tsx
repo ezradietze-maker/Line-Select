@@ -119,8 +119,12 @@ function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
         title={`Reports ${time} ${mode === "zulu" ? "Zulu" : "local"}${day.earlyReport ? " — between 2 and 6am local" : ""}`}
       >
         <span className="hidden @min-[4.75rem]:inline">Rpt </span>
-        {time}
-        <Zone mode={mode} />
+        {/* A phone's day has room for the time but not its "L"; a small phone's, not even the time: cut off, "21:50"
+            read "21:5". Left to the day's details, a tap away, rather than shown wrong. */}
+        <span className="hidden @min-[2rem]:inline">{time}</span>
+        <span className="hidden @min-[2.5rem]:inline">
+          <Zone mode={mode} />
+        </span>
       </span>
       {day.chain && <span className="hidden whitespace-nowrap font-mono text-2xs text-ink-muted @min-[8.5rem]:inline" title={chainSentence(day.chain, mode)}>&nbsp;· {turnLabel(day.chain.turnMinutes)} turn</span>}
     </>
@@ -130,7 +134,9 @@ function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
 /** Where and when the trip ends, on its own last day — "END MEM 23:59L", "+1" when that's after midnight. */
 function End({ finish, mode }: { finish: TripFinish; mode: TimeMode }) {
   return (
-    <span className="flex min-w-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-2xs leading-none text-ink @min-[4.75rem]:text-2xs" title={`Trip ends: lands ${finish.city} ${finish.time} (${clockOf(mode)})${finish.nextDay ? ", just after midnight" : ""}`}>
+    // Wraps where a phone's day is too narrow for it all on one line: kept on one, "END ANC +1" ran on into the next
+    // day, over its "9 off".
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-0.5 gap-y-px whitespace-nowrap font-mono text-2xs leading-none text-ink @min-[4.75rem]:text-2xs" title={`Trip ends: lands ${finish.city} ${finish.time} (${clockOf(mode)})${finish.nextDay ? ", just after midnight" : ""}`}>
       <span className="text-2xs font-semibold tracking-wide text-ink-muted">END</span>
       <span className="font-semibold">{finish.city}</span>
       <span className="hidden @min-[4.75rem]:inline">
@@ -196,7 +202,8 @@ function Cell({
       <span className="flex h-3 items-center justify-between gap-0.5">
         <span className={`text-2xs tabular-nums ${isOff ? "" : "font-semibold"}`}>
           {day.label}
-          {day.nextMonth && <span className="ml-0.5 text-2xs font-semibold uppercase tracking-wide text-carry">{day.nextMonth.slice(0, 3)}</span>}
+          {/* Too narrow for it beside the date (a phone), "26 NOV27 NOV" ran together: the carry bar along the bottom says it. */}
+          {day.nextMonth && <span className="ml-0.5 hidden text-2xs font-semibold uppercase tracking-wide text-carry @min-[2.5rem]:inline">{day.nextMonth.slice(0, 3)}</span>}
         </span>
         {day.isTripStart && day.tripNumber && (
           <>
@@ -244,7 +251,8 @@ function Cell({
           </span>
         )}
         {day.fullDay && (
-          <span className="whitespace-nowrap text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
+          // Wraps on a phone rather than run into the next day.
+          <span className="text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
             Full day{day.fullDay.barely ? <span className="font-normal">, barely</span> : null}
           </span>
         )}
