@@ -81,7 +81,7 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
                 Line {line.lineNumber} guarantees <span className="font-medium text-ink">{ch(pay.blg)}</span> this bid period.{" "}
                 {pay.flooredUp && pay.floor
                   ? <>Its trips add to {ch(pay.tripGuaranteeTotal)}, below the {ch(pay.floor.ch)} minimum for a {bidPack.bidPeriodDays}-day period, so the floor sets it (CBA 2026 4.A.1, 4.B).</>
-                  : <>That&rsquo;s the sum of its {pay.trips.length} trips&rsquo; guarantees{pay.floor ? `, above the ${ch(pay.floor.ch)} floor` : ""} (CBA 2026 4.B).</>}
+                  : <>That&rsquo;s {pay.trips.length === 1 ? <>its one trip&rsquo;s guarantee</> : <>the sum of its {pay.trips.length} trips&rsquo; guarantees</>}{pay.floor ? `, above the ${ch(pay.floor.ch)} floor` : ""} (CBA 2026 4.B).</>}
                 {pay.carryOverCH > 0 ? <> The {ch(pay.carryOverCH)} of its carryover trip that falls in the next bid period is left out; it counts there (CBA 2026 4.B, 4.G).</> : null}
               </p>
             </section>
@@ -90,8 +90,10 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
           {/* Per-trip guarantees */}
           <SectionHeading className="mt-8" count={pay?.trips.length}>Each trip&rsquo;s guarantee</SectionHeading>
           <p className="mt-2 text-xs text-ink-faint">The scheduled credit a trip is worth however it flies (CBA 2026 4.F.1), the trip rig under it (1 CH per 3.75h away, CBA 2026 4.F.2.a), and how hard its credit works per day away.</p>
+          {/* As wide as the screen allows, scrolling only past that: held to 448px, the trip rig and CH / day away were off
+              the right edge of every phone, cut mid-figure. */}
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-md text-sm">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-hairline text-left text-2xs uppercase tracking-wide text-ink-faint">
                   <th className="py-1.5 pr-3 font-medium">Trip</th>
@@ -103,7 +105,7 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
               <tbody>
                 {pay?.trips.map((t, i) => (
                   <tr key={`${t.trip.id}-${i}`} className="border-b border-hairline/60">
-                    <td className="py-1.5 pr-3 font-medium text-ink">
+                    <td className="whitespace-nowrap py-1.5 pr-3 font-medium text-ink">
                       {t.trip.pairingNumber ?? "—"}
                       {dateOf(t.trip.startDayIndex) && <span className="ml-2 font-normal text-ink-muted">{dateOf(t.trip.startDayIndex)}</span>}
                     </td>

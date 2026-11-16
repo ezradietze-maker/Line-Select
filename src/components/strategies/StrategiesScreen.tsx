@@ -516,9 +516,11 @@ function StandingPanel({ standing: st }: { standing: Standing }) {
               <span className="absolute -left-px -top-[11px] h-[14px] w-0.5 rounded-full bg-ink" />
             </div>
           </div>
+          {/* Each label as wide as its band, but never narrower than its words: cut to its band, a small one read
+              "Reserve · …" on a phone and hid the pack's count. */}
           <div className="mt-1.5 flex text-2xs text-ink-faint">
             {bands.map((b) => (
-              <span key={b.label} style={{ width: `${(b.n / total) * 100}%` }} className="truncate">
+              <span key={b.label} style={{ flex: `${b.n} 1 0%` }} className="whitespace-nowrap pr-1.5 last:pr-0">
                 {b.label} · {b.n}
               </span>
             ))}

@@ -52,3 +52,15 @@ describe("Pay check's runs of the same day trip", () => {
     expect(options.map((m) => m[2])).toEqual(["30 on Oct 20 (4:16 CH)", "30 on Oct 21 (4:16 CH)", "30 on Oct 22 (4:16 CH)"]);
   });
 });
+
+describe("Pay check's line of one trip", () => {
+  // Round 28: B777 MEM FO line 2001 flies one 12-day trip, and read "the sum of its 1 trips' guarantees".
+  const one = { ...line, trips: [{ ...copy(0), creditHours: 87 + 26 / 60 }] } as unknown as Line;
+  const html = renderToStaticMarkup(createElement(PayCheckScreen, { bidPack: { ...pack, lines: [one] } as BidPack, onGoToUpload: () => {} }));
+  const text = html.replace(/<[^>]+>/g, "").replace(/&rsquo;/g, "’");
+
+  it("says the one trip's guarantee, not a sum of 1 trips", () => {
+    expect(text).not.toContain("1 trips");
+    expect(text).toContain("That’s its one trip’s guarantee, above the 68:00 CH floor");
+  });
+});

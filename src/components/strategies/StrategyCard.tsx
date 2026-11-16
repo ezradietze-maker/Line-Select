@@ -184,7 +184,9 @@ export function StrategyCard({
             {strategy.facts.map((f) => (
               <div key={f.label} className="flex items-baseline justify-between gap-3 text-xs">
                 <dt className="text-ink-muted">{f.label}</dt>
-                <dd className={`shrink-0 font-mono font-semibold ${f.tone === "good" ? "text-good" : f.tone === "warn" ? "text-warn" : "text-readout"}`}>{f.value}</dd>
+                {/* Held to most of the row and wrapped: kept whole on one line, a long value ("Conflict · View/Add · SWW ·
+                    Secondary · Open time") ran past the card's edge on a phone and was cut off. */}
+                <dd className={`max-w-[65%] shrink-0 text-right font-mono font-semibold ${f.tone === "good" ? "text-good" : f.tone === "warn" ? "text-warn" : "text-readout"}`}>{f.value}</dd>
               </div>
             ))}
           </dl>
