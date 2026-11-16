@@ -26,7 +26,8 @@ import type { StripViewMode } from "@/lib/strip-view-storage";
 import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
 import { departureSettingsOf, monthDepartureOptionsFrom } from "@/lib/month-detail";
 import { lineCarryOver, monthLine } from "@/lib/bid-month";
-import { groupDepartures } from "@/lib/metrics/departures";
+import { departureDays, groupDepartures } from "@/lib/metrics/departures";
+import { lineByDay } from "@/lib/trip-anchor";
 import { CreditHours } from "@/components/results/TripMarks";
 import { buildLineFeatures, type LineFactChip } from "@/lib/line-summary";
 import { topImplicitContributions } from "@/lib/rank-learning";
@@ -351,7 +352,11 @@ function LineDetails({
   const bodyClock = useMemo(() => (expanded && activeTab === "circadian" ? lineBodyClockScore(line.trips, homeBaseOffsetMinutes) : null), [expanded, activeTab, line.trips, homeBaseOffsetMinutes]);
   const chips = useMemo(() => buildLineFeatures(month, profile, lineScore.criterionResults, undefined, bidMonth, departureOptions.base), [month, profile, lineScore.criterionResults, bidMonth, departureOptions.base]);
   // Times the pilot leaves home: trips flown back to back, never home between, count once — as the calendar's summary counts them.
-  const departureGroups = useMemo(() => groupDepartures(month.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [month.trips, bidPeriodStart, departureOptions]);
+  // Each holds its trips as the pack prints them, a run of day trips a day at a time (`departureDays`).
+  const departureGroups = useMemo(() => {
+    const ctx = { bidPeriodStart, base: departureOptions.base };
+    return groupDepartures(month.trips, ctx, departureOptions).map((d) => departureDays(d, ctx).map((x) => x.day));
+  }, [month.trips, bidPeriodStart, departureOptions]);
   const departures = departureGroups.length;
 
   return (
@@ -455,7 +460,7 @@ function LineDetails({
           {forecast && <div className="mt-2.5"><ForecastChip forecast={forecast} /></div>}
           {heldBy && <HeldByNote note={heldBy} showOdds={!!forecast} />}
 
-          {!lineScore.estimated && <TripNumberStrip trips={month.trips} departures={departureGroups} carryOver={carryOver} />}
+          {!lineScore.estimated && <TripNumberStrip trips={lineByDay(month).trips} departures={departureGroups} carryOver={carryOver} />}
 
           {/* The month calendar takes the card's full width: each day lists its flights, and they need the room to read. */}
           <div className="mt-3 grid gap-4">
@@ -550,7 +555,7 @@ function LineDetails({
                     bid pack&rsquo;s own line totals.
                   </div>
                 ) : (
-                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} carryOver={carryOver} bidPeriodDays={bidPeriodDays} />
+                  <TripList trips={lineByDay(line).trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} carryOver={carryOver} bidPeriodDays={bidPeriodDays} />
                 ))}
 
               {activeTab === "breakdown" && (

@@ -16,6 +16,7 @@ import { CreditHours } from "@/components/results/TripMarks";
 import { ColorKey } from "@/components/results/ColorKey";
 import { planTripSleep, type LayoverSleepPlan } from "@/lib/sleep-plan";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
+import { runOfDay } from "@/lib/trip-anchor";
 import { hubTurnsOf, summarizeHubTurns } from "@/lib/metrics/hub-turns";
 import { Modal } from "@/components/ui/Modal";
 import { tripBodyClockScore } from "@/lib/body-clock-score";
@@ -172,7 +173,8 @@ function TripHeader({
   /** What this trip flies after its bid month ends, with the C/O credit the line prints — on the trip that runs past it. */
   carryOver?: (TripCarryOver & { month: string; creditHours: number }) | null;
 }) {
-  const bodyClock = tripBodyClockScore(trip, homeBaseOffsetMinutes);
+  // A day of a run of day trips is scored with the run's other days: a fourth early show in a row is harder than one.
+  const bodyClock = tripBodyClockScore(runOfDay(trip)?.run ?? trip, homeBaseOffsetMinutes);
   const [whyOpen, setWhyOpen] = useState(false);
   const block = tripBlockMinutes(trip);
   const deadhead = tripDeadheadBlockMinutes(trip);
@@ -323,6 +325,7 @@ function TripLegendInfo() {
 }
 
 interface TripListProps {
+  /** The line's trips as the pack prints them: a run of day trips a day at a time (`lineByDay`). */
   trips: Trip[];
   /** Real UTC offset derived from the bid pack's own printed times — see lib/circadian.ts. Null when it couldn't be derived. */
   homeBaseOffsetMinutes: number | null;
@@ -406,7 +409,8 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
           const key = `${trip.id}-${tripIndex}`;
           const plans: LayoverSleepPlan[] = sleepPlans[tripIndex] ?? [];
           const days = tripPictureDays(trip, mode);
-          const tripScore = tripScores?.get(tripKey(trip));
+          // A day of a run of day trips (`lineByDay`) shows the run's score: it's scored as the one trip.
+          const tripScore = tripScores?.get(tripKey(runOfDay(trip)?.run ?? trip));
           return (
             <li key={key} className="rounded-[var(--radius-panel)] border border-hairline bg-surface/60 p-3 shadow-[inset_0_1px_0_var(--panel-highlight)]">
               <TripHeader

@@ -340,9 +340,18 @@ function RouteDays({ columns, timeline, layout }: { columns: PackColumn[]; timel
   const flightSpots = laneLabels(flights, RT.flightLanes.length, width);
   const stays = routes.flatMap((r) => r.stays.map((s) => ({ ...s, at: (x(s.start) + x(s.end)) / 2, width: s.city.length * charPx })));
   const citySpots = laneLabels(stays, RT.cityLanes.length, width);
-  // Each trip's number and its credit, always both, from its card's left edge: a crowded one moves along rather than covering the one before.
-  const headerText = cards.map((c) => ({ number: c.trip.number ?? "—", credit: formatHoursValue(c.trip.creditHours) }));
-  const headerWidths = headerText.map((h) => (h.number.length + 1 + h.credit.length) * headerFont * MONO_ADVANCE);
+  // Each trip's number and its credit from its card's left edge: a crowded one moves along rather than covering the one
+  // before. The credit only where it has room before the next card, as the pack strip says just the number of a day
+  // trip with another the next day: on a phone, a run of day trips' "31 6:24"s pushed the next trip's number days off
+  // its card. The card's own title still says it.
+  const fullWidth = (number: string, credit: string) => (number.length + 1 + credit.length) * headerFont * MONO_ADVANCE;
+  const headerText = cards.map((c, i) => {
+    const number = c.trip.number ?? "—";
+    const credit = formatHoursValue(c.trip.creditHours);
+    const next = cards[i + 1];
+    return { number, credit: !next || c.left + 1 + fullWidth(number, credit) + 6 <= next.left ? credit : "" };
+  });
+  const headerWidths = headerText.map((h) => (h.credit ? fullWidth(h.number, h.credit) : h.number.length * headerFont * MONO_ADVANCE));
   const headerSpots = laneLabels(cards.map((c, i) => ({ at: c.left + 1 + headerWidths[i] / 2, width: headerWidths[i] })), 1, Infinity, 6);
   const headers = headerText.map((h, i) => ({ ...h, left: headerSpots[i].x }));
   const offDays = timeline.offRuns.flatMap((r) => Array.from({ length: r.length }, (_, k) => r.day + k));
@@ -406,7 +415,7 @@ function RouteDays({ columns, timeline, layout }: { columns: PackColumn[]; timel
             <tspan fontWeight={600} fill="var(--color-ink)">
               {h.number}
             </tspan>
-            <tspan fill="var(--color-ink-muted)"> {h.credit}</tspan>
+            {h.credit && <tspan fill="var(--color-ink-muted)"> {h.credit}</tspan>}
           </text>
         ))}
       </svg>

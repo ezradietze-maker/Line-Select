@@ -6,7 +6,7 @@ import { DEFAULT_HOME_PARAMS, EARLY_SHOW_HOUR, estimatedTravel, homeAwayForTrip,
 
 export { EARLY_SHOW_HOUR };
 import { tripFactsOf, type TripFacts } from "@/lib/metrics/trip-facts";
-import { runDaysOf } from "@/lib/trip-anchor";
+import { dayTripsOf, runDaysOf } from "@/lib/trip-anchor";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /**
@@ -264,4 +264,24 @@ export function groupDepartures(trips: Trip[], ctx: Pick<BidPack, "bidPeriodStar
     ...departures,
     ...unplaced.map((trip) => ({ trips: [trip], leaveHome: null, backHome: null, reportAt: null, releaseAt: null, start: null, end: null, creditHours: trip.creditHours, turnHours: [], homeHoursAfter: null, baseCommutes: 0, baseNights: [], jumpseatIns: 0 })),
   ];
+}
+
+/**
+ * A departure's trips as the days the pack prints (`dayTripsOf`), for drawing it: a run of day trips is its days, and a
+ * run a pilot goes home between gives each of its departures the days that report on it. Each day with the trip it came
+ * from, in order. The departure itself, and what it counts, is the same.
+ */
+export function departureDays(dep: Departure, ctx: Pick<BidPack, "bidPeriodStart" | "base">): { day: Trip; of: Trip }[] {
+  return dep.trips.flatMap((of) => {
+    const days = dayTripsOf(of);
+    const on =
+      days.length < 2 || dep.reportAt === null || dep.releaseAt === null
+        ? days
+        : days.filter((d) => {
+            const at = tripStartUtc(ctx, d);
+            // A clock change between the run's days can move a day's report an hour from where the run puts it.
+            return at === null || (at >= dep.reportAt! - 2 * HOUR && at <= dep.releaseAt!);
+          });
+    return on.map((day) => ({ day, of }));
+  });
 }

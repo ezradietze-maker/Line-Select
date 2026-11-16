@@ -9,6 +9,7 @@ import { ChevronDownIcon } from "@/components/ui/icons";
 import { buildPackRow, type PackColumn } from "@/lib/bidpack-row";
 import { lineFigures } from "@/lib/brain/line-text";
 import { formatHoursValue } from "@/lib/interview-config";
+import { lineByDay } from "@/lib/trip-anchor";
 import type { BidPack } from "@/types/bidpack";
 
 /**
@@ -72,7 +73,7 @@ export function PackLineFold({
               <p className="mt-4 text-2xs text-ink-faint font-medium">Its trips</p>
               <ul className="mt-2 space-y-2">
                 {/* The same pairing can be flown twice in a month, so its id alone isn't a unique key. */}
-                {line.trips.map((t, i) => (
+                {lineByDay(line).trips.map((t, i) => (
                   <li key={`${t.id}-${i}`}>
                     <TripFold bidPack={bidPack} trip={t} />
                   </li>
