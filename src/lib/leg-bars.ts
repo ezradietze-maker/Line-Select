@@ -119,14 +119,19 @@ function dutySpans(segs: TimelineSegment[]): BarSpan[] {
 /**
  * Labels in order along the day, each moved a line out when it would sit on the one before it (closer than `minGap`
  * minutes) — and dropped when it would sit on both lines' last labels. The words are always in the day's detail.
+ *
+ * `half` is how many minutes of the day half a label covers, where it's drawn: a label at the day's edge is nudged in
+ * by that much to stay inside it, so it's measured where it lands — "23:59" pulled in beside "16:14" read "16:1423:59".
  */
-export function stagger<P extends { at: number; text: string }>(points: P[], minGap: number): (P & { row: 0 | 1 })[] {
+export function stagger<P extends { at: number; text: string }>(points: P[], minGap: number, half?: (text: string) => number): (P & { row: 0 | 1 })[] {
   const out: (P & { row: 0 | 1 })[] = [];
   const lastAt: [number, number] = [-Infinity, -Infinity];
-  for (const p of [...points].sort((a, b) => a.at - b.at)) {
-    const row = p.at - lastAt[0] >= minGap ? 0 : p.at - lastAt[1] >= minGap ? 1 : null;
+  const drawnAt = (p: P) => (half ? Math.min(Math.max(p.at, half(p.text)), DAY - half(p.text)) : p.at);
+  for (const p of [...points].sort((a, b) => drawnAt(a) - drawnAt(b))) {
+    const at = drawnAt(p);
+    const row = at - lastAt[0] >= minGap ? 0 : at - lastAt[1] >= minGap ? 1 : null;
     if (row === null) continue;
-    lastAt[row] = p.at;
+    lastAt[row] = at;
     out.push({ ...p, row });
   }
   return out;
@@ -158,15 +163,22 @@ export function sideBySide(labels: { at: number; text: string }[], widthPx: numb
 /**
  * One day's picture from its timeline pieces (`buildHomeDays` / `buildTimelineDays`). `minGap` is how many minutes of
  * the day a label needs to itself at the width it's drawn — a city two legs share is written once, between them, when
- * the two would otherwise sit on each other.
+ * the two would otherwise sit on each other. With `widthPx`, the times are spaced where they're drawn,
+ * nudged in at the day's edges (see `stagger`).
  */
-export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled: (s: TimelineSegment) => boolean = (s) => !s.continuesFromPreviousDay): DayBars {
+export function dayBars(
+  segments: TimelineSegment[],
+  minGap: number,
+  stayLabeled: (s: TimelineSegment) => boolean = (s) => !s.continuesFromPreviousDay,
+  widthPx?: number
+): DayBars {
+  const half = widthPx ? (text: string) => ((text.length * LABEL_CHAR_PX) / 2 / widthPx) * DAY : undefined;
   const again = segments.filter((s) => s.secondPass);
-  const first = picture(segments.filter((s) => !s.secondPass), minGap, stayLabeled);
-  return again.length > 0 ? { ...first, second: picture(again, minGap, stayLabeled) } : first;
+  const first = picture(segments.filter((s) => !s.secondPass), minGap, stayLabeled, half);
+  return again.length > 0 ? { ...first, second: picture(again, minGap, stayLabeled, half) } : first;
 }
 
-function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: TimelineSegment) => boolean): DayBars {
+function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: TimelineSegment) => boolean, half?: (text: string) => number): DayBars {
   const ordered = [...segments].sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay || endOf(a) - endOf(b));
   const legs: BarLeg[] = ordered
     .filter((s) => (s.kind === "flying" || s.kind === "deadhead") && s.leg)
@@ -223,9 +235,10 @@ function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: T
     rests: ordered
       .filter((s) => s.kind === "connection" && s.stay)
       .map((s) => ({ start: s.startMinuteOfDay, end: endOf(s), city: s.stay!.city, hours: s.stay!.hours, hotel: s.stay!.hotel })),
+    // Cities leave room to spare (three letters in a time's room), so only the times need spacing where they land.
     cities: stagger(cityPoints, minGap),
     cityPoints,
-    times: stagger(timePoints, minGap),
+    times: stagger(timePoints, minGap, half),
   };
 }
 

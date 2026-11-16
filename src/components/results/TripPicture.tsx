@@ -170,7 +170,12 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
             </>
           );
           return (
-            <li key={day.dayNumber} className={`border-t first:border-t-0 ${nextMonth ? "border-l-2 border-t-hairline border-l-carry pl-1" : "border-hairline"}`}>
+            // The next month's mark is drawn just outside the row: a border inside it pushed the day 6px right of the hour
+            // marks, so every bar on those days sat late and ran off the right edge.
+            <li
+              key={day.dayNumber}
+              className={`relative border-t border-hairline first:border-t-0 ${nextMonth ? "before:absolute before:inset-y-0 before:-left-1.5 before:w-0.5 before:bg-carry" : ""}`}
+            >
               {dayDetail ? (
                 <button
                   type="button"

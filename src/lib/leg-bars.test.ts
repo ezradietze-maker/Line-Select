@@ -175,3 +175,29 @@ describe("layover ends and rest hotels", () => {
     expect(bars.stays).toEqual([]);
   });
 });
+
+describe("times at the day's edge", () => {
+  // A phone's trip row is about 207px wide; labels get 40px of room each (`LegBars`).
+  const width = 207;
+  const minGap = (40 * 24 * H) / width;
+
+  it("spaces a time where it's drawn, nudged in from midnight — not where it would sit past the edge", () => {
+    // B757 MEM: SAN 16:14 out (18:14 on MEM's clock) and MEM 23:59 in, on one day. "23:59" is pulled 17px in from the
+    // right edge to stay inside the day, which put it on top of "16:14" — "16:1423:59".
+    const day = [
+      leg("SAN", "PHX", 18 * H + 14, 19 * H + 45, { startClock: "16:14", endClock: "17:45" }),
+      leg("PHX", "MEM", 20 * H + 52, 23 * H + 59, { startClock: "18:52", endClock: "23:59" }),
+    ];
+    const drawn = dayBars(day, minGap, undefined, width).times.map((t) => {
+      const half = (t.text.length * LABEL_CHAR_PX) / 2;
+      const x = Math.min(Math.max((t.at / (24 * H)) * width, half), width - half);
+      return { row: t.row, from: x - half, to: x + half, text: t.text };
+    });
+    for (const a of drawn) for (const b of drawn) if (a !== b && a.row === b.row) expect(a.to <= b.from || b.to <= a.from, `${a.text} on ${b.text}`).toBe(true);
+  });
+
+  it("leaves times in the middle of the day where they were", () => {
+    const day = [leg("MEM", "IND", 8 * H, 9 * H, { startClock: "08:00", endClock: "10:00" })];
+    expect(dayBars(day, minGap, undefined, width).times).toEqual(dayBars(day, minGap).times);
+  });
+});
