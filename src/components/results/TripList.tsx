@@ -141,9 +141,10 @@ function Readout({ label, value, note, tone = "text-readout", title }: { label: 
   return (
     <div className="min-w-0" title={title}>
       <div className={`${LABEL} truncate`}>{label}</div>
-      <div className={`truncate font-mono text-xs font-semibold ${tone}`}>
-        {value}
-        {note && <span className="ml-1 text-2xs font-normal text-ink-muted">{note}</span>}
+      {/* Wraps rather than cutting off: at a tablet's four columns "20:00 (L) Thu 22" lost its day, the date the trip reports. */}
+      <div className={`flex flex-wrap items-baseline gap-x-1 font-mono text-xs font-semibold ${tone}`}>
+        <span className="min-w-0">{value}</span>
+        {note && <span className="text-2xs font-normal text-ink-muted">{note}</span>}
       </div>
     </div>
   );

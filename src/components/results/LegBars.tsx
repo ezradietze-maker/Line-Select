@@ -45,7 +45,7 @@ const minGapAt = (widthPx: number) => (SIZE.labelPx * DAY) / Math.max(widthPx, 1
 
 /** One day's needs at this width — a trip draws every day at the most any of its days needs, so all stand the same height. */
 export function rowShape(segments: TimelineSegment[], widthPx: number): RowShape {
-  const bars = dayBars(segments, minGapAt(widthPx));
+  const bars = dayBars(segments, minGapAt(widthPx), undefined, Math.max(widthPx, 1));
   return { timeRows: rowsOf(bars.times), cityRows: rowsOf(bars.cities), lane: bars.stays.length > 0 || bars.rests.length > 0 };
 }
 
@@ -112,6 +112,50 @@ function middleWords(bars: DayBars, width: number, taken: [number, number][]): {
   return out;
 }
 
+/** How far a layover's words reach at the least before anything else may sit after them: "L/O SEA 16h". */
+const stayWordsPx = (s: DayBars["stays"][number]) => `L/O ${s.city} ${Math.round(s.hours)}h`.length * LABEL_CHAR_PX;
+const WORDS_GAP = 4;
+
+/** Where the hotel van and the layover line begin, px — the words start just past the van. */
+function stayStart(s: DayBars["stays"][number], width: number): number {
+  const x = (s.start / DAY) * width;
+  return s.runsIn ? x : Math.min(x, width - GT_PX) + GT_PX + GT_GAP + GT_PX + 2;
+}
+
+/**
+ * The words under the layover and crew-rest lines share one line, so each keeps clear of the others: a crew-rest hotel's
+ * words centered on its line, the longest that fits ("Rest HTL IND 4h19", "Rest HTL IND", "HTL IND", or none — it's in
+ * the day's detail); a layover's from its start up to the next words after it, cut off there. On a phone a hub turn's
+ * rest and the layover beside it ran into each other.
+ */
+export function laneWords(bars: DayBars, width: number): { stays: ({ left: number; maxWidth: number } | null)[]; rests: ({ center: number; text: string } | null)[] } {
+  const taken: [number, number][] = bars.stays.filter((s) => s.labeled).map((s) => {
+    const left = stayStart(s, width);
+    return [left, left + stayWordsPx(s)];
+  });
+  const rests = bars.rests.map((r) => {
+    const mid = (((r.start + r.end) / 2) / DAY) * width;
+    for (const text of [`Rest HTL ${r.city} ${stayHours(r.hours)}`, `Rest HTL ${r.city}`, `HTL ${r.city}`]) {
+      const half = (text.length * LABEL_CHAR_PX) / 2;
+      if (2 * half > width) continue;
+      const center = Math.min(Math.max(mid, half), width - half);
+      const span: [number, number] = [center - half - WORDS_GAP, center + half + WORDS_GAP];
+      if (taken.some(([a, b]) => span[0] < b && a < span[1])) continue;
+      taken.push([center - half, center + half]);
+      return { center, text };
+    }
+    return null;
+  });
+  const starts = [...rests.filter((r) => r !== null).map((r) => r.center - (r.text.length * LABEL_CHAR_PX) / 2), ...taken.map(([a]) => a)];
+  const stays = bars.stays.map((s) => {
+    if (!s.labeled) return null;
+    const left = stayStart(s, width);
+    const next = Math.min(width + WORDS_GAP, ...starts.filter((a) => a > left));
+    return { left, maxWidth: Math.max(0, next - WORDS_GAP - left) };
+  });
+  return { stays, rests };
+}
+
 interface LegBarsProps {
   segments: TimelineSegment[];
   /** Width it's drawn at, measured by the parent (`useMeasuredWidth`) — decides where labels fit. */
@@ -135,7 +179,7 @@ interface LegBarsProps {
 export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences, formatStay }: LegBarsProps) {
   const width = Math.max(widthPx, 1);
   const x = (m: number) => (m / DAY) * width;
-  const bars = dayBars(segments, minGapAt(width), stayLabeled);
+  const bars = dayBars(segments, minGapAt(width), stayLabeled, width);
   const { timeRows, cityRows, lane } = shape;
   const trackTop = timeRows * SIZE.line + (timeRows ? 2 : 0);
   const mid = trackTop + SIZE.track / 2;
@@ -145,6 +189,7 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
   const height = lane ? wordsTop + SIZE.line : citiesTop + Math.max(cityRows, 1) * SIZE.line;
   const cityTop = (row: 0 | 1) => citiesTop + row * SIZE.line;
   const middle = middleWords(bars, width, spans(bars.cities, 0, width));
+  const words = laneWords(bars, width);
 
   return (
     <div className="relative w-full" style={{ height }} aria-hidden>
@@ -188,10 +233,10 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
               <span className={`absolute bg-layover ${s.runsIn ? "" : "rounded-l-full"} ${s.runsOn ? "" : "rounded-r-full"}`} style={{ left, width: Math.max(2, right - left), top: laneTop, height: SIZE.lane }} />
               {gtIn !== null && <span className="absolute rounded-full bg-gt" style={{ left: gtIn, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT in — airport to hotel" />}
               {gtOut !== null && <span className="absolute rounded-full bg-gt" style={{ left: gtOut, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT out — hotel pickup" />}
-              {s.labeled && (
+              {s.labeled && words.stays[i] && (
                 <span
                   className="absolute flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap font-mono text-2xs font-semibold leading-none text-layover"
-                  style={{ left: left + (s.runsIn ? 0 : GT_PX + 2), maxWidth: width - left - (s.runsIn ? 0 : GT_PX + 2), top: wordsTop, height: SIZE.line }}
+                  style={{ left: words.stays[i]!.left, maxWidth: words.stays[i]!.maxWidth, top: wordsTop, height: SIZE.line }}
                 >
                   {formatStay ? (
                     formatStay(s, <CityMarkGlyph mark={cityPreferences?.[s.city]} />)
@@ -210,15 +255,15 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
         bars.rests.map((r, i) => {
           const left = x(r.start);
           const w = Math.max(2, x(r.end) - left);
-          const text = `Rest HTL ${r.city} ${stayHours(r.hours)}`;
-          const half = (text.length * LABEL_CHAR_PX) / 2;
-          const center = Math.min(Math.max(left + w / 2, half), width - half);
+          const label = words.rests[i];
           return (
             <span key={`r${i}`}>
               <span className="absolute rounded-full bg-rest" style={{ left, width: w, top: laneTop, height: SIZE.lane }} />
-              <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-2xs font-semibold leading-none text-rest" style={{ left: center, top: wordsTop, height: SIZE.line }}>
-                {text}
-              </span>
+              {label && (
+                <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-2xs font-semibold leading-none text-rest" style={{ left: label.center, top: wordsTop, height: SIZE.line }}>
+                  {label.text}
+                </span>
+              )}
             </span>
           );
         })}

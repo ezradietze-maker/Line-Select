@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dutyStartOf, tripPictureDays } from "@/components/results/TripPicture";
-import { dutyStart } from "@/components/results/TripDayDetail";
+import { dutyStart, telHref } from "@/components/results/TripDayDetail";
 import { buildRawSegments } from "@/lib/trip-timeline";
 import type { Trip, TripLeg } from "@/types/bidpack";
 
@@ -90,5 +90,15 @@ describe("a run of day trips on its trip view", () => {
     };
     expect(dutyStart(withLayover, 1, "local")).toEqual({ kind: "Pickup", text: "04:00L" });
     expect(tripPictureDays(withLayover, "local").map((d) => dutyStartOf(d, withLayover)?.kind)).toEqual(["report", "pickup"]);
+  });
+});
+
+describe("a hotel or ride phone's link", () => {
+  it("dials the number, then the extension after a pause", () => {
+    expect(telHref("+1-907-272-7411")).toBe("tel:+19072727411");
+    expect(telHref("215-609-4400 EXT 105")).toBe("tel:2156094400,105");
+    expect(telHref("210-341-6000 x 3")).toBe("tel:2103416000,3");
+    expect(telHref("317-555-0100 ext: 2")).toBe("tel:3175550100,2");
+    expect(telHref("901-555-0100 - CELL")).toBe("tel:9015550100");
   });
 });

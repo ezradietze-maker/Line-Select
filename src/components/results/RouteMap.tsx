@@ -254,7 +254,8 @@ export function RouteMap({ homeBase, line }: RouteMapProps) {
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left font-mono text-xs text-ink-muted transition-colors hover:bg-accent-soft/40 hover:text-ink focus-visible:bg-accent-soft/40 focus-visible:outline-none"
               >
                 <span className="text-accent">{trip.pairingNumber ? `#${trip.pairingNumber}` : `Trip ${i + 1}`}</span>
-                <span className="truncate">
+                {/* Wraps on a phone: cut off, a long trip's last stops couldn't be read anywhere. */}
+                <span className="min-w-0">
                   {[homeBase, ...tripStops(trip), homeBase].join(" → ")}
                 </span>
                 <span className="ml-auto shrink-0 text-ink-faint">{trip.days}d</span>
