@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayBars, fitLayoverLabel, labeledStayPieces, layoverHours, LABEL_CHAR_PX, sideBySide, stagger } from "@/lib/leg-bars";
+import { dayBars, fitLayoverLabel, labeledStayPieces, layoverHours, LABEL_CHAR_PX, sideBySide, stagger, stayLabelLeft } from "@/lib/leg-bars";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 
 const H = 60;
@@ -145,6 +145,18 @@ describe("layover words", () => {
     expect(fitLayoverLabel("OAK", 28, 30)).toMatchObject({ hours: false });
     // Room for the pilot's mark after it counts too.
     expect(fitLayoverLabel("OAK", 28, "OAK 28h".length * LABEL_CHAR_PX + 4, 10)).toMatchObject({ hours: false });
+  });
+
+  it("moves a late stay's words back toward its start so they aren't cut at the day's right edge", () => {
+    const text = "L/O SFO 20h".length * LABEL_CHAR_PX;
+    // A phone's day 180px wide, the stay from 15:00 (112px), its words after the van at 140px: only 40px left for them.
+    const left = stayLabelLeft(140, 112, text, 180);
+    expect(left).toBe(112);
+    expect(180 - left).toBeGreaterThan(text - 8);
+    // Room to spare: they stay just after the van.
+    expect(stayLabelLeft(60, 32, text, 180)).toBe(60);
+    // Room only part way back: no further than they need.
+    expect(stayLabelLeft(140, 60, text, 180)).toBeCloseTo(180 - text);
   });
 });
 

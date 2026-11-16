@@ -260,6 +260,15 @@ export const layoverHours = (hours: number) => `${Math.round(hours)}h`;
 export const LABEL_CHAR_PX = 6.8;
 
 /**
+ * Where a layover's words start on a day `widthPx` across: just after the van (`afterVan`), or further back, as far as
+ * the stay's own start, when that keeps their `textPx` clear of the day's right edge. A stay starting late on a phone's
+ * narrow day had "L/O SFO 20h" cut to "L/O S".
+ */
+export function stayLabelLeft(afterVan: number, stayStart: number, textPx: number, widthPx: number): number {
+  return Math.max(stayStart, Math.min(afterVan, widthPx - textPx));
+}
+
+/**
  * The most a layover's words can say in `roomPx`: "OAK 28h", then "OAK" — `extraPx` for the pilot's mark after it.
  * No "L/O": the green line and the color key already say it's a layover.
  */
