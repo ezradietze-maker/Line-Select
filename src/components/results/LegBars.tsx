@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { dayBars, LABEL_CHAR_PX, type BarLabel, type DayBars } from "@/lib/leg-bars";
+import { dayBars, LABEL_CHAR_PX, layoverHours, stayLabelLeft, type BarLabel, type DayBars } from "@/lib/leg-bars";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 import { widthWatcher } from "@/lib/width-watcher";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
@@ -183,6 +183,9 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
           const gtOut = s.runsOn ? null : Math.min(x(s.end) + GT_GAP, width - GT_PX);
           const left = gtIn === null ? x(s.start) : gtIn + GT_PX + GT_GAP;
           const right = gtOut === null ? x(s.end) : gtOut - GT_GAP;
+          // "L/O SFO 20h" and the pilot's mark: the hotel after it may be cut, never the city or the hours.
+          const wordsPx = (`L/O ${s.city} ${layoverHours(s.hours)}`.length + (cityPreferences?.[s.city] ? 2 : 0)) * LABEL_CHAR_PX;
+          const wordsLeft = stayLabelLeft(left + (s.runsIn ? 0 : GT_PX + 2), x(s.start), wordsPx, width);
           return (
             <span key={`h${i}`}>
               <span className={`absolute bg-layover ${s.runsIn ? "" : "rounded-l-full"} ${s.runsOn ? "" : "rounded-r-full"}`} style={{ left, width: Math.max(2, right - left), top: laneTop, height: SIZE.lane }} />
@@ -191,13 +194,13 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
               {s.labeled && (
                 <span
                   className="absolute flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap font-mono text-2xs font-semibold leading-none text-layover"
-                  style={{ left: left + (s.runsIn ? 0 : GT_PX + 2), maxWidth: width - left - (s.runsIn ? 0 : GT_PX + 2), top: wordsTop, height: SIZE.line }}
+                  style={{ left: wordsLeft, maxWidth: width - wordsLeft, top: wordsTop, height: SIZE.line }}
                 >
                   {formatStay ? (
                     formatStay(s, <CityMarkGlyph mark={cityPreferences?.[s.city]} />)
                   ) : (
                     <>
-                      L/O {s.city} {Math.round(s.hours)}h
+                      L/O {s.city} {layoverHours(s.hours)}
                       <CityMarkGlyph mark={cityPreferences?.[s.city]} />
                     </>
                   )}

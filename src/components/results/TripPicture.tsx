@@ -78,7 +78,8 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
   if (days.length === 0) return null;
   const base = trip.schedule[0]?.legs[0]?.depAirport;
   const hours = compact ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24];
-  const grid = compact ? "grid-cols-[3.5rem_minmax(0,1fr)]" : "grid-cols-[4.25rem_minmax(0,1fr)]";
+  // The day column holds "Rpt 20:00L" and "Wed 28 NOV" whole, compact or not: narrower, they ran into the bars beside them.
+  const grid = "grid-cols-[4.25rem_minmax(0,1fr)]";
   const allOpen = open.size === days.length;
   const toggle = (n: number) =>
     setOpen((prev) => {
@@ -129,7 +130,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
           const row = (
             <>
               <span className="flex min-w-0 flex-col items-start leading-tight">
-                <span className="flex items-center gap-1 truncate text-2xs font-semibold text-ink">
+                <span className="flex max-w-full flex-wrap items-center gap-x-1 text-2xs font-semibold text-ink">
                   {date ? `${date.weekday} ${date.day}` : `Day ${day.dayNumber}`}
                   {nextMonth && (
                     <span className="text-2xs font-semibold uppercase tracking-wide text-carry" title={`The ${nextMonth} bid month's — carried over, not counted in this one`}>
@@ -145,7 +146,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
                   </span>
                 )}
                 {fullDay && (
-                  <span className="truncate text-2xs font-semibold text-layover" title={`A full day free in ${fullDay.city}${fullDay.barely ? " — just barely: up before 6 the next morning" : ""}`}>
+                  <span className="max-w-full text-2xs font-semibold text-layover" title={`A full day free in ${fullDay.city}${fullDay.barely ? " — just barely: up before 6 the next morning" : ""}`}>
                     Full day{fullDay.barely ? <span className="font-normal">, barely</span> : null}
                   </span>
                 )}

@@ -202,7 +202,7 @@ function CityRow({
           {facts.standbyDays > 0 && ` · ${facts.standbyDays} standby ${facts.standbyDays === 1 ? "day" : "days"}`}
         </p>
       </div>
-      {facts.hotel && <p className="mt-0.5 truncate text-xs text-ink-muted">{facts.hotel}</p>}
+      {facts.hotel && <p className="mt-0.5 text-xs text-ink-muted">{facts.hotel}</p>}
 
       <div className="mt-2">
         <GradePills value={untried ? undefined : score} onPick={(s) => onRate(s ?? 0)} label={`Rate ${name ?? facts.code}`} />
