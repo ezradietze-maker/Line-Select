@@ -131,7 +131,9 @@ export function PhoneNav({
               <span className="h-[3px] w-8 rounded-b-[2px] bg-accent" />
             </span>
           )}
-          {/* A location sign behind the active tab — black, yellow-bordered — gliding along with the marker. */}
+          {/* A location sign behind the active tab — black, yellow-bordered — gliding along with the marker. The tabs are
+              `relative` so they draw over it: with a mouse (a desktop window under 768 px, or zoomed to 200%) nothing
+              else positioned them, and the sign covered the active tab's name. */}
           {tabIndex >= 0 && (
             <span
               aria-hidden
@@ -153,7 +155,7 @@ export function PhoneNav({
                 aria-label={reason ? `${item.label} — ${reason}` : item.label}
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => go(target)}
-                className={`flex flex-col items-center justify-center gap-1 text-2xs font-medium transition-colors disabled:opacity-35 ${
+                className={`relative flex flex-col items-center justify-center gap-1 text-2xs font-medium transition-colors disabled:opacity-35 ${
                   isActive ? "text-accent" : "text-ink-muted active:text-ink"
                 }`}
               >
@@ -170,7 +172,7 @@ export function PhoneNav({
             onClick={() => setMoreOpen((o) => !o)}
             aria-expanded={moreOpen}
             aria-haspopup="dialog"
-            className={`flex flex-col items-center justify-center gap-1 text-2xs font-medium transition-colors ${
+            className={`relative flex flex-col items-center justify-center gap-1 text-2xs font-medium transition-colors ${
               tabIndex === 4 || moreOpen ? "text-accent" : "text-ink-muted"
             }`}
           >
@@ -197,7 +199,9 @@ export function PhoneNav({
             role="dialog"
             aria-modal="true"
             aria-label="More"
-            className="sidebar-scheme animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-[10px] border-t border-sidebar-border bg-sidebar px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-elevated-lg"
+            // No taller than the screen, and scrolls: on a phone held sideways its top half (View/Add to Pay check) was
+            // above the screen's edge, out of reach.
+            className="sidebar-scheme animate-sheet-up absolute inset-x-0 bottom-0 max-h-full overflow-y-auto overscroll-contain rounded-t-[10px] border-t border-sidebar-border bg-sidebar px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-elevated-lg"
           >
             <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-sidebar-border" />
             <div className="mb-2 px-1 text-2xs font-medium text-ink-faint">More</div>

@@ -176,12 +176,13 @@ export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStar
 
   return (
     <div className="relative overflow-x-clip">
-      <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-8">
+      {/* On a narrow phone the links take a row of their own, rather than squeeze "Open Line Select" onto three lines. */}
+      <header className="relative z-10 mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-y-2 px-4 py-4 sm:px-8">
         <div className="flex items-center gap-1">
           <LogoMark className="h-9 w-9" />
           <Wordmark className="h-9 text-base" />
         </div>
-        <nav className="flex items-center gap-1 text-sm">
+        <nav className="ml-auto flex items-center gap-1 whitespace-nowrap text-sm">
           <Link href="/how-it-works" className="rounded-md px-3 py-2 text-ink-muted transition-colors hover:text-ink">
             How it works
           </Link>

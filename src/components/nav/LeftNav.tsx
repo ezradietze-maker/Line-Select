@@ -243,7 +243,7 @@ export function LeftNav({
     <aside
       aria-label="Main"
       style={{ viewTransitionName: "app-rail" }}
-      className="sidebar-scheme shadow-sidebar fixed inset-y-0 left-0 z-30 hidden w-[var(--shell-left)] flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[var(--ease-emphasized)] md:flex"
+      className="sidebar-scheme shadow-sidebar fixed inset-y-0 left-0 z-30 hidden w-[var(--shell-left)] flex-col overflow-y-auto overscroll-contain rail-collapsed:overflow-visible border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[var(--ease-emphasized)] md:flex"
     >
       <div className="relative flex items-center justify-between gap-2 border-b border-sidebar-border/70 px-4 py-4 rail-collapsed:flex-col rail-collapsed:gap-3 rail-collapsed:px-0">
         <button
@@ -292,8 +292,10 @@ export function LeftNav({
       </div>
 
       {/* The one part that scrolls, on a window too short for the whole rail, so the links below stay in view. Not on
-          the icon rail: its tooltips stand out past its edge, and a scrolling box would clip them. */}
-      <nav aria-label="Destinations" className="min-h-0 flex-1 overflow-y-auto px-3 pb-2 pt-3 rail-collapsed:min-h-fit rail-collapsed:overflow-visible">
+          the icon rail: its tooltips stand out past its edge, and a scrolling box would clip them. On a window shorter
+          still (a phone held sideways, 390 px) it keeps room for a few rows and the whole rail scrolls instead: shrunk to
+          nothing, every destination was out of sight and the account was below the screen's edge. */}
+      <nav aria-label="Destinations" className="min-h-36 flex-1 overflow-y-auto px-3 pb-2 pt-3 rail-collapsed:min-h-fit rail-collapsed:overflow-visible">
         <NavList active={active} hasProfile={hasProfile} hasBidPack={hasBidPack} ready={ready} inboxUnreadCount={inboxUnreadCount} onGo={onNavigate} />
       </nav>
 
