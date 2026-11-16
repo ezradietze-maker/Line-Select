@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { AccountMenu, AccountPlaceholder } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { FeedbackIcon, InfoIcon, type NavProps } from "@/components/nav/LeftNav";
-import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
+import { COMING_SOON, NAV_ITEMS, disabledReason, homeTarget, navItemName, type NavTarget } from "@/components/nav/nav-items";
 import { PlayIcon, SearchIcon } from "@/components/ui/icons";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
 import { dialogOpen } from "@/components/ui/Modal";
@@ -209,6 +209,7 @@ export function PhoneNav({
                     key={item.target}
                     type="button"
                     onClick={() => go(item.target)}
+                    aria-label={navItemName(item)}
                     aria-current={isActive ? "page" : undefined}
                     className={`flex flex-col items-center gap-2 rounded-[4px] border px-2 py-3.5 text-xs font-medium transition-colors ${
                       isActive ? "border-accent bg-accent-wash text-on-wash" : "border-border text-ink-muted active:bg-canvas"
@@ -219,6 +220,11 @@ export function PhoneNav({
                       {item.target === "inbox" && <Badge count={inboxUnreadCount} />}
                     </span>
                     {item.label}
+                    {item.comingSoon && (
+                      <span aria-hidden className="-mt-1 rounded-[2px] border border-border px-1.5 py-px text-2xs font-medium leading-[14px] text-ink-faint">
+                        {COMING_SOON}
+                      </span>
+                    )}
                   </button>
                 );
               })}

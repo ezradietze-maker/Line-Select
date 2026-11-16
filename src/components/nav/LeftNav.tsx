@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { AccountMenu, AccountPlaceholder } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
-import { NAV_ITEMS, disabledReason, homeTarget, type NavTarget } from "@/components/nav/nav-items";
+import { COMING_SOON, NAV_ITEMS, disabledReason, homeTarget, navItemName, type NavTarget } from "@/components/nav/nav-items";
 import { ChevronLeftIcon, PlayIcon, SearchIcon } from "@/components/ui/icons";
 import { Wordmark } from "@/components/ui/Logo";
 import { LogoFlight } from "@/components/ui/LogoFlight";
@@ -147,6 +147,7 @@ function NavList({
                 type="button"
                 disabled={!!reason}
                 title={reason}
+                aria-label={reason ? `${navItemName(item)} — ${reason}` : navItemName(item)}
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => onGo(item.target)}
                 className={`${ROW} z-10 mb-0.5 disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -155,7 +156,12 @@ function NavList({
               >
                 <RowIcon icon={item.icon} active={isActive} badge={item.target === "inbox" ? inboxUnreadCount : 0} />
                 <span className="truncate rail-collapsed:sr-only">{item.label}</span>
-                {!reason && <RailTip>{item.label}</RailTip>}
+                {item.comingSoon && (
+                  <span aria-hidden className="ml-auto shrink-0 whitespace-nowrap rounded-[2px] border border-border px-1.5 py-px text-2xs font-medium leading-[14px] text-ink-faint rail-collapsed:hidden">
+                    {COMING_SOON}
+                  </span>
+                )}
+                {!reason && <RailTip>{navItemName(item)}</RailTip>}
               </button>
             );
           })}
