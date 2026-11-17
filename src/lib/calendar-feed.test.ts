@@ -153,6 +153,17 @@ describe("the feed's output", () => {
     expect(trip27.description).toContain("Ride back: Limo Co, 222");
   });
 
+  it("releases on the pack's own minute, though TAFB is kept to two decimals", () => {
+    // A300 MEM trip 32: report 0212, TAFB 69:56, kept as 69.93 hours. Taken as it is, that's 69:55:48 and the release
+    // read 00:07 where the pack's is 00:08, with seconds on the event's end.
+    const p = pack({ lines: [line({ trips: [trip({ tafbHours: 69.93, schedule: [{ ...trip().schedule[0], reportTimeLocal: "0212" }, trip().schedule[1]] })] })] });
+    const m = month({}, p);
+    expect(m.trips[0].end % 60_000).toBe(0);
+    expect(m.trips[0].description).toContain("Report: Wed Sep 30 02:12 MEM time");
+    expect(m.trips[0].description).toContain("Release: Sat Oct 3 00:08 MEM time");
+    expect(renderFeed([m], { homeDays: false })).toContain("DTEND:20261003T050800Z");
+  });
+
   it("says plainly when a line is only the pilot's #1, and when it's the award", () => {
     const top = parsed(renderFeed([month()], { homeDays: false })).find((e) => e.summary.startsWith("Trip 27"))!;
     expect(top.summary).toContain("your #1");
