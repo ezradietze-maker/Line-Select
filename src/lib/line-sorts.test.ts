@@ -158,7 +158,7 @@ describe("formatSortValue", () => {
   const ctx = { dates: [] };
   const f = (id: string, v: number | null) => formatSortValue(LINE_SORTS_BY_ID.get(id)!, v, ctx);
   it("says each value in its own unit", () => {
-    expect(f("creditHours", 85.25)).toBe("85.3 hrs");
+    expect(f("avgLayoverHours", 22.25)).toBe("22.3 hrs");
     expect(f("creditPerDayAway", 5.126)).toBe("5.13 hrs per day");
     expect(f("creditPerBlockHour", 1.8)).toBe("1.80 per block hr");
     expect(f("dayFlyingShare", 0.625)).toBe("63%");
@@ -169,6 +169,15 @@ describe("formatSortValue", () => {
     expect(f("tripCount", 3.6)).toBe("3.6 trips");
     expect(f("bodyClockScore", 71.6)).toBe("72");
     expect(f("daysOff", null)).toBe("Not known");
+  });
+
+  it("says the line's own credit, block and TAFB to the minute, as the strip beside it prints them", () => {
+    // Sorted by credit, a card read "84.0 hrs" over a strip printing "CR. 84:02".
+    expect(f("creditHours", 84.03)).toBe("84:02");
+    expect(f("carryOverCredit", 8.38)).toBe("8:23");
+    expect(f("totalCredit", 84.03 + 8.38)).toBe("92:25");
+    expect(f("blockHours", 34.62)).toBe("34:37");
+    expect(f("tafbHours", 288.87)).toBe("288:52");
   });
 });
 

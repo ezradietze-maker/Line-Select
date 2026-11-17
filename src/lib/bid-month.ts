@@ -239,6 +239,18 @@ export function tripCarryInPack(pack: Pick<BidPack, "lines"> & PackDates, trip: 
   return { ...carry, month: nextMonthName(pack), creditHours: line ? (lineCarryOver(line, pack)?.creditHours ?? 0) : 0 };
 }
 
+/**
+ * The line's landings and duty periods in its bid month, each with what carries into the next beside it: "9 +1 Nov". The
+ * pack's LDGS and DP'S count across the carry-over, so the two add up to the strip's printed figures; said bare, the
+ * month's "9" read as a contradiction of the strip's "10".
+ */
+export function monthCounts(line: Line, pack: PackDates): { landings: string; dutyPeriods: string } {
+  const month = monthLine(line, pack);
+  const carry = lineCarryOver(line, pack);
+  const say = (n: number, carried: number) => (carry && carried > 0 ? `${n} +${carried} ${carry.month.slice(0, 3)}` : String(n));
+  return { landings: say(month.totalLandings, carry?.landings ?? 0), dutyPeriods: say(lineDutyPeriods(month), carry?.dutyPeriods ?? 0) };
+}
+
 /** "6:08 C/O into November", or "2 days into November" when no credit carries — how a carry-over is said in words. */
 export function carryOverWords(c: { days: number; creditHours: number; month: string }): string {
   if (c.creditHours > 0) {
