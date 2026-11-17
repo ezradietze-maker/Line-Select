@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
 import type { Line } from "@/types/bidpack";
-import { dayTripsOf } from "@/lib/trip-anchor";
+import { dayTripsOf, tripDaysShown } from "@/lib/trip-anchor";
 import { hm } from "@/lib/trip-day-stats";
 
 /** An event's id with only id characters: a pack's pairing number with a line break in it wrote a line of its own. */
@@ -77,9 +77,11 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null, bid
   const stamp = DateTime.utc().toFormat("yyyyLLdd'T'HHmmss'Z'");
 
   // A run of day trips as its days, as the calendar link shows it: one event over the nights at home read as days away.
+  // Each over its own days: an overnight one, home the next morning, was a one-day event.
   const events = line.trips.flatMap(dayTripsOf).map((trip) => {
+    const days = tripDaysShown(trip);
     const start = base.plus({ days: trip.startDayIndex! });
-    const end = start.plus({ days: trip.days });
+    const end = start.plus({ days });
     const reportTime = trip.schedule[0]?.reportTimeLocal;
     const cities = trip.layoverCities.length > 0 ? trip.layoverCities.join(" \u2192 ") : "no layovers";
     const summary = trip.pairingNumber
@@ -87,7 +89,7 @@ export function buildLineCalendar(line: Line, bidPeriodStart: string | null, bid
       : `Line ${line.lineNumber} trip`;
     const description = [
       reportTime ? `Reports ${reportTime.slice(0, 2)}:${reportTime.slice(2)} local` : null,
-      `${trip.days}-day trip, ${cities}`,
+      `${days}-day trip, ${cities}`,
       `${hm(trip.creditHours * 60)} credit hours`,
     ]
       .filter((v): v is string => !!v)

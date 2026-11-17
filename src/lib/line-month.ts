@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import { dateLineCrossing } from "@/lib/date-line";
 import { buildDateLineDays, buildHomeDays, buildZuluCalendarDays, type TimeMode, type TimelineDay, type TimelineSegment } from "@/lib/trip-timeline";
+import { tripDaysShown } from "@/lib/trip-anchor";
 import type { Line, Trip } from "@/types/bidpack";
 
 export interface LineMonthDay {
@@ -244,8 +245,9 @@ export function buildLineMonthCalendar(line: Line, bidPeriodStart: string | null
       isOff: false,
       tripIndex: o,
       tripDayNumber,
-      // A trip that lands the day the next one starts still counts that day as one of its own (see `countSharedLastDays`).
-      tripDayCount: Math.max(f.count, entry.span.trip.days),
+      // A trip that lands the day the next one starts still counts that day as one of its own (see `countSharedLastDays`),
+      // and a day of a run of an overnight trip its next morning (`tripDaysShown`).
+      tripDayCount: Math.max(f.count, tripDaysShown(entry.span.trip)),
       hasSchedule: entry.span.trip.schedule.length > 0,
       segments: timelineDay?.segments ?? [],
       isTripStart: i === f.first,

@@ -47,10 +47,14 @@ const CENTRAL = "America/Chicago";
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const PRINTED_BASIS = "As printed on your bid pack's cover.";
 
+/**
+ * Short enough that a phone's calendar, which cuts a title at about 30 characters, still shows whether a window opens
+ * or closes: "NOV26 conflict input window opens" read "…window op". "Conflict Input Closes" is the cover's own wording.
+ */
 const LABELS: Record<TimelineKind, string> = {
   "bid-close": "bid closes",
-  "conflict-open": "conflict input window opens",
-  "conflict-close": "conflict input window closes",
+  "conflict-open": "conflict input opens",
+  "conflict-close": "conflict input closes",
   "view-add-open": "View/Add window opens",
   "view-add-close": "View/Add window closes",
   "sww-open": "SWW opens",

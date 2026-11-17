@@ -4,7 +4,7 @@ import { bidTimeline, type TimelineEvent } from "@/lib/bid-timeline";
 import { backupsOf, type TravelAnswer } from "@/lib/flights/itineraries";
 import { flightsForTrip, type FlightAnswers } from "@/lib/flights/trip-travel";
 import { escapeIcsText, foldLine, icsUtc } from "@/lib/ics-export";
-import { dayTripsOf, runDaysOf, runOfDay, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
+import { dayTripsOf, runDaysOf, runOfDay, tripDaysShown, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import { hm } from "@/lib/trip-day-stats";
 import type { BidPack, Line, Trip, TripDutyPeriod } from "@/types/bidpack";
 
@@ -129,7 +129,7 @@ function feedTrip(pack: Pick<BidPack, "month" | "base" | "bidPeriodStart">, line
     source === "awarded" ? `Line ${line.lineNumber}: your award.` : `Line ${line.lineNumber}: your #1 in Line Select right now. Not an award.`,
     `Report: ${local(start)} ${pack.base} time`,
     `Release: ${local(end)} ${pack.base} time`,
-    `${trip.days}-day trip, ${hm(trip.creditHours * 60)} credit hours`,
+    `${tripDaysShown(trip)}-day trip, ${hm(trip.creditHours * 60)} credit hours`,
     ...trip.schedule.flatMap((d) => {
       if (!d.layover) return [];
       layover += 1;

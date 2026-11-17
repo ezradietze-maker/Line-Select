@@ -16,7 +16,7 @@ import { CreditHours } from "@/components/results/TripMarks";
 import { ColorKey } from "@/components/results/ColorKey";
 import { planTripSleep, type LayoverSleepPlan } from "@/lib/sleep-plan";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
-import { runOfDay } from "@/lib/trip-anchor";
+import { runOfDay, tripDaysShown } from "@/lib/trip-anchor";
 import { hubTurnsOf, summarizeHubTurns } from "@/lib/metrics/hub-turns";
 import { Modal } from "@/components/ui/Modal";
 import { tripBodyClockScore } from "@/lib/body-clock-score";
@@ -197,7 +197,7 @@ function TripHeader({
           {trip.pairingNumber !== null ? `#${trip.pairingNumber} ` : ""}
           <CreditHours hours={trip.creditHours} className="font-normal" />
         </span>
-        <span className="text-xs font-semibold text-ink">{trip.days}-day</span>
+        <span className="text-xs font-semibold text-ink">{tripDaysShown(trip)}-day</span>
         {trip.international && (
           <span className="rounded-[3px] bg-accent-soft px-1.5 py-0.5 text-2xs font-semibold text-accent">Intl</span>
         )}

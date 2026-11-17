@@ -51,6 +51,14 @@ describe("the timeline printed on the pack's cover", () => {
     });
   });
 
+  it("names each step in 30 characters, so a phone's calendar shows whether it opens or closes", () => {
+    const events = [...bidTimeline(pack({ bidCalendar: printed })), ...bidTimeline(pack({ month: "JAN27" }), "2026-12-07T18:00:00.000Z")];
+    expect(new Set(events.map((e) => e.kind)).size).toBe(9);
+    for (const e of events) expect(e.label.length, e.label).toBeLessThanOrEqual(30);
+    expect(events.find((e) => e.kind === "conflict-open")?.label).toBe("OCT26 conflict input opens");
+    expect(events.find((e) => e.kind === "conflict-close")?.label).toBe("OCT26 conflict input closes");
+  });
+
   it("carries the next bid's dates too, under that bid", () => {
     expect(brief(bidTimeline(pack({ bidCalendar: printed })), "NOV26")).toMatchObject({
       "bid-close": "Tue, Oct 6, 12:00",
