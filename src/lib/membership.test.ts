@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FREE_FOR_ALL, FREE_MEMBER_CAP, MEMBERSHIP_CUTOVER, freeSlotsLeft, hasAccess, isMember, membershipTier } from "@/lib/membership";
+import { FREE_FOR_ALL, FREE_MEMBER_CAP, FREE_PREVIEW_LINES, MEMBERSHIP_CUTOVER, freeSlotsLeft, hasAccess, inPreview, isMember, membershipTier } from "@/lib/membership";
 import type { UserAccount } from "@/types/auth";
 
 const CUTOVER = Date.parse(MEMBERSHIP_CUTOVER);
@@ -58,5 +58,20 @@ describe("freeSlotsLeft", () => {
     expect(freeSlotsLeft(14)).toBe(FREE_MEMBER_CAP - 14);
     expect(freeSlotsLeft(FREE_MEMBER_CAP)).toBe(0);
     expect(freeSlotsLeft(FREE_MEMBER_CAP + 5)).toBe(0);
+  });
+});
+
+describe("inPreview", () => {
+  it("shows a non-member only their top lines, by their ranking", () => {
+    expect(FREE_PREVIEW_LINES).toBe(10);
+    expect(inPreview(1, FREE_PREVIEW_LINES)).toBe(true);
+    expect(inPreview(10, FREE_PREVIEW_LINES)).toBe(true);
+    expect(inPreview(11, FREE_PREVIEW_LINES)).toBe(false);
+    expect(inPreview(undefined, FREE_PREVIEW_LINES)).toBe(false);
+  });
+
+  it("shows a member every line", () => {
+    expect(inPreview(500, null)).toBe(true);
+    expect(inPreview(undefined, null)).toBe(true);
   });
 });

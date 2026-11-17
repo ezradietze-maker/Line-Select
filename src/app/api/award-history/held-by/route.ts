@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { forecastPackKey } from "@/lib/forecast/forecast";
 import { heldByFrom } from "@/lib/server/award-aggregate";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { accessRefusal } from "@/lib/server/gating";
 import { confirmEmailRefusal, fromVerified, isVerified, verifiedPilotHashes } from "@/lib/server/verified-pilots";
 import { listAwardRowsForPack } from "@/lib/server/db";
 import { loadActiveModel } from "@/lib/server/learning-store";
@@ -20,6 +21,8 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "Sign in to see who held what." }, { status: 401 });
   // A seniority number leads back to a person: an account made up in a minute is no better than no account.
   if (!isVerified(user)) return confirmEmailRefusal("see who held what");
+  const gated = accessRefusal(user);
+  if (gated) return gated;
   if (!(await checkRateLimit("award-held-by", user.id, 120, 60 * 60)).ok) return rateLimitedResponse();
   const { searchParams } = new URL(request.url);
   const base = searchParams.get("base");
