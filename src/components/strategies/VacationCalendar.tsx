@@ -26,6 +26,8 @@ const COL = 18;
  * A day's column where the month scrolls anyway (a phone): room for a one-day trip's "300", which 18px cut to "30".
  */
 const SCROLL_COL = 26;
+/** The widest digit's advance in the calendar's type, in ems ("8888" is 2.47em). */
+const DIGIT_EM = 0.62;
 const WEEKDAY = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -162,11 +164,13 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
               <div
                 // A run's days share its id.
                 key={`${trip.id}@${trip.startDayIndex}`}
-                className={`z-10 flex items-center justify-center self-stretch overflow-hidden rounded-sm border px-1 text-2xs font-medium ${off ? "border-accent bg-accent/15 text-accent line-through decoration-accent/70" : "border-leg/50 bg-leg/25 text-ink"}`}
+                className={`@container z-10 flex items-center justify-center self-stretch overflow-hidden rounded-sm border text-2xs font-medium ${off ? "border-accent bg-accent/15 text-accent line-through decoration-accent/70" : "border-leg/50 bg-leg/25 text-ink"}`}
                 style={{ gridColumn: col, gridRow: 4 }}
                 title={off ? `Trip ${trip.pairingNumber} comes off — vacation takes it` : `Trip ${trip.pairingNumber}`}
               >
-                {trip.pairingNumber}
+                {/* Smaller where the box is narrower than its number: a trip on the month's last day alone, "4038",
+                    was cut to "403" in its one day. */}
+                <span style={{ fontSize: `min(1em, ${(100 / (DIGIT_EM * Math.max(trip.pairingNumber?.length ?? 0, 1))).toFixed(1)}cqw)` }}>{trip.pairingNumber}</span>
               </div>
             );
           })}
