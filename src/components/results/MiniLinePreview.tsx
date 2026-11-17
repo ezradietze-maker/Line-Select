@@ -546,7 +546,8 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
       <SummaryItem label="Trips" value={`${line.trips.length}${s.departures < line.trips.length ? ` · ${s.departures} departures` : ""} · longest ${s.longestTripDays}d`} />
       <SummaryItem label="Days off in a row" value={`${fmtRuns(s.offRuns)}`} />
       <SummaryItem label="Weekends off" value={s.weekendsTotal > 0 ? `${s.weekendsOff} of ${s.weekendsTotal}` : "—"} />
-      <SummaryItem label="Block hours" value={line.totalBlockHours ? hm(line.totalBlockHours * 60) : "—"} />
+      {/* A line of nothing but hotel standby prints BLK. 0:00, and its strip says so: "—" read as not known. */}
+      <SummaryItem label="Block hours" value={line.totalBlockHours !== undefined ? hm(line.totalBlockHours * 60) : "—"} />
       <SummaryItem label="Hotel standby" value={s.standbyDays > 0 ? `${s.standbyDays} day${s.standbyDays === 1 ? "" : "s"}` : "none"} tone={s.standbyDays > 0 ? "text-standby" : ""} />
       {/* The body clock: one score, and under it why — the line's report and landing times among the reasons. */}
       {bodyClock && (

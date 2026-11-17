@@ -5,7 +5,7 @@ import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { FlipText } from "@/components/ui/FlipText";
 import { Modal } from "@/components/ui/Modal";
 import { lineBodyClockScore, tripBodyClockScore } from "@/lib/body-clock-score";
-import { monthLine } from "@/lib/bid-month";
+import { monthCounts } from "@/lib/bid-month";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import type { LineScore } from "@/lib/scoring";
 import type { MonthDepartureOptions } from "@/lib/month-detail";
@@ -58,10 +58,13 @@ export function LineComparisonModal({
   departureOptions,
   onClose,
 }: LineComparisonModalProps) {
-  // Landings and duty periods in the bid month, as each line's card counts them — not with what the last trip flies in the next.
-  const months = departureOptions
-    ? lineScores.map((ls) => monthLine(ls.line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base }))
-    : lineScores.map((ls) => ls.line);
+  // Landings and duty periods in the bid month, as each line's card counts them, with what the last trip flies in the next
+  // beside them ("9 +1 Nov"): the strip prints the pack's own, which count across the carry-over.
+  const counts = lineScores.map((ls) =>
+    departureOptions
+      ? monthCounts(ls.line, { bidPeriodStart, bidPeriodDays, base: departureOptions.base })
+      : { landings: String(ls.line.totalLandings), dutyPeriods: String(lineDutyPeriods(ls.line)) }
+  );
   // Each line's body-clock score, and its hardest trip's — 1–100, 100 the gentlest.
   const bodyClocks = lineScores.map((ls) => {
     const trips = ls.line.trips.map((t) => tripBodyClockScore(t, homeBaseOffsetMinutes)?.score).filter((s): s is number => s !== undefined);
@@ -108,8 +111,8 @@ export function LineComparisonModal({
           label="TAFB"
           values={[formatHours(lineScores[0].line.totalTafbHours), formatHours(lineScores[1].line.totalTafbHours)]}
         />
-        <StatRow row={3} label="Landings" values={[String(months[0].totalLandings), String(months[1].totalLandings)]} />
-        <StatRow row={4} label="Duty periods" values={[String(lineDutyPeriods(months[0])), String(lineDutyPeriods(months[1]))]} />
+        <StatRow row={3} label="Landings" values={[counts[0].landings, counts[1].landings]} />
+        <StatRow row={4} label="Duty periods" values={[counts[0].dutyPeriods, counts[1].dutyPeriods]} />
         <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Body clock</div>
         {bodyClocks.map((b, i) => scoreCell(b.line, i))}
         <div className="col-span-2 border-t border-hairline pt-1.5 text-ink-faint sm:col-span-1 sm:border-0 sm:pt-0">Hardest trip on the body clock</div>
