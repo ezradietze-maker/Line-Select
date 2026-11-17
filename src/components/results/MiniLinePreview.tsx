@@ -133,13 +133,20 @@ export function chainSentence(c: NonNullable<DetailedDay["chain"]>, mode: TimeMo
 function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
   const time = day.chain ? day.chain.reports || day.dutyStart : day.isTripStart ? day.dutyStart : null;
   if (!time) return null;
+  // "Rpt 03:06L · 28h46 turn" is 156px and a desktop's day 147: the end of "turn" was cut off (A300 MEM FO line 2079).
+  // Once the turn shows, "Rpt" steps aside for it — the orange time is the report — until the day has room for all of it.
+  const rpt = !day.chain
+    ? "@min-[4.75rem]:inline"
+    : turnLabel(day.chain.turnMinutes).length <= 4
+      ? "@min-[4.75rem]:@max-[8.5rem]:inline @min-[9.5rem]:inline"
+      : "@min-[4.75rem]:@max-[8.5rem]:inline @min-[10rem]:inline";
   return (
     <>
       <span
         className="whitespace-nowrap font-mono text-[11px] font-semibold leading-none text-report"
         title={`Reports ${time} ${mode === "zulu" ? "Zulu" : "local"}${day.earlyReport ? " — between 2 and 6am local" : ""}`}
       >
-        <span className="hidden @min-[4.75rem]:inline">Rpt </span>
+        <span className={`hidden ${rpt}`}>Rpt </span>
         {/* A phone's day has room for the time but not its "L"; a small phone's, not even the time: cut off, "21:50"
             read "21:5". Left to the day's details, a tap away, rather than shown wrong. */}
         <span className="hidden @min-[2rem]:inline">{time}</span>
