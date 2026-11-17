@@ -34,11 +34,11 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
   };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dictation = useDictation(text, setText, { maxLength });
+  const area = useRef<HTMLTextAreaElement>(null);
+  const dictation = useDictation(text, setText, { maxLength, field: area });
   const left = maxLength - text.length;
   // Said once typing pauses: read out on every key, the count talked over each letter typed.
   const leftSaid = useSettledSaying(left < SHOW_LEFT_UNDER ? `${left.toLocaleString()} characters left` : "");
-  const area = useRef<HTMLTextAreaElement>(null);
 
   // Grows with the answer up to most of the screen, then scrolls; follows the words while dictating.
   useGrowingTextarea(area, text, { following: dictation.listening });
@@ -76,7 +76,7 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
           placeholder={placeholder ?? "In your own words…"}
           disabled={busy}
           aria-label="Your answer"
-          className="block w-full resize-none bg-transparent px-4 py-3.5 pr-14 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-60"
+          className="block w-full resize-none bg-transparent px-4 py-3.5 pr-14 text-[0.9375rem] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-60"
         />
         {dictation.supported && (
           <MicButton listening={dictation.listening} onClick={dictation.toggle} className="absolute right-3 top-3" />

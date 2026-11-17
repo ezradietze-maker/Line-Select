@@ -201,8 +201,10 @@ export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: Li
         {tiers.said}
       </p>
 
+      {/* Centred on the list, not the window: on the window's centre it ran over the rail's account button at 768. Over the
+          back-to-top button (z-30), which sat on its corner on a phone. */}
       {selected.size > 0 && (
-        <div role="toolbar" aria-label={`Move ${selected.size} selected lines`} className="fixed inset-x-3 bottom-20 z-30 flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-surface p-2 shadow-elevated-lg md:bottom-4 md:left-1/2 md:right-auto md:w-max md:max-w-[90vw] md:-translate-x-1/2">
+        <div role="toolbar" data-for-lines aria-label={`Move ${selected.size} selected lines`} className="fixed inset-x-3 bottom-20 z-35 flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-surface p-2 shadow-elevated-lg md:bottom-4 md:left-[calc(50%+var(--shell-left)/2)] md:right-auto md:w-max md:max-w-[calc(100vw-var(--shell-left)-2rem)] md:-translate-x-1/2">
           <span className="px-1 text-xs font-medium text-ink">{selected.size} selected</span>
           {state.tiers.map((t) => (
             <button key={t.id} type="button" onClick={() => tiers.move([...selected], t.id)} className="min-h-9 rounded-md border border-hairline px-2.5 py-1 text-xs font-medium text-ink hover:border-accent hover:text-accent">

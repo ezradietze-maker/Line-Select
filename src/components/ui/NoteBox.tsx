@@ -37,7 +37,7 @@ export function NoteBox({ value, onChange, placeholder, ariaLabel, id, maxLength
     paste.changed(next);
     onChange(maxLength ? next.slice(0, maxLength) : next);
   };
-  const dictation = useDictation(value, set, { maxLength });
+  const dictation = useDictation(value, set, { maxLength, field: area });
   const left = maxLength === undefined ? null : maxLength - value.length;
   const nearlyFull = left !== null && left < SHOW_LEFT_UNDER;
   // Said once typing pauses: read out on every key, the count talked over each letter typed.

@@ -116,8 +116,9 @@ function feedTrip(pack: Pick<BidPack, "month" | "base" | "bidPeriodStart">, line
   const start = tripReportUtc(pack, trip);
   if (start === null) return null;
   const last = trip.schedule[trip.schedule.length - 1]?.legs.at(-1);
-  // TAFB as printed runs report to release; the last landing stands in on the rare trip without one.
-  const end = trip.tafbHours > 0 ? start + tripReleaseHours(trip) * 3_600_000 : last ? start + last.endMinutes * 60_000 : start + 3_600_000;
+  // TAFB as printed runs report to release; the last landing stands in on the rare trip without one. To the minute, as
+  // the pack prints it: TAFB is kept to two decimals of an hour, and 69:56 as 69.93 released at 00:07:48, read "00:07".
+  const end = trip.tafbHours > 0 ? start + Math.round(tripReleaseHours(trip) * 60) * 60_000 : last ? start + last.endMinutes * 60_000 : start + 3_600_000;
   const zone = timezoneForAirport(pack.base) ?? "UTC";
   const local = (ms: number) => DateTime.fromMillis(ms, { zone }).toFormat("ccc LLL d HH:mm");
   const name = trip.pairingNumber ? `Trip ${trip.pairingNumber}` : `Line ${line.lineNumber} trip`;

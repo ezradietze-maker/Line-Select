@@ -135,7 +135,10 @@ export function Modal({ title, onClose, children, wide = false, locked = false }
             </button>
           )}
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
+        {/* Positioned, so it holds what's placed inside it: a screen-reader-only label far down Compare sat against the
+            dialog instead, and stretched the dim backdrop's scroll a screen or two below it — scrolled past the end of
+            the dialog, a phone carried the whole dialog off the top into empty backdrop. */}
+        <div className="relative max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
       </div>
     </div>,
     document.body

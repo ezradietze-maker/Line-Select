@@ -5,6 +5,7 @@ import { PackLineFold } from "@/components/interview/PackLineFold";
 import { TripGlance } from "@/components/interview/TripGlance";
 import { BidPackHeader, StripKey, stripLayout } from "@/components/results/BidPackStrip";
 import { useMeasuredWidth } from "@/components/results/LegBars";
+import { useTextScale } from "@/lib/use-text-scale";
 import { packColumnCount, packColumns } from "@/lib/bidpack-row";
 import type { QuestionExample } from "@/lib/brain/question-examples";
 import { tripKey } from "@/lib/scoring-v2/trip-score";
@@ -35,7 +36,8 @@ function Figure({ example }: { example: QuestionExample }) {
 function ExampleLines({ examples, bidPack }: { examples: QuestionExample[]; bidPack: BidPack }) {
   const columns = useMemo(() => packColumns(bidPack.bidPeriodStart, bidPack.bidPeriodDays, packColumnCount(bidPack)), [bidPack]);
   const [listRef, listWidth] = useMeasuredWidth<HTMLDivElement>(768);
-  const layout = useMemo(() => stripLayout(listWidth, columns.length), [listWidth, columns.length]);
+  const textScale = useTextScale();
+  const layout = useMemo(() => stripLayout(listWidth, columns.length, textScale), [listWidth, columns.length, textScale]);
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
   const toggle = (ref: string) =>
     setOpened((prev) => {

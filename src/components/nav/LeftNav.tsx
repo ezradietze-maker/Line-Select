@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode, type SyntheticEvent } from "react";
 import { AccountMenu, AccountPlaceholder } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { COMING_SOON, NAV_ITEMS, disabledReason, homeTarget, navItemName, type NavTarget } from "@/components/nav/nav-items";
@@ -42,16 +42,26 @@ export interface NavProps {
   onOpenPalette: () => void;
 }
 
-/** The name a collapsed rail shows beside an icon on hover — the label itself is still there for screen readers. */
+/**
+ * The name a collapsed rail shows beside an icon on hover — the label itself is still there for screen readers. Just
+ * past the rail's edge, `fixed` at the row's middle (`--tip-y`, measured as the row is pointed at or focused, see
+ * `placeTip`): inside the rail, which scrolls on a window too short for it, it would be cut off.
+ */
 function RailTip({ children }: { children: ReactNode }) {
   return (
     <span
       aria-hidden
-      className="pointer-events-none absolute left-full top-1/2 z-40 ml-3 hidden -translate-y-1/2 whitespace-nowrap rounded-md border border-hairline bg-surface-raised px-2.5 py-1 text-xs font-medium text-ink shadow-elevated rail-collapsed:group-hover:block rail-collapsed:group-focus-visible:block"
+      className="pointer-events-none fixed left-[var(--shell-left)] top-[var(--tip-y)] z-40 hidden -translate-y-1/2 whitespace-nowrap rounded-md border border-hairline bg-surface-raised px-2.5 py-1 text-xs font-medium text-ink shadow-elevated rail-collapsed:group-hover:block rail-collapsed:group-focus-visible:block"
     >
       {children}
     </span>
   );
+}
+
+/** Puts the row under the pointer, or just focused, where its `RailTip` reads it: its middle, on the screen. */
+function placeTip(e: SyntheticEvent) {
+  const row = e.target instanceof Element ? e.target.closest<HTMLElement>(".group") : null;
+  if (row) row.style.setProperty("--tip-y", `${row.getBoundingClientRect().top + row.offsetHeight / 2}px`);
 }
 
 const ROW =
@@ -249,7 +259,9 @@ export function LeftNav({
     <aside
       aria-label="Main"
       style={{ viewTransitionName: "app-rail" }}
-      className="sidebar-scheme shadow-sidebar fixed inset-y-0 left-0 z-30 hidden w-[var(--shell-left)] flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[var(--ease-emphasized)] md:flex"
+      onPointerOver={placeTip}
+      onFocus={placeTip}
+      className="sidebar-scheme shadow-sidebar fixed inset-y-0 left-0 z-30 hidden w-[var(--shell-left)] flex-col overflow-y-auto overscroll-contain border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[var(--ease-emphasized)] md:flex"
     >
       <div className="relative flex items-center justify-between gap-2 border-b border-sidebar-border/70 px-4 py-4 rail-collapsed:flex-col rail-collapsed:gap-3 rail-collapsed:px-0">
         <button
@@ -297,9 +309,13 @@ export function LeftNav({
         </button>
       </div>
 
-      {/* The one part that scrolls, on a window too short for the whole rail, so the links below stay in view. Not on
-          the icon rail: its tooltips stand out past its edge, and a scrolling box would clip them. */}
-      <nav aria-label="Destinations" className="min-h-0 flex-1 overflow-y-auto px-3 pb-2 pt-3 rail-collapsed:min-h-fit rail-collapsed:overflow-visible">
+      {/* The one part that scrolls, on a window too short for the whole rail, so the links below stay in view. On a
+          window shorter still (a phone held sideways, 390 px) it keeps room for a few rows and the whole rail scrolls
+          instead: shrunk to nothing, every destination was out of sight and the account was below the screen's edge.
+          The icon rail (about 940 px, taller than a laptop's window) always scrolls whole: held still, its last links,
+          Expand and the account were below the screen's edge. Its tips and menus are `fixed`, so that doesn't cut them
+          off where they stand out past its edge. */}
+      <nav aria-label="Destinations" className="min-h-36 flex-1 overflow-y-auto px-3 pb-2 pt-3 rail-collapsed:min-h-fit rail-collapsed:overflow-visible">
         <NavList active={active} hasProfile={hasProfile} hasBidPack={hasBidPack} ready={ready} inboxUnreadCount={inboxUnreadCount} onGo={onNavigate} />
       </nav>
 

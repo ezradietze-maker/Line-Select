@@ -150,7 +150,13 @@ export function buildLineMonthCalendar(line: Line, bidPeriodStart: string | null
     }
   } else {
     for (let i = 0; i < totalDays; i++) {
-      const entry = timelineBySpan.find((e) => i >= e.span.start && i < e.span.start + lengthOf(e));
+      // The trip that most recently started, as on the grid: the one before it landing that day is shown there too
+      // (`spill`). Given to the earlier one, a trip reporting on the day the last one lands lost its first day — in Zulu,
+      // where a Memphis evening landing is the next day, each day of a run of day trips sat a day late.
+      const entry = timelineBySpan.reduce<(typeof timelineBySpan)[number] | null>(
+        (best, e) => (i >= e.span.start && i < e.span.start + lengthOf(e) && (!best || e.span.start >= best.span.start) ? e : best),
+        null
+      );
       owner[i] = entry ? entry.span.tripIndex : "off";
     }
   }

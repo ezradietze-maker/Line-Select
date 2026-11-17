@@ -26,7 +26,8 @@ import type { StripViewMode } from "@/lib/strip-view-storage";
 import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
 import { departureSettingsOf, monthDepartureOptionsFrom } from "@/lib/month-detail";
 import { lineCarryOver, monthLine } from "@/lib/bid-month";
-import { groupDepartures } from "@/lib/metrics/departures";
+import { departureDays, groupDepartures } from "@/lib/metrics/departures";
+import { lineByDay } from "@/lib/trip-anchor";
 import { CreditHours } from "@/components/results/TripMarks";
 import { buildLineFeatures, type LineFactChip } from "@/lib/line-summary";
 import { topImplicitContributions } from "@/lib/rank-learning";
@@ -351,7 +352,11 @@ function LineDetails({
   const bodyClock = useMemo(() => (expanded && activeTab === "circadian" ? lineBodyClockScore(line.trips, homeBaseOffsetMinutes) : null), [expanded, activeTab, line.trips, homeBaseOffsetMinutes]);
   const chips = useMemo(() => buildLineFeatures(month, profile, lineScore.criterionResults, undefined, bidMonth, departureOptions.base), [month, profile, lineScore.criterionResults, bidMonth, departureOptions.base]);
   // Times the pilot leaves home: trips flown back to back, never home between, count once — as the calendar's summary counts them.
-  const departureGroups = useMemo(() => groupDepartures(month.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions).map((d) => d.trips), [month.trips, bidPeriodStart, departureOptions]);
+  // Each holds its trips as the pack prints them, a run of day trips a day at a time (`departureDays`).
+  const departureGroups = useMemo(() => {
+    const ctx = { bidPeriodStart, base: departureOptions.base };
+    return groupDepartures(month.trips, ctx, departureOptions).map((d) => departureDays(d, ctx).map((x) => x.day));
+  }, [month.trips, bidPeriodStart, departureOptions]);
   const departures = departureGroups.length;
 
   return (
@@ -406,20 +411,30 @@ function LineDetails({
                   </span>
                 )}
                 {" · "}
-                <span className="whitespace-nowrap">
-                  {month.totalLandings} landing{month.totalLandings === 1 ? "" : "s"}
-                </span>
-                {carryOver && (
-                  <span className="whitespace-nowrap text-carry" title={`What the last trip flies after the bid month ends — the ${carryOver.month} bid month's, not counted in this one`}>
-                    {" · "}
-                    {carryOver.creditHours > 0 && (
-                      <>
-                        <CreditHours hours={carryOver.creditHours} /> C/O ·{" "}
-                      </>
-                    )}
-                    {carryOver.days} day{carryOver.days === 1 ? "" : "s"} into {carryOver.month.slice(0, 3)}
+                {/* The landings and what carries into the next month go to the next line together, as one, while they fit
+                    on one; wider than the card (the phone's text set larger), they wrap between their pieces. Kept on one
+                    line regardless, "8:23 C/O · 2 days into Nov" ran off the card. */}
+                <span className="inline-block max-w-full">
+                  <span className="whitespace-nowrap">
+                    {month.totalLandings} landing{month.totalLandings === 1 ? "" : "s"}
                   </span>
-                )}
+                  {carryOver && (
+                    <span className="text-carry" title={`What the last trip flies after the bid month ends — the ${carryOver.month} bid month's, not counted in this one`}>
+                      {" · "}
+                      {carryOver.creditHours > 0 && (
+                        <>
+                          <span className="whitespace-nowrap">
+                            <CreditHours hours={carryOver.creditHours} /> C/O
+                          </span>
+                          {" · "}
+                        </>
+                      )}
+                      <span className="whitespace-nowrap">
+                        {carryOver.days} day{carryOver.days === 1 ? "" : "s"} into {carryOver.month.slice(0, 3)}
+                      </span>
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
             <div className="-my-1.5 -mr-1.5 flex shrink-0 items-center gap-0.5 print:hidden">
@@ -455,10 +470,12 @@ function LineDetails({
           {forecast && <div className="mt-2.5"><ForecastChip forecast={forecast} /></div>}
           {heldBy && <HeldByNote note={heldBy} showOdds={!!forecast} />}
 
-          {!lineScore.estimated && <TripNumberStrip trips={month.trips} departures={departureGroups} carryOver={carryOver} />}
+          {!lineScore.estimated && <TripNumberStrip trips={lineByDay(month).trips} departures={departureGroups} carryOver={carryOver} />}
 
-          {/* The month calendar takes the card's full width: each day lists its flights, and they need the room to read. */}
-          <div className="mt-3 grid gap-4">
+          {/* The month calendar takes the card's full width: each day lists its flights, and they need the room to read. One
+              column as wide as the card, never wider: sized to its widest words, with the text set larger it ran past the
+              card's edge and cut off the calendar's Sunday, Trip details and the key. */}
+          <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-4">
             <div>
               {chips.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -550,7 +567,7 @@ function LineDetails({
                     bid pack&rsquo;s own line totals.
                   </div>
                 ) : (
-                  <TripList trips={line.trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} carryOver={carryOver} bidPeriodDays={bidPeriodDays} />
+                  <TripList trips={lineByDay(line).trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} carryOver={carryOver} bidPeriodDays={bidPeriodDays} />
                 ))}
 
               {activeTab === "breakdown" && (
@@ -719,7 +736,7 @@ const CHIP_TONE: Record<LineFactChip["tone"], string> = {
 
 function FactChip({ chip }: { chip: LineFactChip }) {
   return (
-    <li className={`inline-flex items-baseline gap-1.5 rounded-[3px] border px-3 py-1 text-[13px] ${CHIP_TONE[chip.tone]}`}>
+    <li className={`inline-flex items-baseline gap-1.5 rounded-[3px] border px-3 py-1 text-[0.8125rem] ${CHIP_TONE[chip.tone]}`}>
       <span className="font-semibold">{chip.main}</span>
       {chip.note && <span className="font-normal opacity-90">{chip.note}</span>}
     </li>

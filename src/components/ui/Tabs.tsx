@@ -26,7 +26,8 @@ interface TabsProps {
 export function Tabs({ tabs, activeId, onChange }: TabsProps) {
   const group = useId();
   return (
-    <div role="tablist" className="flex gap-1 border-b border-border">
+    // Tighter and free to wrap on a phone: at 320px the last tab (the line's Route) sat past the card's edge, out of reach.
+    <div role="tablist" className="flex flex-wrap gap-x-1 border-b border-border">
       {tabs.map((tab) => {
         const isActive = tab.id === activeId;
         return (
@@ -36,7 +37,7 @@ export function Tabs({ tabs, activeId, onChange }: TabsProps) {
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
-            className={`relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
+            className={`relative flex items-center gap-1.5 px-2 py-2 text-xs sm:px-3 font-medium transition-colors ${
               isActive ? "font-semibold text-ink" : "text-ink-faint hover:text-ink-muted"
             }`}
           >

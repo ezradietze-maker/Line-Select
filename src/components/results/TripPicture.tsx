@@ -77,8 +77,11 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
   }, [trip, bidPeriodStart]);
   if (days.length === 0) return null;
   const base = trip.schedule[0]?.legs[0]?.depAirport;
-  const hours = compact ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24];
-  const grid = compact ? "grid-cols-[3.5rem_minmax(0,1fr)]" : "grid-cols-[4.25rem_minmax(0,1fr)]";
+  // Every 3 hours where there's room for them; every 6 where the day is narrow (the phone's text set larger widens the
+  // date column beside it), or "00 03 06" ran into each other.
+  const hours = compact || width < 136 ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24];
+  // The day column holds "Rpt 20:00L" and "Wed 28 NOV" whole, compact or not: narrower, they ran into the bars beside them.
+  const grid = "grid-cols-[4.25rem_minmax(0,1fr)]";
   const allOpen = open.size === days.length;
   const toggle = (n: number) =>
     setOpen((prev) => {
@@ -91,8 +94,10 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
   return (
     <div className="min-w-0">
       {dayDetail && (
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-2xs text-ink-faint">Tap a day for everything the pairing says about it.</span>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          {/* The words wrap beside the button while their longest fits; then the button goes under them. Kept beside
+              them regardless, with the phone's text at its largest "Open every day" ran off the screen. */}
+          <span className="grow basis-0 text-2xs text-ink-faint">Tap a day for everything the pairing says about it.</span>
           <button
             type="button"
             onClick={() => setOpen(allOpen ? new Set() : new Set(days.map((d) => d.dayNumber)))}
@@ -106,11 +111,13 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
       )}
       <div className={`grid ${grid} items-end gap-x-2`} aria-hidden>
         <span className="whitespace-nowrap font-mono text-2xs text-ink-faint">{mode === "zulu" ? "Zulu" : base ? `${base} time` : ""}</span>
-        <div ref={trackRef} className="relative h-3.5">
+        {/* Every three hours where there's room: on a 320 phone the 19px between them ran "0003" and "2100" together, so
+            there it's every six. */}
+        <div ref={trackRef} className="@container relative h-3.5">
           {hours.map((h) => (
             <span
               key={h}
-              className={`absolute top-0 font-mono text-2xs leading-none text-ink-faint ${h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2"}`}
+              className={`absolute top-0 font-mono text-[11px] leading-none text-ink-faint ${h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2"} ${h % 6 ? "hidden @min-[12.5rem]:inline" : ""}`}
               style={{ left: `${(h / 24) * 100}%` }}
             >
               {String(h % 24).padStart(2, "0")}
@@ -129,7 +136,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
           const row = (
             <>
               <span className="flex min-w-0 flex-col items-start leading-tight">
-                <span className="flex items-center gap-1 truncate text-2xs font-semibold text-ink">
+                <span className="flex max-w-full flex-wrap items-center gap-x-1 text-2xs font-semibold text-ink">
                   {date ? `${date.weekday} ${date.day}` : `Day ${day.dayNumber}`}
                   {nextMonth && (
                     <span className="text-2xs font-semibold uppercase tracking-wide text-carry" title={`The ${nextMonth} bid month's — carried over, not counted in this one`}>
@@ -145,7 +152,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
                   </span>
                 )}
                 {fullDay && (
-                  <span className="truncate text-2xs font-semibold text-layover" title={`A full day free in ${fullDay.city}${fullDay.barely ? " — just barely: up before 6 the next morning" : ""}`}>
+                  <span className="max-w-full text-2xs font-semibold text-layover" title={`A full day free in ${fullDay.city}${fullDay.barely ? " — just barely: up before 6 the next morning" : ""}`}>
                     Full day{fullDay.barely ? <span className="font-normal">, barely</span> : null}
                   </span>
                 )}
@@ -169,7 +176,12 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
             </>
           );
           return (
-            <li key={day.dayNumber} className={`border-t first:border-t-0 ${nextMonth ? "border-l-2 border-t-hairline border-l-carry pl-1" : "border-hairline"}`}>
+            // The next month's mark is drawn just outside the row: a border inside it pushed the day 6px right of the hour
+            // marks, so every bar on those days sat late and ran off the right edge.
+            <li
+              key={day.dayNumber}
+              className={`relative border-t border-hairline first:border-t-0 ${nextMonth ? "before:absolute before:inset-y-0 before:-left-1.5 before:w-0.5 before:bg-carry" : ""}`}
+            >
               {dayDetail ? (
                 <button
                   type="button"

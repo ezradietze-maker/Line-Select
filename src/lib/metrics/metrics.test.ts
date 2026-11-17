@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { measure, prepareMetrics } from "@/lib/metrics/compute";
 import { commuteBufferHoursFor, DEFAULT_HOME_PARAMS, homeAwayForTrip } from "@/lib/metrics/home-travel";
-import { computeTripFacts, deepNightOverlapMinutes, nightOverlapHours, regionOf } from "@/lib/metrics/trip-facts";
+import { computeTripFacts, deepNightOverlapMinutes, nightOverlapHours, regionOf, tripFactsOf } from "@/lib/metrics/trip-facts";
 import type { BidPack, Line, Trip, TripLeg } from "@/types/bidpack";
 
 /**
@@ -68,6 +68,15 @@ describe("trip facts", () => {
   it("measures how much of a layover falls in the local night", () => {
     expect(nightOverlapHours(20 * 60, 12)).toBeCloseTo(9, 5); // 20:00 → 08:00 covers 22:00–07:00
     expect(nightOverlapHours(9 * 60, 10)).toBe(0);
+  });
+
+  it("are kept with the trip itself: a new pack's trip with the same id and number gets its own", () => {
+    expect(tripFactsOf(trip)).toBe(tripFactsOf(trip));
+    expect(tripFactsOf(trip)).toEqual(f);
+    // Next month's pack, the same pairing id and number, its CAN layover 12 hours shorter.
+    const next: Trip = { ...trip, schedule: trip.schedule.map((d, i) => (i === 1 ? { ...d, layover: { ...d.layover!, hours: 24, endMinutes: 4860 } } : d)) };
+    expect(tripFactsOf(next).layovers.map((l) => l.hours)).toEqual([30, 24, 20]);
+    expect(tripFactsOf(trip).layovers.map((l) => l.hours)).toEqual([30, 36, 20]);
   });
 });
 

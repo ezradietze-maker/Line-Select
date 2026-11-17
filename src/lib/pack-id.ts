@@ -22,6 +22,17 @@ export function isPackId(id: string | null | undefined, pack: Pick<BidPack, "id"
   return id === pack.id || (pack.id === packIdFor(pack) && id === legacyPackIdFor(pack));
 }
 
+/**
+ * Whether a pack kept under `keptId` is the one named `id`, from the ids alone: the same id, or `id` the older form of
+ * it (`legacyPackIdFor`) — a trade holding confirmed under the older id, with the account's copy since saved again under
+ * its own (`accountBidPack`).
+ */
+export function keptPackIs(keptId: string, id: string): boolean {
+  if (keptId === id) return true;
+  const m = /^uploaded-([^-]+)-(.+)-([^-]+)-([^-]+)$/.exec(keptId);
+  return !!m && id === `uploaded-${m[1]}-${m[3]}-${m[4]}`;
+}
+
 /** A stored pack under its current id — one saved with the older id gets the new one. */
 export function withCurrentPackId(pack: BidPack): BidPack {
   return pack.aircraft && pack.id === legacyPackIdFor(pack) ? { ...pack, id: packIdFor(pack) } : pack;

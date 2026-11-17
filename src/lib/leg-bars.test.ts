@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayBars, fitLayoverLabel, labeledStayPieces, layoverHours, LABEL_CHAR_PX, sideBySide, stagger } from "@/lib/leg-bars";
+import { dayBars, fitLayoverLabel, labeledStayPieces, layoverHours, LABEL_CHAR_PX, sideBySide, stagger, stayLabelLeft } from "@/lib/leg-bars";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 
 const H = 60;
@@ -95,16 +95,40 @@ describe("stagger", () => {
 describe("sideBySide", () => {
   const w = 3 * LABEL_CHAR_PX;
   it("leaves labels with room over their minute, and sets crowded ones next to each other, never on top", () => {
-    const [can, nrt, far] = sideBySide([{ at: 18 * H, text: "CAN" }, { at: 18 * H + 20, text: "NRT" }, { at: 6 * H, text: "MEM" }], 200, 6);
+    const [can, nrt, far] = sideBySide([{ at: 18 * H, text: "CAN" }, { at: 18 * H + 20, text: "NRT" }, { at: 6 * H, text: "MEM" }], 200, 6) as number[];
     expect(far).toBeCloseTo(50);
     expect(can).toBeCloseTo(150);
     expect(nrt - can).toBeCloseTo(w + 3);
   });
 
   it("slides the lot back left rather than run past the day's edge", () => {
-    const [a, b] = sideBySide([{ at: 23.9 * H, text: "CAN" }, { at: 24 * H, text: "NRT" }], 200, 6);
+    const [a, b] = sideBySide([{ at: 23.9 * H, text: "CAN" }, { at: 24 * H, text: "NRT" }], 200, 6) as number[];
     expect(b + w / 2).toBeCloseTo(206);
     expect(b - a).toBeCloseTo(w + 3);
+  });
+
+  it("never pushes a city into the day before when a day has more than fit", () => {
+    // A300 MEM line 2001, Fri Oct 2 (trip 148) at 1024 wide: IND YMX, a layover, YMX YUL ATL MEM on a 90px day. Slid
+    // back left as one, "IND YMX" landed 37px into Thursday, over its "YMX IND".
+    const cities = [
+      { at: 1 * H, text: "IND" }, { at: 2.5 * H, text: "YMX" }, { at: 12.5 * H, text: "YMX" },
+      { at: 14 * H, text: "YUL" }, { at: 16 * H, text: "ATL" }, { at: 18.5 * H, text: "MEM" },
+    ];
+    const centers = sideBySide(cities, 90, 6);
+    const drawn = cities.map((c, i) => ({ ...c, center: centers[i] })).filter((c) => c.center !== null) as { text: string; center: number }[];
+    for (const c of drawn) {
+      expect(c.center - w / 2, `${c.text} inside the day`).toBeGreaterThanOrEqual(-6 - 0.01);
+      expect(c.center + w / 2, `${c.text} inside the day`).toBeLessThanOrEqual(96 + 0.01);
+    }
+    for (const [i, c] of drawn.slice(1).entries()) expect(c.center - drawn[i].center, `${drawn[i].text} clear of ${c.text}`).toBeGreaterThanOrEqual(w);
+    // The two YMX either side of the layover read as one first; the day's first and last cities stay.
+    expect(drawn.map((c) => c.text)).toEqual(expect.arrayContaining(["IND", "MEM"]));
+    expect(drawn.filter((c) => c.text === "YMX")).toHaveLength(1);
+  });
+
+  it("keeps every city when they fit, a city on both sides of a layover included", () => {
+    const centers = sideBySide([{ at: 2 * H, text: "YMX" }, { at: 12 * H, text: "YMX" }], 200, 6);
+    expect(centers.every((c) => c !== null)).toBe(true);
   });
 });
 
@@ -146,6 +170,18 @@ describe("layover words", () => {
     // Room for the pilot's mark after it counts too.
     expect(fitLayoverLabel("OAK", 28, "OAK 28h".length * LABEL_CHAR_PX + 4, 10)).toMatchObject({ hours: false });
   });
+
+  it("moves a late stay's words back toward its start so they aren't cut at the day's right edge", () => {
+    const text = "L/O SFO 20h".length * LABEL_CHAR_PX;
+    // A phone's day 180px wide, the stay from 15:00 (112px), its words after the van at 140px: only 40px left for them.
+    const left = stayLabelLeft(140, 112, text, 180);
+    expect(left).toBe(112);
+    expect(180 - left).toBeGreaterThan(text - 8);
+    // Room to spare: they stay just after the van.
+    expect(stayLabelLeft(60, 32, text, 180)).toBe(60);
+    // Room only part way back: no further than they need.
+    expect(stayLabelLeft(140, 60, text, 180)).toBeCloseTo(180 - text);
+  });
 });
 
 describe("layover ends and rest hotels", () => {
@@ -161,5 +197,31 @@ describe("layover ends and rest hotels", () => {
     const bars = dayBars([leg("MEM", "IND", 1 * H, 3 * H), rest, leg("IND", "MEM", 8 * H, 10 * H)], 60);
     expect(bars.rests).toEqual([{ start: 180, end: 480, city: "IND", hours: 5, hotel: "Hyatt" }]);
     expect(bars.stays).toEqual([]);
+  });
+});
+
+describe("times at the day's edge", () => {
+  // A phone's trip row is about 207px wide; labels get 40px of room each (`LegBars`).
+  const width = 207;
+  const minGap = (40 * 24 * H) / width;
+
+  it("spaces a time where it's drawn, nudged in from midnight — not where it would sit past the edge", () => {
+    // B757 MEM: SAN 16:14 out (18:14 on MEM's clock) and MEM 23:59 in, on one day. "23:59" is pulled 17px in from the
+    // right edge to stay inside the day, which put it on top of "16:14" — "16:1423:59".
+    const day = [
+      leg("SAN", "PHX", 18 * H + 14, 19 * H + 45, { startClock: "16:14", endClock: "17:45" }),
+      leg("PHX", "MEM", 20 * H + 52, 23 * H + 59, { startClock: "18:52", endClock: "23:59" }),
+    ];
+    const drawn = dayBars(day, minGap, undefined, width).times.map((t) => {
+      const half = (t.text.length * LABEL_CHAR_PX) / 2;
+      const x = Math.min(Math.max((t.at / (24 * H)) * width, half), width - half);
+      return { row: t.row, from: x - half, to: x + half, text: t.text };
+    });
+    for (const a of drawn) for (const b of drawn) if (a !== b && a.row === b.row) expect(a.to <= b.from || b.to <= a.from, `${a.text} on ${b.text}`).toBe(true);
+  });
+
+  it("leaves times in the middle of the day where they were", () => {
+    const day = [leg("MEM", "IND", 8 * H, 9 * H, { startClock: "08:00", endClock: "10:00" })];
+    expect(dayBars(day, minGap, undefined, width).times).toEqual(dayBars(day, minGap).times);
   });
 });

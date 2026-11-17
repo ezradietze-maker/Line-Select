@@ -46,6 +46,24 @@ const STRIP_CLASS: Record<TimelineSegmentKind, string> = {
   sleep: "bg-sleep",
 };
 
+/** Narrowest day first; each a quarter rem wider. Written out whole so the stylesheet has every one. */
+const CREDIT_FITS = [
+  "@min-[5.25rem]:inline", "@min-[5.5rem]:inline", "@min-[5.75rem]:inline", "@min-[6rem]:inline", "@min-[6.25rem]:inline",
+  "@min-[6.5rem]:inline", "@min-[6.75rem]:inline", "@min-[7rem]:inline", "@min-[7.25rem]:inline", "@min-[7.5rem]:inline",
+];
+
+/**
+ * The narrowest day a trip's credit fits in beside the date and the number. One width for every trip let "28 #2004
+ * 87:26CH" (and "3 #2031 49:58CH") run past the day's edge into the next at 1024 wide: the room it needs is worked out
+ * from its own characters (each about 0.43rem in the 2xs type, the oval's padding and "CH" about 0.9rem).
+ */
+function creditFits(day: DetailedDay): string {
+  const dateRem = (day.label.length + (day.nextMonth ? 3 : 0)) * 0.44 + 0.125;
+  const ovalRem = 0.9 + (`#${day.tripNumber} `.length + hm(Math.round((day.tripCreditHours ?? 0) * 60)).length) * 0.43;
+  const step = Math.ceil((dateRem + ovalRem + 0.1 - 5.25) / 0.25);
+  return CREDIT_FITS[Math.min(CREDIT_FITS.length - 1, Math.max(0, step))];
+}
+
 function cellClass(day: DetailedDay, selected: boolean): string {
   const base =
     "@container relative flex min-h-[4.75rem] min-w-0 flex-col gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
@@ -108,21 +126,35 @@ export function chainSentence(c: NonNullable<DetailedDay["chain"]>, mode: TimeMo
   return `${follows} That's not long enough to get home and have ${c.homeHours ?? DEFAULT_MIN_HOME_HOURS} hours there, so the two are one departure — and the time between is spent in ${c.city}.`;
 }
 
-/** When the trip reports, in the report color. A trip turned straight out of the one before also says how long it sits at base in between. */
+/**
+ * When the trip reports, in the report color. A trip turned straight out of the one before also says how long it sits at
+ * base in between. In px, as the 11px row it sits in (`CalendarDayBars`) is.
+ */
 function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
   const time = day.chain ? day.chain.reports || day.dutyStart : day.isTripStart ? day.dutyStart : null;
   if (!time) return null;
+  // "Rpt 03:06L · 28h46 turn" is 156px and a desktop's day 147: the end of "turn" was cut off (A300 MEM FO line 2079).
+  // Once the turn shows, "Rpt" steps aside for it — the orange time is the report — until the day has room for all of it.
+  const rpt = !day.chain
+    ? "@min-[4.75rem]:inline"
+    : turnLabel(day.chain.turnMinutes).length <= 4
+      ? "@min-[4.75rem]:@max-[8.5rem]:inline @min-[9.5rem]:inline"
+      : "@min-[4.75rem]:@max-[8.5rem]:inline @min-[10rem]:inline";
   return (
     <>
       <span
-        className="whitespace-nowrap font-mono text-2xs font-semibold leading-none text-report @min-[4.75rem]:text-2xs"
+        className="whitespace-nowrap font-mono text-[11px] font-semibold leading-none text-report"
         title={`Reports ${time} ${mode === "zulu" ? "Zulu" : "local"}${day.earlyReport ? " — between 2 and 6am local" : ""}`}
       >
-        <span className="hidden @min-[4.75rem]:inline">Rpt </span>
-        {time}
-        <Zone mode={mode} />
+        <span className={`hidden ${rpt}`}>Rpt </span>
+        {/* A phone's day has room for the time but not its "L"; a small phone's, not even the time: cut off, "21:50"
+            read "21:5". Left to the day's details, a tap away, rather than shown wrong. */}
+        <span className="hidden @min-[2rem]:inline">{time}</span>
+        <span className="hidden @min-[2.5rem]:inline">
+          <Zone mode={mode} />
+        </span>
       </span>
-      {day.chain && <span className="hidden whitespace-nowrap font-mono text-2xs text-ink-muted @min-[8.5rem]:inline" title={chainSentence(day.chain, mode)}>&nbsp;· {turnLabel(day.chain.turnMinutes)} turn</span>}
+      {day.chain && <span className="hidden whitespace-nowrap font-mono text-[11px] text-ink-muted @min-[8.5rem]:inline" title={chainSentence(day.chain, mode)}>&nbsp;· {turnLabel(day.chain.turnMinutes)} turn</span>}
     </>
   );
 }
@@ -130,7 +162,9 @@ function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
 /** Where and when the trip ends, on its own last day — "END MEM 23:59L", "+1" when that's after midnight. */
 function End({ finish, mode }: { finish: TripFinish; mode: TimeMode }) {
   return (
-    <span className="flex min-w-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-2xs leading-none text-ink @min-[4.75rem]:text-2xs" title={`Trip ends: lands ${finish.city} ${finish.time} (${clockOf(mode)})${finish.nextDay ? ", just after midnight" : ""}`}>
+    // Wraps where a phone's day is too narrow for it all on one line: kept on one, "END ANC +1" ran on into the next
+    // day, over its "9 off".
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-0.5 gap-y-px whitespace-nowrap font-mono text-2xs leading-none text-ink @min-[4.75rem]:text-2xs" title={`Trip ends: lands ${finish.city} ${finish.time} (${clockOf(mode)})${finish.nextDay ? ", just after midnight" : ""}`}>
       <span className="text-2xs font-semibold tracking-wide text-ink-muted">END</span>
       <span className="font-semibold">{finish.city}</span>
       <span className="hidden @min-[4.75rem]:inline">
@@ -196,14 +230,15 @@ function Cell({
       <span className="flex h-3 items-center justify-between gap-0.5">
         <span className={`text-2xs tabular-nums ${isOff ? "" : "font-semibold"}`}>
           {day.label}
-          {day.nextMonth && <span className="ml-0.5 text-2xs font-semibold uppercase tracking-wide text-carry">{day.nextMonth.slice(0, 3)}</span>}
+          {/* Too narrow for it beside the date (a phone), "26 NOV27 NOV" ran together: the carry bar along the bottom says it. */}
+          {day.nextMonth && <span className="ml-0.5 hidden text-2xs font-semibold uppercase tracking-wide text-carry @min-[2.5rem]:inline">{day.nextMonth.slice(0, 3)}</span>}
         </span>
         {day.isTripStart && day.tripNumber && (
           <>
             <span className="hidden whitespace-nowrap rounded bg-calendar-accent px-0.5 font-mono text-2xs font-semibold text-on-calendar @min-[4.75rem]:inline" title={day.tripCreditHours !== null ? `Trip #${day.tripNumber}, ${hm(day.tripCreditHours * 60)} credit hours` : undefined}>
               #{day.tripNumber}
               {day.tripCreditHours !== null && (
-                <span className="hidden @min-[5.25rem]:inline">
+                <span className={`hidden ${creditFits(day)}`}>
                   {" "}
                   <CreditHours hours={day.tripCreditHours} className="font-normal" />
                 </span>
@@ -244,7 +279,8 @@ function Cell({
           </span>
         )}
         {day.fullDay && (
-          <span className="whitespace-nowrap text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
+          // Wraps on a phone rather than run into the next day.
+          <span className="text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
             Full day{day.fullDay.barely ? <span className="font-normal">, barely</span> : null}
           </span>
         )}
@@ -485,7 +521,8 @@ function fmtRuns(runs: number[]): string {
 function SummaryItem({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {
   return (
     <div className="min-w-0">
-      <dt className="truncate text-2xs text-ink-faint font-medium">{label}</dt>
+      {/* Wraps rather than cutting off: at 200% text "Days off in a row" lost its last words. */}
+      <dt className="text-2xs text-ink-faint font-medium">{label}</dt>
       <dd className={`break-words font-mono text-xs font-medium ${tone || "text-readout"}`}>{value}</dd>
     </div>
   );
@@ -504,7 +541,8 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
       <SummaryItem label="Hotel standby" value={s.standbyDays > 0 ? `${s.standbyDays} day${s.standbyDays === 1 ? "" : "s"}` : "none"} tone={s.standbyDays > 0 ? "text-standby" : ""} />
       {/* The body clock: one score, and under it why — the line's report and landing times among the reasons. */}
       {bodyClock && (
-        <div className="min-w-0">
+        // A container, so the badge can put its score under its name in a cell this narrow (see `BodyClockBadge`).
+        <div className="@container min-w-0">
           <dt className="sr-only">Body clock</dt>
           <dd>
             <BodyClockBadge result={bodyClock} open={whyOpen} onClick={() => setWhyOpen((o) => !o)} />
@@ -668,8 +706,9 @@ export const MiniLinePreview = memo(function MiniLinePreview({
       )}
       {!compact && <ColorKey variant="calendar" className="mb-1.5" />}
       <div role="group" aria-label={`Bid month at a glance${mode === "zulu" ? ", in Zulu" : ""}. ${month.summary.daysOff} days off, ${month.summary.dutyPeriods} duty periods.`}>
+        {/* The weekday names grow with the text up to 150%: at 200% "Mon" ran into "Tue" over a phone's narrow days. */}
         {month.weekdayHeaders && (
-          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-2xs font-medium text-ink-faint" aria-hidden>
+          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[length:min(var(--text-2xs),16.5px)] leading-4 font-medium text-ink-faint" aria-hidden>
             {month.weekdayHeaders.map((d) => (
               <span key={d} className={d === "Sat" || d === "Sun" ? "text-ink-muted" : ""}>{d}</span>
             ))}

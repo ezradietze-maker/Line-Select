@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
+import { lineByDay } from "@/lib/trip-anchor";
 import type { BidPack, Line } from "@/types/bidpack";
 
 /**
@@ -69,7 +70,8 @@ export function buildLineTimeline(line: Line, pack: Pick<BidPack, "bidPeriodStar
   const fromAnchor = (anchor: string, minutes: number) => minutesAt(Date.parse(anchor) + minutes * 60_000);
 
   const out: LineTimeline = { trips: [], duties: [], legs: [], stays: [], offRuns: [] };
-  line.trips.forEach((trip, index) => {
+  // A run of day trips a day at a time, as the pack prints it: each day its own card, number and credit.
+  lineByDay(line).trips.forEach((trip, index) => {
     if (!trip.zuluAnchor || trip.schedule.length === 0) return;
     let tripStart = Infinity;
     let tripEnd = -Infinity;

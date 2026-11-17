@@ -1,4 +1,4 @@
-import { fetchServerBidPack, fetchServerBidPackMeta } from "@/lib/bidpack-server";
+import { fetchServerBidPack, fetchServerBidPackMeta, saveServerBidPack } from "@/lib/bidpack-server";
 import { bidPackSavedAt, clearBidPack, loadBidPack, saveBidPack } from "@/lib/bidpack-storage";
 import { isPackId, legacyPackIdFor, moveKeptUnderOldId, packIdFor } from "@/lib/pack-id";
 import type { BidPack } from "@/types/bidpack";
@@ -14,13 +14,24 @@ export interface AccountPack {
   noneOnAccount: boolean;
 }
 
+/**
+ * The account's copy of this pack kept under the id it had before ids named the aircraft, saved again under its own. The
+ * server finds the pack by the id it's kept under: left as it was, a calendar link was never sent the pilot's line ("not
+ * saved to your account") and marking what they hold for trades was refused, with the pack right there.
+ */
+function renameOnAccount(pack: BidPack, userId: string): void {
+  void saveServerBidPack(pack, userId);
+}
+
 /** A signed-in pilot with no pack on this device gets the one saved to their account, kept here too from then on. */
 async function packFromAccount(userId: string): Promise<AccountPack> {
   const fetched = await fetchServerBidPack(userId);
   if (fetched.kind !== "found") return { pack: null, saveFailed: false, noneOnAccount: fetched.kind === "none" };
   const { pack } = fetched;
-  // Saved to the account before ids named the aircraft: what this device kept under the older id follows it.
+  // Saved to the account before ids named the aircraft: what this device kept under the older id follows it, and the
+  // account's copy is saved again under the new one (`renameOnAccount`).
   if (pack.id === packIdFor(pack)) moveKeptUnderOldId(legacyPackIdFor(pack), pack.id, userId);
+  if (fetched.savedAs !== pack.id) renameOnAccount(pack, userId);
   if (await saveBidPack(userId, pack)) return { pack, saveFailed: false, noneOnAccount: false };
   // Refused: a guest's pack left on the device goes, and it's tried again. Gzipped, the two nearly always fit side by
   // side, and the guest's upload stays for signing out or "Continue as guest" without parsing it again.
@@ -39,6 +50,7 @@ export async function accountBidPack(userId: string, offline = false): Promise<A
   if (!local) return packFromAccount(userId);
   const kept = { pack: local, saveFailed: false, noneOnAccount: false };
   const server = await fetchServerBidPackMeta(userId);
+  if (server && server.packId !== local.id && isPackId(server.packId, local)) renameOnAccount(local, userId);
   if (!server || isPackId(server.packId, local)) return kept;
   const localAt = bidPackSavedAt(userId);
   if (localAt > 0) {

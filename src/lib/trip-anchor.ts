@@ -60,7 +60,9 @@ export function reportsFromHome(trip: Pick<Trip, "tafbHours" | "schedule" | "run
 export function tripReleaseHours(trip: Pick<Trip, "tafbHours" | "schedule" | "runStarts">): number {
   const days = runDaysOf(trip);
   const last = days?.[days.length - 1];
-  return last ? last.startMinutes / 60 + last.hours : trip.tafbHours;
+  // On the pack's own minute: TAFB is kept to two decimals of an hour, so report plus it fell up to 18 seconds short
+  // and a clock cut to the minute read a third of releases a minute early (TAFB 69:56 after 0212 read 00:07).
+  return Math.round((last ? last.startMinutes / 60 + last.hours : trip.tafbHours) * 60) / 60;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -90,6 +92,24 @@ const runOf = new WeakMap<Trip, { run: Trip; day: RunDay; index: number }>();
 /** The run a day came from (see `dayTripsOf`), and which day it is; null for any other trip. */
 export function runOfDay(trip: Trip): { run: Trip; day: RunDay; index: number } | null {
   return runOf.get(trip) ?? null;
+}
+
+const byDay = new WeakMap<object, object>();
+
+/**
+ * A line as its pack's line page prints it, for drawing: each run of day trips as its days (`dayTripsOf`), each with
+ * its own trip number, credit, report and release. Kept whole, the strips and the month calendar drew a four-day run
+ * of trip 31 as one trip "31 25:36" ending on its last day, where the pack prints "31" over "6:24" on each day and the
+ * pilot is home each night. Scores and sorts still take the line as it is. The same object each time it's asked for,
+ * and the line itself when it has no run.
+ */
+export function lineByDay<L extends { trips: Trip[] }>(line: L): L {
+  const known = byDay.get(line);
+  if (known) return known as L;
+  const trips = line.trips.flatMap(dayTripsOf);
+  const shown = trips.length === line.trips.length ? line : { ...line, trips };
+  byDay.set(line, shown);
+  return shown;
 }
 
 /**

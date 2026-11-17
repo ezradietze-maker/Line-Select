@@ -28,6 +28,17 @@ describe("View/Add, printed", () => {
     expect(text).not.toMatch(/\d\.\d CH/);
   });
 
+  // Round 28: a trip number flies on several dates, and the ruled-out list named only the number: B777 ANC CAP line
+  // 1015 read "trip 60: Only 1:15 from trip 63" and "trip 60: It overlaps trip 146", with no way to tell which was which.
+  it("dates each ruled-out trip, as the list of choices does", () => {
+    const pack = { base: "MEM", bidPeriodStart: "2026-09-28" } as unknown as BidPack;
+    const trip = (startDayIndex: number) => ({ id: "t60", pairingNumber: "60", startDayIndex, schedule: [{ reportTimeLocal: "0900", legs: [{ startMinutes: 60 }] }] });
+    const p = { ...plan(0), ruledOut: [{ trip: trip(4), why: "Only 1:15 from trip 63." }, { trip: trip(25), why: "It overlaps trip 146." }] } as unknown as ViewAddPlan;
+    const text = renderToStaticMarkup(createElement(Plan, { plan: p, pack })).replace(/<[^>]+>/g, "");
+    expect(text).toContain("trip 60 Oct 2: Only 1:15 from trip 63.");
+    expect(text).toContain("trip 60 Oct 23: It overlaps trip 146.");
+  });
+
   it("prints every choice, past the 15 the screen shows before Show all", () => {
     const html = renderToStaticMarkup(createElement(Plan, { plan: plan(20) }));
     for (let n = 0; n < 20; n++) expect(html).toContain(`${100 + n} 14OCT`);

@@ -28,6 +28,16 @@ export function loggedMonthFor(profile: Pick<PreferenceProfile, "logbook">, pack
   );
 }
 
+/**
+ * The line logged as awarded for this pack (`loggedMonthFor`); null before it's logged, or when the award wasn't a line.
+ * Matched on the pack's id alone, an award logged before ids named the aircraft, or typed in, wasn't found, and the
+ * Trade Board had no trips of the pilot's to offer.
+ */
+export function awardedLineFor(profile: Pick<PreferenceProfile, "logbook"> | null, pack: Pick<BidPack, "id" | "base" | "aircraft" | "seat" | "month">): string | null {
+  const logged = profile ? loggedMonthFor(profile, pack) : null;
+  return logged?.outcome === "line" ? (logged.lineNumber ?? null) : null;
+}
+
 export function bidChecklist(profile: PreferenceProfile, pack: Pick<BidPack, "id" | "base" | "aircraft" | "seat" | "month">): ChecklistItem[] {
   return [
     { id: "pack", label: "Bid pack uploaded", done: true, manual: false },

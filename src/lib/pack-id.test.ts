@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isPackId, legacyPackIdFor, moveGuestWorkToAccount, moveKeptUnderOldId, packIdFor, withCurrentPackId } from "@/lib/pack-id";
+import { isPackId, keptPackIs, legacyPackIdFor, moveGuestWorkToAccount, moveKeptUnderOldId, packIdFor, withCurrentPackId } from "@/lib/pack-id";
 import type { BidPack } from "@/types/bidpack";
 
 const meta = { base: "MEM", aircraft: "B777", seat: "CAP" as const, month: "OCT26" };
@@ -25,6 +25,16 @@ describe("pack ids", () => {
   it("name the aircraft, so two fleets' packs at one base no longer share an id", () => {
     expect(packIdFor(meta)).toBe("uploaded-mem-b777-cap-oct26");
     expect(packIdFor({ ...meta, aircraft: "MD11" })).not.toBe(packIdFor(meta));
+  });
+
+  it("tell a pack kept under its own id from a holding confirmed under its older one, from the ids alone", () => {
+    expect(keptPackIs(pack.id, legacyPackIdFor(meta))).toBe(true);
+    expect(keptPackIs(pack.id, pack.id)).toBe(true);
+    expect(keptPackIs(packIdFor({ ...meta, aircraft: "MD-11" }), legacyPackIdFor(meta))).toBe(true);
+    expect(keptPackIs(pack.id, legacyPackIdFor({ ...meta, month: "NOV26" }))).toBe(false);
+    expect(keptPackIs(pack.id, legacyPackIdFor({ ...meta, seat: "FO" }))).toBe(false);
+    // Kept under the older id, it may be any fleet's at the base: not taken for this one.
+    expect(keptPackIs(legacyPackIdFor(meta), pack.id)).toBe(false);
   });
 
   it("still recognise the id a pack had before, for what saved profiles and drafts carry", () => {

@@ -26,10 +26,17 @@ function clock(hhmm: string): string {
   return `${hhmm.slice(0, 2)}:${hhmm.slice(2, 4)}`;
 }
 
+/** What a phone link dials: the number's digits, then a pause and the extension ("215-609-4400 EXT 105" → "2156094400,105"). */
+export function telHref(number: string): string {
+  const m = number.match(/^(.*?)(?:\s*(?:x|ext\.?:?)\s*(\d+))?(?:\s+-\s+cell)?$/i);
+  const ext = m?.[2];
+  return `tel:${(m?.[1] ?? number).replace(/[^\d+]/g, "")}${ext ? `,${ext}` : ""}`;
+}
+
 /** A phone number as a link to call it. */
 function Phone({ number }: { number: string }) {
   return (
-    <a href={`tel:${number.replace(/[^\d+]/g, "")}`} className="whitespace-nowrap font-mono text-ink underline decoration-dotted underline-offset-2 hover:text-brand" onClick={(e) => e.stopPropagation()}>
+    <a href={telHref(number)} className="whitespace-nowrap font-mono text-ink underline decoration-dotted underline-offset-2 hover:text-brand" onClick={(e) => e.stopPropagation()}>
       ☎ {number}
     </a>
   );

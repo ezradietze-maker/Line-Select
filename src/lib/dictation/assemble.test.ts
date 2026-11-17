@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { browserText, serviceText, withDictated, type BrowserResult, type Turn } from "./assemble";
+import { browserText, caretToKeep, serviceText, withDictated, type BrowserResult, type Turn } from "./assemble";
 
 const r = (transcript: string, isFinal: boolean): BrowserResult => ({ isFinal, 0: { transcript } });
 const said = (h: { settled: string; hearing: string }) => [h.settled, h.hearing].filter(Boolean).join(" ");
@@ -51,5 +51,20 @@ describe("withDictated", () => {
     expect(withDictated("Typed first.", { settled: "Then said.", hearing: "" })).toBe("Typed first. Then said.");
     expect(withDictated("Typed first. ", { settled: "Then said.", hearing: "more" })).toBe("Typed first. Then said. more");
     expect(withDictated("", { settled: "", hearing: "" })).toBe("");
+  });
+});
+
+describe("caretToKeep", () => {
+  // A new value set on a box sends the cursor to its end (the browser's rule; Chrome, Nov 2026: the cursor at 8 of
+  // "We like Memphis turns", the value set longer, the cursor at 37). A pilot who'd clicked back in to fix a word while
+  // the mic was on had every letter they typed after the next dictated word land at the end.
+  it("keeps a cursor the pilot put back inside the text", () => {
+    expect(caretToKeep({ selectionStart: 8, selectionEnd: 8 }, true, 21)).toEqual({ start: 8, end: 8 });
+    expect(caretToKeep({ selectionStart: 3, selectionEnd: 7 }, true, 21)).toEqual({ start: 3, end: 7 });
+  });
+
+  it("lets a cursor at the end follow the words, and leaves a box the pilot isn't in alone", () => {
+    expect(caretToKeep({ selectionStart: 21, selectionEnd: 21 }, true, 21)).toBeNull();
+    expect(caretToKeep({ selectionStart: 8, selectionEnd: 8 }, false, 21)).toBeNull();
   });
 });

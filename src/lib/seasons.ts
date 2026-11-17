@@ -106,14 +106,20 @@ export function monthAt(pack: { bidPeriodStart?: string | null; base?: string },
   return new Date(at + offsetAt(timezoneForAirport(city) ?? "UTC", at) * 60_000).getUTCMonth() + 1;
 }
 
-/** A zone's offset from UTC in minutes at an instant, kept by the hour: every takeoff of a pack asks. */
+/**
+ * A zone's offset from UTC in minutes at an instant, kept by the hour: every takeoff of a pack asks. Each new month's pack
+ * asks about hours none before it did (the biggest, about 1,700), so the kept ones start over past a limit rather than
+ * pile up for as long as the tab stays open.
+ */
 const offsetCache = new Map<string, number>();
+const OFFSET_CACHE_LIMIT = 20_000;
 function offsetAt(name: string, at: number): number {
   const key = `${name}|${Math.floor(at / 3_600_000)}`;
   let offset = offsetCache.get(key);
   if (offset === undefined) {
     let zone = zoneCache.get(name);
     if (!zone) zoneCache.set(name, (zone = IANAZone.create(name)));
+    if (offsetCache.size >= OFFSET_CACHE_LIMIT) offsetCache.clear();
     offsetCache.set(key, (offset = zone.offset(at)));
   }
   return offset;

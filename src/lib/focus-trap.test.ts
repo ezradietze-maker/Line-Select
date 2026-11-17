@@ -57,9 +57,9 @@ describe("Tab inside a dialog", () => {
 
 describe("focus on the ranked list when the control it was on goes away", () => {
   const listed = ["2295", "2112", "2192", "2105"];
-  const at = (lost: { lineId?: string; chipId?: string }, now: { listedNow?: string[]; lastLineId?: string | null; chipsBefore?: string[]; chipsNow?: string[] } = {}) =>
+  const at = (lost: { lineId?: string; chipId?: string; forLines?: boolean }, now: { listedNow?: string[]; lastLineId?: string | null; chipsBefore?: string[]; chipsNow?: string[] } = {}) =>
     focusHomeAfterLoss(
-      { lineId: lost.lineId ?? null, chipId: lost.chipId ?? null },
+      { lineId: lost.lineId ?? null, chipId: lost.chipId ?? null, forLines: lost.forLines },
       { listedBefore: listed, listedNow: now.listedNow ?? listed, lastLineId: now.lastLineId ?? null, chipsBefore: now.chipsBefore ?? [], chipsNow: now.chipsNow ?? [] }
     );
 
@@ -72,11 +72,17 @@ describe("focus on the ranked list when the control it was on goes away", () => 
   });
 
   it("the selection's bar, gone once its move is made: to the line last worked on", () => {
-    expect(at({}, { lastLineId: "2192" })).toEqual({ line: "2192" });
+    expect(at({ forLines: true }, { lastLineId: "2192" })).toEqual({ line: "2192" });
   });
 
   it("the selection set aside from its bar: to the line now in the last one's place", () => {
-    expect(at({}, { lastLineId: "2112", listedNow: ["2295", "2105"] })).toEqual({ line: "2105" });
+    expect(at({ forLines: true }, { lastLineId: "2112", listedNow: ["2295", "2105"] })).toEqual({ line: "2105" });
+  });
+
+  it("a control that isn't about lines (the filters' Clear filters): the box it sat in, not the line last worked on", () => {
+    // Sent to line 2192's card, off the screen, the Space the pilot scrolled with next opened it.
+    expect(at({}, { lastLineId: "2192" })).toEqual({ near: true });
+    expect(at({})).toEqual({ near: true });
   });
 
   it("a set-aside chip brought back: to the next chip, then Undo once none is left", () => {
@@ -86,7 +92,7 @@ describe("focus on the ranked list when the control it was on goes away", () => 
 
   it("every line gone: to Undo; nothing worked on yet: nowhere", () => {
     expect(at({ lineId: "2295" }, { listedNow: [] })).toEqual({ undo: true });
-    expect(at({})).toBeNull();
+    expect(at({ forLines: true })).toBeNull();
   });
 
   it("the one in a gone one's place reads past the others that went with it", () => {

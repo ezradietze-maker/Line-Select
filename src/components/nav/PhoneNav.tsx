@@ -13,6 +13,12 @@ import { dialogOpen } from "@/components/ui/Modal";
 /** The four destinations a pilot reaches for every month get a tab of their own; the crew tools share "More". */
 const TAB_TARGETS: NavTarget[] = ["upload", "preferences", "results", "strategies"];
 const MORE_TARGETS = NAV_ITEMS.filter((item) => !TAB_TARGETS.includes(item.target));
+/**
+ * A tab: its icon over its name. The name grows with the phone's text size only as far as its fifth of the bar holds
+ * it (3.5% of the bar's width, as a phone's own tab bar does): set larger, "Preferences" ran into "Upload" and
+ * "Rankings", and broken over two lines it read "Preferen-ces". 11px, the usual size, fits even a 320px screen.
+ */
+const TAB = "relative flex min-w-0 flex-col items-center justify-center gap-1 text-[length:min(var(--text-2xs),3.5cqw)] leading-4 font-medium transition-colors";
 
 function MoreIcon({ className }: { className?: string }) {
   return (
@@ -99,8 +105,9 @@ export function PhoneNav({
             <span className="flex min-w-0 items-center gap-1.5 text-2xs font-semibold text-ink-faint">
               {/* The loaded pack's steady green light, as on the desktop sidebar. */}
               <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-good" />
-              <span className="truncate">
-                {pack.base} &middot; <span className="text-accent">{pack.month}</span>
+              {/* Wrapped, not cut: with the text at its largest it read "MEM · O…", the month lost. */}
+              <span className="min-w-0">
+                {pack.base} &middot; <span className="whitespace-nowrap text-accent">{pack.month}</span>
               </span>
             </span>
           )}
@@ -121,7 +128,7 @@ export function PhoneNav({
         style={{ viewTransitionName: "app-tabbar" }}
         className="sidebar-scheme fixed inset-x-0 bottom-0 z-30 border-t border-sidebar-border bg-sidebar/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
-        <div className="relative grid h-16 grid-cols-5">
+        <div className="@container relative grid h-16 grid-cols-5">
           {tabIndex >= 0 && (
             <span
               aria-hidden
@@ -131,14 +138,17 @@ export function PhoneNav({
               <span className="h-[3px] w-8 rounded-b-[2px] bg-accent" />
             </span>
           )}
-          {/* A location sign behind the active tab — black, yellow-bordered — gliding along with the marker. */}
+          {/* A location sign behind the active tab — black, yellow-bordered — gliding along with the marker. The tabs are
+              `relative` so they draw over it: with a mouse (a desktop window under 768 px, or zoomed to 200%) nothing
+              else positioned them, and the sign covered the active tab's name. */}
           {tabIndex >= 0 && (
             <span
               aria-hidden
               className="absolute inset-y-1.5 flex w-1/5 justify-center transition-[left] duration-300 ease-[var(--ease-emphasized)]"
               style={{ left: `${tabIndex * 20}%` }}
             >
-              <span className="w-[4.25rem] rounded-[4px] bg-accent-wash ring-[1.5px] ring-inset ring-accent" />
+              {/* No wider than its tab once the text is set larger: at 4.25rem it covered the names either side. */}
+              <span className="w-[min(4.25rem,max(100%,68px))] rounded-[4px] bg-accent-wash ring-[1.5px] ring-inset ring-accent" />
             </span>
           )}
           {TAB_TARGETS.map((target, i) => {
@@ -153,7 +163,7 @@ export function PhoneNav({
                 aria-label={reason ? `${item.label} — ${reason}` : item.label}
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => go(target)}
-                className={`flex flex-col items-center justify-center gap-1 text-2xs font-medium transition-colors disabled:opacity-35 ${
+                className={`${TAB} disabled:opacity-35 ${
                   isActive ? "text-accent" : "text-ink-muted active:text-ink"
                 }`}
               >
@@ -170,7 +180,7 @@ export function PhoneNav({
             onClick={() => setMoreOpen((o) => !o)}
             aria-expanded={moreOpen}
             aria-haspopup="dialog"
-            className={`flex flex-col items-center justify-center gap-1 text-2xs font-medium transition-colors ${
+            className={`${TAB} ${
               tabIndex === 4 || moreOpen ? "text-accent" : "text-ink-muted"
             }`}
           >
@@ -197,11 +207,16 @@ export function PhoneNav({
             role="dialog"
             aria-modal="true"
             aria-label="More"
-            className="sidebar-scheme animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-[10px] border-t border-sidebar-border bg-sidebar px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-elevated-lg"
+            // Shorter than the screen, and scrolls: on a phone held sideways its top half (View/Add to Pay check) was
+            // above the screen's edge, out of reach. The strip left above it is the shade, a tap there closes the sheet:
+            // as tall as the screen, it covered the shade and the More tab, and nothing on it closed it.
+            className="sidebar-scheme animate-sheet-up absolute inset-x-0 bottom-0 max-h-[calc(100%-3rem)] overflow-y-auto overscroll-contain rounded-t-[10px] border-t border-sidebar-border bg-sidebar px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-elevated-lg"
           >
             <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-sidebar-border" />
             <div className="mb-2 px-1 text-2xs font-medium text-ink-faint">More</div>
-            <div className="grid grid-cols-3 gap-2">
+            {/* Three across, or two once a third of the sheet is under 4rem (the phone's text at its largest): three across,
+                "Contract" and "Logbook" ran out of their tiles. */}
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(max(4rem,calc((100%_-_1rem)/3_-_1px)),1fr))] gap-2">
               {MORE_TARGETS.map((item) => {
                 const isActive = active === item.target;
                 return (
@@ -211,7 +226,7 @@ export function PhoneNav({
                     onClick={() => go(item.target)}
                     aria-label={navItemName(item)}
                     aria-current={isActive ? "page" : undefined}
-                    className={`flex flex-col items-center gap-2 rounded-[4px] border px-2 py-3.5 text-xs font-medium transition-colors ${
+                    className={`flex min-w-0 flex-col items-center gap-2 rounded-[4px] border px-2 py-3.5 text-xs font-medium break-words transition-colors ${
                       isActive ? "border-accent bg-accent-wash text-on-wash" : "border-border text-ink-muted active:bg-canvas"
                     }`}
                   >

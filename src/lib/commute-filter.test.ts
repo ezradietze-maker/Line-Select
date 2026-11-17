@@ -367,6 +367,27 @@ describe("trips the pilot flies back to back", () => {
     expect(commuteStatusOfLine(fresh, p, { ...SETTINGS, minHomeHours: 48 }, missed, BEFORE_OCT)).toBe("yes");
     expect(groupDepartures).toHaveBeenCalledTimes(2);
   });
+
+  it("asks afresh of the same line when the home, the buffers or the pack's dates change, never the first answer kept", () => {
+    const kept: Line = { ...line, id: "L6", trips: [dayTrip("e", 7), dayTrip("f", 9)] };
+    const p = { ...pack, lines: [kept] } as BidPack;
+    const ask = (s: CommuteSettings, of: BidPack = p) => Object.fromEntries(commuteNeedsForPack(of, s, BEFORE_OCT).map((n) => [n.id, n]));
+    const first = ask(SETTINGS);
+    const HOUR = 3_600_000;
+    // A new home in Preferences: asked from there.
+    expect(Object.values(ask({ ...SETTINGS, homeAirport: "ORD" })).map((n) => (n.kind === "toBase" ? n.from : n.to))).toEqual([["ORD"], ["ORD"], ["ORD"], ["ORD"]]);
+    // An hour more before the report: in an hour earlier. An hour more from release to the flight home: home an hour later.
+    expect(ask({ ...SETTINGS, arriveBeforeReportHours: 3 })["e@7:toBase"].arriveBy).toBe(first["e@7:toBase"].arriveBy! - HOUR);
+    expect(ask({ ...SETTINGS, releaseToDepartureHours: 2 })["e@7:homeFromBase"].departAfter).toBe(first["e@7:homeFromBase"].departAfter + HOUR);
+    // The same line in a pack dated a day later: a day later.
+    expect(ask(SETTINGS, { ...p, bidPeriodStart: "2026-09-29" })["e@7:toBase"].arriveBy).toBe(first["e@7:toBase"].arriveBy! + 24 * HOUR);
+    // And back as it was, as it was.
+    expect(ask(SETTINGS)).toEqual(first);
+    // A new pack with the same trip and line ids, reporting at noon instead: its own times, not the last pack's.
+    const noon = (t: Trip): Trip => ({ ...t, schedule: [{ ...t.schedule[0], reportTimeLocal: "1200" }] });
+    const next = { ...p, lines: [{ ...kept, trips: kept.trips.map(noon) }] } as BidPack;
+    expect(ask(SETTINGS, next)["e@7:toBase"].arriveBy).toBe(first["e@7:toBase"].arriveBy! + 2 * HOUR);
+  });
 });
 
 describe.skipIf(!seats.length)("what the commute filter asks", () => {

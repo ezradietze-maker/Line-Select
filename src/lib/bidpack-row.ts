@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { buildLineMonthCalendar } from "@/lib/line-month";
 import { lineLengthDays } from "@/lib/metrics/line-length";
+import { lineByDay } from "@/lib/trip-anchor";
 import type { BidPack, Line } from "@/types/bidpack";
 
 /**
@@ -97,7 +98,9 @@ export function buildPackRow(line: Line, bidPeriodStart: string | null, bidPerio
   return days;
 }
 
-function buildPackRowFresh(line: Line, bidPeriodStart: string | null, bidPeriodDays: number, count: number): PackDay[] {
+function buildPackRowFresh(whole: Line, bidPeriodStart: string | null, bidPeriodDays: number, count: number): PackDay[] {
+  // A run of day trips a day at a time, as the pack prints it: "31" over its own credit on each day.
+  const line = lineByDay(whole);
   const month = buildLineMonthCalendar(line, bidPeriodStart, bidPeriodDays, "local");
   const out: PackDay[] = Array.from({ length: count }, (_, i) => {
     const day = month.days[i];

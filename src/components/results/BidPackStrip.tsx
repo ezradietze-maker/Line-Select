@@ -51,6 +51,11 @@ export interface StripLayout {
   font: number;
   /** How wide the days are drawn, px — where the timeline's words have room. */
   daysPx: number;
+  /**
+   * How many times the usual size the pilot's browser sets its text (`useTextScale`). The numbers' block, the grip and
+   * the chevron are that much wider, so their words fit as they grow; the days are px and keep their size.
+   */
+  textScale: number;
 }
 
 /**
@@ -62,12 +67,15 @@ export function fitFont(col: number): number {
   return Math.max(7, Math.min(9, Math.floor((col - 3) / (4 * 0.6))));
 }
 
-export function stripLayout(listWidth: number, columns: number): StripLayout {
-  const stacked = listWidth < 640;
-  const fitPx = listWidth - 2 - GRIP_W - LEFT_W - CHEVRON_W - 2 * PAD_X;
+export function stripLayout(listWidth: number, columns: number, textScale = 1): StripLayout {
+  // At 200% text the numbers beside the days need twice the room, and the list stacks where a phone's would: given
+  // 224px, "Credit", "Block", "C/O cr" ran over each other and the last column ran under the line's first trip.
+  const k = Math.max(1, textScale);
+  const stacked = listWidth < 640 * k;
+  const fitPx = listWidth - 2 - (GRIP_W + LEFT_W + CHEVRON_W + 2 * PAD_X) * k;
   const col = fitPx / Math.max(columns, 1);
-  if (!stacked && col >= MIN_FIT_COL) return { mode: "fit", stacked, font: fitFont(col), daysPx: fitPx };
-  return { mode: "scroll", stacked, font: 9, daysPx: columns * SCROLL_COL };
+  if (!stacked && col >= MIN_FIT_COL) return { mode: "fit", stacked, font: fitFont(col), daysPx: fitPx, textScale: k };
+  return { mode: "scroll", stacked, font: 9, daysPx: columns * SCROLL_COL, textScale: k };
 }
 
 /** How wide the list prints: an A4 or Letter sheet's width inside its 12mm margins (globals.css `@page`), a little to spare. */
@@ -83,7 +91,7 @@ export function printStripLayout(columns: number): StripLayout {
   const col = daysPx / Math.max(columns, 1);
   // Narrower than a laptop ever lays them out, with five weeks of a pack across: a size smaller, so a day's four
   // letters don't run into the next day's.
-  return { mode: "fit", stacked: true, font: col >= 23 ? 9 : col >= MIN_FIT_COL ? 8 : 7, daysPx };
+  return { mode: "fit", stacked: true, font: col >= 23 ? 9 : col >= MIN_FIT_COL ? 8 : 7, daysPx, textScale: 1 };
 }
 
 const TOKEN_TONE: Record<PackToken["kind"], string> = {
@@ -177,10 +185,13 @@ export function StripViewToggle({ view, onChange }: { view: StripViewMode; onCha
   );
 }
 
-/** The two header rows over the days: weekday, then date — as the pack prints them once at the top of each page. */
+/**
+ * The two header rows over the days: weekday, then date — as the pack prints them once at the top of each page. Set in
+ * px, as the day columns under them are: at 200% text "MO" was wider than its day and the header read "MOTUWETHFR".
+ */
 function DateRows({ columns, layout }: { columns: PackColumn[]; layout: StripLayout }) {
   return (
-    <div className="grid font-mono text-2xs leading-[11px] text-ink-muted" style={{ gridTemplateColumns: gridColumns(columns.length, layout) }} aria-hidden>
+    <div className="grid font-mono text-[11px] leading-[11px] text-ink-muted" style={{ gridTemplateColumns: gridColumns(columns.length, layout) }} aria-hidden>
       {columns.map((c, i) => (
         <div key={i} className={`py-0.5 text-center ${columnClass(c)}`}>
           <div className={c.weekend ? "font-semibold text-ink" : ""}>{c.weekday ?? ""}</div>
@@ -195,9 +206,10 @@ function DateRows({ columns, layout }: { columns: PackColumn[]; layout: StripLay
 export function BidPackHeader({ columns, layout, label = "Line · score", sticky = true }: { columns: PackColumn[]; layout: StripLayout; label?: string; sticky?: boolean }) {
   // Stacked (printed), each strip has its own dates over its days.
   if (layout.mode !== "fit" || layout.stacked) return null;
+  const k = layout.textScale;
   return (
-    <div className={`${sticky ? "sticky top-0 z-20" : ""} -mx-px rounded-t-lg border border-hairline bg-canvas/95 backdrop-blur print:static`} style={{ paddingLeft: PAD_X + GRIP_W, paddingRight: PAD_X }}>
-      <div className="grid" style={{ gridTemplateColumns: `${LEFT_W}px minmax(0, 1fr) ${CHEVRON_W}px` }}>
+    <div className={`${sticky ? "sticky top-0 z-20" : ""} -mx-px rounded-t-lg border border-hairline bg-canvas/95 backdrop-blur print:static`} style={{ paddingLeft: (PAD_X + GRIP_W) * k, paddingRight: PAD_X * k }}>
+      <div className="grid" style={{ gridTemplateColumns: `${LEFT_W * k}px minmax(0, 1fr) ${CHEVRON_W * k}px` }}>
         <div className="self-end pb-0.5 text-2xs text-ink-faint font-medium">{label}</div>
         <DateRows columns={columns} layout={layout} />
         <div />
@@ -268,15 +280,30 @@ function Numbers({ line }: { line: Line }) {
     ["C/O", formatHoursValue(line.carryOverBlockHours ?? 0), "OFF", String(line.daysOff)],
   ];
   return (
-    <div className="grid grid-cols-[auto_auto_auto_auto] gap-x-1.5 font-mono text-2xs leading-[11px]">
-      {rows.map(([a, av, b, bv], i) => (
+    <NumberColumns rows={rows} className="gap-x-1.5 font-mono text-2xs leading-[0.6875rem]" label="text-ink-faint" value="text-right tabular-nums text-ink" />
+  );
+}
+
+/**
+ * The numbers' two pairs of columns, side by side where there's room, the second under the first where there isn't: on
+ * a phone with its text set larger (130–150%), TAFB, Duties, Landings and Days off ran off the card's edge, under the
+ * chevron, and their numbers were cut. Each pair is its own grid, so side by side they read as the one table they were.
+ */
+function NumberColumns({ rows, className, label, value, cells = "" }: { rows: [string, string, string, string][]; className: string; label: string; value: string; cells?: string }) {
+  const pair = (side: 0 | 1) => (
+    <div className={`grid grid-cols-[auto_auto] whitespace-nowrap ${className} ${cells}`}>
+      {rows.map((r, i) => (
         <div key={i} className="contents">
-          <span className="text-ink-faint">{a}</span>
-          <span className="text-right tabular-nums text-ink">{av}</span>
-          <span className="pl-1 text-ink-faint">{b}</span>
-          <span className="text-right tabular-nums text-ink">{bv}</span>
+          <span className={`${side ? "pl-1 " : ""}${label}`}>{r[side * 2]}</span>
+          <span className={value}>{r[side * 2 + 1]}</span>
         </div>
       ))}
+    </div>
+  );
+  return (
+    <div className={`flex flex-wrap ${className}`}>
+      {pair(0)}
+      {pair(1)}
     </div>
   );
 }
@@ -293,18 +320,7 @@ function SpelledNumbers({ line }: { line: Line }) {
     ["C/O cr", hm(line.carryOverCreditHours ?? 0), "Landings", String(line.totalLandings)],
     ["C/O blk", hm(line.carryOverBlockHours ?? 0), "Days off", String(line.daysOff)],
   ];
-  return (
-    <div className="grid grid-cols-[auto_auto_auto_auto] items-baseline gap-x-[5px] text-2xs leading-[12px]">
-      {rows.map(([a, av, b, bv], i) => (
-        <div key={i} className="contents">
-          <span className="text-ink-muted">{a}</span>
-          <span className="text-right font-mono tabular-nums text-ink">{av}</span>
-          <span className="pl-1 text-ink-muted">{b}</span>
-          <span className="text-right font-mono tabular-nums text-ink">{bv}</span>
-        </div>
-      ))}
-    </div>
-  );
+  return <NumberColumns rows={rows} className="gap-x-[5px] text-2xs leading-[0.75rem]" cells="items-baseline" label="text-ink-muted" value="text-right font-mono tabular-nums text-ink" />;
 }
 
 const DAY_MIN = 24 * 60;
@@ -340,9 +356,18 @@ function RouteDays({ columns, timeline, layout }: { columns: PackColumn[]; timel
   const flightSpots = laneLabels(flights, RT.flightLanes.length, width);
   const stays = routes.flatMap((r) => r.stays.map((s) => ({ ...s, at: (x(s.start) + x(s.end)) / 2, width: s.city.length * charPx })));
   const citySpots = laneLabels(stays, RT.cityLanes.length, width);
-  // Each trip's number and its credit, always both, from its card's left edge: a crowded one moves along rather than covering the one before.
-  const headerText = cards.map((c) => ({ number: c.trip.number ?? "—", credit: formatHoursValue(c.trip.creditHours) }));
-  const headerWidths = headerText.map((h) => (h.number.length + 1 + h.credit.length) * headerFont * MONO_ADVANCE);
+  // Each trip's number and its credit from its card's left edge: a crowded one moves along rather than covering the one
+  // before. The credit only where it has room before the next card, as the pack strip says just the number of a day
+  // trip with another the next day: on a phone, a run of day trips' "31 6:24"s pushed the next trip's number days off
+  // its card. The card's own title still says it.
+  const fullWidth = (number: string, credit: string) => (number.length + 1 + credit.length) * headerFont * MONO_ADVANCE;
+  const headerText = cards.map((c, i) => {
+    const number = c.trip.number ?? "—";
+    const credit = formatHoursValue(c.trip.creditHours);
+    const next = cards[i + 1];
+    return { number, credit: !next || c.left + 1 + fullWidth(number, credit) + 6 <= next.left ? credit : "" };
+  });
+  const headerWidths = headerText.map((h) => (h.credit ? fullWidth(h.number, h.credit) : h.number.length * headerFont * MONO_ADVANCE));
   const headerSpots = laneLabels(cards.map((c, i) => ({ at: c.left + 1 + headerWidths[i] / 2, width: headerWidths[i] })), 1, Infinity, 6);
   const headers = headerText.map((h, i) => ({ ...h, left: headerSpots[i].x }));
   const offDays = timeline.offRuns.flatMap((r) => Array.from({ length: r.length }, (_, k) => r.day + k));
@@ -406,7 +431,7 @@ function RouteDays({ columns, timeline, layout }: { columns: PackColumn[]; timel
             <tspan fontWeight={600} fill="var(--color-ink)">
               {h.number}
             </tspan>
-            <tspan fill="var(--color-ink-muted)"> {h.credit}</tspan>
+            {h.credit && <tspan fill="var(--color-ink-muted)"> {h.credit}</tspan>}
           </text>
         ))}
       </svg>
@@ -440,7 +465,9 @@ interface BidPackStripProps {
 
 export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle, placedByYou = false, top = false }: BidPackStripProps) {
   const label = `Line ${line.lineNumber}${score !== null ? `, score ${Math.round(score)}` : tag ? `, option ${tag}` : ""}${placedByYou ? ", placed here by you" : ""} — ${open ? "hide" : "show"} everything about it`;
-  const ring = layout.stacked ? 34 : 38;
+  const k = layout.textScale;
+  // On a phone the ring stops growing at 150% text: at 200% it took the room "LINE 2295" and the numbers needed.
+  const ring = Math.round(layout.stacked ? 34 * Math.min(k, 1.5) : 38 * k);
   const title = (
     <div className="flex min-w-0 items-center gap-2">
       {score !== null ? (
@@ -453,11 +480,11 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
         )
       )}
       <div className="min-w-0">
-        <div className="flex items-center gap-1.5 font-mono text-xs font-semibold leading-[14px] tracking-wide text-ink">
+        <div className="flex items-center gap-1.5 font-mono text-xs font-semibold leading-[0.875rem] tracking-wide text-ink">
           LINE {line.lineNumber}
           {placedByYou && (
             <span
-              className="whitespace-nowrap rounded-[2px] border border-accent/50 px-1.5 py-px font-sans text-2xs font-semibold leading-[12px] text-accent"
+              className="whitespace-nowrap rounded-[2px] border border-accent/50 px-1.5 py-px font-sans text-2xs font-semibold leading-[0.75rem] text-accent"
               title="You put this line here. Its score is still Line Select's own match, so it can sit above a line with a higher score."
             >
               Your order
@@ -485,7 +512,7 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
       </div>
     );
     return layout.stacked ? (
-      <div className="py-1.5" style={{ paddingLeft: PAD_X, paddingRight: PAD_X }}>
+      <div className="py-1.5" style={{ paddingLeft: PAD_X * k, paddingRight: PAD_X * k }}>
         <div className="flex items-center gap-1">
           {grip}
           <button type="button" onClick={onToggle} aria-expanded={open} aria-label={label} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
@@ -496,15 +523,15 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
         <div className="mt-1">{scroller}</div>
       </div>
     ) : (
-      <div className="flex items-stretch" style={{ paddingRight: PAD_X }}>
-        <div className="flex shrink-0 items-center justify-center" style={{ width: GRIP_W + PAD_X }}>
+      <div className="flex items-stretch" style={{ paddingRight: PAD_X * k }}>
+        <div className="flex shrink-0 items-center justify-center" style={{ width: (GRIP_W + PAD_X) * k }}>
           {grip}
         </div>
-        <button type="button" onClick={onToggle} aria-expanded={open} aria-label={label} className="flex shrink-0 items-center py-1.5 text-left" style={{ width: LEFT_W }}>
+        <button type="button" onClick={onToggle} aria-expanded={open} aria-label={label} className="flex shrink-0 items-center py-1.5 text-left" style={{ width: LEFT_W * k }}>
           {title}
         </button>
         <div className="min-w-0 flex-1 py-1">{scroller}</div>
-        <button type="button" onClick={onToggle} aria-hidden tabIndex={-1} className="flex shrink-0 items-center justify-center" style={{ width: CHEVRON_W }}>
+        <button type="button" onClick={onToggle} aria-hidden tabIndex={-1} className="flex shrink-0 items-center justify-center" style={{ width: CHEVRON_W * k }}>
           {chevron}
         </button>
       </div>
@@ -512,8 +539,8 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
   }
 
   return (
-    <div className="flex items-stretch" style={{ paddingRight: PAD_X }}>
-      <div className="flex shrink-0 items-center justify-center" style={{ width: GRIP_W + PAD_X }}>
+    <div className="flex items-stretch" style={{ paddingRight: PAD_X * k }}>
+      <div className="flex shrink-0 items-center justify-center" style={{ width: (GRIP_W + PAD_X) * k }}>
         {grip}
       </div>
       <button
@@ -522,7 +549,7 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
         aria-expanded={open}
         aria-label={label}
         className="grid min-w-0 flex-1 items-center py-1 text-left"
-        style={{ gridTemplateColumns: `${LEFT_W}px minmax(0, 1fr) ${CHEVRON_W}px` }}
+        style={{ gridTemplateColumns: `${LEFT_W * k}px minmax(0, 1fr) ${CHEVRON_W * k}px` }}
       >
         {title}
         {drawn}

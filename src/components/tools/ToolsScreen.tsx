@@ -105,7 +105,9 @@ function WorldClock({ bidPack, profile }: { bidPack: BidPack | null; profile: Pr
 
       <DayNightMap codes={codes} base={base} home={home} at={at} />
 
-      <ul className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+      {/* Two to a phone's row, or one where two don't leave a clock room for its time: with the phone's text set larger
+          "15:00" broke over two lines and "Johannesburg" ran into the next tile. */}
+      <ul className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(max(6.5rem,calc((100%_-_0.5rem)/2_-_1px)),1fr))] gap-2 sm:grid-cols-3 lg:grid-cols-4">
         <ClockTile code="Z" name="Zulu" time={DateTime.fromMillis(at, { zone: "utc" })} note="UTC" />
         {codes.map((c) => {
           const zone = timezoneForAirport(c)!;
@@ -162,13 +164,14 @@ function ClockTile({ code, name, time, note, daylight = null }: { code: string; 
         <span className="font-mono text-sm font-semibold text-ink">{code}</span>
         {daylight !== null && <span className="text-xs text-ink-faint" title={daylight ? "Sun's up there" : "Dark there"}>{daylight ? "☀" : "☾"}</span>}
       </div>
-      <div className="mt-0.5 font-mono text-2xl font-semibold tabular-nums text-ink">
+      <div className="mt-0.5 whitespace-nowrap font-mono text-2xl font-semibold tabular-nums text-ink">
         <FlipText text={time.toFormat("HH:mm")} />
       </div>
-      <div className="truncate text-xs text-ink-muted">
+      {/* Wrapped, not cut: two tiles to a phone's row read "Sun 20 · Anchor…" and "same time as Me…". */}
+      <div className="break-words text-xs text-ink-muted">
         {time.toFormat("ccc d")} &middot; {name}
       </div>
-      <div className="truncate text-2xs text-ink-faint">{note}</div>
+      <div className="text-2xs text-ink-faint">{note}</div>
     </li>
   );
 }

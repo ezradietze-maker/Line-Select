@@ -71,8 +71,9 @@ function extractTransport(row: string): { direction: "To" | "From"; company: str
 }
 
 // A phone number as the pack prints them: "+1-510-652-8777", "+33 1 49 19 77 77", "+32.4.234.8888", "925-469-5925",
-// "011-81-476-33-1121", or a run of digits glued on ("5102859232").
-const PHONE_RE = /^\+?\d[\d\s\-./()]{5,}\d$/;
+// "011-81-476-33-1121", or a run of digits glued on ("5102859232") — and some with an extension or a note after it:
+// "210-341-6000 x 3", "215-609-4400 EXT 105", "… ext: 2", "… - CELL".
+const PHONE_RE = /^\+?\d[\d\s\-./()]{5,}\d(?:\s*(?:x|ext\.?:?)\s*\d{1,5}|\s+-\s+cell)?$/i;
 
 /**
  * The phone on a hotel or ride line: what follows its "(CITY)", up to the pickup — "(ANC), +1-907-…, pickup @…". A

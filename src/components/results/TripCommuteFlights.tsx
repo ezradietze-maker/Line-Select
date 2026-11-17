@@ -33,9 +33,11 @@ function Jumpseats({ a }: { a: TravelAnswer }) {
 
 function Row({ label, children, warn = false }: { label: string; children: React.ReactNode; warn?: boolean }) {
   return (
-    <li className="flex gap-2">
-      <span className="w-28 shrink-0 text-ink-muted">{label}</span>
-      <span className={warn ? "text-bad" : "text-ink"}>{children}</span>
+    // The words go under the label once there's no room for both side by side: with the phone's text set larger the label
+    // took the row's whole width, the words ran off the screen and the page scrolled sideways.
+    <li className="flex flex-wrap gap-x-2">
+      <span className="w-28 max-w-full shrink-0 text-ink-muted">{label}</span>
+      <span className={`min-w-0 flex-1 basis-20 ${warn ? "text-bad" : "text-ink"}`}>{children}</span>
     </li>
   );
 }

@@ -1,6 +1,7 @@
 import { CreditHours } from "@/components/results/TripMarks";
 import type { LineCarryOver } from "@/lib/bid-month";
 import { tripStandbyDays } from "@/lib/standby";
+import { dayTripsOf, runOfDay } from "@/lib/trip-anchor";
 import { hm } from "@/lib/trip-day-stats";
 import type { Trip } from "@/types/bidpack";
 
@@ -13,10 +14,14 @@ function inFlyingOrder(trips: Trip[]): Trip[] {
 /** A trip's credit and landings in this bid month — and, for the one running into the next, what it carries there. */
 function TripChip({ trip, carryOver }: { trip: Trip; carryOver?: LineCarryOver | null }) {
   const standby = tripStandbyDays(trip);
-  const carries = trip.carriesIntoNextMonth && carryOver ? carryOver : null;
+  // A run of day trips cut at the month's end carries on from its last day here, not from each of them.
+  const of = runOfDay(trip);
+  const carries = trip.carriesIntoNextMonth && carryOver && (!of || of.index === dayTripsOf(of.run).length - 1) ? carryOver : null;
   return (
     <span
-      className="inline-flex items-baseline gap-1 rounded-md border border-border bg-canvas px-2 py-0.5 font-mono text-xs text-ink"
+      // Its standby and C/O go under it whole when the chip runs out of room (the phone's text set larger): squeezed,
+      // they broke up into "· · 8:23CH" over "1 ldg C/O".
+      className="inline-flex flex-wrap items-baseline gap-1 rounded-md border border-border bg-canvas px-2 py-0.5 font-mono text-xs text-ink"
       title={`Trip ${trip.pairingNumber} — ${hm(trip.creditHours * 60)} credit hours, ${trip.landings} landing${trip.landings === 1 ? "" : "s"}${standby > 0 ? `, ${standby} standby day${standby === 1 ? "" : "s"}` : ""}${carries ? ` in this bid month; it carries ${carries.days} day${carries.days === 1 ? "" : "s"}${carries.creditHours > 0 ? ` and ${hm(carries.creditHours * 60)} credit hours` : ""} into ${carries.month}` : ""}`}
     >
       <span className="font-semibold">{trip.pairingNumber}</span>
@@ -24,12 +29,12 @@ function TripChip({ trip, carryOver }: { trip: Trip; carryOver?: LineCarryOver |
         &middot; <CreditHours hours={trip.creditHours} /> &middot; {trip.landings} ldg{trip.landings === 1 ? "" : "s"}
       </span>
       {standby > 0 && (
-        <span className="text-warn" title="Days on standby at a layover hotel — paid, not flying">
+        <span className="whitespace-nowrap text-warn" title="Days on standby at a layover hotel — paid, not flying">
           &middot; {standby} standby
         </span>
       )}
       {carries && (
-        <span className="text-carry">
+        <span className="whitespace-nowrap text-carry">
           &middot; {carries.creditHours > 0 ? <><CreditHours hours={carries.creditHours} /> C/O</> : `${carries.days}d into ${carries.month.slice(0, 3)}`}
         </span>
       )}
@@ -39,7 +44,8 @@ function TripChip({ trip, carryOver }: { trip: Trip; carryOver?: LineCarryOver |
 
 /**
  * The bid pack's own trip (pairing) numbers for a line, each with its credit and landings in the bid month (pass the
- * line's `monthLine` trips; the one running into the next month shows its C/O) — the identifiers pilots
+ * line's `monthLine` trips a day at a time, `lineByDay`, as the pack prints a run of day trips; the one running into
+ * the next month shows its C/O) — the identifiers pilots
  * actually use to look a trip up in the pack or offer it on the Trade Board, shown right above the calendar. Trips
  * flown back to back without getting home between (`departures`, from `groupDepartures`) sit together in one tinted
  * box: one departure from home, however many trips.

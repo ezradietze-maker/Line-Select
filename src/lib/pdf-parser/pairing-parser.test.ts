@@ -304,6 +304,22 @@ describe("layover hotels, day rooms and pickups", () => {
     expect(pairing.schedule[1].layover).toMatchObject({ transportToPhone: "+1-317-240-6190", transportFromPhone: "+1-317-240-6190" });
   });
 
+  it("keeps a phone printed with its extension, on the line or wrapped", () => {
+    // As the October 2026 packs print some rides: "STAR SHUTTLE (SAT), 210-341-6000 x 3, pickup @…" (B767 MEM),
+    // "TROPHY LIMOUSINE WORLDWIDE (PHL)," then "215-609-4400 EXT 105, pickup @…" (B767 MEM, MD11 MEM, B777 ANC), "… ext: 2"
+    // and "… - CELL" (B757 MEM, A300 MEM). They were dropped, so the trip showed the van with no number to call.
+    const ext = rows.map((r) =>
+      r
+        .replace("(MIA), +1-212-203-0706, pickup @1705", "(MIA), 210-341-6000 x 3, pickup @1705")
+        .replace("(MIA), +1-212-203-0706, pickup @1230", "(MIA), 901-555-0100 - CELL, pickup @1230")
+        .replace("+1-317-240-6190, pickup @0129", "215-609-4400 EXT 105, pickup @0129")
+        .replace("+1-317-240-6190, pickup @1230", "317-555-0100 ext: 2, pickup @1230")
+    );
+    const [pairing] = parsePairingColumn(ext, 176, []);
+    expect(pairing.schedule[0].layover).toMatchObject({ transportToPhone: "210-341-6000 x 3", transportFromPhone: "901-555-0100 - CELL" });
+    expect(pairing.schedule[1].layover).toMatchObject({ transportToPhone: "215-609-4400 EXT 105", transportFromPhone: "317-555-0100 ext: 2" });
+  });
+
   it("finds a hotel phone printed inside the name, and keeps it out of the name", () => {
     const glued = rows.map((r) => (r === "Hotel: COURTYARD MIAMI COCONUT GROVE (MIA), +1-305-858-2500" ? "Hotel: COURTYARD MIAMI 305-858-2500 (MIA)" : r));
     const [pairing] = parsePairingColumn(glued, 176, []);

@@ -119,14 +119,19 @@ function dutySpans(segs: TimelineSegment[]): BarSpan[] {
 /**
  * Labels in order along the day, each moved a line out when it would sit on the one before it (closer than `minGap`
  * minutes) — and dropped when it would sit on both lines' last labels. The words are always in the day's detail.
+ *
+ * `half` is how many minutes of the day half a label covers, where it's drawn: a label at the day's edge is nudged in
+ * by that much to stay inside it, so it's measured where it lands — "23:59" pulled in beside "16:14" read "16:1423:59".
  */
-export function stagger<P extends { at: number; text: string }>(points: P[], minGap: number): (P & { row: 0 | 1 })[] {
+export function stagger<P extends { at: number; text: string }>(points: P[], minGap: number, half?: (text: string) => number): (P & { row: 0 | 1 })[] {
   const out: (P & { row: 0 | 1 })[] = [];
   const lastAt: [number, number] = [-Infinity, -Infinity];
-  for (const p of [...points].sort((a, b) => a.at - b.at)) {
-    const row = p.at - lastAt[0] >= minGap ? 0 : p.at - lastAt[1] >= minGap ? 1 : null;
+  const drawnAt = (p: P) => (half ? Math.min(Math.max(p.at, half(p.text)), DAY - half(p.text)) : p.at);
+  for (const p of [...points].sort((a, b) => drawnAt(a) - drawnAt(b))) {
+    const at = drawnAt(p);
+    const row = at - lastAt[0] >= minGap ? 0 : at - lastAt[1] >= minGap ? 1 : null;
     if (row === null) continue;
-    lastAt[row] = p.at;
+    lastAt[row] = at;
     out.push({ ...p, row });
   }
   return out;
@@ -136,21 +141,41 @@ export function stagger<P extends { at: number; text: string }>(points: P[], min
  * Labels side by side on one line, never stacked: each centered over its minute when there's room, else pushed along
  * just clear of the one before — a short leg's two cities read "CAN NRT" — and the lot slid back left when that runs
  * past the day's edge (`bleed` px into the gap beyond it). Returns each label's center in px, in the order given.
+ *
+ * A day with more cities than its width holds (six on a 90px day) was slid back left as one, and its first cities
+ * landed on the day before's last ones. Now the same city either side of a layover is written once, between its two
+ * ends, and if that's still too many, the most crowded city between the day's first and last is left off (null), until
+ * the rest fit. The words are always in the day's detail.
  */
-export function sideBySide(labels: { at: number; text: string }[], widthPx: number, bleed: number, gapPx = 3): number[] {
-  const order = labels.map((_, i) => i).sort((a, b) => labels[a].at - labels[b].at);
+export function sideBySide(labels: { at: number; text: string }[], widthPx: number, bleed: number, gapPx = 3): (number | null)[] {
+  let order = labels.map((_, i) => i).sort((a, b) => labels[a].at - labels[b].at);
+  const at = labels.map((l) => l.at);
   const half = (i: number) => (labels[i].text.length * LABEL_CHAR_PX) / 2;
-  const centers: number[] = new Array(labels.length);
+  const fits = () => order.reduce((s, i) => s + half(i) * 2, 0) + gapPx * (order.length - 1) <= widthPx + 2 * bleed;
+  for (let k = 1; k < order.length && !fits(); k++) {
+    const [p, q] = [order[k - 1], order[k]];
+    if (labels[p].text !== labels[q].text) continue;
+    at[p] = (at[p] + at[q]) / 2;
+    order = order.filter((i) => i !== q);
+    k--;
+  }
+  while (order.length > 2 && !fits()) {
+    // The city with the least room around it, between the day's first and last.
+    let drop = 1;
+    for (let k = 2; k < order.length - 1; k++) if (at[order[k + 1]] - at[order[k - 1]] < at[order[drop + 1]] - at[order[drop - 1]]) drop = k;
+    order = order.filter((_, k) => k !== drop);
+  }
+  const centers: (number | null)[] = new Array(labels.length).fill(null);
   let right = -Infinity;
   for (const i of order) {
-    const wanted = Math.min(Math.max((labels[i].at / DAY) * widthPx, half(i) - bleed), widthPx + bleed - half(i));
+    const wanted = Math.min(Math.max((at[i] / DAY) * widthPx, half(i) - bleed), widthPx + bleed - half(i));
     centers[i] = Math.max(wanted, right + gapPx + half(i));
-    right = centers[i] + half(i);
+    right = centers[i]! + half(i);
   }
   let limit = widthPx + bleed;
   for (const i of [...order].reverse()) {
-    centers[i] = Math.min(centers[i], limit - half(i));
-    limit = centers[i] - half(i) - gapPx;
+    centers[i] = Math.min(centers[i]!, limit - half(i));
+    limit = centers[i]! - half(i) - gapPx;
   }
   return centers;
 }
@@ -158,15 +183,22 @@ export function sideBySide(labels: { at: number; text: string }[], widthPx: numb
 /**
  * One day's picture from its timeline pieces (`buildHomeDays` / `buildTimelineDays`). `minGap` is how many minutes of
  * the day a label needs to itself at the width it's drawn — a city two legs share is written once, between them, when
- * the two would otherwise sit on each other.
+ * the two would otherwise sit on each other. With `widthPx`, the times are spaced where they're drawn,
+ * nudged in at the day's edges (see `stagger`).
  */
-export function dayBars(segments: TimelineSegment[], minGap: number, stayLabeled: (s: TimelineSegment) => boolean = (s) => !s.continuesFromPreviousDay): DayBars {
+export function dayBars(
+  segments: TimelineSegment[],
+  minGap: number,
+  stayLabeled: (s: TimelineSegment) => boolean = (s) => !s.continuesFromPreviousDay,
+  widthPx?: number
+): DayBars {
+  const half = widthPx ? (text: string) => ((text.length * LABEL_CHAR_PX) / 2 / widthPx) * DAY : undefined;
   const again = segments.filter((s) => s.secondPass);
-  const first = picture(segments.filter((s) => !s.secondPass), minGap, stayLabeled);
-  return again.length > 0 ? { ...first, second: picture(again, minGap, stayLabeled) } : first;
+  const first = picture(segments.filter((s) => !s.secondPass), minGap, stayLabeled, half);
+  return again.length > 0 ? { ...first, second: picture(again, minGap, stayLabeled, half) } : first;
 }
 
-function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: TimelineSegment) => boolean): DayBars {
+function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: TimelineSegment) => boolean, half?: (text: string) => number): DayBars {
   const ordered = [...segments].sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay || endOf(a) - endOf(b));
   const legs: BarLeg[] = ordered
     .filter((s) => (s.kind === "flying" || s.kind === "deadhead") && s.leg)
@@ -223,9 +255,10 @@ function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: T
     rests: ordered
       .filter((s) => s.kind === "connection" && s.stay)
       .map((s) => ({ start: s.startMinuteOfDay, end: endOf(s), city: s.stay!.city, hours: s.stay!.hours, hotel: s.stay!.hotel })),
+    // Cities leave room to spare (three letters in a time's room), so only the times need spacing where they land.
     cities: stagger(cityPoints, minGap),
     cityPoints,
-    times: stagger(timePoints, minGap),
+    times: stagger(timePoints, minGap, half),
   };
 }
 
@@ -258,6 +291,15 @@ export const layoverHours = (hours: number) => `${Math.round(hours)}h`;
 
 /** Width of a character in the 11px mono the labels are set in (Overpass Mono, 0.616em), near enough to decide what fits. */
 export const LABEL_CHAR_PX = 6.8;
+
+/**
+ * Where a layover's words start on a day `widthPx` across: just after the van (`afterVan`), or further back, as far as
+ * the stay's own start, when that keeps their `textPx` clear of the day's right edge. A stay starting late on a phone's
+ * narrow day had "L/O SFO 20h" cut to "L/O S".
+ */
+export function stayLabelLeft(afterVan: number, stayStart: number, textPx: number, widthPx: number): number {
+  return Math.max(stayStart, Math.min(afterVan, widthPx - textPx));
+}
 
 /**
  * The most a layover's words can say in `roomPx`: "OAK 28h", then "OAK" — `extraPx` for the pilot's mark after it.

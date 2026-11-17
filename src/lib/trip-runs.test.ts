@@ -62,4 +62,10 @@ describe("a run of the same day trip on consecutive days", () => {
     expect(tripReleaseHours(trip)).toBe(9.5);
     expect(dayTripsOf(trip)).toEqual([trip]);
   });
+
+  it("ends on the pack's own minute, though TAFB is kept to two decimals of an hour", () => {
+    // A300 MEM line 1044, trip 32: TAFB 69:56 is stored as 69.93, 18 seconds short of the pack's release.
+    const trip = { ...run(1, false), tafbHours: 69.93 } as Trip;
+    expect(tripReleaseHours(trip) * 60).toBe(69 * 60 + 56);
+  });
 });

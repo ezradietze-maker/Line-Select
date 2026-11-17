@@ -73,25 +73,31 @@ export function inPlaceOf<T>(before: T[], now: T[], gone: T): T | null {
   return null;
 }
 
-/** Where the keyboard goes on the ranked list: a line (its strip), a set-aside chip, or the tiers' Undo. */
-export type FocusHome = { line: string } | { chip: string } | { undo: true } | null;
+/**
+ * Where the keyboard goes on the ranked list: a line (its strip), a set-aside chip, the tiers' Undo, or the first control
+ * in the nearest box still there around the one that went (`focusBackTo`).
+ */
+export type FocusHome = { line: string } | { chip: string } | { undo: true } | { near: true } | null;
 
 /**
  * Where the keyboard goes on the ranked list when the control it was on went away: a line's own Hide or Set aside, the
  * bar for a selection (gone once the move is made), the Undo beside a swap, a set-aside chip brought back. Left alone,
  * focus fell to the page and the next Tab started again at the top.
  *
- * A chip: the next chip, else Undo. In a line, or anywhere else: that line (or the line last worked on) while it's
- * still listed, else the line now in its place, else Undo.
+ * A chip: the next chip, else Undo. In a line, or in what works on lines (`forLines`: the selection's bar, a swap's Undo):
+ * that line (or the line last worked on) while it's still listed, else the line now in its place, else Undo. Anywhere
+ * else (the filters' "Clear filters"): the nearest box around it. Sent to the line last worked on, the keyboard landed
+ * on a card off the screen, and the Space a pilot scrolled with opened it.
  */
 export function focusHomeAfterLoss(
-  lost: { lineId: string | null; chipId: string | null },
+  lost: { lineId: string | null; chipId: string | null; forLines?: boolean },
   { listedBefore, listedNow, lastLineId, chipsBefore, chipsNow }: { listedBefore: string[]; listedNow: string[]; lastLineId: string | null; chipsBefore: string[]; chipsNow: string[] }
 ): FocusHome {
   if (lost.chipId) {
     const chip = inPlaceOf(chipsBefore, chipsNow, lost.chipId);
     return chip ? { chip } : { undo: true };
   }
+  if (!lost.lineId && !lost.forLines) return { near: true };
   const lineId = lost.lineId ?? lastLineId;
   if (!lineId) return null;
   if (listedNow.includes(lineId)) return { line: lineId };
