@@ -107,11 +107,13 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
       )}
       <div className={`grid ${grid} items-end gap-x-2`} aria-hidden>
         <span className="whitespace-nowrap font-mono text-2xs text-ink-faint">{mode === "zulu" ? "Zulu" : base ? `${base} time` : ""}</span>
-        <div ref={trackRef} className="relative h-3.5">
+        {/* Every three hours where there's room: on a 320 phone the 19px between them ran "0003" and "2100" together, so
+            there it's every six. */}
+        <div ref={trackRef} className="@container relative h-3.5">
           {hours.map((h) => (
             <span
               key={h}
-              className={`absolute top-0 font-mono text-2xs leading-none text-ink-faint ${h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2"}`}
+              className={`absolute top-0 font-mono text-2xs leading-none text-ink-faint ${h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2"} ${h % 6 ? "hidden @min-[12.5rem]:inline" : ""}`}
               style={{ left: `${(h / 24) * 100}%` }}
             >
               {String(h % 24).padStart(2, "0")}
