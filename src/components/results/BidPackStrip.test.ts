@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitFont, stripLayout } from "@/components/results/BidPackStrip";
+import { creditFits, fitFont, stripLayout } from "@/components/results/BidPackStrip";
 import { textScaleOf } from "@/lib/use-text-scale";
 
 describe("the bid pack view's day columns", () => {
@@ -18,6 +18,21 @@ describe("the bid pack view's day columns", () => {
     const laptop = stripLayout(1010, 35);
     expect(laptop.mode).toBe("fit");
     expect(4 * 0.6 * laptop.font).toBeLessThanOrEqual(laptop.daysPx / 35 - 2);
+  });
+});
+
+describe("a trip's number and credit in the bid pack view", () => {
+  it("leaves the credit off where its days can't hold it, rather than cut it short", () => {
+    // A300 MEM CAP line 1036 on a phone: two-day trip 134 with 136 the day after, 44px for "134 10:14" (49.9px), which
+    // read "134 10:1".
+    expect(creditFits("134", 10 + 14 / 60, 2, 24, 9)).toBe(false);
+    // A shorter credit fits the same two days, and a day trip with free days after it has room for its credit.
+    expect(creditFits("63", 9 + 44 / 60, 2, 24, 9)).toBe(true);
+    expect(creditFits("137", 7 + 9 / 60, 5, 24, 9)).toBe(true);
+    // B777 ANC FO line 2045's trip 27, "27 16:29" in two days on a phone: drawn whole, and kept.
+    expect(creditFits("27", 16 + 29 / 60, 2, 24, 9)).toBe(true);
+    // B767 MEM CAP line 1290: day trip 267 on a Saturday, its day a pixel narrower for the weekend's line, read "6:2".
+    expect(creditFits("267", 6 + 24 / 60, 2, 23, 9)).toBe(false);
   });
 });
 
