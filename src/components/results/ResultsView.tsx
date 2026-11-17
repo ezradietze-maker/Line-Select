@@ -41,6 +41,7 @@ import { ScoreRing } from "@/components/results/ScoreRing";
 import { BidPackHeader, PRINT_LIST_PX, StripKey, StripViewToggle, printStripLayout, stripLayout } from "@/components/results/BidPackStrip";
 import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view-storage";
 import { useMeasuredWidth } from "@/components/results/LegBars";
+import { useTextScale } from "@/lib/use-text-scale";
 import { packColumns } from "@/lib/bidpack-row";
 import { monthLine } from "@/lib/bid-month";
 import { focusBackTo, focusHomeAfterLoss } from "@/lib/focus-trap";
@@ -814,7 +815,8 @@ export function ResultsView({
   }, []);
   // Printed, the strips are laid out for the paper, not the screen: laid out at a laptop's width, a sheet cut each one
   // off at about the 16th.
-  const layout = useMemo(() => (printing ? printStripLayout(columns.length) : stripLayout(listWidth, columns.length)), [printing, listWidth, columns.length]);
+  const textScale = useTextScale();
+  const layout = useMemo(() => (printing ? printStripLayout(columns.length) : stripLayout(listWidth, columns.length, textScale)), [printing, listWidth, columns.length, textScale]);
   const [chosenStripView, setStripView] = useStripView();
   // What's drawn: the pilot's choice, or the Bid pack row on a pack with no dates to lay a timeline on. Said so when
   // they pick Timeline there, so the switch doesn't look broken.
@@ -825,7 +827,7 @@ export function ResultsView({
     setNoTimelineSaid(next === "timeline" && stripViewFor(next, bidPack) !== next);
   };
   // Held still while a line is dragged: the cards it can land on stay drawn where they were measured.
-  const rows = useWindowedRows(listRef, displayedIds, firstBatch, printing, `${stripView}|${listWidth}`, activeId !== null);
+  const rows = useWindowedRows(listRef, displayedIds, firstBatch, printing, `${stripView}|${listWidth}|${textScale}`, activeId !== null);
   // The first cards rise in one after another as the list first shows; cards drawn after that just fade in.
   const [revealing, setRevealing] = useState(true);
   useEffect(() => {

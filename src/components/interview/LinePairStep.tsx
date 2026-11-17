@@ -9,6 +9,7 @@ import { MAX_NOTE } from "@/lib/brain/answer-limits";
 import { packColumnCount, packColumns } from "@/lib/bidpack-row";
 import { BidPackHeader, StripKey, stripLayout } from "@/components/results/BidPackStrip";
 import { useMeasuredWidth } from "@/components/results/LegBars";
+import { useTextScale } from "@/lib/use-text-scale";
 import type { LinePairCandidate } from "@/lib/brain/interviewer";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice } from "@/types/pilot-model";
@@ -92,7 +93,8 @@ export function LinePairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
   // Both strips on the pack's day columns, laid out at the column's width, so each day of A sits over the same day of B.
   const columns = useMemo(() => packColumns(bidPack.bidPeriodStart, bidPack.bidPeriodDays, packColumnCount(bidPack)), [bidPack]);
   const [listRef, listWidth] = useMeasuredWidth<HTMLDivElement>(768);
-  const layout = useMemo(() => stripLayout(listWidth, columns.length), [listWidth, columns.length]);
+  const textScale = useTextScale();
+  const layout = useMemo(() => stripLayout(listWidth, columns.length, textScale), [listWidth, columns.length, textScale]);
 
   const options: { pick: Pick; label: string }[] = [
     { pick: { side: "a", strength: "strongly" }, label: `${pair.a}, easily` },

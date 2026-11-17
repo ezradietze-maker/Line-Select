@@ -108,14 +108,17 @@ export function chainSentence(c: NonNullable<DetailedDay["chain"]>, mode: TimeMo
   return `${follows} That's not long enough to get home and have ${c.homeHours ?? DEFAULT_MIN_HOME_HOURS} hours there, so the two are one departure — and the time between is spent in ${c.city}.`;
 }
 
-/** When the trip reports, in the report color. A trip turned straight out of the one before also says how long it sits at base in between. */
+/**
+ * When the trip reports, in the report color. A trip turned straight out of the one before also says how long it sits at
+ * base in between. In px, as the 11px row it sits in (`CalendarDayBars`) is.
+ */
 function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
   const time = day.chain ? day.chain.reports || day.dutyStart : day.isTripStart ? day.dutyStart : null;
   if (!time) return null;
   return (
     <>
       <span
-        className="whitespace-nowrap font-mono text-2xs font-semibold leading-none text-report @min-[4.75rem]:text-2xs"
+        className="whitespace-nowrap font-mono text-[11px] font-semibold leading-none text-report"
         title={`Reports ${time} ${mode === "zulu" ? "Zulu" : "local"}${day.earlyReport ? " — between 2 and 6am local" : ""}`}
       >
         <span className="hidden @min-[4.75rem]:inline">Rpt </span>
@@ -126,7 +129,7 @@ function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
           <Zone mode={mode} />
         </span>
       </span>
-      {day.chain && <span className="hidden whitespace-nowrap font-mono text-2xs text-ink-muted @min-[8.5rem]:inline" title={chainSentence(day.chain, mode)}>&nbsp;· {turnLabel(day.chain.turnMinutes)} turn</span>}
+      {day.chain && <span className="hidden whitespace-nowrap font-mono text-[11px] text-ink-muted @min-[8.5rem]:inline" title={chainSentence(day.chain, mode)}>&nbsp;· {turnLabel(day.chain.turnMinutes)} turn</span>}
     </>
   );
 }
@@ -493,7 +496,8 @@ function fmtRuns(runs: number[]): string {
 function SummaryItem({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {
   return (
     <div className="min-w-0">
-      <dt className="truncate text-2xs text-ink-faint font-medium">{label}</dt>
+      {/* Wraps rather than cutting off: at 200% text "Days off in a row" lost its last words. */}
+      <dt className="text-2xs text-ink-faint font-medium">{label}</dt>
       <dd className={`break-words font-mono text-xs font-medium ${tone || "text-readout"}`}>{value}</dd>
     </div>
   );
